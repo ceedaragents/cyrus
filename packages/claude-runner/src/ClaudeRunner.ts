@@ -148,6 +148,10 @@ export class ClaudeRunner extends EventEmitter {
 
       if (error instanceof AbortError) {
         console.log('[ClaudeRunner] Session was aborted')
+      } else if (error instanceof Error && error.message.includes('Claude Code process exited with code 143')) {
+        // Exit code 143 is SIGTERM (128 + 15), which indicates graceful termination
+        // This is expected when the session is stopped during unassignment
+        console.log('[ClaudeRunner] Session was terminated gracefully (SIGTERM)')
       } else {
         this.emit('error', error instanceof Error ? error : new Error(String(error)))
       }

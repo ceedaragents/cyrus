@@ -432,6 +432,20 @@ describe('ClaudeRunner', () => {
       expect(errorHandler).not.toHaveBeenCalled()
       expect(runner.isRunning()).toBe(false)
     })
+
+    it('should handle SIGTERM (exit code 143) gracefully', async () => {
+      const errorHandler = vi.fn()
+      runner.on('error', errorHandler)
+      
+      mockQuery.mockImplementation(async function* () {
+        throw new Error('Claude Code process exited with code 143')
+      })
+      
+      await runner.start('test')
+      
+      expect(errorHandler).not.toHaveBeenCalled()
+      expect(runner.isRunning()).toBe(false)
+    })
   })
 
   describe('Session Info', () => {
