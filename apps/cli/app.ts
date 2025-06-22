@@ -693,12 +693,12 @@ class EdgeApp {
         stdio: 'pipe'
       })
       
-      // Check for secretagentsetup.sh script in the repository root
-      const setupScriptPath = join(repository.repositoryPath, 'secretagentsetup.sh')
+      // Check for cyrus-setup.sh script in the repository root
+      const setupScriptPath = join(repository.repositoryPath, 'cyrus-setup.sh')
       if (existsSync(setupScriptPath)) {
-        console.log('Running secretagentsetup.sh in new worktree...')
+        console.log('Running cyrus-setup.sh in new worktree...')
         try {
-          execSync('bash secretagentsetup.sh', {
+          execSync('bash cyrus-setup.sh', {
             cwd: workspacePath,
             stdio: 'inherit',
             env: {
@@ -709,7 +709,7 @@ class EdgeApp {
             }
           })
         } catch (error) {
-          console.warn('Warning: secretagentsetup.sh failed:', (error as Error).message)
+          console.warn('Warning: cyrus-setup.sh failed:', (error as Error).message)
           // Continue despite setup script failure
         }
       }

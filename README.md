@@ -41,6 +41,37 @@ cyrus
 ####  Benefit
 Keep `cyrus` running, and the agent will start monitoring issues assigned to you in Linear and process them automatically, on your very own device.
 
+## Repository Setup Script
+
+Cyrus supports an optional `cyrus-setup.sh` script that runs automatically when creating new git worktrees for issues. This is useful for repository-specific initialization tasks.
+
+### How it works
+
+1. Place a `cyrus-setup.sh` script in your repository root
+2. When Cyrus processes an issue, it creates a new git worktree
+3. If the setup script exists, Cyrus runs it in the new worktree with these environment variables:
+   - `LINEAR_ISSUE_ID` - The Linear issue ID
+   - `LINEAR_ISSUE_IDENTIFIER` - The issue identifier (e.g., "CEA-123")
+   - `LINEAR_ISSUE_TITLE` - The issue title
+
+### Example Usage
+
+```bash
+#!/bin/bash
+# cyrus-setup.sh - Repository initialization script
+
+# Copy environment files from a central location
+cp /Users/agentops/code/ceedar/packages/evals/.env packages/evals/.env
+
+# Install dependencies if needed
+# npm install
+
+# Set up test databases, copy config files, etc.
+echo "Repository setup complete for issue: $LINEAR_ISSUE_IDENTIFIER"
+```
+
+Make sure the script is executable: `chmod +x cyrus-setup.sh`
+
 ## Submitting Work To GitHub
 
 When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authentication. This means:
