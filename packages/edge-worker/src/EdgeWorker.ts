@@ -442,6 +442,8 @@ export class EdgeWorker extends EventEmitter {
     }
 
     // Create Claude runner with attachment directory access and optional system prompt
+    // Always append the last message marker to prevent duplication
+    const lastMessageMarker = '\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.'
     const runner = new ClaudeRunner({
       workingDirectory: workspace.path,
       allowedTools,
@@ -449,7 +451,7 @@ export class EdgeWorker extends EventEmitter {
       workspaceName: fullIssue.identifier,
       mcpConfigPath: repository.mcpConfigPath,
       mcpConfig: this.buildMcpConfig(repository),
-      ...(systemPrompt && { appendSystemPrompt: systemPrompt }),
+      appendSystemPrompt: (systemPrompt || '') + lastMessageMarker,
       onMessage: (message) => this.handleClaudeMessage(linearAgentActivitySessionId, message, repository.id),
       // onComplete: (messages) => this.handleClaudeComplete(initialComment.id, messages, repository.id),
       onError: (error) => this.handleClaudeError(error)
@@ -543,6 +545,8 @@ export class EdgeWorker extends EventEmitter {
       const allowedTools = this.buildAllowedTools(repository)
 
       // Create new runner with resume mode if we have a Claude session ID
+      // Always append the last message marker to prevent duplication
+      const lastMessageMarker = '\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.'
       const runner = new ClaudeRunner({
         workingDirectory: session.workspace.path,
         allowedTools,
@@ -550,6 +554,7 @@ export class EdgeWorker extends EventEmitter {
         workspaceName: issue.identifier,
         mcpConfigPath: repository.mcpConfigPath,
         mcpConfig: this.buildMcpConfig(repository),
+        appendSystemPrompt: lastMessageMarker,
         onMessage: (message) => {
           this.handleClaudeMessage(linearAgentActivitySessionId, message, repository.id)
         },
