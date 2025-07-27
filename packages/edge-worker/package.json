@@ -1,6 +1,6 @@
 {
   "name": "cyrus-edge-worker",
-  "version": "0.0.17",
+  "version": "0.0.18-alpha.0",
   "description": "Unified edge worker for processing Linear issues with Claude",
   "type": "module",
   "main": "dist/index.js",
@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@linear/sdk": "^39.0.0",
+    "@linear/sdk": "^52.0.0",
     "@ngrok/ngrok": "^1.5.1",
     "cyrus-claude-runner": "workspace:*",
     "cyrus-core": "workspace:*",

@@ -2,38 +2,30 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync } from 'fs'
+import type { CyrusAgentSession, CyrusAgentSessionEntry, } from './CyrusAgentSession.js'
 
-/**
- * Serializable session state for persistence
- */
-export interface SerializableSession {
-  issueId: string
-  issueIdentifier: string
-  issueTitle: string
-  branchName: string
-  workspacePath: string
-  isGitWorktree: boolean
-  historyPath?: string
-  claudeSessionId: string | null
-  agentRootCommentId: string | null
-  lastCommentId: string | null
-  currentParentId: string | null
-  startedAt: string
-  exitedAt: string | null
-  conversationContext: any
-}
+
+// Serialized versions with Date fields as strings
+export type SerializedCyrusAgentSession = CyrusAgentSession
+// extends Omit<CyrusAgentSession, 'createdAt' | 'updatedAt'> {
+//   createdAt: string
+//   updatedAt: string
+// }
+
+export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry
+// extends Omit<CyrusAgentSessionEntry, 'metadata'> {
+//   metadata?: Omit<CyrusAgentSessionEntry['metadata'], 'timestamp'> & {
+//     timestamp?: string
+//   }
+// }
 
 /**
  * Serializable EdgeWorker state for persistence
  */
 export interface SerializableEdgeWorkerState {
-  commentToRepo: Record<string, string>
-  commentToIssue: Record<string, string>
-  commentToLatestAgentReply: Record<string, string>
-  issueToCommentThreads: Record<string, string[]>
-  issueToReplyContext: Record<string, { commentId: string; parentId?: string }>
-  sessionsByCommentId: Record<string, SerializableSession>
-  sessionsByIssueId: Record<string, SerializableSession[]>
+  // Agent Session state - keyed by repository ID, since that's how we construct AgentSessionManagers
+  agentSessions?: Record<string, Record<string, SerializedCyrusAgentSession>>
+  agentSessionEntries?: Record<string, Record<string, SerializedCyrusAgentSessionEntry[]>>
 }
 
 /**
@@ -47,10 +39,10 @@ export class PersistenceManager {
   }
 
   /**
-   * Get the full path to the state file for a repository
+   * Get the full path to the single EdgeWorker state file
    */
-  private getStateFilePath(repositoryId: string): string {
-    return join(this.persistencePath, `${repositoryId}-state.json`)
+  private getEdgeWorkerStateFilePath(): string {
+    return join(this.persistencePath, 'edge-worker-state.json')
   }
 
   /**
@@ -61,31 +53,30 @@ export class PersistenceManager {
   }
 
   /**
-   * Save EdgeWorker state to disk
+   * Save EdgeWorker state to disk (single file for all repositories)
    */
-  async saveEdgeWorkerState(repositoryId: string, state: SerializableEdgeWorkerState): Promise<void> {
+  async saveEdgeWorkerState(state: SerializableEdgeWorkerState): Promise<void> {
     try {
       await this.ensurePersistenceDirectory()
-      const stateFile = this.getStateFilePath(repositoryId)
+      const stateFile = this.getEdgeWorkerStateFilePath()
       const stateData = {
-        version: '1.0',
+        version: '2.0',
         savedAt: new Date().toISOString(),
-        repositoryId,
         state
       }
       await writeFile(stateFile, JSON.stringify(stateData, null, 2), 'utf8')
     } catch (error) {
-      console.error(`Failed to save EdgeWorker state for ${repositoryId}:`, error)
+      console.error(`Failed to save EdgeWorker state:`, error)
       throw error
     }
   }
 
   /**
-   * Load EdgeWorker state from disk
+   * Load EdgeWorker state from disk (single file for all repositories)
    */
-  async loadEdgeWorkerState(repositoryId: string): Promise<SerializableEdgeWorkerState | null> {
+  async loadEdgeWorkerState(): Promise<SerializableEdgeWorkerState | null> {
     try {
-      const stateFile = this.getStateFilePath(repositoryId)
+      const stateFile = this.getEdgeWorkerStateFilePath()
       if (!existsSync(stateFile)) {
         return null
       }
@@ -93,36 +84,36 @@ export class PersistenceManager {
       const stateData = JSON.parse(await readFile(stateFile, 'utf8'))
       
       // Validate state structure
-      if (!stateData.state || !stateData.repositoryId || stateData.repositoryId !== repositoryId) {
-        console.warn(`Invalid state file for ${repositoryId}, ignoring`)
+      if (!stateData.state || stateData.version !== '2.0') {
+        console.warn(`Invalid or outdated state file, ignoring`)
         return null
       }
 
       return stateData.state
     } catch (error) {
-      console.error(`Failed to load EdgeWorker state for ${repositoryId}:`, error)
+      console.error(`Failed to load EdgeWorker state:`, error)
       return null
     }
   }
 
   /**
-   * Check if state file exists for a repository
+   * Check if EdgeWorker state file exists
    */
-  hasStateFile(repositoryId: string): boolean {
-    return existsSync(this.getStateFilePath(repositoryId))
+  hasStateFile(): boolean {
+    return existsSync(this.getEdgeWorkerStateFilePath())
   }
 
   /**
-   * Delete state file for a repository
+   * Delete EdgeWorker state file
    */
-  async deleteStateFile(repositoryId: string): Promise<void> {
+  async deleteStateFile(): Promise<void> {
     try {
-      const stateFile = this.getStateFilePath(repositoryId)
+      const stateFile = this.getEdgeWorkerStateFilePath()
       if (existsSync(stateFile)) {
         await writeFile(stateFile, '', 'utf8') // Clear file instead of deleting
       }
     } catch (error) {
-      console.error(`Failed to delete state file for ${repositoryId}:`, error)
+      console.error(`Failed to delete EdgeWorker state file:`, error)
     }
   }
 

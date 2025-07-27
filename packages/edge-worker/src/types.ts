@@ -31,6 +31,13 @@ export interface RepositoryConfig {
   allowedTools?: string[]      // Override Claude tools for this repository (overrides defaultAllowedTools)
   mcpConfigPath?: string | string[]  // Path(s) to MCP configuration JSON file(s) (format: {"mcpServers": {...}})
   appendInstruction?: string   // Additional instruction to append to the prompt in XML-style wrappers
+  
+  // Label-based system prompt configuration
+  labelPrompts?: {
+    debugger?: string[]   // Labels that trigger debugger mode (e.g., ["Bug"])
+    builder?: string[]    // Labels that trigger builder mode (e.g., ["Feature", "Improvement"])
+    scoper?: string[]     // Labels that trigger scoper mode (e.g., ["PRD"])
+  }
 }
 
 /**

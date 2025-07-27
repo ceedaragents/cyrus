@@ -241,6 +241,24 @@ class EdgeApp {
       console.log('Leave blank to receive all issues from the workspace.')
       const teamKeysInput = await question('Team keys (comma-separated, optional): ')
       const teamKeys = teamKeysInput ? teamKeysInput.split(',').map(t => t.trim().toUpperCase()) : undefined
+
+      // Ask for label-based system prompt configuration
+      console.log('\n🎯 Label-Based System Prompts (Optional)')
+      console.log('Cyrus can use different strategies based on Linear issue labels.')
+      console.log('Configure which labels trigger each specialized mode:')
+      console.log('• Debugger mode: Focuses on systematic problem investigation')
+      console.log('• Builder mode: Emphasizes feature implementation and code quality')
+      console.log('• Scoper mode: Helps analyze requirements and create technical plans')
+      
+      const debuggerLabelsInput = await question('Labels for debugger mode (comma-separated, e.g., "Bug"): ')
+      const builderLabelsInput = await question('Labels for builder mode (comma-separated, e.g., "Feature,Improvement"): ')
+      const scoperLabelsInput = await question('Labels for scoper mode (comma-separated, e.g., "PRD"): ')
+      
+      const labelPrompts = (debuggerLabelsInput || builderLabelsInput || scoperLabelsInput) ? {
+        ...(debuggerLabelsInput && { debugger: debuggerLabelsInput.split(',').map(l => l.trim()) }),
+        ...(builderLabelsInput && { builder: builderLabelsInput.split(',').map(l => l.trim()) }),
+        ...(scoperLabelsInput && { scoper: scoperLabelsInput.split(',').map(l => l.trim()) })
+      } : undefined
       
       rl.close()
       
@@ -256,7 +274,8 @@ class EdgeApp {
         isActive: true,
         ...(allowedTools && { allowedTools }),
         ...(mcpConfigPath && { mcpConfigPath: resolve(mcpConfigPath) }),
-        ...(teamKeys && { teamKeys })
+        ...(teamKeys && { teamKeys }),
+        ...(labelPrompts && { labelPrompts })
       }
       
       return repository
@@ -374,7 +393,7 @@ class EdgeApp {
         // Save token to config
         config.ngrokAuthToken = token.trim()
         try {
-          await this.saveEdgeConfig(config)
+          this.saveEdgeConfig(config)
           console.log(`✅ Ngrok auth token saved to config`)
           resolve(token.trim())
         } catch (error) {
@@ -393,7 +412,7 @@ class EdgeApp {
     // Get ngrok auth token (prompt if needed and not external host)
     let ngrokAuthToken: string | undefined
     if (process.env.CYRUS_HOST_EXTERNAL !== "true") {
-      const config = await this.loadEdgeConfig()
+      const config = this.loadEdgeConfig()
       ngrokAuthToken = await this.getNgrokAuthToken(config)
     }
 

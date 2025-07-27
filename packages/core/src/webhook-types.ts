@@ -170,6 +170,94 @@ export interface LinearIssueUnassignedWebhook {
 }
 
 /**
+ * Creator data in agent session webhooks
+ */
+export interface LinearWebhookCreator {
+  id: string
+  name: string
+  email: string
+  avatarUrl: string
+  url: string
+}
+
+/**
+ * Agent Session data from webhooks
+ */
+export interface LinearWebhookAgentSession {
+  id: string
+  createdAt: string
+  updatedAt: string
+  archivedAt: string | null
+  creatorId: string
+  appUserId: string
+  commentId: string
+  issueId: string
+  status: 'pending' | 'active' | 'error' | 'awaiting-input' | 'complete'
+  startedAt: string | null
+  endedAt: string | null
+  type: 'commentThread'
+  summary: string | null
+  sourceMetadata: any | null
+  organizationId: string
+  creator: LinearWebhookCreator
+  comment: LinearWebhookComment
+  issue: LinearWebhookIssue
+}
+
+/**
+ * Agent Activity content types
+ */
+export interface LinearWebhookAgentActivityContent {
+  type: 'prompt' | 'observation' | 'action' | 'error' | 'elicitation' | 'response'
+  body: string
+}
+
+/**
+ * Agent Activity data from webhooks
+ */
+export interface LinearWebhookAgentActivity {
+  id: string
+  createdAt: string
+  updatedAt: string
+  archivedAt: string | null
+  agentContextId: string | null
+  agentSessionId: string
+  sourceCommentId: string
+  content: LinearWebhookAgentActivityContent
+}
+
+/**
+ * Agent Session created webhook payload
+ */
+export interface LinearAgentSessionCreatedWebhook {
+  type: 'AgentSessionEvent'
+  action: 'created'
+  createdAt: string
+  organizationId: string
+  oauthClientId: string
+  appUserId: string
+  agentSession: LinearWebhookAgentSession
+  webhookTimestamp: string
+  webhookId: string
+}
+
+/**
+ * Agent Session prompted webhook payload
+ */
+export interface LinearAgentSessionPromptedWebhook {
+  type: 'AgentSessionEvent'
+  action: 'prompted'
+  createdAt: string
+  organizationId: string
+  oauthClientId: string
+  appUserId: string
+  agentSession: LinearWebhookAgentSession
+  agentActivity: LinearWebhookAgentActivity
+  webhookTimestamp: string
+  webhookId: string
+}
+
+/**
  * Union of all webhook types we handle
  */
 export type LinearWebhook = 
@@ -177,6 +265,8 @@ export type LinearWebhook =
   | LinearIssueCommentMentionWebhook
   | LinearIssueNewCommentWebhook
   | LinearIssueUnassignedWebhook
+  | LinearAgentSessionCreatedWebhook
+  | LinearAgentSessionPromptedWebhook
 
 /**
  * Type guards for webhook discrimination
@@ -195,4 +285,12 @@ export function isIssueNewCommentWebhook(webhook: LinearWebhook): webhook is Lin
 
 export function isIssueUnassignedWebhook(webhook: LinearWebhook): webhook is LinearIssueUnassignedWebhook {
   return webhook.action === 'issueUnassignedFromYou'
+}
+
+export function isAgentSessionCreatedWebhook(webhook: LinearWebhook): webhook is LinearAgentSessionCreatedWebhook {
+  return webhook.type === 'AgentSessionEvent' && webhook.action === 'created'
+}
+
+export function isAgentSessionPromptedWebhook(webhook: LinearWebhook): webhook is LinearAgentSessionPromptedWebhook {
+  return webhook.type === 'AgentSessionEvent' && webhook.action === 'prompted'
 }
