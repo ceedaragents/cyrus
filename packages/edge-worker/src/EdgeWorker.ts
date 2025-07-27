@@ -516,21 +516,17 @@ export class EdgeWorker extends EventEmitter {
     // Check if there's an existing runner for this comment thread
     const existingRunner = session.claudeRunner
     if (existingRunner && existingRunner.isStreaming()) {
-      // Post immediate reply for streaming case
-      // parentId ensures correct nesting: replies to parent if this is a reply, or to comment itself if root
-      // TODO____ REACT
-      // await this.postComment(
-      //   issue.id,
-      //   "I've queued up your message to address it right after I resolve my current focus.",
-      //   repository.id,
-      //   parentCommentId || comment.id  // Same nesting level as the triggering comment
-      // )
+      // Post instant acknowledgment for streaming case
+      await this.postInstantPromptedAcknowledgment(linearAgentActivitySessionId, repository.id, true)
 
       // Add comment to existing stream instead of restarting
       console.log(`[EdgeWorker] Adding comment to existing stream for agent activity session ${linearAgentActivitySessionId}`)
       existingRunner.addStreamMessage(promptBody)
       return // Exit early - comment has been added to stream
     }
+
+    // Post instant acknowledgment for non-streaming case
+    await this.postInstantPromptedAcknowledgment(linearAgentActivitySessionId, repository.id, false)
 
     // Stop existing runner if it's not streaming or stream addition failed
     if (existingRunner) {
@@ -1690,6 +1686,40 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
       }
     } catch (error) {
       console.error(`[EdgeWorker] Error posting system prompt selection thought:`, error)
+    }
+  }
+
+  /**
+   * Post instant acknowledgment thought when receiving prompted webhook
+   */
+  private async postInstantPromptedAcknowledgment(linearAgentActivitySessionId: string, repositoryId: string, isStreaming: boolean): Promise<void> {
+    try {
+      const linearClient = this.linearClients.get(repositoryId)
+      if (!linearClient) {
+        console.warn(`[EdgeWorker] No Linear client found for repository ${repositoryId}`)
+        return
+      }
+
+      const message = isStreaming 
+        ? "I've queued up your message as guidance"
+        : "Getting started on that..."
+
+      const activityInput = {
+        agentSessionId: linearAgentActivitySessionId,
+        content: {
+          type: 'thought',
+          body: message
+        }
+      }
+
+      const result = await linearClient.createAgentActivity(activityInput)
+      if (result.success) {
+        console.log(`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`)
+      } else {
+        console.error(`[EdgeWorker] Failed to post instant prompted acknowledgment:`, result)
+      }
+    } catch (error) {
+      console.error(`[EdgeWorker] Error posting instant prompted acknowledgment:`, error)
     }
   }
 }

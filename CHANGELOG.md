@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Instant response is now sent when receiving follow-up messages in an existing conversation, providing immediate feedback that Cyrus is working on the request
+  - Shows "I've queued up your message as guidance" when Cyrus is still processing a previous request
+  - Shows "Getting started on that..." when Cyrus is ready to process the new request immediately
+
 ## [0.1.35-alpha.0] - 2025-01-26
 
 ### Added
