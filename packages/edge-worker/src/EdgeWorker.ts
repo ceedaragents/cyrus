@@ -513,6 +513,9 @@ export class EdgeWorker extends EventEmitter {
       return
     }
 
+    // Post instant acknowledgment thought for prompted webhook
+    await this.postInstantPromptedAcknowledgment(linearAgentActivitySessionId, repository.id)
+
     // Check if there's an existing runner for this comment thread
     const existingRunner = session.claudeRunner
     if (existingRunner && existingRunner.isStreaming()) {
@@ -1690,6 +1693,36 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
       }
     } catch (error) {
       console.error(`[EdgeWorker] Error posting system prompt selection thought:`, error)
+    }
+  }
+
+  /**
+   * Post instant acknowledgment thought when receiving prompted webhook
+   */
+  private async postInstantPromptedAcknowledgment(linearAgentActivitySessionId: string, repositoryId: string): Promise<void> {
+    try {
+      const linearClient = this.linearClients.get(repositoryId)
+      if (!linearClient) {
+        console.warn(`[EdgeWorker] No Linear client found for repository ${repositoryId}`)
+        return
+      }
+
+      const activityInput = {
+        agentSessionId: linearAgentActivitySessionId,
+        content: {
+          type: 'thought',
+          body: 'Getting started on that...'
+        }
+      }
+
+      const result = await linearClient.createAgentActivity(activityInput)
+      if (result.success) {
+        console.log(`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId}`)
+      } else {
+        console.error(`[EdgeWorker] Failed to post instant prompted acknowledgment:`, result)
+      }
+    } catch (error) {
+      console.error(`[EdgeWorker] Error posting instant prompted acknowledgment:`, error)
     }
   }
 }
