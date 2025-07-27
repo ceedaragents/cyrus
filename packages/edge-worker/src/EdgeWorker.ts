@@ -1184,7 +1184,7 @@ ${reply.body}
       if (!templatePath) {
         const __filename = fileURLToPath(import.meta.url)
         const __dirname = dirname(__filename)
-        templatePath = resolve(__dirname, '../prompt-template-v2.md')
+        templatePath = resolve(__dirname, '../prompt-template.md')
       }
 
       // Load the template

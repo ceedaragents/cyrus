@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Made conversation history of threads be resumable after Cyrus restarts
 - Fixed the issue with continuity of conversation in a thread, after the first comment
+- Removed duplicate/old prompt templates to unify under a singular prompt-template.md
 
 ### Packages
 

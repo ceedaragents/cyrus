@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "prompt-template-v2.md"
+    "prompt-template.md"
   ],
   "scripts": {
     "build": "tsc",
