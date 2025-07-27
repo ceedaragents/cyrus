@@ -30,6 +30,7 @@ export interface RepositoryConfig {
   promptTemplatePath?: string  // Custom prompt template for this repo
   allowedTools?: string[]      // Override Claude tools for this repository (overrides defaultAllowedTools)
   mcpConfigPath?: string | string[]  // Path(s) to MCP configuration JSON file(s) (format: {"mcpServers": {...}})
+  appendInstruction?: string   // Additional instruction to append to the prompt in XML-style wrappers
   
   // Label-based system prompt configuration
   labelPrompts?: {

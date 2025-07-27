@@ -976,6 +976,12 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
         prompt = prompt + '\n\n' + attachmentManifest
       }
 
+      // Append repository-specific instruction if provided
+      if (repository.appendInstruction) {
+        console.log(`[EdgeWorker] Adding repository-specific instruction`)
+        prompt = prompt + '\n\n<repository-specific-instruction>\n' + repository.appendInstruction + '\n</repository-specific-instruction>'
+      }
+
       console.log(`[EdgeWorker] Final prompt length: ${prompt.length} characters`)
       return prompt
 
