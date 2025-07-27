@@ -11,7 +11,7 @@ async function main() {
     console.log('Reading MCP config from:', mcpConfigPath)
     
     // Read edge config to get allowed tools for 'ceedar'
-    const edgeConfigPath = resolve('../.edge-config.json')
+    const edgeConfigPath = resolve('../.cyrus-edge-config.json')
     console.log('Reading edge config from:', edgeConfigPath)
     
     let allowedTools = []

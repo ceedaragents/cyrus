@@ -31,4 +31,4 @@ workspaces
 .env.secret-agents
 
 # Edge config
-.edge-config.json
+.cyrus-edge-config.json

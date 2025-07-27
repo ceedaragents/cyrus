@@ -93,7 +93,7 @@ class EdgeApp {
    * Get the legacy edge configuration file path (for migration)
    */
   getLegacyEdgeConfigPath(): string {
-    return resolve(process.cwd(), '.edge-config.json')
+    return resolve(process.cwd(), '.cyrus-edge-config.json')
   }
 
 

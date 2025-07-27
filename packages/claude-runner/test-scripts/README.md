@@ -7,7 +7,7 @@ This directory contains test scripts for validating MCP (Model Context Protocol)
 ### `test-mcp-config.js`
 Tests MCP configuration through the ClaudeRunner wrapper. This script:
 - Loads MCP config from `../../../ceedardbmcpconfig.json`
-- Extracts allowed tools from `../../../.edge-config.json` 
+- Extracts allowed tools from `../../../.cyrus-edge-config.json` 
 - Uses ClaudeRunner to start a Claude session with MCP support
 - Tests database queries using the `mcp__ceedardb__query` tool
 
@@ -32,7 +32,7 @@ node test-scripts/test-direct-sdk.js
 
 Both scripts expect these files to exist in the parent directory (relative to cyrus repo root):
 - `../ceedardbmcpconfig.json` - MCP server configuration
-- `../.edge-config.json` - Repository and allowed tools configuration
+- `../.cyrus-edge-config.json` - Repository and allowed tools configuration
 
 ## Example Output
 

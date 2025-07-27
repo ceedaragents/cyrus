@@ -8,7 +8,7 @@ async function main() {
   try {
     // Read configs (going up three levels from packages/claude-runner)
     const mcpConfigPath = resolve('../../../ceedardbmcpconfig.json')
-    const edgeConfigPath = resolve('../../../.edge-config.json')
+    const edgeConfigPath = resolve('../../../.cyrus-edge-config.json')
     
     console.log('📁 MCP Config Path:', mcpConfigPath)
     console.log('📁 Edge Config Path:', edgeConfigPath)
