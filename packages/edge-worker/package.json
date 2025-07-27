@@ -1,13 +1,16 @@
 {
   "name": "cyrus-edge-worker",
-  "version": "0.0.18-alpha.0",
+  "version": "0.0.18-alpha.2",
   "description": "Unified edge worker for processing Linear issues with Claude",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "prompt-template-v2.md"
+    "prompt-template-v2.md",
+    "prompt-template.md",
+    "label-prompt-template.md",
+    "prompts"
   ],
   "scripts": {
     "build": "tsc",
