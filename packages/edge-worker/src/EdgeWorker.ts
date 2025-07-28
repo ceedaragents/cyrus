@@ -434,7 +434,9 @@ export class EdgeWorker extends EventEmitter {
 
     // Fetch issue labels and determine system prompt
     const labels = await this.fetchIssueLabels(fullIssue)
-    const systemPrompt = await this.determineSystemPromptFromLabels(labels, repository)
+    const systemPromptResult = await this.determineSystemPromptFromLabels(labels, repository)
+    const systemPrompt = systemPromptResult?.prompt
+    const systemPromptVersion = systemPromptResult?.version
 
     // Post thought about system prompt selection
     if (systemPrompt) {
@@ -471,9 +473,19 @@ export class EdgeWorker extends EventEmitter {
     console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
     try {
       // Choose the appropriate prompt builder based on system prompt availability
-      const prompt = systemPrompt
+      const promptResult = systemPrompt
         ? await this.buildLabelBasedPrompt(fullIssue, repository, attachmentResult.manifest)
         : await this.buildPromptV2(fullIssue, repository, undefined, attachmentResult.manifest)
+      
+      const { prompt, version: userPromptVersion } = promptResult
+      
+      // Update runner with version information
+      if (userPromptVersion || systemPromptVersion) {
+        runner.updatePromptVersions({
+          userPromptVersion,
+          systemPromptVersion
+        })
+      }
       
       console.log(`[EdgeWorker] Initial prompt built successfully using ${systemPrompt ? 'label-based' : 'fallback'} workflow, length: ${prompt.length} characters`)
       console.log(`[EdgeWorker] Starting Claude streaming session`)
@@ -680,7 +692,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Determine system prompt based on issue labels and repository configuration
    */
-  private async determineSystemPromptFromLabels(labels: string[], repository: RepositoryConfig): Promise<string | undefined> {
+  private async determineSystemPromptFromLabels(labels: string[], repository: RepositoryConfig): Promise<{ prompt: string; version?: string } | undefined> {
     if (!repository.labelPrompts || labels.length === 0) {
       return undefined
     }
@@ -698,7 +710,14 @@ export class EdgeWorker extends EventEmitter {
           const promptPath = join(__dirname, '..', 'prompts', `${promptType}.md`)
           const promptContent = await readFile(promptPath, 'utf-8')
           console.log(`[EdgeWorker] Using ${promptType} system prompt for labels: ${labels.join(', ')}`)
-          return promptContent
+          
+          // Extract and log version tag if present
+          const promptVersion = this.extractVersionTag(promptContent)
+          if (promptVersion) {
+            console.log(`[EdgeWorker] ${promptType} system prompt version: ${promptVersion}`)
+          }
+          
+          return { prompt: promptContent, version: promptVersion }
         } catch (error) {
           console.error(`[EdgeWorker] Failed to load ${promptType} prompt template:`, error)
           return undefined
@@ -719,7 +738,7 @@ export class EdgeWorker extends EventEmitter {
     issue: LinearIssue,
     repository: RepositoryConfig,
     attachmentManifest: string = ''
-  ): Promise<string> {
+  ): Promise<{ prompt: string; version?: string }> {
     console.log(`[EdgeWorker] buildLabelBasedPrompt called for issue ${issue.identifier}`)
 
     try {
@@ -731,6 +750,12 @@ export class EdgeWorker extends EventEmitter {
       console.log(`[EdgeWorker] Loading label prompt template from: ${templatePath}`)
       const template = await readFile(templatePath, 'utf-8')
       console.log(`[EdgeWorker] Template loaded, length: ${template.length} characters`)
+      
+      // Extract and log version tag if present
+      const templateVersion = this.extractVersionTag(template)
+      if (templateVersion) {
+        console.log(`[EdgeWorker] Label prompt template version: ${templateVersion}`)
+      }
 
       // Build the simplified prompt with only essential variables
       let prompt = template
@@ -748,12 +773,25 @@ export class EdgeWorker extends EventEmitter {
       }
 
       console.log(`[EdgeWorker] Label-based prompt built successfully, length: ${prompt.length} characters`)
-      return prompt
+      return { prompt, version: templateVersion }
 
     } catch (error) {
       console.error(`[EdgeWorker] Error building label-based prompt:`, error)
       throw error
     }
+  }
+
+  /**
+   * Extract version tag from template content
+   * @param templateContent The template content to parse
+   * @returns The version value if found, undefined otherwise
+   */
+  private extractVersionTag(templateContent: string): string | undefined {
+    // Match the version tag pattern: <version-tag value="..." />
+    const versionTagMatch = templateContent.match(/<version-tag\s+value="([^"]*)"\s*\/>/i)
+    const version = versionTagMatch ? versionTagMatch[1] : undefined
+    // Return undefined for empty strings
+    return version && version.trim() ? version : undefined
   }
 
   /**
@@ -874,7 +912,7 @@ ${reply.body}
     repository: RepositoryConfig,
     newComment?: LinearWebhookComment,
     attachmentManifest: string = ''
-  ): Promise<string> {
+  ): Promise<{ prompt: string; version?: string }> {
     console.log(`[EdgeWorker] buildPromptV2 called for issue ${issue.identifier}${newComment ? ' with new comment' : ''}`)
 
     try {
@@ -892,6 +930,12 @@ ${reply.body}
       console.log(`[EdgeWorker] Loading prompt template from: ${templatePath}`)
       const template = await readFile(templatePath, 'utf-8')
       console.log(`[EdgeWorker] Template loaded, length: ${template.length} characters`)
+      
+      // Extract and log version tag if present
+      const templateVersion = this.extractVersionTag(template)
+      if (templateVersion) {
+        console.log(`[EdgeWorker] Prompt template version: ${templateVersion}`)
+      }
 
       // Get state name from Linear API
       const state = await issue.state
@@ -984,7 +1028,7 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
       }
 
       console.log(`[EdgeWorker] Final prompt length: ${prompt.length} characters`)
-      return prompt
+      return { prompt, version: templateVersion }
 
     } catch (error) {
       console.error('[EdgeWorker] Failed to load prompt template:', error)
@@ -993,7 +1037,7 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
       const state = await issue.state
       const stateName = state?.name || 'Unknown'
 
-      return `Please help me with the following Linear issue:
+      const fallbackPrompt = `Please help me with the following Linear issue:
 
 Repository: ${repository.name}
 Issue: ${issue.identifier}
@@ -1007,6 +1051,8 @@ Working directory: ${repository.repositoryPath}
 Base branch: ${repository.baseBranch}
 
 ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please analyze this issue and help implement a solution.`
+      
+      return { prompt: fallbackPrompt, version: undefined }
     }
   }
 

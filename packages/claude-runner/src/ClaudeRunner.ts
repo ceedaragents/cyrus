@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { mkdirSync, createWriteStream, type WriteStream, readFileSync } from 'fs'
+import { mkdirSync, createWriteStream, type WriteStream, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { query, type SDKMessage, type SDKUserMessage, AbortError } from '@anthropic-ai/claude-code'
@@ -347,6 +347,46 @@ export class ClaudeRunner extends EventEmitter {
   }
 
   /**
+   * Update prompt versions (can be called after constructor)
+   */
+  updatePromptVersions(versions: { userPromptVersion?: string; systemPromptVersion?: string }): void {
+    this.config.promptVersions = versions
+    
+    // If logging has already been set up and we now have versions, write the version file
+    if (this.logStream && versions) {
+      try {
+        const cyrusDir = join(homedir(), '.cyrus')
+        const logsDir = join(cyrusDir, 'logs')
+        const workspaceName = this.config.workspaceName || 
+          (this.config.workingDirectory ? this.config.workingDirectory.split('/').pop() : 'default') || 
+          'default'
+        const workspaceLogsDir = join(logsDir, workspaceName)
+        const sessionId = this.sessionInfo?.sessionId || 'pending'
+        
+        const versionFileName = `session-${sessionId}-versions.txt`
+        const versionFilePath = join(workspaceLogsDir, versionFileName)
+        
+        let versionContent = `Session: ${sessionId}\n`
+        versionContent += `Timestamp: ${new Date().toISOString()}\n`
+        versionContent += `Workspace: ${workspaceName}\n`
+        versionContent += '\nPrompt Template Versions:\n'
+        
+        if (versions.userPromptVersion) {
+          versionContent += `User Prompt: ${versions.userPromptVersion}\n`
+        }
+        if (versions.systemPromptVersion) {
+          versionContent += `System Prompt: ${versions.systemPromptVersion}\n`
+        }
+        
+        writeFileSync(versionFilePath, versionContent)
+        console.log(`[ClaudeRunner] Wrote prompt versions to: ${versionFilePath}`)
+      } catch (error) {
+        console.error('[ClaudeRunner] Failed to write version file:', error)
+      }
+    }
+  }
+
+  /**
    * Stop the current Claude session
    */
   stop(): void {
@@ -471,9 +511,31 @@ export class ClaudeRunner extends EventEmitter {
         startedAt: this.sessionInfo?.startedAt?.toISOString(),
         workingDirectory: this.config.workingDirectory,
         workspaceName: workspaceName,
+        promptVersions: this.config.promptVersions,
         timestamp: new Date().toISOString()
       }
       this.logStream.write(JSON.stringify(metadata) + '\n')
+      
+      // Also write version information to a separate text file if versions are present
+      if (this.config.promptVersions) {
+        const versionFileName = `session-${sessionId}-versions.txt`
+        const versionFilePath = join(workspaceLogsDir, versionFileName)
+        
+        let versionContent = `Session: ${sessionId}\n`
+        versionContent += `Timestamp: ${new Date().toISOString()}\n`
+        versionContent += `Workspace: ${workspaceName}\n`
+        versionContent += '\nPrompt Template Versions:\n'
+        
+        if (this.config.promptVersions.userPromptVersion) {
+          versionContent += `User Prompt: ${this.config.promptVersions.userPromptVersion}\n`
+        }
+        if (this.config.promptVersions.systemPromptVersion) {
+          versionContent += `System Prompt: ${this.config.promptVersions.systemPromptVersion}\n`
+        }
+        
+        writeFileSync(versionFilePath, versionContent)
+        console.log(`[ClaudeRunner] Wrote prompt versions to: ${versionFilePath}`)
+      }
       
     } catch (error) {
       console.error('[ClaudeRunner] Failed to set up logging:', error)
