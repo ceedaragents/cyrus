@@ -516,27 +516,6 @@ export class ClaudeRunner extends EventEmitter {
       }
       this.logStream.write(JSON.stringify(metadata) + '\n')
       
-      // Also write version information to a separate text file if versions are present
-      if (this.config.promptVersions) {
-        const versionFileName = `session-${sessionId}-versions.txt`
-        const versionFilePath = join(workspaceLogsDir, versionFileName)
-        
-        let versionContent = `Session: ${sessionId}\n`
-        versionContent += `Timestamp: ${new Date().toISOString()}\n`
-        versionContent += `Workspace: ${workspaceName}\n`
-        versionContent += '\nPrompt Template Versions:\n'
-        
-        if (this.config.promptVersions.userPromptVersion) {
-          versionContent += `User Prompt: ${this.config.promptVersions.userPromptVersion}\n`
-        }
-        if (this.config.promptVersions.systemPromptVersion) {
-          versionContent += `System Prompt: ${this.config.promptVersions.systemPromptVersion}\n`
-        }
-        
-        writeFileSync(versionFilePath, versionContent)
-        console.log(`[ClaudeRunner] Wrote prompt versions to: ${versionFilePath}`)
-      }
-      
     } catch (error) {
       console.error('[ClaudeRunner] Failed to set up logging:', error)
     }
