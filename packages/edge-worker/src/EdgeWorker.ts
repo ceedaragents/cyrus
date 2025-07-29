@@ -556,6 +556,17 @@ export class EdgeWorker extends EventEmitter {
       // Build allowed tools list with Linear MCP tools
       const allowedTools = this.buildAllowedTools(repository)
 
+      // Fetch full issue details to get labels
+      const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id)
+      if (!fullIssue) {
+        throw new Error(`Failed to fetch full issue details for ${issue.id}`)
+      }
+
+      // Fetch issue labels and determine system prompt (same as in handleAgentSessionCreatedWebhook)
+      const labels = await this.fetchIssueLabels(fullIssue)
+      const systemPromptResult = await this.determineSystemPromptFromLabels(labels, repository)
+      const systemPrompt = systemPromptResult?.prompt
+
       // Create new runner with resume mode if we have a Claude session ID
       // Always append the last message marker to prevent duplication
       const lastMessageMarker = '\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.'
@@ -566,7 +577,7 @@ export class EdgeWorker extends EventEmitter {
         workspaceName: issue.identifier,
         mcpConfigPath: repository.mcpConfigPath,
         mcpConfig: this.buildMcpConfig(repository),
-        appendSystemPrompt: lastMessageMarker,
+        appendSystemPrompt: (systemPrompt || '') + lastMessageMarker,
         onMessage: (message) => {
           this.handleClaudeMessage(linearAgentActivitySessionId, message, repository.id)
         },
