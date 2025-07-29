@@ -4,6 +4,26 @@ This directory contains test scripts for validating MCP (Model Context Protocol)
 
 ## Scripts
 
+### `subagent-functionality-test.js`
+Tests Claude subagent functionality through the ClaudeRunner. This script:
+- Creates a temporary test workspace with `.claude/agents/` directory
+- Defines a test subagent with specific system prompt and tools
+- Tests Task tool delegation to subagents
+- Verifies subagent identity preservation and response handling
+- Provides comprehensive test results and debugging information
+
+**Usage:**
+```bash
+# Uses Claude Code system authentication (run 'claude auth' first if needed)
+node test-scripts/subagent-functionality-test.js
+```
+
+**Expected Results:**
+- ✅ Task tool available in system tools
+- ✅ Task tool delegation working
+- ✅ Subagent response with "TEST SUBAGENT:" identifier
+- ✅ File reading and tool usage within subagent context
+
 ### `test-mcp-config.js`
 Tests MCP configuration through the ClaudeRunner wrapper. This script:
 - Loads MCP config from `../../../ceedardbmcpconfig.json`
