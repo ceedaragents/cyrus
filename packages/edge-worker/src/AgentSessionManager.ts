@@ -321,22 +321,23 @@ export class AgentSessionManager {
         case 'assistant':
           // Assistant messages can be thoughts or responses
           if (entry.metadata?.toolUseId) {
-            // Tool use - create an action activity
             const toolName = entry.metadata.toolName || 'Tool'
             
-            // Special formatting for TodoWrite tool
-            let parameter = entry.content
-            let displayName = toolName
+            // Special handling for TodoWrite tool - send as thought instead of action
             if (toolName === 'TodoWrite') {
-              parameter = this.formatTodoWriteParameter(entry.content)
-              displayName = 'Update Todos'
-            }
-
-            content = {
-              type: 'action',
-              action: displayName,
-              parameter: parameter,
-              // result will be added later when we get tool result
+              const formattedTodos = this.formatTodoWriteParameter(entry.content)
+              content = {
+                type: 'thought',
+                body: `**Update Todos**${formattedTodos}`
+              }
+            } else {
+              // Other tools - create an action activity
+              content = {
+                type: 'action',
+                action: toolName,
+                parameter: entry.content,
+                // result will be added later when we get tool result
+              }
             }
           } else {
             // Regular assistant message - create a thought

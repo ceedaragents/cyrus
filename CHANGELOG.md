@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Todo tool updates now appear as thoughts instead of actions in Linear agent activity
+
 ### Fixed
 - Made conversation history of threads be resumable after Cyrus restarts
 - Fixed the issue with continuity of conversation in a thread, after the first comment
