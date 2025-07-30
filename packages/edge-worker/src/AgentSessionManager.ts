@@ -175,6 +175,12 @@ export class AgentSessionManager {
         case 'system':
           if (message.subtype === 'init') {
             this.updateAgentSessionWithClaudeSessionId(linearAgentActivitySessionId, message)
+            
+            // Post model notification thought
+            const systemMessage = message as SDKSystemMessage
+            if (systemMessage.model) {
+              await this.postModelNotificationThought(linearAgentActivitySessionId, systemMessage.model)
+            }
           }
           break
 
@@ -709,5 +715,28 @@ export class AgentSessionManager {
     }
 
     console.log(`[AgentSessionManager] Restored ${this.sessions.size} sessions, ${Object.keys(serializedEntries).length} entry collections`)
+  }
+
+  /**
+   * Post a thought about the model being used
+   */
+  private async postModelNotificationThought(linearAgentActivitySessionId: string, model: string): Promise<void> {
+    try {
+      const result = await this.linearClient.createAgentActivity({
+        agentSessionId: linearAgentActivitySessionId,
+        content: {
+          type: 'thought',
+          body: `Using model: ${model}`
+        }
+      })
+
+      if (result.success) {
+        console.log(`[AgentSessionManager] Posted model notification for session ${linearAgentActivitySessionId} (model: ${model})`)
+      } else {
+        console.error(`[AgentSessionManager] Failed to post model notification:`, result)
+      }
+    } catch (error) {
+      console.error(`[AgentSessionManager] Error posting model notification:`, error)
+    }
   }
 }
