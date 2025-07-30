@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
   - Maintains proper Git hierarchy matching Linear's issue structure
   - Gracefully falls back to default base branch if parent branch doesn't exist
   - Clear logging shows branch inheritance decisions
+- Model notification at thread initialization - Cyrus now announces which Claude model is being used (e.g., "Using model: claude-3-opus-20240229") when starting work on an issue
 
 ## [0.1.35-alpha.0] - 2025-01-26
 
