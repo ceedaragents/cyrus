@@ -890,14 +890,14 @@ class EdgeApp {
       // Create the worktree - use determined base branch
       let worktreeCmd: string
       if (createBranch) {
-        if (hasRemote && !isUsingParentBranch) {
-          // For default base branch, use remote if available
+        if (hasRemote) {
+          // Always prefer remote version if available
           const remoteBranch = `origin/${baseBranch}`
           console.log(`Creating git worktree at ${workspacePath} from ${remoteBranch}`)
           worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`
         } else {
-          // For parent branches or when no remote, use local branch
-          console.log(`Creating git worktree at ${workspacePath} from ${isUsingParentBranch ? 'parent branch' : 'local'} ${baseBranch}`)
+          // No remote, use local branch
+          console.log(`Creating git worktree at ${workspacePath} from local ${baseBranch}`)
           worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`
         }
       } else {
