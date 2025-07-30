@@ -846,7 +846,6 @@ class EdgeApp {
       
       // Determine base branch for this issue
       let baseBranch = repository.baseBranch
-      let isUsingParentBranch = false
       
       // Check if issue has a parent
       try {
@@ -863,7 +862,6 @@ class EdgeApp {
           
           if (parentBranchExists) {
             baseBranch = parentBranchName
-            isUsingParentBranch = true
             console.log(`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`)
           } else {
             console.log(`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`)
