@@ -723,6 +723,33 @@ class EdgeApp {
 
   
   /**
+   * Check if a branch exists locally or remotely
+   */
+  async branchExists(branchName: string, repoPath: string): Promise<boolean> {
+    const { execSync } = await import('child_process')
+    
+    try {
+      // Check if branch exists locally
+      execSync(`git rev-parse --verify "${branchName}"`, {
+        cwd: repoPath,
+        stdio: 'pipe'
+      })
+      return true
+    } catch {
+      // Branch doesn't exist locally, check remote
+      try {
+        execSync(`git ls-remote --heads origin "${branchName}"`, {
+          cwd: repoPath,
+          stdio: 'pipe'
+        })
+        return true
+      } catch {
+        return false
+      }
+    }
+  }
+
+  /**
    * Set up event handlers for EdgeWorker
    */
   setupEventHandlers(): void {
@@ -817,6 +844,36 @@ class EdgeApp {
         // Branch doesn't exist, we'll create it
       }
       
+      // Determine base branch for this issue
+      let baseBranch = repository.baseBranch
+      let isUsingParentBranch = false
+      
+      // Check if issue has a parent
+      try {
+        const parent = await (issue as any).parent
+        if (parent) {
+          console.log(`Issue ${issue.identifier} has parent: ${parent.identifier}`)
+          
+          // Get parent's branch name
+          const parentRawBranchName = parent.branchName || `${parent.identifier}-${parent.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+          const parentBranchName = sanitizeBranchName(parentRawBranchName)
+          
+          // Check if parent branch exists
+          const parentBranchExists = await this.branchExists(parentBranchName, repository.repositoryPath)
+          
+          if (parentBranchExists) {
+            baseBranch = parentBranchName
+            isUsingParentBranch = true
+            console.log(`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`)
+          } else {
+            console.log(`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`)
+          }
+        }
+      } catch (error) {
+        // Parent field might not exist or couldn't be fetched, use default base branch
+        console.log(`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`)
+      }
+
       // Fetch latest changes from remote
       console.log('Fetching latest changes from remote...')
       let hasRemote = true
@@ -830,17 +887,18 @@ class EdgeApp {
         hasRemote = false
       }
 
-      // Create the worktree - use remote branch if available, otherwise local
+      // Create the worktree - use determined base branch
       let worktreeCmd: string
       if (createBranch) {
-        if (hasRemote) {
-          const remoteBranch = `origin/${repository.baseBranch}`
+        if (hasRemote && !isUsingParentBranch) {
+          // For default base branch, use remote if available
+          const remoteBranch = `origin/${baseBranch}`
           console.log(`Creating git worktree at ${workspacePath} from ${remoteBranch}`)
           worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`
         } else {
-          // No remote, use local base branch
-          console.log(`Creating git worktree at ${workspacePath} from local ${repository.baseBranch}`)
-          worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${repository.baseBranch}"`
+          // For parent branches or when no remote, use local branch
+          console.log(`Creating git worktree at ${workspacePath} from ${isUsingParentBranch ? 'parent branch' : 'local'} ${baseBranch}`)
+          worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`
         }
       } else {
         // Branch already exists, just check it out
