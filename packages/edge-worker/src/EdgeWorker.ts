@@ -680,6 +680,17 @@ export class EdgeWorker extends EventEmitter {
       console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`)
       const fullIssue = await linearClient.issue(issueId)
       console.log(`[EdgeWorker] Successfully fetched issue details for ${issueId}`)
+      
+      // Check if issue has a parent
+      try {
+        const parent = await fullIssue.parent
+        if (parent) {
+          console.log(`[EdgeWorker] Issue ${issueId} has parent: ${parent.identifier}`)
+        }
+      } catch (error) {
+        // Parent field might not exist, ignore error
+      }
+      
       return fullIssue
     } catch (error) {
       console.error(`[EdgeWorker] Failed to fetch full issue details for ${issueId}:`, error)

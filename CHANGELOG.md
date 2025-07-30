@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 - Instant response is now sent when receiving follow-up messages in an existing conversation, providing immediate feedback that Cyrus is working on the request
   - Shows "I've queued up your message as guidance" when Cyrus is still processing a previous request
   - Shows "Getting started on that..." when Cyrus is ready to process the new request immediately
+- Parent branch inheritance for sub-issues - sub-issue branches now automatically use their parent issue's branch as the base instead of the default repository branch
+  - Maintains proper Git hierarchy matching Linear's issue structure
+  - Gracefully falls back to default base branch if parent branch doesn't exist
+  - Clear logging shows branch inheritance decisions
 - Model notification at thread initialization - Cyrus now announces which Claude model is being used (e.g., "Using model: claude-3-opus-20240229") when starting work on an issue
 
 ## [0.1.35-alpha.0] - 2025-01-26

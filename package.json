@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "private": true,
   "description": "Monorepo for Cyrus - Linear Claude Agent integration",
-  "packageManager": "pnpm@10.11.0",
+  "packageManager": "pnpm@10.13.1",
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
