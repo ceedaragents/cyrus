@@ -324,43 +324,19 @@ export class AgentSessionManager {
       let content: any
       switch (entry.type) {
         case 'user':
-          // Check if this is a tool result (parentToolUseId must be a non-empty string)
-          if (entry.metadata?.parentToolUseId && typeof entry.metadata.parentToolUseId === 'string') {
-            console.log(`[AgentSessionManager] Processing tool result for tool use ${entry.metadata.parentToolUseId}`)
-            
-            // Find the original tool use entry
-            const entries = this.entries.get(linearAgentActivitySessionId) || []
-            const originalToolEntry = entries.find(e => e.metadata?.toolUseId === entry.metadata?.parentToolUseId)
-            
-            if (originalToolEntry && originalToolEntry.metadata?.toolName === 'Task') {
-              // Check if this Task is still active (only show completion marker once)
-              const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
-              if (activeTaskId === entry.metadata?.toolUseId) {
-                // Special handling for Task tool results - add end marker and clear active task
-                content = {
-                  type: 'thought',
-                  body: `✅ Task Completed\n\n---\n\n${entry.content}`
-                }
-                
-                // Clear the active Task since it's now complete
-                this.activeTasksBySession.delete(linearAgentActivitySessionId)
-              } else {
-                // Task was already completed, skip this duplicate result
-                console.log(`[AgentSessionManager] Skipping duplicate Task result for already completed task ${entry.metadata?.parentToolUseId}`)
-                return
-              }
-            } else {
-              // For non-Task tools, skip tool results to avoid cluttering the Linear thread
-              console.log(`[AgentSessionManager] Skipping non-Task tool result`)
-              return
-            }
-          } else {
-            // Regular user messages are prompts - but we don't create these, Linear does
-            console.log(`[AgentSessionManager] Skipping user entry - prompts are created by Linear`)
-            return
-          }
-          break
-
+         const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
+         if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
+           content = {
+             type: 'thought',
+             body: `✅ Task Completed\n\n---\n\n${entry.content}`
+           }
+           this.activeTasksBySession.delete(linearAgentActivitySessionId)
+         } else {
+           // Task was already completed, skip this duplicate result
+           console.log(`[AgentSessionManager] Skipping duplicate Task result for already completed task ${entry.metadata?.parentToolUseId}`)
+           return
+         }
+         break
         case 'assistant':
           // Assistant messages can be thoughts or responses
           if (entry.metadata?.toolUseId) {
