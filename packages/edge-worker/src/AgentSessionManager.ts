@@ -333,14 +333,22 @@ export class AgentSessionManager {
             const originalToolEntry = entries.find(e => e.metadata?.toolUseId === entry.metadata?.parentToolUseId)
             
             if (originalToolEntry && originalToolEntry.metadata?.toolName === 'Task') {
-              // Special handling for Task tool results - add end marker and clear active task
-              content = {
-                type: 'thought',
-                body: `✅ Task Completed\n\n---\n\n${entry.content}`
+              // Check if this Task is still active (only show completion marker once)
+              const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
+              if (activeTaskId === entry.metadata?.parentToolUseId) {
+                // Special handling for Task tool results - add end marker and clear active task
+                content = {
+                  type: 'thought',
+                  body: `✅ Task Completed\n\n---\n\n${entry.content}`
+                }
+                
+                // Clear the active Task since it's now complete
+                this.activeTasksBySession.delete(linearAgentActivitySessionId)
+              } else {
+                // Task was already completed, skip this duplicate result
+                console.log(`[AgentSessionManager] Skipping duplicate Task result for already completed task ${entry.metadata?.parentToolUseId}`)
+                return
               }
-              
-              // Clear the active Task since it's now complete
-              this.activeTasksBySession.delete(linearAgentActivitySessionId)
             } else {
               // For non-Task tools, skip tool results to avoid cluttering the Linear thread
               console.log(`[AgentSessionManager] Skipping non-Task tool result`)
@@ -385,12 +393,12 @@ export class AgentSessionManager {
               // Other tools - check if they're within an active Task
               let parameter = entry.content
               let displayName = toolName
-              
-              // Check if we're within an active Task
-              const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
-              if (activeTaskId) {
-                // Add subtle indicator that this tool is within a Task
-                displayName = `-- [Within Task] ${toolName}`
+
+              if (entry.metadata?.parentToolUseId) {
+                  const activeTaskId = this.activeTasksBySession.get()
+                  if (activeTaskId === entry.metadata?.parentToolUseId) {
+                    displayName = `⎿  ${toolName}`
+                }
               }
 
               content = {
