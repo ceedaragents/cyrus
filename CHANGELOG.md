@@ -14,8 +14,8 @@ All notable changes to this project will be documented in this file.
   - Clear logging shows branch inheritance decisions
 - Model notification at thread initialization - Cyrus now announces which Claude model is being used (e.g., "Using model: claude-3-opus-20240229") when starting work on an issue
 - Task tool execution markers in Linear comments - Cyrus now clearly indicates when automated Task tools are running
-  - Tools invoked within a Task display "⎿  ToolName" to indicate they're part of the Task
-  - Shows "✅ **Task Completed**" only once when the Task finishes (not for each tool within the Task)
+  - Tools invoked within a Task display "↪ ToolName" to indicate they're part of the Task
+  - Shows "✅ Task Completed" when the Task finishes and displays the output from the Task
 
 ## [0.1.35-alpha.0] - 2025-01-26
 
