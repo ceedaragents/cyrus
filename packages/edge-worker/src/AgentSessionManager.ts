@@ -320,9 +320,31 @@ export class AgentSessionManager {
       let content: any
       switch (entry.type) {
         case 'user':
-          // User messages are prompts - but we don't create these, Linear does
-          console.log(`[AgentSessionManager] Skipping user entry - prompts are created by Linear`)
-          return
+          // Check if this is a tool result (parentToolUseId must be a non-empty string)
+          if (entry.metadata?.parentToolUseId && typeof entry.metadata.parentToolUseId === 'string') {
+            console.log(`[AgentSessionManager] Processing tool result for tool use ${entry.metadata.parentToolUseId}`)
+            
+            // Find the original tool use entry
+            const entries = this.entries.get(linearAgentActivitySessionId) || []
+            const originalToolEntry = entries.find(e => e.metadata?.toolUseId === entry.metadata?.parentToolUseId)
+            
+            if (originalToolEntry && originalToolEntry.metadata?.toolName === 'Task') {
+              // Special handling for Task tool results - add end marker
+              content = {
+                type: 'thought',
+                body: `✅ **Task Completed**\n\n---\n\n${entry.content}`
+              }
+            } else {
+              // For non-Task tools, skip tool results to avoid cluttering the Linear thread
+              console.log(`[AgentSessionManager] Skipping non-Task tool result`)
+              return
+            }
+          } else {
+            // Regular user messages are prompts - but we don't create these, Linear does
+            console.log(`[AgentSessionManager] Skipping user entry - prompts are created by Linear`)
+            return
+          }
+          break
 
         case 'assistant':
           // Assistant messages can be thoughts or responses
@@ -335,6 +357,27 @@ export class AgentSessionManager {
               content = {
                 type: 'thought',
                 body: formattedTodos
+              }
+            } else if (toolName === 'Task') {
+              // Special handling for Task tool - add start marker
+              let parameter = entry.content
+              let displayName = toolName
+              
+              // Extract description from parameter if available
+              let taskDescription = ''
+              try {
+                const parsedInput = JSON.parse(parameter)
+                taskDescription = parsedInput.description || ''
+              } catch (e) {
+                // If not JSON, use as-is
+                taskDescription = parameter
+              }
+
+              content = {
+                type: 'action',
+                action: displayName,
+                parameter: `🚀 **Task Started**: ${taskDescription}\n\n---\n\n${parameter}`,
+                // result will be added later when we get tool result
               }
             } else {
               // Other tools remain as actions
