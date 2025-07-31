@@ -25,6 +25,7 @@ export class AgentSessionManager {
   private linearClient: LinearClient
   private sessions: Map<string, CyrusAgentSession> = new Map()
   private entries: Map<string, CyrusAgentSessionEntry[]> = new Map() // Stores a list of session entries per each session by its linearAgentActivitySessionId
+  private activeTasksBySession: Map<string, string> = new Map() // Maps session ID to active Task tool use ID
 
   constructor(linearClient: LinearClient) {
     this.linearClient = linearClient
@@ -149,6 +150,9 @@ export class AgentSessionManager {
       console.error(`[AgentSessionManager] No session found for linearAgentActivitySessionId: ${linearAgentActivitySessionId}`)
       return
     }
+
+    // Clear any active Task when session completes
+    this.activeTasksBySession.delete(linearAgentActivitySessionId)
 
     const status = resultMessage.subtype === 'success'
       ? LinearDocument.AgentSessionStatus.Complete
@@ -329,11 +333,14 @@ export class AgentSessionManager {
             const originalToolEntry = entries.find(e => e.metadata?.toolUseId === entry.metadata?.parentToolUseId)
             
             if (originalToolEntry && originalToolEntry.metadata?.toolName === 'Task') {
-              // Special handling for Task tool results - add end marker
+              // Special handling for Task tool results - add end marker and clear active task
               content = {
                 type: 'thought',
                 body: `✅ **Task Completed**\n\n---\n\n${entry.content}`
               }
+              
+              // Clear the active Task since it's now complete
+              this.activeTasksBySession.delete(linearAgentActivitySessionId)
             } else {
               // For non-Task tools, skip tool results to avoid cluttering the Linear thread
               console.log(`[AgentSessionManager] Skipping non-Task tool result`)
@@ -359,7 +366,7 @@ export class AgentSessionManager {
                 body: formattedTodos
               }
             } else if (toolName === 'Task') {
-              // Special handling for Task tool - add start marker
+              // Special handling for Task tool - add start marker and track active task
               let parameter = entry.content
               let displayName = toolName
               
@@ -373,6 +380,11 @@ export class AgentSessionManager {
                 taskDescription = parameter
               }
 
+              // Track this as the active Task for this session
+              if (entry.metadata?.toolUseId) {
+                this.activeTasksBySession.set(linearAgentActivitySessionId, entry.metadata.toolUseId)
+              }
+
               content = {
                 type: 'action',
                 action: displayName,
@@ -380,9 +392,16 @@ export class AgentSessionManager {
                 // result will be added later when we get tool result
               }
             } else {
-              // Other tools remain as actions
+              // Other tools - check if they're within an active Task
               let parameter = entry.content
               let displayName = toolName
+              
+              // Check if we're within an active Task
+              const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
+              if (activeTaskId) {
+                // Add subtle indicator that this tool is within a Task
+                displayName = `📎 [Within Task] ${toolName}`
+              }
 
               content = {
                 type: 'action',
