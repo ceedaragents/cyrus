@@ -278,6 +278,15 @@ export class AgentSessionManager {
           } else if (block.type === 'tool_use') {
             // For tool use blocks, return the input as JSON string
             return JSON.stringify(block.input, null, 2)
+          } else if (block.type === 'tool_result') {
+            // For tool_result blocks, extract just the text content
+            if (Array.isArray(block.content)) {
+              return block.content
+                .filter((contentBlock: any) => contentBlock.type === 'text')
+                .map((contentBlock: any) => contentBlock.text)
+                .join('\n')
+            }
+            return ''
           }
           return ''
         })
@@ -323,23 +332,6 @@ export class AgentSessionManager {
     return null
   }
 
-  /**
-   * Extract text content from tool_result blocks in user messages
-   */
-  private extractToolResultText(sdkMessage: SDKUserMessage): string | null {
-    const message = sdkMessage.message as APIUserMessage
-
-    if (Array.isArray(message.content)) {
-      const toolResult = message.content.find((block) => block.type === 'tool_result')
-      if (toolResult && 'content' in toolResult && Array.isArray(toolResult.content)) {
-        return toolResult.content
-          .filter((contentBlock: any) => contentBlock.type === 'text')
-          .map((contentBlock: any) => contentBlock.text)
-          .join('\n')
-      }
-    }
-    return null
-  }
 
 
   /**
@@ -364,11 +356,9 @@ export class AgentSessionManager {
         case 'user':
          const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
          if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
-           // Extract just the text content from tool_result for completed tasks
-           const toolResultText = this.extractToolResultText(entry as any) || entry.content
            content = {
              type: 'thought',
-             body: `✅ Task Completed\n\n---\n\n${toolResultText}`
+             body: `✅ Task Completed\n\n---\n\n${entry.content}`
            }
            this.activeTasksBySession.delete(linearAgentActivitySessionId)
          } else {
