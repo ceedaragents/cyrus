@@ -358,7 +358,7 @@ export class AgentSessionManager {
          if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
            content = {
              type: 'thought',
-             body: `✅ Task Completed\n\n---\n\n${entry.content}`
+             body: `✅ Task Completed\n\n---\n\n${entry.content}\n\n---\n\n`
            }
            this.activeTasksBySession.delete(linearAgentActivitySessionId)
          } else {
