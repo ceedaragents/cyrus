@@ -82,6 +82,8 @@ export class AgentSessionManager {
   private async createSessionEntry(_linearAgentActivitySessionId: string, sdkMessage: SDKUserMessage | SDKAssistantMessage): Promise<CyrusAgentSessionEntry> {
     // Extract tool info if this is an assistant message
     const toolInfo = sdkMessage.type === 'assistant' ? this.extractToolInfo(sdkMessage) : null
+    // Extract tool_use_id if this is a user message with tool_result
+    const toolResultId = sdkMessage.type === 'user' ? this.extractToolResultId(sdkMessage) : null
 
     const sessionEntry: CyrusAgentSessionEntry = {
       claudeSessionId: sdkMessage.session_id,
@@ -94,6 +96,9 @@ export class AgentSessionManager {
           toolUseId: toolInfo.id,
           toolName: toolInfo.name,
           toolInput: toolInfo.input
+        }),
+        ...(toolResultId && {
+          toolUseId: toolResultId
         })
       }
     }
@@ -298,6 +303,21 @@ export class AgentSessionManager {
           name: toolUse.name,
           input: toolUse.input
         }
+      }
+    }
+    return null
+  }
+
+  /**
+   * Extract tool_use_id from Claude user message containing tool_result
+   */
+  private extractToolResultId(sdkMessage: SDKUserMessage): string | null {
+    const message = sdkMessage.message as APIUserMessage
+
+    if (Array.isArray(message.content)) {
+      const toolResult = message.content.find((block) => block.type === 'tool_result')
+      if (toolResult && 'tool_use_id' in toolResult) {
+        return toolResult.tool_use_id
       }
     }
     return null
