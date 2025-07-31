@@ -335,7 +335,7 @@ export class AgentSessionManager {
             if (originalToolEntry && originalToolEntry.metadata?.toolName === 'Task') {
               // Check if this Task is still active (only show completion marker once)
               const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
-              if (activeTaskId === entry.metadata?.parentToolUseId) {
+              if (activeTaskId === entry.metadata?.toolUseId) {
                 // Special handling for Task tool results - add end marker and clear active task
                 content = {
                   type: 'thought',
@@ -395,9 +395,9 @@ export class AgentSessionManager {
               let displayName = toolName
 
               if (entry.metadata?.parentToolUseId) {
-                  const activeTaskId = this.activeTasksBySession.get()
+                  const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
                   if (activeTaskId === entry.metadata?.parentToolUseId) {
-                    displayName = `⎿  ${toolName}`
+                    displayName = `↪ ${toolName}`
                 }
               }
 
