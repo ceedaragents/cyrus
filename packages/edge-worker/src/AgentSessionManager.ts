@@ -336,7 +336,7 @@ export class AgentSessionManager {
               // Special handling for Task tool results - add end marker and clear active task
               content = {
                 type: 'thought',
-                body: `✅ **Task Completed**\n\n---\n\n${entry.content}`
+                body: `✅ Task Completed\n\n---\n\n${entry.content}`
               }
               
               // Clear the active Task since it's now complete
@@ -369,16 +369,6 @@ export class AgentSessionManager {
               // Special handling for Task tool - add start marker and track active task
               let parameter = entry.content
               let displayName = toolName
-              
-              // Extract description from parameter if available
-              let taskDescription = ''
-              try {
-                const parsedInput = JSON.parse(parameter)
-                taskDescription = parsedInput.description || ''
-              } catch (e) {
-                // If not JSON, use as-is
-                taskDescription = parameter
-              }
 
               // Track this as the active Task for this session
               if (entry.metadata?.toolUseId) {
@@ -388,7 +378,7 @@ export class AgentSessionManager {
               content = {
                 type: 'action',
                 action: displayName,
-                parameter: `🚀 **Task Started**: ${taskDescription}\n\n---\n\n${parameter}`,
+                parameter: parameter,
                 // result will be added later when we get tool result
               }
             } else {
@@ -400,7 +390,7 @@ export class AgentSessionManager {
               const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
               if (activeTaskId) {
                 // Add subtle indicator that this tool is within a Task
-                displayName = `📎 [Within Task] ${toolName}`
+                displayName = `-- [Within Task] ${toolName}`
               }
 
               content = {
