@@ -6,7 +6,7 @@
   "packageManager": "pnpm@10.13.1",
   "type": "module",
   "scripts": {
-    "build": "pnpm -r --filter='!apps/electron' build"
+    "build": "pnpm -r --filter='!apps/electron' build",
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
     "test:packages": "pnpm --filter './packages/*' test",
