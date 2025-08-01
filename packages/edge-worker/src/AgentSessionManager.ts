@@ -25,6 +25,7 @@ export class AgentSessionManager {
   private linearClient: LinearClient
   private sessions: Map<string, CyrusAgentSession> = new Map()
   private entries: Map<string, CyrusAgentSessionEntry[]> = new Map() // Stores a list of session entries per each session by its linearAgentActivitySessionId
+  private activeTasksBySession: Map<string, string> = new Map() // Maps session ID to active Task tool use ID
 
   constructor(linearClient: LinearClient) {
     this.linearClient = linearClient
@@ -81,6 +82,8 @@ export class AgentSessionManager {
   private async createSessionEntry(_linearAgentActivitySessionId: string, sdkMessage: SDKUserMessage | SDKAssistantMessage): Promise<CyrusAgentSessionEntry> {
     // Extract tool info if this is an assistant message
     const toolInfo = sdkMessage.type === 'assistant' ? this.extractToolInfo(sdkMessage) : null
+    // Extract tool_use_id if this is a user message with tool_result
+    const toolResultId = sdkMessage.type === 'user' ? this.extractToolResultId(sdkMessage) : null
 
     const sessionEntry: CyrusAgentSessionEntry = {
       claudeSessionId: sdkMessage.session_id,
@@ -93,6 +96,9 @@ export class AgentSessionManager {
           toolUseId: toolInfo.id,
           toolName: toolInfo.name,
           toolInput: toolInfo.input
+        }),
+        ...(toolResultId && {
+          toolUseId: toolResultId
         })
       }
     }
@@ -149,6 +155,9 @@ export class AgentSessionManager {
       console.error(`[AgentSessionManager] No session found for linearAgentActivitySessionId: ${linearAgentActivitySessionId}`)
       return
     }
+
+    // Clear any active Task when session completes
+    this.activeTasksBySession.delete(linearAgentActivitySessionId)
 
     const status = resultMessage.subtype === 'success'
       ? LinearDocument.AgentSessionStatus.Complete
@@ -269,6 +278,15 @@ export class AgentSessionManager {
           } else if (block.type === 'tool_use') {
             // For tool use blocks, return the input as JSON string
             return JSON.stringify(block.input, null, 2)
+          } else if (block.type === 'tool_result') {
+            // For tool_result blocks, extract just the text content
+            if (Array.isArray(block.content)) {
+              return block.content
+                .filter((contentBlock: any) => contentBlock.type === 'text')
+                .map((contentBlock: any) => contentBlock.text)
+                .join('\n')
+            }
+            return ''
           }
           return ''
         })
@@ -299,6 +317,22 @@ export class AgentSessionManager {
     return null
   }
 
+  /**
+   * Extract tool_use_id from Claude user message containing tool_result
+   */
+  private extractToolResultId(sdkMessage: SDKUserMessage): string | null {
+    const message = sdkMessage.message as APIUserMessage
+
+    if (Array.isArray(message.content)) {
+      const toolResult = message.content.find((block) => block.type === 'tool_result')
+      if (toolResult && 'tool_use_id' in toolResult) {
+        return toolResult.tool_use_id
+      }
+    }
+    return null
+  }
+
+
 
   /**
    * Sync Agent Session Entry to Linear (create AgentActivity)
@@ -320,10 +354,19 @@ export class AgentSessionManager {
       let content: any
       switch (entry.type) {
         case 'user':
-          // User messages are prompts - but we don't create these, Linear does
-          console.log(`[AgentSessionManager] Skipping user entry - prompts are created by Linear`)
-          return
-
+         const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
+         if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
+           content = {
+             type: 'thought',
+             body: `✅ Task Completed\n\n\n\n${entry.content}\n\n---\n\n`
+           }
+           this.activeTasksBySession.delete(linearAgentActivitySessionId)
+         } else {
+           // Task was already completed, skip this duplicate result
+           console.log(`[AgentSessionManager] Skipping duplicate Task result for already completed task ${entry.metadata?.parentToolUseId}`)
+           return
+         }
+         break
         case 'assistant':
           // Assistant messages can be thoughts or responses
           if (entry.metadata?.toolUseId) {
@@ -336,10 +379,33 @@ export class AgentSessionManager {
                 type: 'thought',
                 body: formattedTodos
               }
-            } else {
-              // Other tools remain as actions
+            } else if (toolName === 'Task') {
+              // Special handling for Task tool - add start marker and track active task
               let parameter = entry.content
               let displayName = toolName
+
+              // Track this as the active Task for this session
+              if (entry.metadata?.toolUseId) {
+                this.activeTasksBySession.set(linearAgentActivitySessionId, entry.metadata.toolUseId)
+              }
+
+              content = {
+                type: 'action',
+                action: displayName,
+                parameter: parameter,
+                // result will be added later when we get tool result
+              }
+            } else {
+              // Other tools - check if they're within an active Task
+              let parameter = entry.content
+              let displayName = toolName
+
+              if (entry.metadata?.parentToolUseId) {
+                  const activeTaskId = this.activeTasksBySession.get(linearAgentActivitySessionId)
+                  if (activeTaskId === entry.metadata?.parentToolUseId) {
+                    displayName = `↪ ${toolName}`
+                }
+              }
 
               content = {
                 type: 'action',
