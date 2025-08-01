@@ -35,7 +35,6 @@ All notable changes to this project will be documented in this file.
 
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.36
-
 ## [0.1.35-alpha.0] - 2025-01-26
 
 ### Added
