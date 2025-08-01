@@ -266,7 +266,7 @@ class EdgeApp {
       console.log('Example: Mobile App,Web Platform,API Service')
       console.log('Leave blank to use team-based or workspace fallback routing.')
       const projectKeysInput = await question('Project names (comma-separated, optional): ')
-      const projectKeys = projectKeysInput ? projectKeysInput.split(',').map(p => p.trim()) : undefined
+      const projectKeys = projectKeysInput ? projectKeysInput.split(',').map(p => p.trim()).filter(Boolean) : undefined
       
       rl.close()
       
