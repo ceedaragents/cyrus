@@ -260,6 +260,14 @@ class EdgeApp {
         ...(scoperLabelsInput && { scoper: scoperLabelsInput.split(',').map(l => l.trim()) })
       } : undefined
       
+      // Ask for project keys configuration
+      console.log('\n📁 Project-Based Routing (Optional)')
+      console.log('Configure specific Linear project names to route issues to this repository.')
+      console.log('Example: Mobile App,Web Platform,API Service')
+      console.log('Leave blank to use team-based or workspace fallback routing.')
+      const projectKeysInput = await question('Project names (comma-separated, optional): ')
+      const projectKeys = projectKeysInput ? projectKeysInput.split(',').map(p => p.trim()) : undefined
+      
       rl.close()
       
       // Create repository configuration
@@ -275,7 +283,8 @@ class EdgeApp {
         ...(allowedTools && { allowedTools }),
         ...(mcpConfigPath && { mcpConfigPath: resolve(mcpConfigPath) }),
         ...(teamKeys && { teamKeys }),
-        ...(labelPrompts && { labelPrompts })
+        ...(labelPrompts && { labelPrompts }),
+        ...(projectKeys && { projectKeys })
       }
       
       return repository

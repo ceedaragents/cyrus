@@ -269,7 +269,7 @@ export class EdgeWorker extends EventEmitter {
     }
 
     // Find the appropriate repository for this webhook
-    const repository = this.findRepositoryForWebhook(webhook, repos)
+    const repository = await this.findRepositoryForWebhook(webhook, repos)
     if (!repository) {
       console.log('No repository configured for webhook from workspace', webhook.organizationId)
       if (process.env.CYRUS_WEBHOOK_DEBUG === 'true') {
@@ -331,37 +331,21 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Find the repository configuration for a webhook
    */
-  private findRepositoryForWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): RepositoryConfig | null {
+  public async findRepositoryForWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): Promise<RepositoryConfig | null> {
     const workspaceId = webhook.organizationId
     if (!workspaceId) return repos[0] || null // Fallback to first repo if no workspace ID
 
     // Handle agent session webhooks which have different structure
     if (isAgentSessionCreatedWebhook(webhook) || isAgentSessionPromptedWebhook(webhook)) {
-      const teamKey = webhook.agentSession?.issue?.team?.key
+      const agentWebhook = webhook as LinearAgentSessionCreatedWebhook | LinearAgentSessionPromptedWebhook
+      const teamKey = agentWebhook.agentSession?.issue?.team?.key
       if (teamKey) {
         const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey))
         if (repo) return repo
       }
 
       // Try parsing issue identifier as fallback
-      const issueId = webhook.agentSession?.issue?.identifier
-      if (issueId && issueId.includes('-')) {
-        const prefix = issueId.split('-')[0]
-        if (prefix) {
-          const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(prefix))
-          if (repo) return repo
-        }
-      }
-    } else {
-      // Original logic for other webhook types
-      const teamKey = webhook.notification?.issue?.team?.key
-      if (teamKey) {
-        const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey))
-        if (repo) return repo
-      }
-
-      // Try parsing issue identifier as fallback
-      const issueId = webhook.notification?.issue?.identifier
+      const issueId = agentWebhook.agentSession?.issue?.identifier
       if (issueId && issueId.includes('-')) {
         const prefix = issueId.split('-')[0]
         if (prefix) {
@@ -371,9 +355,45 @@ export class EdgeWorker extends EventEmitter {
       }
     }
 
-    // Original workspace fallback - find first repo without teamKeys or matching workspace
-    return repos.find(repo =>
-      repo.linearWorkspaceId === workspaceId && (!repo.teamKeys || repo.teamKeys.length === 0)
+    // Try team-based routing first
+    const teamKey = webhook.notification?.issue?.team?.key
+    if (teamKey) {
+      const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey))
+      if (repo) return repo
+    }
+    
+    // Try parsing issue identifier as fallback for team routing
+    const issueIdentifier = webhook.notification?.issue?.identifier
+    if (issueIdentifier && issueIdentifier.includes('-')) {
+      const prefix = issueIdentifier.split('-')[0]
+      if (prefix) {
+        const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(prefix))
+        if (repo) return repo
+      }
+    }
+
+    // Try project-based routing - need to fetch full issue details
+    const issueId = webhook.notification?.issue?.id
+    if (issueId) {
+      try {
+        // Find any repository that can access this workspace to fetch issue details
+        const accessRepo = repos.find(repo => repo.linearWorkspaceId === workspaceId)
+        if (accessRepo) {
+          const fullIssue = await this.fetchFullIssueDetails(issueId, accessRepo.id)
+          if (fullIssue && fullIssue.project && typeof fullIssue.project === 'object' && 'name' in fullIssue.project) {
+            const projectName = fullIssue.project.name as string
+            const repo = repos.find(r => r.projectKeys && r.projectKeys.includes(projectName))
+            if (repo) return repo
+          }
+        }
+      } catch (error) {
+        console.warn('[EdgeWorker] Failed to fetch issue details for project routing:', error)
+      }
+    }
+    
+    // Original workspace fallback - find first repo without teamKeys/projectKeys or matching workspace
+    return repos.find(repo => 
+      repo.linearWorkspaceId === workspaceId && (!repo.teamKeys || repo.teamKeys.length === 0) && (!repo.projectKeys || repo.projectKeys.length === 0)
     ) || repos.find(repo => repo.linearWorkspaceId === workspaceId) || null
   }
 
