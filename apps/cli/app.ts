@@ -672,7 +672,12 @@ class EdgeApp {
       console.log(`   ${proxyUrl}/oauth/authorize?callback=${oauthCallbackBaseUrl}/callback`)
       console.log('─'.repeat(70))
       
-      // Handle graceful shutdown
+      // Handle graceful shutdown - remove existing listeners first to prevent duplicates
+      process.removeAllListeners('SIGINT')
+      process.removeAllListeners('SIGTERM')
+      process.removeAllListeners('uncaughtException')
+      process.removeAllListeners('unhandledRejection')
+      
       process.on('SIGINT', () => this.shutdown())
       process.on('SIGTERM', () => this.shutdown())
       
