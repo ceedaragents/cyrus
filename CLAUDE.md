@@ -44,6 +44,9 @@ pnpm install
 # Build all packages
 pnpm build
 
+# Build lint for the entire repository
+pnpm lint
+
 # Run tests across all packages
 pnpm test
 
@@ -81,9 +84,6 @@ pnpm link -g .               # Link local development version
 
 #### Electron App (`apps/electron/`)
 ```bash
-# Run linting
-pnpm lint
-
 # Development mode
 pnpm dev
 
