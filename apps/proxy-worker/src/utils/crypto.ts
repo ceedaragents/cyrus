@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import type { OAuthToken, EncryptedOAuthToken } from '../types'
 
 export class TokenEncryption {

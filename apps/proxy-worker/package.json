@@ -11,7 +11,8 @@
     "tail": "wrangler tail",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "test:run": "echo 'No tests configured for proxy-worker'"
+    "test:run": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "itty-router": "^4.0.23"
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240117.0",
     "prettier": "^3.2.4",
+    "vitest": "^3.1.4",
     "typescript": "^5.3.3",
     "wrangler": "^4.22.0"
   }

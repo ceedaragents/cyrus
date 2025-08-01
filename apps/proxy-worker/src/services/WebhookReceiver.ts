@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import type { Env, LinearWebhook } from '../types'
 
 export class WebhookReceiver {
