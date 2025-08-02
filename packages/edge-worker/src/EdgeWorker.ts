@@ -269,7 +269,7 @@ export class EdgeWorker extends EventEmitter {
     }
 
     // Find the appropriate repository for this webhook
-    const repository = this.findRepositoryForWebhook(webhook, repos)
+    const repository = await this.findRepositoryForWebhook(webhook, repos)
     if (!repository) {
       console.log('No repository configured for webhook from workspace', webhook.organizationId)
       if (process.env.CYRUS_WEBHOOK_DEBUG === 'true') {
@@ -329,51 +329,105 @@ export class EdgeWorker extends EventEmitter {
   }
 
   /**
+   * Find repository by team key
+   */
+  private findRepositoryByTeamKey(teamKey: string, repos: RepositoryConfig[]): RepositoryConfig | null {
+    return repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey)) || null
+  }
+
+  /**
+   * Find repository by parsing issue identifier for team prefix
+   */
+  private findRepositoryByIssueIdentifier(issueIdentifier: string, repos: RepositoryConfig[]): RepositoryConfig | null {
+    if (!issueIdentifier || !issueIdentifier.includes('-')) return null
+    
+    const prefix = issueIdentifier.split('-')[0]
+    if (!prefix) return null
+    
+    return this.findRepositoryByTeamKey(prefix, repos)
+  }
+
+  /**
+   * Find repository by project name using Linear API
+   */
+  private async findRepositoryByProject(issueId: string, workspaceId: string, repos: RepositoryConfig[], webhookType: string): Promise<RepositoryConfig | null> {
+    try {
+      // Find any repository that can access this workspace to fetch issue details
+      const accessRepo = repos.find(repo => repo.linearWorkspaceId === workspaceId)
+      if (!accessRepo) return null
+
+      const fullIssue = await this.fetchFullIssueDetails(issueId, accessRepo.id)
+      if (!fullIssue?.project || typeof fullIssue.project !== 'object' || !('name' in fullIssue.project)) {
+        return null
+      }
+
+      const projectName = fullIssue.project.name as string
+      return repos.find(r => r.projectKeys && r.projectKeys.includes(projectName)) || null
+    } catch (error) {
+      console.warn(`[EdgeWorker] Failed to fetch issue details for ${webhookType} project routing:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Try team-based routing strategies for an issue
+   */
+  private async tryTeamBasedRouting(teamKey: string | undefined, issueIdentifier: string | undefined, repos: RepositoryConfig[]): Promise<RepositoryConfig | null> {
+    // Try direct team key match first
+    if (teamKey) {
+      const repo = this.findRepositoryByTeamKey(teamKey, repos)
+      if (repo) return repo
+    }
+
+    // Try parsing issue identifier as fallback for team routing
+    if (issueIdentifier) {
+      return this.findRepositoryByIssueIdentifier(issueIdentifier, repos)
+    }
+
+    return null
+  }
+
+  /**
    * Find the repository configuration for a webhook
    */
-  private findRepositoryForWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): RepositoryConfig | null {
+  public async findRepositoryForWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): Promise<RepositoryConfig | null> {
     const workspaceId = webhook.organizationId
     if (!workspaceId) return repos[0] || null // Fallback to first repo if no workspace ID
 
     // Handle agent session webhooks which have different structure
     if (isAgentSessionCreatedWebhook(webhook) || isAgentSessionPromptedWebhook(webhook)) {
-      const teamKey = webhook.agentSession?.issue?.team?.key
-      if (teamKey) {
-        const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey))
-        if (repo) return repo
-      }
+      const agentWebhook = webhook as LinearAgentSessionCreatedWebhook | LinearAgentSessionPromptedWebhook
+      const issue = agentWebhook.agentSession?.issue
+      
+      // Try team-based routing first
+      const teamResult = await this.tryTeamBasedRouting(issue?.team?.key, issue?.identifier, repos)
+      if (teamResult) return teamResult
 
-      // Try parsing issue identifier as fallback
-      const issueId = webhook.agentSession?.issue?.identifier
-      if (issueId && issueId.includes('-')) {
-        const prefix = issueId.split('-')[0]
-        if (prefix) {
-          const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(prefix))
-          if (repo) return repo
-        }
-      }
-    } else {
-      // Original logic for other webhook types
-      const teamKey = webhook.notification?.issue?.team?.key
-      if (teamKey) {
-        const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey))
-        if (repo) return repo
-      }
-
-      // Try parsing issue identifier as fallback
-      const issueId = webhook.notification?.issue?.identifier
-      if (issueId && issueId.includes('-')) {
-        const prefix = issueId.split('-')[0]
-        if (prefix) {
-          const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(prefix))
-          if (repo) return repo
-        }
+      // Try project-based routing for AgentSession webhooks
+      if (issue?.id) {
+        const projectResult = await this.findRepositoryByProject(issue.id, workspaceId, repos, 'AgentSession')
+        if (projectResult) return projectResult
       }
     }
 
-    // Original workspace fallback - find first repo without teamKeys or matching workspace
-    return repos.find(repo =>
-      repo.linearWorkspaceId === workspaceId && (!repo.teamKeys || repo.teamKeys.length === 0)
+    // Handle traditional webhooks
+    if ('notification' in webhook && webhook.notification) {
+      const issue = webhook.notification.issue
+      
+      // Try team-based routing first
+      const teamResult = await this.tryTeamBasedRouting(issue?.team?.key, issue?.identifier, repos)
+      if (teamResult) return teamResult
+
+      // Try project-based routing for traditional webhooks
+      if (issue?.id) {
+        const projectResult = await this.findRepositoryByProject(issue.id, workspaceId, repos, 'traditional')
+        if (projectResult) return projectResult
+      }
+    }
+    
+    // Workspace fallback - find first repo without teamKeys/projectKeys or matching workspace
+    return repos.find(repo => 
+      repo.linearWorkspaceId === workspaceId && (!repo.teamKeys || repo.teamKeys.length === 0) && (!repo.projectKeys || repo.projectKeys.length === 0)
     ) || repos.find(repo => repo.linearWorkspaceId === workspaceId) || null
   }
 
@@ -669,7 +723,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Fetch complete issue details from Linear API
    */
-  private async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<LinearIssue | null> {
+  public async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<LinearIssue | null> {
     const linearClient = this.linearClients.get(repositoryId)
     if (!linearClient) {
       console.warn(`[EdgeWorker] No Linear client found for repository ${repositoryId}`)
@@ -1157,7 +1211,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
         filter: { team: { id: { eq: team.id } } }
       })
 
-      const states = await teamStates
+      const states = teamStates
 
       // Find all states with type "started" and pick the one with lowest position
       // This ensures we pick "In Progress" over "In Review" when both have type "started"
