@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mockDeep, type MockProxy } from 'vitest-mock-extended'
 import { EdgeWorker } from '../src/EdgeWorker.js'
-import type { LinearWebhook, LinearAgentSessionCreatedWebhook, LinearAgentSessionPromptedWebhook } from 'cyrus-core'
+import type { LinearAgentSessionCreatedWebhook, LinearAgentSessionPromptedWebhook, LinearIssueAssignedWebhook } from 'cyrus-core'
 import type { EdgeWorkerConfig } from '../src/types.js'
 import type { Issue as LinearIssue } from '@linear/sdk'
 
@@ -70,22 +70,15 @@ describe('EdgeWorker - Repository Routing', () => {
 
   describe('AgentSession webhook routing', () => {
     it('should route AgentSessionCreated webhook to correct repository based on team key', async () => {
-      const ceeWebhook: LinearAgentSessionCreatedWebhook = {
-        type: 'AgentSession',
-        action: 'create',
-        organizationId: 'workspace-1',
-        agentSession: {
-          id: 'session-123',
-          issue: {
-            id: 'issue-123',
-            identifier: 'CEE-42',
-            title: 'Test Issue',
-            team: {
-              key: 'CEE'
-            }
-          }
-        }
-      }
+      const ceeWebhook: MockProxy<LinearAgentSessionCreatedWebhook> = mockDeep<LinearAgentSessionCreatedWebhook>()
+      ceeWebhook.type = 'AgentSessionEvent'
+      ceeWebhook.action = 'created'
+      ceeWebhook.organizationId = 'workspace-1'
+      ceeWebhook.agentSession.id = 'session-123'
+      ceeWebhook.agentSession.issue.id = 'issue-123'
+      ceeWebhook.agentSession.issue.identifier = 'CEE-42'
+      ceeWebhook.agentSession.issue.title = 'Test Issue'
+      ceeWebhook.agentSession.issue.team.key = 'CEE'
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(ceeWebhook, mockConfig.repositories)
@@ -96,27 +89,15 @@ describe('EdgeWorker - Repository Routing', () => {
     })
 
     it('should route AgentSessionPrompted webhook to correct repository based on team key', async () => {
-      const bkWebhook: LinearAgentSessionPromptedWebhook = {
-        type: 'AgentSession',
-        action: 'prompt',
-        organizationId: 'workspace-2',
-        agentSession: {
-          id: 'session-456',
-          issue: {
-            id: 'issue-456',
-            identifier: 'BK-123',
-            title: 'Bookkeeping Issue',
-            team: {
-              key: 'BK'
-            }
-          }
-        },
-        agentActivity: {
-          content: {
-            body: 'Please help with this issue'
-          }
-        }
-      }
+      const bkWebhook: MockProxy<LinearAgentSessionPromptedWebhook> = mockDeep<LinearAgentSessionPromptedWebhook>()
+      bkWebhook.type = 'AgentSessionEvent'
+      bkWebhook.action = 'prompted'
+      bkWebhook.organizationId = 'workspace-2'
+      bkWebhook.agentSession.id = 'session-456'
+      bkWebhook.agentSession.issue.id = 'issue-456'
+      bkWebhook.agentSession.issue.identifier = 'BK-123'
+      bkWebhook.agentSession.issue.title = 'Bookkeeping Issue'
+      bkWebhook.agentSession.issue.team.key = 'BK'
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(bkWebhook, mockConfig.repositories)
@@ -127,20 +108,15 @@ describe('EdgeWorker - Repository Routing', () => {
     })
 
     it('should fallback to issue identifier parsing when team key is not available', async () => {
-      const webhookWithoutTeamKey: LinearAgentSessionCreatedWebhook = {
-        type: 'AgentSession',
-        action: 'create',
-        organizationId: 'workspace-1',
-        agentSession: {
-          id: 'session-789',
-          issue: {
-            id: 'issue-789',
-            identifier: 'CEE-999',
-            title: 'Test Issue Without Team'
-            // Note: no team key provided
-          }
-        }
-      }
+      const webhookWithoutTeamKey: MockProxy<LinearAgentSessionCreatedWebhook> = mockDeep<LinearAgentSessionCreatedWebhook>()
+      webhookWithoutTeamKey.type = 'AgentSessionEvent'
+      webhookWithoutTeamKey.action = 'created'
+      webhookWithoutTeamKey.organizationId = 'workspace-1'
+      webhookWithoutTeamKey.agentSession.id = 'session-789'
+      webhookWithoutTeamKey.agentSession.issue.id = 'issue-789'
+      webhookWithoutTeamKey.agentSession.issue.identifier = 'CEE-999'
+      webhookWithoutTeamKey.agentSession.issue.title = 'Test Issue Without Team'
+      // Note: no team key provided - should use identifier parsing
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(webhookWithoutTeamKey, mockConfig.repositories)
@@ -151,22 +127,15 @@ describe('EdgeWorker - Repository Routing', () => {
     })
 
     it('should return null when no matching repository is found', async () => {
-      const unmatchedWebhook: LinearAgentSessionCreatedWebhook = {
-        type: 'AgentSession',
-        action: 'create',
-        organizationId: 'workspace-unknown',
-        agentSession: {
-          id: 'session-unknown',
-          issue: {
-            id: 'issue-unknown',
-            identifier: 'UNKNOWN-123',
-            title: 'Unknown Issue',
-            team: {
-              key: 'UNKNOWN'
-            }
-          }
-        }
-      }
+      const unmatchedWebhook: MockProxy<LinearAgentSessionCreatedWebhook> = mockDeep<LinearAgentSessionCreatedWebhook>()
+      unmatchedWebhook.type = 'AgentSessionEvent'
+      unmatchedWebhook.action = 'created'
+      unmatchedWebhook.organizationId = 'workspace-unknown'
+      unmatchedWebhook.agentSession.id = 'session-unknown'
+      unmatchedWebhook.agentSession.issue.id = 'issue-unknown'
+      unmatchedWebhook.agentSession.issue.identifier = 'UNKNOWN-123'
+      unmatchedWebhook.agentSession.issue.title = 'Unknown Issue'
+      unmatchedWebhook.agentSession.issue.team.key = 'UNKNOWN'
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(unmatchedWebhook, mockConfig.repositories)
@@ -180,25 +149,22 @@ describe('EdgeWorker - Repository Routing', () => {
       const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
       const mockIssue: MockProxy<LinearIssue> = mockDeep<LinearIssue>()
       mockIssue.id = 'issue-mobile-123'
-      mockIssue.project = { name: 'Mobile App' }
+      Object.defineProperty(mockIssue, 'project', {
+        value: { name: 'Mobile App' },
+        writable: true,
+        configurable: true
+      })
       mockFetchFullIssueDetails.mockResolvedValue(mockIssue)
 
-      const agentSessionWebhook: LinearAgentSessionCreatedWebhook = {
-        type: 'AgentSessionEvent',
-        action: 'created',
-        organizationId: 'workspace-1',
-        agentSession: {
-          id: 'session-123',
-          issue: {
-            id: 'issue-mobile-123',
-            identifier: 'PROJ-42', // Team key that doesn't match any repo
-            title: 'Mobile Issue',
-            teamId: 'proj-team',
-            url: 'https://linear.app/issue/PROJ-42'
-            // Note: no team key provided, should fallback to project routing
-          }
-        }
-      }
+      const agentSessionWebhook: MockProxy<LinearAgentSessionCreatedWebhook> = mockDeep<LinearAgentSessionCreatedWebhook>()
+      agentSessionWebhook.type = 'AgentSessionEvent'
+      agentSessionWebhook.action = 'created'
+      agentSessionWebhook.organizationId = 'workspace-1'
+      agentSessionWebhook.agentSession.id = 'session-123'
+      agentSessionWebhook.agentSession.issue.id = 'issue-mobile-123'
+      agentSessionWebhook.agentSession.issue.identifier = 'PROJ-42'
+      agentSessionWebhook.agentSession.issue.title = 'Mobile Issue'
+      agentSessionWebhook.agentSession.issue.team.key = 'PROJ' // Doesn't match any repo, should fallback to project routing
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
@@ -214,24 +180,22 @@ describe('EdgeWorker - Repository Routing', () => {
       const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
       const mockIssue: MockProxy<LinearIssue> = mockDeep<LinearIssue>()
       mockIssue.id = 'issue-web-456'
-      mockIssue.project = { name: 'Web Platform' }
+      Object.defineProperty(mockIssue, 'project', {
+        value: { name: 'Web Platform' },
+        writable: true,
+        configurable: true
+      })
       mockFetchFullIssueDetails.mockResolvedValue(mockIssue)
 
-      const agentSessionWebhook: LinearAgentSessionCreatedWebhook = {
-        type: 'AgentSessionEvent',
-        action: 'created',
-        organizationId: 'workspace-1',
-        agentSession: {
-          id: 'session-456',
-          issue: {
-            id: 'issue-web-456',
-            identifier: 'PROJ-456', // Team key that doesn't match
-            title: 'Web Platform Issue',
-            teamId: 'proj-team',
-            url: 'https://linear.app/issue/PROJ-456'
-          }
-        }
-      }
+      const agentSessionWebhook: MockProxy<LinearAgentSessionCreatedWebhook> = mockDeep<LinearAgentSessionCreatedWebhook>()
+      agentSessionWebhook.type = 'AgentSessionEvent'
+      agentSessionWebhook.action = 'created'
+      agentSessionWebhook.organizationId = 'workspace-1'
+      agentSessionWebhook.agentSession.id = 'session-456'
+      agentSessionWebhook.agentSession.issue.id = 'issue-web-456'
+      agentSessionWebhook.agentSession.issue.identifier = 'PROJ-456'
+      agentSessionWebhook.agentSession.issue.title = 'Web Platform Issue'
+      agentSessionWebhook.agentSession.issue.team.key = 'PROJ' // Doesn't match any repo, should fallback to project routing
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
@@ -247,29 +211,22 @@ describe('EdgeWorker - Repository Routing', () => {
       const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
       const mockIssue: MockProxy<LinearIssue> = mockDeep<LinearIssue>()
       mockIssue.id = 'issue-hybrid-789'
-      mockIssue.project = { name: 'Web Platform' } // This would route to 'web' repo
+      Object.defineProperty(mockIssue, 'project', {
+        value: { name: 'Web Platform' },
+        writable: true,
+        configurable: true
+      })
       mockFetchFullIssueDetails.mockResolvedValue(mockIssue)
 
-      const agentSessionWebhook: LinearAgentSessionCreatedWebhook = {
-        type: 'AgentSessionEvent',
-        action: 'created',
-        organizationId: 'workspace-1',
-        agentSession: {
-          id: 'session-789',
-          issue: {
-            id: 'issue-hybrid-789',
-            identifier: 'CEE-789',
-            title: 'Hybrid Issue',
-            teamId: 'cee-team',
-            url: 'https://linear.app/issue/CEE-789',
-            team: {
-              id: 'cee-team',
-              key: 'CEE',
-              name: 'Ceedar Team'
-            }
-          }
-        }
-      }
+      const agentSessionWebhook: MockProxy<LinearAgentSessionCreatedWebhook> = mockDeep<LinearAgentSessionCreatedWebhook>()
+      agentSessionWebhook.type = 'AgentSessionEvent'
+      agentSessionWebhook.action = 'created'
+      agentSessionWebhook.organizationId = 'workspace-1'
+      agentSessionWebhook.agentSession.id = 'session-789'
+      agentSessionWebhook.agentSession.issue.id = 'issue-hybrid-789'
+      agentSessionWebhook.agentSession.issue.identifier = 'CEE-789'
+      agentSessionWebhook.agentSession.issue.title = 'Hybrid Issue'
+      agentSessionWebhook.agentSession.issue.team.key = 'CEE' // Should match ceedar repo via team routing
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
@@ -286,22 +243,15 @@ describe('EdgeWorker - Repository Routing', () => {
       const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
       mockFetchFullIssueDetails.mockRejectedValue(new Error('API Error'))
 
-      const agentSessionWebhook: LinearAgentSessionCreatedWebhook = {
-        type: 'AgentSessionEvent',
-        action: 'created',
-        organizationId: 'workspace-1',
-        agentSession: {
-          id: 'session-error',
-          issue: {
-            id: 'issue-error-123',
-            identifier: 'PROJ-123',
-            title: 'Error Issue',
-            teamId: 'proj-team',
-            url: 'https://linear.app/issue/PROJ-123'
-            // No team key, will try project routing but fail
-          }
-        }
-      }
+      const agentSessionWebhook: MockProxy<LinearAgentSessionCreatedWebhook> = mockDeep<LinearAgentSessionCreatedWebhook>()
+      agentSessionWebhook.type = 'AgentSessionEvent'
+      agentSessionWebhook.action = 'created'
+      agentSessionWebhook.organizationId = 'workspace-1'
+      agentSessionWebhook.agentSession.id = 'session-error'
+      agentSessionWebhook.agentSession.issue.id = 'issue-error-123'
+      agentSessionWebhook.agentSession.issue.identifier = 'PROJ-123'
+      agentSessionWebhook.agentSession.issue.title = 'Error Issue'
+      agentSessionWebhook.agentSession.issue.team.key = 'PROJ' // No team key match, will try project routing but fail
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
@@ -315,7 +265,8 @@ describe('EdgeWorker - Repository Routing', () => {
 
   describe('Traditional webhook routing', () => {
     it('should route traditional webhooks based on team key', async () => {
-      const traditionalWebhook: LinearWebhook = {
+      const traditionalWebhook: MockProxy<LinearIssueAssignedWebhook> = mockDeep<LinearIssueAssignedWebhook>()
+      Object.assign(traditionalWebhook, {
         type: 'AppUserNotification',
         action: 'issueAssignedToYou',
         organizationId: 'workspace-1',
@@ -331,7 +282,7 @@ describe('EdgeWorker - Repository Routing', () => {
             }
           }
         }
-      }
+      })
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(traditionalWebhook, mockConfig.repositories)
@@ -361,7 +312,8 @@ describe('EdgeWorker - Repository Routing', () => {
         ]
       }
 
-      const webhookWithoutMatchingTeam: LinearWebhook = {
+      const webhookWithoutMatchingTeam: MockProxy<LinearIssueAssignedWebhook> = mockDeep<LinearIssueAssignedWebhook>()
+      Object.assign(webhookWithoutMatchingTeam, {
         type: 'AppUserNotification',
         action: 'issueAssignedToYou',
         organizationId: 'workspace-1',
@@ -377,7 +329,7 @@ describe('EdgeWorker - Repository Routing', () => {
             }
           }
         }
-      }
+      })
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(webhookWithoutMatchingTeam, configWithCatchAll.repositories)
