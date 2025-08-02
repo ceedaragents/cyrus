@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Enhanced Linear issue attachment handling to properly display external links (Sentry, GitHub, etc.)
+  - External links from Linear issues are now cataloged and displayed with title, URL, and source
+  - Differentiates between Linear file uploads and external service links
+  - Particularly useful for Sentry error links attached to bug reports
+  - External links are displayed in the attachment manifest but not downloaded
+
 ## [0.1.36] - 2025-01-31
 
 ### Added
