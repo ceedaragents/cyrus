@@ -1,14 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { mockDeep, type MockProxy } from 'vitest-mock-extended'
 import { EdgeWorker } from '../src/EdgeWorker.js'
 import type { LinearWebhook, LinearAgentSessionCreatedWebhook, LinearAgentSessionPromptedWebhook } from 'cyrus-core'
 import type { EdgeWorkerConfig } from '../src/types.js'
+import type { Issue as LinearIssue } from '@linear/sdk'
 
 describe('EdgeWorker - Repository Routing', () => {
   let edgeWorker: EdgeWorker
   let mockConfig: EdgeWorkerConfig
 
   beforeEach(() => {
-    // Mock configuration with multiple repositories
+    // Mock configuration with multiple repositories including project-based routing
     mockConfig = {
       proxyUrl: 'https://test-proxy.com',
       repositories: [
@@ -34,6 +36,30 @@ describe('EdgeWorker - Repository Routing', () => {
           linearWorkspaceId: 'workspace-2',
           linearWorkspaceName: 'Bookkeeping Team',
           teamKeys: ['BK'],
+          isActive: true
+        },
+        {
+          id: 'mobile',
+          name: 'Mobile App',
+          repositoryPath: '/repos/mobile',
+          baseBranch: 'main',
+          workspaceBaseDir: '/tmp/workspaces',
+          linearToken: 'linear-token-1',
+          linearWorkspaceId: 'workspace-1',
+          linearWorkspaceName: 'Ceedar Agents',
+          projectKeys: ['Mobile App', 'iOS App'],
+          isActive: true
+        },
+        {
+          id: 'web',
+          name: 'Web Platform',
+          repositoryPath: '/repos/web',
+          baseBranch: 'main',
+          workspaceBaseDir: '/tmp/workspaces',
+          linearToken: 'linear-token-1',
+          linearWorkspaceId: 'workspace-1',
+          linearWorkspaceName: 'Ceedar Agents',
+          projectKeys: ['Web Platform', 'Frontend'],
           isActive: true
         }
       ]
@@ -147,6 +173,143 @@ describe('EdgeWorker - Repository Routing', () => {
 
       // Should return null for unmatched webhooks
       expect(result).toBeNull()
+    })
+
+    it('should route AgentSession webhook to correct repository based on project name', async () => {
+      // Mock fetchFullIssueDetails to return project information
+      const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
+      const mockIssue: MockProxy<LinearIssue> = mockDeep<LinearIssue>()
+      mockIssue.id = 'issue-mobile-123'
+      mockIssue.project = { name: 'Mobile App' }
+      mockFetchFullIssueDetails.mockResolvedValue(mockIssue)
+
+      const agentSessionWebhook: LinearAgentSessionCreatedWebhook = {
+        type: 'AgentSessionEvent',
+        action: 'created',
+        organizationId: 'workspace-1',
+        agentSession: {
+          id: 'session-123',
+          issue: {
+            id: 'issue-mobile-123',
+            identifier: 'PROJ-42', // Team key that doesn't match any repo
+            title: 'Mobile Issue',
+            teamId: 'proj-team',
+            url: 'https://linear.app/issue/PROJ-42'
+            // Note: no team key provided, should fallback to project routing
+          }
+        }
+      }
+
+      // Call the public method directly to test routing logic
+      const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
+
+      // Verify the correct repository was returned based on project name
+      expect(result).toBeTruthy()
+      expect(result?.id).toBe('mobile')
+      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-mobile-123', 'ceedar')
+    })
+
+    it('should route AgentSession webhook to web repository based on project name', async () => {
+      // Mock fetchFullIssueDetails to return different project information
+      const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
+      const mockIssue: MockProxy<LinearIssue> = mockDeep<LinearIssue>()
+      mockIssue.id = 'issue-web-456'
+      mockIssue.project = { name: 'Web Platform' }
+      mockFetchFullIssueDetails.mockResolvedValue(mockIssue)
+
+      const agentSessionWebhook: LinearAgentSessionCreatedWebhook = {
+        type: 'AgentSessionEvent',
+        action: 'created',
+        organizationId: 'workspace-1',
+        agentSession: {
+          id: 'session-456',
+          issue: {
+            id: 'issue-web-456',
+            identifier: 'PROJ-456', // Team key that doesn't match
+            title: 'Web Platform Issue',
+            teamId: 'proj-team',
+            url: 'https://linear.app/issue/PROJ-456'
+          }
+        }
+      }
+
+      // Call the public method directly to test routing logic
+      const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
+
+      // Verify the correct repository was returned based on project name
+      expect(result).toBeTruthy()
+      expect(result?.id).toBe('web')
+      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-web-456', 'ceedar')
+    })
+
+    it('should prefer team-based routing over project-based routing for AgentSession webhooks', async () => {
+      // Setup mock that would return project info, but team routing should win
+      const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
+      const mockIssue: MockProxy<LinearIssue> = mockDeep<LinearIssue>()
+      mockIssue.id = 'issue-hybrid-789'
+      mockIssue.project = { name: 'Web Platform' } // This would route to 'web' repo
+      mockFetchFullIssueDetails.mockResolvedValue(mockIssue)
+
+      const agentSessionWebhook: LinearAgentSessionCreatedWebhook = {
+        type: 'AgentSessionEvent',
+        action: 'created',
+        organizationId: 'workspace-1',
+        agentSession: {
+          id: 'session-789',
+          issue: {
+            id: 'issue-hybrid-789',
+            identifier: 'CEE-789',
+            title: 'Hybrid Issue',
+            teamId: 'cee-team',
+            url: 'https://linear.app/issue/CEE-789',
+            team: {
+              id: 'cee-team',
+              key: 'CEE',
+              name: 'Ceedar Team'
+            }
+          }
+        }
+      }
+
+      // Call the public method directly to test routing logic
+      const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
+
+      // Verify team-based routing won over project-based routing
+      expect(result).toBeTruthy()
+      expect(result?.id).toBe('ceedar')
+      // fetchFullIssueDetails should NOT have been called since team routing succeeded
+      expect(mockFetchFullIssueDetails).not.toHaveBeenCalled()
+    })
+
+    it('should handle project routing failures gracefully for AgentSession webhooks', async () => {
+      // Mock fetchFullIssueDetails to throw an error
+      const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
+      mockFetchFullIssueDetails.mockRejectedValue(new Error('API Error'))
+
+      const agentSessionWebhook: LinearAgentSessionCreatedWebhook = {
+        type: 'AgentSessionEvent',
+        action: 'created',
+        organizationId: 'workspace-1',
+        agentSession: {
+          id: 'session-error',
+          issue: {
+            id: 'issue-error-123',
+            identifier: 'PROJ-123',
+            title: 'Error Issue',
+            teamId: 'proj-team',
+            url: 'https://linear.app/issue/PROJ-123'
+            // No team key, will try project routing but fail
+          }
+        }
+      }
+
+      // Call the public method directly to test routing logic
+      const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
+
+      // Should fall back to workspace-based routing
+      expect(result).toBeTruthy()
+      expect(result?.linearWorkspaceId).toBe('workspace-1')
+      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-error-123', 'ceedar')
     })
   })
 

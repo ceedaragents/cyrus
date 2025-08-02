@@ -344,7 +344,7 @@ export class EdgeWorker extends EventEmitter {
         if (repo) return repo
       }
 
-      // Try parsing issue identifier as fallback
+      // Try parsing issue identifier as fallback for team routing
       const issueId = agentWebhook.agentSession?.issue?.identifier
       if (issueId && issueId.includes('-')) {
         const prefix = issueId.split('-')[0]
@@ -353,27 +353,48 @@ export class EdgeWorker extends EventEmitter {
           if (repo) return repo
         }
       }
-    }
 
-    // Try team-based routing first
-    const teamKey = webhook.notification?.issue?.team?.key
-    if (teamKey) {
-      const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey))
-      if (repo) return repo
-    }
-    
-    // Try parsing issue identifier as fallback for team routing
-    const issueIdentifier = webhook.notification?.issue?.identifier
-    if (issueIdentifier && issueIdentifier.includes('-')) {
-      const prefix = issueIdentifier.split('-')[0]
-      if (prefix) {
-        const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(prefix))
-        if (repo) return repo
+      // Try project-based routing for AgentSession webhooks
+      const agentSessionIssueId = agentWebhook.agentSession?.issue?.id
+      if (agentSessionIssueId) {
+        try {
+          // Find any repository that can access this workspace to fetch issue details
+          const accessRepo = repos.find(repo => repo.linearWorkspaceId === workspaceId)
+          if (accessRepo) {
+            const fullIssue = await this.fetchFullIssueDetails(agentSessionIssueId, accessRepo.id)
+            if (fullIssue && fullIssue.project && typeof fullIssue.project === 'object' && 'name' in fullIssue.project) {
+              const projectName = fullIssue.project.name as string
+              const repo = repos.find(r => r.projectKeys && r.projectKeys.includes(projectName))
+              if (repo) return repo
+            }
+          }
+        } catch (error) {
+          console.warn('[EdgeWorker] Failed to fetch issue details for AgentSession project routing:', error)
+        }
       }
     }
 
-    // Try project-based routing - need to fetch full issue details
-    const issueId = webhook.notification?.issue?.id
+    // Try team-based routing first (only for traditional webhooks)
+    if ('notification' in webhook && webhook.notification) {
+      const teamKey = webhook.notification.issue?.team?.key
+      if (teamKey) {
+        const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey))
+        if (repo) return repo
+      }
+      
+      // Try parsing issue identifier as fallback for team routing
+      const issueIdentifier = webhook.notification.issue?.identifier
+      if (issueIdentifier && issueIdentifier.includes('-')) {
+        const prefix = issueIdentifier.split('-')[0]
+        if (prefix) {
+          const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(prefix))
+          if (repo) return repo
+        }
+      }
+    }
+
+    // Try project-based routing - need to fetch full issue details (only for traditional webhooks)
+    const issueId = 'notification' in webhook ? webhook.notification?.issue?.id : undefined
     if (issueId) {
       try {
         // Find any repository that can access this workspace to fetch issue details
@@ -689,7 +710,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Fetch complete issue details from Linear API
    */
-  private async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<LinearIssue | null> {
+  public async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<LinearIssue | null> {
     const linearClient = this.linearClients.get(repositoryId)
     if (!linearClient) {
       console.warn(`[EdgeWorker] No Linear client found for repository ${repositoryId}`)
