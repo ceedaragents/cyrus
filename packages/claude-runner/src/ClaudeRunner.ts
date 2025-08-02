@@ -110,6 +110,7 @@ export class ClaudeRunner extends EventEmitter {
   private abortController: AbortController | null = null
   private sessionInfo: ClaudeSessionInfo | null = null
   private logStream: WriteStream | null = null
+  private readableLogStream: WriteStream | null = null
   private messages: SDKMessage[] = []
   private streamingPrompt: StreamingPrompt | null = null
 
@@ -284,7 +285,7 @@ export class ClaudeRunner extends EventEmitter {
 
         this.messages.push(message)
         
-        // Log the message
+        // Log to detailed JSON log
         if (this.logStream) {
           const logEntry = {
             type: 'sdk-message',
@@ -292,6 +293,11 @@ export class ClaudeRunner extends EventEmitter {
             timestamp: new Date().toISOString()
           }
           this.logStream.write(JSON.stringify(logEntry) + '\n')
+        }
+
+        // Log to human-readable log
+        if (this.readableLogStream) {
+          this.writeReadableLogEntry(message)
         }
 
         // Emit appropriate events based on message type
@@ -336,10 +342,14 @@ export class ClaudeRunner extends EventEmitter {
         this.streamingPrompt = null
       }
       
-      // Close log stream
+      // Close log streams
       if (this.logStream) {
         this.logStream.end()
         this.logStream = null
+      }
+      if (this.readableLogStream) {
+        this.readableLogStream.end()
+        this.readableLogStream = null
       }
     }
 
@@ -476,10 +486,14 @@ export class ClaudeRunner extends EventEmitter {
    */
   private setupLogging(): void {
     try {
-      // Close existing log stream if we're re-setting up with new session ID
+      // Close existing log streams if we're re-setting up with new session ID
       if (this.logStream) {
         this.logStream.end()
         this.logStream = null
+      }
+      if (this.readableLogStream) {
+        this.readableLogStream.end()
+        this.readableLogStream = null
       }
       
       // Create logs directory structure: ~/.cyrus/logs/<workspace-name>/
@@ -495,16 +509,25 @@ export class ClaudeRunner extends EventEmitter {
       // Create directories
       mkdirSync(workspaceLogsDir, { recursive: true })
       
-      // Create log file with session ID and timestamp
+      // Create log files with session ID and timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
       const sessionId = this.sessionInfo?.sessionId || 'pending'
-      const logFileName = `session-${sessionId}-${timestamp}.jsonl`
-      const logFilePath = join(workspaceLogsDir, logFileName)
       
-      console.log(`[ClaudeRunner] Creating log file at: ${logFilePath}`)
-      this.logStream = createWriteStream(logFilePath, { flags: 'a' })
+      // Detailed JSON log (existing)
+      const detailedLogFileName = `session-${sessionId}-${timestamp}.jsonl`
+      const detailedLogPath = join(workspaceLogsDir, detailedLogFileName)
       
-      // Write initial metadata
+      // Human-readable log (new)
+      const readableLogFileName = `session-${sessionId}-${timestamp}.md`
+      const readableLogPath = join(workspaceLogsDir, readableLogFileName)
+      
+      console.log(`[ClaudeRunner] Creating detailed log: ${detailedLogPath}`)
+      console.log(`[ClaudeRunner] Creating readable log: ${readableLogPath}`)
+      
+      this.logStream = createWriteStream(detailedLogPath, { flags: 'a' })
+      this.readableLogStream = createWriteStream(readableLogPath, { flags: 'a' })
+      
+      // Write initial metadata to detailed log
       const metadata = {
         type: 'session-metadata',
         sessionId: this.sessionInfo?.sessionId,
@@ -516,8 +539,97 @@ export class ClaudeRunner extends EventEmitter {
       }
       this.logStream.write(JSON.stringify(metadata) + '\n')
       
+      // Write readable log header
+      const readableHeader = `# Claude Session Log\n\n` +
+        `**Session ID:** ${sessionId}\n` +
+        `**Started:** ${this.sessionInfo?.startedAt?.toISOString() || 'Unknown'}\n` +
+        `**Workspace:** ${workspaceName}\n` +
+        `**Working Directory:** ${this.config.workingDirectory || 'Not set'}\n\n` +
+        `---\n\n`
+      
+      this.readableLogStream.write(readableHeader)
+      
     } catch (error) {
       console.error('[ClaudeRunner] Failed to set up logging:', error)
+    }
+  }
+
+  /**
+   * Write a human-readable log entry for a message
+   */
+  private writeReadableLogEntry(message: SDKMessage): void {
+    if (!this.readableLogStream) return
+
+    const timestamp = new Date().toISOString().substring(11, 19) // HH:MM:SS format
+    
+    try {
+      switch (message.type) {
+        case 'assistant':
+          if (message.message?.content && Array.isArray(message.message.content)) {
+            // Extract text content only, skip tool use noise
+            const textBlocks = message.message.content
+              .filter((block: any) => block.type === 'text')
+              .map((block: any) => block.text)
+              .join('')
+
+            if (textBlocks.trim()) {
+              this.readableLogStream.write(`## ${timestamp} - Claude Response\n\n${textBlocks.trim()}\n\n`)
+            }
+
+            // Log tool usage in a clean format, but filter out noisy tools
+            const toolBlocks = message.message.content
+              .filter((block: any) => block.type === 'tool_use')
+              .filter((block: any) => block.name !== 'TodoWrite') // Filter out TodoWrite as it's noisy
+            
+            if (toolBlocks.length > 0) {
+              for (const tool of toolBlocks) {
+                this.readableLogStream.write(`### ${timestamp} - Tool: ${tool.name}\n\n`)
+                if (tool.input && typeof tool.input === 'object') {
+                  // Format tool input in a readable way
+                  const inputStr = Object.entries(tool.input)
+                    .map(([key, value]) => `- **${key}**: ${value}`)
+                    .join('\n')
+                  this.readableLogStream.write(`${inputStr}\n\n`)
+                }
+              }
+            }
+          }
+          break
+
+        case 'user':
+          // Only log user messages that contain actual content (not tool results)
+          if (message.message?.content && Array.isArray(message.message.content)) {
+            const userContent = message.message.content
+              .filter((block: any) => block.type === 'text')
+              .map((block: any) => block.text)
+              .join('')
+
+            if (userContent.trim()) {
+              this.readableLogStream.write(`## ${timestamp} - User\n\n${userContent.trim()}\n\n`)
+            }
+          }
+          break
+
+        case 'result':
+          if (message.subtype === 'success') {
+            this.readableLogStream.write(`## ${timestamp} - Session Complete\n\n`)
+            if (message.duration_ms) {
+              this.readableLogStream.write(`**Duration**: ${message.duration_ms}ms\n`)
+            }
+            if (message.total_cost_usd) {
+              this.readableLogStream.write(`**Cost**: $${message.total_cost_usd.toFixed(4)}\n`)
+            }
+            this.readableLogStream.write(`\n---\n\n`)
+          }
+          break
+
+        // Skip system messages, they're too noisy for readable log
+        case 'system':
+        default:
+          break
+      }
+    } catch (error) {
+      console.error('[ClaudeRunner] Error writing readable log entry:', error)
     }
   }
 }
