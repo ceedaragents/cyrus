@@ -681,6 +681,18 @@ export class EdgeWorker extends EventEmitter {
       const fullIssue = await linearClient.issue(issueId)
       console.log(`[EdgeWorker] Successfully fetched issue details for ${issueId}`)
       
+      // Fetch attachments for the issue
+      try {
+        const attachments = await fullIssue.attachments()
+        if (attachments && attachments.nodes.length > 0) {
+          console.log(`[EdgeWorker] Found ${attachments.nodes.length} attachments for issue ${issueId}`)
+          // Store attachments on the issue object for later use
+          ;(fullIssue as any)._attachments = attachments.nodes
+        }
+      } catch (error) {
+        console.warn(`[EdgeWorker] Failed to fetch attachments for issue ${issueId}:`, error)
+      }
+      
       // Check if issue has a parent
       try {
         const parent = await fullIssue.parent
@@ -1259,8 +1271,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
     try {
       const attachmentMap: Record<string, string> = {}
       const imageMap: Record<string, string> = {}
+      const externalLinkMap: Record<string, { title: string; url: string; source?: string }> = {}
       let attachmentCount = 0
       let imageCount = 0
+      let externalLinkCount = 0
       let skippedCount = 0
       let failedCount = 0
       const maxAttachments = 10
@@ -1277,44 +1291,75 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
       // Ensure directory exists
       await mkdir(attachmentsDir, { recursive: true })
 
-      // Extract URLs from issue description
-      const descriptionUrls = this.extractAttachmentUrls(issue.description || '')
+      // Get attachments from the Linear API if available
+      const apiAttachments = (issue as any)._attachments || []
+      const attachmentUrls: Array<{ url: string; title?: string; source?: string; isExternalLink?: boolean }> = []
 
-      // Extract URLs from comments if available
-      const commentUrls: string[] = []
-      const linearClient = this.linearClients.get(repository.id)
-      if (linearClient && issue.id) {
-        try {
-          const comments = await linearClient.comments({
-            filter: { issue: { id: { eq: issue.id } } }
+      // Process API attachments
+      for (const attachment of apiAttachments) {
+        if (attachment.url) {
+          // Check if it's a Linear upload or external link
+          const isLinearUpload = attachment.url.includes('uploads.linear.app')
+          attachmentUrls.push({
+            url: attachment.url,
+            title: attachment.title || attachment.subtitle || 'Untitled',
+            source: attachment.source,
+            isExternalLink: !isLinearUpload
           })
-          const commentNodes = comments.nodes
-          for (const comment of commentNodes) {
-            const urls = this.extractAttachmentUrls(comment.body)
-            commentUrls.push(...urls)
-          }
-        } catch (error) {
-          console.error('Failed to fetch comments for attachments:', error)
         }
       }
 
-      // Combine and deduplicate all URLs
-      const allUrls = [...new Set([...descriptionUrls, ...commentUrls])]
+      // Fallback: Extract URLs from issue description and comments if no API attachments
+      if (attachmentUrls.length === 0) {
+        const descriptionUrls = this.extractAttachmentUrls(issue.description || '')
+        
+        // Extract URLs from comments if available
+        const commentUrls: string[] = []
+        const linearClient = this.linearClients.get(repository.id)
+        if (linearClient && issue.id) {
+          try {
+            const comments = await linearClient.comments({
+              filter: { issue: { id: { eq: issue.id } } }
+            })
+            const commentNodes = comments.nodes
+            for (const comment of commentNodes) {
+              const urls = this.extractAttachmentUrls(comment.body)
+              commentUrls.push(...urls)
+            }
+          } catch (error) {
+            console.error('Failed to fetch comments for attachments:', error)
+          }
+        }
 
-      console.log(`Found ${allUrls.length} unique attachment URLs in issue ${issue.identifier}`)
+        // Combine and deduplicate all URLs
+        const allUrls = [...new Set([...descriptionUrls, ...commentUrls])]
+        attachmentUrls.push(...allUrls.map(url => ({ url, isExternalLink: false })))
+      }
 
-      if (allUrls.length > maxAttachments) {
-        console.warn(`Warning: Found ${allUrls.length} attachments but limiting to ${maxAttachments}. Skipping ${allUrls.length - maxAttachments} attachments.`)
+      console.log(`Found ${attachmentUrls.length} attachments in issue ${issue.identifier}`)
+
+      if (attachmentUrls.length > maxAttachments) {
+        console.warn(`Warning: Found ${attachmentUrls.length} attachments but limiting to ${maxAttachments}. Skipping ${attachmentUrls.length - maxAttachments} attachments.`)
       }
 
       // Download attachments up to the limit
-      for (const url of allUrls) {
-        if (attachmentCount >= maxAttachments) {
+      for (const attachmentInfo of attachmentUrls) {
+        if (attachmentCount + externalLinkCount >= maxAttachments) {
           skippedCount++
           continue
         }
 
-        // Generate a temporary filename
+        const { url, title, source, isExternalLink } = attachmentInfo
+
+        // Handle external links differently - don't download, just catalog them
+        if (isExternalLink) {
+          externalLinkMap[url] = { title: title || url, url, source }
+          externalLinkCount++
+          console.log(`Cataloged external link: ${title || url} (${source || 'unknown source'})`)
+          continue
+        }
+
+        // Generate a temporary filename for downloadable attachments
         const tempFilename = `attachment_${attachmentCount + 1}.tmp`
         const tempPath = join(attachmentsDir, tempFilename)
 
@@ -1352,9 +1397,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
       const manifest = this.generateAttachmentManifest({
         attachmentMap,
         imageMap,
-        totalFound: allUrls.length,
+        externalLinkMap,
+        totalFound: attachmentUrls.length,
         downloaded: attachmentCount,
         imagesDownloaded: imageCount,
+        externalLinksFound: externalLinkCount,
         skipped: skippedCount,
         failed: failedCount
       })
@@ -1430,41 +1477,66 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
   private generateAttachmentManifest(downloadResult: {
     attachmentMap: Record<string, string>
     imageMap: Record<string, string>
+    externalLinkMap?: Record<string, { title: string; url: string; source?: string }>
     totalFound: number
     downloaded: number
     imagesDownloaded: number
+    externalLinksFound?: number
     skipped: number
     failed: number
   }): string {
-    const { attachmentMap, imageMap, totalFound, downloaded, imagesDownloaded, skipped, failed } = downloadResult
+    const { attachmentMap, imageMap, externalLinkMap = {}, totalFound, downloaded, imagesDownloaded, externalLinksFound = 0, skipped, failed } = downloadResult
 
-    let manifest = '\n## Downloaded Attachments\n\n'
+    let manifest = '\n## Attachments & External Links\n\n'
 
     if (totalFound === 0) {
-      manifest += 'No attachments were found in this issue.\n'
+      manifest += 'No attachments or external links were found in this issue.\n'
       return manifest
     }
 
-    manifest += `Found ${totalFound} attachments. Downloaded ${downloaded}`
-    if (imagesDownloaded > 0) {
-      manifest += ` (including ${imagesDownloaded} images)`
+    // Summary line
+    const parts: string[] = []
+    if (downloaded > 0) {
+      parts.push(`Downloaded ${downloaded} file${downloaded !== 1 ? 's' : ''}`)
+      if (imagesDownloaded > 0) {
+        parts[parts.length - 1] += ` (including ${imagesDownloaded} image${imagesDownloaded !== 1 ? 's' : ''})`
+      }
+    }
+    if (externalLinksFound > 0) {
+      parts.push(`Found ${externalLinksFound} external link${externalLinksFound !== 1 ? 's' : ''}`)
     }
     if (skipped > 0) {
-      manifest += `, skipped ${skipped} due to ${downloaded} attachment limit`
+      parts.push(`skipped ${skipped} due to attachment limit`)
     }
     if (failed > 0) {
-      manifest += `, failed to download ${failed}`
+      parts.push(`${failed} failed to download`)
     }
-    manifest += '.\n\n'
+
+    manifest += `${parts.join(', ')}.\n\n`
 
     if (failed > 0) {
       manifest += '**Note**: Some attachments failed to download. This may be due to authentication issues or the files being unavailable. The agent will continue processing the issue with the available information.\n\n'
     }
 
-    manifest += 'Attachments have been downloaded to the `~/.cyrus/<workspace>/attachments` directory:\n\n'
+    // List external links first (these are most important for context)
+    if (Object.keys(externalLinkMap).length > 0) {
+      manifest += '### External Links\n\n'
+      Object.entries(externalLinkMap).forEach(([url, linkInfo], index) => {
+        manifest += `${index + 1}. **${linkInfo.title}**\n`
+        manifest += `   - URL: ${url}\n`
+        if (linkInfo.source) {
+          manifest += `   - Source: ${linkInfo.source}\n`
+        }
+        manifest += '\n'
+      })
+      manifest += 'These external links provide additional context for this issue. You can use the WebFetch tool to retrieve content from these URLs if needed.\n\n'
+    }
 
-    // List images first
+    // List images
     if (Object.keys(imageMap).length > 0) {
+      if (downloaded > 0) {
+        manifest += 'Attachments have been downloaded to the `~/.cyrus/<workspace>/attachments` directory:\n\n'
+      }
       manifest += '### Images\n'
       Object.entries(imageMap).forEach(([url, localPath], index) => {
         const filename = basename(localPath)
@@ -1476,6 +1548,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
 
     // List other attachments
     if (Object.keys(attachmentMap).length > 0) {
+      if (Object.keys(imageMap).length === 0 && downloaded > 0) {
+        manifest += 'Attachments have been downloaded to the `~/.cyrus/<workspace>/attachments` directory:\n\n'
+      }
       manifest += '### Other Attachments\n'
       Object.entries(attachmentMap).forEach(([url, localPath], index) => {
         const filename = basename(localPath)
