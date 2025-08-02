@@ -1534,7 +1534,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
 
     // List images
     if (Object.keys(imageMap).length > 0) {
-      if (downloaded > 0) {
+      if (downloaded > 0 && Object.keys(externalLinkMap).length === 0) {
         manifest += 'Attachments have been downloaded to the `~/.cyrus/<workspace>/attachments` directory:\n\n'
       }
       manifest += '### Images\n'
@@ -1548,7 +1548,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
 
     // List other attachments
     if (Object.keys(attachmentMap).length > 0) {
-      if (Object.keys(imageMap).length === 0 && downloaded > 0) {
+      if (Object.keys(imageMap).length === 0 && Object.keys(externalLinkMap).length === 0 && downloaded > 0) {
         manifest += 'Attachments have been downloaded to the `~/.cyrus/<workspace>/attachments` directory:\n\n'
       }
       manifest += '### Other Attachments\n'
