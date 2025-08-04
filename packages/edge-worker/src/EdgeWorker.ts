@@ -1348,7 +1348,6 @@ Branch: ${issue.branchName}
 Working directory: ${repository.repositoryPath}
 Base branch: ${repository.baseBranch}
 
-<<<<<<< HEAD
 ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please analyze this issue and help implement a solution.`
       
       return { prompt: fallbackPrompt, version: undefined }
@@ -2135,7 +2134,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
       console.error(`[EdgeWorker] Error posting instant prompted acknowledgment:`, error)
     }
   }
-=======
 ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
 
 			return { prompt: fallbackPrompt, version: undefined };
