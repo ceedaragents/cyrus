@@ -1,42 +1,42 @@
 {
-  "name": "cyrus-edge-worker",
-  "version": "0.0.19",
-  "description": "Unified edge worker for processing Linear issues with Claude",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist",
-    "prompt-template-v2.md",
-    "prompt-template.md",
-    "label-prompt-template.md",
-    "prompts"
-  ],
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "test:watch": "vitest --watch",
-    "test:coverage": "vitest --coverage",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@linear/sdk": "^52.0.0",
-    "@ngrok/ngrok": "^1.5.1",
-    "cyrus-claude-runner": "workspace:*",
-    "cyrus-core": "workspace:*",
-    "cyrus-ndjson-client": "workspace:*",
-    "file-type": "^18.7.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "@vitest/coverage-v8": "^1.6.1",
-    "axios": "^1.6.0",
-    "typescript": "^5.3.3",
-    "vitest": "^1.1.0"
-  },
-  "publishConfig": {
-    "access": "public"
-  }
+	"name": "cyrus-edge-worker",
+	"version": "0.0.20",
+	"description": "Unified edge worker for processing Linear issues with Claude",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist",
+		"prompt-template-v2.md",
+		"prompt-template.md",
+		"label-prompt-template.md",
+		"prompts"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"test:watch": "vitest --watch",
+		"test:coverage": "vitest --coverage",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@linear/sdk": "^54.0.0",
+		"@ngrok/ngrok": "^1.5.1",
+		"cyrus-claude-runner": "workspace:*",
+		"cyrus-core": "workspace:*",
+		"cyrus-ndjson-client": "workspace:*",
+		"file-type": "^18.7.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@vitest/coverage-v8": "^1.6.1",
+		"axios": "^1.6.0",
+		"typescript": "^5.3.3",
+		"vitest": "^1.1.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
 }

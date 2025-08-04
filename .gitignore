@@ -1,6 +1,8 @@
 # Dependency directories
 node_modules/
 
+tempdocs
+
 # Environment variables
 .env
 

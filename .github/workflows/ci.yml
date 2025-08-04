@@ -34,10 +34,14 @@ jobs:
         ANTHROPIC_API_KEY=test
         EOF
     
-    - name: Build packages
+    - name: Run Biome
+      run: pnpm biome ci
+    
+    - name: Build Packages
       run: pnpm build
     
-    - run: pnpm -r test:run
+    - name: Run Tests
+      run: pnpm -r test:run
     
     - name: Upload coverage
       uses: codecov/codecov-action@v3

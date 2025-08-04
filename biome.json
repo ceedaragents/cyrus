@@ -1,0 +1,31 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"files": {
+		"includes": ["**", "!**/dist-electron"]
+	},
+	"linter": {
+		"rules": {
+			"style": {
+				"noNonNullAssertion": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noArrayIndexKey": "off",
+				"noUnsafeDeclarationMerging": "off"
+			}
+		},
+		"domains": {
+			"react": "recommended",
+			"test": "recommended"
+		}
+	},
+	"formatter": {
+		"formatWithErrors": true
+	},
+	"vcs": {
+		"enabled": true,
+		"useIgnoreFile": true,
+		"clientKind": "git",
+		"defaultBranch": "main"
+	}
+}

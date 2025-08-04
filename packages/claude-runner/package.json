@@ -1,31 +1,31 @@
 {
-  "name": "cyrus-claude-runner",
-  "version": "0.0.14",
-  "description": "Claude process spawning and management for Cyrus",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.61",
-    "@anthropic-ai/sdk": "^0.57.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "dotenv": "^16.5.0",
-    "typescript": "^5.3.3",
-    "vitest": "^1.1.0"
-  },
-  "publishConfig": {
-    "access": "public"
-  }
+	"name": "cyrus-claude-runner",
+	"version": "0.0.15",
+	"description": "Claude process spawning and management for Cyrus",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@anthropic-ai/claude-code": "^1.0.61",
+		"@anthropic-ai/sdk": "^0.57.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"dotenv": "^16.5.0",
+		"typescript": "^5.3.3",
+		"vitest": "^1.1.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
 }

@@ -5,11 +5,45 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Enhanced Linear issue attachment handling to properly display external links (Sentry, GitHub, etc.)
+- Enhanced Linear issue attachment handling to properly add external links (Sentry, GitHub, etc.) to the agent's context
   - External links from Linear issues are now cataloged and displayed with title, URL, and source
   - Differentiates between Linear file uploads and external service links
   - Particularly useful for Sentry error links attached to bug reports
-  - External links are displayed in the attachment manifest but not downloaded
+
+## [0.1.38] - 2025-08-03
+
+### Added
+- Subscription management built right into the CLI (because who wants another dashboard?)
+  - `cyrus billing` - Opens your Stripe portal to manage subscription, payment methods, and download invoices
+  - `cyrus set-customer-id` - Saves your customer ID after signup (copy-paste friendly)
+  - Interactive prompt on startup if you're using our proxy without a subscription
+  - Self-hosting option for the DIY crowd who prefer their own Linear app and infrastructure
+  - existed in v0.1.34 but was missing since then
+
+## [0.1.37] - 2025-08-03
+
+### Fixed
+- Fixed "RateLimit exceeded" and `Cannot query field "agentContext" on type "AgentActivity".` errors when interacting with Linear API by updating SDK from v52 to v54
+  - Linear API had breaking changes that caused compatibility issues with SDK v52
+  - The outdated SDK was triggering excessive API calls leading to rate limit errors
+  - Upgrading to v54 resolves these compatibility issues and restores normal operation
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.8
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.20
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.37
 
 ## [0.1.36] - 2025-01-31
 

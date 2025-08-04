@@ -1,15 +1,16 @@
-import { Router } from 'itty-router'
-import type { Env, LinearWebhook } from './types'
-import { OAuthService } from './services/OAuthService'
-import { WebhookReceiver } from './services/WebhookReceiver'
-import { WebhookSender } from './services/WebhookSender'
-import type { EdgeWorkerRegistration } from './services/EdgeWorkerRegistry'
+import { Router } from "itty-router";
+import type { EdgeWorkerRegistration } from "./services/EdgeWorkerRegistry";
+import { OAuthService } from "./services/OAuthService";
+import { WebhookReceiver } from "./services/WebhookReceiver";
+import { WebhookSender } from "./services/WebhookSender";
+import type { Env, LinearWebhook } from "./types";
 
-const router = Router()
+const router = Router();
 
 // Dashboard
-router.get('/', (request: Request, env: Env) => {
-  return new Response(`
+router.get("/", (request: Request, _env: Env) => {
+	return new Response(
+		`
     <!DOCTYPE html>
     <html>
     <head>
@@ -55,96 +56,116 @@ router.get('/', (request: Request, env: Env) => {
       </div>
       
       <h2>Configuration:</h2>
-      <p>Edge workers should connect to: <strong>${request.url.replace(/\/$/, '')}</strong></p>
+      <p>Edge workers should connect to: <strong>${request.url.replace(/\/$/, "")}</strong></p>
     </body>
     </html>
-  `, {
-    status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
-  })
-})
+  `,
+		{
+			status: 200,
+			headers: { "Content-Type": "text/html; charset=utf-8" },
+		},
+	);
+});
 
 // OAuth routes
-router.get('/oauth/authorize', async (request: Request, env: Env) => {
-  const oauthService = new OAuthService(env)
-  return oauthService.handleAuthorize(request)
-})
+router.get("/oauth/authorize", async (request: Request, env: Env) => {
+	const oauthService = new OAuthService(env);
+	return oauthService.handleAuthorize(request);
+});
 
-router.get('/oauth/callback', async (request: Request, env: Env) => {
-  const oauthService = new OAuthService(env)
-  return oauthService.handleCallback(request)
-})
+router.get("/oauth/callback", async (request: Request, env: Env) => {
+	const oauthService = new OAuthService(env);
+	return oauthService.handleCallback(request);
+});
 
 // Webhook route
-router.post('/webhook', async (request: Request, env: Env, ctx: ExecutionContext) => {
-  const webhookSender = new WebhookSender(env)
-  
-  const webhookReceiver = new WebhookReceiver(env, async (webhook: LinearWebhook) => {
-    // Extract workspace ID from webhook
-    const workspaceId = webhook.organizationId
-    
-    if (!workspaceId) {
-      console.error('No organizationId in webhook, cannot route to edges')
-      return
-    }
-    
-    // Transform webhook to event
-    const event = webhookSender.transformWebhookToEvent(webhook)
-    
-    // Send to edge workers in the background
-    ctx.waitUntil(
-      webhookSender.sendWebhookToWorkspace(event, workspaceId)
-        .then(count => console.log(`Webhook for workspace ${workspaceId} sent to ${count} edge worker(s)`))
-        .catch(error => console.error('Failed to send webhook:', error))
-    )
-  })
-  
-  return webhookReceiver.handleWebhook(request)
-})
+router.post(
+	"/webhook",
+	async (request: Request, env: Env, ctx: ExecutionContext) => {
+		const webhookSender = new WebhookSender(env);
+
+		const webhookReceiver = new WebhookReceiver(
+			env,
+			async (webhook: LinearWebhook) => {
+				// Extract workspace ID from webhook
+				const workspaceId = webhook.organizationId;
+
+				if (!workspaceId) {
+					console.error("No organizationId in webhook, cannot route to edges");
+					return;
+				}
+
+				// Transform webhook to event
+				const event = webhookSender.transformWebhookToEvent(webhook);
+
+				// Send to edge workers in the background
+				ctx.waitUntil(
+					webhookSender
+						.sendWebhookToWorkspace(event, workspaceId)
+						.then((count) =>
+							console.log(
+								`Webhook for workspace ${workspaceId} sent to ${count} edge worker(s)`,
+							),
+						)
+						.catch((error) => console.error("Failed to send webhook:", error)),
+				);
+			},
+		);
+
+		return webhookReceiver.handleWebhook(request);
+	},
+);
 
 // Edge worker registration route
-router.post('/edge/register', async (request: Request, env: Env) => {
-  try {
-    const webhookSender = new WebhookSender(env)
-    const registry = webhookSender.getRegistry()
-    
-    const registration = await request.json() as EdgeWorkerRegistration
-    const result = await registry.registerEdgeWorker(registration)
-    
-    return new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    })
-  } catch (error) {
-    console.error('Edge worker registration failed:', error)
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : 'Registration failed' 
-    }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    })
-  }
-})
+router.post("/edge/register", async (request: Request, env: Env) => {
+	try {
+		const webhookSender = new WebhookSender(env);
+		const registry = webhookSender.getRegistry();
+
+		const registration = (await request.json()) as EdgeWorkerRegistration;
+		const result = await registry.registerEdgeWorker(registration);
+
+		return new Response(JSON.stringify(result), {
+			status: 200,
+			headers: { "Content-Type": "application/json" },
+		});
+	} catch (error) {
+		console.error("Edge worker registration failed:", error);
+		return new Response(
+			JSON.stringify({
+				error: error instanceof Error ? error.message : "Registration failed",
+			}),
+			{
+				status: 400,
+				headers: { "Content-Type": "application/json" },
+			},
+		);
+	}
+});
 
 // Status update route
-router.post('/events/status', async (request: Request, env: Env) => {
-  const webhookSender = new WebhookSender(env)
-  return webhookSender.handleStatusUpdate(request)
-})
+router.post("/events/status", async (request: Request, env: Env) => {
+	const webhookSender = new WebhookSender(env);
+	return webhookSender.handleStatusUpdate(request);
+});
 
 // 404 handler
-router.all('*', () => {
-  return new Response('Not found', { status: 404 })
-})
+router.all("*", () => {
+	return new Response("Not found", { status: 404 });
+});
 
 // Export worker
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    try {
-      return await router.handle(request, env, ctx)
-    } catch (error) {
-      console.error('Worker error:', error)
-      return new Response('Internal server error', { status: 500 })
-    }
-  }
-}
+	async fetch(
+		request: Request,
+		env: Env,
+		ctx: ExecutionContext,
+	): Promise<Response> {
+		try {
+			return await router.handle(request, env, ctx);
+		} catch (error) {
+			console.error("Worker error:", error);
+			return new Response("Internal server error", { status: 500 });
+		}
+	},
+};

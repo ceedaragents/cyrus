@@ -1,6 +1,17 @@
 packages:
   - packages/*
   - apps/*
+
+onlyBuiltDependencies:
+  - '@anthropic-ai/claude-code'
+  - '@tailwindcss/oxide'
+  - core-js
+  - electron
+  - electron-winstaller
+  - esbuild
+  - sharp
+  - workerd
+
 overrides:
   semver@>=7.0.0 <7.5.2: '>=7.5.2'
   esbuild@<=0.24.2: '>=0.25.0'

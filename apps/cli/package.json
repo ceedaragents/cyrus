@@ -1,63 +1,63 @@
 {
-  "name": "cyrus-ai",
-  "version": "0.1.36",
-  "description": "AI-powered Linear issue automation using Claude",
-  "main": "dist/app.js",
-  "types": "dist/app.d.ts",
-  "bin": {
-    "cyrus": "./dist/app.js"
-  },
-  "type": "module",
-  "scripts": {
-    "build": "tsc",
-    "start": "node dist/app.js",
-    "dev": "tsc --watch",
-    "test": "vitest run",
-    "test:run": "vitest run --passWithNoTests",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "cd ../.. && pnpm build"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ceedaragents/cyrus.git",
-    "directory": "apps/cli"
-  },
-  "keywords": [
-    "linear",
-    "claude",
-    "ai",
-    "automation",
-    "cli"
-  ],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "@linear/sdk": "^52.0.0",
-    "cyrus-core": "workspace:*",
-    "cyrus-claude-runner": "workspace:*",
-    "cyrus-edge-worker": "workspace:*",
-    "cyrus-ndjson-client": "workspace:*",
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0",
-    "file-type": "^21.0.0",
-    "fs-extra": "^11.3.0",
-    "node-fetch": "^2.7.0",
-    "open": "^10.0.0",
-    "zod": "^3.24.4"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "@vitest/ui": "^3.1.4",
-    "nodemon": "^2.0.22",
-    "typescript": "^5.3.3",
-    "vitest": "^3.1.4"
-  }
+	"name": "cyrus-ai",
+	"version": "0.1.38",
+	"description": "AI-powered Linear issue automation using Claude",
+	"main": "dist/app.js",
+	"types": "dist/app.d.ts",
+	"bin": {
+		"cyrus": "./dist/app.js"
+	},
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"start": "node dist/app.js",
+		"dev": "tsc --watch",
+		"test": "vitest run",
+		"test:run": "vitest run --passWithNoTests",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"prepublishOnly": "cd ../.. && pnpm build"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ceedaragents/cyrus.git",
+		"directory": "apps/cli"
+	},
+	"keywords": [
+		"linear",
+		"claude",
+		"ai",
+		"automation",
+		"cli"
+	],
+	"author": "",
+	"license": "MIT",
+	"dependencies": {
+		"@linear/sdk": "^54.0.0",
+		"cyrus-core": "workspace:*",
+		"cyrus-claude-runner": "workspace:*",
+		"cyrus-edge-worker": "workspace:*",
+		"cyrus-ndjson-client": "workspace:*",
+		"dotenv": "^16.5.0",
+		"express": "^5.1.0",
+		"file-type": "^21.0.0",
+		"fs-extra": "^11.3.0",
+		"node-fetch": "^2.7.0",
+		"open": "^10.0.0",
+		"zod": "^3.24.4"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@vitest/ui": "^3.1.4",
+		"nodemon": "^2.0.22",
+		"typescript": "^5.3.3",
+		"vitest": "^3.1.4"
+	}
 }

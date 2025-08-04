@@ -1,25 +1,22 @@
 {
-  "name": "@cyrus/proxy-worker",
-  "version": "1.0.0",
-  "description": "Cloudflare Workers edge proxy for Cyrus - handles Linear webhooks and OAuth",
-  "main": "src/index.ts",
-  "type": "module",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "preview": "wrangler preview",
-    "tail": "wrangler tail",
-    "format": "prettier --write .",
-    "typecheck": "tsc --noEmit",
-    "test:run": "echo 'No tests configured for proxy-worker'"
-  },
-  "dependencies": {
-    "itty-router": "^4.0.23"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240117.0",
-    "prettier": "^3.2.4",
-    "typescript": "^5.3.3",
-    "wrangler": "^4.22.0"
-  }
+	"name": "@cyrus/proxy-worker",
+	"version": "1.0.0",
+	"description": "Cloudflare Workers edge proxy for Cyrus - handles Linear webhooks and OAuth",
+	"main": "src/index.ts",
+	"type": "module",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy",
+		"preview": "wrangler preview",
+		"tail": "wrangler tail",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"itty-router": "^4.0.23"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20240117.0",
+		"typescript": "^5.3.3",
+		"wrangler": "^4.22.0"
+	}
 }

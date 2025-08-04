@@ -1,27 +1,27 @@
 {
-  "repositories": [
-    {
-      "id": "repo1",
-      "name": "Main Repository",
-      "repositoryPath": "/path/to/main/repo",
-      "baseBranch": "main",
-      "linearWorkspaceId": "workspace-id-1",
-      "linearToken": "your-linear-oauth-token-1",
-      "workspaceBaseDir": "/path/to/workspaces/repo1",
-      "isActive": true,
-      "promptTemplatePath": "./agent-prompt-template.md",
-      "mcpConfigPath": "./mcp-config.json"
-    },
-    {
-      "id": "repo2",
-      "name": "Secondary Repository",
-      "repositoryPath": "/path/to/secondary/repo",
-      "baseBranch": "develop",
-      "linearWorkspaceId": "workspace-id-2",
-      "linearToken": "your-linear-oauth-token-2",
-      "workspaceBaseDir": "/path/to/workspaces/repo2",
-      "isActive": true,
-      "promptTemplatePath": "./custom-prompt.md"
-    }
-  ]
+	"repositories": [
+		{
+			"id": "repo1",
+			"name": "Main Repository",
+			"repositoryPath": "/path/to/main/repo",
+			"baseBranch": "main",
+			"linearWorkspaceId": "workspace-id-1",
+			"linearToken": "your-linear-oauth-token-1",
+			"workspaceBaseDir": "/path/to/workspaces/repo1",
+			"isActive": true,
+			"promptTemplatePath": "./agent-prompt-template.md",
+			"mcpConfigPath": "./mcp-config.json"
+		},
+		{
+			"id": "repo2",
+			"name": "Secondary Repository",
+			"repositoryPath": "/path/to/secondary/repo",
+			"baseBranch": "develop",
+			"linearWorkspaceId": "workspace-id-2",
+			"linearToken": "your-linear-oauth-token-2",
+			"workspaceBaseDir": "/path/to/workspaces/repo2",
+			"isActive": true,
+			"promptTemplatePath": "./custom-prompt.md"
+		}
+	]
 }
