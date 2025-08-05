@@ -541,11 +541,28 @@ export class EdgeWorker extends EventEmitter {
 			workspace.path,
 		);
 
-		// Build allowed directories list
-		const allowedDirectories: string[] = [];
-		if (attachmentResult.attachmentsDir) {
-			allowedDirectories.push(attachmentResult.attachmentsDir);
+		// Pre-create attachments directory even if no attachments exist yet
+		const workspaceFolderName = basename(workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		await mkdir(attachmentsDir, { recursive: true });
+
+		// Build allowed directories list - always include attachments directory
+		const allowedDirectories: string[] = [attachmentsDir];
+		
+		// Add the workspace path as well if it's different
+		if (workspace.path !== attachmentsDir) {
+			allowedDirectories.push(workspace.path);
 		}
+		
+		console.log(
+			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
+			allowedDirectories,
+		);
 
 		// Build allowed tools list with Linear MCP tools
 		const allowedTools = this.buildAllowedTools(repository);
@@ -1725,6 +1742,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
+		// Create attachments directory in home directory
+		const workspaceFolderName = basename(workspacePath);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		
 		try {
 			const attachmentMap: Record<string, string> = {};
 			const imageMap: Record<string, string> = {};
@@ -1733,15 +1759,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			let skippedCount = 0;
 			let failedCount = 0;
 			const maxAttachments = 10;
-
-			// Create attachments directory in home directory
-			const workspaceFolderName = basename(workspacePath);
-			const attachmentsDir = join(
-				homedir(),
-				".cyrus",
-				workspaceFolderName,
-				"attachments",
-			);
 
 			// Ensure directory exists
 			await mkdir(attachmentsDir, { recursive: true });
@@ -1863,14 +1880,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				nativeAttachments,
 			});
 
-			// Return manifest and directory path if any attachments were downloaded
+			// Always return the attachments directory path (it's pre-created)
 			return {
 				manifest,
-				attachmentsDir: attachmentCount > 0 ? attachmentsDir : null,
+				attachmentsDir: attachmentsDir,
 			};
 		} catch (error) {
 			console.error("Error downloading attachments:", error);
-			return { manifest: "", attachmentsDir: null }; // Return empty manifest on error
+			// Still return the attachments directory even on error
+			return { manifest: "", attachmentsDir: attachmentsDir };
 		}
 	}
 
@@ -2124,7 +2142,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		if (totalFound === 0 && nativeAttachments.length === 0) {
-			manifest += "No attachments were found in this issue.\n";
+			manifest += "No attachments were found in this issue.\n\n";
+			manifest += "The attachments directory `~/.cyrus/<workspace>/attachments` has been created and is available for any future attachments that may be added to this issue.\n";
 			return manifest;
 		}
 

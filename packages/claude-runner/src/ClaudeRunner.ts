@@ -302,6 +302,14 @@ export class ClaudeRunner extends EventEmitter {
 					`[ClaudeRunner] Final MCP servers after merge: ${Object.keys(mcpServers).join(", ")}`,
 				);
 			}
+			
+			// Log allowed directories if configured
+			if (this.config.allowedDirectories) {
+				console.log(
+					`[ClaudeRunner] Allowed directories configured:`,
+					this.config.allowedDirectories,
+				);
+			}
 
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
@@ -309,6 +317,9 @@ export class ClaudeRunner extends EventEmitter {
 					abortController: this.abortController,
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
+					}),
+					...(this.config.allowedDirectories && {
+						allowedDirectories: this.config.allowedDirectories,
 					}),
 					...(this.config.systemPrompt && {
 						customSystemPrompt: this.config.systemPrompt,
