@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -747,10 +747,12 @@ export class EdgeWorker extends EventEmitter {
 			// Check for attachments in the new comment
 			const attachmentUrls = this.extractAttachmentUrls(promptBody);
 			let attachmentManifest = "";
-			
+
 			if (attachmentUrls.length > 0) {
-				console.log(`[EdgeWorker] Found ${attachmentUrls.length} attachments in new comment`);
-				
+				console.log(
+					`[EdgeWorker] Found ${attachmentUrls.length} attachments in new comment`,
+				);
+
 				// Create attachments directory if it doesn't exist
 				const workspaceFolderName = basename(session.workspace.path);
 				const attachmentsDir = join(
@@ -764,7 +766,7 @@ export class EdgeWorker extends EventEmitter {
 				// Count existing attachments
 				const existingFiles = await readdir(attachmentsDir).catch(() => []);
 				const existingAttachmentCount = existingFiles.filter(
-					file => file.startsWith('attachment_') || file.startsWith('image_')
+					(file) => file.startsWith("attachment_") || file.startsWith("image_"),
 				).length;
 
 				// Download new attachments from the comment
@@ -777,9 +779,11 @@ export class EdgeWorker extends EventEmitter {
 
 				// Generate manifest for new attachments
 				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
-				
+
 				if (attachmentManifest) {
-					console.log(`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} new attachments from comment`);
+					console.log(
+						`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} new attachments from comment`,
+					);
 				}
 			}
 
@@ -1940,7 +1944,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Extract URLs from the comment
 		const urls = this.extractAttachmentUrls(commentBody);
-		
+
 		if (urls.length === 0) {
 			return {
 				newAttachmentMap,
@@ -1956,7 +1960,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		for (const url of urls) {
 			// Skip if we've already reached the total attachment limit
 			if (existingAttachmentCount + newAttachmentCount >= maxAttachments) {
-				console.warn(`Skipping attachment due to ${maxAttachments} total attachment limit`);
+				console.warn(
+					`Skipping attachment due to ${maxAttachments} total attachment limit`,
+				);
 				break;
 			}
 
@@ -1965,11 +1971,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			const tempFilename = `attachment_${attachmentNumber}.tmp`;
 			const tempPath = join(attachmentsDir, tempFilename);
 
-			const result = await this.downloadAttachment(
-				url,
-				tempPath,
-				linearToken,
-			);
+			const result = await this.downloadAttachment(url, tempPath, linearToken);
 
 			if (result.success) {
 				// Determine the final filename based on type
@@ -1977,7 +1979,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				if (result.isImage) {
 					newImageCount++;
 					// Count existing images to get correct numbering
-					const existingImageCount = await this.countExistingImages(attachmentsDir);
+					const existingImageCount =
+						await this.countExistingImages(attachmentsDir);
 					finalFilename = `image_${existingImageCount + newImageCount}${result.fileType || ".png"}`;
 				} else {
 					finalFilename = `attachment_${attachmentNumber}${result.fileType || ""}`;
@@ -2015,7 +2018,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private async countExistingImages(attachmentsDir: string): Promise<number> {
 		try {
 			const files = await readdir(attachmentsDir);
-			return files.filter(file => file.startsWith('image_')).length;
+			return files.filter((file) => file.startsWith("image_")).length;
 		} catch {
 			return 0;
 		}
@@ -2030,15 +2033,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		totalNewAttachments: number;
 		failedCount: number;
 	}): string {
-		const { newAttachmentMap, newImageMap, totalNewAttachments, failedCount } = result;
+		const { newAttachmentMap, newImageMap, totalNewAttachments, failedCount } =
+			result;
 
 		if (totalNewAttachments === 0) {
 			return "";
 		}
 
 		let manifest = "\n## New Attachments from Comment\n\n";
-		
-		manifest += `Downloaded ${totalNewAttachments} new attachment${totalNewAttachments > 1 ? 's' : ''}`;
+
+		manifest += `Downloaded ${totalNewAttachments} new attachment${totalNewAttachments > 1 ? "s" : ""}`;
 		if (failedCount > 0) {
 			manifest += ` (${failedCount} failed)`;
 		}

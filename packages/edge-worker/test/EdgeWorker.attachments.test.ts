@@ -169,14 +169,24 @@ describe("EdgeWorker - Native Attachments", () => {
 
 	describe("downloadCommentAttachments", () => {
 		it("should download attachments from comment body", async () => {
-			const commentBody = "Check this out: https://uploads.linear.app/image1.png and https://uploads.linear.app/doc.pdf";
+			const commentBody =
+				"Check this out: https://uploads.linear.app/image1.png and https://uploads.linear.app/doc.pdf";
 			const attachmentsDir = "/tmp/test-attachments";
-			
+
 			// Mock downloadAttachment method
-			(edgeWorker as any).downloadAttachment = vi.fn()
-				.mockResolvedValueOnce({ success: true, fileType: ".png", isImage: true })
-				.mockResolvedValueOnce({ success: true, fileType: ".pdf", isImage: false });
-			
+			(edgeWorker as any).downloadAttachment = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					fileType: ".png",
+					isImage: true,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					fileType: ".pdf",
+					isImage: false,
+				});
+
 			// Mock countExistingImages
 			(edgeWorker as any).countExistingImages = vi.fn().mockResolvedValue(0);
 
@@ -194,11 +204,13 @@ describe("EdgeWorker - Native Attachments", () => {
 		});
 
 		it("should respect attachment limit when downloading from comments", async () => {
-			const commentBody = "Multiple files: https://uploads.linear.app/1.png https://uploads.linear.app/2.png https://uploads.linear.app/3.png";
+			const commentBody =
+				"Multiple files: https://uploads.linear.app/1.png https://uploads.linear.app/2.png https://uploads.linear.app/3.png";
 			const attachmentsDir = "/tmp/test-attachments";
-			
+
 			// Mock successful downloads
-			(edgeWorker as any).downloadAttachment = vi.fn()
+			(edgeWorker as any).downloadAttachment = vi
+				.fn()
 				.mockResolvedValue({ success: true, fileType: ".png", isImage: true });
 
 			const result = await (edgeWorker as any).downloadCommentAttachments(
@@ -231,9 +243,10 @@ describe("EdgeWorker - Native Attachments", () => {
 		it("should handle download failures gracefully", async () => {
 			const commentBody = "File: https://uploads.linear.app/fail.pdf";
 			const attachmentsDir = "/tmp/test-attachments";
-			
+
 			// Mock download failure
-			(edgeWorker as any).downloadAttachment = vi.fn()
+			(edgeWorker as any).downloadAttachment = vi
+				.fn()
 				.mockResolvedValue({ success: false });
 
 			const result = await (edgeWorker as any).downloadCommentAttachments(
@@ -252,16 +265,20 @@ describe("EdgeWorker - Native Attachments", () => {
 		it("should generate manifest for new comment attachments", () => {
 			const result = {
 				newAttachmentMap: {
-					"https://uploads.linear.app/doc.pdf": "/tmp/attachments/attachment_1.pdf",
+					"https://uploads.linear.app/doc.pdf":
+						"/tmp/attachments/attachment_1.pdf",
 				},
 				newImageMap: {
-					"https://uploads.linear.app/screenshot.png": "/tmp/attachments/image_1.png",
+					"https://uploads.linear.app/screenshot.png":
+						"/tmp/attachments/image_1.png",
 				},
 				totalNewAttachments: 2,
 				failedCount: 0,
 			};
 
-			const manifest = (edgeWorker as any).generateNewAttachmentManifest(result);
+			const manifest = (edgeWorker as any).generateNewAttachmentManifest(
+				result,
+			);
 
 			expect(manifest).toContain("## New Attachments from Comment");
 			expect(manifest).toContain("Downloaded 2 new attachments");
@@ -279,7 +296,9 @@ describe("EdgeWorker - Native Attachments", () => {
 				failedCount: 0,
 			};
 
-			const manifest = (edgeWorker as any).generateNewAttachmentManifest(result);
+			const manifest = (edgeWorker as any).generateNewAttachmentManifest(
+				result,
+			);
 			expect(manifest).toBe("");
 		});
 
@@ -287,13 +306,16 @@ describe("EdgeWorker - Native Attachments", () => {
 			const result = {
 				newAttachmentMap: {},
 				newImageMap: {
-					"https://uploads.linear.app/success.png": "/tmp/attachments/image_1.png",
+					"https://uploads.linear.app/success.png":
+						"/tmp/attachments/image_1.png",
 				},
 				totalNewAttachments: 1,
 				failedCount: 2,
 			};
 
-			const manifest = (edgeWorker as any).generateNewAttachmentManifest(result);
+			const manifest = (edgeWorker as any).generateNewAttachmentManifest(
+				result,
+			);
 			expect(manifest).toContain("Downloaded 1 new attachment (2 failed)");
 		});
 	});
