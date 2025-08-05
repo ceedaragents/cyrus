@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -744,6 +744,45 @@ export class EdgeWorker extends EventEmitter {
 			);
 			const systemPrompt = systemPromptResult?.prompt;
 
+			// Check for attachments in the new comment
+			const attachmentUrls = this.extractAttachmentUrls(promptBody);
+			let attachmentManifest = "";
+			
+			if (attachmentUrls.length > 0) {
+				console.log(`[EdgeWorker] Found ${attachmentUrls.length} attachments in new comment`);
+				
+				// Create attachments directory if it doesn't exist
+				const workspaceFolderName = basename(session.workspace.path);
+				const attachmentsDir = join(
+					homedir(),
+					".cyrus",
+					workspaceFolderName,
+					"attachments",
+				);
+				await mkdir(attachmentsDir, { recursive: true });
+
+				// Count existing attachments
+				const existingFiles = await readdir(attachmentsDir).catch(() => []);
+				const existingAttachmentCount = existingFiles.filter(
+					file => file.startsWith('attachment_') || file.startsWith('image_')
+				).length;
+
+				// Download new attachments from the comment
+				const downloadResult = await this.downloadCommentAttachments(
+					promptBody,
+					attachmentsDir,
+					repository.linearToken,
+					existingAttachmentCount,
+				);
+
+				// Generate manifest for new attachments
+				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
+				
+				if (attachmentManifest) {
+					console.log(`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} new attachments from comment`);
+				}
+			}
+
 			// Create new runner with resume mode if we have a Claude session ID
 			// Always append the last message marker to prevent duplication
 			const lastMessageMarker =
@@ -774,11 +813,17 @@ export class EdgeWorker extends EventEmitter {
 			// Save state after mapping changes
 			await this.savePersistedState();
 
+			// Prepare the prompt with attachment manifest
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
 			// Start streaming session with the comment as initial prompt
 			console.log(
 				`[EdgeWorker] Starting new streaming session for issue ${issue.identifier}`,
 			);
-			await runner.startStreaming(promptBody);
+			await runner.startStreaming(fullPrompt);
 		} catch (error) {
 			console.error("Failed to continue conversation:", error);
 			// Remove any partially created session
@@ -1866,6 +1911,162 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			console.error(`Error downloading attachment:`, error);
 			return { success: false };
 		}
+	}
+
+	/**
+	 * Download attachments from a specific comment
+	 * @param commentBody The body text of the comment
+	 * @param attachmentsDir Directory where attachments should be saved
+	 * @param linearToken Linear API token
+	 * @param existingAttachmentCount Current number of attachments already downloaded
+	 */
+	private async downloadCommentAttachments(
+		commentBody: string,
+		attachmentsDir: string,
+		linearToken: string,
+		existingAttachmentCount: number,
+	): Promise<{
+		newAttachmentMap: Record<string, string>;
+		newImageMap: Record<string, string>;
+		totalNewAttachments: number;
+		failedCount: number;
+	}> {
+		const newAttachmentMap: Record<string, string> = {};
+		const newImageMap: Record<string, string> = {};
+		let newAttachmentCount = 0;
+		let newImageCount = 0;
+		let failedCount = 0;
+		const maxAttachments = 10;
+
+		// Extract URLs from the comment
+		const urls = this.extractAttachmentUrls(commentBody);
+		
+		if (urls.length === 0) {
+			return {
+				newAttachmentMap,
+				newImageMap,
+				totalNewAttachments: 0,
+				failedCount: 0,
+			};
+		}
+
+		console.log(`Found ${urls.length} attachment URLs in new comment`);
+
+		// Download new attachments
+		for (const url of urls) {
+			// Skip if we've already reached the total attachment limit
+			if (existingAttachmentCount + newAttachmentCount >= maxAttachments) {
+				console.warn(`Skipping attachment due to ${maxAttachments} total attachment limit`);
+				break;
+			}
+
+			// Generate filename based on total attachment count
+			const attachmentNumber = existingAttachmentCount + newAttachmentCount + 1;
+			const tempFilename = `attachment_${attachmentNumber}.tmp`;
+			const tempPath = join(attachmentsDir, tempFilename);
+
+			const result = await this.downloadAttachment(
+				url,
+				tempPath,
+				linearToken,
+			);
+
+			if (result.success) {
+				// Determine the final filename based on type
+				let finalFilename: string;
+				if (result.isImage) {
+					newImageCount++;
+					// Count existing images to get correct numbering
+					const existingImageCount = await this.countExistingImages(attachmentsDir);
+					finalFilename = `image_${existingImageCount + newImageCount}${result.fileType || ".png"}`;
+				} else {
+					finalFilename = `attachment_${attachmentNumber}${result.fileType || ""}`;
+				}
+
+				const finalPath = join(attachmentsDir, finalFilename);
+
+				// Rename the file to include the correct extension
+				await rename(tempPath, finalPath);
+
+				// Store in appropriate map
+				if (result.isImage) {
+					newImageMap[url] = finalPath;
+				} else {
+					newAttachmentMap[url] = finalPath;
+				}
+				newAttachmentCount++;
+			} else {
+				failedCount++;
+				console.warn(`Failed to download attachment: ${url}`);
+			}
+		}
+
+		return {
+			newAttachmentMap,
+			newImageMap,
+			totalNewAttachments: newAttachmentCount,
+			failedCount,
+		};
+	}
+
+	/**
+	 * Count existing images in the attachments directory
+	 */
+	private async countExistingImages(attachmentsDir: string): Promise<number> {
+		try {
+			const files = await readdir(attachmentsDir);
+			return files.filter(file => file.startsWith('image_')).length;
+		} catch {
+			return 0;
+		}
+	}
+
+	/**
+	 * Generate attachment manifest for new comment attachments
+	 */
+	private generateNewAttachmentManifest(result: {
+		newAttachmentMap: Record<string, string>;
+		newImageMap: Record<string, string>;
+		totalNewAttachments: number;
+		failedCount: number;
+	}): string {
+		const { newAttachmentMap, newImageMap, totalNewAttachments, failedCount } = result;
+
+		if (totalNewAttachments === 0) {
+			return "";
+		}
+
+		let manifest = "\n## New Attachments from Comment\n\n";
+		
+		manifest += `Downloaded ${totalNewAttachments} new attachment${totalNewAttachments > 1 ? 's' : ''}`;
+		if (failedCount > 0) {
+			manifest += ` (${failedCount} failed)`;
+		}
+		manifest += ".\n\n";
+
+		// List new images
+		if (Object.keys(newImageMap).length > 0) {
+			manifest += "### New Images\n";
+			Object.entries(newImageMap).forEach(([url, localPath], index) => {
+				const filename = basename(localPath);
+				manifest += `${index + 1}. ${filename} - Original URL: ${url}\n`;
+				manifest += `   Local path: ${localPath}\n\n`;
+			});
+			manifest += "You can use the Read tool to view these images.\n\n";
+		}
+
+		// List new other attachments
+		if (Object.keys(newAttachmentMap).length > 0) {
+			manifest += "### New Attachments\n";
+			Object.entries(newAttachmentMap).forEach(([url, localPath], index) => {
+				const filename = basename(localPath);
+				manifest += `${index + 1}. ${filename} - Original URL: ${url}\n`;
+				manifest += `   Local path: ${localPath}\n\n`;
+			});
+			manifest += "You can use the Read tool to view these files.\n\n";
+		}
+
+		return manifest;
 	}
 
 	/**
