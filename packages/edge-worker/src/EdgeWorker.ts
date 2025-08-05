@@ -19,7 +19,9 @@ import type {
 	// LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedWebhook,
 	LinearWebhook,
+	LinearWebhookAgentSession,
 	LinearWebhookComment,
+	LinearWebhookCreator,
 	LinearWebhookIssue,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
@@ -371,7 +373,13 @@ export class EdgeWorker extends EventEmitter {
 					console.log(
 						`[EdgeWorker] Processing Sentry-created issue assignment: ${webhook.notification.issue.identifier}`,
 					);
-					await this.handleSentryIssueAssignment(webhook, repository);
+					// Create a synthetic agent session webhook and process it through the normal flow
+					const syntheticWebhook =
+						this.createSyntheticAgentSessionWebhook(webhook);
+					await this.handleAgentSessionCreatedWebhook(
+						syntheticWebhook,
+						repository,
+					);
 				} else {
 					console.log(
 						`[EdgeWorker] Ignoring traditional issue assigned webhook - using agent session events instead`,
@@ -2329,174 +2337,69 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Handle direct assignment of Sentry-created issues by creating a synthetic agent session
+	 * Create a synthetic agent session webhook from a direct assignment webhook
 	 * @param webhook The issue assigned webhook
-	 * @param repository Repository configuration
+	 * @returns A synthetic agent session created webhook
 	 */
-	private async handleSentryIssueAssignment(
+	private createSyntheticAgentSessionWebhook(
 		webhook: LinearIssueAssignedWebhook,
-		repository: RepositoryConfig,
-	): Promise<void> {
-		const { issue } = webhook.notification;
-		console.log(
-			`[EdgeWorker] Handling Sentry issue assignment for ${issue.identifier}`,
-		);
+	): LinearAgentSessionCreatedWebhook {
+		const { notification } = webhook;
+		const { issue, actor } = notification;
 
-		try {
-			// Get the agent session manager for this repository
-			const agentSessionManager = this.agentSessionManagers.get(repository.id);
-			if (!agentSessionManager) {
-				console.error(`No agentSessionManager for repository ${repository.id}`);
-				return;
-			}
+		// Generate a synthetic session ID
+		const syntheticSessionId = `sentry-${issue.id}-${Date.now()}`;
 
-			// Fetch full issue details
-			const fullIssue = await this.fetchFullIssueDetails(
-				issue.id,
-				repository.id,
-			);
-			if (!fullIssue) {
-				throw new Error(`Failed to fetch full issue details for ${issue.id}`);
-			}
+		// Create a synthetic comment for the agent session
+		const syntheticComment: LinearWebhookComment = {
+			id: `synthetic-comment-${syntheticSessionId}`,
+			body: "Issue assigned via Sentry integration",
+			userId: actor.id,
+			issueId: issue.id,
+		};
 
-			// Move issue to started state
-			await this.moveIssueToStartedState(fullIssue, repository.id);
+		// Create a synthetic creator from the actor (adding missing avatarUrl)
+		const syntheticCreator: LinearWebhookCreator = {
+			id: actor.id,
+			name: actor.name,
+			email: actor.email,
+			avatarUrl: "", // Sentry doesn't provide avatarUrl in actor
+			url: actor.url,
+		};
 
-			// Create a workspace for this issue using the config handler
-			if (!this.config.handlers?.createWorkspace) {
-				throw new Error(
-					"createWorkspace handler is required but not configured",
-				);
-			}
+		// Create the synthetic agent session
+		const syntheticAgentSession: LinearWebhookAgentSession = {
+			id: syntheticSessionId,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			archivedAt: null,
+			creatorId: actor.id,
+			appUserId: webhook.appUserId,
+			commentId: syntheticComment.id,
+			issueId: issue.id,
+			status: "pending",
+			startedAt: null,
+			endedAt: null,
+			type: "commentThread",
+			summary: null,
+			sourceMetadata: { source: "sentry-direct-assignment" },
+			organizationId: webhook.organizationId,
+			creator: syntheticCreator,
+			comment: syntheticComment,
+			issue: issue,
+		};
 
-			const workspace = await this.config.handlers.createWorkspace(
-				fullIssue,
-				repository,
-			);
-
-			// Download attachments
-			const attachmentResult = await this.downloadIssueAttachments(
-				fullIssue,
-				repository,
-				workspace.path,
-			);
-
-			// Get system prompt based on labels
-			const labels = await this.fetchIssueLabels(fullIssue);
-			const systemPromptResult = await this.determineSystemPromptFromLabels(
-				labels,
-				repository,
-			);
-			const systemPrompt = systemPromptResult?.prompt;
-
-			// Build issue prompt using the appropriate method
-			const promptResult = systemPrompt
-				? await this.buildLabelBasedPrompt(
-						fullIssue,
-						repository,
-						attachmentResult.manifest,
-					)
-				: await this.buildPromptV2(
-						fullIssue,
-						repository,
-						undefined,
-						attachmentResult.manifest,
-					);
-
-			const { prompt: issuePrompt } = promptResult;
-
-			// Create a synthetic session ID for tracking
-			const syntheticSessionId = `sentry-${issue.id}-${Date.now()}`;
-
-			// Create LinearAgentSession in the manager
-			const issueMinimal = this.convertLinearIssueToCore(fullIssue);
-			agentSessionManager.createLinearAgentSession(
-				syntheticSessionId,
-				issue.id,
-				issueMinimal,
-				workspace,
-			);
-
-			// Build allowed directories list
-			const allowedDirectories: string[] = [];
-			if (attachmentResult.attachmentsDir) {
-				allowedDirectories.push(attachmentResult.attachmentsDir);
-			}
-
-			// Build allowed tools list with Linear MCP tools
-			const allowedTools = this.buildAllowedTools(repository);
-
-			// Create Claude runner with attachment directory access and optional system prompt
-			const lastMessageMarker =
-				"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
-
-			const runner = new ClaudeRunner({
-				workingDirectory: workspace.path,
-				allowedTools,
-				allowedDirectories,
-				workspaceName: fullIssue.identifier,
-				mcpConfigPath: repository.mcpConfigPath,
-				mcpConfig: this.buildMcpConfig(repository),
-				appendSystemPrompt: (systemPrompt || "") + lastMessageMarker,
-				onMessage: (message) =>
-					this.handleClaudeMessage(syntheticSessionId, message, repository.id),
-				onError: (error) => this.handleClaudeError(error),
-			});
-
-			// Store runner by session ID
-			agentSessionManager.addClaudeRunner(syntheticSessionId, runner);
-
-			// Save state after mapping changes
-			await this.savePersistedState();
-
-			// Start Claude session
-			console.log(
-				`[EdgeWorker] Starting Claude session for Sentry issue ${issue.identifier}`,
-			);
-
-			// Post initial comment to Linear
-			await this.postComment(
-				fullIssue.id,
-				"🤖 I've been assigned to this Sentry issue and I'm analyzing it now.",
-				repository.id,
-			);
-
-			// Start streaming session with Claude
-			try {
-				const sessionInfo = await runner.startStreaming(issuePrompt);
-				console.log(
-					`[EdgeWorker] Claude streaming session started for Sentry issue: ${sessionInfo.sessionId}`,
-				);
-			} catch (streamError) {
-				console.error(
-					`[EdgeWorker] Failed to start Claude streaming for Sentry issue:`,
-					streamError,
-				);
-				throw streamError;
-			}
-
-			console.log(
-				`[EdgeWorker] Successfully processed Sentry issue ${issue.identifier}`,
-			);
-		} catch (error) {
-			console.error(
-				`[EdgeWorker] Error handling Sentry issue assignment:`,
-				error,
-			);
-
-			// Try to post error to Linear
-			try {
-				await this.postComment(
-					issue.id,
-					`❌ I encountered an error while processing this Sentry issue: ${error instanceof Error ? error.message : "Unknown error"}`,
-					repository.id,
-				);
-			} catch (commentError) {
-				console.error(
-					`[EdgeWorker] Failed to post error comment:`,
-					commentError,
-				);
-			}
-		}
+		// Create the synthetic webhook
+		return {
+			type: "AgentSessionEvent",
+			action: "created",
+			createdAt: new Date().toISOString(),
+			organizationId: webhook.organizationId,
+			oauthClientId: webhook.oauthClientId,
+			appUserId: webhook.appUserId,
+			agentSession: syntheticAgentSession,
+			webhookTimestamp: Date.now().toString(),
+			webhookId: `synthetic-webhook-${syntheticSessionId}`,
+		};
 	}
 }
