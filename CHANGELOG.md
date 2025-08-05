@@ -9,10 +9,10 @@ All notable changes to this project will be documented in this file.
   - Cyrus now fetches attachments using Linear's native attachment API
   - Attachments appear in a dedicated "Linear Issue Links" section in the prompt
   - Particularly useful for Sentry error tracking links and other external integrations
-- Support for direct assignment of Sentry-created issues without delegation
-  - Cyrus now detects when issues created by Sentry are directly assigned (not delegated)
-  - Automatically processes these issues by creating a synthetic agent session
-  - Identifies Sentry issues by checking for Sentry attachments, labels, or description patterns
+- Support for direct assignment of Sentry-created issues
+  - Cyrus now processes issues directly assigned by Sentry (without delegation)
+  - Automatically detects Sentry issues through attachments, labels, or description patterns
+  - Uses the same processing flow as delegated issues for consistent behavior
 
 ## [0.1.38] - 2025-08-03
 
