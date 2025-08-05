@@ -541,11 +541,23 @@ export class EdgeWorker extends EventEmitter {
 			workspace.path,
 		);
 
-		// Build allowed directories list
-		const allowedDirectories: string[] = [];
-		if (attachmentResult.attachmentsDir) {
-			allowedDirectories.push(attachmentResult.attachmentsDir);
-		}
+		// Pre-create attachments directory even if no attachments exist yet
+		const workspaceFolderName = basename(workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		await mkdir(attachmentsDir, { recursive: true });
+
+		// Build allowed directories list - always include attachments directory
+		const allowedDirectories: string[] = [attachmentsDir];
+
+		console.log(
+			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
+			allowedDirectories,
+		);
 
 		// Build allowed tools list with Linear MCP tools
 		const allowedTools = this.buildAllowedTools(repository);
@@ -686,25 +698,25 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Always set up attachments directory, even if no attachments in current comment
+		const workspaceFolderName = basename(session.workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		// Ensure directory exists
+		await mkdir(attachmentsDir, { recursive: true });
+
 		// Check for attachments in the new comment BEFORE handling streaming
 		const attachmentUrls = this.extractAttachmentUrls(promptBody);
 		let attachmentManifest = "";
-		let attachmentsDir: string | null = null;
 
 		if (attachmentUrls.length > 0) {
 			console.log(
 				`[EdgeWorker] Found ${attachmentUrls.length} attachments in new comment`,
 			);
-
-			// Create attachments directory if it doesn't exist
-			const workspaceFolderName = basename(session.workspace.path);
-			attachmentsDir = join(
-				homedir(),
-				".cyrus",
-				workspaceFolderName,
-				"attachments",
-			);
-			await mkdir(attachmentsDir, { recursive: true });
 
 			// Count existing attachments
 			const existingFiles = await readdir(attachmentsDir).catch(() => []);
@@ -794,12 +806,7 @@ export class EdgeWorker extends EventEmitter {
 				repository,
 			);
 			const systemPrompt = systemPromptResult?.prompt;
-
-			// Prepare allowedDirectories - include attachments directory if we have one
-			const allowedDirectories = [session.workspace.path];
-			if (attachmentsDir) {
-				allowedDirectories.push(attachmentsDir);
-			}
+			const allowedDirectories = [attachmentsDir];
 
 			// Create new runner with resume mode if we have a Claude session ID
 			// Always append the last message marker to prevent duplication
@@ -1725,6 +1732,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
+		// Create attachments directory in home directory
+		const workspaceFolderName = basename(workspacePath);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+
 		try {
 			const attachmentMap: Record<string, string> = {};
 			const imageMap: Record<string, string> = {};
@@ -1733,15 +1749,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			let skippedCount = 0;
 			let failedCount = 0;
 			const maxAttachments = 10;
-
-			// Create attachments directory in home directory
-			const workspaceFolderName = basename(workspacePath);
-			const attachmentsDir = join(
-				homedir(),
-				".cyrus",
-				workspaceFolderName,
-				"attachments",
-			);
 
 			// Ensure directory exists
 			await mkdir(attachmentsDir, { recursive: true });
@@ -1863,14 +1870,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				nativeAttachments,
 			});
 
-			// Return manifest and directory path if any attachments were downloaded
+			// Always return the attachments directory path (it's pre-created)
 			return {
 				manifest,
-				attachmentsDir: attachmentCount > 0 ? attachmentsDir : null,
+				attachmentsDir: attachmentsDir,
 			};
 		} catch (error) {
 			console.error("Error downloading attachments:", error);
-			return { manifest: "", attachmentsDir: null }; // Return empty manifest on error
+			// Still return the attachments directory even on error
+			return { manifest: "", attachmentsDir: attachmentsDir };
 		}
 	}
 
@@ -2124,7 +2132,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		if (totalFound === 0 && nativeAttachments.length === 0) {
-			manifest += "No attachments were found in this issue.\n";
+			manifest += "No attachments were found in this issue.\n\n";
+			manifest +=
+				"The attachments directory `~/.cyrus/<workspace>/attachments` has been created and is available for any future attachments that may be added to this issue.\n";
 			return manifest;
 		}
 

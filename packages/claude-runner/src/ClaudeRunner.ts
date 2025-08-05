@@ -303,12 +303,23 @@ export class ClaudeRunner extends EventEmitter {
 				);
 			}
 
+			// Log allowed directories if configured
+			if (this.config.allowedDirectories) {
+				console.log(
+					`[ClaudeRunner] Allowed directories configured:`,
+					this.config.allowedDirectories,
+				);
+			}
+
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
 				options: {
 					abortController: this.abortController,
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
+					}),
+					...(this.config.allowedDirectories && {
+						allowedDirectories: this.config.allowedDirectories,
 					}),
 					...(this.config.systemPrompt && {
 						customSystemPrompt: this.config.systemPrompt,
