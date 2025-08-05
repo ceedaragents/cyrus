@@ -19,6 +19,7 @@ import type {
 	// LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedWebhook,
 	LinearWebhook,
+	LinearWebhookAgentSession,
 	LinearWebhookComment,
 	LinearWebhookIssue,
 	SerializableEdgeWorkerState,
@@ -491,6 +492,9 @@ export class EdgeWorker extends EventEmitter {
 		const { agentSession } = webhook;
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
+
+		// Determine if this is a mention or delegation
+		const isMentionTriggered = this.isAgentMentioned(agentSession);
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
 		if (!agentSessionManager) {
@@ -562,21 +566,31 @@ export class EdgeWorker extends EventEmitter {
 		// Build allowed tools list with Linear MCP tools
 		const allowedTools = this.buildAllowedTools(repository);
 
-		// Fetch issue labels and determine system prompt
-		const labels = await this.fetchIssueLabels(fullIssue);
-		const systemPromptResult = await this.determineSystemPromptFromLabels(
-			labels,
-			repository,
-		);
-		const systemPrompt = systemPromptResult?.prompt;
-		const systemPromptVersion = systemPromptResult?.version;
+		// Only fetch labels and determine system prompt for delegation (not mentions)
+		let systemPrompt: string | undefined;
+		let systemPromptVersion: string | undefined;
 
-		// Post thought about system prompt selection
-		if (systemPrompt) {
-			await this.postSystemPromptSelectionThought(
-				linearAgentActivitySessionId,
+		if (!isMentionTriggered) {
+			// Fetch issue labels and determine system prompt (delegation case)
+			const labels = await this.fetchIssueLabels(fullIssue);
+			const systemPromptResult = await this.determineSystemPromptFromLabels(
 				labels,
-				repository.id,
+				repository,
+			);
+			systemPrompt = systemPromptResult?.prompt;
+			systemPromptVersion = systemPromptResult?.version;
+
+			// Post thought about system prompt selection
+			if (systemPrompt) {
+				await this.postSystemPromptSelectionThought(
+					linearAgentActivitySessionId,
+					labels,
+					repository.id,
+				);
+			}
+		} else {
+			console.log(
+				`[EdgeWorker] Skipping system prompt for mention-triggered session ${linearAgentActivitySessionId}`,
 			);
 		}
 
@@ -621,19 +635,26 @@ export class EdgeWorker extends EventEmitter {
 			`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`,
 		);
 		try {
-			// Choose the appropriate prompt builder based on system prompt availability
-			const promptResult = systemPrompt
-				? await this.buildLabelBasedPrompt(
+			// Choose the appropriate prompt builder based on trigger type and system prompt
+			const promptResult = isMentionTriggered
+				? await this.buildMentionPrompt(
 						fullIssue,
 						repository,
+						agentSession,
 						attachmentResult.manifest,
 					)
-				: await this.buildPromptV2(
-						fullIssue,
-						repository,
-						undefined,
-						attachmentResult.manifest,
-					);
+				: systemPrompt
+					? await this.buildLabelBasedPrompt(
+							fullIssue,
+							repository,
+							attachmentResult.manifest,
+						)
+					: await this.buildPromptV2(
+							fullIssue,
+							repository,
+							undefined,
+							attachmentResult.manifest,
+						);
 
 			const { prompt, version: userPromptVersion } = promptResult;
 
@@ -645,8 +666,13 @@ export class EdgeWorker extends EventEmitter {
 				});
 			}
 
+			const promptType = isMentionTriggered
+				? "mention"
+				: systemPrompt
+					? "label-based"
+					: "fallback";
 			console.log(
-				`[EdgeWorker] Initial prompt built successfully using ${systemPrompt ? "label-based" : "fallback"} workflow, length: ${prompt.length} characters`,
+				`[EdgeWorker] Initial prompt built successfully using ${promptType} workflow, length: ${prompt.length} characters`,
 			);
 			console.log(`[EdgeWorker] Starting Claude streaming session`);
 			const sessionInfo = await runner.startStreaming(prompt);
@@ -1118,6 +1144,66 @@ export class EdgeWorker extends EventEmitter {
 			return { prompt, version: templateVersion };
 		} catch (error) {
 			console.error(`[EdgeWorker] Error building label-based prompt:`, error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Build prompt for mention-triggered sessions
+	 * @param issue Full Linear issue object
+	 * @param repository Repository configuration
+	 * @param agentSession The agent session containing the mention
+	 * @param attachmentManifest Optional attachment manifest to append
+	 * @returns The constructed prompt and optional version tag
+	 */
+	private async buildMentionPrompt(
+		issue: LinearIssue,
+		repository: RepositoryConfig,
+		agentSession: LinearWebhookAgentSession,
+		attachmentManifest: string = "",
+	): Promise<{ prompt: string; version?: string }> {
+		try {
+			console.log(
+				`[EdgeWorker] Building mention prompt for issue ${issue.identifier}`,
+			);
+
+			// Get the mention comment body
+			const mentionContent = agentSession.comment?.body || "";
+
+			// Build a simple prompt focused on the mention
+			let prompt = `You were mentioned in a Linear comment. Please help with the following request.
+
+<context>
+  <repository>${repository.name}</repository>
+  <working_directory>${repository.workspaceBaseDir}/${issue.identifier}</working_directory>
+</context>
+
+<linear_issue>
+  <id>${issue.id}</id>
+  <identifier>${issue.identifier}</identifier>
+  <title>${issue.title}</title>
+  <url>${issue.url}</url>
+</linear_issue>
+
+<mention_request>
+${mentionContent}
+</mention_request>
+
+IMPORTANT: You were specifically mentioned in the comment above. Focus on addressing the specific question or request in the mention. You can use the Linear MCP tools to fetch additional context about the issue if needed.`;
+
+			// Append attachment manifest if any
+			if (attachmentManifest) {
+				prompt = `${prompt}\n\n${attachmentManifest}`;
+			}
+
+			// Append repository-specific instructions if any
+			if (repository.appendInstruction) {
+				prompt = `${prompt}\n\n## Additional Instructions\n\n${repository.appendInstruction}`;
+			}
+
+			return { prompt };
+		} catch (error) {
+			console.error(`[EdgeWorker] Error building mention prompt:`, error);
 			throw error;
 		}
 	}
@@ -2245,6 +2331,50 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	//     return true
 	//   }
 	// }
+
+	/**
+	 * Check if agent was mentioned in the initial comment that triggered the session
+	 * @param agentSession LinearWebhookAgentSession object
+	 * @returns true if agent was mentioned (vs being delegated)
+	 */
+	private isAgentMentioned(agentSession: LinearWebhookAgentSession): boolean {
+		// Check if there's a comment body to analyze
+		const commentBody = agentSession.comment?.body;
+		if (!commentBody) {
+			// No comment body means likely a delegation
+			console.log(
+				`[EdgeWorker] No comment body found for session ${agentSession.id}, treating as delegation`,
+			);
+			return false;
+		}
+
+		// Look for @ mention patterns in the comment
+		// Linear mentions can be in various formats:
+		// - Simple: @agent
+		// - With brackets: @[Agent Name]
+		// - With user ID: @[Agent Name](user-id)
+		const mentionPatterns = [
+			/@\[.*?\]/, // @[Agent Name] format
+			/@\[.*?\]\(.*?\)/, // @[Agent Name](user-id) format
+			/@\w+/, // Simple @username format
+		];
+
+		const hasMention = mentionPatterns.some((pattern) =>
+			pattern.test(commentBody),
+		);
+
+		if (hasMention) {
+			console.log(
+				`[EdgeWorker] Agent was mentioned in comment for session ${agentSession.id}`,
+			);
+		} else {
+			console.log(
+				`[EdgeWorker] Agent was delegated (no mention found) for session ${agentSession.id}`,
+			);
+		}
+
+		return hasMention;
+	}
 
 	/**
 	 * Build MCP configuration with automatic Linear server injection
