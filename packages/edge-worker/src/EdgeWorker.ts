@@ -14,7 +14,7 @@ import type {
 	IssueMinimal,
 	LinearAgentSessionCreatedWebhook,
 	LinearAgentSessionPromptedWebhook,
-	// LinearIssueAssignedWebhook,
+	LinearIssueAssignedWebhook,
 	// LinearIssueCommentMentionWebhook,
 	// LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedWebhook,
@@ -361,9 +361,22 @@ export class EdgeWorker extends EventEmitter {
 			// Handle specific webhook types with proper typing
 			// NOTE: Traditional webhooks (assigned, comment) are disabled in favor of agent session events
 			if (isIssueAssignedWebhook(webhook)) {
-				console.log(
-					`[EdgeWorker] Ignoring traditional issue assigned webhook - using agent session events instead`,
+				// Check if this is a Sentry-created issue that needs special handling
+				const isSentryIssue = await this.checkIfSentryCreatedIssue(
+					webhook.notification.issue,
+					repository,
 				);
+
+				if (isSentryIssue) {
+					console.log(
+						`[EdgeWorker] Processing Sentry-created issue assignment: ${webhook.notification.issue.identifier}`,
+					);
+					await this.handleSentryIssueAssignment(webhook, repository);
+				} else {
+					console.log(
+						`[EdgeWorker] Ignoring traditional issue assigned webhook - using agent session events instead`,
+					);
+				}
 				return;
 			} else if (isIssueCommentMentionWebhook(webhook)) {
 				console.log(
@@ -2244,6 +2257,246 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				`[EdgeWorker] Error posting instant prompted acknowledgment:`,
 				error,
 			);
+		}
+	}
+
+	/**
+	 * Check if an issue was created by Sentry integration
+	 * @param issue The webhook issue data
+	 * @param repository Repository configuration
+	 * @returns True if the issue was created by Sentry
+	 */
+	private async checkIfSentryCreatedIssue(
+		issue: LinearWebhookIssue,
+		repository: RepositoryConfig,
+	): Promise<boolean> {
+		try {
+			// Fetch full issue details to check attachments
+			const fullIssue = await this.fetchFullIssueDetails(
+				issue.id,
+				repository.id,
+			);
+			if (!fullIssue) {
+				return false;
+			}
+
+			// Check if issue has Sentry attachments
+			const attachments = await fullIssue.attachments();
+			const hasSentryAttachment = attachments?.nodes?.some((attachment) =>
+				attachment.url.includes("sentry.io"),
+			);
+
+			if (hasSentryAttachment) {
+				console.log(
+					`[EdgeWorker] Issue ${issue.identifier} has Sentry attachment`,
+				);
+				return true;
+			}
+
+			// Check if issue has Sentry-related labels
+			const labels = await fullIssue.labels();
+			const hasSentryLabel = labels?.nodes?.some((label) =>
+				label.name.toLowerCase().includes("sentry"),
+			);
+
+			if (hasSentryLabel) {
+				console.log(`[EdgeWorker] Issue ${issue.identifier} has Sentry label`);
+				return true;
+			}
+
+			// Check if issue description contains Sentry patterns
+			const description = fullIssue.description || "";
+			const hasSentryDescription =
+				description.includes("Sentry Issue:") ||
+				description.includes("sentry.io/") ||
+				description.includes("[Sentry]");
+
+			if (hasSentryDescription) {
+				console.log(
+					`[EdgeWorker] Issue ${issue.identifier} has Sentry description pattern`,
+				);
+				return true;
+			}
+
+			return false;
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Error checking if issue is from Sentry:`,
+				error,
+			);
+			return false;
+		}
+	}
+
+	/**
+	 * Handle direct assignment of Sentry-created issues by creating a synthetic agent session
+	 * @param webhook The issue assigned webhook
+	 * @param repository Repository configuration
+	 */
+	private async handleSentryIssueAssignment(
+		webhook: LinearIssueAssignedWebhook,
+		repository: RepositoryConfig,
+	): Promise<void> {
+		const { issue } = webhook.notification;
+		console.log(
+			`[EdgeWorker] Handling Sentry issue assignment for ${issue.identifier}`,
+		);
+
+		try {
+			// Get the agent session manager for this repository
+			const agentSessionManager = this.agentSessionManagers.get(repository.id);
+			if (!agentSessionManager) {
+				console.error(`No agentSessionManager for repository ${repository.id}`);
+				return;
+			}
+
+			// Fetch full issue details
+			const fullIssue = await this.fetchFullIssueDetails(
+				issue.id,
+				repository.id,
+			);
+			if (!fullIssue) {
+				throw new Error(`Failed to fetch full issue details for ${issue.id}`);
+			}
+
+			// Move issue to started state
+			await this.moveIssueToStartedState(fullIssue, repository.id);
+
+			// Create a workspace for this issue using the config handler
+			if (!this.config.handlers?.createWorkspace) {
+				throw new Error(
+					"createWorkspace handler is required but not configured",
+				);
+			}
+
+			const workspace = await this.config.handlers.createWorkspace(
+				fullIssue,
+				repository,
+			);
+
+			// Download attachments
+			const attachmentResult = await this.downloadIssueAttachments(
+				fullIssue,
+				repository,
+				workspace.path,
+			);
+
+			// Get system prompt based on labels
+			const labels = await this.fetchIssueLabels(fullIssue);
+			const systemPromptResult = await this.determineSystemPromptFromLabels(
+				labels,
+				repository,
+			);
+			const systemPrompt = systemPromptResult?.prompt;
+
+			// Build issue prompt using the appropriate method
+			const promptResult = systemPrompt
+				? await this.buildLabelBasedPrompt(
+						fullIssue,
+						repository,
+						attachmentResult.manifest,
+					)
+				: await this.buildPromptV2(
+						fullIssue,
+						repository,
+						undefined,
+						attachmentResult.manifest,
+					);
+
+			const { prompt: issuePrompt } = promptResult;
+
+			// Create a synthetic session ID for tracking
+			const syntheticSessionId = `sentry-${issue.id}-${Date.now()}`;
+
+			// Create LinearAgentSession in the manager
+			const issueMinimal = this.convertLinearIssueToCore(fullIssue);
+			agentSessionManager.createLinearAgentSession(
+				syntheticSessionId,
+				issue.id,
+				issueMinimal,
+				workspace,
+			);
+
+			// Build allowed directories list
+			const allowedDirectories: string[] = [];
+			if (attachmentResult.attachmentsDir) {
+				allowedDirectories.push(attachmentResult.attachmentsDir);
+			}
+
+			// Build allowed tools list with Linear MCP tools
+			const allowedTools = this.buildAllowedTools(repository);
+
+			// Create Claude runner with attachment directory access and optional system prompt
+			const lastMessageMarker =
+				"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
+
+			const runner = new ClaudeRunner({
+				workingDirectory: workspace.path,
+				allowedTools,
+				allowedDirectories,
+				workspaceName: fullIssue.identifier,
+				mcpConfigPath: repository.mcpConfigPath,
+				mcpConfig: this.buildMcpConfig(repository),
+				appendSystemPrompt: (systemPrompt || "") + lastMessageMarker,
+				onMessage: (message) =>
+					this.handleClaudeMessage(syntheticSessionId, message, repository.id),
+				onError: (error) => this.handleClaudeError(error),
+			});
+
+			// Store runner by session ID
+			agentSessionManager.addClaudeRunner(syntheticSessionId, runner);
+
+			// Save state after mapping changes
+			await this.savePersistedState();
+
+			// Start Claude session
+			console.log(
+				`[EdgeWorker] Starting Claude session for Sentry issue ${issue.identifier}`,
+			);
+
+			// Post initial comment to Linear
+			await this.postComment(
+				fullIssue.id,
+				"🤖 I've been assigned to this Sentry issue and I'm analyzing it now.",
+				repository.id,
+			);
+
+			// Start streaming session with Claude
+			try {
+				const sessionInfo = await runner.startStreaming(issuePrompt);
+				console.log(
+					`[EdgeWorker] Claude streaming session started for Sentry issue: ${sessionInfo.sessionId}`,
+				);
+			} catch (streamError) {
+				console.error(
+					`[EdgeWorker] Failed to start Claude streaming for Sentry issue:`,
+					streamError,
+				);
+				throw streamError;
+			}
+
+			console.log(
+				`[EdgeWorker] Successfully processed Sentry issue ${issue.identifier}`,
+			);
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Error handling Sentry issue assignment:`,
+				error,
+			);
+
+			// Try to post error to Linear
+			try {
+				await this.postComment(
+					issue.id,
+					`❌ I encountered an error while processing this Sentry issue: ${error instanceof Error ? error.message : "Unknown error"}`,
+					repository.id,
+				);
+			} catch (commentError) {
+				console.error(
+					`[EdgeWorker] Failed to post error comment:`,
+					commentError,
+				);
+			}
 		}
 	}
 }
