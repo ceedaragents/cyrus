@@ -553,12 +553,12 @@ export class EdgeWorker extends EventEmitter {
 
 		// Build allowed directories list - always include attachments directory
 		const allowedDirectories: string[] = [attachmentsDir];
-		
+
 		// Add the workspace path as well if it's different
 		if (workspace.path !== attachmentsDir) {
 			allowedDirectories.push(workspace.path);
 		}
-		
+
 		console.log(
 			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
 			allowedDirectories,
@@ -703,25 +703,25 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Always set up attachments directory, even if no attachments in current comment
+		const workspaceFolderName = basename(session.workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		// Ensure directory exists
+		await mkdir(attachmentsDir, { recursive: true });
+
 		// Check for attachments in the new comment BEFORE handling streaming
 		const attachmentUrls = this.extractAttachmentUrls(promptBody);
 		let attachmentManifest = "";
-		let attachmentsDir: string | null = null;
 
 		if (attachmentUrls.length > 0) {
 			console.log(
 				`[EdgeWorker] Found ${attachmentUrls.length} attachments in new comment`,
 			);
-
-			// Create attachments directory if it doesn't exist
-			const workspaceFolderName = basename(session.workspace.path);
-			attachmentsDir = join(
-				homedir(),
-				".cyrus",
-				workspaceFolderName,
-				"attachments",
-			);
-			await mkdir(attachmentsDir, { recursive: true });
 
 			// Count existing attachments
 			const existingFiles = await readdir(attachmentsDir).catch(() => []);
@@ -812,11 +812,8 @@ export class EdgeWorker extends EventEmitter {
 			);
 			const systemPrompt = systemPromptResult?.prompt;
 
-			// Prepare allowedDirectories - include attachments directory if we have one
-			const allowedDirectories = [session.workspace.path];
-			if (attachmentsDir) {
-				allowedDirectories.push(attachmentsDir);
-			}
+			// Prepare allowedDirectories - always include both workspace and attachments directory
+			const allowedDirectories = [session.workspace.path, attachmentsDir];
 
 			// Create new runner with resume mode if we have a Claude session ID
 			// Always append the last message marker to prevent duplication
@@ -1750,7 +1747,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			workspaceFolderName,
 			"attachments",
 		);
-		
+
 		try {
 			const attachmentMap: Record<string, string> = {};
 			const imageMap: Record<string, string> = {};
@@ -2143,7 +2140,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		if (totalFound === 0 && nativeAttachments.length === 0) {
 			manifest += "No attachments were found in this issue.\n\n";
-			manifest += "The attachments directory `~/.cyrus/<workspace>/attachments` has been created and is available for any future attachments that may be added to this issue.\n";
+			manifest +=
+				"The attachments directory `~/.cyrus/<workspace>/attachments` has been created and is available for any future attachments that may be added to this issue.\n";
 			return manifest;
 		}
 

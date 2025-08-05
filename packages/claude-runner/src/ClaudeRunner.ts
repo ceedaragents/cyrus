@@ -302,7 +302,7 @@ export class ClaudeRunner extends EventEmitter {
 					`[ClaudeRunner] Final MCP servers after merge: ${Object.keys(mcpServers).join(", ")}`,
 				);
 			}
-			
+
 			// Log allowed directories if configured
 			if (this.config.allowedDirectories) {
 				console.log(
