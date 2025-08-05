@@ -554,11 +554,6 @@ export class EdgeWorker extends EventEmitter {
 		// Build allowed directories list - always include attachments directory
 		const allowedDirectories: string[] = [attachmentsDir];
 
-		// Add the workspace path as well if it's different
-		if (workspace.path !== attachmentsDir) {
-			allowedDirectories.push(workspace.path);
-		}
-
 		console.log(
 			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
 			allowedDirectories,
