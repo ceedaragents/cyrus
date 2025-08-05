@@ -686,6 +686,50 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Check for attachments in the new comment BEFORE handling streaming
+		const attachmentUrls = this.extractAttachmentUrls(promptBody);
+		let attachmentManifest = "";
+		let attachmentsDir: string | null = null;
+
+		if (attachmentUrls.length > 0) {
+			console.log(
+				`[EdgeWorker] Found ${attachmentUrls.length} attachments in new comment`,
+			);
+
+			// Create attachments directory if it doesn't exist
+			const workspaceFolderName = basename(session.workspace.path);
+			attachmentsDir = join(
+				homedir(),
+				".cyrus",
+				workspaceFolderName,
+				"attachments",
+			);
+			await mkdir(attachmentsDir, { recursive: true });
+
+			// Count existing attachments
+			const existingFiles = await readdir(attachmentsDir).catch(() => []);
+			const existingAttachmentCount = existingFiles.filter(
+				(file) => file.startsWith("attachment_") || file.startsWith("image_"),
+			).length;
+
+			// Download new attachments from the comment
+			const downloadResult = await this.downloadCommentAttachments(
+				promptBody,
+				attachmentsDir,
+				repository.linearToken,
+				existingAttachmentCount,
+			);
+
+			// Generate manifest for new attachments
+			attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
+
+			if (attachmentManifest) {
+				console.log(
+					`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} new attachments from comment`,
+				);
+			}
+		}
+
 		// Check if there's an existing runner for this comment thread
 		const existingRunner = session.claudeRunner;
 		if (existingRunner?.isStreaming()) {
@@ -696,11 +740,18 @@ export class EdgeWorker extends EventEmitter {
 				true,
 			);
 
-			// Add comment to existing stream instead of restarting
+			// Add comment with attachment manifest to existing stream
 			console.log(
 				`[EdgeWorker] Adding comment to existing stream for agent activity session ${linearAgentActivitySessionId}`,
 			);
-			existingRunner.addStreamMessage(promptBody);
+
+			// Append attachment manifest to the prompt if we have one
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
+			existingRunner.addStreamMessage(fullPrompt);
 			return; // Exit early - comment has been added to stream
 		}
 
@@ -744,47 +795,10 @@ export class EdgeWorker extends EventEmitter {
 			);
 			const systemPrompt = systemPromptResult?.prompt;
 
-			// Check for attachments in the new comment
-			const attachmentUrls = this.extractAttachmentUrls(promptBody);
-			let attachmentManifest = "";
-
-			if (attachmentUrls.length > 0) {
-				console.log(
-					`[EdgeWorker] Found ${attachmentUrls.length} attachments in new comment`,
-				);
-
-				// Create attachments directory if it doesn't exist
-				const workspaceFolderName = basename(session.workspace.path);
-				const attachmentsDir = join(
-					homedir(),
-					".cyrus",
-					workspaceFolderName,
-					"attachments",
-				);
-				await mkdir(attachmentsDir, { recursive: true });
-
-				// Count existing attachments
-				const existingFiles = await readdir(attachmentsDir).catch(() => []);
-				const existingAttachmentCount = existingFiles.filter(
-					(file) => file.startsWith("attachment_") || file.startsWith("image_"),
-				).length;
-
-				// Download new attachments from the comment
-				const downloadResult = await this.downloadCommentAttachments(
-					promptBody,
-					attachmentsDir,
-					repository.linearToken,
-					existingAttachmentCount,
-				);
-
-				// Generate manifest for new attachments
-				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
-
-				if (attachmentManifest) {
-					console.log(
-						`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} new attachments from comment`,
-					);
-				}
+			// Prepare allowedDirectories - include attachments directory if we have one
+			const allowedDirectories = [session.workspace.path];
+			if (attachmentsDir) {
+				allowedDirectories.push(attachmentsDir);
 			}
 
 			// Create new runner with resume mode if we have a Claude session ID
@@ -794,6 +808,7 @@ export class EdgeWorker extends EventEmitter {
 			const runner = new ClaudeRunner({
 				workingDirectory: session.workspace.path,
 				allowedTools,
+				allowedDirectories,
 				resumeSessionId: session.claudeSessionId,
 				workspaceName: issue.identifier,
 				mcpConfigPath: repository.mcpConfigPath,
