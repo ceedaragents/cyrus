@@ -806,9 +806,7 @@ export class EdgeWorker extends EventEmitter {
 				repository,
 			);
 			const systemPrompt = systemPromptResult?.prompt;
-
-			// Prepare allowedDirectories - always include both workspace and attachments directory
-			const allowedDirectories = [session.workspace.path, attachmentsDir];
+			const allowedDirectories = [attachmentsDir];
 
 			// Create new runner with resume mode if we have a Claude session ID
 			// Always append the last message marker to prevent duplication
