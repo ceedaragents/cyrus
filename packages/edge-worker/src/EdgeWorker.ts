@@ -724,6 +724,24 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
+		const existingRunner = session.claudeRunner;
+		if (existingRunner?.isStreaming()) {
+			// Post instant acknowledgment for streaming case
+			await this.postInstantPromptedAcknowledgment(
+				linearAgentActivitySessionId,
+				repository.id,
+				true,
+			);
+		} else {
+			// Post instant acknowledgment for non-streaming case
+			await this.postInstantPromptedAcknowledgment(
+				linearAgentActivitySessionId,
+				repository.id,
+				false,
+			);
+		}
+
 		// Get Linear client for this repository
 		const linearClient = this.linearClients.get(repository.id);
 		if (!linearClient) {
@@ -789,15 +807,7 @@ export class EdgeWorker extends EventEmitter {
 		const promptBody = webhook.agentActivity.content.body;
 
 		// Check if there's an existing runner for this comment thread
-		const existingRunner = session.claudeRunner;
 		if (existingRunner?.isStreaming()) {
-			// Post instant acknowledgment for streaming case
-			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
-				repository.id,
-				true,
-			);
-
 			// Add comment with attachment manifest to existing stream
 			console.log(
 				`[EdgeWorker] Adding comment to existing stream for agent activity session ${linearAgentActivitySessionId}`,
@@ -812,13 +822,6 @@ export class EdgeWorker extends EventEmitter {
 			existingRunner.addStreamMessage(fullPrompt);
 			return; // Exit early - comment has been added to stream
 		}
-
-		// Post instant acknowledgment for non-streaming case
-		await this.postInstantPromptedAcknowledgment(
-			linearAgentActivitySessionId,
-			repository.id,
-			false,
-		);
 
 		// Stop existing runner if it's not streaming or stream addition failed
 		if (existingRunner) {
