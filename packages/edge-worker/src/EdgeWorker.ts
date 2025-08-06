@@ -14,13 +14,14 @@ import type {
 	IssueMinimal,
 	LinearAgentSessionCreatedWebhook,
 	LinearAgentSessionPromptedWebhook,
-	// LinearIssueAssignedWebhook,
+	LinearIssueAssignedWebhook,
 	// LinearIssueCommentMentionWebhook,
 	// LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedWebhook,
 	LinearWebhook,
 	LinearWebhookAgentSession,
 	LinearWebhookComment,
+	LinearWebhookCreator,
 	LinearWebhookIssue,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
@@ -362,9 +363,28 @@ export class EdgeWorker extends EventEmitter {
 			// Handle specific webhook types with proper typing
 			// NOTE: Traditional webhooks (assigned, comment) are disabled in favor of agent session events
 			if (isIssueAssignedWebhook(webhook)) {
-				console.log(
-					`[EdgeWorker] Ignoring traditional issue assigned webhook - using agent session events instead`,
+				// Check if this is a Sentry-created issue that needs special handling
+				const isSentryIssue = await this.checkIfSentryCreatedIssue(
+					webhook.notification.issue,
+					repository,
 				);
+
+				if (isSentryIssue) {
+					console.log(
+						`[EdgeWorker] Processing Sentry-created issue assignment: ${webhook.notification.issue.identifier}`,
+					);
+					// Create a synthetic agent session webhook and process it through the normal flow
+					const syntheticWebhook =
+						this.createSyntheticAgentSessionWebhook(webhook);
+					await this.handleAgentSessionCreatedWebhook(
+						syntheticWebhook,
+						repository,
+					);
+				} else {
+					console.log(
+						`[EdgeWorker] Ignoring traditional issue assigned webhook - using agent session events instead`,
+					);
+				}
 				return;
 			} else if (isIssueCommentMentionWebhook(webhook)) {
 				console.log(
@@ -2349,5 +2369,140 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				error,
 			);
 		}
+	}
+
+	/**
+	 * Check if an issue was created by Sentry integration
+	 * @param issue The webhook issue data
+	 * @param repository Repository configuration
+	 * @returns True if the issue was created by Sentry
+	 */
+	private async checkIfSentryCreatedIssue(
+		issue: LinearWebhookIssue,
+		repository: RepositoryConfig,
+	): Promise<boolean> {
+		try {
+			// Fetch full issue details to check attachments
+			const fullIssue = await this.fetchFullIssueDetails(
+				issue.id,
+				repository.id,
+			);
+			if (!fullIssue) {
+				return false;
+			}
+
+			// Check if issue has Sentry attachments
+			const attachments = await fullIssue.attachments();
+			const hasSentryAttachment = attachments?.nodes?.some((attachment) =>
+				attachment.url.includes("sentry.io"),
+			);
+
+			if (hasSentryAttachment) {
+				console.log(
+					`[EdgeWorker] Issue ${issue.identifier} has Sentry attachment`,
+				);
+				return true;
+			}
+
+			// Check if issue has Sentry-related labels
+			const labels = await fullIssue.labels();
+			const hasSentryLabel = labels?.nodes?.some((label) =>
+				label.name.toLowerCase().includes("sentry"),
+			);
+
+			if (hasSentryLabel) {
+				console.log(`[EdgeWorker] Issue ${issue.identifier} has Sentry label`);
+				return true;
+			}
+
+			// Check if issue description contains Sentry patterns
+			const description = fullIssue.description || "";
+			const hasSentryDescription =
+				description.includes("Sentry Issue:") ||
+				description.includes("sentry.io/") ||
+				description.includes("[Sentry]");
+
+			if (hasSentryDescription) {
+				console.log(
+					`[EdgeWorker] Issue ${issue.identifier} has Sentry description pattern`,
+				);
+				return true;
+			}
+
+			return false;
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Error checking if issue is from Sentry:`,
+				error,
+			);
+			return false;
+		}
+	}
+
+	/**
+	 * Create a synthetic agent session webhook from a direct assignment webhook
+	 * @param webhook The issue assigned webhook
+	 * @returns A synthetic agent session created webhook
+	 */
+	private createSyntheticAgentSessionWebhook(
+		webhook: LinearIssueAssignedWebhook,
+	): LinearAgentSessionCreatedWebhook {
+		const { notification } = webhook;
+		const { issue, actor } = notification;
+
+		// Generate a synthetic session ID
+		const syntheticSessionId = `sentry-${issue.id}-${Date.now()}`;
+
+		// Create a synthetic comment for the agent session
+		const syntheticComment: LinearWebhookComment = {
+			id: `synthetic-comment-${syntheticSessionId}`,
+			body: "Issue assigned via Sentry integration",
+			userId: actor.id,
+			issueId: issue.id,
+		};
+
+		// Create a synthetic creator from the actor (adding missing avatarUrl)
+		const syntheticCreator: LinearWebhookCreator = {
+			id: actor.id,
+			name: actor.name,
+			email: actor.email,
+			avatarUrl: "", // Sentry doesn't provide avatarUrl in actor
+			url: actor.url,
+		};
+
+		// Create the synthetic agent session
+		const syntheticAgentSession: LinearWebhookAgentSession = {
+			id: syntheticSessionId,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			archivedAt: null,
+			creatorId: actor.id,
+			appUserId: webhook.appUserId,
+			commentId: syntheticComment.id,
+			issueId: issue.id,
+			status: "pending",
+			startedAt: null,
+			endedAt: null,
+			type: "commentThread",
+			summary: null,
+			sourceMetadata: { source: "sentry-direct-assignment" },
+			organizationId: webhook.organizationId,
+			creator: syntheticCreator,
+			comment: syntheticComment,
+			issue: issue,
+		};
+
+		// Create the synthetic webhook
+		return {
+			type: "AgentSessionEvent",
+			action: "created",
+			createdAt: new Date().toISOString(),
+			organizationId: webhook.organizationId,
+			oauthClientId: webhook.oauthClientId,
+			appUserId: webhook.appUserId,
+			agentSession: syntheticAgentSession,
+			webhookTimestamp: Date.now().toString(),
+			webhookId: `synthetic-webhook-${syntheticSessionId}`,
+		};
 	}
 }
