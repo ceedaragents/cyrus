@@ -493,8 +493,11 @@ export class EdgeWorker extends EventEmitter {
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
 
-		// Determine if this is a mention or delegation
-		const isMentionTriggered = agentSession.comment?.body;
+		const commentBody = agentSession.comment?.body;
+		// HACK: This is required since the comment body is always populated, thus there is no other way to differentiate between the two trigger events
+		const AGENT_SESSION_MARKER = "This thread is for an agent session";
+		const isMentionTriggered =
+			commentBody && !commentBody.includes(AGENT_SESSION_MARKER);
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);

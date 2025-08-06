@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
   - Cyrus now fetches attachments using Linear's native attachment API
   - Attachments appear in a dedicated "Linear Issue Links" section in the prompt
   - Particularly useful for Sentry error tracking links and other external integrations
+- New command **`cyrus add-repository`** - Add a new repository configuration, thanks new contributor @Maxim Filimonov!
 
 ## [0.1.38] - 2025-08-03
 
