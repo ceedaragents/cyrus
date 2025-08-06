@@ -9,7 +9,21 @@ All notable changes to this project will be documented in this file.
   - Cyrus now fetches attachments using Linear's native attachment API
   - Attachments appear in a dedicated "Linear Issue Links" section in the prompt
   - Particularly useful for Sentry error tracking links and other external integrations
-- New command **`cyrus add-repository`** - Add a new repository configuration, thanks new contributor @Maxim Filimonov!
+- New command **`cyrus add-repository`** - Add a new repository configuration, thanks new contributor @Maxim-Filimonov !
+- Attachment support for comments - Cyrus now downloads and provides access to attachments added in Linear comments
+  - Attachments are automatically downloaded when users post comments with URLs or files
+  - Downloaded to `~/.cyrus/<workspace>/attachments` directory
+  - Attachment manifest is generated and included in Claude's prompt
+  - Attachments directory is always available to Claude during sessions
+- Differentiation between issue delegation and @ mentions for more focused responses
+  - @ mentions now trigger focused responses without system prompts
+  - Delegations continue to use full system prompts for comprehensive task handling
+  - Aligns with Linear's expected agent activity behavior
+
+### Fixed
+- Fixed attachments not being accessible to Claude during active streaming sessions
+  - Pre-create attachments directory for every session to ensure future attachments are accessible
+  - Always include attachments directory in allowedDirectories configuration
 
 ## [0.1.38] - 2025-08-03
 
