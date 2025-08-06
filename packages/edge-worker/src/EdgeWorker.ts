@@ -335,7 +335,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Find the appropriate repository for this webhook
-		const repository = this.findRepositoryForWebhook(webhook, repos);
+		const repository = await this.findRepositoryForWebhook(webhook, repos);
 		if (!repository) {
 			console.log(
 				"No repository configured for webhook from workspace",
@@ -418,13 +418,124 @@ export class EdgeWorker extends EventEmitter {
 	/**
 	 * Find the repository configuration for a webhook
 	 */
-	private findRepositoryForWebhook(
+	public async findRepositoryForWebhook(
+		webhook: LinearWebhook,
+		repos: RepositoryConfig[],
+	): Promise<RepositoryConfig | null> {
+		const workspaceId = webhook.organizationId;
+
+		if (!workspaceId) {
+			const fallbackRepo = repos[0] || null;
+			if (fallbackRepo) {
+				console.log(
+					`[EdgeWorker] Repository selected: ${fallbackRepo.name} (no workspace ID - first repo fallback)`,
+				);
+			}
+			return fallbackRepo;
+		}
+
+		// Try project-based routing first
+		const projectBasedRepo = await this.tryProjectBasedRouting(webhook, repos);
+		if (projectBasedRepo) {
+			console.log(
+				`[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`,
+			);
+			return projectBasedRepo;
+		}
+
+		// Try team-based routing
+		const teamBasedRepo = this.tryTeamBasedRouting(webhook, repos);
+		if (teamBasedRepo) {
+			console.log(
+				`[EdgeWorker] Repository selected: ${teamBasedRepo.name} (team-based routing)`,
+			);
+			return teamBasedRepo;
+		}
+
+		// Fallback to workspace matching
+		const workspaceRepo = this.tryWorkspaceBasedRouting(workspaceId, repos);
+		if (workspaceRepo) {
+			console.log(
+				`[EdgeWorker] Repository selected: ${workspaceRepo.name} (workspace-based routing)`,
+			);
+		} else {
+			console.log("[EdgeWorker] No repository found for webhook");
+		}
+		return workspaceRepo;
+	}
+
+	/**
+	 * Helper method to find repository by team key
+	 */
+	private findRepositoryByTeamKey(
+		teamKey: string,
+		repos: RepositoryConfig[],
+	): RepositoryConfig | null {
+		return repos.find((r) => r.teamKeys?.includes(teamKey)) || null;
+	}
+
+	/**
+	 * Helper method to find repository by issue identifier
+	 */
+	private findRepositoryByIssueIdentifier(
+		issueId: string,
+		repos: RepositoryConfig[],
+	): RepositoryConfig | null {
+		if (!issueId?.includes("-")) return null;
+		const prefix = issueId.split("-")[0];
+		return prefix
+			? repos.find((r) => r.teamKeys?.includes(prefix)) || null
+			: null;
+	}
+
+	/**
+	 * Helper method to find repository by project name
+	 */
+	private async findRepositoryByProject(
+		issueId: string,
+		repos: RepositoryConfig[],
+	): Promise<RepositoryConfig | null> {
+		// Try each repository that has projectKeys configured
+		for (const repo of repos) {
+			if (!repo.projectKeys || repo.projectKeys.length === 0) continue;
+
+			try {
+				const fullIssue = await this.fetchFullIssueDetails(issueId, repo.id);
+				console.debug(JSON.stringify(fullIssue, null, 2));
+				const project = await fullIssue?.project;
+				if (!project || !project.name) {
+					console.warn(
+						`[EdgeWorker] No project name found for issue ${issueId} in repository ${repo.name}`,
+					);
+					continue;
+				}
+
+				const projectName = project.name;
+				if (repo.projectKeys.includes(projectName)) {
+					console.log(
+						`[EdgeWorker] Matched issue ${issueId} to repository ${repo.name} via project: ${projectName}`,
+					);
+					return repo;
+				}
+			} catch (error) {
+				// Continue to next repository if this one fails
+				console.debug(
+					`[EdgeWorker] Failed to fetch project for issue ${issueId} from repository ${repo.name}:`,
+					error,
+				);
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Try team-based routing (existing logic)
+	 */
+	private tryTeamBasedRouting(
 		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
 	): RepositoryConfig | null {
-		const workspaceId = webhook.organizationId;
-		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
-
 		// Handle agent session webhooks which have different structure
 		if (
 			isAgentSessionCreatedWebhook(webhook) ||
@@ -432,48 +543,79 @@ export class EdgeWorker extends EventEmitter {
 		) {
 			const teamKey = webhook.agentSession?.issue?.team?.key;
 			if (teamKey) {
-				const repo = repos.find((r) => r.teamKeys?.includes(teamKey));
+				const repo = this.findRepositoryByTeamKey(teamKey, repos);
 				if (repo) return repo;
 			}
 
 			// Try parsing issue identifier as fallback
 			const issueId = webhook.agentSession?.issue?.identifier;
-			if (issueId?.includes("-")) {
-				const prefix = issueId.split("-")[0];
-				if (prefix) {
-					const repo = repos.find((r) => r.teamKeys?.includes(prefix));
-					if (repo) return repo;
-				}
+			if (issueId) {
+				return this.findRepositoryByIssueIdentifier(issueId, repos);
 			}
 		} else {
 			// Original logic for other webhook types
 			const teamKey = webhook.notification?.issue?.team?.key;
 			if (teamKey) {
-				const repo = repos.find((r) => r.teamKeys?.includes(teamKey));
+				const repo = this.findRepositoryByTeamKey(teamKey, repos);
 				if (repo) return repo;
 			}
 
 			// Try parsing issue identifier as fallback
 			const issueId = webhook.notification?.issue?.identifier;
-			if (issueId?.includes("-")) {
-				const prefix = issueId.split("-")[0];
-				if (prefix) {
-					const repo = repos.find((r) => r.teamKeys?.includes(prefix));
-					if (repo) return repo;
-				}
+			if (issueId) {
+				return this.findRepositoryByIssueIdentifier(issueId, repos);
 			}
 		}
 
-		// Original workspace fallback - find first repo without teamKeys or matching workspace
-		return (
-			repos.find(
-				(repo) =>
-					repo.linearWorkspaceId === workspaceId &&
-					(!repo.teamKeys || repo.teamKeys.length === 0),
-			) ||
-			repos.find((repo) => repo.linearWorkspaceId === workspaceId) ||
-			null
+		return null;
+	}
+
+	/**
+	 * Try project-based routing (new functionality)
+	 */
+	private async tryProjectBasedRouting(
+		webhook: LinearWebhook,
+		repos: RepositoryConfig[],
+	): Promise<RepositoryConfig | null> {
+		// Extract issue ID from webhook
+		let issueId: string | null = null;
+
+		if (
+			isAgentSessionCreatedWebhook(webhook) ||
+			isAgentSessionPromptedWebhook(webhook)
+		) {
+			issueId = webhook.agentSession?.issue?.id || null;
+		} else {
+			issueId = webhook.notification?.issue?.id || null;
+		}
+
+		if (!issueId) {
+			console.warn("[EdgeWorker] No issue ID found in webhook");
+			return null;
+		}
+
+		return this.findRepositoryByProject(issueId, repos);
+	}
+
+	/**
+	 * Try workspace-based routing (fallback)
+	 */
+	private tryWorkspaceBasedRouting(
+		workspaceId: string,
+		repos: RepositoryConfig[],
+	): RepositoryConfig | null {
+		// Find first repo without teamKeys or projectKeys (catch-all) in the workspace
+		const catchAllRepo = repos.find(
+			(repo) =>
+				repo.linearWorkspaceId === workspaceId &&
+				(!repo.teamKeys || repo.teamKeys.length === 0) &&
+				(!repo.projectKeys || repo.projectKeys.length === 0),
 		);
+
+		if (catchAllRepo) return catchAllRepo;
+
+		// Find any repo in the workspace as final fallback
+		return repos.find((repo) => repo.linearWorkspaceId === workspaceId) || null;
 	}
 
 	/**
@@ -991,50 +1133,6 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Fetch complete issue details from Linear API
-	 */
-	private async fetchFullIssueDetails(
-		issueId: string,
-		repositoryId: string,
-	): Promise<LinearIssue | null> {
-		const linearClient = this.linearClients.get(repositoryId);
-		if (!linearClient) {
-			console.warn(
-				`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
-			);
-			return null;
-		}
-
-		try {
-			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`);
-			const fullIssue = await linearClient.issue(issueId);
-			console.log(
-				`[EdgeWorker] Successfully fetched issue details for ${issueId}`,
-			);
-
-			// Check if issue has a parent
-			try {
-				const parent = await fullIssue.parent;
-				if (parent) {
-					console.log(
-						`[EdgeWorker] Issue ${issueId} has parent: ${parent.identifier}`,
-					);
-				}
-			} catch (_error) {
-				// Parent field might not exist, ignore error
-			}
-
-			return fullIssue;
-		} catch (error) {
-			console.error(
-				`[EdgeWorker] Failed to fetch full issue details for ${issueId}:`,
-				error,
-			);
-			return null;
-		}
-	}
-
-	/**
 	 * Fetch issue labels for a given issue
 	 */
 	private async fetchIssueLabels(issue: LinearIssue): Promise<string[]> {
@@ -1239,26 +1337,6 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 	}
 
 	/**
-	 * Convert full Linear SDK issue to CoreIssue interface for Session creation
-	 */
-	private convertLinearIssueToCore(issue: LinearIssue): IssueMinimal {
-		return {
-			id: issue.id,
-			identifier: issue.identifier,
-			title: issue.title || "",
-			description: issue.description || undefined,
-			branchName: issue.branchName, // Use the real branchName property!
-		};
-	}
-
-	/**
-	 * Sanitize branch name by removing backticks to prevent command injection
-	 */
-	private sanitizeBranchName(name: string): string {
-		return name ? name.replace(/`/g, "") : name;
-	}
-
-	/**
 	 * Check if a branch exists locally or remotely
 	 */
 	private async branchExists(
@@ -1282,6 +1360,7 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 				});
 				return true;
 			} catch {
+				// Branch doesn't exist remotely either
 				return false;
 			}
 		}
@@ -1342,6 +1421,26 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 	}
 
 	/**
+	 * Convert full Linear SDK issue to CoreIssue interface for Session creation
+	 */
+	private convertLinearIssueToCore(issue: LinearIssue): IssueMinimal {
+		return {
+			id: issue.id,
+			identifier: issue.identifier,
+			title: issue.title || "",
+			description: issue.description || undefined,
+			branchName: issue.branchName, // Use the real branchName property!
+		};
+	}
+
+	/**
+	 * Sanitize branch name by removing backticks to prevent command injection
+	 */
+	private sanitizeBranchName(name: string): string {
+		return name ? name.replace(/`/g, "") : name;
+	}
+
+	/**
 	 * Format Linear comments into a threaded structure that mirrors the Linear UI
 	 * @param comments Array of Linear comments
 	 * @returns Formatted string showing comment threads
@@ -1390,13 +1489,13 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 			const rootTime = new Date(rootComment.createdAt).toLocaleString();
 
 			let threadText = `<comment_thread>
-  <root_comment>
-    <author>@${rootAuthor}</author>
-    <timestamp>${rootTime}</timestamp>
-    <content>
+	<root_comment>
+		<author>@${rootAuthor}</author>
+		<timestamp>${rootTime}</timestamp>
+		<content>
 ${rootComment.body}
-    </content>
-  </root_comment>`;
+		</content>
+	</root_comment>`;
 
 			// Format replies if any
 			if (thread.replies.length > 0) {
@@ -1411,13 +1510,13 @@ ${rootComment.body}
 					const replyTime = new Date(reply.createdAt).toLocaleString();
 
 					threadText += `
-    <reply>
-      <author>@${replyAuthor}</author>
-      <timestamp>${replyTime}</timestamp>
-      <content>
+		<reply>
+			<author>@${replyAuthor}</author>
+			<timestamp>${replyTime}</timestamp>
+			<content>
 ${reply.body}
-      </content>
-    </reply>`;
+			</content>
+		</reply>`;
 				}
 				threadText += "\n  </replies>";
 			}
@@ -1477,6 +1576,9 @@ ${reply.body}
 			const state = await issue.state;
 			const stateName = state?.name || "Unknown";
 
+			// Determine the base branch considering parent issues
+			const baseBranch = await this.determineBaseBranch(issue, repository);
+
 			// Get formatted comment threads
 			const linearClient = this.linearClients.get(repository.id);
 			let commentThreads = "No comments yet.";
@@ -1501,9 +1603,6 @@ ${reply.body}
 					console.error("Failed to fetch comments:", error);
 				}
 			}
-
-			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Build the prompt with all variables
 			let prompt = template
@@ -1532,11 +1631,11 @@ ${reply.body}
 			if (newComment) {
 				// Replace the conditional block
 				const newCommentSection = `<new_comment_to_address>
-  <author>{{new_comment_author}}</author>
-  <timestamp>{{new_comment_timestamp}}</timestamp>
-  <content>
+	<author>{{new_comment_author}}</author>
+	<timestamp>{{new_comment_timestamp}}</timestamp>
+	<content>
 {{new_comment_content}}
-  </content>
+	</content>
 </new_comment_to_address>
 
 IMPORTANT: Focus specifically on addressing the new comment above. This is a new request that requires your attention.`;
@@ -2604,6 +2703,50 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				`[EdgeWorker] Error posting instant prompted acknowledgment:`,
 				error,
 			);
+		}
+	}
+
+	/**
+	 * Fetch complete issue details from Linear API
+	 */
+	public async fetchFullIssueDetails(
+		issueId: string,
+		repositoryId: string,
+	): Promise<LinearIssue | null> {
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			console.warn(
+				`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+			);
+			return null;
+		}
+
+		try {
+			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`);
+			const fullIssue = await linearClient.issue(issueId);
+			console.log(
+				`[EdgeWorker] Successfully fetched issue details for ${issueId}`,
+			);
+
+			// Check if issue has a parent
+			try {
+				const parent = await fullIssue.parent;
+				if (parent) {
+					console.log(
+						`[EdgeWorker] Issue ${issueId} has parent: ${parent.identifier}`,
+					);
+				}
+			} catch (_error) {
+				// Parent field might not exist, ignore error
+			}
+
+			return fullIssue;
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to fetch issue details for ${issueId}:`,
+				error,
+			);
+			return null;
 		}
 	}
 }
