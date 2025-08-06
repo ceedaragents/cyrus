@@ -494,7 +494,8 @@ export class EdgeWorker extends EventEmitter {
 		const { issue } = agentSession;
 
 		// Determine if this is a mention or delegation
-		const isMentionTriggered = this.isAgentMentioned(agentSession);
+		const isMentionTriggered = agentSession.comment?.body;
+		
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
 		if (!agentSessionManager) {
@@ -639,7 +640,6 @@ export class EdgeWorker extends EventEmitter {
 			const promptResult = isMentionTriggered
 				? await this.buildMentionPrompt(
 						fullIssue,
-						repository,
 						agentSession,
 						attachmentResult.manifest,
 					)
@@ -1158,7 +1158,6 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async buildMentionPrompt(
 		issue: LinearIssue,
-		repository: RepositoryConfig,
 		agentSession: LinearWebhookAgentSession,
 		attachmentManifest: string = "",
 	): Promise<{ prompt: string; version?: string }> {
@@ -1172,11 +1171,6 @@ export class EdgeWorker extends EventEmitter {
 
 			// Build a simple prompt focused on the mention
 			let prompt = `You were mentioned in a Linear comment. Please help with the following request.
-
-<context>
-  <repository>${repository.name}</repository>
-  <working_directory>${repository.workspaceBaseDir}/${issue.identifier}</working_directory>
-</context>
 
 <linear_issue>
   <id>${issue.id}</id>
@@ -2267,113 +2261,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		return manifest;
-	}
-
-	// /**
-	//  * Check if the agent (Cyrus) is mentioned in a comment
-	//  * @param comment Linear comment object from webhook data
-	//  * @param repository Repository configuration
-	//  * @returns true if the agent is mentioned, false otherwise
-	//  */
-	// private async isAgentMentionedInComment(comment: LinearWebhookComment, repository: RepositoryConfig): Promise<boolean> {
-	//   try {
-	//     const linearClient = this.linearClients.get(repository.id)
-	//     if (!linearClient) {
-	//       console.warn(`No Linear client found for repository ${repository.id}`)
-	//       return false
-	//     }
-
-	//     // Get the current user (agent) information
-	//     const viewer = await linearClient.viewer
-	//     if (!viewer) {
-	//       console.warn('Unable to fetch viewer information')
-	//       return false
-	//     }
-
-	//     // Check for mentions in the comment body
-	//     // Linear mentions can be in formats like:
-	//     // @username, @"Display Name", or @userId
-	//     const commentBody = comment.body
-
-	//     // Check for mention by user ID (most reliable)
-	//     if (commentBody.includes(`@${viewer.id}`)) {
-	//       return true
-	//     }
-
-	//     // Check for mention by name (case-insensitive)
-	//     if (viewer.name) {
-	//       const namePattern = new RegExp(`@"?${viewer.name}"?`, 'i')
-	//       if (namePattern.test(commentBody)) {
-	//         return true
-	//       }
-	//     }
-
-	//     // Check for mention by display name (case-insensitive)
-	//     if (viewer.displayName && viewer.displayName !== viewer.name) {
-	//       const displayNamePattern = new RegExp(`@"?${viewer.displayName}"?`, 'i')
-	//       if (displayNamePattern.test(commentBody)) {
-	//         return true
-	//       }
-	//     }
-
-	//     // Check for mention by email (less common but possible)
-	//     if (viewer.email) {
-	//       const emailPattern = new RegExp(`@"?${viewer.email}"?`, 'i')
-	//       if (emailPattern.test(commentBody)) {
-	//         return true
-	//       }
-	//     }
-
-	//     return false
-	//   } catch (error) {
-	//     console.error('Failed to check if agent is mentioned in comment:', error)
-	//     // If we can't determine, err on the side of caution and allow the trigger
-	//     return true
-	//   }
-	// }
-
-	/**
-	 * Check if agent was mentioned in the initial comment that triggered the session
-	 * @param agentSession LinearWebhookAgentSession object
-	 * @returns true if agent was mentioned (vs being delegated)
-	 */
-	private isAgentMentioned(agentSession: LinearWebhookAgentSession): boolean {
-		// Check if there's a comment body to analyze
-		const commentBody = agentSession.comment?.body;
-		if (!commentBody) {
-			// No comment body means likely a delegation
-			console.log(
-				`[EdgeWorker] No comment body found for session ${agentSession.id}, treating as delegation`,
-			);
-			return false;
-		}
-
-		// Look for @ mention patterns in the comment
-		// Linear mentions can be in various formats:
-		// - Simple: @agent
-		// - With brackets: @[Agent Name]
-		// - With user ID: @[Agent Name](user-id)
-		const mentionPatterns = [
-			/@\[.*?\]/, // @[Agent Name] format
-			/@\[.*?\]\(.*?\)/, // @[Agent Name](user-id) format
-			/@\w+/, // Simple @username format
-		];
-
-		const hasMention = mentionPatterns.some((pattern) =>
-			pattern.test(commentBody),
-		);
-
-		if (hasMention) {
-			console.log(
-				`[EdgeWorker] Agent was mentioned in comment for session ${agentSession.id}`,
-			);
-		} else {
-			console.log(
-				`[EdgeWorker] Agent was delegated (no mention found) for session ${agentSession.id}`,
-			);
-		}
-
-		return hasMention;
 	}
 
 	/**
