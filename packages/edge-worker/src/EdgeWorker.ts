@@ -702,7 +702,7 @@ export class EdgeWorker extends EventEmitter {
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
 
-		const promptBody = webhook.agentActivity.content.body;
+		const commentId = webhook.agentActivity.sourceCommentId;
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -724,6 +724,16 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Get Linear client for this repository
+		const linearClient = this.linearClients.get(repository.id);
+		if (!linearClient) {
+			console.error(
+				"Unexpected: There was no LinearClient for the repository with id",
+				repository.id,
+			);
+			return;
+		}
+
 		// Always set up attachments directory, even if no attachments in current comment
 		const workspaceFolderName = basename(session.workspace.path);
 		const attachmentsDir = join(
@@ -735,13 +745,24 @@ export class EdgeWorker extends EventEmitter {
 		// Ensure directory exists
 		await mkdir(attachmentsDir, { recursive: true });
 
-		// Check for attachments in the new comment BEFORE handling streaming
-		const attachmentUrls = this.extractAttachmentUrls(promptBody);
 		let attachmentManifest = "";
-
-		if (attachmentUrls.length > 0) {
-			console.log(
-				`[EdgeWorker] Found ${attachmentUrls.length} attachments in new comment`,
+		try {
+			const result = await linearClient.client.rawRequest(
+				`
+          query GetComment($id: String!) {
+            comment(id: $id) {
+              id
+              body
+              createdAt
+              updatedAt
+              user {
+                name
+                id
+              }
+            }
+          }
+        `,
+				{ id: commentId },
 			);
 
 			// Count existing attachments
@@ -752,21 +773,20 @@ export class EdgeWorker extends EventEmitter {
 
 			// Download new attachments from the comment
 			const downloadResult = await this.downloadCommentAttachments(
-				promptBody,
+				(result.data as any).comment.body,
 				attachmentsDir,
 				repository.linearToken,
 				existingAttachmentCount,
 			);
 
-			// Generate manifest for new attachments
-			attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
-
-			if (attachmentManifest) {
-				console.log(
-					`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} new attachments from comment`,
-				);
+			if (downloadResult.totalNewAttachments > 0) {
+				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
 			}
+		} catch (error) {
+			console.error("Failed to fetch comments for attachments:", error);
 		}
+
+		const promptBody = webhook.agentActivity.content.body;
 
 		// Check if there's an existing runner for this comment thread
 		const existingRunner = session.claudeRunner;
@@ -807,7 +827,7 @@ export class EdgeWorker extends EventEmitter {
 
 		if (!session.claudeSessionId) {
 			console.error(
-				`Unexpected: Handling a 'prompted' webhook but did not find an existing claudeSessionId for the linearAgentActivitySessionId ${linearAgentActivitySessionId}. Not continuing.`,
+				`Unexpected: Handling a ("prompted") webhook but did not find an existing claudeSessionId for the linearAgentActivitySessionId ${linearAgentActivitySessionId}. Not continuing.`,
 			);
 			return;
 		}
