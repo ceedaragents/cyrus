@@ -495,7 +495,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Determine if this is a mention or delegation
 		const isMentionTriggered = agentSession.comment?.body;
-		
+
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
 		if (!agentSessionManager) {
