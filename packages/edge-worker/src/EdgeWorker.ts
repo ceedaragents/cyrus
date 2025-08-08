@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2306,7 +2307,59 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Build allowed tools list with Linear MCP tools automatically included
+	 * Get all MCP server names from the repository configuration
+	 * This includes both the injected Linear server and any servers from mcpConfigPath
+	 */
+	private getMcpServerNames(repository: RepositoryConfig): string[] {
+		const serverNames: string[] = [];
+
+		// Always include Linear server since it's injected by buildMcpConfig
+		serverNames.push("linear");
+
+		// Parse mcpConfigPath if provided
+		if (repository.mcpConfigPath) {
+			try {
+				const paths = Array.isArray(repository.mcpConfigPath)
+					? repository.mcpConfigPath
+					: [repository.mcpConfigPath];
+
+				for (const path of paths) {
+					try {
+						const mcpConfigContent = readFileSync(path, "utf8");
+						const mcpConfig = JSON.parse(mcpConfigContent);
+						const servers = mcpConfig.mcpServers || {};
+						const foundServers = Object.keys(servers);
+						if (foundServers.length > 0) {
+							console.log(
+								`[EdgeWorker] Found MCP servers in ${path}: ${foundServers.join(", ")}`,
+							);
+							serverNames.push(...foundServers);
+						}
+					} catch (error) {
+						console.warn(
+							`[EdgeWorker] Failed to load MCP config from ${path}:`,
+							error,
+						);
+					}
+				}
+			} catch (error) {
+				console.warn(
+					"[EdgeWorker] Failed to process mcpConfigPath:",
+					error,
+				);
+			}
+		}
+
+		// Remove duplicates and return
+		const uniqueServers = [...new Set(serverNames)];
+		console.log(
+			`[EdgeWorker] Total MCP servers configured: ${uniqueServers.join(", ")}`,
+		);
+		return uniqueServers;
+	}
+
+	/**
+	 * Build allowed tools list with MCP tools automatically included
 	 */
 	private buildAllowedTools(repository: RepositoryConfig): string[] {
 		// Start with configured tools or defaults
@@ -2318,12 +2371,25 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Ensure baseTools is an array
 		const baseToolsArray = Array.isArray(baseTools) ? baseTools : [];
 
-		// Linear MCP tools that should always be available
+		// Get all MCP server names from the configuration
+		const mcpServerNames = this.getMcpServerNames(repository);
+
+		// Generate wildcard permissions for all MCP servers
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const linearMcpTools = ["mcp__linear"];
+		const mcpWildcardTools = mcpServerNames.map(
+			(serverName) => `mcp__${serverName}`,
+		);
 
 		// Combine and deduplicate
-		const allTools = [...new Set([...baseToolsArray, ...linearMcpTools])];
+		const allTools = [...new Set([...baseToolsArray, ...mcpWildcardTools])];
+
+		console.log(
+			`[EdgeWorker] Allowed tools for repository ${repository.name}: ${allTools.length} tools`,
+			{
+				mcpWildcards: mcpWildcardTools,
+				totalCount: allTools.length,
+			},
+		);
 
 		return allTools;
 	}

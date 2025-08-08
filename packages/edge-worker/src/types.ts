@@ -27,7 +27,7 @@ export interface RepositoryConfig {
 	// Optional settings
 	isActive?: boolean; // Whether to process webhooks for this repo (default: true)
 	promptTemplatePath?: string; // Custom prompt template for this repo
-	allowedTools?: string[]; // Override Claude tools for this repository (overrides defaultAllowedTools)
+	allowedTools?: string[]; // Override Claude tools for this repository (overrides defaultAllowedTools). MCP tools from mcpConfigPath are automatically included.
 	mcpConfigPath?: string | string[]; // Path(s) to MCP configuration JSON file(s) (format: {"mcpServers": {...}})
 	appendInstruction?: string; // Additional instruction to append to the prompt in XML-style wrappers
 

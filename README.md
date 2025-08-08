@@ -54,9 +54,13 @@ Each repository in the `repositories` array can have these optional properties:
 #### `allowedTools` (array of strings)
 Controls which tools Claude can use when processing issues. Default: all standard tools plus `Bash(git:*)` and `Bash(gh:*)`.
 
+**Note:** MCP tools are now automatically discovered! If you configure MCP servers via `mcpConfigPath`, all tools from those servers are automatically allowed. You don't need to manually add them to `allowedTools`.
+
 Examples:
 - `["Read(**)", "Edit(**)", "Bash(git:*)", "Task"]` - Allow reading, editing, git commands, and task management
 - `["Read(**)", "Edit(**)", "Bash(npm:*)", "WebSearch"]` - Allow reading, editing, npm commands, and web search
+
+MCP tool patterns (usually not needed due to automatic discovery):
 - `["Read(**)", "Edit(**)", "mcp__github"]` - Allow all tools from the GitHub MCP server
 - `["Read(**)", "Edit(**)", "mcp__github__search_repositories"]` - Allow only the search_repositories tool from GitHub MCP
 
@@ -64,6 +68,8 @@ For security configuration details, see: https://docs.anthropic.com/en/docs/clau
 
 #### `mcpConfigPath` (string or array of strings)
 Path(s) to MCP (Model Context Protocol) configuration files. MCP allows Claude to access external tools and data sources like databases or APIs.
+
+**Automatic Tool Discovery:** When you specify `mcpConfigPath`, Cyrus automatically discovers and allows all tools from the configured MCP servers. For example, if your config includes a "github" server, all GitHub tools become available without needing to add `"mcp__github"` to `allowedTools`.
 
 Can be specified as:
 - A single string: `"mcpConfigPath": "/home/user/myapp/mcp-config.json"`

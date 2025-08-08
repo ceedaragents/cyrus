@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- MCP tools are now dynamically discovered and allowed based on configured servers
+  - Previously only hardcoded Linear MCP tools were allowed
+  - Now automatically allows tools from all MCP servers configured in repository's mcpConfigPath
+  - Uses wildcard permission format (e.g., "mcp__linear" allows all Linear MCP tools)
+
 ## [0.1.39] - 2025-08-08
 
 ### Changed
