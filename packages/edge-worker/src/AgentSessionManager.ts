@@ -17,6 +17,7 @@ import type {
 	SerializedCyrusAgentSessionEntry,
 	Workspace,
 } from "cyrus-core";
+import { LAST_MESSAGE_MARKER } from "./constants.js";
 
 /**
  * Manages Linear Agent Sessions integration with Claude Code SDK
@@ -30,6 +31,7 @@ export class AgentSessionManager {
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
+	private lastMessageWithMarker: Map<string, string> = new Map(); // Maps session ID to the last assistant message containing the marker
 
 	constructor(linearClient: LinearClient) {
 		this.linearClient = linearClient;
@@ -206,6 +208,24 @@ export class AgentSessionManager {
 		// Add result entry if present
 		if ("result" in resultMessage && resultMessage.result) {
 			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+			// Clear stored message since we have a result
+			this.lastMessageWithMarker.delete(linearAgentActivitySessionId);
+		} else {
+			// No result message content, check if we have a stored message with marker
+			const storedMessage = this.lastMessageWithMarker.get(linearAgentActivitySessionId);
+			if (storedMessage && resultMessage.subtype === "success") {
+				console.log(
+					`[AgentSessionManager] No result message content, posting stored message with marker for session ${linearAgentActivitySessionId}`,
+				);
+				// Create a synthetic result entry with the stored message
+				// We can only do this for success results since error results don't have a result field
+				const syntheticResult = {
+					...resultMessage,
+					result: storedMessage,
+				} as SDKResultMessage;
+				await this.addResultEntry(linearAgentActivitySessionId, syntheticResult);
+				this.lastMessageWithMarker.delete(linearAgentActivitySessionId);
+			}
 		}
 	}
 
@@ -510,10 +530,12 @@ export class AgentSessionManager {
 					} else {
 						// Regular assistant message - create a thought
 						// Check if this message contains the last message marker
-						if (entry.content.includes("___LAST_MESSAGE_MARKER___")) {
+						if (entry.content.includes(LAST_MESSAGE_MARKER)) {
 							console.log(
-								`[AgentSessionManager] Skipping assistant message with last message marker - will be posted as response later`,
+								`[AgentSessionManager] Storing assistant message with last message marker for session ${linearAgentActivitySessionId}`,
 							);
+							// Store this message for later posting when session completes
+							this.lastMessageWithMarker.set(linearAgentActivitySessionId, entry.content);
 							return; // Skip posting this as a thought
 						}
 						content = {
@@ -541,7 +563,7 @@ export class AgentSessionManager {
 					} else {
 						// Strip the last message marker from the response
 						const cleanedContent = entry.content
-							.replace(/___LAST_MESSAGE_MARKER___/g, "")
+							.replace(new RegExp(LAST_MESSAGE_MARKER, 'g'), "")
 							.trim();
 						content = {
 							type: "response",
