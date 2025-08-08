@@ -70,6 +70,15 @@ export class EdgeWorker extends EventEmitter {
 	private ndjsonClients: Map<string, NdjsonClient> = new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
+	// Queue for webhooks that arrived before their session was created
+	private pendingPromptedWebhooks: Map<
+		string,
+		{
+			webhook: LinearAgentSessionPromptedWebhook;
+			repository: RepositoryConfig;
+			timestamp: number;
+		}[]
+	> = new Map();
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -626,6 +635,33 @@ export class EdgeWorker extends EventEmitter {
 		// Save state after mapping changes
 		await this.savePersistedState();
 
+		// Process any pending prompted webhooks for this session
+		const pendingWebhooks = this.pendingPromptedWebhooks.get(
+			linearAgentActivitySessionId,
+		);
+		if (pendingWebhooks && pendingWebhooks.length > 0) {
+			console.log(
+				`[EdgeWorker] Processing ${pendingWebhooks.length} pending webhooks for session ${linearAgentActivitySessionId}`,
+			);
+
+			// Sort by timestamp to process in order
+			pendingWebhooks.sort((a, b) => a.timestamp - b.timestamp);
+
+			// Process each pending webhook
+			for (const pending of pendingWebhooks) {
+				console.log(
+					`[EdgeWorker] Processing queued webhook from ${new Date(pending.timestamp).toISOString()}`,
+				);
+				await this.handleUserPostedAgentActivity(
+					pending.webhook,
+					pending.repository,
+				);
+			}
+
+			// Clear the pending webhooks for this session
+			this.pendingPromptedWebhooks.delete(linearAgentActivitySessionId);
+		}
+
 		// Emit events using full Linear issue
 		this.emit("session:started", fullIssue.id, fullIssue, repository.id);
 		this.config.handlers?.onSessionStart?.(
@@ -721,9 +757,40 @@ export class EdgeWorker extends EventEmitter {
 			linearAgentActivitySessionId,
 		);
 		if (!session) {
-			console.error(
-				`Unexpected: could not find Cyrus Agent Session for agent activity session: ${linearAgentActivitySessionId}`,
+			console.warn(
+				`Session not found for agent activity session: ${linearAgentActivitySessionId}. Queuing webhook for retry.`,
 			);
+
+			// Queue the webhook for later processing
+			const pending =
+				this.pendingPromptedWebhooks.get(linearAgentActivitySessionId) || [];
+			pending.push({ webhook, repository, timestamp: Date.now() });
+			this.pendingPromptedWebhooks.set(linearAgentActivitySessionId, pending);
+
+			// Clean up old pending webhooks after 5 minutes
+			setTimeout(
+				() => {
+					const currentPending = this.pendingPromptedWebhooks.get(
+						linearAgentActivitySessionId,
+					);
+					if (currentPending) {
+						const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+						const filtered = currentPending.filter(
+							(p) => p.timestamp > fiveMinutesAgo,
+						);
+						if (filtered.length === 0) {
+							this.pendingPromptedWebhooks.delete(linearAgentActivitySessionId);
+						} else {
+							this.pendingPromptedWebhooks.set(
+								linearAgentActivitySessionId,
+								filtered,
+							);
+						}
+					}
+				},
+				5 * 60 * 1000,
+			);
+
 			return;
 		}
 
