@@ -22,7 +22,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@linear/sdk": "^54.0.0",
+		"@linear/sdk": "^55.1.0",
 		"@ngrok/ngrok": "^1.5.1",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",

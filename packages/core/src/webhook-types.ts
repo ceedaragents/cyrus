@@ -230,7 +230,7 @@ export interface LinearWebhookAgentActivity {
 	createdAt: string;
 	updatedAt: string;
 	archivedAt: string | null;
-	agentContextId: string | null;
+	agentContextId?: string | null;
 	agentSessionId: string;
 	sourceCommentId: string;
 	content: LinearWebhookAgentActivityContent;
