@@ -37,6 +37,17 @@ export interface RepositoryConfig {
 		builder?: string[]; // Labels that trigger builder mode (e.g., ["Feature", "Improvement"])
 		scoper?: string[]; // Labels that trigger scoper mode (e.g., ["PRD"])
 	};
+
+	// Label-based repository routing configuration
+	routingLabels?: {
+		// Labels that should route issues to this repository
+		include?: string[];
+		// Labels that should exclude this repository (takes precedence over include)
+		exclude?: string[];
+		// Priority for this repository when multiple match (higher number = higher priority)
+		// Default: 0. Team key matches have implicit priority of 1000.
+		priority?: number;
+	};
 }
 
 /**
