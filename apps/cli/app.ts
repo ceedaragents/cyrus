@@ -207,11 +207,15 @@ class EdgeApp {
 	 */
 	async setupRepositoryWizard(
 		linearCredentials: LinearCredentials,
+		rl?: readline.Interface,
 	): Promise<RepositoryConfig> {
-		const rl = readline.createInterface({
-			input: process.stdin,
-			output: process.stdout,
-		});
+		const shouldCloseRl = !rl;
+		if (!rl) {
+			rl = readline.createInterface({
+				input: process.stdin,
+				output: process.stdout,
+			});
+		}
 
 		const question = (prompt: string): Promise<string> =>
 			new Promise((resolve) => {
@@ -269,7 +273,9 @@ class EdgeApp {
 				scoper: ["PRD"],
 			};
 
-			rl.close();
+			if (shouldCloseRl) {
+				rl.close();
+			}
 
 			// Create repository configuration
 			const repository: RepositoryConfig = {
@@ -287,7 +293,9 @@ class EdgeApp {
 
 			return repository;
 		} catch (error) {
-			rl.close();
+			if (shouldCloseRl) {
+				rl.close();
+			}
 			throw error;
 		}
 	}
@@ -785,47 +793,58 @@ class EdgeApp {
 				console.log("\n📋 Step 2: Configure Repository");
 				console.log("─".repeat(50));
 
+				// Create a single readline interface for the entire repository setup process
+				const rl = readline.createInterface({
+					input: process.stdin,
+					output: process.stdout,
+				});
+
 				try {
-					const newRepo = await this.setupRepositoryWizard(linearCredentials);
+					// Loop to allow adding multiple repositories
+					let continueAdding = true;
+					while (continueAdding) {
+						try {
+							const newRepo = await this.setupRepositoryWizard(linearCredentials, rl);
 
-					// Add to repositories
-					repositories = [...(edgeConfig.repositories || []), newRepo];
-					edgeConfig.repositories = repositories;
-					this.saveEdgeConfig(edgeConfig);
+							// Add to repositories
+							repositories = [...(edgeConfig.repositories || []), newRepo];
+							edgeConfig.repositories = repositories;
+							this.saveEdgeConfig(edgeConfig);
 
-					console.log("\n✅ Repository configured successfully!");
-					console.log(
-						"📝 ~/.cyrus/config.json file has been updated with your repository configuration.",
-					);
-					console.log(
-						"💡 You can edit this file and restart Cyrus at any time to modify settings.",
-					);
-					console.log(
-						"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
-					);
+							console.log("\n✅ Repository configured successfully!");
+							console.log(
+								"📝 ~/.cyrus/config.json file has been updated with your repository configuration.",
+							);
+							console.log(
+								"💡 You can edit this file and restart Cyrus at any time to modify settings.",
+							);
+							console.log(
+								"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
+							);
 
-					// Ask if they want to add another
-					const rl = readline.createInterface({
-						input: process.stdin,
-						output: process.stdout,
-					});
-					const addAnother = await new Promise<boolean>((resolve) => {
-						rl.question("\nAdd another repository? (y/N): ", (answer) => {
-							rl.close();
-							resolve(answer.toLowerCase() === "y");
-						});
-					});
+							// Ask if they want to add another
+							const addAnother = await new Promise<boolean>((resolve) => {
+								rl.question("\nAdd another repository? (y/N): ", (answer) => {
+									resolve(answer.toLowerCase() === "y");
+								});
+							});
 
-					if (addAnother) {
-						// Restart setup flow
-						return this.start();
+							continueAdding = addAnother;
+							if (continueAdding) {
+								console.log("\n📋 Configure Additional Repository");
+								console.log("─".repeat(50));
+							}
+						} catch (error) {
+							console.error(
+								"\n❌ Repository setup failed:",
+								(error as Error).message,
+							);
+							throw error;
+						}
 					}
-				} catch (error) {
-					console.error(
-						"\n❌ Repository setup failed:",
-						(error as Error).message,
-					);
-					process.exit(1);
+				} finally {
+					// Always close the readline interface when done
+					rl.close();
 				}
 			}
 
