@@ -25,6 +25,9 @@ import open from "open";
 const args = process.argv.slice(2);
 const envFileArg = args.find((arg) => arg.startsWith("--env-file="));
 
+// Constants
+const DEFAULT_PROXY_URL = "https://cyrus-proxy.ceedar.workers.dev";
+
 // Note: __dirname removed since version is now hardcoded
 
 // Handle --version argument
@@ -552,13 +555,129 @@ class EdgeApp {
 	}
 
 	/**
+	 * Check subscription status with the Cyrus API
+	 */
+	async checkSubscriptionStatus(customerId: string): Promise<{
+		hasActiveSubscription: boolean;
+		status: string;
+		requiresPayment: boolean;
+		isReturningCustomer?: boolean;
+	}> {
+		const response = await fetch(
+			`https://www.atcyrus.com/api/subscription-status?customerId=${encodeURIComponent(customerId)}`,
+			{
+				method: "GET",
+				headers: {
+					"Content-Type": "application/json",
+				},
+			},
+		);
+
+		if (!response.ok) {
+			if (response.status === 400) {
+				const data = (await response.json()) as { error?: string };
+				throw new Error(data.error || "Invalid customer ID format");
+			}
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+
+		const data = (await response.json()) as {
+			hasActiveSubscription: boolean;
+			status: string;
+			requiresPayment: boolean;
+			isReturningCustomer?: boolean;
+		};
+		return data;
+	}
+
+	/**
+	 * Validate customer ID format
+	 */
+	public validateCustomerId(customerId: string): void {
+		if (!customerId.startsWith("cus_")) {
+			console.error("\n❌ Invalid customer ID format");
+			console.log('Customer IDs should start with "cus_"');
+			process.exit(1);
+		}
+	}
+
+	/**
+	 * Handle subscription validation failure
+	 */
+	private handleSubscriptionFailure(subscriptionStatus: {
+		hasActiveSubscription: boolean;
+		status: string;
+		requiresPayment: boolean;
+		isReturningCustomer?: boolean;
+	}): void {
+		console.error("\n❌ Subscription Invalid");
+		console.log("─".repeat(50));
+
+		if (subscriptionStatus.isReturningCustomer) {
+			console.log("Your subscription has expired or been cancelled.");
+			console.log(`Status: ${subscriptionStatus.status}`);
+			console.log(
+				"\nPlease visit https://www.atcyrus.com/pricing to reactivate your subscription.",
+			);
+		} else {
+			console.log("No active subscription found for this customer ID.");
+			console.log(
+				"\nPlease visit https://www.atcyrus.com/pricing to start a subscription.",
+			);
+			console.log("Once you obtain a valid customer ID,");
+			console.log("Run: cyrus set-customer-id cus_XXXXX");
+		}
+
+		process.exit(1);
+	}
+
+	/**
+	 * Validate subscription and handle failures
+	 */
+	public async validateAndHandleSubscription(
+		customerId: string,
+	): Promise<void> {
+		console.log("\n🔐 Validating subscription...");
+		try {
+			const subscriptionStatus = await this.checkSubscriptionStatus(customerId);
+
+			if (subscriptionStatus.requiresPayment) {
+				this.handleSubscriptionFailure(subscriptionStatus);
+			}
+
+			console.log(`✅ Subscription active (${subscriptionStatus.status})`);
+		} catch (error) {
+			console.error("\n❌ Failed to validate subscription");
+			console.log(`Error: ${(error as Error).message}`);
+			console.log("Run \"cyrus set-customer-id cus_XXXXX\" with a valid customer ID");
+			process.exit(1);
+		}
+	}
+
+	/**
+	 * Create readline interface and ask question
+	 */
+	public async askQuestion(prompt: string): Promise<string> {
+		const rl = readline.createInterface({
+			input: process.stdin,
+			output: process.stdout,
+		});
+
+		return new Promise((resolve) => {
+			rl.question(prompt, (answer) => {
+				rl.close();
+				resolve(answer.trim());
+			});
+		});
+	}
+
+	/**
 	 * Start the edge application
 	 */
 	async start(): Promise<void> {
 		try {
 			// Set proxy URL with default
-			const proxyUrl =
-				process.env.PROXY_URL || "https://cyrus-proxy.ceedar.workers.dev";
+			const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
 
 			// No need to validate Claude CLI - using Claude TypeScript SDK now
 
@@ -567,8 +686,7 @@ class EdgeApp {
 			let repositories = edgeConfig.repositories || [];
 
 			// Check if using default proxy URL without a customer ID
-			const defaultProxyUrl = "https://cyrus-proxy.ceedar.workers.dev";
-			const isUsingDefaultProxy = proxyUrl === defaultProxyUrl;
+			const isUsingDefaultProxy = proxyUrl === DEFAULT_PROXY_URL;
 			const hasCustomerId = !!edgeConfig.stripeCustomerId;
 
 			if (isUsingDefaultProxy && !hasCustomerId) {
@@ -585,22 +703,12 @@ class EdgeApp {
 				console.log("3. Setup your own proxy (advanced)");
 				console.log("4. Exit");
 
-				const rl = readline.createInterface({
-					input: process.stdin,
-					output: process.stdout,
-				});
-
-				const choice = await new Promise<string>((resolve) => {
-					rl.question("\nYour choice (1-4): ", (answer) => {
-						resolve(answer.trim());
-					});
-				});
+				const choice = await this.askQuestion("\nYour choice (1-4): ");
 
 				if (choice === "1") {
 					console.log("\n👉 Opening your browser to start a free trial...");
 					console.log("Visit: https://www.atcyrus.com/pricing");
 					await open("https://www.atcyrus.com/pricing");
-					rl.close();
 					process.exit(0);
 				} else if (choice === "2") {
 					console.log(
@@ -610,25 +718,15 @@ class EdgeApp {
 						'It starts with "cus_" and can be copied from the website.',
 					);
 
-					const customerId = await new Promise<string>((resolve) => {
-						rl.question("\nPaste your customer ID here: ", (answer) => {
-							resolve(answer.trim());
-						});
-					});
+					const customerId = await this.askQuestion(
+						"\nPaste your customer ID here: ",
+					);
 
-					rl.close();
-
-					if (!customerId.startsWith("cus_")) {
-						console.error("\n❌ Invalid customer ID format");
-						console.log('Customer IDs should start with "cus_"');
-						process.exit(1);
-					}
-
-					// Save the customer ID
+					this.validateCustomerId(customerId);
 					edgeConfig.stripeCustomerId = customerId;
 					this.saveEdgeConfig(edgeConfig);
 
-					console.log("\n✅ Customer ID saved successfully!");
+					console.log("✅ Customer ID saved successfully!");
 					console.log("Continuing with startup...\n");
 
 					// Reload config to include the new customer ID
@@ -650,12 +748,25 @@ class EdgeApp {
 						"\nOnce deployed, set the PROXY_URL environment variable:",
 					);
 					console.log("export PROXY_URL=https://your-proxy-url.com");
-					rl.close();
 					process.exit(0);
 				} else {
-					rl.close();
 					console.log("\nExiting...");
 					process.exit(0);
+				}
+			}
+
+			// If using default proxy and has customer ID, validate subscription
+			if (isUsingDefaultProxy && edgeConfig.stripeCustomerId) {
+				try {
+					await this.validateAndHandleSubscription(edgeConfig.stripeCustomerId);
+				} catch (error) {
+					console.error("\n⚠️ Warning: Could not validate subscription");
+					console.log("─".repeat(50));
+					console.error(
+						"Unable to connect to subscription service:",
+						(error as Error).message,
+					);
+					process.exit(1);
 				}
 			}
 
@@ -708,18 +819,9 @@ class EdgeApp {
 							console.log(`${i + 1}. ${ws.name}`);
 						});
 
-						const rl = readline.createInterface({
-							input: process.stdin,
-							output: process.stdout,
-						});
-
-						const choice = await new Promise<string>((resolve) => {
-							rl.question(
-								"\nSelect workspace (number) or press Enter for new: ",
-								resolve,
-							);
-						});
-						rl.close();
+						const choice = await this.askQuestion(
+							"\nSelect workspace (number) or press Enter for new: ",
+						);
 
 						const index = parseInt(choice) - 1;
 						if (index >= 0 && index < workspaceList.length) {
@@ -805,16 +907,10 @@ class EdgeApp {
 					);
 
 					// Ask if they want to add another
-					const rl = readline.createInterface({
-						input: process.stdin,
-						output: process.stdout,
-					});
-					const addAnother = await new Promise<boolean>((resolve) => {
-						rl.question("\nAdd another repository? (y/N): ", (answer) => {
-							rl.close();
-							resolve(answer.toLowerCase() === "y");
-						});
-					});
+					const addAnotherAnswer = await this.askQuestion(
+						"\nAdd another repository? (y/N): ",
+					);
+					const addAnother = addAnotherAnswer.toLowerCase() === "y";
 
 					if (addAnother) {
 						// Restart setup flow
@@ -842,9 +938,7 @@ class EdgeApp {
 			await this.startEdgeWorker({ proxyUrl, repositories });
 
 			// Display plan status
-			const defaultProxyUrlForStatus = "https://cyrus-proxy.ceedar.workers.dev";
-			const isUsingDefaultProxyForStatus =
-				proxyUrl === defaultProxyUrlForStatus;
+			const isUsingDefaultProxyForStatus = proxyUrl === DEFAULT_PROXY_URL;
 			const hasCustomerIdForStatus = !!edgeConfig.stripeCustomerId;
 
 			console.log(`\n${"─".repeat(70)}`);
@@ -1302,17 +1396,9 @@ async function refreshTokenCommand() {
 	}
 
 	// Ask which token to refresh
-	const rl = readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
-
-	const answer = await new Promise<string>((resolve) => {
-		rl.question(
-			'\nWhich repository token would you like to refresh? (Enter number or "all"): ',
-			resolve,
-		);
-	});
+	const answer = await app.askQuestion(
+		'\nWhich repository token would you like to refresh? (Enter number or "all"): ',
+	);
 
 	const indicesToRefresh: number[] = [];
 
@@ -1324,7 +1410,6 @@ async function refreshTokenCommand() {
 		const index = parseInt(answer) - 1;
 		if (Number.isNaN(index) || index < 0 || index >= tokenStatuses.length) {
 			console.error("Invalid selection");
-			rl.close();
 			process.exit(1);
 		}
 		indicesToRefresh.push(index);
@@ -1348,7 +1433,7 @@ async function refreshTokenCommand() {
 			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 			: 3456;
 		const callbackUrl = `http://localhost:${serverPort}/callback`;
-		const oauthUrl = `https://cyrus-proxy.ceedar.workers.dev/oauth/authorize?callback=${encodeURIComponent(
+		const oauthUrl = `${DEFAULT_PROXY_URL}/oauth/authorize?callback=${encodeURIComponent(
 			callbackUrl,
 		)}`;
 
@@ -1437,8 +1522,6 @@ async function refreshTokenCommand() {
 	// Save the updated config
 	writeFileSync(configPath, JSON.stringify(config, null, 2));
 	console.log("\n✅ Configuration saved");
-
-	rl.close();
 }
 
 // Command: add-repository
@@ -1523,13 +1606,18 @@ async function setCustomerIdCommand() {
 		process.exit(1);
 	}
 
-	if (!customerId.startsWith("cus_")) {
-		console.error("Invalid customer ID format");
-		console.log('Customer IDs should start with "cus_"');
-		process.exit(1);
-	}
+	app.validateCustomerId(customerId);
 
 	try {
+		// Check if using default proxy
+		const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
+		const isUsingDefaultProxy = proxyUrl === DEFAULT_PROXY_URL;
+
+		// Validate subscription for default proxy users
+		if (isUsingDefaultProxy) {
+			await app.validateAndHandleSubscription(customerId);
+		}
+
 		// Load existing config or create new one
 		let config: EdgeConfig = { repositories: [] };
 
@@ -1546,7 +1634,9 @@ async function setCustomerIdCommand() {
 		console.log("\n✅ Customer ID saved successfully!");
 		console.log("─".repeat(50));
 		console.log(`Customer ID: ${customerId}`);
-		console.log("\nYou now have access to Cyrus Pro features.");
+		if (isUsingDefaultProxy) {
+			console.log("\nYou now have access to Cyrus Pro features.");
+		}
 		console.log('Run "cyrus" to start the edge worker.');
 	} catch (error) {
 		console.error("Failed to save customer ID:", (error as Error).message);

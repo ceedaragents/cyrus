@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Customer subscription validation for Cyrus Pro users
+  - Automatically checks subscription status when using the default proxy with a customer ID
+  - Blocks access if subscription is expired, cancelled, or invalid
+  - Shows appropriate messages for returning customers vs new customers
+  - Validates subscription when setting customer ID via `cyrus set-customer-id` command
+
 ### Changed
 - Updated Linear SDK from v54 to v55.1.0 to support Agent Activity Signals
   - Stop button in Linear UI now sends a deterministic `stop` signal that Cyrus responds to immediately
