@@ -33,9 +33,18 @@ export interface RepositoryConfig {
 
 	// Label-based system prompt configuration
 	labelPrompts?: {
-		debugger?: string[]; // Labels that trigger debugger mode (e.g., ["Bug"])
-		builder?: string[]; // Labels that trigger builder mode (e.g., ["Feature", "Improvement"])
-		scoper?: string[]; // Labels that trigger scoper mode (e.g., ["PRD"])
+		debugger?: {
+			labels: string[]; // Labels that trigger debugger mode (e.g., ["Bug"])
+			allowedTools?: string[] | "readOnly" | "safe" | "all"; // Tool restrictions for debugger mode
+		};
+		builder?: {
+			labels: string[]; // Labels that trigger builder mode (e.g., ["Feature", "Improvement"])
+			allowedTools?: string[] | "readOnly" | "safe" | "all"; // Tool restrictions for builder mode
+		};
+		scoper?: {
+			labels: string[]; // Labels that trigger scoper mode (e.g., ["PRD"])
+			allowedTools?: string[] | "readOnly" | "safe" | "all"; // Tool restrictions for scoper mode
+		};
 	};
 }
 
@@ -54,6 +63,19 @@ export interface EdgeWorkerConfig {
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
+
+	// Global defaults for prompt types
+	promptDefaults?: {
+		debugger?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all";
+		};
+		builder?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all";
+		};
+		scoper?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all";
+		};
+	};
 
 	// Repository configurations
 	repositories: RepositoryConfig[];

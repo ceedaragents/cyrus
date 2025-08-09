@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Dynamic tool configuration based on system prompt labels
+  - Tool access can now be customized per prompt type (debugger, builder, scoper)
+  - Supports preset tool groups: "readOnly", "safe", or "all"
+  - Configuration can be set at repository level or globally
+  - Improves security and focus by limiting tools based on task type
+
 ### Changed
 - Updated Linear SDK from v54 to v55.1.0 to support Agent Activity Signals
   - Stop button in Linear UI now sends a deterministic `stop` signal that Cyrus responds to immediately

@@ -9,7 +9,12 @@ import {
 	type Issue as LinearIssue,
 } from "@linear/sdk";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
-import { ClaudeRunner, getSafeTools } from "cyrus-claude-runner";
+import {
+	ClaudeRunner,
+	getAllTools,
+	getReadOnlyTools,
+	getSafeTools,
+} from "cyrus-claude-runner";
 import type {
 	IssueMinimal,
 	LinearAgentSessionCreatedWebhook,
@@ -567,12 +572,10 @@ export class EdgeWorker extends EventEmitter {
 			allowedDirectories,
 		);
 
-		// Build allowed tools list with Linear MCP tools
-		const allowedTools = this.buildAllowedTools(repository);
-
 		// Only fetch labels and determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
+		let promptType: "debugger" | "builder" | "scoper" | undefined;
 
 		if (!isMentionTriggered) {
 			// Fetch issue labels and determine system prompt (delegation case)
@@ -583,6 +586,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 			systemPrompt = systemPromptResult?.prompt;
 			systemPromptVersion = systemPromptResult?.version;
+			promptType = systemPromptResult?.type;
 
 			// Post thought about system prompt selection
 			if (systemPrompt) {
@@ -597,6 +601,14 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Skipping system prompt for mention-triggered session ${linearAgentActivitySessionId}`,
 			);
 		}
+
+		// Build allowed tools list with Linear MCP tools (now with prompt type context)
+		const allowedTools = this.buildAllowedTools(repository, promptType);
+
+		console.log(
+			`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
+			allowedTools,
+		);
 
 		// Create Claude runner with attachment directory access and optional system prompt
 		// Always append the last message marker to prevent duplication
@@ -864,9 +876,6 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		try {
-			// Build allowed tools list with Linear MCP tools
-			const allowedTools = this.buildAllowedTools(repository);
-
 			// Fetch full issue details to get labels
 			const fullIssue = await this.fetchFullIssueDetails(
 				issue.id,
@@ -883,6 +892,16 @@ export class EdgeWorker extends EventEmitter {
 				repository,
 			);
 			const systemPrompt = systemPromptResult?.prompt;
+			const promptType = systemPromptResult?.type;
+
+			// Build allowed tools list with Linear MCP tools (now with prompt type context)
+			const allowedTools = this.buildAllowedTools(repository, promptType);
+
+			console.log(
+				`[EdgeWorker] Configured allowed tools for ${issue.identifier} (continued session):`,
+				allowedTools,
+			);
+
 			const allowedDirectories = [attachmentsDir];
 
 			// Create new runner with resume mode if we have a Claude session ID
@@ -1081,7 +1100,14 @@ export class EdgeWorker extends EventEmitter {
 	private async determineSystemPromptFromLabels(
 		labels: string[],
 		repository: RepositoryConfig,
-	): Promise<{ prompt: string; version?: string } | undefined> {
+	): Promise<
+		| {
+				prompt: string;
+				version?: string;
+				type?: "debugger" | "builder" | "scoper";
+		  }
+		| undefined
+	> {
 		if (!repository.labelPrompts || labels.length === 0) {
 			return undefined;
 		}
@@ -1090,7 +1116,12 @@ export class EdgeWorker extends EventEmitter {
 		const promptTypes = ["debugger", "builder", "scoper"] as const;
 
 		for (const promptType of promptTypes) {
-			const configuredLabels = repository.labelPrompts[promptType];
+			const promptConfig = repository.labelPrompts[promptType];
+			// Handle both old array format and new object format for backward compatibility
+			const configuredLabels = Array.isArray(promptConfig)
+				? promptConfig
+				: promptConfig?.labels;
+
 			if (configuredLabels?.some((label) => labels.includes(label))) {
 				try {
 					// Load the prompt template from file
@@ -1115,7 +1146,11 @@ export class EdgeWorker extends EventEmitter {
 						);
 					}
 
-					return { prompt: promptContent, version: promptVersion };
+					return {
+						prompt: promptContent,
+						version: promptVersion,
+						type: promptType,
+					};
 				} catch (error) {
 					console.error(
 						`[EdgeWorker] Failed to load ${promptType} prompt template:`,
@@ -2331,24 +2366,80 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
+	 * Resolve tool preset names to actual tool lists
+	 */
+	private resolveToolPreset(preset: string | string[]): string[] {
+		if (Array.isArray(preset)) {
+			return preset;
+		}
+
+		switch (preset) {
+			case "readOnly":
+				return getReadOnlyTools();
+			case "safe":
+				return getSafeTools();
+			case "all":
+				return getAllTools();
+			default:
+				// If it's a string but not a preset, treat it as a single tool
+				return [preset];
+		}
+	}
+
+	/**
 	 * Build allowed tools list with Linear MCP tools automatically included
 	 */
-	private buildAllowedTools(repository: RepositoryConfig): string[] {
-		// Start with configured tools or defaults
-		const baseTools =
-			repository.allowedTools ||
-			this.config.defaultAllowedTools ||
-			getSafeTools();
+	private buildAllowedTools(
+		repository: RepositoryConfig,
+		promptType?: "debugger" | "builder" | "scoper",
+	): string[] {
+		let baseTools: string[] = [];
+		let toolSource = "";
 
-		// Ensure baseTools is an array
-		const baseToolsArray = Array.isArray(baseTools) ? baseTools : [];
+		// Priority order:
+		// 1. Repository-specific prompt type configuration
+		if (promptType && repository.labelPrompts?.[promptType]?.allowedTools) {
+			baseTools = this.resolveToolPreset(
+				repository.labelPrompts[promptType].allowedTools,
+			);
+			toolSource = `repository label prompt (${promptType})`;
+		}
+		// 2. Global prompt type defaults
+		else if (
+			promptType &&
+			this.config.promptDefaults?.[promptType]?.allowedTools
+		) {
+			baseTools = this.resolveToolPreset(
+				this.config.promptDefaults[promptType].allowedTools,
+			);
+			toolSource = `global prompt defaults (${promptType})`;
+		}
+		// 3. Repository-level allowed tools
+		else if (repository.allowedTools) {
+			baseTools = repository.allowedTools;
+			toolSource = "repository configuration";
+		}
+		// 4. Global default allowed tools
+		else if (this.config.defaultAllowedTools) {
+			baseTools = this.config.defaultAllowedTools;
+			toolSource = "global defaults";
+		}
+		// 5. Fall back to safe tools
+		else {
+			baseTools = getSafeTools();
+			toolSource = "safe tools fallback";
+		}
 
 		// Linear MCP tools that should always be available
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
 		const linearMcpTools = ["mcp__linear"];
 
 		// Combine and deduplicate
-		const allTools = [...new Set([...baseToolsArray, ...linearMcpTools])];
+		const allTools = [...new Set([...baseTools, ...linearMcpTools])];
+
+		console.log(
+			`[EdgeWorker] Tool selection for ${repository.name}: ${allTools.length} tools from ${toolSource}`,
+		);
 
 		return allTools;
 	}
@@ -2525,7 +2616,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 			if (repository?.labelPrompts) {
 				// Check debugger labels
-				const debuggerLabel = repository.labelPrompts.debugger?.find((label) =>
+				const debuggerConfig = repository.labelPrompts.debugger;
+				const debuggerLabels = Array.isArray(debuggerConfig)
+					? debuggerConfig
+					: debuggerConfig?.labels;
+				const debuggerLabel = debuggerLabels?.find((label) =>
 					labels.includes(label),
 				);
 				if (debuggerLabel) {
@@ -2533,7 +2628,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					triggerLabel = debuggerLabel;
 				} else {
 					// Check builder labels
-					const builderLabel = repository.labelPrompts.builder?.find((label) =>
+					const builderConfig = repository.labelPrompts.builder;
+					const builderLabels = Array.isArray(builderConfig)
+						? builderConfig
+						: builderConfig?.labels;
+					const builderLabel = builderLabels?.find((label) =>
 						labels.includes(label),
 					);
 					if (builderLabel) {
@@ -2541,7 +2640,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						triggerLabel = builderLabel;
 					} else {
 						// Check scoper labels
-						const scoperLabel = repository.labelPrompts.scoper?.find((label) =>
+						const scoperConfig = repository.labelPrompts.scoper;
+						const scoperLabels = Array.isArray(scoperConfig)
+							? scoperConfig
+							: scoperConfig?.labels;
+						const scoperLabel = scoperLabels?.find((label) =>
 							labels.includes(label),
 						);
 						if (scoperLabel) {

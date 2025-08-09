@@ -264,9 +264,15 @@ class EdgeApp {
 
 			// Label prompts - default to common label mappings
 			const labelPrompts = {
-				debugger: ["Bug"],
-				builder: ["Feature", "Improvement"],
-				scoper: ["PRD"],
+				debugger: {
+					labels: ["Bug"],
+				},
+				builder: {
+					labels: ["Feature", "Improvement"],
+				},
+				scoper: {
+					labels: ["PRD"],
+				},
 			};
 
 			rl.close();
