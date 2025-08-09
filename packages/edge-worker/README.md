@@ -150,6 +150,9 @@ Each repository in the `repositories` array requires:
 Optional per-repository settings:
 - `isActive`: Whether to process webhooks (default: true)
 - `promptTemplatePath`: Custom prompt template for this repo
+- `teamKeys`: Array of Linear team keys for team-based routing (e.g., ["FE", "UI"])
+- `labelPrompts`: Label-based AI mode selection (debugger, builder, scoper)
+- `routingLabels`: Label-based repository routing configuration
 
 ### Optional Handlers
 
@@ -291,3 +294,101 @@ const edgeWorker = new EdgeWorker({
     promptTemplatePath: './prompts/backend-specific.md'
   }]
 })
+```
+
+## Label-Based Repository Routing
+
+EdgeWorker supports routing Linear issues to specific git repositories based on their labels. This allows you to have multiple repositories handling issues from the same Linear team, with routing determined by issue labels.
+
+### Configuration
+
+Add `routingLabels` to any repository configuration:
+
+```json
+{
+  "repositories": [
+    {
+      "id": "frontend-app",
+      "name": "Frontend Repository",
+      "routingLabels": {
+        "include": ["frontend", "ui", "react"],
+        "exclude": ["backend"],
+        "priority": 10
+      }
+      // ... other config
+    },
+    {
+      "id": "backend-api",
+      "name": "Backend Repository",
+      "routingLabels": {
+        "include": ["backend", "api", "database"],
+        "priority": 10
+      }
+      // ... other config
+    },
+    {
+      "id": "infrastructure",
+      "name": "Infrastructure Repository",
+      "routingLabels": {
+        "include": ["infrastructure", "devops", "deployment"],
+        "priority": 20  // Higher priority wins when multiple repos match
+      }
+      // ... other config
+    }
+  ]
+}
+```
+
+### Routing Logic
+
+When a Linear issue is assigned, EdgeWorker routes it based on this priority order:
+
+1. **Team Key Match** (priority: 1000) - If the issue's team key matches a repository's `teamKeys`
+2. **Label-Based Routing** (priority: as configured) - If the issue's labels match a repository's `routingLabels`
+3. **Workspace Fallback** (priority: -1000) - Any repository in the same Linear workspace
+
+### Label Matching Rules
+
+- **include**: Issue must have at least one of these labels to match
+- **exclude**: Issue must not have any of these labels (takes precedence over include)
+- **priority**: When multiple repositories match, the one with highest priority wins
+
+### Example Scenarios
+
+1. **Issue with labels ["frontend", "bug"]**:
+   - Routes to `frontend-app` repository (matches "frontend" in include list)
+
+2. **Issue with labels ["backend", "database", "urgent"]**:
+   - Routes to `backend-api` repository (matches both "backend" and "database")
+
+3. **Issue with labels ["infrastructure", "frontend"]**:
+   - Routes to `infrastructure` repository (priority 20 > priority 10)
+
+4. **Issue with labels ["frontend", "backend"]** and exclude rule:
+   - Routes to `backend-api` repository (frontend-app excludes "backend" label)
+
+5. **Issue with team key "FE"**:
+   - Routes to repository with `teamKeys: ["FE"]` regardless of labels (team keys have highest priority)
+
+### Combining with Label Prompts
+
+You can use both `routingLabels` (for repository selection) and `labelPrompts` (for AI mode selection) together:
+
+```json
+{
+  "id": "frontend-app",
+  "routingLabels": {
+    "include": ["frontend", "ui"]
+  },
+  "labelPrompts": {
+    "debugger": ["bug", "error"],
+    "builder": ["feature", "enhancement"],
+    "scoper": ["design", "planning"]
+  }
+}
+```
+
+In this example:
+- Issues with "frontend" or "ui" labels route to this repository
+- Once routed, if the issue also has a "bug" label, it uses debugger mode
+- If it has a "feature" label, it uses builder mode

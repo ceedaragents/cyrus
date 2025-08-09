@@ -335,7 +335,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Find the appropriate repository for this webhook
-		const repository = this.findRepositoryForWebhook(webhook, repos);
+		const repository = await this.findRepositoryForWebhook(webhook, repos);
 		if (!repository) {
 			console.log(
 				"No repository configured for webhook from workspace",
@@ -417,63 +417,208 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Find the repository configuration for a webhook
+	 * Now supports label-based routing in addition to team-based routing
 	 */
-	private findRepositoryForWebhook(
+	private async findRepositoryForWebhook(
 		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
-	): RepositoryConfig | null {
+	): Promise<RepositoryConfig | null> {
 		const workspaceId = webhook.organizationId;
 		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
 
-		// Handle agent session webhooks which have different structure
+		// Extract issue info from webhook
+		let issueId: string | undefined;
+		let teamKey: string | undefined;
+		let issueIdentifier: string | undefined;
+
 		if (
 			isAgentSessionCreatedWebhook(webhook) ||
 			isAgentSessionPromptedWebhook(webhook)
 		) {
-			const teamKey = webhook.agentSession?.issue?.team?.key;
-			if (teamKey) {
-				const repo = repos.find((r) => r.teamKeys?.includes(teamKey));
-				if (repo) return repo;
-			}
-
-			// Try parsing issue identifier as fallback
-			const issueId = webhook.agentSession?.issue?.identifier;
-			if (issueId?.includes("-")) {
-				const prefix = issueId.split("-")[0];
-				if (prefix) {
-					const repo = repos.find((r) => r.teamKeys?.includes(prefix));
-					if (repo) return repo;
-				}
-			}
+			issueId = webhook.agentSession?.issue?.id;
+			teamKey = webhook.agentSession?.issue?.team?.key;
+			issueIdentifier = webhook.agentSession?.issue?.identifier;
 		} else {
-			// Original logic for other webhook types
-			const teamKey = webhook.notification?.issue?.team?.key;
-			if (teamKey) {
-				const repo = repos.find((r) => r.teamKeys?.includes(teamKey));
-				if (repo) return repo;
-			}
+			issueId = webhook.notification?.issue?.id;
+			teamKey = webhook.notification?.issue?.team?.key;
+			issueIdentifier = webhook.notification?.issue?.identifier;
+		}
 
-			// Try parsing issue identifier as fallback
-			const issueId = webhook.notification?.issue?.identifier;
-			if (issueId?.includes("-")) {
-				const prefix = issueId.split("-")[0];
-				if (prefix) {
-					const repo = repos.find((r) => r.teamKeys?.includes(prefix));
-					if (repo) return repo;
+		// Build scored repository list
+		interface ScoredRepo {
+			repo: RepositoryConfig;
+			score: number;
+			matchReason: string;
+		}
+		const scoredRepos: ScoredRepo[] = [];
+
+		// First pass: Check team key matches (highest priority)
+		if (teamKey) {
+			for (const repo of repos) {
+				if (repo.teamKeys?.includes(teamKey)) {
+					scoredRepos.push({
+						repo,
+						score: 1000,
+						matchReason: `team key: ${teamKey}`,
+					});
 				}
 			}
 		}
 
-		// Original workspace fallback - find first repo without teamKeys or matching workspace
-		return (
-			repos.find(
+		// Also check identifier prefix as fallback for team matching
+		if (!scoredRepos.length && issueIdentifier?.includes("-")) {
+			const prefix = issueIdentifier.split("-")[0];
+			if (prefix) {
+				for (const repo of repos) {
+					if (repo.teamKeys?.includes(prefix)) {
+						scoredRepos.push({
+							repo,
+							score: 900, // Slightly lower than direct team key match
+							matchReason: `identifier prefix: ${prefix}`,
+						});
+					}
+				}
+			}
+		}
+
+		// Second pass: Check label-based routing if we have an issue ID and no team match
+		if (!scoredRepos.length && issueId) {
+			// Get repos that have label routing configured
+			const labelRoutingRepos = repos.filter((r) => r.routingLabels);
+
+			if (labelRoutingRepos.length > 0) {
+				// Try to fetch labels for routing decision
+				try {
+					// Find a Linear client - prefer one from a repo in the same workspace
+					const repoForClient = repos.find(
+						(r) => r.linearWorkspaceId === workspaceId,
+					);
+					if (repoForClient) {
+						const linearClient = this.linearClients.get(repoForClient.id);
+						if (linearClient) {
+							const issue = await linearClient.issue(issueId);
+							const labels = await issue.labels();
+							const labelNames = labels.nodes.map((label) => label.name);
+
+							if (labelNames.length > 0) {
+								// Evaluate each repository with label routing
+								for (const repo of labelRoutingRepos) {
+									const labelMatch = this.evaluateLabelMatch(
+										labelNames,
+										repo.routingLabels!,
+									);
+									if (labelMatch.matches) {
+										scoredRepos.push({
+											repo,
+											score: repo.routingLabels!.priority || 0,
+											matchReason: `labels: ${labelMatch.matchedLabels.join(", ")}`,
+										});
+									}
+								}
+							}
+						}
+					}
+				} catch (error) {
+					console.error(
+						`[EdgeWorker] Failed to fetch labels for routing decision:`,
+						error,
+					);
+					// Continue with workspace-based fallback
+				}
+			}
+		}
+
+		// Third pass: Workspace-based fallback
+		if (!scoredRepos.length) {
+			// Prefer repos without teamKeys (catch-all repos)
+			const catchAllRepo = repos.find(
 				(repo) =>
 					repo.linearWorkspaceId === workspaceId &&
 					(!repo.teamKeys || repo.teamKeys.length === 0),
-			) ||
-			repos.find((repo) => repo.linearWorkspaceId === workspaceId) ||
-			null
+			);
+			if (catchAllRepo) {
+				scoredRepos.push({
+					repo: catchAllRepo,
+					score: -1000,
+					matchReason: `workspace catch-all: ${workspaceId}`,
+				});
+			} else {
+				// Any repo in the workspace
+				const workspaceRepo = repos.find(
+					(repo) => repo.linearWorkspaceId === workspaceId,
+				);
+				if (workspaceRepo) {
+					scoredRepos.push({
+						repo: workspaceRepo,
+						score: -2000,
+						matchReason: `workspace: ${workspaceId}`,
+					});
+				}
+			}
+		}
+
+		// Sort by score (highest first) and select winner
+		if (scoredRepos.length === 0) {
+			return null;
+		}
+
+		scoredRepos.sort((a, b) => b.score - a.score);
+		const winner = scoredRepos[0];
+
+		if (!winner) {
+			// This shouldn't happen as we checked scoredRepos.length > 0 above
+			return null;
+		}
+
+		// Log routing decision
+		console.log(
+			`[EdgeWorker] Routed to repository: ${winner.repo.name} (${winner.matchReason}, score: ${winner.score})`,
 		);
+
+		// Log other potential matches for debugging
+		if (scoredRepos.length > 1 && process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+			console.log("[EdgeWorker] Other potential matches:");
+			scoredRepos.slice(1).forEach((m) => {
+				console.log(`  - ${m.repo.name} (${m.matchReason}, score: ${m.score})`);
+			});
+		}
+
+		return winner.repo;
+	}
+
+	/**
+	 * Evaluate if issue labels match repository routing rules
+	 * @param issueLabels Array of label names from the issue
+	 * @param routingLabels Repository's label routing configuration
+	 * @returns Whether labels match and which labels matched
+	 */
+	private evaluateLabelMatch(
+		issueLabels: string[],
+		routingLabels: NonNullable<RepositoryConfig["routingLabels"]>,
+	): { matches: boolean; matchedLabels: string[] } {
+		const matchedLabels: string[] = [];
+
+		// Check excludes first (takes precedence)
+		if (routingLabels.exclude && routingLabels.exclude.length > 0) {
+			const excludedLabel = routingLabels.exclude.find((label) =>
+				issueLabels.includes(label),
+			);
+			if (excludedLabel) {
+				return { matches: false, matchedLabels: [] };
+			}
+		}
+
+		// Check includes
+		if (routingLabels.include && routingLabels.include.length > 0) {
+			matchedLabels.push(
+				...routingLabels.include.filter((label) => issueLabels.includes(label)),
+			);
+		}
+
+		return {
+			matches: matchedLabels.length > 0,
+			matchedLabels,
+		};
 	}
 
 	/**
