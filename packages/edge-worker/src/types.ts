@@ -20,6 +20,7 @@ export interface RepositoryConfig {
 	linearWorkspaceName?: string; // Linear workspace display name (optional, for UI)
 	linearToken: string; // OAuth token for this Linear workspace
 	teamKeys?: string[]; // Linear team keys for routing (e.g., ["CEE", "BOOK"])
+	routingLabels?: string[]; // Linear labels for routing issues to this repository (e.g., ["backend", "api"])
 
 	// Workspace configuration
 	workspaceBaseDir: string; // Where to create issue workspaces for this repo

@@ -91,6 +91,13 @@ Routes Linear issues from specific teams to this repository. When specified, onl
 
 Example: `["CEE", "FRONT", "BACK"]` - Only process issues from teams CEE, FRONT, and BACK
 
+#### `routingLabels` (array of strings)
+Routes Linear issues with specific labels to this repository. This is useful when you have multiple repositories handling issues from the same Linear team but want to route based on labels (e.g., "backend" vs "frontend" labels).
+
+Example: `["backend", "api"]` - Only process issues that have the "backend" or "api" label
+
+Note: Label-based routing takes precedence over team-based routing. If an issue matches both a `routingLabels` and `teamKeys` configuration, the label match will be used.
+
 #### `labelPrompts` (object)
 Routes issues to different AI modes based on Linear labels. Default:
 ```json
@@ -116,6 +123,7 @@ Routes issues to different AI modes based on Linear labels. Default:
     "allowedTools": ["Read(**)", "Edit(**)", "Bash(git:*)", "Bash(gh:*)", "Task"],
     "mcpConfigPath": "./mcp-config.json",
     "teamKeys": ["BACKEND"],
+    "routingLabels": ["backend", "api", "infrastructure"],
     "labelPrompts": {
       "debugger": ["Bug", "Hotfix"],
       "builder": ["Feature"],

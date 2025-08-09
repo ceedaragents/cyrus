@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Label-based repository routing - Route Linear issues to different git repositories based on their labels
+  - New `routingLabels` configuration option allows specifying which labels should route to a specific repository
+  - Useful when multiple repositories handle issues from the same Linear team (e.g., backend vs frontend repos)
+  - Label routing takes precedence over team-based routing for more granular control
+
 ### Changed
 - Updated Linear SDK from v54 to v55.1.0 to support Agent Activity Signals
   - Stop button in Linear UI now sends a deterministic `stop` signal that Cyrus responds to immediately

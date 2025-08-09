@@ -335,7 +335,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Find the appropriate repository for this webhook
-		const repository = this.findRepositoryForWebhook(webhook, repos);
+		const repository = await this.findRepositoryForWebhook(webhook, repos);
 		if (!repository) {
 			console.log(
 				"No repository configured for webhook from workspace",
@@ -348,6 +348,7 @@ export class EdgeWorker extends EventEmitter {
 						name: r.name,
 						workspaceId: r.linearWorkspaceId,
 						teamKeys: r.teamKeys,
+						routingLabels: r.routingLabels,
 					})),
 				);
 			}
@@ -417,61 +418,103 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Find the repository configuration for a webhook
+	 * Now supports async operations for label-based routing
 	 */
-	private findRepositoryForWebhook(
+	private async findRepositoryForWebhook(
 		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
-	): RepositoryConfig | null {
+	): Promise<RepositoryConfig | null> {
 		const workspaceId = webhook.organizationId;
 		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
+
+		// Get issue ID to fetch labels if needed
+		let issueId: string | undefined;
+		let teamKey: string | undefined;
+		let issueIdentifier: string | undefined;
 
 		// Handle agent session webhooks which have different structure
 		if (
 			isAgentSessionCreatedWebhook(webhook) ||
 			isAgentSessionPromptedWebhook(webhook)
 		) {
-			const teamKey = webhook.agentSession?.issue?.team?.key;
-			if (teamKey) {
-				const repo = repos.find((r) => r.teamKeys?.includes(teamKey));
-				if (repo) return repo;
-			}
-
-			// Try parsing issue identifier as fallback
-			const issueId = webhook.agentSession?.issue?.identifier;
-			if (issueId?.includes("-")) {
-				const prefix = issueId.split("-")[0];
-				if (prefix) {
-					const repo = repos.find((r) => r.teamKeys?.includes(prefix));
-					if (repo) return repo;
-				}
-			}
+			issueId = webhook.agentSession?.issue?.id;
+			teamKey = webhook.agentSession?.issue?.team?.key;
+			issueIdentifier = webhook.agentSession?.issue?.identifier;
 		} else {
-			// Original logic for other webhook types
-			const teamKey = webhook.notification?.issue?.team?.key;
-			if (teamKey) {
-				const repo = repos.find((r) => r.teamKeys?.includes(teamKey));
-				if (repo) return repo;
-			}
+			issueId = webhook.notification?.issue?.id;
+			teamKey = webhook.notification?.issue?.team?.key;
+			issueIdentifier = webhook.notification?.issue?.identifier;
+		}
 
-			// Try parsing issue identifier as fallback
-			const issueId = webhook.notification?.issue?.identifier;
-			if (issueId?.includes("-")) {
-				const prefix = issueId.split("-")[0];
-				if (prefix) {
-					const repo = repos.find((r) => r.teamKeys?.includes(prefix));
-					if (repo) return repo;
+		// Filter repos by workspace first
+		const workspaceRepos = repos.filter(
+			(repo) => repo.linearWorkspaceId === workspaceId,
+		);
+		if (workspaceRepos.length === 0) return null;
+
+		// Check if any repos have routingLabels configured
+		const reposWithRoutingLabels = workspaceRepos.filter(
+			(repo) => repo.routingLabels && repo.routingLabels.length > 0,
+		);
+
+		// If we have repos with routing labels and an issue ID, check labels
+		if (reposWithRoutingLabels.length > 0 && issueId && workspaceRepos[0]) {
+			// We need a Linear client to fetch labels
+			// Use the first workspace repo's client temporarily
+			const linearClient = this.linearClients.get(workspaceRepos[0].id);
+
+			if (linearClient) {
+				try {
+					// Fetch the issue to get labels
+					const issue = await linearClient.issue(issueId);
+					const labels = await this.fetchIssueLabels(issue);
+
+					// Check each repo with routing labels
+					for (const repo of reposWithRoutingLabels) {
+						if (
+							repo.routingLabels?.some((routingLabel) =>
+								labels.includes(routingLabel),
+							)
+						) {
+							console.log(
+								`[EdgeWorker] Matched repository ${repo.name} by label routing`,
+							);
+							return repo;
+						}
+					}
+				} catch (error) {
+					console.error(
+						`[EdgeWorker] Failed to fetch labels for routing:`,
+						error,
+					);
+					// Fall back to team-based routing
 				}
 			}
 		}
 
-		// Original workspace fallback - find first repo without teamKeys or matching workspace
+		// Fall back to team-based routing
+		if (teamKey) {
+			const repo = workspaceRepos.find((r) => r.teamKeys?.includes(teamKey));
+			if (repo) return repo;
+		}
+
+		// Try parsing issue identifier as fallback
+		if (issueIdentifier?.includes("-")) {
+			const prefix = issueIdentifier.split("-")[0];
+			if (prefix) {
+				const repo = workspaceRepos.find((r) => r.teamKeys?.includes(prefix));
+				if (repo) return repo;
+			}
+		}
+
+		// Original workspace fallback - find first repo without teamKeys or routing labels
 		return (
-			repos.find(
+			workspaceRepos.find(
 				(repo) =>
-					repo.linearWorkspaceId === workspaceId &&
-					(!repo.teamKeys || repo.teamKeys.length === 0),
+					(!repo.teamKeys || repo.teamKeys.length === 0) &&
+					(!repo.routingLabels || repo.routingLabels.length === 0),
 			) ||
-			repos.find((repo) => repo.linearWorkspaceId === workspaceId) ||
+			workspaceRepos[0] ||
 			null
 		);
 	}
