@@ -11,7 +11,7 @@ import http from "node:http";
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import readline from "node:readline";
-import type { Issue } from "@linear/sdk";
+import { type Issue, LinearClient } from "@linear/sdk";
 import {
 	EdgeWorker,
 	type EdgeWorkerConfig,
@@ -206,6 +206,211 @@ class EdgeApp {
 	}
 
 	/**
+	 * Helper method to fetch Linear teams for routing configuration
+	 */
+	private async fetchLinearTeams(
+		linearClient: LinearClient,
+	): Promise<string[]> {
+		try {
+			const teams = await linearClient.teams();
+			return teams.nodes.map((team) => team.key).filter(Boolean);
+		} catch (error) {
+			console.warn(
+				"Warning: Could not fetch Linear teams:",
+				error instanceof Error ? error.message : String(error),
+			);
+			return [];
+		}
+	}
+
+	/**
+	 * Helper method to fetch Linear projects for routing configuration
+	 */
+	private async fetchLinearProjects(
+		linearClient: LinearClient,
+	): Promise<string[]> {
+		try {
+			const projects = await linearClient.projects();
+			return projects.nodes.map((project) => project.name).filter(Boolean);
+		} catch (error) {
+			console.warn(
+				"Warning: Could not fetch Linear projects:",
+				error instanceof Error ? error.message : String(error),
+			);
+			return [];
+		}
+	}
+
+	/**
+	 * Helper method to fetch Linear labels for routing configuration
+	 */
+	private async fetchLinearLabels(
+		linearClient: LinearClient,
+	): Promise<string[]> {
+		try {
+			const labels = await linearClient.issueLabels();
+			return labels.nodes.map((label) => label.name).filter(Boolean);
+		} catch (error) {
+			console.warn(
+				"Warning: Could not fetch Linear labels:",
+				error instanceof Error ? error.message : String(error),
+			);
+			return [];
+		}
+	}
+
+	/**
+	 * Parse comma-separated input into an array, filtering out empty values
+	 */
+	private parseCommaSeparatedInput(input: string): string[] | undefined {
+		if (!input.trim()) {
+			return undefined;
+		}
+		const parsed = input
+			.split(",")
+			.map((item) => item.trim())
+			.filter(Boolean);
+		return parsed.length > 0 ? parsed : undefined;
+	}
+
+	/**
+	 * Interactive multi-select interface for choosing items from a list
+	 */
+	private async interactiveMultiSelect(
+		rl: readline.Interface,
+		items: string[],
+		title: string,
+		description?: string,
+	): Promise<string[]> {
+		if (items.length === 0) {
+			console.log(`No ${title.toLowerCase()} available.`);
+			return [];
+		}
+
+		console.log(`\n${title}`);
+		if (description) {
+			console.log(description);
+		}
+		console.log("─".repeat(40));
+		
+		// Show numbered list
+		items.forEach((item, index) => {
+			console.log(`${index + 1}. ${item}`);
+		});
+
+		console.log("\nSelection options:");
+		console.log("• Enter numbers (e.g., 1,3,5) to select multiple items");
+		console.log("• Enter 'all' to select all items");  
+		console.log("• Press Enter to skip");
+
+		const question = (prompt: string): Promise<string> =>
+			new Promise((resolve) => {
+				rl.question(prompt, resolve);
+			});
+
+		const selection = await question(`\nSelect ${title.toLowerCase()}: `);
+		
+		if (!selection.trim()) {
+			return [];
+		}
+
+		if (selection.toLowerCase() === 'all') {
+			console.log(`✓ Selected all ${items.length} ${title.toLowerCase()}`);
+			return [...items];
+		}
+
+		// Parse number selections
+		const indices = selection
+			.split(',')
+			.map(s => s.trim())
+			.map(s => parseInt(s))
+			.filter(n => !isNaN(n) && n >= 1 && n <= items.length)
+			.map(n => n - 1); // Convert to 0-based index
+
+		if (indices.length === 0) {
+			console.log("No valid selections made.");
+			return [];
+		}
+
+		const selectedItems = indices.map(i => items[i]).filter((item): item is string => Boolean(item));
+		console.log(`✓ Selected: ${selectedItems.join(', ')}`);
+		return selectedItems;
+	}
+
+	/**
+	 * Fallback to manual text entry if user prefers or if interactive selection fails
+	 */
+	private async manualTextEntry(
+		rl: readline.Interface,
+		availableItems: string[],
+		itemType: string,
+		examples: string,
+	): Promise<string[]> {
+		const question = (prompt: string): Promise<string> =>
+			new Promise((resolve) => {
+				rl.question(prompt, resolve);
+			});
+
+		console.log(`\n💡 You can also enter custom ${itemType} manually.`);
+		if (availableItems.length > 0) {
+			const preview = availableItems.slice(0, 5).join(", ");
+			const hasMore = availableItems.length > 5 ? "..." : "";
+			console.log(`Available: ${preview}${hasMore}`);
+		}
+		
+		const input = await question(`Enter comma-separated ${itemType} (${examples}): `);
+		return this.parseCommaSeparatedInput(input) || [];
+	}
+
+	/**
+	 * Combined selection interface - offers both interactive selection and manual entry
+	 */
+	private async selectItems(
+		rl: readline.Interface,
+		availableItems: string[],
+		title: string,
+		itemType: string,
+		examples: string,
+		description?: string,
+	): Promise<string[]> {
+		if (availableItems.length === 0) {
+			console.log(`\nNo ${itemType} found in your Linear workspace.`);
+			return await this.manualTextEntry(rl, [], itemType, examples);
+		}
+
+		const question = (prompt: string): Promise<string> =>
+			new Promise((resolve) => {
+				rl.question(prompt, resolve);
+			});
+
+		console.log(`\n${title}`);
+		if (description) {
+			console.log(description);
+		}
+		
+		console.log("\nHow would you like to select?");
+		console.log("1. Choose from list (recommended)");
+		console.log("2. Enter manually");
+		console.log("3. Skip");
+
+		const method = await question("Selection method (1/2/3): ");
+
+		switch (method.trim()) {
+			case '1':
+			case '':
+				return await this.interactiveMultiSelect(rl, availableItems, `Select ${title}`, description);
+			
+			case '2':
+				return await this.manualTextEntry(rl, availableItems, itemType, examples);
+			
+			case '3':
+			default:
+				console.log(`Skipping ${itemType} configuration.`);
+				return [];
+		}
+	}
+
+	/**
 	 * Interactive setup wizard for repository configuration
 	 */
 	async setupRepositoryWizard(
@@ -282,6 +487,97 @@ class EdgeApp {
 				},
 			};
 
+			// Optional routing configuration
+			let routingLabels: string[] | undefined;
+			let projectKeys: string[] | undefined;
+			let teamKeys: string[] | undefined;
+
+			console.log("\n🔀 Issue Routing Configuration (Optional)");
+			console.log("─".repeat(50));
+			console.log(
+				"Configure which Linear issues should be routed to this repository.",
+			);
+			console.log("Priority: Labels > Projects > Teams");
+
+			const configureRouting = await question(
+				"Would you like to configure issue routing? (y/N): ",
+			);
+
+			if (
+				configureRouting.toLowerCase() === "y" ||
+				configureRouting.toLowerCase() === "yes"
+			) {
+				// Create Linear client to fetch suggestions
+				const linearClient = new LinearClient({
+					apiKey: linearCredentials.linearToken,
+				});
+
+				// Fetch available options from Linear API
+				console.log("\nFetching available options from Linear...");
+				const [availableLabels, availableProjects, availableTeams] =
+					await Promise.all([
+						this.fetchLinearLabels(linearClient),
+						this.fetchLinearProjects(linearClient),
+						this.fetchLinearTeams(linearClient),
+					]);
+
+				// Configure Labels (highest priority)
+				routingLabels = await this.selectItems(
+					rl,
+					availableLabels,
+					"📝 Labels (Highest Priority)",
+					"labels",
+					"backend, api, infrastructure",
+					"Labels have the highest routing priority"
+				);
+
+				// Configure Projects (medium priority) 
+				projectKeys = await this.selectItems(
+					rl,
+					availableProjects,
+					"📋 Projects (Medium Priority)",
+					"projects", 
+					"Mobile App, API Service",
+					"Projects are checked if no matching labels are found"
+				);
+
+				// Configure Teams (lowest priority)
+				teamKeys = await this.selectItems(
+					rl,
+					availableTeams,
+					"👥 Teams (Lowest Priority)",
+					"team keys",
+					"CEE, BACKEND, FRONTEND",
+					"Teams are checked if no matching labels or projects are found"
+				);
+
+				// Show configuration summary
+				console.log("\n📋 Routing Configuration Summary:");
+				console.log("─".repeat(30));
+				if (routingLabels?.length) {
+					console.log(`Labels: ${routingLabels.join(", ")}`);
+				}
+				if (projectKeys?.length) {
+					console.log(`Projects: ${projectKeys.join(", ")}`);
+				}
+				if (teamKeys?.length) {
+					console.log(`Teams: ${teamKeys.join(", ")}`);
+				}
+				if (
+					!routingLabels?.length &&
+					!projectKeys?.length &&
+					!teamKeys?.length
+				) {
+					console.log(
+						"No routing configuration specified - all assigned issues will be processed.",
+					);
+				}
+			} else {
+				console.log(
+					"Skipping routing configuration - all assigned issues will be processed.",
+				);
+			}
+
 			if (shouldCloseRl) {
 				rl.close();
 			}
@@ -298,6 +594,10 @@ class EdgeApp {
 				isActive: true,
 				allowedTools,
 				labelPrompts,
+				// Add routing configuration
+				...(routingLabels && { routingLabels }),
+				...(projectKeys && { projectKeys }),
+				...(teamKeys && { teamKeys }),
 			};
 
 			return repository;

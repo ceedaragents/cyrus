@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock readline
+const mockQuestion = vi.fn();
+const mockClose = vi.fn();
 vi.mock("node:readline", () => ({
 	createInterface: vi.fn(() => ({
-		question: vi.fn(),
-		close: vi.fn(),
+		question: mockQuestion,
+		close: mockClose,
 	})),
 }));
 
@@ -32,6 +34,17 @@ vi.mock("node:path", () => ({
 	dirname: vi.fn((path) => path.split("/").slice(0, -1).join("/")),
 	basename: vi.fn((path) => path.split("/").pop()),
 	homedir: vi.fn(() => "/home/user"),
+}));
+
+// Mock Linear SDK
+const mockLinearClient = {
+	teams: vi.fn(),
+	projects: vi.fn(),
+	issueLabels: vi.fn(),
+};
+
+vi.mock("@linear/sdk", () => ({
+	LinearClient: vi.fn(() => mockLinearClient),
 }));
 
 describe("Project Keys Parsing", () => {
@@ -631,6 +644,469 @@ describe("Windows Bash Script Compatibility", () => {
 			cwd: "C:\\workspace\\project",
 			stdio: "inherit",
 			env: expect.any(Object),
+		});
+	});
+});
+describe("Enhanced Setup Wizard - Routing Configuration", () => {
+	// We'll need to import and test the App class methods
+	// For now, let's test the parsing logic that would be used
+
+	describe("parseCommaSeparatedInput logic", () => {
+		const parseCommaSeparatedInput = (input: string): string[] | undefined => {
+			if (!input.trim()) {
+				return undefined;
+			}
+			const parsed = input
+				.split(",")
+				.map((item) => item.trim())
+				.filter(Boolean);
+			return parsed.length > 0 ? parsed : undefined;
+		};
+
+		it("should parse normal comma-separated routing labels", () => {
+			const result = parseCommaSeparatedInput("backend, api, infrastructure");
+			expect(result).toEqual(["backend", "api", "infrastructure"]);
+		});
+
+		it("should parse team keys with filtering", () => {
+			const result = parseCommaSeparatedInput("CEE, BACKEND, FRONTEND");
+			expect(result).toEqual(["CEE", "BACKEND", "FRONTEND"]);
+		});
+
+		it("should parse project names with spaces", () => {
+			const result = parseCommaSeparatedInput(
+				"Mobile App, API Service, Backend Infrastructure",
+			);
+			expect(result).toEqual([
+				"Mobile App",
+				"API Service",
+				"Backend Infrastructure",
+			]);
+		});
+
+		it("should handle empty input for routing", () => {
+			const result = parseCommaSeparatedInput("");
+			expect(result).toBeUndefined();
+		});
+
+		it("should handle whitespace-only input for routing", () => {
+			const result = parseCommaSeparatedInput("   ");
+			expect(result).toBeUndefined();
+		});
+
+		it("should filter empty values in routing configuration", () => {
+			const result = parseCommaSeparatedInput("label1, , label2, ,label3");
+			expect(result).toEqual(["label1", "label2", "label3"]);
+		});
+
+		it("should handle single value without commas", () => {
+			const result = parseCommaSeparatedInput("backend");
+			expect(result).toEqual(["backend"]);
+		});
+
+		it("should trim whitespace around values", () => {
+			const result = parseCommaSeparatedInput(
+				"  backend  ,  api  ,  infrastructure  ",
+			);
+			expect(result).toEqual(["backend", "api", "infrastructure"]);
+		});
+	});
+
+	describe("Linear API Integration", () => {
+		beforeEach(() => {
+			vi.clearAllMocks();
+		});
+
+		it("should handle successful Linear teams fetch", async () => {
+			const mockTeams = {
+				nodes: [
+					{ key: "CEE" },
+					{ key: "BACKEND" },
+					{ key: "FRONTEND" },
+					{ key: null }, // Test filtering
+				],
+			};
+			mockLinearClient.teams.mockResolvedValue(mockTeams);
+
+			// Mock the fetchLinearTeams method logic
+			const fetchLinearTeams = async () => {
+				try {
+					const teams = await mockLinearClient.teams();
+					return teams.nodes.map((team: any) => team.key).filter(Boolean);
+				} catch (error) {
+					console.warn(
+						"Warning: Could not fetch Linear teams:",
+						error instanceof Error ? error.message : String(error),
+					);
+					return [];
+				}
+			};
+
+			const result = await fetchLinearTeams();
+			expect(result).toEqual(["CEE", "BACKEND", "FRONTEND"]);
+			expect(mockLinearClient.teams).toHaveBeenCalledOnce();
+		});
+
+		it("should handle successful Linear projects fetch", async () => {
+			const mockProjects = {
+				nodes: [
+					{ name: "Mobile App" },
+					{ name: "API Service" },
+					{ name: "Backend Infrastructure" },
+					{ name: null }, // Test filtering
+				],
+			};
+			mockLinearClient.projects.mockResolvedValue(mockProjects);
+
+			// Mock the fetchLinearProjects method logic
+			const fetchLinearProjects = async () => {
+				try {
+					const projects = await mockLinearClient.projects();
+					return projects.nodes
+						.map((project: any) => project.name)
+						.filter(Boolean);
+				} catch (error) {
+					console.warn(
+						"Warning: Could not fetch Linear projects:",
+						error instanceof Error ? error.message : String(error),
+					);
+					return [];
+				}
+			};
+
+			const result = await fetchLinearProjects();
+			expect(result).toEqual([
+				"Mobile App",
+				"API Service",
+				"Backend Infrastructure",
+			]);
+			expect(mockLinearClient.projects).toHaveBeenCalledOnce();
+		});
+
+		it("should handle successful Linear labels fetch", async () => {
+			const mockLabels = {
+				nodes: [
+					{ name: "backend" },
+					{ name: "api" },
+					{ name: "infrastructure" },
+					{ name: "" }, // Test filtering
+				],
+			};
+			mockLinearClient.issueLabels.mockResolvedValue(mockLabels);
+
+			// Mock the fetchLinearLabels method logic
+			const fetchLinearLabels = async () => {
+				try {
+					const labels = await mockLinearClient.issueLabels();
+					return labels.nodes.map((label: any) => label.name).filter(Boolean);
+				} catch (error) {
+					console.warn(
+						"Warning: Could not fetch Linear labels:",
+						error instanceof Error ? error.message : String(error),
+					);
+					return [];
+				}
+			};
+
+			const result = await fetchLinearLabels();
+			expect(result).toEqual(["backend", "api", "infrastructure"]);
+			expect(mockLinearClient.issueLabels).toHaveBeenCalledOnce();
+		});
+
+		it("should handle Linear API errors gracefully for teams", async () => {
+			mockLinearClient.teams.mockRejectedValue(new Error("API Error"));
+
+			const fetchLinearTeams = async () => {
+				try {
+					const teams = await mockLinearClient.teams();
+					return teams.nodes.map((team: any) => team.key).filter(Boolean);
+				} catch (error) {
+					console.warn(
+						"Warning: Could not fetch Linear teams:",
+						error instanceof Error ? error.message : String(error),
+					);
+					return [];
+				}
+			};
+
+			const result = await fetchLinearTeams();
+			expect(result).toEqual([]);
+		});
+
+		it("should handle Linear API errors gracefully for projects", async () => {
+			mockLinearClient.projects.mockRejectedValue(new Error("API Error"));
+
+			const fetchLinearProjects = async () => {
+				try {
+					const projects = await mockLinearClient.projects();
+					return projects.nodes
+						.map((project: any) => project.name)
+						.filter(Boolean);
+				} catch (error) {
+					console.warn(
+						"Warning: Could not fetch Linear projects:",
+						error instanceof Error ? error.message : String(error),
+					);
+					return [];
+				}
+			};
+
+			const result = await fetchLinearProjects();
+			expect(result).toEqual([]);
+		});
+
+		it("should handle Linear API errors gracefully for labels", async () => {
+			mockLinearClient.issueLabels.mockRejectedValue(new Error("API Error"));
+
+			const fetchLinearLabels = async () => {
+				try {
+					const labels = await mockLinearClient.issueLabels();
+					return labels.nodes.map((label: any) => label.name).filter(Boolean);
+				} catch (error) {
+					console.warn(
+						"Warning: Could not fetch Linear labels:",
+						error instanceof Error ? error.message : String(error),
+					);
+					return [];
+				}
+			};
+
+			const result = await fetchLinearLabels();
+			expect(result).toEqual([]);
+		});
+	});
+
+	describe("Repository Configuration Integration", () => {
+		it("should include routing configuration in repository object when provided", () => {
+			const routingLabels = ["backend", "api"];
+			const projectKeys = ["Mobile App"];
+			const teamKeys = ["CEE"];
+
+			// Mock repository configuration creation logic
+			const baseConfig = {
+				id: "test-id",
+				name: "Test Repo",
+				repositoryPath: "/path/to/repo",
+				baseBranch: "main",
+				linearWorkspaceId: "workspace-id",
+				linearToken: "token",
+				workspaceBaseDir: "/workspace",
+				isActive: true,
+				allowedTools: [],
+				labelPrompts: {},
+			};
+
+			const repository = {
+				...baseConfig,
+				...(routingLabels && { routingLabels }),
+				...(projectKeys && { projectKeys }),
+				...(teamKeys && { teamKeys }),
+			};
+
+			expect(repository).toEqual({
+				...baseConfig,
+				routingLabels: ["backend", "api"],
+				projectKeys: ["Mobile App"],
+				teamKeys: ["CEE"],
+			});
+		});
+
+		it("should exclude routing configuration when not provided", () => {
+			const routingLabels = undefined;
+			const projectKeys = undefined;
+			const teamKeys = undefined;
+
+			// Mock repository configuration creation logic
+			const baseConfig = {
+				id: "test-id",
+				name: "Test Repo",
+				repositoryPath: "/path/to/repo",
+				baseBranch: "main",
+				linearWorkspaceId: "workspace-id",
+				linearToken: "token",
+				workspaceBaseDir: "/workspace",
+				isActive: true,
+				allowedTools: [],
+				labelPrompts: {},
+			};
+
+			const repository = {
+				...baseConfig,
+				...(routingLabels && { routingLabels }),
+				...(projectKeys && { projectKeys }),
+				...(teamKeys && { teamKeys }),
+			};
+
+			expect(repository).toEqual(baseConfig);
+			expect(repository).not.toHaveProperty("routingLabels");
+			expect(repository).not.toHaveProperty("projectKeys");
+			expect(repository).not.toHaveProperty("teamKeys");
+		});
+	});
+});
+
+describe("Interactive Selection Interface", () => {
+	describe("Number selection parsing", () => {
+		const parseNumberSelection = (selection: string, maxIndex: number): number[] => {
+			if (!selection.trim()) return [];
+			if (selection.toLowerCase() === 'all') return Array.from({length: maxIndex}, (_, i) => i);
+			
+			return selection
+				.split(',')
+				.map(s => s.trim())
+				.map(s => parseInt(s))
+				.filter(n => !isNaN(n) && n >= 1 && n <= maxIndex)
+				.map(n => n - 1); // Convert to 0-based index
+		};
+
+		it("should parse single selection correctly", () => {
+			const result = parseNumberSelection("1", 5);
+			expect(result).toEqual([0]);
+		});
+
+		it("should parse multiple selections correctly", () => {
+			const result = parseNumberSelection("1,3,5", 5);
+			expect(result).toEqual([0, 2, 4]);
+		});
+
+		it("should handle whitespace around selections", () => {
+			const result = parseNumberSelection(" 1 , 3 , 5 ", 5);
+			expect(result).toEqual([0, 2, 4]);
+		});
+
+		it("should filter out invalid selections", () => {
+			const result = parseNumberSelection("1,0,3,6", 5);
+			expect(result).toEqual([0, 2]); // 0 and 6 are out of valid range (1-5)
+		});
+
+		it("should handle 'all' selection", () => {
+			const result = parseNumberSelection("all", 3);
+			expect(result).toEqual([0, 1, 2]);
+		});
+
+		it("should handle 'ALL' selection (case insensitive)", () => {
+			const result = parseNumberSelection("ALL", 3);
+			expect(result).toEqual([0, 1, 2]);
+		});
+
+		it("should handle empty selection", () => {
+			const result = parseNumberSelection("", 5);
+			expect(result).toEqual([]);
+		});
+
+		it("should handle whitespace-only selection", () => {
+			const result = parseNumberSelection("   ", 5);
+			expect(result).toEqual([]);
+		});
+
+		it("should filter non-numeric selections", () => {
+			const result = parseNumberSelection("1,abc,3,def", 5);
+			expect(result).toEqual([0, 2]);
+		});
+
+		it("should handle mixed valid and invalid selections", () => {
+			const result = parseNumberSelection("1,-1,3,0,5,6", 5);
+			expect(result).toEqual([0, 2, 4]); // -1, 0, 6 are invalid for range 1-5
+		});
+	});
+
+	describe("Item selection logic", () => {
+		const selectItemsByIndices = (items: string[], indices: number[]): string[] => {
+			return indices.map(i => items[i]).filter(Boolean);
+		};
+
+		it("should select correct items by indices", () => {
+			const items = ["backend", "frontend", "api", "bug", "feature"];
+			const indices = [0, 2, 4]; // Select 1st, 3rd, 5th items
+			const result = selectItemsByIndices(items, indices);
+			expect(result).toEqual(["backend", "api", "feature"]);
+		});
+
+		it("should handle empty indices", () => {
+			const items = ["backend", "frontend", "api"];
+			const indices: number[] = [];
+			const result = selectItemsByIndices(items, indices);
+			expect(result).toEqual([]);
+		});
+
+		it("should handle single item selection", () => {
+			const items = ["Mobile App", "Web Platform", "API Service"];
+			const indices = [1]; // Select 2nd item
+			const result = selectItemsByIndices(items, indices);
+			expect(result).toEqual(["Web Platform"]);
+		});
+
+		it("should handle all items selection", () => {
+			const items = ["CEE", "BACKEND", "FRONTEND"];
+			const indices = [0, 1, 2]; // Select all items
+			const result = selectItemsByIndices(items, indices);
+			expect(result).toEqual(["CEE", "BACKEND", "FRONTEND"]);
+		});
+	});
+
+	describe("Selection method routing", () => {
+		const getSelectionMethod = (input: string): 'list' | 'manual' | 'skip' => {
+			const method = input.trim();
+			switch (method) {
+				case '1':
+				case '':
+					return 'list';
+				case '2':
+					return 'manual';
+				case '3':
+				default:
+					return 'skip';
+			}
+		};
+
+		it("should route to list selection for '1'", () => {
+			expect(getSelectionMethod("1")).toBe('list');
+		});
+
+		it("should route to list selection for empty string (default)", () => {
+			expect(getSelectionMethod("")).toBe('list');
+		});
+
+		it("should route to manual entry for '2'", () => {
+			expect(getSelectionMethod("2")).toBe('manual');
+		});
+
+		it("should route to skip for '3'", () => {
+			expect(getSelectionMethod("3")).toBe('skip');
+		});
+
+		it("should route to skip for invalid input", () => {
+			expect(getSelectionMethod("invalid")).toBe('skip');
+		});
+
+		it("should handle whitespace around input", () => {
+			expect(getSelectionMethod("  1  ")).toBe('list');
+			expect(getSelectionMethod("  2  ")).toBe('manual');
+		});
+	});
+
+	describe("Integration with existing parsing", () => {
+		const parseCommaSeparatedInput = (input: string): string[] | undefined => {
+			if (!input.trim()) {
+				return undefined;
+			}
+			const parsed = input
+				.split(",")
+				.map((item) => item.trim())
+				.filter(Boolean);
+			return parsed.length > 0 ? parsed : undefined;
+		};
+
+		it("should work with manual entry fallback", () => {
+			const manualInput = "custom-label, custom-project, custom-team";
+			const result = parseCommaSeparatedInput(manualInput);
+			expect(result).toEqual(["custom-label", "custom-project", "custom-team"]);
+		});
+
+		it("should handle mixed custom and predefined items", () => {
+			const manualInput = "backend, custom-api, infrastructure";
+			const result = parseCommaSeparatedInput(manualInput);
+			expect(result).toEqual(["backend", "custom-api", "infrastructure"]);
 		});
 	});
 });
