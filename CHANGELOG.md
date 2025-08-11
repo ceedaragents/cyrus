@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Orphaned Linear agent session recovery - Cyrus now automatically recovers sessions after restarts
+  - Detects orphaned sessions when users continue conversations after Cyrus restarts
+  - Recovers session state from Linear API and recreates infrastructure
+  - Provides user-friendly notifications during recovery process
+  - Automatically recreates ClaudeRunner instances for all active sessions on startup
+  - Ensures seamless conversation continuation across deployments, crashes, and maintenance
+
 ### Changed
 - Updated Linear SDK from v54 to v55.1.0 to support Agent Activity Signals
   - Stop button in Linear UI now sends a deterministic `stop` signal that Cyrus responds to immediately
