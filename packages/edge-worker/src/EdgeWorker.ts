@@ -717,14 +717,34 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		const session = agentSessionManager.getSession(
-			linearAgentActivitySessionId,
-		);
+		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
 		if (!session) {
-			console.error(
-				`Unexpected: could not find Cyrus Agent Session for agent activity session: ${linearAgentActivitySessionId}`,
+			console.log(
+				`[EdgeWorker] Session ${linearAgentActivitySessionId} not found locally, attempting recovery...`,
 			);
-			return;
+
+			// Attempt to recover orphaned session
+			session = await this.recoverOrphanedSession(
+				webhook,
+				repository,
+				agentSessionManager,
+			);
+
+			if (!session) {
+				console.error(
+					`[EdgeWorker] Failed to recover orphaned session ${linearAgentActivitySessionId}`,
+				);
+				// Post error to Linear
+				await this.postSessionRecoveryError(
+					linearAgentActivitySessionId,
+					repository.id,
+				);
+				return;
+			}
+
+			console.log(
+				`[EdgeWorker] Successfully recovered orphaned session ${linearAgentActivitySessionId}`,
+			);
 		}
 
 		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
@@ -2451,6 +2471,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					console.log(
 						`[EdgeWorker] Restored Agent Session state for repository ${repositoryId}`,
 					);
+
+					// After restoring state, recreate ClaudeRunner instances for active sessions
+					this.recreateClaudeRunnersForActiveSessions(repositoryId).catch(
+						(error) => {
+							console.error(
+								`[EdgeWorker] Failed to recreate ClaudeRunners for repository ${repositoryId}:`,
+								error,
+							);
+						},
+					);
 				}
 			}
 		}
@@ -2581,6 +2611,274 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				`[EdgeWorker] Error posting system prompt selection thought:`,
 				error,
 			);
+		}
+	}
+
+	/**
+	 * Recover an orphaned Linear agent session
+	 * This happens when Cyrus restarts and loses in-memory session state
+	 */
+	private async recoverOrphanedSession(
+		webhook: LinearAgentSessionPromptedWebhook,
+		repository: RepositoryConfig,
+		agentSessionManager: AgentSessionManager,
+	): Promise<any | null> {
+		try {
+			const { agentSession } = webhook;
+			const linearAgentActivitySessionId = agentSession.id;
+			const { issue } = agentSession;
+
+			console.log(
+				`[EdgeWorker] Attempting to recover session ${linearAgentActivitySessionId} for issue ${issue.identifier}`,
+			);
+
+			// Get Linear client
+			const linearClient = this.linearClients.get(repository.id);
+			if (!linearClient) {
+				console.error(
+					`[EdgeWorker] No Linear client found for repository ${repository.id}`,
+				);
+				return null;
+			}
+
+			// Query Linear API for session details
+			try {
+				const linearSession = await linearClient.agentSession(
+					linearAgentActivitySessionId,
+				);
+				if (!linearSession) {
+					console.error(
+						`[EdgeWorker] Session ${linearAgentActivitySessionId} not found in Linear`,
+					);
+					return null;
+				}
+
+				// Check if session is still active
+				const sessionStatus = await linearSession.status;
+				if (sessionStatus !== "active" || linearSession.endedAt) {
+					console.error(
+						`[EdgeWorker] Session ${linearAgentActivitySessionId} is not active in Linear (status: ${sessionStatus})`,
+					);
+					return null;
+				}
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Failed to query Linear API for session ${linearAgentActivitySessionId}:`,
+					error,
+				);
+				return null;
+			}
+
+			// Fetch full issue details
+			const fullIssue = await this.fetchFullIssueDetails(
+				issue.id,
+				repository.id,
+			);
+			if (!fullIssue) {
+				console.error(
+					`[EdgeWorker] Failed to fetch issue details for recovery`,
+				);
+				return null;
+			}
+
+			// Create workspace
+			const workspace = this.config.handlers?.createWorkspace
+				? await this.config.handlers.createWorkspace(fullIssue, repository)
+				: {
+						path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
+						isGitWorktree: false,
+					};
+
+			console.log(`[EdgeWorker] Workspace recovered at: ${workspace.path}`);
+
+			// Convert issue to minimal format
+			const issueMinimal = this.convertLinearIssueToCore(fullIssue);
+
+			// Create the session in AgentSessionManager
+			const session = agentSessionManager.createLinearAgentSession(
+				linearAgentActivitySessionId,
+				issue.id,
+				issueMinimal,
+				workspace,
+			);
+
+			// Post recovery notification
+			await this.postSessionRecoveryNotification(
+				linearAgentActivitySessionId,
+				repository.id,
+			);
+
+			// Save state after recovery
+			await this.savePersistedState();
+
+			return session;
+		} catch (error) {
+			console.error(`[EdgeWorker] Error recovering orphaned session:`, error);
+			return null;
+		}
+	}
+
+	/**
+	 * Post error message when session recovery fails
+	 */
+	private async postSessionRecoveryError(
+		linearAgentActivitySessionId: string,
+		repositoryId: string,
+	): Promise<void> {
+		try {
+			const linearClient = this.linearClients.get(repositoryId);
+			if (!linearClient) {
+				return;
+			}
+
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "response",
+					body: "I'm unable to continue this conversation because the session was interrupted. This can happen if I was restarted while we were talking. Please try creating a new thread or reassigning the issue to me.",
+				},
+			};
+
+			await linearClient.createAgentActivity(activityInput);
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to post session recovery error:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Post notification when session is successfully recovered
+	 */
+	private async postSessionRecoveryNotification(
+		linearAgentActivitySessionId: string,
+		repositoryId: string,
+	): Promise<void> {
+		try {
+			const linearClient = this.linearClients.get(repositoryId);
+			if (!linearClient) {
+				return;
+			}
+
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: "I've recovered our previous session. While I may have lost some context from our earlier conversation, I can continue helping with this issue. Processing your request now...",
+				},
+			};
+
+			await linearClient.createAgentActivity(activityInput);
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to post session recovery notification:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Recreate ClaudeRunner instances for active sessions after restart
+	 */
+	private async recreateClaudeRunnersForActiveSessions(
+		repositoryId: string,
+	): Promise<void> {
+		const agentSessionManager = this.agentSessionManagers.get(repositoryId);
+		if (!agentSessionManager) {
+			return;
+		}
+
+		const repository = this.repositories.get(repositoryId);
+		if (!repository) {
+			return;
+		}
+
+		// Get all sessions that have a claudeSessionId but no ClaudeRunner
+		const activeSessions = agentSessionManager
+			.getAllSessions()
+			.filter((session) => session.claudeSessionId && !session.claudeRunner);
+
+		if (activeSessions.length === 0) {
+			return;
+		}
+
+		console.log(
+			`[EdgeWorker] Found ${activeSessions.length} active sessions to recreate for repository ${repositoryId}`,
+		);
+
+		for (const session of activeSessions) {
+			try {
+				// Ensure attachments directory exists
+				const workspaceFolderName = basename(session.workspace.path);
+				const attachmentsDir = join(
+					homedir(),
+					".cyrus",
+					workspaceFolderName,
+					"attachments",
+				);
+				await mkdir(attachmentsDir, { recursive: true });
+
+				const allowedDirectories = [attachmentsDir];
+				const allowedTools = this.buildAllowedTools(repository);
+
+				// Fetch full issue details to get labels
+				const fullIssue = await this.fetchFullIssueDetails(
+					session.issueId,
+					repositoryId,
+				);
+				if (!fullIssue) {
+					console.warn(
+						`[EdgeWorker] Failed to fetch issue details for session ${session.linearAgentActivitySessionId}`,
+					);
+					continue;
+				}
+
+				// Fetch issue labels and determine system prompt
+				const labels = await this.fetchIssueLabels(fullIssue);
+				const systemPromptResult = await this.determineSystemPromptFromLabels(
+					labels,
+					repository,
+				);
+				const systemPrompt = systemPromptResult?.prompt;
+
+				// Create ClaudeRunner in resume mode
+				const lastMessageMarker =
+					"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
+				const runner = new ClaudeRunner({
+					workingDirectory: session.workspace.path,
+					allowedTools,
+					allowedDirectories,
+					resumeSessionId: session.claudeSessionId,
+					workspaceName: session.issue.identifier,
+					mcpConfigPath: repository.mcpConfigPath,
+					mcpConfig: this.buildMcpConfig(repository),
+					appendSystemPrompt: (systemPrompt || "") + lastMessageMarker,
+					onMessage: (message) => {
+						this.handleClaudeMessage(
+							session.linearAgentActivitySessionId,
+							message,
+							repositoryId,
+						);
+					},
+					onError: (error) => this.handleClaudeError(error),
+				});
+
+				// Store the recreated runner
+				agentSessionManager.addClaudeRunner(
+					session.linearAgentActivitySessionId,
+					runner,
+				);
+
+				console.log(
+					`[EdgeWorker] Recreated ClaudeRunner for session ${session.linearAgentActivitySessionId} in resume mode`,
+				);
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Failed to recreate ClaudeRunner for session ${session.linearAgentActivitySessionId}:`,
+					error,
+				);
+			}
 		}
 	}
 
