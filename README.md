@@ -91,6 +91,28 @@ Routes Linear issues from specific teams to this repository. When specified, onl
 
 Example: `["CEE", "FRONT", "BACK"]` - Only process issues from teams CEE, FRONT, and BACK
 
+#### `projectKeys` (array of strings)
+Routes Linear issues from specific projects to this repository. When specified, only issues belonging to the listed Linear projects will be processed by this repository.
+
+Example: `["Mobile App", "Web Platform", "API Service"]` - Only process issues that belong to these Linear projects
+
+Note: This is useful when you want to separate work by project rather than by team, especially in organizations where multiple projects span across teams.
+
+#### `routingLabels` (array of strings)
+Routes Linear issues with specific labels to this repository. This is useful when you have multiple repositories handling issues from the same Linear team but want to route based on labels (e.g., "backend" vs "frontend" labels).
+
+Example: `["backend", "api"]` - Only process issues that have the "backend" or "api" label
+
+### Routing Priority Order
+
+When multiple routing configurations are present, Cyrus evaluates them in the following priority order:
+
+1. **`routingLabels`** (highest priority) - Label-based routing
+2. **`projectKeys`** (medium priority) - Project-based routing  
+3. **`teamKeys`** (lowest priority) - Team-based routing
+
+If an issue matches multiple routing configurations, the highest priority match will be used. For example, if an issue has a label that matches `routingLabels` and also belongs to a project in `projectKeys`, the label-based routing will take precedence.
+
 #### `labelPrompts` (object)
 Routes issues to different AI modes based on Linear labels. Default:
 ```json
@@ -116,6 +138,8 @@ Routes issues to different AI modes based on Linear labels. Default:
     "allowedTools": ["Read(**)", "Edit(**)", "Bash(git:*)", "Bash(gh:*)", "Task"],
     "mcpConfigPath": "./mcp-config.json",
     "teamKeys": ["BACKEND"],
+    "projectKeys": ["API Service", "Backend Infrastructure"],
+    "routingLabels": ["backend", "api", "infrastructure"],
     "labelPrompts": {
       "debugger": ["Bug", "Hotfix"],
       "builder": ["Feature"],
