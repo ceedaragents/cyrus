@@ -597,6 +597,104 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Create a new Linear agent session with all necessary setup
+	 * @param linearAgentActivitySessionId The Linear agent activity session ID
+	 * @param issue Linear issue object
+	 * @param repository Repository configuration
+	 * @param agentSessionManager Agent session manager instance
+	 * @returns Object containing session details and setup information
+	 */
+	private async createLinearAgentSession(
+		linearAgentActivitySessionId: string,
+		issue: { id: string; identifier: string },
+		repository: RepositoryConfig,
+		agentSessionManager: any,
+	): Promise<{
+		session: any;
+		fullIssue: any;
+		workspace: any;
+		attachmentResult: any;
+		attachmentsDir: string;
+		allowedDirectories: string[];
+		allowedTools: any;
+	}> {
+		// Fetch full Linear issue details
+		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+		if (!fullIssue) {
+			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
+		}
+
+		// Move issue to started state automatically, in case it's not already
+		await this.moveIssueToStartedState(fullIssue, repository.id);
+
+		// Create workspace using full issue data
+		const workspace = this.config.handlers?.createWorkspace
+			? await this.config.handlers.createWorkspace(fullIssue, repository)
+			: {
+					path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
+					isGitWorktree: false,
+				};
+
+		console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`);
+
+		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
+		agentSessionManager.createLinearAgentSession(
+			linearAgentActivitySessionId,
+			issue.id,
+			issueMinimal,
+			workspace,
+		);
+
+		// Get the newly created session
+		const session = agentSessionManager.getSession(
+			linearAgentActivitySessionId,
+		);
+		if (!session) {
+			throw new Error(
+				`Failed to create session for agent activity session ${linearAgentActivitySessionId}`,
+			);
+		}
+
+		// Download attachments before creating Claude runner
+		const attachmentResult = await this.downloadIssueAttachments(
+			fullIssue,
+			repository,
+			workspace.path,
+		);
+
+		// Pre-create attachments directory even if no attachments exist yet
+		const workspaceFolderName = basename(workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		await mkdir(attachmentsDir, { recursive: true });
+
+		// Build allowed directories list - always include attachments directory
+		const allowedDirectories: string[] = [attachmentsDir];
+
+		console.log(
+			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
+			allowedDirectories,
+		);
+
+		// Build allowed tools list with Linear MCP tools
+		const allowedTools = this.buildAllowedTools(repository);
+
+		return {
+			session,
+			fullIssue,
+			workspace,
+			attachmentResult,
+			attachmentsDir,
+			allowedDirectories,
+			allowedTools,
+		};
+	}
+
+	/**
 	 * Handle agent session created webhook
 	 * . Can happen due to being 'delegated' or @ mentioned in a new thread
 	 * @param webhook
@@ -635,60 +733,19 @@ export class EdgeWorker extends EventEmitter {
 			repository.id,
 		);
 
-		// Fetch full Linear issue details immediately
-		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
-		if (!fullIssue) {
-			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
-		}
-
-		// Move issue to started state automatically, in case it's not already
-		await this.moveIssueToStartedState(fullIssue, repository.id);
-
-		// Create workspace using full issue data
-		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, repository)
-			: {
-					path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
-					isGitWorktree: false,
-				};
-
-		console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`);
-
-		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
-		agentSessionManager.createLinearAgentSession(
-			linearAgentActivitySessionId,
-			issue.id,
-			issueMinimal,
-			workspace,
-		);
-
-		// Download attachments before creating Claude runner
-		const attachmentResult = await this.downloadIssueAttachments(
+		// Create the session using the shared method
+		const {
 			fullIssue,
-			repository,
-			workspace.path,
-		);
-
-		// Pre-create attachments directory even if no attachments exist yet
-		const workspaceFolderName = basename(workspace.path);
-		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
-			workspaceFolderName,
-			"attachments",
-		);
-		await mkdir(attachmentsDir, { recursive: true });
-
-		// Build allowed directories list - always include attachments directory
-		const allowedDirectories: string[] = [attachmentsDir];
-
-		console.log(
-			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
+			workspace,
+			attachmentResult,
 			allowedDirectories,
+			allowedTools,
+		} = await this.createLinearAgentSession(
+			linearAgentActivitySessionId,
+			issue,
+			repository,
+			agentSessionManager,
 		);
-
-		// Build allowed tools list with Linear MCP tools
-		const allowedTools = this.buildAllowedTools(repository);
 
 		// Only fetch labels and determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
@@ -837,32 +894,71 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		const session = agentSessionManager.getSession(
-			linearAgentActivitySessionId,
-		);
+		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
+		let isNewSession = false;
 		if (!session) {
-			console.error(
-				`Unexpected: could not find Cyrus Agent Session for agent activity session: ${linearAgentActivitySessionId}`,
+			console.log(
+				`[EdgeWorker] No existing session found for agent activity session ${linearAgentActivitySessionId}, creating new session`,
 			);
-			return;
-		}
+			isNewSession = true;
 
-		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
-		const existingRunner = session.claudeRunner;
-		if (existingRunner?.isStreaming()) {
-			// Post instant acknowledgment for streaming case
-			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
-				repository.id,
-				true,
-			);
-		} else {
-			// Post instant acknowledgment for non-streaming case
+			// Post instant acknowledgment for new session creation
 			await this.postInstantPromptedAcknowledgment(
 				linearAgentActivitySessionId,
 				repository.id,
 				false,
 			);
+
+			// Create the session using the shared method
+			const sessionData = await this.createLinearAgentSession(
+				linearAgentActivitySessionId,
+				issue,
+				repository,
+				agentSessionManager,
+			);
+			session = sessionData.session;
+
+			// Save state and emit events for new session
+			await this.savePersistedState();
+			this.emit(
+				"session:started",
+				sessionData.fullIssue.id,
+				sessionData.fullIssue,
+				repository.id,
+			);
+			this.config.handlers?.onSessionStart?.(
+				sessionData.fullIssue.id,
+				sessionData.fullIssue,
+				repository.id,
+			);
+		}
+
+		// Ensure session is not null after creation/retrieval
+		if (!session) {
+			throw new Error(
+				`Failed to get or create session for agent activity session ${linearAgentActivitySessionId}`,
+			);
+		}
+
+		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
+		const existingRunner = session.claudeRunner;
+		if (!isNewSession) {
+			// Only post acknowledgment for existing sessions (new sessions already handled it above)
+			if (existingRunner?.isStreaming()) {
+				// Post instant acknowledgment for streaming case
+				await this.postInstantPromptedAcknowledgment(
+					linearAgentActivitySessionId,
+					repository.id,
+					true,
+				);
+			} else {
+				// Post instant acknowledgment for non-streaming case
+				await this.postInstantPromptedAcknowledgment(
+					linearAgentActivitySessionId,
+					repository.id,
+					false,
+				);
+			}
 		}
 
 		// Get Linear client for this repository
@@ -976,18 +1072,14 @@ export class EdgeWorker extends EventEmitter {
 			existingRunner.stop();
 		}
 
-		if (!session.claudeSessionId) {
-			console.error(
-				`Unexpected: Handling a ("prompted") webhook but did not find an existing claudeSessionId for the linearAgentActivitySessionId ${linearAgentActivitySessionId}. Not continuing.`,
-			);
-			return;
-		}
+		// For newly created sessions or sessions without claudeSessionId, create a fresh Claude session
+		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
 
 		try {
 			// Build allowed tools list with Linear MCP tools
 			const allowedTools = this.buildAllowedTools(repository);
 
-			// Fetch full issue details to get labels
+			// Fetch full issue details to get labels (needed for both new and existing sessions)
 			const fullIssue = await this.fetchFullIssueDetails(
 				issue.id,
 				repository.id,
@@ -1005,20 +1097,20 @@ export class EdgeWorker extends EventEmitter {
 			const systemPrompt = systemPromptResult?.prompt;
 			const allowedDirectories = [attachmentsDir];
 
-			// Create new runner with resume mode if we have a Claude session ID
+			// Create runner - resume existing session or start new one
 			// Always append the last message marker to prevent duplication
 			const lastMessageMarker =
 				"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
-			const runner = new ClaudeRunner({
+
+			const runnerConfig = {
 				workingDirectory: session.workspace.path,
 				allowedTools,
 				allowedDirectories,
-				resumeSessionId: session.claudeSessionId,
 				workspaceName: issue.identifier,
 				mcpConfigPath: repository.mcpConfigPath,
 				mcpConfig: this.buildMcpConfig(repository),
 				appendSystemPrompt: (systemPrompt || "") + lastMessageMarker,
-				onMessage: (message) => {
+				onMessage: (message: any) => {
 					this.handleClaudeMessage(
 						linearAgentActivitySessionId,
 						message,
@@ -1026,8 +1118,15 @@ export class EdgeWorker extends EventEmitter {
 					);
 				},
 				// onComplete: (messages) => this.handleClaudeComplete(threadRootCommentId, messages, repository.id),
-				onError: (error) => this.handleClaudeError(error),
-			});
+				onError: (error: any) => this.handleClaudeError(error),
+			};
+
+			// Add resumeSessionId only for sessions that have a claudeSessionId
+			if (!needsNewClaudeSession) {
+				(runnerConfig as any).resumeSessionId = session.claudeSessionId;
+			}
+
+			const runner = new ClaudeRunner(runnerConfig);
 
 			// Store new runner by comment thread root
 			// Store runner by comment ID
@@ -1036,15 +1135,37 @@ export class EdgeWorker extends EventEmitter {
 			// Save state after mapping changes
 			await this.savePersistedState();
 
-			// Prepare the prompt with attachment manifest
-			let fullPrompt = promptBody;
-			if (attachmentManifest) {
-				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			// Prepare the prompt - different logic for new vs existing sessions
+			let fullPrompt: string;
+
+			if (isNewSession) {
+				// For completely new sessions, create a complete initial prompt similar to handleAgentSessionCreatedWebhook
+				console.log(
+					`[EdgeWorker] Building initial prompt for new session for issue ${fullIssue.identifier}`,
+				);
+
+				// Build initial prompt using the same logic as in handleAgentSessionCreatedWebhook
+				const promptResult = await this.buildPromptV2(
+					fullIssue,
+					repository,
+					undefined,
+					attachmentManifest, // Include attachment manifest in initial prompt
+				);
+
+				// Add the user's comment to the initial prompt
+				fullPrompt = `${promptResult.prompt}\n\nUser comment: ${promptBody}`;
+			} else {
+				// For existing sessions, just use the comment with attachment manifest
+				fullPrompt = promptBody;
+				if (attachmentManifest) {
+					fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+				}
 			}
 
-			// Start streaming session with the comment as initial prompt
+			// Start streaming session
+			const sessionType = needsNewClaudeSession ? "new" : "resumed";
 			console.log(
-				`[EdgeWorker] Starting new streaming session for issue ${issue.identifier}`,
+				`[EdgeWorker] Starting ${sessionType} streaming session for issue ${issue.identifier}`,
 			);
 			await runner.startStreaming(fullPrompt);
 		} catch (error) {
