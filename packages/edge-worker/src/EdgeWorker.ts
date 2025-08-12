@@ -11,6 +11,7 @@ import {
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import { ClaudeRunner, getSafeTools } from "cyrus-claude-runner";
 import type {
+	CyrusAgentSession,
 	IssueMinimal,
 	LinearAgentSessionCreatedWebhook,
 	LinearAgentSessionPromptedWebhook,
@@ -25,6 +26,7 @@ import type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	Workspace,
 } from "cyrus-core";
 import {
 	isAgentSessionCreatedWebhook,
@@ -44,6 +46,19 @@ import type {
 	EdgeWorkerEvents,
 	RepositoryConfig,
 } from "./types.js";
+
+/**
+ * Data returned from createLinearAgentSession
+ */
+interface LinearAgentSessionData {
+	session: CyrusAgentSession;
+	fullIssue: LinearIssue;
+	workspace: Workspace;
+	attachmentResult: { manifest: string; attachmentsDir: string | null };
+	attachmentsDir: string;
+	allowedDirectories: string[];
+	allowedTools: string[];
+}
 
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(
@@ -270,7 +285,7 @@ export class EdgeWorker extends EventEmitter {
 		for (const runner of claudeRunners) {
 			if (runner) {
 				try {
-					runner.stop();
+					this.stopExistingRunner(runner);
 				} catch (error) {
 					console.error("Error stopping Claude runner:", error);
 				}
@@ -608,16 +623,8 @@ export class EdgeWorker extends EventEmitter {
 		linearAgentActivitySessionId: string,
 		issue: { id: string; identifier: string },
 		repository: RepositoryConfig,
-		agentSessionManager: any,
-	): Promise<{
-		session: any;
-		fullIssue: any;
-		workspace: any;
-		attachmentResult: any;
-		attachmentsDir: string;
-		allowedDirectories: string[];
-		allowedTools: any;
-	}> {
+		agentSessionManager: AgentSessionManager,
+	): Promise<LinearAgentSessionData> {
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
 		if (!fullIssue) {
@@ -734,13 +741,7 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Create the session using the shared method
-		const {
-			fullIssue,
-			workspace,
-			attachmentResult,
-			allowedDirectories,
-			allowedTools,
-		} = await this.createLinearAgentSession(
+		const sessionData = await this.createLinearAgentSession(
 			linearAgentActivitySessionId,
 			issue,
 			repository,
@@ -753,7 +754,7 @@ export class EdgeWorker extends EventEmitter {
 
 		if (!isMentionTriggered) {
 			// Fetch issue labels and determine system prompt (delegation case)
-			const labels = await this.fetchIssueLabels(fullIssue);
+			const labels = await this.fetchIssueLabels(sessionData.fullIssue);
 			const systemPromptResult = await this.determineSystemPromptFromLabels(
 				labels,
 				repository,
@@ -776,26 +777,15 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Create Claude runner with attachment directory access and optional system prompt
-		// Always append the last message marker to prevent duplication
-		const lastMessageMarker =
-			"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
-		const runner = new ClaudeRunner({
-			workingDirectory: workspace.path,
-			allowedTools,
-			allowedDirectories,
-			workspaceName: fullIssue.identifier,
-			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository),
-			appendSystemPrompt: (systemPrompt || "") + lastMessageMarker,
-			onMessage: (message) =>
-				this.handleClaudeMessage(
-					linearAgentActivitySessionId,
-					message,
-					repository.id,
-				),
-			// onComplete: (messages) => this.handleClaudeComplete(initialComment.id, messages, repository.id),
-			onError: (error) => this.handleClaudeError(error),
-		});
+		const runnerConfig = this.buildClaudeRunnerConfig(
+			sessionData.session,
+			repository,
+			linearAgentActivitySessionId,
+			systemPrompt,
+			sessionData.allowedTools,
+			sessionData.allowedDirectories,
+		);
+		const runner = new ClaudeRunner(runnerConfig);
 
 		// Store runner by comment ID
 		agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
@@ -804,36 +794,41 @@ export class EdgeWorker extends EventEmitter {
 		await this.savePersistedState();
 
 		// Emit events using full Linear issue
-		this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+		this.emit(
+			"session:started",
+			sessionData.fullIssue.id,
+			sessionData.fullIssue,
+			repository.id,
+		);
 		this.config.handlers?.onSessionStart?.(
-			fullIssue.id,
-			fullIssue,
+			sessionData.fullIssue.id,
+			sessionData.fullIssue,
 			repository.id,
 		);
 
 		// Build and start Claude with initial prompt using full issue (streaming mode)
 		console.log(
-			`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`,
+			`[EdgeWorker] Building initial prompt for issue ${sessionData.fullIssue.identifier}`,
 		);
 		try {
 			// Choose the appropriate prompt builder based on trigger type and system prompt
 			const promptResult = isMentionTriggered
 				? await this.buildMentionPrompt(
-						fullIssue,
+						sessionData.fullIssue,
 						agentSession,
-						attachmentResult.manifest,
+						sessionData.attachmentResult.manifest,
 					)
 				: systemPrompt
 					? await this.buildLabelBasedPrompt(
-							fullIssue,
+							sessionData.fullIssue,
 							repository,
-							attachmentResult.manifest,
+							sessionData.attachmentResult.manifest,
 						)
 					: await this.buildPromptV2(
-							fullIssue,
+							sessionData.fullIssue,
 							repository,
 							undefined,
-							attachmentResult.manifest,
+							sessionData.attachmentResult.manifest,
 						);
 
 			const { prompt, version: userPromptVersion } = promptResult;
@@ -944,21 +939,12 @@ export class EdgeWorker extends EventEmitter {
 		const existingRunner = session.claudeRunner;
 		if (!isNewSession) {
 			// Only post acknowledgment for existing sessions (new sessions already handled it above)
-			if (existingRunner?.isStreaming()) {
-				// Post instant acknowledgment for streaming case
-				await this.postInstantPromptedAcknowledgment(
-					linearAgentActivitySessionId,
-					repository.id,
-					true,
-				);
-			} else {
-				// Post instant acknowledgment for non-streaming case
-				await this.postInstantPromptedAcknowledgment(
-					linearAgentActivitySessionId,
-					repository.id,
-					false,
-				);
-			}
+			await this.postAcknowledgmentForSession(
+				linearAgentActivitySessionId,
+				repository.id,
+				false,
+				existingRunner?.isStreaming() || false,
+			);
 		}
 
 		// Get Linear client for this repository
@@ -1034,7 +1020,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Stop the existing runner if it's active
 			if (existingRunner) {
-				existingRunner.stop();
+				this.stopExistingRunner(existingRunner);
 				console.log(
 					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
 				);
@@ -1068,9 +1054,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Stop existing runner if it's not streaming or stream addition failed
-		if (existingRunner) {
-			existingRunner.stop();
-		}
+		this.stopExistingRunner(existingRunner);
 
 		// For newly created sessions or sessions without claudeSessionId, create a fresh Claude session
 		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
@@ -1098,33 +1082,15 @@ export class EdgeWorker extends EventEmitter {
 			const allowedDirectories = [attachmentsDir];
 
 			// Create runner - resume existing session or start new one
-			// Always append the last message marker to prevent duplication
-			const lastMessageMarker =
-				"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
-
-			const runnerConfig = {
-				workingDirectory: session.workspace.path,
+			const runnerConfig = this.buildClaudeRunnerConfig(
+				session,
+				repository,
+				linearAgentActivitySessionId,
+				systemPrompt,
 				allowedTools,
 				allowedDirectories,
-				workspaceName: issue.identifier,
-				mcpConfigPath: repository.mcpConfigPath,
-				mcpConfig: this.buildMcpConfig(repository),
-				appendSystemPrompt: (systemPrompt || "") + lastMessageMarker,
-				onMessage: (message: any) => {
-					this.handleClaudeMessage(
-						linearAgentActivitySessionId,
-						message,
-						repository.id,
-					);
-				},
-				// onComplete: (messages) => this.handleClaudeComplete(threadRootCommentId, messages, repository.id),
-				onError: (error: any) => this.handleClaudeError(error),
-			};
-
-			// Add resumeSessionId only for sessions that have a claudeSessionId
-			if (!needsNewClaudeSession) {
-				(runnerConfig as any).resumeSessionId = session.claudeSessionId;
-			}
+				needsNewClaudeSession ? undefined : session.claudeSessionId,
+			);
 
 			const runner = new ClaudeRunner(runnerConfig);
 
@@ -1136,30 +1102,18 @@ export class EdgeWorker extends EventEmitter {
 			await this.savePersistedState();
 
 			// Prepare the prompt - different logic for new vs existing sessions
-			let fullPrompt: string;
+			const fullPrompt = await this.buildSessionPrompt(
+				isNewSession,
+				fullIssue,
+				repository,
+				promptBody,
+				attachmentManifest,
+			);
 
 			if (isNewSession) {
-				// For completely new sessions, create a complete initial prompt similar to handleAgentSessionCreatedWebhook
 				console.log(
 					`[EdgeWorker] Building initial prompt for new session for issue ${fullIssue.identifier}`,
 				);
-
-				// Build initial prompt using the same logic as in handleAgentSessionCreatedWebhook
-				const promptResult = await this.buildPromptV2(
-					fullIssue,
-					repository,
-					undefined,
-					attachmentManifest, // Include attachment manifest in initial prompt
-				);
-
-				// Add the user's comment to the initial prompt
-				fullPrompt = `${promptResult.prompt}\n\nUser comment: ${promptBody}`;
-			} else {
-				// For existing sessions, just use the comment with attachment manifest
-				fullPrompt = promptBody;
-				if (attachmentManifest) {
-					fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
-				}
 			}
 
 			// Start streaming session
@@ -1211,7 +1165,7 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[EdgeWorker] Stopping Claude runner for issue ${issue.identifier}`,
 			);
-			runner.stop();
+			this.stopExistingRunner(runner);
 		}
 
 		// Post ONE farewell comment on the issue (not in any thread) if there were active sessions
@@ -2531,6 +2485,108 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	/**
 	 * Build allowed tools list with Linear MCP tools automatically included
 	 */
+	/**
+	 * Stop existing Claude runner if it exists
+	 */
+	private stopExistingRunner(runner: ClaudeRunner | undefined): void {
+		if (runner) {
+			runner.stop();
+		}
+	}
+
+	/**
+	 * Build prompt for a session - handles both new and existing sessions
+	 */
+	private async buildSessionPrompt(
+		isNewSession: boolean,
+		fullIssue: LinearIssue,
+		repository: RepositoryConfig,
+		promptBody: string,
+		attachmentManifest?: string,
+	): Promise<string> {
+		if (isNewSession) {
+			// For completely new sessions, create a complete initial prompt
+			const promptResult = await this.buildPromptV2(
+				fullIssue,
+				repository,
+				undefined,
+				attachmentManifest,
+			);
+			// Add the user's comment to the initial prompt
+			return `${promptResult.prompt}\n\nUser comment: ${promptBody}`;
+		} else {
+			// For existing sessions, just use the comment with attachment manifest
+			if (attachmentManifest) {
+				return `${promptBody}\n\n${attachmentManifest}`;
+			}
+			return promptBody;
+		}
+	}
+
+	/**
+	 * Post appropriate acknowledgment based on session state
+	 */
+	private async postAcknowledgmentForSession(
+		linearAgentActivitySessionId: string,
+		repositoryId: string,
+		isNewSession: boolean,
+		isStreaming: boolean,
+	): Promise<void> {
+		if (isNewSession) {
+			await this.postInstantPromptedAcknowledgment(
+				linearAgentActivitySessionId,
+				repositoryId,
+				false,
+			);
+		} else {
+			await this.postInstantPromptedAcknowledgment(
+				linearAgentActivitySessionId,
+				repositoryId,
+				isStreaming,
+			);
+		}
+	}
+
+	/**
+	 * Build Claude runner configuration with common settings
+	 */
+	private buildClaudeRunnerConfig(
+		session: CyrusAgentSession,
+		repository: RepositoryConfig,
+		linearAgentActivitySessionId: string,
+		systemPrompt: string | undefined,
+		allowedTools: string[],
+		allowedDirectories: string[],
+		resumeSessionId?: string,
+	): any {
+		const lastMessageMarker =
+			"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
+
+		const config = {
+			workingDirectory: session.workspace.path,
+			allowedTools,
+			allowedDirectories,
+			workspaceName: session.issue?.identifier || session.issueId,
+			mcpConfigPath: repository.mcpConfigPath,
+			mcpConfig: this.buildMcpConfig(repository),
+			appendSystemPrompt: (systemPrompt || "") + lastMessageMarker,
+			onMessage: (message: SDKMessage) => {
+				this.handleClaudeMessage(
+					linearAgentActivitySessionId,
+					message,
+					repository.id,
+				);
+			},
+			onError: (error: Error) => this.handleClaudeError(error),
+		};
+
+		if (resumeSessionId) {
+			(config as any).resumeSessionId = resumeSessionId;
+		}
+
+		return config;
+	}
+
 	private buildAllowedTools(repository: RepositoryConfig): string[] {
 		// Start with configured tools or defaults
 		const baseTools =
