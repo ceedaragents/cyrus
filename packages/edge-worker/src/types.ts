@@ -1,6 +1,6 @@
 import type { Issue as LinearIssue } from "@linear/sdk";
 import type { SDKMessage } from "cyrus-claude-runner";
-import type { Workspace } from "cyrus-core";
+import type { CyrusAgentSession, Workspace } from "cyrus-core";
 import type { OAuthCallbackHandler } from "./SharedApplicationServer.js";
 
 /**
@@ -146,4 +146,17 @@ export interface EdgeWorkerEvents {
 
 	// Error events
 	error: (error: Error, context?: any) => void;
+}
+
+/**
+ * Data returned from createLinearAgentSession
+ */
+export interface LinearAgentSessionData {
+	session: CyrusAgentSession;
+	fullIssue: LinearIssue;
+	workspace: Workspace;
+	attachmentResult: { manifest: string; attachmentsDir: string | null };
+	attachmentsDir: string;
+	allowedDirectories: string[];
+	allowedTools: string[];
 }

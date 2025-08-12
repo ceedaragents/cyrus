@@ -26,7 +26,6 @@ import type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
-	Workspace,
 } from "cyrus-core";
 import {
 	isAgentSessionCreatedWebhook,
@@ -44,21 +43,9 @@ import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type {
 	EdgeWorkerConfig,
 	EdgeWorkerEvents,
+	LinearAgentSessionData,
 	RepositoryConfig,
 } from "./types.js";
-
-/**
- * Data returned from createLinearAgentSession
- */
-interface LinearAgentSessionData {
-	session: CyrusAgentSession;
-	fullIssue: LinearIssue;
-	workspace: Workspace;
-	attachmentResult: { manifest: string; attachmentsDir: string | null };
-	attachmentsDir: string;
-	allowedDirectories: string[];
-	allowedTools: string[];
-}
 
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(
@@ -285,7 +272,7 @@ export class EdgeWorker extends EventEmitter {
 		for (const runner of claudeRunners) {
 			if (runner) {
 				try {
-					this.stopExistingRunner(runner);
+					runner.stop();
 				} catch (error) {
 					console.error("Error stopping Claude runner:", error);
 				}
@@ -939,10 +926,9 @@ export class EdgeWorker extends EventEmitter {
 		const existingRunner = session.claudeRunner;
 		if (!isNewSession) {
 			// Only post acknowledgment for existing sessions (new sessions already handled it above)
-			await this.postAcknowledgmentForSession(
+			await this.postInstantPromptedAcknowledgment(
 				linearAgentActivitySessionId,
 				repository.id,
-				false,
 				existingRunner?.isStreaming() || false,
 			);
 		}
@@ -1020,7 +1006,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Stop the existing runner if it's active
 			if (existingRunner) {
-				this.stopExistingRunner(existingRunner);
+				existingRunner.stop();
 				console.log(
 					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
 				);
@@ -1054,7 +1040,9 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Stop existing runner if it's not streaming or stream addition failed
-		this.stopExistingRunner(existingRunner);
+		if (existingRunner) {
+			existingRunner.stop();
+		}
 
 		// For newly created sessions or sessions without claudeSessionId, create a fresh Claude session
 		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
@@ -1165,7 +1153,7 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[EdgeWorker] Stopping Claude runner for issue ${issue.identifier}`,
 			);
-			this.stopExistingRunner(runner);
+			runner.stop();
 		}
 
 		// Post ONE farewell comment on the issue (not in any thread) if there were active sessions
@@ -2486,15 +2474,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * Build allowed tools list with Linear MCP tools automatically included
 	 */
 	/**
-	 * Stop existing Claude runner if it exists
-	 */
-	private stopExistingRunner(runner: ClaudeRunner | undefined): void {
-		if (runner) {
-			runner.stop();
-		}
-	}
-
-	/**
 	 * Build prompt for a session - handles both new and existing sessions
 	 */
 	private async buildSessionPrompt(
@@ -2520,30 +2499,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return `${promptBody}\n\n${attachmentManifest}`;
 			}
 			return promptBody;
-		}
-	}
-
-	/**
-	 * Post appropriate acknowledgment based on session state
-	 */
-	private async postAcknowledgmentForSession(
-		linearAgentActivitySessionId: string,
-		repositoryId: string,
-		isNewSession: boolean,
-		isStreaming: boolean,
-	): Promise<void> {
-		if (isNewSession) {
-			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
-				repositoryId,
-				false,
-			);
-		} else {
-			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
-				repositoryId,
-				isStreaming,
-			);
 		}
 	}
 

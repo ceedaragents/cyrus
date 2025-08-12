@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Resolved issue where Cyrus would fail to delegate tasks after restarting
+  - Now properly creates new sessions when delegation occurs after a restart
+  - Sessions are correctly initialized even when no prior session history exists
+  - Improved code organization and type safety in session handling logic
+
 ## [0.1.40] - 2025-08-10
 
 ### Added
