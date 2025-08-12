@@ -982,6 +982,9 @@ export class EdgeWorker extends EventEmitter {
 			);
 			return;
 		}
+		console.log(
+			`[EdgeWorker] Resuming session with claudeSessionId: ${session.claudeSessionId}`,
+		);
 
 		try {
 			// Build allowed tools list with Linear MCP tools
@@ -1009,6 +1012,9 @@ export class EdgeWorker extends EventEmitter {
 			// Always append the last message marker to prevent duplication
 			const lastMessageMarker =
 				"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
+			console.log(
+				`[EdgeWorker] Creating ClaudeRunner with resumeSessionId: ${session.claudeSessionId}`,
+			);
 			const runner = new ClaudeRunner({
 				workingDirectory: session.workspace.path,
 				allowedTools,

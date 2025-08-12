@@ -143,6 +143,10 @@ export class ClaudeRunner extends EventEmitter {
 		super();
 		this.config = config;
 
+		console.log(
+			`[ClaudeRunner] Constructor called with resumeSessionId: ${config.resumeSessionId || "none"}`,
+		);
+
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
 		if (config.onError) this.on("error", config.onError);
@@ -206,6 +210,10 @@ export class ClaudeRunner extends EventEmitter {
 		console.log(
 			"[ClaudeRunner] Working directory:",
 			this.config.workingDirectory,
+		);
+		console.log(
+			"[ClaudeRunner] Resume session ID:",
+			this.config.resumeSessionId || "none",
 		);
 
 		// Ensure working directory exists
@@ -331,10 +339,31 @@ export class ClaudeRunner extends EventEmitter {
 					...(processedAllowedTools && { allowedTools: processedAllowedTools }),
 					...(this.config.resumeSessionId && {
 						resume: this.config.resumeSessionId,
+						continue: true,
 					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 				},
 			};
+
+			// Debug logging for resume functionality
+			console.log(
+				"[ClaudeRunner] Query options being passed to SDK:",
+				JSON.stringify(
+					{
+						hasPrompt: !!queryOptions.prompt,
+						promptType:
+							typeof queryOptions.prompt === "string"
+								? "string"
+								: "AsyncIterable",
+						options: {
+							...queryOptions.options,
+							abortController: "AbortController instance",
+						},
+					},
+					null,
+					2,
+				),
+			);
 
 			// Process messages from the query
 			for await (const message of query(queryOptions)) {
