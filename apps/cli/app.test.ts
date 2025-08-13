@@ -947,16 +947,20 @@ describe("Enhanced Setup Wizard - Routing Configuration", () => {
 
 describe("Interactive Selection Interface", () => {
 	describe("Number selection parsing", () => {
-		const parseNumberSelection = (selection: string, maxIndex: number): number[] => {
+		const parseNumberSelection = (
+			selection: string,
+			maxIndex: number,
+		): number[] => {
 			if (!selection.trim()) return [];
-			if (selection.toLowerCase() === 'all') return Array.from({length: maxIndex}, (_, i) => i);
-			
+			if (selection.toLowerCase() === "all")
+				return Array.from({ length: maxIndex }, (_, i) => i);
+
 			return selection
-				.split(',')
-				.map(s => s.trim())
-				.map(s => parseInt(s))
-				.filter(n => !isNaN(n) && n >= 1 && n <= maxIndex)
-				.map(n => n - 1); // Convert to 0-based index
+				.split(",")
+				.map((s) => s.trim())
+				.map((s) => parseInt(s))
+				.filter((n) => !Number.isNaN(n) && n >= 1 && n <= maxIndex)
+				.map((n) => n - 1); // Convert to 0-based index
 		};
 
 		it("should parse single selection correctly", () => {
@@ -1011,8 +1015,11 @@ describe("Interactive Selection Interface", () => {
 	});
 
 	describe("Item selection logic", () => {
-		const selectItemsByIndices = (items: string[], indices: number[]): string[] => {
-			return indices.map(i => items[i]).filter(Boolean);
+		const selectItemsByIndices = (
+			items: string[],
+			indices: number[],
+		): string[] => {
+			return indices.map((i) => items[i]).filter(Boolean);
 		};
 
 		it("should select correct items by indices", () => {
@@ -1045,43 +1052,42 @@ describe("Interactive Selection Interface", () => {
 	});
 
 	describe("Selection method routing", () => {
-		const getSelectionMethod = (input: string): 'list' | 'manual' | 'skip' => {
+		const getSelectionMethod = (input: string): "list" | "manual" | "skip" => {
 			const method = input.trim();
 			switch (method) {
-				case '1':
-				case '':
-					return 'list';
-				case '2':
-					return 'manual';
-				case '3':
+				case "1":
+				case "":
+					return "list";
+				case "2":
+					return "manual";
 				default:
-					return 'skip';
+					return "skip";
 			}
 		};
 
 		it("should route to list selection for '1'", () => {
-			expect(getSelectionMethod("1")).toBe('list');
+			expect(getSelectionMethod("1")).toBe("list");
 		});
 
 		it("should route to list selection for empty string (default)", () => {
-			expect(getSelectionMethod("")).toBe('list');
+			expect(getSelectionMethod("")).toBe("list");
 		});
 
 		it("should route to manual entry for '2'", () => {
-			expect(getSelectionMethod("2")).toBe('manual');
+			expect(getSelectionMethod("2")).toBe("manual");
 		});
 
 		it("should route to skip for '3'", () => {
-			expect(getSelectionMethod("3")).toBe('skip');
+			expect(getSelectionMethod("3")).toBe("skip");
 		});
 
 		it("should route to skip for invalid input", () => {
-			expect(getSelectionMethod("invalid")).toBe('skip');
+			expect(getSelectionMethod("invalid")).toBe("skip");
 		});
 
 		it("should handle whitespace around input", () => {
-			expect(getSelectionMethod("  1  ")).toBe('list');
-			expect(getSelectionMethod("  2  ")).toBe('manual');
+			expect(getSelectionMethod("  1  ")).toBe("list");
+			expect(getSelectionMethod("  2  ")).toBe("manual");
 		});
 	});
 

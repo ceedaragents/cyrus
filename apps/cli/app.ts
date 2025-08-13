@@ -292,7 +292,7 @@ class EdgeApp {
 			console.log(description);
 		}
 		console.log("─".repeat(40));
-		
+
 		// Show numbered list
 		items.forEach((item, index) => {
 			console.log(`${index + 1}. ${item}`);
@@ -300,7 +300,7 @@ class EdgeApp {
 
 		console.log("\nSelection options:");
 		console.log("• Enter numbers (e.g., 1,3,5) to select multiple items");
-		console.log("• Enter 'all' to select all items");  
+		console.log("• Enter 'all' to select all items");
 		console.log("• Press Enter to skip");
 
 		const question = (prompt: string): Promise<string> =>
@@ -309,31 +309,33 @@ class EdgeApp {
 			});
 
 		const selection = await question(`\nSelect ${title.toLowerCase()}: `);
-		
+
 		if (!selection.trim()) {
 			return [];
 		}
 
-		if (selection.toLowerCase() === 'all') {
+		if (selection.toLowerCase() === "all") {
 			console.log(`✓ Selected all ${items.length} ${title.toLowerCase()}`);
 			return [...items];
 		}
 
 		// Parse number selections
 		const indices = selection
-			.split(',')
-			.map(s => s.trim())
-			.map(s => parseInt(s))
-			.filter(n => !isNaN(n) && n >= 1 && n <= items.length)
-			.map(n => n - 1); // Convert to 0-based index
+			.split(",")
+			.map((s) => s.trim())
+			.map((s) => parseInt(s))
+			.filter((n) => !Number.isNaN(n) && n >= 1 && n <= items.length)
+			.map((n) => n - 1); // Convert to 0-based index
 
 		if (indices.length === 0) {
 			console.log("No valid selections made.");
 			return [];
 		}
 
-		const selectedItems = indices.map(i => items[i]).filter((item): item is string => Boolean(item));
-		console.log(`✓ Selected: ${selectedItems.join(', ')}`);
+		const selectedItems = indices
+			.map((i) => items[i])
+			.filter((item): item is string => Boolean(item));
+		console.log(`✓ Selected: ${selectedItems.join(", ")}`);
 		return selectedItems;
 	}
 
@@ -357,8 +359,10 @@ class EdgeApp {
 			const hasMore = availableItems.length > 5 ? "..." : "";
 			console.log(`Available: ${preview}${hasMore}`);
 		}
-		
-		const input = await question(`Enter comma-separated ${itemType} (${examples}): `);
+
+		const input = await question(
+			`Enter comma-separated ${itemType} (${examples}): `,
+		);
 		return this.parseCommaSeparatedInput(input) || [];
 	}
 
@@ -387,7 +391,7 @@ class EdgeApp {
 		if (description) {
 			console.log(description);
 		}
-		
+
 		console.log("\nHow would you like to select?");
 		console.log("1. Choose from list (recommended)");
 		console.log("2. Enter manually");
@@ -396,14 +400,22 @@ class EdgeApp {
 		const method = await question("Selection method (1/2/3): ");
 
 		switch (method.trim()) {
-			case '1':
-			case '':
-				return await this.interactiveMultiSelect(rl, availableItems, `Select ${title}`, description);
-			
-			case '2':
-				return await this.manualTextEntry(rl, availableItems, itemType, examples);
-			
-			case '3':
+			case "1":
+			case "":
+				return await this.interactiveMultiSelect(
+					rl,
+					availableItems,
+					`Select ${title}`,
+					description,
+				);
+
+			case "2":
+				return await this.manualTextEntry(
+					rl,
+					availableItems,
+					itemType,
+					examples,
+				);
 			default:
 				console.log(`Skipping ${itemType} configuration.`);
 				return [];
@@ -528,17 +540,17 @@ class EdgeApp {
 					"📝 Labels (Highest Priority)",
 					"labels",
 					"backend, api, infrastructure",
-					"Labels have the highest routing priority"
+					"Labels have the highest routing priority",
 				);
 
-				// Configure Projects (medium priority) 
+				// Configure Projects (medium priority)
 				projectKeys = await this.selectItems(
 					rl,
 					availableProjects,
 					"📋 Projects (Medium Priority)",
-					"projects", 
+					"projects",
 					"Mobile App, API Service",
-					"Projects are checked if no matching labels are found"
+					"Projects are checked if no matching labels are found",
 				);
 
 				// Configure Teams (lowest priority)
@@ -548,7 +560,7 @@ class EdgeApp {
 					"👥 Teams (Lowest Priority)",
 					"team keys",
 					"CEE, BACKEND, FRONTEND",
-					"Teams are checked if no matching labels or projects are found"
+					"Teams are checked if no matching labels or projects are found",
 				);
 
 				// Show configuration summary
