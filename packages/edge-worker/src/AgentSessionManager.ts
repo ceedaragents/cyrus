@@ -27,12 +27,15 @@ import type {
  */
 export class AgentSessionManager {
 	private linearClient: LinearClient;
+	private edgeWorker: any; // Using 'any' to avoid circular dependency
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
+	private pendingSubIssues: Map<string, { parentId: string; repositoryId: string }> = new Map(); // Track pending sub-issue creations by tool use ID
 
-	constructor(linearClient: LinearClient) {
+	constructor(linearClient: LinearClient, edgeWorker?: any) {
 		this.linearClient = linearClient;
+		this.edgeWorker = edgeWorker;
 	}
 
 	/**
@@ -44,6 +47,7 @@ export class AgentSessionManager {
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
+		repositoryId?: string,
 	): CyrusAgentSession {
 		console.log(
 			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
@@ -59,6 +63,7 @@ export class AgentSessionManager {
 			issueId,
 			issue: issueMinimal,
 			workspace: workspace,
+			metadata: repositoryId ? { repositoryId } : undefined,
 		};
 
 		// Store locally
@@ -435,6 +440,36 @@ export class AgentSessionManager {
 			let content: any;
 			switch (entry.type) {
 				case "user": {
+					// Check if this is a result for a pending sub-issue creation
+					if (entry.metadata?.toolUseId && this.pendingSubIssues.has(entry.metadata.toolUseId)) {
+						const pendingInfo = this.pendingSubIssues.get(entry.metadata.toolUseId);
+						if (pendingInfo && this.edgeWorker) {
+							try {
+								// Parse the tool result to get the created issue ID
+								const result = JSON.parse(entry.content);
+								if (result.success && result.issue?.id) {
+									console.log(
+										`[AgentSessionManager] Sub-issue created: ${result.issue.id} with parent ${pendingInfo.parentId}`,
+									);
+									// Add to orchestration queue
+									await this.edgeWorker.addToOrchestrationQueue(
+										pendingInfo.parentId,
+										result.issue.id,
+										pendingInfo.repositoryId,
+									);
+								}
+							} catch (error) {
+								console.error(
+									`[AgentSessionManager] Error processing sub-issue creation result:`,
+									error,
+								);
+							} finally {
+								// Clean up the pending tracker
+								this.pendingSubIssues.delete(entry.metadata.toolUseId);
+							}
+						}
+					}
+
 					const activeTaskId = this.activeTasksBySession.get(
 						linearAgentActivitySessionId,
 					);
@@ -493,6 +528,32 @@ export class AgentSessionManager {
 								);
 								if (activeTaskId === entry.metadata?.parentToolUseId) {
 									displayName = `↪ ${toolName}`;
+								}
+							}
+
+							// Check for Linear MCP createIssue tool to detect sub-issue creation
+							if (toolName === "mcp__linear__linear_createIssue" && this.edgeWorker) {
+								try {
+									const toolInput = JSON.parse(parameter);
+									if (toolInput.parentId && entry.metadata?.toolUseId) {
+										// This is a sub-issue being created
+										console.log(
+											`[AgentSessionManager] Detected sub-issue creation with parent ${toolInput.parentId}`,
+										);
+										// Track this pending sub-issue creation
+										const repositoryId = session.metadata?.repositoryId as string | undefined;
+										if (repositoryId) {
+											this.pendingSubIssues.set(entry.metadata.toolUseId, {
+												parentId: toolInput.parentId,
+												repositoryId: repositoryId,
+											});
+										}
+									}
+								} catch (error) {
+									console.error(
+										`[AgentSessionManager] Error parsing Linear createIssue tool input:`,
+										error,
+									);
 								}
 							}
 

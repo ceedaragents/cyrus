@@ -269,6 +269,51 @@ export interface LinearAgentSessionPromptedWebhook {
 }
 
 /**
+ * Issue state for webhook state changes
+ */
+export interface LinearWebhookIssueState {
+	id: string;
+	name: string;
+	type: "triage" | "backlog" | "unstarted" | "started" | "completed" | "canceled";
+	position: number;
+}
+
+/**
+ * Extended issue data with state information
+ */
+export interface LinearWebhookIssueWithState extends LinearWebhookIssue {
+	stateId: string;
+	state: LinearWebhookIssueState;
+	parentId?: string;
+	labels?: Array<{ id: string; name: string }>;
+}
+
+/**
+ * Issue update notification
+ */
+export interface LinearIssueUpdatedNotification extends LinearWebhookNotificationBase {
+	type: "issueUpdated";
+	issue: LinearWebhookIssueWithState;
+	previousStateId?: string;
+	previousState?: LinearWebhookIssueState;
+}
+
+/**
+ * Issue update webhook payload
+ */
+export interface LinearIssueUpdatedWebhook {
+	type: "AppUserNotification";
+	action: "issueUpdated";
+	createdAt: string;
+	organizationId: string;
+	oauthClientId: string;
+	appUserId: string;
+	notification: LinearIssueUpdatedNotification;
+	webhookTimestamp: number;
+	webhookId: string;
+}
+
+/**
  * Union of all webhook types we handle
  */
 export type LinearWebhook =
@@ -277,7 +322,8 @@ export type LinearWebhook =
 	| LinearIssueNewCommentWebhook
 	| LinearIssueUnassignedWebhook
 	| LinearAgentSessionCreatedWebhook
-	| LinearAgentSessionPromptedWebhook;
+	| LinearAgentSessionPromptedWebhook
+	| LinearIssueUpdatedWebhook;
 
 /**
  * Type guards for webhook discrimination
@@ -316,4 +362,10 @@ export function isAgentSessionPromptedWebhook(
 	webhook: LinearWebhook,
 ): webhook is LinearAgentSessionPromptedWebhook {
 	return webhook.type === "AgentSessionEvent" && webhook.action === "prompted";
+}
+
+export function isIssueUpdatedWebhook(
+	webhook: LinearWebhook,
+): webhook is LinearIssueUpdatedWebhook {
+	return webhook.action === "issueUpdated";
 }

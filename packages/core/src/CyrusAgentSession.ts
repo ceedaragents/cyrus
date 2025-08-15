@@ -40,6 +40,7 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		repositoryId?: string;
 	};
 }
 

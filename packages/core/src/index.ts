@@ -27,6 +27,8 @@ export type {
 	LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedNotification,
 	LinearIssueUnassignedWebhook,
+	LinearIssueUpdatedNotification,
+	LinearIssueUpdatedWebhook,
 	LinearWebhook,
 	LinearWebhookActor,
 	LinearWebhookAgentActivity,
@@ -35,6 +37,8 @@ export type {
 	LinearWebhookComment,
 	LinearWebhookCreator,
 	LinearWebhookIssue,
+	LinearWebhookIssueState,
+	LinearWebhookIssueWithState,
 	LinearWebhookNotification,
 	LinearWebhookTeam,
 } from "./webhook-types.js";
@@ -46,4 +50,5 @@ export {
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
 	isIssueUnassignedWebhook,
+	isIssueUpdatedWebhook,
 } from "./webhook-types.js";

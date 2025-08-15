@@ -24,6 +24,7 @@ import type {
 	// LinearIssueCommentMentionWebhook,
 	// LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedWebhook,
+	LinearIssueUpdatedWebhook,
 	LinearWebhook,
 	LinearWebhookAgentSession,
 	LinearWebhookComment,
@@ -39,6 +40,7 @@ import {
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
 	isIssueUnassignedWebhook,
+	isIssueUpdatedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
 import { NdjsonClient } from "cyrus-ndjson-client";
@@ -80,6 +82,10 @@ export class EdgeWorker extends EventEmitter {
 	private ndjsonClients: Map<string, NdjsonClient> = new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
+	
+	// Orchestration state management
+	private orchestrationQueue: Map<string, string[]> = new Map(); // parentId -> [subIssueIds]
+	private activeOrchestration: Map<string, string> = new Map(); // parentId -> activeSubIssueId
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -117,7 +123,7 @@ export class EdgeWorker extends EventEmitter {
 				// Create AgentSessionManager for this repository
 				this.agentSessionManagers.set(
 					repo.id,
-					new AgentSessionManager(linearClient),
+					new AgentSessionManager(linearClient, this),
 				);
 			}
 		}
@@ -394,6 +400,8 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleAgentSessionCreatedWebhook(webhook, repository);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPostedAgentActivity(webhook, repository);
+			} else if (isIssueUpdatedWebhook(webhook)) {
+				await this.handleIssueUpdatedWebhook(webhook, repository);
 			} else {
 				console.log(`Unhandled webhook type: ${(webhook as any).action}`);
 			}
@@ -645,6 +653,7 @@ export class EdgeWorker extends EventEmitter {
 			issue.id,
 			issueMinimal,
 			workspace,
+			repository.id,
 		);
 
 		// Get the newly created session
@@ -756,7 +765,7 @@ export class EdgeWorker extends EventEmitter {
 		// Only fetch labels and determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
-		let promptType: "debugger" | "builder" | "scoper" | undefined;
+		let promptType: "debugger" | "builder" | "scoper" | "orchestrator" | undefined;
 
 		if (!isMentionTriggered) {
 			// Fetch issue labels and determine system prompt (delegation case)
@@ -869,6 +878,136 @@ export class EdgeWorker extends EventEmitter {
 		} catch (error) {
 			console.error(`[EdgeWorker] Error in prompt building/starting:`, error);
 			throw error;
+		}
+	}
+
+	/**
+	 * Handle issue updated webhook to detect completion and trigger orchestration
+	 */
+	private async handleIssueUpdatedWebhook(
+		webhook: LinearIssueUpdatedWebhook,
+		repository: RepositoryConfig,
+	): Promise<void> {
+		const issue = webhook.notification.issue;
+		console.log(
+			`[EdgeWorker] Handling issue update: ${issue.identifier} - state: ${issue.state?.type}`,
+		);
+
+		// Check if issue transitioned to completed state
+		if (issue.state?.type === "completed") {
+			// Check if this is a sub-issue with a parent that has orchestrator label
+			if (issue.parentId) {
+				const linearClient = this.linearClients.get(repository.id);
+				if (!linearClient) {
+					console.error(`[EdgeWorker] No Linear client found for repository ${repository.id}`);
+					return;
+				}
+
+				// Get parent issue to check for orchestrator label
+				const parentIssue = await linearClient.issue(issue.parentId);
+				const parentLabels = await parentIssue.labels();
+				const hasOrchestratorLabel = parentLabels.nodes.some(
+					(label) => label.name.toLowerCase() === "orchestrator"
+				);
+
+				if (hasOrchestratorLabel) {
+					console.log(
+						`[EdgeWorker] Sub-issue ${issue.identifier} completed, checking orchestration queue for parent ${parentIssue.identifier}`,
+					);
+
+					// Get next sub-issue from queue
+					const queue = this.orchestrationQueue.get(issue.parentId) || [];
+					const nextSubIssueId = queue.shift();
+
+					if (nextSubIssueId) {
+						console.log(
+							`[EdgeWorker] Starting next sub-issue in orchestration queue: ${nextSubIssueId}`,
+						);
+
+						// Update active orchestration
+						this.activeOrchestration.set(issue.parentId, nextSubIssueId);
+
+						// Get the app user ID from webhook (this is the authenticated agent)
+						const appUserId = webhook.appUserId;
+
+						// Assign next sub-issue to trigger processing
+						await linearClient.updateIssue(nextSubIssueId, {
+							assigneeId: appUserId,
+						});
+
+						console.log(
+							`[EdgeWorker] Assigned sub-issue ${nextSubIssueId} to agent for processing`,
+						);
+					} else {
+						console.log(
+							`[EdgeWorker] No more sub-issues in orchestration queue for parent ${parentIssue.identifier}`,
+						);
+						// Remove from active orchestration
+						this.activeOrchestration.delete(issue.parentId);
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Add a sub-issue to the orchestration queue for a parent issue
+	 */
+	public async addToOrchestrationQueue(
+		parentIssueId: string,
+		subIssueId: string,
+		repositoryId: string,
+	): Promise<void> {
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			console.error(`[EdgeWorker] No Linear client found for repository ${repositoryId}`);
+			return;
+		}
+
+		// Check if parent has orchestrator label
+		try {
+			const parentIssue = await linearClient.issue(parentIssueId);
+			const parentLabels = await parentIssue.labels();
+			const hasOrchestratorLabel = parentLabels.nodes.some(
+				(label) => label.name.toLowerCase() === "orchestrator"
+			);
+
+			if (hasOrchestratorLabel) {
+				// Add to orchestration queue
+				const queue = this.orchestrationQueue.get(parentIssueId) || [];
+				queue.push(subIssueId);
+				this.orchestrationQueue.set(parentIssueId, queue);
+
+				console.log(
+					`[EdgeWorker] Added sub-issue ${subIssueId} to orchestration queue for parent ${parentIssue.identifier}. Queue size: ${queue.length}`,
+				);
+
+				// If this is the first sub-issue and no active orchestration, start it
+				if (queue.length === 1 && !this.activeOrchestration.has(parentIssueId)) {
+					console.log(
+						`[EdgeWorker] Starting orchestration for parent ${parentIssue.identifier} with first sub-issue ${subIssueId}`,
+					);
+					this.activeOrchestration.set(parentIssueId, subIssueId);
+					
+					// Get the authenticated agent's user ID
+					const viewer = await linearClient.viewer;
+					const appUserId = viewer.id;
+					
+					// Assign the first sub-issue to trigger processing
+					await linearClient.updateIssue(subIssueId, {
+						assigneeId: appUserId,
+					});
+					
+					console.log(
+						`[EdgeWorker] Assigned first sub-issue ${subIssueId} to agent for processing`,
+					);
+				}
+			}
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Error adding to orchestration queue:`,
+				error,
+			);
 		}
 	}
 
@@ -1258,7 +1397,7 @@ export class EdgeWorker extends EventEmitter {
 		| {
 				prompt: string;
 				version?: string;
-				type?: "debugger" | "builder" | "scoper";
+				type?: "debugger" | "builder" | "scoper" | "orchestrator";
 		  }
 		| undefined
 	> {
@@ -1267,7 +1406,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check each prompt type for matching labels
-		const promptTypes = ["debugger", "builder", "scoper"] as const;
+		const promptTypes = ["debugger", "builder", "scoper", "orchestrator"] as const;
 
 		for (const promptType of promptTypes) {
 			const promptConfig = repository.labelPrompts[promptType];
@@ -2616,7 +2755,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildAllowedTools(
 		repository: RepositoryConfig,
-		promptType?: "debugger" | "builder" | "scoper",
+		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
 	): string[] {
 		let baseTools: string[] = [];
 		let toolSource = "";
@@ -2875,6 +3014,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						if (scoperLabel) {
 							selectedPromptType = "scoper";
 							triggerLabel = scoperLabel;
+						} else {
+							// Check orchestrator labels
+							const orchestratorConfig = repository.labelPrompts.orchestrator;
+							const orchestratorLabels = Array.isArray(orchestratorConfig)
+								? orchestratorConfig
+								: orchestratorConfig?.labels;
+							const orchestratorLabel = orchestratorLabels?.find((label) =>
+								labels.includes(label),
+							);
+							if (orchestratorLabel) {
+								selectedPromptType = "orchestrator";
+								triggerLabel = orchestratorLabel;
+							}
 						}
 					}
 				}

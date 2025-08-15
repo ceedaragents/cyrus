@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Simple webhook orchestration for sequential sub-issue processing
+  - New "orchestrator" system prompt for breaking down complex tasks into sub-issues
+  - Automatic queue management ensures sub-issues execute one at a time to prevent conflicts
+  - When a sub-issue completes, the next one in queue automatically starts
+  - Detects sub-issue creation through Linear MCP tools and adds them to orchestration queue
+  - Works with issues labeled "orchestrator" to enable sequential workflow automation
+
 ### Fixed
 - Fixed git worktree creation failures for sub-issues when parent branch doesn't exist remotely
   - Added proper remote branch existence checking before attempting worktree creation
