@@ -124,7 +124,8 @@ Routes issues to different AI modes based on Linear labels and optionally config
 {
   "debugger": ["Bug"],
   "builder": ["Feature", "Improvement"],
-  "scoper": ["PRD"]
+  "scoper": ["PRD"],
+  "orchestrator": ["Epic", "Orchestrate"]
 }
 ```
 
@@ -142,6 +143,10 @@ Routes issues to different AI modes based on Linear labels and optionally config
   "scoper": {
     "labels": ["PRD"],
     "allowedTools": ["Read(**)", "WebFetch", "mcp__linear"]
+  },
+  "orchestrator": {
+    "labels": ["Epic", "Orchestrate"],
+    "allowedTools": "all"  // Needs full access to create and manage sub-issues
   }
 }
 ```
@@ -150,6 +155,7 @@ Routes issues to different AI modes based on Linear labels and optionally config
 - **debugger**: Systematic problem investigation mode
 - **builder**: Feature implementation mode
 - **scoper**: Requirements analysis mode
+- **orchestrator**: Multi-issue coordination mode - breaks down complex tasks into sub-issues and manages their execution
 
 **Tool Presets:**
 - **`"readOnly"`**: Only tools that read/view content (7 tools)
@@ -180,6 +186,9 @@ Sets default allowed tools for each prompt type across all repositories. Reposit
     },
     "scoper": {
       "allowedTools": ["Read(**)", "WebFetch", "mcp__linear"]
+    },
+    "orchestrator": {
+      "allowedTools": "all"
     }
   }
 }
