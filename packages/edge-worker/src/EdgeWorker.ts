@@ -1994,9 +1994,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Only process if the issue moved to a completed state
 		if (toState.type !== "completed") {
-			console.log(
-				`[EdgeWorker] Issue ${issue.identifier} moved to ${toState.name} (${toState.type}), not a completion state`,
-			);
 			return;
 		}
 
@@ -2010,13 +2007,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Check if this is a sub-issue
 		const parent = await fullIssue.parent;
 		if (!parent) {
-			console.log(`[EdgeWorker] Issue ${issue.identifier} has no parent, not a sub-issue`);
 			return;
 		}
 
-		console.log(
-			`[EdgeWorker] Sub-issue ${issue.identifier} completed, parent is ${parent.identifier}`,
-		);
 
 		// Check if parent issue has orchestrator label
 		const parentLabels = await this.fetchIssueLabels(parent);
@@ -2026,34 +2019,17 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			: orchestratorConfig?.labels;
 
 		if (!orchestratorLabels?.some((label) => parentLabels.includes(label))) {
-			console.log(
-				`[EdgeWorker] Parent issue ${parent.identifier} doesn't have orchestrator labels, skipping re-evaluation`,
-			);
 			return;
 		}
 
-		// Check if parent issue is assigned to the agent
-		const parentAssignee = await parent.assignee;
-		if (!parentAssignee) {
-			console.log(
-				`[EdgeWorker] Parent issue ${parent.identifier} is not assigned, skipping re-evaluation`,
-			);
-			return;
-		}
+		console.log(
+			`[EdgeWorker] Sub-issue ${issue.identifier} completed, parent is ${parent.identifier}`,
+		);
 
 		// Get Linear client for this repository
 		const linearClient = this.linearClients.get(repository.id);
 		if (!linearClient) {
 			console.error(`[EdgeWorker] No Linear client found for repository ${repository.id}`);
-			return;
-		}
-
-		// Check if the parent assignee is our agent user
-		const currentUser = await linearClient.viewer;
-		if (parentAssignee.id !== currentUser.id) {
-			console.log(
-				`[EdgeWorker] Parent issue ${parent.identifier} is not assigned to agent, skipping re-evaluation`,
-			);
 			return;
 		}
 
@@ -2063,7 +2039,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 
 		// Post a comment to the parent issue to trigger re-evaluation
-		const reevaluationComment = `Sub-issue ${issue.identifier} has been completed. Re-evaluating progress and determining next steps...`;
+		const reevaluationComment = `@cyrus Sub-issue ${issue.identifier} has been completed. Re-evaluate progress and determining next steps...`;
 		
 		try {
 			await linearClient.createComment({
