@@ -1985,54 +1985,83 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		webhook: LinearIssueStatusChangedWebhook,
 		repository: RepositoryConfig,
 	): Promise<void> {
-		// Check if we have state information
-		if (!webhook.notification.toState) {
+		const issue = webhook.notification.issue;
+		let toState = webhook.notification.toState;
+		let fullIssue = null;
+
+		// If we don't have state information in the webhook, fetch the current issue state
+		if (!toState) {
 			console.log(
-				`[EdgeWorker] Issue status changed for ${webhook.notification.issue.identifier} but no state information available`,
+				`[EdgeWorker] Issue status changed for ${issue.identifier} but no state information in webhook. Fetching current state from Linear API...`,
+			);
+			
+			// Fetch full issue details to get current state
+			fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+			if (!fullIssue) {
+				console.error(`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`);
+				return;
+			}
+
+			// Get the current state from the full issue
+			const currentState = await fullIssue.state;
+			if (!currentState) {
+				console.error(`[EdgeWorker] Failed to fetch current state for issue ${issue.identifier}`);
+				return;
+			}
+
+			// Convert Linear API state to webhook state format
+			toState = {
+				id: currentState.id,
+				name: currentState.name,
+				type: currentState.type as string,
+				color: currentState.color,
+			};
+		}
+
+		console.log(
+			`[EdgeWorker] Handling issue status change: ${issue.identifier} to ${toState.name} (${toState.type})`,
+		);
+
+		// Only process if the issue moved to a completed state
+		if (toState.type !== "completed") {
+			console.log(
+				`[EdgeWorker] Issue ${issue.identifier} moved to non-completed state (${toState.type}), skipping orchestrator processing`,
 			);
 			return;
 		}
 
-		console.log(
-			`[EdgeWorker] Handling issue status change: ${webhook.notification.issue.identifier} to ${webhook.notification.toState.name}`,
-		);
-
-		const issue = webhook.notification.issue;
-		const toState = webhook.notification.toState;
-
-		// Only process if the issue moved to a completed state
-		if (toState.type !== "completed") {
-			return;
-		}
-
-		// Fetch full issue details to check for parent
-		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+		// Fetch full issue details to check for parent (if we haven't already)
 		if (!fullIssue) {
-			console.error(`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`);
-			return;
+			fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+			if (!fullIssue) {
+				console.error(`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`);
+				return;
+			}
 		}
 
 		// Check if this is a sub-issue
 		const parent = await fullIssue.parent;
+		console.log(`[EdgeWorker] DEBUG: Parent exists:`, !!parent);
 		if (!parent) {
 			return;
 		}
 
-
 		// Check if parent issue has orchestrator label
 		const parentLabels = await this.fetchIssueLabels(parent);
+		console.log(`[EdgeWorker] DEBUG: Parent labels:`, parentLabels);
+		
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: orchestratorConfig?.labels;
+		
+		console.log(`[EdgeWorker] DEBUG: Orchestrator labels:`, orchestratorLabels);
+		const hasOrchestratorLabel = orchestratorLabels?.some((label) => parentLabels.includes(label));
+		console.log(`[EdgeWorker] DEBUG: Has orchestrator label:`, hasOrchestratorLabel);
 
-		if (!orchestratorLabels?.some((label) => parentLabels.includes(label))) {
+		if (!hasOrchestratorLabel) {
 			return;
 		}
-
-		console.log(
-			`[EdgeWorker] Sub-issue ${issue.identifier} completed, parent is ${parent.identifier}`,
-		);
 
 		// Get Linear client for this repository
 		const linearClient = this.linearClients.get(repository.id);
@@ -2040,6 +2069,21 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			console.error(`[EdgeWorker] No Linear client found for repository ${repository.id}`);
 			return;
 		}
+
+		// Check if parent issue is assigned to the agent
+		const parentAssignee = await parent.assignee;
+		const currentUser = await linearClient.viewer;
+		
+		if (!parentAssignee || parentAssignee.id !== currentUser.id) {
+			console.log(
+				`[EdgeWorker] Parent issue ${parent.identifier} is not assigned to agent, skipping re-evaluation`,
+			);
+			return;
+		}
+
+		console.log(
+			`[EdgeWorker] Sub-issue ${issue.identifier} completed, parent is ${parent.identifier}`,
+		);
 
 		// Create a new agent session for the parent issue to re-evaluate
 		console.log(

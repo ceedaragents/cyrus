@@ -67,11 +67,11 @@ vi.mock("file-type", () => ({
 // Mock console methods to reduce noise
 global.console = {
 	...console,
-	log: console.log, // Temporarily unmock for debugging
+	log: vi.fn(),
 	debug: vi.fn(),
 	info: vi.fn(),
-	warn: console.warn, // Temporarily unmock for debugging
-	error: console.error, // Temporarily unmock for debugging
+	warn: vi.fn(),
+	error: vi.fn(),
 };
 
 describe("EdgeWorker - Orchestrator", () => {
@@ -289,47 +289,32 @@ describe("EdgeWorker - Orchestrator", () => {
 				labels: vi.fn().mockResolvedValue({
 					nodes: [{ id: "label-3", name: "Feature" }],
 				}),
+				// Add state property for when toState is missing from webhook
+				state: Promise.resolve({
+					id: "state-2",
+					name: "Done",
+					type: "completed",
+					color: "#00FF00",
+				}),
 			};
 
 			mockLinearClient.issue.mockResolvedValue(mockSubIssue);
 
 			// Verify the webhook has a completed state
-			expect(mockStateChangeWebhook.notification.toState.type).toBe("completed");
+			expect(mockStateChangeWebhook.notification.toState?.type).toBe("completed");
 
-			// Test fetchIssueLabels directly first to make sure it works
-			const fetchIssueLabels = (edgeWorker as any).fetchIssueLabels.bind(edgeWorker);
-			const parentLabels = await fetchIssueLabels(mockParentIssue);
-			expect(parentLabels).toEqual(["Epic", "Backend"]);
-			
-			// Test parent assignee resolution
-			const parentAssignee = await mockParentIssue.assignee;
-			expect(parentAssignee).toEqual({ id: "agent-user-id" });
-			
-			// Test LinearClient retrieval
-			const linearClient = (edgeWorker as any).linearClients.get(mockRepository.id);
-			expect(linearClient).toBeDefined();
-			expect(linearClient).toBe(mockLinearClient);
-			
 			// Test the handleIssueStatusChangedWebhook method directly
 			const handleIssueStatusChangedWebhook = (edgeWorker as any).handleIssueStatusChangedWebhook.bind(edgeWorker);
+			
 			await handleIssueStatusChangedWebhook(mockStateChangeWebhook, mockRepository);
 
-			// Verify that the Linear client methods were called in the right order
+			// Check if issue was called to fetch sub-issue details
 			expect(mockLinearClient.issue).toHaveBeenCalledWith("sub-issue-123");
 			
-			// If issue() was called, let's verify that the mock issue response is working
-			expect(mockSubIssue.parent).toBeDefined();
-			
-			// Let's check if parent labels were fetched
-			expect(mockParentIssue.labels).toHaveBeenCalled();
-			
-			// Let's verify the parent assignee was checked
-			expect(mockParentIssue.assignee).toBeDefined();
-			
-			// Now let's see if viewer was called
+			// Check if viewer was called to get current user
 			expect(mockLinearClient.viewer).toHaveBeenCalled();
-
-			// Verify that a re-evaluation comment was posted to the parent
+			
+			// Check if comment was created on parent issue
 			expect(mockLinearClient.createComment).toHaveBeenCalledWith({
 				issueId: "parent-issue-123",
 				body: expect.stringContaining("Sub-issue PACK-260 has been completed"),
@@ -357,6 +342,12 @@ describe("EdgeWorker - Orchestrator", () => {
 				parent: Promise.resolve(mockParentIssue),
 				labels: vi.fn().mockResolvedValue({
 					nodes: [{ id: "label-3", name: "Bug" }],
+				}),
+				state: Promise.resolve({
+					id: "state-2",
+					name: "Done",
+					type: "completed",
+					color: "#00FF00",
 				}),
 			};
 
@@ -391,6 +382,12 @@ describe("EdgeWorker - Orchestrator", () => {
 				parent: Promise.resolve(mockParentIssue),
 				labels: vi.fn().mockResolvedValue({
 					nodes: [{ id: "label-3", name: "Feature" }],
+				}),
+				state: Promise.resolve({
+					id: "state-2",
+					name: "Done",
+					type: "completed",
+					color: "#00FF00",
 				}),
 			};
 
@@ -447,6 +444,12 @@ describe("EdgeWorker - Orchestrator", () => {
 				labels: vi.fn().mockResolvedValue({
 					nodes: [{ id: "label-3", name: "Feature" }],
 				}),
+				state: Promise.resolve({
+					id: "state-2",
+					name: "Done",
+					type: "completed",
+					color: "#00FF00",
+				}),
 			};
 
 			mockLinearClient.issue.mockResolvedValue(mockSubIssue);
@@ -454,12 +457,12 @@ describe("EdgeWorker - Orchestrator", () => {
 				new Error("Failed to create comment"),
 			);
 
-			// Test the handleIssueStateChangeWebhook method directly
-			const handleIssueStateChangeWebhook = (edgeWorker as any).handleIssueStateChangeWebhook.bind(edgeWorker);
+			// Test the handleIssueStatusChangedWebhook method directly
+			const handleIssueStatusChangedWebhook = (edgeWorker as any).handleIssueStatusChangedWebhook.bind(edgeWorker);
 
 			// Should not throw even if comment creation fails
 			await expect(
-				handleIssueStateChangeWebhook(mockStateChangeWebhook, mockRepository),
+				handleIssueStatusChangedWebhook(mockStateChangeWebhook, mockRepository),
 			).resolves.not.toThrow();
 
 			expect(console.error).toHaveBeenCalledWith(
