@@ -24,7 +24,7 @@ import type {
 	// LinearIssueCommentMentionWebhook,
 	// LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedWebhook,
-	LinearIssueStateChangeWebhook,
+	LinearIssueStatusChangedWebhook,
 	LinearWebhook,
 	LinearWebhookAgentSession,
 	LinearWebhookComment,
@@ -39,7 +39,7 @@ import {
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
-	isIssueStateChangeWebhook,
+	isIssueStatusChangedWebhook,
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
@@ -396,8 +396,8 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleAgentSessionCreatedWebhook(webhook, repository);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPostedAgentActivity(webhook, repository);
-			} else if (isIssueStateChangeWebhook(webhook)) {
-				await this.handleIssueStateChangeWebhook(webhook, repository);
+			} else if (isIssueStatusChangedWebhook(webhook)) {
+				await this.handleIssueStatusChangedWebhook(webhook, repository);
 			} else {
 				console.log(`Unhandled webhook type: ${(webhook as any).action}`);
 			}
@@ -1979,14 +1979,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Handle issue state change webhook - used for orchestrator sub-issue completion detection
+	 * Handle issue status changed webhook - used for orchestrator sub-issue completion detection
 	 */
-	private async handleIssueStateChangeWebhook(
-		webhook: LinearIssueStateChangeWebhook,
+	private async handleIssueStatusChangedWebhook(
+		webhook: LinearIssueStatusChangedWebhook,
 		repository: RepositoryConfig,
 	): Promise<void> {
+		// Check if we have state information
+		if (!webhook.notification.toState) {
+			console.log(
+				`[EdgeWorker] Issue status changed for ${webhook.notification.issue.identifier} but no state information available`,
+			);
+			return;
+		}
+
 		console.log(
-			`[EdgeWorker] Handling issue state change: ${webhook.notification.issue.identifier} from ${webhook.notification.fromState.name} to ${webhook.notification.toState.name}`,
+			`[EdgeWorker] Handling issue status change: ${webhook.notification.issue.identifier} to ${webhook.notification.toState.name}`,
 		);
 
 		const issue = webhook.notification.issue;

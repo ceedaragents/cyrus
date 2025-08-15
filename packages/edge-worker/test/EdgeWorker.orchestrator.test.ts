@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Issue as LinearIssue } from "@linear/sdk";
 import type {
-	LinearIssueStateChangeWebhook,
+	LinearIssueStatusChangedWebhook,
 	LinearWebhookIssueState,
 } from "cyrus-core";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -49,7 +49,7 @@ vi.mock("cyrus-core", () => ({
 	isIssueUnassignedWebhook: vi.fn().mockReturnValue(false),
 	isAgentSessionCreatedWebhook: vi.fn().mockReturnValue(false),
 	isAgentSessionPromptedWebhook: vi.fn().mockReturnValue(false),
-	isIssueStateChangeWebhook: vi.fn().mockReturnValue(false),
+	isIssueStatusChangedWebhook: vi.fn().mockReturnValue(false),
 }));
 vi.mock("node:fs/promises", () => ({
 	readFile: vi.fn(),
@@ -90,7 +90,7 @@ describe("EdgeWorker - Orchestrator", () => {
 		vi.mocked(cyrusCore.isIssueUnassignedWebhook).mockReturnValue(false);
 		vi.mocked(cyrusCore.isAgentSessionCreatedWebhook).mockReturnValue(false);
 		vi.mocked(cyrusCore.isAgentSessionPromptedWebhook).mockReturnValue(false);
-		vi.mocked(cyrusCore.isIssueStateChangeWebhook).mockReturnValue(false);
+		vi.mocked(cyrusCore.isIssueStatusChangedWebhook).mockReturnValue(false);
 
 		mockRepository = {
 			id: "test-repo",
@@ -196,7 +196,7 @@ describe("EdgeWorker - Orchestrator", () => {
 
 	describe("Sub-Issue Completion Detection", () => {
 		let mockLinearClient: any;
-		let mockStateChangeWebhook: LinearIssueStateChangeWebhook;
+		let mockStateChangeWebhook: LinearIssueStatusChangedWebhook;
 
 		beforeEach(() => {
 			mockLinearClient = {
@@ -224,14 +224,14 @@ describe("EdgeWorker - Orchestrator", () => {
 
 			mockStateChangeWebhook = {
 				type: "AppUserNotification",
-				action: "issueStateChange",
+				action: "issueStatusChanged",
 				createdAt: new Date().toISOString(),
 				organizationId: "workspace-123", // Match the repository's linearWorkspaceId
 				oauthClientId: "client-123",
 				appUserId: "user-123",
 				notification: {
 					id: "notification-123",
-					type: "issueStateChange",
+					type: "issueStatusChanged",
 					createdAt: new Date().toISOString(),
 					updatedAt: new Date().toISOString(),
 					archivedAt: null,
@@ -310,9 +310,9 @@ describe("EdgeWorker - Orchestrator", () => {
 			expect(linearClient).toBeDefined();
 			expect(linearClient).toBe(mockLinearClient);
 			
-			// Test the handleIssueStateChangeWebhook method directly
-			const handleIssueStateChangeWebhook = (edgeWorker as any).handleIssueStateChangeWebhook.bind(edgeWorker);
-			await handleIssueStateChangeWebhook(mockStateChangeWebhook, mockRepository);
+			// Test the handleIssueStatusChangedWebhook method directly
+			const handleIssueStatusChangedWebhook = (edgeWorker as any).handleIssueStatusChangedWebhook.bind(edgeWorker);
+			await handleIssueStatusChangedWebhook(mockStateChangeWebhook, mockRepository);
 
 			// Verify that the Linear client methods were called in the right order
 			expect(mockLinearClient.issue).toHaveBeenCalledWith("sub-issue-123");
@@ -364,7 +364,7 @@ describe("EdgeWorker - Orchestrator", () => {
 
 			// Mock the type guard to return true for this test
 			const cyrusCore = await import("cyrus-core");
-			vi.mocked(cyrusCore.isIssueStateChangeWebhook).mockReturnValue(true);
+			vi.mocked(cyrusCore.isIssueStatusChangedWebhook).mockReturnValue(true);
 
 			const handleWebhook = (edgeWorker as any).handleWebhook.bind(edgeWorker);
 			await handleWebhook(mockStateChangeWebhook, [mockRepository]);
@@ -398,7 +398,7 @@ describe("EdgeWorker - Orchestrator", () => {
 
 			// Mock the type guard to return true for this test
 			const cyrusCore = await import("cyrus-core");
-			vi.mocked(cyrusCore.isIssueStateChangeWebhook).mockReturnValue(true);
+			vi.mocked(cyrusCore.isIssueStatusChangedWebhook).mockReturnValue(true);
 
 			const handleWebhook = (edgeWorker as any).handleWebhook.bind(edgeWorker);
 			await handleWebhook(mockStateChangeWebhook, [mockRepository]);
@@ -418,7 +418,7 @@ describe("EdgeWorker - Orchestrator", () => {
 
 			// Mock the type guard to return true for this test
 			const cyrusCore = await import("cyrus-core");
-			vi.mocked(cyrusCore.isIssueStateChangeWebhook).mockReturnValue(true);
+			vi.mocked(cyrusCore.isIssueStatusChangedWebhook).mockReturnValue(true);
 
 			const handleWebhook = (edgeWorker as any).handleWebhook.bind(edgeWorker);
 			await handleWebhook(mockStateChangeWebhook, [mockRepository]);
