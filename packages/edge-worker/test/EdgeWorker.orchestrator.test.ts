@@ -204,7 +204,7 @@ describe("EdgeWorker - Orchestrator", () => {
 
 		beforeEach(() => {
 			mockLinearClient = {
-				viewer: vi.fn().mockResolvedValue({ id: "agent-user-id" }),
+				viewer: Promise.resolve({ id: "agent-user-id" }),
 				issue: vi.fn(),
 				createComment: vi.fn().mockResolvedValue({ success: true }),
 			};
@@ -325,9 +325,6 @@ describe("EdgeWorker - Orchestrator", () => {
 			// Check if issue was called to fetch sub-issue details
 			expect(mockLinearClient.issue).toHaveBeenCalledWith("sub-issue-123");
 
-			// Check if viewer was called to get current user
-			expect(mockLinearClient.viewer).toHaveBeenCalled();
-
 			// Check if comment was created on parent issue
 			expect(mockLinearClient.createComment).toHaveBeenCalledWith({
 				issueId: "parent-issue-123",
@@ -367,12 +364,15 @@ describe("EdgeWorker - Orchestrator", () => {
 
 			mockLinearClient.issue.mockResolvedValue(mockSubIssue);
 
-			// Mock the type guard to return true for this test
-			const cyrusCore = await import("cyrus-core");
-			vi.mocked(cyrusCore.isIssueStatusChangedWebhook).mockReturnValue(true);
+			// Test the handleIssueStatusChangedWebhook method directly
+			const handleIssueStatusChangedWebhook = (
+				edgeWorker as any
+			).handleIssueStatusChangedWebhook.bind(edgeWorker);
 
-			const handleWebhook = (edgeWorker as any).handleWebhook.bind(edgeWorker);
-			await handleWebhook(mockStateChangeWebhook, [mockRepository]);
+			await handleIssueStatusChangedWebhook(
+				mockStateChangeWebhook,
+				mockRepository,
+			);
 
 			// Should NOT post a comment since parent lacks orchestrator label
 			expect(mockLinearClient.createComment).not.toHaveBeenCalled();
@@ -407,12 +407,15 @@ describe("EdgeWorker - Orchestrator", () => {
 
 			mockLinearClient.issue.mockResolvedValue(mockSubIssue);
 
-			// Mock the type guard to return true for this test
-			const cyrusCore = await import("cyrus-core");
-			vi.mocked(cyrusCore.isIssueStatusChangedWebhook).mockReturnValue(true);
+			// Test the handleIssueStatusChangedWebhook method directly
+			const handleIssueStatusChangedWebhook = (
+				edgeWorker as any
+			).handleIssueStatusChangedWebhook.bind(edgeWorker);
 
-			const handleWebhook = (edgeWorker as any).handleWebhook.bind(edgeWorker);
-			await handleWebhook(mockStateChangeWebhook, [mockRepository]);
+			await handleIssueStatusChangedWebhook(
+				mockStateChangeWebhook,
+				mockRepository,
+			);
 
 			// Should NOT post a comment since parent is assigned to someone else
 			expect(mockLinearClient.createComment).not.toHaveBeenCalled();

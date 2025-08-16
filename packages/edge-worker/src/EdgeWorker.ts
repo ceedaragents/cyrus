@@ -2032,41 +2032,42 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			return;
 		}
 
-		// The Linear SDK doesn't include toState in the notification, so we need to fetch current state
-		let toState = null;
+		// Check if toState is already in the notification (some webhook versions include it)
+		let toState = (webhook.notification as any).toState || null;
 		let fullIssue = null;
 
-		// Fetch the current issue state from Linear API
-		// Always fetch since toState is not available in webhook
-		console.log(
-			`[EdgeWorker] Issue status changed for ${issue.identifier} but no state information in webhook. Fetching current state from Linear API...`,
-		);
-
-		// Fetch full issue details to get current state
-		fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
-		if (!fullIssue) {
-			console.error(
-				`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`,
+		// If toState is not in the webhook, fetch the current state from Linear API
+		if (!toState) {
+			console.log(
+				`[EdgeWorker] Issue status changed for ${issue.identifier} but no state information in webhook. Fetching current state from Linear API...`,
 			);
-			return;
-		}
 
-		// Get the current state from the full issue
-		const currentState = await fullIssue.state;
-		if (!currentState) {
-			console.error(
-				`[EdgeWorker] Failed to fetch current state for issue ${issue.identifier}`,
-			);
-			return;
-		}
+			// Fetch full issue details to get current state
+			fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+			if (!fullIssue) {
+				console.error(
+					`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`,
+				);
+				return;
+			}
 
-		// Convert Linear API state to webhook state format
-		toState = {
-			id: currentState.id,
-			name: currentState.name,
-			type: currentState.type as string,
-			color: currentState.color,
-		};
+			// Get the current state from the full issue
+			const currentState = await fullIssue.state;
+			if (!currentState) {
+				console.error(
+					`[EdgeWorker] Failed to fetch current state for issue ${issue.identifier}`,
+				);
+				return;
+			}
+
+			// Convert Linear API state to webhook state format
+			toState = {
+				id: currentState.id,
+				name: currentState.name,
+				type: currentState.type as string,
+				color: currentState.color,
+			};
+		}
 
 		console.log(
 			`[EdgeWorker] Handling issue status change: ${issue.identifier} to ${toState.name} (${toState.type})`,
@@ -2125,6 +2126,17 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (!linearClient) {
 			console.error(
 				`[EdgeWorker] No Linear client found for repository ${repository.id}`,
+			);
+			return;
+		}
+
+		// Check if parent issue is assigned to the agent
+		const viewer = await linearClient.viewer;
+		const parentAssignee = await parent.assignee;
+
+		if (!parentAssignee || parentAssignee.id !== viewer.id) {
+			console.log(
+				`[EdgeWorker] Parent issue ${parent.identifier} is not assigned to agent (assignee: ${parentAssignee?.id}, agent: ${viewer.id}), skipping re-evaluation`,
 			);
 			return;
 		}
