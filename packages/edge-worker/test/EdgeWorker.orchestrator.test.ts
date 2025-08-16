@@ -393,7 +393,7 @@ describe("EdgeWorker - Orchestrator", () => {
 		it.skip("should not trigger re-evaluation if parent is not assigned to agent", async () => {
 			// SKIPPED: After merging pack-259, parent assignment check was removed as it doesn't work with delegation
 			// The test is kept for reference but skipped since the functionality was intentionally removed
-			
+
 			// Mock the parent issue assigned to someone else
 			const mockParentIssue = {
 				id: "parent-issue-123",
