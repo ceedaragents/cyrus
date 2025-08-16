@@ -2070,17 +2070,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			return;
 		}
 
-		// Check if parent issue is assigned to the agent
-		const parentAssignee = await parent.assignee;
-		const currentUser = await linearClient.viewer;
-		
-		if (!parentAssignee || parentAssignee.id !== currentUser.id) {
-			console.log(
-				`[EdgeWorker] Parent issue ${parent.identifier} is not assigned to agent, skipping re-evaluation`,
-			);
-			return;
-		}
-
 		console.log(
 			`[EdgeWorker] Sub-issue ${issue.identifier} completed, parent is ${parent.identifier}`,
 		);
