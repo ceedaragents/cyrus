@@ -159,11 +159,11 @@ export class WebhookTransport extends BaseTransport {
 					(errorMessage.includes("Authentication required") ||
 						errorMessage.includes("Invalid token or no workspace access"))
 				) {
-					const authError = new Error(
+					const authError: Error & { code?: string; isAuthError?: boolean } = new Error(
 						`Linear authentication failed for ${this.config.name}. The Linear OAuth token may have expired or been revoked. Please re-authenticate with Linear to obtain a new token.`,
 					);
-					(authError as any).code = "LINEAR_AUTH_FAILED";
-					(authError as any).isAuthError = true;
+					authError.code = "LINEAR_AUTH_FAILED";
+					authError.isAuthError = true;
 					throw authError;
 				}
 
