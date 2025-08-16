@@ -1,84 +1,40 @@
-import type { Env, LinearWebhook } from "../types";
+import { LinearWebhookClient, type LinearWebhookPayload } from "@linear/sdk/webhooks";
+import type { Env } from "../types";
 
 export class WebhookReceiver {
+	private webhookClient: LinearWebhookClient;
+	
 	constructor(
 		private env: Env,
-		private onWebhook: (webhook: LinearWebhook) => Promise<void>,
-	) {}
-
-	/**
-	 * Handle incoming webhook
-	 */
-	async handleWebhook(request: Request): Promise<Response> {
-		// Verify webhook signature
-		const signature = request.headers.get("linear-signature");
-		if (!signature) {
-			return new Response("Missing signature", { status: 401 });
-		}
-
-		// Get raw body for signature verification
-		const rawBody = await request.text();
-
-		// Verify signature
-		const isValid = await this.verifyWebhookSignature(rawBody, signature);
-		if (!isValid) {
-			return new Response("Invalid signature", { status: 401 });
-		}
-
-		try {
-			// Parse webhook payload
-			const webhook: LinearWebhook = JSON.parse(rawBody);
-
-			// Log webhook type
-			console.log(
-				`Received webhook: ${webhook.type}/${webhook.action || webhook.notification?.type}`,
-			);
-
-			// Process webhook
-			await this.onWebhook(webhook);
-
-			return new Response("OK", { status: 200 });
-		} catch (error) {
-			console.error("Webhook processing error:", error);
-			return new Response("Processing error", { status: 500 });
-		}
+		private onWebhook: (webhook: LinearWebhookPayload) => Promise<void>,
+	) {
+		// Initialize Linear SDK webhook client with the webhook secret
+		this.webhookClient = new LinearWebhookClient(env.LINEAR_WEBHOOK_SECRET);
 	}
 
 	/**
-	 * Verify webhook signature using HMAC-SHA256
+	 * Handle incoming webhook using Linear SDK
 	 */
-	private async verifyWebhookSignature(
-		payload: string,
-		signature: string,
-	): Promise<boolean> {
+	async handleWebhook(request: Request): Promise<Response> {
 		try {
-			// Create HMAC key
-			const encoder = new TextEncoder();
-			const key = await crypto.subtle.importKey(
-				"raw",
-				encoder.encode(this.env.LINEAR_WEBHOOK_SECRET),
-				{ name: "HMAC", hash: "SHA-256" },
-				false,
-				["sign", "verify"],
-			);
-
-			// Sign the payload
-			const signatureBuffer = await crypto.subtle.sign(
-				"HMAC",
-				key,
-				encoder.encode(payload),
-			);
-
-			// Convert to hex string
-			const computedSignature = Array.from(new Uint8Array(signatureBuffer))
-				.map((b) => b.toString(16).padStart(2, "0"))
-				.join("");
-
-			// Compare signatures
-			return computedSignature === signature;
+			// Create a webhook handler
+			const handler = this.webhookClient.createHandler();
+			
+			// Register a wildcard handler to process all webhook types
+			handler.on("*", async (payload: LinearWebhookPayload) => {
+				// Log webhook type
+				console.log(`Received webhook: ${payload.type}/${payload.action}`);
+				
+				// Process webhook with the Linear SDK payload
+				await this.onWebhook(payload);
+			});
+			
+			// Use the Linear SDK handler to process the request
+			// The SDK handles signature verification automatically
+			return await handler(request);
 		} catch (error) {
-			console.error("Signature verification error:", error);
-			return false;
+			console.error("Webhook processing error:", error);
+			return new Response("Processing error", { status: 500 });
 		}
 	}
 }

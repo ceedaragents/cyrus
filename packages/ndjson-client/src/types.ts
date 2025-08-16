@@ -2,11 +2,13 @@
  * Types for NDJSON client communication with proxy
  */
 
+import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
+
 export interface EdgeEvent {
 	id: string;
 	type: "connection" | "heartbeat" | "webhook" | "error";
 	timestamp: string;
-	data?: any;
+	data?: LinearWebhookPayload | any;
 }
 
 export interface ConnectionEvent extends EdgeEvent {
@@ -23,16 +25,7 @@ export interface HeartbeatEvent extends EdgeEvent {
 
 export interface WebhookEvent extends EdgeEvent {
 	type: "webhook";
-	data: {
-		type: string;
-		action?: string;
-		createdAt: string;
-		data?: any;
-		notification?: any;
-		issue?: any;
-		comment?: any;
-		[key: string]: any;
-	};
+	data: LinearWebhookPayload;
 }
 
 export interface ErrorEvent extends EdgeEvent {
@@ -76,7 +69,7 @@ export interface NdjsonClientEvents {
 	connect: () => void;
 	disconnect: (reason?: string) => void;
 	event: (event: EdgeEvent) => void;
-	webhook: (data: WebhookEvent["data"]) => void;
+	webhook: (data: LinearWebhookPayload) => void;
 	heartbeat: () => void;
 	error: (error: Error) => void;
 }

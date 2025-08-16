@@ -1,4 +1,4 @@
-import type { EdgeEvent, Env, LinearWebhook } from "../types";
+import type { EdgeEvent, Env, LinearWebhookPayload } from "../types";
 
 export class EventStreamer {
 	private eventCounter = 0;

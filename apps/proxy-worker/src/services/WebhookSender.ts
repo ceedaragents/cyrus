@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import type { EdgeEvent, LinearWebhook } from "../types";
+import type { EdgeEvent, Env, LinearWebhookPayload } from "../types";
 import {
 	EdgeWorkerRegistry,
 	type StoredEdgeWorker,
@@ -12,14 +12,14 @@ export class WebhookSender {
 	private eventCounter = 0;
 	private registry: EdgeWorkerRegistry;
 
-	constructor() {
+	constructor(private env: Env) {
 		this.registry = new EdgeWorkerRegistry(env);
 	}
 
 	/**
 	 * Transform Linear webhook to EdgeEvent
 	 */
-	transformWebhookToEvent(webhook: LinearWebhook): EdgeEvent {
+	transformWebhookToEvent(webhook: LinearWebhookPayload): EdgeEvent {
 		this.eventCounter++;
 
 		return {

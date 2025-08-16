@@ -12,6 +12,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@linear/sdk": "^56.0.0",
 		"itty-router": "^4.0.23"
 	},
 	"devDependencies": {
