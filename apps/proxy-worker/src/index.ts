@@ -88,7 +88,8 @@ router.post(
 			env,
 			async (webhook: LinearWebhookPayload) => {
 				// Extract workspace ID from webhook
-				const workspaceId = (webhook as any).organizationId;
+				// All Linear webhook payloads have organizationId
+				const workspaceId = "organizationId" in webhook ? webhook.organizationId : undefined;
 
 				if (!workspaceId) {
 					console.error("No organizationId in webhook, cannot route to edges");
