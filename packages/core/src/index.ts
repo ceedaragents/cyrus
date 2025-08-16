@@ -2,6 +2,15 @@
 // export type { SessionOptions, , NarrativeItem } from './Session.js'
 // export { ClaudeSessionManager as SessionManager } from './ClaudeSessionManager.js'
 
+// Re-export Linear SDK webhook types for backward compatibility
+// These are now the official Linear SDK types
+export type {
+	AgentSessionEventWebhookPayload,
+	AppUserNotificationWebhookPayloadWithNotification,
+	EntityWebhookPayloadWithCommentData,
+	EntityWebhookPayloadWithIssueData,
+	LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 export type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
@@ -15,25 +24,15 @@ export type {
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
 
-// Re-export Linear SDK webhook types for backward compatibility
-// These are now the official Linear SDK types
-export type {
-	LinearWebhookPayload,
-	AgentSessionEventWebhookPayload,
-	AppUserNotificationWebhookPayloadWithNotification,
-	EntityWebhookPayloadWithIssueData,
-	EntityWebhookPayloadWithCommentData,
-} from "@linear/sdk/webhooks";
-
 // Keep minimal type exports for components that still need them
 export type {
-	LinearWebhookTeam,
-	LinearWebhookIssue,
-	LinearWebhookComment,
 	LinearWebhookActor,
-	LinearWebhookAgentSession,
 	LinearWebhookAgentActivity,
 	LinearWebhookAgentActivityContent,
+	LinearWebhookAgentSession,
+	LinearWebhookComment,
 	LinearWebhookCreator,
+	LinearWebhookIssue,
 	LinearWebhookIssueState,
+	LinearWebhookTeam,
 } from "./webhook-types.js";

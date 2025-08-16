@@ -50,12 +50,16 @@ export abstract class BaseTransport extends EventEmitter {
 			case "webhook":
 				this.emit("webhook", event.data);
 				break;
-			case "error":
-				const errorMessage = (event.data && typeof event.data === 'object' && 'message' in event.data)
-					? event.data.message
-					: "Unknown error";
+			case "error": {
+				const errorMessage =
+					event.data &&
+					typeof event.data === "object" &&
+					"message" in event.data
+						? event.data.message
+						: "Unknown error";
 				this.emit("error", new Error(errorMessage));
 				break;
+			}
 		}
 	}
 }

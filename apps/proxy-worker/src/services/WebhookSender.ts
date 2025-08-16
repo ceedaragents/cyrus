@@ -12,7 +12,7 @@ export class WebhookSender {
 	private eventCounter = 0;
 	private registry: EdgeWorkerRegistry;
 
-	constructor(private env: Env) {
+	constructor(env: Env) {
 		this.registry = new EdgeWorkerRegistry(env);
 	}
 

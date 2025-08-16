@@ -7,6 +7,11 @@ import {
 	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
+import type {
+	AgentSessionEventWebhookPayload,
+	AppUserNotificationWebhookPayloadWithNotification,
+	LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
@@ -15,24 +20,17 @@ import {
 	getSafeTools,
 } from "cyrus-claude-runner";
 import type {
-	LinearWebhookPayload,
-	AgentSessionEventWebhookPayload,
-	AppUserNotificationWebhookPayloadWithNotification,
-} from "@linear/sdk/webhooks";
-import type {
 	CyrusAgentSession,
 	IssueMinimal,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 } from "cyrus-core";
-import {
-	PersistenceManager,
-} from "cyrus-core";
+import { PersistenceManager } from "cyrus-core";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
-import { 
+import {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isIssueAssignedWebhook,
@@ -158,9 +156,7 @@ export class EdgeWorker extends EventEmitter {
 			});
 
 			// Set up webhook handler - data should be the native webhook payload
-			ndjsonClient.on("webhook", (data) =>
-				this.handleWebhook(data, repos),
-			);
+			ndjsonClient.on("webhook", (data) => this.handleWebhook(data, repos));
 
 			// Optional heartbeat logging
 			if (process.env.DEBUG_EDGE === "true") {
@@ -425,7 +421,9 @@ export class EdgeWorker extends EventEmitter {
 
 		const issue = webhook.notification?.issue;
 		if (!issue) {
-			console.log("[EdgeWorker] Missing issue in unassignment webhook notification");
+			console.log(
+				"[EdgeWorker] Missing issue in unassignment webhook notification",
+			);
 			return;
 		}
 
@@ -457,7 +455,7 @@ export class EdgeWorker extends EventEmitter {
 			issueId = webhook.agentSession?.issue?.id;
 			teamKey = webhook.agentSession?.issue?.team?.key;
 			issueIdentifier = webhook.agentSession?.issue?.identifier;
-		} else if ('notification' in webhook) {
+		} else if ("notification" in webhook) {
 			// This is an AppUserNotificationWebhookPayloadWithNotification
 			issueId = webhook.notification?.issue?.id;
 			teamKey = webhook.notification?.issue?.team?.key;
@@ -721,7 +719,9 @@ export class EdgeWorker extends EventEmitter {
 		);
 		const { agentSession } = webhook;
 		if (!agentSession || !agentSession.issue) {
-			console.log("[EdgeWorker] Missing agentSession or issue in webhook payload");
+			console.log(
+				"[EdgeWorker] Missing agentSession or issue in webhook payload",
+			);
 			return;
 		}
 		const linearAgentActivitySessionId = agentSession.id;
@@ -899,7 +899,9 @@ export class EdgeWorker extends EventEmitter {
 		// Look for existing session for this comment thread
 		const { agentSession } = webhook;
 		if (!agentSession || !agentSession.issue) {
-			console.log("[EdgeWorker] Missing agentSession or issue in webhook payload");
+			console.log(
+				"[EdgeWorker] Missing agentSession or issue in webhook payload",
+			);
 			return;
 		}
 		const linearAgentActivitySessionId = agentSession.id;
@@ -1425,7 +1427,12 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async buildMentionPrompt(
 		issue: LinearIssue,
-		agentSession: { id: string; issueId?: string | null; commentId?: string | null; comment?: { body?: string } | null },
+		agentSession: {
+			id: string;
+			issueId?: string | null;
+			commentId?: string | null;
+			comment?: { body?: string } | null;
+		},
 		attachmentManifest: string = "",
 	): Promise<{ prompt: string; version?: string }> {
 		try {
