@@ -3,7 +3,7 @@ import type { EdgeWorkerRegistration } from "./services/EdgeWorkerRegistry";
 import { OAuthService } from "./services/OAuthService";
 import { WebhookReceiver } from "./services/WebhookReceiver";
 import { WebhookSender } from "./services/WebhookSender";
-import type { Env, LinearWebhook } from "./types";
+import type { Env, LinearWebhookPayload } from "./types";
 
 const router = Router();
 
@@ -86,9 +86,11 @@ router.post(
 
 		const webhookReceiver = new WebhookReceiver(
 			env,
-			async (webhook: LinearWebhook) => {
+			async (webhook: LinearWebhookPayload) => {
 				// Extract workspace ID from webhook
-				const workspaceId = webhook.organizationId;
+				// All Linear webhook payloads have organizationId
+				const workspaceId =
+					"organizationId" in webhook ? webhook.organizationId : undefined;
 
 				if (!workspaceId) {
 					console.error("No organizationId in webhook, cannot route to edges");

@@ -239,7 +239,7 @@ export interface LinearWebhookAgentSession {
 	endedAt: string | null;
 	type: "commentThread";
 	summary: string | null;
-	sourceMetadata: any | null;
+	sourceMetadata: Record<string, unknown> | null;
 	organizationId: string;
 	creator: LinearWebhookCreator;
 	comment: LinearWebhookComment;
