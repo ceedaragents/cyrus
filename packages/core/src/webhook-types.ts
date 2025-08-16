@@ -105,13 +105,36 @@ export interface LinearIssueUnassignedNotification
 }
 
 /**
+ * Issue state data from webhooks
+ */
+export interface LinearWebhookIssueState {
+	id: string;
+	name: string;
+	type: string; // e.g., "started", "completed", "canceled", "unstarted", "triage", "backlog"
+	color: string;
+}
+
+/**
+ * Issue status change notification
+ */
+export interface LinearIssueStatusChangedNotification
+	extends LinearWebhookNotificationBase {
+	type: "issueStatusChanged";
+	fromStateId?: string; // Optional as it may not always be present
+	toStateId?: string; // Optional as it may not always be present
+	fromState?: LinearWebhookIssueState; // Previous state (if available)
+	toState?: LinearWebhookIssueState; // New state (if available)
+}
+
+/**
  * Union of all notification types
  */
 export type LinearWebhookNotification =
 	| LinearIssueAssignedNotification
 	| LinearIssueCommentMentionNotification
 	| LinearIssueNewCommentNotification
-	| LinearIssueUnassignedNotification;
+	| LinearIssueUnassignedNotification
+	| LinearIssueStatusChangedNotification;
 
 /**
  * Issue assignment webhook payload
@@ -171,6 +194,21 @@ export interface LinearIssueUnassignedWebhook {
 	notification: LinearIssueUnassignedNotification;
 	webhookTimestamp: number; // e.g. 1749860573270
 	webhookId: string; // e.g. "9fd215cd-b47d-4708-adca-3e7d287f0091"
+}
+
+/**
+ * Issue status changed webhook payload
+ */
+export interface LinearIssueStatusChangedWebhook {
+	type: "AppUserNotification";
+	action: "issueStatusChanged";
+	createdAt: string;
+	organizationId: string;
+	oauthClientId: string;
+	appUserId: string;
+	notification: LinearIssueStatusChangedNotification;
+	webhookTimestamp: number;
+	webhookId: string;
 }
 
 /**
@@ -276,6 +314,7 @@ export type LinearWebhook =
 	| LinearIssueCommentMentionWebhook
 	| LinearIssueNewCommentWebhook
 	| LinearIssueUnassignedWebhook
+	| LinearIssueStatusChangedWebhook
 	| LinearAgentSessionCreatedWebhook
 	| LinearAgentSessionPromptedWebhook;
 
@@ -316,4 +355,10 @@ export function isAgentSessionPromptedWebhook(
 	webhook: LinearWebhook,
 ): webhook is LinearAgentSessionPromptedWebhook {
 	return webhook.type === "AgentSessionEvent" && webhook.action === "prompted";
+}
+
+export function isIssueStatusChangedWebhook(
+	webhook: LinearWebhook,
+): webhook is LinearIssueStatusChangedWebhook {
+	return webhook.action === "issueStatusChanged";
 }

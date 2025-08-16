@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- New "orchestrator" role for managing complex multi-issue workflows
+  - Automatically breaks down large tasks into manageable sub-issues
+  - Assigns appropriate roles (debugger, builder, scoper) to sub-issues via labels
+  - Monitors sub-issue completion and triggers parent issue re-evaluation
+  - Use by adding "Epic" or "Orchestrate" labels to issues in Linear
+  - Orchestrator uses Linear MCP tools to create and manage sub-issues directly
+
 ### Fixed
 - Fixed git worktree creation failures for sub-issues when parent branch doesn't exist remotely
   - Added proper remote branch existence checking before attempting worktree creation

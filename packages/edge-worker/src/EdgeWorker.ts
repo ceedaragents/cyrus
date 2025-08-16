@@ -24,6 +24,7 @@ import type {
 	// LinearIssueCommentMentionWebhook,
 	// LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedWebhook,
+	LinearIssueStatusChangedWebhook,
 	LinearWebhook,
 	LinearWebhookAgentSession,
 	LinearWebhookComment,
@@ -38,6 +39,7 @@ import {
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
+	isIssueStatusChangedWebhook,
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
@@ -394,6 +396,8 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleAgentSessionCreatedWebhook(webhook, repository);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPostedAgentActivity(webhook, repository);
+			} else if (isIssueStatusChangedWebhook(webhook)) {
+				await this.handleIssueStatusChangedWebhook(webhook, repository);
 			} else {
 				console.log(`Unhandled webhook type: ${(webhook as any).action}`);
 			}
@@ -756,7 +760,7 @@ export class EdgeWorker extends EventEmitter {
 		// Only fetch labels and determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
-		let promptType: "debugger" | "builder" | "scoper" | undefined;
+		let promptType: "debugger" | "builder" | "scoper" | "orchestrator" | undefined;
 
 		if (!isMentionTriggered) {
 			// Fetch issue labels and determine system prompt (delegation case)
@@ -1258,7 +1262,7 @@ export class EdgeWorker extends EventEmitter {
 		| {
 				prompt: string;
 				version?: string;
-				type?: "debugger" | "builder" | "scoper";
+				type?: "debugger" | "builder" | "scoper" | "orchestrator";
 		  }
 		| undefined
 	> {
@@ -1267,7 +1271,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check each prompt type for matching labels
-		const promptTypes = ["debugger", "builder", "scoper"] as const;
+		const promptTypes = ["debugger", "builder", "scoper", "orchestrator"] as const;
 
 		for (const promptType of promptTypes) {
 			const promptConfig = repository.labelPrompts[promptType];
@@ -1975,6 +1979,126 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
+	 * Handle issue status changed webhook - used for orchestrator sub-issue completion detection
+	 */
+	private async handleIssueStatusChangedWebhook(
+		webhook: LinearIssueStatusChangedWebhook,
+		repository: RepositoryConfig,
+	): Promise<void> {
+		const issue = webhook.notification.issue;
+		let toState = webhook.notification.toState;
+		let fullIssue = null;
+
+		// If we don't have state information in the webhook, fetch the current issue state
+		if (!toState) {
+			console.log(
+				`[EdgeWorker] Issue status changed for ${issue.identifier} but no state information in webhook. Fetching current state from Linear API...`,
+			);
+			
+			// Fetch full issue details to get current state
+			fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+			if (!fullIssue) {
+				console.error(`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`);
+				return;
+			}
+
+			// Get the current state from the full issue
+			const currentState = await fullIssue.state;
+			if (!currentState) {
+				console.error(`[EdgeWorker] Failed to fetch current state for issue ${issue.identifier}`);
+				return;
+			}
+
+			// Convert Linear API state to webhook state format
+			toState = {
+				id: currentState.id,
+				name: currentState.name,
+				type: currentState.type as string,
+				color: currentState.color,
+			};
+		}
+
+		console.log(
+			`[EdgeWorker] Handling issue status change: ${issue.identifier} to ${toState.name} (${toState.type})`,
+		);
+
+		// Only process if the issue moved to a completed state
+		if (toState.type !== "completed") {
+			console.log(
+				`[EdgeWorker] Issue ${issue.identifier} moved to non-completed state (${toState.type}), skipping orchestrator processing`,
+			);
+			return;
+		}
+
+		// Fetch full issue details to check for parent (if we haven't already)
+		if (!fullIssue) {
+			fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+			if (!fullIssue) {
+				console.error(`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`);
+				return;
+			}
+		}
+
+		// Check if this is a sub-issue
+		const parent = await fullIssue.parent;
+		console.log(`[EdgeWorker] DEBUG: Parent exists:`, !!parent);
+		if (!parent) {
+			return;
+		}
+
+		// Check if parent issue has orchestrator label
+		const parentLabels = await this.fetchIssueLabels(parent);
+		console.log(`[EdgeWorker] DEBUG: Parent labels:`, parentLabels);
+		
+		const orchestratorConfig = repository.labelPrompts?.orchestrator;
+		const orchestratorLabels = Array.isArray(orchestratorConfig)
+			? orchestratorConfig
+			: orchestratorConfig?.labels;
+		
+		console.log(`[EdgeWorker] DEBUG: Orchestrator labels:`, orchestratorLabels);
+		const hasOrchestratorLabel = orchestratorLabels?.some((label) => parentLabels.includes(label));
+		console.log(`[EdgeWorker] DEBUG: Has orchestrator label:`, hasOrchestratorLabel);
+
+		if (!hasOrchestratorLabel) {
+			return;
+		}
+
+		// Get Linear client for this repository
+		const linearClient = this.linearClients.get(repository.id);
+		if (!linearClient) {
+			console.error(`[EdgeWorker] No Linear client found for repository ${repository.id}`);
+			return;
+		}
+
+		console.log(
+			`[EdgeWorker] Sub-issue ${issue.identifier} completed, parent is ${parent.identifier}`,
+		);
+
+		// Create a new agent session for the parent issue to re-evaluate
+		console.log(
+			`[EdgeWorker] Triggering re-evaluation of parent issue ${parent.identifier} after sub-issue ${issue.identifier} completion`,
+		);
+
+		// Post a comment to the parent issue to trigger re-evaluation
+		const reevaluationComment = `@cyrus Sub-issue ${issue.identifier} has been completed. Re-evaluate progress and determining next steps...`;
+		
+		try {
+			await linearClient.createComment({
+				issueId: parent.id,
+				body: reevaluationComment,
+			});
+			console.log(
+				`[EdgeWorker] Posted re-evaluation comment to parent issue ${parent.identifier}`,
+			);
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to post re-evaluation comment to parent issue ${parent.identifier}:`,
+				error,
+			);
+		}
+	}
+
+	/**
 	 * Post initial comment when assigned to issue
 	 */
 	// private async postInitialComment(issueId: string, repositoryId: string): Promise<void> {
@@ -2616,7 +2740,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildAllowedTools(
 		repository: RepositoryConfig,
-		promptType?: "debugger" | "builder" | "scoper",
+		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
 	): string[] {
 		let baseTools: string[] = [];
 		let toolSource = "";
@@ -2875,6 +2999,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						if (scoperLabel) {
 							selectedPromptType = "scoper";
 							triggerLabel = scoperLabel;
+						} else {
+							// Check orchestrator labels
+							const orchestratorConfig = repository.labelPrompts.orchestrator;
+							const orchestratorLabels = Array.isArray(orchestratorConfig)
+								? orchestratorConfig
+								: orchestratorConfig?.labels;
+							const orchestratorLabel = orchestratorLabels?.find((label) =>
+								labels.includes(label),
+							);
+							if (orchestratorLabel) {
+								selectedPromptType = "orchestrator";
+								triggerLabel = orchestratorLabel;
+							}
 						}
 					}
 				}

@@ -47,6 +47,10 @@ export interface RepositoryConfig {
 			labels: string[]; // Labels that trigger scoper mode (e.g., ["PRD"])
 			allowedTools?: string[] | "readOnly" | "safe" | "all"; // Tool restrictions for scoper mode
 		};
+		orchestrator?: {
+			labels: string[]; // Labels that trigger orchestrator mode (e.g., ["Epic", "Orchestrate"])
+			allowedTools?: string[] | "readOnly" | "safe" | "all"; // Tool restrictions for orchestrator mode
+		};
 	};
 }
 
@@ -75,6 +79,9 @@ export interface EdgeWorkerConfig {
 			allowedTools?: string[] | "readOnly" | "safe" | "all";
 		};
 		scoper?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all";
+		};
+		orchestrator?: {
 			allowedTools?: string[] | "readOnly" | "safe" | "all";
 		};
 	};
