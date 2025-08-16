@@ -8,11 +8,6 @@ import {
 	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
-import type {
-	AgentSessionEventWebhookPayload,
-	AppUserNotificationWebhookPayloadWithNotification,
-	LinearWebhookPayload,
-} from "@linear/sdk/webhooks";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
@@ -23,10 +18,18 @@ import {
 import type {
 	CyrusAgentSession,
 	IssueMinimal,
+	LinearWebhookAgentSession,
+	LinearWebhookComment,
+	LinearWebhookIssue,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 } from "cyrus-core";
+import type {
+	AgentSessionEventWebhookPayload,
+	AppUserNotificationWebhookPayloadWithNotification,
+	LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 import { PersistenceManager } from "cyrus-core";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
@@ -154,7 +157,9 @@ export class EdgeWorker extends EventEmitter {
 			});
 
 			// Set up webhook handler - data should be the native webhook payload
-			ndjsonClient.on("webhook", (data) => this.handleWebhook(data, repos));
+			ndjsonClient.on("webhook", (data) =>
+				this.handleWebhook(data as LinearWebhookPayload, repos),
+			);
 
 			// Optional heartbeat logging
 			if (process.env.DEBUG_EDGE === "true") {
@@ -410,22 +415,20 @@ export class EdgeWorker extends EventEmitter {
 		webhook: AppUserNotificationWebhookPayloadWithNotification,
 		repository: RepositoryConfig,
 	): Promise<void> {
+		const issue = webhook.notification?.issue;
+		if (!issue) {
+			console.warn("[EdgeWorker] Issue unassignment webhook missing issue data");
+			return;
+		}
+
 		console.log(
-			`[EdgeWorker] Handling issue unassignment: ${webhook.notification?.issue?.identifier}`,
+			`[EdgeWorker] Handling issue unassignment: ${issue.identifier}`,
 		);
 
 		// Log the complete webhook payload for TypeScript type definition
 		// console.log('=== ISSUE UNASSIGNMENT WEBHOOK PAYLOAD ===')
 		// console.log(JSON.stringify(webhook, null, 2))
 		// console.log('=== END WEBHOOK PAYLOAD ===')
-
-		const issue = webhook.notification?.issue;
-		if (!issue) {
-			console.log(
-				"[EdgeWorker] Missing issue in unassignment webhook notification",
-			);
-			return;
-		}
 
 		await this.handleIssueUnassigned(issue, repository);
 	}
@@ -455,15 +458,16 @@ export class EdgeWorker extends EventEmitter {
 			issueId = webhook.agentSession?.issue?.id;
 			teamKey = webhook.agentSession?.issue?.team?.key;
 			issueIdentifier = webhook.agentSession?.issue?.identifier;
-		} else if ("notification" in webhook) {
-			// This is an AppUserNotificationWebhookPayloadWithNotification
+		} else if (
+			isIssueAssignedWebhook(webhook) ||
+			isIssueUnassignedWebhook(webhook) ||
+			isIssueCommentMentionWebhook(webhook) ||
+			isIssueNewCommentWebhook(webhook) ||
+			isIssueStatusChangedWebhook(webhook)
+		) {
 			issueId = webhook.notification?.issue?.id;
 			teamKey = webhook.notification?.issue?.team?.key;
 			issueIdentifier = webhook.notification?.issue?.identifier;
-		} else {
-			// Other webhook types - we might not be able to route them
-			console.log(`[EdgeWorker] Cannot route webhook type: ${webhook.type}`);
-			return repos[0] || null; // Fallback to first repo
 		}
 
 		// Filter repos by workspace first
@@ -715,18 +719,17 @@ export class EdgeWorker extends EventEmitter {
 		webhook: AgentSessionEventWebhookPayload,
 		repository: RepositoryConfig,
 	): Promise<void> {
-		console.log(
-			`[EdgeWorker] Handling agent session created: ${webhook.agentSession?.issue?.identifier}`,
-		);
-		const { agentSession } = webhook;
-		if (!agentSession || !agentSession.issue) {
-			console.log(
-				"[EdgeWorker] Missing agentSession or issue in webhook payload",
-			);
+		const agentSession = webhook.agentSession;
+		const issue = agentSession?.issue;
+		if (!issue) {
+			console.warn("[EdgeWorker] Agent session created webhook missing issue data");
 			return;
 		}
+
+		console.log(
+			`[EdgeWorker] Handling agent session created: ${issue.identifier}`,
+		);
 		const linearAgentActivitySessionId = agentSession.id;
-		const { issue } = agentSession;
 
 		const commentBody = agentSession.comment?.body;
 		// HACK: This is required since the comment body is always populated, thus there is no other way to differentiate between the two trigger events
@@ -753,7 +756,7 @@ export class EdgeWorker extends EventEmitter {
 		// Create the session using the shared method
 		const sessionData = await this.createLinearAgentSession(
 			linearAgentActivitySessionId,
-			issue,
+			{ id: issue.id, identifier: issue.identifier },
 			repository,
 			agentSessionManager,
 		);
@@ -845,7 +848,7 @@ export class EdgeWorker extends EventEmitter {
 			const promptResult = isMentionTriggered
 				? await this.buildMentionPrompt(
 						fullIssue,
-						agentSession,
+						this.convertAgentSessionToWebhookFormat(agentSession),
 						attachmentResult.manifest,
 					)
 				: systemPrompt
@@ -903,18 +906,18 @@ export class EdgeWorker extends EventEmitter {
 		repository: RepositoryConfig,
 	): Promise<void> {
 		// Look for existing session for this comment thread
-		const { agentSession } = webhook;
-		if (!agentSession || !agentSession.issue) {
-			console.log(
-				"[EdgeWorker] Missing agentSession or issue in webhook payload",
-			);
+		const agentSession = webhook.agentSession;
+		const agentActivity = webhook.agentActivity;
+		const issue = agentSession?.issue;
+
+		if (!issue || !agentActivity) {
+			console.warn("[EdgeWorker] Agent session prompted webhook missing required data");
 			return;
 		}
-		const linearAgentActivitySessionId = agentSession.id;
-		const { issue } = agentSession;
 
-		// The commentId is available in the agentSession, not in agentActivity
-		const commentId = agentSession.commentId;
+		const linearAgentActivitySessionId = agentSession.id;
+		// Note: Linear SDK may have different property name or structure for comment ID
+		const commentId = (agentActivity as any).sourceCommentId || agentActivity.id;
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -944,7 +947,7 @@ export class EdgeWorker extends EventEmitter {
 			// Create the session using the shared method
 			const sessionData = await this.createLinearAgentSession(
 				linearAgentActivitySessionId,
-				issue,
+				{ id: issue.id, identifier: issue.identifier },
 				repository,
 				agentSessionManager,
 			);
@@ -1048,15 +1051,7 @@ export class EdgeWorker extends EventEmitter {
 			console.error("Failed to fetch comments for attachments:", error);
 		}
 
-		// Handle nullable agentActivity and its content structure
-		const agentActivity = webhook.agentActivity;
-		if (!agentActivity) {
-			console.log("[EdgeWorker] Missing agentActivity in webhook payload");
-			return;
-		}
-
-		// The content is a JSONObject, need to safely access body
-		const promptBody = (agentActivity.content as any)?.body;
+		const promptBody = agentActivity.content?.body;
 		const stopSignal = agentActivity.signal === "stop";
 
 		// Handle stop signal
@@ -1200,7 +1195,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @param repository Repository configuration
 	 */
 	private async handleIssueUnassigned(
-		issue: { id: string; identifier: string },
+		issue: LinearWebhookIssue,
 		repository: RepositoryConfig,
 	): Promise<void> {
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -1439,12 +1434,7 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async buildMentionPrompt(
 		issue: LinearIssue,
-		agentSession: {
-			id: string;
-			issueId?: string | null;
-			commentId?: string | null;
-			comment?: { body?: string } | null;
-		},
+		agentSession: LinearWebhookAgentSession,
 		attachmentManifest: string = "",
 	): Promise<{ prompt: string; version?: string }> {
 		try {
@@ -1702,7 +1692,7 @@ ${reply.body}
 	private async buildPromptV2(
 		issue: LinearIssue,
 		repository: RepositoryConfig,
-		newComment?: { id: string; body: string; userId: string },
+		newComment?: LinearWebhookComment,
 		attachmentManifest: string = "",
 	): Promise<{ prompt: string; version?: string }> {
 		console.log(
@@ -2028,46 +2018,44 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	): Promise<void> {
 		const issue = webhook.notification?.issue;
 		if (!issue) {
-			console.log("[EdgeWorker] Missing issue in notification webhook payload");
+			console.warn("[EdgeWorker] Issue status changed webhook missing issue data");
 			return;
 		}
 
-		// Check if toState is already in the notification (some webhook versions include it)
-		let toState = (webhook.notification as any).toState || null;
+		// Note: The Linear SDK webhook doesn't include toState/fromState directly
+		// We'll need to fetch current state from the API
 		let fullIssue = null;
 
-		// If toState is not in the webhook, fetch the current state from Linear API
-		if (!toState) {
-			console.log(
-				`[EdgeWorker] Issue status changed for ${issue.identifier} but no state information in webhook. Fetching current state from Linear API...`,
+		// Always fetch current state from the API since webhook doesn't include state details
+		console.log(
+			`[EdgeWorker] Issue status changed for ${issue.identifier}. Fetching current state from Linear API...`,
+		);
+
+		// Fetch full issue details to get current state
+		fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+		if (!fullIssue) {
+			console.error(
+				`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`,
 			);
-
-			// Fetch full issue details to get current state
-			fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
-			if (!fullIssue) {
-				console.error(
-					`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`,
-				);
-				return;
-			}
-
-			// Get the current state from the full issue
-			const currentState = await fullIssue.state;
-			if (!currentState) {
-				console.error(
-					`[EdgeWorker] Failed to fetch current state for issue ${issue.identifier}`,
-				);
-				return;
-			}
-
-			// Convert Linear API state to webhook state format
-			toState = {
-				id: currentState.id,
-				name: currentState.name,
-				type: currentState.type as string,
-				color: currentState.color,
-			};
+			return;
 		}
+
+		// Get the current state from the full issue
+		const currentState = await fullIssue.state;
+		if (!currentState) {
+			console.error(
+				`[EdgeWorker] Failed to fetch current state for issue ${issue.identifier}`,
+			);
+			return;
+		}
+
+		// Convert Linear API state to webhook state format
+		const toState = {
+			id: currentState.id,
+			name: currentState.name,
+			type: currentState.type as string,
+			color: currentState.color,
+		};
 
 		console.log(
 			`[EdgeWorker] Handling issue status change: ${issue.identifier} to ${toState.name} (${toState.type})`,
@@ -2130,17 +2118,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			return;
 		}
 
-		// Check if parent issue is assigned to the agent
-		const viewer = await linearClient.viewer;
-		const parentAssignee = await parent.assignee;
-
-		if (!parentAssignee || parentAssignee.id !== viewer.id) {
-			console.log(
-				`[EdgeWorker] Parent issue ${parent.identifier} is not assigned to agent (assignee: ${parentAssignee?.id}, agent: ${viewer.id}), skipping re-evaluation`,
-			);
-			return;
-		}
-
 		console.log(
 			`[EdgeWorker] Sub-issue ${issue.identifier} completed, parent is ${parent.identifier}`,
 		);
@@ -2150,13 +2127,36 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			`[EdgeWorker] Triggering re-evaluation of parent issue ${parent.identifier} after sub-issue ${issue.identifier} completion`,
 		);
 
+		const result = await linearClient.client.rawRequest(
+			`
+    query GetFirstComment($issueId: String!) {
+      issue(id: $issueId) {
+        comments(first: 1, orderBy: { field: "createdAt", direction: ASC }) {
+          nodes {
+            id
+            body
+            createdAt
+            updatedAt
+            user {
+              name
+              id
+            }
+          }
+        }
+      }
+    }
+  `,
+			{ issueId: parent.id },
+		);
+
 		// Post a comment to the parent issue to trigger re-evaluation
-		const reevaluationComment = `@cyrus Sub-issue ${issue.identifier} has been completed. Re-evaluate progress and determining next steps...`;
+		const reevaluationComment = `Sub-issue ${issue.identifier} has been completed. Re-evaluate progress and determining next steps...`;
 
 		try {
 			await linearClient.createComment({
 				issueId: parent.id,
 				body: reevaluationComment,
+				parentId: (result as any).data.issue.comments.nodes[0],
 			});
 			console.log(
 				`[EdgeWorker] Posted re-evaluation comment to parent issue ${parent.identifier}`,
@@ -3210,5 +3210,31 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Convert Linear SDK AgentSessionWebhookPayload to cyrus-core LinearWebhookAgentSession format
+	 */
+	private convertAgentSessionToWebhookFormat(agentSession: any): LinearWebhookAgentSession {
+		return {
+			id: agentSession.id,
+			createdAt: agentSession.createdAt,
+			updatedAt: agentSession.updatedAt,
+			archivedAt: agentSession.archivedAt || null,
+			creatorId: agentSession.creatorId,
+			appUserId: agentSession.appUserId,
+			commentId: agentSession.commentId,
+			issueId: agentSession.issueId,
+			status: agentSession.status,
+			startedAt: agentSession.startedAt || null,
+			endedAt: agentSession.endedAt || null,
+			type: "commentThread",
+			summary: agentSession.summary || null,
+			sourceMetadata: agentSession.sourceMetadata || null,
+			organizationId: agentSession.organizationId,
+			creator: agentSession.creator,
+			comment: agentSession.comment,
+			issue: agentSession.issue,
+		};
 	}
 }
