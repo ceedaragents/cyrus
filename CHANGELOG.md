@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Updated @anthropic-ai/claude-code from v1.0.80 to v1.0.81 for latest Claude Code improvements. See [Claude Code v1.0.81 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1081)
+- Updated @anthropic-ai/claude-code from v1.0.81 to v1.0.83 for latest Claude Code improvements. See [Claude Code v1.0.83 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1083)
 
 ### Fixed
 - Fixed git worktree creation failures for sub-issues when parent branch doesn't exist remotely
