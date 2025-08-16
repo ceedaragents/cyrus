@@ -207,6 +207,17 @@ describe("EdgeWorker - Orchestrator", () => {
 				viewer: vi.fn().mockResolvedValue({ id: "agent-user-id" }),
 				issue: vi.fn(),
 				createComment: vi.fn().mockResolvedValue({ success: true }),
+				client: {
+					rawRequest: vi.fn().mockResolvedValue({
+						data: {
+							issue: {
+								comments: {
+									nodes: [{ id: "first-comment-id" }],
+								},
+							},
+						},
+					}),
+				},
 			};
 
 			// Set up the Linear client
@@ -325,13 +336,14 @@ describe("EdgeWorker - Orchestrator", () => {
 			// Check if issue was called to fetch sub-issue details
 			expect(mockLinearClient.issue).toHaveBeenCalledWith("sub-issue-123");
 
-			// Check if viewer was called to get current user
-			expect(mockLinearClient.viewer).toHaveBeenCalled();
+			// Viewer check was removed after merging pack-259 since assignment check doesn't work with delegation
+			// expect(mockLinearClient.viewer).toHaveBeenCalled();
 
 			// Check if comment was created on parent issue
 			expect(mockLinearClient.createComment).toHaveBeenCalledWith({
 				issueId: "parent-issue-123",
-				body: expect.stringContaining("Sub-issue PACK-260 has been completed"),
+				body: "Sub-issue PACK-260 has been completed. Re-evaluate progress and determining next steps...",
+				parentId: { id: "first-comment-id" }, // Added to thread under first comment
 			});
 		});
 
@@ -378,7 +390,10 @@ describe("EdgeWorker - Orchestrator", () => {
 			expect(mockLinearClient.createComment).not.toHaveBeenCalled();
 		});
 
-		it("should not trigger re-evaluation if parent is not assigned to agent", async () => {
+		it.skip("should not trigger re-evaluation if parent is not assigned to agent", async () => {
+			// SKIPPED: After merging pack-259, parent assignment check was removed as it doesn't work with delegation
+			// The test is kept for reference but skipped since the functionality was intentionally removed
+			
 			// Mock the parent issue assigned to someone else
 			const mockParentIssue = {
 				id: "parent-issue-123",
@@ -427,6 +442,19 @@ describe("EdgeWorker - Orchestrator", () => {
 				color: "#0000FF",
 			};
 
+			// Mock the issue that's fetched to check the current state
+			const mockIssue = {
+				id: "sub-issue-123",
+				identifier: "PACK-260",
+				state: Promise.resolve({
+					id: "state-in-progress",
+					name: "In Progress",
+					type: "started", // Not completed
+					color: "#FFFF00",
+				}),
+			};
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
 			// Mock the type guard to return true for this test
 			const cyrusCore = await import("cyrus-core");
 			vi.mocked(cyrusCore.isIssueStatusChangedWebhook).mockReturnValue(true);
@@ -434,8 +462,10 @@ describe("EdgeWorker - Orchestrator", () => {
 			const handleWebhook = (edgeWorker as any).handleWebhook.bind(edgeWorker);
 			await handleWebhook(mockStateChangeWebhook, [mockRepository]);
 
-			// Should not even fetch the issue details
-			expect(mockLinearClient.issue).not.toHaveBeenCalled();
+			// After SDK migration, we always fetch issue details to get current state
+			// since the webhook doesn't include state transition details
+			expect(mockLinearClient.issue).toHaveBeenCalledWith("sub-issue-123");
+			// But should not create comment since it's not a completion
 			expect(mockLinearClient.createComment).not.toHaveBeenCalled();
 		});
 
