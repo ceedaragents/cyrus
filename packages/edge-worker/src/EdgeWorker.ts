@@ -8,6 +8,11 @@ import {
 	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
+import type {
+	AgentSessionEventWebhookPayload,
+	AppUserNotificationWebhookPayloadWithNotification,
+	LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
@@ -16,24 +21,17 @@ import {
 	getSafeTools,
 } from "cyrus-claude-runner";
 import type {
-	LinearWebhookPayload,
-	AgentSessionEventWebhookPayload,
-	AppUserNotificationWebhookPayloadWithNotification,
-} from "@linear/sdk/webhooks";
-import type {
 	CyrusAgentSession,
 	IssueMinimal,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 } from "cyrus-core";
-import {
-	PersistenceManager,
-} from "cyrus-core";
+import { PersistenceManager } from "cyrus-core";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
-import { 
+import {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isIssueAssignedWebhook,
@@ -156,9 +154,7 @@ export class EdgeWorker extends EventEmitter {
 			});
 
 			// Set up webhook handler - data should be the native webhook payload
-			ndjsonClient.on("webhook", (data) =>
-				this.handleWebhook(data, repos),
-			);
+			ndjsonClient.on("webhook", (data) => this.handleWebhook(data, repos));
 
 			// Optional heartbeat logging
 			if (process.env.DEBUG_EDGE === "true") {
@@ -425,7 +421,9 @@ export class EdgeWorker extends EventEmitter {
 
 		const issue = webhook.notification?.issue;
 		if (!issue) {
-			console.log("[EdgeWorker] Missing issue in unassignment webhook notification");
+			console.log(
+				"[EdgeWorker] Missing issue in unassignment webhook notification",
+			);
 			return;
 		}
 
@@ -457,7 +455,7 @@ export class EdgeWorker extends EventEmitter {
 			issueId = webhook.agentSession?.issue?.id;
 			teamKey = webhook.agentSession?.issue?.team?.key;
 			issueIdentifier = webhook.agentSession?.issue?.identifier;
-		} else if ('notification' in webhook) {
+		} else if ("notification" in webhook) {
 			// This is an AppUserNotificationWebhookPayloadWithNotification
 			issueId = webhook.notification?.issue?.id;
 			teamKey = webhook.notification?.issue?.team?.key;
@@ -722,7 +720,9 @@ export class EdgeWorker extends EventEmitter {
 		);
 		const { agentSession } = webhook;
 		if (!agentSession || !agentSession.issue) {
-			console.log("[EdgeWorker] Missing agentSession or issue in webhook payload");
+			console.log(
+				"[EdgeWorker] Missing agentSession or issue in webhook payload",
+			);
 			return;
 		}
 		const linearAgentActivitySessionId = agentSession.id;
@@ -771,7 +771,12 @@ export class EdgeWorker extends EventEmitter {
 		// Only fetch labels and determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
-		let promptType: "debugger" | "builder" | "scoper" | "orchestrator" | undefined;
+		let promptType:
+			| "debugger"
+			| "builder"
+			| "scoper"
+			| "orchestrator"
+			| undefined;
 
 		if (!isMentionTriggered) {
 			// Fetch issue labels and determine system prompt (delegation case)
@@ -900,7 +905,9 @@ export class EdgeWorker extends EventEmitter {
 		// Look for existing session for this comment thread
 		const { agentSession } = webhook;
 		if (!agentSession || !agentSession.issue) {
-			console.log("[EdgeWorker] Missing agentSession or issue in webhook payload");
+			console.log(
+				"[EdgeWorker] Missing agentSession or issue in webhook payload",
+			);
 			return;
 		}
 		const linearAgentActivitySessionId = agentSession.id;
@@ -1295,7 +1302,12 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check each prompt type for matching labels
-		const promptTypes = ["debugger", "builder", "scoper", "orchestrator"] as const;
+		const promptTypes = [
+			"debugger",
+			"builder",
+			"scoper",
+			"orchestrator",
+		] as const;
 
 		for (const promptType of promptTypes) {
 			const promptConfig = repository.labelPrompts[promptType];
@@ -1427,7 +1439,12 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async buildMentionPrompt(
 		issue: LinearIssue,
-		agentSession: { id: string; issueId?: string | null; commentId?: string | null; comment?: { body?: string } | null },
+		agentSession: {
+			id: string;
+			issueId?: string | null;
+			commentId?: string | null;
+			comment?: { body?: string } | null;
+		},
 		attachmentManifest: string = "",
 	): Promise<{ prompt: string; version?: string }> {
 		try {
@@ -2020,33 +2037,36 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		let fullIssue = null;
 
 		// Fetch the current issue state from Linear API
-		if (true) { // Always fetch since toState is not available in webhook
-			console.log(
-				`[EdgeWorker] Issue status changed for ${issue.identifier} but no state information in webhook. Fetching current state from Linear API...`,
+		// Always fetch since toState is not available in webhook
+		console.log(
+			`[EdgeWorker] Issue status changed for ${issue.identifier} but no state information in webhook. Fetching current state from Linear API...`,
+		);
+
+		// Fetch full issue details to get current state
+		fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+		if (!fullIssue) {
+			console.error(
+				`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`,
 			);
-			
-			// Fetch full issue details to get current state
-			fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
-			if (!fullIssue) {
-				console.error(`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`);
-				return;
-			}
-
-			// Get the current state from the full issue
-			const currentState = await fullIssue.state;
-			if (!currentState) {
-				console.error(`[EdgeWorker] Failed to fetch current state for issue ${issue.identifier}`);
-				return;
-			}
-
-			// Convert Linear API state to webhook state format
-			toState = {
-				id: currentState.id,
-				name: currentState.name,
-				type: currentState.type as string,
-				color: currentState.color,
-			};
+			return;
 		}
+
+		// Get the current state from the full issue
+		const currentState = await fullIssue.state;
+		if (!currentState) {
+			console.error(
+				`[EdgeWorker] Failed to fetch current state for issue ${issue.identifier}`,
+			);
+			return;
+		}
+
+		// Convert Linear API state to webhook state format
+		toState = {
+			id: currentState.id,
+			name: currentState.name,
+			type: currentState.type as string,
+			color: currentState.color,
+		};
 
 		console.log(
 			`[EdgeWorker] Handling issue status change: ${issue.identifier} to ${toState.name} (${toState.type})`,
@@ -2064,7 +2084,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (!fullIssue) {
 			fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
 			if (!fullIssue) {
-				console.error(`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`);
+				console.error(
+					`[EdgeWorker] Failed to fetch full issue details for ${issue.id}`,
+				);
 				return;
 			}
 		}
@@ -2079,15 +2101,20 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Check if parent issue has orchestrator label
 		const parentLabels = await this.fetchIssueLabels(parent);
 		console.log(`[EdgeWorker] DEBUG: Parent labels:`, parentLabels);
-		
+
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: orchestratorConfig?.labels;
-		
+
 		console.log(`[EdgeWorker] DEBUG: Orchestrator labels:`, orchestratorLabels);
-		const hasOrchestratorLabel = orchestratorLabels?.some((label) => parentLabels.includes(label));
-		console.log(`[EdgeWorker] DEBUG: Has orchestrator label:`, hasOrchestratorLabel);
+		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
+			parentLabels.includes(label),
+		);
+		console.log(
+			`[EdgeWorker] DEBUG: Has orchestrator label:`,
+			hasOrchestratorLabel,
+		);
 
 		if (!hasOrchestratorLabel) {
 			return;
@@ -2096,7 +2123,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Get Linear client for this repository
 		const linearClient = this.linearClients.get(repository.id);
 		if (!linearClient) {
-			console.error(`[EdgeWorker] No Linear client found for repository ${repository.id}`);
+			console.error(
+				`[EdgeWorker] No Linear client found for repository ${repository.id}`,
+			);
 			return;
 		}
 
@@ -2111,7 +2140,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Post a comment to the parent issue to trigger re-evaluation
 		const reevaluationComment = `@cyrus Sub-issue ${issue.identifier} has been completed. Re-evaluate progress and determining next steps...`;
-		
+
 		try {
 			await linearClient.createComment({
 				issueId: parent.id,

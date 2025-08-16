@@ -8,11 +8,13 @@ export interface EdgeEvent {
 	id: string;
 	type: "connection" | "heartbeat" | "webhook" | "error";
 	timestamp: string;
-	data?: LinearWebhookPayload | {
-		message: string;
-		edge_id?: string;
-		code?: string;
-	};
+	data?:
+		| LinearWebhookPayload
+		| {
+				message: string;
+				edge_id?: string;
+				code?: string;
+		  };
 }
 
 export interface ConnectionEvent extends EdgeEvent {

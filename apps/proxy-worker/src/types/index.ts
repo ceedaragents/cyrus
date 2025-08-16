@@ -74,11 +74,13 @@ export interface EdgeEvent {
 	id: string;
 	type: "webhook" | "connection" | "heartbeat" | "error";
 	timestamp: string;
-	data?: LinearWebhookPayload | {
-		message: string;
-		edge_id?: string;
-		code?: string;
-	};
+	data?:
+		| LinearWebhookPayload
+		| {
+				message: string;
+				edge_id?: string;
+				code?: string;
+		  };
 	status?: string;
 	reason?: string;
 	error?: string;

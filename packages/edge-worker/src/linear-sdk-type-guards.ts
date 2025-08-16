@@ -3,11 +3,11 @@
  */
 
 import type {
-	LinearWebhookPayload,
 	AgentSessionEventWebhookPayload,
 	AppUserNotificationWebhookPayloadWithNotification,
-	EntityWebhookPayloadWithIssueData,
 	EntityWebhookPayloadWithCommentData,
+	EntityWebhookPayloadWithIssueData,
+	LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
 
 /**
