@@ -15,39 +15,25 @@ export type {
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
 
-// Webhook types
+// Re-export Linear SDK webhook types for backward compatibility
+// These are now the official Linear SDK types
 export type {
-	LinearAgentSessionCreatedWebhook,
-	LinearAgentSessionPromptedWebhook,
-	LinearIssueAssignedNotification,
-	LinearIssueAssignedWebhook,
-	LinearIssueCommentMentionNotification,
-	LinearIssueCommentMentionWebhook,
-	LinearIssueNewCommentNotification,
-	LinearIssueNewCommentWebhook,
-	LinearIssueStatusChangedNotification,
-	LinearIssueStatusChangedWebhook,
-	LinearIssueUnassignedNotification,
-	LinearIssueUnassignedWebhook,
-	LinearWebhook,
+	LinearWebhookPayload,
+	AgentSessionEventWebhookPayload,
+	AppUserNotificationWebhookPayloadWithNotification,
+	EntityWebhookPayloadWithIssueData,
+	EntityWebhookPayloadWithCommentData,
+} from "@linear/sdk/webhooks";
+
+// Keep minimal type exports for components that still need them
+export type {
+	LinearWebhookTeam,
+	LinearWebhookIssue,
+	LinearWebhookComment,
 	LinearWebhookActor,
+	LinearWebhookAgentSession,
 	LinearWebhookAgentActivity,
 	LinearWebhookAgentActivityContent,
-	LinearWebhookAgentSession,
-	LinearWebhookComment,
 	LinearWebhookCreator,
-	LinearWebhookIssue,
 	LinearWebhookIssueState,
-	LinearWebhookNotification,
-	LinearWebhookTeam,
-} from "./webhook-types.js";
-
-export {
-	isAgentSessionCreatedWebhook,
-	isAgentSessionPromptedWebhook,
-	isIssueAssignedWebhook,
-	isIssueCommentMentionWebhook,
-	isIssueNewCommentWebhook,
-	isIssueStatusChangedWebhook,
-	isIssueUnassignedWebhook,
 } from "./webhook-types.js";
