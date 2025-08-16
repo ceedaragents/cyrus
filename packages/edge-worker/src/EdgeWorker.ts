@@ -8,6 +8,11 @@ import {
 	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
+import type {
+	AgentSessionEventWebhookPayload,
+	AppUserNotificationWebhookPayloadWithNotification,
+	LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
@@ -25,11 +30,6 @@ import type {
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 } from "cyrus-core";
-import type {
-	AgentSessionEventWebhookPayload,
-	AppUserNotificationWebhookPayloadWithNotification,
-	LinearWebhookPayload,
-} from "@linear/sdk/webhooks";
 import { PersistenceManager } from "cyrus-core";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
@@ -417,7 +417,9 @@ export class EdgeWorker extends EventEmitter {
 	): Promise<void> {
 		const issue = webhook.notification?.issue;
 		if (!issue) {
-			console.warn("[EdgeWorker] Issue unassignment webhook missing issue data");
+			console.warn(
+				"[EdgeWorker] Issue unassignment webhook missing issue data",
+			);
 			return;
 		}
 
@@ -722,7 +724,9 @@ export class EdgeWorker extends EventEmitter {
 		const agentSession = webhook.agentSession;
 		const issue = agentSession?.issue;
 		if (!issue) {
-			console.warn("[EdgeWorker] Agent session created webhook missing issue data");
+			console.warn(
+				"[EdgeWorker] Agent session created webhook missing issue data",
+			);
 			return;
 		}
 
@@ -911,13 +915,16 @@ export class EdgeWorker extends EventEmitter {
 		const issue = agentSession?.issue;
 
 		if (!issue || !agentActivity) {
-			console.warn("[EdgeWorker] Agent session prompted webhook missing required data");
+			console.warn(
+				"[EdgeWorker] Agent session prompted webhook missing required data",
+			);
 			return;
 		}
 
 		const linearAgentActivitySessionId = agentSession.id;
 		// Note: Linear SDK may have different property name or structure for comment ID
-		const commentId = (agentActivity as any).sourceCommentId || agentActivity.id;
+		const commentId =
+			(agentActivity as any).sourceCommentId || agentActivity.id;
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -2018,7 +2025,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	): Promise<void> {
 		const issue = webhook.notification?.issue;
 		if (!issue) {
-			console.warn("[EdgeWorker] Issue status changed webhook missing issue data");
+			console.warn(
+				"[EdgeWorker] Issue status changed webhook missing issue data",
+			);
 			return;
 		}
 
@@ -3215,7 +3224,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	/**
 	 * Convert Linear SDK AgentSessionWebhookPayload to cyrus-core LinearWebhookAgentSession format
 	 */
-	private convertAgentSessionToWebhookFormat(agentSession: any): LinearWebhookAgentSession {
+	private convertAgentSessionToWebhookFormat(
+		agentSession: any,
+	): LinearWebhookAgentSession {
 		return {
 			id: agentSession.id,
 			createdAt: agentSession.createdAt,
