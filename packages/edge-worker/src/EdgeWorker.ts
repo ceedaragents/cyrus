@@ -2106,7 +2106,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			`
     query GetFirstComment($issueId: String!) {
       issue(id: $issueId) {
-        comments(first: 1, orderBy: { field: "createdAt", direction: ASC }) {
+        comments(first: 1, orderBy: createdAt) {
           nodes {
             id
             body
@@ -2131,7 +2131,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			await linearClient.createComment({
 				issueId: parent.id,
 				body: reevaluationComment,
-				parentId: (result as any).data.issue.comments.nodes[0],
+				parentId: (result as any).data.issue.comments.nodes[0]?.id,
 			});
 			console.log(
 				`[EdgeWorker] Posted re-evaluation comment to parent issue ${parent.identifier}`,
