@@ -1,9 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Issue as LinearIssue } from "@linear/sdk";
 import type {
 	LinearIssueStatusChangedWebhook,
 	LinearWebhookIssueState,
 } from "cyrus-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
@@ -25,7 +24,9 @@ vi.mock("../src/SharedApplicationServer.js", () => ({
 	SharedApplicationServer: vi.fn().mockImplementation(() => ({
 		start: vi.fn(),
 		stop: vi.fn(),
-		getOAuthCallbackUrl: vi.fn().mockReturnValue("http://localhost:3456/oauth/callback"),
+		getOAuthCallbackUrl: vi
+			.fn()
+			.mockReturnValue("http://localhost:3456/oauth/callback"),
 		registerOAuthCallbackHandler: vi.fn(),
 	})),
 }));
@@ -81,7 +82,7 @@ describe("EdgeWorker - Orchestrator", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
-		
+
 		// Reset webhook type guards to default values
 		const cyrusCore = await import("cyrus-core");
 		vi.mocked(cyrusCore.isIssueAssignedWebhook).mockReturnValue(false);
@@ -138,8 +139,9 @@ describe("EdgeWorker - Orchestrator", () => {
 			);
 
 			// Access private method for testing
-			const determineSystemPromptFromLabels = (edgeWorker as any)
-				.determineSystemPromptFromLabels.bind(edgeWorker);
+			const determineSystemPromptFromLabels = (
+				edgeWorker as any
+			).determineSystemPromptFromLabels.bind(edgeWorker);
 
 			const result = await determineSystemPromptFromLabels(
 				["Epic", "Backend"],
@@ -158,8 +160,9 @@ describe("EdgeWorker - Orchestrator", () => {
 				'Orchestrator system prompt\n<version-tag value="orchestrator-v1.0.0" />',
 			);
 
-			const determineSystemPromptFromLabels = (edgeWorker as any)
-				.determineSystemPromptFromLabels.bind(edgeWorker);
+			const determineSystemPromptFromLabels = (
+				edgeWorker as any
+			).determineSystemPromptFromLabels.bind(edgeWorker);
 
 			const result = await determineSystemPromptFromLabels(
 				["Orchestrate", "Frontend"],
@@ -182,8 +185,9 @@ describe("EdgeWorker - Orchestrator", () => {
 				throw new Error(`File not found: ${path}`);
 			});
 
-			const determineSystemPromptFromLabels = (edgeWorker as any)
-				.determineSystemPromptFromLabels.bind(edgeWorker);
+			const determineSystemPromptFromLabels = (
+				edgeWorker as any
+			).determineSystemPromptFromLabels.bind(edgeWorker);
 
 			const result = await determineSystemPromptFromLabels(
 				["Bug", "Epic"],
@@ -206,7 +210,10 @@ describe("EdgeWorker - Orchestrator", () => {
 			};
 
 			// Set up the Linear client
-			(edgeWorker as any).linearClients.set(mockRepository.id, mockLinearClient);
+			(edgeWorker as any).linearClients.set(
+				mockRepository.id,
+				mockLinearClient,
+			);
 
 			const fromState: LinearWebhookIssueState = {
 				id: "state-1",
@@ -301,19 +308,26 @@ describe("EdgeWorker - Orchestrator", () => {
 			mockLinearClient.issue.mockResolvedValue(mockSubIssue);
 
 			// Verify the webhook has a completed state
-			expect(mockStateChangeWebhook.notification.toState?.type).toBe("completed");
+			expect(mockStateChangeWebhook.notification.toState?.type).toBe(
+				"completed",
+			);
 
 			// Test the handleIssueStatusChangedWebhook method directly
-			const handleIssueStatusChangedWebhook = (edgeWorker as any).handleIssueStatusChangedWebhook.bind(edgeWorker);
-			
-			await handleIssueStatusChangedWebhook(mockStateChangeWebhook, mockRepository);
+			const handleIssueStatusChangedWebhook = (
+				edgeWorker as any
+			).handleIssueStatusChangedWebhook.bind(edgeWorker);
+
+			await handleIssueStatusChangedWebhook(
+				mockStateChangeWebhook,
+				mockRepository,
+			);
 
 			// Check if issue was called to fetch sub-issue details
 			expect(mockLinearClient.issue).toHaveBeenCalledWith("sub-issue-123");
-			
+
 			// Check if viewer was called to get current user
 			expect(mockLinearClient.viewer).toHaveBeenCalled();
-			
+
 			// Check if comment was created on parent issue
 			expect(mockLinearClient.createComment).toHaveBeenCalledWith({
 				issueId: "parent-issue-123",
@@ -458,7 +472,9 @@ describe("EdgeWorker - Orchestrator", () => {
 			);
 
 			// Test the handleIssueStatusChangedWebhook method directly
-			const handleIssueStatusChangedWebhook = (edgeWorker as any).handleIssueStatusChangedWebhook.bind(edgeWorker);
+			const handleIssueStatusChangedWebhook = (
+				edgeWorker as any
+			).handleIssueStatusChangedWebhook.bind(edgeWorker);
 
 			// Should not throw even if comment creation fails
 			await expect(
@@ -474,18 +490,27 @@ describe("EdgeWorker - Orchestrator", () => {
 
 	describe("Orchestrator Tool Configuration", () => {
 		it("should use all tools for orchestrator role by default", () => {
-			const buildAllowedTools = (edgeWorker as any).buildAllowedTools.bind(edgeWorker);
+			const buildAllowedTools = (edgeWorker as any).buildAllowedTools.bind(
+				edgeWorker,
+			);
 
 			const tools = buildAllowedTools(mockRepository, "orchestrator");
 
 			expect(tools).toContain("mcp__linear");
-			expect(tools).toEqual(expect.arrayContaining(["all", "tools", "mcp__linear"]));
+			expect(tools).toEqual(
+				expect.arrayContaining(["all", "tools", "mcp__linear"]),
+			);
 		});
 
 		it("should respect custom orchestrator tool configuration", () => {
-			mockRepository.labelPrompts!.orchestrator!.allowedTools = ["custom", "tools"];
+			mockRepository.labelPrompts!.orchestrator!.allowedTools = [
+				"custom",
+				"tools",
+			];
 
-			const buildAllowedTools = (edgeWorker as any).buildAllowedTools.bind(edgeWorker);
+			const buildAllowedTools = (edgeWorker as any).buildAllowedTools.bind(
+				edgeWorker,
+			);
 
 			const tools = buildAllowedTools(mockRepository, "orchestrator");
 
@@ -497,7 +522,9 @@ describe("EdgeWorker - Orchestrator", () => {
 		it("should use safe tools when orchestrator is configured with 'safe'", () => {
 			mockRepository.labelPrompts!.orchestrator!.allowedTools = "safe";
 
-			const buildAllowedTools = (edgeWorker as any).buildAllowedTools.bind(edgeWorker);
+			const buildAllowedTools = (edgeWorker as any).buildAllowedTools.bind(
+				edgeWorker,
+			);
 
 			const tools = buildAllowedTools(mockRepository, "orchestrator");
 
