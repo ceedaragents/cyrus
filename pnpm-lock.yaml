@@ -95,7 +95,7 @@ importers:
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-code':
-        specifier: ^1.0.83
+        specifier: ~1.0.83
         version: 1.0.83
       '@anthropic-ai/sdk':
         specifier: ^0.60.0
