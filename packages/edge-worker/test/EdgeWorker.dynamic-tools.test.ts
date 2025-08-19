@@ -77,6 +77,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 		// Create mock configuration
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
+			cyrusHome: "/tmp/test-cyrus-home",
 			defaultAllowedTools: ["Read", "Write", "Edit"],
 			repositories: [
 				{

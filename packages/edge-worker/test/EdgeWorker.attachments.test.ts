@@ -31,20 +31,19 @@ describe("EdgeWorker - Native Attachments", () => {
 
 	beforeEach(() => {
 		mockConfig = {
-			id: "test-worker",
-			sessionDirectory: "/tmp/test-sessions",
+			proxyUrl: "http://localhost:3000",
+			cyrusHome: "/tmp/test-cyrus-home",
 			repositories: [
 				{
 					id: "test-repo",
 					name: "test-repo",
 					repositoryPath: "/test/repo",
+					workspaceBaseDir: "/test/workspaces",
 					linearToken: "test-token",
+					linearWorkspaceId: "test-workspace",
 					baseBranch: "main",
 				},
 			],
-			features: {
-				enableAttachmentDownload: true,
-			},
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);

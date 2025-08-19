@@ -36,6 +36,7 @@ describe("EdgeWorker - Version Tag Extraction", () => {
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
 			webhookPort: 3456,
+			cyrusHome: "/tmp/test-cyrus-home",
 			repositories: [
 				{
 					id: "test-repo",

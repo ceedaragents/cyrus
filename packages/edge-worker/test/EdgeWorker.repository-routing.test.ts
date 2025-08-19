@@ -17,6 +17,7 @@ describe("EdgeWorker - Repository Routing", () => {
 		// Mock configuration with multiple repositories including project-based routing
 		mockConfig = {
 			proxyUrl: "https://test-proxy.com",
+			cyrusHome: "/tmp/test-cyrus-home",
 			repositories: [
 				{
 					id: "ceedar",
