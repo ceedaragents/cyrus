@@ -138,10 +138,12 @@ export class ClaudeRunner extends EventEmitter {
 	private readableLogStream: WriteStream | null = null;
 	private messages: SDKMessage[] = [];
 	private streamingPrompt: StreamingPrompt | null = null;
+	private cyrusHome: string;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
 		this.config = config;
+		this.cyrusHome = config.cyrusHome || join(homedir(), ".cyrus");
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -459,8 +461,7 @@ export class ClaudeRunner extends EventEmitter {
 		// If logging has already been set up and we now have versions, write the version file
 		if (this.logStream && versions) {
 			try {
-				const cyrusDir = join(homedir(), ".cyrus");
-				const logsDir = join(cyrusDir, "logs");
+				const logsDir = join(this.cyrusHome, "logs");
 				const workspaceName =
 					this.config.workspaceName ||
 					(this.config.workingDirectory
@@ -600,9 +601,8 @@ export class ClaudeRunner extends EventEmitter {
 				this.readableLogStream = null;
 			}
 
-			// Create logs directory structure: ~/.cyrus/logs/<workspace-name>/
-			const cyrusDir = join(homedir(), ".cyrus");
-			const logsDir = join(cyrusDir, "logs");
+			// Create logs directory structure: <cyrusHome>/logs/<workspace-name>/
+			const logsDir = join(this.cyrusHome, "logs");
 
 			// Get workspace name from config or extract from working directory
 			const workspaceName =

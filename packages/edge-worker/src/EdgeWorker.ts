@@ -80,11 +80,13 @@ export class EdgeWorker extends EventEmitter {
 	private ndjsonClients: Map<string, NdjsonClient> = new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
+	private cyrusHome: string;
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
 		this.config = config;
-		this.persistenceManager = new PersistenceManager();
+		this.cyrusHome = config.cyrusHome || join(homedir(), ".cyrus");
+		this.persistenceManager = new PersistenceManager(join(this.cyrusHome, "state"));
 
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
@@ -667,8 +669,7 @@ export class EdgeWorker extends EventEmitter {
 		// Pre-create attachments directory even if no attachments exist yet
 		const workspaceFolderName = basename(workspace.path);
 		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
+			this.cyrusHome,
 			workspaceFolderName,
 			"attachments",
 		);
@@ -972,8 +973,7 @@ export class EdgeWorker extends EventEmitter {
 		// Always set up attachments directory, even if no attachments in current comment
 		const workspaceFolderName = basename(session.workspace.path);
 		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
+			this.cyrusHome,
 			workspaceFolderName,
 			"attachments",
 		);
@@ -2055,8 +2055,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Create attachments directory in home directory
 		const workspaceFolderName = basename(workspacePath);
 		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
+			this.cyrusHome,
 			workspaceFolderName,
 			"attachments",
 		);
@@ -2591,6 +2590,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			allowedTools,
 			allowedDirectories,
 			workspaceName: session.issue?.identifier || session.issueId,
+			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository),
 			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,

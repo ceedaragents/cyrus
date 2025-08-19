@@ -24,9 +24,24 @@ import open from "open";
 // Parse command line arguments
 const args = process.argv.slice(2);
 const envFileArg = args.find((arg) => arg.startsWith("--env-file="));
+const cyrusHomeArg = args.find((arg) => arg.startsWith("--cyrus-home="));
 
 // Constants
 const DEFAULT_PROXY_URL = "https://cyrus-proxy.ceedar.workers.dev";
+
+// Determine the Cyrus home directory once at startup
+let CYRUS_HOME: string;
+if (cyrusHomeArg) {
+	const customPath = cyrusHomeArg.split("=")[1];
+	if (customPath) {
+		CYRUS_HOME = resolve(customPath);
+	} else {
+		console.error("Error: --cyrus-home flag requires a directory path");
+		process.exit(1);
+	}
+} else {
+	CYRUS_HOME = resolve(homedir(), ".cyrus");
+}
 
 // Note: __dirname removed since version is now hardcoded
 
@@ -55,12 +70,14 @@ Options:
   --version          Show version number
   --help, -h         Show help
   --env-file=<path>  Load environment variables from file
+  --cyrus-home=<dir> Specify custom Cyrus config directory (default: ~/.cyrus)
 
 Examples:
   cyrus                          Start the edge worker
   cyrus check-tokens             Check all Linear token statuses
   cyrus refresh-token            Interactive token refresh
   cyrus add-repository           Add a new repository interactively
+  cyrus --cyrus-home=/tmp/cyrus  Use custom config directory
 `);
 	process.exit(0);
 }
@@ -98,12 +115,17 @@ interface Workspace {
 class EdgeApp {
 	private edgeWorker: EdgeWorker | null = null;
 	private isShuttingDown = false;
+	private cyrusHome: string;
+
+	constructor(cyrusHome: string = resolve(homedir(), ".cyrus")) {
+		this.cyrusHome = cyrusHome;
+	}
 
 	/**
 	 * Get the edge configuration file path
 	 */
 	getEdgeConfigPath(): string {
-		return resolve(homedir(), ".cyrus", "config.json");
+		return resolve(this.cyrusHome, "config.json");
 	}
 
 	/**
@@ -246,8 +268,7 @@ class EdgeApp {
 				.replace(/[^a-zA-Z0-9-_]/g, "-")
 				.toLowerCase();
 			const workspaceBaseDir = resolve(
-				homedir(),
-				".cyrus",
+				this.cyrusHome,
 				"workspaces",
 				repoNameSafe,
 			);
@@ -455,6 +476,7 @@ class EdgeApp {
 		const config: EdgeWorkerConfig = {
 			proxyUrl,
 			repositories,
+			cyrusHome: this.cyrusHome,
 			defaultAllowedTools:
 				process.env.ALLOWED_TOOLS?.split(",").map((t) => t.trim()) || [],
 			// Model configuration: environment variables take precedence over config file
@@ -1480,7 +1502,7 @@ async function checkLinearToken(
 
 // Command: check-tokens
 async function checkTokensCommand() {
-	const app = new EdgeApp();
+	const app = new EdgeApp(CYRUS_HOME);
 	const configPath = app.getEdgeConfigPath();
 
 	if (!existsSync(configPath)) {
@@ -1506,7 +1528,7 @@ async function checkTokensCommand() {
 
 // Command: refresh-token
 async function refreshTokenCommand() {
-	const app = new EdgeApp();
+	const app = new EdgeApp(CYRUS_HOME);
 	const configPath = app.getEdgeConfigPath();
 
 	if (!existsSync(configPath)) {
@@ -1661,7 +1683,7 @@ async function refreshTokenCommand() {
 
 // Command: add-repository
 async function addRepositoryCommand() {
-	const app = new EdgeApp();
+	const app = new EdgeApp(CYRUS_HOME);
 
 	console.log("📋 Add New Repository");
 	console.log("─".repeat(50));
@@ -1729,7 +1751,7 @@ async function addRepositoryCommand() {
 
 // Command: set-customer-id
 async function setCustomerIdCommand() {
-	const app = new EdgeApp();
+	const app = new EdgeApp(CYRUS_HOME);
 	const configPath = app.getEdgeConfigPath();
 
 	// Get customer ID from command line args
@@ -1781,7 +1803,7 @@ async function setCustomerIdCommand() {
 
 // Command: billing
 async function billingCommand() {
-	const app = new EdgeApp();
+	const app = new EdgeApp(CYRUS_HOME);
 	const configPath = app.getEdgeConfigPath();
 
 	if (!existsSync(configPath)) {
@@ -1875,7 +1897,7 @@ switch (command) {
 
 	default: {
 		// Create and start the app
-		const app = new EdgeApp();
+		const app = new EdgeApp(CYRUS_HOME);
 		app.start().catch((error) => {
 			console.error("Fatal error:", error);
 			process.exit(1);
