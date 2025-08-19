@@ -86,7 +86,9 @@ export class EdgeWorker extends EventEmitter {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome || join(homedir(), ".cyrus");
-		this.persistenceManager = new PersistenceManager(join(this.cyrusHome, "state"));
+		this.persistenceManager = new PersistenceManager(
+			join(this.cyrusHome, "state"),
+		);
 
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
