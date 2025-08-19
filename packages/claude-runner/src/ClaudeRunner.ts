@@ -6,8 +6,8 @@ import {
 	type WriteStream,
 	writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { getCyrusLogsPath } from "cyrus-core";
 import {
 	AbortError,
 	query,
@@ -459,8 +459,7 @@ export class ClaudeRunner extends EventEmitter {
 		// If logging has already been set up and we now have versions, write the version file
 		if (this.logStream && versions) {
 			try {
-				const cyrusDir = join(homedir(), ".cyrus");
-				const logsDir = join(cyrusDir, "logs");
+				const logsDir = getCyrusLogsPath();
 				const workspaceName =
 					this.config.workspaceName ||
 					(this.config.workingDirectory
@@ -600,9 +599,8 @@ export class ClaudeRunner extends EventEmitter {
 				this.readableLogStream = null;
 			}
 
-			// Create logs directory structure: ~/.cyrus/logs/<workspace-name>/
-			const cyrusDir = join(homedir(), ".cyrus");
-			const logsDir = join(cyrusDir, "logs");
+			// Create logs directory structure: <cyrus-home>/logs/<workspace-name>/
+			const logsDir = getCyrusLogsPath();
 
 			// Get workspace name from config or extract from working directory
 			const workspaceName =

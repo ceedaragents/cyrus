@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { getCyrusStatePath } from "./CyrusHomeDirectory.js";
 import type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
@@ -40,8 +40,7 @@ export class PersistenceManager {
 	private persistencePath: string;
 
 	constructor(persistencePath?: string) {
-		this.persistencePath =
-			persistencePath || join(homedir(), ".cyrus", "state");
+		this.persistencePath = persistencePath || getCyrusStatePath();
 	}
 
 	/**

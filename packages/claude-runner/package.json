@@ -17,7 +17,8 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/claude-code": "^1.0.83",
-		"@anthropic-ai/sdk": "^0.60.0"
+		"@anthropic-ai/sdk": "^0.60.0",
+		"cyrus-core": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",

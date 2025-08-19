@@ -8,7 +8,6 @@ import {
 	writeFileSync,
 } from "node:fs";
 import http from "node:http";
-import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import readline from "node:readline";
 import type { Issue } from "@linear/sdk";
@@ -18,12 +17,28 @@ import {
 	type RepositoryConfig,
 	SharedApplicationServer,
 } from "cyrus-edge-worker";
+import {
+	setCyrusHome,
+	getCyrusHome,
+	getCyrusConfigPath,
+	getCyrusWorkspacesPath,
+} from "cyrus-core";
 import dotenv from "dotenv";
 import open from "open";
 
 // Parse command line arguments
 const args = process.argv.slice(2);
 const envFileArg = args.find((arg) => arg.startsWith("--env-file="));
+const cyrusHomeArg = args.find((arg) => arg.startsWith("--cyrus-home="));
+
+// Set custom Cyrus home directory if specified
+if (cyrusHomeArg) {
+	const customHome = cyrusHomeArg.split("=")[1];
+	if (customHome) {
+		setCyrusHome(customHome);
+		console.log(`Using custom Cyrus home directory: ${getCyrusHome()}`);
+	}
+}
 
 // Constants
 const DEFAULT_PROXY_URL = "https://cyrus-proxy.ceedar.workers.dev";
@@ -55,6 +70,7 @@ Options:
   --version          Show version number
   --help, -h         Show help
   --env-file=<path>  Load environment variables from file
+  --cyrus-home=<dir> Use custom directory for Cyrus config/data (default: ~/.cyrus)
 
 Examples:
   cyrus                          Start the edge worker
@@ -103,7 +119,7 @@ class EdgeApp {
 	 * Get the edge configuration file path
 	 */
 	getEdgeConfigPath(): string {
-		return resolve(homedir(), ".cyrus", "config.json");
+		return getCyrusConfigPath();
 	}
 
 	/**
@@ -131,7 +147,7 @@ class EdgeApp {
 		}
 
 		try {
-			// Ensure the ~/.cyrus directory exists
+			// Ensure the Cyrus home directory exists
 			const configDir = dirname(newConfigPath);
 			if (!existsSync(configDir)) {
 				mkdirSync(configDir, { recursive: true });
@@ -199,7 +215,7 @@ class EdgeApp {
 		const edgeConfigPath = this.getEdgeConfigPath();
 		const configDir = dirname(edgeConfigPath);
 
-		// Ensure the ~/.cyrus directory exists
+		// Ensure the Cyrus home directory exists
 		if (!existsSync(configDir)) {
 			mkdirSync(configDir, { recursive: true });
 		}
@@ -246,9 +262,7 @@ class EdgeApp {
 				.replace(/[^a-zA-Z0-9-_]/g, "-")
 				.toLowerCase();
 			const workspaceBaseDir = resolve(
-				homedir(),
-				".cyrus",
-				"workspaces",
+				getCyrusWorkspacesPath(),
 				repoNameSafe,
 			);
 
@@ -520,7 +534,7 @@ class EdgeApp {
 							this.saveEdgeConfig(edgeConfig);
 							console.log("\n✅ Repository configured successfully!");
 							console.log(
-								"📝 ~/.cyrus/config.json file has been updated with your new repository configuration.",
+								`📝 ${getCyrusConfigPath()} file has been updated with your new repository configuration.`,
 							);
 							console.log(
 								"💡 You can edit this file and restart Cyrus at any time to modify settings.",
@@ -934,7 +948,7 @@ class EdgeApp {
 
 							console.log("\n✅ Repository configured successfully!");
 							console.log(
-								"📝 ~/.cyrus/config.json file has been updated with your repository configuration.",
+								`📝 ${getCyrusConfigPath()} file has been updated with your repository configuration.`,
 							);
 							console.log(
 								"💡 You can edit this file and restart Cyrus at any time to modify settings.",

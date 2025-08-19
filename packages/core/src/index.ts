@@ -47,3 +47,14 @@ export {
 	isIssueNewCommentWebhook,
 	isIssueUnassignedWebhook,
 } from "./webhook-types.js";
+
+// Cyrus home directory management
+export {
+	setCyrusHome,
+	getCyrusHome,
+	getCyrusConfigPath,
+	getCyrusWorkspacesPath,
+	getCyrusLogsPath,
+	getCyrusStatePath,
+	getCyrusAttachmentsPath,
+} from "./CyrusHomeDirectory.js";

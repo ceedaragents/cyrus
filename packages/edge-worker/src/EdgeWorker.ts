@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { getCyrusAttachmentsPath } from "cyrus-core";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -666,12 +666,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Pre-create attachments directory even if no attachments exist yet
 		const workspaceFolderName = basename(workspace.path);
-		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
-			workspaceFolderName,
-			"attachments",
-		);
+		const attachmentsDir = getCyrusAttachmentsPath(workspaceFolderName);
 		await mkdir(attachmentsDir, { recursive: true });
 
 		// Build allowed directories list - always include attachments directory
@@ -971,12 +966,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Always set up attachments directory, even if no attachments in current comment
 		const workspaceFolderName = basename(session.workspace.path);
-		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
-			workspaceFolderName,
-			"attachments",
-		);
+		const attachmentsDir = getCyrusAttachmentsPath(workspaceFolderName);
 		// Ensure directory exists
 		await mkdir(attachmentsDir, { recursive: true });
 
@@ -2054,12 +2044,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
 		// Create attachments directory in home directory
 		const workspaceFolderName = basename(workspacePath);
-		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
-			workspaceFolderName,
-			"attachments",
-		);
+		const attachmentsDir = getCyrusAttachmentsPath(workspaceFolderName);
 
 		try {
 			const attachmentMap: Record<string, string> = {};
