@@ -7,6 +7,23 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.83 to v1.0.84 for latest Claude Code improvements. See [Claude Code v1.0.84 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1084)
 
+## [0.1.44] - 2025-08-19
+
+### Changed
+- Updated @anthropic-ai/claude-code dependency to use exact version (1.0.83) instead of caret range for improved consistency
+- Updated CLAUDE.md documentation with clearer MCP Linear integration testing instructions
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.22
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.27
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.44
+
 ## [0.1.43] - 2025-08-18
 
 ### Added
