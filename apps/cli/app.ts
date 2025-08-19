@@ -117,7 +117,7 @@ class EdgeApp {
 	private isShuttingDown = false;
 	private cyrusHome: string;
 
-	constructor(cyrusHome: string = resolve(homedir(), ".cyrus")) {
+	constructor(cyrusHome: string) {
 		this.cyrusHome = cyrusHome;
 	}
 
