@@ -44,6 +44,8 @@ import {
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import { OrchestrationManager } from "./OrchestrationManager.js";
+import { OrchestrationMessageBus } from "./OrchestrationMessageBus.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type {
 	EdgeWorkerConfig,
@@ -80,6 +82,8 @@ export class EdgeWorker extends EventEmitter {
 	private ndjsonClients: Map<string, NdjsonClient> = new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
+	private orchestrationManagers: Map<string, OrchestrationManager> = new Map(); // Maps repository ID to OrchestrationManager
+	private messageBuses: Map<string, OrchestrationMessageBus> = new Map(); // Maps repository ID to MessageBus
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -119,6 +123,28 @@ export class EdgeWorker extends EventEmitter {
 					repo.id,
 					new AgentSessionManager(linearClient),
 				);
+
+				// Create OrchestrationManager if orchestrator is configured
+				if (repo.labelPrompts?.orchestrator) {
+					const userAuthToken = repo.labelPrompts.orchestrator.userAuthToken || 
+					                      this.config.promptDefaults?.orchestrator?.userAuthToken;
+					
+					const orchestrationManager = new OrchestrationManager(
+						linearClient,
+						userAuthToken,
+					);
+					this.orchestrationManagers.set(repo.id, orchestrationManager);
+
+					// Create MessageBus for this repository
+					const messageBus = new OrchestrationMessageBus({
+						linearClient,
+						userAuthToken,
+						agentUserId: process.env.LINEAR_AGENT_USER_ID || '',
+					});
+					this.messageBuses.set(repo.id, messageBus);
+
+					console.log(`[EdgeWorker] Initialized orchestration for repository ${repo.name}`);
+				}
 			}
 		}
 
@@ -711,6 +737,12 @@ export class EdgeWorker extends EventEmitter {
 		);
 		const { agentSession } = webhook;
 		const linearAgentActivitySessionId = agentSession.id;
+		
+		// Notify orchestration manager of new agent session (for sub-issue tracking)
+		const orchestrationManager = this.orchestrationManagers.get(repository.id);
+		if (orchestrationManager) {
+			await orchestrationManager.handleWebhook(webhook);
+		}
 		const { issue } = agentSession;
 
 		const commentBody = agentSession.comment?.body;
@@ -756,7 +788,7 @@ export class EdgeWorker extends EventEmitter {
 		// Only fetch labels and determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
-		let promptType: "debugger" | "builder" | "scoper" | undefined;
+		let promptType: "debugger" | "builder" | "scoper" | "orchestrator" | undefined;
 
 		if (!isMentionTriggered) {
 			// Fetch issue labels and determine system prompt (delegation case)
@@ -768,6 +800,11 @@ export class EdgeWorker extends EventEmitter {
 			systemPrompt = systemPromptResult?.prompt;
 			systemPromptVersion = systemPromptResult?.version;
 			promptType = systemPromptResult?.type;
+			
+			// Initialize orchestration if this is an orchestrator session
+			if (promptType === "orchestrator") {
+				await this.initializeOrchestration(session, repository.id);
+			}
 
 			// Post thought about system prompt selection
 			if (systemPrompt) {
@@ -1222,6 +1259,15 @@ export class EdgeWorker extends EventEmitter {
 				message,
 			);
 		}
+
+		// Handle orchestration for session completion
+		if (message.type === "result") {
+			await this.handleOrchestrationCompletion(
+				linearAgentActivitySessionId,
+				message,
+				repositoryId,
+			);
+		}
 	}
 
 	/**
@@ -1258,7 +1304,7 @@ export class EdgeWorker extends EventEmitter {
 		| {
 				prompt: string;
 				version?: string;
-				type?: "debugger" | "builder" | "scoper";
+				type?: "debugger" | "builder" | "scoper" | "orchestrator";
 		  }
 		| undefined
 	> {
@@ -1267,7 +1313,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check each prompt type for matching labels
-		const promptTypes = ["debugger", "builder", "scoper"] as const;
+		const promptTypes = ["debugger", "builder", "scoper", "orchestrator"] as const;
 
 		for (const promptType of promptTypes) {
 			const promptConfig = repository.labelPrompts[promptType];
@@ -2620,7 +2666,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildAllowedTools(
 		repository: RepositoryConfig,
-		promptType?: "debugger" | "builder" | "scoper",
+		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
 	): string[] {
 		let baseTools: string[] = [];
 		let toolSource = "";
@@ -2879,6 +2925,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						if (scoperLabel) {
 							selectedPromptType = "scoper";
 							triggerLabel = scoperLabel;
+						} else {
+							// Check orchestrator labels
+							const orchestratorConfig = repository.labelPrompts.orchestrator;
+							const orchestratorLabels = Array.isArray(orchestratorConfig)
+								? orchestratorConfig
+								: orchestratorConfig?.labels;
+							const orchestratorLabel = orchestratorLabels?.find((label) =>
+								labels.includes(label),
+							);
+							if (orchestratorLabel) {
+								selectedPromptType = "orchestrator";
+								triggerLabel = orchestratorLabel;
+							}
 						}
 					}
 				}
@@ -3006,5 +3065,81 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Handle orchestration completion when a session finishes
+	 */
+	private async handleOrchestrationCompletion(
+		linearAgentActivitySessionId: string,
+		message: SDKMessage,
+		repositoryId: string,
+	): Promise<void> {
+		const orchestrationManager = this.orchestrationManagers.get(repositoryId);
+		const messageBus = this.messageBuses.get(repositoryId);
+		
+		if (!orchestrationManager || !messageBus) {
+			// No orchestration configured for this repository
+			return;
+		}
+
+		// Get the session to find the issue ID
+		const agentSessionManager = this.agentSessionManagers.get(repositoryId);
+		if (!agentSessionManager) {
+			return;
+		}
+
+		const session = agentSessionManager.getSession(linearAgentActivitySessionId);
+		if (!session) {
+			return;
+		}
+
+		const issueId = session.issueId;
+		
+		// Check if this is a tracked sub-issue
+		if (orchestrationManager.isTrackedSubIssue(issueId)) {
+			const result = 'content' in message ? String(message.content || '') : '';
+			const success = !('error' in message && message.error);
+			
+			console.log(`[EdgeWorker] Sub-issue ${issueId} completed with ${success ? 'success' : 'failure'}`);
+			
+			// Handle the sub-issue completion
+			await orchestrationManager.handleSubIssueCompletion(
+				issueId,
+				result,
+				success,
+			);
+		}
+		
+		// Check if this is an orchestration parent that needs to handle a sub-issue result
+		if (orchestrationManager.isOrchestrationParent(issueId)) {
+			// Parent orchestrator will be re-triggered via webhook when sub-issue posts back
+			console.log(`[EdgeWorker] Orchestration parent ${issueId} session completed`);
+		}
+	}
+
+	/**
+	 * Initialize orchestration for a parent issue with orchestrator label
+	 */
+	private async initializeOrchestration(
+		session: CyrusAgentSession,
+		repositoryId: string,
+	): Promise<void> {
+		const orchestrationManager = this.orchestrationManagers.get(repositoryId);
+		const messageBus = this.messageBuses.get(repositoryId);
+		
+		if (!orchestrationManager || !messageBus) {
+			return;
+		}
+
+		// Initialize orchestration state
+		await orchestrationManager.initializeOrchestration(
+			session.issueId,
+			session.issue.identifier,
+			session.linearAgentActivitySessionId,
+			session.metadata?.commentId || '',
+		);
+		
+		console.log(`[EdgeWorker] Initialized orchestration for parent issue ${session.issue.identifier}`);
 	}
 }

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Orchestrator role for managing complex multi-part issues
+  - New "orchestrator" system prompt that specializes in breaking down complex tasks into sub-issues
+  - Automatic parent-child issue tracking and coordination
+  - Sub-issue completion monitoring with automatic progression to next tasks
+  - Cross-issue communication via message bus for seamless orchestration
+  - Configure with `labelPrompts.orchestrator` in repository configuration
+- Parent-child issue orchestration infrastructure
+  - OrchestrationManager for tracking sub-issue relationships and status
+  - OrchestrationMessageBus for parent-child agent session communication
+  - Automatic sub-issue assignment and agent session triggering
+  - Progress tracking and reporting back to parent issues
+
+### Changed
+- Extended prompt type system to support four specialized roles: debugger, builder, scoper, and orchestrator
+- Enhanced EdgeWorker to handle orchestration workflows and sub-issue completion events
+
 ## [0.1.43] - 2025-08-18
 
 ### Added
