@@ -12,6 +12,7 @@ import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import readline from "node:readline";
 import type { Issue } from "@linear/sdk";
+import { PortSelector } from "cyrus-core";
 import {
 	EdgeWorker,
 	type EdgeWorkerConfig,
@@ -354,9 +355,9 @@ class EdgeApp {
 			return resultPromise;
 		} else {
 			// Create temporary SharedApplicationServer for OAuth flow during initial setup
-			const serverPort = process.env.CYRUS_SERVER_PORT
-				? parseInt(process.env.CYRUS_SERVER_PORT, 10)
-				: 3456;
+			const serverPort = await PortSelector.getCyrusPort(
+				process.env.LINEAR_ISSUE_IDENTIFIER,
+			);
 			const tempServer = new SharedApplicationServer(serverPort);
 
 			try {
@@ -472,6 +473,22 @@ class EdgeApp {
 			ngrokAuthToken = await this.getNgrokAuthToken(config);
 		}
 
+		// Determine port using dynamic selection
+		const serverPort = await PortSelector.getCyrusPort(
+			process.env.LINEAR_ISSUE_IDENTIFIER,
+		);
+
+		// Log the selected port
+		if (process.env.LINEAR_ISSUE_IDENTIFIER) {
+			console.log(
+				`🔧 Using dynamic port ${serverPort} for issue ${process.env.LINEAR_ISSUE_IDENTIFIER}`,
+			);
+		} else if (process.env.CYRUS_DYNAMIC_PORT === "true") {
+			console.log(`🔧 Using dynamically selected port ${serverPort}`);
+		} else {
+			console.log(`🔧 Using port ${serverPort}`);
+		}
+
 		// Create EdgeWorker configuration
 		const config: EdgeWorkerConfig = {
 			proxyUrl,
@@ -486,9 +503,7 @@ class EdgeApp {
 				process.env.CYRUS_DEFAULT_FALLBACK_MODEL ||
 				this.loadEdgeConfig().defaultFallbackModel,
 			webhookBaseUrl: process.env.CYRUS_BASE_URL,
-			serverPort: process.env.CYRUS_SERVER_PORT
-				? parseInt(process.env.CYRUS_SERVER_PORT, 10)
-				: 3456,
+			serverPort,
 			serverHost:
 				process.env.CYRUS_HOST_EXTERNAL === "true" ? "0.0.0.0" : "localhost",
 			ngrokAuthToken,
@@ -1586,9 +1601,9 @@ async function refreshTokenCommand() {
 		console.log("Opening Linear OAuth flow in your browser...");
 
 		// Use the proxy's OAuth flow with a callback to localhost
-		const serverPort = process.env.CYRUS_SERVER_PORT
-			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
-			: 3456;
+		const serverPort = await PortSelector.getCyrusPort(
+			process.env.LINEAR_ISSUE_IDENTIFIER,
+		);
 		const callbackUrl = `http://localhost:${serverPort}/callback`;
 		const oauthUrl = `${DEFAULT_PROXY_URL}/oauth/authorize?callback=${encodeURIComponent(
 			callbackUrl,

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Dynamic port selection for running multiple Cyrus instances simultaneously
+  - Automatically finds available ports when default port is in use
+  - Derives consistent ports from Linear issue IDs for workspace isolation
+  - New environment variable `CYRUS_DYNAMIC_PORT=true` to force dynamic selection
+  - Port conflict resolution prevents "EADDRINUSE" errors when running multiple instances
+
+### Changed
+- Port configuration now uses intelligent fallback mechanism instead of failing on conflicts
+
 ## [0.1.44] - 2025-08-19
 
 ### Changed

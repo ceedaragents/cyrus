@@ -14,7 +14,9 @@ export type {
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
-
+export type { PortSelectorOptions } from "./PortSelector.js";
+// Port selection utility
+export { PortSelector } from "./PortSelector.js";
 // Webhook types
 export type {
 	LinearAgentSessionCreatedWebhook,
@@ -38,7 +40,6 @@ export type {
 	LinearWebhookNotification,
 	LinearWebhookTeam,
 } from "./webhook-types.js";
-
 export {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,

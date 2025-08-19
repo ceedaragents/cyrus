@@ -295,6 +295,10 @@ CYRUS_BASE_URL=<your publicly accessible URL>
 # Legacy environment variables (still supported for backward compatibility)
 # CYRUS_WEBHOOK_BASE_URL=<url>  # Use CYRUS_BASE_URL instead
 # CYRUS_WEBHOOK_PORT=3456  # Use CYRUS_SERVER_PORT instead
+
+# Dynamic port selection (for running multiple instances)
+CYRUS_DYNAMIC_PORT=true  # Force dynamic port selection even if CYRUS_SERVER_PORT is set
+LINEAR_ISSUE_IDENTIFIER=PACK-123  # Derives consistent port from issue ID
 ```
 
 ### Webhook Configuration Options
@@ -329,6 +333,26 @@ export CYRUS_SERVER_PORT=3456
 export CYRUS_BASE_URL=https://your-domain.com
 export CYRUS_SERVER_PORT=3456
 ```
+
+**Option 4: Running Multiple Instances (Development)**
+
+When running multiple Cyrus instances for different workspaces or development/production side-by-side:
+
+```bash
+# Instance 1: Development version with custom home directory
+export CYRUS_DYNAMIC_PORT=true  # Automatically find available port
+cyrus --cyrus-home ~/.cyrusd
+
+# Instance 2: Production version (in another terminal)
+export CYRUS_SERVER_PORT=3456  # Use default port
+cyrus
+
+# Instance 3: Specific Linear issue workspace
+export LINEAR_ISSUE_IDENTIFIER=PACK-292  # Derives consistent port from issue
+cyrus --cyrus-home ~/.cyrus-pack-292
+```
+
+Each instance will select a different port automatically and display it in the console output.
 
 8. Start the cyrus server
 
