@@ -86,8 +86,8 @@ export interface EdgeWorkerConfig {
 	// Repository configurations
 	repositories: RepositoryConfig[];
 
-	// Cyrus home directory (defaults to ~/.cyrus)
-	cyrusHome?: string;
+	// Cyrus home directory
+	cyrusHome: string;
 
 	// Optional handlers that apps can implement
 	handlers?: {

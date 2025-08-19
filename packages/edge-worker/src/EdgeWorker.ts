@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -85,7 +84,7 @@ export class EdgeWorker extends EventEmitter {
 	constructor(config: EdgeWorkerConfig) {
 		super();
 		this.config = config;
-		this.cyrusHome = config.cyrusHome || join(homedir(), ".cyrus");
+		this.cyrusHome = config.cyrusHome;
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);

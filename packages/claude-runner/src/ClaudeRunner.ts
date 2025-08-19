@@ -6,7 +6,6 @@ import {
 	type WriteStream,
 	writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import {
 	AbortError,
@@ -143,7 +142,7 @@ export class ClaudeRunner extends EventEmitter {
 	constructor(config: ClaudeRunnerConfig) {
 		super();
 		this.config = config;
-		this.cyrusHome = config.cyrusHome || join(homedir(), ".cyrus");
+		this.cyrusHome = config.cyrusHome;
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
