@@ -24,9 +24,30 @@ import open from "open";
 // Parse command line arguments
 const args = process.argv.slice(2);
 const envFileArg = args.find((arg) => arg.startsWith("--env-file="));
+const cyrusHomeArg = args.find((arg) => arg.startsWith("--cyrus-home="));
 
 // Constants
 const DEFAULT_PROXY_URL = "https://cyrus-proxy.ceedar.workers.dev";
+const DEFAULT_CYRUS_DIR = ".cyrus";
+
+// Get the cyrus home directory from CLI flag, environment variable, or default
+function getCyrusHome(): string {
+	// Priority 1: Command-line flag
+	if (cyrusHomeArg) {
+		const homeDir = cyrusHomeArg.split("=")[1];
+		if (homeDir) {
+			return resolve(homeDir);
+		}
+	}
+	
+	// Priority 2: Environment variable
+	if (process.env.CYRUS_HOME) {
+		return resolve(process.env.CYRUS_HOME);
+	}
+	
+	// Priority 3: Default ~/.cyrus
+	return resolve(homedir(), DEFAULT_CYRUS_DIR);
+}
 
 // Note: __dirname removed since version is now hardcoded
 
@@ -55,9 +76,14 @@ Options:
   --version          Show version number
   --help, -h         Show help
   --env-file=<path>  Load environment variables from file
+  --cyrus-home=<path> Set custom Cyrus home directory (default: ~/.cyrus)
+
+Environment Variables:
+  CYRUS_HOME         Set custom Cyrus home directory (overridden by --cyrus-home)
 
 Examples:
   cyrus                          Start the edge worker
+  cyrus --cyrus-home=/tmp/cyrus  Use custom home directory
   cyrus check-tokens             Check all Linear token statuses
   cyrus refresh-token            Interactive token refresh
   cyrus add-repository           Add a new repository interactively
@@ -103,7 +129,7 @@ class EdgeApp {
 	 * Get the edge configuration file path
 	 */
 	getEdgeConfigPath(): string {
-		return resolve(homedir(), ".cyrus", "config.json");
+		return resolve(getCyrusHome(), "config.json");
 	}
 
 	/**
@@ -246,8 +272,7 @@ class EdgeApp {
 				.replace(/[^a-zA-Z0-9-_]/g, "-")
 				.toLowerCase();
 			const workspaceBaseDir = resolve(
-				homedir(),
-				".cyrus",
+				getCyrusHome(),
 				"workspaces",
 				repoNameSafe,
 			);
@@ -520,7 +545,7 @@ class EdgeApp {
 							this.saveEdgeConfig(edgeConfig);
 							console.log("\n✅ Repository configured successfully!");
 							console.log(
-								"📝 ~/.cyrus/config.json file has been updated with your new repository configuration.",
+								`📝 ${this.getEdgeConfigPath()} file has been updated with your new repository configuration.`,
 							);
 							console.log(
 								"💡 You can edit this file and restart Cyrus at any time to modify settings.",
@@ -934,7 +959,7 @@ class EdgeApp {
 
 							console.log("\n✅ Repository configured successfully!");
 							console.log(
-								"📝 ~/.cyrus/config.json file has been updated with your repository configuration.",
+								`📝 ${this.getEdgeConfigPath()} file has been updated with your repository configuration.`,
 							);
 							console.log(
 								"💡 You can edit this file and restart Cyrus at any time to modify settings.",

@@ -666,9 +666,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// Pre-create attachments directory even if no attachments exist yet
 		const workspaceFolderName = basename(workspace.path);
+		const cyrusHome = process.env.CYRUS_HOME || join(homedir(), ".cyrus");
 		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
+			cyrusHome,
 			workspaceFolderName,
 			"attachments",
 		);
@@ -971,9 +971,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// Always set up attachments directory, even if no attachments in current comment
 		const workspaceFolderName = basename(session.workspace.path);
+		const cyrusHome = process.env.CYRUS_HOME || join(homedir(), ".cyrus");
 		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
+			cyrusHome,
 			workspaceFolderName,
 			"attachments",
 		);
@@ -2054,9 +2054,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
 		// Create attachments directory in home directory
 		const workspaceFolderName = basename(workspacePath);
+		const cyrusHome = process.env.CYRUS_HOME || join(homedir(), ".cyrus");
 		const attachmentsDir = join(
-			homedir(),
-			".cyrus",
+			cyrusHome,
 			workspaceFolderName,
 			"attachments",
 		);
@@ -2179,16 +2179,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}
 
 			// Generate attachment manifest
-			const manifest = this.generateAttachmentManifest({
-				attachmentMap,
-				imageMap,
-				totalFound: allUrls.length,
-				downloaded: attachmentCount,
-				imagesDownloaded: imageCount,
-				skipped: skippedCount,
-				failed: failedCount,
-				nativeAttachments,
-			});
+			const manifest = this.generateAttachmentManifest(
+				{
+					attachmentMap,
+					imageMap,
+					totalFound: allUrls.length,
+					downloaded: attachmentCount,
+					imagesDownloaded: imageCount,
+					skipped: skippedCount,
+					failed: failedCount,
+					nativeAttachments,
+				},
+				workspaceFolderName,
+			);
 
 			// Always return the attachments directory path (it's pre-created)
 			return {
@@ -2419,16 +2422,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	/**
 	 * Generate a markdown section describing downloaded attachments
 	 */
-	private generateAttachmentManifest(downloadResult: {
-		attachmentMap: Record<string, string>;
-		imageMap: Record<string, string>;
-		totalFound: number;
-		downloaded: number;
-		imagesDownloaded: number;
-		skipped: number;
-		failed: number;
-		nativeAttachments?: Array<{ title: string; url: string }>;
-	}): string {
+	private generateAttachmentManifest(
+		downloadResult: {
+			attachmentMap: Record<string, string>;
+			imageMap: Record<string, string>;
+			totalFound: number;
+			downloaded: number;
+			imagesDownloaded: number;
+			skipped: number;
+			failed: number;
+			nativeAttachments?: Array<{ title: string; url: string }>;
+		},
+		workspaceFolderName: string,
+	): string {
 		const {
 			attachmentMap,
 			imageMap,
@@ -2453,8 +2459,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		if (totalFound === 0 && nativeAttachments.length === 0) {
 			manifest += "No attachments were found in this issue.\n\n";
+			const cyrusHome = process.env.CYRUS_HOME ? process.env.CYRUS_HOME : "~/.cyrus";
 			manifest +=
-				"The attachments directory `~/.cyrus/<workspace>/attachments` has been created and is available for any future attachments that may be added to this issue.\n";
+				`The attachments directory \`${cyrusHome}/${workspaceFolderName}/attachments\` has been created and is available for any future attachments that may be added to this issue.\n`;
 			return manifest;
 		}
 
@@ -2475,8 +2482,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				"**Note**: Some attachments failed to download. This may be due to authentication issues or the files being unavailable. The agent will continue processing the issue with the available information.\n\n";
 		}
 
+		const cyrusHome = process.env.CYRUS_HOME ? process.env.CYRUS_HOME : "~/.cyrus";
 		manifest +=
-			"Attachments have been downloaded to the `~/.cyrus/<workspace>/attachments` directory:\n\n";
+			`Attachments have been downloaded to the \`${cyrusHome}/${workspaceFolderName}/attachments\` directory:\n\n`;
 
 		// List images first
 		if (Object.keys(imageMap).length > 0) {

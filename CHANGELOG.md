@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Configurable Cyrus home directory for flexible workspace management
+  - New `--cyrus-home=<path>` CLI flag to specify custom config/working directory
+  - Environment variable `CYRUS_HOME` support (overridden by CLI flag)
+  - Useful for running debugging/development instances with separate configurations
+  - All Cyrus data (config, state, workspaces, logs, attachments) now respects custom home directory
 ## [0.1.43] - 2025-08-18
 
 ### Added

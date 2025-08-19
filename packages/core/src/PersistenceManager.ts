@@ -40,8 +40,12 @@ export class PersistenceManager {
 	private persistencePath: string;
 
 	constructor(persistencePath?: string) {
-		this.persistencePath =
-			persistencePath || join(homedir(), ".cyrus", "state");
+		// Use provided path, or CYRUS_HOME env var, or default to ~/.cyrus
+		const cyrusHome = process.env.CYRUS_HOME 
+			? join(process.env.CYRUS_HOME, "state")
+			: join(homedir(), ".cyrus", "state");
+		
+		this.persistencePath = persistencePath || cyrusHome;
 	}
 
 	/**

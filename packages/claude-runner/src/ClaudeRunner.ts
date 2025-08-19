@@ -459,8 +459,8 @@ export class ClaudeRunner extends EventEmitter {
 		// If logging has already been set up and we now have versions, write the version file
 		if (this.logStream && versions) {
 			try {
-				const cyrusDir = join(homedir(), ".cyrus");
-				const logsDir = join(cyrusDir, "logs");
+				const cyrusHome = process.env.CYRUS_HOME || join(homedir(), ".cyrus");
+				const logsDir = join(cyrusHome, "logs");
 				const workspaceName =
 					this.config.workspaceName ||
 					(this.config.workingDirectory
@@ -601,8 +601,8 @@ export class ClaudeRunner extends EventEmitter {
 			}
 
 			// Create logs directory structure: ~/.cyrus/logs/<workspace-name>/
-			const cyrusDir = join(homedir(), ".cyrus");
-			const logsDir = join(cyrusDir, "logs");
+			const cyrusHome = process.env.CYRUS_HOME || join(homedir(), ".cyrus");
+			const logsDir = join(cyrusHome, "logs");
 
 			// Get workspace name from config or extract from working directory
 			const workspaceName =
