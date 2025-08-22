@@ -1,6 +1,7 @@
 export { NdjsonClient } from "./NdjsonClient.js";
 export { BaseTransport } from "./transports/BaseTransport.js";
 export { WebhookTransport } from "./transports/WebhookTransport.js";
+export { WebhookTransportSDK } from "./transports/WebhookTransportSDK.js";
 export type {
 	ConnectionEvent,
 	EdgeEvent,

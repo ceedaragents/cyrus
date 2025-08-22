@@ -24,8 +24,8 @@ importers:
   apps/cli:
     dependencies:
       '@linear/sdk':
-        specifier: ^55.1.0
-        version: 55.2.0(encoding@0.1.13)
+        specifier: ^57.0.0
+        version: 57.0.0(encoding@0.1.13)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../../packages/claude-runner
@@ -78,6 +78,9 @@ importers:
 
   apps/proxy-worker:
     dependencies:
+      '@linear/sdk':
+        specifier: ^57.0.0
+        version: 57.0.0(encoding@0.1.13)
       itty-router:
         specifier: ^4.0.23
         version: 4.2.2
@@ -117,8 +120,8 @@ importers:
   packages/core:
     dependencies:
       '@linear/sdk':
-        specifier: ^55.1.0
-        version: 55.2.0(encoding@0.1.13)
+        specifier: ^57.0.0
+        version: 57.0.0(encoding@0.1.13)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -136,8 +139,8 @@ importers:
   packages/edge-worker:
     dependencies:
       '@linear/sdk':
-        specifier: ^55.1.0
-        version: 55.2.0(encoding@0.1.13)
+        specifier: ^57.0.0
+        version: 57.0.0(encoding@0.1.13)
       '@ngrok/ngrok':
         specifier: ^1.5.1
         version: 1.5.1
@@ -174,6 +177,10 @@ importers:
         version: 3.1.0(typescript@5.8.3)(vitest@1.6.1(@types/node@20.19.4)(lightningcss@1.30.1))
 
   packages/ndjson-client:
+    dependencies:
+      '@linear/sdk':
+        specifier: ^57.0.0
+        version: 57.0.0(encoding@0.1.13)
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -769,8 +776,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
-  '@linear/sdk@55.2.0':
-    resolution: {integrity: sha512-npIh6nq32Q2dYqXRn4fw6VWB3rO3+JRpT9aXNhCQLYeeNJlAW9z5IirggU+n76tpXmp35/VMV6fi6sqWUqTpbw==}
+  '@linear/sdk@57.0.0':
+    resolution: {integrity: sha512-9xYjUXVfRl5LgzM4y+zd7tDxWS3n0M+bT8brIVOQJK2VziUD7vE0J16gEUHAfsOgHmbi6JhSwRV9xoQwzdO7Gg==}
     engines: {node: '>=12.x', yarn: 1.x}
 
   '@ngrok/ngrok-android-arm64@1.5.1':
@@ -2721,7 +2728,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
 
-  '@linear/sdk@55.2.0(encoding@0.1.13)':
+  '@linear/sdk@57.0.0(encoding@0.1.13)':
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@15.10.1)
       graphql: 15.10.1

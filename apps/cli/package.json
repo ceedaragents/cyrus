@@ -40,9 +40,9 @@
 	"author": "",
 	"license": "MIT",
 	"dependencies": {
-		"@linear/sdk": "^55.1.0",
-		"cyrus-core": "workspace:*",
+		"@linear/sdk": "^57.0.0",
 		"cyrus-claude-runner": "workspace:*",
+		"cyrus-core": "workspace:*",
 		"cyrus-edge-worker": "workspace:*",
 		"cyrus-ndjson-client": "workspace:*",
 		"dotenv": "^16.5.0",
