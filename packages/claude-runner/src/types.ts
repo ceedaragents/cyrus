@@ -12,6 +12,7 @@ export interface ClaudeRunnerConfig {
 	allowedTools?: string[];
 	allowedDirectories?: string[];
 	resumeSessionId?: string; // Session ID to resume from previous Claude session
+	continueConversation?: boolean; // Always pass --continue flag to replay user messages
 	workspaceName?: string;
 	systemPrompt?: string;
 	appendSystemPrompt?: string; // Additional prompt to append to the default system prompt

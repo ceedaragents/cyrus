@@ -335,6 +335,9 @@ export class ClaudeRunner extends EventEmitter {
 					...(this.config.resumeSessionId && {
 						resume: this.config.resumeSessionId,
 					}),
+					...(this.config.continueConversation !== undefined && {
+						continue: this.config.continueConversation,
+					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 				},
 			};

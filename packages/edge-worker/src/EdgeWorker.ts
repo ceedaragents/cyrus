@@ -2599,6 +2599,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			model: repository.model || this.config.defaultModel,
 			fallbackModel:
 				repository.fallbackModel || this.config.defaultFallbackModel,
+			// Always enable continue conversation to replay user messages
+			continueConversation: true,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
 					linearAgentActivitySessionId,

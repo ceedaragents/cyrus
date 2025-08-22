@@ -44,16 +44,17 @@ async function main() {
 	const baseConfig = {
 		workingDirectory: "/tmp/test-continue",
 		allowedTools: ["Read", "Edit"],
+		cyrusHome: "/tmp/test-cyrus-home",
 		onMessage: (msg) => console.log(`  📧 ${msg.type}`),
 	};
 
-	// Test 1: Without continueSession
-	await testConfig("Without continueSession", baseConfig);
+	// Test 1: Without continueConversation
+	await testConfig("Without continueConversation", baseConfig);
 
-	// Test 2: With continueSession
-	await testConfig("With continueSession = true", {
+	// Test 2: With continueConversation
+	await testConfig("With continueConversation = true", {
 		...baseConfig,
-		continueSession: true,
+		continueConversation: true,
 	});
 
 	// Test 3: With MCP servers
@@ -63,9 +64,9 @@ async function main() {
 	});
 
 	// Test 4: With both
-	await testConfig("With MCP + continueSession", {
+	await testConfig("With MCP + continueConversation", {
 		...baseConfig,
-		continueSession: true,
+		continueConversation: true,
 		mcpConfigPath: ["/Users/agentops/code/ceedarmcpconfig.json"],
 	});
 }
