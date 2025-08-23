@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Updated @anthropic-ai/claude-code from v1.0.83 to v1.0.88 for latest Claude Code improvements including OAuth fix, token limit visibility, Sonnet 4 as default model, and model aliases. See [Claude Code v1.0.88 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1088)
+- Updated @anthropic-ai/claude-code from v1.0.88 to v1.0.89 for latest Claude Code improvements. See [Claude Code v1.0.89 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1089)
 
 ## [0.1.44] - 2025-08-19
 
