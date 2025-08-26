@@ -80,6 +80,7 @@ export class EdgeWorker extends EventEmitter {
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
+	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -117,10 +118,12 @@ export class EdgeWorker extends EventEmitter {
 				});
 				this.linearClients.set(repo.id, linearClient);
 
-				// Create AgentSessionManager for this repository
+				// Create AgentSessionManager for this repository with parent session lookup
 				this.agentSessionManagers.set(
 					repo.id,
-					new AgentSessionManager(linearClient),
+					new AgentSessionManager(linearClient, (childSessionId: string) =>
+						this.childToParentAgentSession.get(childSessionId),
+					),
 				);
 			}
 		}
@@ -793,6 +796,11 @@ export class EdgeWorker extends EventEmitter {
 			allowedTools,
 		);
 
+		// Check if this session has a parent
+		const parentAgentSessionId = this.childToParentAgentSession.get(
+			linearAgentActivitySessionId,
+		);
+
 		// Create Claude runner with attachment directory access and optional system prompt
 		const runnerConfig = this.buildClaudeRunnerConfig(
 			session,
@@ -801,6 +809,8 @@ export class EdgeWorker extends EventEmitter {
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
+			undefined, // resumeSessionId
+			parentAgentSessionId,
 		);
 		const runner = new ClaudeRunner(runnerConfig);
 
@@ -1104,6 +1114,11 @@ export class EdgeWorker extends EventEmitter {
 
 			const allowedDirectories = [attachmentsDir];
 
+			// Check if this session has a parent
+			const parentAgentSessionId = this.childToParentAgentSession.get(
+				linearAgentActivitySessionId,
+			);
+
 			// Create runner - resume existing session or start new one
 			const runnerConfig = this.buildClaudeRunnerConfig(
 				session,
@@ -1113,6 +1128,7 @@ export class EdgeWorker extends EventEmitter {
 				allowedTools,
 				allowedDirectories,
 				needsNewClaudeSession ? undefined : session.claudeSessionId,
+				parentAgentSessionId,
 			);
 
 			const runner = new ClaudeRunner(runnerConfig);
@@ -2593,7 +2609,59 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		allowedTools: string[],
 		allowedDirectories: string[],
 		resumeSessionId?: string,
+		parentAgentSessionId?: string,
 	): any {
+		// Build hooks configuration
+		const hooks = {
+			PostToolUse: [
+				{
+					matcher: "mcp__cyrus-mcp-tools__linear_agent_session_create",
+					hooks: [
+						async (
+							input: any,
+							_toolUseID: string | undefined,
+							_options: { signal: AbortSignal },
+						) => {
+							console.log(
+								`[PostToolUse Hook] Tool ${input.tool_name} completed`,
+							);
+
+							// Check if this is the linear_agent_session_create tool
+							if (
+								input.tool_name ===
+								"mcp__cyrus-mcp-tools__linear_agent_session_create"
+							) {
+								const toolResponse = input.tool_response;
+
+								// Extract agentSessionId from the tool response
+								if (
+									toolResponse &&
+									typeof toolResponse === "object" &&
+									"agentSessionId" in toolResponse
+								) {
+									const childAgentSessionId = (toolResponse as any)
+										.agentSessionId;
+
+									// If there's a parent session, create the mapping
+									if (parentAgentSessionId && childAgentSessionId) {
+										console.log(
+											`[PostToolUse Hook] Creating parent-child mapping: ${childAgentSessionId} -> ${parentAgentSessionId}`,
+										);
+										this.childToParentAgentSession.set(
+											childAgentSessionId,
+											parentAgentSessionId,
+										);
+									}
+								}
+							}
+
+							return { continue: true };
+						},
+					],
+				},
+			],
+		};
+
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -2607,6 +2675,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			model: repository.model || this.config.defaultModel,
 			fallbackModel:
 				repository.fallbackModel || this.config.defaultFallbackModel,
+			hooks,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
 					linearAgentActivitySessionId,

@@ -30,9 +30,14 @@ export class AgentSessionManager {
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
+	private getParentSessionId?: (childSessionId: string) => string | undefined;
 
-	constructor(linearClient: LinearClient) {
+	constructor(
+		linearClient: LinearClient,
+		getParentSessionId?: (childSessionId: string) => string | undefined,
+	) {
 		this.linearClient = linearClient;
+		this.getParentSessionId = getParentSessionId;
 	}
 
 	/**
@@ -206,6 +211,47 @@ export class AgentSessionManager {
 		// Add result entry if present
 		if ("result" in resultMessage && resultMessage.result) {
 			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+
+			// Check if this is a child session and send result to parent
+			if (this.getParentSessionId) {
+				const parentAgentSessionId = this.getParentSessionId(
+					linearAgentActivitySessionId,
+				);
+				if (parentAgentSessionId) {
+					console.log(
+						`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
+					);
+
+					// Send the result to the parent session as a prompted message
+					try {
+						const childResult = resultMessage.result;
+						// Create a prompted activity in the parent session
+						const activity = await this.linearClient.createAgentActivity({
+							agentSessionId: parentAgentSessionId,
+							content: {
+								type: "prompted",
+								prompt: `Child agent session completed with result:\n\n${childResult}`,
+							},
+						});
+
+						if (activity.success) {
+							console.log(
+								`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
+							);
+						} else {
+							console.error(
+								`[AgentSessionManager] Failed to create prompted activity in parent session:`,
+								activity,
+							);
+						}
+					} catch (error) {
+						console.error(
+							`[AgentSessionManager] Failed to send result to parent session:`,
+							error,
+						);
+					}
+				}
+			}
 		}
 	}
 

@@ -1,4 +1,6 @@
 import type {
+	HookCallbackMatcher,
+	HookEvent,
 	McpServerConfig,
 	SDKAssistantMessage,
 	SDKMessage,
@@ -25,6 +27,7 @@ export interface ClaudeRunnerConfig {
 		userPromptVersion?: string;
 		systemPromptVersion?: string;
 	};
+	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>; // Claude SDK hooks
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;

@@ -9,10 +9,15 @@ All notable changes to this project will be documented in this file.
   - File upload capability: Upload files to Linear and get asset URLs for use in issues and comments
   - Agent session creation: Create AI/bot tracking sessions on Linear issues
   - Automatically available in all Cyrus sessions without additional configuration
+- PostToolUse hook integration for tracking parent-child agent session relationships
+  - Automatically captures child agent session IDs when linear_agent_session_create tool is used
+  - Maintains mapping of child sessions to parent sessions for hierarchical tracking
+  - Child session results are automatically forwarded to parent sessions upon completion
 
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.88 to v1.0.89 for latest Claude Code improvements. See [Claude Code v1.0.89 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1089)
 - Upgraded @linear/sdk from v38/v55 to v58.0.0 across all packages for latest Linear API features
+- Enhanced ClaudeRunner and EdgeWorker to support Claude Code SDK hooks for tool interception
 
 ### Packages
 
