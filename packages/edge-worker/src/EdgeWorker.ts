@@ -796,11 +796,6 @@ export class EdgeWorker extends EventEmitter {
 			allowedTools,
 		);
 
-		// Check if this session has a parent
-		const parentAgentSessionId = this.childToParentAgentSession.get(
-			linearAgentActivitySessionId,
-		);
-
 		// Create Claude runner with attachment directory access and optional system prompt
 		const runnerConfig = this.buildClaudeRunnerConfig(
 			session,
@@ -810,7 +805,7 @@ export class EdgeWorker extends EventEmitter {
 			allowedTools,
 			allowedDirectories,
 			undefined, // resumeSessionId
-			parentAgentSessionId,
+			linearAgentActivitySessionId, // Pass current session ID as parent context
 		);
 		const runner = new ClaudeRunner(runnerConfig);
 
@@ -1114,11 +1109,6 @@ export class EdgeWorker extends EventEmitter {
 
 			const allowedDirectories = [attachmentsDir];
 
-			// Check if this session has a parent
-			const parentAgentSessionId = this.childToParentAgentSession.get(
-				linearAgentActivitySessionId,
-			);
-
 			// Create runner - resume existing session or start new one
 			const runnerConfig = this.buildClaudeRunnerConfig(
 				session,
@@ -1128,7 +1118,7 @@ export class EdgeWorker extends EventEmitter {
 				allowedTools,
 				allowedDirectories,
 				needsNewClaudeSession ? undefined : session.claudeSessionId,
-				parentAgentSessionId,
+				linearAgentActivitySessionId, // Pass current session ID as parent context
 			);
 
 			const runner = new ClaudeRunner(runnerConfig);

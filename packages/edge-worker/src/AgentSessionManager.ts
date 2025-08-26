@@ -222,31 +222,37 @@ export class AgentSessionManager {
 						`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
 					);
 
-					// Send the result to the parent session as a prompted message
+					// Stream the result to the parent session's Claude runner
 					try {
-						const childResult = resultMessage.result;
-						// Create a prompted activity in the parent session
-						const activity = await this.linearClient.createAgentActivity({
-							agentSessionId: parentAgentSessionId,
-							content: {
-								type: "prompted",
-								prompt: `Child agent session completed with result:\n\n${childResult}`,
-							},
-						});
-
-						if (activity.success) {
+						const parentSession = this.sessions.get(parentAgentSessionId);
+						if (parentSession && parentSession.claudeRunner) {
+							const childResult = resultMessage.result;
+							const promptToParent = `Child agent session completed with result:\n\n${childResult}`;
+							
+							// Check if parent runner is streaming, otherwise start streaming
+							if (parentSession.claudeRunner.isStreaming()) {
+								console.log(
+									`[AgentSessionManager] Adding child result to parent's existing stream`,
+								);
+								parentSession.claudeRunner.addStreamMessage(promptToParent);
+							} else {
+								console.log(
+									`[AgentSessionManager] Starting new stream for parent with child result`,
+								);
+								await parentSession.claudeRunner.startStreaming(promptToParent);
+							}
+							
 							console.log(
-								`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
+								`[AgentSessionManager] Successfully streamed child result to parent session ${parentAgentSessionId}`,
 							);
 						} else {
-							console.error(
-								`[AgentSessionManager] Failed to create prompted activity in parent session:`,
-								activity,
+							console.warn(
+								`[AgentSessionManager] Parent session ${parentAgentSessionId} not found or has no runner`,
 							);
 						}
 					} catch (error) {
 						console.error(
-							`[AgentSessionManager] Failed to send result to parent session:`,
+							`[AgentSessionManager] Failed to stream result to parent session:`,
 							error,
 						);
 					}
