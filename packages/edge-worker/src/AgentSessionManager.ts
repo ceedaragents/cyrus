@@ -31,13 +31,16 @@ export class AgentSessionManager {
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
+	private resumeParentSession?: (parentSessionId: string, prompt: string) => Promise<void>;
 
 	constructor(
 		linearClient: LinearClient,
 		getParentSessionId?: (childSessionId: string) => string | undefined,
+		resumeParentSession?: (parentSessionId: string, prompt: string) => Promise<void>,
 	) {
 		this.linearClient = linearClient;
 		this.getParentSessionId = getParentSessionId;
+		this.resumeParentSession = resumeParentSession;
 	}
 
 	/**
@@ -213,7 +216,7 @@ export class AgentSessionManager {
 			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 
 			// Check if this is a child session and send result to parent
-			if (this.getParentSessionId) {
+			if (this.getParentSessionId && this.resumeParentSession) {
 				const parentAgentSessionId = this.getParentSessionId(
 					linearAgentActivitySessionId,
 				);
@@ -222,37 +225,20 @@ export class AgentSessionManager {
 						`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
 					);
 
-					// Stream the result to the parent session's Claude runner
+					// Resume parent session with child result
 					try {
-						const parentSession = this.sessions.get(parentAgentSessionId);
-						if (parentSession && parentSession.claudeRunner) {
-							const childResult = resultMessage.result;
-							const promptToParent = `Child agent session completed with result:\n\n${childResult}`;
-							
-							// Check if parent runner is streaming, otherwise start streaming
-							if (parentSession.claudeRunner.isStreaming()) {
-								console.log(
-									`[AgentSessionManager] Adding child result to parent's existing stream`,
-								);
-								parentSession.claudeRunner.addStreamMessage(promptToParent);
-							} else {
-								console.log(
-									`[AgentSessionManager] Starting new stream for parent with child result`,
-								);
-								await parentSession.claudeRunner.startStreaming(promptToParent);
-							}
-							
-							console.log(
-								`[AgentSessionManager] Successfully streamed child result to parent session ${parentAgentSessionId}`,
-							);
-						} else {
-							console.warn(
-								`[AgentSessionManager] Parent session ${parentAgentSessionId} not found or has no runner`,
-							);
-						}
+						const childResult = resultMessage.result;
+						const promptToParent = `Child agent session completed with result:\n\n${childResult}`;
+						
+						// Use the resumeParentSession callback to handle the parent session
+						await this.resumeParentSession(parentAgentSessionId, promptToParent);
+						
+						console.log(
+							`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
+						);
 					} catch (error) {
 						console.error(
-							`[AgentSessionManager] Failed to stream result to parent session:`,
+							`[AgentSessionManager] Failed to resume parent session with child result:`,
 							error,
 						);
 					}

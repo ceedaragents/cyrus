@@ -118,13 +118,31 @@ export class EdgeWorker extends EventEmitter {
 				});
 				this.linearClients.set(repo.id, linearClient);
 
-				// Create AgentSessionManager for this repository with parent session lookup
-				this.agentSessionManagers.set(
-					repo.id,
-					new AgentSessionManager(linearClient, (childSessionId: string) =>
-						this.childToParentAgentSession.get(childSessionId),
-					),
+				// Create AgentSessionManager for this repository with parent session lookup and resume callback
+				const agentSessionManager = new AgentSessionManager(
+					linearClient,
+					(childSessionId: string) => this.childToParentAgentSession.get(childSessionId),
+					async (parentSessionId: string, prompt: string) => {
+						// Get the parent session and repository
+						const parentSession = agentSessionManager.getSession(parentSessionId);
+						if (!parentSession) {
+							console.error(`[EdgeWorker] Parent session ${parentSessionId} not found`);
+							return;
+						}
+						
+						// Resume the parent session with the child's result
+						await this.resumeClaudeSession(
+							parentSession,
+							repo,
+							parentSessionId,
+							agentSessionManager,
+							prompt,
+							"", // No attachment manifest for child results
+							false, // Not a new session
+						);
+					},
 				);
+				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
 		}
 
@@ -1072,85 +1090,17 @@ export class EdgeWorker extends EventEmitter {
 			return; // Exit early - comment has been added to stream
 		}
 
-		// Stop existing runner if it's not streaming or stream addition failed
-		if (existingRunner) {
-			existingRunner.stop();
-		}
-
-		// For newly created sessions or sessions without claudeSessionId, create a fresh Claude session
-		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
-
+		// Use the new resumeClaudeSession function
 		try {
-			// Fetch full issue details to get labels (needed for both new and existing sessions)
-			const fullIssue = await this.fetchFullIssueDetails(
-				issue.id,
-				repository.id,
-			);
-			if (!fullIssue) {
-				throw new Error(`Failed to fetch full issue details for ${issue.id}`);
-			}
-
-			// Fetch issue labels and determine system prompt (same as in handleAgentSessionCreatedWebhook)
-			const labels = await this.fetchIssueLabels(fullIssue);
-			const systemPromptResult = await this.determineSystemPromptFromLabels(
-				labels,
-				repository,
-			);
-			const systemPrompt = systemPromptResult?.prompt;
-			const promptType = systemPromptResult?.type;
-
-			// Build allowed tools list with Linear MCP tools (now with prompt type context)
-			const allowedTools = this.buildAllowedTools(repository, promptType);
-
-			console.log(
-				`[EdgeWorker] Configured allowed tools for ${issue.identifier} (continued session):`,
-				allowedTools,
-			);
-
-			const allowedDirectories = [attachmentsDir];
-
-			// Create runner - resume existing session or start new one
-			const runnerConfig = this.buildClaudeRunnerConfig(
+			await this.resumeClaudeSession(
 				session,
 				repository,
 				linearAgentActivitySessionId,
-				systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				needsNewClaudeSession ? undefined : session.claudeSessionId,
-				linearAgentActivitySessionId, // Pass current session ID as parent context
-			);
-
-			const runner = new ClaudeRunner(runnerConfig);
-
-			// Store new runner by comment thread root
-			// Store runner by comment ID
-			agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
-
-			// Save state after mapping changes
-			await this.savePersistedState();
-
-			// Prepare the prompt - different logic for new vs existing sessions
-			const fullPrompt = await this.buildSessionPrompt(
-				isNewSession,
-				fullIssue,
-				repository,
+				agentSessionManager,
 				promptBody,
 				attachmentManifest,
+				isNewSession,
 			);
-
-			if (isNewSession) {
-				console.log(
-					`[EdgeWorker] Building initial prompt for new session for issue ${fullIssue.identifier}`,
-				);
-			}
-
-			// Start streaming session
-			const sessionType = needsNewClaudeSession ? "new" : "resumed";
-			console.log(
-				`[EdgeWorker] Starting ${sessionType} streaming session for issue ${issue.identifier}`,
-			);
-			await runner.startStreaming(fullPrompt);
 		} catch (error) {
 			console.error("Failed to continue conversation:", error);
 			// Remove any partially created session
@@ -2982,6 +2932,127 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				error,
 			);
 		}
+	}
+
+	/**
+	 * Resume or create a Claude session with the given prompt
+	 * This is the core logic for handling prompted agent activities
+	 * @param session The Cyrus agent session
+	 * @param repository The repository configuration
+	 * @param linearAgentActivitySessionId The Linear agent session ID
+	 * @param agentSessionManager The agent session manager
+	 * @param promptBody The prompt text to send
+	 * @param attachmentManifest Optional attachment manifest
+	 * @param isNewSession Whether this is a new session
+	 */
+	async resumeClaudeSession(
+		session: CyrusAgentSession,
+		repository: RepositoryConfig,
+		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
+		promptBody: string,
+		attachmentManifest: string = "",
+		isNewSession: boolean = false,
+	): Promise<void> {
+		// Check for existing runner
+		const existingRunner = session.claudeRunner;
+		
+		// If there's an existing streaming runner, add to it
+		if (existingRunner?.isStreaming()) {
+			console.log(
+				`[EdgeWorker] Adding prompt to existing stream for agent activity session ${linearAgentActivitySessionId}`,
+			);
+			
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
+			
+			existingRunner.addStreamMessage(fullPrompt);
+			return;
+		}
+		
+		// Stop existing runner if it's not streaming
+		if (existingRunner) {
+			existingRunner.stop();
+		}
+		
+		// Determine if we need a new Claude session
+		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
+		
+		// Fetch full issue details
+		const fullIssue = await this.fetchFullIssueDetails(
+			session.issueId,
+			repository.id,
+		);
+		if (!fullIssue) {
+			throw new Error(`Failed to fetch full issue details for ${session.issueId}`);
+		}
+		
+		// Fetch issue labels and determine system prompt
+		const labels = await this.fetchIssueLabels(fullIssue);
+		const systemPromptResult = await this.determineSystemPromptFromLabels(
+			labels,
+			repository,
+		);
+		const systemPrompt = systemPromptResult?.prompt;
+		const promptType = systemPromptResult?.type;
+		
+		// Build allowed tools list
+		const allowedTools = this.buildAllowedTools(repository, promptType);
+		
+		console.log(
+			`[EdgeWorker] Configured allowed tools for issue ${fullIssue.identifier}:`,
+			allowedTools,
+		);
+		
+		// Set up attachments directory
+		const workspaceFolderName = basename(session.workspace.path);
+		const attachmentsDir = join(
+			this.cyrusHome,
+			workspaceFolderName,
+			"attachments",
+		);
+		await mkdir(attachmentsDir, { recursive: true });
+		
+		const allowedDirectories = [attachmentsDir];
+		
+		// Create runner configuration
+		const runnerConfig = this.buildClaudeRunnerConfig(
+			session,
+			repository,
+			linearAgentActivitySessionId,
+			systemPrompt,
+			allowedTools,
+			allowedDirectories,
+			needsNewClaudeSession ? undefined : session.claudeSessionId,
+			linearAgentActivitySessionId,
+		);
+		
+		const runner = new ClaudeRunner(runnerConfig);
+		
+		// Store runner
+		agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
+		
+		// Save state
+		await this.savePersistedState();
+		
+		// Prepare the full prompt
+		const fullPrompt = await this.buildSessionPrompt(
+			isNewSession,
+			fullIssue,
+			repository,
+			promptBody,
+			attachmentManifest,
+		);
+		
+		// Start streaming session
+		const sessionType = needsNewClaudeSession ? "new" : "resumed";
+		console.log(
+			`[EdgeWorker] Starting ${sessionType} streaming session for issue ${fullIssue.identifier}`,
+		);
+		await runner.startStreaming(fullPrompt);
 	}
 
 	/**
