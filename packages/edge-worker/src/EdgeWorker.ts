@@ -420,11 +420,6 @@ export class EdgeWorker extends EventEmitter {
 		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
-		console.log(`[handleWebhook] Processing webhook: ${webhook.type}`);
-		console.log(
-			`[handleWebhook] Webhook metadata - Organization: ${webhook.organizationId}, Action: ${webhook.action}, Created at: ${webhook.createdAt}`,
-		);
-
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			console.log(
@@ -434,18 +429,12 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Find the appropriate repository for this webhook
-		console.log(
-			`[handleWebhook] Finding repository for webhook from organization ${webhook.organizationId}`,
-		);
-		console.log(
-			`[handleWebhook] Available repositories: ${repos.length} total`,
-		);
 		const repository = await this.findRepositoryForWebhook(webhook, repos);
 		if (!repository) {
-			console.log(
-				`[handleWebhook] No repository configured for webhook from workspace ${webhook.organizationId}`,
-			);
 			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					`[handleWebhook] No repository configured for webhook from workspace ${webhook.organizationId}`,
+				);
 				console.log(
 					`[handleWebhook] Available repositories:`,
 					repos.map((r) => ({
@@ -456,40 +445,18 @@ export class EdgeWorker extends EventEmitter {
 					})),
 				);
 			}
-			console.log(
-				`[handleWebhook] Ignoring webhook due to no matching repository`,
-			);
 			return;
 		}
 
-		console.log(
-			`[handleWebhook] Webhook matched to repository: ${repository.name} (ID: ${repository.id})`,
-		);
-
 		try {
-			console.log(
-				`[handleWebhook] Processing webhook type determination and routing`,
-			);
 			
 			// Handle specific webhook types with proper typing
 			// NOTE: Traditional webhooks (assigned, comment) are disabled in favor of agent session events
 			if (isIssueAssignedWebhook(webhook)) {
-				console.log(
-					`[handleWebhook] Ignoring traditional issue assigned webhook - using agent session events instead`,
-				);
-				console.log(
-					`[handleWebhook] Issue assigned webhook details - Issue: ${(webhook as any).data?.issue?.identifier}, Assignee: ${(webhook as any).data?.assignee?.name || 'unknown'}`,
-				);
 				return;
 			} else if (isIssueCommentMentionWebhook(webhook)) {
-				console.log(
-					`[EdgeWorker] Ignoring traditional comment mention webhook - using agent session events instead`,
-				);
 				return;
 			} else if (isIssueNewCommentWebhook(webhook)) {
-				console.log(
-					`[EdgeWorker] Ignoring traditional new comment webhook - using agent session events instead`,
-				);
 				return;
 			} else if (isIssueUnassignedWebhook(webhook)) {
 				// Keep unassigned webhook active
@@ -499,28 +466,16 @@ export class EdgeWorker extends EventEmitter {
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPostedAgentActivity(webhook, repository);
 			} else {
-				console.log(
-					`[handleWebhook] Unhandled webhook type: ${(webhook as any).action} for repository ${repository.name}`,
-				);
-				console.log(
-					`[handleWebhook] Webhook data keys:`,
-					Object.keys((webhook as any).data || {}),
-				);
+				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+					console.log(
+						`[handleWebhook] Unhandled webhook type: ${(webhook as any).action} for repository ${repository.name}`,
+					);
+				}
 			}
-			
-			console.log(
-				`[handleWebhook] Webhook processing completed successfully for type ${webhook.type}`,
-			);
 		} catch (error) {
 			console.error(
 				`[handleWebhook] Failed to process webhook: ${(webhook as any).action} for repository ${repository.name}`,
 				error,
-			);
-			console.error(
-				`[handleWebhook] Error details - Message: ${error instanceof Error ? error.message : 'Unknown error'}, Stack: ${error instanceof Error ? error.stack : 'No stack trace'}`,
-			);
-			console.error(
-				`[handleWebhook] Webhook processing context - Type: ${webhook.type}, Organization: ${webhook.organizationId}, Created: ${webhook.createdAt}`,
 			);
 			// Don't re-throw webhook processing errors to prevent application crashes
 			// The error has been logged and individual webhook failures shouldn't crash the entire system
@@ -3090,65 +3045,30 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		attachmentManifest: string = "",
 		isNewSession: boolean = false,
 	): Promise<void> {
-		console.log(
-			`[resumeClaudeSession] Starting session resumption for agent activity session ${linearAgentActivitySessionId}`,
-		);
-		console.log(
-			`[resumeClaudeSession] Session details - Issue: ${session.issueId}, Repository: ${repository.name}, New session: ${isNewSession}`,
-		);
-		console.log(
-			`[resumeClaudeSession] Prompt body length: ${promptBody.length} chars, Has attachment manifest: ${!!attachmentManifest}`,
-		);
-		
 		// Check for existing runner
 		const existingRunner = session.claudeRunner;
-		console.log(
-			`[resumeClaudeSession] Existing runner check - Found: ${!!existingRunner}, Is streaming: ${existingRunner?.isStreaming() || false}`,
-		);
 		
 		// If there's an existing streaming runner, add to it
 		if (existingRunner?.isStreaming()) {
-			console.log(
-				`[resumeClaudeSession] Adding prompt to existing stream for agent activity session ${linearAgentActivitySessionId}`,
-			);
-			
 			let fullPrompt = promptBody;
 			if (attachmentManifest) {
-				console.log(
-					`[resumeClaudeSession] Appending attachment manifest (${attachmentManifest.length} chars) to prompt`,
-				);
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
 			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
 			
-			console.log(
-				`[resumeClaudeSession] Adding stream message with total length: ${fullPrompt.length} chars`,
-			);
 			existingRunner.addStreamMessage(fullPrompt);
-			console.log(
-				`[resumeClaudeSession] Stream message added successfully, exiting early`,
-			);
 			return;
 		}
 		
 		// Stop existing runner if it's not streaming
 		if (existingRunner) {
-			console.log(
-				`[resumeClaudeSession] Stopping existing non-streaming runner for session ${linearAgentActivitySessionId}`,
-			);
 			existingRunner.stop();
 		}
 		
 		// Determine if we need a new Claude session
 		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
-		console.log(
-			`[resumeClaudeSession] Claude session determination - Needs new: ${needsNewClaudeSession} (isNewSession: ${isNewSession}, existing claudeSessionId: ${session.claudeSessionId || 'none'})`,
-		);
 		
 		// Fetch full issue details
-		console.log(
-			`[resumeClaudeSession] Fetching full issue details for issue ${session.issueId} in repository ${repository.id}`,
-		);
 		const fullIssue = await this.fetchFullIssueDetails(
 			session.issueId,
 			repository.id,
@@ -3159,43 +3079,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			);
 			throw new Error(`Failed to fetch full issue details for ${session.issueId}`);
 		}
-		console.log(
-			`[resumeClaudeSession] Successfully fetched issue details - Title: "${fullIssue.title}", Identifier: ${fullIssue.identifier}`,
-		);
 		
 		// Fetch issue labels and determine system prompt
-		console.log(
-			`[resumeClaudeSession] Fetching issue labels for issue ${fullIssue.identifier}`,
-		);
 		const labels = await this.fetchIssueLabels(fullIssue);
-		console.log(
-			`[resumeClaudeSession] Found ${labels.length} labels:`,
-			labels,
-		);
 		
-		console.log(
-			`[resumeClaudeSession] Determining system prompt from labels`,
-		);
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labels,
 			repository,
 		);
 		const systemPrompt = systemPromptResult?.prompt;
 		const promptType = systemPromptResult?.type;
-		console.log(
-			`[resumeClaudeSession] System prompt determined - Type: ${promptType}, Has prompt: ${!!systemPrompt}`,
-		);
 		
 		// Build allowed tools list
-		console.log(
-			`[resumeClaudeSession] Building allowed tools list for prompt type: ${promptType}`,
-		);
 		const allowedTools = this.buildAllowedTools(repository, promptType);
-		
-		console.log(
-			`[resumeClaudeSession] Configured allowed tools for issue ${fullIssue.identifier} (${allowedTools.length} tools):`,
-			allowedTools,
-		);
 		
 		// Set up attachments directory
 		const workspaceFolderName = basename(session.workspace.path);
@@ -3204,21 +3100,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			workspaceFolderName,
 			"attachments",
 		);
-		console.log(
-			`[resumeClaudeSession] Setting up attachments directory: ${attachmentsDir}`,
-		);
 		await mkdir(attachmentsDir, { recursive: true });
 		
 		const allowedDirectories = [attachmentsDir];
-		console.log(
-			`[resumeClaudeSession] Configured allowed directories:`,
-			allowedDirectories,
-		);
 		
 		// Create runner configuration
-		console.log(
-			`[resumeClaudeSession] Building Claude runner configuration`,
-		);
 		const runnerConfig = this.buildClaudeRunnerConfig(
 			session,
 			repository,
@@ -3229,31 +3115,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
 			linearAgentActivitySessionId,
 		);
-		console.log(
-			`[resumeClaudeSession] Runner config created - Working directory: ${runnerConfig.workingDirectory}`,
-		);
 		
 		const runner = new ClaudeRunner(runnerConfig);
-		console.log(
-			`[resumeClaudeSession] Claude runner created successfully`,
-		);
 		
 		// Store runner
-		console.log(
-			`[resumeClaudeSession] Adding Claude runner to agent session manager for session ${linearAgentActivitySessionId}`,
-		);
 		agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
 		
 		// Save state
-		console.log(
-			`[resumeClaudeSession] Saving persisted state`,
-		);
 		await this.savePersistedState();
 		
 		// Prepare the full prompt
-		console.log(
-			`[resumeClaudeSession] Building session prompt`,
-		);
 		const fullPrompt = await this.buildSessionPrompt(
 			isNewSession,
 			fullIssue,
@@ -3261,21 +3132,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			promptBody,
 			attachmentManifest,
 		);
-		console.log(
-			`[resumeClaudeSession] Full prompt built with length: ${fullPrompt.length} chars`,
-		);
 		
 		// Start streaming session
-		const sessionType = needsNewClaudeSession ? "new" : "resumed";
-		console.log(
-			`[resumeClaudeSession] Starting ${sessionType} streaming session for issue ${fullIssue.identifier}`,
-		);
 		
 		try {
 			await runner.startStreaming(fullPrompt);
-			console.log(
-				`[resumeClaudeSession] Streaming session started successfully for ${sessionType} session ${linearAgentActivitySessionId}`,
-			);
 		} catch (error) {
 			console.error(
 				`[resumeClaudeSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
@@ -3283,10 +3144,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			);
 			throw error;
 		}
-		
-		console.log(
-			`[resumeClaudeSession] Session resumption completed successfully for agent activity session ${linearAgentActivitySessionId}`,
-		);
 	}
 
 	/**
