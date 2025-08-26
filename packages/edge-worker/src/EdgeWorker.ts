@@ -118,6 +118,14 @@ export class EdgeWorker extends EventEmitter {
 				this.linearClients.set(repo.id, linearClient);
 
 				// Create AgentSessionManager for this repository
+				// Note: If AgentSessionManager constructor accepts callbacks that reference
+				// the manager instance itself (e.g., callbacks that call agentSessionManager.getSession()),
+				// this works due to JavaScript's closure mechanism:
+				// 1. The variable binding is created immediately when declared
+				// 2. Callbacks passed to the constructor capture the variable in their closure
+				// 3. The callbacks aren't executed during construction - they're stored for later
+				// 4. By the time callbacks execute, the variable is fully initialized
+				// This is a safe pattern for self-referential callbacks in manager/coordinator classes
 				this.agentSessionManagers.set(
 					repo.id,
 					new AgentSessionManager(linearClient),
