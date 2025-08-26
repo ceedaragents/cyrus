@@ -119,11 +119,21 @@ export class EdgeWorker extends EventEmitter {
 				this.linearClients.set(repo.id, linearClient);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
+				// 
+				// Note: This pattern works (despite appearing recursive) because:
+				// 1. The agentSessionManager variable is captured by the closure after it's assigned
+				// 2. JavaScript's variable hoisting means 'agentSessionManager' exists (but is undefined) when the arrow function is created
+				// 3. By the time the callback is actually invoked (when a child session completes), agentSessionManager is fully initialized
+				// 4. The callback only executes asynchronously, well after the constructor has completed and agentSessionManager is assigned
+				// 
+				// This allows the AgentSessionManager to call back into itself to access its own sessions,
+				// enabling child sessions to trigger parent session resumption using the same manager instance.
 				const agentSessionManager = new AgentSessionManager(
 					linearClient,
 					(childSessionId: string) => this.childToParentAgentSession.get(childSessionId),
 					async (parentSessionId: string, prompt: string) => {
 						// Get the parent session and repository
+						// This works because by the time this callback runs, agentSessionManager is fully initialized
 						const parentSession = agentSessionManager.getSession(parentSessionId);
 						if (!parentSession) {
 							console.error(`[EdgeWorker] Parent session ${parentSessionId} not found`);
