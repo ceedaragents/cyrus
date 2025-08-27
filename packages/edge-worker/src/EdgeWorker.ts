@@ -825,7 +825,12 @@ export class EdgeWorker extends EventEmitter {
 		// Only fetch labels and determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
-		let promptType: "debugger" | "builder" | "scoper" | undefined;
+		let promptType:
+			| "debugger"
+			| "builder"
+			| "scoper"
+			| "orchestrator"
+			| undefined;
 
 		if (!isMentionTriggered) {
 			// Fetch issue labels and determine system prompt (delegation case)
@@ -1262,7 +1267,7 @@ export class EdgeWorker extends EventEmitter {
 		| {
 				prompt: string;
 				version?: string;
-				type?: "debugger" | "builder" | "scoper";
+				type?: "debugger" | "builder" | "scoper" | "orchestrator";
 		  }
 		| undefined
 	> {
@@ -1271,7 +1276,12 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check each prompt type for matching labels
-		const promptTypes = ["debugger", "builder", "scoper"] as const;
+		const promptTypes = [
+			"debugger",
+			"builder",
+			"scoper",
+			"orchestrator",
+		] as const;
 
 		for (const promptType of promptTypes) {
 			const promptConfig = repository.labelPrompts[promptType];
@@ -2801,7 +2811,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildAllowedTools(
 		repository: RepositoryConfig,
-		promptType?: "debugger" | "builder" | "scoper",
+		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
 	): string[] {
 		let baseTools: string[] = [];
 		let toolSource = "";
@@ -3119,6 +3129,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						if (scoperLabel) {
 							selectedPromptType = "scoper";
 							triggerLabel = scoperLabel;
+						} else {
+							// Check orchestrator labels
+							const orchestratorConfig = repository.labelPrompts.orchestrator;
+							const orchestratorLabels = Array.isArray(orchestratorConfig)
+								? orchestratorConfig
+								: orchestratorConfig?.labels;
+							const orchestratorLabel = orchestratorLabels?.find((label) =>
+								labels.includes(label),
+							);
+							if (orchestratorLabel) {
+								selectedPromptType = "orchestrator";
+								triggerLabel = orchestratorLabel;
+							}
 						}
 					}
 				}

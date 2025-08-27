@@ -398,6 +398,9 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				if (path.includes("scoper.md")) {
 					return "Scoper prompt content";
 				}
+				if (path.includes("orchestrator.md")) {
+					return 'You are a masterful software engineering orchestrator\n<version-tag value="orchestrator-v1.0.0" />';
+				}
 				throw new Error(`File not found: ${path}`);
 			});
 		});
@@ -518,6 +521,33 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const result = await determineSystemPromptFromLabels([], repository);
 
 			expect(result).toBeUndefined();
+		});
+
+		it("should select orchestrator prompt for Orchestrator label with readOnly tools", async () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				labelPrompts: {
+					orchestrator: {
+						labels: ["Orchestrator"],
+						allowedTools: "readOnly",
+					},
+				},
+			};
+
+			const determineSystemPromptFromLabels =
+				getDetermineSystemPromptFromLabels(edgeWorker);
+			const result = await determineSystemPromptFromLabels(
+				["Orchestrator", "other-label"],
+				repository,
+			);
+
+			expect(result).toBeDefined();
+			expect(result?.type).toBe("orchestrator");
+			expect(result?.prompt).toContain("orchestrator-v1.0.0");
+			expect(result?.prompt).toContain(
+				"masterful software engineering orchestrator",
+			);
+			expect(result?.version).toBe("orchestrator-v1.0.0");
 		});
 	});
 });

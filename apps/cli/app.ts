@@ -304,6 +304,10 @@ class EdgeApp {
 				scoper: {
 					labels: ["PRD"],
 				},
+				orchestrator: {
+					labels: ["Orchestrator"],
+					allowedTools: "readOnly" as const, // Orchestrator cannot edit files directly
+				},
 			};
 
 			if (shouldCloseRl) {

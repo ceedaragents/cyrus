@@ -16,6 +16,11 @@ All notable changes to this project will be documented in this file.
   - Maintains mapping of child sessions to parent sessions for hierarchical tracking
   - **Persistent storage of child-to-parent mappings across restarts**
   - Child session results are automatically forwarded to parent sessions upon completion
+- New "orchestrator" label system prompt type
+  - Joins existing "builder", "debugger", and "scoper" labels as a default option
+  - Configured with read-only tools (cannot directly edit files)
+  - Specializes in coordination and oversight of complex development tasks
+  - Automatically triggered by "Orchestrator" label on Linear issues
 
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.88 to v1.0.89 for latest Claude Code improvements. See [Claude Code v1.0.89 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1089)
