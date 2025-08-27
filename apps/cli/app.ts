@@ -304,6 +304,10 @@ class EdgeApp {
 				scoper: {
 					labels: ["PRD"],
 				},
+				orchestrator: {
+					labels: ["Orchestrator"],
+					allowedTools: "coordinator" as const, // Uses coordinator tools (all except file editing)
+				},
 			};
 
 			if (shouldCloseRl) {
