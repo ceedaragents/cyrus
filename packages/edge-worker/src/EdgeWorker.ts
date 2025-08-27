@@ -823,7 +823,10 @@ export class EdgeWorker extends EventEmitter {
 			allowedDirectories,
 		} = sessionData;
 
-		// Only fetch labels and determine system prompt for delegation (not mentions)
+		// Fetch labels (needed for both model selection and system prompt determination)
+		const labels = await this.fetchIssueLabels(fullIssue);
+		
+		// Only determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
 		let promptType:
@@ -834,8 +837,7 @@ export class EdgeWorker extends EventEmitter {
 			| undefined;
 
 		if (!isMentionTriggered) {
-			// Fetch issue labels and determine system prompt (delegation case)
-			const labels = await this.fetchIssueLabels(fullIssue);
+			// Determine system prompt based on labels (delegation case)
 			const systemPromptResult = await this.determineSystemPromptFromLabels(
 				labels,
 				repository,
@@ -877,6 +879,7 @@ export class EdgeWorker extends EventEmitter {
 			allowedDirectories,
 			undefined, // resumeSessionId
 			linearAgentActivitySessionId, // Pass current session ID as parent context
+			labels, // Pass labels for model override
 		);
 		const runner = new ClaudeRunner(runnerConfig);
 
@@ -2634,6 +2637,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		allowedDirectories: string[],
 		resumeSessionId?: string,
 		parentAgentSessionId?: string,
+		labels?: string[],
 	): any {
 		// Build hooks configuration
 		const hooks = {
@@ -2778,6 +2782,44 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			],
 		};
 
+		// Check for model override labels (case-insensitive)
+		let modelOverride: string | undefined;
+		let fallbackModelOverride: string | undefined;
+		
+		if (labels && labels.length > 0) {
+			const lowercaseLabels = labels.map((label) => label.toLowerCase());
+			
+			// Check for model override labels: opus, sonnet, haiku
+			if (lowercaseLabels.includes('opus')) {
+				modelOverride = 'opus';
+				console.log(
+					`[EdgeWorker] Model override via label: opus (for session ${linearAgentActivitySessionId})`,
+				);
+			} else if (lowercaseLabels.includes('sonnet')) {
+				modelOverride = 'sonnet';
+				console.log(
+					`[EdgeWorker] Model override via label: sonnet (for session ${linearAgentActivitySessionId})`,
+				);
+			} else if (lowercaseLabels.includes('haiku')) {
+				modelOverride = 'haiku';
+				console.log(
+					`[EdgeWorker] Model override via label: haiku (for session ${linearAgentActivitySessionId})`,
+				);
+			}
+			
+			// If a model override is found, also set a reasonable fallback
+			if (modelOverride) {
+				// Set fallback to the next lower tier: opus->sonnet, sonnet->haiku, haiku->haiku
+				if (modelOverride === 'opus') {
+					fallbackModelOverride = 'sonnet';
+				} else if (modelOverride === 'sonnet') {
+					fallbackModelOverride = 'haiku';
+				} else {
+					fallbackModelOverride = 'haiku';
+				}
+			}
+		}
+
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -2787,10 +2829,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository),
 			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
-			// Use repository-specific model or fall back to global default
-			model: repository.model || this.config.defaultModel,
+			// Priority order: label override > repository config > global default
+			model: modelOverride || repository.model || this.config.defaultModel,
 			fallbackModel:
-				repository.fallbackModel || this.config.defaultFallbackModel,
+				fallbackModelOverride || repository.fallbackModel || this.config.defaultFallbackModel,
 			hooks,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
@@ -3274,6 +3316,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			allowedDirectories,
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
 			linearAgentActivitySessionId,
+			labels, // Pass labels for model override
 		);
 
 		const runner = new ClaudeRunner(runnerConfig);
