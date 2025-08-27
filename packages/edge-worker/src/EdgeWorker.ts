@@ -2666,7 +2666,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 											console.log(
 												`[Parent-Child Mapping] Successfully created. Total mappings: ${this.childToParentAgentSession.size}`,
 											);
-											
+
 											// Save state after adding new mapping
 											this.savePersistedState().catch((error) => {
 												console.error(
@@ -2924,9 +2924,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 		// Serialize child to parent agent session mapping
 		const childToParentAgentSession = Object.fromEntries(
-			this.childToParentAgentSession.entries()
+			this.childToParentAgentSession.entries(),
 		);
-		
+
 		return {
 			agentSessions,
 			agentSessionEntries,
@@ -2961,11 +2961,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				}
 			}
 		}
-		
+
 		// Restore child to parent agent session mapping
 		if (state.childToParentAgentSession) {
 			this.childToParentAgentSession = new Map(
-				Object.entries(state.childToParentAgentSession)
+				Object.entries(state.childToParentAgentSession),
 			);
 			console.log(
 				`[EdgeWorker] Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
