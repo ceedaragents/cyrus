@@ -35,11 +35,12 @@ describe("config", () => {
 				"WebFetch",
 				"WebSearch",
 				"TodoRead",
+				"TodoWrite",
 				"NotebookRead",
 				"Task",
 				"Batch",
 			]);
-			expect(readOnlyTools).toHaveLength(7);
+			expect(readOnlyTools).toHaveLength(8);
 		});
 
 		it("should define write tools", () => {
@@ -52,9 +53,9 @@ describe("config", () => {
 			expect(writeTools).toHaveLength(4);
 		});
 
-		it("should have no overlap between read-only and write tools", () => {
+		it("should have TodoWrite in both read-only and write tools (for task tracking)", () => {
 			const overlap = readOnlyTools.filter((tool) => writeTools.includes(tool));
-			expect(overlap).toEqual([]);
+			expect(overlap).toEqual(["TodoWrite"]);
 		});
 
 		it("should have all categorized tools in available tools", () => {
@@ -124,19 +125,19 @@ describe("config", () => {
 			expect(tools).toContain("WebFetch");
 			expect(tools).toContain("WebSearch");
 			expect(tools).toContain("TodoRead");
+			expect(tools).toContain("TodoWrite"); // For task tracking
 			expect(tools).toContain("NotebookRead");
 			expect(tools).toContain("Batch");
 
 			// Should NOT include file editing tools
 			expect(tools).not.toContain("Edit(**)");
-			expect(tools).not.toContain("TodoWrite");
 			expect(tools).not.toContain("NotebookEdit");
 
-			// Should have 8 tools
-			expect(tools).toHaveLength(8);
+			// Should have 9 tools
+			expect(tools).toHaveLength(9);
 		});
 
-		it("coordinator tools should allow reading but not editing", () => {
+		it("coordinator tools should allow reading and task tracking but not file editing", () => {
 			const coordinatorTools = getCoordinatorTools();
 
 			// Can read files
@@ -150,8 +151,10 @@ describe("config", () => {
 			// Can run commands (for tests, builds, git)
 			expect(coordinatorTools).toContain("Bash");
 
-			// Can delegate tasks
+			// Can delegate and track tasks
 			expect(coordinatorTools).toContain("Task");
+			expect(coordinatorTools).toContain("TodoWrite");
+			expect(coordinatorTools).toContain("TodoRead");
 		});
 	});
 
