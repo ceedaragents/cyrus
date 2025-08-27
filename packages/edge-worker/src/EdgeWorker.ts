@@ -89,7 +89,7 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
-		
+
 		console.log(
 			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
 		);
@@ -126,13 +126,13 @@ export class EdgeWorker extends EventEmitter {
 				this.linearClients.set(repo.id, linearClient);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
-				// 
+				//
 				// Note: This pattern works (despite appearing recursive) because:
 				// 1. The agentSessionManager variable is captured by the closure after it's assigned
 				// 2. JavaScript's variable hoisting means 'agentSessionManager' exists (but is undefined) when the arrow function is created
 				// 3. By the time the callback is actually invoked (when a child session completes), agentSessionManager is fully initialized
 				// 4. The callback only executes asynchronously, well after the constructor has completed and agentSessionManager is assigned
-				// 
+				//
 				// This allows the AgentSessionManager to call back into itself to access its own sessions,
 				// enabling child sessions to trigger parent session resumption using the same manager instance.
 				const agentSessionManager = new AgentSessionManager(
@@ -143,7 +143,7 @@ export class EdgeWorker extends EventEmitter {
 						);
 						const parentId = this.childToParentAgentSession.get(childSessionId);
 						console.log(
-							`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || 'not found'}`,
+							`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || "not found"}`,
 						);
 						return parentId;
 					},
@@ -151,29 +151,27 @@ export class EdgeWorker extends EventEmitter {
 						console.log(
 							`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
 						);
-						
+
 						// Get the parent session and repository
 						// This works because by the time this callback runs, agentSessionManager is fully initialized
 						console.log(
 							`[Parent Session Resume] Retrieving parent session ${parentSessionId} from agent session manager`,
 						);
-						const parentSession = agentSessionManager.getSession(parentSessionId);
+						const parentSession =
+							agentSessionManager.getSession(parentSessionId);
 						if (!parentSession) {
 							console.error(
 								`[Parent Session Resume] Parent session ${parentSessionId} not found in agent session manager`,
 							);
 							return;
 						}
-						
+
 						console.log(
 							`[Parent Session Resume] Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
 						);
-						
-						await this.postParentResumeAcknowledgment(
-							parentSessionId,
-							repo.id,
-						);
-						
+
+						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+
 						// Resume the parent session with the child's result
 						console.log(
 							`[Parent Session Resume] Resuming parent Claude session with child results`,
@@ -447,7 +445,6 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		try {
-			
 			// Handle specific webhook types with proper typing
 			// NOTE: Traditional webhooks (assigned, comment) are disabled in favor of agent session events
 			if (isIssueAssignedWebhook(webhook)) {
@@ -2617,7 +2614,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 								"mcp__cyrus-mcp-tools__linear_agent_session_create"
 							) {
 								const toolResponse = input.tool_response;
-								
+
 								// The response is an array with a single object containing type and text fields
 								// Parse the JSON from the text field to get the agentSessionId
 								if (
@@ -2635,12 +2632,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 											console.log(
 												`[Parent-Child Mapping] Creating: child ${childAgentSessionId} -> parent ${parentAgentSessionId}`,
 											);
-											
+
 											this.childToParentAgentSession.set(
 												childAgentSessionId,
 												parentAgentSessionId,
 											);
-											
+
 											console.log(
 												`[Parent-Child Mapping] Successfully created. Total mappings: ${this.childToParentAgentSession.size}`,
 											);
@@ -3058,7 +3055,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	): Promise<void> {
 		// Check for existing runner
 		const existingRunner = session.claudeRunner;
-		
+
 		// If there's an existing streaming runner, add to it
 		if (existingRunner?.isStreaming()) {
 			let fullPrompt = promptBody;
@@ -3066,19 +3063,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
 			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
-			
+
 			existingRunner.addStreamMessage(fullPrompt);
 			return;
 		}
-		
+
 		// Stop existing runner if it's not streaming
 		if (existingRunner) {
 			existingRunner.stop();
 		}
-		
+
 		// Determine if we need a new Claude session
 		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
-		
+
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
 			session.issueId,
@@ -3088,22 +3085,24 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			console.error(
 				`[resumeClaudeSession] Failed to fetch full issue details for ${session.issueId}`,
 			);
-			throw new Error(`Failed to fetch full issue details for ${session.issueId}`);
+			throw new Error(
+				`Failed to fetch full issue details for ${session.issueId}`,
+			);
 		}
-		
+
 		// Fetch issue labels and determine system prompt
 		const labels = await this.fetchIssueLabels(fullIssue);
-		
+
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labels,
 			repository,
 		);
 		const systemPrompt = systemPromptResult?.prompt;
 		const promptType = systemPromptResult?.type;
-		
+
 		// Build allowed tools list
 		const allowedTools = this.buildAllowedTools(repository, promptType);
-		
+
 		// Set up attachments directory
 		const workspaceFolderName = basename(session.workspace.path);
 		const attachmentsDir = join(
@@ -3112,9 +3111,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			"attachments",
 		);
 		await mkdir(attachmentsDir, { recursive: true });
-		
+
 		const allowedDirectories = [attachmentsDir];
-		
+
 		// Create runner configuration
 		const runnerConfig = this.buildClaudeRunnerConfig(
 			session,
@@ -3126,15 +3125,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
 			linearAgentActivitySessionId,
 		);
-		
+
 		const runner = new ClaudeRunner(runnerConfig);
-		
+
 		// Store runner
 		agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
-		
+
 		// Save state
 		await this.savePersistedState();
-		
+
 		// Prepare the full prompt
 		const fullPrompt = await this.buildSessionPrompt(
 			isNewSession,
@@ -3143,9 +3142,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			promptBody,
 			attachmentManifest,
 		);
-		
+
 		// Start streaming session
-		
+
 		try {
 			await runner.startStreaming(fullPrompt);
 		} catch (error) {
@@ -3248,5 +3247,4 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			return null;
 		}
 	}
-
 }

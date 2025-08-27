@@ -31,12 +31,18 @@ export class AgentSessionManager {
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
-	private resumeParentSession?: (parentSessionId: string, prompt: string) => Promise<void>;
+	private resumeParentSession?: (
+		parentSessionId: string,
+		prompt: string,
+	) => Promise<void>;
 
 	constructor(
 		linearClient: LinearClient,
 		getParentSessionId?: (childSessionId: string) => string | undefined,
-		resumeParentSession?: (parentSessionId: string, prompt: string) => Promise<void>,
+		resumeParentSession?: (
+			parentSessionId: string,
+			prompt: string,
+		) => Promise<void>,
 	) {
 		this.linearClient = linearClient;
 		this.getParentSessionId = getParentSessionId;
@@ -229,10 +235,13 @@ export class AgentSessionManager {
 					try {
 						const childResult = resultMessage.result;
 						const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
-						
+
 						// Use the resumeParentSession callback to handle the parent session
-						await this.resumeParentSession(parentAgentSessionId, promptToParent);
-						
+						await this.resumeParentSession(
+							parentAgentSessionId,
+							promptToParent,
+						);
+
 						console.log(
 							`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
 						);
