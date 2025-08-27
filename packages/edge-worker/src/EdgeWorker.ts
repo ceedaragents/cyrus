@@ -141,13 +141,9 @@ export class EdgeWorker extends EventEmitter {
 						console.log(
 							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
 						);
-						this.logParentChildMappings("Before parent-child lookup");
 						const parentId = this.childToParentAgentSession.get(childSessionId);
 						console.log(
 							`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || 'not found'}`,
-						);
-						console.log(
-							`[Parent-Child Lookup] Total mappings available: ${this.childToParentAgentSession.size}`,
 						);
 						return parentId;
 					},
@@ -2615,79 +2611,49 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							_toolUseID: string | undefined,
 							_options: { signal: AbortSignal },
 						) => {
-							console.log(
-								`[PostToolUse Hook] Tool ${input.tool_name} completed with tool use ID: ${_toolUseID}`,
-							);
-							console.log(
-								`[PostToolUse Hook] Parent session context: ${parentAgentSessionId || 'none'}`,
-							);
-
 							// Check if this is the linear_agent_session_create tool
 							if (
 								input.tool_name ===
 								"mcp__cyrus-mcp-tools__linear_agent_session_create"
 							) {
-								console.log(
-									`[PostToolUse Hook] Processing linear_agent_session_create tool response`,
-								);
-								
 								const toolResponse = input.tool_response;
-								console.log(
-									`[PostToolUse Hook] Tool response structure:`,
-									typeof toolResponse,
-									toolResponse ? Object.keys(toolResponse) : 'no response',
-								);
-
-								// Extract agentSessionId from the tool response
+								
+								// The response is an array with a single object containing type and text fields
+								// Parse the JSON from the text field to get the agentSessionId
 								if (
-									toolResponse &&
-									typeof toolResponse === "object" &&
-									"agentSessionId" in toolResponse
+									Array.isArray(toolResponse) &&
+									toolResponse.length > 0 &&
+									toolResponse[0].type === "text" &&
+									toolResponse[0].text
 								) {
-									const childAgentSessionId = (toolResponse as any)
-										.agentSessionId;
-									
-									console.log(
-										`[PostToolUse Hook] Extracted child agent session ID: ${childAgentSessionId}`,
-									);
+									try {
+										const responseData = JSON.parse(toolResponse[0].text);
+										const childAgentSessionId = responseData.agentSessionId;
 
-									// If there's a parent session, create the mapping
-									if (parentAgentSessionId && childAgentSessionId) {
-										console.log(
-											`[PostToolUse Hook] Creating parent-child mapping: child ${childAgentSessionId} -> parent ${parentAgentSessionId}`,
-										);
-										console.log(
-											`[PostToolUse Hook] Current parent-child mappings count before: ${this.childToParentAgentSession.size}`,
-										);
-										
-										this.childToParentAgentSession.set(
-											childAgentSessionId,
-											parentAgentSessionId,
-										);
-										
-										console.log(
-											`[PostToolUse Hook] Parent-child mapping created successfully. Total mappings: ${this.childToParentAgentSession.size}`,
-										);
-										this.logParentChildMappings("After creating new parent-child mapping in PostToolUse hook");
-									} else {
-										console.log(
-											`[PostToolUse Hook] No parent-child mapping created - parent: ${parentAgentSessionId}, child: ${childAgentSessionId}`,
+										// If there's a parent session, create the mapping
+										if (parentAgentSessionId && childAgentSessionId) {
+											console.log(
+												`[Parent-Child Mapping] Creating: child ${childAgentSessionId} -> parent ${parentAgentSessionId}`,
+											);
+											
+											this.childToParentAgentSession.set(
+												childAgentSessionId,
+												parentAgentSessionId,
+											);
+											
+											console.log(
+												`[Parent-Child Mapping] Successfully created. Total mappings: ${this.childToParentAgentSession.size}`,
+											);
+										}
+									} catch (error) {
+										console.error(
+											`[Parent-Child Mapping] Failed to parse agentSessionId from tool response:`,
+											error,
 										);
 									}
-								} else {
-									console.log(
-										`[PostToolUse Hook] No agentSessionId found in tool response or invalid response structure`,
-									);
 								}
-							} else {
-								console.log(
-									`[PostToolUse Hook] Tool ${input.tool_name} is not the target linear_agent_session_create tool`,
-								);
 							}
 
-							console.log(
-								`[PostToolUse Hook] Hook processing complete for ${input.tool_name}, continuing execution`,
-							);
 							return { continue: true };
 						},
 					],
@@ -3283,22 +3249,4 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 	}
 
-	/**
-	 * Utility method to log current parent-child session mappings for debugging
-	 */
-	private logParentChildMappings(context: string): void {
-		console.log(
-			`[Parent-Child Mappings Debug] ${context} - Total mappings: ${this.childToParentAgentSession.size}`,
-		);
-		if (this.childToParentAgentSession.size > 0) {
-			console.log(`[Parent-Child Mappings Debug] Current mappings:`);
-			for (const [childId, parentId] of this.childToParentAgentSession.entries()) {
-				console.log(
-					`[Parent-Child Mappings Debug]   Child ${childId} -> Parent ${parentId}`,
-				);
-			}
-		} else {
-			console.log(`[Parent-Child Mappings Debug] No active parent-child mappings`);
-		}
-	}
 }
