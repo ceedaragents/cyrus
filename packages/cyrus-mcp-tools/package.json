@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-mcp-tools",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "MCP tools for Cyrus - Linear file uploads, agent session creation, and other utilities.",
 	"main": "dist/index.js",
 	"type": "module",
@@ -28,7 +28,8 @@
 		"description": "MCP tools for Cyrus including Linear file uploads and agent session management",
 		"tools": [
 			"linear_upload_file",
-			"linear_agent_session_create"
+			"linear_agent_session_create",
+			"linear_agent_give_feedback"
 		]
 	},
 	"keywords": [
