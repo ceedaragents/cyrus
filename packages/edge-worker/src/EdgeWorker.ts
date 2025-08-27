@@ -155,9 +155,6 @@ export class EdgeWorker extends EventEmitter {
 						console.log(
 							`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
 						);
-						console.log(
-							`[Parent Session Resume] Child result prompt length: ${prompt.length} chars`,
-						);
 						
 						// Get the parent session and repository
 						// This works because by the time this callback runs, agentSessionManager is fully initialized
@@ -174,6 +171,11 @@ export class EdgeWorker extends EventEmitter {
 						
 						console.log(
 							`[Parent Session Resume] Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
+						);
+						
+						await this.postParentResumeAcknowledgment(
+							parentSessionId,
+							repo.id,
 						);
 						
 						// Resume the parent session with the child's result
@@ -2923,6 +2925,49 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting instant acknowledgment:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Post parent resume acknowledgment thought when parent session is resumed from child
+	 */
+	private async postParentResumeAcknowledgment(
+		linearAgentActivitySessionId: string,
+		repositoryId: string,
+	): Promise<void> {
+		try {
+			const linearClient = this.linearClients.get(repositoryId);
+			if (!linearClient) {
+				console.warn(
+					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+				);
+				return;
+			}
+
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: "Resuming from child session",
+				},
+			};
+
+			const result = await linearClient.createAgentActivity(activityInput);
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post parent resumption acknowledgment:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Error posting parent resumption acknowledgment:`,
 				error,
 			);
 		}
