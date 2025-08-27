@@ -21,6 +21,11 @@ All notable changes to this project will be documented in this file.
   - Configured with read-only tools (cannot directly edit files)
   - Specializes in coordination and oversight of complex development tasks
   - Automatically triggered by "Orchestrator" label on Linear issues
+- **Label-based Claude model selection**: You can now override the Claude model used for specific issues by adding labels
+  - Add "opus", "sonnet", or "haiku" label to any Linear issue to force that model
+  - Model labels take highest priority (overrides both repository and global settings)
+  - Case-insensitive label matching for flexibility
+  - Automatically sets appropriate fallback models (opus→sonnet, sonnet→haiku, haiku→haiku)
 
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.88 to v1.0.89 for latest Claude Code improvements. See [Claude Code v1.0.89 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1089)
