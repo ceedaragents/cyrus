@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
   - Automatically captures child agent session IDs when linear_agent_session_create tool is used
   - **Triggers child session resumption when linear_agent_give_feedback tool is used**
   - Maintains mapping of child sessions to parent sessions for hierarchical tracking
+  - **Persistent storage of child-to-parent mappings across restarts**
   - Child session results are automatically forwarded to parent sessions upon completion
 
 ### Changed

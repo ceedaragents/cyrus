@@ -31,6 +31,8 @@ export interface SerializableEdgeWorkerState {
 		string,
 		Record<string, SerializedCyrusAgentSessionEntry[]>
 	>;
+	// Child to parent agent session mapping
+	childToParentAgentSession?: Record<string, string>;
 }
 
 /**
