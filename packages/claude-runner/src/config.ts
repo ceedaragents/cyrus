@@ -86,3 +86,21 @@ export function getSafeTools(): string[] {
 		"Batch",
 	];
 }
+
+/**
+ * Get orchestrator tools - all tools except those that can edit files
+ * Includes: Read, Bash (for running tests/builds), Task, WebFetch, WebSearch, TodoRead, NotebookRead, Batch
+ * Excludes: Edit, TodoWrite, NotebookEdit (no file/content modification)
+ */
+export function getOrchestratorTools(): string[] {
+	return [
+		"Read(**)",
+		"Bash", // Included for running tests, builds, git commands
+		"Task",
+		"WebFetch",
+		"WebSearch",
+		"TodoRead",
+		"NotebookRead",
+		"Batch",
+	];
+}

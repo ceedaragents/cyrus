@@ -306,7 +306,7 @@ class EdgeApp {
 				},
 				orchestrator: {
 					labels: ["Orchestrator"],
-					allowedTools: "readOnly" as const, // Orchestrator cannot edit files directly
+					allowedTools: "orchestrator" as const, // Uses specialized orchestrator tools (all except file editing)
 				},
 			};
 

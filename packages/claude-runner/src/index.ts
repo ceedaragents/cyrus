@@ -2,6 +2,7 @@ export { ClaudeRunner, StreamingPrompt } from "./ClaudeRunner.js";
 export {
 	availableTools,
 	getAllTools,
+	getOrchestratorTools,
 	getReadOnlyTools,
 	getSafeTools,
 	readOnlyTools,

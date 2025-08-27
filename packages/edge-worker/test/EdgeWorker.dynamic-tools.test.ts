@@ -523,13 +523,13 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(result).toBeUndefined();
 		});
 
-		it("should select orchestrator prompt for Orchestrator label with readOnly tools", async () => {
+		it("should select orchestrator prompt for Orchestrator label with orchestrator tools preset", async () => {
 			const repository: RepositoryConfig = {
 				...mockConfig.repositories[0],
 				labelPrompts: {
 					orchestrator: {
 						labels: ["Orchestrator"],
-						allowedTools: "readOnly",
+						allowedTools: "orchestrator",
 					},
 				},
 			};

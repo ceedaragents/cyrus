@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
 	availableTools,
 	getAllTools,
+	getOrchestratorTools,
 	getReadOnlyTools,
+	getSafeTools,
 	readOnlyTools,
 	type ToolName,
 	writeTools,
@@ -90,6 +92,66 @@ describe("config", () => {
 			// Modifying returned array shouldn't affect original
 			tools.push("NewTool");
 			expect(availableTools).not.toContain("NewTool");
+		});
+
+		it("getSafeTools should return all tools except Bash", () => {
+			const tools = getSafeTools();
+
+			// Should contain all tools except Bash
+			expect(tools).toContain("Read(**)");
+			expect(tools).toContain("Edit(**)");
+			expect(tools).toContain("Task");
+			expect(tools).toContain("WebFetch");
+			expect(tools).toContain("WebSearch");
+			expect(tools).toContain("TodoRead");
+			expect(tools).toContain("TodoWrite");
+			expect(tools).toContain("NotebookRead");
+			expect(tools).toContain("NotebookEdit");
+			expect(tools).toContain("Batch");
+			expect(tools).not.toContain("Bash");
+
+			// Should have 10 tools (all 11 minus Bash)
+			expect(tools).toHaveLength(10);
+		});
+
+		it("getOrchestratorTools should return all tools except file editing tools", () => {
+			const tools = getOrchestratorTools();
+
+			// Should include read and execution tools
+			expect(tools).toContain("Read(**)");
+			expect(tools).toContain("Bash"); // For running tests/builds
+			expect(tools).toContain("Task");
+			expect(tools).toContain("WebFetch");
+			expect(tools).toContain("WebSearch");
+			expect(tools).toContain("TodoRead");
+			expect(tools).toContain("NotebookRead");
+			expect(tools).toContain("Batch");
+
+			// Should NOT include file editing tools
+			expect(tools).not.toContain("Edit(**)");
+			expect(tools).not.toContain("TodoWrite");
+			expect(tools).not.toContain("NotebookEdit");
+
+			// Should have 8 tools
+			expect(tools).toHaveLength(8);
+		});
+
+		it("orchestrator tools should allow reading but not editing", () => {
+			const orchestratorTools = getOrchestratorTools();
+
+			// Can read files
+			expect(orchestratorTools).toContain("Read(**)");
+			expect(orchestratorTools).toContain("NotebookRead");
+
+			// Cannot edit files
+			expect(orchestratorTools).not.toContain("Edit(**)");
+			expect(orchestratorTools).not.toContain("NotebookEdit");
+
+			// Can run commands (for tests, builds, git)
+			expect(orchestratorTools).toContain("Bash");
+
+			// Can delegate tasks
+			expect(orchestratorTools).toContain("Task");
 		});
 	});
 
