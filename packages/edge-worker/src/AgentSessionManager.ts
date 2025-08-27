@@ -228,7 +228,7 @@ export class AgentSessionManager {
 					// Resume parent session with child result
 					try {
 						const childResult = resultMessage.result;
-						const promptToParent = `Child agent session completed with result:\n\n${childResult}`;
+						const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
 						
 						// Use the resumeParentSession callback to handle the parent session
 						await this.resumeParentSession(parentAgentSessionId, promptToParent);
