@@ -11,7 +11,7 @@ import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
 	getAllTools,
-	getOrchestratorTools,
+	getCoordinatorTools,
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
@@ -2584,8 +2584,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return getSafeTools();
 			case "all":
 				return getAllTools();
-			case "orchestrator":
-				return getOrchestratorTools();
+			case "coordinator":
+				return getCoordinatorTools();
 			default:
 				// If it's a string but not a preset, treat it as a single tool
 				return [preset];

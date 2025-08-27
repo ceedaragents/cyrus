@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	availableTools,
 	getAllTools,
-	getOrchestratorTools,
+	getCoordinatorTools,
 	getReadOnlyTools,
 	getSafeTools,
 	readOnlyTools,
@@ -114,8 +114,8 @@ describe("config", () => {
 			expect(tools).toHaveLength(10);
 		});
 
-		it("getOrchestratorTools should return all tools except file editing tools", () => {
-			const tools = getOrchestratorTools();
+		it("getCoordinatorTools should return all tools except file editing tools", () => {
+			const tools = getCoordinatorTools();
 
 			// Should include read and execution tools
 			expect(tools).toContain("Read(**)");
@@ -136,22 +136,22 @@ describe("config", () => {
 			expect(tools).toHaveLength(8);
 		});
 
-		it("orchestrator tools should allow reading but not editing", () => {
-			const orchestratorTools = getOrchestratorTools();
+		it("coordinator tools should allow reading but not editing", () => {
+			const coordinatorTools = getCoordinatorTools();
 
 			// Can read files
-			expect(orchestratorTools).toContain("Read(**)");
-			expect(orchestratorTools).toContain("NotebookRead");
+			expect(coordinatorTools).toContain("Read(**)");
+			expect(coordinatorTools).toContain("NotebookRead");
 
 			// Cannot edit files
-			expect(orchestratorTools).not.toContain("Edit(**)");
-			expect(orchestratorTools).not.toContain("NotebookEdit");
+			expect(coordinatorTools).not.toContain("Edit(**)");
+			expect(coordinatorTools).not.toContain("NotebookEdit");
 
 			// Can run commands (for tests, builds, git)
-			expect(orchestratorTools).toContain("Bash");
+			expect(coordinatorTools).toContain("Bash");
 
 			// Can delegate tasks
-			expect(orchestratorTools).toContain("Task");
+			expect(coordinatorTools).toContain("Task");
 		});
 	});
 

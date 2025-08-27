@@ -88,11 +88,12 @@ export function getSafeTools(): string[] {
 }
 
 /**
- * Get orchestrator tools - all tools except those that can edit files
+ * Get coordinator tools - all tools except those that can edit files
  * Includes: Read, Bash (for running tests/builds), Task, WebFetch, WebSearch, TodoRead, NotebookRead, Batch
  * Excludes: Edit, TodoWrite, NotebookEdit (no file/content modification)
+ * Used by orchestrator role for coordination without direct file modification
  */
-export function getOrchestratorTools(): string[] {
+export function getCoordinatorTools(): string[] {
 	return [
 		"Read(**)",
 		"Bash", // Included for running tests, builds, git commands
