@@ -865,6 +865,7 @@ export class EdgeWorker extends EventEmitter {
 			session,
 			repository,
 			linearAgentActivitySessionId,
+			agentSessionManager,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
@@ -1896,6 +1897,29 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * @param issue Full Linear issue object from Linear SDK
 	 * @param repositoryId Repository ID for Linear client lookup
 	 */
+	/**
+	 * Get the repository configuration for a given session
+	 */
+	private getRepositoryForSession(
+		session: CyrusAgentSession,
+	): RepositoryConfig | undefined {
+		// Find the repository that matches the session's workspace path
+		for (const repo of this.config.repositories) {
+			if (session.workspace.path.includes(repo.workspaceBaseDir)) {
+				return repo;
+			}
+		}
+		// Fallback: try to find by issue ID in Linear client
+		for (const [repoId, _] of this.linearClients) {
+			const repo = this.config.repositories.find((r) => r.id === repoId);
+			if (repo) {
+				// Additional checks could be added here if needed
+				return repo;
+			}
+		}
+		return undefined;
+	}
+
 	private async moveIssueToStartedState(
 		issue: LinearIssue,
 		repositoryId: string,
@@ -2591,6 +2615,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
 		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
 		systemPrompt: string | undefined,
 		allowedTools: string[],
 		allowedDirectories: string[],
@@ -2645,6 +2670,80 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 									} catch (error) {
 										console.error(
 											`[Parent-Child Mapping] Failed to parse agentSessionId from tool response:`,
+											error,
+										);
+									}
+								}
+							}
+
+							return { continue: true };
+						},
+					],
+				},
+				{
+					matcher: "mcp__cyrus-mcp-tools__linear_agent_give_feedback",
+					hooks: [
+						async (
+							input: any,
+							_toolUseID: string | undefined,
+							_options: { signal: AbortSignal },
+						) => {
+							// Check if this is the give_feedback tool
+							if (
+								input.tool_name ===
+								"mcp__cyrus-mcp-tools__linear_agent_give_feedback"
+							) {
+								const toolInput = input.tool_input as {
+									agentSessionId?: string;
+									message?: string;
+								};
+								const childAgentSessionId = toolInput?.agentSessionId;
+								const feedbackMessage = toolInput?.message;
+
+								if (childAgentSessionId && feedbackMessage) {
+									console.log(
+										`[Give Feedback] Triggering child session resumption: ${childAgentSessionId}`,
+									);
+
+									// Get the child session
+									const childSession =
+										agentSessionManager.getSession(childAgentSessionId);
+									if (!childSession) {
+										console.error(
+											`[Give Feedback] Child session not found: ${childAgentSessionId}`,
+										);
+										return { continue: true };
+									}
+
+									// Find the repository for this session
+									const repo = this.getRepositoryForSession(childSession);
+									if (!repo) {
+										console.error(
+											`[Give Feedback] Repository not found for child session: ${childAgentSessionId}`,
+										);
+										return { continue: true };
+									}
+
+									// Prepare the prompt with the feedback message and child session ID
+									const prompt = `Feedback from parent session regarding child agent session ${childAgentSessionId}:\n\n${feedbackMessage}`;
+
+									// Resume the child session with the feedback
+									try {
+										await this.resumeClaudeSession(
+											childSession,
+											repo,
+											childAgentSessionId,
+											agentSessionManager,
+											prompt,
+											"", // No attachment manifest for feedback
+											false, // Not a new session
+										);
+										console.log(
+											`[Give Feedback] Successfully resumed child session ${childAgentSessionId} with feedback`,
+										);
+									} catch (error) {
+										console.error(
+											`[Give Feedback] Failed to resume child session ${childAgentSessionId}:`,
 											error,
 										);
 									}
@@ -3119,6 +3218,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			session,
 			repository,
 			linearAgentActivitySessionId,
+			agentSessionManager,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,

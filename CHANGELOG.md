@@ -8,9 +8,11 @@ All notable changes to this project will be documented in this file.
 - New `cyrus-mcp-tools` package providing MCP tools for Linear integration
   - File upload capability: Upload files to Linear and get asset URLs for use in issues and comments
   - Agent session creation: Create AI/bot tracking sessions on Linear issues
+  - **Give feedback tool: Allows parent sessions to send feedback to child sessions**
   - Automatically available in all Cyrus sessions without additional configuration
 - PostToolUse hook integration for tracking parent-child agent session relationships
   - Automatically captures child agent session IDs when linear_agent_session_create tool is used
+  - **Triggers child session resumption when linear_agent_give_feedback tool is used**
   - Maintains mapping of child sessions to parent sessions for hierarchical tracking
   - Child session results are automatically forwarded to parent sessions upon completion
 
