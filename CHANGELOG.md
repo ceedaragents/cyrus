@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.45] - 2025-08-28
+
 ### Added
 - New `cyrus-mcp-tools` package providing MCP tools for Linear integration
   - File upload capability: Upload files to Linear and get asset URLs for use in issues and comments
@@ -34,8 +36,23 @@ All notable changes to this project will be documented in this file.
 
 ### Packages
 
-#### cyrus-mcp-tools (new)
-- cyrus-mcp-tools@0.2.0 - Initial release with file upload and agent session creation tools
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.3.0 - Already published (not part of this release)
+
+#### cyrus-core
+- cyrus-core@0.0.11
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.23
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.28
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.17
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.45
 
 ## [0.1.44] - 2025-08-19
 

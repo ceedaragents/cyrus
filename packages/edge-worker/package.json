@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-edge-worker",
-	"version": "0.0.27",
+	"version": "0.0.28",
 	"description": "Unified edge worker for processing Linear issues with Claude",
 	"type": "module",
 	"main": "dist/index.js",
