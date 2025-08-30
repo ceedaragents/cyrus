@@ -34,6 +34,7 @@ export class AgentSessionManager {
 	private resumeParentSession?: (
 		parentSessionId: string,
 		prompt: string,
+		childSessionId: string,
 	) => Promise<void>;
 
 	constructor(
@@ -42,6 +43,7 @@ export class AgentSessionManager {
 		resumeParentSession?: (
 			parentSessionId: string,
 			prompt: string,
+			childSessionId: string,
 		) => Promise<void>,
 	) {
 		this.linearClient = linearClient;
@@ -240,6 +242,7 @@ export class AgentSessionManager {
 						await this.resumeParentSession(
 							parentAgentSessionId,
 							promptToParent,
+							linearAgentActivitySessionId, // Pass child session ID
 						);
 
 						console.log(

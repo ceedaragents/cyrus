@@ -216,6 +216,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				prompt,
 				attachmentManifest,
 				isNewSession,
+				additionalAllowedDirectories,
 			] = resumeArgs;
 
 			// Verify the CHILD session is resumed, not the parent
@@ -236,6 +237,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Verify it's not a new session
 			expect(isNewSession).toBe(false);
+
+			// Verify no additional allowed directories for feedback (empty array)
+			expect(additionalAllowedDirectories).toEqual([]);
 		});
 
 		it("should handle feedback delivery when parent session ID is unknown", async () => {
