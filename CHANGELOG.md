@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 ### Removed
 - Removed cyrus-mcp-tools package in favor of inline tool implementation
 
+### Fixed
+- Fixed `linear_upload_file` MCP tool error where `fs.stat` was not a function due to incorrect ES module import pattern for fs-extra package
+
 ### Added
 - **@cyrus /label-based-prompt command**: New special command for mention-triggered sessions
   - Use `@cyrus /label-based-prompt` in comments to trigger label-based prompts instead of mention prompts
