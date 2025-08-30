@@ -795,6 +795,10 @@ export class EdgeWorker extends EventEmitter {
 		const AGENT_SESSION_MARKER = "This thread is for an agent session";
 		const isMentionTriggered =
 			commentBody && !commentBody.includes(AGENT_SESSION_MARKER);
+		// Check if the comment contains the /label-based-prompt command
+		const isLabelBasedPromptRequested = commentBody?.includes(
+			"/label-based-prompt",
+		);
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -833,7 +837,7 @@ export class EdgeWorker extends EventEmitter {
 		// Fetch labels (needed for both model selection and system prompt determination)
 		const labels = await this.fetchIssueLabels(fullIssue);
 
-		// Only determine system prompt for delegation (not mentions)
+		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
 		let promptType:
@@ -843,8 +847,8 @@ export class EdgeWorker extends EventEmitter {
 			| "orchestrator"
 			| undefined;
 
-		if (!isMentionTriggered) {
-			// Determine system prompt based on labels (delegation case)
+		if (!isMentionTriggered || isLabelBasedPromptRequested) {
+			// Determine system prompt based on labels (delegation case or /label-based-prompt command)
 			const systemPromptResult = await this.determineSystemPromptFromLabels(
 				labels,
 				repository,
@@ -916,24 +920,31 @@ export class EdgeWorker extends EventEmitter {
 		);
 		try {
 			// Choose the appropriate prompt builder based on trigger type and system prompt
-			const promptResult = isMentionTriggered
-				? await this.buildMentionPrompt(
-						fullIssue,
-						agentSession,
-						attachmentResult.manifest,
-					)
-				: systemPrompt
+			const promptResult =
+				isMentionTriggered && isLabelBasedPromptRequested
 					? await this.buildLabelBasedPrompt(
 							fullIssue,
 							repository,
 							attachmentResult.manifest,
 						)
-					: await this.buildPromptV2(
-							fullIssue,
-							repository,
-							undefined,
-							attachmentResult.manifest,
-						);
+					: isMentionTriggered
+						? await this.buildMentionPrompt(
+								fullIssue,
+								agentSession,
+								attachmentResult.manifest,
+							)
+						: systemPrompt
+							? await this.buildLabelBasedPrompt(
+									fullIssue,
+									repository,
+									attachmentResult.manifest,
+								)
+							: await this.buildPromptV2(
+									fullIssue,
+									repository,
+									undefined,
+									attachmentResult.manifest,
+								);
 
 			const { prompt, version: userPromptVersion } = promptResult;
 
@@ -945,11 +956,14 @@ export class EdgeWorker extends EventEmitter {
 				});
 			}
 
-			const promptType = isMentionTriggered
-				? "mention"
-				: systemPrompt
-					? "label-based"
-					: "fallback";
+			const promptType =
+				isMentionTriggered && isLabelBasedPromptRequested
+					? "label-based-prompt-command"
+					: isMentionTriggered
+						? "mention"
+						: systemPrompt
+							? "label-based"
+							: "fallback";
 			console.log(
 				`[EdgeWorker] Initial prompt built successfully using ${promptType} workflow, length: ${prompt.length} characters`,
 			);
