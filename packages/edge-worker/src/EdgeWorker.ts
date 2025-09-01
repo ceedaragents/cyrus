@@ -874,6 +874,7 @@ export class EdgeWorker extends EventEmitter {
 			const systemPromptResult = await this.determineSystemPromptFromLabels(
 				labels,
 				repository,
+				linearAgentActivitySessionId,
 			);
 			systemPrompt = systemPromptResult?.prompt;
 			systemPromptVersion = systemPromptResult?.version;
@@ -1317,6 +1318,7 @@ export class EdgeWorker extends EventEmitter {
 	private async determineSystemPromptFromLabels(
 		labels: string[],
 		repository: RepositoryConfig,
+		sessionId?: string,
 	): Promise<
 		| {
 				prompt: string;
@@ -1368,8 +1370,34 @@ export class EdgeWorker extends EventEmitter {
 						);
 					}
 
+					// If this is an orchestrator session with a parent, inject nested orchestration instructions
+					let finalPrompt = promptContent;
+					if (promptType === "orchestrator" && sessionId) {
+						const hasParent = this.childToParentAgentSession.has(sessionId);
+						if (hasParent) {
+							console.log(
+								`[EdgeWorker] Detected nested orchestrator session ${sessionId}, injecting nested orchestration instructions`,
+							);
+							try {
+								const nestedOrchPath = join(
+									__dirname,
+									"..",
+									"prompts",
+									"nested-orchestration.md",
+								);
+								const nestedContent = await readFile(nestedOrchPath, "utf-8");
+								finalPrompt = `${promptContent}\n\n${nestedContent}`;
+							} catch (error) {
+								console.error(
+									`[EdgeWorker] Failed to load nested orchestration instructions:`,
+									error,
+								);
+							}
+						}
+					}
+
 					return {
-						prompt: promptContent,
+						prompt: finalPrompt,
 						version: promptVersion,
 						type: promptType,
 					};
@@ -3569,6 +3597,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labels,
 			repository,
+			linearAgentActivitySessionId,
 		);
 		const systemPrompt = systemPromptResult?.prompt;
 		const promptType = systemPromptResult?.type;

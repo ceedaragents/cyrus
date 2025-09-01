@@ -136,65 +136,6 @@ Before merging any completed sub-issue, you MUST:
 - Document final state and learnings
 ```
 
-## Nested Orchestration & Reporting Strategy (Only If You Have `report_results_to_manager` Tool)
-
-### When You Are a Sub-Orchestrator
-
-If you have access to the `report_results_to_manager` tool (check your available tools), you are a nested orchestrator and MUST follow a special reporting protocol:
-
-1. **DO NOT post results normally** - Regular agents complete and post results automatically, but nested orchestrators must use a different approach
-2. **USE the `report_results_to_manager` tool** - When all your sub-tasks are complete and verified, use this tool to report comprehensive results to your manager orchestrator
-3. **HALT after reporting** - After calling `report_results_to_manager`, you will receive a PostToolUse hint instructing you to halt and wait for potential feedback from your manager
-4. **Your manager will either**:
-   - Accept your results and continue with their orchestration
-   - Provide feedback using `linear_agent_give_feedback` for you to address
-
-### Reporting Format
-
-When using `report_results_to_manager`, structure your results as:
-
-```markdown
-## Orchestration Summary
-**Objective**: [What was requested]
-**Status**: [COMPLETED|PARTIALLY_COMPLETED|BLOCKED|FAILED]
-**Completion Rate**: [X/Y sub-issues completed]
-
-## Sub-Issues Processed
-### Completed
-1. [Issue ID] - [Title] - [Actual outcome]
-2. [Issue ID] - [Title] - [Actual outcome]
-
-### Failed/Blocked (if any)
-1. [Issue ID] - [Title] - [Failure reason/blocker]
-2. [Issue ID] - [Title] - [Failure reason/blocker]
-
-## What Was Achieved
-- [Specific accomplishment that works]
-- [Another verified accomplishment]
-
-## What Remains Incomplete (if applicable)
-- [Unfinished task with reason]
-- [Blocked feature with dependency]
-
-## Verification Results
-- Tests: [✓ Passing | ✗ X failures | ⚠️ Partially passing]
-- Build: [✓ Successful | ✗ Failed with errors | ⚠️ Warnings present]
-- Integration: [✓ Verified | ✗ Broken | ⚠️ Needs manual verification]
-
-## Current State
-[Honest description of the current state - what works, what doesn't, what needs attention]
-
-## Blockers Encountered (if any)
-- [Specific blocker and what's needed to resolve]
-- [Technical limitation discovered]
-```
-
-### How to Know If This Applies to You
-
-You are a nested orchestrator if:
-- You have access to the `report_results_to_manager` tool in your available tools list
-- This tool is only provided to orchestrators who have a parent manager
-
 ## Sub-Issue Design Principles
 
 ### Atomic & Independent
@@ -238,8 +179,6 @@ Include in every sub-issue:
 10. **READ ALL SCREENSHOTS**: When taking screenshots for visual verification, you MUST read/view every screenshot to confirm visual changes match expectations. Never take a screenshot without reading it - the visual confirmation is the entire purpose of the screenshot.
 
 11. **HALT AFTER FEEDBACK**: When you call `linear_agent_give_feedback`, you will receive a PostToolUse hint instructing you to halt and wait. You MUST stop and wait for the sub-agent to process the feedback and return results.
-
-12. **NESTED ORCHESTRATOR REPORTING (IF APPLICABLE)**: If you have access to the `report_results_to_manager` tool, you MUST use it instead of normal completion. After calling this tool, halt immediately and wait for potential feedback from your manager.
 
 
 ## Sub-Issue Creation Checklist
