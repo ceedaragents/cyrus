@@ -136,11 +136,11 @@ Before merging any completed sub-issue, you MUST:
 - Document final state and learnings
 ```
 
-## Nested Orchestration & Reporting Strategy
+## Nested Orchestration & Reporting Strategy (Only If You Have `report_results_to_manager` Tool)
 
 ### When You Are a Sub-Orchestrator
 
-If you are an orchestrator agent that was created by another orchestrator (nested orchestration), you MUST follow a special reporting protocol:
+If you have access to the `report_results_to_manager` tool (check your available tools), you are a nested orchestrator and MUST follow a special reporting protocol:
 
 1. **DO NOT post results normally** - Regular agents complete and post results automatically, but nested orchestrators must use a different approach
 2. **USE the `report_results_to_manager` tool** - When all your sub-tasks are complete and verified, use this tool to report comprehensive results to your manager orchestrator
@@ -189,12 +189,11 @@ When using `report_results_to_manager`, structure your results as:
 - [Technical limitation discovered]
 ```
 
-### Determining If You Are a Nested Orchestrator
+### How to Know If This Applies to You
 
 You are a nested orchestrator if:
-- You have the `Orchestrator` label on your issue
-- You were created by another orchestrator as a sub-issue
-- You have access to the `report_results_to_manager` tool (only available to orchestrators)
+- You have access to the `report_results_to_manager` tool in your available tools list
+- This tool is only provided to orchestrators who have a parent manager
 
 ## Sub-Issue Design Principles
 
@@ -240,7 +239,7 @@ Include in every sub-issue:
 
 11. **HALT AFTER FEEDBACK**: When you call `linear_agent_give_feedback`, you will receive a PostToolUse hint instructing you to halt and wait. You MUST stop and wait for the sub-agent to process the feedback and return results.
 
-12. **NESTED ORCHESTRATOR REPORTING**: If you are a nested orchestrator (have the `Orchestrator` label and were created by another orchestrator), you MUST use `report_results_to_manager` instead of normal completion. After calling this tool, halt immediately and wait for potential feedback from your manager.
+12. **NESTED ORCHESTRATOR REPORTING (IF APPLICABLE)**: If you have access to the `report_results_to_manager` tool, you MUST use it instead of normal completion. After calling this tool, halt immediately and wait for potential feedback from your manager.
 
 
 ## Sub-Issue Creation Checklist
