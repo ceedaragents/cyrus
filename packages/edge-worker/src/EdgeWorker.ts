@@ -2732,6 +2732,34 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						return false;
 					}
 
+					// Get the child orchestrator session to access its workspace path
+					const childOrchestrator =
+						parentAgentSessionManager.getSession(sessionId);
+					const childWorkspaceDirs: string[] = [];
+					if (childOrchestrator) {
+						childWorkspaceDirs.push(childOrchestrator.workspace.path);
+						console.log(
+							`[EdgeWorker] Adding child orchestrator workspace to parent allowed directories: ${childOrchestrator.workspace.path}`,
+						);
+					} else {
+						// Try to find the child in other repositories
+						for (const [, manager] of this.agentSessionManagers) {
+							const childSession = manager.getSession(sessionId);
+							if (childSession) {
+								childWorkspaceDirs.push(childSession.workspace.path);
+								console.log(
+									`[EdgeWorker] Adding child orchestrator workspace to parent allowed directories: ${childSession.workspace.path}`,
+								);
+								break;
+							}
+						}
+						if (childWorkspaceDirs.length === 0) {
+							console.warn(
+								`[EdgeWorker] Could not find child orchestrator session ${sessionId} to add workspace to parent allowed directories`,
+							);
+						}
+					}
+
 					// Resume the parent manager session with the orchestrator's results
 					try {
 						const resultsPrompt = `Orchestrator session ${sessionId} completed with results:\n\n${results}`;
@@ -2743,7 +2771,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							resultsPrompt,
 							"", // No attachment manifest
 							false, // Not a new session
-							[], // No additional allowed directories
+							childWorkspaceDirs, // Add child workspace directories to parent's allowed directories
 						);
 						console.log(
 							`[EdgeWorker] Results delivered successfully to manager session ${parentId}`,
