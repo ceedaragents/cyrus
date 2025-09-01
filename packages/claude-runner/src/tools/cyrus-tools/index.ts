@@ -548,7 +548,7 @@ export function createCyrusToolsServer(
 			results: z
 				.string()
 				.describe(
-					"The comprehensive results summary to report to the manager orchestrator",
+					"The comprehensive results summary to report to the manager orchestrator (use markdown formatting)",
 				),
 		},
 		async ({ results }) => {
