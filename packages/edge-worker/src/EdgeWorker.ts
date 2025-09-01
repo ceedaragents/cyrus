@@ -3399,9 +3399,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}
 
 			// Post thought about resuming from child session with results
-			const thoughtBody = childResult
-				? `Received result from sub-agent: ${childResult}`
-				: "Resuming from child session";
+			// childResult already contains the full formatted message from AgentSessionManager
+			const thoughtBody = childResult || "Resuming from child session";
 
 			const activityInput = {
 				agentSessionId: linearAgentActivitySessionId,
