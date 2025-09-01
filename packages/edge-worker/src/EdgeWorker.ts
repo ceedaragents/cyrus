@@ -197,7 +197,12 @@ export class EdgeWorker extends EventEmitter {
 							);
 						}
 
-						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+						// Post thought about receiving result from sub-agent
+						await this.postParentResumeAcknowledgment(
+							parentSessionId,
+							repo.id,
+							prompt,
+						);
 
 						// Resume the parent session with the child's result
 						console.log(
@@ -2661,7 +2666,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private buildMcpConfig(
 		repository: RepositoryConfig,
 		parentSessionId?: string,
+		labels?: string[],
 	): Record<string, McpServerConfig> {
+		// Check if this is an orchestrator session
+		let isOrchestrator = false;
+		if (labels && labels.length > 0 && repository.labelPrompts) {
+			const orchestratorConfig = repository.labelPrompts.orchestrator;
+			const orchestratorLabels = Array.isArray(orchestratorConfig)
+				? orchestratorConfig
+				: orchestratorConfig?.labels;
+			if (orchestratorLabels) {
+				isOrchestrator = orchestratorLabels.some((label) =>
+					labels.includes(label),
+				);
+			}
+		}
+
 		// Always inject the Linear MCP servers with the repository's token
 		const mcpConfig: Record<string, McpServerConfig> = {
 			linear: {
@@ -2674,6 +2694,74 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			},
 			"cyrus-tools": createCyrusToolsServer(repository.linearToken, {
 				parentSessionId,
+				isOrchestrator,
+				onReportToManager: async (sessionId, results) => {
+					console.log(
+						`[EdgeWorker] Orchestrator ${sessionId} reporting results to manager`,
+					);
+
+					// Find the parent session to resume with results
+					const parentId = this.childToParentAgentSession.get(sessionId);
+					if (!parentId) {
+						console.log(
+							`[EdgeWorker] No parent manager found for orchestrator ${sessionId}`,
+						);
+						return false;
+					}
+
+					// Find the repository containing the parent session
+					let parentRepo: RepositoryConfig | undefined;
+					let parentAgentSessionManager: AgentSessionManager | undefined;
+
+					for (const [repoId, manager] of this.agentSessionManagers) {
+						if (manager.hasClaudeRunner(parentId)) {
+							parentRepo = this.repositories.get(repoId);
+							parentAgentSessionManager = manager;
+							break;
+						}
+					}
+
+					if (!parentRepo || !parentAgentSessionManager) {
+						console.error(
+							`[EdgeWorker] Parent manager session ${parentId} not found in any repository`,
+						);
+						return false;
+					}
+
+					// Get the parent session
+					const parentSession = parentAgentSessionManager.getSession(parentId);
+					if (!parentSession) {
+						console.error(
+							`[EdgeWorker] Parent manager session ${parentId} not found`,
+						);
+						return false;
+					}
+
+					// Resume the parent manager session with the orchestrator's results
+					try {
+						const resultsPrompt = `Orchestrator session ${sessionId} completed with results:\n\n${results}`;
+						await this.resumeClaudeSession(
+							parentSession,
+							parentRepo,
+							parentId,
+							parentAgentSessionManager,
+							resultsPrompt,
+							"", // No attachment manifest
+							false, // Not a new session
+							[], // No additional allowed directories
+						);
+						console.log(
+							`[EdgeWorker] Results delivered successfully to manager session ${parentId}`,
+						);
+						return true;
+					} catch (error) {
+						console.error(
+							`[EdgeWorker] Failed to resume manager session with results:`,
+							error,
+						);
+						return false;
+					}
+				},
 				onSessionCreated: (childSessionId, parentId) => {
 					console.log(
 						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
@@ -2728,6 +2816,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 					// Format the feedback as a prompt for the child session
 					const feedbackPrompt = `Feedback from parent session${parentId ? ` ${parentId}` : ""} regarding child agent session ${childSessionId}:\n\n${message}`;
+
+					// Post a thought to Linear about receiving feedback from orchestrator
+					try {
+						await childAgentSessionManager.createThoughtActivity(
+							childSessionId,
+							`Received feedback from orchestrator: ${message}`,
+						);
+					} catch (error) {
+						console.error(
+							`[EdgeWorker] Failed to post feedback thought to Linear:`,
+							error,
+						);
+					}
 
 					// Resume the CHILD session with the feedback from the parent
 					try {
@@ -2825,7 +2926,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		resumeSessionId?: string,
 		labels?: string[],
 	): ClaudeRunnerConfig {
-		// Configure PostToolUse hook for playwright screenshots
+		// Configure PostToolUse hooks
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
 				{
@@ -2841,6 +2942,38 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 								continue: true,
 								additionalContext:
 									"Screenshot taken successfully. You should use the Read tool to view the screenshot file to analyze the visual content.",
+							};
+						},
+					],
+				},
+				{
+					matcher: "linear_agent_give_feedback",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							console.log(
+								`Tool ${postToolUseInput.tool_name} completed - feedback delivered to child session`,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"Feedback delivered to sub-agent. You should now halt and wait for the sub-agent to process the feedback and return results.",
+							};
+						},
+					],
+				},
+				{
+					matcher: "report_results_to_manager",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							console.log(
+								`Tool ${postToolUseInput.tool_name} completed - results reported to manager`,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"Results reported to manager orchestrator. You should now halt immediately and wait for potential feedback from your manager.",
 							};
 						},
 					],
@@ -2894,7 +3027,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
+			mcpConfig: this.buildMcpConfig(
+				repository,
+				linearAgentActivitySessionId,
+				labels,
+			),
 			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
 			// Priority order: label override > repository config > global default
 			model: modelOverride || repository.model || this.config.defaultModel,
@@ -3195,6 +3332,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private async postParentResumeAcknowledgment(
 		linearAgentActivitySessionId: string,
 		repositoryId: string,
+		childResult?: string,
 	): Promise<void> {
 		try {
 			const linearClient = this.linearClients.get(repositoryId);
@@ -3205,11 +3343,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return;
 			}
 
+			// Extract the actual result from the prompt if provided
+			let thoughtBody = "Resuming from child session";
+			if (childResult) {
+				// Parse the child result from the full prompt
+				const resultMatch = childResult.match(
+					/Child agent session.*completed with result:\n\n([\s\S]*)/,
+				);
+				const actualResult = resultMatch ? resultMatch[1] : childResult;
+				thoughtBody = `Received result from sub-agent: ${actualResult}`;
+			}
+
 			const activityInput = {
 				agentSessionId: linearAgentActivitySessionId,
 				content: {
 					type: "thought",
-					body: "Resuming from child session",
+					body: thoughtBody,
 				},
 			};
 

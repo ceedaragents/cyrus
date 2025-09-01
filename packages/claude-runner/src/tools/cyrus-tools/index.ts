@@ -87,9 +87,23 @@ export interface CyrusToolsOptions {
 	) => Promise<boolean>;
 
 	/**
+	 * Callback to report results to manager
+	 * Called when an orchestrator needs to report results to its manager
+	 */
+	onReportToManager?: (
+		sessionId: string,
+		results: string,
+	) => Promise<boolean>;
+
+	/**
 	 * The ID of the current parent session (if any)
 	 */
 	parentSessionId?: string;
+
+	/**
+	 * Whether the current session is an orchestrator
+	 */
+	isOrchestrator?: boolean;
 }
 
 /**
@@ -530,14 +544,108 @@ export function createCyrusToolsServer(
 		},
 	);
 
+	const reportToManagerTool = tool(
+		"report_results_to_manager",
+		"Report final results to the parent/manager orchestrator. Only use this when you are an orchestrator agent and have completed all sub-tasks.",
+		{
+			results: z
+				.string()
+				.describe(
+					"The comprehensive results summary to report to the manager orchestrator",
+				),
+		},
+		async ({ results }) => {
+			// Validate parameters
+			if (!results) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: "results parameter is required",
+							}),
+						},
+					],
+				};
+			}
+
+			// Check if this is an orchestrator session
+			if (!options.isOrchestrator) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error:
+									"This tool is only available for orchestrator agents. Regular agents should complete normally.",
+							}),
+						},
+					],
+				};
+			}
+
+			// Report results through the callback if provided
+			let reported = false;
+			if (options.onReportToManager && options.parentSessionId) {
+				console.log(
+					`[CyrusTools] Reporting results to manager from session ${options.parentSessionId}`,
+				);
+				try {
+					reported = await options.onReportToManager(
+						options.parentSessionId,
+						results,
+					);
+					if (reported) {
+						console.log(
+							`[CyrusTools] Results reported successfully to manager`,
+						);
+					} else {
+						console.log(
+							`[CyrusTools] Failed to report results to manager`,
+						);
+					}
+				} catch (error) {
+					console.error(`[CyrusTools] Failed to report results:`, error);
+				}
+			} else if (!options.parentSessionId) {
+				console.log(
+					`[CyrusTools] No parent session ID - this is a top-level orchestrator`,
+				);
+			}
+
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: JSON.stringify({
+							success: true,
+							reported,
+							message: reported
+								? "Results reported to manager. Halting to wait for potential feedback."
+								: "No manager to report to (top-level orchestrator).",
+						}),
+					},
+				],
+			};
+		},
+	);
+
+	// Only include report_results_to_manager tool if this is an orchestrator
+	const tools = options.isOrchestrator
+		? [
+				uploadTool,
+				agentSessionTool,
+				agentSessionOnCommentTool,
+				giveFeedbackTool,
+				reportToManagerTool,
+			]
+		: [uploadTool, agentSessionTool, agentSessionOnCommentTool, giveFeedbackTool];
+
 	return createSdkMcpServer({
 		name: "cyrus-tools",
 		version: "1.0.0",
-		tools: [
-			uploadTool,
-			agentSessionTool,
-			agentSessionOnCommentTool,
-			giveFeedbackTool,
-		],
+		tools,
 	});
 }

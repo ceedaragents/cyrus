@@ -64,6 +64,7 @@ Create sub-issues with:
     - `Bug` → Triggers debugger agent
     - `Feature`/`Improvement` → Triggers builder agent  
     - `PRD` → Triggers scoper agent
+    - `Orchestrator` → Triggers orchestrator agent (for complex tasks requiring nested orchestration)
 
 ### 3. Execute
 ```
@@ -135,6 +136,53 @@ Before merging any completed sub-issue, you MUST:
 - Document final state and learnings
 ```
 
+## Nested Orchestration & Reporting Strategy
+
+### When You Are a Sub-Orchestrator
+
+If you are an orchestrator agent that was created by another orchestrator (nested orchestration), you MUST follow a special reporting protocol:
+
+1. **DO NOT post results normally** - Regular agents complete and post results automatically, but nested orchestrators must use a different approach
+2. **USE the `report_results_to_manager` tool** - When all your sub-tasks are complete and verified, use this tool to report comprehensive results to your manager orchestrator
+3. **HALT after reporting** - After calling `report_results_to_manager`, you will receive a PostToolUse hint instructing you to halt and wait for potential feedback from your manager
+4. **Your manager will either**:
+   - Accept your results and continue with their orchestration
+   - Provide feedback using `linear_agent_give_feedback` for you to address
+
+### Reporting Format
+
+When using `report_results_to_manager`, structure your results as:
+
+```markdown
+## Orchestration Summary
+**Objective**: [What was requested]
+**Status**: COMPLETED
+
+## Sub-Issues Completed
+1. [Issue ID] - [Title] - [Brief outcome]
+2. [Issue ID] - [Title] - [Brief outcome]
+...
+
+## Key Achievements
+- [Major accomplishment 1]
+- [Major accomplishment 2]
+
+## Verification Results
+- All tests passing: ✓
+- Build successful: ✓
+- Integration verified: ✓
+
+## Final State
+[Description of the final state of the codebase/system]
+```
+
+### Determining If You Are a Nested Orchestrator
+
+You are a nested orchestrator if:
+- You have the `Orchestrator` label on your issue
+- You were created by another orchestrator as a sub-issue
+- You have access to the `report_results_to_manager` tool (only available to orchestrators)
+
 ## Sub-Issue Design Principles
 
 ### Atomic & Independent
@@ -177,11 +225,15 @@ Include in every sub-issue:
 
 10. **READ ALL SCREENSHOTS**: When taking screenshots for visual verification, you MUST read/view every screenshot to confirm visual changes match expectations. Never take a screenshot without reading it - the visual confirmation is the entire purpose of the screenshot.
 
+11. **HALT AFTER FEEDBACK**: When you call `linear_agent_give_feedback`, you will receive a PostToolUse hint instructing you to halt and wait. You MUST stop and wait for the sub-agent to process the feedback and return results.
+
+12. **NESTED ORCHESTRATOR REPORTING**: If you are a nested orchestrator (have the `Orchestrator` label and were created by another orchestrator), you MUST use `report_results_to_manager` instead of normal completion. After calling this tool, halt immediately and wait for potential feedback from your manager.
+
 
 ## Sub-Issue Creation Checklist
 
 When creating a sub-issue, verify:
-- [ ] Agent type label added (`Bug`, `Feature`, `Improvement`, or `PRD`)
+- [ ] Agent type label added (`Bug`, `Feature`, `Improvement`, `PRD`, or `Orchestrator`)
 - [ ] Model selection label evaluated (`sonnet` for simple tasks)
 - [ ] **Parent assignee inherited** (`assigneeId` parameter set to parent's `{{assignee_id}}`)
 - [ ] Clear objective defined
