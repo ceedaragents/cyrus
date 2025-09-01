@@ -197,7 +197,11 @@ export class EdgeWorker extends EventEmitter {
 							);
 						}
 
-						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+						await this.postParentResumeAcknowledgment(
+							parentSessionId,
+							repo.id,
+							prompt,
+						);
 
 						// Resume the parent session with the child's result
 						console.log(
@@ -3383,6 +3387,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private async postParentResumeAcknowledgment(
 		linearAgentActivitySessionId: string,
 		repositoryId: string,
+		childResult?: string,
 	): Promise<void> {
 		try {
 			const linearClient = this.linearClients.get(repositoryId);
@@ -3393,8 +3398,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return;
 			}
 
-			// Post thought about resuming from child session
-			const thoughtBody = "Resuming from child session";
+			// Post thought about resuming from child session with results
+			const thoughtBody = childResult
+				? `Received result from sub-agent: ${childResult}`
+				: "Resuming from child session";
 
 			const activityInput = {
 				agentSessionId: linearAgentActivitySessionId,
