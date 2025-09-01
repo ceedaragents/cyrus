@@ -224,16 +224,46 @@ export class AgentSessionManager {
 			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 
 			// Check if this is a child session and send result to parent
+			// IMPORTANT: Skip automatic parent resume for orchestrator children - they use report_results_to_manager
 			if (this.getParentSessionId && this.resumeParentSession) {
 				const parentAgentSessionId = this.getParentSessionId(
 					linearAgentActivitySessionId,
 				);
 				if (parentAgentSessionId) {
+					// Check if this child is an orchestrator by looking for Orchestrator label in the issue
+					const session = this.sessions.get(linearAgentActivitySessionId);
+					let isOrchestrator = false;
+
+					if (session?.issueId) {
+						try {
+							const issue = await this.linearClient.issue(session.issueId);
+							const labels = await issue.labels();
+							const labelNames = labels.nodes.map((label) => label.name);
+
+							// Check if any label contains "Orchestrator" (case-insensitive)
+							isOrchestrator = labelNames.some((label) =>
+								label.toLowerCase().includes("orchestrator"),
+							);
+
+							if (isOrchestrator) {
+								console.log(
+									`[AgentSessionManager] Session ${linearAgentActivitySessionId} is an orchestrator child of ${parentAgentSessionId}, skipping automatic parent resume (will use report_results_to_manager)`,
+								);
+								return; // Skip automatic parent resume for orchestrators
+							}
+						} catch (error) {
+							console.error(
+								`[AgentSessionManager] Failed to check if child is orchestrator:`,
+								error,
+							);
+						}
+					}
+
 					console.log(
-						`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
+						`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a regular child of ${parentAgentSessionId}, sending result to parent`,
 					);
 
-					// Resume parent session with child result
+					// Resume parent session with child result (only for non-orchestrator children)
 					try {
 						const childResult = resultMessage.result;
 						const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
