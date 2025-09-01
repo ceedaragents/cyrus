@@ -2794,7 +2794,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 					// Resume the parent manager session with the orchestrator's results
 					try {
-						const resultsPrompt = `Orchestrator session ${sessionId} completed with results:\n\n${results}`;
+						// Strip LAST_MESSAGE_MARKER if present
+						const markerPattern = /^___LAST_MESSAGE_MARKER___\s*/;
+						const cleanResults = results.replace(markerPattern, "");
+
+						// Format with horizontal lines for better readability
+						const resultsPrompt = `Orchestrator session ${sessionId} completed with results:\n\n---\n\n${cleanResults}\n\n---`;
 						await this.resumeClaudeSession(
 							parentSession,
 							parentRepo,

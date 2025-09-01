@@ -265,8 +265,14 @@ export class AgentSessionManager {
 
 					// Resume parent session with child result (only for non-orchestrator children)
 					try {
-						const childResult = resultMessage.result;
-						const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
+						let childResult = resultMessage.result;
+
+						// Strip LAST_MESSAGE_MARKER if present
+						const markerPattern = /^___LAST_MESSAGE_MARKER___\s*/;
+						childResult = childResult.replace(markerPattern, "");
+
+						// Format with horizontal lines for better readability
+						const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n---\n\n${childResult}\n\n---`;
 
 						// Use the resumeParentSession callback to handle the parent session
 						await this.resumeParentSession(
