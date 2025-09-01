@@ -90,10 +90,7 @@ export interface CyrusToolsOptions {
 	 * Callback to report results to manager
 	 * Called when an orchestrator needs to report results to its manager
 	 */
-	onReportToManager?: (
-		sessionId: string,
-		results: string,
-	) => Promise<boolean>;
+	onReportToManager?: (sessionId: string, results: string) => Promise<boolean>;
 
 	/**
 	 * The ID of the current parent session (if any)
@@ -602,9 +599,7 @@ export function createCyrusToolsServer(
 							`[CyrusTools] Results reported successfully to manager`,
 						);
 					} else {
-						console.log(
-							`[CyrusTools] Failed to report results to manager`,
-						);
+						console.log(`[CyrusTools] Failed to report results to manager`);
 					}
 				} catch (error) {
 					console.error(`[CyrusTools] Failed to report results:`, error);
@@ -641,7 +636,12 @@ export function createCyrusToolsServer(
 				giveFeedbackTool,
 				reportToManagerTool,
 			]
-		: [uploadTool, agentSessionTool, agentSessionOnCommentTool, giveFeedbackTool];
+		: [
+				uploadTool,
+				agentSessionTool,
+				agentSessionOnCommentTool,
+				giveFeedbackTool,
+			];
 
 	return createSdkMcpServer({
 		name: "cyrus-tools",
