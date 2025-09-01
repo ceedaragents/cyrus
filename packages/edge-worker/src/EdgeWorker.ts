@@ -197,12 +197,7 @@ export class EdgeWorker extends EventEmitter {
 							);
 						}
 
-						// Post thought about receiving result from sub-agent
-						await this.postParentResumeAcknowledgment(
-							parentSessionId,
-							repo.id,
-							prompt,
-						);
+						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
 						// Resume the parent session with the child's result
 						console.log(
@@ -3332,7 +3327,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private async postParentResumeAcknowledgment(
 		linearAgentActivitySessionId: string,
 		repositoryId: string,
-		childResult?: string,
 	): Promise<void> {
 		try {
 			const linearClient = this.linearClients.get(repositoryId);
@@ -3343,16 +3337,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return;
 			}
 
-			// Extract the actual result from the prompt if provided
-			let thoughtBody = "Resuming from child session";
-			if (childResult) {
-				// Parse the child result from the full prompt
-				const resultMatch = childResult.match(
-					/Child agent session.*completed with result:\n\n([\s\S]*)/,
-				);
-				const actualResult = resultMatch ? resultMatch[1] : childResult;
-				thoughtBody = `Received result from sub-agent: ${actualResult}`;
-			}
+			// Post thought about resuming from child session
+			const thoughtBody = "Resuming from child session";
 
 			const activityInput = {
 				agentSessionId: linearAgentActivitySessionId,
