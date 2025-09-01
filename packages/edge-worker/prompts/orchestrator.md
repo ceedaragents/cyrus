@@ -156,24 +156,37 @@ When using `report_results_to_manager`, structure your results as:
 ```markdown
 ## Orchestration Summary
 **Objective**: [What was requested]
-**Status**: COMPLETED
+**Status**: [COMPLETED|PARTIALLY_COMPLETED|BLOCKED|FAILED]
+**Completion Rate**: [X/Y sub-issues completed]
 
-## Sub-Issues Completed
-1. [Issue ID] - [Title] - [Brief outcome]
-2. [Issue ID] - [Title] - [Brief outcome]
-...
+## Sub-Issues Processed
+### Completed
+1. [Issue ID] - [Title] - [Actual outcome]
+2. [Issue ID] - [Title] - [Actual outcome]
 
-## Key Achievements
-- [Major accomplishment 1]
-- [Major accomplishment 2]
+### Failed/Blocked (if any)
+1. [Issue ID] - [Title] - [Failure reason/blocker]
+2. [Issue ID] - [Title] - [Failure reason/blocker]
+
+## What Was Achieved
+- [Specific accomplishment that works]
+- [Another verified accomplishment]
+
+## What Remains Incomplete (if applicable)
+- [Unfinished task with reason]
+- [Blocked feature with dependency]
 
 ## Verification Results
-- All tests passing: ✓
-- Build successful: ✓
-- Integration verified: ✓
+- Tests: [✓ Passing | ✗ X failures | ⚠️ Partially passing]
+- Build: [✓ Successful | ✗ Failed with errors | ⚠️ Warnings present]
+- Integration: [✓ Verified | ✗ Broken | ⚠️ Needs manual verification]
 
-## Final State
-[Description of the final state of the codebase/system]
+## Current State
+[Honest description of the current state - what works, what doesn't, what needs attention]
+
+## Blockers Encountered (if any)
+- [Specific blocker and what's needed to resolve]
+- [Technical limitation discovered]
 ```
 
 ### Determining If You Are a Nested Orchestrator
