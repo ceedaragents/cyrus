@@ -2861,7 +2861,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						console.log(`║ Thought should be posted to Linear`);
 						console.log("╚══════════════════════════════════════════════════════════");
 						return true;
-					} catch (error) {
+					} catch (error: any) {
 						console.error("┌──────────────────────────────────────────────────────────");
 						console.error("│ [REPORT TO MANAGER EXCEPTION]");
 						console.error("├──────────────────────────────────────────────────────────");
@@ -3510,7 +3510,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				console.error("│   - Permissions issue with Linear token");
 				console.error("└──────────────────────────────────────────────────────────");
 			}
-		} catch (error) {
+		} catch (error: any) {
 			console.error("┌──────────────────────────────────────────────────────────");
 			console.error("│ [THOUGHT POSTING EXCEPTION] Linear API call threw error");
 			console.error("├──────────────────────────────────────────────────────────");
