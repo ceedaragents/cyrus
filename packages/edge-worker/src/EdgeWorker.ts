@@ -2187,7 +2187,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (!text) return [];
 
 		// Match URLs that start with https://uploads.linear.app
-		const regex = /https:\/\/uploads\.linear\.app\/[^\s<>"')]+/gi;
+		// Exclude brackets and parentheses to avoid capturing malformed markdown link syntax
+		const regex = /https:\/\/uploads\.linear\.app\/[a-zA-Z0-9\/_.-]+/gi;
 		const matches = text.match(regex) || [];
 
 		// Remove duplicates
