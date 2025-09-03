@@ -146,7 +146,26 @@ export class SharedApplicationServer {
 		if (this.ngrokUrl) {
 			return this.ngrokUrl;
 		}
-		return process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`;
+
+		// If CYRUS_BASE_URL is set, ensure it includes the port
+		if (process.env.CYRUS_BASE_URL) {
+			const baseUrl = process.env.CYRUS_BASE_URL;
+			// Check if the URL already contains a port
+			try {
+				const url = new URL(baseUrl);
+				if (!url.port && this.port !== 80 && this.port !== 443) {
+					// No port specified and not using default HTTP/HTTPS ports
+					url.port = this.port.toString();
+					return url.toString().replace(/\/$/, ""); // Remove trailing slash if present
+				}
+				return baseUrl;
+			} catch {
+				// If URL parsing fails, just return the base URL
+				return baseUrl;
+			}
+		}
+
+		return `http://${this.host}:${this.port}`;
 	}
 
 	/**
@@ -422,7 +441,7 @@ export class SharedApplicationServer {
               <p>You can close this window and return to the terminal.</p>
               <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
               <p style="margin-top: 30px;">
-                <a href="${this.proxyUrl}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback" 
+                <a href="${this.proxyUrl}/oauth/authorize?callback=${this.getBaseUrl()}/callback" 
                    style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                   Connect Another Workspace
                 </a>
