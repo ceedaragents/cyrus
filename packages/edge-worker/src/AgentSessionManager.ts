@@ -30,6 +30,8 @@ export class AgentSessionManager {
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
+	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
+		new Map(); // Track tool calls by their tool_use_id
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -118,9 +120,11 @@ export class AgentSessionManager {
 		// Extract tool info if this is an assistant message
 		const toolInfo =
 			sdkMessage.type === "assistant" ? this.extractToolInfo(sdkMessage) : null;
-		// Extract tool_use_id if this is a user message with tool_result
-		const toolResultId =
-			sdkMessage.type === "user" ? this.extractToolResultId(sdkMessage) : null;
+		// Extract tool_use_id and error status if this is a user message with tool_result
+		const toolResultInfo =
+			sdkMessage.type === "user"
+				? this.extractToolResultInfo(sdkMessage)
+				: null;
 
 		const sessionEntry: CyrusAgentSessionEntry = {
 			claudeSessionId: sdkMessage.session_id,
@@ -134,8 +138,9 @@ export class AgentSessionManager {
 					toolName: toolInfo.name,
 					toolInput: toolInfo.input,
 				}),
-				...(toolResultId && {
-					toolUseId: toolResultId,
+				...(toolResultInfo && {
+					toolUseId: toolResultInfo.toolUseId,
+					toolResultError: toolResultInfo.isError,
 				}),
 			},
 		};
@@ -207,6 +212,10 @@ export class AgentSessionManager {
 
 		// Clear any active Task when session completes
 		this.activeTasksBySession.delete(linearAgentActivitySessionId);
+
+		// Clear tool calls tracking for this session
+		// Note: We should ideally track by session, but for now clearing all is safer
+		// to prevent memory leaks
 
 		const status =
 			resultMessage.subtype === "success"
@@ -434,6 +443,13 @@ export class AgentSessionManager {
 						return JSON.stringify(block.input, null, 2);
 					} else if (block.type === "tool_result") {
 						// For tool_result blocks, extract just the text content
+						// Also store the error status in metadata if needed
+						if ("is_error" in block && block.is_error) {
+							// Mark this as an error result - we'll handle this elsewhere
+						}
+						if (typeof block.content === "string") {
+							return block.content;
+						}
 						if (Array.isArray(block.content)) {
 							return block.content
 								.filter((contentBlock: any) => contentBlock.type === "text")
@@ -480,9 +496,11 @@ export class AgentSessionManager {
 	}
 
 	/**
-	 * Extract tool_use_id from Claude user message containing tool_result
+	 * Extract tool_use_id and error status from Claude user message containing tool_result
 	 */
-	private extractToolResultId(sdkMessage: SDKUserMessage): string | null {
+	private extractToolResultInfo(
+		sdkMessage: SDKUserMessage,
+	): { toolUseId: string; isError: boolean } | null {
 		const message = sdkMessage.message as APIUserMessage;
 
 		if (Array.isArray(message.content)) {
@@ -490,10 +508,28 @@ export class AgentSessionManager {
 				(block) => block.type === "tool_result",
 			);
 			if (toolResult && "tool_use_id" in toolResult) {
-				return toolResult.tool_use_id;
+				return {
+					toolUseId: toolResult.tool_use_id,
+					isError: "is_error" in toolResult && toolResult.is_error === true,
+				};
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Extract tool result content and error status from session entry
+	 */
+	private extractToolResult(
+		entry: CyrusAgentSessionEntry,
+	): { content: string; isError: boolean } | null {
+		// Check if we have the error status in metadata
+		const isError = entry.metadata?.toolResultError || false;
+
+		return {
+			content: entry.content,
+			isError: isError,
+		};
 	}
 
 	/**
@@ -519,6 +555,7 @@ export class AgentSessionManager {
 
 			// Build activity content based on entry type
 			let content: any;
+			let ephemeral = false;
 			switch (entry.type) {
 				case "user": {
 					const activeTaskId = this.activeTasksBySession.get(
@@ -530,6 +567,34 @@ export class AgentSessionManager {
 							body: `✅ Task Completed\n\n\n\n${entry.content}\n\n---\n\n`,
 						};
 						this.activeTasksBySession.delete(linearAgentActivitySessionId);
+					} else if (entry.metadata?.toolUseId) {
+						// This is a tool result - create an action activity with the result
+						const toolResult = this.extractToolResult(entry);
+						if (toolResult) {
+							// Get the original tool information
+							const originalTool = this.toolCallsByToolUseId.get(
+								entry.metadata.toolUseId,
+							);
+							const toolName = originalTool?.name || "Tool";
+							const toolInput = originalTool?.input || "";
+
+							content = {
+								type: "action",
+								action: toolResult.isError ? `${toolName} (Error)` : toolName,
+								parameter:
+									typeof toolInput === "string"
+										? toolInput
+										: JSON.stringify(toolInput, null, 2),
+								result: toolResult.content,
+							};
+
+							// Clean up the tool call from our tracking map
+							if (entry.metadata.toolUseId) {
+								this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
+							}
+						} else {
+							return;
+						}
 					} else {
 						return;
 					}
@@ -540,6 +605,14 @@ export class AgentSessionManager {
 					if (entry.metadata?.toolUseId) {
 						const toolName = entry.metadata.toolName || "Tool";
 
+						// Store tool information for later use in tool results
+						if (entry.metadata.toolUseId) {
+							this.toolCallsByToolUseId.set(entry.metadata.toolUseId, {
+								name: toolName,
+								input: entry.metadata.toolInput || entry.content,
+							});
+						}
+
 						// Special handling for TodoWrite tool - treat as thought instead of action
 						if (toolName === "TodoWrite") {
 							const formattedTodos = this.formatTodoWriteParameter(
@@ -549,6 +622,8 @@ export class AgentSessionManager {
 								type: "thought",
 								body: formattedTodos,
 							};
+							// TodoWrite is not ephemeral
+							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Special handling for Task tool - add start marker and track active task
 							const parameter = entry.content;
@@ -568,6 +643,8 @@ export class AgentSessionManager {
 								parameter: parameter,
 								// result will be added later when we get tool result
 							};
+							// Task is not ephemeral
+							ephemeral = false;
 						} else {
 							// Other tools - check if they're within an active Task
 							const parameter = entry.content;
@@ -588,6 +665,8 @@ export class AgentSessionManager {
 								parameter: parameter,
 								// result will be added later when we get tool result
 							};
+							// Standard tool calls are ephemeral
+							ephemeral = true;
 						}
 					} else {
 						// Regular assistant message - create a thought
@@ -640,9 +719,10 @@ export class AgentSessionManager {
 					};
 			}
 
-			const activityInput = {
+			const activityInput: LinearDocument.AgentActivityCreateInput = {
 				agentSessionId: session.linearAgentActivitySessionId, // Use the Linear session ID
 				content,
+				...(ephemeral && { ephemeral: true }),
 			};
 
 			const result = await this.linearClient.createAgentActivity(activityInput);
