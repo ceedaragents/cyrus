@@ -5,6 +5,7 @@ export type {
 	HookInput,
 	HookJSONOutput,
 	PostToolUseHookInput,
+	PreToolUseHookInput,
 } from "@anthropic-ai/claude-code";
 export { AbortError, ClaudeRunner, StreamingPrompt } from "./ClaudeRunner.js";
 export {
