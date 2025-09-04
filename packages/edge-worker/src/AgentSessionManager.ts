@@ -30,6 +30,8 @@ export class AgentSessionManager {
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
+	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
+		new Map(); // Track tool calls by their tool_use_id
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -210,6 +212,10 @@ export class AgentSessionManager {
 
 		// Clear any active Task when session completes
 		this.activeTasksBySession.delete(linearAgentActivitySessionId);
+
+		// Clear tool calls tracking for this session
+		// Note: We should ideally track by session, but for now clearing all is safer
+		// to prevent memory leaks
 
 		const status =
 			resultMessage.subtype === "success"
@@ -529,15 +535,26 @@ export class AgentSessionManager {
 						// This is a tool result - create an action activity with the result
 						const toolResult = this.extractToolResult(entry);
 						if (toolResult) {
+							// Get the original tool information
+							const originalTool = this.toolCallsByToolUseId.get(
+								entry.metadata.toolUseId,
+							);
+							const toolName = originalTool?.name || "Tool";
+							const toolInput = originalTool?.input || "";
+
 							content = {
 								type: "action",
-								action: "Tool Response",
-								parameter: "", // No parameter for tool response
+								action: toolResult.isError ? `${toolName} (Error)` : toolName,
+								parameter:
+									typeof toolInput === "string"
+										? toolInput
+										: JSON.stringify(toolInput, null, 2),
 								result: toolResult.content,
 							};
-							// Mark as error if the tool result had an error
-							if (toolResult.isError) {
-								content.action = "Tool Error";
+
+							// Clean up the tool call from our tracking map
+							if (entry.metadata.toolUseId) {
+								this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
 							}
 						} else {
 							return;
@@ -551,6 +568,14 @@ export class AgentSessionManager {
 					// Assistant messages can be thoughts or responses
 					if (entry.metadata?.toolUseId) {
 						const toolName = entry.metadata.toolName || "Tool";
+
+						// Store tool information for later use in tool results
+						if (entry.metadata.toolUseId) {
+							this.toolCallsByToolUseId.set(entry.metadata.toolUseId, {
+								name: toolName,
+								input: entry.metadata.toolInput || entry.content,
+							});
+						}
 
 						// Special handling for TodoWrite tool - treat as thought instead of action
 						if (toolName === "TodoWrite") {
