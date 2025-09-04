@@ -541,7 +541,6 @@ export function createCyrusToolsServer(
 		},
 	);
 
-<<<<<<< HEAD
 	const reportToManagerTool = tool(
 		"report_results_to_manager",
 		"Report final results to the parent/manager orchestrator. Only use this when you are an orchestrator agent and have completed all sub-tasks.",
