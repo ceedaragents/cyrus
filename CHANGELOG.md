@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 - Removed cyrus-mcp-tools package in favor of inline tool implementation
 
 ### Added
+- **Orchestrator-specific PreToolUse hooks for TodoRead and TodoWrite**: Enhanced verification guidance for orchestrator agents
+  - TodoRead hook reminds orchestrators to ensure verification tasks include specific validation criteria
+  - TodoWrite hook enforces detailed verification requirements in todo items
+  - Verification todos must specify: validation aspects, acceptance criteria, and possible outcomes (pass/fail/reject)
+  - Hooks only trigger for orchestrator role, not affecting other agent types
 - **Sub-issue assignee inheritance with workspace context**: Sub-issues created by orchestrator agents now automatically inherit the same assignee as their parent issue, with complete workspace awareness
   - Enhanced label-prompt-template to include assignee information (`{{assignee_id}}` and `{{assignee_name}}`)
   - Added workspace teams context (`{{workspace_teams}}`) with team names, keys, IDs, and descriptions

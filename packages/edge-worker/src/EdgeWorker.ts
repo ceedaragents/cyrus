@@ -13,6 +13,7 @@ import type {
 	HookEvent,
 	McpServerConfig,
 	PostToolUseHookInput,
+	PreToolUseHookInput,
 	SDKMessage,
 } from "cyrus-claude-runner";
 import {
@@ -924,6 +925,7 @@ export class EdgeWorker extends EventEmitter {
 			disallowedTools,
 			undefined, // resumeSessionId
 			labels, // Pass labels for model override
+			promptType,
 		);
 		const runner = new ClaudeRunner(runnerConfig);
 
@@ -3102,6 +3104,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		disallowedTools: string[],
 		resumeSessionId?: string,
 		labels?: string[],
+		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
 	): ClaudeRunnerConfig {
 		// Configure PostToolUse hooks
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -3157,6 +3160,44 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				},
 			],
 		};
+
+		// Add Orchestrator-specific PreToolUse hooks for TodoRead and TodoWrite
+		if (promptType === "orchestrator") {
+			hooks.PreToolUse = [
+				{
+					matcher: "TodoRead",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const preToolUseInput = input as PreToolUseHookInput;
+							console.log(
+								`[Orchestrator] Reading todo list for session ${preToolUseInput.session_id}`,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"When reviewing todos, ensure each verification task includes specific validation criteria. Remember to thoroughly assess work quality and be prepared to reject incomplete implementations.",
+							};
+						},
+					],
+				},
+				{
+					matcher: "TodoWrite",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const preToolUseInput = input as PreToolUseHookInput;
+							console.log(
+								`[Orchestrator] Updating todo list for session ${preToolUseInput.session_id}`,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"CRITICAL for verification todos: Include a comma-separated list of specific validation aspects (e.g., 'unit tests, integration tests, error handling, edge cases'). Each verification task must specify: (1) what to validate, (2) acceptance criteria, and (3) possible outcomes: complete pass, partial failure with feedback, or complete rejection requiring requirement redrafting. Be thorough in quality assessment and willing to reject substandard work.",
+							};
+						},
+					],
+				},
+			];
+		}
 
 		// Check for model override labels (case-insensitive)
 		let modelOverride: string | undefined;
@@ -3843,6 +3884,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			disallowedTools,
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
 			labels, // Pass labels for model override
+			promptType,
 		);
 
 		const runner = new ClaudeRunner(runnerConfig);
