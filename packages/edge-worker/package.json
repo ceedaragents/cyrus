@@ -27,7 +27,8 @@
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-ndjson-client": "workspace:*",
-		"file-type": "^18.7.0"
+		"file-type": "^18.7.0",
+		"lru-cache": "^11.1.0"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",

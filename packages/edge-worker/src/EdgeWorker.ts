@@ -4,7 +4,6 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type Comment,
-	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
 import type {
@@ -53,6 +52,7 @@ import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { LinearClientWrapper } from "./LinearClientWrapper.js";
 import type {
 	EdgeWorkerConfig,
 	EdgeWorkerEvents,
@@ -84,7 +84,7 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
-	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
+	private linearClients: Map<string, LinearClientWrapper> = new Map(); // one LinearClientWrapper per 'repository'
 	private ndjsonClients: Map<string, NdjsonClient> = new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
@@ -128,8 +128,8 @@ export class EdgeWorker extends EventEmitter {
 			if (repo.isActive !== false) {
 				this.repositories.set(repo.id, repo);
 
-				// Create Linear client for this repository's workspace
-				const linearClient = new LinearClient({
+				// Create Linear client wrapper with rate limiting for this repository's workspace
+				const linearClient = new LinearClientWrapper({
 					accessToken: repo.linearToken,
 				});
 				this.linearClients.set(repo.id, linearClient);
@@ -400,6 +400,18 @@ export class EdgeWorker extends EventEmitter {
 		// Disconnect all NDJSON clients
 		for (const client of this.ndjsonClients.values()) {
 			client.disconnect();
+		}
+
+		// Cleanup Linear client wrappers (clear timers, batches, etc.)
+		for (const client of this.linearClients.values()) {
+			// In case of mixed types in the future, guard by method presence
+			if (typeof (client as any).cleanup === "function") {
+				try {
+					(client as any).cleanup();
+				} catch (e) {
+					console.warn("Error during LinearClientWrapper cleanup:", e);
+				}
+			}
 		}
 
 		// Stop shared application server
@@ -2088,10 +2100,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			// This ensures we pick "In Progress" over "In Review" when both have type "started"
 			// Linear uses standardized state types: triage, backlog, unstarted, started, completed, canceled
 			const startedStates = states.nodes.filter(
-				(state) => state.type === "started",
+				(state: any) => state.type === "started",
 			);
 			const startedState = startedStates.sort(
-				(a, b) => a.position - b.position,
+				(a: any, b: any) => a.position - b.position,
 			)[0];
 
 			if (!startedState) {
