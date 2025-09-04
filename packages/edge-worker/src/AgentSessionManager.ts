@@ -658,15 +658,11 @@ export class AgentSessionManager {
 					};
 			}
 
-			const activityInput: any = {
+			const activityInput: LinearDocument.AgentActivityCreateInput = {
 				agentSessionId: session.linearAgentActivitySessionId, // Use the Linear session ID
 				content,
+				...(ephemeral && { ephemeral: true }),
 			};
-
-			// Add ephemeral flag if needed
-			if (ephemeral) {
-				activityInput.ephemeral = true;
-			}
 
 			const result = await this.linearClient.createAgentActivity(activityInput);
 
