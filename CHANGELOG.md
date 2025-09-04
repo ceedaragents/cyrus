@@ -9,6 +9,11 @@ All notable changes to this project will be documented in this file.
 - Replaced external cyrus-mcp-tools MCP server with inline tools using SDK callbacks for better performance
 - Cyrus tools (file upload, agent session creation, feedback) now run in-process instead of via separate MCP server
 - Enhanced orchestrator prompt to explicitly require reading/viewing all screenshots taken for visual verification
+- **Orchestrator prompt v2.3.0**: Enhanced verification requirements and work rejection standards
+  - Added explicit TODO verification requirements with detailed validation/assessment types
+  - Emphasized the need to reject half-baked solutions rather than accepting incomplete work
+  - Added guidance on verification outcomes (fail completely, give feedback, or pass and merge)
+  - Reinforced that pausing with clear explanation is better than continuing with inadequate solutions
 
 ### Removed
 - Removed cyrus-mcp-tools package in favor of inline tool implementation
