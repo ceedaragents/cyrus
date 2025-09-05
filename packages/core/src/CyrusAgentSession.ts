@@ -53,6 +53,7 @@ export interface CyrusAgentSessionEntry {
 		toolName?: string;
 		toolInput?: any;
 		parentToolUseId?: string;
+		toolResultError?: boolean; // Error status from tool_result blocks
 		timestamp: number; // e.g. Date.now()
 		durationMs?: number;
 		isError?: boolean;
