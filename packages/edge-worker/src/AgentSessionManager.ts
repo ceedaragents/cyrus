@@ -607,8 +607,19 @@ export class AgentSessionManager {
 
 						// Store tool information for later use in tool results
 						if (entry.metadata.toolUseId) {
+							// Check if this is a subtask with arrow prefix
+							let storedName = toolName;
+							if (entry.metadata?.parentToolUseId) {
+								const activeTaskId = this.activeTasksBySession.get(
+									linearAgentActivitySessionId,
+								);
+								if (activeTaskId === entry.metadata?.parentToolUseId) {
+									storedName = `↪ ${toolName}`;
+								}
+							}
+
 							this.toolCallsByToolUseId.set(entry.metadata.toolUseId, {
-								name: toolName,
+								name: storedName,
 								input: entry.metadata.toolInput || entry.content,
 							});
 						}
