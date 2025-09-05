@@ -343,9 +343,7 @@ class EdgeApp {
 	async startOAuthFlow(proxyUrl: string): Promise<LinearCredentials> {
 		if (this.edgeWorker) {
 			// Use existing EdgeWorker's OAuth flow
-			const port = this.edgeWorker.getServerPort();
-			const callbackBaseUrl =
-				process.env.CYRUS_BASE_URL || `http://localhost:${port}`;
+			const callbackBaseUrl = this.edgeWorker.getServerBaseUrl();
 			const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
 
 			// Let SharedApplicationServer print the messages, but we handle browser opening
@@ -362,16 +360,15 @@ class EdgeApp {
 			const serverPort = process.env.CYRUS_SERVER_PORT
 				? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 				: 3456;
-			const tempServer = new SharedApplicationServer(serverPort);
+			const serverHost =
+				process.env.CYRUS_HOST_EXTERNAL === "true" ? "0.0.0.0" : "localhost";
+			const tempServer = new SharedApplicationServer(serverPort, serverHost);
 
 			try {
 				// Start the server
 				await tempServer.start();
 
-				const port = tempServer.getPort();
-				const callbackBaseUrl =
-					process.env.CYRUS_BASE_URL || `http://localhost:${port}`;
-				const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
+				const authUrl = `${proxyUrl}/oauth/authorize?callback=${tempServer.getBaseUrl()}/callback`;
 
 				// Start OAuth flow (this prints the messages)
 				const resultPromise = tempServer.startOAuthFlow(proxyUrl);
@@ -1029,7 +1026,9 @@ class EdgeApp {
 			// Display OAuth information after EdgeWorker is started
 			const serverPort = this.edgeWorker?.getServerPort() || 3456;
 			const oauthCallbackBaseUrl =
-				process.env.CYRUS_BASE_URL || `http://localhost:${serverPort}`;
+				this.edgeWorker?.getServerBaseUrl() ||
+				process.env.CYRUS_BASE_URL ||
+				`http://localhost:${serverPort}`;
 			console.log(`\n🔐 OAuth server running on port ${serverPort}`);
 			console.log(`👉 To authorize Linear (new workspace or re-auth):`);
 			console.log(
@@ -1593,11 +1592,31 @@ async function refreshTokenCommand() {
 		);
 		console.log("Opening Linear OAuth flow in your browser...");
 
-		// Use the proxy's OAuth flow with a callback to localhost
+		// Use the proxy's OAuth flow with a callback
 		const serverPort = process.env.CYRUS_SERVER_PORT
 			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 			: 3456;
-		const callbackUrl = `http://localhost:${serverPort}/callback`;
+		const serverHost =
+			process.env.CYRUS_HOST_EXTERNAL === "true" ? "0.0.0.0" : "localhost";
+
+		// Build the callback URL properly, considering CYRUS_BASE_URL
+		let callbackUrl: string;
+		if (process.env.CYRUS_BASE_URL) {
+			// Use CYRUS_BASE_URL and ensure port is included
+			const baseUrl = process.env.CYRUS_BASE_URL;
+			try {
+				const url = new URL(baseUrl);
+				if (!url.port && serverPort !== 80 && serverPort !== 443) {
+					url.port = serverPort.toString();
+				}
+				callbackUrl = `${url.toString().replace(/\/$/, "")}/callback`;
+			} catch {
+				callbackUrl = `${baseUrl}/callback`;
+			}
+		} else {
+			callbackUrl = `http://${serverHost}:${serverPort}/callback`;
+		}
+
 		const oauthUrl = `${DEFAULT_PROXY_URL}/oauth/authorize?callback=${encodeURIComponent(
 			callbackUrl,
 		)}`;
