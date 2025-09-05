@@ -48,6 +48,25 @@ Tests MCP configuration directly through the Claude SDK. This script:
 node test-scripts/test-direct-sdk.js
 ```
 
+### `test-orchestrator-hooks.js`
+Tests that PreToolUse hooks are working correctly for the Orchestrator role. This script:
+- Creates mock EdgeWorker configuration with orchestrator labels
+- Simulates building ClaudeRunnerConfig with different prompt types
+- Verifies that TodoRead and TodoWrite hooks are added only for orchestrator role
+- Tests case-insensitive orchestrator label detection
+- Validates hook functionality and content
+
+**Usage:**
+```bash
+node test-scripts/test-orchestrator-hooks.js
+```
+
+**Expected Results:**
+- ✅ Orchestrator role gets TodoRead and TodoWrite PreToolUse hooks
+- ✅ Non-orchestrator roles (debugger, builder, scoper) don't get hooks
+- ✅ Case-insensitive label detection works ("orchestrator", "ORCHESTRATOR", "Orchestrator")
+- ✅ Hooks provide appropriate additional context and logging
+
 ## Configuration Requirements
 
 Both scripts expect these files to exist in the parent directory (relative to cyrus repo root):
