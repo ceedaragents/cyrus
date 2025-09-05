@@ -532,8 +532,7 @@ export function createCyrusToolsServer(
 					{
 						type: "text" as const,
 						text: JSON.stringify({
-							success: true,
-							delivered,
+							success: true
 						}),
 					},
 				],
