@@ -216,7 +216,7 @@ describe("EdgeWorker - Native Attachments", () => {
 				commentBody,
 				attachmentsDir,
 				"test-token",
-				9, // Already have 9 attachments, so only 1 more allowed
+				19, // Already have 19 attachments, so only 1 more allowed with limit of 20
 			);
 
 			expect(result.totalNewAttachments).toBe(1);

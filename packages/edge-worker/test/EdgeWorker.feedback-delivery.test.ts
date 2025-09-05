@@ -224,9 +224,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(childSession.issueId).toBe("CHILD-456");
 			expect(childSession.claudeSessionId).toBe("child-claude-session-456");
 
-			// Verify correct prompt format: feedback FROM parent TO child
+			// Verify correct prompt format with enhanced markdown: feedback FROM parent TO child
 			expect(prompt).toBe(
-				`Feedback from parent session ${parentSessionId} regarding child agent session ${childSessionId}:\n\n${feedbackMessage}`,
+				`## Received feedback from orchestrator\n\n---\n\n${feedbackMessage}\n\n---`,
 			);
 
 			// Verify repository is passed correctly
@@ -267,7 +267,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			const prompt = resumeClaudeSessionSpy.mock.calls[0][4];
 			expect(prompt).toBe(
-				`Feedback from parent session regarding child agent session ${childSessionId}:\n\n${feedbackMessage}`,
+				`## Received feedback from orchestrator\n\n---\n\n${feedbackMessage}\n\n---`,
 			);
 		});
 
@@ -344,11 +344,16 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				feedbackMessage,
 			);
 
-			// Assert
-			expect(result).toBe(false);
+			// Assert - Now returns true immediately (fire-and-forget)
+			expect(result).toBe(true);
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
+
+			// Wait a bit for the async error handling to occur
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// The error is logged asynchronously
 			expect(console.error).toHaveBeenCalledWith(
-				`[EdgeWorker] Failed to resume child session with feedback:`,
+				`[EdgeWorker] Failed to complete child session with feedback:`,
 				expect.any(Error),
 			);
 		});
