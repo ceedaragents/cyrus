@@ -49,8 +49,8 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
-import { NdjsonClient } from "cyrus-ndjson-client";
 import { LinearWebhookClient } from "cyrus-linear-webhook-client";
+import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
@@ -86,7 +86,8 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
-	private ndjsonClients: Map<string, NdjsonClient | LinearWebhookClient> = new Map(); // listeners for webhook events, one per linear token
+	private ndjsonClients: Map<string, NdjsonClient | LinearWebhookClient> =
+		new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
@@ -247,10 +248,11 @@ export class EdgeWorker extends EventEmitter {
 			const firstRepo = repos[0];
 			if (!firstRepo) continue;
 			const primaryRepoId = firstRepo.id;
-			
+
 			// Determine which client to use based on environment variable
-			const useLinearDirectWebhooks = process.env.LINEAR_DIRECT_WEBHOOKS === "true";
-			
+			const useLinearDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS === "true";
+
 			const clientConfig = {
 				proxyUrl: config.proxyUrl,
 				token: token,
@@ -271,13 +273,14 @@ export class EdgeWorker extends EventEmitter {
 					this.handleDisconnect(primaryRepoId, repos, reason),
 				onError: (error: Error) => this.handleError(error),
 			};
-			
+
 			// Create the appropriate client based on configuration
-			const ndjsonClient = useLinearDirectWebhooks 
+			const ndjsonClient = useLinearDirectWebhooks
 				? new LinearWebhookClient({
-					...clientConfig,
-					onWebhook: (payload) => this.handleWebhook(payload as unknown as LinearWebhook, repos),
-				})
+						...clientConfig,
+						onWebhook: (payload) =>
+							this.handleWebhook(payload as unknown as LinearWebhook, repos),
+					})
 				: new NdjsonClient(clientConfig);
 
 			// Set up webhook handler for NdjsonClient (LinearWebhookClient uses onWebhook in constructor)
