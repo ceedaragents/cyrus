@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Dynamic webhook client selection**: Support for choosing between proxy-based and direct webhook forwarding
+  - New environment variable `LINEAR_DIRECT_WEBHOOKS` to control webhook client selection
+  - When `LINEAR_DIRECT_WEBHOOKS=true`, uses `linear-webhook-client` for direct webhook forwarding
+  - When unset or `false`, uses existing `ndjson-client` for proxy-based webhook handling
+  - Maintains full backward compatibility with existing deployments
+
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.90 to v1.0.95 for latest Claude Code improvements. See [Claude Code v1.0.95 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1095)
 - Replaced external cyrus-mcp-tools MCP server with inline tools using SDK callbacks for better performance
