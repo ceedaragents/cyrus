@@ -578,6 +578,16 @@ export class AgentSessionManager {
 							const toolName = originalTool?.name || "Tool";
 							const toolInput = originalTool?.input || "";
 
+							// Clean up the tool call from our tracking map
+							if (entry.metadata.toolUseId) {
+								this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
+							}
+
+							// Skip creating activity for TodoWrite results since TodoWrite already created a non-ephemeral thought
+							if (toolName === "TodoWrite" || toolName === "↪ TodoWrite") {
+								return;
+							}
+
 							content = {
 								type: "action",
 								action: toolResult.isError ? `${toolName} (Error)` : toolName,
@@ -587,11 +597,6 @@ export class AgentSessionManager {
 										: JSON.stringify(toolInput, null, 2),
 								result: toolResult.content,
 							};
-
-							// Clean up the tool call from our tracking map
-							if (entry.metadata.toolUseId) {
-								this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
-							}
 						} else {
 							return;
 						}
