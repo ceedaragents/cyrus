@@ -188,7 +188,9 @@ export class SharedApplicationServer {
 	 */
 	registerWebhookHandler(
 		token: string,
-		secretOrHandler: string | ((req: IncomingMessage, res: ServerResponse) => Promise<void>),
+		secretOrHandler:
+			| string
+			| ((req: IncomingMessage, res: ServerResponse) => Promise<void>),
 		handler?: (body: string, signature: string, timestamp?: string) => boolean,
 	): void {
 		if (typeof secretOrHandler === "string" && handler) {
@@ -350,7 +352,7 @@ export class SharedApplicationServer {
 				console.log(
 					`🔗 Direct Linear webhook received, trying ${this.linearWebhookHandlers.size} direct handlers`,
 				);
-				
+
 				// Try each direct handler
 				for (const [token, handler] of this.linearWebhookHandlers) {
 					try {
@@ -367,7 +369,7 @@ export class SharedApplicationServer {
 						);
 					}
 				}
-				
+
 				// No direct handler could process it
 				console.error(
 					`🔗 Direct webhook processing failed for all ${this.linearWebhookHandlers.size} handlers`,
