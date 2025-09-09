@@ -13,6 +13,7 @@ import type {
 	HookEvent,
 	McpServerConfig,
 	PostToolUseHookInput,
+	PreToolUseHookInput,
 	SDKMessage,
 } from "cyrus-claude-runner";
 import {
@@ -199,7 +200,11 @@ export class EdgeWorker extends EventEmitter {
 							);
 						}
 
-						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+						await this.postParentResumeAcknowledgment(
+							parentSessionId,
+							repo.id,
+							prompt,
+						);
 
 						// Resume the parent session with the child's result
 						console.log(
@@ -892,6 +897,7 @@ export class EdgeWorker extends EventEmitter {
 			const systemPromptResult = await this.determineSystemPromptFromLabels(
 				labels,
 				repository,
+				linearAgentActivitySessionId,
 			);
 			systemPrompt = systemPromptResult?.prompt;
 			systemPromptVersion = systemPromptResult?.version;
@@ -937,6 +943,7 @@ export class EdgeWorker extends EventEmitter {
 			disallowedTools,
 			undefined, // resumeSessionId
 			labels, // Pass labels for model override
+			promptType,
 		);
 		const runner = new ClaudeRunner(runnerConfig);
 
@@ -1335,6 +1342,7 @@ export class EdgeWorker extends EventEmitter {
 	private async determineSystemPromptFromLabels(
 		labels: string[],
 		repository: RepositoryConfig,
+		sessionId?: string,
 	): Promise<
 		| {
 				prompt: string;
@@ -1386,8 +1394,34 @@ export class EdgeWorker extends EventEmitter {
 						);
 					}
 
+					// If this is an orchestrator session with a parent, inject nested orchestration instructions
+					let finalPrompt = promptContent;
+					if (promptType === "orchestrator" && sessionId) {
+						const hasParent = this.childToParentAgentSession.has(sessionId);
+						if (hasParent) {
+							console.log(
+								`[EdgeWorker] Detected nested orchestrator session ${sessionId}, injecting nested orchestration instructions`,
+							);
+							try {
+								const nestedOrchPath = join(
+									__dirname,
+									"..",
+									"prompts",
+									"nested-orchestration.md",
+								);
+								const nestedContent = await readFile(nestedOrchPath, "utf-8");
+								finalPrompt = `${promptContent}\n\n${nestedContent}`;
+							} catch (error) {
+								console.error(
+									`[EdgeWorker] Failed to load nested orchestration instructions:`,
+									error,
+								);
+							}
+						}
+					}
+
 					return {
-						prompt: promptContent,
+						prompt: finalPrompt,
 						version: promptVersion,
 						type: promptType,
 					};
@@ -2680,7 +2714,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private buildMcpConfig(
 		repository: RepositoryConfig,
 		parentSessionId?: string,
+		labels?: string[],
 	): Record<string, McpServerConfig> {
+		// Check if this is an orchestrator session
+		let isOrchestrator = false;
+		if (labels && labels.length > 0 && repository.labelPrompts) {
+			const orchestratorConfig = repository.labelPrompts.orchestrator;
+			const orchestratorLabels = Array.isArray(orchestratorConfig)
+				? orchestratorConfig
+				: orchestratorConfig?.labels;
+			if (orchestratorLabels) {
+				isOrchestrator = orchestratorLabels.some((label) =>
+					labels.includes(label),
+				);
+			}
+		}
+
 		// Always inject the Linear MCP servers with the repository's token
 		const mcpConfig: Record<string, McpServerConfig> = {
 			linear: {
@@ -2693,6 +2742,223 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			},
 			"cyrus-tools": createCyrusToolsServer(repository.linearToken, {
 				parentSessionId,
+				isOrchestrator,
+				onReportToManager: async (sessionId, results) => {
+					console.log(
+						"╔══════════════════════════════════════════════════════════",
+					);
+					console.log("║ [REPORT TO MANAGER] Starting");
+					console.log(
+						"╠══════════════════════════════════════════════════════════",
+					);
+					console.log(`║ Child orchestrator session: ${sessionId}`);
+					console.log(`║ Results length: ${results.length} chars`);
+					console.log(`║ Results preview: ${results.substring(0, 100)}...`);
+					console.log(
+						"╚══════════════════════════════════════════════════════════",
+					);
+
+					// Find the parent session to resume with results
+					const parentId = this.childToParentAgentSession.get(sessionId);
+					if (!parentId) {
+						console.error(
+							"┌──────────────────────────────────────────────────────────",
+						);
+						console.error("│ [REPORT TO MANAGER FAILED] No parent mapping");
+						console.error(
+							"├──────────────────────────────────────────────────────────",
+						);
+						console.error(`│ Child session ID: ${sessionId}`);
+						console.error(
+							`│ Available mappings: ${Array.from(
+								this.childToParentAgentSession.entries(),
+							)
+								.map(([c, p]) => `${c}->${p}`)
+								.join(", ")}`,
+						);
+						console.error("│ REASON: Parent-child mapping was not established");
+						console.error(
+							"│ FIX: Ensure linear_agent_session_create_on_comment was called properly",
+						);
+						console.error(
+							"└──────────────────────────────────────────────────────────",
+						);
+						return false;
+					}
+					console.log(`✓ Found parent manager: ${parentId}`);
+
+					// Find the repository containing the parent session
+					let parentRepo: RepositoryConfig | undefined;
+					let parentAgentSessionManager: AgentSessionManager | undefined;
+
+					console.log("  Searching for parent repository...");
+					for (const [repoId, manager] of this.agentSessionManagers) {
+						if (manager.hasClaudeRunner(parentId)) {
+							parentRepo = this.repositories.get(repoId);
+							parentAgentSessionManager = manager;
+							console.log(`  ✓ Found parent in repository: ${repoId}`);
+							break;
+						}
+					}
+
+					if (!parentRepo || !parentAgentSessionManager) {
+						console.error(
+							"┌──────────────────────────────────────────────────────────",
+						);
+						console.error(
+							"│ [REPORT TO MANAGER FAILED] Parent repository not found",
+						);
+						console.error(
+							"├──────────────────────────────────────────────────────────",
+						);
+						console.error(`│ Parent session ID: ${parentId}`);
+						console.error(
+							`│ Available repositories: ${Array.from(this.repositories.keys()).join(", ")}`,
+						);
+						console.error(
+							"│ REASON: Parent session not found in any repository",
+						);
+						console.error("│ FIX: Ensure parent session is still active");
+						console.error(
+							"└──────────────────────────────────────────────────────────",
+						);
+						return false;
+					}
+
+					// Get the parent session
+					const parentSession = parentAgentSessionManager.getSession(parentId);
+					if (!parentSession) {
+						console.error(
+							"┌──────────────────────────────────────────────────────────",
+						);
+						console.error(
+							"│ [REPORT TO MANAGER FAILED] Parent session not found",
+						);
+						console.error(
+							"├──────────────────────────────────────────────────────────",
+						);
+						console.error(`│ Parent session ID: ${parentId}`);
+						console.error("│ REASON: Session no longer exists in manager");
+						console.error(
+							"│ FIX: Ensure parent session hasn't been terminated",
+						);
+						console.error(
+							"└──────────────────────────────────────────────────────────",
+						);
+						return false;
+					}
+					console.log(`✓ Retrieved parent session object`);
+
+					// Get the child orchestrator session to access its workspace path
+					const childOrchestrator =
+						parentAgentSessionManager.getSession(sessionId);
+					const childWorkspaceDirs: string[] = [];
+					if (childOrchestrator) {
+						childWorkspaceDirs.push(childOrchestrator.workspace.path);
+						console.log(
+							`[EdgeWorker] Adding child orchestrator workspace to parent allowed directories: ${childOrchestrator.workspace.path}`,
+						);
+					} else {
+						// Try to find the child in other repositories
+						for (const [, manager] of this.agentSessionManagers) {
+							const childSession = manager.getSession(sessionId);
+							if (childSession) {
+								childWorkspaceDirs.push(childSession.workspace.path);
+								console.log(
+									`[EdgeWorker] Adding child orchestrator workspace to parent allowed directories: ${childSession.workspace.path}`,
+								);
+								break;
+							}
+						}
+						if (childWorkspaceDirs.length === 0) {
+							console.warn(
+								`[EdgeWorker] Could not find child orchestrator session ${sessionId} to add workspace to parent allowed directories`,
+							);
+						}
+					}
+
+					// Resume the parent manager session with the orchestrator's results
+					try {
+						// Strip LAST_MESSAGE_MARKER if present
+						const markerPattern = /^___LAST_MESSAGE_MARKER___\s*/;
+						const cleanResults = results.replace(markerPattern, "");
+						console.log(
+							`  Cleaned results (marker stripped): ${cleanResults !== results ? "YES" : "NO"}`,
+						);
+
+						// Format with horizontal lines for better readability
+						const resultsPrompt = `Orchestrator session ${sessionId} completed with results:\n\n---\n\n${cleanResults}\n\n---`;
+						console.log(
+							`  Formatted results prompt length: ${resultsPrompt.length} chars`,
+						);
+
+						// Post thought to Linear about receiving orchestrator results
+						console.log(
+							"╔══════════════════════════════════════════════════════════",
+						);
+						console.log("║ [CALLING postParentResumeAcknowledgment] NOW");
+						console.log(
+							"╠══════════════════════════════════════════════════════════",
+						);
+						console.log(`║ Parent ID: ${parentId}`);
+						console.log(`║ Repo ID: ${parentRepo.id}`);
+						console.log(`║ Has results: YES (${resultsPrompt.length} chars)`);
+						console.log(
+							"╚══════════════════════════════════════════════════════════",
+						);
+
+						await this.postParentResumeAcknowledgment(
+							parentId,
+							parentRepo.id,
+							resultsPrompt,
+						);
+
+						console.log("  ✓ postParentResumeAcknowledgment completed");
+						console.log("  Resuming parent Claude session...");
+
+						await this.resumeClaudeSession(
+							parentSession,
+							parentRepo,
+							parentId,
+							parentAgentSessionManager,
+							resultsPrompt,
+							"", // No attachment manifest
+							false, // Not a new session
+							childWorkspaceDirs, // Add child workspace directories to parent's allowed directories
+						);
+
+						console.log(
+							"╔══════════════════════════════════════════════════════════",
+						);
+						console.log("║ [REPORT TO MANAGER] SUCCESS");
+						console.log(
+							"╠══════════════════════════════════════════════════════════",
+						);
+						console.log(`║ Results delivered to manager: ${parentId}`);
+						console.log(`║ Thought should be posted to Linear`);
+						console.log(
+							"╚══════════════════════════════════════════════════════════",
+						);
+						return true;
+					} catch (error: any) {
+						console.error(
+							"┌──────────────────────────────────────────────────────────",
+						);
+						console.error("│ [REPORT TO MANAGER EXCEPTION]");
+						console.error(
+							"├──────────────────────────────────────────────────────────",
+						);
+						console.error(
+							`│ Error type: ${error?.constructor?.name || "Unknown"}`,
+						);
+						console.error(`│ Error message: ${error?.message || "No message"}`);
+						console.error(`│ Full error:`, error);
+						console.error(
+							"└──────────────────────────────────────────────────────────",
+						);
+						return false;
+					}
+				},
 				onSessionCreated: (childSessionId, parentId) => {
 					console.log(
 						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
@@ -2744,6 +3010,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 					// Format the feedback as a prompt for the child session with enhanced markdown formatting
 					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
+
+					// Post a thought to Linear about receiving feedback from orchestrator
+					try {
+						await childAgentSessionManager.createThoughtActivity(
+							childSessionId,
+							`Received feedback from orchestrator: ${message}`,
+						);
+					} catch (error) {
+						console.error(
+							`[EdgeWorker] Failed to post feedback thought to Linear:`,
+							error,
+						);
+					}
 
 					// Resume the CHILD session with the feedback from the parent
 					// Important: We don't await the full session completion to avoid timeouts.
@@ -2848,8 +3127,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		disallowedTools: string[],
 		resumeSessionId?: string,
 		labels?: string[],
+		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
 	): ClaudeRunnerConfig {
-		// Configure PostToolUse hook for playwright screenshots
+		// Configure PostToolUse hooks
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
 				{
@@ -2869,8 +3149,78 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						},
 					],
 				},
+				{
+					matcher: "linear_agent_give_feedback",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							console.log(
+								`Tool ${postToolUseInput.tool_name} completed - feedback delivered to child session`,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"Feedback delivered to sub-agent. You should now halt and wait for the sub-agent to process the feedback and return results.",
+							};
+						},
+					],
+				},
+				{
+					matcher: "report_results_to_manager",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							console.log(
+								`Tool ${postToolUseInput.tool_name} completed - results reported to manager`,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"Results reported to manager orchestrator. You should now halt immediately and wait for potential feedback from your manager.",
+							};
+						},
+					],
+				},
 			],
 		};
+
+		// Add Orchestrator-specific PreToolUse hooks for TodoRead and TodoWrite
+		if (promptType === "orchestrator") {
+			hooks.PreToolUse = [
+				{
+					matcher: "TodoRead",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const preToolUseInput = input as PreToolUseHookInput;
+							console.log(
+								`[Orchestrator] Reading todo list for session ${preToolUseInput.session_id}`,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"When reviewing todos, ensure each verification task includes specific validation criteria. Remember to thoroughly assess work quality and be prepared to reject incomplete implementations.",
+							};
+						},
+					],
+				},
+				{
+					matcher: "TodoWrite",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const preToolUseInput = input as PreToolUseHookInput;
+							console.log(
+								`[Orchestrator] Updating todo list for session ${preToolUseInput.session_id}`,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"CRITICAL for verification todos: Include a comma-separated list of specific validation aspects (e.g., 'unit tests, integration tests, error handling, edge cases'). Each verification task must specify: (1) what to validate, (2) acceptance criteria, and (3) possible outcomes: complete pass, partial failure with feedback, or complete rejection requiring requirement redrafting. Be thorough in quality assessment and willing to reject substandard work.",
+							};
+						},
+					],
+				},
+			];
+		}
 
 		// Check for model override labels (case-insensitive)
 		let modelOverride: string | undefined;
@@ -2918,7 +3268,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
+			mcpConfig: this.buildMcpConfig(
+				repository,
+				linearAgentActivitySessionId,
+				labels,
+			),
 			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
 			// Priority order: label override > repository config > global default
 			model: modelOverride || repository.model || this.config.defaultModel,
@@ -3219,40 +3573,129 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private async postParentResumeAcknowledgment(
 		linearAgentActivitySessionId: string,
 		repositoryId: string,
+		childResult?: string,
 	): Promise<void> {
+		console.log("═══════════════════════════════════════════════════════════");
+		console.log("[THOUGHT POSTING] Starting postParentResumeAcknowledgment");
+		console.log("═══════════════════════════════════════════════════════════");
+		console.log(`  Session ID: ${linearAgentActivitySessionId}`);
+		console.log(`  Repository ID: ${repositoryId}`);
+		console.log(`  Has child result: ${childResult ? "YES" : "NO"}`);
+		if (childResult) {
+			console.log(`  Child result length: ${childResult.length} chars`);
+			console.log(
+				`  Child result preview: ${childResult.substring(0, 100)}...`,
+			);
+		}
+
 		try {
+			// Check Linear client availability
 			const linearClient = this.linearClients.get(repositoryId);
 			if (!linearClient) {
-				console.warn(
-					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+				console.error(
+					"┌──────────────────────────────────────────────────────────",
+				);
+				console.error("│ [THOUGHT POSTING FAILED] Missing Linear Client");
+				console.error(
+					"├──────────────────────────────────────────────────────────",
+				);
+				console.error(`│ Repository ID: ${repositoryId}`);
+				console.error(
+					`│ Available repository IDs: ${Array.from(this.linearClients.keys()).join(", ")}`,
+				);
+				console.error(
+					"│ REASON: Linear client was not initialized for this repository",
+				);
+				console.error(
+					"│ FIX: Ensure repository has a valid linearToken in config",
+				);
+				console.error(
+					"└──────────────────────────────────────────────────────────",
 				);
 				return;
 			}
+			console.log("✓ Linear client found for repository");
+
+			// Post thought about resuming from child session with results
+			// childResult already contains the full formatted message from AgentSessionManager
+			const thoughtBody = childResult || "Resuming from child session";
+			console.log(
+				`  Thought body to post: "${thoughtBody.substring(0, 200)}${thoughtBody.length > 200 ? "..." : ""}"`,
+			);
 
 			const activityInput = {
 				agentSessionId: linearAgentActivitySessionId,
 				content: {
 					type: "thought",
-					body: "Resuming from child session",
+					body: thoughtBody,
 				},
 			};
 
+			console.log("  Calling Linear API: createAgentActivity");
+			console.log(
+				`  Activity input: ${JSON.stringify(activityInput, null, 2)}`,
+			);
+
 			const result = await linearClient.createAgentActivity(activityInput);
+
 			if (result.success) {
 				console.log(
-					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
+					"╔══════════════════════════════════════════════════════════",
+				);
+				console.log("║ [THOUGHT POSTING SUCCESS] ✓");
+				console.log(
+					"╠══════════════════════════════════════════════════════════",
+				);
+				console.log(
+					`║ Posted to Linear session: ${linearAgentActivitySessionId}`,
+				);
+				console.log(`║ Content type: thought`);
+				console.log(`║ Content length: ${thoughtBody.length} chars`);
+				console.log(
+					"╚══════════════════════════════════════════════════════════",
 				);
 			} else {
 				console.error(
-					`[EdgeWorker] Failed to post parent resumption acknowledgment:`,
-					result,
+					"┌──────────────────────────────────────────────────────────",
+				);
+				console.error("│ [THOUGHT POSTING FAILED] Linear API returned false");
+				console.error(
+					"├──────────────────────────────────────────────────────────",
+				);
+				console.error(`│ Session ID: ${linearAgentActivitySessionId}`);
+				console.error(`│ Result object: ${JSON.stringify(result, null, 2)}`);
+				console.error("│ REASON: Linear API rejected the activity creation");
+				console.error("│ POSSIBLE CAUSES:");
+				console.error("│   - Invalid agent session ID");
+				console.error("│   - Session expired or closed");
+				console.error("│   - Permissions issue with Linear token");
+				console.error(
+					"└──────────────────────────────────────────────────────────",
 				);
 			}
-		} catch (error) {
+		} catch (error: any) {
 			console.error(
-				`[EdgeWorker] Error posting parent resumption acknowledgment:`,
-				error,
+				"┌──────────────────────────────────────────────────────────",
 			);
+			console.error(
+				"│ [THOUGHT POSTING EXCEPTION] Linear API call threw error",
+			);
+			console.error(
+				"├──────────────────────────────────────────────────────────",
+			);
+			console.error(`│ Session ID: ${linearAgentActivitySessionId}`);
+			console.error(`│ Error type: ${error?.constructor?.name || "Unknown"}`);
+			console.error(`│ Error message: ${error?.message || "No message"}`);
+			console.error(`│ Full error: ${JSON.stringify(error, null, 2)}`);
+			console.error("│ POSSIBLE CAUSES:");
+			console.error("│   - Network connectivity issue");
+			console.error("│   - Invalid Linear API token");
+			console.error("│   - Linear API service issue");
+			console.error("│   - Malformed request data");
+			console.error(
+				"└──────────────────────────────────────────────────────────",
+			);
+			throw error;
 		}
 	}
 
@@ -3430,6 +3873,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labels,
 			repository,
+			linearAgentActivitySessionId,
 		);
 		const systemPrompt = systemPromptResult?.prompt;
 		const promptType = systemPromptResult?.type;
@@ -3463,6 +3907,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			disallowedTools,
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
 			labels, // Pass labels for model override
+			promptType,
 		);
 
 		const runner = new ClaudeRunner(runnerConfig);

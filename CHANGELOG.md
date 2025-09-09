@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.95 to v1.0.103 for latest Claude Code improvements. See [Claude Code v1.0.103 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1103)
+- Updated @anthropic-ai/sdk from v0.60.0 to v0.61.0 for latest Anthropic SDK improvements
+- Replaced external cyrus-mcp-tools MCP server with inline tools using SDK callbacks for better performance
+- Cyrus tools (file upload, agent session creation, feedback) now run in-process instead of via separate MCP server
+- Enhanced orchestrator prompt to explicitly require reading/viewing all screenshots taken for visual verification
+- **Orchestrator prompt v2.3.0**: Enhanced verification requirements and work rejection standards
+  - Added explicit TODO verification requirements with detailed validation/assessment types
+  - Emphasized the need to reject half-baked solutions rather than accepting incomplete work
+  - Added guidance on verification outcomes (fail completely, give feedback, or pass and merge)
+  - Reinforced that pausing with clear explanation is better than continuing with inadequate solutions
+
+### Removed
+- Removed cyrus-mcp-tools package in favor of inline tool implementation
+
+### Added
+- **Orchestrator-specific PreToolUse hooks for TodoRead and TodoWrite**: Enhanced verification guidance for orchestrator agents
+  - TodoRead hook reminds orchestrators to ensure verification tasks include specific validation criteria
+  - TodoWrite hook enforces detailed verification requirements in todo items
+  - Verification todos must specify: validation aspects, acceptance criteria, and possible outcomes (pass/fail/reject)
+  - Hooks only trigger for orchestrator role, not affecting other agent types
+
 ## [0.1.46] - 2025-01-09
 
 ### Added
