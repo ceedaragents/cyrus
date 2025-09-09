@@ -50,6 +50,7 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
+import { LinearWebhookClient } from "cyrus-linear-webhook-client";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
@@ -86,7 +87,8 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
-	private ndjsonClients: Map<string, NdjsonClient> = new Map(); // listeners for webhook events, one per linear token
+	private ndjsonClients: Map<string, NdjsonClient | LinearWebhookClient> =
+		new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
@@ -251,11 +253,16 @@ export class EdgeWorker extends EventEmitter {
 			const firstRepo = repos[0];
 			if (!firstRepo) continue;
 			const primaryRepoId = firstRepo.id;
-			const ndjsonClient = new NdjsonClient({
+
+			// Determine which client to use based on environment variable
+			const useLinearDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS === "true";
+
+			const clientConfig = {
 				proxyUrl: config.proxyUrl,
 				token: token,
 				name: repos.map((r) => r.name).join(", "), // Pass repository names
-				transport: "webhook",
+				transport: "webhook" as const,
 				// Use shared application server instead of individual servers
 				useExternalWebhookServer: true,
 				externalWebhookServer: this.sharedApplicationServer,
@@ -267,19 +274,30 @@ export class EdgeWorker extends EventEmitter {
 				...(!config.baseUrl &&
 					config.webhookBaseUrl && { webhookBaseUrl: config.webhookBaseUrl }),
 				onConnect: () => this.handleConnect(primaryRepoId, repos),
-				onDisconnect: (reason) =>
+				onDisconnect: (reason?: string) =>
 					this.handleDisconnect(primaryRepoId, repos, reason),
-				onError: (error) => this.handleError(error),
-			});
+				onError: (error: Error) => this.handleError(error),
+			};
 
-			// Set up webhook handler - data should be the native webhook payload
-			ndjsonClient.on("webhook", (data) =>
-				this.handleWebhook(data as LinearWebhook, repos),
-			);
+			// Create the appropriate client based on configuration
+			const ndjsonClient = useLinearDirectWebhooks
+				? new LinearWebhookClient({
+						...clientConfig,
+						onWebhook: (payload) =>
+							this.handleWebhook(payload as unknown as LinearWebhook, repos),
+					})
+				: new NdjsonClient(clientConfig);
 
-			// Optional heartbeat logging
-			if (process.env.DEBUG_EDGE === "true") {
-				ndjsonClient.on("heartbeat", () => {
+			// Set up webhook handler for NdjsonClient (LinearWebhookClient uses onWebhook in constructor)
+			if (!useLinearDirectWebhooks) {
+				(ndjsonClient as NdjsonClient).on("webhook", (data) =>
+					this.handleWebhook(data as LinearWebhook, repos),
+				);
+			}
+
+			// Optional heartbeat logging (only for NdjsonClient)
+			if (process.env.DEBUG_EDGE === "true" && !useLinearDirectWebhooks) {
+				(ndjsonClient as NdjsonClient).on("heartbeat", () => {
 					console.log(
 						`❤️ Heartbeat received for token ending in ...${token.slice(-4)}`,
 					);

@@ -25,6 +25,15 @@ All notable changes to this project will be documented in this file.
   - TodoWrite hook enforces detailed verification requirements in todo items
   - Verification todos must specify: validation aspects, acceptance criteria, and possible outcomes (pass/fail/reject)
   - Hooks only trigger for orchestrator role, not affecting other agent types
+
+## [0.1.46] - 2025-01-09
+
+### Added
+- **Dynamic webhook client selection**: Support for choosing between proxy-based and direct webhook forwarding
+  - New environment variable `LINEAR_DIRECT_WEBHOOKS` to control webhook client selection
+  - When `LINEAR_DIRECT_WEBHOOKS=true`, uses new `linear-webhook-client` package for direct webhook forwarding
+  - When unset or `false`, uses existing `ndjson-client` for proxy-based webhook handling
+  - Maintains full backward compatibility with existing deployments
 - **Sub-issue assignee inheritance with workspace context**: Sub-issues created by orchestrator agents now automatically inherit the same assignee as their parent issue, with complete workspace awareness
   - Enhanced label-prompt-template to include assignee information (`{{assignee_id}}` and `{{assignee_name}}`)
   - Added workspace teams context (`{{workspace_teams}}`) with team names, keys, IDs, and descriptions
@@ -52,6 +61,15 @@ All notable changes to this project will be documented in this file.
   - Enables orchestrator agents to trigger sub-agents on existing issue comment threads
   - Must be used with root comments only (not replies) due to Linear API constraints
   - Maintains parent-child session mapping for proper feedback routing
+
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.90 to v1.0.95 for latest Claude Code improvements. See [Claude Code v1.0.95 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1095)
+- Replaced external cyrus-mcp-tools MCP server with inline tools using SDK callbacks for better performance
+- Cyrus tools (file upload, agent session creation, feedback) now run in-process instead of via separate MCP server
+- Enhanced orchestrator prompt to explicitly require reading/viewing all screenshots taken for visual verification
+
+### Removed
+- Removed cyrus-mcp-tools package in favor of inline tool implementation
 
 ## [0.1.45] - 2025-08-28
 
