@@ -3,7 +3,10 @@ import {
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import { LinearWebhookClient, type LinearWebhookPayload } from "@linear/sdk/webhooks";
+import {
+	LinearWebhookClient,
+	type LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 import type { LinearWebhookClientConfig, StatusUpdate } from "../types.js";
 import { BaseTransport } from "./BaseTransport.js";
 
@@ -38,7 +41,9 @@ export class WebhookTransport extends BaseTransport {
 				// Get webhook secret from environment variable
 				const webhookSecret = process.env.LINEAR_WEBHOOK_SECRET;
 				if (!webhookSecret) {
-					throw new Error("LINEAR_WEBHOOK_SECRET environment variable is not set");
+					throw new Error(
+						"LINEAR_WEBHOOK_SECRET environment variable is not set",
+					);
 				}
 
 				// Create Linear webhook client
