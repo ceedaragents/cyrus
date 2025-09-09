@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.47] - 2025-01-09
+
+### Fixed
+- Fixed webhook signature verification for LinearWebhookClient
+  - Corrected signature verification to properly handle webhook payloads
+  - Ensures webhook authenticity when using direct webhook forwarding mode
+  - Resolves security validation issues in direct webhook configurations
+
+### Packages
+
+#### cyrus-linear-webhook-client
+- cyrus-linear-webhook-client@0.0.2
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.30
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.47
+
 ## [0.1.46] - 2025-01-09
 
 ### Added
