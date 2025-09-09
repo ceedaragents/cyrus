@@ -1,7 +1,7 @@
 {
 	"name": "cyrus-linear-webhook-client",
 	"version": "0.0.1",
-	"description": "Linear webhook client for direct webhook forwarding",
+	"description": "Linear webhook client for handling Linear webhooks with SDK",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -9,15 +9,19 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "echo 'Using pre-built dist files'",
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@linear/sdk": "^58.0.0"
+		"@linear/sdk": "^58.1.0"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
-		"typescript": "^5.3.3"
+		"typescript": "^5.3.3",
+		"vitest": "^1.1.0"
 	},
 	"publishConfig": {
 		"access": "public"
