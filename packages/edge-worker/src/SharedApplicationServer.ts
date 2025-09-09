@@ -41,6 +41,11 @@ export class SharedApplicationServer {
 			handler: (body: string, signature: string, timestamp?: string) => boolean;
 		}
 	>();
+	// Separate handlers for LinearWebhookClient that handle raw req/res
+	private linearWebhookHandlers = new Map<
+		string,
+		(req: IncomingMessage, res: ServerResponse) => Promise<void>
+	>();
 	private oauthCallbacks = new Map<string, OAuthCallback>();
 	private oauthCallbackHandler: OAuthCallbackHandler | null = null;
 	private port: number;
@@ -177,26 +182,43 @@ export class SharedApplicationServer {
 
 	/**
 	 * Register a webhook handler for a specific token
+	 * Supports two signatures:
+	 * 1. For ndjson-client: (token, secret, handler)
+	 * 2. For linear-webhook-client: (token, handler) where handler takes (req, res)
 	 */
 	registerWebhookHandler(
 		token: string,
-		secret: string,
-		handler: (body: string, signature: string, timestamp?: string) => boolean,
+		secretOrHandler: string | ((req: IncomingMessage, res: ServerResponse) => Promise<void>),
+		handler?: (body: string, signature: string, timestamp?: string) => boolean,
 	): void {
-		this.webhookHandlers.set(token, { secret, handler });
-		console.log(
-			`🔗 Registered webhook handler for token ending in ...${token.slice(-4)}`,
-		);
+		if (typeof secretOrHandler === "string" && handler) {
+			// ndjson-client style registration
+			this.webhookHandlers.set(token, { secret: secretOrHandler, handler });
+			console.log(
+				`🔗 Registered webhook handler (proxy-style) for token ending in ...${token.slice(-4)}`,
+			);
+		} else if (typeof secretOrHandler === "function") {
+			// linear-webhook-client style registration
+			this.linearWebhookHandlers.set(token, secretOrHandler);
+			console.log(
+				`🔗 Registered webhook handler (direct-style) for token ending in ...${token.slice(-4)}`,
+			);
+		} else {
+			throw new Error("Invalid webhook handler registration parameters");
+		}
 	}
 
 	/**
 	 * Unregister a webhook handler
 	 */
 	unregisterWebhookHandler(token: string): void {
-		this.webhookHandlers.delete(token);
-		console.log(
-			`🔗 Unregistered webhook handler for token ending in ...${token.slice(-4)}`,
-		);
+		const hadProxyHandler = this.webhookHandlers.delete(token);
+		const hadDirectHandler = this.linearWebhookHandlers.delete(token);
+		if (hadProxyHandler || hadDirectHandler) {
+			console.log(
+				`🔗 Unregistered webhook handler for token ending in ...${token.slice(-4)}`,
+			);
+		}
 	}
 
 	/**
@@ -318,6 +340,44 @@ export class SharedApplicationServer {
 				return;
 			}
 
+			// Check if this is a direct Linear webhook (has linear-signature header)
+			const linearSignature = req.headers["linear-signature"] as string;
+			const isDirectWebhook = !!linearSignature;
+
+			if (isDirectWebhook && this.linearWebhookHandlers.size > 0) {
+				// For direct Linear webhooks, pass the raw request to the handler
+				// The LinearWebhookClient will handle its own signature verification
+				console.log(
+					`🔗 Direct Linear webhook received, trying ${this.linearWebhookHandlers.size} direct handlers`,
+				);
+				
+				// Try each direct handler
+				for (const [token, handler] of this.linearWebhookHandlers) {
+					try {
+						// The handler will manage the response
+						await handler(req, res);
+						console.log(
+							`🔗 Direct webhook delivered to token ending in ...${token.slice(-4)}`,
+						);
+						return;
+					} catch (error) {
+						console.error(
+							`🔗 Error in direct webhook handler for token ...${token.slice(-4)}:`,
+							error,
+						);
+					}
+				}
+				
+				// No direct handler could process it
+				console.error(
+					`🔗 Direct webhook processing failed for all ${this.linearWebhookHandlers.size} handlers`,
+				);
+				res.writeHead(401, { "Content-Type": "text/plain" });
+				res.end("Unauthorized");
+				return;
+			}
+
+			// Otherwise, handle as proxy-style webhook
 			// Read request body
 			let body = "";
 			req.on("data", (chunk) => {
@@ -326,11 +386,12 @@ export class SharedApplicationServer {
 
 			req.on("end", () => {
 				try {
+					// For proxy-style webhooks, we need the signature header
 					const signature = req.headers["x-webhook-signature"] as string;
 					const timestamp = req.headers["x-webhook-timestamp"] as string;
 
 					console.log(
-						`🔗 Webhook received with ${body.length} bytes, ${this.webhookHandlers.size} registered handlers`,
+						`🔗 Proxy webhook received with ${body.length} bytes, ${this.webhookHandlers.size} registered handlers`,
 					);
 
 					if (!signature) {
