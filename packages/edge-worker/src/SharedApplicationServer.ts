@@ -4,6 +4,7 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { URL } from "node:url";
+import { execSync } from "node:child_process";
 import { forward } from "@ngrok/ngrok";
 
 /**
@@ -89,6 +90,13 @@ export class SharedApplicationServer {
 				console.log(
 					`🔗 Shared application server listening on http://${this.host}:${this.port}`,
 				);
+				
+				// Log GitHub token endpoint status
+				if (process.env.MANAGE_GH_AUTH === "true") {
+					console.log(
+						`🔐 GitHub token endpoint enabled at http://${this.host}:${this.port}/github-token`,
+					);
+				}
 
 				// Start ngrok tunnel if auth token is provided and not external host
 				if (this.ngrokAuthToken && process.env.CYRUS_HOST_EXTERNAL !== "true") {
@@ -314,6 +322,8 @@ export class SharedApplicationServer {
 				await this.handleWebhookRequest(req, res);
 			} else if (url.pathname === "/callback") {
 				await this.handleOAuthCallback(req, res, url);
+			} else if (url.pathname === "/github-token" && process.env.MANAGE_GH_AUTH === "true") {
+				await this.handleGitHubTokenRequest(req, res);
 			} else {
 				res.writeHead(404, { "Content-Type": "text/plain" });
 				res.end("Not Found");
@@ -530,6 +540,102 @@ export class SharedApplicationServer {
 			console.error("🔐 OAuth callback error:", error);
 			res.writeHead(500, { "Content-Type": "text/plain" });
 			res.end("Internal Server Error");
+		}
+	}
+
+	/**
+	 * Handle GitHub token requests when MANAGE_GH_AUTH is enabled
+	 */
+	private async handleGitHubTokenRequest(
+		req: IncomingMessage,
+		res: ServerResponse,
+	): Promise<void> {
+		try {
+			console.log(`🔗 Incoming GitHub token request: ${req.method} ${req.url}`);
+
+			if (req.method !== "POST") {
+				console.log(`🔗 Rejected non-POST request: ${req.method}`);
+				res.writeHead(405, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Method Not Allowed" }));
+				return;
+			}
+
+			// Read request body
+			let body = "";
+			req.on("data", (chunk) => {
+				body += chunk.toString();
+			});
+
+			req.on("end", () => {
+				try {
+					// Parse JSON body
+					const data = JSON.parse(body);
+					const githubToken = data.token;
+
+					if (!githubToken) {
+						console.log("🔗 GitHub token request rejected: Missing token in body");
+						res.writeHead(400, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ error: "Missing token in request body" }));
+						return;
+					}
+
+					// Update gh auth credentials
+					try {
+						console.log("🔐 Updating GitHub auth credentials...");
+						
+						// First, log out any existing session
+						try {
+							execSync("gh auth logout --hostname github.com", {
+								stdio: "pipe",
+								encoding: "utf-8",
+							});
+						} catch (e) {
+							// Ignore logout errors - might not be logged in
+						}
+
+						// Login with the new token using stdin
+						execSync(`echo "${githubToken}" | gh auth login --with-token`, {
+							stdio: "pipe",
+							encoding: "utf-8",
+						});
+
+						// Verify the login was successful
+						const status = execSync("gh auth status", {
+							encoding: "utf-8",
+						});
+
+						console.log("✅ GitHub auth credentials updated successfully");
+						console.log("🔐 Auth status:", status);
+
+						res.writeHead(200, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ 
+							success: true, 
+							message: "GitHub auth credentials updated successfully" 
+						}));
+					} catch (error) {
+						console.error("❌ Failed to update GitHub auth credentials:", error);
+						res.writeHead(500, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ 
+							error: "Failed to update GitHub auth credentials",
+							details: (error as Error).message
+						}));
+					}
+				} catch (error) {
+					console.error("🔗 Error processing GitHub token request:", error);
+					res.writeHead(400, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ error: "Invalid request body" }));
+				}
+			});
+
+			req.on("error", (error) => {
+				console.error("🔗 Request error:", error);
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Internal Server Error" }));
+			});
+		} catch (error) {
+			console.error("🔗 GitHub token request error:", error);
+			res.writeHead(500, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Internal Server Error" }));
 		}
 	}
 }
