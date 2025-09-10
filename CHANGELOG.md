@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **GitHub token endpoint for automated auth management**: New endpoint for updating GitHub CLI credentials programmatically
+  - New `/github-token` endpoint that accepts POST requests with a GitHub token
+  - Only enabled when `MANAGE_GH_AUTH` environment variable is set to `true`
+  - Automatically updates `gh` CLI authentication credentials
+  - Useful for CI/CD pipelines and automated deployments
+
 ## [0.1.47] - 2025-01-09
 
 ### Fixed
