@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-code from 1.0.95 to 1.0.111 ([changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#10111))
+- Updated @anthropic-ai/sdk from 0.60.0 to 0.62.0
+
 ## [0.1.47] - 2025-01-09
 
 ### Fixed
