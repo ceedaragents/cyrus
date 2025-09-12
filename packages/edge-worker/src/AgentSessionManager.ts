@@ -191,6 +191,37 @@ export class AgentSessionManager {
 	}
 
 	/**
+	 * Wrap content in a collapsible block if it's large or appears to be ephemeral output
+	 */
+	private wrapInCollapsibleIfNeeded(
+		content: string,
+		title: string = "Output",
+		threshold: number = 500,
+	): string {
+		// Check if content should be wrapped
+		const shouldWrap =
+			content.length > threshold ||
+			content.includes("Test Suites:") || // Jest test output
+			content.includes("Tests:") || // Test output
+			content.includes("PASS ") || // Test pass markers
+			content.includes("FAIL ") || // Test fail markers
+			content.includes("npm ") || // npm output
+			content.includes("pnpm ") || // pnpm output
+			content.includes("yarn ") || // yarn output
+			content.includes("\x1b[") || // ANSI escape codes
+			content.split("\n").length > 10; // Many lines
+
+		if (!shouldWrap) {
+			return content;
+		}
+
+		// Wrap in collapsible block using Linear's format
+		return `+++${title}
+${content}
++++`;
+	}
+
+	/**
 	 * Complete a session from Claude result message
 	 */
 	async completeSession(
@@ -390,7 +421,7 @@ export class AgentSessionManager {
 
 		if (Array.isArray(message.content)) {
 			return message.content
-				.map((block) => {
+				.map((block: any) => {
 					if (block.type === "text") {
 						return block.text;
 					} else if (block.type === "tool_use") {
@@ -399,10 +430,12 @@ export class AgentSessionManager {
 					} else if (block.type === "tool_result") {
 						// For tool_result blocks, extract just the text content
 						if (Array.isArray(block.content)) {
-							return block.content
+							const result = block.content
 								.filter((contentBlock: any) => contentBlock.type === "text")
 								.map((contentBlock: any) => contentBlock.text)
 								.join("\n");
+							// Wrap tool results in collapsible blocks if they're large
+							return this.wrapInCollapsibleIfNeeded(result, "Terminal Output");
 						}
 						return "";
 					}
@@ -494,6 +527,13 @@ export class AgentSessionManager {
 							body: `✅ Task Completed\n\n\n\n${entry.content}\n\n---\n\n`,
 						};
 						this.activeTasksBySession.delete(linearAgentActivitySessionId);
+					} else if (entry.metadata?.toolUseId && entry.content) {
+						// Handle tool results that aren't part of a Task
+						// The content has already been wrapped in collapsible if needed by extractContent
+						content = {
+							type: "thought",
+							body: entry.content,
+						};
 					} else {
 						return;
 					}
