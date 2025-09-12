@@ -289,6 +289,12 @@ CYRUS_SERVER_PORT=3456
 # Base URL configuration (required for Linear integration - handles both webhooks and OAuth)
 CYRUS_BASE_URL=<your publicly accessible URL>
 
+# Direct Linear OAuth configuration (optional - for self-hosted Linear OAuth)
+# LINEAR_DIRECT_WEBHOOKS=true  # Enable direct webhook and OAuth handling
+# LINEAR_CLIENT_ID=<your Linear OAuth app client ID>
+# LINEAR_CLIENT_SECRET=<your Linear OAuth app client secret>
+# LINEAR_WEBHOOK_SECRET=<your Linear webhook secret>
+
 # Legacy environment variables (still supported for backward compatibility)
 # CYRUS_WEBHOOK_BASE_URL=<url>  # Use CYRUS_BASE_URL instead
 # CYRUS_WEBHOOK_PORT=3456  # Use CYRUS_SERVER_PORT instead

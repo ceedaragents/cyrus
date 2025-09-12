@@ -49,6 +49,7 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
+import { LinearWebhookClient } from "cyrus-linear-webhook-client";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
@@ -85,7 +86,8 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
-	private ndjsonClients: Map<string, NdjsonClient> = new Map(); // listeners for webhook events, one per linear token
+	private ndjsonClients: Map<string, NdjsonClient | LinearWebhookClient> =
+		new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
@@ -246,11 +248,16 @@ export class EdgeWorker extends EventEmitter {
 			const firstRepo = repos[0];
 			if (!firstRepo) continue;
 			const primaryRepoId = firstRepo.id;
-			const ndjsonClient = new NdjsonClient({
+
+			// Determine which client to use based on environment variable
+			const useLinearDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
+
+			const clientConfig = {
 				proxyUrl: config.proxyUrl,
 				token: token,
 				name: repos.map((r) => r.name).join(", "), // Pass repository names
-				transport: "webhook",
+				transport: "webhook" as const,
 				// Use shared application server instead of individual servers
 				useExternalWebhookServer: true,
 				externalWebhookServer: this.sharedApplicationServer,
@@ -262,19 +269,30 @@ export class EdgeWorker extends EventEmitter {
 				...(!config.baseUrl &&
 					config.webhookBaseUrl && { webhookBaseUrl: config.webhookBaseUrl }),
 				onConnect: () => this.handleConnect(primaryRepoId, repos),
-				onDisconnect: (reason) =>
+				onDisconnect: (reason?: string) =>
 					this.handleDisconnect(primaryRepoId, repos, reason),
-				onError: (error) => this.handleError(error),
-			});
+				onError: (error: Error) => this.handleError(error),
+			};
 
-			// Set up webhook handler - data should be the native webhook payload
-			ndjsonClient.on("webhook", (data) =>
-				this.handleWebhook(data as LinearWebhook, repos),
-			);
+			// Create the appropriate client based on configuration
+			const ndjsonClient = useLinearDirectWebhooks
+				? new LinearWebhookClient({
+						...clientConfig,
+						onWebhook: (payload) =>
+							this.handleWebhook(payload as unknown as LinearWebhook, repos),
+					})
+				: new NdjsonClient(clientConfig);
 
-			// Optional heartbeat logging
-			if (process.env.DEBUG_EDGE === "true") {
-				ndjsonClient.on("heartbeat", () => {
+			// Set up webhook handler for NdjsonClient (LinearWebhookClient uses onWebhook in constructor)
+			if (!useLinearDirectWebhooks) {
+				(ndjsonClient as NdjsonClient).on("webhook", (data) =>
+					this.handleWebhook(data as LinearWebhook, repos),
+				);
+			}
+
+			// Optional heartbeat logging (only for NdjsonClient)
+			if (process.env.DEBUG_EDGE === "true" && !useLinearDirectWebhooks) {
+				(ndjsonClient as NdjsonClient).on("heartbeat", () => {
 					console.log(
 						`❤️ Heartbeat received for token ending in ...${token.slice(-4)}`,
 					);
@@ -2221,7 +2239,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			let imageCount = 0;
 			let skippedCount = 0;
 			let failedCount = 0;
-			const maxAttachments = 10;
+			const maxAttachments = 20;
 
 			// Ensure directory exists
 			await mkdir(attachmentsDir, { recursive: true });
@@ -2436,7 +2454,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		let newAttachmentCount = 0;
 		let newImageCount = 0;
 		let failedCount = 0;
-		const maxAttachments = 10;
+		const maxAttachments = 20;
 
 		// Extract URLs from the comment
 		const urls = this.extractAttachmentUrls(commentBody);
@@ -2724,35 +2742,40 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
 					);
 
-					// Find the parent session ID for logging purposes
-					const parentId = this.childToParentAgentSession.get(childSessionId);
-
-					// Format the feedback as a prompt for the child session
-					const feedbackPrompt = `Feedback from parent session${parentId ? ` ${parentId}` : ""} regarding child agent session ${childSessionId}:\n\n${message}`;
+					// Format the feedback as a prompt for the child session with enhanced markdown formatting
+					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
 
 					// Resume the CHILD session with the feedback from the parent
-					try {
-						await this.resumeClaudeSession(
-							childSession,
-							childRepo,
-							childSessionId,
-							childAgentSessionManager,
-							feedbackPrompt,
-							"", // No attachment manifest for feedback
-							false, // Not a new session
-							[], // No additional allowed directories for feedback
-						);
-						console.log(
-							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
-						);
-						return true;
-					} catch (error) {
-						console.error(
-							`[EdgeWorker] Failed to resume child session with feedback:`,
-							error,
-						);
-						return false;
-					}
+					// Important: We don't await the full session completion to avoid timeouts.
+					// The feedback is delivered immediately when the session starts, so we can
+					// return success right away while the session continues in the background.
+					this.resumeClaudeSession(
+						childSession,
+						childRepo,
+						childSessionId,
+						childAgentSessionManager,
+						feedbackPrompt,
+						"", // No attachment manifest for feedback
+						false, // Not a new session
+						[], // No additional allowed directories for feedback
+					)
+						.then(() => {
+							console.log(
+								`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
+							);
+						})
+						.catch((error) => {
+							console.error(
+								`[EdgeWorker] Failed to complete child session with feedback:`,
+								error,
+							);
+						});
+
+					// Return success immediately after initiating the session
+					console.log(
+						`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
+					);
+					return true;
 				},
 			}),
 		};

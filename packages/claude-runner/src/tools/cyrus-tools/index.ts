@@ -530,6 +530,148 @@ export function createCyrusToolsServer(
 		},
 	);
 
+	const getChildIssuesTool = tool(
+		"linear_get_child_issues",
+		"Get all child issues (sub-issues) for a given Linear issue. Takes an issue identifier like 'CYHOST-91' and returns a list of child issue ids and their titles.",
+		{
+			issueId: z
+				.string()
+				.describe(
+					"The ID or identifier of the parent issue (e.g., 'CYHOST-91' or UUID)",
+				),
+			limit: z
+				.number()
+				.optional()
+				.describe(
+					"Maximum number of child issues to return (default: 50, max: 250)",
+				),
+			includeCompleted: z
+				.boolean()
+				.optional()
+				.describe("Whether to include completed child issues (default: true)"),
+			includeArchived: z
+				.boolean()
+				.optional()
+				.describe("Whether to include archived child issues (default: false)"),
+		},
+		async ({
+			issueId,
+			limit = 50,
+			includeCompleted = true,
+			includeArchived = false,
+		}) => {
+			try {
+				// Validate and clamp limit
+				const finalLimit = Math.min(Math.max(1, limit), 250);
+
+				console.log(
+					`Getting child issues for ${issueId} (limit: ${finalLimit})`,
+				);
+
+				// Fetch the parent issue first
+				const issue = await linearClient.issue(issueId);
+
+				if (!issue) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `Issue ${issueId} not found`,
+								}),
+							},
+						],
+					};
+				}
+
+				// Build the filter for child issues
+				const filter: any = {};
+
+				if (!includeCompleted) {
+					filter.state = { type: { neq: "completed" } };
+				}
+
+				if (!includeArchived) {
+					filter.archivedAt = { null: true };
+				}
+
+				// Get child issues using the children() method
+				const childrenConnection = await issue.children({
+					first: finalLimit,
+					...(Object.keys(filter).length > 0 && { filter }),
+				});
+
+				// Extract the child issues from the connection
+				const children = await childrenConnection.nodes;
+
+				// Process each child to get detailed information
+				const childrenData = await Promise.all(
+					children.map(async (child) => {
+						const [state, assignee] = await Promise.all([
+							child.state,
+							child.assignee,
+						]);
+
+						return {
+							id: child.id,
+							identifier: child.identifier,
+							title: child.title,
+							state: state?.name || "Unknown",
+							stateType: state?.type || null,
+							assignee: assignee?.name || null,
+							assigneeId: assignee?.id || null,
+							priority: child.priority,
+							priorityLabel: child.priorityLabel,
+							createdAt: child.createdAt.toISOString(),
+							updatedAt: child.updatedAt.toISOString(),
+							url: child.url,
+							archivedAt: child.archivedAt?.toISOString() || null,
+						};
+					}),
+				);
+
+				console.log(`Found ${childrenData.length} child issues for ${issueId}`);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify(
+								{
+									success: true,
+									parentIssue: {
+										id: issue.id,
+										identifier: issue.identifier,
+										title: issue.title,
+										url: issue.url,
+									},
+									childCount: childrenData.length,
+									children: childrenData,
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			} catch (error) {
+				console.error(`Error getting child issues for ${issueId}:`, error);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
 	return createSdkMcpServer({
 		name: "cyrus-tools",
 		version: "1.0.0",
@@ -538,6 +680,7 @@ export function createCyrusToolsServer(
 			agentSessionTool,
 			agentSessionOnCommentTool,
 			giveFeedbackTool,
+			getChildIssuesTool,
 		],
 	});
 }

@@ -405,6 +405,19 @@ class EdgeApp {
 			return config.ngrokAuthToken;
 		}
 
+		// Skip ngrok setup if using external host
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		if (isExternalHost) {
+			console.log(
+				`\n📡 Using external host configuration (CYRUS_HOST_EXTERNAL=true)`,
+			);
+			console.log(
+				`   Skipping ngrok setup - using ${process.env.CYRUS_BASE_URL || "configured base URL"}`,
+			);
+			return undefined;
+		}
+
 		// Prompt user for ngrok auth token
 		console.log(`\n🔗 Ngrok Setup Required`);
 		console.log(`─`.repeat(50));
@@ -472,7 +485,9 @@ class EdgeApp {
 	}): Promise<void> {
 		// Get ngrok auth token (prompt if needed and not external host)
 		let ngrokAuthToken: string | undefined;
-		if (process.env.CYRUS_HOST_EXTERNAL !== "true") {
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		if (!isExternalHost) {
 			const config = this.loadEdgeConfig();
 			ngrokAuthToken = await this.getNgrokAuthToken(config);
 		}
@@ -497,8 +512,7 @@ class EdgeApp {
 			serverPort: process.env.CYRUS_SERVER_PORT
 				? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 				: 3456,
-			serverHost:
-				process.env.CYRUS_HOST_EXTERNAL === "true" ? "0.0.0.0" : "localhost",
+			serverHost: isExternalHost ? "0.0.0.0" : "localhost",
 			ngrokAuthToken,
 			features: {
 				enableContinuation: true,
