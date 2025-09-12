@@ -278,7 +278,7 @@ export class EdgeWorker extends EventEmitter {
 			const ndjsonClient = useLinearDirectWebhooks
 				? new LinearWebhookClient({
 						...clientConfig,
-						onWebhook: (payload) =>
+						onWebhook: (payload: any) =>
 							this.handleWebhook(payload as unknown as LinearWebhook, repos),
 					})
 				: new NdjsonClient(clientConfig);

@@ -37,6 +37,6 @@
 		"typescript": "^5.3.3"
 	},
 	"dependencies": {
-		"@linear/sdk": "58.0.0"
+		"@linear/sdk": "58.1.0"
 	}
 }
