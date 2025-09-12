@@ -552,14 +552,19 @@ export class AgentSessionManager {
 								return;
 							}
 
+							// Wrap both parameter and result in collapsible blocks for cleaner UI
+							const formattedInput =
+								typeof toolInput === "string"
+									? toolInput
+									: JSON.stringify(toolInput, null, 2);
+							const wrappedParameter = `+++Tool Input\n${formattedInput}\n+++`;
+							const wrappedResult = `+++Tool Output\n${toolResult.content}\n+++`;
+
 							content = {
 								type: "action",
 								action: toolResult.isError ? `${toolName} (Error)` : toolName,
-								parameter:
-									typeof toolInput === "string"
-										? toolInput
-										: JSON.stringify(toolInput, null, 2),
-								result: toolResult.content,
+								parameter: wrappedParameter,
+								result: wrappedResult,
 							};
 						} else {
 							return;
@@ -639,10 +644,14 @@ export class AgentSessionManager {
 								}
 							}
 
+							// For ephemeral tool calls, wrap the parameter in a collapsible block
+							// to reduce visual noise in the Linear UI
+							const wrappedParameter = `+++Tool Input\n${parameter}\n+++`;
+
 							content = {
 								type: "action",
 								action: displayName,
-								parameter: parameter,
+								parameter: wrappedParameter,
 								// result will be added later when we get tool result
 							};
 							// Standard tool calls are ephemeral
