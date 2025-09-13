@@ -2052,6 +2052,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
+	 * Get the server base URL
+	 */
+	getServerBaseUrl(): string {
+		return this.sharedApplicationServer.getBaseUrl();
+	}
+
+	/**
 	 * Get the OAuth callback URL
 	 */
 	getOAuthCallbackUrl(): string {
