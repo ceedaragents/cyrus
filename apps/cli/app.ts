@@ -18,6 +18,7 @@ import {
 	type RepositoryConfig,
 	SharedApplicationServer,
 } from "cyrus-edge-worker";
+import { DEFAULT_PROXY_URL } from "cyrus-core";
 import dotenv from "dotenv";
 import open from "open";
 
@@ -26,8 +27,7 @@ const args = process.argv.slice(2);
 const envFileArg = args.find((arg) => arg.startsWith("--env-file="));
 const cyrusHomeArg = args.find((arg) => arg.startsWith("--cyrus-home="));
 
-// Constants
-const DEFAULT_PROXY_URL = "https://cyrus-proxy.ceedar.workers.dev";
+// Constants are imported from cyrus-core
 
 // Determine the Cyrus home directory once at startup
 let CYRUS_HOME: string;
@@ -1612,7 +1612,8 @@ async function refreshTokenCommand() {
 			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 			: 3456;
 		const callbackUrl = `http://localhost:${serverPort}/callback`;
-		const oauthUrl = `${DEFAULT_PROXY_URL}/oauth/authorize?callback=${encodeURIComponent(
+		const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
+		const oauthUrl = `${proxyUrl}/oauth/authorize?callback=${encodeURIComponent(
 			callbackUrl,
 		)}`;
 
@@ -1739,8 +1740,7 @@ async function addRepositoryCommand() {
 			console.log("🔐 No Linear credentials found. Starting OAuth flow...");
 
 			// Start OAuth flow using the default proxy URL
-			const proxyUrl =
-				process.env.PROXY_URL || "https://cyrus-proxy.ceedar.workers.dev";
+			const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
 			linearCredentials = await app.startOAuthFlow(proxyUrl);
 
 			if (!linearCredentials) {

@@ -47,3 +47,6 @@ export {
 	isIssueNewCommentWebhook,
 	isIssueUnassignedWebhook,
 } from "./webhook-types.js";
+
+// Constants
+export { DEFAULT_PROXY_URL } from "./constants.js";
