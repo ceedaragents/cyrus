@@ -99,7 +99,9 @@ export function createCyrusToolsServer(
 	linearApiToken: string,
 	options: CyrusToolsOptions = {},
 ) {
-	const linearClient = new LinearClient({ apiKey: linearApiToken });
+	// Use accessToken for OAuth tokens (from Linear OAuth flow)
+	// The Linear SDK will automatically add "Bearer " prefix if needed
+	const linearClient = new LinearClient({ accessToken: linearApiToken });
 
 	// Create tools with bound linear client
 	const uploadTool = tool(

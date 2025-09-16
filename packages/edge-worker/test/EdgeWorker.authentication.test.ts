@@ -73,8 +73,9 @@ describe("EdgeWorker - Linear Authentication", () => {
 				});
 			}
 
-			// Attempt to handle the webhook
-			const response = await edgeWorker.handleWebhook(webhook);
+			// Attempt to handle the webhook with repositories
+			// Use type assertion to access private method for testing
+			const response = await (edgeWorker as any).handleWebhook(webhook, mockConfig.repositories);
 
 			// Verify that authentication error was encountered
 			expect(response).toBeUndefined(); // No response due to auth failure
@@ -218,8 +219,9 @@ describe("EdgeWorker - Linear Authentication", () => {
 				});
 			}
 
-			// Process the webhook
-			const response = await edgeWorker.handleWebhook(webhook);
+			// Process the webhook with repositories
+			// Use type assertion to access private method for testing
+			const response = await (edgeWorker as any).handleWebhook(webhook, mockConfig.repositories);
 
 			// Verify error was logged
 			expect(consoleErrorSpy).toHaveBeenCalled();
