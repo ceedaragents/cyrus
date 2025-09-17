@@ -99,8 +99,8 @@ importers:
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-code':
-        specifier: 1.0.112
-        version: 1.0.112
+        specifier: 1.0.117
+        version: 1.0.117
       '@anthropic-ai/sdk':
         specifier: ^0.62.0
         version: 0.62.0
@@ -223,8 +223,8 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@anthropic-ai/claude-code@1.0.112':
-    resolution: {integrity: sha512-UMGxS1iLA8RlrDGpSzMfnJpVHXxcL7AdD8kQfqFy/hAFqwyKpoJPHGBwXt5KjuVDwcWwkpXc3tXDVt//4z6icg==}
+  '@anthropic-ai/claude-code@1.0.117':
+    resolution: {integrity: sha512-ZSBFpwPqMZJZq9//BYSW0MLGQY0svAtncPe2EVxohO87Gym6Dqi+IRSVZkWSwF07gmzZH3luqrepX3q33l7T+Q==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -2409,7 +2409,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.8
       '@jridgewell/trace-mapping': 0.3.25
 
-  '@anthropic-ai/claude-code@1.0.112':
+  '@anthropic-ai/claude-code@1.0.117':
     optionalDependencies:
       '@img/sharp-darwin-arm64': 0.33.5
       '@img/sharp-darwin-x64': 0.33.5
