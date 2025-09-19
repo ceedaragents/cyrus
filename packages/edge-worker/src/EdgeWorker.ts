@@ -1310,6 +1310,25 @@ export class EdgeWorker extends EventEmitter {
 	 * TODO: improve this
 	 */
 	private async handleClaudeError(error: Error): Promise<void> {
+		// Check if this is a usage limit error that should be handled gracefully
+		// Check multiple sources for usage limit indicators
+		const errorSources = [
+			error.message,
+			error.stack || "",
+			(error as any).cause ? String((error as any).cause) : "",
+		];
+
+		const isUsageLimit = errorSources.some((source) =>
+			/limit reached|usage limit|hour limit/i.test(source),
+		);
+
+		if (isUsageLimit) {
+			console.log("[EdgeWorker] Usage limit detected in error handling");
+			// Don't log the raw stack trace for usage limit errors
+			return;
+		}
+
+		// For other errors, log the raw error
 		console.error("Unhandled claude error:", error);
 	}
 
