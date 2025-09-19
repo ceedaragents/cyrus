@@ -12,13 +12,13 @@ import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import readline from "node:readline";
 import type { Issue } from "@linear/sdk";
+import { DEFAULT_PROXY_URL } from "cyrus-core";
 import {
 	EdgeWorker,
 	type EdgeWorkerConfig,
 	type RepositoryConfig,
 	SharedApplicationServer,
 } from "cyrus-edge-worker";
-import { DEFAULT_PROXY_URL } from "cyrus-core";
 import dotenv from "dotenv";
 import open from "open";
 

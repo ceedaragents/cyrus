@@ -71,10 +71,7 @@ export class SharedApplicationServer {
 		this.port = port;
 		this.host = host;
 		this.ngrokAuthToken = ngrokAuthToken || null;
-		this.proxyUrl =
-			proxyUrl ||
-			process.env.PROXY_URL ||
-			DEFAULT_PROXY_URL;
+		this.proxyUrl = proxyUrl || process.env.PROXY_URL || DEFAULT_PROXY_URL;
 	}
 
 	/**
