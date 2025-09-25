@@ -24,6 +24,7 @@
 	"dependencies": {
 		"@linear/sdk": "^58.0.0",
 		"@ngrok/ngrok": "^1.5.1",
+		"cyrus-agent-runner": "workspace:*",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-webhook-client": "workspace:*",
