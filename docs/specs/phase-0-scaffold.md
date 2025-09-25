@@ -5,7 +5,7 @@ Progress Checklist:
 - [x] New fields (global + repo)
 - [x] No-op defaults and migration stance
 - [x] Initial setup prompt for defaultCli
-- [ ] Ready for Implementation
+- [x] Ready for Implementation
 
 # Phase 0: Scaffold (Types, Config, Defaults)
 

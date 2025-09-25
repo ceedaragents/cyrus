@@ -6,7 +6,7 @@ Progress Checklist:
 - [x] Non-Claude streaming bridge
 - [x] Thought posting helper
 - [x] Resume handling for OpenCode
-- [ ] Ready for Implementation
+- [x] Ready for Implementation
 
 # EdgeWorker Integration Plan
 

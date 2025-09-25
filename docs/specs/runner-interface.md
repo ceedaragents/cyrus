@@ -5,7 +5,7 @@ Progress Checklist:
 - [x] RunnerConfig/RunnerEvent interfaces
 - [x] Adapters: Claude, Codex, OpenCode
 - [x] Factory + package layout
-- [ ] Ready for Implementation
+- [x] Ready for Implementation
 
 # Runner Interface & Adapters
 

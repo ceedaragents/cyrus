@@ -6,7 +6,7 @@ Progress Checklist:
 - [x] Streaming + completion
 - [x] Failure cases
 - [x] Test plan
-- [ ] Ready for Implementation
+- [x] Ready for Implementation
 
 # Phase 1: Codex Adapter
 

@@ -7,7 +7,12 @@ export { EdgeWorker } from "./EdgeWorker.js";
 export type { OAuthCallbackHandler } from "./SharedApplicationServer.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
 export type {
+	CliDefaults,
+	EdgeCredentials,
 	EdgeWorkerConfig,
 	EdgeWorkerEvents,
 	RepositoryConfig,
+	RepositoryLabelAgentRoutingRule,
+	RepositoryRunnerModels,
+	RunnerType,
 } from "./types.js";

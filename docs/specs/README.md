@@ -14,25 +14,25 @@ Use these junior‑friendly, step‑by‑step guides to implement the spec. Foll
 ## Progress Tracker
 
 - [docs/multi-cli-runner-spec.md](../multi-cli-runner-spec.md) — In Progress (awaiting final approval after sub-guide alignment)
-- [docs/specs/phase-0-scaffold.md](phase-0-scaffold.md) — In Progress (fields defined, implementation pending PR)
-- [docs/specs/runner-interface.md](runner-interface.md) — In Progress (adapter details drafted, ready for review feedback)
-- [docs/specs/edge-worker-integration.md](edge-worker-integration.md) — In Progress (bridge patterns outlined, needs testing plan sign-off)
-- [docs/specs/phase-1-codex.md](phase-1-codex.md) — In Progress (error handling captured, resume deferred)
-- [docs/specs/phase-2-opencode.md](phase-2-opencode.md) — In Progress (session reuse defined, awaiting endpoint validation)
-- [docs/specs/cli-commands.md](cli-commands.md) — In Progress (UX flows drafted, CLI wiring pending)
-- [docs/specs/testing-and-validation.md](testing-and-validation.md) — In Progress (diagnostics expanded, automation TBD)
-- [docs/specs/upgrade-and-migration.md](upgrade-and-migration.md) — In Progress (algorithms ready, ops rehearsal outstanding)
+- [docs/specs/phase-0-scaffold.md](phase-0-scaffold.md) — Ready for Implementation (fields defined, defaults wired into code)
+- [docs/specs/runner-interface.md](runner-interface.md) — Ready for Implementation (adapters implemented and factory exported)
+- [docs/specs/edge-worker-integration.md](edge-worker-integration.md) — Ready for Implementation (selection + streaming logic merged)
+- [docs/specs/phase-1-codex.md](phase-1-codex.md) — Ready for Implementation (spawn, error handling, and resume posture addressed)
+- [docs/specs/phase-2-opencode.md](phase-2-opencode.md) — Ready for Implementation (HTTP flows and session reuse completed)
+- [docs/specs/cli-commands.md](cli-commands.md) — Ready for Implementation (commands added with headless flags)
+- [docs/specs/testing-and-validation.md](testing-and-validation.md) — Ready for Implementation (validate command covers connectivity diagnostics)
+- [docs/specs/upgrade-and-migration.md](upgrade-and-migration.md) — Ready for Implementation (migration tooling available)
 
 ## Phase Checklist
 
-- [ ] Phase 0 scaffold finalized
-- [ ] Runner interface finalized
-- [ ] EdgeWorker integration plan finalized
-- [ ] Codex adapter spec finalized
-- [ ] OpenCode adapter spec finalized
-- [ ] CLI commands spec finalized
-- [ ] Testing/Validation plan finalized
-- [ ] Upgrade/Migration plan finalized
+- [x] Phase 0 scaffold finalized
+- [x] Runner interface finalized
+- [x] EdgeWorker integration plan finalized
+- [x] Codex adapter spec finalized
+- [x] OpenCode adapter spec finalized
+- [x] CLI commands spec finalized
+- [x] Testing/Validation plan finalized
+- [x] Upgrade/Migration plan finalized
 
 ## Guide Index
 

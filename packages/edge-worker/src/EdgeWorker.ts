@@ -7,6 +7,13 @@ import {
 	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
+import {
+	DefaultRunnerFactory,
+	type Runner,
+	type RunnerEvent,
+	type RunnerFactory,
+	type RunnerType,
+} from "cyrus-agent-runner";
 import type {
 	ClaudeRunnerConfig,
 	HookCallbackMatcher,
@@ -61,6 +68,17 @@ import type {
 	RepositoryConfig,
 } from "./types.js";
 
+type RunnerSelection = {
+	type: RunnerType;
+	model?: string;
+	provider?: string;
+	serverUrl?: string;
+};
+
+interface SessionRunnerMetadata extends RunnerSelection {
+	issueId: string;
+}
+
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(
 		event: K,
@@ -92,6 +110,11 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
+	private runnerFactory: RunnerFactory;
+	private sessionRunnerSelections: Map<string, SessionRunnerMetadata> =
+		new Map();
+	private nonClaudeRunners: Map<string, Runner> = new Map();
+	private openCodeSessionCache: Map<string, string> = new Map();
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -100,6 +123,7 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+		this.runnerFactory = new DefaultRunnerFactory();
 
 		console.log(
 			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
@@ -302,6 +326,18 @@ export class EdgeWorker extends EventEmitter {
 			// Store with the first repo's ID as the key (for error messages)
 			// But also store the token mapping for lookup
 			this.ndjsonClients.set(primaryRepoId, ndjsonClient);
+		}
+	}
+
+	private debugLog(message: string, ...metadata: unknown[]): void {
+		if (process.env.DEBUG_EDGE?.toLowerCase() !== "true") {
+			return;
+		}
+		const prefix = "[EdgeWorker][debug]";
+		if (metadata.length > 0) {
+			console.log(prefix, message, ...metadata);
+		} else {
+			console.log(prefix, message);
 		}
 	}
 
@@ -911,6 +947,12 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
+		const selection = this.resolveRunnerSelection(labels, repository);
+		this.sessionRunnerSelections.set(linearAgentActivitySessionId, {
+			...selection,
+			issueId: fullIssue.id,
+		});
+
 		// Build allowed tools list with Linear MCP tools (now with prompt type context)
 		const allowedTools = this.buildAllowedTools(repository, promptType);
 		const disallowedTools = this.buildDisallowedTools(repository, promptType);
@@ -924,6 +966,68 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
 				disallowedTools,
 			);
+		}
+
+		const promptResult =
+			isMentionTriggered && isLabelBasedPromptRequested
+				? await this.buildLabelBasedPrompt(
+						fullIssue,
+						repository,
+						attachmentResult.manifest,
+					)
+				: isMentionTriggered
+					? await this.buildMentionPrompt(
+							fullIssue,
+							agentSession,
+							attachmentResult.manifest,
+						)
+					: systemPrompt
+						? await this.buildLabelBasedPrompt(
+								fullIssue,
+								repository,
+								attachmentResult.manifest,
+							)
+						: await this.buildPromptV2(
+								fullIssue,
+								repository,
+								undefined,
+								attachmentResult.manifest,
+							);
+
+		const { prompt: initialPrompt, version: userPromptVersion } = promptResult;
+
+		const promptWorkflowType =
+			isMentionTriggered && isLabelBasedPromptRequested
+				? "label-based-prompt-command"
+				: isMentionTriggered
+					? "mention"
+					: systemPrompt
+						? "label-based"
+						: "fallback";
+
+		console.log(
+			`[EdgeWorker] Initial prompt built using ${promptWorkflowType} workflow, length: ${initialPrompt.length} characters`,
+		);
+
+		// Emit events using full Linear issue regardless of runner type
+		this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+		this.config.handlers?.onSessionStart?.(
+			fullIssue.id,
+			fullIssue,
+			repository.id,
+		);
+
+		if (selection.type !== "claude") {
+			await this.startNonClaudeRunner({
+				selection,
+				repository,
+				prompt: initialPrompt,
+				workspacePath: session.workspace.path,
+				linearAgentActivitySessionId,
+				issueIdentifier: fullIssue.identifier,
+				isFollowUp: false,
+			});
+			return;
 		}
 
 		// Create Claude runner with attachment directory access and optional system prompt
@@ -946,49 +1050,8 @@ export class EdgeWorker extends EventEmitter {
 		// Save state after mapping changes
 		await this.savePersistedState();
 
-		// Emit events using full Linear issue
-		this.emit("session:started", fullIssue.id, fullIssue, repository.id);
-		this.config.handlers?.onSessionStart?.(
-			fullIssue.id,
-			fullIssue,
-			repository.id,
-		);
-
-		// Build and start Claude with initial prompt using full issue (streaming mode)
-		console.log(
-			`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`,
-		);
+		console.log(`[EdgeWorker] Starting Claude streaming session`);
 		try {
-			// Choose the appropriate prompt builder based on trigger type and system prompt
-			const promptResult =
-				isMentionTriggered && isLabelBasedPromptRequested
-					? await this.buildLabelBasedPrompt(
-							fullIssue,
-							repository,
-							attachmentResult.manifest,
-						)
-					: isMentionTriggered
-						? await this.buildMentionPrompt(
-								fullIssue,
-								agentSession,
-								attachmentResult.manifest,
-							)
-						: systemPrompt
-							? await this.buildLabelBasedPrompt(
-									fullIssue,
-									repository,
-									attachmentResult.manifest,
-								)
-							: await this.buildPromptV2(
-									fullIssue,
-									repository,
-									undefined,
-									attachmentResult.manifest,
-								);
-
-			const { prompt, version: userPromptVersion } = promptResult;
-
-			// Update runner with version information
 			if (userPromptVersion || systemPromptVersion) {
 				runner.updatePromptVersions({
 					userPromptVersion,
@@ -996,19 +1059,7 @@ export class EdgeWorker extends EventEmitter {
 				});
 			}
 
-			const promptType =
-				isMentionTriggered && isLabelBasedPromptRequested
-					? "label-based-prompt-command"
-					: isMentionTriggered
-						? "mention"
-						: systemPrompt
-							? "label-based"
-							: "fallback";
-			console.log(
-				`[EdgeWorker] Initial prompt built successfully using ${promptType} workflow, length: ${prompt.length} characters`,
-			);
-			console.log(`[EdgeWorker] Starting Claude streaming session`);
-			const sessionInfo = await runner.startStreaming(prompt);
+			const sessionInfo = await runner.startStreaming(initialPrompt);
 			console.log(
 				`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`,
 			);
@@ -1073,6 +1124,12 @@ export class EdgeWorker extends EventEmitter {
 			// Destructure session data for new session
 			const { fullIssue: newFullIssue } = sessionData;
 			session = sessionData.session;
+			const newLabels = await this.fetchIssueLabels(newFullIssue);
+			const newSelection = this.resolveRunnerSelection(newLabels, repository);
+			this.sessionRunnerSelections.set(linearAgentActivitySessionId, {
+				...newSelection,
+				issueId: newFullIssue.id,
+			});
 
 			// Save state and emit events for new session
 			await this.savePersistedState();
@@ -1098,6 +1155,12 @@ export class EdgeWorker extends EventEmitter {
 
 		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
 		const existingRunner = session.claudeRunner;
+		const sessionRunnerSelection = this.sessionRunnerSelections.get(
+			linearAgentActivitySessionId,
+		);
+		const isNonClaudeSession =
+			sessionRunnerSelection?.type !== undefined &&
+			sessionRunnerSelection.type !== "claude";
 		if (!isNewSession) {
 			// Only post acknowledgment for existing sessions (new sessions already handled it above)
 			await this.postInstantPromptedAcknowledgment(
@@ -1177,12 +1240,29 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Received stop signal for agent activity session ${linearAgentActivitySessionId}`,
 			);
 
-			// Stop the existing runner if it's active
 			if (existingRunner) {
 				existingRunner.stop();
 				console.log(
 					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
 				);
+			}
+
+			const existingNonClaudeRunner = this.nonClaudeRunners.get(
+				linearAgentActivitySessionId,
+			);
+			if (existingNonClaudeRunner) {
+				try {
+					await existingNonClaudeRunner.stop();
+				} catch (error) {
+					this.debugLog(
+						`[EdgeWorker] Failed to stop non-Claude runner on stop signal`,
+						error,
+					);
+				}
+				this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+			}
+			if (sessionRunnerSelection?.type === "opencode") {
+				this.openCodeSessionCache.delete(linearAgentActivitySessionId);
 			}
 			const issueTitle = issue.title || "this issue";
 			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
@@ -1196,7 +1276,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check if there's an existing runner for this comment thread
-		if (existingRunner?.isStreaming()) {
+		if (!isNonClaudeSession && existingRunner?.isStreaming()) {
 			// Add comment with attachment manifest to existing stream
 			console.log(
 				`[EdgeWorker] Adding comment to existing stream for agent activity session ${linearAgentActivitySessionId}`,
@@ -1211,6 +1291,19 @@ export class EdgeWorker extends EventEmitter {
 
 			existingRunner.addStreamMessage(fullPrompt);
 			return; // Exit early - comment has been added to stream
+		}
+
+		if (isNonClaudeSession && sessionRunnerSelection) {
+			await this.handleNonClaudeFollowUp({
+				selection: sessionRunnerSelection,
+				session,
+				repository,
+				promptBody,
+				attachmentManifest,
+				linearAgentActivitySessionId,
+				isNewSession,
+			});
+			return;
 		}
 
 		// Use the new resumeClaudeSession function
@@ -1271,8 +1364,41 @@ export class EdgeWorker extends EventEmitter {
 			runner.stop();
 		}
 
+		const nonClaudeSessionsToRemove: string[] = [];
+		for (const [
+			sessionId,
+			metadata,
+		] of this.sessionRunnerSelections.entries()) {
+			if (metadata.issueId !== issue.id || metadata.type === "claude") {
+				continue;
+			}
+
+			const runner = this.nonClaudeRunners.get(sessionId);
+			if (runner) {
+				try {
+					await runner.stop();
+				} catch (error) {
+					this.debugLog(
+						`[EdgeWorker] Failed to stop non-Claude runner during unassignment`,
+						error,
+					);
+				}
+				this.nonClaudeRunners.delete(sessionId);
+			}
+
+			if (metadata.type === "opencode") {
+				this.openCodeSessionCache.delete(sessionId);
+			}
+
+			nonClaudeSessionsToRemove.push(sessionId);
+		}
+
+		nonClaudeSessionsToRemove.forEach((sessionId) => {
+			this.sessionRunnerSelections.delete(sessionId);
+		});
+
 		// Post ONE farewell comment on the issue (not in any thread) if there were active sessions
-		if (activeThreadCount > 0) {
+		if (activeThreadCount > 0 || nonClaudeSessionsToRemove.length > 0) {
 			await this.postComment(
 				issue.id,
 				"I've been unassigned and am stopping work now.",
@@ -1327,6 +1453,144 @@ export class EdgeWorker extends EventEmitter {
 			);
 			return [];
 		}
+	}
+
+	private resolveRunnerSelection(
+		labels: string[],
+		repository: RepositoryConfig,
+	): RunnerSelection {
+		const match: RunnerSelection | null = (() => {
+			for (const rule of repository.labelAgentRouting ?? []) {
+				if (rule.labels.some((label) => labels.includes(label))) {
+					const selection: RunnerSelection = {
+						type: rule.runner,
+						model: rule.model,
+						provider: rule.provider,
+					};
+
+					if (
+						selection.type === "opencode" &&
+						this.config.cliDefaults?.opencode?.serverUrl
+					) {
+						selection.serverUrl = this.config.cliDefaults.opencode.serverUrl;
+					}
+
+					return selection;
+				}
+			}
+
+			if (repository.runner) {
+				const runnerType = repository.runner;
+				if (runnerType === "codex") {
+					return {
+						type: "codex",
+						model:
+							repository.runnerModels?.codex?.model ||
+							this.config.cliDefaults?.codex?.model,
+					};
+				}
+				if (runnerType === "opencode") {
+					return {
+						type: "opencode",
+						model:
+							repository.runnerModels?.opencode?.model ||
+							this.config.cliDefaults?.opencode?.model,
+						provider:
+							repository.runnerModels?.opencode?.provider ||
+							this.config.cliDefaults?.opencode?.provider,
+						serverUrl: this.config.cliDefaults?.opencode?.serverUrl,
+					};
+				}
+				return {
+					type: "claude",
+					model:
+						repository.runnerModels?.claude?.model ||
+						repository.model ||
+						this.config.cliDefaults?.claude?.model ||
+						this.config.defaultModel,
+				};
+			}
+
+			return null;
+		})();
+
+		if (match) {
+			this.debugLog(
+				`[resolveRunnerSelection] Matched runner via label or repo override`,
+				{
+					repositoryId: repository.id,
+					runner: match.type,
+					labels,
+				},
+			);
+			return match;
+		}
+
+		const defaultCli = this.config.defaultCli ?? "claude";
+		let resolved: RunnerSelection;
+		if (defaultCli === "codex") {
+			resolved = {
+				type: "codex",
+				model: this.config.cliDefaults?.codex?.model,
+			};
+		} else if (defaultCli === "opencode") {
+			resolved = {
+				type: "opencode",
+				model: this.config.cliDefaults?.opencode?.model,
+				provider: this.config.cliDefaults?.opencode?.provider,
+				serverUrl: this.config.cliDefaults?.opencode?.serverUrl,
+			};
+		} else {
+			resolved = {
+				type: "claude",
+				model:
+					repository.model ||
+					this.config.cliDefaults?.claude?.model ||
+					this.config.defaultModel,
+			};
+		}
+
+		this.debugLog(`[resolveRunnerSelection] Using default runner selection`, {
+			repositoryId: repository.id,
+			runner: resolved.type,
+			labels,
+		});
+		return resolved;
+	}
+
+	private getOpenAiApiKey(): string | undefined {
+		if (process.env.OPENAI_API_KEY) {
+			return process.env.OPENAI_API_KEY;
+		}
+
+		const configured = this.config.credentials?.openaiApiKey;
+		if (!configured) {
+			return undefined;
+		}
+
+		if (configured.startsWith("env:")) {
+			const envVar = configured.slice(4);
+			return process.env[envVar];
+		}
+
+		return configured;
+	}
+
+	private normalizeError(value: unknown, fallback = "Unknown error"): Error {
+		if (value instanceof Error) {
+			return value;
+		}
+		if (typeof value === "string") {
+			return new Error(value);
+		}
+		if (value && typeof value === "object") {
+			try {
+				return new Error(JSON.stringify(value));
+			} catch (_error) {
+				return new Error(fallback);
+			}
+		}
+		return new Error(fallback);
 	}
 
 	/**
@@ -2910,6 +3174,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}
 		}
 
+		const claudeDefaultConfig = this.config.cliDefaults?.claude;
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -2920,11 +3185,18 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
 			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
-			// Priority order: label override > repository config > global default
-			model: modelOverride || repository.model || this.config.defaultModel,
+			// Priority order: label override > repo runner models > repo legacy config > global CLI defaults > legacy global defaults
+			model:
+				modelOverride ||
+				repository.runnerModels?.claude?.model ||
+				repository.model ||
+				claudeDefaultConfig?.model ||
+				this.config.defaultModel,
 			fallbackModel:
 				fallbackModelOverride ||
+				repository.runnerModels?.claude?.fallbackModel ||
 				repository.fallbackModel ||
+				claudeDefaultConfig?.fallbackModel ||
 				this.config.defaultFallbackModel,
 			hooks,
 			onMessage: (message: SDKMessage) => {
@@ -3211,6 +3483,274 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				error,
 			);
 		}
+	}
+
+	private async postThought(
+		linearAgentActivitySessionId: string,
+		repositoryId: string,
+		body: string,
+	): Promise<void> {
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			this.debugLog(
+				`[postThought] No Linear client found for repository ${repositoryId}`,
+			);
+			return;
+		}
+
+		try {
+			await linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body,
+				},
+			});
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to post thought for session ${linearAgentActivitySessionId}:`,
+				error,
+			);
+		}
+	}
+
+	private async startNonClaudeRunner({
+		selection,
+		repository,
+		prompt,
+		workspacePath,
+		linearAgentActivitySessionId,
+		issueIdentifier,
+		isFollowUp = false,
+	}: {
+		selection: RunnerSelection;
+		repository: RepositoryConfig;
+		prompt: string;
+		workspacePath: string;
+		linearAgentActivitySessionId: string;
+		issueIdentifier: string;
+		isFollowUp?: boolean;
+	}): Promise<void> {
+		if (selection.type === "claude") {
+			throw new Error("startNonClaudeRunner called with Claude selection");
+		}
+
+		const codexDefaults = this.config.cliDefaults?.codex;
+		const opencodeDefaults = this.config.cliDefaults?.opencode;
+		const repoRunnerModels = repository.runnerModels;
+
+		let runnerConfig: any;
+
+		if (selection.type === "codex") {
+			const env = { ...process.env };
+			const apiKey = this.getOpenAiApiKey();
+			if (apiKey && !env.OPENAI_API_KEY) {
+				env.OPENAI_API_KEY = apiKey;
+			}
+			runnerConfig = {
+				type: "codex",
+				cwd: workspacePath,
+				prompt,
+				model:
+					selection.model ||
+					repoRunnerModels?.codex?.model ||
+					codexDefaults?.model,
+				approvalPolicy: codexDefaults?.approvalPolicy,
+				sandbox: codexDefaults?.sandbox,
+				env,
+			};
+		} else {
+			const serverUrl =
+				selection.serverUrl ||
+				opencodeDefaults?.serverUrl ||
+				"http://localhost:17899";
+			const cachedSessionId =
+				this.openCodeSessionCache.get(linearAgentActivitySessionId) ||
+				undefined;
+			runnerConfig = {
+				type: "opencode",
+				cwd: workspacePath,
+				prompt,
+				model:
+					selection.model ||
+					repoRunnerModels?.opencode?.model ||
+					opencodeDefaults?.model,
+				provider:
+					selection.provider ||
+					repoRunnerModels?.opencode?.provider ||
+					opencodeDefaults?.provider ||
+					"openai",
+				serverUrl,
+				sessionId: cachedSessionId,
+				linearSessionId: linearAgentActivitySessionId,
+				openaiApiKey: this.getOpenAiApiKey(),
+				retryOnDisconnect: true,
+			};
+		}
+
+		this.debugLog(`[startNonClaudeRunner] Starting ${selection.type} runner`, {
+			sessionId: linearAgentActivitySessionId,
+			issueIdentifier,
+			isFollowUp,
+			spawn: {
+				type: selection.type,
+				cwd: workspacePath,
+				model: runnerConfig.model,
+				provider: runnerConfig.provider,
+			},
+		});
+
+		const runner = this.runnerFactory.create(runnerConfig);
+		this.nonClaudeRunners.set(linearAgentActivitySessionId, runner);
+
+		const handleEvent = (event: RunnerEvent): void => {
+			if (event.kind === "text") {
+				const text = event.text.trim();
+				if (text.length === 0) {
+					return;
+				}
+				void this.postThought(
+					linearAgentActivitySessionId,
+					repository.id,
+					text,
+				).catch((error) => {
+					this.debugLog(
+						`[startNonClaudeRunner] Failed posting text thought (${selection.type})`,
+						error,
+					);
+				});
+				return;
+			}
+
+			if (event.kind === "tool") {
+				this.debugLog(
+					`[startNonClaudeRunner] Tool event from ${selection.type}`,
+					{
+						sessionId: linearAgentActivitySessionId,
+						name: event.name,
+					},
+				);
+				return;
+			}
+
+			if (event.kind === "result") {
+				this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+				const summary = event.summary || `${selection.type} run completed`;
+				void this.postThought(
+					linearAgentActivitySessionId,
+					repository.id,
+					summary,
+				).catch((error) => {
+					this.debugLog(
+						`[startNonClaudeRunner] Failed posting completion thought (${selection.type})`,
+						error,
+					);
+				});
+				return;
+			}
+
+			if (event.kind === "error") {
+				this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+				const err = this.normalizeError(
+					event.error,
+					`${selection.type} runner error`,
+				);
+				void this.postThought(
+					linearAgentActivitySessionId,
+					repository.id,
+					`Error: ${err.message}`,
+				).catch((_error) => {
+					this.debugLog(
+						`[startNonClaudeRunner] Failed posting error thought (${selection.type})`,
+						_error,
+					);
+				});
+			}
+		};
+
+		try {
+			const startResult = await runner.start(handleEvent);
+			if (selection.type === "opencode" && startResult.sessionId) {
+				this.openCodeSessionCache.set(
+					linearAgentActivitySessionId,
+					startResult.sessionId,
+				);
+			}
+		} catch (error) {
+			this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+			const err = this.normalizeError(
+				error,
+				`Failed to start ${selection.type} runner`,
+			);
+			await this.postThought(
+				linearAgentActivitySessionId,
+				repository.id,
+				`Error: ${err.message}`,
+			);
+			throw err;
+		}
+	}
+
+	private async handleNonClaudeFollowUp({
+		selection,
+		session,
+		repository,
+		promptBody,
+		attachmentManifest,
+		linearAgentActivitySessionId,
+		isNewSession,
+	}: {
+		selection: SessionRunnerMetadata;
+		session: CyrusAgentSession;
+		repository: RepositoryConfig;
+		promptBody: string;
+		attachmentManifest: string;
+		linearAgentActivitySessionId: string;
+		isNewSession: boolean;
+	}): Promise<void> {
+		const existingRunner = this.nonClaudeRunners.get(
+			linearAgentActivitySessionId,
+		);
+		if (existingRunner) {
+			try {
+				await existingRunner.stop();
+			} catch (error) {
+				this.debugLog(
+					`[handleNonClaudeFollowUp] Failed to stop existing runner`,
+					error,
+				);
+			}
+			this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+		}
+
+		const fullIssue = await this.fetchFullIssueDetails(
+			session.issueId,
+			repository.id,
+		);
+		if (!fullIssue) {
+			throw new Error(
+				`Failed to fetch full issue details for follow-up session ${session.issueId}`,
+			);
+		}
+
+		const followUpPrompt = await this.buildSessionPrompt(
+			isNewSession,
+			fullIssue,
+			repository,
+			promptBody,
+			attachmentManifest,
+		);
+
+		const { issueId: _issueId, ...runnerSelection } = selection;
+		await this.startNonClaudeRunner({
+			selection: runnerSelection,
+			repository,
+			prompt: followUpPrompt,
+			workspacePath: session.workspace.path,
+			linearAgentActivitySessionId,
+			issueIdentifier: fullIssue.identifier,
+			isFollowUp: true,
+		});
 	}
 
 	/**

@@ -5,7 +5,7 @@ Progress Checklist:
 - [x] Command list + semantics
 - [x] Flags + examples
 - [x] Headless notes
-- [ ] Ready for Implementation
+- [x] Ready for Implementation
 
 # CLI Additions (apps/cli)
 

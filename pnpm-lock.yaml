@@ -102,6 +102,22 @@ importers:
         specifier: ^4.22.0
         version: 4.23.0(@cloudflare/workers-types@4.20250705.0)
 
+  packages/agent-runner:
+    dependencies:
+      cyrus-claude-runner:
+        specifier: workspace:*
+        version: link:../claude-runner
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.4
+      typescript:
+        specifier: ^5.3.3
+        version: 5.8.3
+      vitest:
+        specifier: ^1.1.0
+        version: 1.6.1(@types/node@20.19.4)(lightningcss@1.30.1)
+
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-code':
@@ -1032,9 +1048,6 @@ packages:
 
   '@types/node@20.19.4':
     resolution: {integrity: sha512-OP+We5WV8Xnbuvw0zC2m4qfB/BJvjyCwtNjhHdJxV1639SGSKrLmJkc3fMnp2Qy8nJyHp8RO6umxELN/dS1/EA==}
-
-  '@types/node@22.18.0':
-    resolution: {integrity: sha512-m5ObIqwsUp6BZzyiy4RdZpzWGub9bqLJMvZDD0QMXhxjqMHMENlj+SqF5QxoUwaQNFe+8kz8XM8ZQhqkQPTgMQ==}
 
   '@vitest/coverage-v8@1.6.1':
     resolution: {integrity: sha512-6YeRZwuO4oTGKxD3bijok756oktHSIm3eczVVzNe3scqzuhLwltIF3S9ZL/vwOVIpURmU6SnZhziXXAfw8/Qlw==}
@@ -3060,7 +3073,7 @@ snapshots:
   '@types/fs-extra@11.0.4':
     dependencies:
       '@types/jsonfile': 6.1.4
-      '@types/node': 22.18.0
+      '@types/node': 20.19.4
 
   '@types/jsonfile@6.1.4':
     dependencies:
@@ -3070,10 +3083,6 @@ snapshots:
     optional: true
 
   '@types/node@20.19.4':
-    dependencies:
-      undici-types: 6.21.0
-
-  '@types/node@22.18.0':
     dependencies:
       undici-types: 6.21.0
 

@@ -13,7 +13,7 @@
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run --passWithNoTests",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
 	},
 	"dependencies": {
 		"@linear/sdk": "^58.0.0",

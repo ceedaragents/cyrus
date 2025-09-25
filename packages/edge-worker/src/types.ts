@@ -3,6 +3,54 @@ import type { SDKMessage } from "cyrus-claude-runner";
 import type { CyrusAgentSession, Workspace } from "cyrus-core";
 import type { OAuthCallbackHandler } from "./SharedApplicationServer.js";
 
+export type RunnerType = "claude" | "codex" | "opencode";
+
+export interface ClaudeRunnerModelConfig {
+	model?: string;
+	fallbackModel?: string;
+}
+
+export interface CodexRunnerModelConfig {
+	model?: string;
+}
+
+export interface OpenCodeRunnerModelConfig {
+	provider?: string;
+	model?: string;
+}
+
+export interface CodexCliDefaults extends CodexRunnerModelConfig {
+	approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never";
+	sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+}
+
+export interface OpenCodeCliDefaults extends OpenCodeRunnerModelConfig {
+	serverUrl?: string;
+}
+
+export interface CliDefaults {
+	claude?: ClaudeRunnerModelConfig;
+	codex?: CodexCliDefaults;
+	opencode?: OpenCodeCliDefaults;
+}
+
+export interface EdgeCredentials {
+	openaiApiKey?: string;
+}
+
+export interface RepositoryRunnerModels {
+	claude?: ClaudeRunnerModelConfig;
+	codex?: CodexRunnerModelConfig;
+	opencode?: OpenCodeRunnerModelConfig;
+}
+
+export interface RepositoryLabelAgentRoutingRule {
+	labels: string[];
+	runner: RunnerType;
+	model?: string;
+	provider?: string;
+}
+
 /**
  * Configuration for a single repository/workspace pair
  */
@@ -10,6 +58,7 @@ export interface RepositoryConfig {
 	// Repository identification
 	id: string; // Unique identifier for this repo config
 	name: string; // Display name (e.g., "Frontend App")
+	runner?: RunnerType; // Preferred runner for this repository
 
 	// Git configuration
 	repositoryPath: string; // Local git repository path
@@ -35,6 +84,8 @@ export interface RepositoryConfig {
 	appendInstruction?: string; // Additional instruction to append to the prompt in XML-style wrappers
 	model?: string; // Claude model to use for this repository (e.g., "opus", "sonnet", "haiku")
 	fallbackModel?: string; // Fallback model if primary model is unavailable
+	runnerModels?: RepositoryRunnerModels; // Per-runner model configuration overrides
+	labelAgentRouting?: RepositoryLabelAgentRoutingRule[]; // Label-based runner routing rules
 
 	// Label-based system prompt configuration
 	labelPrompts?: {
@@ -79,6 +130,9 @@ export interface EdgeWorkerConfig {
 	defaultDisallowedTools?: string[]; // Tools to explicitly disallow across all repositories (no defaults)
 	defaultModel?: string; // Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku")
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
+	defaultCli?: RunnerType; // Default runner to use when repository doesn't override
+	cliDefaults?: CliDefaults; // Per-runner default configuration
+	credentials?: EdgeCredentials; // Stored credentials shortcuts (e.g., OpenAI API key reference)
 
 	// Global defaults for prompt types
 	promptDefaults?: {
