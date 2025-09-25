@@ -99,7 +99,6 @@ export class TokenEncryption {
 			...encrypted,
 			accessToken: decoder.decode(decryptedAccessToken),
 			refreshToken,
-			iv: undefined as any, // Remove IV from decrypted token
 		};
 	}
 

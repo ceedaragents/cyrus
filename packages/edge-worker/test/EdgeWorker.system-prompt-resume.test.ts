@@ -179,6 +179,7 @@ Issue: {{issue_identifier}}`;
 
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
+			cyrusHome: "/tmp/test-cyrus-home",
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({

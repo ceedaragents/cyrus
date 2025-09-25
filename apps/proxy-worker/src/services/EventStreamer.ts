@@ -58,7 +58,7 @@ export class EventStreamer {
 	 * Handle status update from edge worker
 	 */
 	async handleStatus(request: Request): Promise<Response> {
-		const { eventId, status } = await request.json();
+		const { eventId, status } = (await request.json()) as any;
 
 		// Extract edge authentication
 		const authHeader = request.headers.get("authorization");
@@ -124,7 +124,7 @@ export class EventStreamer {
 				return null;
 			}
 
-			const data = await response.json();
+			const data = (await response.json()) as any;
 
 			if (data.errors) {
 				console.error("GraphQL errors:", data.errors);

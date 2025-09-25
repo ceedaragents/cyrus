@@ -34,3 +34,5 @@ workspaces
 
 # Edge config
 .edge-config.json
+
+CLAUDE.local.md

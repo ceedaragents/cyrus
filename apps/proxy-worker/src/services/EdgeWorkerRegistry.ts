@@ -177,7 +177,7 @@ export class EdgeWorkerRegistry {
 				return null;
 			}
 
-			const data = await response.json();
+			const data = (await response.json()) as any;
 
 			if (data.errors) {
 				console.error("GraphQL errors:", data.errors);

@@ -45,9 +45,6 @@ Keep `cyrus` running, and the agent will start monitoring issues assigned to you
 
 ## Configuration
 
-<details>
-<summary>Click to expand configuration details</summary>
-
 After initial setup, Cyrus stores your configuration in `~/.cyrus/config.json`. You can edit this file to customize the following settings:
 
 ### Repository Configuration
@@ -233,10 +230,10 @@ When determining allowed tools, Cyrus follows this priority order:
 4. Global default allowed tools
 5. Safe tools fallback (all tools except Bash)
 
-</details>
-
 ## Setup on Remote Host
 
+<details>
+  
 If you want to host Cyrus on a remote machine for 24/7 availability, follow these steps on a newly created virtual machine to get started.
 
 1. Install `gh`, `npm`, and `git`
@@ -292,6 +289,12 @@ CYRUS_SERVER_PORT=3456
 # Base URL configuration (required for Linear integration - handles both webhooks and OAuth)
 CYRUS_BASE_URL=<your publicly accessible URL>
 
+# Direct Linear OAuth configuration (optional - for self-hosted Linear OAuth)
+# LINEAR_DIRECT_WEBHOOKS=true  # Enable direct webhook and OAuth handling
+# LINEAR_CLIENT_ID=<your Linear OAuth app client ID>
+# LINEAR_CLIENT_SECRET=<your Linear OAuth app client secret>
+# LINEAR_WEBHOOK_SECRET=<your Linear webhook secret>
+
 # Legacy environment variables (still supported for backward compatibility)
 # CYRUS_WEBHOOK_BASE_URL=<url>  # Use CYRUS_BASE_URL instead
 # CYRUS_WEBHOOK_PORT=3456  # Use CYRUS_SERVER_PORT instead
@@ -342,6 +345,8 @@ tmux new -s cyrus-session # Can name whatever you'd like
 # To later 'attach' to it again
 tmux attach -t cyrus-session
 ```
+</details>
+
 
 ## Repository Setup Script
 

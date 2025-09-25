@@ -6,14 +6,21 @@ import {
 	type WriteStream,
 	writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import {
-	AbortError,
 	query,
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-code";
+
+// AbortError is no longer exported in v1.0.95, so we define it locally
+export class AbortError extends Error {
+	constructor(message?: string) {
+		super(message);
+		this.name = "AbortError";
+	}
+}
+
 import type {
 	ClaudeRunnerConfig,
 	ClaudeRunnerEvents,
@@ -138,10 +145,12 @@ export class ClaudeRunner extends EventEmitter {
 	private readableLogStream: WriteStream | null = null;
 	private messages: SDKMessage[] = [];
 	private streamingPrompt: StreamingPrompt | null = null;
+	private cyrusHome: string;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
 		this.config = config;
+		this.cyrusHome = config.cyrusHome;
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -269,6 +278,21 @@ export class ClaudeRunner extends EventEmitter {
 					: directoryTools;
 			}
 
+			// Process disallowed tools - no defaults, just pass through
+			// Only pass if array is non-empty
+			const processedDisallowedTools =
+				this.config.disallowedTools && this.config.disallowedTools.length > 0
+					? this.config.disallowedTools
+					: undefined;
+
+			// Log disallowed tools if configured
+			if (processedDisallowedTools) {
+				console.log(
+					`[ClaudeRunner] Disallowed tools configured:`,
+					processedDisallowedTools,
+				);
+			}
+
 			// Parse MCP config - merge file(s) and inline configs
 			let mcpServers = {};
 
@@ -315,6 +339,8 @@ export class ClaudeRunner extends EventEmitter {
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
 				options: {
+					model: this.config.model || "opus",
+					fallbackModel: this.config.fallbackModel || "sonnet",
 					abortController: this.abortController,
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
@@ -329,10 +355,14 @@ export class ClaudeRunner extends EventEmitter {
 						appendSystemPrompt: this.config.appendSystemPrompt,
 					}),
 					...(processedAllowedTools && { allowedTools: processedAllowedTools }),
+					...(processedDisallowedTools && {
+						disallowedTools: processedDisallowedTools,
+					}),
 					...(this.config.resumeSessionId && {
 						resume: this.config.resumeSessionId,
 					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
+					...(this.config.hooks && { hooks: this.config.hooks }),
 				},
 			};
 
@@ -457,8 +487,7 @@ export class ClaudeRunner extends EventEmitter {
 		// If logging has already been set up and we now have versions, write the version file
 		if (this.logStream && versions) {
 			try {
-				const cyrusDir = join(homedir(), ".cyrus");
-				const logsDir = join(cyrusDir, "logs");
+				const logsDir = join(this.cyrusHome, "logs");
 				const workspaceName =
 					this.config.workspaceName ||
 					(this.config.workingDirectory
@@ -598,9 +627,8 @@ export class ClaudeRunner extends EventEmitter {
 				this.readableLogStream = null;
 			}
 
-			// Create logs directory structure: ~/.cyrus/logs/<workspace-name>/
-			const cyrusDir = join(homedir(), ".cyrus");
-			const logsDir = join(cyrusDir, "logs");
+			// Create logs directory structure: <cyrusHome>/logs/<workspace-name>/
+			const logsDir = join(this.cyrusHome, "logs");
 
 			// Get workspace name from config or extract from working directory
 			const workspaceName =

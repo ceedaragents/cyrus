@@ -8,13 +8,15 @@ export type {
 	IssueMinimal,
 	Workspace,
 } from "./CyrusAgentSession.js";
+
+// Constants
+export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
-
 // Webhook types
 export type {
 	LinearAgentSessionCreatedWebhook,
@@ -38,7 +40,6 @@ export type {
 	LinearWebhookNotification,
 	LinearWebhookTeam,
 } from "./webhook-types.js";
-
 export {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,

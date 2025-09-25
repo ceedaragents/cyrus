@@ -30,9 +30,25 @@ export class AgentSessionManager {
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
+	private getParentSessionId?: (childSessionId: string) => string | undefined;
+	private resumeParentSession?: (
+		parentSessionId: string,
+		prompt: string,
+		childSessionId: string,
+	) => Promise<void>;
 
-	constructor(linearClient: LinearClient) {
+	constructor(
+		linearClient: LinearClient,
+		getParentSessionId?: (childSessionId: string) => string | undefined,
+		resumeParentSession?: (
+			parentSessionId: string,
+			prompt: string,
+			childSessionId: string,
+		) => Promise<void>,
+	) {
 		this.linearClient = linearClient;
+		this.getParentSessionId = getParentSessionId;
+		this.resumeParentSession = resumeParentSession;
 	}
 
 	/**
@@ -206,6 +222,40 @@ export class AgentSessionManager {
 		// Add result entry if present
 		if ("result" in resultMessage && resultMessage.result) {
 			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+
+			// Check if this is a child session and send result to parent
+			if (this.getParentSessionId && this.resumeParentSession) {
+				const parentAgentSessionId = this.getParentSessionId(
+					linearAgentActivitySessionId,
+				);
+				if (parentAgentSessionId) {
+					console.log(
+						`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
+					);
+
+					// Resume parent session with child result
+					try {
+						const childResult = resultMessage.result;
+						const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
+
+						// Use the resumeParentSession callback to handle the parent session
+						await this.resumeParentSession(
+							parentAgentSessionId,
+							promptToParent,
+							linearAgentActivitySessionId, // Pass child session ID
+						);
+
+						console.log(
+							`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
+						);
+					} catch (error) {
+						console.error(
+							`[AgentSessionManager] Failed to resume parent session with child result:`,
+							error,
+						);
+					}
+				}
+			}
 		}
 	}
 
@@ -445,10 +495,6 @@ export class AgentSessionManager {
 						};
 						this.activeTasksBySession.delete(linearAgentActivitySessionId);
 					} else {
-						// Task was already completed, skip this duplicate result
-						console.log(
-							`[AgentSessionManager] Skipping duplicate Task result for already completed task ${entry.metadata?.parentToolUseId}`,
-						);
 						return;
 					}
 					break;
@@ -678,6 +724,24 @@ export class AgentSessionManager {
 	 */
 	getAllSessions(): CyrusAgentSession[] {
 		return Array.from(this.sessions.values());
+	}
+
+	/**
+	 * Get ClaudeRunner for a specific session
+	 */
+	getClaudeRunner(
+		linearAgentActivitySessionId: string,
+	): ClaudeRunner | undefined {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		return session?.claudeRunner;
+	}
+
+	/**
+	 * Check if a ClaudeRunner exists for a session
+	 */
+	hasClaudeRunner(linearAgentActivitySessionId: string): boolean {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		return session?.claudeRunner !== undefined;
 	}
 
 	/**

@@ -200,7 +200,9 @@ export class OAuthService {
 			);
 		} catch (error) {
 			console.error("OAuth callback error:", error);
-			return new Response(`OAuth failed: ${error.message}`, { status: 500 });
+			return new Response(`OAuth failed: ${(error as Error).message}`, {
+				status: 500,
+			});
 		}
 	}
 
@@ -269,7 +271,7 @@ export class OAuthService {
 			throw new Error("Failed to get workspace info");
 		}
 
-		const data = await response.json();
+		const data = (await response.json()) as any;
 
 		if (data.errors) {
 			throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);

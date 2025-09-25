@@ -9,4 +9,17 @@
 <title>{{issue_title}}</title>
 <description>{{issue_description}}</description>
 <url>{{issue_url}}</url>
+<assignee>
+<id>{{assignee_id}}</id>
+<name>{{assignee_name}}</name>
+</assignee>
 </linear_issue>
+
+<workspace_context>
+<teams>
+{{workspace_teams}}
+</teams>
+<labels>
+{{workspace_labels}}
+</labels>
+</workspace_context>

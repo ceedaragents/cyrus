@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+// Using Web Crypto API for Cloudflare Workers compatibility
 import type { EdgeEvent, Env, LinearWebhook } from "../types";
 import {
 	EdgeWorkerRegistry,
@@ -100,7 +100,7 @@ export class WebhookSender {
 	): Promise<void> {
 		const body = JSON.stringify(event);
 		const timestamp = Date.now().toString();
-		const signature = this.generateWebhookSignature(
+		const signature = await this.generateWebhookSignature(
 			body,
 			timestamp,
 			worker.webhookSecret,
@@ -131,13 +131,27 @@ export class WebhookSender {
 	/**
 	 * Generate HMAC-SHA256 signature for webhook verification
 	 */
-	private generateWebhookSignature(
+	private async generateWebhookSignature(
 		body: string,
 		timestamp: string,
 		secret: string,
-	): string {
+	): Promise<string> {
 		const payload = `${timestamp}.${body}`;
-		return createHmac("sha256", secret).update(payload).digest("hex");
+		const encoder = new TextEncoder();
+		const keyData = encoder.encode(secret);
+		const payloadData = encoder.encode(payload);
+
+		const cryptoKey = await crypto.subtle.importKey(
+			"raw",
+			keyData,
+			{ name: "HMAC", hash: "SHA-256" },
+			false,
+			["sign"],
+		);
+
+		const signature = await crypto.subtle.sign("HMAC", cryptoKey, payloadData);
+		const hashArray = Array.from(new Uint8Array(signature));
+		return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 	}
 
 	/**
@@ -145,7 +159,7 @@ export class WebhookSender {
 	 */
 	async handleStatusUpdate(request: Request): Promise<Response> {
 		try {
-			const { eventId, status } = await request.json();
+			const { eventId, status } = (await request.json()) as any;
 
 			// Extract edge authentication
 			const authHeader = request.headers.get("authorization");

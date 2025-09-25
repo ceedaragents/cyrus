@@ -4,6 +4,218 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.95 to v1.0.112 for latest Claude Code improvements. See [Claude Code v1.0.112 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#10112)
+- Updated @anthropic-ai/sdk from v0.60.0 to v0.62.0 for latest Anthropic SDK improvements
+
+## [0.1.48] - 2025-01-11
+
+### Added
+- **Direct OAuth authorization support**: The CLI can now handle OAuth authorization directly when `LINEAR_DIRECT_WEBHOOKS=true`
+  - New `/oauth/authorize` endpoint in SharedApplicationServer for self-hosted OAuth flow
+  - Automatic OAuth code exchange when using direct webhooks mode
+  - Support for custom Linear OAuth applications via `LINEAR_CLIENT_ID` and `LINEAR_CLIENT_SECRET` environment variables
+  - Maintains backward compatibility with proxy-based OAuth for standard deployments
+
+### Packages
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.31
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.48
+
+## [0.1.47] - 2025-01-09
+
+### Fixed
+- Fixed webhook signature verification for LinearWebhookClient
+  - Corrected signature verification to properly handle webhook payloads
+  - Ensures webhook authenticity when using direct webhook forwarding mode
+  - Resolves security validation issues in direct webhook configurations
+
+### Packages
+
+#### cyrus-linear-webhook-client
+- cyrus-linear-webhook-client@0.0.2
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.30
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.47
+
+## [0.1.46] - 2025-01-09
+
+### Added
+- **Dynamic webhook client selection**: Support for choosing between proxy-based and direct webhook forwarding
+  - New environment variable `LINEAR_DIRECT_WEBHOOKS` to control webhook client selection
+  - When `LINEAR_DIRECT_WEBHOOKS=true`, uses new `linear-webhook-client` package for direct webhook forwarding
+  - When unset or `false`, uses existing `ndjson-client` for proxy-based webhook handling
+  - Maintains full backward compatibility with existing deployments
+- **Sub-issue assignee inheritance with workspace context**: Sub-issues created by orchestrator agents now automatically inherit the same assignee as their parent issue, with complete workspace awareness
+  - Enhanced label-prompt-template to include assignee information (`{{assignee_id}}` and `{{assignee_name}}`)
+  - Added workspace teams context (`{{workspace_teams}}`) with team names, keys, IDs, and descriptions
+  - Added workspace labels context (`{{workspace_labels}}`) with label names, IDs, and descriptions  
+  - Updated orchestrator prompt instructions to require `assigneeId` parameter in sub-issue creation
+  - Modified EdgeWorker to fetch and inject Linear workspace data (teams, labels, assignee) into orchestrator context
+- **Mandatory verification framework for orchestrator agents**: Enhanced parent-child delegation with executable verification requirements
+  - Parent orchestrators can now access child agent worktrees for independent verification
+  - **Orchestrator prompt v2.2.0** with mandatory verification requirements in sub-issue descriptions
+  - Child agents must provide detailed verification instructions (commands, expected outcomes, visual evidence)
+  - Parents gain filesystem permissions to child worktrees during verification process
+  - No more "verification theater" - actual executable validation required before merging child work
+- **@cyrus /label-based-prompt command**: New special command for mention-triggered sessions
+  - Use `@cyrus /label-based-prompt` in comments to trigger label-based prompts instead of mention prompts
+  - Automatically determines and includes appropriate system prompts based on issue labels
+  - Maintains full backwards compatibility with regular `@cyrus` mentions
+  - Logged as "label-based-prompt-command" workflow type for easy identification
+- **Tool restriction configuration**: New `disallowedTools` configuration option to explicitly block specific tools
+  - Can be configured at global, repository, prompt type, and label-specific levels
+  - Follows same hierarchy as `allowedTools` (label > prompt defaults > repository > global)
+  - No default disallowed tools - only explicitly configured tools are blocked
+  - Environment variable support: `DISALLOWED_TOOLS` for global defaults
+  - Passed through to Claude Code via `disallowedTools` option
+- **New Linear MCP tool**: `linear_agent_session_create_on_comment` for creating agent sessions on root comments
+  - Enables orchestrator agents to trigger sub-agents on existing issue comment threads
+  - Must be used with root comments only (not replies) due to Linear API constraints
+  - Maintains parent-child session mapping for proper feedback routing
+
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.90 to v1.0.95 for latest Claude Code improvements. See [Claude Code v1.0.95 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1095)
+- Replaced external cyrus-mcp-tools MCP server with inline tools using SDK callbacks for better performance
+- Cyrus tools (file upload, agent session creation, feedback) now run in-process instead of via separate MCP server
+- Enhanced orchestrator prompt to explicitly require reading/viewing all screenshots taken for visual verification
+
+### Removed
+- Removed cyrus-mcp-tools package in favor of inline tool implementation
+
+## [0.1.45] - 2025-08-28
+
+### Added
+- New `cyrus-mcp-tools` package providing MCP tools for Linear integration
+  - File upload capability: Upload files to Linear and get asset URLs for use in issues and comments
+  - Agent session creation: Create AI/bot tracking sessions on Linear issues
+  - **Give feedback tool: Allows parent sessions to send feedback to child sessions**
+  - Automatically available in all Cyrus sessions without additional configuration
+- PostToolUse hook integration for tracking parent-child agent session relationships
+  - Automatically captures child agent session IDs when linear_agent_session_create tool is used
+  - **Triggers child session resumption when linear_agent_give_feedback tool is used**
+  - Maintains mapping of child sessions to parent sessions for hierarchical tracking
+  - **Persistent storage of child-to-parent mappings across restarts**
+  - Child session results are automatically forwarded to parent sessions upon completion
+- New "orchestrator" label system prompt type
+  - Joins existing "builder", "debugger", and "scoper" labels as a default option
+  - Configured with read-only tools (cannot directly edit files)
+  - Specializes in coordination and oversight of complex development tasks
+  - Automatically triggered by "Orchestrator" label on Linear issues
+- **Label-based Claude model selection**: You can now override the Claude model used for specific issues by adding labels
+  - Add "opus", "sonnet", or "haiku" label to any Linear issue to force that model
+  - Model labels take highest priority (overrides both repository and global settings)
+  - Case-insensitive label matching for flexibility
+  - Automatically sets appropriate fallback models (opus→sonnet, sonnet→haiku, haiku→haiku)
+
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.88 to v1.0.89 for latest Claude Code improvements. See [Claude Code v1.0.89 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1089)
+- Upgraded @linear/sdk from v38/v55 to v58.0.0 across all packages for latest Linear API features
+- Enhanced ClaudeRunner and EdgeWorker to support Claude Code SDK hooks for tool interception
+
+### Packages
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.3.0 - Already published (not part of this release)
+
+#### cyrus-core
+- cyrus-core@0.0.11
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.23
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.28
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.17
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.45
+
+## [0.1.44] - 2025-08-19
+
+### Changed
+- Updated @anthropic-ai/claude-code dependency to use exact version (1.0.83) instead of caret range for improved consistency
+- Updated CLAUDE.md documentation with clearer MCP Linear integration testing instructions
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.22
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.27
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.44
+
+## [0.1.43] - 2025-08-18
+
+### Added
+- Model configuration support for Claude Pro users
+  - Configure Claude model selection (priority order: env vars → repository config → global config → defaults)
+  - Environment variables: `CYRUS_DEFAULT_MODEL` and `CYRUS_DEFAULT_FALLBACK_MODEL`
+  - Global config: `defaultModel` and `defaultFallbackModel` in `~/.cyrus/config.json`
+  - Repository-specific: `model` and `fallbackModel` fields per repository
+  - Defaults: `"opus"` (primary) and `"sonnet"` (fallback)
+  - Resolves errors for Claude Pro users who lack Opus model access
+
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.81 to v1.0.83 for latest Claude Code improvements. See [Claude Code v1.0.83 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1083)
+
+### Fixed
+- Fixed git worktree creation failures for sub-issues when parent branch doesn't exist remotely
+  - Added proper remote branch existence checking before attempting worktree creation
+  - Gracefully falls back to local parent branch or default base branch when remote parent branch is unavailable
+
+### Packages
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.21
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.26
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.43
+
+## [0.1.42] - 2025-08-15
+
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.77 to v1.0.80 for latest Claude Code improvements. See [Claude Code v1.0.80 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1080)
+- Updated @anthropic-ai/sdk from v0.59.0 to v0.60.0 for latest Anthropic SDK improvements
+
+### Fixed
+- Fixed issue where duplicate messages appeared in Linear when Claude provided final responses
+  - Added consistent LAST_MESSAGE_MARKER to all prompt types to ensure Claude includes the special marker in final responses
+  - Marker is automatically removed before posting to Linear, preventing duplicate content
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.10
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.20
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.25
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.16
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.42
+
+## [0.1.41] - 2025-08-13
+
 ### Added
 - Dynamic tool configuration based on system prompt labels
   - Restrict Claude's tools per task type: give debugger mode only read access, builder mode safe tools, etc.
@@ -25,6 +237,23 @@ All notable changes to this project will be documented in this file.
   - Now properly creates new sessions when prompted if none existed
   - Sessions are correctly initialized even when no prior session history exists
   - Improved code organization and type safety in session handling logic
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.10
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.19
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.24
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.16
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.41
 
 ## [0.1.40] - 2025-08-10
 
@@ -171,7 +400,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.37
 
-## [0.1.36] - 2025-01-31
+## [0.1.36] - 2025-08-01
 
 ### Added
 - Instant response is now sent when receiving follow-up messages in an existing conversation, providing immediate feedback that Cyrus is working on the request
@@ -202,7 +431,7 @@ All notable changes to this project will be documented in this file.
 
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.36
-## [0.1.35-alpha.0] - 2025-01-26
+## [0.1.35-alpha.0] - 2025-07-27
 
 ### Added
 - Instant acknowledgment responses when Cyrus receives a request, providing immediate feedback to users
@@ -229,7 +458,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.35-alpha.0
 
-## [0.1.33] - 2025-01-11
+## [0.1.33] - 2025-07-11
 
 ### CLI
 - cyrus-ai@0.1.33
@@ -252,7 +481,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-ndjson-client
 - cyrus-ndjson-client@0.0.13
 
-## [0.1.32] - 2025-01-09
+## [0.1.32] - 2025-07-09
 
 ### CLI
 - cyrus-ai@0.1.32
@@ -266,7 +495,7 @@ All notable changes to this project will be documented in this file.
 - cyrus-edge-worker@0.0.17
   - Fixed missing prompt-template-v2.md in package files
 
-## [0.1.31] - 2025-01-09
+## [0.1.31] - 2025-07-09
 
 ### CLI
 - cyrus-ai@0.1.31
@@ -298,7 +527,7 @@ All notable changes to this project will be documented in this file.
 - cyrus-ndjson-client@0.0.12
 - Fixed webhook URL registration to use external server's public URL when available
 
-## [0.1.30] - 2025-01-07
+## [0.1.30] - 2025-07-07
 
 ### CLI
 - cyrus-ai@0.1.30
@@ -314,7 +543,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-edge-worker
 - cyrus-edge-worker@0.0.15
 
-## [0.1.28] - 2025-01-06
+## [0.1.28] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.28
@@ -324,7 +553,7 @@ All notable changes to this project will be documented in this file.
   - Auto-completes streaming prompt when Claude sends result message
   - Prevents infinite wait in for-await loop
 
-## [0.1.27] - 2025-01-06
+## [0.1.27] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.27
@@ -332,7 +561,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Updated to use edge-worker 0.0.12 with fixed claude-runner dependency
 
-## [0.1.26] - 2025-01-06
+## [0.1.26] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.26
@@ -345,7 +574,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Added `appendSystemPrompt` option to ClaudeRunner config for extending default system prompt
 
-## [0.1.25] - 2025-01-06
+## [0.1.25] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.25
@@ -354,15 +583,8 @@ All notable changes to this project will be documented in this file.
 - Fixed streaming session detection to prevent "I've queued up your message..." when sessions have completed
 - Improved isStreaming() method to check both streaming state and session running status
 
-## [0.1.24] - 2025-01-06
 
-### CLI
-- cyrus-ai@0.1.24
-
-### Fixed
-- Fixed version command showing incorrect version number
-
-## [0.1.23] - 2025-01-06
+## [0.1.23] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.23
@@ -389,7 +611,7 @@ All notable changes to this project will be documented in this file.
   - Uses sanitized repository names as namespace folders
   - Existing configurations remain unchanged
 
-## [0.1.22] - 2025-01-06
+## [0.1.22] - 2025-07-05
 
 ### CLI
 - cyrus-ai@0.1.22
@@ -422,7 +644,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-edge-worker
 - cyrus-edge-worker@0.0.10
 
-## [0.1.21] - 2025-01-05
+## [0.1.21] - 2025-07-05
 
 ### CLI
 - cyrus-ai@0.1.21
@@ -444,7 +666,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-edge-worker
 - cyrus-edge-worker@0.0.9
 
-## [0.1.19] - 2025-01-04
+## [0.1.19] - 2025-07-04
 
 ### CLI
 - cyrus-ai@0.1.19

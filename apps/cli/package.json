@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-ai",
-	"version": "0.1.40",
+	"version": "0.1.48",
 	"description": "AI-powered Linear issue automation using Claude",
 	"main": "dist/app.js",
 	"types": "dist/app.d.ts",
@@ -40,9 +40,9 @@
 	"author": "",
 	"license": "MIT",
 	"dependencies": {
-		"@linear/sdk": "^55.1.0",
-		"cyrus-core": "workspace:*",
+		"@linear/sdk": "^58.0.0",
 		"cyrus-claude-runner": "workspace:*",
+		"cyrus-core": "workspace:*",
 		"cyrus-edge-worker": "workspace:*",
 		"cyrus-ndjson-client": "workspace:*",
 		"dotenv": "^16.5.0",

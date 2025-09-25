@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-claude-runner",
-	"version": "0.0.18",
+	"version": "0.0.24",
 	"description": "Claude process spawning and management for Cyrus",
 	"type": "module",
 	"main": "dist/index.js",
@@ -16,10 +16,14 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@anthropic-ai/claude-code": "^1.0.73",
-		"@anthropic-ai/sdk": "^0.59.0"
+		"@anthropic-ai/claude-code": "1.0.112",
+		"@anthropic-ai/sdk": "^0.62.0",
+		"@linear/sdk": "^58.1.0",
+		"fs-extra": "^11.3.0",
+		"zod": "^3.23.0"
 	},
 	"devDependencies": {
+		"@types/fs-extra": "^11.0.4",
 		"@types/node": "^20.0.0",
 		"dotenv": "^16.5.0",
 		"typescript": "^5.3.3",

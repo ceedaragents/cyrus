@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
 	availableTools,
 	getAllTools,
+	getCoordinatorTools,
 	getReadOnlyTools,
+	getSafeTools,
 	readOnlyTools,
 	type ToolName,
 	writeTools,
@@ -33,11 +35,12 @@ describe("config", () => {
 				"WebFetch",
 				"WebSearch",
 				"TodoRead",
+				"TodoWrite",
 				"NotebookRead",
 				"Task",
 				"Batch",
 			]);
-			expect(readOnlyTools).toHaveLength(7);
+			expect(readOnlyTools).toHaveLength(8);
 		});
 
 		it("should define write tools", () => {
@@ -50,9 +53,9 @@ describe("config", () => {
 			expect(writeTools).toHaveLength(4);
 		});
 
-		it("should have no overlap between read-only and write tools", () => {
+		it("should have TodoWrite in both read-only and write tools (for task tracking)", () => {
 			const overlap = readOnlyTools.filter((tool) => writeTools.includes(tool));
-			expect(overlap).toEqual([]);
+			expect(overlap).toEqual(["TodoWrite"]);
 		});
 
 		it("should have all categorized tools in available tools", () => {
@@ -90,6 +93,68 @@ describe("config", () => {
 			// Modifying returned array shouldn't affect original
 			tools.push("NewTool");
 			expect(availableTools).not.toContain("NewTool");
+		});
+
+		it("getSafeTools should return all tools except Bash", () => {
+			const tools = getSafeTools();
+
+			// Should contain all tools except Bash
+			expect(tools).toContain("Read(**)");
+			expect(tools).toContain("Edit(**)");
+			expect(tools).toContain("Task");
+			expect(tools).toContain("WebFetch");
+			expect(tools).toContain("WebSearch");
+			expect(tools).toContain("TodoRead");
+			expect(tools).toContain("TodoWrite");
+			expect(tools).toContain("NotebookRead");
+			expect(tools).toContain("NotebookEdit");
+			expect(tools).toContain("Batch");
+			expect(tools).not.toContain("Bash");
+
+			// Should have 10 tools (all 11 minus Bash)
+			expect(tools).toHaveLength(10);
+		});
+
+		it("getCoordinatorTools should return all tools except file editing tools", () => {
+			const tools = getCoordinatorTools();
+
+			// Should include read and execution tools
+			expect(tools).toContain("Read(**)");
+			expect(tools).toContain("Bash"); // For running tests/builds
+			expect(tools).toContain("Task");
+			expect(tools).toContain("WebFetch");
+			expect(tools).toContain("WebSearch");
+			expect(tools).toContain("TodoRead");
+			expect(tools).toContain("TodoWrite"); // For task tracking
+			expect(tools).toContain("NotebookRead");
+			expect(tools).toContain("Batch");
+
+			// Should NOT include file editing tools
+			expect(tools).not.toContain("Edit(**)");
+			expect(tools).not.toContain("NotebookEdit");
+
+			// Should have 9 tools
+			expect(tools).toHaveLength(9);
+		});
+
+		it("coordinator tools should allow reading and task tracking but not file editing", () => {
+			const coordinatorTools = getCoordinatorTools();
+
+			// Can read files
+			expect(coordinatorTools).toContain("Read(**)");
+			expect(coordinatorTools).toContain("NotebookRead");
+
+			// Cannot edit files
+			expect(coordinatorTools).not.toContain("Edit(**)");
+			expect(coordinatorTools).not.toContain("NotebookEdit");
+
+			// Can run commands (for tests, builds, git)
+			expect(coordinatorTools).toContain("Bash");
+
+			// Can delegate and track tasks
+			expect(coordinatorTools).toContain("Task");
+			expect(coordinatorTools).toContain("TodoWrite");
+			expect(coordinatorTools).toContain("TodoRead");
 		});
 	});
 

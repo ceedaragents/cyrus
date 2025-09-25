@@ -10,8 +10,7 @@ export class EventStreamDurableObject {
 	private linearToken?: string;
 	private heartbeatInterval?: number;
 
-	constructor(state: DurableObjectState, env: any) {
-		this.state = state;
+	constructor(_state: DurableObjectState, env: any) {
 		this.env = env;
 	}
 
@@ -173,9 +172,7 @@ export class EventStreamDurableObject {
 	): Promise<void> {
 		const fullEvent: EdgeEvent = {
 			...event,
-			id:
-				event.id ||
-				`evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+			id: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
 		};
 
 		const line = `${JSON.stringify(fullEvent)}\n`;

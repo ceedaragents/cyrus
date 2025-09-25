@@ -1,4 +1,6 @@
 import type {
+	HookCallbackMatcher,
+	HookEvent,
 	McpServerConfig,
 	SDKAssistantMessage,
 	SDKMessage,
@@ -10,6 +12,7 @@ import type {
 export interface ClaudeRunnerConfig {
 	workingDirectory?: string;
 	allowedTools?: string[];
+	disallowedTools?: string[];
 	allowedDirectories?: string[];
 	resumeSessionId?: string; // Session ID to resume from previous Claude session
 	workspaceName?: string;
@@ -17,11 +20,15 @@ export interface ClaudeRunnerConfig {
 	appendSystemPrompt?: string; // Additional prompt to append to the default system prompt
 	mcpConfigPath?: string | string[]; // Single path or array of paths to compose
 	mcpConfig?: Record<string, McpServerConfig>; // Additional/override MCP servers
+	model?: string; // Claude model to use (e.g., "opus", "sonnet", "haiku")
+	fallbackModel?: string; // Fallback model if primary model is unavailable
+	cyrusHome: string; // Cyrus home directory
 	promptVersions?: {
 		// Optional prompt template version information
 		userPromptVersion?: string;
 		systemPromptVersion?: string;
 	};
+	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>; // Claude SDK hooks
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;

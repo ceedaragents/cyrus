@@ -31,20 +31,19 @@ describe("EdgeWorker - Native Attachments", () => {
 
 	beforeEach(() => {
 		mockConfig = {
-			id: "test-worker",
-			sessionDirectory: "/tmp/test-sessions",
+			proxyUrl: "http://localhost:3000",
+			cyrusHome: "/tmp/test-cyrus-home",
 			repositories: [
 				{
 					id: "test-repo",
 					name: "test-repo",
 					repositoryPath: "/test/repo",
+					workspaceBaseDir: "/test/workspaces",
 					linearToken: "test-token",
+					linearWorkspaceId: "test-workspace",
 					baseBranch: "main",
 				},
 			],
-			features: {
-				enableAttachmentDownload: true,
-			},
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
@@ -217,7 +216,7 @@ describe("EdgeWorker - Native Attachments", () => {
 				commentBody,
 				attachmentsDir,
 				"test-token",
-				9, // Already have 9 attachments, so only 1 more allowed
+				19, // Already have 19 attachments, so only 1 more allowed with limit of 20
 			);
 
 			expect(result.totalNewAttachments).toBe(1);
@@ -258,6 +257,42 @@ describe("EdgeWorker - Native Attachments", () => {
 
 			expect(result.totalNewAttachments).toBe(0);
 			expect(result.failedCount).toBe(1);
+		});
+
+		it("should handle malformed markdown links correctly", async () => {
+			// Test malformed markdown that caused the original bug
+			const commentBody =
+				"Check this: [file.png](https://uploads.linear.app/ee2a1136-fe42-47ac-897f-f4ee8e824eb8/f43efb28-7db5-485b-aba1-bd5998bd46bc/a2e99ac8-337e-4b69-887e-e4cf0ddc42ab](https://uploads.linear.app/ee2a1136-fe42-47ac-897f-f4ee8e824eb8/f43efb28-7db5-485b-aba1-bd5998bd46bc/duplicate-url";
+
+			// Mock successful download for the correctly extracted URLs
+			(edgeWorker as any).downloadAttachment = vi
+				.fn()
+				.mockResolvedValue({ success: true, fileType: ".png", isImage: true });
+
+			// Mock countExistingImages
+			(edgeWorker as any).countExistingImages = vi.fn().mockResolvedValue(0);
+
+			const result = await (edgeWorker as any).downloadCommentAttachments(
+				commentBody,
+				"/tmp/test-attachments",
+				"test-token",
+				0,
+			);
+
+			// Should extract exactly 2 valid URLs (not the malformed concatenated one)
+			expect(result.totalNewAttachments).toBe(2);
+			expect((edgeWorker as any).downloadAttachment).toHaveBeenCalledTimes(2);
+
+			// Verify the URLs passed to downloadAttachment don't contain brackets or malformed parts
+			const downloadCalls = (edgeWorker as any).downloadAttachment.mock.calls;
+			downloadCalls.forEach((call: any[]) => {
+				const url = call[0];
+				expect(url).toMatch(
+					/^https:\/\/uploads\.linear\.app\/[a-zA-Z0-9/_.-]+$/,
+				);
+				expect(url).not.toContain("]");
+				expect(url).not.toContain("(");
+			});
 		});
 	});
 
