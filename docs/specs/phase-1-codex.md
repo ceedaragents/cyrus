@@ -13,7 +13,7 @@ Progress Checklist:
 Objective: Enable running issues with OpenAI Codex CLI in non‑interactive mode, streaming output back to Linear as thoughts.
 
 Prereqs
-- Codex CLI installed (`npm i -g @openai/codex` or `brew install codex`).
+- Codex CLI installed (`pnpm i -g @openai/codex` or `brew install codex`).
 - OPENAI_API_KEY available in env, or run `codex login --api-key`.
 
 Acceptance Criteria

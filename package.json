@@ -16,7 +16,7 @@
 		"test:apps": "pnpm --filter './apps/*' test",
 		"typecheck": "pnpm -r typecheck",
 		"prepare": "husky",
-		"cli": "pnpm --filter cyrus-ai exec -- node dist/app.js"
+		"cli": "pnpm --filter cyrus-ai exec -- node dist/apps/cli/app.js"
 	},
 	"keywords": [
 		"linear",
