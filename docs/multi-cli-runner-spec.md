@@ -1,10 +1,17 @@
+Status: In Progress
+Owner: Cyrus core
+Last Updated: 2025-09-25
+Progress Checklist:
+- [x] Goals and scope
+- [x] Config schema changes with examples
+- [x] Runner abstraction overview
+- [x] Label routing + selection order
+- [x] Integration details (Claude, Codex, OpenCode)
+- [x] Open Questions resolved
+- [x] Links to sub-guides
+- [ ] Final approval
+
 # Cyrus Multi-CLI Agent Support (Claude, Codex, OpenCode)
-
-Status: Proposal (Spec)
-
-Owners: Cyrus core
-
-Last updated: 2025-09-25
 
 ## Goal
 
@@ -21,7 +28,7 @@ Users can:
 
 This spec outlines UX, config, architecture, adapters, and concrete changes across this repo.
 
-For step-by-step, junior‑friendly guides, see docs/specs/README.md.
+For step-by-step, junior‑friendly guides, see [docs/specs/README.md](specs/README.md).
 
 ## High-Level Design
 
@@ -339,9 +346,10 @@ If a non-Claude runner is selected, we still reuse the same prompt text builder 
 
 ## Backwards Compatibility & Migration
 
-- If no multi-CLI fields are present, behavior is identical to today (Claude-only)
-- Existing config is migrated as-is; `model`/`fallbackModel` continue to apply to Claude
-- New settings are additive; repos can opt-in gradually
+- If no multi-CLI fields are present, behavior is identical to today (Claude-only).
+- Existing config is migrated as-is; `model`/`fallbackModel` continue to apply to Claude.
+- New settings are additive; repos can opt-in gradually.
+- Config upgrades are performed by [`cyrus migrate-config`](docs/specs/upgrade-and-migration.md), which backs up the current file, adds missing multi-CLI keys, saves the result, and prints a diff summary without touching webhook or hosting values.
 
 ## Rollout Plan
 
@@ -444,4 +452,12 @@ Phase 3: Messaging polish
 
 ---
 
-Implementation Guides Index: see `docs/specs/README.md` for phased, detailed instructions and acceptance criteria.
+Implementation Guides Index: see [docs/specs/README.md](specs/README.md) for phased, detailed instructions and acceptance criteria.
+
+## Definition of Done
+
+- Core goals, scope, and selection flow documented for Claude, Codex, and OpenCode.
+- Config schema updates include runnable JSON examples and field parity with [docs/specs/phase-0-scaffold.md](specs/phase-0-scaffold.md).
+- Runner abstraction, package layout, and adapter responsibilities align with [docs/specs/runner-interface.md](specs/runner-interface.md).
+- Backwards compatibility plan references [docs/specs/upgrade-and-migration.md](specs/upgrade-and-migration.md) and reflects the migrate-config algorithm.
+- Open questions resolved with actionable decisions for implementation teams.

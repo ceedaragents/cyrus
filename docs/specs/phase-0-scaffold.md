@@ -1,6 +1,15 @@
+Status: In Progress
+Owner: Cyrus core
+Last Updated: 2025-09-25
+Progress Checklist:
+- [x] New fields (global + repo)
+- [x] No-op defaults and migration stance
+- [x] Initial setup prompt for defaultCli
+- [ ] Ready for Implementation
+
 # Phase 0: Scaffold (Types, Config, Defaults)
 
-Objective: Add types and config support for multi‑CLI without changing runtime behavior (still Claude only).
+Objective: Add types and config support for multi‑CLI without changing runtime behavior (still Claude only). Align field names with [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md) and ensure CLI/Edge worker types stay in sync.
 
 Acceptance Criteria
 - New fields compile in both apps/cli and edge-worker packages.
@@ -76,10 +85,10 @@ export interface EdgeWorkerConfig {
 
 3) Config migration and defaults
 
-- No migration required; new fields are optional.
+- No migration required; new fields are optional additions.
 - For now, EdgeApp continues to read/write the same `~/.cyrus/config.json` file.
 - When saving config, preserve unknown fields.
-- If `defaultCli` is missing on first run, show a one-time prompt in the CLI to pick `claude`, `codex`, or `opencode` and persist it.
+- If `defaultCli` is missing on first run, show a one-time prompt in the CLI to pick `claude`, `codex`, or `opencode` and persist it (matches setup guidance in [`docs/specs/cli-commands.md`](cli-commands.md)).
 
 4) Do not change runtime model selection yet
 
@@ -90,3 +99,10 @@ Testing
 - Build both packages to ensure types compile.
 - Run `cyrus` in a repo with the old config and ensure startup is unchanged.
 - Manually add the new fields to `~/.cyrus/config.json` and confirm no behavior change.
+
+## Definition of Done
+
+- EdgeConfig and RepositoryConfig typings match the schemas documented in [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md).
+- CLI setup wizard prompts for `defaultCli` on first run and persists the choice without affecting existing configs.
+- Migration stance stays no-op and references [`docs/specs/upgrade-and-migration.md`](upgrade-and-migration.md) for future steps.
+- Manual testing covers both legacy configs and configs containing the new multi-CLI fields.

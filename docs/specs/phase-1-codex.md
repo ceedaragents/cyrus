@@ -1,3 +1,13 @@
+Status: In Progress
+Owner: Cyrus core
+Last Updated: 2025-09-25
+Progress Checklist:
+- [x] Adapter spawn args and env
+- [x] Streaming + completion
+- [x] Failure cases
+- [x] Test plan
+- [ ] Ready for Implementation
+
 # Phase 1: Codex Adapter
 
 Objective: Enable running issues with OpenAI Codex CLI in non‑interactive mode, streaming output back to Linear as thoughts.
@@ -7,11 +17,11 @@ Prereqs
 - OPENAI_API_KEY available in env, or run `codex login --api-key`.
 
 Acceptance Criteria
-- A label can route an issue to Codex; the worker spawns `codex exec` in the worktree.
+- A label can route an issue to Codex; the worker spawns `codex exec` in the worktree (selection precedence per [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md)).
 - Text output from Codex streams to the Linear agent session as thoughts.
 - On completion, a final thought is posted.
 - Claude path remains unaffected.
-- Prompt includes the same attachment manifest used by Claude.
+- Prompt includes the same attachment manifest used by Claude (append manifest + local paths as in [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md)).
 
 Implementation Steps
 
@@ -37,13 +47,14 @@ Implementation Steps
 
 3) CLI additions (optional in Phase 1)
 
-- `cyrus connect-openai`: prompt user for API key and either set `process.env.OPENAI_API_KEY` for the session or write to config.credentials.openaiApiKey.
+- `cyrus connect-openai`: prompt user for API key (hidden input) and either set `process.env.OPENAI_API_KEY` for the session or write to `config.credentials.openaiApiKey` (see [`docs/specs/cli-commands.md`](cli-commands.md)).
 - Optionally run `codex login --api-key <key>` if `codex` is on PATH.
 
 4) Failure handling
 
-- If `codex` binary is missing (ENOENT): post a thought suggesting installation.
-- If OPENAI_API_KEY is missing: post a thought suggesting `cyrus connect-openai` or setting env var.
+- If `codex` binary is missing (ENOENT): post a thought suggesting installation (`npm i -g @openai/codex` or `brew install codex`) and mark the run as failed without crashing EdgeWorker.
+- If `OPENAI_API_KEY` is missing: post a thought guiding the user to run `cyrus connect-openai` or set the env variable before retrying.
+- If Codex returns non-zero exit: include exit code plus suggestion to rerun locally with `DEBUG_EDGE=true` for more logs.
 
 Sample Code (adapter skeleton)
 
@@ -95,5 +106,13 @@ Manual Test Plan
 - Verify: worktree created; thoughts stream in Linear; final summary posted.
 - Failure cases: remove codex from PATH, or unset OPENAI_API_KEY and validate helpful guidance.
 
-Notes on Resume
-- Codex resume may require `codex exec resume` support in the installed version and a way to capture a conversation id. Defer implementing resume until this is stable.
+## Notes on Resume
+- Codex resume may require `codex exec resume` support in the installed version and a way to capture a conversation id. Defer implementing resume until this is stable (Phase 3 per [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md)).
+- Capture stdout/stderr of resume attempts behind a feature flag so we can validate once Codex stabilizes IDs.
+
+## Definition of Done
+
+- RunnerFactory spawns Codex with args/env documented above and handles stdout/stderr streaming per [`docs/specs/runner-interface.md`](runner-interface.md).
+- EdgeWorker posts attachment manifests and Linear thoughts identical to the Claude baseline.
+- Error handling covers missing binary, missing credentials, and non-zero exit with actionable guidance.
+- Manual tests exercise success and failure paths, including `cyrus connect-openai` integration.

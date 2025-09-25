@@ -1,11 +1,20 @@
+Status: In Progress
+Owner: Cyrus core
+Last Updated: 2025-09-25
+Progress Checklist:
+- [x] RunnerConfig/RunnerEvent interfaces
+- [x] Adapters: Claude, Codex, OpenCode
+- [x] Factory + package layout
+- [ ] Ready for Implementation
+
 # Runner Interface & Adapters
 
-Purpose: Provide a uniform API for different CLIs (Claude, Codex, OpenCode).
+Purpose: Provide a uniform API for different CLIs (Claude, Codex, OpenCode) that matches the architecture described in [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md).
 
 Package Layout
 - Create a new package: `packages/agent-runner`
-  - Exports the interfaces and concrete adapters.
-  - Keeps `edge-worker` focused on orchestration only.
+  - Exports the interfaces, factory, and concrete adapters.
+  - Keeps `edge-worker` focused on orchestration only and shares utilities with [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md).
 
 TypeScript Interfaces (reference)
 
@@ -86,13 +95,20 @@ Adapters
   - Emit `result` when OpenCode signals completion (or after a quiet timeout)
 
 Resume Support (initial posture)
-- Codex: Defer until stable `codex exec resume` and session id capture are available.
-- OpenCode: Support resume by caching `session.id` per Linear session and sending additional `/session/:id/command` calls.
+- Codex: Defer until stable `codex exec resume` and session id capture are available. Implementation should surface a TODO tied to the Phase 3 rollout in [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md).
+- OpenCode: Support resume by caching `session.id` keyed by the Linear agent session id and sending additional `/session/:id/command` calls (bridge hooks defined in [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md)).
 
 Error handling (all adapters)
 - If start() throws: emit a single `error` event then reject/return.
 - If stop(): terminate processes / unsubscribe SSE listeners.
 
 Dependencies to add (Phase 2)
-- `eventsource` (or use native fetch + ReadableStream) for SSE in Node.
-- `axios` or `node-fetch` for HTTP requests (edge-worker already has axios in dev; prefer `node-fetch` or native fetch if available).
+- `eventsource` (or native `fetch` + `ReadableStream` in Node 20+) for SSE consumption.
+- Lightweight HTTP utilities (prefer native `fetch`; fall back to `node-fetch`) shared between runner adapters and EdgeWorker helpers.
+
+## Definition of Done
+
+- `packages/agent-runner` exposes `Runner`, `RunnerConfig`, `RunnerEvent`, and a factory aligned with [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md).
+- Claude, Codex, and OpenCode adapter responsibilities include spawn/auth/stream semantics and error posture described above.
+- Resume guidance calls out Codex deferment and OpenCode session reuse, matching [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md).
+- Dependency notes keep adapters lightweight and compatible with the EdgeWorker runtime.
