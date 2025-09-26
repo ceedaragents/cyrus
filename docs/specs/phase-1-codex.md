@@ -14,7 +14,16 @@ Objective: Enable running issues with OpenAI Codex CLI in non‑interactive mode
 
 Prereqs
 - Codex CLI installed (`pnpm i -g @openai/codex` or `brew install codex`).
-- OPENAI_API_KEY available in env, or run `codex login --api-key`.
+- OPENAI_API_KEY available in env, or run one of the Codex auth flows below.
+
+## Codex Authentication
+
+Codex CLI supports two authentication paths:
+
+- **OAuth login** – Run `codex login` on a trusted workstation. The CLI opens a browser for OAuth and stores the resulting tokens locally. Use this for developers who can interactively approve the login.
+- **API key flow** – Run `cyrus connect-openai` (which writes your OpenAI key to Cyrus config and executes `codex login --api-key <key>`), or call `codex login --api-key <key>` directly when you already have an `OPENAI_API_KEY`. This is the preferred option for headless or CI/VPS environments where browser-based OAuth is not available.
+
+The `cyrus validate` command runs a Codex health check (`codex exec --skip-git-repo-check --cd /tmp 'echo Codex health check'`) so operators can confirm the CLI is both installed and authenticated. Validation surfaces authentication failures (for example a 401 response) and exits non-zero if Codex auth is missing.
 
 Acceptance Criteria
 - A label can route an issue to Codex; the worker spawns `codex exec` in the worktree (selection precedence per [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md)).

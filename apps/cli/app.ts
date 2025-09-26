@@ -2530,6 +2530,7 @@ async function validateCommand() {
 
 	if (configRequiresCodex(config)) {
 		console.log("\n🔍 Checking Codex CLI availability...");
+		let codexDetected = false;
 		try {
 			const version = spawnSync("codex", ["--version"], {
 				encoding: "utf-8",
@@ -2547,6 +2548,7 @@ async function validateCommand() {
 				console.log(
 					`  ✅ Codex CLI detected (${output || "version unknown"}).`,
 				);
+				codexDetected = true;
 			}
 		} catch (error) {
 			hasErrors = true;
@@ -2554,6 +2556,55 @@ async function validateCommand() {
 				"  ❌ Failed to execute Codex CLI:",
 				(error as Error).message,
 			);
+		}
+
+		if (codexDetected) {
+			const codexAuthArgs = [
+				"exec",
+				"--skip-git-repo-check",
+				"--cd",
+				"/tmp",
+				"echo Codex health check",
+			];
+			const codexAuth = spawnSync("codex", codexAuthArgs, {
+				encoding: "utf-8",
+			});
+			const combinedOutput = [codexAuth.stdout, codexAuth.stderr]
+				.filter(Boolean)
+				.map((text) => text.trim())
+				.filter((text) => text.length > 0)
+				.join("\n");
+			const unauthorizedPattern =
+				/(401|unauthoriz|invalid (api|token)|forbidden)/i;
+			const trustedDirWarning = /Not inside a trusted directory/i.test(
+				combinedOutput,
+			);
+			const isUnauthorized = unauthorizedPattern.test(combinedOutput);
+			if (codexAuth.error) {
+				hasErrors = true;
+				console.log(
+					"  ❌ Codex authentication check failed to run:",
+					codexAuth.error.message,
+				);
+			} else if (isUnauthorized) {
+				hasErrors = true;
+				console.log(
+					`  ❌ Codex authentication failed${
+						combinedOutput ? `: ${combinedOutput}` : "."
+					}`,
+				);
+			} else if (codexAuth.status === 0 || trustedDirWarning) {
+				console.log("  ✅ Codex authentication verified.");
+				if (trustedDirWarning) {
+					console.log(
+						"    ℹ️  Codex reported 'Not inside a trusted directory', which is expected for this health check.",
+					);
+				}
+			} else {
+				hasErrors = true;
+				const failureDetail = combinedOutput || `exit code ${codexAuth.status}`;
+				console.log(`  ❌ Codex authentication check failed: ${failureDetail}`);
+			}
 		}
 	} else {
 		console.log("\nℹ️  Codex CLI not required based on current configuration.");

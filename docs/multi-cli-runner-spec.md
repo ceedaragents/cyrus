@@ -185,7 +185,8 @@ References:
 - CLI: https://github.com/openai/codex
 - Non-interactive mode: `codex exec "..."` (docs/getting-started.md, docs/advanced.md)
 - Flags: `--model/-m`, `--cd`, `--approval-policy`, `--sandbox`, `--full-auto`
-- Auth: `codex login --api-key $OPENAI_API_KEY` (docs/authentication.md)
+- Auth: `codex login` (OAuth) or `codex login --api-key $OPENAI_API_KEY` / `cyrus connect-openai` for headless deployments
+- Validation: `cyrus validate` runs a Codex health check to confirm the CLI is installed and authenticated
 
 Invocation (baseline):
 
