@@ -907,9 +907,17 @@ class EdgeApp {
 
 		console.log("\n✅ Edge worker started successfully");
 		console.log(`Configured proxy URL: ${config.proxyUrl}`);
+		const defaultCli = config.defaultCli ?? "claude";
+		console.log(`Runner defaults: ${defaultCli}`);
 		console.log(`Managing ${repositories.length} repositories:`);
 		repositories.forEach((repo) => {
-			console.log(`  - ${repo.name} (${repo.repositoryPath})`);
+			const runner = repo.runner ?? defaultCli;
+			const labelRoutes = repo.labelAgentRouting?.length ?? 0;
+			const routingNote =
+				labelRoutes > 0 ? `, label routes: ${labelRoutes}` : "";
+			console.log(
+				`  - ${repo.name} (${repo.repositoryPath}) → runner: ${runner}${routingNote}`,
+			);
 		});
 	}
 
