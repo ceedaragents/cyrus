@@ -14,6 +14,20 @@ All notable changes to this project will be documented in this file.
   - Script failures don't prevent worktree creation
   - Cross-platform support (bash, PowerShell, cmd, bat)
 
+- **Ephemeral agent activities for tool calls**: Standard tool calls now post ephemeral activities to Linear
+  - Tool calls (except Task and TodoWrite) create ephemeral activities that disappear when replaced
+  - Tool responses create non-ephemeral activities showing original tool name and input
+  - Tool outputs are wrapped in `+++Tool Output` collapsible blocks (collapsed by default)
+  - Tool errors display as "{ToolName} (Error)" for better clarity
+  - Subtasks maintain arrow emoji (↪) prefix for visual hierarchy
+  - TodoWrite tool results are skipped to prevent duplicate activities
+  - Reduces visual clutter in Linear while preserving important information
+
+### Changed
+- **Linear SDK upgraded to v58.1.0**: Updated across all packages to support ephemeral agent activity field
+  - Added `ephemeral: boolean` support for agent activities
+  - Maintained backward compatibility with existing non-ephemeral activities
+
 ## [0.1.49] - 2025-09-29
 
 ### Changed
