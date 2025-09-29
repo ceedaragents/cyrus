@@ -558,11 +558,14 @@ export class AgentSessionManager {
 									? toolInput
 									: JSON.stringify(toolInput, null, 2);
 
+							// Wrap the tool output in a collapsible block
+							const wrappedResult = `+++Tool Output\n${toolResult.content}\n+++`;
+
 							content = {
 								type: "action",
 								action: toolResult.isError ? `${toolName} (Error)` : toolName,
 								parameter: formattedInput,
-								result: toolResult.content, // Tool output content is passed as-is
+								result: wrappedResult,
 							};
 						} else {
 							return;
