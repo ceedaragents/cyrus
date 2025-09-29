@@ -404,30 +404,8 @@ Both scripts receive the same environment variables and run in the worktree dire
 
 ### Use Cases
 
-- **Environment variable distribution** from central manifest
 - **Team-wide tooling** that applies to all repositories
-- **Monitoring/logging** initialization
 - **Shared credential** setup
-
-### Example Global Script
-
-```bash
-#!/bin/bash
-# /opt/cyrus/bin/global-setup.sh
-
-echo "Running global setup for: $LINEAR_ISSUE_IDENTIFIER"
-
-# Distribute environment variables from central manifest
-if command -v cyrus-env-setup &> /dev/null; then
-    cyrus-env-setup "$PWD" "$LINEAR_ISSUE_IDENTIFIER"
-fi
-
-# Copy shared credentials
-cp ~/.shared-creds/.env .env.local
-
-# Any other global initialization
-echo "Global setup complete"
-```
 
 Make sure the script is executable: `chmod +x /opt/cyrus/bin/global-setup.sh`
 
