@@ -4,12 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.49] - 2025-09-29
+
 ### Changed
 - **Migrated from Claude Code SDK to Claude Agent SDK**: Replaced `@anthropic-ai/claude-code` v1.0.128 with `@anthropic-ai/claude-agent-sdk` v0.1.0
   - Updated all imports and type references to use the new package name
   - Handled breaking change: SDK no longer uses Claude Code's system prompt by default - now explicitly requests Claude Code preset to maintain backward compatibility
   - No changes needed for settings sources as the codebase doesn't rely on automatic settings file loading
 - Updated @anthropic-ai/sdk from v0.62.0 to v0.64.0 for latest Anthropic SDK improvements
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.25
+
+#### cyrus-core
+- cyrus-core@0.0.13
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.32
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.49
 
 ## [0.1.48] - 2025-01-11
 
