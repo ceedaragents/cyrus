@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Global setup script support**: Added `global_setup_script` optional field in config.json
+  - Runs before repository-specific `cyrus-setup.sh` when creating git worktrees
+  - Supports ~ expansion for home directory paths
+  - Same environment variables passed to both global and repository scripts (LINEAR_ISSUE_ID, LINEAR_ISSUE_IDENTIFIER, LINEAR_ISSUE_TITLE)
+  - 5-minute timeout to prevent hanging scripts
+  - Comprehensive error handling and logging for both global and repository scripts
+  - Script failures don't prevent worktree creation
+  - Cross-platform support (bash, PowerShell, cmd, bat)
+
 ## [0.1.49] - 2025-09-29
 
 ### Changed
