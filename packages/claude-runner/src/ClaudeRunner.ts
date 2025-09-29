@@ -11,7 +11,7 @@ import {
 	query,
 	type SDKMessage,
 	type SDKUserMessage,
-} from "@anthropic-ai/claude-code";
+} from "@anthropic-ai/claude-agent-sdk";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
 export class AbortError extends Error {
@@ -342,14 +342,17 @@ export class ClaudeRunner extends EventEmitter {
 					model: this.config.model || "opus",
 					fallbackModel: this.config.fallbackModel || "sonnet",
 					abortController: this.abortController,
+					// Use Claude Code preset by default to maintain backward compatibility
+					// This can be overridden if systemPrompt is explicitly provided
+					systemPrompt: this.config.systemPrompt || {
+						type: "preset",
+						preset: "claude_code",
+					},
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
 					}),
 					...(this.config.allowedDirectories && {
 						allowedDirectories: this.config.allowedDirectories,
-					}),
-					...(this.config.systemPrompt && {
-						customSystemPrompt: this.config.systemPrompt,
 					}),
 					...(this.config.appendSystemPrompt && {
 						appendSystemPrompt: this.config.appendSystemPrompt,

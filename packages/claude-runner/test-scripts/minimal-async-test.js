@@ -4,7 +4,7 @@
  * Minimal test to check if AsyncIterable implementation is correct
  */
 
-import { query } from "@anthropic-ai/claude-code";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 
 // Test 1: Simple async generator (this should work)
 async function* simpleAsyncGenerator() {
