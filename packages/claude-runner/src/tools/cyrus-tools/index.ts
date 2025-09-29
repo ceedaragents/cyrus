@@ -1,5 +1,5 @@
 import { basename, extname } from "node:path";
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-code";
+import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { LinearClient } from "@linear/sdk";
 import fs from "fs-extra";
 import { z } from "zod";

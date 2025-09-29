@@ -1,10 +1,10 @@
-import * as claudeCode from "@anthropic-ai/claude-code";
+import * as claudeCode from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeRunner } from "../src/ClaudeRunner";
 import type { ClaudeRunnerConfig } from "../src/types";
 
-// Mock the query function from @anthropic-ai/claude-code
-vi.mock("@anthropic-ai/claude-code", () => ({
+// Mock the query function from @anthropic-ai/claude-agent-sdk
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 	query: vi.fn(),
 }));
 

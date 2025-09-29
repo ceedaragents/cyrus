@@ -7,7 +7,7 @@ import type {
 	SDKResultMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
-} from "@anthropic-ai/claude-code";
+} from "@anthropic-ai/claude-agent-sdk";
 
 export interface ClaudeRunnerConfig {
 	workingDirectory?: string;
@@ -58,7 +58,7 @@ export type {
 	SDKResultMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
-} from "@anthropic-ai/claude-code";
+} from "@anthropic-ai/claude-agent-sdk";
 // Re-export Anthropic API message types
 export type {
 	Message as APIAssistantMessage,
