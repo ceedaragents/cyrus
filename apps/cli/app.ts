@@ -102,6 +102,7 @@ interface EdgeConfig {
 	stripeCustomerId?: string;
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
+	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
 }
 
 interface Workspace {
@@ -1181,6 +1182,106 @@ class EdgeApp {
 	}
 
 	/**
+	 * Run a setup script with proper error handling and logging
+	 */
+	private async runSetupScript(
+		scriptPath: string,
+		scriptType: "global" | "repository",
+		workspacePath: string,
+		issue: Issue,
+	): Promise<void> {
+		const { execSync } = await import("node:child_process");
+		const { existsSync, statSync } = await import("node:fs");
+		const { basename } = await import("node:path");
+		const os = await import("node:os");
+
+		// Expand ~ to home directory
+		const expandedPath = scriptPath.replace(/^~/, os.homedir());
+
+		// Check if script exists
+		if (!existsSync(expandedPath)) {
+			console.warn(
+				`⚠️  ${scriptType === "global" ? "Global" : "Repository"} setup script not found: ${scriptPath}`,
+			);
+			return;
+		}
+
+		// Check if script is executable (Unix only)
+		if (process.platform !== "win32") {
+			try {
+				const stats = statSync(expandedPath);
+				// Check if file has execute permission for the owner
+				if (!(stats.mode & 0o100)) {
+					console.warn(
+						`⚠️  ${scriptType === "global" ? "Global" : "Repository"} setup script is not executable: ${scriptPath}`,
+					);
+					console.warn(`   Run: chmod +x "${expandedPath}"`);
+					return;
+				}
+			} catch (error) {
+				console.warn(
+					`⚠️  Cannot check permissions for ${scriptType} setup script: ${(error as Error).message}`,
+				);
+				return;
+			}
+		}
+
+		const scriptName = basename(expandedPath);
+		console.log(`ℹ️  Running ${scriptType} setup script: ${scriptName}`);
+
+		try {
+			// Determine the command based on the script extension and platform
+			let command: string;
+			const isWindows = process.platform === "win32";
+
+			if (scriptPath.endsWith(".ps1")) {
+				command = `powershell -ExecutionPolicy Bypass -File "${expandedPath}"`;
+			} else if (scriptPath.endsWith(".cmd") || scriptPath.endsWith(".bat")) {
+				command = `"${expandedPath}"`;
+			} else if (isWindows) {
+				// On Windows, try to run with bash if available (Git Bash/WSL)
+				command = `bash "${expandedPath}"`;
+			} else {
+				// On Unix, run directly with bash
+				command = `bash "${expandedPath}"`;
+			}
+
+			execSync(command, {
+				cwd: workspacePath,
+				stdio: "inherit",
+				env: {
+					...process.env,
+					LINEAR_ISSUE_ID: issue.id,
+					LINEAR_ISSUE_IDENTIFIER: issue.identifier,
+					LINEAR_ISSUE_TITLE: issue.title || "",
+				},
+				timeout: 5 * 60 * 1000, // 5 minute timeout
+			});
+
+			console.log(
+				`✅ ${scriptType === "global" ? "Global" : "Repository"} setup script completed successfully`,
+			);
+		} catch (error) {
+			const errorMessage =
+				(error as any).signal === "SIGTERM"
+					? "Script execution timed out (exceeded 5 minutes)"
+					: (error as Error).message;
+
+			console.error(
+				`❌ ${scriptType === "global" ? "Global" : "Repository"} setup script failed: ${errorMessage}`,
+			);
+
+			// Log stderr if available
+			if ((error as any).stderr) {
+				console.error("   stderr:", (error as any).stderr.toString());
+			}
+
+			// Continue execution despite setup script failure
+			console.log(`   Continuing with worktree creation...`);
+		}
+	}
+
+	/**
 	 * Create a git worktree for an issue
 	 */
 	async createGitWorktree(
@@ -1389,27 +1490,34 @@ class EdgeApp {
 				stdio: "pipe",
 			});
 
-			// Check for setup scripts in the repository root (cross-platform)
+			// First, run the global setup script if configured
+			const config = this.loadEdgeConfig();
+			if (config.global_setup_script) {
+				await this.runSetupScript(
+					config.global_setup_script,
+					"global",
+					workspacePath,
+					issue,
+				);
+			}
+
+			// Then, check for repository setup scripts (cross-platform)
 			const isWindows = process.platform === "win32";
 			const setupScripts = [
 				{
 					file: "cyrus-setup.sh",
-					command: "bash cyrus-setup.sh",
 					platform: "unix",
 				},
 				{
 					file: "cyrus-setup.ps1",
-					command: "powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1",
 					platform: "windows",
 				},
 				{
 					file: "cyrus-setup.cmd",
-					command: "cyrus-setup.cmd",
 					platform: "windows",
 				},
 				{
 					file: "cyrus-setup.bat",
-					command: "cyrus-setup.bat",
 					platform: "windows",
 				},
 			];
@@ -1435,25 +1543,13 @@ class EdgeApp {
 			const scriptToRun = availableScript || fallbackScript;
 
 			if (scriptToRun) {
-				console.log(`Running ${scriptToRun.file} in new worktree...`);
-				try {
-					execSync(scriptToRun.command, {
-						cwd: workspacePath,
-						stdio: "inherit",
-						env: {
-							...process.env,
-							LINEAR_ISSUE_ID: issue.id,
-							LINEAR_ISSUE_IDENTIFIER: issue.identifier,
-							LINEAR_ISSUE_TITLE: issue.title || "",
-						},
-					});
-				} catch (error) {
-					console.warn(
-						`Warning: ${scriptToRun.file} failed:`,
-						(error as Error).message,
-					);
-					// Continue despite setup script failure
-				}
+				const scriptPath = join(repository.repositoryPath, scriptToRun.file);
+				await this.runSetupScript(
+					scriptPath,
+					"repository",
+					workspacePath,
+					issue,
+				);
 			}
 
 			return {
