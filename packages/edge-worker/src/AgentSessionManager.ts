@@ -552,18 +552,17 @@ export class AgentSessionManager {
 								return;
 							}
 
-							// Format input and wrap only the result in a collapsible block for cleaner UI
+							// Format input for display
 							const formattedInput =
 								typeof toolInput === "string"
 									? toolInput
 									: JSON.stringify(toolInput, null, 2);
-							const wrappedResult = `+++Tool Output\n${toolResult.content}\n+++`;
 
 							content = {
 								type: "action",
 								action: toolResult.isError ? `${toolName} (Error)` : toolName,
 								parameter: formattedInput,
-								result: wrappedResult,
+								result: toolResult.content, // Tool output content is passed as-is
 							};
 						} else {
 							return;
