@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Updated @anthropic-ai/claude-code from v1.0.112 to v1.0.128 for latest Claude Code improvements. See [Claude Code v1.0.128 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#10128)
+- **Migrated from Claude Code SDK to Claude Agent SDK**: Replaced `@anthropic-ai/claude-code` v1.0.128 with `@anthropic-ai/claude-agent-sdk` v0.1.0
+  - Updated all imports and type references to use the new package name
+  - Handled breaking change: SDK no longer uses Claude Code's system prompt by default - now explicitly requests Claude Code preset to maintain backward compatibility
+  - No changes needed for settings sources as the codebase doesn't rely on automatic settings file loading
 - Updated @anthropic-ai/sdk from v0.62.0 to v0.64.0 for latest Anthropic SDK improvements
 
 ## [0.1.48] - 2025-01-11
