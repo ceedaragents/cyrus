@@ -26,7 +26,7 @@ Codex CLI supports two authentication paths:
 The `cyrus validate` command runs a Codex health check (`codex exec --skip-git-repo-check --cd /tmp 'echo Codex health check'`) so operators can confirm the CLI is both installed and authenticated. Validation surfaces authentication failures (for example a 401 response) and exits non-zero if Codex auth is missing.
 
 Acceptance Criteria
-- A label can route an issue to Codex; the worker spawns `codex exec` in the worktree (selection precedence per [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md)).
+- A label can route an issue to Codex; the worker spawns `codex exec --json` in the worktree (selection precedence per [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md)).
 - Text output from Codex streams to the Linear agent session as thoughts.
 - On completion, a final thought is posted.
 - Claude path remains unaffected.
@@ -40,7 +40,7 @@ Implementation Steps
   - `CodexRunnerAdapter` using Node `child_process.spawn`.
   - Command:
     ```sh
-    codex exec --cd <cwd> -m <model?> --approval-policy <...?> --sandbox <...?> "<prompt>"
+    codex exec --json --cd <cwd> -m <model?> --approval-policy <...?> --sandbox <...?> "<prompt>"
     ```
   - Pipe `stdout` → `onEvent({ kind: 'text', text: line })`.
   - On `close` with code 0 → `onEvent({ kind: 'result', summary: 'Codex completed' })`.

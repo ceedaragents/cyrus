@@ -16,6 +16,7 @@ Use these junior‑friendly, step‑by‑step guides to implement the spec. Foll
 - [docs/multi-cli-runner-spec.md](../multi-cli-runner-spec.md) — In Progress (awaiting final approval after sub-guide alignment)
 - [docs/specs/phase-0-scaffold.md](phase-0-scaffold.md) — Ready for Implementation (fields defined, defaults wired into code)
 - [docs/specs/runner-interface.md](runner-interface.md) — Ready for Implementation (adapters implemented and factory exported)
+- [docs/specs/runner-event-normalization.md](runner-event-normalization.md) — Draft (captures normalized event contract for adapter streaming)
 - [docs/specs/edge-worker-integration.md](edge-worker-integration.md) — Ready for Implementation (selection + streaming logic merged)
 - [docs/specs/phase-1-codex.md](phase-1-codex.md) — Ready for Implementation (spawn, error handling, and resume posture addressed)
 - [docs/specs/phase-2-opencode.md](phase-2-opencode.md) — Ready for Implementation (HTTP flows and session reuse completed)
@@ -38,6 +39,7 @@ Use these junior‑friendly, step‑by‑step guides to implement the spec. Foll
 
 - [docs/specs/phase-0-scaffold.md](phase-0-scaffold.md) — Types, config, and no-op defaults
 - [docs/specs/runner-interface.md](runner-interface.md) — Runner abstraction + adapters overview
+- [docs/specs/runner-event-normalization.md](runner-event-normalization.md) — Normalized event model for CLI adapters
 - [docs/specs/edge-worker-integration.md](edge-worker-integration.md) — Hook selection + runners into EdgeWorker
 - [docs/specs/phase-1-codex.md](phase-1-codex.md) — Codex adapter implementation
 - [docs/specs/phase-2-opencode.md](phase-2-opencode.md) — OpenCode adapter implementation

@@ -35,9 +35,11 @@ For step-by-step, junior‑friendly guides, see [docs/specs/README.md](specs/REA
 Introduce a "Runner" abstraction so EdgeWorker can orchestrate any agent CLI with a consistent interface. We will:
 
 - Wrap the current Claude flow behind a ClaudeRunnerAdapter
-- Add CodexRunnerAdapter using `codex exec` (non-interactive/CI mode)
+- Add CodexRunnerAdapter using `codex exec --json` (non-interactive/CI mode)
 - Add OpenCodeRunnerAdapter via OpenCode’s local HTTP API (server endpoints + SSE)
 - Add selection logic to pick a runner per issue based on labels, per-repo override, or global defaults
+- Normalize adapter output through the event model captured in [runner-event-normalization.md](specs/runner-event-normalization.md) so the edge worker stays CLI-agnostic
+- Let Codex sandbox/approval flags come from config defaults (`cliDefaults.codex`); do not hard-code read-only
 
 Initial implementation targets correctness and simple streaming (when available). We preserve all current Claude behavior and configuration; new features are opt-in.
 
@@ -148,7 +150,7 @@ interface Runner {
 Adapters:
 
 - ClaudeRunnerAdapter: wraps `cyrus-claude-runner` (no behavior change)
-- CodexRunnerAdapter: spawns `codex exec` with the given prompt and flags; emits `text` chunks by reading stdout, final `result` on exit
+- CodexRunnerAdapter: spawns `codex exec --json` with the given prompt and flags; parses JSON events into normalized thought/action/log/final outputs
 - OpenCodeRunnerAdapter: calls local server API (`/session`, `/session/:id/command`) and subscribes to `/event` SSE; maps events to RunnerEvent
 
 ## Runner Selection Logic
@@ -183,14 +185,14 @@ Code touchpoints:
 References:
 
 - CLI: https://github.com/openai/codex
-- Non-interactive mode: `codex exec "..."` (docs/getting-started.md, docs/advanced.md)
+- Non-interactive mode: `codex exec --json "..."` (docs/getting-started.md, docs/advanced.md)
 - Flags: `--model/-m`, `--cd`, `--approval-policy`, `--sandbox`, `--full-auto`
 - Auth: `codex login` (OAuth) or `codex login --api-key $OPENAI_API_KEY` / `cyrus connect-openai` for headless deployments
 - Validation: `cyrus validate` runs a Codex health check to confirm the CLI is installed and authenticated
 
 Invocation (baseline):
 
-- Command: `codex exec --cd <workspace> -m <model> --approval-policy never --sandbox workspace-write "<prompt>"`
+- Command: `codex exec --json --cd <workspace> -m <model> --approval-policy never --sandbox workspace-write "<prompt>"`
 - Environment: `OPENAI_API_KEY` set if using API key auth
 - Output handling: capture stdout/stderr, stream lines as `RunnerEvent { kind: "text" }`, emit `result` on process exit
 - Optional resume: future enhancement via `codex exec resume --last` to continue prior context
@@ -360,7 +362,7 @@ Phase 0: Spec and scaffolding
 
 Phase 1: Codex adapter (non-interactive)
 
-- Spawn `codex exec` in repo worktrees; stream stdout lines to Linear
+- Spawn `codex exec --json` in repo worktrees; parse JSON events and forward normalized messages to Linear
 - Add `cyrus connect-openai`
 - Add runner selection and repo/global defaults
 
@@ -454,6 +456,18 @@ Phase 3: Messaging polish
 ---
 
 Implementation Guides Index: see [docs/specs/README.md](specs/README.md) for phased, detailed instructions and acceptance criteria.
+
+## Troubleshooting
+
+### Edge worker always picks Claude despite `defaultCli: "codex"`
+
+- **Symptoms**: All new Linear sessions instantiate `ClaudeRunner`, even with `defaultCli` and per-repo `runner` set to `"codex"`. No `[EdgeWorker][debug] [resolveRunnerSelection] …` logs appear, and the CLI banner still reports the correct defaults.
+- **Root cause**: The published `cyrus-edge-worker` package exported `dist/index.js`, which is generated for the legacy single-runner build. That bundle never registers the new runner factory or `resolveRunnerSelection`, so selection always falls back to Claude.
+- **Fix**: Point the package entrypoints to the new multi-runner bundle (`dist/edge-worker/src/index.js` and matching `.d.ts`), then rebuild:
+  1. Update `packages/edge-worker/package.json` `main`/`types` to `dist/edge-worker/src/index.js` / `index.d.ts`.
+  2. Rebuild dependant packages: `pnpm --filter cyrus-edge-worker build` and `pnpm --filter cyrus-ai build`.
+  3. Restart the CLI with `DEBUG_EDGE=true … start` and confirm `[resolveRunnerSelection]` debug lines show the selected runner.
+- **Verification tip**: From a REPL `import('cyrus-edge-worker').then(m => m.EdgeWorker.prototype.resolveRunnerSelection?.toString())` should include `defaultCli`. If it returns `undefined`, the old bundle is still active.
 
 ## Definition of Done
 

@@ -44,14 +44,22 @@ export type RunnerConfig =
   | (RunnerConfigBase & { type: "codex" } & CodexOptions)
   | (RunnerConfigBase & { type: "opencode" } & OpenCodeOptions);
 
+// Normalized events emitted by adapters. See runner-event-normalization.md for details.
 export type RunnerEvent =
-  | { kind: "text"; text: string }
-  | { kind: "tool"; name: string; input?: unknown }
-  | { kind: "result"; summary?: string }
+  | { kind: "thought"; text: string }
+  | { kind: "action"; name: string; detail?: string }
+  | { kind: "response"; text: string }
+  | { kind: "final"; text: string }
+  | { kind: "log"; text: string }
   | { kind: "error"; error: Error };
 
 export interface Runner {
-  start(onEvent: (e: RunnerEvent) => void): Promise<{ sessionId?: string }>;
+  start(onEvent: (e: RunnerEvent) => void): Promise<{
+    sessionId?: string;
+    capabilities?: {
+      jsonStream?: boolean;
+    };
+  }>;
   stop(): Promise<void>;
 }
 
@@ -63,21 +71,20 @@ export interface RunnerFactory {
 Adapters
 
 1) ClaudeRunnerAdapter
-- Wraps `cyrus-claude-runner` (existing). No behavior change.
-- Emits `text` for assistant tokens, `tool` for tool-use, `result` at end.
+- Wraps `cyrus-claude-runner` (existing). Emits `thought` for assistant deltas, `action` for tool-use metadata, and `final` when Claude completes streaming.
 
 2) CodexRunnerAdapter
-- Spawns `codex exec` with flags (non-interactive):
+- Spawns `codex exec --json` with flags (non-interactive):
   - `--cd <cwd>`
   - `-m <model>` if set
   - `--approval-policy <...>` if set
-  - `--sandbox <...>` if set
+  - `--sandbox <...>` if set (derived from config; no hard-coded defaults)
   - prompt as the final argument (quoted)
 - Environment:
   - Pass through `OPENAI_API_KEY` if present
 - Streaming:
-  - Pipe `stdout` line-by-line to `onEvent({ kind: "text", text: line })`
-  - On exit code 0 emit `result`; on non-zero emit `error`
+  - Parses each JSON line and maps message types to normalized events (see `runner-event-normalization.md`).
+  - Emits `capabilities.jsonStream = true` in `RunnerStartResult`.
 
 3) OpenCodeRunnerAdapter
 - HTTP client to OpenCode server:
@@ -91,8 +98,8 @@ Adapters
     ```
   - `GET /event` (SSE) and filter events for that session id
 - Streaming:
-  - Map `MessageV2` text parts to `RunnerEvent.text`
-  - Emit `result` when OpenCode signals completion (or after a quiet timeout)
+  - Map `MessageV2` payloads to `thought` / `action` events.
+  - Emit `final` when OpenCode signals completion (or after a quiet timeout) so the edge worker can publish the summary.
 
 Resume Support (initial posture)
 - Codex: Defer until stable `codex exec resume` and session id capture are available. Implementation should surface a TODO tied to the Phase 3 rollout in [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md).
