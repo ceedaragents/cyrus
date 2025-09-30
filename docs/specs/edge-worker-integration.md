@@ -94,10 +94,13 @@ private async startNonClaudeRunner(opts: {
     ...(selection.type === "opencode" ? { model: selection.model, provider: selection.provider, serverUrl: this.config.cliDefaults?.opencode?.serverUrl } : {}),
   });
 
-  // Stream events to Linear as thoughts (mirror Claude cadence; coalesce if needed)
+  // Stream events to Linear as thoughts and action cards (mirror Claude cadence)
   await runner.start((e) => {
     if (e.kind === "text" && e.text?.trim()) {
       this.postThought(linearAgentActivitySessionId, repo.id, e.text).catch(() => {});
+    } else if (e.kind === "action") {
+      const label = `🛠️ ${e.name ?? "tool"}`;
+      this.postAction(linearAgentActivitySessionId, repo.id, label, e.detail).catch(() => {});
     } else if (e.kind === "error") {
       this.postThought(linearAgentActivitySessionId, repo.id, `Error: ${e.error.message}`).catch(() => {});
     } else if (e.kind === "result") {
@@ -126,6 +129,7 @@ Safety & Fallbacks
 - Apply the same runner selection precedence to both session creation and follow-up commands so resumed prompts honor label routing.
 - Persist runner selection and completion metadata so restarts resume Codex/OpenCode sessions with the original adapter, falling back to repo/default routing only when no history exists.
 - Always append the attachment manifest generated today to every prompt (Claude and non-Claude) so runners share issue context.
+- Post tool usage to Linear as `🛠️` action entries so operators can audit command output without tailing the edge-worker logs.
 
 Testing
 - Force selection.type to "codex" in a test branch and verify thoughts appear.
