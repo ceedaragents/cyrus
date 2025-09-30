@@ -51,13 +51,18 @@ export type RunnerConfig =
 	| OpenCodeRunnerOptions;
 
 export type RunnerEvent =
-	| { kind: "text"; text: string }
-	| { kind: "tool"; name: string; input?: unknown }
-	| { kind: "result"; summary?: string }
+	| { kind: "thought"; text: string }
+	| { kind: "action"; name: string; detail?: string }
+	| { kind: "response"; text: string }
+	| { kind: "final"; text: string }
+	| { kind: "log"; text: string }
 	| { kind: "error"; error: Error };
 
 export interface RunnerStartResult {
 	sessionId?: string;
+	capabilities?: {
+		jsonStream?: boolean;
+	};
 }
 
 export interface Runner {

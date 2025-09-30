@@ -57,12 +57,16 @@ export class ClaudeRunnerAdapter implements Runner {
 
 		this.runner.on("text", (text: string) => {
 			if (typeof text === "string" && text.trim().length > 0) {
-				onEvent({ kind: "text", text });
+				onEvent({ kind: "thought", text: text.trim() });
 			}
 		});
 
 		this.runner.on("tool-use", (name: string, input: unknown) => {
-			onEvent({ kind: "tool", name, input });
+			onEvent({
+				kind: "action",
+				name,
+				detail: this.stringifyToolDetail(input),
+			});
 		});
 
 		this.runner.on("error", (error: Error) => {
@@ -72,7 +76,7 @@ export class ClaudeRunnerAdapter implements Runner {
 		this.runner.on("complete", (messages: SDKMessage[]) => {
 			const summary =
 				extractLatestAssistantText(messages) ?? "Claude run completed";
-			onEvent({ kind: "result", summary });
+			onEvent({ kind: "final", text: summary });
 		});
 
 		this.listenersRegistered = true;
@@ -95,5 +99,19 @@ export class ClaudeRunnerAdapter implements Runner {
 
 	async stop(): Promise<void> {
 		this.runner.stop();
+	}
+
+	private stringifyToolDetail(input: unknown): string | undefined {
+		if (input === undefined) {
+			return undefined;
+		}
+		if (typeof input === "string") {
+			return input;
+		}
+		try {
+			return JSON.stringify(input, undefined, 2);
+		} catch (_error) {
+			return String(input);
+		}
 	}
 }

@@ -201,12 +201,14 @@ export class OpenCodeRunnerAdapter {
 			return;
 		}
 		for (const text of this.extractTextParts(payload)) {
-			if (text.trim().length > 0) {
-				onEvent({ kind: "text", text });
+			const normalized = text.trim();
+			if (normalized.length > 0) {
+				onEvent({ kind: "thought", text: normalized });
 			}
 		}
 		for (const toolEvent of this.extractToolEvents(payload)) {
-			onEvent({ kind: "tool", name: toolEvent.name, input: toolEvent.input });
+			const detail = this.stringifyToolDetail(toolEvent.input);
+			onEvent({ kind: "action", name: toolEvent.name, detail });
 		}
 	}
 	parseSseEvent(rawEvent) {
@@ -322,7 +324,20 @@ export class OpenCodeRunnerAdapter {
 			return;
 		}
 		this.completed = true;
-		onEvent({ kind: "result", summary: "OpenCode run completed" });
+		onEvent({ kind: "final", text: "OpenCode run completed" });
+	}
+	stringifyToolDetail(input) {
+		if (input === undefined) {
+			return undefined;
+		}
+		if (typeof input === "string") {
+			return input;
+		}
+		try {
+			return JSON.stringify(input, undefined, 2);
+		} catch (_error) {
+			return String(input);
+		}
 	}
 }
 //# sourceMappingURL=OpenCodeRunnerAdapter.js.map

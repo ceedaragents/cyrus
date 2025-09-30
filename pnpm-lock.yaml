@@ -179,6 +179,9 @@ importers:
       '@ngrok/ngrok':
         specifier: ^1.5.1
         version: 1.5.1
+      cyrus-agent-runner:
+        specifier: workspace:*
+        version: link:../agent-runner
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
