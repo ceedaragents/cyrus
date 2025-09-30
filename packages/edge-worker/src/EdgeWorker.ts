@@ -3613,6 +3613,39 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 	}
 
+	private async postAction(
+		linearAgentActivitySessionId: string,
+		repositoryId: string,
+		action: string,
+		detail?: string,
+	): Promise<void> {
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			this.debugLog(
+				`[postAction] No Linear client found for repository ${repositoryId}`,
+			);
+			return;
+		}
+
+		const parameter = detail?.trim();
+
+		try {
+			await linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "action",
+					action,
+					parameter: parameter && parameter.length > 0 ? parameter : undefined,
+				},
+			});
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to post action for session ${linearAgentActivitySessionId}:`,
+				error,
+			);
+		}
+	}
+
 	private async postError(
 		linearAgentActivitySessionId: string,
 		repositoryId: string,
@@ -3790,14 +3823,27 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					return;
 				}
 				case "action": {
+					const actionName = event.name?.trim() || "codex-action";
+					const actionLabel = `🛠️ ${actionName}`;
 					this.debugLog(
 						`[startNonClaudeRunner] Action event from ${selection.type}`,
 						{
 							sessionId: linearAgentActivitySessionId,
-							name: event.name,
+							name: actionName,
 							detail: event.detail,
 						},
 					);
+					void this.postAction(
+						linearAgentActivitySessionId,
+						repository.id,
+						actionLabel,
+						event.detail,
+					).catch((error) => {
+						this.debugLog(
+							`[startNonClaudeRunner] Failed posting action (${selection.type})`,
+							error,
+						);
+					});
 					return;
 				}
 				case "log": {

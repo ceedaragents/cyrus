@@ -207,7 +207,7 @@ export class CodexRunnerAdapter implements Runner {
 		if (this.finalDelivered) {
 			return;
 		}
-		const text = this.extractText(payload);
+		const text = this.stripItemTokens(this.extractText(payload));
 		if (text) {
 			onEvent({ kind: "thought", text });
 		}
@@ -426,8 +426,15 @@ export class CodexRunnerAdapter implements Runner {
 		if (!text) {
 			return undefined;
 		}
+		const withoutMarker = text.replace(LAST_MESSAGE_MARKER_REGEX, "");
+		return this.stripItemTokens(withoutMarker);
+	}
+
+	private stripItemTokens(text: string | undefined): string | undefined {
+		if (!text) {
+			return undefined;
+		}
 		const cleanedLines = text
-			.replace(LAST_MESSAGE_MARKER_REGEX, "")
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.filter((line) => line.length > 0 && !ITEM_ID_PATTERN.test(line));
