@@ -25,6 +25,7 @@ const IGNORED_TEXT_KEYS = new Set([
 	"exit_code",
 	"aggregated_output",
 ]);
+const ITEM_ID_PATTERN = /^item_\d+$/i;
 
 export class CodexRunnerAdapter implements Runner {
 	private child?: ChildProcessWithoutNullStreams;
@@ -425,8 +426,15 @@ export class CodexRunnerAdapter implements Runner {
 		if (!text) {
 			return undefined;
 		}
-		const cleaned = text.replace(LAST_MESSAGE_MARKER_REGEX, "").trim();
-		return cleaned.length > 0 ? cleaned : undefined;
+		const cleanedLines = text
+			.replace(LAST_MESSAGE_MARKER_REGEX, "")
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0 && !ITEM_ID_PATTERN.test(line));
+		if (cleanedLines.length === 0) {
+			return undefined;
+		}
+		return cleanedLines.join("\n");
 	}
 
 	private extractText(payload: CodexJsonMessage): string | undefined {
@@ -439,7 +447,7 @@ export class CodexRunnerAdapter implements Runner {
 			}
 			if (typeof value === "string") {
 				const trimmed = value.trim();
-				if (trimmed.length > 0) {
+				if (trimmed.length > 0 && !ITEM_ID_PATTERN.test(trimmed)) {
 					pieces.push(trimmed);
 				}
 				return;
@@ -473,7 +481,7 @@ export class CodexRunnerAdapter implements Runner {
 						continue;
 					}
 					const trimmed = nested.trim();
-					if (trimmed.length > 0) {
+					if (trimmed.length > 0 && !ITEM_ID_PATTERN.test(trimmed)) {
 						pieces.push(trimmed);
 					}
 				}

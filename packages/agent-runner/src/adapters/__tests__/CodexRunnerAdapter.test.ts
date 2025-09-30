@@ -125,7 +125,7 @@ describe("CodexRunnerAdapter", () => {
 			item: {
 				id: "item_2",
 				item_type: "assistant_message",
-				text: "___LAST_MESSAGE_MARKER___final response",
+				text: ["___LAST_MESSAGE_MARKER___final response", "item_2"],
 			},
 		};
 		mockChild.stdout.write(`${JSON.stringify(finalPayload)}\n`);
@@ -180,7 +180,7 @@ describe("CodexRunnerAdapter", () => {
 
 		expect(finalLog).toEqual({
 			kind: "log",
-			text: '[codex:final] {"type":"item.completed","item":{"id":"item_2","item_type":"assistant_message","text":"___LAST_MESSAGE_MARKER___final response"}}',
+			text: '[codex:final] {"type":"item.completed","item":{"id":"item_2","item_type":"assistant_message","text":["___LAST_MESSAGE_MARKER___final response","item_2"]}}',
 		});
 
 		expect(errorLog).toEqual({
