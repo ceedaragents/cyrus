@@ -11,6 +11,20 @@ import { pipeStreamLines } from "../utils/stream.js";
 type CodexJsonMessage = Record<string, unknown>;
 
 const LAST_MESSAGE_MARKER_REGEX = /___LAST_MESSAGE_MARKER___/g;
+const IGNORED_TEXT_KEYS = new Set([
+	"type",
+	"role",
+	"name",
+	"item_type",
+	"status",
+	"id",
+	"item_id",
+	"session_id",
+	"command",
+	"args",
+	"exit_code",
+	"aggregated_output",
+]);
 
 export class CodexRunnerAdapter implements Runner {
 	private child?: ChildProcessWithoutNullStreams;
@@ -455,13 +469,7 @@ export class CodexRunnerAdapter implements Runner {
 				if (nested && (Array.isArray(nested) || typeof nested === "object")) {
 					walk(nested);
 				} else if (typeof nested === "string") {
-					if (
-						key === "type" ||
-						key === "role" ||
-						key === "name" ||
-						key === "item_type" ||
-						key === "status"
-					) {
+					if (IGNORED_TEXT_KEYS.has(key)) {
 						continue;
 					}
 					const trimmed = nested.trim();

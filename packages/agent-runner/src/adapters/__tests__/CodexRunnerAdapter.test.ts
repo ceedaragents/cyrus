@@ -103,13 +103,14 @@ describe("CodexRunnerAdapter", () => {
 		mockChild.stdout.write(
 			`${JSON.stringify({
 				type: "item.completed",
-				item: { item_type: "reasoning", text: " thinking " },
+				item: { id: "item_0", item_type: "reasoning", text: " thinking " },
 			})}\n`,
 		);
 		mockChild.stdout.write(
 			`${JSON.stringify({
 				type: "item.completed",
 				item: {
+					id: "item_1",
 					item_type: "command_execution",
 					command: "bash -lc ls",
 					aggregated_output: "apps\\nREADME.md\\n",
@@ -122,6 +123,7 @@ describe("CodexRunnerAdapter", () => {
 		const finalPayload = {
 			type: "item.completed",
 			item: {
+				id: "item_2",
 				item_type: "assistant_message",
 				text: "___LAST_MESSAGE_MARKER___final response",
 			},
@@ -178,7 +180,7 @@ describe("CodexRunnerAdapter", () => {
 
 		expect(finalLog).toEqual({
 			kind: "log",
-			text: '[codex:final] {"type":"item.completed","item":{"item_type":"assistant_message","text":"___LAST_MESSAGE_MARKER___final response"}}',
+			text: '[codex:final] {"type":"item.completed","item":{"id":"item_2","item_type":"assistant_message","text":"___LAST_MESSAGE_MARKER___final response"}}',
 		});
 
 		expect(errorLog).toEqual({
