@@ -124,6 +124,7 @@ Safety & Fallbacks
 - Keep child/parent session logic Claude-only for now.
 - For OpenCode, cache the server session id keyed by Linear agent session id to allow “resume” (follow‑up prompts continue the same OpenCode session).
 - Apply the same runner selection precedence to both session creation and follow-up commands so resumed prompts honor label routing.
+- Persist runner selection and completion metadata so restarts resume Codex/OpenCode sessions with the original adapter, falling back to repo/default routing only when no history exists.
 - Always append the attachment manifest generated today to every prompt (Claude and non-Claude) so runners share issue context.
 
 Testing
