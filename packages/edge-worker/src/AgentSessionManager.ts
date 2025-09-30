@@ -558,8 +558,10 @@ export class AgentSessionManager {
 									? toolInput
 									: JSON.stringify(toolInput, null, 2);
 
-							// Wrap the tool output in a collapsible block
-							const wrappedResult = `+++Tool Output\n${toolResult.content}\n+++`;
+							// Only wrap the tool output in a collapsible block if it has content
+							const wrappedResult = toolResult.content?.trim()
+								? `+++Tool Output\n${toolResult.content}\n+++`
+								: "";
 
 							content = {
 								type: "action",
