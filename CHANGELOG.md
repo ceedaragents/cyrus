@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.50] - 2025-09-30
+
 ### Added
 - **Global setup script support**: Added `global_setup_script` optional field in config.json
   - Runs before repository-specific `cyrus-setup.sh` when creating git worktrees
@@ -27,6 +29,23 @@ All notable changes to this project will be documented in this file.
 - **Linear SDK upgraded to v58.1.0**: Updated across all packages to support ephemeral agent activity field
   - Added `ephemeral: boolean` support for agent activities
   - Maintained backward compatibility with existing non-ephemeral activities
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.26
+
+#### cyrus-core
+- cyrus-core@0.0.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.33
+
+#### cyrus-linear-webhook-client
+- cyrus-linear-webhook-client@0.0.3
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.19
 
 ## [0.1.49] - 2025-09-29
 

@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-linear-webhook-client",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"description": "Linear webhook client for direct webhook forwarding",
 	"type": "module",
 	"main": "dist/index.js",
