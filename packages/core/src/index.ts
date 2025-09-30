@@ -15,6 +15,7 @@ export type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	SerializedSessionRunnerSelection,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
 // Webhook types

@@ -46,6 +46,7 @@ import type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	SerializedSessionRunnerSelection,
 } from "cyrus-core";
 import {
 	isAgentSessionCreatedWebhook,
@@ -960,6 +961,12 @@ export class EdgeWorker extends EventEmitter {
 			...selection,
 			issueId: fullIssue.id,
 		});
+		void this.savePersistedState().catch((error) => {
+			this.debugLog(
+				"[handleAgentSessionCreated] Failed to persist runner selection",
+				error,
+			);
+		});
 		this.debugLog(`[handleAgentSessionCreated] Runner selection resolved`, {
 			repositoryId: repository.id,
 			issue: fullIssue.identifier,
@@ -1168,11 +1175,28 @@ export class EdgeWorker extends EventEmitter {
 
 		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
 		const existingRunner = session.claudeRunner;
-		const sessionRunnerSelection = this.sessionRunnerSelections.get(
+		let sessionRunnerSelection = this.sessionRunnerSelections.get(
 			linearAgentActivitySessionId,
 		);
+		if (!sessionRunnerSelection) {
+			const fallbackSelection = this.resolveRunnerSelection([], repository);
+			sessionRunnerSelection = {
+				...fallbackSelection,
+				issueId: session.issueId ?? issue.id,
+			};
+			this.sessionRunnerSelections.set(
+				linearAgentActivitySessionId,
+				sessionRunnerSelection,
+			);
+			void this.savePersistedState().catch((error) => {
+				this.debugLog(
+					"[handleUserPostedAgentActivity] Failed to persist fallback runner selection",
+					error,
+				);
+			});
+		}
 		const isNonClaudeSession =
-			sessionRunnerSelection?.type !== undefined &&
+			sessionRunnerSelection.type !== undefined &&
 			sessionRunnerSelection.type !== "claude";
 		if (!isNewSession) {
 			// Only post acknowledgment for existing sessions (new sessions already handled it above)
@@ -3408,11 +3432,26 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const childToParentAgentSession = Object.fromEntries(
 			this.childToParentAgentSession.entries(),
 		);
+		const sessionRunnerSelections: Record<
+			string,
+			SerializedSessionRunnerSelection
+		> = {};
+		for (const [
+			sessionId,
+			metadata,
+		] of this.sessionRunnerSelections.entries()) {
+			sessionRunnerSelections[sessionId] = { ...metadata };
+		}
+		const finalizedNonClaudeSessions = Array.from(
+			this.finalizedNonClaudeSessions.values(),
+		);
 
 		return {
 			agentSessions,
 			agentSessionEntries,
 			childToParentAgentSession,
+			sessionRunnerSelections,
+			finalizedNonClaudeSessions,
 		};
 	}
 
@@ -3451,6 +3490,24 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			);
 			console.log(
 				`[EdgeWorker] Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
+			);
+		}
+
+		if (state.sessionRunnerSelections) {
+			this.sessionRunnerSelections.clear();
+			for (const [sessionId, metadata] of Object.entries(
+				state.sessionRunnerSelections,
+			)) {
+				this.sessionRunnerSelections.set(sessionId, { ...metadata });
+			}
+			console.log(
+				`[EdgeWorker] Restored runner selections for ${this.sessionRunnerSelections.size} sessions`,
+			);
+		}
+
+		if (state.finalizedNonClaudeSessions) {
+			this.finalizedNonClaudeSessions = new Set(
+				state.finalizedNonClaudeSessions,
 			);
 		}
 	}
@@ -3599,6 +3656,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (selection?.type === "opencode") {
 			this.openCodeSessionCache.delete(linearAgentActivitySessionId);
 		}
+		void this.savePersistedState().catch((error) => {
+			this.debugLog(
+				"[markSessionComplete] Failed to persist completion state",
+				error,
+			);
+		});
 	}
 
 	private async startNonClaudeRunner({
@@ -3688,6 +3751,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		});
 
 		this.finalizedNonClaudeSessions.delete(linearAgentActivitySessionId);
+		void this.savePersistedState().catch((error) => {
+			this.debugLog(
+				"[startNonClaudeRunner] Failed to persist cleared finalized state",
+				error,
+			);
+		});
 
 		const runner = this.runnerFactory.create(runnerConfig);
 		this.nonClaudeRunners.set(linearAgentActivitySessionId, runner);
@@ -3766,6 +3835,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						return;
 					}
 					this.finalizedNonClaudeSessions.add(linearAgentActivitySessionId);
+					void this.savePersistedState().catch((error) => {
+						this.debugLog(
+							"[startNonClaudeRunner] Failed to persist finalized state",
+							error,
+						);
+					});
 					this.nonClaudeRunners.delete(linearAgentActivitySessionId);
 					const text = event.text.trim();
 					if (text.length > 0) {

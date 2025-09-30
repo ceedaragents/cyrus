@@ -24,6 +24,14 @@ export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry;
 /**
  * Serializable EdgeWorker state for persistence
  */
+export interface SerializedSessionRunnerSelection {
+	type: "claude" | "codex" | "opencode";
+	model?: string;
+	provider?: string;
+	serverUrl?: string;
+	issueId: string;
+}
+
 export interface SerializableEdgeWorkerState {
 	// Agent Session state - keyed by repository ID, since that's how we construct AgentSessionManagers
 	agentSessions?: Record<string, Record<string, SerializedCyrusAgentSession>>;
@@ -33,6 +41,10 @@ export interface SerializableEdgeWorkerState {
 	>;
 	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
+	// Session runner metadata for non-Claude sessions
+	sessionRunnerSelections?: Record<string, SerializedSessionRunnerSelection>;
+	// Completed non-Claude sessions so we suppress late events on resume
+	finalizedNonClaudeSessions?: string[];
 }
 
 /**
