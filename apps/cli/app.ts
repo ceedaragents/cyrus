@@ -25,6 +25,8 @@ import {
 } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import open from "open";
+import type { PromptDefinitionSummary } from "./prompt-list.js";
+import { summarizePromptMappings } from "./prompt-list.js";
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -74,6 +76,8 @@ Commands:
   set-default-model  Configure default models for a CLI provider
   migrate-config     Backup and upgrade config for multi-CLI support
   validate           Run connectivity and dependency checks
+  prompts list       List current prompt-label mappings
+  prompts tui        Launch interactive prompt manager
 
 Options:
   --version          Show version number
@@ -259,6 +263,221 @@ function removeFlagWithValue(commandArgs: string[], name: string): string[] {
 		result.push(arg);
 	}
 	return result;
+}
+
+function formatPromptLabels(labels: string[]): string {
+	if (!labels || labels.length === 0) {
+		return "(none)";
+	}
+	return labels.join(", ");
+}
+
+function printIndentedContent(content: string, indent = "    "): void {
+	const trimmed = content.trimEnd();
+	const lines = trimmed.split(/\r?\n/);
+	for (const line of lines) {
+		console.log(`${indent}${line}`);
+	}
+}
+
+function printDefinitionSection(
+	label: string,
+	definitions: PromptDefinitionSummary[],
+): void {
+	if (definitions.length === 0) {
+		return;
+	}
+
+	console.log(`${label}:\n`);
+	for (const definition of definitions) {
+		console.log(`  ${definition.prompt} [${definition.source}]`);
+		if (definition.content) {
+			console.log("    Content:");
+			printIndentedContent(definition.content, "      ");
+		} else {
+			console.log("    Content: (not available)");
+		}
+		console.log("");
+	}
+}
+
+function printPromptsHelp(): void {
+	console.log(`
+Usage: cyrus prompts <command>
+
+Commands:
+  list   List prompt-label mappings
+  tui    Launch interactive prompt manager
+
+Run 'cyrus prompts list --help' or 'cyrus prompts tui --help' for details.
+`);
+}
+
+function printPromptsListHelp(): void {
+	console.log(`
+Usage: cyrus prompts list [--repo <id>] [--json]
+
+Options:
+  --repo <id>  Filter prompt mappings to a specific repository id
+  --json       Output machine-readable JSON
+`);
+}
+
+async function promptsTuiCommand(): Promise<void> {
+	const app = new EdgeApp(CYRUS_HOME);
+	const loadInventory = () => {
+		const config = app.loadEdgeConfig();
+		return summarizePromptMappings(config.repositories ?? []);
+	};
+
+	try {
+		const { runPromptTui } = await import("./prompt-tui.js");
+		await runPromptTui(loadInventory);
+	} catch (error) {
+		console.error(
+			"Failed to launch prompt manager TUI:",
+			(error as Error).message,
+		);
+		process.exit(1);
+	}
+}
+
+async function promptsListCommand(subArgs: string[]): Promise<void> {
+	if (subArgs.includes("-h") || hasFlag(subArgs, "help")) {
+		printPromptsListHelp();
+		return;
+	}
+
+	const repoId = getFlagValue(subArgs, "repo");
+	const jsonOutput = hasFlag(subArgs, "json");
+
+	const argsWithoutRepo = removeFlagWithValue(subArgs, "repo");
+	const cleanedArgs = argsWithoutRepo.filter((arg) => {
+		if (!arg) {
+			return false;
+		}
+		if (arg === "--help" || arg === "-h") {
+			return false;
+		}
+		if (arg === "--json" || arg.startsWith("--json=")) {
+			return false;
+		}
+		return true;
+	});
+
+	const positional = cleanedArgs.filter((arg) => !arg.startsWith("--"));
+	if (positional.length > 0) {
+		console.error(
+			`Unexpected argument(s): ${positional.join(", ")}. Run 'cyrus prompts list --help' for usage info.`,
+		);
+		process.exit(1);
+	}
+
+	const unknownFlags = cleanedArgs.filter((arg) => arg.startsWith("--"));
+	if (unknownFlags.length > 0) {
+		console.error(
+			`Unknown flag(s): ${unknownFlags.join(", ")}. Run 'cyrus prompts list --help' for usage info.`,
+		);
+		process.exit(1);
+	}
+
+	const app = new EdgeApp(CYRUS_HOME);
+	const config = app.loadEdgeConfig();
+	const repositories = config.repositories ?? [];
+
+	if (repoId) {
+		const repository = repositories.find((repo) => repo.id === repoId);
+		if (!repository) {
+			console.error(`Repository with id "${repoId}" was not found.`);
+			process.exit(1);
+		}
+	}
+
+	const inventory = summarizePromptMappings(
+		repositories,
+		repoId ? { repoId } : {},
+	);
+	const definitionsById = new Map(
+		inventory.definitions.map((definition) => [definition.id, definition]),
+	);
+
+	if (jsonOutput) {
+		console.log(
+			JSON.stringify(
+				{
+					promptDefinitions: inventory.definitions,
+					repositories: inventory.repositories,
+				},
+				null,
+				2,
+			),
+		);
+		return;
+	}
+
+	if (inventory.repositories.length === 0) {
+		if (repositories.length === 0) {
+			console.log(
+				'No repositories configured. Add one with "cyrus add-repository" before managing prompts.',
+			);
+			return;
+		}
+		console.log("No prompt mappings found.");
+		return;
+	}
+
+	console.log("\nPrompt mappings:\n");
+
+	const globalDefinitions = inventory.definitions.filter(
+		(definition) => definition.scope === "global",
+	);
+	printDefinitionSection("Global prompts", globalDefinitions);
+
+	for (const summary of inventory.repositories) {
+		const repoLabel = summary.repositoryName
+			? `${summary.repositoryName} (${summary.repositoryId})`
+			: summary.repositoryId;
+		console.log(`Repository: ${repoLabel}`);
+		for (const prompt of summary.prompts) {
+			const labelList = formatPromptLabels(prompt.labels);
+			const definition = definitionsById.get(prompt.definitionId);
+			const scopeSuffix = definition?.scope === "global" ? " (shared)" : "";
+			console.log(
+				`  ${prompt.prompt} [${prompt.source}] labels: ${labelList}${scopeSuffix}`,
+			);
+			if (definition && definition.scope !== "global") {
+				if (definition.content) {
+					console.log("    Content:");
+					printIndentedContent(definition.content, "      ");
+				} else {
+					console.log("    Content: (not available)");
+				}
+			}
+		}
+		console.log("");
+	}
+}
+
+async function promptsCommand(): Promise<void> {
+	const subcommand = args[1];
+	if (!subcommand || subcommand === "--help" || subcommand === "-h") {
+		printPromptsHelp();
+		return;
+	}
+
+	switch (subcommand) {
+		case "list":
+			await promptsListCommand(args.slice(2));
+			break;
+
+		case "tui":
+			await promptsTuiCommand();
+			break;
+		default:
+			console.error(`Unknown prompts subcommand: ${subcommand}`);
+			printPromptsHelp();
+			process.exit(1);
+	}
 }
 
 function configRequiresCodex(config: EdgeConfig): boolean {
@@ -2734,6 +2953,13 @@ switch (command) {
 
 	case "set-customer-id":
 		setCustomerIdCommand().catch((error) => {
+			console.error("Error:", error);
+			process.exit(1);
+		});
+		break;
+
+	case "prompts":
+		promptsCommand().catch((error) => {
 			console.error("Error:", error);
 			process.exit(1);
 		});

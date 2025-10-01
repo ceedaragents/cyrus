@@ -3,8 +3,9 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"module": "NodeNext",
-		"moduleResolution": "NodeNext"
+		"moduleResolution": "NodeNext",
+		"jsx": "react-jsx"
 	},
-	"include": ["*.ts"],
+	"include": ["*.ts", "*.tsx"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
