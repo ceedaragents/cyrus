@@ -9,7 +9,7 @@
 	},
 	"type": "module",
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc && node ./scripts/postbuild.mjs",
 		"start": "node dist/app.js",
 		"dev": "tsc --watch",
 		"test": "vitest run",

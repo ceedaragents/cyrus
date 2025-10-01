@@ -12,5 +12,6 @@ export declare class ClaudeRunnerAdapter implements Runner {
 	private registerListeners;
 	start(onEvent: (event: RunnerEvent) => void): Promise<RunnerStartResult>;
 	stop(): Promise<void>;
+	private stringifyToolDetail;
 }
 //# sourceMappingURL=ClaudeRunnerAdapter.d.ts.map

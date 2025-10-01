@@ -26,5 +26,6 @@ export declare class OpenCodeRunnerAdapter implements Runner {
 	private extractTextParts;
 	private extractToolEvents;
 	private emitCompletion;
+	private stringifyToolDetail;
 }
 //# sourceMappingURL=OpenCodeRunnerAdapter.d.ts.map

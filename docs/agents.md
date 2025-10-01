@@ -12,3 +12,12 @@ sequence we now follow to refresh the compiled output.
 
 Additional architecture notes for multi-runner support live in
 `docs/specs/runner-interface.md` and `docs/specs/runner-event-normalization.md`.
+
+## Process Cleanup Helper
+
+Run `./scripts/edge-process-helper.sh` to list any running
+`dist/apps/cli/app.js` edge-worker instances and active `ngrok` tunnels. The
+script prints matching PIDs so you can send a graceful `SIGTERM` with
+`./scripts/edge-process-helper.sh --kill <PID>` after confirming the process is
+stale. The helper relies on `pgrep` being available in `PATH`; install
+`procps`/`procps-ng` (Linux) or ensure `pgrep` exists on macOS to use it.

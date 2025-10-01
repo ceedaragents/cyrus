@@ -49,10 +49,14 @@ export class EdgeWorker extends EventEmitter {
 	sessionRunnerSelections = new Map();
 	nonClaudeRunners = new Map();
 	openCodeSessionCache = new Map();
+	finalizedNonClaudeSessions = new Set();
 	constructor(config) {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
+		console.log(
+			`[EdgeWorker] DEBUG_EDGE env: ${process.env.DEBUG_EDGE ?? "(unset)"}`,
+		);
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
@@ -740,6 +744,10 @@ export class EdgeWorker extends EventEmitter {
 		} = sessionData;
 		// Fetch labels (needed for both model selection and system prompt determination)
 		const labels = await this.fetchIssueLabels(fullIssue);
+		this.debugLog(`[handleAgentSessionCreated] Repository runner configured`, {
+			repositoryId: repository.id,
+			configuredRunner: repository.runner ?? "(unset)",
+		});
 		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
 		let systemPrompt;
 		let systemPromptVersion;
@@ -770,6 +778,17 @@ export class EdgeWorker extends EventEmitter {
 		this.sessionRunnerSelections.set(linearAgentActivitySessionId, {
 			...selection,
 			issueId: fullIssue.id,
+		});
+		void this.savePersistedState().catch((error) => {
+			this.debugLog(
+				"[handleAgentSessionCreated] Failed to persist runner selection",
+				error,
+			);
+		});
+		this.debugLog(`[handleAgentSessionCreated] Runner selection resolved`, {
+			repositoryId: repository.id,
+			issue: fullIssue.identifier,
+			selection: selection.type,
 		});
 		// Build allowed tools list with Linear MCP tools (now with prompt type context)
 		const allowedTools = this.buildAllowedTools(repository, promptType);
@@ -948,11 +967,28 @@ export class EdgeWorker extends EventEmitter {
 		}
 		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
 		const existingRunner = session.claudeRunner;
-		const sessionRunnerSelection = this.sessionRunnerSelections.get(
+		let sessionRunnerSelection = this.sessionRunnerSelections.get(
 			linearAgentActivitySessionId,
 		);
+		if (!sessionRunnerSelection) {
+			const fallbackSelection = this.resolveRunnerSelection([], repository);
+			sessionRunnerSelection = {
+				...fallbackSelection,
+				issueId: session.issueId ?? issue.id,
+			};
+			this.sessionRunnerSelections.set(
+				linearAgentActivitySessionId,
+				sessionRunnerSelection,
+			);
+			void this.savePersistedState().catch((error) => {
+				this.debugLog(
+					"[handleUserPostedAgentActivity] Failed to persist fallback runner selection",
+					error,
+				);
+			});
+		}
 		const isNonClaudeSession =
-			sessionRunnerSelection?.type !== undefined &&
+			sessionRunnerSelection.type !== undefined &&
 			sessionRunnerSelection.type !== "claude";
 		if (!isNewSession) {
 			// Only post acknowledgment for existing sessions (new sessions already handled it above)
@@ -2861,10 +2897,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const childToParentAgentSession = Object.fromEntries(
 			this.childToParentAgentSession.entries(),
 		);
+		const sessionRunnerSelections = {};
+		for (const [
+			sessionId,
+			metadata,
+		] of this.sessionRunnerSelections.entries()) {
+			sessionRunnerSelections[sessionId] = { ...metadata };
+		}
+		const finalizedNonClaudeSessions = Array.from(
+			this.finalizedNonClaudeSessions.values(),
+		);
 		return {
 			agentSessions,
 			agentSessionEntries,
 			childToParentAgentSession,
+			sessionRunnerSelections,
+			finalizedNonClaudeSessions,
 		};
 	}
 	/**
@@ -2900,6 +2948,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			);
 			console.log(
 				`[EdgeWorker] Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
+			);
+		}
+		if (state.sessionRunnerSelections) {
+			this.sessionRunnerSelections.clear();
+			for (const [sessionId, metadata] of Object.entries(
+				state.sessionRunnerSelections,
+			)) {
+				this.sessionRunnerSelections.set(sessionId, { ...metadata });
+			}
+			console.log(
+				`[EdgeWorker] Restored runner selections for ${this.sessionRunnerSelections.size} sessions`,
+			);
+		}
+		if (state.finalizedNonClaudeSessions) {
+			this.finalizedNonClaudeSessions = new Set(
+				state.finalizedNonClaudeSessions,
 			);
 		}
 	}
@@ -2962,6 +3026,95 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				error,
 			);
 		}
+	}
+	async postResponse(linearAgentActivitySessionId, repositoryId, body) {
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			this.debugLog(
+				`[postResponse] No Linear client found for repository ${repositoryId}`,
+			);
+			return;
+		}
+		try {
+			await linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "response",
+					body,
+				},
+			});
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to post response for session ${linearAgentActivitySessionId}:`,
+				error,
+			);
+		}
+	}
+	async postAction(linearAgentActivitySessionId, repositoryId, action, detail) {
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			this.debugLog(
+				`[postAction] No Linear client found for repository ${repositoryId}`,
+			);
+			return;
+		}
+		const parameter = detail?.trim();
+		try {
+			await linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "action",
+					action,
+					parameter: parameter && parameter.length > 0 ? parameter : undefined,
+				},
+			});
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to post action for session ${linearAgentActivitySessionId}:`,
+				error,
+			);
+		}
+	}
+	async postError(linearAgentActivitySessionId, repositoryId, body) {
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			this.debugLog(
+				`[postError] No Linear client found for repository ${repositoryId}`,
+			);
+			return;
+		}
+		try {
+			await linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "error",
+					body,
+				},
+			});
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to post error for session ${linearAgentActivitySessionId}:`,
+				error,
+			);
+		}
+	}
+	async markSessionComplete(linearAgentActivitySessionId, repositoryId) {
+		this.debugLog(
+			`[markSessionComplete] Session finalized for ${repositoryId}`,
+			{ sessionId: linearAgentActivitySessionId },
+		);
+		const selection = this.sessionRunnerSelections.get(
+			linearAgentActivitySessionId,
+		);
+		if (selection?.type === "opencode") {
+			this.openCodeSessionCache.delete(linearAgentActivitySessionId);
+		}
+		void this.savePersistedState().catch((error) => {
+			this.debugLog(
+				"[markSessionComplete] Failed to persist completion state",
+				error,
+			);
+		});
 	}
 	async startNonClaudeRunner({
 		selection,
@@ -3036,71 +3189,170 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				provider: runnerConfig.provider,
 			},
 		});
+		this.finalizedNonClaudeSessions.delete(linearAgentActivitySessionId);
+		void this.savePersistedState().catch((error) => {
+			this.debugLog(
+				"[startNonClaudeRunner] Failed to persist cleared finalized state",
+				error,
+			);
+		});
 		const runner = this.runnerFactory.create(runnerConfig);
 		this.nonClaudeRunners.set(linearAgentActivitySessionId, runner);
 		const handleEvent = (event) => {
-			if (event.kind === "text") {
-				const text = event.text.trim();
-				if (text.length === 0) {
+			switch (event.kind) {
+				case "thought": {
+					if (
+						this.finalizedNonClaudeSessions.has(linearAgentActivitySessionId)
+					) {
+						this.debugLog(
+							`[startNonClaudeRunner] Suppressing thought after final (${selection.type})`,
+							{ sessionId: linearAgentActivitySessionId },
+						);
+						return;
+					}
+					const text = event.text.trim();
+					if (text.length === 0) {
+						return;
+					}
+					void this.postThought(
+						linearAgentActivitySessionId,
+						repository.id,
+						text,
+					).catch((error) => {
+						this.debugLog(
+							`[startNonClaudeRunner] Failed posting thought (${selection.type})`,
+							error,
+						);
+					});
 					return;
 				}
-				void this.postThought(
-					linearAgentActivitySessionId,
-					repository.id,
-					text,
-				).catch((error) => {
+				case "action": {
+					const actionName = event.name?.trim() || "codex-action";
+					const actionLabel = `🛠️ ${actionName}`;
 					this.debugLog(
-						`[startNonClaudeRunner] Failed posting text thought (${selection.type})`,
-						error,
+						`[startNonClaudeRunner] Action event from ${selection.type}`,
+						{
+							sessionId: linearAgentActivitySessionId,
+							name: actionName,
+							detail: event.detail,
+						},
 					);
-				});
-				return;
-			}
-			if (event.kind === "tool") {
-				this.debugLog(
-					`[startNonClaudeRunner] Tool event from ${selection.type}`,
-					{
+					void this.postAction(
+						linearAgentActivitySessionId,
+						repository.id,
+						actionLabel,
+						event.detail,
+					).catch((error) => {
+						this.debugLog(
+							`[startNonClaudeRunner] Failed posting action (${selection.type})`,
+							error,
+						);
+					});
+					return;
+				}
+				case "log": {
+					this.debugLog(`[startNonClaudeRunner] Log from ${selection.type}`, {
 						sessionId: linearAgentActivitySessionId,
-						name: event.name,
-					},
-				);
-				return;
-			}
-			if (event.kind === "result") {
-				this.nonClaudeRunners.delete(linearAgentActivitySessionId);
-				const summary = event.summary || `${selection.type} run completed`;
-				void this.postThought(
-					linearAgentActivitySessionId,
-					repository.id,
-					summary,
-				).catch((error) => {
-					this.debugLog(
-						`[startNonClaudeRunner] Failed posting completion thought (${selection.type})`,
-						error,
+						message: event.text,
+					});
+					return;
+				}
+				case "response": {
+					const text = event.text.trim();
+					if (text.length === 0) {
+						return;
+					}
+					void this.postResponse(
+						linearAgentActivitySessionId,
+						repository.id,
+						text,
+					).catch((error) => {
+						this.debugLog(
+							`[startNonClaudeRunner] Failed posting response (${selection.type})`,
+							error,
+						);
+					});
+					return;
+				}
+				case "final": {
+					if (
+						this.finalizedNonClaudeSessions.has(linearAgentActivitySessionId)
+					) {
+						this.debugLog(
+							`[startNonClaudeRunner] Ignoring duplicate final (${selection.type})`,
+							{ sessionId: linearAgentActivitySessionId },
+						);
+						return;
+					}
+					this.finalizedNonClaudeSessions.add(linearAgentActivitySessionId);
+					void this.savePersistedState().catch((error) => {
+						this.debugLog(
+							"[startNonClaudeRunner] Failed to persist finalized state",
+							error,
+						);
+					});
+					this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+					const text = event.text.trim();
+					if (text.length > 0) {
+						void this.postResponse(
+							linearAgentActivitySessionId,
+							repository.id,
+							text,
+						).catch((error) => {
+							this.debugLog(
+								`[startNonClaudeRunner] Failed posting final response (${selection.type})`,
+								error,
+							);
+						});
+					}
+					void this.markSessionComplete(
+						linearAgentActivitySessionId,
+						repository.id,
+					).catch((error) => {
+						this.debugLog(
+							`[startNonClaudeRunner] Failed completing session (${selection.type})`,
+							error,
+						);
+					});
+					return;
+				}
+				case "error": {
+					if (
+						this.finalizedNonClaudeSessions.has(linearAgentActivitySessionId)
+					) {
+						this.debugLog(
+							`[startNonClaudeRunner] Suppressing error after final (${selection.type})`,
+							{ message: event.error.message },
+						);
+						return;
+					}
+					this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+					const err = this.normalizeError(
+						event.error,
+						`${selection.type} runner error`,
 					);
-				});
-				return;
-			}
-			if (event.kind === "error") {
-				this.nonClaudeRunners.delete(linearAgentActivitySessionId);
-				const err = this.normalizeError(
-					event.error,
-					`${selection.type} runner error`,
-				);
-				void this.postThought(
-					linearAgentActivitySessionId,
-					repository.id,
-					`Error: ${err.message}`,
-				).catch((_error) => {
-					this.debugLog(
-						`[startNonClaudeRunner] Failed posting error thought (${selection.type})`,
-						_error,
-					);
-				});
+					void this.postError(
+						linearAgentActivitySessionId,
+						repository.id,
+						err.message,
+					).catch((postError) => {
+						this.debugLog(
+							`[startNonClaudeRunner] Failed posting error (${selection.type})`,
+							postError,
+						);
+					});
+					return;
+				}
 			}
 		};
 		try {
 			const startResult = await runner.start(handleEvent);
+			if (startResult.capabilities?.jsonStream) {
+				this.debugLog(
+					`[startNonClaudeRunner] ${selection.type} runner enabled JSON stream`,
+					{ sessionId: linearAgentActivitySessionId },
+				);
+			}
 			if (selection.type === "opencode" && startResult.sessionId) {
 				this.openCodeSessionCache.set(
 					linearAgentActivitySessionId,
@@ -3113,10 +3365,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				error,
 				`Failed to start ${selection.type} runner`,
 			);
-			await this.postThought(
+			await this.postError(
 				linearAgentActivitySessionId,
 				repository.id,
-				`Error: ${err.message}`,
+				err.message,
 			);
 			throw err;
 		}
