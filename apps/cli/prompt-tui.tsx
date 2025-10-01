@@ -984,9 +984,9 @@ const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
 	const [name, setName] = useState("");
 	const [labels, setLabels] = useState("");
 	const [fromFile, setFromFile] = useState("");
-	const [focusedField, setFocusedField] = useState<
-		"name" | "labels" | "fromFile"
-	>("name");
+	type CreateField = "scope" | "name" | "labels" | "fromFile";
+	const fieldOrder: CreateField[] = ["scope", "name", "labels", "fromFile"];
+	const [focusedField, setFocusedField] = useState<CreateField>("name");
 	const [error, setError] = useState<string | undefined>();
 	const [conflicts, setConflicts] = useState<LabelConflict[] | undefined>();
 	const [pendingPlan, setPendingPlan] = useState<PromptPlan | null>(null);
@@ -997,6 +997,83 @@ const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
 			? repositories[repoIndex]
 			: undefined;
 
+	const scopeItems = useMemo(() => {
+		const items: Array<{
+			label: string;
+			value: {
+				scope: PromptScope;
+				repoId?: string;
+				repoName?: string;
+				index: number;
+			};
+		}> = [
+			{
+				label: "Global prompt",
+				value: { scope: "global", index: 0 },
+			},
+		];
+		repositories.forEach((repo, index) => {
+			items.push({
+				label: repo.repositoryName ?? repo.repositoryId,
+				value: {
+					scope: "repository",
+					repoId: repo.repositoryId,
+					repoName: repo.repositoryName ?? repo.repositoryId,
+					index: index + 1,
+				},
+			});
+		});
+		return items;
+	}, [repositories]);
+
+	const [selectedScopeIndex, setSelectedScopeIndex] = useState(() =>
+		startingScope === "repository" && initialRepoIndex >= 0
+			? initialRepoIndex + 1
+			: 0,
+	);
+
+	useEffect(() => {
+		const nextIndex =
+			scope === "global"
+				? 0
+				: repoIndex >= 0
+					? repoIndex + 1
+					: repositories.length > 0
+						? 1
+						: 0;
+		setSelectedScopeIndex(nextIndex);
+	}, [scope, repoIndex, repositories.length]);
+
+	const handleScopeSelection = (value: {
+		scope: PromptScope;
+		repoId?: string;
+		repoName?: string;
+		index: number;
+	}) => {
+		setSelectedScopeIndex(value.index);
+		if (value.scope === "global") {
+			if (scope !== "global") {
+				setScope("global");
+				setRepoIndex(-1);
+				resetPendingState();
+			}
+			return;
+		}
+
+		if (scope !== "repository") {
+			setScope("repository");
+		}
+		const nextRepoIndex = repositories.findIndex(
+			(repo) => repo.repositoryId === value.repoId,
+		);
+		if (nextRepoIndex >= 0) {
+			setRepoIndex(nextRepoIndex);
+		} else if (repositories.length > 0) {
+			setRepoIndex(0);
+		}
+		resetPendingState();
+	};
+
 	const resetPendingState = () => {
 		setPendingPlan(null);
 		setConflicts(undefined);
@@ -1004,7 +1081,7 @@ const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
 	};
 
 	useInput(
-		(input, key) => {
+		(_unused, key) => {
 			if (submitting) {
 				return;
 			}
@@ -1012,68 +1089,16 @@ const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
 				onCancel();
 				return;
 			}
-			if (key.tab && key.shift) {
-				setFocusedField((prev) => {
-					if (prev === "fromFile") {
-						return "labels";
-					}
-					if (prev === "labels") {
-						return "name";
-					}
-					return "fromFile";
-				});
-				return;
-			}
 			if (key.tab) {
 				setFocusedField((prev) => {
-					if (prev === "name") {
-						return "labels";
-					}
-					if (prev === "labels") {
-						return "fromFile";
-					}
-					return "name";
+					const currentIndex = fieldOrder.indexOf(prev);
+					const safeIndex = currentIndex === -1 ? 0 : currentIndex;
+					const offset = key.shift ? -1 : 1;
+					const nextIndex =
+						(safeIndex + offset + fieldOrder.length) % fieldOrder.length;
+					const nextField = fieldOrder[nextIndex] ?? "scope";
+					return nextField;
 				});
-				return;
-			}
-			if (key.ctrl && (input === "g" || input === "G") && scope !== "global") {
-				setScope("global");
-				resetPendingState();
-				return;
-			}
-			if (key.ctrl && (input === "r" || input === "R") && hasRepositories) {
-				if (scope !== "repository") {
-					setScope("repository");
-					if (repoIndex < 0) {
-						setRepoIndex(0);
-					}
-					resetPendingState();
-				}
-				return;
-			}
-			if (
-				key.ctrl &&
-				(key.leftArrow || input === "[" || input === "←") &&
-				scope === "repository" &&
-				hasRepositories
-			) {
-				setRepoIndex((prev) => {
-					if (prev <= 0) {
-						return repositories.length - 1;
-					}
-					return prev - 1;
-				});
-				resetPendingState();
-				return;
-			}
-			if (
-				key.ctrl &&
-				(key.rightArrow || input === "]" || input === "→") &&
-				scope === "repository" &&
-				hasRepositories
-			) {
-				setRepoIndex((prev) => (prev + 1) % repositories.length);
-				resetPendingState();
 				return;
 			}
 		},
@@ -1132,17 +1157,31 @@ const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
 	return (
 		<ModalContainer title="Create Prompt">
 			<Text>
-				Scope: {scope === "global" ? "Global" : "Repository"} (Ctrl+G for
-				global, Ctrl+R for repository)
+				Choose where this prompt should live (use ↑/↓, Enter to confirm):
 			</Text>
+			<Box marginTop={1}>
+				<SelectInput
+					key={`scope-${selectedScopeIndex}-${scopeItems.length}`}
+					items={scopeItems}
+					isFocused={focusedField === "scope"}
+					initialIndex={selectedScopeIndex}
+					onHighlight={(item) => handleScopeSelection(item.value)}
+					onSelect={(item) => {
+						handleScopeSelection(item.value);
+						setFocusedField("name");
+					}}
+				/>
+			</Box>
 			{scope === "repository" ? (
 				<Text color={selectedRepo ? "white" : "red"}>
 					Repository: {selectedRepo?.repositoryName ?? "None"}{" "}
 					{repositories.length > 0
-						? "(Ctrl+← / Ctrl+→ to change)"
+						? "(↑/↓ to change, Enter to continue)"
 						: "(no repositories available)"}
 				</Text>
-			) : null}
+			) : (
+				<Text color="gray">Global prompts apply to every repository.</Text>
+			)}
 			<Box flexDirection="column" marginTop={1} gap={1}>
 				<Box>
 					<Text color="gray">Prompt name: </Text>
@@ -1183,8 +1222,8 @@ const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
 			</Box>
 			<Box marginTop={1} flexDirection="column" gap={1}>
 				<Text color="gray">
-					Enter to create · Tab to move between fields · Esc to cancel · Ctrl+G
-					/ Ctrl+R to switch scope · Ctrl+← / Ctrl+→ to cycle repositories
+					Enter to create · Tab / Shift+Tab to move between fields · Esc to
+					cancel
 				</Text>
 				{conflicts ? (
 					<Text color="yellow">
