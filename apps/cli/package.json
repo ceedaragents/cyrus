@@ -50,6 +50,7 @@
 		"file-type": "^21.0.0",
 		"fs-extra": "^11.3.0",
 		"ink": "^4.4.1",
+		"ink-select-input": "^5.0.0",
 		"ink-text-input": "^5.0.1",
 		"node-fetch": "^2.7.0",
 		"open": "^10.0.0",

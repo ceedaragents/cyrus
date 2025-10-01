@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Box, render, Text, useApp, useInput, useStdout } from "ink";
+import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -39,6 +40,8 @@ function openInPager(content: string, notify: (message: string) => void): void {
 
 const MAX_STATUS_DURATION_MS = 4000;
 
+type ViewMode = "selection" | "repo-select" | "global" | "repo";
+
 interface PromptTuiProps {
 	loadInventory: () => PromptInventory;
 }
@@ -68,9 +71,10 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 	const { stdout } = useStdout();
 	const stdoutWidth = stdout?.columns ?? 120;
 	const stdoutHeight = stdout?.rows ?? 32;
+
 	const [inventory, setInventory] = useState(initialInventory);
-	const [focus, setFocus] = useState<"repo" | "prompt">("repo");
-	const [repoIndex, setRepoIndex] = useState(0);
+	const [viewMode, setViewMode] = useState<ViewMode>("selection");
+	const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
 	const [promptIndex, setPromptIndex] = useState(0);
 	const [showSearch, setShowSearch] = useState(false);
 	const [searchTerm, setSearchTerm] = useState("");
@@ -103,8 +107,8 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 		return map;
 	}, [inventory.repositories]);
 
-	const globalRepository = useMemo(() => {
-		const prompts: PromptSummary[] = inventory.definitions
+	const globalPrompts = useMemo(() => {
+		return inventory.definitions
 			.filter((definition) => definition.scope === "global")
 			.map((definition) => ({
 				prompt: definition.prompt,
@@ -113,59 +117,42 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 				definitionId: definition.id,
 			}))
 			.sort((a, b) => a.prompt.localeCompare(b.prompt));
-
-		if (prompts.length === 0) {
-			return undefined;
-		}
-
-		return {
-			repositoryId: "__global__",
-			repositoryName: "Global prompts",
-			prompts,
-		};
 	}, [aggregatedLabels, inventory.definitions]);
 
-	const tuiRepositories = useMemo(() => {
-		const repos = inventory.repositories.map((repo) => ({
-			repositoryId: repo.repositoryId,
-			repositoryName: repo.repositoryName,
-			prompts: repo.prompts.map((prompt) => ({ ...prompt })),
-		}));
-		return globalRepository ? [globalRepository, ...repos] : repos;
-	}, [inventory.repositories, globalRepository]);
-
-	const filteredRepositories = useMemo(() => {
-		if (!searchTerm.trim()) {
-			return tuiRepositories;
-		}
-		const lower = searchTerm.toLowerCase();
-		return tuiRepositories.filter((repo) => {
-			const name = repo.repositoryName?.toLowerCase() ?? "";
-			return (
-				name.includes(lower) || repo.repositoryId.toLowerCase().includes(lower)
-			);
-		});
-	}, [tuiRepositories, searchTerm]);
-
-	const selectedRepository = filteredRepositories[repoIndex];
-	const selectedPrompt = selectedRepository?.prompts[promptIndex];
-	const selectedDefinition = selectedPrompt
-		? definitionsById.get(selectedPrompt.definitionId)
-		: undefined;
+	const customRepoChoices = useMemo(() => {
+		return inventory.repositories
+			.filter((repo) =>
+				repo.prompts.some((prompt) => prompt.source === "custom"),
+			)
+			.map((repo) => ({
+				repositoryId: repo.repositoryId,
+				repositoryName: repo.repositoryName ?? repo.repositoryId,
+			}));
+	}, [inventory.repositories]);
 
 	useEffect(() => {
-		if (repoIndex >= filteredRepositories.length) {
-			setRepoIndex(
-				filteredRepositories.length > 0 ? filteredRepositories.length - 1 : 0,
-			);
+		if (viewMode !== "selection") {
+			return;
 		}
-	}, [filteredRepositories, repoIndex]);
+		const hasGlobal = globalPrompts.length > 0;
+		const hasCustomRepos = customRepoChoices.length > 0;
+
+		if (!hasGlobal && hasCustomRepos) {
+			const soleRepo = customRepoChoices[0];
+			if (soleRepo) {
+				setSelectedRepoId(soleRepo.repositoryId);
+				setViewMode("repo");
+			}
+			return;
+		}
+
+		if (hasGlobal && !hasCustomRepos) {
+			setViewMode("global");
+		}
+	}, [viewMode, globalPrompts.length, customRepoChoices]);
 
 	useEffect(() => {
 		setPromptIndex(0);
-	}, []);
-
-	useEffect(() => {
 		setPreviewOffset(0);
 		setFullView(false);
 	}, []);
@@ -190,7 +177,9 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 		try {
 			const data = loadInventory();
 			setInventory(data);
-			setRepoIndex(0);
+			setViewMode("selection");
+			setSelectedRepoId(null);
+			setSearchTerm("");
 			setPromptIndex(0);
 			setPreviewOffset(0);
 			setFullView(false);
@@ -200,10 +189,72 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 		}
 	};
 
+	const currentRepo = useMemo(() => {
+		if (viewMode !== "repo" || !selectedRepoId) {
+			return undefined;
+		}
+		return inventory.repositories.find(
+			(repo) => repo.repositoryId === selectedRepoId,
+		);
+	}, [inventory.repositories, selectedRepoId, viewMode]);
+
+	const promptList: PromptSummary[] = useMemo(() => {
+		if (viewMode === "global") {
+			return globalPrompts;
+		}
+		if (viewMode === "repo" && currentRepo) {
+			return currentRepo.prompts;
+		}
+		return [];
+	}, [viewMode, globalPrompts, currentRepo]);
+
+	const filteredPrompts = useMemo(() => {
+		if (!searchTerm.trim()) {
+			return promptList;
+		}
+		const lower = searchTerm.toLowerCase();
+		return promptList.filter((prompt) => {
+			if (prompt.prompt.toLowerCase().includes(lower)) {
+				return true;
+			}
+			return prompt.labels.some((label) => label.toLowerCase().includes(lower));
+		});
+	}, [promptList, searchTerm]);
+
+	useEffect(() => {
+		if (promptIndex >= filteredPrompts.length) {
+			setPromptIndex(
+				filteredPrompts.length > 0 ? filteredPrompts.length - 1 : 0,
+			);
+		}
+	}, [filteredPrompts.length, promptIndex]);
+
+	useEffect(() => {
+		setPreviewOffset(0);
+		setFullView(false);
+	}, []);
+
+	const selectedPrompt = filteredPrompts[promptIndex];
+	const selectedDefinition = selectedPrompt
+		? definitionsById.get(selectedPrompt.definitionId)
+		: undefined;
+
 	useInput(
 		(input, key) => {
+			if (viewMode === "selection" || viewMode === "repo-select") {
+				if (input === "q" || (key.ctrl && input === "c")) {
+					exit();
+					return;
+				}
+				if (viewMode === "repo-select" && key.escape) {
+					setViewMode("selection");
+					return;
+				}
+				return;
+			}
+
 			if (fullView) {
-				if (key.escape || input === "q") {
+				if (key.escape || input === "q" || input === "b") {
 					setFullView(false);
 					return;
 				}
@@ -235,19 +286,23 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 				return;
 			}
 
-			if (key.tab) {
-				setFocus((prev) => (prev === "repo" ? "prompt" : "repo"));
-				return;
-			}
-
 			if (input === "q" || (key.ctrl && input === "c")) {
 				exit();
 				return;
 			}
 
+			if (input === "b") {
+				setViewMode("selection");
+				setSelectedRepoId(null);
+				setSearchTerm("");
+				setPromptIndex(0);
+				setPreviewOffset(0);
+				return;
+			}
+
 			if (input === "?" || input === "h") {
 				notify(
-					"Keys: arrows navigate, Tab switches panes, / search repos, Enter full view, o open in pager, w write file, r reload, q quit.",
+					"Keys: arrows navigate prompts, Enter full view, / search prompts, b back, o open in pager, w write file, r reload, q quit.",
 				);
 				return;
 			}
@@ -300,7 +355,7 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 				if (totalLines.length === 0) {
 					return;
 				}
-				const chunk = Math.max(stdoutHeight - 12, 5);
+				const chunk = Math.max(stdoutHeight - 10, 5);
 				setPreviewOffset((prev) =>
 					Math.min(totalLines.length - chunk, Math.max(0, prev + chunk)),
 				);
@@ -308,51 +363,124 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 			}
 
 			if (key.pageUp || input === "[") {
-				const chunk = Math.max(stdoutHeight - 12, 5);
+				const chunk = Math.max(stdoutHeight - 10, 5);
 				setPreviewOffset((prev) => Math.max(0, prev - chunk));
 				return;
 			}
 
-			if (focus === "repo") {
-				if (key.downArrow) {
-					setRepoIndex((prev) =>
-						Math.min(filteredRepositories.length - 1, prev + 1),
-					);
-					return;
-				}
-				if (key.upArrow) {
-					setRepoIndex((prev) => Math.max(0, prev - 1));
-					return;
-				}
+			if (key.downArrow) {
+				setPromptIndex((prev) =>
+					Math.min(filteredPrompts.length - 1, prev + 1),
+				);
+				return;
 			}
-
-			if (focus === "prompt" && selectedRepository) {
-				const promptCount = selectedRepository.prompts.length;
-				if (promptCount === 0) {
-					return;
-				}
-				if (key.downArrow) {
-					setPromptIndex((prev) => Math.min(promptCount - 1, prev + 1));
-					return;
-				}
-				if (key.upArrow) {
-					setPromptIndex((prev) => Math.max(0, prev - 1));
-					return;
-				}
+			if (key.upArrow) {
+				setPromptIndex((prev) => Math.max(0, prev - 1));
+				return;
 			}
 		},
 		{ isActive: true },
 	);
 
-	if (tuiRepositories.length === 0) {
+	const promptListWidth = Math.max(Math.floor(stdoutWidth * 0.34), 24);
+	const previewWidth = Math.max(stdoutWidth - promptListWidth - 4, 30);
+	const availablePreviewHeight = Math.max(stdoutHeight - 9, 8);
+	const previewLines = selectedDefinition?.content?.split(/\r?\n/) ?? [
+		"No prompt content available.",
+	];
+	const maxOffset = Math.max(0, previewLines.length - availablePreviewHeight);
+	const effectiveOffset = Math.min(previewOffset, maxOffset);
+	const visibleLines = previewLines.slice(
+		effectiveOffset,
+		effectiveOffset + availablePreviewHeight,
+	);
+
+	const renderSelectionMenu = () => {
+		const menuItems: { label: string; value: ViewMode }[] = [];
+		if (globalPrompts.length > 0) {
+			menuItems.push({ label: "Global prompt definitions", value: "global" });
+		}
+		if (customRepoChoices.length > 0) {
+			menuItems.push({
+				label: "Repository-specific prompts",
+				value: "repo-select",
+			});
+		}
+
+		if (menuItems.length === 0) {
+			return (
+				<Box flexDirection="column">
+					<Text>No prompts available.</Text>
+					<Text color="gray">Press q to exit.</Text>
+				</Box>
+			);
+		}
+
+		const handleSelect = (item: { label: string; value: ViewMode }) => {
+			if (item.value === "global") {
+				setViewMode("global");
+				return;
+			}
+			if (item.value === "repo-select") {
+				const soleRepo = customRepoChoices[0];
+				if (customRepoChoices.length === 1 && soleRepo) {
+					setSelectedRepoId(soleRepo.repositoryId);
+					setViewMode("repo");
+				} else {
+					setViewMode("repo-select");
+				}
+			}
+		};
+
 		return (
 			<Box flexDirection="column">
-				<Text>
-					No repositories configured. Run `cyrus add-repository` first.
+				<Text color="cyan" bold>
+					Cyrus Prompt Manager
 				</Text>
-				<Text color="gray">Press q to exit.</Text>
+				<Text color="gray">Select a prompt group to view.</Text>
+				<Box marginTop={1}>
+					<SelectInput items={menuItems} onSelect={handleSelect} />
+				</Box>
+				<Box marginTop={1}>
+					<Text color="gray">Press q to quit at any time.</Text>
+				</Box>
 			</Box>
 		);
+	};
+
+	const renderRepoSelector = () => {
+		if (customRepoChoices.length === 0) {
+			setViewMode("selection");
+			return null;
+		}
+		return (
+			<Box flexDirection="column">
+				<Text color="cyan" bold>
+					Choose a repository with custom prompts
+				</Text>
+				<Text color="gray">Press Esc to go back.</Text>
+				<Box marginTop={1}>
+					<SelectInput
+						items={customRepoChoices.map((repo) => ({
+							label: repo.repositoryName,
+							value: repo.repositoryId,
+						}))}
+						onSelect={(item) => {
+							setSelectedRepoId(item.value);
+							setViewMode("repo");
+						}}
+					/>
+				</Box>
+			</Box>
+		);
+	};
+
+	if (viewMode === "selection") {
+		return renderSelectionMenu();
+	}
+
+	if (viewMode === "repo-select") {
+		return renderRepoSelector();
 	}
 
 	if (fullView && selectedDefinition) {
@@ -368,7 +496,7 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 					</Text>
 				</Box>
 				<Text color="gray">
-					Press Esc to return · o open in pager · w write to temp file
+					Press Esc/b to return · o open in pager · w write to temp file
 				</Text>
 				<Box marginTop={1} flexDirection="column">
 					{fullContentLines.map((line, index) => (
@@ -384,33 +512,24 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 		);
 	}
 
-	const repositoryPaneWidth = Math.max(Math.floor(stdoutWidth * 0.32), 24);
-	const promptPaneWidth = Math.max(Math.floor(stdoutWidth * 0.28), 24);
-	const previewWidth = Math.max(
-		stdoutWidth - repositoryPaneWidth - promptPaneWidth - 4,
-		20,
-	);
-	const availablePreviewHeight = Math.max(stdoutHeight - 10, 8);
-	const previewLines = selectedDefinition?.content?.split(/\r?\n/) ?? [
-		"No prompt content available.",
-	];
-	const maxOffset = Math.max(0, previewLines.length - availablePreviewHeight);
-	const effectiveOffset = Math.min(previewOffset, maxOffset);
-	const visibleLines = previewLines.slice(
-		effectiveOffset,
-		effectiveOffset + availablePreviewHeight,
-	);
+	const contextTitle =
+		viewMode === "global"
+			? "Global prompts"
+			: (currentRepo?.repositoryName ?? selectedRepoId ?? "Repository prompts");
 
 	return (
 		<Box flexDirection="column">
 			<Box marginBottom={1}>
 				<Text color="cyan" bold>
-					Cyrus Prompt Manager (TUI)
+					{contextTitle}
+				</Text>
+				<Text color="gray">
+					Press / to search, Enter for full view, b to go back.
 				</Text>
 			</Box>
 			{showSearch ? (
 				<Box marginBottom={1}>
-					<Text color="yellow">Search repositories: </Text>
+					<Text color="yellow">Search prompts: </Text>
 					<TextInput
 						value={searchTerm}
 						onChange={setSearchTerm}
@@ -418,71 +537,36 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 					/>
 					<Text color="gray"> (Esc to clear)</Text>
 				</Box>
-			) : (
-				<Box marginBottom={1}>
-					<Text color="gray">
-						Press / to search, Enter for full view, Tab to change focus between
-						panes.
-					</Text>
-				</Box>
-			)}
+			) : null}
 			<Box flexDirection="row" gap={1}>
 				<Box
 					borderStyle="round"
-					borderColor={focus === "repo" ? "green" : "gray"}
+					borderColor="gray"
 					flexDirection="column"
-					width={repositoryPaneWidth}
-				>
-					<Box marginBottom={1}>
-						<Text bold>Repositories</Text>
-					</Box>
-					{filteredRepositories.length === 0 ? (
-						<Text color="gray">No matching repositories.</Text>
-					) : (
-						filteredRepositories.map((repo, index) => {
-							const isSelected = index === repoIndex;
-							const displayName = repo.repositoryName ?? repo.repositoryId;
-							return (
-								<Text
-									key={repo.repositoryId}
-									color={isSelected ? "green" : undefined}
-								>
-									{isSelected ? "➤ " : "  "}
-									{displayName}
-								</Text>
-							);
-						})
-					)}
-				</Box>
-				<Box
-					borderStyle="round"
-					borderColor={focus === "prompt" ? "green" : "gray"}
-					flexDirection="column"
-					width={promptPaneWidth}
+					width={promptListWidth}
 				>
 					<Box marginBottom={1}>
 						<Text bold>Prompts</Text>
 					</Box>
-					{selectedRepository ? (
-						selectedRepository.prompts.map((prompt, index) => {
+					{filteredPrompts.length === 0 ? (
+						<Text color="gray">No prompts match your search.</Text>
+					) : (
+						filteredPrompts.map((prompt, index) => {
 							const isSelected = index === promptIndex;
 							const badges = prompt.source === "built-in" ? "[B]" : "[C]";
 							return (
 								<Text
-									key={`${prompt.prompt}-${index}`}
+									key={`${prompt.definitionId}-${index}`}
 									color={isSelected ? "green" : undefined}
 								>
 									{isSelected ? "➤ " : "  "}
 									{`${badges} ${prompt.prompt}`}
 									<Text color="gray">
-										{" "}
-										{`(${prompt.labels.length} labels)`}
+										{` (${prompt.labels.length} labels)`}
 									</Text>
 								</Text>
 							);
 						})
-					) : (
-						<Text color="gray">Select a repository.</Text>
 					)}
 				</Box>
 				<Box
@@ -518,7 +602,8 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 			<Box marginTop={1}>
 				<Text color="cyan">
 					[c] Create [e] Edit labels [E] Edit content [d] Delete [Enter] Full
-					view [o] Pager [w] Write file [r] Reload [/] Search [q] Quit [?] Help
+					view [o] Pager [w] Write file [r] Reload [/] Search [b] Back [q] Quit
+					[?] Help
 				</Text>
 			</Box>
 			<Box marginTop={0}>
@@ -526,7 +611,8 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 					<Text color="yellow">{statusMessage}</Text>
 				) : (
 					<Text color="gray">
-						Focus: {focus === "repo" ? "Repositories" : "Prompts"}
+						Prompts: {filteredPrompts.length} · View:{" "}
+						{viewMode === "global" ? "Global" : "Repository"}
 					</Text>
 				)}
 			</Box>

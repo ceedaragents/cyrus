@@ -99,22 +99,34 @@ features easily.
    - Loads prompt inventory, stores it in context, and renders layout.
    - Shows global status bar with repo, prompt, dirty state, and hints.
 
-2. **Navigation Pane (left)**
-   - `RepoList`: vertical list with arrow navigation, `/` filter, `Enter` select.
-   - `PromptList`: filtered by selected repo, shows badges (e.g., `[B]`
-     built-in). `Tab` switches between repo/prompt focus.
-   - Wrap-around navigation and scroll indicators are mandatory.
+2. **Initial View Selection**
+   - On launch, prompt the operator to choose between viewing global prompts or
+     repository-specific prompts (only repositories with custom prompt configs
+     appear in the list).
+   - If multiple repositories qualify, open a second selector to pick the target
+     repo before rendering prompts.
+   - Provide `Esc`/`b` shortcuts to navigate back to previous menus.
 
-3. **Preview Pane (right)**
-   - Displays prompt markdown with minimal formatting and supports PgUp/PgDn.
-   - `o` opens the prompt in `$PAGER`; if `$PAGER` missing, fall back to `less`.
-   - `w` writes content to a temp file so users can copy or inspect externally.
+3. **Prompt List Pane (left)**
+   - Single vertical list of prompts for the current context (global or chosen
+     repo). Arrow keys move selection; `/` opens a filter input that matches
+     prompt names or labels.
+   - Rows show badges (`[B]` built-in, `[C]` custom) and label counts. The list
+     must include scroll indicators when content exceeds the viewport.
 
-4. **Action Footer**
-   - Render a persistent row of key bindings: `[c] Create`, `[e] Edit labels`,
-     `[E] Edit content`, `[d] Delete`, `[p] Change repo`, `[l] Filter labels`,
-     `[q] Quit`, `?` Help.
-   - Each key triggers a handler defined in a centralized actions module.
+4. **Preview Pane (right)**
+   - Renders the selected prompt with minimal formatting and supports PgUp/PgDn
+     chunking, `o` to open in `$PAGER`, and `w` to write the content to a temp
+     file for copy/paste.
+   - Hitting `Enter` or `v` opens a full-width view dedicated to copying the
+     entire prompt body; `Esc`/`b` returns to the two-column layout.
+
+5. **Action Footer**
+   - Persistent key binding row: `[c] Create`, `[e] Edit labels`, `[E] Edit
+     content`, `[d] Delete`, `[Enter] Full view`, `[o] Pager`, `[w] Write file`,
+     `[r] Reload`, `[/] Search`, `[b] Back`, `[q] Quit`, `[?] Help`.
+   - Each binding maps to centralized handlers so future editing forms can reuse
+     them.
 
 5. **Modals & Forms**
    - Create/edit/delete flows appear as centered modals with:
