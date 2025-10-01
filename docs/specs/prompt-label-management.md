@@ -41,19 +41,22 @@ ship.
 - Shared helpers normalize label arrays, dedupe definitions, and load built-in
   markdown from `packages/edge-worker/prompts/`.
 
-### Phase 2 – TUI Foundation (Current Focus)
+### Phase 2 – TUI Foundation (Complete)
 
-- Deliver `cyrus prompts tui`, a curses-style interface using Ink.
-- Core expectations:
+- Delivered `cyrus prompts tui`, a curses-style interface using Ink.
+- Current behaviour:
   - Repository navigation pane with arrow-key support and `/`-powered search.
   - Prompt list pane showing type badges (built-in/custom) and label counts.
-  - Scrollable preview pane for long prompt bodies with PgUp/PgDn/Home/End.
+  - Scrollable preview pane for long prompt bodies with PgUp/PgDn and an
+    expanded full-screen reader (`Enter`/`v`).
   - Global prompt definitions rendered once; per-repo view references shared
     definitions to avoid repetition.
-  - Action footer listing active key bindings (e.g., `q Quit`, `/ Search`, `o
-    Open in pager`).
+  - Action footer listing active key bindings (`q Quit`, `/ Search`, `o Open in
+    pager`, `w Write file`, etc.).
   - `o` triggers `$PAGER` fallback by writing prompt content to a temp file.
-  - Graceful handling of terminal resize and lack of mouse reporting.
+  - Modals for create/edit/delete flows surface inline validation, conflict
+    warnings, and editor launch instructions.
+  - Works cleanly over SSH/TTY resize (no mouse support required).
 
 ### Phase 3 – Prompt CRUD (CLI + TUI Parity)
 
@@ -79,16 +82,16 @@ ship.
 | Command | Description |
 | --- | --- |
 | `cyrus prompts list [--repo <id>] [--json]` | Enumerate prompt mappings, showing prompt content and definition scope. |
-| `cyrus prompts create <name> --labels <list> [--from template\|file] [--repo <id>]` | Scaffold a new prompt markdown file (under `packages/edge-worker/prompts/`) and register it. |
-| `cyrus prompts edit <prompt> --labels <list> [--repo <id>] [--prompt-file <path>]` | Update labels and optionally replace markdown content; built-ins accept label edits only. |
+| `cyrus prompts create <name> --labels <list> [--repo <id>] [--from-file <path>] [--dry-run] [--json] [--yes]` | Scaffold a new prompt markdown file (under the shared prompts directory) and register it. |
+| `cyrus prompts edit <prompt> [--labels <list>] [--repo <id>] [--prompt-file <path>] [--dry-run] [--json] [--yes]` | Update labels and optionally replace markdown content; built-ins accept label edits only. |
 | `cyrus prompts delete <prompt> [--repo <id>]` | Remove a custom prompt mapping and its file after double confirmation; rejects built-ins. |
 
 Common flags:
 - `--repo <id>`: limit operation to a single repository.
-- `--all`: apply to every repository (where safe).
 - `--json`: emit machine-readable output matching the inventory format.
 - `--dry-run`: simulate changes without persisting.
 - `--yes`: skip interactive confirmation (still requires backup).
+- `--from-file` / `--prompt-file`: seed content from an existing markdown file.
 
 ## TUI Functional Specification
 
@@ -115,11 +118,12 @@ features easily.
      must include scroll indicators when content exceeds the viewport.
 
 4. **Preview Pane (right)**
-   - Renders the selected prompt with minimal formatting and supports PgUp/PgDn
-     chunking, `o` to open in `$PAGER`, and `w` to write the content to a temp
-     file for copy/paste.
-   - Hitting `Enter` or `v` opens a full-width view dedicated to copying the
-     entire prompt body; `Esc`/`b` returns to the two-column layout.
+   - Shows the first ten lines of the selected prompt by default to keep the
+     interface compact; PgUp/PgDn step through the body in ten-line chunks.
+   - `o` opens the full prompt in `$PAGER`, and `w` writes the body to a temp
+     file for copying from the shell.
+   - `Enter`/`v` opens a full-width view dedicated to copying the entire prompt
+     body; `Esc`/`b` returns to the two-column layout.
 
 5. **Action Footer**
    - Persistent key binding row: `[c] Create`, `[e] Edit labels`, `[E] Edit
@@ -134,8 +138,10 @@ features easily.
      - Inline validation errors (e.g., “Prompt name is required”).
      - Buttons simulated via highlighted text segments (`[Enter] Confirm`,
        `[Esc] Cancel`).
-   - Editing content offers two modes: inline multi-line editor (basic) or
-     external `$EDITOR`; users choose via initial modal selection.
+   - Create/edit modals warn about duplicate labels and require a second
+     confirmation when conflicts are detected.
+   - Content editing launches the user's `$EDITOR` with a temp file, re-applies
+     the prompt on save, and surfaces any file or spawn errors inline.
 
 6. **State & Persistence**
    - All writes go through a shared persistence helper used by both CLI and TUI.
@@ -143,10 +149,12 @@ features easily.
    - On failure, show error toast with message and fallback instructions.
 
 7. **Tests & Tooling**
-   - Unit test data helpers and modal validation.
-   - Use `ink-testing-library` to snapshot the TUI and simulate navigation.
-   - Document development workflow (`pnpm --filter cyrus-ai dev:tui` or similar)
-     for rapid iteration.
+   - Unit test prompt mutation helpers (`prompt-mutators.ts`) and persistence
+     executor to keep filesystem handling safe.
+   - Use `ink-testing-library` for modal interaction coverage (conflict warnings,
+     positive confirmations, cancel flows).
+   - Maintain a lightweight TUI dev loop (`pnpm --filter cyrus-ai dev:tui`) with
+     clear guidance on `$EDITOR` requirements.
 
 ## Developer Notes & Documentation
 
@@ -179,12 +187,16 @@ features easily.
 
 - CLI edits should reuse the same JSON loader/writer edge-worker already uses to
   avoid schema drift.
-- When creating templates, ensure filesystem paths are sanitized (kebab-case) and
-  update TypeScript types if we support arbitrary names (export union updates).
+- When creating templates, ensure filesystem paths are sanitized (kebab-case)
+  and stored alongside built-ins; prompt metadata now supports `promptPath` for
+  both global defaults and repository overrides.
 - After config writes, prompt the operator to restart the edge-worker (or send a
   reload signal if we add one later).
-- Add unit tests covering CLI command parsing plus edge-worker integration tests
-  to confirm a custom prompt file is picked up during session start.
+- The CLI shares a mutation helper + executor that backs up config files to
+  `config.json.YYYYMMDDHHmm` prior to writes; tests ensure dry-run and backup
+  behaviour remain stable.
+- EdgeWorker integration tests verify custom `promptPath` (repo + global) is
+  preferred over built-ins.
 
 ## Telemetry / Logging
 

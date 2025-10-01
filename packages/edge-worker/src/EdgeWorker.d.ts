@@ -125,6 +125,9 @@ export declare class EdgeWorker extends EventEmitter {
 	private resolveRunnerSelection;
 	private getOpenAiApiKey;
 	private normalizeError;
+	private buildPromptPathCandidates;
+	private loadPromptTemplateFromPath;
+	private loadBuiltInPrompt;
 	/**
 	 * Determine system prompt based on issue labels and repository configuration
 	 */

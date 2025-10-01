@@ -25,8 +25,22 @@ import {
 } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import open from "open";
+import {
+	applyPromptPlan,
+	type PromptCommandResult,
+} from "./prompt-executor.js";
 import type { PromptDefinitionSummary } from "./prompt-list.js";
 import { summarizePromptMappings } from "./prompt-list.js";
+import {
+	buildCreatePromptPlan,
+	buildDeletePromptPlan,
+	buildEditPromptPlan,
+	type LabelConflict,
+	type PromptAwareConfig,
+	type PromptPlan,
+	type PromptRuleConfigShape,
+} from "./prompt-mutators.js";
+import { ensurePromptsDirectory } from "./prompt-paths.js";
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -77,6 +91,9 @@ Commands:
   migrate-config     Backup and upgrade config for multi-CLI support
   validate           Run connectivity and dependency checks
   prompts list       List current prompt-label mappings
+  prompts create     Create a custom prompt mapping
+  prompts edit       Update labels or markdown content for a prompt
+  prompts delete     Remove a custom prompt mapping
   prompts tui        Launch interactive prompt manager
 
 Options:
@@ -123,6 +140,7 @@ interface EdgeConfig {
 	defaultCli?: RunnerType; // Default runner to use when repository doesn't override
 	cliDefaults?: CliDefaults; // Default per-runner configuration options
 	credentials?: EdgeCredentials; // Stored credential references (e.g., OpenAI API key)
+	promptDefaults?: Record<string, PromptRuleConfigShape | undefined>;
 }
 
 interface Workspace {
@@ -265,6 +283,197 @@ function removeFlagWithValue(commandArgs: string[], name: string): string[] {
 	return result;
 }
 
+function splitCommaSeparated(value: string): string[] {
+	return value
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0);
+}
+
+function detectUnknownFlags(
+	argsToCheck: string[],
+	options: { valueFlags: string[]; booleanFlags: string[] },
+): string[] {
+	let remaining = [...argsToCheck];
+	for (const name of options.valueFlags) {
+		remaining = removeFlagWithValue(remaining, name);
+		remaining = remaining.filter((arg) => !arg.startsWith(`--${name}=`));
+	}
+	remaining = remaining.filter((arg) => {
+		if (!arg) {
+			return false;
+		}
+		if (!arg.startsWith("--")) {
+			return false;
+		}
+		if (arg === "--help" || arg === "-h") {
+			return false;
+		}
+		for (const name of options.booleanFlags) {
+			if (arg === `--${name}`) {
+				return false;
+			}
+			if (arg.startsWith(`--${name}=`)) {
+				return false;
+			}
+		}
+		return true;
+	});
+	return remaining;
+}
+
+function createPromptExecutionEnv(app: EdgeApp) {
+	return {
+		configPath: app.getEdgeConfigPath(),
+		saveConfig: (config: PromptAwareConfig) =>
+			app.saveEdgeConfig(config as EdgeConfig),
+		ensurePromptsDirectory,
+	};
+}
+
+async function confirmPromptPlan(
+	app: EdgeApp,
+	plan: PromptPlan,
+	options: {
+		yes: boolean;
+		jsonOutput: boolean;
+		requireExplicitConfirm?: boolean;
+	},
+): Promise<void> {
+	const needsConfirmation =
+		!options.yes &&
+		(options.requireExplicitConfirm || plan.conflicts.length > 0);
+	if (!needsConfirmation) {
+		return;
+	}
+
+	if (options.jsonOutput) {
+		throw new Error(
+			"Confirmation required for this operation. Re-run with --yes to proceed.",
+		);
+	}
+
+	const conflictMessage = plan.conflicts.length
+		? `The following labels already map to other prompts: ${joinLabelConflicts(plan.conflicts)}\n`
+		: "";
+	const actionMessage =
+		plan.action === "delete"
+			? `This will delete the markdown file and configuration for "${plan.promptName}".\n`
+			: "";
+	const answer = await app.askQuestion(
+		`${conflictMessage}${actionMessage}Proceed? (y/N): `,
+	);
+	if (!answer || !answer.toLowerCase().startsWith("y")) {
+		console.log("Prompt command cancelled.");
+		process.exit(0);
+	}
+}
+
+function joinLabelConflicts(conflicts: LabelConflict[]): string {
+	return conflicts
+		.map((conflict) => {
+			if (conflict.scope === "repository") {
+				return `${conflict.label} → ${conflict.prompt} (repo ${conflict.repositoryId})`;
+			}
+			return `${conflict.label} → ${conflict.prompt} (global)`;
+		})
+		.join(", ");
+}
+
+function describePromptScope(prompt: PromptCommandResult["prompt"]): string {
+	if (!prompt.repositoryId) {
+		return "global";
+	}
+	const name = prompt.repositoryName
+		? `${prompt.repositoryName} (${prompt.repositoryId})`
+		: prompt.repositoryId;
+	return `repository ${name}`;
+}
+
+function printPromptCommandResult(result: PromptCommandResult): void {
+	const scopeLabel = describePromptScope(result.prompt);
+	switch (result.action) {
+		case "create":
+			console.log(
+				`✅ Created prompt "${result.prompt.name}" for ${scopeLabel}.`,
+			);
+			break;
+		case "edit":
+			console.log(
+				`✅ Updated prompt "${result.prompt.name}" for ${scopeLabel}.`,
+			);
+			break;
+		case "delete":
+			console.log(
+				`✅ Deleted prompt "${result.prompt.name}" from ${scopeLabel}.`,
+			);
+			break;
+	}
+
+	if (result.prompt.promptPath) {
+		console.log(`  File: ${result.prompt.promptPath}`);
+	}
+	if (result.prompt.labels) {
+		const labelList = result.prompt.labels.length
+			? result.prompt.labels.join(", ")
+			: "(none)";
+		console.log(`  Labels: ${labelList}`);
+	}
+	if (result.action === "edit" && result.fileOperation === "none") {
+		console.log("  Content unchanged (labels updated only).");
+	}
+	if (result.backupPath && !result.dryRun) {
+		console.log(`  Backup saved to ${result.backupPath}`);
+	}
+	for (const warning of result.warnings) {
+		console.log(`⚠️  ${warning}`);
+	}
+	if (result.conflicts.length > 0) {
+		console.log(
+			`⚠️  Label overlaps detected: ${joinLabelConflicts(result.conflicts)}`,
+		);
+	}
+	if (result.dryRun) {
+		console.log("ℹ️  Dry run: no changes were written.");
+	}
+}
+
+function toError(value: unknown): Error {
+	if (value instanceof Error) {
+		return value;
+	}
+	if (typeof value === "string") {
+		return new Error(value);
+	}
+	try {
+		return new Error(JSON.stringify(value));
+	} catch (_error) {
+		return new Error("Unknown error");
+	}
+}
+
+function handlePromptCommandError(
+	error: unknown,
+	options: { jsonOutput: boolean },
+): never {
+	const normalized = toError(error);
+	if (options.jsonOutput) {
+		console.log(
+			JSON.stringify(
+				{
+					status: "error",
+					message: normalized.message,
+				},
+				null,
+				2,
+			),
+		);
+	} else {
+		console.error(`Error: ${normalized.message}`);
+	}
+	process.exit(1);
+}
+
 function formatPromptLabels(labels: string[]): string {
 	if (!labels || labels.length === 0) {
 		return "(none)";
@@ -307,6 +516,9 @@ Usage: cyrus prompts <command>
 
 Commands:
   list   List prompt-label mappings
+  create Create a custom prompt definition
+  edit   Update labels or content for a prompt
+  delete Remove a custom prompt definition
   tui    Launch interactive prompt manager
 
 Run 'cyrus prompts list --help' or 'cyrus prompts tui --help' for details.
@@ -323,16 +535,64 @@ Options:
 `);
 }
 
+function printPromptsCreateHelp(): void {
+	console.log(`
+Usage: cyrus prompts create <name> --labels <label1,label2> [--repo <id>] [--from-file <path>] [--dry-run] [--json] [--yes]
+
+Options:
+  --labels <list>      Comma-separated labels to bind to the prompt (required)
+  --repo <id>          Target repository id (omit for global defaults)
+  --from-file <path>   Seed prompt content from an existing markdown file
+  --dry-run            Preview changes without writing files or updating config
+  --json               Emit machine-readable output
+  --yes                Skip confirmation prompts
+`);
+}
+
+function printPromptsEditHelp(): void {
+	console.log(`
+Usage: cyrus prompts edit <name> [--labels <label1,label2>] [--repo <id>] [--prompt-file <path>] [--dry-run] [--json] [--yes]
+
+Options:
+  --labels <list>        Replace the prompt's label bindings (comma-separated)
+  --repo <id>            Target repository id (omit for global defaults)
+  --prompt-file <path>   Replace prompt content with the contents of the given file (custom prompts only)
+  --dry-run              Preview changes without writing files or updating config
+  --json                 Emit machine-readable output
+  --yes                  Skip confirmation prompts
+`);
+}
+
+function printPromptsDeleteHelp(): void {
+	console.log(`
+Usage: cyrus prompts delete <name> [--repo <id>] [--dry-run] [--json] [--yes]
+
+Options:
+  --repo <id>  Target repository id (omit to delete a global prompt)
+  --dry-run    Preview changes without writing files or updating config
+  --json       Emit machine-readable output
+  --yes        Skip confirmation prompts
+`);
+}
+
 async function promptsTuiCommand(): Promise<void> {
 	const app = new EdgeApp(CYRUS_HOME);
 	const loadInventory = () => {
 		const config = app.loadEdgeConfig();
-		return summarizePromptMappings(config.repositories ?? []);
+		return summarizePromptMappings(config.repositories ?? [], {
+			promptDefaults: config.promptDefaults,
+		});
 	};
 
 	try {
 		const { runPromptTui } = await import("./prompt-tui.js");
-		await runPromptTui(loadInventory);
+		await runPromptTui({
+			loadInventory,
+			loadConfig: () => app.loadEdgeConfig(),
+			saveConfig: (config: PromptAwareConfig) =>
+				app.saveEdgeConfig(config as EdgeConfig),
+			configPath: app.getEdgeConfigPath(),
+		});
 	} catch (error) {
 		console.error(
 			"Failed to launch prompt manager TUI:",
@@ -393,10 +653,10 @@ async function promptsListCommand(subArgs: string[]): Promise<void> {
 		}
 	}
 
-	const inventory = summarizePromptMappings(
-		repositories,
-		repoId ? { repoId } : {},
-	);
+	const inventory = summarizePromptMappings(repositories, {
+		repoId,
+		promptDefaults: config.promptDefaults,
+	});
 	const definitionsById = new Map(
 		inventory.definitions.map((definition) => [definition.id, definition]),
 	);
@@ -458,6 +718,231 @@ async function promptsListCommand(subArgs: string[]): Promise<void> {
 	}
 }
 
+async function promptsCreateCommand(subArgs: string[]): Promise<void> {
+	if (subArgs.includes("-h") || subArgs.includes("--help")) {
+		printPromptsCreateHelp();
+		return;
+	}
+
+	if (subArgs.length === 0) {
+		console.error(
+			"Prompt name is required. Run 'cyrus prompts create --help' for usage info.",
+		);
+		process.exit(1);
+	}
+
+	const [nameArg, ...flagArgs] = subArgs;
+	if (!nameArg || nameArg.startsWith("--")) {
+		console.error("Prompt name must be provided as the first argument.");
+		process.exit(1);
+	}
+
+	const labelsValue = getFlagValue(flagArgs, "labels");
+	if (!labelsValue) {
+		console.error(
+			"Missing required --labels option. Provide a comma-separated list of labels.",
+		);
+		process.exit(1);
+	}
+
+	const labels = splitCommaSeparated(labelsValue);
+	if (labels.length === 0) {
+		console.error("At least one label must be provided.");
+		process.exit(1);
+	}
+
+	const repoId = getFlagValue(flagArgs, "repo");
+	const fromFilePath = getFlagValue(flagArgs, "from-file");
+	const dryRun = hasFlag(flagArgs, "dry-run");
+	const jsonOutput = hasFlag(flagArgs, "json");
+	const yes = hasFlag(flagArgs, "yes");
+
+	const unknownFlags = detectUnknownFlags(flagArgs, {
+		valueFlags: ["labels", "repo", "from-file"],
+		booleanFlags: ["dry-run", "json", "yes"],
+	});
+	if (unknownFlags.length > 0) {
+		console.error(
+			`Unknown flag(s): ${unknownFlags.join(", ")}. Run 'cyrus prompts create --help' for usage info.`,
+		);
+		process.exit(1);
+	}
+
+	const app = new EdgeApp(CYRUS_HOME);
+	const config = app.loadEdgeConfig();
+
+	let plan: PromptPlan;
+	try {
+		plan = buildCreatePromptPlan(config, {
+			name: nameArg,
+			labels,
+			repoId,
+			fromFilePath,
+		});
+	} catch (error) {
+		handlePromptCommandError(error, { jsonOutput });
+	}
+
+	try {
+		await confirmPromptPlan(app, plan!, {
+			yes,
+			jsonOutput,
+			requireExplicitConfirm: false,
+		});
+		const env = createPromptExecutionEnv(app);
+		const result = applyPromptPlan(plan!, env, { dryRun });
+		if (jsonOutput) {
+			console.log(JSON.stringify(result, null, 2));
+		} else {
+			printPromptCommandResult(result);
+		}
+	} catch (error) {
+		handlePromptCommandError(error, { jsonOutput });
+	}
+}
+
+async function promptsEditCommand(subArgs: string[]): Promise<void> {
+	if (subArgs.includes("-h") || subArgs.includes("--help")) {
+		printPromptsEditHelp();
+		return;
+	}
+
+	if (subArgs.length === 0) {
+		console.error(
+			"Prompt name is required. Run 'cyrus prompts edit --help' for usage info.",
+		);
+		process.exit(1);
+	}
+
+	const [nameArg, ...flagArgs] = subArgs;
+	if (!nameArg || nameArg.startsWith("--")) {
+		console.error("Prompt name must be provided as the first argument.");
+		process.exit(1);
+	}
+
+	const labelsValue = getFlagValue(flagArgs, "labels");
+	const labels = labelsValue ? splitCommaSeparated(labelsValue) : undefined;
+	if (labelsValue && labels && labels.length === 0) {
+		console.error("When provided, --labels must contain at least one label.");
+		process.exit(1);
+	}
+
+	const repoId = getFlagValue(flagArgs, "repo");
+	const promptFilePath = getFlagValue(flagArgs, "prompt-file");
+	const dryRun = hasFlag(flagArgs, "dry-run");
+	const jsonOutput = hasFlag(flagArgs, "json");
+	const yes = hasFlag(flagArgs, "yes");
+
+	const unknownFlags = detectUnknownFlags(flagArgs, {
+		valueFlags: ["labels", "repo", "prompt-file"],
+		booleanFlags: ["dry-run", "json", "yes"],
+	});
+	if (unknownFlags.length > 0) {
+		console.error(
+			`Unknown flag(s): ${unknownFlags.join(", ")}. Run 'cyrus prompts edit --help' for usage info.`,
+		);
+		process.exit(1);
+	}
+
+	const app = new EdgeApp(CYRUS_HOME);
+	const config = app.loadEdgeConfig();
+
+	let plan: PromptPlan;
+	try {
+		plan = buildEditPromptPlan(config, {
+			name: nameArg,
+			labels,
+			repoId,
+			promptFilePath,
+		});
+	} catch (error) {
+		handlePromptCommandError(error, { jsonOutput });
+	}
+
+	try {
+		await confirmPromptPlan(app, plan!, {
+			yes,
+			jsonOutput,
+			requireExplicitConfirm: false,
+		});
+		const env = createPromptExecutionEnv(app);
+		const result = applyPromptPlan(plan!, env, { dryRun });
+		if (jsonOutput) {
+			console.log(JSON.stringify(result, null, 2));
+		} else {
+			printPromptCommandResult(result);
+		}
+	} catch (error) {
+		handlePromptCommandError(error, { jsonOutput });
+	}
+}
+
+async function promptsDeleteCommand(subArgs: string[]): Promise<void> {
+	if (subArgs.includes("-h") || subArgs.includes("--help")) {
+		printPromptsDeleteHelp();
+		return;
+	}
+
+	if (subArgs.length === 0) {
+		console.error(
+			"Prompt name is required. Run 'cyrus prompts delete --help' for usage info.",
+		);
+		process.exit(1);
+	}
+
+	const [nameArg, ...flagArgs] = subArgs;
+	if (!nameArg || nameArg.startsWith("--")) {
+		console.error("Prompt name must be provided as the first argument.");
+		process.exit(1);
+	}
+
+	const repoId = getFlagValue(flagArgs, "repo");
+	const dryRun = hasFlag(flagArgs, "dry-run");
+	const jsonOutput = hasFlag(flagArgs, "json");
+	const yes = hasFlag(flagArgs, "yes");
+
+	const unknownFlags = detectUnknownFlags(flagArgs, {
+		valueFlags: ["repo"],
+		booleanFlags: ["dry-run", "json", "yes"],
+	});
+	if (unknownFlags.length > 0) {
+		console.error(
+			`Unknown flag(s): ${unknownFlags.join(", ")}. Run 'cyrus prompts delete --help' for usage info.`,
+		);
+		process.exit(1);
+	}
+
+	const app = new EdgeApp(CYRUS_HOME);
+	const config = app.loadEdgeConfig();
+
+	let plan: PromptPlan;
+	try {
+		plan = buildDeletePromptPlan(config, {
+			name: nameArg,
+			repoId,
+		});
+	} catch (error) {
+		handlePromptCommandError(error, { jsonOutput });
+	}
+
+	try {
+		await confirmPromptPlan(app, plan!, {
+			yes,
+			jsonOutput,
+			requireExplicitConfirm: true,
+		});
+		const env = createPromptExecutionEnv(app);
+		const result = applyPromptPlan(plan!, env, { dryRun });
+		if (jsonOutput) {
+			console.log(JSON.stringify(result, null, 2));
+		} else {
+			printPromptCommandResult(result);
+		}
+	} catch (error) {
+		handlePromptCommandError(error, { jsonOutput });
+	}
+}
+
 async function promptsCommand(): Promise<void> {
 	const subcommand = args[1];
 	if (!subcommand || subcommand === "--help" || subcommand === "-h") {
@@ -468,6 +953,18 @@ async function promptsCommand(): Promise<void> {
 	switch (subcommand) {
 		case "list":
 			await promptsListCommand(args.slice(2));
+			break;
+
+		case "create":
+			await promptsCreateCommand(args.slice(2));
+			break;
+
+		case "edit":
+			await promptsEditCommand(args.slice(2));
+			break;
+
+		case "delete":
+			await promptsDeleteCommand(args.slice(2));
 			break;
 
 		case "tui":

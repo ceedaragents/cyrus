@@ -54,6 +54,20 @@ export interface RepositoryLabelAgentRoutingRule {
 /**
  * Configuration for a single repository/workspace pair
  */
+export type PromptToolPreset =
+	| string[]
+	| "readOnly"
+	| "safe"
+	| "all"
+	| "coordinator";
+
+export interface PromptRuleConfig {
+	labels?: string[];
+	allowedTools?: PromptToolPreset;
+	disallowedTools?: string[];
+	promptPath?: string;
+}
+
 export interface RepositoryConfig {
 	// Repository identification
 	id: string; // Unique identifier for this repo config
@@ -89,26 +103,11 @@ export interface RepositoryConfig {
 
 	// Label-based system prompt configuration
 	labelPrompts?: {
-		debugger?: {
-			labels: string[]; // Labels that trigger debugger mode (e.g., ["Bug"])
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for debugger mode
-			disallowedTools?: string[]; // Tools to explicitly disallow in debugger mode
-		};
-		builder?: {
-			labels: string[]; // Labels that trigger builder mode (e.g., ["Feature", "Improvement"])
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for builder mode
-			disallowedTools?: string[]; // Tools to explicitly disallow in builder mode
-		};
-		scoper?: {
-			labels: string[]; // Labels that trigger scoper mode (e.g., ["PRD"])
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for scoper mode
-			disallowedTools?: string[]; // Tools to explicitly disallow in scoper mode
-		};
-		orchestrator?: {
-			labels: string[]; // Labels that trigger orchestrator mode (e.g., ["Orchestrator"])
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for orchestrator mode
-			disallowedTools?: string[]; // Tools to explicitly disallow in orchestrator mode
-		};
+		debugger?: PromptRuleConfig | string[];
+		builder?: PromptRuleConfig | string[];
+		scoper?: PromptRuleConfig | string[];
+		orchestrator?: PromptRuleConfig | string[];
+		[key: string]: PromptRuleConfig | string[] | undefined;
 	};
 }
 
@@ -136,22 +135,11 @@ export interface EdgeWorkerConfig {
 
 	// Global defaults for prompt types
 	promptDefaults?: {
-		debugger?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		builder?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		scoper?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		orchestrator?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
+		debugger?: PromptRuleConfig;
+		builder?: PromptRuleConfig;
+		scoper?: PromptRuleConfig;
+		orchestrator?: PromptRuleConfig;
+		[key: string]: PromptRuleConfig | undefined;
 	};
 
 	// Repository configurations

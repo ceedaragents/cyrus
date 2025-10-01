@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Box, render, Text, useApp, useInput, useStdout } from "ink";
@@ -7,7 +7,25 @@ import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import type { PromptInventory, PromptSummary } from "./prompt-list.js";
+import {
+	applyPromptPlan,
+	type PromptCommandResult,
+} from "./prompt-executor.js";
+import type {
+	PromptDefinitionSummary,
+	PromptInventory,
+	PromptSummary,
+} from "./prompt-list.js";
+import {
+	buildCreatePromptPlan,
+	buildDeletePromptPlan,
+	buildEditPromptPlan,
+	type LabelConflict,
+	type PromptAwareConfig,
+	type PromptPlan,
+	type PromptScope,
+} from "./prompt-mutators.js";
+import { ensurePromptsDirectory } from "./prompt-paths.js";
 
 function writeTempPromptFile(content: string): string {
 	const dir = mkdtempSync(join(tmpdir(), "cyrus-prompt-"));
@@ -38,33 +56,112 @@ function openInPager(content: string, notify: (message: string) => void): void {
 	}
 }
 
+function parseLabelInput(value: string): string[] {
+	return value
+		.split(",")
+		.map((label) => label.trim())
+		.filter((label) => label.length > 0);
+}
+
+function formatConflictSummary(conflicts: LabelConflict[]): string {
+	return conflicts
+		.map((conflict) => {
+			if (conflict.scope === "repository") {
+				return `${conflict.label} → ${conflict.prompt} (repo ${conflict.repositoryId})`;
+			}
+			return `${conflict.label} → ${conflict.prompt} (global)`;
+		})
+		.join(", ");
+}
+
+function describeResultScope(result: PromptCommandResult): string {
+	if (result.scope === "global") {
+		return "global";
+	}
+	const repoLabel = result.prompt.repositoryName
+		? `${result.prompt.repositoryName} (${result.prompt.repositoryId})`
+		: (result.prompt.repositoryId ?? "repository");
+	return `repository ${repoLabel}`;
+}
+
+function formatResultMessage(result: PromptCommandResult): string {
+	const scopeLabel = describeResultScope(result);
+	switch (result.action) {
+		case "create":
+			return `✅ Created prompt "${result.prompt.name}" for ${scopeLabel}.`;
+		case "edit":
+			return `✅ Updated prompt "${result.prompt.name}" for ${scopeLabel}.`;
+		case "delete":
+			return `✅ Deleted prompt "${result.prompt.name}" from ${scopeLabel}.`;
+		default:
+			return `✅ Prompt operation completed for "${result.prompt.name}".`;
+	}
+}
+
 const MAX_STATUS_DURATION_MS = 4000;
+const PREVIEW_VISIBLE_LINES = 10;
 
 type ViewMode = "selection" | "repo-select" | "global" | "repo";
 
-interface PromptTuiProps {
-	loadInventory: () => PromptInventory;
+interface RepoOption {
+	repositoryId: string;
+	repositoryName?: string;
 }
 
-export async function runPromptTui(
-	loadInventory: () => PromptInventory,
-): Promise<void> {
-	const initialInventory = loadInventory();
+type ModalState =
+	| { type: "create"; scope: PromptScope; repoId?: string; repoName?: string }
+	| {
+			type: "edit-labels";
+			scope: PromptScope;
+			repoId?: string;
+			repoName?: string;
+			prompt: PromptSummary;
+	  }
+	| {
+			type: "edit-content";
+			scope: PromptScope;
+			repoId?: string;
+			repoName?: string;
+			prompt: PromptSummary;
+	  }
+	| {
+			type: "delete";
+			scope: PromptScope;
+			repoId?: string;
+			repoName?: string;
+			prompt: PromptSummary;
+	  };
+
+interface PromptTuiOptions {
+	loadInventory: () => PromptInventory;
+	loadConfig: () => PromptAwareConfig;
+	saveConfig: (config: PromptAwareConfig) => void;
+	configPath: string;
+}
+
+interface PromptTuiProps extends PromptTuiOptions {
+	initialInventory: PromptInventory;
+}
+
+export async function runPromptTui(options: PromptTuiOptions): Promise<void> {
+	const initialInventory = options.loadInventory();
 	const inkApp = render(
 		<PromptTuiApp
-			loadInventory={loadInventory}
+			loadInventory={options.loadInventory}
+			loadConfig={options.loadConfig}
+			saveConfig={options.saveConfig}
+			configPath={options.configPath}
 			initialInventory={initialInventory}
 		/>,
 	);
 	await inkApp.waitUntilExit();
 }
 
-interface PromptTuiAppProps extends PromptTuiProps {
-	initialInventory: PromptInventory;
-}
-
-const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
+const PromptTuiApp: React.FC<PromptTuiProps> = ({
 	loadInventory,
+	loadConfig,
+	saveConfig,
+	configPath,
 	initialInventory,
 }) => {
 	const { exit } = useApp();
@@ -81,6 +178,7 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 	const [statusMessage, setStatusMessage] = useState<string | null>(null);
 	const [previewOffset, setPreviewOffset] = useState(0);
 	const [fullView, setFullView] = useState(false);
+	const [modal, setModal] = useState<ModalState | null>(null);
 
 	const definitionsById = useMemo(
 		() =>
@@ -104,18 +202,36 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 				}
 			}
 		}
+		for (const definition of inventory.definitions) {
+			if (!map.has(definition.id) && definition.labels?.length) {
+				map.set(definition.id, new Set(definition.labels));
+			}
+		}
 		return map;
+	}, [inventory.definitions, inventory.repositories]);
+
+	const repositoryOptions = useMemo<RepoOption[]>(() => {
+		return inventory.repositories.map((repo) => ({
+			repositoryId: repo.repositoryId,
+			repositoryName: repo.repositoryName ?? repo.repositoryId,
+		}));
 	}, [inventory.repositories]);
 
 	const globalPrompts = useMemo(() => {
 		return inventory.definitions
 			.filter((definition) => definition.scope === "global")
-			.map((definition) => ({
-				prompt: definition.prompt,
-				source: definition.source,
-				labels: Array.from(aggregatedLabels.get(definition.id) ?? []),
-				definitionId: definition.id,
-			}))
+			.map((definition) => {
+				const labelSet = aggregatedLabels.get(definition.id);
+				const labels = labelSet
+					? Array.from(labelSet)
+					: (definition.labels ?? []);
+				return {
+					prompt: definition.prompt,
+					source: definition.source,
+					labels,
+					definitionId: definition.id,
+				};
+			})
 			.sort((a, b) => a.prompt.localeCompare(b.prompt));
 	}, [aggregatedLabels, inventory.definitions]);
 
@@ -173,20 +289,47 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 		setStatusMessage(message);
 	};
 
-	const refreshInventory = () => {
+	const reloadInventory = () => {
 		try {
 			const data = loadInventory();
 			setInventory(data);
-			setViewMode("selection");
-			setSelectedRepoId(null);
-			setSearchTerm("");
-			setPromptIndex(0);
-			setPreviewOffset(0);
-			setFullView(false);
-			notify("Prompt inventory refreshed.");
 		} catch (error) {
 			notify(`Failed to reload prompts: ${(error as Error).message}`);
 		}
+	};
+
+	const refreshInventory = () => {
+		reloadInventory();
+		setViewMode("selection");
+		setSelectedRepoId(null);
+		setSearchTerm("");
+		setPromptIndex(0);
+		setPreviewOffset(0);
+		setFullView(false);
+		notify("Prompt inventory refreshed.");
+	};
+
+	const executePlan = async (
+		plan: PromptPlan,
+	): Promise<PromptCommandResult> => {
+		return applyPromptPlan(plan, {
+			configPath,
+			saveConfig: (config: PromptAwareConfig) => saveConfig(config),
+			ensurePromptsDirectory,
+		});
+	};
+
+	const handleResult = (result: PromptCommandResult) => {
+		reloadInventory();
+		setModal(null);
+		let message = formatResultMessage(result);
+		if (result.warnings.length > 0) {
+			message = `${message} ⚠ ${result.warnings.join("; ")}`;
+		}
+		if (result.conflicts.length > 0) {
+			message = `${message} ⚠ Conflicts: ${formatConflictSummary(result.conflicts)}`;
+		}
+		notify(message);
 	};
 
 	const currentRepo = useMemo(() => {
@@ -241,6 +384,9 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 
 	useInput(
 		(input, key) => {
+			if (modal) {
+				return;
+			}
 			if (viewMode === "selection" || viewMode === "repo-select") {
 				if (input === "q" || (key.ctrl && input === "c")) {
 					exit();
@@ -317,8 +463,101 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 				return;
 			}
 
-			if (input === "c" || input === "e" || input === "E" || input === "d") {
-				notify("Editing workflows will arrive with the next milestone.");
+			if (input === "c") {
+				const scope: PromptScope =
+					viewMode === "repo" && currentRepo ? "repository" : "global";
+				const repoId =
+					scope === "repository"
+						? (currentRepo?.repositoryId ?? customRepoChoices[0]?.repositoryId)
+						: undefined;
+				const repoOption = repoId
+					? repositoryOptions.find((option) => option.repositoryId === repoId)
+					: undefined;
+				if (scope === "repository" && !repoId) {
+					notify("No repository available for custom prompts.");
+					return;
+				}
+				setModal({
+					type: "create",
+					scope,
+					repoId: repoId ?? undefined,
+					repoName: repoOption?.repositoryName,
+				});
+				return;
+			}
+
+			if (input === "e") {
+				if (!selectedPrompt) {
+					notify("Select a prompt to edit labels.");
+					return;
+				}
+				const scope: PromptScope =
+					viewMode === "repo" && currentRepo ? "repository" : "global";
+				const repoId =
+					scope === "repository" ? currentRepo?.repositoryId : undefined;
+				const repoName =
+					currentRepo?.repositoryName ?? currentRepo?.repositoryId;
+				if (scope === "repository" && !repoId) {
+					notify("Select a repository first.");
+					return;
+				}
+				setModal({
+					type: "edit-labels",
+					scope,
+					repoId,
+					repoName,
+					prompt: selectedPrompt,
+				});
+				return;
+			}
+
+			if (input === "E") {
+				if (!selectedPrompt) {
+					notify("Select a prompt to edit content.");
+					return;
+				}
+				if (selectedPrompt.source !== "custom") {
+					notify("Only custom prompts support content editing.");
+					return;
+				}
+				const scope: PromptScope =
+					viewMode === "repo" && currentRepo ? "repository" : "global";
+				const repoId =
+					scope === "repository" ? currentRepo?.repositoryId : undefined;
+				const repoName =
+					currentRepo?.repositoryName ?? currentRepo?.repositoryId;
+				setModal({
+					type: "edit-content",
+					scope,
+					repoId,
+					repoName,
+					prompt: selectedPrompt,
+				});
+				return;
+			}
+
+			if (input === "d") {
+				if (!selectedPrompt) {
+					notify("Select a prompt to delete.");
+					return;
+				}
+				if (selectedPrompt.source !== "custom") {
+					notify("Built-in prompts cannot be deleted.");
+					return;
+				}
+				const scope: PromptScope =
+					viewMode === "repo" && currentRepo ? "repository" : "global";
+				const repoId =
+					scope === "repository" ? currentRepo?.repositoryId : undefined;
+				const repoName =
+					currentRepo?.repositoryName ?? currentRepo?.repositoryId;
+				setModal({
+					type: "delete",
+					scope,
+					repoId,
+					repoName,
+					prompt: selectedPrompt,
+				});
 				return;
 			}
 
@@ -355,7 +594,7 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 				if (totalLines.length === 0) {
 					return;
 				}
-				const chunk = Math.max(stdoutHeight - 10, 5);
+				const chunk = Math.max(visibleLineCount, 1);
 				setPreviewOffset((prev) =>
 					Math.min(totalLines.length - chunk, Math.max(0, prev + chunk)),
 				);
@@ -363,7 +602,7 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 			}
 
 			if (key.pageUp || input === "[") {
-				const chunk = Math.max(stdoutHeight - 10, 5);
+				const chunk = Math.max(visibleLineCount, 1);
 				setPreviewOffset((prev) => Math.max(0, prev - chunk));
 				return;
 			}
@@ -384,15 +623,19 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 
 	const promptListWidth = Math.max(Math.floor(stdoutWidth * 0.34), 24);
 	const previewWidth = Math.max(stdoutWidth - promptListWidth - 4, 30);
-	const availablePreviewHeight = Math.max(stdoutHeight - 9, 8);
+	const availablePreviewHeight = Math.max(stdoutHeight - 9, 5);
+	const visibleLineCount = Math.min(
+		PREVIEW_VISIBLE_LINES,
+		availablePreviewHeight,
+	);
 	const previewLines = selectedDefinition?.content?.split(/\r?\n/) ?? [
 		"No prompt content available.",
 	];
-	const maxOffset = Math.max(0, previewLines.length - availablePreviewHeight);
+	const maxOffset = Math.max(0, previewLines.length - visibleLineCount);
 	const effectiveOffset = Math.min(previewOffset, maxOffset);
 	const visibleLines = previewLines.slice(
 		effectiveOffset,
-		effectiveOffset + availablePreviewHeight,
+		effectiveOffset + visibleLineCount,
 	);
 
 	const renderSelectionMenu = () => {
@@ -517,6 +760,11 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 			? "Global prompts"
 			: (currentRepo?.repositoryName ?? selectedRepoId ?? "Repository prompts");
 
+	const definitionForModal =
+		modal && "prompt" in modal
+			? definitionsById.get(modal.prompt.definitionId)
+			: undefined;
+
 	return (
 		<Box flexDirection="column">
 			<Box marginBottom={1}>
@@ -616,8 +864,630 @@ const PromptTuiApp: React.FC<PromptTuiAppProps> = ({
 					</Text>
 				)}
 			</Box>
+			{modal ? (
+				<Box marginTop={1}>
+					{modal.type === "create" ? (
+						<CreatePromptModal
+							scope={modal.scope}
+							initialRepoId={modal.repoId}
+							repositories={repositoryOptions}
+							loadConfig={loadConfig}
+							executePlan={executePlan}
+							onComplete={handleResult}
+							onCancel={() => setModal(null)}
+						/>
+					) : null}
+					{modal.type === "edit-labels" ? (
+						<EditPromptLabelsModal
+							scope={modal.scope}
+							repoId={modal.repoId}
+							repoName={modal.repoName}
+							prompt={modal.prompt}
+							loadConfig={loadConfig}
+							executePlan={executePlan}
+							onComplete={handleResult}
+							onCancel={() => setModal(null)}
+						/>
+					) : null}
+					{modal.type === "edit-content" ? (
+						<EditPromptContentModal
+							scope={modal.scope}
+							repoId={modal.repoId}
+							repoName={modal.repoName}
+							prompt={modal.prompt}
+							definition={definitionForModal}
+							loadConfig={loadConfig}
+							executePlan={executePlan}
+							onComplete={handleResult}
+							onCancel={() => setModal(null)}
+						/>
+					) : null}
+					{modal.type === "delete" ? (
+						<DeletePromptModal
+							scope={modal.scope}
+							repoId={modal.repoId}
+							repoName={modal.repoName}
+							prompt={modal.prompt}
+							loadConfig={loadConfig}
+							executePlan={executePlan}
+							onComplete={handleResult}
+							onCancel={() => setModal(null)}
+						/>
+					) : null}
+				</Box>
+			) : null}
 		</Box>
 	);
 };
 
+interface ModalContainerProps {
+	title: string;
+	children: React.ReactNode;
+}
+
+const ModalContainer: React.FC<ModalContainerProps> = ({ title, children }) => (
+	<Box
+		flexDirection="column"
+		borderStyle="round"
+		borderColor="cyan"
+		padding={1}
+		width={80}
+	>
+		<Text color="cyan" bold>
+			{title}
+		</Text>
+		<Box flexDirection="column" marginTop={1}>
+			{children}
+		</Box>
+	</Box>
+);
+
+interface CreatePromptModalProps {
+	scope: PromptScope;
+	initialRepoId?: string;
+	repositories: RepoOption[];
+	loadConfig: () => PromptAwareConfig;
+	executePlan: (plan: PromptPlan) => Promise<PromptCommandResult>;
+	onComplete: (result: PromptCommandResult) => void;
+	onCancel: () => void;
+}
+
+const CreatePromptModal: React.FC<CreatePromptModalProps> = ({
+	scope: initialScope,
+	initialRepoId,
+	repositories,
+	loadConfig,
+	executePlan,
+	onComplete,
+	onCancel,
+}) => {
+	const hasRepositories = repositories.length > 0;
+	const startingScope =
+		initialScope === "repository" && hasRepositories ? "repository" : "global";
+	const initialRepoIndex = (() => {
+		if (!hasRepositories) {
+			return -1;
+		}
+		if (initialRepoId) {
+			const idx = repositories.findIndex(
+				(repo) => repo.repositoryId === initialRepoId,
+			);
+			if (idx >= 0) {
+				return idx;
+			}
+		}
+		return 0;
+	})();
+
+	const [scope, setScope] = useState<PromptScope>(startingScope);
+	const [repoIndex, setRepoIndex] = useState(initialRepoIndex);
+	const [name, setName] = useState("");
+	const [labels, setLabels] = useState("");
+	const [fromFile, setFromFile] = useState("");
+	const [focusedField, setFocusedField] = useState<
+		"name" | "labels" | "fromFile"
+	>("name");
+	const [error, setError] = useState<string | undefined>();
+	const [conflicts, setConflicts] = useState<LabelConflict[] | undefined>();
+	const [pendingPlan, setPendingPlan] = useState<PromptPlan | null>(null);
+	const [submitting, setSubmitting] = useState(false);
+
+	const selectedRepo =
+		scope === "repository" && repoIndex >= 0
+			? repositories[repoIndex]
+			: undefined;
+
+	const resetPendingState = () => {
+		setPendingPlan(null);
+		setConflicts(undefined);
+		setError(undefined);
+	};
+
+	useInput(
+		(input, key) => {
+			if (submitting) {
+				return;
+			}
+			if (key.escape) {
+				onCancel();
+				return;
+			}
+			if (key.tab && key.shift) {
+				setFocusedField((prev) => {
+					if (prev === "fromFile") {
+						return "labels";
+					}
+					if (prev === "labels") {
+						return "name";
+					}
+					return "fromFile";
+				});
+				return;
+			}
+			if (key.tab) {
+				setFocusedField((prev) => {
+					if (prev === "name") {
+						return "labels";
+					}
+					if (prev === "labels") {
+						return "fromFile";
+					}
+					return "name";
+				});
+				return;
+			}
+			if (key.ctrl && (input === "g" || input === "G") && scope !== "global") {
+				setScope("global");
+				resetPendingState();
+				return;
+			}
+			if (key.ctrl && (input === "r" || input === "R") && hasRepositories) {
+				if (scope !== "repository") {
+					setScope("repository");
+					if (repoIndex < 0) {
+						setRepoIndex(0);
+					}
+					resetPendingState();
+				}
+				return;
+			}
+			if (
+				key.ctrl &&
+				(key.leftArrow || input === "[" || input === "←") &&
+				scope === "repository" &&
+				hasRepositories
+			) {
+				setRepoIndex((prev) => {
+					if (prev <= 0) {
+						return repositories.length - 1;
+					}
+					return prev - 1;
+				});
+				resetPendingState();
+				return;
+			}
+			if (
+				key.ctrl &&
+				(key.rightArrow || input === "]" || input === "→") &&
+				scope === "repository" &&
+				hasRepositories
+			) {
+				setRepoIndex((prev) => (prev + 1) % repositories.length);
+				resetPendingState();
+				return;
+			}
+		},
+		{ isActive: true },
+	);
+
+	const handleSubmit = async () => {
+		if (submitting) {
+			return;
+		}
+		const trimmedName = name.trim();
+		if (!trimmedName) {
+			setError("Prompt name is required.");
+			return;
+		}
+		const parsedLabels = parseLabelInput(labels);
+		if (parsedLabels.length === 0) {
+			setError("At least one label is required.");
+			return;
+		}
+		if (scope === "repository" && !selectedRepo) {
+			setError("Select a repository for this prompt.");
+			return;
+		}
+
+		try {
+			let plan = pendingPlan;
+			if (!plan) {
+				const config = loadConfig();
+				plan = buildCreatePromptPlan(config, {
+					name: trimmedName,
+					labels: parsedLabels,
+					repoId:
+						scope === "repository" ? selectedRepo?.repositoryId : undefined,
+					fromFilePath: fromFile.trim() || undefined,
+				});
+				if (plan.conflicts.length > 0) {
+					setPendingPlan(plan);
+					setConflicts(plan.conflicts);
+					setError(undefined);
+					return;
+				}
+			}
+			setSubmitting(true);
+			const result = await executePlan(plan);
+			setSubmitting(false);
+			onComplete(result);
+		} catch (err) {
+			setSubmitting(false);
+			setError((err as Error).message);
+			setPendingPlan(null);
+			setConflicts(undefined);
+		}
+	};
+
+	return (
+		<ModalContainer title="Create Prompt">
+			<Text>
+				Scope: {scope === "global" ? "Global" : "Repository"} (Ctrl+G for
+				global, Ctrl+R for repository)
+			</Text>
+			{scope === "repository" ? (
+				<Text color={selectedRepo ? "white" : "red"}>
+					Repository: {selectedRepo?.repositoryName ?? "None"}{" "}
+					{repositories.length > 0
+						? "(Ctrl+← / Ctrl+→ to change)"
+						: "(no repositories available)"}
+				</Text>
+			) : null}
+			<Box flexDirection="column" marginTop={1} gap={1}>
+				<Box>
+					<Text color="gray">Prompt name: </Text>
+					<TextInput
+						value={name}
+						onChange={(value) => {
+							setName(value);
+							resetPendingState();
+						}}
+						onSubmit={() => setFocusedField("labels")}
+						focus={focusedField === "name"}
+					/>
+				</Box>
+				<Box>
+					<Text color="gray">Labels (comma separated): </Text>
+					<TextInput
+						value={labels}
+						onChange={(value) => {
+							setLabels(value);
+							resetPendingState();
+						}}
+						onSubmit={() => setFocusedField("fromFile")}
+						focus={focusedField === "labels"}
+					/>
+				</Box>
+				<Box>
+					<Text color="gray">From file (optional): </Text>
+					<TextInput
+						value={fromFile}
+						onChange={(value) => {
+							setFromFile(value);
+							resetPendingState();
+						}}
+						onSubmit={handleSubmit}
+						focus={focusedField === "fromFile"}
+					/>
+				</Box>
+			</Box>
+			<Box marginTop={1} flexDirection="column" gap={1}>
+				<Text color="gray">
+					Enter to create · Tab to move between fields · Esc to cancel · Ctrl+G
+					/ Ctrl+R to switch scope · Ctrl+← / Ctrl+→ to cycle repositories
+				</Text>
+				{conflicts ? (
+					<Text color="yellow">
+						Conflicts detected: {formatConflictSummary(conflicts)}. Press Enter
+						again to override.
+					</Text>
+				) : null}
+				{submitting ? <Text color="green">Applying changes...</Text> : null}
+				{error ? <Text color="red">{error}</Text> : null}
+			</Box>
+		</ModalContainer>
+	);
+};
+
+interface EditPromptLabelsModalProps {
+	scope: PromptScope;
+	repoId?: string;
+	repoName?: string;
+	prompt: PromptSummary;
+	loadConfig: () => PromptAwareConfig;
+	executePlan: (plan: PromptPlan) => Promise<PromptCommandResult>;
+	onComplete: (result: PromptCommandResult) => void;
+	onCancel: () => void;
+}
+
+const EditPromptLabelsModal: React.FC<EditPromptLabelsModalProps> = ({
+	scope,
+	repoId,
+	repoName,
+	prompt,
+	loadConfig,
+	executePlan,
+	onComplete,
+	onCancel,
+}) => {
+	const [labels, setLabels] = useState(prompt.labels.join(", "));
+	const [error, setError] = useState<string | undefined>();
+	const [conflicts, setConflicts] = useState<LabelConflict[] | undefined>();
+	const [pendingPlan, setPendingPlan] = useState<PromptPlan | null>(null);
+	const [submitting, setSubmitting] = useState(false);
+
+	useInput(
+		(_input, key) => {
+			if (submitting) {
+				return;
+			}
+			if (key.escape) {
+				onCancel();
+			}
+		},
+		{ isActive: true },
+	);
+
+	const handleSubmit = async () => {
+		if (submitting) {
+			return;
+		}
+		const parsedLabels = parseLabelInput(labels);
+		if (parsedLabels.length === 0) {
+			setError("At least one label is required.");
+			return;
+		}
+		try {
+			let plan = pendingPlan;
+			if (!plan) {
+				const config = loadConfig();
+				plan = buildEditPromptPlan(config, {
+					name: prompt.prompt,
+					labels: parsedLabels,
+					repoId,
+				});
+				if (plan.conflicts.length > 0) {
+					setPendingPlan(plan);
+					setConflicts(plan.conflicts);
+					setError(undefined);
+					return;
+				}
+			}
+			setSubmitting(true);
+			const result = await executePlan(plan);
+			setSubmitting(false);
+			onComplete(result);
+		} catch (err) {
+			setSubmitting(false);
+			setError((err as Error).message);
+			setPendingPlan(null);
+			setConflicts(undefined);
+		}
+	};
+
+	return (
+		<ModalContainer title={`Edit Labels — ${prompt.prompt}`}>
+			<Box flexDirection="column" gap={1}>
+				<Text color="gray">
+					Context:{" "}
+					{scope === "global"
+						? "Global prompt"
+						: `Repository ${repoName ?? repoId ?? ""}`}
+				</Text>
+				<Text color="gray">Labels (comma separated):</Text>
+				<TextInput
+					value={labels}
+					onChange={(value) => {
+						setLabels(value);
+						setPendingPlan(null);
+						setConflicts(undefined);
+						setError(undefined);
+					}}
+					onSubmit={handleSubmit}
+					focus
+				/>
+				<Text color="gray">Enter to save · Esc to cancel</Text>
+				{conflicts ? (
+					<Text color="yellow">
+						Conflicts detected: {formatConflictSummary(conflicts)}. Press Enter
+						again to override.
+					</Text>
+				) : null}
+				{submitting ? <Text color="green">Updating prompt...</Text> : null}
+				{error ? <Text color="red">{error}</Text> : null}
+			</Box>
+		</ModalContainer>
+	);
+};
+
+interface EditPromptContentModalProps {
+	scope: PromptScope;
+	repoId?: string;
+	repoName?: string;
+	prompt: PromptSummary;
+	definition?: PromptDefinitionSummary;
+	loadConfig: () => PromptAwareConfig;
+	executePlan: (plan: PromptPlan) => Promise<PromptCommandResult>;
+	onComplete: (result: PromptCommandResult) => void;
+	onCancel: () => void;
+}
+
+const EditPromptContentModal: React.FC<EditPromptContentModalProps> = ({
+	scope,
+	repoId,
+	repoName,
+	prompt,
+	definition,
+	loadConfig,
+	executePlan,
+	onComplete,
+	onCancel,
+}) => {
+	const [message, setMessage] = useState<string | undefined>(
+		`Press Enter to edit ${prompt.prompt} in your editor (${
+			process.env.EDITOR || "vi"
+		}).`,
+	);
+	const [error, setError] = useState<string | undefined>();
+	const [submitting, setSubmitting] = useState(false);
+
+	useInput(
+		(_input, key) => {
+			if (submitting) {
+				return;
+			}
+			if (key.escape) {
+				onCancel();
+				return;
+			}
+			if (key.return) {
+				void (async () => {
+					try {
+						setError(undefined);
+						setMessage("Opening editor...");
+						const dir = mkdtempSync(join(tmpdir(), "cyrus-edit-"));
+						const tempPath = join(dir, `prompt-${prompt.prompt}.md`);
+						writeFileSync(tempPath, definition?.content ?? "", "utf-8");
+
+						const editor = process.env.EDITOR || "vi";
+						const result = spawnSync(editor, [tempPath], {
+							stdio: "inherit",
+						});
+						if (result.error) {
+							throw result.error;
+						}
+						if (typeof result.status === "number" && result.status !== 0) {
+							throw new Error(`${editor} exited with status ${result.status}`);
+						}
+
+						setSubmitting(true);
+						const config = loadConfig();
+						const plan = buildEditPromptPlan(config, {
+							name: prompt.prompt,
+							repoId,
+							promptFilePath: tempPath,
+						});
+						const resultPlan = await executePlan(plan);
+						setSubmitting(false);
+						onComplete(resultPlan);
+						unlinkSync(tempPath);
+					} catch (err) {
+						setSubmitting(false);
+						setError((err as Error).message);
+						setMessage("Editing cancelled. Press Esc to close.");
+					}
+				})();
+			}
+		},
+		{ isActive: true },
+	);
+
+	return (
+		<ModalContainer title={`Edit Content — ${prompt.prompt}`}>
+			<Text>{message ?? "Press Enter to edit this prompt."}</Text>
+			<Text color="gray">
+				Context:{" "}
+				{scope === "global"
+					? "Global prompt"
+					: `Repository ${repoName ?? repoId ?? ""}`}
+			</Text>
+			<Text color="gray">Esc to cancel</Text>
+			{submitting ? <Text color="green">Updating prompt...</Text> : null}
+			{error ? <Text color="red">{error}</Text> : null}
+		</ModalContainer>
+	);
+};
+
+interface DeletePromptModalProps {
+	scope: PromptScope;
+	repoId?: string;
+	repoName?: string;
+	prompt: PromptSummary;
+	loadConfig: () => PromptAwareConfig;
+	executePlan: (plan: PromptPlan) => Promise<PromptCommandResult>;
+	onComplete: (result: PromptCommandResult) => void;
+	onCancel: () => void;
+}
+
+const DeletePromptModal: React.FC<DeletePromptModalProps> = ({
+	scope,
+	repoId,
+	repoName,
+	prompt,
+	loadConfig,
+	executePlan,
+	onComplete,
+	onCancel,
+}) => {
+	const [error, setError] = useState<string | undefined>();
+	const [submitting, setSubmitting] = useState(false);
+
+	useInput(
+		(input, key) => {
+			if (submitting) {
+				return;
+			}
+			if (key.escape || input === "n" || input === "N") {
+				onCancel();
+				return;
+			}
+			if (input === "y" || input === "Y") {
+				void (async () => {
+					try {
+						setSubmitting(true);
+						const config = loadConfig();
+						const plan = buildDeletePromptPlan(config, {
+							name: prompt.prompt,
+							repoId,
+						});
+						const resultPlan = await executePlan(plan);
+						setSubmitting(false);
+						onComplete(resultPlan);
+					} catch (err) {
+						setSubmitting(false);
+						setError((err as Error).message);
+					}
+				})();
+			}
+		},
+		{ isActive: true },
+	);
+
+	return (
+		<ModalContainer title={`Delete Prompt — ${prompt.prompt}`}>
+			<Text color="yellow">
+				This will remove the custom prompt and its markdown file. Are you sure?
+				(y/N)
+			</Text>
+			<Text color="gray">
+				Context:{" "}
+				{scope === "global"
+					? "Global prompt"
+					: `Repository ${repoName ?? repoId ?? ""}`}
+			</Text>
+			{submitting ? <Text color="green">Deleting prompt...</Text> : null}
+			{error ? <Text color="red">{error}</Text> : null}
+		</ModalContainer>
+	);
+};
+
 export default PromptTuiApp;
+export {
+	CreatePromptModal,
+	EditPromptLabelsModal,
+	EditPromptContentModal,
+	DeletePromptModal,
+	parseLabelInput,
+	formatConflictSummary,
+	formatResultMessage,
+};

@@ -29,6 +29,7 @@ export interface RepositoryPromptSummary {
 
 export interface SummarizePromptOptions {
 	repoId?: string;
+	promptDefaults?: Record<string, unknown> | undefined;
 }
 
 export interface PromptDefinitionSummary {
@@ -38,6 +39,7 @@ export interface PromptDefinitionSummary {
 	scope: "global" | "repository";
 	repositoryId?: string;
 	content?: string;
+	labels?: string[];
 }
 
 export interface PromptInventory {
@@ -50,14 +52,15 @@ const __dirname = dirname(__filename);
 
 const BUILT_IN_PROMPT_CACHE = new Map<string, string | undefined>();
 
-function resolveBuiltInPromptDirectory(): string | undefined {
-	const candidates = [
-		resolve(__dirname, "packages", "edge-worker", "prompts"),
-		resolve(__dirname, "..", "packages", "edge-worker", "prompts"),
-		resolve(__dirname, "..", "..", "packages", "edge-worker", "prompts"),
-	];
+const BUILT_IN_PROMPT_DIR_CANDIDATES = [
+	fileURLToPath(new URL("../../packages/edge-worker/prompts", import.meta.url)),
+	resolve(__dirname, "packages", "edge-worker", "prompts"),
+	resolve(__dirname, "..", "packages", "edge-worker", "prompts"),
+	resolve(__dirname, "..", "..", "packages", "edge-worker", "prompts"),
+];
 
-	for (const candidate of candidates) {
+function resolveBuiltInPromptDirectory(): string | undefined {
+	for (const candidate of BUILT_IN_PROMPT_DIR_CANDIDATES) {
 		if (existsSync(candidate)) {
 			return candidate;
 		}
@@ -172,6 +175,82 @@ function buildPromptEntries(
 	return entries;
 }
 
+function buildGlobalPromptEntries(
+	promptDefaults: Record<string, unknown> | undefined,
+): Map<string, InternalPromptEntry> {
+	const entries = new Map<string, InternalPromptEntry>();
+	if (!promptDefaults) {
+		return entries;
+	}
+
+	for (const [promptName, rawConfig] of Object.entries(promptDefaults)) {
+		const labels = normalizeLabels(rawConfig);
+		const source: PromptSource = BUILT_IN_PROMPT_SET.has(promptName)
+			? "built-in"
+			: "custom";
+		const rawObject =
+			rawConfig && typeof rawConfig === "object"
+				? (rawConfig as Record<string, unknown>)
+				: undefined;
+		const hasPromptPath = typeof rawObject?.promptPath === "string";
+		const hasLabels = labels.length > 0;
+		const isRecognisedPrompt =
+			BUILT_IN_PROMPT_SET.has(promptName) || hasPromptPath || hasLabels;
+
+		if (!isRecognisedPrompt) {
+			continue;
+		}
+		entries.set(promptName, {
+			prompt: promptName,
+			source,
+			labels,
+			rawConfig,
+		});
+	}
+
+	return entries;
+}
+
+function ensureDefinition(
+	definitions: Map<string, PromptDefinitionSummary>,
+	entry: InternalPromptEntry,
+	scope: "global" | "repository",
+	repositoryId?: string,
+): string {
+	const effectiveScope = entry.source === "built-in" ? "global" : scope;
+	const definitionId = resolveDefinitionId(
+		entry.prompt,
+		entry.source,
+		effectiveScope === "repository" ? (repositoryId ?? "") : "global",
+	);
+
+	if (!definitions.has(definitionId)) {
+		const content = loadPromptContent(entry);
+		definitions.set(definitionId, {
+			id: definitionId,
+			prompt: entry.prompt,
+			source: entry.source,
+			scope: effectiveScope,
+			repositoryId: effectiveScope === "repository" ? repositoryId : undefined,
+			content,
+			labels: entry.labels,
+		});
+	} else {
+		const existing = definitions.get(definitionId)!;
+		if (!existing.content) {
+			existing.content = loadPromptContent(entry);
+		}
+		if (
+			(!existing.labels || existing.labels.length === 0) &&
+			entry.labels.length > 0
+		) {
+			existing.labels = entry.labels;
+		}
+	}
+
+	return definitionId;
+}
+
 function resolveDefinitionId(
 	prompt: string,
 	source: PromptSource,
@@ -207,17 +286,22 @@ export function summarizePromptMappings(
 	repositories: RepositoryConfig[] | undefined,
 	options: SummarizePromptOptions = {},
 ): PromptInventory {
-	if (!repositories || repositories.length === 0) {
-		return { definitions: [], repositories: [] };
-	}
+	const hasRepositories =
+		Array.isArray(repositories) && repositories.length > 0;
+	const sourceRepositories = hasRepositories ? repositories! : [];
 
 	const { repoId } = options;
 	const targetRepositories = repoId
-		? repositories.filter((repository) => repository.id === repoId)
-		: repositories;
+		? sourceRepositories.filter((repository) => repository.id === repoId)
+		: sourceRepositories;
 
 	const definitions = new Map<string, PromptDefinitionSummary>();
 	const repositorySummaries: RepositoryPromptSummary[] = [];
+
+	const globalEntries = buildGlobalPromptEntries(options.promptDefaults);
+	for (const entry of globalEntries.values()) {
+		ensureDefinition(definitions, entry, "global", "global");
+	}
 
 	for (const repository of targetRepositories) {
 		const entries = buildPromptEntries(repository);
@@ -231,23 +315,12 @@ export function summarizePromptMappings(
 
 		const orderedEntries = [...builtIns, ...customPrompts];
 		const prompts: PromptSummary[] = orderedEntries.map((entry) => {
-			const definitionId = resolveDefinitionId(
-				entry.prompt,
-				entry.source,
+			const definitionId = ensureDefinition(
+				definitions,
+				entry,
+				"repository",
 				repository.id,
 			);
-
-			if (!definitions.has(definitionId)) {
-				const content = loadPromptContent(entry);
-				definitions.set(definitionId, {
-					id: definitionId,
-					prompt: entry.prompt,
-					source: entry.source,
-					scope: entry.source === "built-in" ? "global" : "repository",
-					repositoryId: entry.source === "built-in" ? undefined : repository.id,
-					content,
-				});
-			}
 
 			return {
 				prompt: entry.prompt,
@@ -264,10 +337,12 @@ export function summarizePromptMappings(
 		});
 	}
 
+	const sortedDefinitions = Array.from(definitions.values()).sort((a, b) =>
+		a.id.localeCompare(b.id),
+	);
+
 	return {
-		definitions: Array.from(definitions.values()).sort((a, b) =>
-			a.id.localeCompare(b.id),
-		),
+		definitions: sortedDefinitions,
 		repositories: repositorySummaries,
 	};
 }

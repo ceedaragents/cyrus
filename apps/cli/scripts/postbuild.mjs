@@ -19,6 +19,18 @@ const artifacts = [
   ["dist/apps/cli/prompt-tui.js.map", "dist/prompt-tui.js.map"],
   ["dist/apps/cli/prompt-tui.d.ts", "dist/prompt-tui.d.ts"],
   ["dist/apps/cli/prompt-tui.d.ts.map", "dist/prompt-tui.d.ts.map"],
+  ["dist/apps/cli/prompt-paths.js", "dist/prompt-paths.js"],
+  ["dist/apps/cli/prompt-paths.js.map", "dist/prompt-paths.js.map"],
+  ["dist/apps/cli/prompt-paths.d.ts", "dist/prompt-paths.d.ts"],
+  ["dist/apps/cli/prompt-paths.d.ts.map", "dist/prompt-paths.d.ts.map"],
+  ["dist/apps/cli/prompt-mutators.js", "dist/prompt-mutators.js"],
+  ["dist/apps/cli/prompt-mutators.js.map", "dist/prompt-mutators.js.map"],
+  ["dist/apps/cli/prompt-mutators.d.ts", "dist/prompt-mutators.d.ts"],
+  ["dist/apps/cli/prompt-mutators.d.ts.map", "dist/prompt-mutators.d.ts.map"],
+  ["dist/apps/cli/prompt-executor.js", "dist/prompt-executor.js"],
+  ["dist/apps/cli/prompt-executor.js.map", "dist/prompt-executor.js.map"],
+  ["dist/apps/cli/prompt-executor.d.ts", "dist/prompt-executor.d.ts"],
+  ["dist/apps/cli/prompt-executor.d.ts.map", "dist/prompt-executor.d.ts.map"],
 ];
 
 for (const [fromRel, toRel] of artifacts) {

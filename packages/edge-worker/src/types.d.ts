@@ -43,6 +43,18 @@ export interface RepositoryLabelAgentRoutingRule {
 /**
  * Configuration for a single repository/workspace pair
  */
+export type PromptToolPreset =
+	| string[]
+	| "readOnly"
+	| "safe"
+	| "all"
+	| "coordinator";
+export interface PromptRuleConfig {
+	labels?: string[];
+	allowedTools?: PromptToolPreset;
+	disallowedTools?: string[];
+	promptPath?: string;
+}
 export interface RepositoryConfig {
 	id: string;
 	name: string;
@@ -67,26 +79,11 @@ export interface RepositoryConfig {
 	runnerModels?: RepositoryRunnerModels;
 	labelAgentRouting?: RepositoryLabelAgentRoutingRule[];
 	labelPrompts?: {
-		debugger?: {
-			labels: string[];
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		builder?: {
-			labels: string[];
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		scoper?: {
-			labels: string[];
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		orchestrator?: {
-			labels: string[];
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
+		debugger?: PromptRuleConfig | string[];
+		builder?: PromptRuleConfig | string[];
+		scoper?: PromptRuleConfig | string[];
+		orchestrator?: PromptRuleConfig | string[];
+		[key: string]: PromptRuleConfig | string[] | undefined;
 	};
 }
 /**
@@ -108,22 +105,11 @@ export interface EdgeWorkerConfig {
 	cliDefaults?: CliDefaults;
 	credentials?: EdgeCredentials;
 	promptDefaults?: {
-		debugger?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		builder?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		scoper?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		orchestrator?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
+		debugger?: PromptRuleConfig;
+		builder?: PromptRuleConfig;
+		scoper?: PromptRuleConfig;
+		orchestrator?: PromptRuleConfig;
+		[key: string]: PromptRuleConfig | undefined;
 	};
 	repositories: RepositoryConfig[];
 	cyrusHome: string;

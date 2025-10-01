@@ -1,6 +1,13 @@
 import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import {
+	basename,
+	dirname,
+	extname,
+	isAbsolute,
+	join,
+	resolve,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type Comment,
@@ -66,6 +73,7 @@ import type {
 	EdgeWorkerConfig,
 	EdgeWorkerEvents,
 	LinearAgentSessionData,
+	PromptRuleConfig,
 	RepositoryConfig,
 } from "./types.js";
 
@@ -93,6 +101,17 @@ export declare interface EdgeWorker {
 
 const LAST_MESSAGE_MARKER =
 	"\n\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
+
+const MODULE_FILENAME = fileURLToPath(import.meta.url);
+const MODULE_DIRNAME = dirname(MODULE_FILENAME);
+const BUILT_IN_PROMPTS_DIR = join(MODULE_DIRNAME, "..", "prompts");
+const BUILT_IN_PROMPT_TYPES = [
+	"debugger",
+	"builder",
+	"scoper",
+	"orchestrator",
+] as const;
+const BUILT_IN_PROMPT_TYPE_SET = new Set<string>(BUILT_IN_PROMPT_TYPES);
 
 /**
  * Unified edge worker that **orchestrates**
@@ -925,12 +944,7 @@ export class EdgeWorker extends EventEmitter {
 		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
-		let promptType:
-			| "debugger"
-			| "builder"
-			| "scoper"
-			| "orchestrator"
-			| undefined;
+		let promptType: string | undefined;
 
 		if (!isMentionTriggered || isLabelBasedPromptRequested) {
 			// Determine system prompt based on labels (delegation case or /label-based-prompt command)
@@ -1630,6 +1644,90 @@ export class EdgeWorker extends EventEmitter {
 		return new Error(fallback);
 	}
 
+	private buildPromptPathCandidates(promptPath: string): string[] {
+		if (!promptPath) {
+			return [];
+		}
+
+		const trimmed = promptPath.trim();
+		if (!trimmed) {
+			return [];
+		}
+
+		const candidates = new Set<string>();
+
+		if (trimmed.startsWith("~/")) {
+			const relativeSegment = trimmed.slice(2);
+			if (this.cyrusHome) {
+				candidates.add(join(this.cyrusHome, relativeSegment));
+			}
+			const userHome = process.env.HOME;
+			if (userHome) {
+				candidates.add(join(userHome, relativeSegment));
+			}
+		}
+
+		if (isAbsolute(trimmed)) {
+			candidates.add(trimmed);
+		} else {
+			if (this.cyrusHome) {
+				candidates.add(resolve(this.cyrusHome, trimmed));
+			}
+			candidates.add(resolve(trimmed));
+		}
+
+		return Array.from(candidates);
+	}
+
+	private async loadPromptTemplateFromPath(
+		promptName: string,
+		promptPath: string,
+	): Promise<{ prompt: string; version?: string } | undefined> {
+		const candidates = this.buildPromptPathCandidates(promptPath);
+		if (candidates.length === 0) {
+			return undefined;
+		}
+
+		let lastError: unknown;
+		for (const candidate of candidates) {
+			try {
+				const promptContent = await readFile(candidate, "utf-8");
+				const promptVersion = this.extractVersionTag(promptContent);
+				return { prompt: promptContent, version: promptVersion };
+			} catch (error) {
+				lastError = error;
+			}
+		}
+
+		const errorMessage =
+			lastError instanceof Error
+				? lastError.message
+				: lastError
+					? String(lastError)
+					: "unknown error";
+		console.warn(
+			`[EdgeWorker] Failed to load custom prompt "${promptName}" from ${promptPath}: ${errorMessage}`,
+		);
+		return undefined;
+	}
+
+	private async loadBuiltInPrompt(
+		promptName: string,
+	): Promise<{ prompt: string; version?: string } | undefined> {
+		try {
+			const promptPath = join(BUILT_IN_PROMPTS_DIR, `${promptName}.md`);
+			const promptContent = await readFile(promptPath, "utf-8");
+			const promptVersion = this.extractVersionTag(promptContent);
+			return { prompt: promptContent, version: promptVersion };
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to load built-in ${promptName} prompt template:`,
+				error,
+			);
+			return undefined;
+		}
+	}
+
 	/**
 	 * Determine system prompt based on issue labels and repository configuration
 	 */
@@ -1640,7 +1738,7 @@ export class EdgeWorker extends EventEmitter {
 		| {
 				prompt: string;
 				version?: string;
-				type?: "debugger" | "builder" | "scoper" | "orchestrator";
+				type?: string;
 		  }
 		| undefined
 	> {
@@ -1648,57 +1746,98 @@ export class EdgeWorker extends EventEmitter {
 			return undefined;
 		}
 
-		// Check each prompt type for matching labels
-		const promptTypes = [
-			"debugger",
-			"builder",
-			"scoper",
-			"orchestrator",
-		] as const;
+		const labelPrompts = repository.labelPrompts;
+		const orderedEntries: Array<[string, PromptRuleConfig | string[]]> = [];
 
-		for (const promptType of promptTypes) {
-			const promptConfig = repository.labelPrompts[promptType];
-			// Handle both old array format and new object format for backward compatibility
-			const configuredLabels = Array.isArray(promptConfig)
-				? promptConfig
-				: promptConfig?.labels;
+		for (const builtIn of BUILT_IN_PROMPT_TYPES) {
+			const config = labelPrompts[builtIn];
+			if (config) {
+				orderedEntries.push([builtIn, config]);
+			}
+		}
 
-			if (configuredLabels?.some((label) => labels.includes(label))) {
-				try {
-					// Load the prompt template from file
-					const __filename = fileURLToPath(import.meta.url);
-					const __dirname = dirname(__filename);
-					const promptPath = join(
-						__dirname,
-						"..",
-						"prompts",
-						`${promptType}.md`,
-					);
-					const promptContent = await readFile(promptPath, "utf-8");
-					console.log(
-						`[EdgeWorker] Using ${promptType} system prompt for labels: ${labels.join(", ")}`,
-					);
+		for (const [promptName, config] of Object.entries(labelPrompts)) {
+			if (!BUILT_IN_PROMPT_TYPE_SET.has(promptName) && config) {
+				orderedEntries.push([
+					promptName,
+					config as PromptRuleConfig | string[],
+				]);
+			}
+		}
 
-					// Extract and log version tag if present
-					const promptVersion = this.extractVersionTag(promptContent);
-					if (promptVersion) {
-						console.log(
-							`[EdgeWorker] ${promptType} system prompt version: ${promptVersion}`,
-						);
-					}
+		for (const [promptName, rawConfig] of orderedEntries) {
+			const configuredLabels = Array.isArray(rawConfig)
+				? rawConfig
+				: rawConfig?.labels;
 
-					return {
-						prompt: promptContent,
-						version: promptVersion,
-						type: promptType,
-					};
-				} catch (error) {
-					console.error(
-						`[EdgeWorker] Failed to load ${promptType} prompt template:`,
-						error,
-					);
-					return undefined;
+			if (!configuredLabels?.some((label) => labels.includes(label))) {
+				continue;
+			}
+
+			let promptSource: "repository" | "global" | "built-in" = "built-in";
+			let promptResult: { prompt: string; version?: string } | undefined;
+
+			const promptRule = Array.isArray(rawConfig)
+				? undefined
+				: (rawConfig as PromptRuleConfig);
+
+			if (promptRule?.promptPath) {
+				const repositoryPrompt = await this.loadPromptTemplateFromPath(
+					promptName,
+					promptRule.promptPath,
+				);
+				if (repositoryPrompt) {
+					promptResult = repositoryPrompt;
+					promptSource = "repository";
 				}
+			}
+
+			if (!promptResult) {
+				const globalRule = this.config.promptDefaults?.[promptName];
+				if (globalRule?.promptPath) {
+					const globalPrompt = await this.loadPromptTemplateFromPath(
+						promptName,
+						globalRule.promptPath,
+					);
+					if (globalPrompt) {
+						promptResult = globalPrompt;
+						promptSource = "global";
+					}
+				}
+			}
+
+			if (!promptResult) {
+				const builtInPrompt = await this.loadBuiltInPrompt(promptName);
+				if (builtInPrompt) {
+					promptResult = builtInPrompt;
+					promptSource = "built-in";
+				}
+			}
+
+			if (promptResult) {
+				const labelList = labels.join(", ");
+				const sourceDescription =
+					promptSource === "repository"
+						? "repository custom prompt"
+						: promptSource === "global"
+							? "global default prompt"
+							: "built-in prompt";
+
+				console.log(
+					`[EdgeWorker] Using ${promptName} system prompt (${sourceDescription}) for labels: ${labelList}`,
+				);
+
+				if (promptResult.version) {
+					console.log(
+						`[EdgeWorker] ${promptName} system prompt version: ${promptResult.version}`,
+					);
+				}
+
+				return {
+					prompt: promptResult.prompt,
+					version: promptResult.version,
+					type: promptName,
+				};
 			}
 		}
 
@@ -3258,15 +3397,23 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildDisallowedTools(
 		repository: RepositoryConfig,
-		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
+		promptType?: string,
 	): string[] {
 		let disallowedTools: string[] = [];
 		let toolSource = "";
 
 		// Priority order (same as allowedTools):
 		// 1. Repository-specific prompt type configuration
-		if (promptType && repository.labelPrompts?.[promptType]?.disallowedTools) {
-			disallowedTools = repository.labelPrompts[promptType].disallowedTools;
+		const promptConfig = promptType
+			? repository.labelPrompts?.[promptType]
+			: undefined;
+		if (
+			promptType &&
+			promptConfig &&
+			!Array.isArray(promptConfig) &&
+			promptConfig.disallowedTools
+		) {
+			disallowedTools = promptConfig.disallowedTools;
 			toolSource = `repository label prompt (${promptType})`;
 		}
 		// 2. Global prompt type defaults
@@ -3307,17 +3454,23 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildAllowedTools(
 		repository: RepositoryConfig,
-		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
+		promptType?: string,
 	): string[] {
 		let baseTools: string[] = [];
 		let toolSource = "";
 
 		// Priority order:
 		// 1. Repository-specific prompt type configuration
-		if (promptType && repository.labelPrompts?.[promptType]?.allowedTools) {
-			baseTools = this.resolveToolPreset(
-				repository.labelPrompts[promptType].allowedTools,
-			);
+		const promptConfig = promptType
+			? repository.labelPrompts?.[promptType]
+			: undefined;
+		if (
+			promptType &&
+			promptConfig &&
+			!Array.isArray(promptConfig) &&
+			promptConfig.allowedTools
+		) {
+			baseTools = this.resolveToolPreset(promptConfig.allowedTools);
 			toolSource = `repository label prompt (${promptType})`;
 		}
 		// 2. Global prompt type defaults
