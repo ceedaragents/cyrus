@@ -3,8 +3,8 @@
 	"version": "0.0.1",
 	"description": "Shared runner abstraction for Cyrus multi-CLI support",
 	"type": "module",
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"main": "dist/agent-runner/src/index.js",
+	"types": "dist/agent-runner/src/index.d.ts",
 	"files": [
 		"dist"
 	],
