@@ -9,7 +9,7 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "echo 'Using pre-built dist files'",
+		"build": "tsc",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
