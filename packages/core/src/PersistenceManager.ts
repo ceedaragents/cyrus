@@ -30,6 +30,7 @@ export interface SerializedSessionRunnerSelection {
 	provider?: string;
 	serverUrl?: string;
 	issueId: string;
+	resumeSessionId?: string;
 }
 
 export interface SerializableEdgeWorkerState {
@@ -45,6 +46,9 @@ export interface SerializableEdgeWorkerState {
 	sessionRunnerSelections?: Record<string, SerializedSessionRunnerSelection>;
 	// Completed non-Claude sessions so we suppress late events on resume
 	finalizedNonClaudeSessions?: string[];
+	// Cached session ids for resume flows
+	openCodeSessionCache?: Record<string, string>;
+	codexSessionCache?: Record<string, string>;
 }
 
 /**
@@ -80,7 +84,7 @@ export class PersistenceManager {
 			await this.ensurePersistenceDirectory();
 			const stateFile = this.getEdgeWorkerStateFilePath();
 			const stateData = {
-				version: "2.0",
+				version: "2.1",
 				savedAt: new Date().toISOString(),
 				state,
 			};
@@ -104,7 +108,8 @@ export class PersistenceManager {
 			const stateData = JSON.parse(await readFile(stateFile, "utf8"));
 
 			// Validate state structure
-			if (!stateData.state || stateData.version !== "2.0") {
+			const supportedVersions = ["2.0", "2.1"];
+			if (!stateData.state || !supportedVersions.includes(stateData.version)) {
 				console.warn(`Invalid or outdated state file, ignoring`);
 				return null;
 			}

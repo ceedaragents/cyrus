@@ -73,6 +73,7 @@ describe("CodexRunnerAdapter", () => {
 		});
 
 		expect(startResult.capabilities?.jsonStream).toBe(true);
+		expect(startResult.sessionId).toBeUndefined();
 		expect(spawnMock).toHaveBeenCalledWith(
 			"codex",
 			[
@@ -140,8 +141,9 @@ describe("CodexRunnerAdapter", () => {
 		mockChild.emit("close", 0, null);
 		await flushAsync();
 
-		expect(events).toHaveLength(8);
+		expect(events).toHaveLength(9);
 		const [
+			sessionEvent,
 			sessionLog,
 			thought,
 			action,
@@ -151,6 +153,7 @@ describe("CodexRunnerAdapter", () => {
 			errorLog,
 			errorEvent,
 		] = events as [
+			RunnerEvent & { kind: "session"; id: string },
 			RunnerEvent,
 			RunnerEvent,
 			RunnerEvent & { kind: "action"; detail: string; name: string },
@@ -160,6 +163,8 @@ describe("CodexRunnerAdapter", () => {
 			RunnerEvent,
 			RunnerEvent & { kind: "error"; error: Error },
 		];
+
+		expect(sessionEvent).toEqual({ kind: "session", id: "session-123" });
 
 		expect(sessionLog).toEqual({
 			kind: "log",
@@ -222,5 +227,39 @@ describe("CodexRunnerAdapter", () => {
 		await flushAsync();
 		const finals = events.filter((event) => event.kind === "final");
 		expect(finals).toHaveLength(1);
+	});
+
+	it("passes resume arguments when resumeSessionId is provided", async () => {
+		const mockChild = new MockChildProcess();
+		spawnMock.mockReturnValue(
+			mockChild as unknown as ChildProcessWithoutNullStreams,
+		);
+
+		const adapter = new CodexRunnerAdapter({
+			type: "codex",
+			cwd: "/tmp/workspace",
+			prompt: "continue please",
+			resumeSessionId: "session-xyz",
+		});
+
+		await adapter.start(() => {
+			// No-op for this assertion-focused test
+		});
+
+		expect(spawnMock).toHaveBeenCalledWith(
+			"codex",
+			[
+				"exec",
+				"--experimental-json",
+				"--cd",
+				"/tmp/workspace",
+				"resume",
+				"session-xyz",
+				"continue please",
+			],
+			expect.objectContaining({ cwd: "/tmp/workspace" }),
+		);
+
+		mockChild.emit("close", 0, null);
 	});
 });

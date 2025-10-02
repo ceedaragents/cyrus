@@ -3,6 +3,21 @@ import { toError } from "../utils/errors.js";
 import { pipeStreamLines } from "../utils/stream.js";
 
 const LAST_MESSAGE_MARKER_REGEX = /___LAST_MESSAGE_MARKER___/g;
+const IGNORED_TEXT_KEYS = new Set([
+	"type",
+	"role",
+	"name",
+	"item_type",
+	"status",
+	"id",
+	"item_id",
+	"session_id",
+	"command",
+	"args",
+	"exit_code",
+	"aggregated_output",
+]);
+const ITEM_ID_PATTERN = /^item_\d+$/i;
 export class CodexRunnerAdapter {
 	config;
 	child;
@@ -12,6 +27,11 @@ export class CodexRunnerAdapter {
 	}
 	async start(onEvent) {
 		const args = ["exec", "--experimental-json", "--cd", this.config.cwd];
+		// Default to Codex's "full auto" mode so the agent can write and reach the network
+		// unless the caller explicitly overrides sandbox/approval behaviour via config.
+		if (!this.config.sandbox && !this.config.approvalPolicy) {
+			args.push("--full-auto");
+		}
 		if (this.config.model) {
 			args.push("-m", this.config.model);
 		}
@@ -21,7 +41,11 @@ export class CodexRunnerAdapter {
 		if (this.config.sandbox) {
 			args.push("--sandbox", this.config.sandbox);
 		}
-		args.push(this.config.prompt);
+		if (this.config.resumeSessionId) {
+			args.push("resume", this.config.resumeSessionId, this.config.prompt);
+		} else {
+			args.push(this.config.prompt);
+		}
 		const env = { ...process.env, ...(this.config.env ?? {}) };
 		try {
 			this.child = spawn("codex", args, {
@@ -143,7 +167,9 @@ export class CodexRunnerAdapter {
 			}
 		}
 		if (type === "session.created" && typeof payload.session_id === "string") {
-			this.emitLog(onEvent, `[codex:session] ${payload.session_id}`);
+			const sessionId = payload.session_id;
+			onEvent({ kind: "session", id: sessionId });
+			this.emitLog(onEvent, `[codex:session] ${sessionId}`);
 			return;
 		}
 		if (this.isTelemetryType(type)) {
@@ -157,7 +183,7 @@ export class CodexRunnerAdapter {
 		if (this.finalDelivered) {
 			return;
 		}
-		const text = this.extractText(payload);
+		const text = this.stripItemTokens(this.extractText(payload));
 		if (text) {
 			onEvent({ kind: "thought", text });
 		}
@@ -343,8 +369,23 @@ export class CodexRunnerAdapter {
 		if (!text) {
 			return undefined;
 		}
-		const cleaned = text.replace(LAST_MESSAGE_MARKER_REGEX, "").trim();
-		return cleaned.length > 0 ? cleaned : undefined;
+		const withoutMarkerAndIds = text
+			.replace(LAST_MESSAGE_MARKER_REGEX, "")
+			.replace(/\bitem_\d+\b/gi, "");
+		return this.stripItemTokens(withoutMarkerAndIds);
+	}
+	stripItemTokens(text) {
+		if (!text) {
+			return undefined;
+		}
+		const cleanedLines = text
+			.split(/\r?\n/)
+			.map((line) => line.replace(/\bitem_\d+\b/gi, "").trim())
+			.filter((line) => line.length > 0 && !ITEM_ID_PATTERN.test(line));
+		if (cleanedLines.length === 0) {
+			return undefined;
+		}
+		return cleanedLines.join("\n");
 	}
 	extractText(payload) {
 		const pieces = [];
@@ -355,7 +396,7 @@ export class CodexRunnerAdapter {
 			}
 			if (typeof value === "string") {
 				const trimmed = value.trim();
-				if (trimmed.length > 0) {
+				if (trimmed.length > 0 && !ITEM_ID_PATTERN.test(trimmed)) {
 					pieces.push(trimmed);
 				}
 				return;
@@ -384,17 +425,11 @@ export class CodexRunnerAdapter {
 				if (nested && (Array.isArray(nested) || typeof nested === "object")) {
 					walk(nested);
 				} else if (typeof nested === "string") {
-					if (
-						key === "type" ||
-						key === "role" ||
-						key === "name" ||
-						key === "item_type" ||
-						key === "status"
-					) {
+					if (IGNORED_TEXT_KEYS.has(key)) {
 						continue;
 					}
 					const trimmed = nested.trim();
-					if (trimmed.length > 0) {
+					if (trimmed.length > 0 && !ITEM_ID_PATTERN.test(trimmed)) {
 						pieces.push(trimmed);
 					}
 				}

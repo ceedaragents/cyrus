@@ -28,6 +28,7 @@ export declare class CodexRunnerAdapter implements Runner {
 	private extractCommandDetail;
 	private safeJsonStringify;
 	private sanitizeAssistantText;
+	private stripItemTokens;
 	private extractText;
 }
 //# sourceMappingURL=CodexRunnerAdapter.d.ts.map

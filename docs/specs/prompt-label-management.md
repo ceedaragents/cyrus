@@ -165,15 +165,17 @@ features easily.
 - Keep the plan junior-developer friendly by referencing shared utilities and
   coding patterns (e.g., how to add a new modal, where to place unit tests).
 
-### Routing Helper
+### Routing Helper (Planned)
 
 `cyrus labels init-default-routing [--repo <id>] [--force]`
 
-- Seeds (or replaces if `--force`) each target repository’s `labelAgentRouting`
-  with three rules: codex/cli-codex → Codex, opencode/cli-opencode → OpenCode,
-  claude/cli-claude → Claude.
-- Leaves `model`/`provider` empty so runner defaults apply.
-- No changes when rules already match unless `--force`.
+- *Status:* not implemented yet. Until the command ships, operators should edit
+  `config.json` manually or use local scripts to seed routing defaults.
+- Once delivered, it will seed (or replace when `--force`) each target
+  repository’s `labelAgentRouting` with three rules: codex/cli-codex → Codex,
+  opencode/cli-opencode → OpenCode, claude/cli-claude → Claude.
+- The helper will leave `model`/`provider` empty so runner defaults apply and
+  skip repos that already match the pattern unless `--force` is provided.
 
 ## Data Model Touch Points
 

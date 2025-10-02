@@ -13,6 +13,7 @@ export interface SerializedSessionRunnerSelection {
 	provider?: string;
 	serverUrl?: string;
 	issueId: string;
+	resumeSessionId?: string;
 }
 
 export interface SerializableEdgeWorkerState {
@@ -24,6 +25,8 @@ export interface SerializableEdgeWorkerState {
 	childToParentAgentSession?: Record<string, string>;
 	sessionRunnerSelections?: Record<string, SerializedSessionRunnerSelection>;
 	finalizedNonClaudeSessions?: string[];
+	openCodeSessionCache?: Record<string, string>;
+	codexSessionCache?: Record<string, string>;
 }
 /**
  * Manages persistence of critical mappings to survive restarts

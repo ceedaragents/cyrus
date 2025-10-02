@@ -14,6 +14,8 @@ export interface CodexRunnerOptions extends RunnerConfigBase {
 	model?: string;
 	sandbox?: "read-only" | "workspace-write" | "danger-full-access";
 	approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never";
+	/** Existing Codex session id to resume (when continuing a conversation). */
+	resumeSessionId?: string;
 	/**
 	 * Environment variables to pass through to the spawned process. Defaults to process.env.
 	 */
@@ -68,6 +70,10 @@ export type RunnerEvent =
 	| {
 			kind: "error";
 			error: Error;
+	  }
+	| {
+			kind: "session";
+			id: string;
 	  };
 export interface RunnerStartResult {
 	sessionId?: string;
