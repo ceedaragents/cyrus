@@ -6,6 +6,6 @@
 		"moduleResolution": "NodeNext",
 		"jsx": "react-jsx"
 	},
-	"include": ["*.ts", "*.tsx", "types/**/*.d.ts"],
+	"include": ["*.ts", "*.tsx"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
