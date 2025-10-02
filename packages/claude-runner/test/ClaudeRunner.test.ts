@@ -121,8 +121,8 @@ describe("ClaudeRunner", () => {
 			expect(mockQuery).toHaveBeenCalledWith({
 				prompt: "Hello Claude",
 				options: {
-					model: "opus",
-					fallbackModel: "sonnet",
+					model: "sonnet",
+					fallbackModel: "haiku",
 					abortController: expect.any(AbortController),
 					cwd: "/tmp/test",
 					systemPrompt: { type: "preset", preset: "claude_code" },
@@ -150,8 +150,8 @@ describe("ClaudeRunner", () => {
 			expect(mockQuery).toHaveBeenCalledWith({
 				prompt: "test",
 				options: {
-					model: "opus",
-					fallbackModel: "sonnet",
+					model: "sonnet",
+					fallbackModel: "haiku",
 					abortController: expect.any(AbortController),
 					cwd: "/tmp/test",
 					systemPrompt: { type: "preset", preset: "claude_code" },
@@ -179,8 +179,8 @@ describe("ClaudeRunner", () => {
 			expect(mockQuery).toHaveBeenCalledWith({
 				prompt: "test",
 				options: {
-					model: "opus",
-					fallbackModel: "sonnet",
+					model: "sonnet",
+					fallbackModel: "haiku",
 					abortController: expect.any(AbortController),
 					cwd: "/tmp/test",
 					systemPrompt: "You are a helpful assistant",

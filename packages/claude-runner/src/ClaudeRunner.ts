@@ -339,8 +339,8 @@ export class ClaudeRunner extends EventEmitter {
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
 				options: {
-					model: this.config.model || "opus",
-					fallbackModel: this.config.fallbackModel || "sonnet",
+					model: this.config.model || "sonnet",
+					fallbackModel: this.config.fallbackModel || "haiku",
 					abortController: this.abortController,
 					// Use Claude Code preset by default to maintain backward compatibility
 					// This can be overridden if systemPrompt is explicitly provided
