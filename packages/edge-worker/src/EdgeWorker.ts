@@ -86,6 +86,7 @@ type RunnerSelection = {
 
 interface SessionRunnerMetadata extends RunnerSelection {
 	issueId: string;
+	resumeSessionId?: string;
 }
 
 export declare interface EdgeWorker {
@@ -135,6 +136,8 @@ export class EdgeWorker extends EventEmitter {
 		new Map();
 	private nonClaudeRunners: Map<string, Runner> = new Map();
 	private openCodeSessionCache: Map<string, string> = new Map();
+
+	private codexSessionCache: Map<string, string> = new Map();
 	private finalizedNonClaudeSessions: Set<string> = new Set();
 
 	constructor(config: EdgeWorkerConfig) {
@@ -1163,6 +1166,7 @@ export class EdgeWorker extends EventEmitter {
 			this.sessionRunnerSelections.set(linearAgentActivitySessionId, {
 				...newSelection,
 				issueId: newFullIssue.id,
+				resumeSessionId: undefined,
 			});
 
 			// Save state and emit events for new session
@@ -1314,6 +1318,8 @@ export class EdgeWorker extends EventEmitter {
 			}
 			if (sessionRunnerSelection?.type === "opencode") {
 				this.openCodeSessionCache.delete(linearAgentActivitySessionId);
+			} else if (sessionRunnerSelection?.type === "codex") {
+				this.codexSessionCache.delete(linearAgentActivitySessionId);
 			}
 			const issueTitle = issue.title || "this issue";
 			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
@@ -1439,6 +1445,8 @@ export class EdgeWorker extends EventEmitter {
 
 			if (metadata.type === "opencode") {
 				this.openCodeSessionCache.delete(sessionId);
+			} else if (metadata.type === "codex") {
+				this.codexSessionCache.delete(sessionId);
 			}
 
 			nonClaudeSessionsToRemove.push(sessionId);
@@ -3598,6 +3606,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const finalizedNonClaudeSessions = Array.from(
 			this.finalizedNonClaudeSessions.values(),
 		);
+		const openCodeSessionCache = Object.fromEntries(
+			this.openCodeSessionCache.entries(),
+		);
+		const codexSessionCache = Object.fromEntries(
+			this.codexSessionCache.entries(),
+		);
 
 		return {
 			agentSessions,
@@ -3605,6 +3619,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			childToParentAgentSession,
 			sessionRunnerSelections,
 			finalizedNonClaudeSessions,
+			openCodeSessionCache,
+			codexSessionCache,
 		};
 	}
 
@@ -3661,6 +3677,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (state.finalizedNonClaudeSessions) {
 			this.finalizedNonClaudeSessions = new Set(
 				state.finalizedNonClaudeSessions,
+			);
+		}
+
+		if (state.openCodeSessionCache) {
+			this.openCodeSessionCache = new Map(
+				Object.entries(state.openCodeSessionCache),
+			);
+		}
+
+		if (state.codexSessionCache) {
+			this.codexSessionCache = new Map(Object.entries(state.codexSessionCache));
+			console.log(
+				`[EdgeWorker] Restored ${this.codexSessionCache.size} codex session cache entries`,
 			);
 		}
 	}
@@ -3874,6 +3903,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const codexDefaults = this.config.cliDefaults?.codex;
 		const opencodeDefaults = this.config.cliDefaults?.opencode;
 		const repoRunnerModels = repository.runnerModels;
+		const selectionMeta = this.sessionRunnerSelections.get(
+			linearAgentActivitySessionId,
+		);
 
 		let runnerConfig: any;
 
@@ -3883,6 +3915,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			if (apiKey && !env.OPENAI_API_KEY) {
 				env.OPENAI_API_KEY = apiKey;
 			}
+			if (!isFollowUp) {
+				this.codexSessionCache.delete(linearAgentActivitySessionId);
+			}
+			const cachedResumeId = this.codexSessionCache.get(
+				linearAgentActivitySessionId,
+			);
+			const resumeSessionId = isFollowUp
+				? cachedResumeId || selectionMeta?.resumeSessionId
+				: undefined;
 			runnerConfig = {
 				type: "codex",
 				cwd: workspacePath,
@@ -3893,6 +3934,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					codexDefaults?.model,
 				approvalPolicy: codexDefaults?.approvalPolicy,
 				sandbox: codexDefaults?.sandbox,
+				...(resumeSessionId && { resumeSessionId }),
 				env,
 			};
 		} else {
@@ -3949,6 +3991,36 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		const handleEvent = (event: RunnerEvent): void => {
 			switch (event.kind) {
+				case "session": {
+					if (selection.type === "codex") {
+						this.codexSessionCache.set(linearAgentActivitySessionId, event.id);
+						const meta = this.sessionRunnerSelections.get(
+							linearAgentActivitySessionId,
+						);
+						this.debugLog(
+							"[startNonClaudeRunner] Session resume metadata before update",
+							{ sessionId: linearAgentActivitySessionId, meta },
+						);
+						if (meta && meta.resumeSessionId !== event.id) {
+							const updatedMeta = { ...meta, resumeSessionId: event.id };
+							this.sessionRunnerSelections.set(
+								linearAgentActivitySessionId,
+								updatedMeta,
+							);
+							void this.savePersistedState().catch((error) => {
+								this.debugLog(
+									"[startNonClaudeRunner] Failed to persist codex session id",
+									error,
+								);
+							});
+						}
+						this.debugLog("[startNonClaudeRunner] Captured codex session id", {
+							sessionId: linearAgentActivitySessionId,
+							codexSessionId: event.id,
+						});
+					}
+					return;
+				}
 				case "thought": {
 					if (
 						this.finalizedNonClaudeSessions.has(linearAgentActivitySessionId)
@@ -4108,6 +4180,17 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					linearAgentActivitySessionId,
 					startResult.sessionId,
 				);
+			} else if (selection.type === "codex" && startResult.sessionId) {
+				this.codexSessionCache.set(
+					linearAgentActivitySessionId,
+					startResult.sessionId,
+				);
+				if (selectionMeta) {
+					this.sessionRunnerSelections.set(linearAgentActivitySessionId, {
+						...selectionMeta,
+						resumeSessionId: startResult.sessionId,
+					});
+				}
 			}
 		} catch (error) {
 			this.nonClaudeRunners.delete(linearAgentActivitySessionId);

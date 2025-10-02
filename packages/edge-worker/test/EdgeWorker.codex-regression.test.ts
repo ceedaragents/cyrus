@@ -60,6 +60,12 @@ vi.mock("cyrus-core", async (importOriginal) => {
 	};
 });
 
+const flushAsync = async (): Promise<void> => {
+	await new Promise<void>((resolve) => {
+		setTimeout(resolve, 0);
+	});
+};
+
 const codexJsonFixture = [
 	{
 		type: "item.completed",
@@ -185,6 +191,7 @@ describe("EdgeWorker Codex regression", () => {
 
 		fakeRunner = {
 			start: vi.fn(async (onEvent: (event: any) => void) => {
+				onEvent({ kind: "session", id: "codex-run-123" });
 				for (const event of normalizedEvents) {
 					process.stdout.write(`emitting:${JSON.stringify(event)}\n`);
 					onEvent(event as any);
@@ -205,7 +212,7 @@ describe("EdgeWorker Codex regression", () => {
 	});
 
 	afterEach(() => {
-		vi.restoreAllMocks();
+		vi.clearAllMocks();
 	});
 
 	it("streams codex events, posts Linear entries, and persists session state", async () => {
@@ -218,6 +225,8 @@ describe("EdgeWorker Codex regression", () => {
 			issueIdentifier,
 			isFollowUp: false,
 		});
+
+		await flushAsync();
 
 		// Allow any queued promise callbacks to settle
 		await Promise.resolve();
@@ -269,7 +278,7 @@ describe("EdgeWorker Codex regression", () => {
 		);
 		expect((edgeWorker as any).nonClaudeRunners.has(sessionId)).toBe(false);
 
-		expect(savePersistedStateSpy).toHaveBeenCalledTimes(2);
+		expect(savePersistedStateSpy).toHaveBeenCalledTimes(3);
 
 		const persistence = persistenceManagerInstances[0];
 		expect(persistence).toBeDefined();
@@ -286,5 +295,91 @@ describe("EdgeWorker Codex regression", () => {
 				message.includes("[postThought] No Linear client"),
 		);
 		expect(missingClientLog).toBeUndefined();
+	});
+
+	it("persists codex session cache across restart for follow-up", async () => {
+		runnerFactoryMock.create.mockReset();
+		runnerFactoryMock.create.mockReturnValue(fakeRunner);
+
+		await (edgeWorker as any).startNonClaudeRunner({
+			selection: { type: "codex", model: "o4-mini" },
+			repository,
+			prompt: promptBody,
+			workspacePath,
+			linearAgentActivitySessionId: sessionId,
+			issueIdentifier,
+			isFollowUp: false,
+		});
+
+		expect((edgeWorker as any).codexSessionCache.get(sessionId)).toBe(
+			"codex-run-123",
+		);
+		process.stdout.write(
+			`selectionMeta after first run: ${JSON.stringify(
+				(edgeWorker as any).sessionRunnerSelections.get(sessionId),
+			)}\n`,
+		);
+		expect(
+			(edgeWorker as any).sessionRunnerSelections.get(sessionId)
+				?.resumeSessionId,
+		).toBe("codex-run-123");
+
+		const persistedState = (edgeWorker as any).serializeMappings();
+		expect(persistedState.codexSessionCache).toEqual(
+			expect.objectContaining({ [sessionId]: "codex-run-123" }),
+		);
+		expect(
+			persistedState.sessionRunnerSelections?.[sessionId]?.resumeSessionId,
+		).toBe("codex-run-123");
+
+		const restoredWorker = new EdgeWorker(config);
+		const followUpRunner = {
+			start: vi.fn(async () => ({
+				sessionId: "codex-run-456",
+				capabilities: { jsonStream: true },
+			})),
+			stop: vi.fn().mockResolvedValue(undefined),
+		};
+		const followUpRunnerFactory = {
+			create: vi.fn(() => followUpRunner),
+		};
+		(restoredWorker as any).runnerFactory = followUpRunnerFactory;
+		(restoredWorker as any).postThought = vi.fn().mockResolvedValue(undefined);
+		(restoredWorker as any).postAction = vi.fn().mockResolvedValue(undefined);
+		(restoredWorker as any).postResponse = vi.fn().mockResolvedValue(undefined);
+		(restoredWorker as any).postError = vi.fn().mockResolvedValue(undefined);
+		(restoredWorker as any).savePersistedState = vi
+			.fn()
+			.mockResolvedValue(undefined);
+
+		restoredWorker.restoreMappings(persistedState);
+
+		expect((restoredWorker as any).codexSessionCache.get(sessionId)).toBe(
+			"codex-run-123",
+		);
+		expect(
+			(restoredWorker as any).sessionRunnerSelections.get(sessionId)
+				?.resumeSessionId,
+		).toBe("codex-run-123");
+
+		await (restoredWorker as any).startNonClaudeRunner({
+			selection: { type: "codex", model: "o4-mini" },
+			repository,
+			prompt: `${promptBody} follow-up`,
+			workspacePath,
+			linearAgentActivitySessionId: sessionId,
+			issueIdentifier,
+			isFollowUp: true,
+		});
+
+		await flushAsync();
+
+		expect(followUpRunnerFactory.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "codex",
+				resumeSessionId: "codex-run-123",
+				prompt: `${promptBody} follow-up`,
+			}),
+		);
 	});
 });
