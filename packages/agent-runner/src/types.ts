@@ -18,6 +18,7 @@ export interface CodexRunnerOptions extends RunnerConfigBase {
 	model?: string;
 	sandbox?: "read-only" | "workspace-write" | "danger-full-access";
 	approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never";
+	fullAuto?: boolean;
 	/** Existing Codex session id to resume (when continuing a conversation). */
 	resumeSessionId?: string;
 	/**

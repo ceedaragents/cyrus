@@ -22,6 +22,7 @@ export interface OpenCodeRunnerModelConfig {
 export interface CodexCliDefaults extends CodexRunnerModelConfig {
 	approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never";
 	sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+	fullAuto?: boolean;
 }
 
 export interface OpenCodeCliDefaults extends OpenCodeRunnerModelConfig {

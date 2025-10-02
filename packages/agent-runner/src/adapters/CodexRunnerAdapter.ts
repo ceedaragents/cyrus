@@ -38,20 +38,17 @@ export class CodexRunnerAdapter implements Runner {
 		onEvent: (event: RunnerEvent) => void,
 	): Promise<RunnerStartResult> {
 		const args = ["exec", "--experimental-json", "--cd", this.config.cwd];
-		// Default to Codex's "full auto" mode so the agent can write and reach the network
-		// unless the caller explicitly overrides sandbox/approval behaviour via config.
-		if (!this.config.sandbox && !this.config.approvalPolicy) {
+		const fullAuto = this.config.fullAuto ?? true;
+		if (fullAuto) {
 			args.push("--full-auto");
 		}
 		if (this.config.model) {
 			args.push("-m", this.config.model);
 		}
-		if (this.config.approvalPolicy) {
-			args.push("--approval-policy", this.config.approvalPolicy);
-		}
-		if (this.config.sandbox) {
-			args.push("--sandbox", this.config.sandbox);
-		}
+		const approvalPolicy = this.config.approvalPolicy ?? "never";
+		args.push("--approval-policy", approvalPolicy);
+		const sandbox = this.config.sandbox ?? "danger-full-access";
+		args.push("--sandbox", sandbox);
 		if (this.config.resumeSessionId) {
 			args.push("resume", this.config.resumeSessionId, this.config.prompt);
 		} else {

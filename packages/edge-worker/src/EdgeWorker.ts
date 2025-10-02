@@ -3924,6 +3924,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			const resumeSessionId = isFollowUp
 				? cachedResumeId || selectionMeta?.resumeSessionId
 				: undefined;
+			const approvalPolicy = codexDefaults?.approvalPolicy ?? "never";
+			const sandbox = codexDefaults?.sandbox ?? "danger-full-access";
+			const fullAuto = codexDefaults?.fullAuto;
 			runnerConfig = {
 				type: "codex",
 				cwd: workspacePath,
@@ -3932,8 +3935,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					selection.model ||
 					repoRunnerModels?.codex?.model ||
 					codexDefaults?.model,
-				approvalPolicy: codexDefaults?.approvalPolicy,
-				sandbox: codexDefaults?.sandbox,
+				approvalPolicy,
+				sandbox,
+				...(fullAuto !== undefined ? { fullAuto } : {}),
 				...(resumeSessionId && { resumeSessionId }),
 				env,
 			};
