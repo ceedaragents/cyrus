@@ -38,6 +38,11 @@ export class CodexRunnerAdapter implements Runner {
 		onEvent: (event: RunnerEvent) => void,
 	): Promise<RunnerStartResult> {
 		const args = ["exec", "--experimental-json", "--cd", this.config.cwd];
+		// Default to Codex's "full auto" mode so the agent can write and reach the network
+		// unless the caller explicitly overrides sandbox/approval behaviour via config.
+		if (!this.config.sandbox && !this.config.approvalPolicy) {
+			args.push("--full-auto");
+		}
 		if (this.config.model) {
 			args.push("-m", this.config.model);
 		}
@@ -47,7 +52,11 @@ export class CodexRunnerAdapter implements Runner {
 		if (this.config.sandbox) {
 			args.push("--sandbox", this.config.sandbox);
 		}
-		args.push(this.config.prompt);
+		if (this.config.resumeSessionId) {
+			args.push("resume", this.config.resumeSessionId, this.config.prompt);
+		} else {
+			args.push(this.config.prompt);
+		}
 
 		const env = { ...process.env, ...(this.config.env ?? {}) };
 
@@ -187,7 +196,9 @@ export class CodexRunnerAdapter implements Runner {
 		}
 
 		if (type === "session.created" && typeof payload.session_id === "string") {
-			this.emitLog(onEvent, `[codex:session] ${payload.session_id}`);
+			const sessionId = payload.session_id;
+			onEvent({ kind: "session", id: sessionId });
+			this.emitLog(onEvent, `[codex:session] ${sessionId}`);
 			return;
 		}
 
@@ -426,8 +437,10 @@ export class CodexRunnerAdapter implements Runner {
 		if (!text) {
 			return undefined;
 		}
-		const withoutMarker = text.replace(LAST_MESSAGE_MARKER_REGEX, "");
-		return this.stripItemTokens(withoutMarker);
+		const withoutMarkerAndIds = text
+			.replace(LAST_MESSAGE_MARKER_REGEX, "")
+			.replace(/\bitem_\d+\b/gi, "");
+		return this.stripItemTokens(withoutMarkerAndIds);
 	}
 
 	private stripItemTokens(text: string | undefined): string | undefined {
@@ -436,7 +449,7 @@ export class CodexRunnerAdapter implements Runner {
 		}
 		const cleanedLines = text
 			.split(/\r?\n/)
-			.map((line) => line.trim())
+			.map((line) => line.replace(/\bitem_\d+\b/gi, "").trim())
 			.filter((line) => line.length > 0 && !ITEM_ID_PATTERN.test(line));
 		if (cleanedLines.length === 0) {
 			return undefined;

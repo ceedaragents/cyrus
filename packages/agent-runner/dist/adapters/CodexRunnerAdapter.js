@@ -10,6 +10,9 @@ export class CodexRunnerAdapter {
 	}
 	async start(onEvent) {
 		const args = ["exec", "--experimental-json", "--cd", this.config.cwd];
+		if (!this.config.sandbox && !this.config.approvalPolicy) {
+			args.push("--full-auto");
+		}
 		if (this.config.model) {
 			args.push("-m", this.config.model);
 		}
