@@ -35,7 +35,7 @@ declare module "ink" {
 
 	export interface UseStdoutResult {
 		stdout?: NodeJS.WriteStream;
-		write: (data: string) => boolean;
+		write: (data: string) => void;
 	}
 
 	export function useStdout(): UseStdoutResult;
@@ -79,8 +79,11 @@ declare module "ink" {
 		rerender: (node: ReactNode) => void;
 		unmount: () => void;
 		waitUntilExit: () => Promise<void>;
+		cleanup: () => void;
+		clear: () => void;
 	}
 
+	export function render(tree: ReactNode, stdout: NodeJS.WriteStream): InkApp;
 	export function render(tree: ReactNode, options?: RenderOptions): InkApp;
 }
 

@@ -9,6 +9,8 @@
 	},
 	"type": "module",
 	"scripts": {
+		"prebuild": "pnpm run build:deps",
+		"build:deps": "pnpm --filter cyrus-core --filter cyrus-agent-runner --filter cyrus-claude-runner --filter cyrus-edge-worker --filter cyrus-ndjson-client --filter cyrus-linear-webhook-client build",
 		"build": "tsc && node ./scripts/postbuild.mjs",
 		"start": "node dist/app.js",
 		"dev": "tsc --watch",
