@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- **Default model changed from opus to sonnet**: The default Claude model is now `sonnet` instead of `opus`
-  - Fallback model changed from `sonnet` to `haiku` for better cost efficiency
+- **Default model changed from opus to sonnet 4.5**: The default Claude model is now `sonnet` instead of `opus`
+  - Fallback model changed from `sonnet` to `haiku`
   - Label-based model selection still available - users can add `opus`, `sonnet`, or `haiku` labels to issues to override the default
   - Affects all new sessions that don't explicitly specify a model in config
 
