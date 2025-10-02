@@ -82,15 +82,6 @@ importers:
         specifier: ^3.24.4
         version: 3.25.75
     devDependencies:
-      '@types/ink':
-        specifier: ^2.0.3
-        version: 2.0.3(@types/react@18.3.25)(react@18.3.1)
-      '@types/ink-select-input':
-        specifier: ^3.0.5
-        version: 3.0.5
-      '@types/ink-text-input':
-        specifier: ^2.0.5
-        version: 2.0.5
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.4
@@ -1070,19 +1061,6 @@ packages:
 
   '@types/fs-extra@11.0.4':
     resolution: {integrity: sha512-yTbItCNreRooED33qjunPthRcSjERP1r4MqCZc7wv0u2sUkzTFp45tgUfS5+r7FrZPdmCCNflLhVSP/o+SemsQ==}
-
-  '@types/ink-select-input@3.0.5':
-    resolution: {integrity: sha512-IdXW9wpgY0Dn3HLCKK5ETj7yTyZg/fDOPf9m1aGBghiRotaJbOTEAEKqLdHDqVsm8gWYDec2JiXU7g9lnu4e2w==}
-
-  '@types/ink-text-input@2.0.5':
-    resolution: {integrity: sha512-dp6qIrf/VKQyiJfLSOTk7XhbAG3SkGLMrL/5QwaOpYae20+/+VFLuEgpfjpAWOITVL7uyiE9nKdQ4pk03T2F+Q==}
-
-  '@types/ink@0.5.2':
-    resolution: {integrity: sha512-yEuhWTRMXJkIWiaM58c5kuRot5HFccv9kjjgy0fBZG0+tYb+sMBaxHNPVqyZXspGGlmwDOQ1d3BsygWpWlW17w==}
-
-  '@types/ink@2.0.3':
-    resolution: {integrity: sha512-DYKIKEJqhsGfQ/jgX0t9BzfHmBJ/9dBBT2MDsHAQRAfOPhEe7LZm5QeNBx1J34/e108StCPuJ3r4bh1y38kCJA==}
-    deprecated: This is a stub types definition. ink provides its own type definitions, so you do not need this installed.
 
   '@types/jsonfile@6.1.4':
     resolution: {integrity: sha512-D5qGUYwjvnNNextdU59/+fI+spnwtTFmyQP0h+PfIOSkNfpU6AOICUOkm4i0OnSk+NyjdPJrxCDro0sJsWlRpQ==}
@@ -3316,29 +3294,6 @@ snapshots:
     dependencies:
       '@types/jsonfile': 6.1.4
       '@types/node': 20.19.4
-
-  '@types/ink-select-input@3.0.5':
-    dependencies:
-      '@types/react': 18.3.25
-
-  '@types/ink-text-input@2.0.5':
-    dependencies:
-      '@types/ink': 0.5.2
-
-  '@types/ink@0.5.2':
-    dependencies:
-      '@types/node': 20.19.4
-      '@types/prop-types': 15.7.15
-
-  '@types/ink@2.0.3(@types/react@18.3.25)(react@18.3.1)':
-    dependencies:
-      ink: 4.4.1(@types/react@18.3.25)(react@18.3.1)
-    transitivePeerDependencies:
-      - '@types/react'
-      - bufferutil
-      - react
-      - react-devtools-core
-      - utf-8-validate
 
   '@types/jsonfile@6.1.4':
     dependencies:
