@@ -16,34 +16,54 @@ type CodexJsonMessage = Record<string, unknown>;
 
 type JsonFlag = "--experimental-json" | "--json";
 
-let cachedJsonFlag: JsonFlag | undefined;
+type CodexCliFeatures = {
+	jsonFlag: JsonFlag;
+	supportsApprovalPolicy: boolean;
+	supportsSandbox: boolean;
+	supportsDangerBypass: boolean;
+	supportsFullAuto: boolean;
+};
 
-function resolveJsonFlag(env: NodeJS.ProcessEnv | undefined): JsonFlag {
-	if (cachedJsonFlag) {
-		return cachedJsonFlag;
+let cachedFeatures: CodexCliFeatures | undefined;
+
+function detectCodexFeatures(
+	env: NodeJS.ProcessEnv | undefined,
+): CodexCliFeatures {
+	if (cachedFeatures) {
+		return cachedFeatures;
 	}
 
+	let helpOutput = "";
 	try {
 		const detection = spawnSync("codex", ["exec", "--help"], {
 			env,
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],
 		});
-		const output = `${detection.stdout ?? ""}${detection.stderr ?? ""}`;
-		if (output.includes("--experimental-json")) {
-			cachedJsonFlag = "--experimental-json";
-			return cachedJsonFlag;
-		}
-		if (output.includes("--json")) {
-			cachedJsonFlag = "--json";
-			return cachedJsonFlag;
-		}
+		helpOutput = `${detection.stdout ?? ""}${detection.stderr ?? ""}`;
 	} catch (_error) {
-		// Fallback handled below
+		helpOutput = "";
 	}
 
-	cachedJsonFlag = "--experimental-json";
-	return cachedJsonFlag;
+	const lowerHelp = helpOutput.toLowerCase();
+	let jsonFlag: JsonFlag = "--experimental-json";
+	if (helpOutput.includes("--json")) {
+		jsonFlag = helpOutput.includes("--experimental-json")
+			? "--experimental-json"
+			: "--json";
+	}
+
+	cachedFeatures = {
+		jsonFlag,
+		supportsApprovalPolicy: helpOutput.includes("--approval-policy"),
+		supportsSandbox: helpOutput.includes("--sandbox"),
+		supportsDangerBypass: helpOutput.includes(
+			"--dangerously-bypass-approvals-and-sandbox",
+		),
+		supportsFullAuto: lowerHelp.includes("--full-auto"),
+	};
+
+	return cachedFeatures;
 }
 
 const LAST_MESSAGE_MARKER_REGEX = /___LAST_MESSAGE_MARKER___/g;
@@ -74,19 +94,68 @@ export class CodexRunnerAdapter implements Runner {
 		onEvent: (event: RunnerEvent) => void,
 	): Promise<RunnerStartResult> {
 		const env = { ...process.env, ...(this.config.env ?? {}) };
-		const jsonFlag = resolveJsonFlag(env);
-		const args = ["exec", jsonFlag, "--cd", this.config.cwd];
-		const fullAuto = this.config.fullAuto ?? true;
-		if (fullAuto) {
-			args.push("--full-auto");
+		const features = detectCodexFeatures(env);
+		const args = ["exec", features.jsonFlag, "--cd", this.config.cwd];
+
+		const requestedSandbox = this.config.sandbox;
+		const requestedFullAuto = this.config.fullAuto ?? false;
+		let fullAuto = requestedFullAuto;
+
+		if (requestedSandbox && features.supportsSandbox) {
+			args.push("--sandbox", requestedSandbox);
+		} else if (requestedSandbox && !features.supportsSandbox) {
+			if (requestedSandbox === "workspace-write") {
+				fullAuto = true;
+				this.emitLog(
+					onEvent,
+					"Codex CLI lacks --sandbox; enabling --full-auto so workspace edits remain allowed",
+				);
+			} else if (
+				requestedSandbox === "danger-full-access" &&
+				features.supportsDangerBypass
+			) {
+				args.push("--dangerously-bypass-approvals-and-sandbox");
+				fullAuto = true;
+				this.emitLog(
+					onEvent,
+					"Codex CLI lacks --sandbox; using --dangerously-bypass-approvals-and-sandbox",
+				);
+			} else if (requestedSandbox === "danger-full-access") {
+				fullAuto = true;
+				this.emitLog(
+					onEvent,
+					"Codex CLI lacks sandbox controls; proceeding with --full-auto",
+				);
+			}
 		}
+
+		if (requestedSandbox === "danger-full-access") {
+			fullAuto = true;
+		}
+
+		if (fullAuto) {
+			if (features.supportsFullAuto) {
+				args.push("--full-auto");
+			} else {
+				this.emitLog(
+					onEvent,
+					"Codex CLI does not expose --full-auto; continuing without explicit flag",
+				);
+			}
+		}
+
 		if (this.config.model) {
 			args.push("-m", this.config.model);
 		}
-		const approvalPolicy = this.config.approvalPolicy ?? "never";
-		args.push("--approval-policy", approvalPolicy);
-		const sandbox = this.config.sandbox ?? "danger-full-access";
-		args.push("--sandbox", sandbox);
+
+		if (features.supportsApprovalPolicy && this.config.approvalPolicy) {
+			args.push("--approval-policy", this.config.approvalPolicy);
+		} else if (!features.supportsApprovalPolicy && this.config.approvalPolicy) {
+			this.emitLog(
+				onEvent,
+				"Codex CLI does not support --approval-policy; falling back to CLI defaults",
+			);
+		}
 		if (this.config.resumeSessionId) {
 			args.push("resume", this.config.resumeSessionId, this.config.prompt);
 		} else {
@@ -548,4 +617,8 @@ export class CodexRunnerAdapter implements Runner {
 		const uniquePieces = Array.from(new Set(pieces));
 		return uniquePieces.join("\n");
 	}
+}
+
+export function __resetCodexFeatureCacheForTests(): void {
+	cachedFeatures = undefined;
 }

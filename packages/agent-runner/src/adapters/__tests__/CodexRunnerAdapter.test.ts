@@ -25,7 +25,10 @@ vi.mock("node:child_process", async () => {
 });
 
 import type { RunnerEvent } from "../../types.ts";
-import { CodexRunnerAdapter } from "../CodexRunnerAdapter.ts";
+import {
+	__resetCodexFeatureCacheForTests,
+	CodexRunnerAdapter,
+} from "../CodexRunnerAdapter.ts";
 
 class MockChildProcess
 	extends EventEmitter
@@ -57,9 +60,21 @@ describe("CodexRunnerAdapter", () => {
 	afterEach(() => {
 		spawnMock.mockReset();
 		spawnSyncMock.mockClear();
+		__resetCodexFeatureCacheForTests();
 	});
 
 	it("emits normalized events for JSON stream", async () => {
+		spawnSyncMock.mockReturnValueOnce({
+			stdout: [
+				"Usage: codex exec [OPTIONS]",
+				"  --experimental-json",
+				"  --sandbox <MODE>",
+				"  --approval-policy <POLICY>",
+				"  --full-auto",
+				"  --dangerously-bypass-approvals-and-sandbox",
+			].join("\n"),
+			stderr: "",
+		});
 		const mockChild = new MockChildProcess();
 		spawnMock.mockReturnValue(
 			mockChild as unknown as ChildProcessWithoutNullStreams,
@@ -89,7 +104,6 @@ describe("CodexRunnerAdapter", () => {
 				"--experimental-json",
 				"--cd",
 				"/tmp/workspace",
-				"--full-auto",
 				"-m",
 				"o4-mini",
 				"--approval-policy",
@@ -208,6 +222,56 @@ describe("CodexRunnerAdapter", () => {
 		expect(errorEvent.error.message).toBe("fail");
 	});
 
+	it("falls back when sandbox and approvals are unsupported", async () => {
+		spawnSyncMock.mockReturnValueOnce({
+			stdout: "Usage: codex exec [OPTIONS]\n  --json",
+			stderr: "",
+		});
+		const mockChild = new MockChildProcess();
+		spawnMock.mockReturnValue(
+			mockChild as unknown as ChildProcessWithoutNullStreams,
+		);
+
+		const adapter = new CodexRunnerAdapter({
+			type: "codex",
+			cwd: "/tmp/workspace",
+			prompt: "safe mode",
+			sandbox: "workspace-write",
+			approvalPolicy: "never",
+		});
+
+		const events: RunnerEvent[] = [];
+		await adapter.start((event) => events.push(event));
+
+		expect(spawnMock.mock.calls[0]?.[1]).toEqual([
+			"exec",
+			"--json",
+			"--cd",
+			"/tmp/workspace",
+			"safe mode",
+		]);
+		expect(spawnMock.mock.calls[0]?.[1]).not.toContain("--sandbox");
+		expect(spawnMock.mock.calls[0]?.[1]).not.toContain("--approval-policy");
+		expect(
+			events.some(
+				(event) =>
+					event.kind === "log" &&
+					"text" in event &&
+					typeof event.text === "string" &&
+					event.text.includes("lacks --sandbox"),
+			),
+		).toBe(true);
+		expect(
+			events.some(
+				(event) =>
+					event.kind === "log" &&
+					"text" in event &&
+					typeof event.text === "string" &&
+					event.text.includes("does not expose --full-auto"),
+			),
+		).toBe(true);
+	});
+
 	it("only emits the first final event", async () => {
 		const mockChild = new MockChildProcess();
 		spawnMock.mockReturnValue(
@@ -241,6 +305,17 @@ describe("CodexRunnerAdapter", () => {
 	});
 
 	it("passes resume arguments when resumeSessionId is provided", async () => {
+		spawnSyncMock.mockReturnValueOnce({
+			stdout: [
+				"Usage: codex exec [OPTIONS]",
+				"  --experimental-json",
+				"  --sandbox <MODE>",
+				"  --approval-policy <POLICY>",
+				"  --full-auto",
+				"  --dangerously-bypass-approvals-and-sandbox",
+			].join("\n"),
+			stderr: "",
+		});
 		const mockChild = new MockChildProcess();
 		spawnMock.mockReturnValue(
 			mockChild as unknown as ChildProcessWithoutNullStreams,
@@ -251,6 +326,9 @@ describe("CodexRunnerAdapter", () => {
 			cwd: "/tmp/workspace",
 			prompt: "continue please",
 			resumeSessionId: "session-xyz",
+			sandbox: "danger-full-access",
+			fullAuto: true,
+			approvalPolicy: "never",
 		});
 
 		await adapter.start(() => {
@@ -264,11 +342,11 @@ describe("CodexRunnerAdapter", () => {
 				"--experimental-json",
 				"--cd",
 				"/tmp/workspace",
+				"--sandbox",
+				"danger-full-access",
 				"--full-auto",
 				"--approval-policy",
 				"never",
-				"--sandbox",
-				"danger-full-access",
 				"resume",
 				"session-xyz",
 				"continue please",
