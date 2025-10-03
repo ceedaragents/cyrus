@@ -80,3 +80,23 @@ The adapter chooses the JSON streaming flag at runtime. It prefers `--experiment
 - Operators can still tune `~/.codex/config.toml`; Cyrus derives sandbox/approval from tool presets first and falls back to repo/global `cliDefaults` only when it cannot infer a profile.
 - To guarantee git access for follow-up sessions, route feature/PR labels to the `all` profile or set repository defaults accordingly.
 - Leave Codex’s native sandbox enabled unless delegated to another isolation layer (e.g. dedicated VM).
+
+## CLI Compatibility Notes
+
+As of Codex CLI **0.42** (`codex-cli 0.42.0`), the non-interactive `codex exec` help output no longer lists `--sandbox` or `--approval-policy`. Running Cyrus with that release caused every Codex spawn to fail immediately with:
+
+```
+error: unexpected argument '--approval-policy' found
+```
+
+(Upstream issue: [openai/codex#4351](https://github.com/openai/codex/issues/4351))
+
+To keep older CLIs working while we wait for official flag parity, the runner now:
+
+- probes `codex exec --help` on startup to discover which options are available;
+- uses `--experimental-json` or `--json` depending on the detected help text;
+- only passes `--sandbox`/`--approval-policy` when the CLI supports them;
+- falls back to `--full-auto` or `--dangerously-bypass-approvals-and-sandbox` (when present) to approximate `workspace-write` / `danger-full-access` behaviour; and
+- logs a diagnostic message whenever we skip or substitute a flag so operators know why the command line changed.
+
+For the best experience, upgrade Codex CLI once a release restores explicit sandbox/approval controls. Cyrus will automatically start using the richer flags again as soon as they reappear in the help output.
