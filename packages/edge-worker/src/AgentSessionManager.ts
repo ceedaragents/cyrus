@@ -555,13 +555,6 @@ export class AgentSessionManager {
 						}
 					} else {
 						// Regular assistant message - create a thought
-						// Check if this message contains the last message marker
-						if (entry.content.includes("___LAST_MESSAGE_MARKER___")) {
-							console.log(
-								`[AgentSessionManager] Skipping assistant message with last message marker - will be posted as response later`,
-							);
-							return; // Skip posting this as a thought
-						}
 						content = {
 							type: "thought",
 							body: entry.content,
@@ -585,10 +578,7 @@ export class AgentSessionManager {
 							body: entry.content,
 						};
 					} else {
-						// Strip the last message marker from the response
-						const cleanedContent = entry.content
-							.replace(/___LAST_MESSAGE_MARKER___/g, "")
-							.trim();
+						const cleanedContent = entry.content.trim();
 						content = {
 							type: "response",
 							body: cleanedContent,

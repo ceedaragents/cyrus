@@ -66,7 +66,6 @@ function detectCodexFeatures(
 	return cachedFeatures;
 }
 
-const LAST_MESSAGE_MARKER_REGEX = /___LAST_MESSAGE_MARKER___/g;
 const IGNORED_TEXT_KEYS = new Set([
 	"type",
 	"role",
@@ -256,6 +255,7 @@ export class CodexRunnerAdapter implements Runner {
 		}
 
 		const type = typeof payload.type === "string" ? payload.type : undefined;
+		const normalizedType = this.normalizeEventType(type);
 		if (this.isErrorPayload(type, payload)) {
 			this.emitError(payload, line, onEvent);
 			return;
@@ -285,7 +285,22 @@ export class CodexRunnerAdapter implements Runner {
 				return;
 			}
 			if (normalizedItemType === "assistant_message") {
-				this.emitFinal(item, line, onEvent);
+				const assistantText =
+					this.extractText(item) ?? this.extractText(payload);
+				const shouldFinalize =
+					normalizedType === "item.completed" ||
+					normalizedType === "turn.completed";
+				if (shouldFinalize) {
+					this.emitFinal(item, line, onEvent);
+				} else if (
+					normalizedType === "item.started" ||
+					normalizedType === "item.updated"
+				) {
+					this.emitResponse(item, onEvent);
+				} else if (!normalizedType && assistantText) {
+					// Legacy Codex builds may omit item events; treat as response until completion is clear.
+					this.emitResponse(item, onEvent);
+				}
 				return;
 			}
 			if (this.isTelemetryItemType(normalizedItemType)) {
@@ -342,9 +357,9 @@ export class CodexRunnerAdapter implements Runner {
 		raw: string,
 		onEvent: (event: RunnerEvent) => void,
 	): void {
- 		if (this.finalDelivered) {
- 			return;
- 		}
+		if (this.finalDelivered) {
+			return;
+		}
 		this.finalDelivered = true;
 		const text = this.sanitizeAssistantText(this.extractText(payload));
 		onEvent({ kind: "final", text: text ?? "Codex run completed" });
@@ -384,6 +399,17 @@ export class CodexRunnerAdapter implements Runner {
 			return;
 		}
 		onEvent({ kind: "log", text });
+	}
+
+	private normalizeEventType(type: string | undefined): string | undefined {
+		if (!type) {
+			return undefined;
+		}
+		const trimmed = type.trim();
+		if (trimmed.length === 0) {
+			return undefined;
+		}
+		return trimmed.toLowerCase();
 	}
 
 	private isTelemetryType(type: string | undefined): boolean {
@@ -539,10 +565,8 @@ export class CodexRunnerAdapter implements Runner {
 		if (!text) {
 			return undefined;
 		}
-		const withoutMarkerAndIds = text
-			.replace(LAST_MESSAGE_MARKER_REGEX, "")
-			.replace(/\bitem_\d+\b/gi, "");
-		return this.stripItemTokens(withoutMarkerAndIds);
+		const withoutIds = text.replace(/\bitem_\d+\b/gi, "");
+		return this.stripItemTokens(withoutIds);
 	}
 
 	private stripItemTokens(text: string | undefined): string | undefined {

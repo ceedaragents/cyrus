@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file.
   thought/action/final events, aligning the JSON streaming pipeline with Codex
   resume requirements.
 
+### Removed
+- Dropped the `___LAST_MESSAGE_MARKER___` sentinel from all prompts; completion
+  detection now relies on CLI-native metadata across Claude, Codex, and OpenCode.
+
 ## [0.1.48] - 2025-01-11
 
 ### Added

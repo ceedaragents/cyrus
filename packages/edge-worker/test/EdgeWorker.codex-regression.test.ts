@@ -89,7 +89,7 @@ const codexJsonFixture = [
 		item: {
 			id: "item_2",
 			item_type: "assistant_message",
-			text: ["___LAST_MESSAGE_MARKER___final response", "item_2"],
+			text: ["final response", "item_2"],
 		},
 	},
 ];

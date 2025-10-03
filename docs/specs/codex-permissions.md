@@ -103,10 +103,9 @@ For the best experience, upgrade Codex CLI once a release restores explicit sand
 
 ## Stream Finalization
 
-Earlier versions of Cyrus required the `___LAST_MESSAGE_MARKER___` sentinel in the final assistant message to determine when to close a session. Codex CLI 0.42 stopped emitting that marker reliably, so the runner now watches the JSONL stream instead:
+Earlier builds relied on a custom `___LAST_MESSAGE_MARKER___` token in the final assistant message to detect completion. The adapter now relies entirely on Codex’s JSONL metadata:
 
 - When we receive `type: "item.completed"` with `item_type: "assistant_message"`, the adapter emits the `final` event immediately.
-- We still strip the marker when present (for backwards compatibility), but its absence no longer blocks Linear session completion.
-- This logic also protects against duplicate finals—additional `assistant_message` events are ignored once the session has been marked complete.
+- Additional updates (`item.started`/`item.updated`) are treated as interim responses, and duplicate finals are ignored once the session has been marked complete.
 
-No configuration changes are required; the behaviour ships with the updated adapter.
+The marker is no longer injected into prompts or required in Codex output.

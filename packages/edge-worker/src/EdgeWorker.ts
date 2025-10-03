@@ -135,9 +135,6 @@ export declare interface EdgeWorker {
 	): boolean;
 }
 
-const LAST_MESSAGE_MARKER =
-	"\n\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
-
 const MODULE_FILENAME = fileURLToPath(import.meta.url);
 const MODULE_DIRNAME = dirname(MODULE_FILENAME);
 const BUILT_IN_PROMPTS_DIR = join(MODULE_DIRNAME, "..", "prompts");
@@ -1425,7 +1422,6 @@ export class EdgeWorker extends EventEmitter {
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
 
 			existingRunner.addStreamMessage(fullPrompt);
 			return; // Exit early - comment has been added to stream
@@ -2076,8 +2072,6 @@ export class EdgeWorker extends EventEmitter {
 				);
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
-
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
 			console.log(
 				`[EdgeWorker] Label-based prompt built successfully, length: ${prompt.length} characters`,
 			);
@@ -2130,7 +2124,6 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
 			return { prompt };
 		} catch (error) {
 			console.error(`[EdgeWorker] Error building mention prompt:`, error);
@@ -2501,8 +2494,6 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				prompt = `${prompt}\n\n<repository-specific-instruction>\n${repository.appendInstruction}\n</repository-specific-instruction>`;
 			}
 
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
-
 			console.log(
 				`[EdgeWorker] Final prompt length: ${prompt.length} characters`,
 			);
@@ -2530,7 +2521,7 @@ Branch: ${issue.branchName}
 Working directory: ${repository.repositoryPath}
 Base branch: ${baseBranch}
 
-${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution. ${LAST_MESSAGE_MARKER}`;
+${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
 
 			return { prompt: fallbackPrompt, version: undefined };
 		}
@@ -3432,7 +3423,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			const manifestSuffix = attachmentManifest
 				? `\n\n${attachmentManifest}`
 				: "";
-			return `${promptBody}${manifestSuffix}${LAST_MESSAGE_MARKER}`;
+			return `${promptBody}${manifestSuffix}`;
 		}
 	}
 
@@ -3521,7 +3512,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
-			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
+			appendSystemPrompt: systemPrompt || "",
 			// Priority order: label override > repo runner models > repo legacy config > global CLI defaults > legacy global defaults
 			model:
 				modelOverride ||
@@ -4638,7 +4629,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
 
 			existingRunner.addStreamMessage(fullPrompt);
 			return;

@@ -151,7 +151,7 @@ describe("CodexRunnerAdapter", () => {
 			item: {
 				id: "item_2",
 				item_type: "assistant_message",
-				text: ["___LAST_MESSAGE_MARKER___final response", "item_2"],
+				text: ["final response", "item_2"],
 			},
 		};
 		mockChild.stdout.write(`${JSON.stringify(finalPayload)}\n`);
@@ -210,7 +210,7 @@ describe("CodexRunnerAdapter", () => {
 
 		expect(finalLog).toEqual({
 			kind: "log",
-			text: '[codex:final] {"type":"item.completed","item":{"id":"item_2","item_type":"assistant_message","text":["___LAST_MESSAGE_MARKER___final response","item_2"]}}',
+			text: '[codex:final] {"type":"item.completed","item":{"id":"item_2","item_type":"assistant_message","text":["final response","item_2"]}}',
 		});
 
 		expect(errorLog).toEqual({
@@ -293,7 +293,7 @@ describe("CodexRunnerAdapter", () => {
 			type: "item.completed",
 			item: {
 				item_type: "assistant_message",
-				text: "___LAST_MESSAGE_MARKER___first",
+				text: "first",
 			},
 		});
 		mockChild.stdout.write(`${finalPayload}\n`);
@@ -302,6 +302,63 @@ describe("CodexRunnerAdapter", () => {
 		await flushAsync();
 		const finals = events.filter((event) => event.kind === "final");
 		expect(finals).toHaveLength(1);
+	});
+
+	it("waits for assistant completion events before finalizing", async () => {
+		const mockChild = new MockChildProcess();
+		spawnMock.mockReturnValue(
+			mockChild as unknown as ChildProcessWithoutNullStreams,
+		);
+
+		const adapter = new CodexRunnerAdapter({
+			type: "codex",
+			cwd: "/tmp/workspace",
+			prompt: "check completion",
+		});
+
+		const events: RunnerEvent[] = [];
+		await adapter.start((event) => {
+			events.push(event);
+		});
+
+		mockChild.stdout.write(
+			`${JSON.stringify({
+				type: "item.updated",
+				item: {
+					id: "item_0",
+					item_type: "assistant_message",
+					text: "  Working on it  ",
+				},
+			})}\n`,
+		);
+		mockChild.stdout.write(
+			`${JSON.stringify({
+				type: "item.completed",
+				item: {
+					id: "item_0",
+					item_type: "assistant_message",
+					text: "Done.",
+				},
+			})}\n`,
+		);
+
+		await flushAsync();
+		mockChild.emit("close", 0, null);
+		await flushAsync();
+
+		const responseEvents = events.filter(
+			(event): event is Extract<RunnerEvent, { kind: "response" }> =>
+				event.kind === "response",
+		);
+		expect(responseEvents).toHaveLength(1);
+		expect(responseEvents[0]?.text).toBe("Working on it");
+
+		const finalEvents = events.filter(
+			(event): event is Extract<RunnerEvent, { kind: "final" }> =>
+				event.kind === "final",
+		);
+		expect(finalEvents).toHaveLength(1);
+		expect(finalEvents[0]?.text).toBe("Done.");
 	});
 
 	it("passes resume arguments when resumeSessionId is provided", async () => {

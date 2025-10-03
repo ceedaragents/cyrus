@@ -6,13 +6,13 @@ Last Updated: 2025-09-26
 
 ## Why
 
-Multi-runner support currently streams raw stdout/stderr lines back to Linear. The edge worker has to implement CLI-specific parsing (Codex timestamps, OpenCode SSE payloads, Claude streaming), which leads to brittle heuristics inside `EdgeWorker.startNonClaudeRunner`. Codex support just required inlining a large parser to strip timestamps, merge multi-line blocks, and detect `___LAST_MESSAGE_MARKER___`, which should live with the adapter that knows the CLI dialect.
+Multi-runner support currently streams raw stdout/stderr lines back to Linear. The edge worker has to implement CLI-specific parsing (Codex timestamps, OpenCode SSE payloads, Claude streaming), which leads to brittle heuristics inside `EdgeWorker.startNonClaudeRunner`. Codex support just required inlining a large parser to strip timestamps, merge multi-line blocks, and interpret termination markers—logic that should live with the adapter that knows the CLI dialect.
 
 ## Goals
 
 - Push CLI-specific parsing down into the corresponding runner adapter.
 - Provide a normalized event contract so the edge worker can route thoughts/responses without caring about source CLI.
-- Ensure final responses (marked by `___LAST_MESSAGE_MARKER___` or CLI-native equivalents) are emitted as dedicated events so sessions close automatically.
+- Ensure final responses (emitted via CLI-native metadata) are emitted as dedicated events so sessions close automatically.
 - Maintain backward compatibility for Claude streaming.
 
 ## Non-goals
