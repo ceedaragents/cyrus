@@ -18,7 +18,7 @@ Cyrus derives a permission profile for every session by examining the resolved t
 |-----------------|---------------|------------------------|----------------|--------------------|
 | `readOnly` (no write/edit/Bash tools) | `read-only` | `never` | `false` | Inspection only; any write or network request fails immediately |
 | `safe` (edits + curated git/gh commands) | `workspace-write` | `never` | `false` | Codex can edit files and run the approved git/gh workflow (status/diff/add/commit/push/merge/log/show/rev-parse/fetch/remote + `gh pr create/list/view/status`, `gh auth status`). Approvals are disabled so non-interactive sessions never stall. |
-| `all` (includes Bash/git or explicit allow-all) | `danger-full-access` | `never` | `true` | Unrestricted automation suitable for trusted repos and the PR flow |
+| `all` (includes Bash/git or explicit allow-all) | `danger-full-access` | `never` | `true` | Unrestricted automation suitable for trusted repos and the PR flow. Cyrus also injects `--dangerously-bypass-approvals-and-sandbox` when the CLI supports it so Codex actually gains unrestricted access. |
 
 Fallbacks:
 
@@ -96,7 +96,8 @@ To keep older CLIs working while we wait for official flag parity, the runner no
 - probes `codex exec --help` on startup to discover which options are available;
 - uses `--experimental-json` or `--json` depending on the detected help text;
 - only passes `--sandbox`/`--approval-policy` when the CLI supports them;
-- falls back to `--full-auto` or `--dangerously-bypass-approvals-and-sandbox` (when present) to approximate `workspace-write` / `danger-full-access` behaviour; and
+- when requesting `danger-full-access`, also adds `--dangerously-bypass-approvals-and-sandbox` if available to guarantee fetch/push/etc worktree writes succeed;
+- falls back to `--full-auto` when the CLI lacks sandbox toggles so workspace-write sessions can still edit files; and
 - logs a diagnostic message whenever we skip or substitute a flag so operators know why the command line changed.
 
 For the best experience, upgrade Codex CLI once a release restores explicit sandbox/approval controls. Cyrus will automatically start using the richer flags again as soon as they reappear in the help output.

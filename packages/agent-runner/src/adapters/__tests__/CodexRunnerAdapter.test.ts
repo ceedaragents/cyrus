@@ -401,6 +401,7 @@ describe("CodexRunnerAdapter", () => {
 				"/tmp/workspace",
 				"--sandbox",
 				"danger-full-access",
+				"--dangerously-bypass-approvals-and-sandbox",
 				"--full-auto",
 				"--approval-policy",
 				"never",
@@ -410,6 +411,52 @@ describe("CodexRunnerAdapter", () => {
 			],
 			expect.objectContaining({ cwd: "/tmp/workspace" }),
 		);
+
+		mockChild.emit("close", 0, null);
+	});
+
+	it("adds sandbox bypass flag for danger-full-access profiles", async () => {
+		spawnSyncMock.mockReturnValueOnce({
+			stdout: [
+				"Usage: codex exec [OPTIONS]",
+				"  --experimental-json",
+				"  --sandbox <MODE>",
+				"  --dangerously-bypass-approvals-and-sandbox",
+			].join("\n"),
+			stderr: "",
+		});
+		const mockChild = new MockChildProcess();
+		spawnMock.mockReturnValue(
+			mockChild as unknown as ChildProcessWithoutNullStreams,
+		);
+
+		const adapter = new CodexRunnerAdapter({
+			type: "codex",
+			cwd: "/tmp/workspace",
+			prompt: "danger mode",
+			sandbox: "danger-full-access",
+		});
+
+		const events: RunnerEvent[] = [];
+		await adapter.start((event) => {
+			events.push(event);
+		});
+
+		const args = spawnMock.mock.calls[0]?.[1] ?? [];
+		expect(args).toContain("--sandbox");
+		expect(args).toContain("danger-full-access");
+		expect(args).toContain("--dangerously-bypass-approvals-and-sandbox");
+		expect(
+			events.some(
+				(event) =>
+					event.kind === "log" &&
+					"text" in event &&
+					typeof event.text === "string" &&
+					event.text.includes(
+						"enabling --dangerously-bypass-approvals-and-sandbox",
+					),
+			),
+		).toBe(true);
 
 		mockChild.emit("close", 0, null);
 	});

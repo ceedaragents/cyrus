@@ -102,6 +102,16 @@ export class CodexRunnerAdapter implements Runner {
 
 		if (requestedSandbox && features.supportsSandbox) {
 			args.push("--sandbox", requestedSandbox);
+			if (
+				requestedSandbox === "danger-full-access" &&
+				features.supportsDangerBypass
+			) {
+				args.push("--dangerously-bypass-approvals-and-sandbox");
+				this.emitLog(
+					onEvent,
+					"Codex CLI enabling --dangerously-bypass-approvals-and-sandbox for danger-full-access",
+				);
+			}
 		} else if (requestedSandbox && !features.supportsSandbox) {
 			if (requestedSandbox === "workspace-write") {
 				fullAuto = true;
