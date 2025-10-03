@@ -388,8 +388,9 @@ describe("CodexRunnerAdapter", () => {
 			approvalPolicy: "never",
 		});
 
-		await adapter.start(() => {
-			// No-op for this assertion-focused test
+		const events: RunnerEvent[] = [];
+		await adapter.start((event) => {
+			events.push(event);
 		});
 
 		expect(spawnMock).toHaveBeenCalledWith(
@@ -402,7 +403,6 @@ describe("CodexRunnerAdapter", () => {
 				"--sandbox",
 				"danger-full-access",
 				"--dangerously-bypass-approvals-and-sandbox",
-				"--full-auto",
 				"--approval-policy",
 				"never",
 				"resume",
@@ -411,6 +411,16 @@ describe("CodexRunnerAdapter", () => {
 			],
 			expect.objectContaining({ cwd: "/tmp/workspace" }),
 		);
+		const resumeEvents = events.filter((event) => event.kind === "log");
+		expect(
+			resumeEvents.some(
+				(event) =>
+					typeof event.text === "string" &&
+					event.text.includes(
+						"Codex cannot combine --full-auto with --dangerously-bypass-approvals-and-sandbox",
+					),
+			),
+		).toBe(true);
 
 		mockChild.emit("close", 0, null);
 	});
@@ -446,17 +456,26 @@ describe("CodexRunnerAdapter", () => {
 		expect(args).toContain("--sandbox");
 		expect(args).toContain("danger-full-access");
 		expect(args).toContain("--dangerously-bypass-approvals-and-sandbox");
-		expect(
-			events.some(
-				(event) =>
-					event.kind === "log" &&
-					"text" in event &&
-					typeof event.text === "string" &&
-					event.text.includes(
-						"enabling --dangerously-bypass-approvals-and-sandbox",
-					),
-			),
-		).toBe(true);
+		expect(args).not.toContain("--full-auto");
+		const hasBypassLog = events.some(
+			(event) =>
+				event.kind === "log" &&
+				"text" in event &&
+				typeof event.text === "string" &&
+				event.text.includes(
+					"Codex CLI enabling --dangerously-bypass-approvals-and-sandbox for danger-full-access",
+				),
+		);
+		const hasSkipLog = events.some(
+			(event) =>
+				event.kind === "log" &&
+				"text" in event &&
+				typeof event.text === "string" &&
+				event.text.includes(
+					"Codex cannot combine --full-auto with --dangerously-bypass-approvals-and-sandbox",
+				),
+		);
+		expect(hasBypassLog || hasSkipLog).toBe(true);
 
 		mockChild.emit("close", 0, null);
 	});

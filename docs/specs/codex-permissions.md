@@ -96,7 +96,7 @@ To keep older CLIs working while we wait for official flag parity, the runner no
 - probes `codex exec --help` on startup to discover which options are available;
 - uses `--experimental-json` or `--json` depending on the detected help text;
 - only passes `--sandbox`/`--approval-policy` when the CLI supports them;
-- when requesting `danger-full-access`, also adds `--dangerously-bypass-approvals-and-sandbox` if available to guarantee fetch/push/etc worktree writes succeed;
+- when requesting `danger-full-access`, adds `--dangerously-bypass-approvals-and-sandbox` if available so fetch/push/etc worktree writes succeed, and drops `--full-auto` because the CLI forbids combining the two flags;
 - falls back to `--full-auto` when the CLI lacks sandbox toggles so workspace-write sessions can still edit files; and
 - logs a diagnostic message whenever we skip or substitute a flag so operators know why the command line changed.
 

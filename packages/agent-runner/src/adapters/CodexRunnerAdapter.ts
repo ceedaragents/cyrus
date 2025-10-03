@@ -98,7 +98,8 @@ export class CodexRunnerAdapter implements Runner {
 
 		const requestedSandbox = this.config.sandbox;
 		const requestedFullAuto = this.config.fullAuto ?? false;
-		let fullAuto = requestedFullAuto;
+		let derivedFullAuto = false;
+		let usedDangerBypass = false;
 
 		if (requestedSandbox && features.supportsSandbox) {
 			args.push("--sandbox", requestedSandbox);
@@ -107,6 +108,7 @@ export class CodexRunnerAdapter implements Runner {
 				features.supportsDangerBypass
 			) {
 				args.push("--dangerously-bypass-approvals-and-sandbox");
+				usedDangerBypass = true;
 				this.emitLog(
 					onEvent,
 					"Codex CLI enabling --dangerously-bypass-approvals-and-sandbox for danger-full-access",
@@ -114,7 +116,7 @@ export class CodexRunnerAdapter implements Runner {
 			}
 		} else if (requestedSandbox && !features.supportsSandbox) {
 			if (requestedSandbox === "workspace-write") {
-				fullAuto = true;
+				derivedFullAuto = true;
 				this.emitLog(
 					onEvent,
 					"Codex CLI lacks --sandbox; enabling --full-auto so workspace edits remain allowed",
@@ -124,13 +126,13 @@ export class CodexRunnerAdapter implements Runner {
 				features.supportsDangerBypass
 			) {
 				args.push("--dangerously-bypass-approvals-and-sandbox");
-				fullAuto = true;
+				usedDangerBypass = true;
 				this.emitLog(
 					onEvent,
 					"Codex CLI lacks --sandbox; using --dangerously-bypass-approvals-and-sandbox",
 				);
 			} else if (requestedSandbox === "danger-full-access") {
-				fullAuto = true;
+				derivedFullAuto = true;
 				this.emitLog(
 					onEvent,
 					"Codex CLI lacks sandbox controls; proceeding with --full-auto",
@@ -138,8 +140,17 @@ export class CodexRunnerAdapter implements Runner {
 			}
 		}
 
-		if (requestedSandbox === "danger-full-access") {
-			fullAuto = true;
+		if (requestedSandbox === "danger-full-access" && !usedDangerBypass) {
+			derivedFullAuto = true;
+		}
+
+		let fullAuto = requestedFullAuto || derivedFullAuto;
+		if (usedDangerBypass && fullAuto) {
+			fullAuto = false;
+			this.emitLog(
+				onEvent,
+				"Codex cannot combine --full-auto with --dangerously-bypass-approvals-and-sandbox; skipping --full-auto",
+			);
 		}
 
 		if (fullAuto) {
