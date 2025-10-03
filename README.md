@@ -52,10 +52,10 @@ After initial setup, Cyrus stores your configuration in `~/.cyrus/config.json`. 
 Each repository in the `repositories` array can have these optional properties:
 
 #### `allowedTools` (array of strings)
-Controls which tools Claude can use when processing issues. Default: all standard tools plus `Bash(git:*)` and `Bash(gh:*)`.
+Controls which tools Claude can use when processing issues. By default Cyrus enables the standard read/write tooling **plus a vetted git/GitHub CLI allowlist** (`git status|diff|add|commit|push|merge|log|show|rev-parse|fetch|remote`, `gh pr create|view|list|status`, `gh auth status`).
 
 Examples:
-- `["Read(**)", "Edit(**)", "Bash(git:*)", "Task"]` - Allow reading, editing, git commands, and task management
+- `["Read(**)", "Edit(**)", "Bash(git:status*)", "Bash(git:commit*)", "Task"]` - Allow reading, editing, and specific git commands
 - `["Read(**)", "Edit(**)", "Bash(npm:*)", "WebSearch"]` - Allow reading, editing, npm commands, and web search
 - `["Read(**)", "Edit(**)", "mcp__github"]` - Allow all tools from the GitHub MCP server
 - `["Read(**)", "Edit(**)", "mcp__github__search_repositories"]` - Allow only the search_repositories tool from GitHub MCP
@@ -198,7 +198,35 @@ Sets default allowed tools for each prompt type across all repositories. Reposit
     "id": "workspace-123456",
     "name": "my-app",
     "repositoryPath": "/path/to/repo",
-    "allowedTools": ["Read(**)", "Edit(**)", "Bash(git:*)", "Bash(gh:*)", "Task"],
+    "allowedTools": [
+      "Read(**)",
+      "Edit(**)",
+      "Task",
+      "WebFetch",
+      "WebSearch",
+      "TodoRead",
+      "TodoWrite",
+      "NotebookRead",
+      "NotebookEdit",
+      "Batch",
+      "Bash(git:status*)",
+      "Bash(git:diff*)",
+      "Bash(git:add*)",
+      "Bash(git:restore --staged*)",
+      "Bash(git:commit*)",
+      "Bash(git:log*)",
+      "Bash(git:show*)",
+      "Bash(git:branch*)",
+      "Bash(git:push*)",
+      "Bash(git:merge*)",
+      "Bash(git:rev-parse*)",
+      "Bash(git:fetch*)",
+      "Bash(gh:pr create*)",
+      "Bash(gh:pr list*)",
+      "Bash(gh:pr view*)",
+      "Bash(gh:pr status*)",
+      "Bash(gh:auth status*)"
+    ],
     "mcpConfigPath": "./mcp-config.json",
     "teamKeys": ["BACKEND"],
     "projectKeys": ["API Service", "Backend Infrastructure"],

@@ -144,7 +144,7 @@ describe("EdgeWorker Codex regression", () => {
 			linearWorkspaceId: "workspace-1",
 			linearToken: "linear-token",
 			isActive: true,
-			allowedTools: ["Read"],
+			allowedTools: ["Read(**)", "Edit(**)", "Bash(git:*)"],
 			labelPrompts: {},
 		};
 
@@ -233,10 +233,14 @@ describe("EdgeWorker Codex regression", () => {
 		await Promise.resolve();
 
 		expect(runnerFactoryMock.create).toHaveBeenCalledTimes(1);
-		expect(runnerFactoryMock.create.mock.calls[0]?.[0]).toMatchObject({
+		const firstRunnerConfig = runnerFactoryMock.create.mock.calls[0]?.[0];
+		expect(firstRunnerConfig).toMatchObject({
 			type: "codex",
 			prompt: promptBody,
 			cwd: workspacePath,
+			approvalPolicy: "never",
+			sandbox: "workspace-write",
+			fullAuto: false,
 		});
 		expect(fakeRunner.start).toHaveBeenCalledTimes(1);
 		const debugMessages = debugLogSpy.mock.calls.map((call) => call[0]);
@@ -289,6 +293,16 @@ describe("EdgeWorker Codex regression", () => {
 		expect(latestState?.sessionRunnerSelections?.[sessionId]?.type).toBe(
 			"codex",
 		);
+		expect(
+			latestState?.sessionRunnerSelections?.[sessionId]?.codexPermissions,
+		).toEqual(
+			expect.objectContaining({
+				profile: "safe",
+				sandbox: "workspace-write",
+				approvalPolicy: "never",
+				fullAuto: false,
+			}),
+		);
 		const missingClientLog = debugLogSpy.mock.calls.find(
 			([message]) =>
 				typeof message === "string" &&
@@ -331,6 +345,16 @@ describe("EdgeWorker Codex regression", () => {
 		expect(
 			persistedState.sessionRunnerSelections?.[sessionId]?.resumeSessionId,
 		).toBe("codex-run-123");
+		expect(
+			persistedState.sessionRunnerSelections?.[sessionId]?.codexPermissions,
+		).toEqual(
+			expect.objectContaining({
+				profile: "safe",
+				sandbox: "workspace-write",
+				approvalPolicy: "never",
+				fullAuto: false,
+			}),
+		);
 
 		const restoredWorker = new EdgeWorker(config);
 		const followUpRunner = {
@@ -379,6 +403,9 @@ describe("EdgeWorker Codex regression", () => {
 				type: "codex",
 				resumeSessionId: "codex-run-123",
 				prompt: `${promptBody} follow-up`,
+				approvalPolicy: "never",
+				sandbox: "workspace-write",
+				fullAuto: false,
 			}),
 		);
 	});

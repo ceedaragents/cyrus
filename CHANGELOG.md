@@ -304,7 +304,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Simplified initial setup by removing configuration prompts for MCP, labels, Linear teams, allowed tools, and workspace directory
   - MCP configuration is now optional with no default prompt
-  - Allowed tools default to all standard tools plus Bash(git:*) and Bash(gh:*) for immediate productivity
+  - Allowed tools default to all standard tools plus a vetted git/gh command allowlist (status/diff/add/commit/branch/push/merge/log/show/rev-parse/fetch + `gh pr create/list/view/status`, `gh auth status`) for immediate productivity
   - Label-based system prompts now have defaults: "Bug" for debugger mode, "Feature,Improvement" for builder mode, and "PRD" for scoper mode
   - Team-based routing defaults to all workspace issues (no team filtering)
   - Workspace directory automatically uses `~/.cyrus/workspaces/<repo-name>`

@@ -24,6 +24,15 @@ export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry;
 /**
  * Serializable EdgeWorker state for persistence
  */
+export type SerializedCodexPermissionProfile = "readOnly" | "safe" | "all";
+
+export interface SerializedCodexPermissions {
+	profile: SerializedCodexPermissionProfile;
+	sandbox: "read-only" | "workspace-write" | "danger-full-access";
+	approvalPolicy: "untrusted" | "on-failure" | "on-request" | "never";
+	fullAuto: boolean;
+}
+
 export interface SerializedSessionRunnerSelection {
 	type: "claude" | "codex" | "opencode";
 	model?: string;
@@ -31,6 +40,8 @@ export interface SerializedSessionRunnerSelection {
 	serverUrl?: string;
 	issueId: string;
 	resumeSessionId?: string;
+	promptType?: string;
+	codexPermissions?: SerializedCodexPermissions;
 }
 
 export interface SerializableEdgeWorkerState {

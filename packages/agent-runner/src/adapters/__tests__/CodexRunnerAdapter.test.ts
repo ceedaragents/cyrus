@@ -3,8 +3,13 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { spawnMock } = vi.hoisted(() => ({
+const { spawnMock, spawnSyncMock } = vi.hoisted(() => ({
 	spawnMock: vi.fn(),
+	spawnSyncMock: vi.fn(() => ({
+		stdout:
+			"Usage: codex exec [OPTIONS]\n\n        --experimental-json  Stream JSON events",
+		stderr: "",
+	})),
 }));
 
 vi.mock("node:child_process", async () => {
@@ -15,6 +20,7 @@ vi.mock("node:child_process", async () => {
 	return {
 		...actual,
 		spawn: spawnMock as typeof actual.spawn,
+		spawnSync: spawnSyncMock as typeof actual.spawnSync,
 	};
 });
 
@@ -45,10 +51,12 @@ const flushAsync = async (): Promise<void> => {
 describe("CodexRunnerAdapter", () => {
 	beforeEach(() => {
 		spawnMock.mockReset();
+		spawnSyncMock.mockClear();
 	});
 
 	afterEach(() => {
 		spawnMock.mockReset();
+		spawnSyncMock.mockClear();
 	});
 
 	it("emits normalized events for JSON stream", async () => {
@@ -76,7 +84,7 @@ describe("CodexRunnerAdapter", () => {
 		expect(startResult.sessionId).toBeUndefined();
 		expect(spawnMock).toHaveBeenCalledWith(
 			"codex",
-			[
+			expect.arrayContaining([
 				"exec",
 				"--experimental-json",
 				"--cd",
@@ -89,12 +97,14 @@ describe("CodexRunnerAdapter", () => {
 				"--sandbox",
 				"workspace-write",
 				"do the thing",
-			],
+			]),
 			expect.objectContaining({
 				cwd: "/tmp/workspace",
 				env: expect.objectContaining({ TEST_ENV: "1" }),
 			}),
 		);
+		const args = spawnMock.mock.calls[0]?.[1];
+		expect(args?.[1]).toBe("--experimental-json");
 
 		mockChild.stdout.write(
 			`${JSON.stringify({

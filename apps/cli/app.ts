@@ -21,6 +21,7 @@ import {
 	type EdgeWorkerConfig,
 	type RepositoryConfig,
 	type RunnerType,
+	SAFE_BASH_TOOL_ALLOWLIST,
 	SharedApplicationServer,
 } from "cyrus-edge-worker";
 import dotenv from "dotenv";
@@ -1282,13 +1283,11 @@ class EdgeApp {
 			// Note: Prompt template is now hardcoded - no longer configurable
 
 			// Set reasonable defaults for configuration
-			// Allowed tools - default to all tools except Bash, plus Bash(git:*) and Bash(gh:*)
+			// Allowed tools - default to the safe preset (read/write tools plus vetted git/gh commands)
 			// Note: MCP tools (mcp__linear, mcp__cyrus-mcp-tools) are automatically added by EdgeWorker
 			const allowedTools = [
 				"Read(**)",
 				"Edit(**)",
-				"Bash(git:*)",
-				"Bash(gh:*)",
 				"Task",
 				"WebFetch",
 				"WebSearch",
@@ -1297,6 +1296,7 @@ class EdgeApp {
 				"NotebookRead",
 				"NotebookEdit",
 				"Batch",
+				...SAFE_BASH_TOOL_ALLOWLIST,
 			];
 
 			// Label prompts - default to common label mappings

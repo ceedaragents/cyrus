@@ -77,11 +77,46 @@ import type {
 	RepositoryConfig,
 } from "./types.js";
 
+type CodexPermissionProfile = "readOnly" | "safe" | "all";
+
+export const SAFE_BASH_TOOL_ALLOWLIST = [
+	"Bash(git:status*)",
+	"Bash(git:diff*)",
+	"Bash(git:add*)",
+	"Bash(git:restore --staged*)",
+	"Bash(git:commit*)",
+	"Bash(git:log*)",
+	"Bash(git:show*)",
+	"Bash(git:branch*)",
+	"Bash(git:push*)",
+	"Bash(git:merge*)",
+	"Bash(git:rev-parse*)",
+	"Bash(git:fetch*)",
+	"Bash(gh:pr create*)",
+	"Bash(gh:pr list*)",
+	"Bash(gh:pr view*)",
+	"Bash(gh:pr status*)",
+	"Bash(gh:auth status*)",
+];
+
+type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+
+type CodexApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
+
+interface CodexRunnerPermissions {
+	profile: CodexPermissionProfile;
+	sandbox: CodexSandboxMode;
+	approvalPolicy: CodexApprovalPolicy;
+	fullAuto: boolean;
+}
+
 type RunnerSelection = {
 	type: RunnerType;
 	model?: string;
 	provider?: string;
 	serverUrl?: string;
+	promptType?: string;
+	codexPermissions?: CodexRunnerPermissions;
 };
 
 interface SessionRunnerMetadata extends RunnerSelection {
@@ -974,16 +1009,6 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		const selection = this.resolveRunnerSelection(labels, repository);
-		this.sessionRunnerSelections.set(linearAgentActivitySessionId, {
-			...selection,
-			issueId: fullIssue.id,
-		});
-		void this.savePersistedState().catch((error) => {
-			this.debugLog(
-				"[handleAgentSessionCreated] Failed to persist runner selection",
-				error,
-			);
-		});
 		this.debugLog(`[handleAgentSessionCreated] Runner selection resolved`, {
 			repositoryId: repository.id,
 			issue: fullIssue.identifier,
@@ -993,6 +1018,33 @@ export class EdgeWorker extends EventEmitter {
 		// Build allowed tools list with Linear MCP tools (now with prompt type context)
 		const allowedTools = this.buildAllowedTools(repository, promptType);
 		const disallowedTools = this.buildDisallowedTools(repository, promptType);
+
+		const codexPermissions =
+			selection.type === "codex"
+				? this.deriveCodexPermissions(repository, promptType, {
+						allowedTools,
+						disallowedTools,
+					})
+				: undefined;
+		const selectionForSession: RunnerSelection =
+			selection.type === "codex"
+				? {
+						...selection,
+						codexPermissions,
+						promptType,
+					}
+				: selection;
+
+		this.sessionRunnerSelections.set(linearAgentActivitySessionId, {
+			...selectionForSession,
+			issueId: fullIssue.id,
+		});
+		void this.savePersistedState().catch((error) => {
+			this.debugLog(
+				"[handleAgentSessionCreated] Failed to persist runner selection",
+				error,
+			);
+		});
 
 		console.log(
 			`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
@@ -1054,9 +1106,9 @@ export class EdgeWorker extends EventEmitter {
 			repository.id,
 		);
 
-		if (selection.type !== "claude") {
+		if (selectionForSession.type !== "claude") {
 			await this.startNonClaudeRunner({
-				selection,
+				selection: selectionForSession,
 				repository,
 				prompt: initialPrompt,
 				workspacePath: session.workspace.path,
@@ -1159,12 +1211,30 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Destructure session data for new session
-			const { fullIssue: newFullIssue } = sessionData;
+			const {
+				fullIssue: newFullIssue,
+				allowedTools: sessionAllowedTools,
+				disallowedTools: sessionDisallowedTools,
+			} = sessionData;
 			session = sessionData.session;
 			const newLabels = await this.fetchIssueLabels(newFullIssue);
 			const newSelection = this.resolveRunnerSelection(newLabels, repository);
+			const newCodexPermissions =
+				newSelection.type === "codex"
+					? this.deriveCodexPermissions(repository, undefined, {
+							allowedTools: sessionAllowedTools,
+							disallowedTools: sessionDisallowedTools,
+						})
+					: undefined;
+			const decoratedSelection: RunnerSelection =
+				newSelection.type === "codex"
+					? {
+							...newSelection,
+							codexPermissions: newCodexPermissions,
+						}
+					: newSelection;
 			this.sessionRunnerSelections.set(linearAgentActivitySessionId, {
-				...newSelection,
+				...decoratedSelection,
 				issueId: newFullIssue.id,
 				resumeSessionId: undefined,
 			});
@@ -1198,8 +1268,19 @@ export class EdgeWorker extends EventEmitter {
 		);
 		if (!sessionRunnerSelection) {
 			const fallbackSelection = this.resolveRunnerSelection([], repository);
+			const fallbackCodexPermissions =
+				fallbackSelection.type === "codex"
+					? this.deriveCodexPermissions(repository)
+					: undefined;
+			const decoratedFallback: RunnerSelection =
+				fallbackSelection.type === "codex"
+					? {
+							...fallbackSelection,
+							codexPermissions: fallbackCodexPermissions,
+						}
+					: fallbackSelection;
 			sessionRunnerSelection = {
-				...fallbackSelection,
+				...decoratedFallback,
 				issueId: session.issueId ?? issue.id,
 			};
 			this.sessionRunnerSelections.set(
@@ -3242,8 +3323,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		switch (preset) {
 			case "readOnly":
 				return getReadOnlyTools();
-			case "safe":
-				return getSafeTools();
+			case "safe": {
+				const tools = [...getSafeTools(), ...SAFE_BASH_TOOL_ALLOWLIST];
+				return [...new Set(tools)];
+			}
 			case "all":
 				return getAllTools();
 			case "coordinator":
@@ -3252,6 +3335,76 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				// If it's a string but not a preset, treat it as a single tool
 				return [preset];
 		}
+	}
+
+	private deriveCodexPermissions(
+		repository: RepositoryConfig,
+		promptType?: string,
+		options?: {
+			allowedTools?: string[];
+			disallowedTools?: string[];
+		},
+	): CodexRunnerPermissions {
+		const allowedTools =
+			options?.allowedTools ?? this.buildAllowedTools(repository, promptType);
+		const disallowedTools =
+			options?.disallowedTools ??
+			this.buildDisallowedTools(repository, promptType);
+
+		const effectiveTools = allowedTools.filter(
+			(tool) => !disallowedTools.includes(tool),
+		);
+		const normalizedTools = effectiveTools.map((tool) =>
+			tool.trim().toLowerCase(),
+		);
+
+		const hasGitBash = normalizedTools.some((tool) =>
+			tool.startsWith("bash(git:"),
+		);
+		const hasGeneralBash = normalizedTools.some(
+			(tool) => tool.startsWith("bash") && !tool.startsWith("bash(git:"),
+		);
+		const hasWriteTool = normalizedTools.some(
+			(tool) =>
+				tool.startsWith("edit") ||
+				tool.includes("write") ||
+				tool.endsWith("edit"),
+		);
+
+		const profile: CodexPermissionProfile = hasGeneralBash
+			? "all"
+			: hasWriteTool || hasGitBash
+				? "safe"
+				: "readOnly";
+
+		const mapping: Record<CodexPermissionProfile, CodexRunnerPermissions> = {
+			readOnly: {
+				profile: "readOnly",
+				sandbox: "read-only",
+				approvalPolicy: "never",
+				fullAuto: false,
+			},
+			safe: {
+				profile: "safe",
+				sandbox: "workspace-write",
+				approvalPolicy: "never",
+				fullAuto: false,
+			},
+			all: {
+				profile: "all",
+				sandbox: "danger-full-access",
+				approvalPolicy: "never",
+				fullAuto: true,
+			},
+		};
+
+		this.debugLog(`[deriveCodexPermissions] Derived ${profile} profile`, {
+			repositoryId: repository.id,
+			promptType,
+			effectiveTools,
+		});
+
+		return mapping[profile];
 	}
 
 	/**
@@ -3903,7 +4056,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const codexDefaults = this.config.cliDefaults?.codex;
 		const opencodeDefaults = this.config.cliDefaults?.opencode;
 		const repoRunnerModels = repository.runnerModels;
-		const selectionMeta = this.sessionRunnerSelections.get(
+		let selectionMeta = this.sessionRunnerSelections.get(
 			linearAgentActivitySessionId,
 		);
 
@@ -3924,9 +4077,24 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			const resumeSessionId = isFollowUp
 				? cachedResumeId || selectionMeta?.resumeSessionId
 				: undefined;
-			const approvalPolicy = codexDefaults?.approvalPolicy ?? "never";
-			const sandbox = codexDefaults?.sandbox ?? "danger-full-access";
-			const fullAuto = codexDefaults?.fullAuto;
+			let codexPermissions =
+				selection.codexPermissions || selectionMeta?.codexPermissions;
+			if (!codexPermissions) {
+				codexPermissions = this.deriveCodexPermissions(
+					repository,
+					selection.promptType,
+				);
+			}
+			const approvalPolicy =
+				codexPermissions?.approvalPolicy ||
+				codexDefaults?.approvalPolicy ||
+				"never";
+			const sandbox =
+				codexPermissions?.sandbox ||
+				codexDefaults?.sandbox ||
+				"danger-full-access";
+			const fullAuto =
+				codexPermissions?.fullAuto ?? codexDefaults?.fullAuto ?? false;
 			runnerConfig = {
 				type: "codex",
 				cwd: workspacePath,
@@ -3937,10 +4105,24 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					codexDefaults?.model,
 				approvalPolicy,
 				sandbox,
-				...(fullAuto !== undefined ? { fullAuto } : {}),
+				fullAuto,
 				...(resumeSessionId && { resumeSessionId }),
 				env,
 			};
+			if (
+				codexPermissions &&
+				selectionMeta &&
+				!selectionMeta.codexPermissions
+			) {
+				selectionMeta = {
+					...selectionMeta,
+					codexPermissions,
+				};
+				this.sessionRunnerSelections.set(
+					linearAgentActivitySessionId,
+					selectionMeta,
+				);
+			}
 		} else {
 			const serverUrl =
 				selection.serverUrl ||

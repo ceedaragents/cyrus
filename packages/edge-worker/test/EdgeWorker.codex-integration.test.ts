@@ -116,7 +116,7 @@ describe("EdgeWorker Codex integration", () => {
 			linearWorkspaceId: "workspace-1",
 			linearToken: "linear-token",
 			isActive: true,
-			allowedTools: ["Read"],
+			allowedTools: ["Read(**)", "Edit(**)"],
 			labelPrompts: {},
 		};
 
@@ -208,6 +208,9 @@ describe("EdgeWorker Codex integration", () => {
 				type: "codex",
 				cwd: workspacePath,
 				prompt: promptBody,
+				approvalPolicy: "never",
+				sandbox: "workspace-write",
+				fullAuto: false,
 			}),
 		);
 

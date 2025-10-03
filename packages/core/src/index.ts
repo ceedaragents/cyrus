@@ -13,6 +13,7 @@ export type {
 export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {
 	SerializableEdgeWorkerState,
+	SerializedCodexPermissions,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 	SerializedSessionRunnerSelection,

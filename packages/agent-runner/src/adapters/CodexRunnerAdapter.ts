@@ -1,4 +1,8 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import {
+	type ChildProcessWithoutNullStreams,
+	spawn,
+	spawnSync,
+} from "node:child_process";
 import type {
 	CodexRunnerOptions,
 	Runner,
@@ -9,6 +13,38 @@ import { toError } from "../utils/errors.js";
 import { pipeStreamLines } from "../utils/stream.js";
 
 type CodexJsonMessage = Record<string, unknown>;
+
+type JsonFlag = "--experimental-json" | "--json";
+
+let cachedJsonFlag: JsonFlag | undefined;
+
+function resolveJsonFlag(env: NodeJS.ProcessEnv | undefined): JsonFlag {
+	if (cachedJsonFlag) {
+		return cachedJsonFlag;
+	}
+
+	try {
+		const detection = spawnSync("codex", ["exec", "--help"], {
+			env,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		const output = `${detection.stdout ?? ""}${detection.stderr ?? ""}`;
+		if (output.includes("--experimental-json")) {
+			cachedJsonFlag = "--experimental-json";
+			return cachedJsonFlag;
+		}
+		if (output.includes("--json")) {
+			cachedJsonFlag = "--json";
+			return cachedJsonFlag;
+		}
+	} catch (_error) {
+		// Fallback handled below
+	}
+
+	cachedJsonFlag = "--experimental-json";
+	return cachedJsonFlag;
+}
 
 const LAST_MESSAGE_MARKER_REGEX = /___LAST_MESSAGE_MARKER___/g;
 const IGNORED_TEXT_KEYS = new Set([
@@ -37,7 +73,9 @@ export class CodexRunnerAdapter implements Runner {
 	async start(
 		onEvent: (event: RunnerEvent) => void,
 	): Promise<RunnerStartResult> {
-		const args = ["exec", "--experimental-json", "--cd", this.config.cwd];
+		const env = { ...process.env, ...(this.config.env ?? {}) };
+		const jsonFlag = resolveJsonFlag(env);
+		const args = ["exec", jsonFlag, "--cd", this.config.cwd];
 		const fullAuto = this.config.fullAuto ?? true;
 		if (fullAuto) {
 			args.push("--full-auto");
@@ -54,8 +92,6 @@ export class CodexRunnerAdapter implements Runner {
 		} else {
 			args.push(this.config.prompt);
 		}
-
-		const env = { ...process.env, ...(this.config.env ?? {}) };
 
 		try {
 			this.child = spawn("codex", args, {
