@@ -100,3 +100,13 @@ To keep older CLIs working while we wait for official flag parity, the runner no
 - logs a diagnostic message whenever we skip or substitute a flag so operators know why the command line changed.
 
 For the best experience, upgrade Codex CLI once a release restores explicit sandbox/approval controls. Cyrus will automatically start using the richer flags again as soon as they reappear in the help output.
+
+## Stream Finalization
+
+Earlier versions of Cyrus required the `___LAST_MESSAGE_MARKER___` sentinel in the final assistant message to determine when to close a session. Codex CLI 0.42 stopped emitting that marker reliably, so the runner now watches the JSONL stream instead:
+
+- When we receive `type: "item.completed"` with `item_type: "assistant_message"`, the adapter emits the `final` event immediately.
+- We still strip the marker when present (for backwards compatibility), but its absence no longer blocks Linear session completion.
+- This logic also protects against duplicate finals—additional `assistant_message` events are ignored once the session has been marked complete.
+
+No configuration changes are required; the behaviour ships with the updated adapter.

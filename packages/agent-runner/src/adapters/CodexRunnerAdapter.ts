@@ -342,9 +342,9 @@ export class CodexRunnerAdapter implements Runner {
 		raw: string,
 		onEvent: (event: RunnerEvent) => void,
 	): void {
-		if (this.finalDelivered) {
-			return;
-		}
+ 		if (this.finalDelivered) {
+ 			return;
+ 		}
 		this.finalDelivered = true;
 		const text = this.sanitizeAssistantText(this.extractText(payload));
 		onEvent({ kind: "final", text: text ?? "Codex run completed" });
