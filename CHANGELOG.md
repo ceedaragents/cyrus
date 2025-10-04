@@ -4,11 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.54] - 2025-10-04
+
 ### Added
 - **Automatic MCP config detection**: Cyrus now automatically detects and loads `.mcp.json` files in the repository root. The `.mcp.json` serves as a base configuration that can be extended by explicit `mcpConfigPath` settings, allowing for composable MCP server configurations.
 
 ### Fixed
 - **Custom instructions now work correctly**: Fixed critical bug where `appendSystemPrompt` was being silently ignored, causing Cyrus to not follow custom instructions or agent guidance. The feature has been fixed to use the correct SDK API (`systemPrompt.append`), making custom prompts and Linear agent guidance work as intended.
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.29
+
+#### cyrus-core
+- cyrus-core@0.0.17
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.36
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.22
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.54
 
 ## [0.1.53] - 2025-10-04
 
