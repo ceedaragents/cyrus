@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Added debug logging for `AppUserNotification` webhook payloads in EdgeWorker
+
 ## [0.1.53] - 2025-10-04
 
 ### Added

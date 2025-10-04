@@ -463,6 +463,13 @@ export class EdgeWorker extends EventEmitter {
 		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
+		// Log AppUserNotification webhook payload
+		if ((webhook as any).type === "AppUserNotification") {
+			console.log(
+				`[EdgeWorker] AppUserNotification webhook payload: ${JSON.stringify(webhook)}`,
+			);
+		}
+
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			console.log(
