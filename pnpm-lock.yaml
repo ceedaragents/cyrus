@@ -116,6 +116,9 @@ importers:
       fs-extra:
         specifier: ^11.3.0
         version: 11.3.0
+      openai:
+        specifier: ^6.2.0
+        version: 6.2.0(ws@8.18.0)(zod@3.25.75)
       zod:
         specifier: ^3.23.0
         version: 3.25.75
@@ -1934,6 +1937,18 @@ packages:
   open@10.1.2:
     resolution: {integrity: sha512-cxN6aIDPz6rm8hbebcP7vrQNhvRcveZoJU72Y7vskh4oIm+BZwBECnx5nTmrlres1Qapvx27Qo1Auukpf8PKXw==}
     engines: {node: '>=18'}
+
+  openai@6.2.0:
+    resolution: {integrity: sha512-qqjzHls7F5xkXNGy9P1Ei1rorI5LWupUUFWP66zPU8FlZbiITX8SFcHMKNZg/NATJ0LpIZcMUFxSwQmdeQPwSw==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
 
   p-limit@5.0.0:
     resolution: {integrity: sha512-/Eaoq+QyLSiXQ4lyYV23f14mZRQcXnxfHrN0vCai+ak9G0pp9iEQukIIZq5NccEvwRB8PUnZT0KsOoDCINS1qQ==}
@@ -4062,6 +4077,11 @@ snapshots:
       define-lazy-prop: 3.0.0
       is-inside-container: 1.0.0
       is-wsl: 3.1.0
+
+  openai@6.2.0(ws@8.18.0)(zod@3.25.75):
+    optionalDependencies:
+      ws: 8.18.0
+      zod: 3.25.75
 
   p-limit@5.0.0:
     dependencies:

@@ -5,11 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Sora 2 video generation support**: Added custom MCP tools for Azure OpenAI Sora 2 video generation with three tools: `mcp__sora-tools__sora_generate_video` to start video generation, `mcp__sora-tools__sora_check_status` to poll job status, and `mcp__sora-tools__sora_get_video` to download completed videos. Configure via `soraApiKey`, `soraEndpoint`, and `soraOutputDirectory` in repository config.
+- **Sora 2 video generation support**: Added custom MCP tools for Azure OpenAI Sora 2 video generation with three tools: `mcp__sora-tools__sora_generate_video` to start video generation (supports text-to-video, image-to-video, and video-to-video via `input_reference` parameter), `mcp__sora-tools__sora_check_status` to poll job status, and `mcp__sora-tools__sora_get_video` to download completed videos. Configure via `soraApiKey`, `soraEndpoint`, and `soraOutputDirectory` in repository config. Includes OpenAI TypeScript SDK for robust API interaction.
 
 ### Changed
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.5 to v0.1.8 for latest Claude Agent SDK improvements
+
 ## [0.1.54] - 2025-10-04
 
 ### Added

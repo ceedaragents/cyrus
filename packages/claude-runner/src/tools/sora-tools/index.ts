@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs-extra";
 import { z } from "zod";
@@ -23,6 +24,22 @@ export interface SoraToolsOptions {
 }
 
 /**
+ * Detect MIME type based on file extension
+ */
+function getMediaMimeType(filename: string): string {
+	const ext = filename.toLowerCase();
+	if (ext.endsWith(".jpg") || ext.endsWith(".jpeg")) return "image/jpeg";
+	if (ext.endsWith(".png")) return "image/png";
+	if (ext.endsWith(".gif")) return "image/gif";
+	if (ext.endsWith(".webp")) return "image/webp";
+	if (ext.endsWith(".mp4")) return "video/mp4";
+	if (ext.endsWith(".mov")) return "video/quicktime";
+	if (ext.endsWith(".avi")) return "video/x-msvideo";
+	if (ext.endsWith(".webm")) return "video/webm";
+	return "application/octet-stream";
+}
+
+/**
  * Create an SDK MCP server with Sora video generation tools
  */
 export function createSoraToolsServer(options: SoraToolsOptions) {
@@ -30,7 +47,7 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 
 	const generateVideoTool = tool(
 		"sora_generate_video",
-		"Generate a video using Sora 2. This starts an asynchronous video generation job and returns a job ID. Use sora_check_status to poll for completion.",
+		"Generate a video using Sora 2. Supports text-to-video, image-to-video, and video-to-video generation. Returns a job ID to poll for completion.",
 		{
 			prompt: z
 				.string()
@@ -50,31 +67,87 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 				.optional()
 				.default(5)
 				.describe("Video duration in seconds (default: 5)"),
+			input_reference: z
+				.string()
+				.optional()
+				.describe(
+					"Path to reference image or video file for image-to-video or video-to-video generation. Supports JPEG, PNG, GIF, WebP, MP4, MOV, AVI, WebM.",
+				),
 		},
-		async ({ prompt, width, height, n_seconds }) => {
+		async ({ prompt, width, height, n_seconds, input_reference }) => {
 			try {
 				console.log(
-					`Starting video generation: ${prompt.substring(0, 50)}... (${width}x${height}, ${n_seconds}s)`,
+					`Starting video generation: ${prompt.substring(0, 50)}... (${width}x${height}, ${n_seconds}s)${input_reference ? ` with reference: ${input_reference}` : ""}`,
 				);
 
 				const url = `${endpoint}/openai/v1/video/generations/jobs?api-version=preview`;
 
-				const requestBody = {
-					model: "sora",
-					prompt,
-					width,
-					height,
-					n_seconds,
-				};
+				// Build the request - use multipart/form-data if we have input_reference
+				let response: Response;
 
-				const response = await fetch(url, {
-					method: "POST",
-					headers: {
-						"api-key": apiKey,
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify(requestBody),
-				});
+				if (input_reference) {
+					// Read the reference file
+					if (!(await fs.pathExists(input_reference))) {
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify({
+										success: false,
+										error: `Reference file not found: ${input_reference}`,
+									}),
+								},
+							],
+						};
+					}
+
+					const fileBuffer = await fs.readFile(input_reference);
+					const mimeType = getMediaMimeType(input_reference);
+					const filename = basename(input_reference);
+
+					// Create multipart form data
+					const formData = new FormData();
+					formData.append("model", "sora");
+					formData.append("prompt", prompt);
+					formData.append("width", width.toString());
+					formData.append("height", height.toString());
+					formData.append("n_seconds", n_seconds.toString());
+
+					// Add the reference file with proper MIME type
+					const blob = new Blob([fileBuffer], { type: mimeType });
+					formData.append("input_reference", blob, filename);
+
+					console.log(
+						`Uploading reference file: ${filename} (${mimeType}, ${fileBuffer.length} bytes)`,
+					);
+
+					response = await fetch(url, {
+						method: "POST",
+						headers: {
+							"api-key": apiKey,
+							// Don't set Content-Type - let fetch set it with boundary
+						},
+						body: formData,
+					});
+				} else {
+					// JSON request for text-to-video
+					const requestBody = {
+						model: "sora",
+						prompt,
+						width,
+						height,
+						n_seconds,
+					};
+
+					response = await fetch(url, {
+						method: "POST",
+						headers: {
+							"api-key": apiKey,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify(requestBody),
+					});
+				}
 
 				if (!response.ok) {
 					const errorText = await response.text();
