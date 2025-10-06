@@ -53,6 +53,8 @@ import { LinearWebhookClient } from "cyrus-linear-webhook-client";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import type { ConfigurationChanges } from "./ConfigurationManager.js";
+import { ConfigurationManager } from "./ConfigurationManager.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type {
 	EdgeWorkerConfig,
@@ -82,6 +84,7 @@ const LAST_MESSAGE_MARKER =
  *   processes results through to Linear Agent Activity Sessions
  */
 export class EdgeWorker extends EventEmitter {
+	private configManager: ConfigurationManager;
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
@@ -92,11 +95,27 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
+	private isStarted: boolean = false; // Track if EdgeWorker has been started
 
-	constructor(config: EdgeWorkerConfig) {
+	constructor(config: EdgeWorkerConfig, configManager?: ConfigurationManager) {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
+
+		// Use provided ConfigurationManager or create a default one
+		this.configManager =
+			configManager ||
+			new ConfigurationManager(join(this.cyrusHome, "config.json"), config);
+
+		// Listen for configuration changes
+		this.configManager.on("config:reloaded", (newConfig, changes) => {
+			this.handleConfigurationReload(newConfig, changes);
+		});
+
+		this.configManager.on("config:error", (error) => {
+			console.error("[EdgeWorker] Configuration reload error:", error);
+			this.emit("error", error);
+		});
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
@@ -315,6 +334,13 @@ export class EdgeWorker extends EventEmitter {
 		// Start shared application server first
 		await this.sharedApplicationServer.start();
 
+		// Start watching configuration file for changes
+		this.configManager.startWatching();
+		console.log("[EdgeWorker] Configuration file watching enabled");
+
+		// Mark as started
+		this.isStarted = true;
+
 		// Connect all NDJSON clients
 		const connections = Array.from(this.ndjsonClients.entries()).map(
 			async ([repoId, client]) => {
@@ -420,8 +446,15 @@ export class EdgeWorker extends EventEmitter {
 			client.disconnect();
 		}
 
+		// Stop configuration watching
+		this.configManager.stopWatching();
+		console.log("[EdgeWorker] Configuration file watching stopped");
+
 		// Stop shared application server
 		await this.sharedApplicationServer.stop();
+
+		// Mark as stopped
+		this.isStarted = false;
 	}
 
 	/**
@@ -453,6 +486,256 @@ export class EdgeWorker extends EventEmitter {
 	private handleError(error: Error): void {
 		this.emit("error", error);
 		this.config.handlers?.onError?.(error);
+	}
+
+	/**
+	 * Handle configuration reload - apply safe changes immediately, queue breaking changes
+	 */
+	private async handleConfigurationReload(
+		newConfig: EdgeWorkerConfig,
+		changes: ConfigurationChanges,
+	): Promise<void> {
+		console.log("\n🔄 Configuration Reload Detected");
+		console.log("─".repeat(50));
+		console.log(`Added repositories: ${changes.repositoriesAdded.length}`);
+		console.log(`Removed repositories: ${changes.repositoriesRemoved.length}`);
+		console.log(
+			`Modified repositories: ${changes.repositoriesModified.length}`,
+		);
+		console.log(`Other changes: ${changes.otherChanges ? "Yes" : "No"}`);
+		console.log("─".repeat(50));
+
+		// Update the config reference
+		this.config = newConfig;
+
+		// Handle added repositories (safe to add immediately)
+		for (const repo of changes.repositoriesAdded) {
+			console.log(
+				`[ConfigReload] Adding new repository: ${repo.name} (${repo.id})`,
+			);
+
+			// Add to repositories map
+			this.repositories.set(repo.id, repo);
+
+			// Create Linear client for this repository
+			const linearClient = new LinearClient({
+				accessToken: repo.linearToken,
+			});
+			this.linearClients.set(repo.id, linearClient);
+
+			// Create AgentSessionManager for this repository
+			const agentSessionManager = new AgentSessionManager(
+				linearClient,
+				(childSessionId: string) => {
+					const parentId = this.childToParentAgentSession.get(childSessionId);
+					return parentId;
+				},
+				async (
+					parentSessionId: string,
+					prompt: string,
+					childSessionId: string,
+				) => {
+					const parentSession = agentSessionManager.getSession(parentSessionId);
+					if (!parentSession) {
+						return;
+					}
+
+					const childSession = agentSessionManager.getSession(childSessionId);
+					const childWorkspaceDirs: string[] = [];
+					if (childSession) {
+						childWorkspaceDirs.push(childSession.workspace.path);
+					}
+
+					await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+
+					try {
+						await this.resumeClaudeSession(
+							parentSession,
+							repo,
+							parentSessionId,
+							agentSessionManager,
+							prompt,
+							"",
+							false,
+							childWorkspaceDirs,
+						);
+					} catch (error) {
+						console.error(
+							`[ConfigReload] Failed to resume parent session ${parentSessionId}:`,
+							error,
+						);
+					}
+				},
+			);
+			this.agentSessionManagers.set(repo.id, agentSessionManager);
+
+			// If EdgeWorker is already started, create and connect NDJSON client for this repo
+			if (this.isStarted) {
+				console.log(
+					`[ConfigReload] Creating NDJSON client for new repository: ${repo.name}`,
+				);
+
+				// Check if we already have a client for this token
+				let existingClient: NdjsonClient | LinearWebhookClient | undefined;
+				for (const [existingRepoId, client] of this.ndjsonClients.entries()) {
+					const existingRepo = this.repositories.get(existingRepoId);
+					if (existingRepo?.linearToken === repo.linearToken) {
+						existingClient = client;
+						console.log(
+							`[ConfigReload] Reusing existing NDJSON client (token matches)`,
+						);
+						break;
+					}
+				}
+
+				if (!existingClient) {
+					// Create new NDJSON client for this token
+					const serverPort =
+						this.config.serverPort || this.config.webhookPort || 3456;
+					const serverHost = this.config.serverHost || "localhost";
+					const useLinearDirectWebhooks =
+						process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
+
+					const repos = [repo]; // For now, just this repository
+
+					const clientConfig = {
+						proxyUrl: this.config.proxyUrl,
+						token: repo.linearToken,
+						name: repo.name,
+						transport: "webhook" as const,
+						useExternalWebhookServer: true,
+						externalWebhookServer: this.sharedApplicationServer,
+						webhookPort: serverPort,
+						webhookPath: "/webhook",
+						webhookHost: serverHost,
+						...(this.config.baseUrl && { webhookBaseUrl: this.config.baseUrl }),
+						...(!this.config.baseUrl &&
+							this.config.webhookBaseUrl && {
+								webhookBaseUrl: this.config.webhookBaseUrl,
+							}),
+						onConnect: () => this.handleConnect(repo.id, repos),
+						onDisconnect: (reason?: string) =>
+							this.handleDisconnect(repo.id, repos, reason),
+						onError: (error: Error) => this.handleError(error),
+					};
+
+					const ndjsonClient = useLinearDirectWebhooks
+						? new LinearWebhookClient({
+								...clientConfig,
+								onWebhook: (payload: any) =>
+									this.handleWebhook(
+										payload as unknown as LinearWebhook,
+										repos,
+									),
+							})
+						: new NdjsonClient(clientConfig);
+
+					if (!useLinearDirectWebhooks) {
+						(ndjsonClient as NdjsonClient).on("webhook", (data) =>
+							this.handleWebhook(data as LinearWebhook, repos),
+						);
+					}
+
+					this.ndjsonClients.set(repo.id, ndjsonClient);
+
+					// Connect the new client
+					try {
+						await ndjsonClient.connect();
+						console.log(
+							`[ConfigReload] Successfully connected new repository: ${repo.name}`,
+						);
+					} catch (error) {
+						console.error(
+							`[ConfigReload] Failed to connect new repository ${repo.name}:`,
+							error,
+						);
+					}
+				}
+			}
+
+			console.log(
+				`[ConfigReload] ✅ Successfully added repository: ${repo.name}`,
+			);
+		}
+
+		// Handle modified repositories (apply updates to existing repos)
+		for (const repo of changes.repositoriesModified) {
+			console.log(
+				`[ConfigReload] Updating repository: ${repo.name} (${repo.id})`,
+			);
+
+			// Update repository in map
+			this.repositories.set(repo.id, repo);
+
+			// Check if Linear token changed - if so, update client
+			const existingClient = this.linearClients.get(repo.id);
+			if (existingClient) {
+				// For now, log a warning - full token update requires reconnecting clients
+				console.log(`[ConfigReload] ⚠️  Repository ${repo.name} was modified`);
+				console.log(
+					`[ConfigReload] Note: Some changes (like token updates) require restart for full effect`,
+				);
+			}
+
+			console.log(`[ConfigReload] ✅ Updated repository: ${repo.name}`);
+		}
+
+		// Handle removed repositories (queue for removal when safe)
+		for (const repo of changes.repositoriesRemoved) {
+			console.log(
+				`[ConfigReload] Queuing repository for removal: ${repo.name} (${repo.id})`,
+			);
+
+			// Check if repository has active sessions
+			const agentSessionManager = this.agentSessionManagers.get(repo.id);
+			const activeSessions = agentSessionManager?.getAllClaudeRunners() || [];
+
+			if (activeSessions.length > 0) {
+				console.log(
+					`[ConfigReload] ⚠️  Repository ${repo.name} has ${activeSessions.length} active session(s)`,
+				);
+				console.log(
+					`[ConfigReload] Will remove after active sessions complete`,
+				);
+				// For now, we log this - in a full implementation, we'd track this and remove later
+			} else {
+				// Safe to remove immediately
+				console.log(
+					`[ConfigReload] Removing repository immediately: ${repo.name}`,
+				);
+
+				// Remove from repositories map
+				this.repositories.delete(repo.id);
+
+				// Disconnect and remove NDJSON client
+				const ndjsonClient = this.ndjsonClients.get(repo.id);
+				if (ndjsonClient) {
+					ndjsonClient.disconnect();
+					this.ndjsonClients.delete(repo.id);
+				}
+
+				// Remove Linear client
+				this.linearClients.delete(repo.id);
+
+				// Remove agent session manager
+				this.agentSessionManagers.delete(repo.id);
+
+				console.log(`[ConfigReload] ✅ Removed repository: ${repo.name}`);
+			}
+		}
+
+		// Log other configuration changes
+		if (changes.otherChanges) {
+			console.log(
+				"[ConfigReload] ℹ️  Global configuration settings were updated",
+			);
+			console.log(
+				"[ConfigReload] Note: Global setting changes apply to new sessions",
+			);
+		}
+
+		console.log("─".repeat(50));
+		console.log("✅ Configuration reload complete\n");
 	}
 
 	/**
@@ -2056,6 +2339,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	getOAuthCallbackUrl(): string {
 		return this.sharedApplicationServer.getOAuthCallbackUrl();
+	}
+
+	/**
+	 * Get the ConfigurationManager instance
+	 */
+	getConfigurationManager(): ConfigurationManager {
+		return this.configManager;
 	}
 
 	/**

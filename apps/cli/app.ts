@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import type { Issue } from "@linear/sdk";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import {
+	ConfigurationManager,
 	EdgeWorker,
 	type EdgeWorkerConfig,
 	type RepositoryConfig,
@@ -70,6 +71,7 @@ Commands:
   check-tokens       Check the status of all Linear tokens
   refresh-token      Refresh a specific Linear token
   add-repository     Add a new repository configuration
+  reload-config      Manually reload configuration from disk
   billing            Open Stripe billing portal (Pro plan only)
   set-customer-id    Set your Stripe customer ID
 
@@ -122,6 +124,7 @@ interface Workspace {
  */
 class EdgeApp {
 	private edgeWorker: EdgeWorker | null = null;
+	private configManager: ConfigurationManager | null = null;
 	private isShuttingDown = false;
 	private cyrusHome: string;
 
@@ -555,51 +558,27 @@ class EdgeApp {
 							const newRepo =
 								await this.setupRepositoryWizard(linearCredentials);
 
-							// Add to existing repositories
-							const edgeConfig = this.loadEdgeConfig();
-							console.log(
-								`📊 Current config has ${
-									edgeConfig.repositories?.length || 0
-								} repositories`,
-							);
-							edgeConfig.repositories = [
-								...(edgeConfig.repositories || []),
-								newRepo,
-							];
-							console.log(
-								`📊 Adding repository "${newRepo.name}", new total: ${edgeConfig.repositories.length}`,
-							);
-							this.saveEdgeConfig(edgeConfig);
-							console.log("\n✅ Repository configured successfully!");
-							console.log(
-								"📝 ~/.cyrus/config.json file has been updated with your new repository configuration.",
-							);
-							console.log(
-								"💡 You can edit this file and restart Cyrus at any time to modify settings.",
-							);
-							console.log(
-								"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
-							);
-
-							// Restart edge worker with new config
-							await this.edgeWorker!.stop();
-							this.edgeWorker = null;
-
-							// Give a small delay to ensure file is written
-							await new Promise((resolve) => setTimeout(resolve, 100));
-
-							// Reload configuration and restart worker without going through setup
-							const updatedConfig = this.loadEdgeConfig();
-							console.log(
-								`\n🔄 Reloading with ${
-									updatedConfig.repositories?.length || 0
-								} repositories from config file`,
-							);
-
-							return this.startEdgeWorker({
-								proxyUrl,
-								repositories: updatedConfig.repositories || [],
-							});
+							// Use ConfigurationManager to add repository
+							if (this.configManager) {
+								console.log(
+									`📊 Adding repository "${newRepo.name}" via ConfigurationManager`,
+								);
+								await this.configManager.addRepository(newRepo);
+								console.log("\n✅ Repository configured successfully!");
+								console.log(
+									"📝 ~/.cyrus/config.json file has been updated with your new repository configuration.",
+								);
+								console.log(
+									"💡 The configuration will be automatically reloaded - no restart needed!",
+								);
+								console.log(
+									"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
+								);
+							} else {
+								console.error(
+									"\n❌ ConfigurationManager not available - cannot add repository",
+								);
+							}
 						} catch (error) {
 							console.error(
 								"\n❌ Repository setup failed:",
@@ -611,8 +590,12 @@ class EdgeApp {
 			},
 		};
 
-		// Create and start EdgeWorker
-		this.edgeWorker = new EdgeWorker(config);
+		// Create ConfigurationManager
+		const configPath = this.getEdgeConfigPath();
+		this.configManager = new ConfigurationManager(configPath, config);
+
+		// Create and start EdgeWorker with ConfigurationManager
+		this.edgeWorker = new EdgeWorker(config, this.configManager);
 
 		// Set up event handlers
 		this.setupEventHandlers();
@@ -626,6 +609,9 @@ class EdgeApp {
 		repositories.forEach((repo) => {
 			console.log(`  - ${repo.name} (${repo.repositoryPath})`);
 		});
+		console.log(`\n🔄 Dynamic configuration enabled`);
+		console.log(`   Watching: ${configPath}`);
+		console.log(`   Changes will be applied automatically without restart`);
 	}
 
 	/**
@@ -1980,6 +1966,55 @@ async function billingCommand() {
 	}
 }
 
+// Command: reload-config
+async function reloadConfigCommand() {
+	console.log("\n🔄 Manual Configuration Reload");
+	console.log("─".repeat(50));
+	console.log(
+		"⚠️  Note: This command is only useful when Cyrus is not running.",
+	);
+	console.log(
+		"When Cyrus is running, configuration changes are detected automatically.\n",
+	);
+
+	const app = new EdgeApp(CYRUS_HOME);
+	const configPath = app.getEdgeConfigPath();
+
+	if (!existsSync(configPath)) {
+		console.error(`❌ Configuration file not found: ${configPath}`);
+		console.log(
+			"\nPlease run 'cyrus' first to create the initial configuration.",
+		);
+		process.exit(1);
+	}
+
+	try {
+		// Validate the configuration by loading it
+		const config = app.loadEdgeConfig();
+		console.log("✅ Configuration file is valid");
+		console.log(`   Path: ${configPath}`);
+		console.log(`   Repositories: ${config.repositories?.length || 0}`);
+		if (config.repositories) {
+			config.repositories.forEach((repo, index) => {
+				console.log(
+					`   ${index + 1}. ${repo.name} (${repo.linearWorkspaceName || repo.linearWorkspaceId})`,
+				);
+			});
+		}
+		console.log("\n💡 To apply these changes while Cyrus is running:");
+		console.log("   The changes will be detected and applied automatically!");
+		console.log(
+			"   No action needed - just edit ~/.cyrus/config.json and save.",
+		);
+	} catch (error) {
+		console.error(
+			`\n❌ Configuration file is invalid: ${(error as Error).message}`,
+		);
+		console.log(`\nPlease fix the errors in: ${configPath}`);
+		process.exit(1);
+	}
+}
+
 // Parse command
 const command = args[0] || "start";
 
@@ -2001,6 +2036,13 @@ switch (command) {
 
 	case "add-repository":
 		addRepositoryCommand().catch((error) => {
+			console.error("Error:", error);
+			process.exit(1);
+		});
+		break;
+
+	case "reload-config":
+		reloadConfigCommand().catch((error) => {
 			console.error("Error:", error);
 			process.exit(1);
 		});
