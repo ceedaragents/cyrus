@@ -239,120 +239,121 @@ export class AgentSessionManager {
 			usage: resultMessage.usage,
 		});
 
-		// Handle result based on session type and phase
+		// Handle result based on current phase (all sessions use phases now)
 		if ("result" in resultMessage && resultMessage.result) {
-			// Check if this is a child session (Task tool)
+			const currentPhase = session.metadata?.phase?.current;
 			const isChildSession = this.getParentSessionId?.(
 				linearAgentActivitySessionId,
 			);
-			const currentPhase = session.metadata?.phase?.current;
 
-			// Case 1: Child session (Task tool) - resume parent
-			if (isChildSession && this.resumeParentSession) {
-				const parentAgentSessionId = this.getParentSessionId!(
-					linearAgentActivitySessionId,
-				);
-
-				if (!parentAgentSessionId) {
-					console.error(
-						`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
-					);
-					return;
-				}
-
-				console.log(
-					`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
-				);
-
-				// Post result to Linear for child session
-				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
-
-				try {
-					const childResult = resultMessage.result;
-					const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
-
-					await this.resumeParentSession(
-						parentAgentSessionId,
-						promptToParent,
-						linearAgentActivitySessionId,
-					);
-
-					console.log(
-						`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
-					);
-				} catch (error) {
-					console.error(
-						`[AgentSessionManager] Failed to resume parent session with child result:`,
-						error,
-					);
-				}
-				return;
-			}
-
-			// Case 2: Phased session - only post result for summary phase
-			if (currentPhase && resultMessage.subtype === "success") {
-				const claudeSessionId = session.claudeSessionId;
-				if (!claudeSessionId) {
-					console.error(
-						`[AgentSessionManager] No Claude session ID found for phase ${currentPhase}`,
-					);
-					return;
-				}
-
-				if (currentPhase === "primary") {
-					// Primary phase done - trigger closure (no Linear post)
-					console.log(
-						`[AgentSessionManager] Primary phase completed, triggering closure phase`,
-					);
-					if (this.resumeNextPhase) {
-						try {
-							await this.resumeNextPhase(
-								linearAgentActivitySessionId,
-								"closure",
-								claudeSessionId,
-							);
-						} catch (error) {
-							console.error(
-								`[AgentSessionManager] Failed to trigger closure phase:`,
-								error,
-							);
-						}
-					}
-				} else if (currentPhase === "closure") {
-					// Closure phase done - trigger summary (no Linear post)
-					console.log(
-						`[AgentSessionManager] Closure phase completed, triggering summary phase`,
-					);
-					if (this.resumeNextPhase) {
-						try {
-							await this.resumeNextPhase(
-								linearAgentActivitySessionId,
-								"summary",
-								claudeSessionId,
-							);
-						} catch (error) {
-							console.error(
-								`[AgentSessionManager] Failed to trigger summary phase:`,
-								error,
-							);
-						}
-					}
-				} else if (currentPhase === "summary") {
-					// Summary phase done - post final result to Linear
-					console.log(
-						`[AgentSessionManager] Summary phase completed, posting final result to Linear`,
-					);
-					await this.addResultEntry(
-						linearAgentActivitySessionId,
-						resultMessage,
-					);
-				}
-			} else if (!currentPhase) {
+			if (!currentPhase) {
 				// Non-phased session (shouldn't happen, but handle gracefully)
 				console.log(
 					`[AgentSessionManager] Non-phased session completed, posting result to Linear`,
 				);
 				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+				return;
+			}
+
+			if (resultMessage.subtype !== "success") {
+				// Error occurred - don't trigger next phase
+				console.log(
+					`[AgentSessionManager] Phase ${currentPhase} completed with error, not triggering next phase`,
+				);
+				return;
+			}
+
+			const claudeSessionId = session.claudeSessionId;
+			if (!claudeSessionId) {
+				console.error(
+					`[AgentSessionManager] No Claude session ID found for phase ${currentPhase}`,
+				);
+				return;
+			}
+
+			// Handle phase transitions (same for all sessions)
+			if (currentPhase === "primary") {
+				// Primary phase done - trigger closure (no Linear post)
+				console.log(
+					`[AgentSessionManager] Primary phase completed, triggering closure phase`,
+				);
+				if (this.resumeNextPhase) {
+					try {
+						await this.resumeNextPhase(
+							linearAgentActivitySessionId,
+							"closure",
+							claudeSessionId,
+						);
+					} catch (error) {
+						console.error(
+							`[AgentSessionManager] Failed to trigger closure phase:`,
+							error,
+						);
+					}
+				}
+			} else if (currentPhase === "closure") {
+				// Closure phase done - trigger summary (no Linear post)
+				console.log(
+					`[AgentSessionManager] Closure phase completed, triggering summary phase`,
+				);
+				if (this.resumeNextPhase) {
+					try {
+						await this.resumeNextPhase(
+							linearAgentActivitySessionId,
+							"summary",
+							claudeSessionId,
+						);
+					} catch (error) {
+						console.error(
+							`[AgentSessionManager] Failed to trigger summary phase:`,
+							error,
+						);
+					}
+				}
+			} else if (currentPhase === "summary") {
+				// Summary phase done - post final result to Linear
+				console.log(
+					`[AgentSessionManager] Summary phase completed, posting final result to Linear`,
+				);
+				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+
+				// If this is a child session, resume parent after posting summary
+				if (isChildSession && this.resumeParentSession) {
+					const parentAgentSessionId = this.getParentSessionId!(
+						linearAgentActivitySessionId,
+					);
+
+					if (!parentAgentSessionId) {
+						console.error(
+							`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
+						);
+						return;
+					}
+
+					console.log(
+						`[AgentSessionManager] Child session ${linearAgentActivitySessionId} completed, resuming parent ${parentAgentSessionId}`,
+					);
+
+					try {
+						const childResult = resultMessage.result;
+						const promptToParent = `Child agent session ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
+
+						await this.resumeParentSession(
+							parentAgentSessionId,
+							promptToParent,
+							linearAgentActivitySessionId,
+						);
+
+						console.log(
+							`[AgentSessionManager] Successfully resumed parent session ${parentAgentSessionId}`,
+						);
+					} catch (error) {
+						console.error(
+							`[AgentSessionManager] Failed to resume parent session:`,
+							error,
+						);
+					}
+				}
 			}
 		}
 	}
