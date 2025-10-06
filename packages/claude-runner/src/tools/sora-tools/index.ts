@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs-extra";
+import OpenAI from "openai";
 import { z } from "zod";
 
 /**
@@ -41,6 +42,13 @@ function getMediaMimeType(filename: string): string | null {
 export function createSoraToolsServer(options: SoraToolsOptions) {
 	const { endpoint, apiKey, outputDirectory = process.cwd() } = options;
 
+	// Initialize OpenAI client configured for Azure
+	const client = new OpenAI({
+		apiKey,
+		baseURL: `${endpoint}/openai`,
+		defaultQuery: { "api-version": "preview" },
+	});
+
 	const generateVideoTool = tool(
 		"sora_generate_video",
 		"Generate a video using Sora 2. Supports text-to-video and image-to-video generation. For image-to-video, the reference image must match the target video resolution (width x height). Returns a job ID to poll for completion.",
@@ -48,6 +56,13 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 			prompt: z
 				.string()
 				.describe("Text description of the video you want to generate"),
+			model: z
+				.enum(["sora-2", "sora-2-pro"])
+				.optional()
+				.default("sora-2")
+				.describe(
+					"Model to use: sora-2 (faster, good quality) or sora-2-pro (slower, higher quality)",
+				),
 			width: z
 				.number()
 				.optional()
@@ -58,7 +73,7 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 				.optional()
 				.default(1080)
 				.describe("Video height in pixels (default: 1080)"),
-			n_seconds: z
+			seconds: z
 				.number()
 				.optional()
 				.default(5)
@@ -70,19 +85,23 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 					"Path to reference image file for image-to-video generation. Supported formats: JPEG, PNG, WebP only. IMPORTANT: The image must match the target video's resolution (width x height parameters).",
 				),
 		},
-		async ({ prompt, width, height, n_seconds, input_reference }) => {
+		async ({ prompt, model, width, height, seconds, input_reference }) => {
 			try {
 				console.log(
-					`Starting video generation: ${prompt.substring(0, 50)}... (${width}x${height}, ${n_seconds}s)${input_reference ? ` with reference: ${input_reference}` : ""}`,
+					`Starting video generation: ${prompt.substring(0, 50)}... (${width}x${height}, ${seconds}s, ${model})${input_reference ? ` with reference: ${input_reference}` : ""}`,
 				);
 
-				const url = `${endpoint}/openai/v1/video/generations/jobs?api-version=preview`;
+				// Build the request parameters
+				const videoParams: any = {
+					model,
+					prompt,
+					size: `${width}x${height}`,
+					seconds: seconds.toString(),
+				};
 
-				// Build the request - use multipart/form-data if we have input_reference
-				let response: Response;
-
+				// Add input_reference if provided
 				if (input_reference) {
-					// Read the reference file
+					// Read and validate the reference file
 					if (!(await fs.pathExists(input_reference))) {
 						return {
 							content: [
@@ -97,9 +116,8 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 						};
 					}
 
-					const fileBuffer = await fs.readFile(input_reference);
-					const mimeType = getMediaMimeType(input_reference);
 					const filename = basename(input_reference);
+					const mimeType = getMediaMimeType(input_reference);
 
 					// Validate file format
 					if (!mimeType) {
@@ -116,71 +134,23 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 						};
 					}
 
-					// Create multipart form data
-					const formData = new FormData();
-					formData.append("model", "sora");
-					formData.append("prompt", prompt);
-					formData.append("width", width.toString());
-					formData.append("height", height.toString());
-					formData.append("n_seconds", n_seconds.toString());
+					// Read file as buffer and create File object for OpenAI SDK
+					const fileBuffer = await fs.readFile(input_reference);
+					const fileObject = new File([fileBuffer], filename, {
+						type: mimeType,
+					});
 
-					// Add the reference file with proper MIME type
-					const blob = new Blob([fileBuffer], { type: mimeType });
-					formData.append("input_reference", blob, filename);
+					videoParams.input_reference = fileObject;
 
 					console.log(
 						`Uploading reference file: ${filename} (${mimeType}, ${fileBuffer.length} bytes)`,
 					);
-
-					response = await fetch(url, {
-						method: "POST",
-						headers: {
-							"api-key": apiKey,
-							// Don't set Content-Type - let fetch set it with boundary
-						},
-						body: formData,
-					});
-				} else {
-					// JSON request for text-to-video
-					const requestBody = {
-						model: "sora",
-						prompt,
-						width,
-						height,
-						n_seconds,
-					};
-
-					response = await fetch(url, {
-						method: "POST",
-						headers: {
-							"api-key": apiKey,
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify(requestBody),
-					});
 				}
 
-				if (!response.ok) {
-					const errorText = await response.text();
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: JSON.stringify({
-									success: false,
-									error: `Failed to start video generation: ${response.status} ${response.statusText} - ${errorText}`,
-								}),
-							},
-						],
-					};
-				}
+				// Use OpenAI SDK's videos.create method
+				const video = await client.videos.create(videoParams);
 
-				const result = (await response.json()) as {
-					id: string;
-					status: string;
-				};
-
-				console.log(`Video generation job started: ${result.id}`);
+				console.log(`Video generation job started: ${video.id}`);
 
 				return {
 					content: [
@@ -188,8 +158,8 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 							type: "text" as const,
 							text: JSON.stringify({
 								success: true,
-								jobId: result.id,
-								status: result.status,
+								jobId: video.id,
+								status: video.status,
 								message:
 									"Video generation job started. Use sora_check_status to poll for completion.",
 							}),
@@ -224,68 +194,27 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 			try {
 				console.log(`Checking status for job: ${jobId}`);
 
-				const url = `${endpoint}/openai/v1/video/generations/jobs/${jobId}?api-version=preview`;
+				// Use OpenAI SDK's videos.retrieve method
+				const video = await client.videos.retrieve(jobId);
 
-				const response = await fetch(url, {
-					method: "GET",
-					headers: {
-						"api-key": apiKey,
-					},
-				});
-
-				if (!response.ok) {
-					const errorText = await response.text();
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: JSON.stringify({
-									success: false,
-									error: `Failed to check job status: ${response.status} ${response.statusText} - ${errorText}`,
-								}),
-							},
-						],
-					};
-				}
-
-				const result = (await response.json()) as {
-					id: string;
-					status: string;
-					generations?: Array<{ id: string }>;
-				};
-
-				console.log(`Job ${jobId} status: ${result.status}`);
-
-				// Include generation_id if available (needed for retrieving the video)
-				const responseData: {
-					success: boolean;
-					jobId: string;
-					status: string;
-					generationId?: string;
-					message: string;
-				} = {
-					success: true,
-					jobId: result.id,
-					status: result.status,
-					message: "",
-				};
-
-				// Check if we have generations in the response
-				if (result.generations && result.generations.length > 0) {
-					responseData.generationId = result.generations[0]?.id;
-					responseData.message =
-						result.status === "succeeded"
-							? "Video generation complete! Use sora_get_video to download the video."
-							: `Job is ${result.status}. Continue polling if not complete.`;
-				} else {
-					responseData.message = `Job is ${result.status}. ${result.status === "succeeded" ? "Waiting for generation ID..." : "Continue polling."}`;
-				}
+				console.log(`Job ${jobId} status: ${video.status}`);
 
 				return {
 					content: [
 						{
 							type: "text" as const,
-							text: JSON.stringify(responseData),
+							text: JSON.stringify({
+								success: true,
+								jobId: video.id,
+								status: video.status,
+								progress: video.progress ?? 0,
+								message:
+									video.status === "completed"
+										? "Video generation complete! Use sora_get_video to download the video."
+										: video.status === "failed"
+											? "Video generation failed."
+											: `Job is ${video.status}. Continue polling.`,
+							}),
 						},
 					],
 				};
@@ -309,61 +238,58 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 		"sora_get_video",
 		"Download a completed Sora video and save it to disk. Returns the local file path.",
 		{
-			generationId: z
+			jobId: z
 				.string()
 				.describe(
-					"The generation ID from sora_check_status when status is 'succeeded'",
+					"The job ID from sora_generate_video (when status is completed)",
 				),
 			filename: z
 				.string()
 				.optional()
 				.describe(
-					"Custom filename for the video (default: generated-{generationId}.mp4)",
+					"Custom filename for the video (default: generated-{jobId}.mp4)",
+				),
+			variant: z
+				.enum(["video", "thumbnail", "spritesheet"])
+				.optional()
+				.default("video")
+				.describe(
+					"What to download: video (MP4), thumbnail (WebP), or spritesheet (JPG)",
 				),
 		},
-		async ({ generationId, filename }) => {
+		async ({ jobId, filename, variant }) => {
 			try {
-				console.log(`Downloading video for generation: ${generationId}`);
+				console.log(`Downloading ${variant} for job: ${jobId}`);
 
-				const url = `${endpoint}/openai/v1/video/generations/${generationId}/content/video?api-version=preview`;
-
-				const response = await fetch(url, {
-					method: "GET",
-					headers: {
-						"api-key": apiKey,
-					},
+				// Use OpenAI SDK's videos.downloadContent method
+				const content = await client.videos.downloadContent(jobId, {
+					variant,
 				});
 
-				if (!response.ok) {
-					const errorText = await response.text();
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: JSON.stringify({
-									success: false,
-									error: `Failed to download video: ${response.status} ${response.statusText} - ${errorText}`,
-								}),
-							},
-						],
-					};
-				}
+				// Get the file extension based on variant
+				const ext =
+					variant === "video"
+						? "mp4"
+						: variant === "thumbnail"
+							? "webp"
+							: "jpg";
 
-				// Get video data as buffer
-				const videoBuffer = Buffer.from(await response.arrayBuffer());
+				// Convert the response to buffer
+				const arrayBuffer = await content.arrayBuffer();
+				const buffer = Buffer.from(arrayBuffer);
 
 				// Ensure output directory exists
 				await fs.ensureDir(outputDirectory);
 
 				// Determine final filename
 				const finalFilename =
-					filename || `generated-${generationId.substring(0, 8)}.mp4`;
+					filename || `generated-${jobId.substring(0, 8)}.${ext}`;
 				const filePath = `${outputDirectory}/${finalFilename}`;
 
-				// Write video to disk
-				await fs.writeFile(filePath, videoBuffer);
+				// Write to disk
+				await fs.writeFile(filePath, buffer);
 
-				console.log(`Video saved to: ${filePath}`);
+				console.log(`${variant} saved to: ${filePath}`);
 
 				return {
 					content: [
@@ -373,8 +299,9 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 								success: true,
 								filePath,
 								filename: finalFilename,
-								size: videoBuffer.length,
-								message: `Video downloaded and saved to ${filePath}`,
+								size: buffer.length,
+								variant,
+								message: `${variant} downloaded and saved to ${filePath}`,
 							}),
 						},
 					],
