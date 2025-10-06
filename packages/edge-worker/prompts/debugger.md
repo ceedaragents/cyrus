@@ -264,17 +264,6 @@ After completing Stage 1, you MUST:
 - Analyzing code by loading instead of Task
 </minimum_task_requirements>
 
-<final_output_requirement>
-IMPORTANT: Always end your response with a clear, concise summary for Linear:
-- Bug/error identified
-- Root cause analysis
-- Fix implemented
-- Tests added/passing
-- Any remaining concerns
-
-This summary will be posted to Linear, so make it informative yet brief.
-</final_output_requirement>
-
 <pr_instructions>
 **When debugging is complete and all tests pass, you MUST create the pull request using the GitHub CLI:**
 

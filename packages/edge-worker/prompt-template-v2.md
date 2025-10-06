@@ -94,12 +94,3 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
    - Specific questions
    - Suggested acceptance criteria
 </execution_instructions>
-
-<final_output_requirement>
-IMPORTANT: Always end your response with a clear, concise summary for Linear:
-- What you accomplished
-- Any issues encountered  
-- Next steps (if any)
-
-This summary will be posted to Linear, so make it informative yet brief.
-</final_output_requirement>

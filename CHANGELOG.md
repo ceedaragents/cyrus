@@ -4,9 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Three-phase execution system**: Cyrus now runs in three distinct phases for better reliability:
+  - **Primary phase**: Completes the main work on the issue
+  - **Closure phase**: Runs tests, linting, creates/updates PR, and ensures production readiness
+  - **Summary phase**: Generates a concise final summary (limited to 3 turns for efficiency)
+
 ### Changed
+- **Improved PR creation reliability**: PR creation moved to dedicated closure phase with unlimited turns
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.5 to v0.1.8 for latest Claude Agent SDK improvements
+
+### Removed
+- **Last message marker system**: Removed the `___LAST_MESSAGE_MARKER___` approach in favor of the new three-phase system where summaries are generated in a dedicated phase
 
 ## [0.1.54] - 2025-10-04
 

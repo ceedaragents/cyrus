@@ -73,9 +73,6 @@ export declare interface EdgeWorker {
 	): boolean;
 }
 
-const LAST_MESSAGE_MARKER =
-	"\n\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
-
 /**
  * Unified edge worker that **orchestrates**
  *   capturing Linear webhooks,
@@ -227,6 +224,117 @@ export class EdgeWorker extends EventEmitter {
 							);
 							console.error(
 								`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${repo.name}`,
+							);
+						}
+					},
+					async (
+						linearAgentActivitySessionId: string,
+						nextPhase: "closure" | "summary",
+						_claudeSessionId: string,
+					) => {
+						console.log(
+							`[Phase Transition] Transitioning to ${nextPhase} phase for session ${linearAgentActivitySessionId}`,
+						);
+
+						// Get the session
+						const session = agentSessionManager.getSession(
+							linearAgentActivitySessionId,
+						);
+						if (!session) {
+							console.error(
+								`[Phase Transition] Session ${linearAgentActivitySessionId} not found in agent session manager`,
+							);
+							return;
+						}
+
+						// Update session metadata with new phase
+						if (!session.metadata) {
+							session.metadata = {};
+						}
+						if (!session.metadata.phase) {
+							session.metadata.phase = {
+								current: "primary",
+								isPhaseTransition: true,
+								history: [],
+							};
+						}
+
+						// Record phase history
+						const previousPhase = session.metadata.phase.current;
+						session.metadata.phase.history =
+							session.metadata.phase.history || [];
+						session.metadata.phase.history.push({
+							phase: previousPhase,
+							completedAt: Date.now(),
+							claudeSessionId: session.claudeSessionId,
+						});
+
+						// Update to new phase
+						session.metadata.phase.current = nextPhase;
+						console.log(
+							`[Phase Transition] Updated session phase: ${previousPhase} → ${nextPhase}`,
+						);
+
+						// Load phase-specific prompt
+						const phasePromptPath =
+							nextPhase === "closure"
+								? join(__dirname, "prompts", "phase-closure.md")
+								: join(__dirname, "prompts", "phase-summary.md");
+
+						let phasePrompt: string;
+						try {
+							phasePrompt = await readFile(phasePromptPath, "utf-8");
+							console.log(
+								`[Phase Transition] Loaded ${nextPhase} phase prompt (${phasePrompt.length} characters)`,
+							);
+						} catch (error) {
+							console.error(
+								`[Phase Transition] Failed to load phase prompt from ${phasePromptPath}:`,
+								error,
+							);
+							// Fallback to simple prompt
+							phasePrompt =
+								nextPhase === "closure"
+									? "Review all your work, run tests, create/update the PR, and ensure everything is production-ready."
+									: "Create a comprehensive summary of all work completed, suitable for posting to Linear.";
+						}
+
+						// Post phase transition thought to Linear
+						try {
+							await agentSessionManager.createThoughtActivity(
+								linearAgentActivitySessionId,
+								`# 🔄 Phase Transition: ${previousPhase} → ${nextPhase}\n\nThe ${previousPhase} phase has completed. Now transitioning to the ${nextPhase} phase.`,
+							);
+						} catch (error) {
+							console.warn(
+								`[Phase Transition] Failed to post phase transition thought:`,
+								error,
+							);
+						}
+
+						// Resume Claude session with phase prompt
+						try {
+							// For summary phase, set maxTurns=3 to keep it concise
+							const maxTurns = nextPhase === "summary" ? 3 : undefined;
+
+							await this.resumeClaudeSession(
+								session,
+								repo,
+								linearAgentActivitySessionId,
+								agentSessionManager,
+								phasePrompt,
+								"", // No attachment manifest
+								false, // Not a new session
+								[], // No additional allowed directories
+								maxTurns, // Limit summary phase to 3 turns
+							);
+							console.log(
+								`[Phase Transition] Successfully resumed session for ${nextPhase} phase${maxTurns ? ` (maxTurns=${maxTurns})` : ""}`,
+							);
+						} catch (error) {
+							console.error(
+								`[Phase Transition] Failed to resume session for ${nextPhase} phase:`,
+								error,
 							);
 						}
 					},
@@ -895,6 +1003,19 @@ export class EdgeWorker extends EventEmitter {
 			allowedDirectories,
 		} = sessionData;
 
+		// Initialize phase metadata for three-phase execution
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+		session.metadata.phase = {
+			current: "primary",
+			isPhaseTransition: true,
+			history: [],
+		};
+		console.log(
+			`[EdgeWorker] Initialized session ${linearAgentActivitySessionId} in primary phase`,
+		);
+
 		// Fetch labels (needed for both model selection and system prompt determination)
 		const labels = await this.fetchIssueLabels(fullIssue);
 
@@ -1232,7 +1353,6 @@ export class EdgeWorker extends EventEmitter {
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
 
 			existingRunner.addStreamMessage(fullPrompt);
 			return; // Exit early - comment has been added to stream
@@ -1579,7 +1699,6 @@ export class EdgeWorker extends EventEmitter {
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
 			console.log(
 				`[EdgeWorker] Label-based prompt built successfully, length: ${prompt.length} characters`,
 			);
@@ -1637,7 +1756,6 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
 			return { prompt };
 		} catch (error) {
 			console.error(`[EdgeWorker] Error building mention prompt:`, error);
@@ -2042,8 +2160,6 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				prompt = `${prompt}\n\n<repository-specific-instruction>\n${repository.appendInstruction}\n</repository-specific-instruction>`;
 			}
 
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
-
 			console.log(
 				`[EdgeWorker] Final prompt length: ${prompt.length} characters`,
 			);
@@ -2071,7 +2187,7 @@ Branch: ${issue.branchName}
 Working directory: ${repository.repositoryPath}
 Base branch: ${baseBranch}
 
-${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution. ${LAST_MESSAGE_MARKER}`;
+${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
 
 			return { prompt: fallbackPrompt, version: undefined };
 		}
@@ -2901,7 +3017,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			const manifestSuffix = attachmentManifest
 				? `\n\n${attachmentManifest}`
 				: "";
-			return `${promptBody}${manifestSuffix}${LAST_MESSAGE_MARKER}`;
+			return `${promptBody}${manifestSuffix}`;
 		}
 	}
 
@@ -2918,6 +3034,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		disallowedTools: string[],
 		resumeSessionId?: string,
 		labels?: string[],
+		maxTurns?: number,
 	): ClaudeRunnerConfig {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -2989,7 +3106,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
-			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
+			appendSystemPrompt: systemPrompt || "",
 			// Priority order: label override > repository config > global default
 			model: modelOverride || repository.model || this.config.defaultModel,
 			fallbackModel:
@@ -3009,6 +3126,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		if (resumeSessionId) {
 			(config as any).resumeSessionId = resumeSessionId;
+		}
+
+		if (maxTurns !== undefined) {
+			(config as any).maxTurns = maxTurns;
 		}
 
 		return config;
@@ -3456,6 +3577,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		attachmentManifest: string = "",
 		isNewSession: boolean = false,
 		additionalAllowedDirectories: string[] = [],
+		maxTurns?: number,
 	): Promise<void> {
 		// Check for existing runner
 		const existingRunner = session.claudeRunner;
@@ -3466,7 +3588,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
 
 			existingRunner.addStreamMessage(fullPrompt);
 			return;
@@ -3533,6 +3654,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			disallowedTools,
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
 			labels, // Pass labels for model override
+			maxTurns, // Pass maxTurns if specified
 		);
 
 		const runner = new ClaudeRunner(runnerConfig);

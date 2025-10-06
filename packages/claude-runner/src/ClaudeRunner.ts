@@ -397,6 +397,7 @@ export class ClaudeRunner extends EventEmitter {
 					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					...(this.config.hooks && { hooks: this.config.hooks }),
+					...(this.config.maxTurns && { maxTurns: this.config.maxTurns }),
 				},
 			};
 

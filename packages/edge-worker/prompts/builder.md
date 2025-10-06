@@ -191,17 +191,6 @@ Task: "create implementation plan for fixes"
 - Analyzing code by loading it instead of Task
 </minimum_task_requirements>
 
-<final_output_requirement>
-IMPORTANT: Always end your response with a clear, concise summary for Linear:
-- Feature implemented
-- Key changes made
-- Tests added
-- Changelog entry created
-- PR ready for review
-
-This summary will be posted to Linear, so make it informative yet brief.
-</final_output_requirement>
-
 <pr_instructions>
 **When implementation is complete and all quality checks pass, you MUST create the pull request using the GitHub CLI:**
    

@@ -38,6 +38,11 @@ export class AgentSessionManager {
 		prompt: string,
 		childSessionId: string,
 	) => Promise<void>;
+	private resumeNextPhase?: (
+		linearAgentActivitySessionId: string,
+		nextPhase: "closure" | "summary",
+		claudeSessionId: string,
+	) => Promise<void>;
 
 	constructor(
 		linearClient: LinearClient,
@@ -47,10 +52,16 @@ export class AgentSessionManager {
 			prompt: string,
 			childSessionId: string,
 		) => Promise<void>,
+		resumeNextPhase?: (
+			linearAgentActivitySessionId: string,
+			nextPhase: "closure" | "summary",
+			claudeSessionId: string,
+		) => Promise<void>,
 	) {
 		this.linearClient = linearClient;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
+		this.resumeNextPhase = resumeNextPhase;
 	}
 
 	/**
@@ -232,38 +243,102 @@ export class AgentSessionManager {
 		if ("result" in resultMessage && resultMessage.result) {
 			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 
-			// Check if this is a child session and send result to parent
-			if (this.getParentSessionId && this.resumeParentSession) {
-				const parentAgentSessionId = this.getParentSessionId(
+			// Determine if this is a child session (Task tool) or a phase transition
+			const isChildSession = this.getParentSessionId?.(
+				linearAgentActivitySessionId,
+			);
+			const currentPhase = session.metadata?.phase?.current || "primary";
+			const isPhaseTransition =
+				session.metadata?.phase?.isPhaseTransition || false;
+
+			// Case 1: Child session (Task tool) - resume parent
+			if (isChildSession && this.resumeParentSession) {
+				const parentAgentSessionId = this.getParentSessionId!(
 					linearAgentActivitySessionId,
 				);
-				if (parentAgentSessionId) {
-					console.log(
-						`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
+
+				if (!parentAgentSessionId) {
+					console.error(
+						`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
+					);
+					return;
+				}
+
+				console.log(
+					`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
+				);
+
+				try {
+					const childResult = resultMessage.result;
+					const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
+
+					await this.resumeParentSession(
+						parentAgentSessionId,
+						promptToParent,
+						linearAgentActivitySessionId,
 					);
 
-					// Resume parent session with child result
+					console.log(
+						`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
+					);
+				} catch (error) {
+					console.error(
+						`[AgentSessionManager] Failed to resume parent session with child result:`,
+						error,
+					);
+				}
+				return; // Don't trigger phase transition for child sessions
+			}
+
+			// Case 2: Phase transition - trigger next phase only on success
+			if (
+				isPhaseTransition &&
+				resultMessage.subtype === "success" &&
+				this.resumeNextPhase
+			) {
+				const claudeSessionId = session.claudeSessionId;
+				if (!claudeSessionId) {
+					console.error(
+						`[AgentSessionManager] No Claude session ID found for phase transition`,
+					);
+					return;
+				}
+
+				// Determine next phase based on current phase
+				if (currentPhase === "primary") {
+					console.log(
+						`[AgentSessionManager] Primary phase completed, triggering closure phase`,
+					);
 					try {
-						const childResult = resultMessage.result;
-						const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
-
-						// Use the resumeParentSession callback to handle the parent session
-						await this.resumeParentSession(
-							parentAgentSessionId,
-							promptToParent,
-							linearAgentActivitySessionId, // Pass child session ID
-						);
-
-						console.log(
-							`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
+						await this.resumeNextPhase(
+							linearAgentActivitySessionId,
+							"closure",
+							claudeSessionId,
 						);
 					} catch (error) {
 						console.error(
-							`[AgentSessionManager] Failed to resume parent session with child result:`,
+							`[AgentSessionManager] Failed to trigger closure phase:`,
+							error,
+						);
+					}
+				} else if (currentPhase === "closure") {
+					console.log(
+						`[AgentSessionManager] Closure phase completed, triggering summary phase`,
+					);
+					try {
+						await this.resumeNextPhase(
+							linearAgentActivitySessionId,
+							"summary",
+							claudeSessionId,
+						);
+					} catch (error) {
+						console.error(
+							`[AgentSessionManager] Failed to trigger summary phase:`,
 							error,
 						);
 					}
 				}
+				// Summary phase completes normally, no next phase
 			}
 		}
 	}
@@ -658,13 +733,6 @@ export class AgentSessionManager {
 						}
 					} else {
 						// Regular assistant message - create a thought
-						// Check if this message contains the last message marker
-						if (entry.content.includes("___LAST_MESSAGE_MARKER___")) {
-							console.log(
-								`[AgentSessionManager] Skipping assistant message with last message marker - will be posted as response later`,
-							);
-							return; // Skip posting this as a thought
-						}
 						content = {
 							type: "thought",
 							body: entry.content,
@@ -688,13 +756,9 @@ export class AgentSessionManager {
 							body: entry.content,
 						};
 					} else {
-						// Strip the last message marker from the response
-						const cleanedContent = entry.content
-							.replace(/___LAST_MESSAGE_MARKER___/g, "")
-							.trim();
 						content = {
 							type: "response",
-							body: cleanedContent,
+							body: entry.content,
 						};
 					}
 					break;
