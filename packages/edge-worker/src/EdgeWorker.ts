@@ -314,8 +314,8 @@ export class EdgeWorker extends EventEmitter {
 
 						// Resume Claude session with phase prompt
 						try {
-							// For summary phase, set maxTurns=3 to keep it concise
-							const maxTurns = nextPhase === "summary" ? 3 : undefined;
+							// For summary phase, set maxTurns=1 to keep it concise
+							const maxTurns = nextPhase === "summary" ? 1 : undefined;
 
 							await this.resumeClaudeSession(
 								session,

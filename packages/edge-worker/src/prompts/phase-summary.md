@@ -40,6 +40,6 @@ Create a clear, concise summary for Linear that covers:
 
 ## Constraints
 
-- **Set maxTurns to 3** - generate the summary efficiently
+- **You have exactly 1 turn** - generate the summary in a single response
 - This is the final output that will be posted to Linear
 - Make it informative and actionable

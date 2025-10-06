@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 - **Three-phase execution system**: Cyrus now runs in three distinct phases for better reliability:
   - **Primary phase**: Completes the main work on the issue
   - **Closure phase**: Runs tests, linting, creates/updates PR, and ensures production readiness
-  - **Summary phase**: Generates a concise final summary (limited to 3 turns for efficiency)
+  - **Summary phase**: Generates a concise final summary (limited to 1 turn for efficiency)
 
 ### Changed
 - **Improved PR creation reliability**: PR creation moved to dedicated closure phase with unlimited turns
