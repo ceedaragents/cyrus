@@ -25,18 +25,14 @@ export interface SoraToolsOptions {
 
 /**
  * Detect MIME type based on file extension
+ * Sora only supports: image/jpeg, image/png, image/webp
  */
-function getMediaMimeType(filename: string): string {
+function getMediaMimeType(filename: string): string | null {
 	const ext = filename.toLowerCase();
 	if (ext.endsWith(".jpg") || ext.endsWith(".jpeg")) return "image/jpeg";
 	if (ext.endsWith(".png")) return "image/png";
-	if (ext.endsWith(".gif")) return "image/gif";
 	if (ext.endsWith(".webp")) return "image/webp";
-	if (ext.endsWith(".mp4")) return "video/mp4";
-	if (ext.endsWith(".mov")) return "video/quicktime";
-	if (ext.endsWith(".avi")) return "video/x-msvideo";
-	if (ext.endsWith(".webm")) return "video/webm";
-	return "application/octet-stream";
+	return null; // Unsupported format
 }
 
 /**
@@ -47,7 +43,7 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 
 	const generateVideoTool = tool(
 		"sora_generate_video",
-		"Generate a video using Sora 2. Supports text-to-video, image-to-video, and video-to-video generation. Returns a job ID to poll for completion.",
+		"Generate a video using Sora 2. Supports text-to-video and image-to-video generation. For image-to-video, the reference image must match the target video resolution (width x height). Returns a job ID to poll for completion.",
 		{
 			prompt: z
 				.string()
@@ -71,7 +67,7 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 				.string()
 				.optional()
 				.describe(
-					"Path to reference image or video file for image-to-video or video-to-video generation. Supports JPEG, PNG, GIF, WebP, MP4, MOV, AVI, WebM.",
+					"Path to reference image file for image-to-video generation. Supported formats: JPEG, PNG, WebP only. IMPORTANT: The image must match the target video's resolution (width x height parameters).",
 				),
 		},
 		async ({ prompt, width, height, n_seconds, input_reference }) => {
@@ -104,6 +100,21 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 					const fileBuffer = await fs.readFile(input_reference);
 					const mimeType = getMediaMimeType(input_reference);
 					const filename = basename(input_reference);
+
+					// Validate file format
+					if (!mimeType) {
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify({
+										success: false,
+										error: `Unsupported file format. Only JPEG, PNG, and WebP images are supported. File: ${filename}`,
+									}),
+								},
+							],
+						};
+					}
 
 					// Create multipart form data
 					const formData = new FormData();
