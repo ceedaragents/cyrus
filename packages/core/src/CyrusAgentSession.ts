@@ -42,7 +42,6 @@ export interface CyrusAgentSession {
 		commentId?: string;
 		phase?: {
 			current: "primary" | "closure" | "summary";
-			isPhaseTransition: boolean;
 			history?: Array<{
 				phase: string;
 				completedAt: number;

@@ -254,7 +254,6 @@ export class EdgeWorker extends EventEmitter {
 						if (!session.metadata.phase) {
 							session.metadata.phase = {
 								current: "primary",
-								isPhaseTransition: true,
 								history: [],
 							};
 						}
@@ -1009,7 +1008,6 @@ export class EdgeWorker extends EventEmitter {
 		}
 		session.metadata.phase = {
 			current: "primary",
-			isPhaseTransition: true,
 			history: [],
 		};
 		console.log(

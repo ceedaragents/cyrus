@@ -239,17 +239,13 @@ export class AgentSessionManager {
 			usage: resultMessage.usage,
 		});
 
-		// Add result entry if present
+		// Handle result based on session type and phase
 		if ("result" in resultMessage && resultMessage.result) {
-			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
-
-			// Determine if this is a child session (Task tool) or a phase transition
+			// Check if this is a child session (Task tool)
 			const isChildSession = this.getParentSessionId?.(
 				linearAgentActivitySessionId,
 			);
-			const currentPhase = session.metadata?.phase?.current || "primary";
-			const isPhaseTransition =
-				session.metadata?.phase?.isPhaseTransition || false;
+			const currentPhase = session.metadata?.phase?.current;
 
 			// Case 1: Child session (Task tool) - resume parent
 			if (isChildSession && this.resumeParentSession) {
@@ -267,6 +263,9 @@ export class AgentSessionManager {
 				console.log(
 					`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
 				);
+
+				// Post result to Linear for child session
+				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 
 				try {
 					const childResult = resultMessage.result;
@@ -287,58 +286,73 @@ export class AgentSessionManager {
 						error,
 					);
 				}
-				return; // Don't trigger phase transition for child sessions
+				return;
 			}
 
-			// Case 2: Phase transition - trigger next phase only on success
-			if (
-				isPhaseTransition &&
-				resultMessage.subtype === "success" &&
-				this.resumeNextPhase
-			) {
+			// Case 2: Phased session - only post result for summary phase
+			if (currentPhase && resultMessage.subtype === "success") {
 				const claudeSessionId = session.claudeSessionId;
 				if (!claudeSessionId) {
 					console.error(
-						`[AgentSessionManager] No Claude session ID found for phase transition`,
+						`[AgentSessionManager] No Claude session ID found for phase ${currentPhase}`,
 					);
 					return;
 				}
 
-				// Determine next phase based on current phase
 				if (currentPhase === "primary") {
+					// Primary phase done - trigger closure (no Linear post)
 					console.log(
 						`[AgentSessionManager] Primary phase completed, triggering closure phase`,
 					);
-					try {
-						await this.resumeNextPhase(
-							linearAgentActivitySessionId,
-							"closure",
-							claudeSessionId,
-						);
-					} catch (error) {
-						console.error(
-							`[AgentSessionManager] Failed to trigger closure phase:`,
-							error,
-						);
+					if (this.resumeNextPhase) {
+						try {
+							await this.resumeNextPhase(
+								linearAgentActivitySessionId,
+								"closure",
+								claudeSessionId,
+							);
+						} catch (error) {
+							console.error(
+								`[AgentSessionManager] Failed to trigger closure phase:`,
+								error,
+							);
+						}
 					}
 				} else if (currentPhase === "closure") {
+					// Closure phase done - trigger summary (no Linear post)
 					console.log(
 						`[AgentSessionManager] Closure phase completed, triggering summary phase`,
 					);
-					try {
-						await this.resumeNextPhase(
-							linearAgentActivitySessionId,
-							"summary",
-							claudeSessionId,
-						);
-					} catch (error) {
-						console.error(
-							`[AgentSessionManager] Failed to trigger summary phase:`,
-							error,
-						);
+					if (this.resumeNextPhase) {
+						try {
+							await this.resumeNextPhase(
+								linearAgentActivitySessionId,
+								"summary",
+								claudeSessionId,
+							);
+						} catch (error) {
+							console.error(
+								`[AgentSessionManager] Failed to trigger summary phase:`,
+								error,
+							);
+						}
 					}
+				} else if (currentPhase === "summary") {
+					// Summary phase done - post final result to Linear
+					console.log(
+						`[AgentSessionManager] Summary phase completed, posting final result to Linear`,
+					);
+					await this.addResultEntry(
+						linearAgentActivitySessionId,
+						resultMessage,
+					);
 				}
-				// Summary phase completes normally, no next phase
+			} else if (!currentPhase) {
+				// Non-phased session (shouldn't happen, but handle gracefully)
+				console.log(
+					`[AgentSessionManager] Non-phased session completed, posting result to Linear`,
+				);
+				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 			}
 		}
 	}
