@@ -36,6 +36,11 @@ export interface RepositoryConfig {
 	model?: string; // Claude model to use for this repository (e.g., "opus", "sonnet", "haiku")
 	fallbackModel?: string; // Fallback model if primary model is unavailable
 
+	// Sora AI configuration (Azure OpenAI)
+	soraApiKey?: string; // Azure OpenAI API key for Sora video generation
+	soraEndpoint?: string; // Azure OpenAI endpoint (e.g., "https://your-resource.openai.azure.com")
+	soraOutputDirectory?: string; // Directory to save generated videos (defaults to workspace path)
+
 	// Label-based system prompt configuration
 	labelPrompts?: {
 		debugger?: {

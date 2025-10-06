@@ -10,7 +10,10 @@
 			"workspaceBaseDir": "/path/to/workspaces/repo1",
 			"isActive": true,
 			"promptTemplatePath": "./agent-prompt-template.md",
-			"mcpConfigPath": "./mcp-config.json"
+			"mcpConfigPath": "./mcp-config.json",
+			"soraApiKey": "your-azure-openai-api-key",
+			"soraEndpoint": "https://your-resource.openai.azure.com",
+			"soraOutputDirectory": "/path/to/save/videos"
 		},
 		{
 			"id": "repo2",
