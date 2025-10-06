@@ -1,3 +1,4 @@
+import { createReadStream } from "node:fs";
 import { basename } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs-extra";
@@ -25,15 +26,17 @@ export interface SoraToolsOptions {
 }
 
 /**
- * Detect MIME type based on file extension
+ * Validate image format
  * Sora only supports: image/jpeg, image/png, image/webp
  */
-function getMediaMimeType(filename: string): string | null {
+function validateImageFormat(filename: string): boolean {
 	const ext = filename.toLowerCase();
-	if (ext.endsWith(".jpg") || ext.endsWith(".jpeg")) return "image/jpeg";
-	if (ext.endsWith(".png")) return "image/png";
-	if (ext.endsWith(".webp")) return "image/webp";
-	return null; // Unsupported format
+	return (
+		ext.endsWith(".jpg") ||
+		ext.endsWith(".jpeg") ||
+		ext.endsWith(".png") ||
+		ext.endsWith(".webp")
+	);
 }
 
 /**
@@ -63,45 +66,42 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 				.describe(
 					"Model to use: sora-2 (faster, good quality) or sora-2-pro (slower, higher quality)",
 				),
-			width: z
-				.number()
+			size: z
+				.enum(["720x1280", "1280x720", "1024x1792", "1792x1024"])
 				.optional()
-				.default(1920)
-				.describe("Video width in pixels (default: 1920)"),
-			height: z
-				.number()
-				.optional()
-				.default(1080)
-				.describe("Video height in pixels (default: 1080)"),
+				.default("1280x720")
+				.describe(
+					"Output resolution. Options: 720x1280 (portrait), 1280x720 (landscape), 1024x1792 (tall portrait), 1792x1024 (wide landscape)",
+				),
 			seconds: z
-				.number()
+				.enum(["4", "8", "12"])
 				.optional()
-				.default(5)
-				.describe("Video duration in seconds (default: 5)"),
+				.default("4")
+				.describe("Video duration in seconds: 4, 8, or 12"),
 			input_reference: z
 				.string()
 				.optional()
 				.describe(
-					"Path to reference image file for image-to-video generation. Supported formats: JPEG, PNG, WebP only. IMPORTANT: The image must match the target video's resolution (width x height parameters).",
+					"Path to reference image file for image-to-video generation. Supported formats: JPEG, PNG, WebP only. IMPORTANT: The image must match the target video's resolution (size parameter).",
 				),
 		},
-		async ({ prompt, model, width, height, seconds, input_reference }) => {
+		async ({ prompt, model, size, seconds, input_reference }) => {
 			try {
 				console.log(
-					`Starting video generation: ${prompt.substring(0, 50)}... (${width}x${height}, ${seconds}s, ${model})${input_reference ? ` with reference: ${input_reference}` : ""}`,
+					`Starting video generation: ${prompt.substring(0, 50)}... (${size}, ${seconds}s, ${model})${input_reference ? ` with reference: ${input_reference}` : ""}`,
 				);
 
 				// Build the request parameters
-				const videoParams: any = {
+				const videoParams: OpenAI.VideoCreateParams = {
 					model,
 					prompt,
-					size: `${width}x${height}`,
-					seconds: seconds.toString(),
+					size,
+					seconds,
 				};
 
 				// Add input_reference if provided
 				if (input_reference) {
-					// Read and validate the reference file
+					// Validate file exists
 					if (!(await fs.pathExists(input_reference))) {
 						return {
 							content: [
@@ -117,10 +117,9 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 					}
 
 					const filename = basename(input_reference);
-					const mimeType = getMediaMimeType(input_reference);
 
 					// Validate file format
-					if (!mimeType) {
+					if (!validateImageFormat(filename)) {
 						return {
 							content: [
 								{
@@ -134,17 +133,10 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 						};
 					}
 
-					// Read file as buffer and create File object for OpenAI SDK
-					const fileBuffer = await fs.readFile(input_reference);
-					const fileObject = new File([fileBuffer], filename, {
-						type: mimeType,
-					});
+					// Use fs.createReadStream as recommended by OpenAI SDK for Node.js
+					videoParams.input_reference = createReadStream(input_reference);
 
-					videoParams.input_reference = fileObject;
-
-					console.log(
-						`Uploading reference file: ${filename} (${mimeType}, ${fileBuffer.length} bytes)`,
-					);
+					console.log(`Uploading reference file: ${filename}`);
 				}
 
 				// Use OpenAI SDK's videos.create method
@@ -184,7 +176,7 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 
 	const checkStatusTool = tool(
 		"sora_check_status",
-		"Check the status of a Sora video generation job. Poll this endpoint until status is 'succeeded' or 'failed'.",
+		"Check the status of a Sora video generation job. Poll this endpoint until status is 'completed' or 'failed'.",
 		{
 			jobId: z
 				.string()
@@ -207,13 +199,13 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 								success: true,
 								jobId: video.id,
 								status: video.status,
-								progress: video.progress ?? 0,
+								progress: video.progress,
 								message:
 									video.status === "completed"
 										? "Video generation complete! Use sora_get_video to download the video."
 										: video.status === "failed"
-											? "Video generation failed."
-											: `Job is ${video.status}. Continue polling.`,
+											? `Video generation failed: ${video.error?.message || "Unknown error"}`
+											: `Job is ${video.status}. Progress: ${video.progress}%. Continue polling.`,
 							}),
 						},
 					],
