@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - Primary and closure phases stream all thoughts and actions normally
   - Model notifications ("Using model: ...") only appear during primary phase
 - **Improved PR creation reliability**: PR creation moved to dedicated closure phase with unlimited turns
+- **Git workflow optimization**: Git commit and push instructions moved from primary phase prompts to closure phase. This ensures version control operations happen at the right time, after quality checks and before PR creation.
 - **Simplified phase tracking**: Removed the confusing `isPhaseTransition` flag. Phase transitions are now determined simply by checking which phase the session is in.
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.5 to v0.1.8 for latest Claude Agent SDK improvements

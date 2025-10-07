@@ -21,7 +21,19 @@ You have completed the primary work on this issue. Now perform a thorough closur
 - Run TypeScript type checking (if applicable) and fix any errors
 - Ensure code meets all quality standards
 
-### 4. Pull Request Management
+### 4. Version Control
+- **COMMIT all changes** with clear, descriptive commit messages:
+  ```bash
+  git add -A && git commit -m "descriptive message about changes"
+  ```
+- **PUSH changes** to remote:
+  ```bash
+  git push
+  ```
+- Ensure all work is synchronized with the remote repository
+- Verify commit history is clean and meaningful
+
+### 5. Pull Request Management
 - **MUST create or update the GitHub Pull Request** using the GitHub CLI:
   ```bash
   gh pr create
@@ -40,7 +52,7 @@ You have completed the primary work on this issue. Now perform a thorough closur
 - Link the PR to the Linear issue if not already linked
 - Verify the PR is targeting the correct base branch
 
-### 5. Documentation & Cleanup
+### 6. Documentation & Cleanup
 - Update relevant documentation (README, API docs, etc.)
 - Remove any debug code, console.logs, or commented-out sections
 - Ensure commit messages are clear and descriptive

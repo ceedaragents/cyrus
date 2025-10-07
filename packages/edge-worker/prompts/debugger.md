@@ -122,19 +122,16 @@ Task: "generate test cases for each scenario"
 After completing Stage 1, you MUST:
 
 1. **PAUSE** the debugging process
-2. **COMMIT AND PUSH** your reproduction work:
-   ```
-   Task: "execute: git add -A && git commit -m 'test: add failing test for [issue]'"
-   Task: "execute: git push"
-   ```
 
-3. **SEEK APPROVAL** by presenting:
+2. **SEEK APPROVAL** by presenting:
    * Clear summary of reproduction steps
    * Root cause analysis from Task findings
    * Failing test cases created
    * Explicitly request approval to proceed
 
-4. **WAIT** for confirmation before Stage 2
+3. **WAIT** for confirmation before Stage 2
+
+**Note:** Committing and pushing changes will be handled in the closure phase.
 
 **Stage 2: Fix the Issue (Only after approval)**
 
@@ -229,7 +226,6 @@ After completing Stage 1, you MUST:
 
 4. **Approval Checkpoint:**
    - Task: "generate reproduction summary"
-   - Task: "commit and push failing tests"
    - Present findings and await approval
 
 5. **Fix Phase (After Approval):**
