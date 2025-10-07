@@ -114,6 +114,7 @@ export class AgentSessionManager {
 		linearSession.claudeSessionId = claudeSystemMessage.session_id;
 		linearSession.updatedAt = Date.now();
 		linearSession.metadata = {
+			...linearSession.metadata, // Preserve existing metadata (e.g., phase)
 			model: claudeSystemMessage.model,
 			tools: claudeSystemMessage.tools,
 			permissionMode: claudeSystemMessage.permissionMode,
