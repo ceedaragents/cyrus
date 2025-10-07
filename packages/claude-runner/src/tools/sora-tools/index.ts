@@ -10,12 +10,7 @@ import { z } from "zod";
  */
 export interface SoraToolsOptions {
 	/**
-	 * Azure OpenAI endpoint (e.g., "https://your-resource.openai.azure.com")
-	 */
-	endpoint: string;
-
-	/**
-	 * Azure OpenAI API key
+	 * OpenAI API key
 	 */
 	apiKey: string;
 
@@ -43,13 +38,11 @@ function validateImageFormat(filename: string): boolean {
  * Create an SDK MCP server with Sora video generation tools
  */
 export function createSoraToolsServer(options: SoraToolsOptions) {
-	const { endpoint, apiKey, outputDirectory = process.cwd() } = options;
+	const { apiKey, outputDirectory = process.cwd() } = options;
 
-	// Initialize OpenAI client configured for Azure
+	// Initialize OpenAI client with default endpoint
 	const client = new OpenAI({
 		apiKey,
-		baseURL: `${endpoint}/openai`,
-		defaultQuery: { "api-version": "preview" },
 	});
 
 	const generateVideoTool = tool(

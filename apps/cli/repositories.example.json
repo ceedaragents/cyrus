@@ -11,8 +11,7 @@
 			"isActive": true,
 			"promptTemplatePath": "./agent-prompt-template.md",
 			"mcpConfigPath": "./mcp-config.json",
-			"soraApiKey": "your-azure-openai-api-key",
-			"soraEndpoint": "https://your-resource.openai.azure.com",
+			"soraApiKey": "your-openai-api-key",
 			"soraOutputDirectory": "/path/to/save/videos"
 		},
 		{

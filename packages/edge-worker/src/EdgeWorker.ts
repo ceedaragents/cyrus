@@ -2851,11 +2851,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}),
 		};
 
-		// Add Sora MCP server if API key and endpoint are configured
-		if (repository.soraApiKey && repository.soraEndpoint) {
+		// Add Sora MCP server if API key is configured
+		if (repository.soraApiKey) {
 			mcpConfig["sora-tools"] = createSoraToolsServer({
 				apiKey: repository.soraApiKey,
-				endpoint: repository.soraEndpoint,
 				outputDirectory: repository.soraOutputDirectory,
 			});
 			console.log(
