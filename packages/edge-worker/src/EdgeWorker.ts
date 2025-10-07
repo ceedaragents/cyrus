@@ -18,6 +18,7 @@ import type {
 import {
 	ClaudeRunner,
 	createCyrusToolsServer,
+	createSoraToolsServer,
 	getAllTools,
 	getCoordinatorTools,
 	getReadOnlyTools,
@@ -2976,6 +2977,17 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				},
 			}),
 		};
+
+		// Add Sora MCP server if API key is configured
+		if (repository.soraApiKey) {
+			mcpConfig["sora-tools"] = createSoraToolsServer({
+				apiKey: repository.soraApiKey,
+				outputDirectory: repository.soraOutputDirectory,
+			});
+			console.log(
+				`[EdgeWorker] Configured Sora MCP server for repository: ${repository.name}`,
+			);
+		}
 
 		return mcpConfig;
 	}
