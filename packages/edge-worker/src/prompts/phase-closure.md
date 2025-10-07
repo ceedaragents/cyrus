@@ -22,14 +22,8 @@ You have completed the primary work on this issue. Now perform a thorough closur
 - Ensure code meets all quality standards
 
 ### 4. Version Control
-- **COMMIT all changes** with clear, descriptive commit messages:
-  ```bash
-  git add -A && git commit -m "descriptive message about changes"
-  ```
-- **PUSH changes** to remote:
-  ```bash
-  git push
-  ```
+- **COMMIT all changes** with clear, descriptive commit messages
+- **PUSH changes** to remote repository
 - Ensure all work is synchronized with the remote repository
 - Verify commit history is clean and meaningful
 
