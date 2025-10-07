@@ -678,6 +678,13 @@ export class AgentSessionManager {
 					break;
 				}
 				case "assistant":
+					// Skip assistant messages during summary phase to avoid double-posting
+					// (the result will be posted as a response)
+					const currentPhase = session.metadata?.phase?.current;
+					if (currentPhase === "summary") {
+						return; // Don't post assistant messages in summary phase
+					}
+
 					// Assistant messages can be thoughts or responses
 					if (entry.metadata?.toolUseId) {
 						const toolName = entry.metadata.toolName || "Tool";

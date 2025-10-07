@@ -300,15 +300,15 @@ export class EdgeWorker extends EventEmitter {
 									: "Create a comprehensive summary of all work completed, suitable for posting to Linear.";
 						}
 
-						// Post phase transition thought to Linear
+						// Post horizontal rule as phase separator
 						try {
 							await agentSessionManager.createThoughtActivity(
 								linearAgentActivitySessionId,
-								`# 🔄 Phase Transition: ${previousPhase} → ${nextPhase}\n\nThe ${previousPhase} phase has completed. Now transitioning to the ${nextPhase} phase.`,
+								`---`,
 							);
 						} catch (error) {
 							console.warn(
-								`[Phase Transition] Failed to post phase transition thought:`,
+								`[Phase Transition] Failed to post phase separator:`,
 								error,
 							);
 						}
