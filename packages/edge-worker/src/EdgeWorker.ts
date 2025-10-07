@@ -1014,6 +1014,15 @@ export class EdgeWorker extends EventEmitter {
 			`[EdgeWorker] Initialized session ${linearAgentActivitySessionId} in primary phase`,
 		);
 
+		// Verify phase was set by checking the session in the manager
+		const verifySession = agentSessionManager.getSession(
+			linearAgentActivitySessionId,
+		);
+		console.log(
+			`[EdgeWorker] Verified phase metadata in manager:`,
+			JSON.stringify(verifySession?.metadata?.phase),
+		);
+
 		// Fetch labels (needed for both model selection and system prompt determination)
 		const labels = await this.fetchIssueLabels(fullIssue);
 

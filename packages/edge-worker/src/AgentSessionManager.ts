@@ -246,6 +246,15 @@ export class AgentSessionManager {
 				linearAgentActivitySessionId,
 			);
 
+			console.log(
+				`[AgentSessionManager] completeSession debugging - session:`,
+				linearAgentActivitySessionId,
+				`metadata:`,
+				JSON.stringify(session.metadata),
+				`currentPhase:`,
+				currentPhase,
+			);
+
 			if (!currentPhase) {
 				// Non-phased session (shouldn't happen, but handle gracefully)
 				console.log(
