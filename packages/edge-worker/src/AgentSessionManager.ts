@@ -32,6 +32,7 @@ export class AgentSessionManager {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private firstMessagePostedForPhase: Map<string, boolean> = new Map(); // Track if first message posted for current phase
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -274,10 +275,11 @@ export class AgentSessionManager {
 
 			// Handle phase transitions (same for all sessions)
 			if (currentPhase === "primary") {
-				// Primary phase done - trigger closure (no Linear post)
+				// Primary phase done - post separator then trigger closure
 				console.log(
 					`[AgentSessionManager] Primary phase completed, triggering closure phase`,
 				);
+
 				if (this.resumeNextPhase) {
 					try {
 						await this.resumeNextPhase(
@@ -293,10 +295,11 @@ export class AgentSessionManager {
 					}
 				}
 			} else if (currentPhase === "closure") {
-				// Closure phase done - trigger summary (no Linear post)
+				// Closure phase done - post separator then trigger summary
 				console.log(
 					`[AgentSessionManager] Closure phase completed, triggering summary phase`,
 				);
+
 				if (this.resumeNextPhase) {
 					try {
 						await this.resumeNextPhase(
@@ -357,6 +360,17 @@ export class AgentSessionManager {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Reset the first message flag for a new phase
+	 * Called when starting a new phase (closure or summary)
+	 */
+	resetPhaseMessageFlag(linearAgentActivitySessionId: string): void {
+		this.firstMessagePostedForPhase.delete(linearAgentActivitySessionId);
+		console.log(
+			`[AgentSessionManager] Reset first message flag for session ${linearAgentActivitySessionId}`,
+		);
 	}
 
 	/**
@@ -613,6 +627,27 @@ export class AgentSessionManager {
 			const entries = this.entries.get(linearAgentActivitySessionId) || [];
 			entries.push(entry);
 			this.entries.set(linearAgentActivitySessionId, entries);
+
+			// Post separator thought if this is the first entry in a non-primary phase
+			const currentPhase = session.metadata?.phase?.current;
+			const isFirstEntry = !this.firstMessagePostedForPhase.get(
+				linearAgentActivitySessionId,
+			);
+
+			if (isFirstEntry && currentPhase && currentPhase !== "primary") {
+				try {
+					await this.createThoughtActivity(linearAgentActivitySessionId, "---");
+					this.firstMessagePostedForPhase.set(
+						linearAgentActivitySessionId,
+						true,
+					);
+				} catch (error) {
+					console.warn(
+						`[AgentSessionManager] Failed to post phase separator:`,
+						error,
+					);
+				}
+			}
 
 			// Build activity content based on entry type
 			let content: any;
