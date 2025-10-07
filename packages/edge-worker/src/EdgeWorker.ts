@@ -3607,6 +3607,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Determine if we need a new Claude session
 		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
+		console.log(
+			`[resumeClaudeSession] isNewSession=${isNewSession}, session.claudeSessionId=${session.claudeSessionId}, needsNewClaudeSession=${needsNewClaudeSession}`,
+		);
 
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
@@ -3651,6 +3654,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		];
 
 		// Create runner configuration
+		const resumeSessionId = needsNewClaudeSession
+			? undefined
+			: session.claudeSessionId;
+		console.log(
+			`[resumeClaudeSession] Creating runner with resumeSessionId=${resumeSessionId}, maxTurns=${maxTurns}`,
+		);
+
 		const runnerConfig = this.buildClaudeRunnerConfig(
 			session,
 			repository,
@@ -3659,7 +3669,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			allowedTools,
 			allowedDirectories,
 			disallowedTools,
-			needsNewClaudeSession ? undefined : session.claudeSessionId,
+			resumeSessionId,
 			labels, // Pass labels for model override
 			maxTurns, // Pass maxTurns if specified
 		);
@@ -3682,9 +3692,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 
 		// Start streaming session
+		console.log(
+			`[resumeClaudeSession] Starting streaming with prompt length: ${fullPrompt.length}`,
+		);
 
 		try {
 			await runner.startStreaming(fullPrompt);
+			console.log(
+				`[resumeClaudeSession] Successfully started streaming for session ${linearAgentActivitySessionId}`,
+			);
 		} catch (error) {
 			console.error(
 				`[resumeClaudeSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
