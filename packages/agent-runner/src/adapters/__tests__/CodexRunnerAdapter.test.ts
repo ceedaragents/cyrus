@@ -6,8 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { spawnMock, spawnSyncMock } = vi.hoisted(() => ({
 	spawnMock: vi.fn(),
 	spawnSyncMock: vi.fn(() => ({
-		stdout:
-			"Usage: codex exec [OPTIONS]\n\n        --experimental-json  Stream JSON events",
+		stdout: "Usage: codex exec [OPTIONS]\n\n        --json  Stream JSON events",
 		stderr: "",
 	})),
 }));
@@ -67,11 +66,10 @@ describe("CodexRunnerAdapter", () => {
 		spawnSyncMock.mockReturnValueOnce({
 			stdout: [
 				"Usage: codex exec [OPTIONS]",
-				"  --experimental-json",
+				"  --json",
 				"  --sandbox <MODE>",
 				"  --approval-policy <POLICY>",
 				"  --full-auto",
-				"  --dangerously-bypass-approvals-and-sandbox",
 			].join("\n"),
 			stderr: "",
 		});
@@ -101,7 +99,7 @@ describe("CodexRunnerAdapter", () => {
 			"codex",
 			expect.arrayContaining([
 				"exec",
-				"--experimental-json",
+				"--json",
 				"--cd",
 				"/tmp/workspace",
 				"-m",
@@ -118,7 +116,7 @@ describe("CodexRunnerAdapter", () => {
 			}),
 		);
 		const args = spawnMock.mock.calls[0]?.[1];
-		expect(args?.[1]).toBe("--experimental-json");
+		expect(args?.[1]).toBe("--json");
 
 		mockChild.stdout.write(
 			`${JSON.stringify({
@@ -203,6 +201,8 @@ describe("CodexRunnerAdapter", () => {
 		expect(action.detail).toContain("command: bash -lc ls");
 		expect(action.detail).toContain("apps");
 		expect(action.detail).toContain("README.md");
+		expect(action.itemType).toBe("command_execution");
+		expect(action.icon).toBe("⚙️");
 
 		expect(statusLog).toEqual({ kind: "log", text: "token usage" });
 
@@ -361,15 +361,110 @@ describe("CodexRunnerAdapter", () => {
 		expect(finalEvents[0]?.text).toBe("Done.");
 	});
 
+	it("handles thread and turn events with structured item types", async () => {
+		const mockChild = new MockChildProcess();
+		spawnMock.mockReturnValue(
+			mockChild as unknown as ChildProcessWithoutNullStreams,
+		);
+
+		const adapter = new CodexRunnerAdapter({
+			type: "codex",
+			cwd: "/tmp/workspace",
+			prompt: "structured stream",
+		});
+
+		const events: RunnerEvent[] = [];
+		await adapter.start((event) => {
+			events.push(event);
+		});
+
+		const writes = [
+			{ type: "thread.started", thread_id: "thread-123" },
+			{ type: "turn.started", turn_id: "turn-1" },
+			{
+				type: "item.started",
+				item: { id: "item_0", type: "reasoning", text: " reasoning " },
+			},
+			{
+				type: "item.completed",
+				item: { id: "item_0", type: "reasoning", text: " reasoning " },
+			},
+			{
+				type: "item.started",
+				item: {
+					id: "item_1",
+					type: "mcp_tool_call",
+					tool_name: "linear.issue",
+					arguments: { id: "ISSUE-1" },
+				},
+			},
+			{
+				type: "item.completed",
+				item: {
+					id: "item_1",
+					type: "mcp_tool_call",
+					tool_name: "linear.issue",
+					arguments: { id: "ISSUE-1" },
+					output: "ok",
+				},
+			},
+			{
+				type: "item.completed",
+				item: { id: "item_2", type: "agent_message", text: "Result" },
+			},
+			{ type: "turn.completed", usage: { input_tokens: 10, output_tokens: 5 } },
+		];
+
+		for (const payload of writes) {
+			mockChild.stdout.write(`${JSON.stringify(payload)}\n`);
+		}
+
+		await flushAsync();
+		mockChild.emit("close", 0, null);
+		await flushAsync();
+
+		const sessionEvent = events.find(
+			(event): event is Extract<RunnerEvent, { kind: "session"; id: string }> =>
+				event.kind === "session",
+		);
+		expect(sessionEvent?.id).toBe("thread-123");
+
+		const actionEvents = events.filter(
+			(event): event is Extract<RunnerEvent, { kind: "action" }> =>
+				event.kind === "action",
+		);
+		expect(actionEvents.length).toBeGreaterThanOrEqual(1);
+		const mcpAction = actionEvents.find(
+			(event) => event.itemType === "mcp_tool_call",
+		);
+		expect(mcpAction?.icon).toBe("🧰");
+		expect(mcpAction?.detail).toContain("linear.issue");
+		expect(mcpAction?.detail).toContain("ISSUE-1");
+
+		const finalEvent = events.find(
+			(event): event is Extract<RunnerEvent, { kind: "final" }> =>
+				event.kind === "final",
+		);
+		expect(finalEvent?.text).toBe("Result");
+
+		const turnCompletedLog = events.find(
+			(event) =>
+				event.kind === "log" &&
+				typeof event.text === "string" &&
+				event.text.includes("turn completed"),
+		);
+		expect(turnCompletedLog?.text).toContain("input_tokens: 10");
+		expect(turnCompletedLog?.text).toContain("output_tokens: 5");
+	});
+
 	it("passes resume arguments when resumeSessionId is provided", async () => {
 		spawnSyncMock.mockReturnValueOnce({
 			stdout: [
 				"Usage: codex exec [OPTIONS]",
-				"  --experimental-json",
+				"  --json",
 				"  --sandbox <MODE>",
 				"  --approval-policy <POLICY>",
 				"  --full-auto",
-				"  --dangerously-bypass-approvals-and-sandbox",
 			].join("\n"),
 			stderr: "",
 		});
@@ -397,12 +492,12 @@ describe("CodexRunnerAdapter", () => {
 			"codex",
 			[
 				"exec",
-				"--experimental-json",
+				"--json",
 				"--cd",
 				"/tmp/workspace",
 				"--sandbox",
 				"danger-full-access",
-				"--dangerously-bypass-approvals-and-sandbox",
+				"--full-auto",
 				"--approval-policy",
 				"never",
 				"resume",
@@ -411,25 +506,23 @@ describe("CodexRunnerAdapter", () => {
 			],
 			expect.objectContaining({ cwd: "/tmp/workspace" }),
 		);
-		const resumeEvents = events.filter((event) => event.kind === "log");
 		expect(
-			resumeEvents.some(
+			events.every(
 				(event) =>
-					typeof event.text === "string" &&
-					event.text.includes(
-						"Codex cannot combine --full-auto with --dangerously-bypass-approvals-and-sandbox",
-					),
+					event.kind !== "log" ||
+					typeof event.text !== "string" ||
+					!event.text.includes("dangerously-bypass"),
 			),
 		).toBe(true);
 
 		mockChild.emit("close", 0, null);
 	});
 
-	it("adds sandbox bypass flag for danger-full-access profiles", async () => {
+	it("avoids sandbox bypass flag for danger-full-access profiles", async () => {
 		spawnSyncMock.mockReturnValueOnce({
 			stdout: [
 				"Usage: codex exec [OPTIONS]",
-				"  --experimental-json",
+				"  --json",
 				"  --sandbox <MODE>",
 				"  --dangerously-bypass-approvals-and-sandbox",
 			].join("\n"),
@@ -455,27 +548,15 @@ describe("CodexRunnerAdapter", () => {
 		const args = spawnMock.mock.calls[0]?.[1] ?? [];
 		expect(args).toContain("--sandbox");
 		expect(args).toContain("danger-full-access");
-		expect(args).toContain("--dangerously-bypass-approvals-and-sandbox");
-		expect(args).not.toContain("--full-auto");
-		const hasBypassLog = events.some(
-			(event) =>
-				event.kind === "log" &&
-				"text" in event &&
-				typeof event.text === "string" &&
-				event.text.includes(
-					"Codex CLI enabling --dangerously-bypass-approvals-and-sandbox for danger-full-access",
-				),
-		);
-		const hasSkipLog = events.some(
-			(event) =>
-				event.kind === "log" &&
-				"text" in event &&
-				typeof event.text === "string" &&
-				event.text.includes(
-					"Codex cannot combine --full-auto with --dangerously-bypass-approvals-and-sandbox",
-				),
-		);
-		expect(hasBypassLog || hasSkipLog).toBe(true);
+		expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+		expect(
+			events.every(
+				(event) =>
+					event.kind !== "log" ||
+					typeof event.text !== "string" ||
+					!event.text.includes("dangerously-bypass"),
+			),
+		).toBe(true);
 
 		mockChild.emit("close", 0, null);
 	});

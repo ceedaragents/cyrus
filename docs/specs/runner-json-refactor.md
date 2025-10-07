@@ -6,13 +6,13 @@ Last Updated: 2025-09-30
 
 ## Background
 
-Codex CLI exposes an `--experimental-json` flag (successor to the deprecated `--json`) that streams structured events (reasoning, user-facing messages, tool invocations, token counts, final output). Our current plaintext parser misses final messages when the CLI continues emitting telemetry (e.g., `tokens used`), leaving Linear sessions open until manual stop.
+Codex CLI exposes a stable `--json` flag that streams structured events (reasoning, user-facing messages, tool invocations, token counts, final output). Our current plaintext parser misses final messages when the CLI continues emitting telemetry (e.g., `tokens used`), leaving Linear sessions open until manual stop.
 
 Additionally, the edge worker hard-codes `--sandbox read-only`, preventing Codex from editing files when the user desires more autonomy.
 
 ## Goals
 
-- Switch Codex integration to `codex exec --experimental-json` and feed normalized events to the edge worker.
+- Switch Codex integration to `codex exec --json` and feed normalized events to the edge worker.
 - Remove legacy plaintext parsing path and rely solely on adapter-level normalization.
 - Allow Codex sandbox/approval policy to come from config rather than forcing read-only.
 - Confirm Claude and OpenCode adapters emit normalized events and drop fallback logic.
@@ -29,7 +29,7 @@ Additionally, the edge worker hard-codes `--sandbox read-only`, preventing Codex
    - Note the sandbox configuration change in `docs/multi-cli-runner-spec.md` (Codex defaults now derived from config only).
 
 2. **Adapter changes**
-- Modify `CodexRunnerAdapter` to spawn `codex exec --experimental-json`, parse JSON lines, and emit normalized events.
+- Modify `CodexRunnerAdapter` to spawn `codex exec --json`, parse JSON lines, and emit normalized events.
    - Remove the existing plaintext buffer parsing logic.
    - Ensure errors include raw payload context for debugging.
 

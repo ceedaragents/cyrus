@@ -14,13 +14,10 @@ import { pipeStreamLines } from "../utils/stream.js";
 
 type CodexJsonMessage = Record<string, unknown>;
 
-type JsonFlag = "--experimental-json" | "--json";
-
 type CodexCliFeatures = {
-	jsonFlag: JsonFlag;
+	supportsJson: boolean;
 	supportsApprovalPolicy: boolean;
 	supportsSandbox: boolean;
-	supportsDangerBypass: boolean;
 	supportsFullAuto: boolean;
 };
 
@@ -45,22 +42,11 @@ function detectCodexFeatures(
 		helpOutput = "";
 	}
 
-	const lowerHelp = helpOutput.toLowerCase();
-	let jsonFlag: JsonFlag = "--experimental-json";
-	if (helpOutput.includes("--json")) {
-		jsonFlag = helpOutput.includes("--experimental-json")
-			? "--experimental-json"
-			: "--json";
-	}
-
 	cachedFeatures = {
-		jsonFlag,
+		supportsJson: helpOutput.includes("--json"),
 		supportsApprovalPolicy: helpOutput.includes("--approval-policy"),
 		supportsSandbox: helpOutput.includes("--sandbox"),
-		supportsDangerBypass: helpOutput.includes(
-			"--dangerously-bypass-approvals-and-sandbox",
-		),
-		supportsFullAuto: lowerHelp.includes("--full-auto"),
+		supportsFullAuto: helpOutput.toLowerCase().includes("--full-auto"),
 	};
 
 	return cachedFeatures;
@@ -94,42 +80,26 @@ export class CodexRunnerAdapter implements Runner {
 	): Promise<RunnerStartResult> {
 		const env = { ...process.env, ...(this.config.env ?? {}) };
 		const features = detectCodexFeatures(env);
-		const args = ["exec", features.jsonFlag, "--cd", this.config.cwd];
+		const args = ["exec", "--json", "--cd", this.config.cwd];
+		if (!features.supportsJson) {
+			this.emitLog(
+				onEvent,
+				"Codex CLI help did not list --json; attempting to continue regardless",
+			);
+		}
 
 		const requestedSandbox = this.config.sandbox;
 		const requestedFullAuto = this.config.fullAuto ?? false;
 		let derivedFullAuto = false;
-		let usedDangerBypass = false;
 
 		if (requestedSandbox && features.supportsSandbox) {
 			args.push("--sandbox", requestedSandbox);
-			if (
-				requestedSandbox === "danger-full-access" &&
-				features.supportsDangerBypass
-			) {
-				args.push("--dangerously-bypass-approvals-and-sandbox");
-				usedDangerBypass = true;
-				this.emitLog(
-					onEvent,
-					"Codex CLI enabling --dangerously-bypass-approvals-and-sandbox for danger-full-access",
-				);
-			}
 		} else if (requestedSandbox && !features.supportsSandbox) {
 			if (requestedSandbox === "workspace-write") {
 				derivedFullAuto = true;
 				this.emitLog(
 					onEvent,
 					"Codex CLI lacks --sandbox; enabling --full-auto so workspace edits remain allowed",
-				);
-			} else if (
-				requestedSandbox === "danger-full-access" &&
-				features.supportsDangerBypass
-			) {
-				args.push("--dangerously-bypass-approvals-and-sandbox");
-				usedDangerBypass = true;
-				this.emitLog(
-					onEvent,
-					"Codex CLI lacks --sandbox; using --dangerously-bypass-approvals-and-sandbox",
 				);
 			} else if (requestedSandbox === "danger-full-access") {
 				derivedFullAuto = true;
@@ -140,18 +110,7 @@ export class CodexRunnerAdapter implements Runner {
 			}
 		}
 
-		if (requestedSandbox === "danger-full-access" && !usedDangerBypass) {
-			derivedFullAuto = true;
-		}
-
-		let fullAuto = requestedFullAuto || derivedFullAuto;
-		if (usedDangerBypass && fullAuto) {
-			fullAuto = false;
-			this.emitLog(
-				onEvent,
-				"Codex cannot combine --full-auto with --dangerously-bypass-approvals-and-sandbox; skipping --full-auto",
-			);
-		}
+		const fullAuto = requestedFullAuto || derivedFullAuto;
 
 		if (fullAuto) {
 			if (features.supportsFullAuto) {
@@ -285,7 +244,7 @@ export class CodexRunnerAdapter implements Runner {
 		const item = this.extractItem(payload);
 		const itemType = item ? this.extractItemType(item) : undefined;
 		if (item && itemType) {
-			const normalizedItemType = itemType.toLowerCase();
+			const normalizedItemType = this.normalizeItemType(itemType);
 			if (this.isItemFailure(item)) {
 				this.emitError(payload, line, onEvent);
 				return;
@@ -294,23 +253,21 @@ export class CodexRunnerAdapter implements Runner {
 				this.emitThought(item, onEvent);
 				return;
 			}
-			if (
-				normalizedItemType.includes("command") ||
-				normalizedItemType.includes("tool")
-			) {
-				this.emitCommandAction(item, line, onEvent);
+			if (this.isToolActionType(normalizedItemType)) {
+				this.emitToolAction(item, normalizedItemType, line, onEvent);
 				return;
 			}
 			if (normalizedItemType === "assistant_response") {
 				this.emitResponse(item, onEvent);
 				return;
 			}
-			if (normalizedItemType === "assistant_message") {
+			if (
+				normalizedItemType === "assistant_message" ||
+				normalizedItemType === "agent_message"
+			) {
 				const assistantText =
 					this.extractText(item) ?? this.extractText(payload);
-				const shouldFinalize =
-					normalizedType === "item.completed" ||
-					normalizedType === "turn.completed";
+				const shouldFinalize = normalizedType === "item.completed";
 				if (shouldFinalize) {
 					this.emitFinal(item, line, onEvent);
 				} else if (
@@ -333,10 +290,44 @@ export class CodexRunnerAdapter implements Runner {
 			}
 		}
 
+		if (
+			normalizedType === "thread.started" ||
+			normalizedType === "thread.resumed"
+		) {
+			const threadId = this.extractThreadId(payload);
+			if (threadId) {
+				onEvent({ kind: "session", id: threadId });
+				this.emitLog(onEvent, `[codex:${normalizedType}] ${threadId}`);
+			} else {
+				this.emitLog(
+					onEvent,
+					this.extractText(payload) ?? `[codex:${normalizedType}] ${line}`,
+				);
+			}
+			return;
+		}
+
 		if (type === "session.created" && typeof payload.session_id === "string") {
 			const sessionId = payload.session_id;
 			onEvent({ kind: "session", id: sessionId });
 			this.emitLog(onEvent, `[codex:session] ${sessionId}`);
+			return;
+		}
+
+		if (normalizedType === "turn.started") {
+			this.emitLog(
+				onEvent,
+				this.formatTurnLogMessage("started", payload) ?? `[codex:turn] ${line}`,
+			);
+			return;
+		}
+
+		if (normalizedType === "turn.completed") {
+			const message =
+				this.formatTurnLogMessage("completed", payload) ??
+				this.extractText(payload) ??
+				`turn completed`;
+			this.emitLog(onEvent, message);
 			return;
 		}
 
@@ -387,17 +378,268 @@ export class CodexRunnerAdapter implements Runner {
 		this.emitLog(onEvent, `[codex:final] ${raw}`);
 	}
 
-	private emitCommandAction(
+	private emitToolAction(
 		item: CodexJsonMessage,
+		itemType: string,
 		raw: string,
 		onEvent: (event: RunnerEvent) => void,
 	): void {
 		if (this.finalDelivered) {
 			return;
 		}
-		const name = this.extractCommandName(item) ?? "command_execution";
-		const detail = this.extractCommandDetail(item) ?? raw;
-		onEvent({ kind: "action", name, detail });
+		const name = this.resolveActionName(item, itemType);
+		const detail = this.buildActionDetail(item, itemType) ?? raw;
+		const icon = this.iconForItemType(itemType);
+		onEvent({ kind: "action", name, detail, itemType, icon });
+	}
+
+	private resolveActionName(item: CodexJsonMessage, itemType: string): string {
+		switch (itemType) {
+			case "file_change":
+			case "filechange": {
+				const file = this.extractFilePath(item);
+				return file ?? "file change";
+			}
+			case "mcp_tool_call":
+			case "mcp_toolcall": {
+				const toolName = this.extractStringField(item, [
+					"tool_name",
+					"tool",
+					"name",
+				]);
+				return toolName ?? "mcp tool call";
+			}
+			case "web_search":
+			case "websearch": {
+				const query = this.extractStringField(item, [
+					"query",
+					"search",
+					"name",
+				]);
+				return query ?? "web search";
+			}
+			default: {
+				const commandName = this.extractCommandName(item);
+				if (commandName) {
+					return commandName;
+				}
+				return itemType.replace(/_/g, " ");
+			}
+		}
+	}
+
+	private buildActionDetail(
+		item: CodexJsonMessage,
+		itemType: string,
+	): string | undefined {
+		switch (itemType) {
+			case "file_change":
+			case "filechange":
+				return this.buildFileChangeDetail(item);
+			case "mcp_tool_call":
+			case "mcp_toolcall":
+				return this.buildMcpToolDetail(item);
+			case "web_search":
+			case "websearch":
+				return this.buildWebSearchDetail(item);
+			default:
+				return this.extractCommandDetail(item);
+		}
+	}
+
+	private iconForItemType(itemType: string): string | undefined {
+		switch (itemType) {
+			case "command_execution":
+			case "commandexecution":
+				return "⚙️";
+			case "mcp_tool_call":
+			case "mcp_toolcall":
+				return "🧰";
+			case "file_change":
+			case "filechange":
+				return "📝";
+			case "web_search":
+			case "websearch":
+				return "🔍";
+			default:
+				return "🛠️";
+		}
+	}
+
+	private buildFileChangeDetail(item: CodexJsonMessage): string | undefined {
+		const parts: string[] = [];
+		const file = this.extractFilePath(item);
+		if (file) {
+			parts.push(`file: ${file}`);
+		}
+		const changeKind = this.extractStringField(item, [
+			"change_type",
+			"changeType",
+			"status",
+			"action",
+		]);
+		if (changeKind) {
+			parts.push(`change: ${changeKind}`);
+		}
+		const summary = this.extractStringField(item, [
+			"summary",
+			"description",
+			"text",
+		]);
+		if (summary) {
+			parts.push(summary);
+		}
+		const diff = this.extractStringField(item, ["diff", "patch"]);
+		if (diff) {
+			parts.push(`diff:\n${diff}`);
+		}
+		if (parts.length > 0) {
+			return parts.join("\n\n");
+		}
+		return this.safeJsonStringify(item);
+	}
+
+	private buildMcpToolDetail(item: CodexJsonMessage): string | undefined {
+		const parts: string[] = [];
+		const toolName = this.extractStringField(item, [
+			"tool_name",
+			"tool",
+			"name",
+		]);
+		if (toolName) {
+			parts.push(`tool: ${toolName}`);
+		}
+		const argumentsValue = item.arguments ?? item.args ?? item.parameters;
+		if (argumentsValue) {
+			const serialized = this.safeJsonStringify(argumentsValue);
+			if (serialized) {
+				parts.push(`arguments:\n${serialized}`);
+			}
+		}
+		const output = this.extractStringField(item, [
+			"result",
+			"output",
+			"response",
+		]);
+		if (output) {
+			parts.push(`output:\n${output}`);
+		}
+		if (parts.length > 0) {
+			return parts.join("\n\n");
+		}
+		return this.safeJsonStringify(item);
+	}
+
+	private buildWebSearchDetail(item: CodexJsonMessage): string | undefined {
+		const parts: string[] = [];
+		const query = this.extractStringField(item, ["query", "search", "name"]);
+		if (query) {
+			parts.push(`query: ${query}`);
+		}
+		const provider = this.extractStringField(item, ["provider", "engine"]);
+		if (provider) {
+			parts.push(`provider: ${provider}`);
+		}
+		const results = item.results ?? item.documents ?? item.links;
+		if (results) {
+			const serialized = this.safeJsonStringify(results);
+			if (serialized) {
+				parts.push(`results:\n${serialized}`);
+			}
+		}
+		if (parts.length > 0) {
+			return parts.join("\n\n");
+		}
+		return this.safeJsonStringify(item);
+	}
+
+	private extractFilePath(item: CodexJsonMessage): string | undefined {
+		const candidates = [
+			item.file,
+			item.file_path,
+			item.filePath,
+			item.path,
+			item.target,
+		];
+		for (const candidate of candidates) {
+			if (typeof candidate === "string") {
+				const trimmed = candidate.trim();
+				if (trimmed.length > 0) {
+					return trimmed;
+				}
+			}
+		}
+		if (Array.isArray(item.files) && item.files.length > 0) {
+			const first = item.files[0];
+			if (typeof first === "string") {
+				const trimmed = first.trim();
+				if (trimmed.length > 0) {
+					return trimmed;
+				}
+			}
+		}
+		return undefined;
+	}
+
+	private extractStringField(
+		source: CodexJsonMessage,
+		keys: string[],
+	): string | undefined {
+		for (const key of keys) {
+			const value = source[key];
+			if (typeof value === "string") {
+				const trimmed = value.trim();
+				if (trimmed.length > 0) {
+					return trimmed;
+				}
+			}
+		}
+		return undefined;
+	}
+
+	private formatTurnLogMessage(
+		phase: "started" | "completed",
+		payload: CodexJsonMessage,
+	): string | undefined {
+		const turnId = this.extractStringField(payload, ["turn_id", "id"]);
+		const prefix = turnId ? `turn ${phase} (${turnId})` : `turn ${phase}`;
+		if (phase === "completed") {
+			const usageText = this.formatUsage(payload.usage);
+			if (usageText) {
+				return `${prefix} ${usageText}`;
+			}
+		}
+		return prefix;
+	}
+
+	private formatUsage(value: unknown): string | undefined {
+		if (!value || typeof value !== "object") {
+			return undefined;
+		}
+		const record = value as Record<string, unknown>;
+		const segments: string[] = [];
+		for (const [key, entry] of Object.entries(record)) {
+			if (typeof entry === "number") {
+				segments.push(`${key}: ${entry}`);
+			}
+		}
+		if (segments.length === 0) {
+			return undefined;
+		}
+		return `{ ${segments.join(", ")} }`;
+	}
+
+	private extractThreadId(payload: CodexJsonMessage): string | undefined {
+		const candidates = [payload.thread_id, payload.session_id, payload.id];
+		for (const candidate of candidates) {
+			if (typeof candidate === "string") {
+				const trimmed = candidate.trim();
+				if (trimmed.length > 0) {
+					return trimmed;
+				}
+			}
+		}
+		return undefined;
 	}
 
 	private emitError(
@@ -457,6 +699,28 @@ export class CodexRunnerAdapter implements Runner {
 		);
 	}
 
+	private normalizeItemType(itemType: string): string {
+		return itemType
+			.trim()
+			.toLowerCase()
+			.replace(/[\s-]+/g, "_");
+	}
+
+	private isToolActionType(itemType: string): boolean {
+		if (itemType.includes("command") || itemType.includes("tool")) {
+			return true;
+		}
+		switch (itemType) {
+			case "file_change":
+			case "filechange":
+			case "web_search":
+			case "websearch":
+				return true;
+			default:
+				return false;
+		}
+	}
+
 	private isErrorPayload(
 		type: string | undefined,
 		payload: CodexJsonMessage,
@@ -494,9 +758,11 @@ export class CodexRunnerAdapter implements Runner {
 	}
 
 	private extractItemType(item: CodexJsonMessage): string | undefined {
-		const type = item.item_type;
-		if (typeof type === "string" && type.trim().length > 0) {
-			return type.trim();
+		const candidates = [item.item_type, item.type];
+		for (const candidate of candidates) {
+			if (typeof candidate === "string" && candidate.trim().length > 0) {
+				return candidate.trim();
+			}
 		}
 		return undefined;
 	}

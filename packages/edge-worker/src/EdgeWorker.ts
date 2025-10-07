@@ -4225,13 +4225,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					return;
 				}
 				case "action": {
-					const actionName = event.name?.trim() || "codex-action";
-					const actionLabel = `🛠️ ${actionName}`;
+					const actionName = event.name?.trim() || "codex action";
+					const icon = event.icon?.trim() || "🛠️";
+					const actionLabel =
+						icon.length > 0 ? `${icon} ${actionName}` : actionName;
 					this.debugLog(
 						`[startNonClaudeRunner] Action event from ${selection.type}`,
 						{
 							sessionId: linearAgentActivitySessionId,
 							name: actionName,
+							itemType: event.itemType,
 							detail: event.detail,
 						},
 					);

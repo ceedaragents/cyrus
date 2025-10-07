@@ -55,7 +55,13 @@ export type RunnerConfig =
 
 export type RunnerEvent =
 	| { kind: "thought"; text: string }
-	| { kind: "action"; name: string; detail?: string }
+	| {
+			kind: "action";
+			name: string;
+			detail?: string;
+			itemType?: string;
+			icon?: string;
+	  }
 	| { kind: "response"; text: string }
 	| { kind: "final"; text: string }
 	| { kind: "log"; text: string }

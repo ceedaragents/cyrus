@@ -47,7 +47,7 @@ export type RunnerConfig =
 // Normalized events emitted by adapters. See runner-event-normalization.md for details.
 export type RunnerEvent =
   | { kind: "thought"; text: string }
-  | { kind: "action"; name: string; detail?: string }
+  | { kind: "action"; name: string; detail?: string; itemType?: string; icon?: string }
   | { kind: "response"; text: string }
   | { kind: "final"; text: string }
   | { kind: "log"; text: string }

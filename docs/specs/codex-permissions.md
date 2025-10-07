@@ -67,7 +67,7 @@ When starting a Codex session, EdgeWorker now passes the resolved profile to the
 }
 ```
 
-The adapter chooses the JSON streaming flag at runtime. It prefers `--experimental-json` (per upstream guidance) and falls back to `--json` if the binary does not recognise the newer flag, keeping compatibility with older Codex releases.
+The adapter assumes modern Codex builds expose the stable `--json` stream flag and warns (once per process) if it is missing from `codex exec --help` output.
 
 ## Testing Notes
 
@@ -94,9 +94,9 @@ error: unexpected argument '--approval-policy' found
 To keep older CLIs working while we wait for official flag parity, the runner now:
 
 - probes `codex exec --help` on startup to discover which options are available;
-- uses `--experimental-json` or `--json` depending on the detected help text;
+- always requests `--json`, logging a diagnostic if the flag is absent from the help output;
 - only passes `--sandbox`/`--approval-policy` when the CLI supports them;
-- when requesting `danger-full-access`, adds `--dangerously-bypass-approvals-and-sandbox` if available so fetch/push/etc worktree writes succeed, and drops `--full-auto` because the CLI forbids combining the two flags;
+- never falls back to the legacy `--dangerously-bypass-approvals-and-sandbox` flag, keeping behaviour aligned with the current Codex guidance;
 - falls back to `--full-auto` when the CLI lacks sandbox toggles so workspace-write sessions can still edit files; and
 - logs a diagnostic message whenever we skip or substitute a flag so operators know why the command line changed.
 
