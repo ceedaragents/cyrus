@@ -247,15 +247,6 @@ export class AgentSessionManager {
 				linearAgentActivitySessionId,
 			);
 
-			console.log(
-				`[AgentSessionManager] completeSession debugging - session:`,
-				linearAgentActivitySessionId,
-				`metadata:`,
-				JSON.stringify(session.metadata),
-				`currentPhase:`,
-				currentPhase,
-			);
-
 			if (!currentPhase) {
 				// Non-phased session (shouldn't happen, but handle gracefully)
 				console.log(
@@ -677,7 +668,7 @@ export class AgentSessionManager {
 					}
 					break;
 				}
-				case "assistant":
+				case "assistant": {
 					// Skip assistant messages during summary phase to avoid double-posting
 					// (the result will be posted as a response)
 					const currentPhase = session.metadata?.phase?.current;
@@ -771,6 +762,7 @@ export class AgentSessionManager {
 						};
 					}
 					break;
+				}
 
 				case "system":
 					// System messages are thoughts

@@ -1016,15 +1016,6 @@ export class EdgeWorker extends EventEmitter {
 			`[EdgeWorker] Initialized session ${linearAgentActivitySessionId} in primary phase`,
 		);
 
-		// Verify phase was set by checking the session in the manager
-		const verifySession = agentSessionManager.getSession(
-			linearAgentActivitySessionId,
-		);
-		console.log(
-			`[EdgeWorker] Verified phase metadata in manager:`,
-			JSON.stringify(verifySession?.metadata?.phase),
-		);
-
 		// Fetch labels (needed for both model selection and system prompt determination)
 		const labels = await this.fetchIssueLabels(fullIssue);
 
@@ -3633,9 +3624,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Determine if we need a new Claude session
 		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
-		console.log(
-			`[resumeClaudeSession] isNewSession=${isNewSession}, session.claudeSessionId=${session.claudeSessionId}, needsNewClaudeSession=${needsNewClaudeSession}`,
-		);
 
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
@@ -3683,9 +3671,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const resumeSessionId = needsNewClaudeSession
 			? undefined
 			: session.claudeSessionId;
-		console.log(
-			`[resumeClaudeSession] Creating runner with resumeSessionId=${resumeSessionId}, maxTurns=${maxTurns}`,
-		);
 
 		const runnerConfig = this.buildClaudeRunnerConfig(
 			session,
@@ -3718,15 +3703,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 
 		// Start streaming session
-		console.log(
-			`[resumeClaudeSession] Starting streaming with prompt length: ${fullPrompt.length}`,
-		);
-
 		try {
 			await runner.startStreaming(fullPrompt);
-			console.log(
-				`[resumeClaudeSession] Successfully started streaming for session ${linearAgentActivitySessionId}`,
-			);
 		} catch (error) {
 			console.error(
 				`[resumeClaudeSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,

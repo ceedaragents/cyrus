@@ -324,9 +324,7 @@ Issue: {{issue_identifier}}`;
 		expect(capturedClaudeRunnerConfig.appendSystemPrompt).toContain(
 			"You are in debugger mode. Fix bugs systematically.",
 		);
-		expect(capturedClaudeRunnerConfig.appendSystemPrompt).toContain(
-			"___LAST_MESSAGE_MARKER___",
-		);
+		// Note: LAST_MESSAGE_MARKER removed as part of three-phase execution system
 	});
 
 	it("should NOT include system prompt content for regular mentions without /label-based-prompt", async () => {
@@ -362,9 +360,6 @@ Issue: {{issue_identifier}}`;
 		expect(capturedClaudeRunnerConfig.appendSystemPrompt).not.toContain(
 			"You are in debugger mode. Fix bugs systematically.",
 		);
-		// But should still contain the marker
-		expect(capturedClaudeRunnerConfig.appendSystemPrompt).toContain(
-			"___LAST_MESSAGE_MARKER___",
-		);
+		// Note: LAST_MESSAGE_MARKER removed as part of three-phase execution system
 	});
 });
