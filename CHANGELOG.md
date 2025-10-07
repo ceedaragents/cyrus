@@ -20,6 +20,9 @@ All notable changes to this project will be documented in this file.
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.5 to v0.1.8 for latest Claude Agent SDK improvements
 
+### Fixed
+- **Phase transition race condition**: Fixed "Cannot add message to completed stream" error when transitioning between phases. The `isStreaming()` check now properly validates that the stream is not completed before attempting to add messages.
+
 ### Removed
 - **Last message marker system**: Removed the `___LAST_MESSAGE_MARKER___` approach in favor of the new three-phase system where summaries are generated in a dedicated phase
 
