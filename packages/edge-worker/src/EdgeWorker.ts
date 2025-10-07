@@ -275,6 +275,8 @@ export class EdgeWorker extends EventEmitter {
 						);
 
 						// Load phase-specific prompt
+						const __filename = fileURLToPath(import.meta.url);
+						const __dirname = dirname(__filename);
 						const phasePromptPath =
 							nextPhase === "closure"
 								? join(__dirname, "prompts", "phase-closure.md")
