@@ -375,13 +375,19 @@ export class AgentSessionManager {
 							message,
 						);
 
-						// Post model notification thought
+						// Post model notification thought only during primary phase
 						const systemMessage = message as SDKSystemMessage;
 						if (systemMessage.model) {
-							await this.postModelNotificationThought(
-								linearAgentActivitySessionId,
-								systemMessage.model,
-							);
+							const session = this.sessions.get(linearAgentActivitySessionId);
+							const currentPhase = session?.metadata?.phase?.current;
+
+							// Only post model notification during primary phase
+							if (currentPhase === "primary" || !currentPhase) {
+								await this.postModelNotificationThought(
+									linearAgentActivitySessionId,
+									systemMessage.model,
+								);
+							}
 						}
 					}
 					break;
