@@ -300,19 +300,6 @@ export class EdgeWorker extends EventEmitter {
 									: "Create a comprehensive summary of all work completed, suitable for posting to Linear.";
 						}
 
-						// Post horizontal rule as phase separator
-						try {
-							await agentSessionManager.createThoughtActivity(
-								linearAgentActivitySessionId,
-								`---`,
-							);
-						} catch (error) {
-							console.warn(
-								`[Phase Transition] Failed to post phase separator:`,
-								error,
-							);
-						}
-
 						// Resume Claude session with phase prompt
 						try {
 							// For summary phase, set maxTurns=1 to keep it concise
