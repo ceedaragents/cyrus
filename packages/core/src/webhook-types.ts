@@ -232,7 +232,7 @@ export interface LinearWebhookAgentActivity {
 	archivedAt: string | null;
 	agentContextId: string | null;
 	agentSessionId: string;
-	sourceCommentId: string;
+	sourceCommentId: string | null;
 	content: LinearWebhookAgentActivityContent;
 	signal?: "stop"; // Optional signal modifier for user intent
 }

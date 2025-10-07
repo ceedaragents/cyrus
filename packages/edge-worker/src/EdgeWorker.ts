@@ -1313,57 +1313,6 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Always set up attachments directory, even if no attachments in current comment
-		const workspaceFolderName = basename(session.workspace.path);
-		const attachmentsDir = join(
-			this.cyrusHome,
-			workspaceFolderName,
-			"attachments",
-		);
-		// Ensure directory exists
-		await mkdir(attachmentsDir, { recursive: true });
-
-		let attachmentManifest = "";
-		try {
-			const result = await linearClient.client.rawRequest(
-				`
-          query GetComment($id: String!) {
-            comment(id: $id) {
-              id
-              body
-              createdAt
-              updatedAt
-              user {
-                name
-                id
-              }
-            }
-          }
-        `,
-				{ id: commentId },
-			);
-
-			// Count existing attachments
-			const existingFiles = await readdir(attachmentsDir).catch(() => []);
-			const existingAttachmentCount = existingFiles.filter(
-				(file) => file.startsWith("attachment_") || file.startsWith("image_"),
-			).length;
-
-			// Download new attachments from the comment
-			const downloadResult = await this.downloadCommentAttachments(
-				(result.data as any).comment.body,
-				attachmentsDir,
-				repository.linearToken,
-				existingAttachmentCount,
-			);
-
-			if (downloadResult.totalNewAttachments > 0) {
-				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
-			}
-		} catch (error) {
-			console.error("Failed to fetch comments for attachments:", error);
-		}
-
 		const promptBody = webhook.agentActivity.content.body;
 		const stopSignal = webhook.agentActivity.signal === "stop";
 
@@ -1408,6 +1357,64 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			return; // Exit early - stop signal handled
+		}
+
+		// Always set up attachments directory, even if no attachments in current comment
+		const workspaceFolderName = basename(session.workspace.path);
+		const attachmentsDir = join(
+			this.cyrusHome,
+			workspaceFolderName,
+			"attachments",
+		);
+		// Ensure directory exists
+		await mkdir(attachmentsDir, { recursive: true });
+
+		let attachmentManifest = "";
+		if (commentId) {
+			try {
+				const result = await linearClient.client.rawRequest(
+					`
+	          query GetComment($id: String!) {
+	            comment(id: $id) {
+	              id
+	              body
+	              createdAt
+	              updatedAt
+	              user {
+	                name
+	                id
+	              }
+	            }
+	          }
+	        `,
+					{ id: commentId },
+				);
+
+				// Count existing attachments
+				const existingFiles = await readdir(attachmentsDir).catch(() => []);
+				const existingAttachmentCount = existingFiles.filter(
+					(file) => file.startsWith("attachment_") || file.startsWith("image_"),
+				).length;
+
+				// Download new attachments from the comment
+				const downloadResult = await this.downloadCommentAttachments(
+					(result.data as any).comment.body,
+					attachmentsDir,
+					repository.linearToken,
+					existingAttachmentCount,
+				);
+
+				if (downloadResult.totalNewAttachments > 0) {
+					attachmentManifest =
+						this.generateNewAttachmentManifest(downloadResult);
+				}
+			} catch (error) {
+				console.error("Failed to fetch comments for attachments:", error);
+			}
+		} else {
+			this.debugLog(
+				"[handleUserPostedAgentActivity] No source comment id provided; skipping attachment download",
+			);
 		}
 
 		// Check if there's an existing runner for this comment thread
