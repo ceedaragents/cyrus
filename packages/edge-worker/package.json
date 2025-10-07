@@ -13,7 +13,8 @@
 		"prompts"
 	],
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc && npm run copy-prompts",
+		"copy-prompts": "mkdir -p dist/prompts && cp -r src/prompts/*.md dist/prompts/",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run",
