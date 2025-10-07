@@ -68,21 +68,14 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
    - Understanding current branch status
    - Implementation tasks (by component/feature)
    - Testing tasks
-   - PR creation/update
 
 2. Check branch status:
    ```
    git diff {{base_branch}}...HEAD
    ```
 
-3. Check for existing PR:
-   ```
-   gh pr list --head {{branch_name}}
-   ```
-
-4. Work through tasks systematically
-5. Run tests and ensure code quality
-6. Create or update pull request
+3. Work through tasks systematically
+4. Ensure code quality throughout implementation
 
 ### If Situation 2 (Clarify):
 1. Use TodoWrite to create investigation tasks

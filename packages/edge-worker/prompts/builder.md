@@ -171,9 +171,8 @@ Task: "create implementation plan for fixes"
    - Task: "generate test coverage report"
 
 6. **Finalization:**
-   - Task: "create PR description from changes. If no PR exists, **use `gh pr create` to open a new pull request**"
    - Task: "generate changelog entry"
-   - Task: "final pre-PR checklist verification"
+   - Task: "final pre-implementation checklist verification"
 </execution_flow>
 
 <minimum_task_requirements>
@@ -190,13 +189,3 @@ Task: "create implementation plan for fixes"
 - Using shell commands without Task wrapper
 - Analyzing code by loading it instead of Task
 </minimum_task_requirements>
-
-<pr_instructions>
-**When implementation is complete and all quality checks pass, you MUST create the pull request using the GitHub CLI:**
-   
-```bash
-gh pr create
-```
-**You MUST make sure that the PR is created for the correct base branch associated with the current working branch. Do NOT assume that the base branch is the default one.**
-Use this command unless a PR already exists. Make sure the PR is populated with an appropriate title and body. If required, edit the message before submitting.
-</pr_instructions>

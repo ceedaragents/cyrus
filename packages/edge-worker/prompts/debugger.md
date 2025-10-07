@@ -243,9 +243,8 @@ After completing Stage 1, you MUST:
    - Task: "validate fix completeness"
 
 7. **Finalization:**
-   - Task: "create comprehensive PR description"
    - Task: "run final quality checks"
-   - Task: "use gh pr create if needed"
+   - Task: "verify all tests pass"
 </execution_flow>
 
 <minimum_task_requirements>
@@ -263,18 +262,3 @@ After completing Stage 1, you MUST:
 - Running tests without Task wrapper
 - Analyzing code by loading instead of Task
 </minimum_task_requirements>
-
-<pr_instructions>
-**When debugging is complete and all tests pass, you MUST create the pull request using the GitHub CLI:**
-
-```bash
-gh pr create
-```
-
-Use this command unless a PR already exists. Include in the PR:
-- Bug description
-- Reproduction steps
-- Root cause analysis
-- Fix summary
-- Test evidence
-</pr_instructions>

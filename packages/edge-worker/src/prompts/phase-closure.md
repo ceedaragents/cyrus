@@ -22,8 +22,21 @@ You have completed the primary work on this issue. Now perform a thorough closur
 - Ensure code meets all quality standards
 
 ### 4. Pull Request Management
-- **Create or update the GitHub Pull Request** using `gh pr create` or `gh pr edit`
-- Ensure the PR has a clear title and description
+- **MUST create or update the GitHub Pull Request** using the GitHub CLI:
+  ```bash
+  gh pr create
+  ```
+  Or if a PR already exists:
+  ```bash
+  gh pr edit
+  ```
+- **IMPORTANT**: Make sure the PR is created for the correct base branch associated with the current working branch. Do NOT assume the base branch is the default one.
+- Ensure the PR has a clear, descriptive title
+- Write a comprehensive PR description including:
+  - Summary of changes
+  - Implementation approach
+  - Testing performed
+  - Any breaking changes or migration notes
 - Link the PR to the Linear issue if not already linked
 - Verify the PR is targeting the correct base branch
 
