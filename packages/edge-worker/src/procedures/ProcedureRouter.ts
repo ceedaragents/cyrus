@@ -31,7 +31,8 @@ export class ProcedureRouter {
 		this.routingRunner = new SimpleClaudeRunner({
 			validResponses: ["question", "documentation", "transient", "code"],
 			cyrusHome: config.cyrusHome,
-			model: config.model || "sonnet",
+			model: config.model || "haiku",
+			fallbackModel: "sonnet",
 			systemPrompt: this.buildRoutingSystemPrompt(),
 			maxTurns: 1,
 			timeoutMs: config.timeoutMs || 10000,
