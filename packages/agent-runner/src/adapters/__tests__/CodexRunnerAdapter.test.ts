@@ -40,6 +40,10 @@ class MockChildProcess
 
 	kill = vi.fn(() => {
 		this.killed = true;
+		queueMicrotask(() => {
+			this.emit("exit", 0, null);
+			this.emit("close", 0, null);
+		});
 		return true;
 	});
 }
@@ -268,6 +272,54 @@ describe("CodexRunnerAdapter", () => {
 					"text" in event &&
 					typeof event.text === "string" &&
 					event.text.includes("does not expose --full-auto"),
+			),
+		).toBe(true);
+	});
+
+	it("includes command details in error events", async () => {
+		const mockChild = new MockChildProcess();
+		spawnMock.mockReturnValue(
+			mockChild as unknown as ChildProcessWithoutNullStreams,
+		);
+
+		const adapter = new CodexRunnerAdapter({
+			type: "codex",
+			cwd: "/tmp/workspace",
+			prompt: "run checks",
+		});
+
+		const events: RunnerEvent[] = [];
+		await adapter.start((event) => {
+			events.push(event);
+		});
+
+		mockChild.stdout.write(
+			`${JSON.stringify({
+				type: "item.completed",
+				item: {
+					item_type: "command_execution",
+					command: "bash -lc 'flutter analyze'",
+					exit_code: -1,
+					aggregated_output:
+						"failed in sandbox: permission denied\nMore details...",
+					status: "failed",
+				},
+			})}\n`,
+		);
+
+		await flushAsync();
+
+		const errorEvent = events.find(
+			(event): event is Extract<RunnerEvent, { kind: "error" }> =>
+				event.kind === "error",
+		);
+		expect(errorEvent).toBeDefined();
+		expect(errorEvent?.error.message).toContain("bash -lc 'flutter analyze'");
+		expect(errorEvent?.error.message).toContain("exit -1");
+		expect(errorEvent?.error.message).toContain("failed in sandbox");
+		expect(
+			events.some(
+				(event) => event.kind === "log" && event.text.includes("[codex:error]"),
 			),
 		).toBe(true);
 	});

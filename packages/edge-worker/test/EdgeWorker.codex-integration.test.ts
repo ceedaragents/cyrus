@@ -106,6 +106,7 @@ describe("EdgeWorker Codex integration", () => {
 		hoisted.linearActivities.length = 0;
 		hoisted.persistenceManagerInstances.length = 0;
 		hoisted.linearClients.length = 0;
+		process.env.LINEAR_DIRECT_WEBHOOKS = "true";
 
 		repository = {
 			id: "repo-1",
@@ -185,6 +186,7 @@ describe("EdgeWorker Codex integration", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		delete process.env.LINEAR_DIRECT_WEBHOOKS;
 	});
 
 	it("streams Codex events through EdgeWorker and persists state", async () => {
@@ -244,6 +246,100 @@ describe("EdgeWorker Codex integration", () => {
 		expect(lastSavedState?.finalizedNonClaudeSessions).toContain(sessionId);
 		expect(lastSavedState?.sessionRunnerSelections?.[sessionId]?.type).toBe(
 			"codex",
+		);
+	});
+
+	it("terminates codex runner and clears state on stop signal", async () => {
+		const agentSessionManager = {
+			getSession: vi.fn().mockReturnValue({
+				claudeRunner: {
+					isStreaming: vi.fn().mockReturnValue(false),
+					stop: vi.fn(),
+				},
+				workspace: { path: workspacePath },
+				issueId: "issue-123",
+			}),
+			createResponseActivity: vi.fn().mockResolvedValue(undefined),
+			serializeState: vi.fn(),
+		};
+		(edgeWorker as any).agentSessionManagers.set(
+			repository.id,
+			agentSessionManager,
+		);
+
+		const codexRunner = {
+			stop: vi.fn().mockResolvedValue(undefined),
+		} as unknown as ReturnType<typeof runnerFactoryMock.create>;
+		(edgeWorker as any).nonClaudeRunners.set(sessionId, codexRunner);
+		(edgeWorker as any).sessionRunnerSelections.set(sessionId, {
+			type: "codex",
+			issueId: "issue-123",
+		});
+		(edgeWorker as any).codexSessionCache.set(sessionId, "codex-run-123");
+
+		const webhook = {
+			type: "AgentSessionEvent",
+			action: "prompted",
+			createdAt: new Date().toISOString(),
+			organizationId: "org-1",
+			oauthClientId: "oauth-1",
+			appUserId: "user-1",
+			agentSession: {
+				id: sessionId,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				archivedAt: null,
+				creatorId: "creator-1",
+				appUserId: "user-1",
+				commentId: "comment-1",
+				issueId: "issue-123",
+				status: "active",
+				startedAt: new Date().toISOString(),
+				endedAt: null,
+				type: "commentThread",
+				summary: null,
+				sourceMetadata: null,
+				organizationId: "org-1",
+				creator: { id: "creator-1", name: "User", email: "user@example.com" },
+				comment: { id: "comment-1", body: "body", url: "http://example.com" },
+				issue: {
+					id: "issue-123",
+					identifier: issueIdentifier,
+					title: "Fix navigation",
+					branchName: null,
+				},
+			},
+			agentActivity: {
+				id: "activity-1",
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				archivedAt: null,
+				agentContextId: null,
+				agentSessionId: sessionId,
+				sourceCommentId: "comment-1",
+				content: { type: "prompt", body: "Stop please" },
+				signal: "stop",
+			},
+			webhookTimestamp: new Date().toISOString(),
+			webhookId: "webhook-1",
+		} as any;
+
+		await (edgeWorker as any).handleUserPostedAgentActivity(
+			webhook,
+			repository,
+		);
+
+		expect(codexRunner.stop).toHaveBeenCalledTimes(1);
+		expect(agentSessionManager.createResponseActivity).toHaveBeenCalledWith(
+			sessionId,
+			expect.stringContaining("I've stopped working"),
+		);
+		expect((edgeWorker as any).sessionRunnerSelections.has(sessionId)).toBe(
+			false,
+		);
+		expect((edgeWorker as any).codexSessionCache.has(sessionId)).toBe(false);
+		expect((edgeWorker as any).finalizedNonClaudeSessions.has(sessionId)).toBe(
+			true,
 		);
 	});
 });

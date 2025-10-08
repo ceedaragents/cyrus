@@ -72,6 +72,8 @@ export class CodexRunnerAdapter implements Runner {
 	private child?: ChildProcessWithoutNullStreams;
 
 	private finalDelivered = false;
+	private stopWait?: Promise<void>;
+	private stopKillTimer?: NodeJS.Timeout;
 
 	constructor(private readonly config: CodexRunnerOptions) {}
 
@@ -211,10 +213,44 @@ export class CodexRunnerAdapter implements Runner {
 	}
 
 	async stop(): Promise<void> {
-		if (this.child && !this.child.killed) {
-			this.child.kill("SIGTERM");
-			this.child = undefined;
+		if (this.stopWait) {
+			await this.stopWait;
+			return;
 		}
+		const child = this.child;
+		if (!child) {
+			return;
+		}
+		this.stopWait = new Promise<void>((resolve) => {
+			const onClose = (): void => {
+				if (this.stopKillTimer) {
+					clearTimeout(this.stopKillTimer);
+					this.stopKillTimer = undefined;
+				}
+				this.stopWait = undefined;
+				resolve();
+			};
+			child.once("close", onClose);
+			child.once("exit", onClose);
+
+			this.stopKillTimer = setTimeout(() => {
+				if (!child.killed) {
+					try {
+						child.kill("SIGKILL");
+					} catch (error) {
+						console.warn("Failed to SIGKILL codex process", error);
+					}
+				}
+			}, 5000);
+		});
+
+		try {
+			child.kill("SIGTERM");
+		} catch (error) {
+			console.warn("Failed to SIGTERM codex process", error);
+		}
+
+		await this.stopWait;
 	}
 
 	private handleStdoutLine(
@@ -647,10 +683,7 @@ export class CodexRunnerAdapter implements Runner {
 		raw: string,
 		onEvent: (event: RunnerEvent) => void,
 	): void {
-		const message =
-			this.extractText(payload) ??
-			(typeof payload.message === "string" ? payload.message : undefined) ??
-			"Codex reported an error";
+		const message = this.buildErrorMessage(payload);
 		this.emitLog(onEvent, `[codex:error] ${raw}`);
 		const error = new Error(message);
 		(error as Error & { cause?: unknown }).cause = payload;
@@ -854,6 +887,109 @@ export class CodexRunnerAdapter implements Runner {
 		}
 		const withoutIds = text.replace(/\bitem_\d+\b/gi, "");
 		return this.stripItemTokens(withoutIds);
+	}
+
+	private buildErrorMessage(payload: CodexJsonMessage): string {
+		const parts: string[] = [];
+		const payloadText = this.extractText(payload);
+		const explicitMessage =
+			typeof payload.message === "string" ? payload.message.trim() : undefined;
+		if (payloadText && payloadText.length > 0) {
+			parts.push(payloadText);
+		} else if (explicitMessage && explicitMessage.length > 0) {
+			parts.push(explicitMessage);
+		}
+
+		const item = this.extractItem(payload);
+		const command = item ? this.extractCommandName(item) : undefined;
+		const exitCode = this.extractExitCode(item, payload);
+		if (command) {
+			const exitSuffix =
+				exitCode !== undefined && exitCode !== "" ? ` (exit ${exitCode})` : "";
+			parts.push(`Command: ${command}${exitSuffix}`);
+		}
+
+		const aggregated = this.extractAggregatedOutput(item, payload);
+		if (aggregated) {
+			parts.push(`Output:\n${aggregated}`);
+		}
+
+		if (parts.length > 0) {
+			return parts.join("\n\n");
+		}
+
+		if (command) {
+			return exitCode !== undefined && exitCode !== ""
+				? `Codex command ${command} failed (exit ${exitCode})`
+				: `Codex command ${command} failed`;
+		}
+
+		const errorObj = payload.error;
+		if (
+			errorObj &&
+			typeof errorObj === "object" &&
+			"message" in errorObj &&
+			typeof (errorObj as { message?: unknown }).message === "string"
+		) {
+			return (errorObj as { message: string }).message;
+		}
+
+		return "Codex reported an error";
+	}
+
+	private extractExitCode(
+		item: CodexJsonMessage | undefined,
+		payload: CodexJsonMessage,
+	): number | string | undefined {
+		const candidates = [
+			item?.exit_code,
+			item?.exitCode,
+			payload.exit_code,
+			payload.exitCode,
+		];
+		for (const candidate of candidates) {
+			if (typeof candidate === "number" || typeof candidate === "string") {
+				return candidate;
+			}
+		}
+		return undefined;
+	}
+
+	private extractAggregatedOutput(
+		item: CodexJsonMessage | undefined,
+		payload: CodexJsonMessage,
+	): string | undefined {
+		const candidates = [
+			item?.aggregated_output,
+			item?.aggregatedOutput,
+			payload.aggregated_output,
+			payload.aggregatedOutput,
+		];
+		for (const candidate of candidates) {
+			if (typeof candidate === "string" && candidate.trim().length > 0) {
+				return this.truncateOutput(candidate.trim());
+			}
+			if (
+				Array.isArray(candidate) &&
+				candidate.length > 0 &&
+				candidate.every((value) => typeof value === "string")
+			) {
+				return this.truncateOutput(
+					(candidate as string[])
+						.map((value) => value.trim())
+						.filter((value) => value.length > 0)
+						.join("\n"),
+				);
+			}
+		}
+		return undefined;
+	}
+
+	private truncateOutput(output: string, limit = 2000): string {
+		if (output.length <= limit) {
+			return output;
+		}
+		return `${output.slice(0, limit)}...`;
 	}
 
 	private stripItemTokens(text: string | undefined): string | undefined {

@@ -172,6 +172,24 @@ export class EdgeWorker extends EventEmitter {
 	private codexSessionCache: Map<string, string> = new Map();
 	private finalizedNonClaudeSessions: Set<string> = new Set();
 
+	private async safeStopRunner(
+		linearAgentActivitySessionId: string,
+		runner: Runner | undefined,
+	): Promise<void> {
+		if (!runner) {
+			return;
+		}
+		try {
+			await runner.stop();
+		} catch (error) {
+			this.debugLog("[safeStopRunner] Failed to stop runner", {
+				sessionId: linearAgentActivitySessionId,
+				error,
+			});
+		}
+		this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+	}
+
 	constructor(config: EdgeWorkerConfig) {
 		super();
 		this.config = config;
@@ -1333,21 +1351,24 @@ export class EdgeWorker extends EventEmitter {
 				linearAgentActivitySessionId,
 			);
 			if (existingNonClaudeRunner) {
-				try {
-					await existingNonClaudeRunner.stop();
-				} catch (error) {
-					this.debugLog(
-						`[EdgeWorker] Failed to stop non-Claude runner on stop signal`,
-						error,
-					);
-				}
-				this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+				await this.safeStopRunner(
+					linearAgentActivitySessionId,
+					existingNonClaudeRunner,
+				);
 			}
 			if (sessionRunnerSelection?.type === "opencode") {
 				this.openCodeSessionCache.delete(linearAgentActivitySessionId);
 			} else if (sessionRunnerSelection?.type === "codex") {
 				this.codexSessionCache.delete(linearAgentActivitySessionId);
 			}
+			this.sessionRunnerSelections.delete(linearAgentActivitySessionId);
+			this.finalizedNonClaudeSessions.add(linearAgentActivitySessionId);
+			void this.savePersistedState().catch((error) => {
+				this.debugLog(
+					"[EdgeWorker] Failed to persist state after stop signal",
+					error,
+				);
+			});
 			const issueTitle = issue.title || "this issue";
 			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
 
@@ -3930,6 +3951,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			return;
 		}
 
+		this.debugLog("[postResponse] Posting response", {
+			sessionId: linearAgentActivitySessionId,
+			repositoryId,
+			preview: body.slice(0, 200),
+		});
+
 		try {
 			await linearClient.createAgentActivity({
 				agentSessionId: linearAgentActivitySessionId,
@@ -3938,11 +3965,20 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					body,
 				},
 			});
+			this.debugLog("[postResponse] Response posted", {
+				sessionId: linearAgentActivitySessionId,
+				repositoryId,
+			});
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Failed to post response for session ${linearAgentActivitySessionId}:`,
 				error,
 			);
+			this.debugLog("[postResponse] Error posting response", {
+				sessionId: linearAgentActivitySessionId,
+				repositoryId,
+				error,
+			});
 		}
 	}
 
@@ -3961,6 +3997,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		const parameter = detail?.trim();
+		this.debugLog("[postAction] Posting action", {
+			sessionId: linearAgentActivitySessionId,
+			repositoryId,
+			action,
+			parameterPreview: parameter?.slice(0, 200),
+		});
 
 		try {
 			await linearClient.createAgentActivity({
@@ -3971,11 +4013,20 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					parameter: parameter && parameter.length > 0 ? parameter : undefined,
 				},
 			});
+			this.debugLog("[postAction] Action posted", {
+				sessionId: linearAgentActivitySessionId,
+				repositoryId,
+			});
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Failed to post action for session ${linearAgentActivitySessionId}:`,
 				error,
 			);
+			this.debugLog("[postAction] Error posting action", {
+				sessionId: linearAgentActivitySessionId,
+				repositoryId,
+				error,
+			});
 		}
 	}
 
@@ -3992,6 +4043,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			return;
 		}
 
+		this.debugLog("[postError] Posting error", {
+			sessionId: linearAgentActivitySessionId,
+			repositoryId,
+			messagePreview: body.slice(0, 200),
+		});
+
 		try {
 			await linearClient.createAgentActivity({
 				agentSessionId: linearAgentActivitySessionId,
@@ -4000,11 +4057,20 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					body,
 				},
 			});
+			this.debugLog("[postError] Error posted", {
+				sessionId: linearAgentActivitySessionId,
+				repositoryId,
+			});
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Failed to post error for session ${linearAgentActivitySessionId}:`,
 				error,
 			);
+			this.debugLog("[postError] Error posting failure", {
+				sessionId: linearAgentActivitySessionId,
+				repositoryId,
+				error,
+			});
 		}
 	}
 
@@ -4299,29 +4365,35 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							error,
 						);
 					});
-					this.nonClaudeRunners.delete(linearAgentActivitySessionId);
-					const text = event.text.trim();
-					if (text.length > 0) {
-						void this.postResponse(
-							linearAgentActivitySessionId,
-							repository.id,
-							text,
-						).catch((error) => {
+					void (async () => {
+						await this.safeStopRunner(linearAgentActivitySessionId, runner);
+						try {
+							const text = event.text.trim();
+							if (text.length > 0) {
+								await this.postResponse(
+									linearAgentActivitySessionId,
+									repository.id,
+									text,
+								);
+							}
+						} catch (error) {
 							this.debugLog(
 								`[startNonClaudeRunner] Failed posting final response (${selection.type})`,
 								error,
 							);
-						});
-					}
-					void this.markSessionComplete(
-						linearAgentActivitySessionId,
-						repository.id,
-					).catch((error) => {
-						this.debugLog(
-							`[startNonClaudeRunner] Failed completing session (${selection.type})`,
-							error,
-						);
-					});
+						}
+						try {
+							await this.markSessionComplete(
+								linearAgentActivitySessionId,
+								repository.id,
+							);
+						} catch (error) {
+							this.debugLog(
+								`[startNonClaudeRunner] Failed completing session (${selection.type})`,
+								error,
+							);
+						}
+					})();
 					return;
 				}
 				case "error": {
@@ -4334,7 +4406,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						);
 						return;
 					}
-					this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+					void this.safeStopRunner(linearAgentActivitySessionId, runner);
 					const err = this.normalizeError(
 						event.error,
 						`${selection.type} runner error`,
@@ -4415,15 +4487,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			linearAgentActivitySessionId,
 		);
 		if (existingRunner) {
-			try {
-				await existingRunner.stop();
-			} catch (error) {
-				this.debugLog(
-					`[handleNonClaudeFollowUp] Failed to stop existing runner`,
-					error,
-				);
-			}
-			this.nonClaudeRunners.delete(linearAgentActivitySessionId);
+			await this.safeStopRunner(linearAgentActivitySessionId, existingRunner);
 		}
 
 		const fullIssue = await this.fetchFullIssueDetails(
