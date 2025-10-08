@@ -1,8 +1,7 @@
-import { createReadStream } from "node:fs";
 import { basename } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs-extra";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { z } from "zod";
 
 /**
@@ -21,17 +20,21 @@ export interface SoraToolsOptions {
 }
 
 /**
- * Validate image format
+ * Get MIME type from filename
  * Sora only supports: image/jpeg, image/png, image/webp
  */
-function validateImageFormat(filename: string): boolean {
+function getMimeType(filename: string): string | null {
 	const ext = filename.toLowerCase();
-	return (
-		ext.endsWith(".jpg") ||
-		ext.endsWith(".jpeg") ||
-		ext.endsWith(".png") ||
-		ext.endsWith(".webp")
-	);
+	if (ext.endsWith(".jpg") || ext.endsWith(".jpeg")) {
+		return "image/jpeg";
+	}
+	if (ext.endsWith(".png")) {
+		return "image/png";
+	}
+	if (ext.endsWith(".webp")) {
+		return "image/webp";
+	}
+	return null;
 }
 
 /**
@@ -111,8 +114,9 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 
 					const filename = basename(input_reference);
 
-					// Validate file format
-					if (!validateImageFormat(filename)) {
+					// Get MIME type for the file
+					const mimeType = getMimeType(filename);
+					if (!mimeType) {
 						return {
 							content: [
 								{
@@ -126,10 +130,14 @@ export function createSoraToolsServer(options: SoraToolsOptions) {
 						};
 					}
 
-					// Use fs.createReadStream as recommended by OpenAI SDK for Node.js
-					videoParams.input_reference = createReadStream(input_reference);
+					// Use toFile helper to create a proper File object with MIME type
+					videoParams.input_reference = await toFile(
+						fs.createReadStream(input_reference),
+						filename,
+						{ type: mimeType },
+					);
 
-					console.log(`Uploading reference file: ${filename}`);
+					console.log(`Uploading reference file: ${filename} (${mimeType})`);
 				}
 
 				// Use OpenAI SDK's videos.create method
