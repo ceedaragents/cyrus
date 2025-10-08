@@ -42,7 +42,6 @@ export class AgentSessionManager {
 	) => Promise<void>;
 	private resumeNextSubroutine?: (
 		linearAgentActivitySessionId: string,
-		claudeSessionId: string,
 	) => Promise<void>;
 
 	constructor(
@@ -55,7 +54,6 @@ export class AgentSessionManager {
 		) => Promise<void>,
 		resumeNextSubroutine?: (
 			linearAgentActivitySessionId: string,
-			claudeSessionId: string,
 		) => Promise<void>,
 		procedureRouter?: ProcedureRouter,
 	) {
@@ -295,10 +293,7 @@ export class AgentSessionManager {
 			// Trigger next subroutine
 			if (this.resumeNextSubroutine) {
 				try {
-					await this.resumeNextSubroutine(
-						linearAgentActivitySessionId,
-						claudeSessionId,
-					);
+					await this.resumeNextSubroutine(linearAgentActivitySessionId);
 				} catch (error) {
 					console.error(
 						`[AgentSessionManager] Failed to trigger next subroutine:`,

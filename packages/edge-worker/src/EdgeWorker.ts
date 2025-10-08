@@ -237,10 +237,7 @@ export class EdgeWorker extends EventEmitter {
 							);
 						}
 					},
-					async (
-						linearAgentActivitySessionId: string,
-						claudeSessionId: string,
-					) => {
+					async (linearAgentActivitySessionId: string) => {
 						console.log(
 							`[Subroutine Transition] Advancing to next subroutine for session ${linearAgentActivitySessionId}`,
 						);
@@ -256,13 +253,7 @@ export class EdgeWorker extends EventEmitter {
 							return;
 						}
 
-						// Advance to next subroutine
-						this.procedureRouter.advanceToNextSubroutine(
-							session,
-							claudeSessionId,
-						);
-
-						// Get next subroutine
+						// Get next subroutine (advancement already handled by AgentSessionManager)
 						const nextSubroutine =
 							this.procedureRouter.getCurrentSubroutine(session);
 
