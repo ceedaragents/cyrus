@@ -324,6 +324,43 @@ describe("CodexRunnerAdapter", () => {
 		).toBe(true);
 	});
 
+	it("escalates to SIGKILL when SIGTERM does not terminate the process", async () => {
+		vi.useFakeTimers();
+		try {
+			const mockChild = new MockChildProcess();
+			mockChild.kill = vi.fn((_signal?: string | number) => {
+				mockChild.killed = true;
+				return true;
+			}) as unknown as typeof mockChild.kill;
+			spawnMock.mockReturnValue(
+				mockChild as unknown as ChildProcessWithoutNullStreams,
+			);
+
+			const adapter = new CodexRunnerAdapter({
+				type: "codex",
+				cwd: "/tmp/workspace",
+				prompt: "noop",
+			});
+
+			await adapter.start(() => {});
+			const stopPromise = adapter.stop();
+
+			expect(mockChild.kill).toHaveBeenCalledWith("SIGTERM");
+			mockChild.kill.mockClear();
+
+			vi.advanceTimersByTime(5000);
+			vi.runOnlyPendingTimers();
+			await Promise.resolve();
+			expect(mockChild.kill).toHaveBeenCalledWith("SIGKILL");
+
+			mockChild.emit("close", 0, null);
+			await Promise.resolve();
+			await stopPromise;
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("only emits the first final event", async () => {
 		const mockChild = new MockChildProcess();
 		spawnMock.mockReturnValue(

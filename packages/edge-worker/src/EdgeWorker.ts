@@ -4406,7 +4406,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						);
 						return;
 					}
-					void this.safeStopRunner(linearAgentActivitySessionId, runner);
+					const errorWithCause = event.error as Error & { cause?: unknown };
+					if (!errorWithCause.cause) {
+						void this.safeStopRunner(linearAgentActivitySessionId, runner);
+					}
 					const err = this.normalizeError(
 						event.error,
 						`${selection.type} runner error`,

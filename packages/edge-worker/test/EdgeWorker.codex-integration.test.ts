@@ -91,6 +91,7 @@ describe("EdgeWorker Codex integration", () => {
 	let repository: RepositoryConfig;
 	let config: EdgeWorkerConfig;
 	let runnerFactoryMock: { create: ReturnType<typeof vi.fn> };
+	let runnerEvents: RunnerEvent[];
 	let fakeRunner: {
 		start: ReturnType<typeof vi.fn>;
 		stop: ReturnType<typeof vi.fn>;
@@ -142,7 +143,7 @@ describe("EdgeWorker Codex integration", () => {
 		edgeWorker = new EdgeWorker(config);
 		vi.spyOn(edgeWorker as any, "debugLog").mockImplementation(() => {});
 
-		const runnerEvents: RunnerEvent[] = [
+		runnerEvents = [
 			{ kind: "thought", text: "collecting repository context" },
 			{
 				kind: "action",
@@ -246,6 +247,48 @@ describe("EdgeWorker Codex integration", () => {
 		expect(lastSavedState?.finalizedNonClaudeSessions).toContain(sessionId);
 		expect(lastSavedState?.sessionRunnerSelections?.[sessionId]?.type).toBe(
 			"codex",
+		);
+	});
+
+	it("posts errors but keeps codex runner active after command failure", async () => {
+		runnerEvents = [
+			{
+				kind: "action",
+				name: "bash -lc 'rg foo'",
+				detail: JSON.stringify({ command: "rg foo" }),
+			},
+			(() => {
+				const commandError = new Error("Codex reported an error");
+				(commandError as Error & { cause?: unknown }).cause = {
+					type: "item.completed",
+					item: {
+						item_type: "command_execution",
+						command: "bash -lc 'rg foo'",
+						exit_code: 2,
+						aggregated_output: "rg: foo: no matches",
+						status: "failed",
+					},
+				};
+				return { kind: "error", error: commandError } as RunnerEvent;
+			})(),
+		];
+
+		await (edgeWorker as any).startNonClaudeRunner({
+			selection: { type: "codex", model: "o4-mini" },
+			repository,
+			prompt: promptBody,
+			workspacePath,
+			linearAgentActivitySessionId: sessionId,
+			issueIdentifier,
+			isFollowUp: false,
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(fakeRunner.stop).not.toHaveBeenCalled();
+		expect((edgeWorker as any).nonClaudeRunners.has(sessionId)).toBe(true);
+		expect((edgeWorker as any).finalizedNonClaudeSessions.has(sessionId)).toBe(
+			false,
 		);
 	});
 

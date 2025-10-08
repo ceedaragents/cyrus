@@ -222,7 +222,9 @@ export class CodexRunnerAdapter implements Runner {
 			return;
 		}
 		this.stopWait = new Promise<void>((resolve) => {
+			let completed = false;
 			const onClose = (): void => {
+				completed = true;
 				if (this.stopKillTimer) {
 					clearTimeout(this.stopKillTimer);
 					this.stopKillTimer = undefined;
@@ -234,7 +236,7 @@ export class CodexRunnerAdapter implements Runner {
 			child.once("exit", onClose);
 
 			this.stopKillTimer = setTimeout(() => {
-				if (!child.killed) {
+				if (!completed) {
 					try {
 						child.kill("SIGKILL");
 					} catch (error) {
