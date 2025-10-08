@@ -615,6 +615,18 @@ export class AgentSessionManager {
 				return;
 			}
 
+			// Check if current subroutine has suppressThoughtPosting enabled
+			const currentSubroutine =
+				this.procedureRouter?.getCurrentSubroutine(session);
+			if (currentSubroutine?.suppressThoughtPosting) {
+				// Suppress posting thoughts and actions for this subroutine
+				// But still store the entry locally for session history
+				const entries = this.entries.get(linearAgentActivitySessionId) || [];
+				entries.push(entry);
+				this.entries.set(linearAgentActivitySessionId, entries);
+				return;
+			}
+
 			// Store entry locally now that we're posting it
 			const entries = this.entries.get(linearAgentActivitySessionId) || [];
 			entries.push(entry);

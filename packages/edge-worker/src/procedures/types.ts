@@ -20,6 +20,9 @@ export interface SubroutineDefinition {
 
 	/** Whether this subroutine should skip posting to Linear activity stream */
 	skipLinearPost?: boolean;
+
+	/** Whether to suppress posting thoughts/actions (still posts final summary) */
+	suppressThoughtPosting?: boolean;
 }
 
 /**

@@ -28,12 +28,14 @@ export const SUBROUTINES = {
 		promptPath: "subroutines/concise-summary.md",
 		maxTurns: 1,
 		description: "Brief summary for simple requests",
+		suppressThoughtPosting: true,
 	},
 	verboseSummary: {
 		name: "verbose-summary",
 		promptPath: "subroutines/verbose-summary.md",
 		maxTurns: 1,
 		description: "Detailed summary with implementation details",
+		suppressThoughtPosting: true,
 	},
 } as const;
 
