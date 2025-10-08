@@ -20,18 +20,20 @@ The intelligent procedure routing integration is **complete, tested, and approve
 
 ## 📊 Final Statistics
 
-### Commits (Total: 6)
+### Commits (Total: 7)
 1. `eeb1853` - Update CHANGELOG.md with procedure routing system
 2. `c4d024b` - Remove legacy three-phase system in favor of procedure routing
 3. `01430fc` - Complete procedure routing integration
 4. `a514747` - Merge origin/main (SDK v0.1.10 update)
 5. `b7129fa` - Update simple-agent-runner to claude-agent-sdk v0.1.10
-6. `f325cf5` - Refactor: Clean up subroutine transition callback signature ⭐ NEW
+6. `f325cf5` - Refactor: Clean up subroutine transition callback signature
+7. `0583db1` - Fix critical double-advance bug in subroutine transitions ⭐ CRITICAL FIX
 
 ### Code Changes
-- **Files Modified:** 54 (including latest refactoring)
-- **Net Lines:** +1,993 (-5 from cleanup)
-- **Legacy Code Removed:** 120 lines (including callback cleanup)
+- **Files Modified:** 56 (including critical bug fix)
+- **Net Lines:** +1,985 (-13 from bug fix)
+- **Legacy Code Removed:** 120 lines
+- **Critical Bug Fixed:** Double-advance causing subroutines to skip
 - **Test Coverage:** 77/77 edge-worker tests passing
 
 ### Quality Metrics

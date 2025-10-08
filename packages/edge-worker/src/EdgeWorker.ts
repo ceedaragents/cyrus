@@ -986,8 +986,9 @@ export class EdgeWorker extends EventEmitter {
 			session.metadata = {};
 		}
 
-		// Determine which procedure to use based on issue description
-		const issueDescription = fullIssue.description || issue.title;
+		// Determine which procedure to use based on issue title and description
+		const issueDescription =
+			`${issue.title}\n\n${fullIssue.description || ""}`.trim();
 		const routingDecision =
 			await this.procedureRouter.determineRoutine(issueDescription);
 		const selectedProcedure = routingDecision.procedure;
