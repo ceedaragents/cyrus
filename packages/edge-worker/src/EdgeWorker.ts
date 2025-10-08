@@ -1211,7 +1211,32 @@ export class EdgeWorker extends EventEmitter {
 			const { fullIssue: newFullIssue } = sessionData;
 			session = sessionData.session;
 
-			// Procedure metadata is already initialized by createLinearAgentSession
+			// Initialize procedure metadata using intelligent routing
+			if (!session.metadata) {
+				session.metadata = {};
+			}
+
+			// Determine which procedure to use based on issue title and description
+			const issueDescription =
+				`${issue.title}\n\n${newFullIssue.description || ""}`.trim();
+			const routingDecision =
+				await this.procedureRouter.determineRoutine(issueDescription);
+			const selectedProcedure = routingDecision.procedure;
+
+			// Initialize procedure metadata in session
+			this.procedureRouter.initializeProcedureMetadata(
+				session,
+				selectedProcedure,
+			);
+
+			// Log routing decision
+			console.log(
+				`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId} (prompted webhook):`,
+			);
+			console.log(`  Classification: ${routingDecision.classification}`);
+			console.log(`  Procedure: ${selectedProcedure.name}`);
+			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+
 			console.log(
 				`[EdgeWorker] Initialized new session ${linearAgentActivitySessionId} (prompted webhook)`,
 			);
