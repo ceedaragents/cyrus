@@ -14,7 +14,7 @@
 	],
 	"scripts": {
 		"build": "tsc && npm run copy-prompts",
-		"copy-prompts": "mkdir -p dist/prompts && cp -r src/prompts/*.md dist/prompts/",
+		"copy-prompts": "mkdir -p dist/prompts && cp -r src/prompts/*.md dist/prompts/ && mkdir -p dist/prompts/subroutines && cp -r src/prompts/subroutines/*.md dist/prompts/subroutines/",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run",
@@ -29,6 +29,7 @@
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-webhook-client": "workspace:*",
 		"cyrus-ndjson-client": "workspace:*",
+		"cyrus-simple-agent-runner": "workspace:*",
 		"file-type": "^18.7.0"
 	},
 	"devDependencies": {

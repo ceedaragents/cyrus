@@ -48,6 +48,15 @@ export interface CyrusAgentSession {
 				claudeSessionId?: string;
 			}>;
 		};
+		procedure?: {
+			procedureName: string;
+			currentSubroutineIndex: number;
+			subroutineHistory: Array<{
+				subroutine: string;
+				completedAt: number;
+				claudeSessionId: string | null;
+			}>;
+		};
 	};
 }
 

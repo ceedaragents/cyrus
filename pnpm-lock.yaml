@@ -178,6 +178,9 @@ importers:
       cyrus-ndjson-client:
         specifier: workspace:*
         version: link:../ndjson-client
+      cyrus-simple-agent-runner:
+        specifier: workspace:*
+        version: link:../simple-agent-runner
       file-type:
         specifier: ^18.7.0
         version: 18.7.0
