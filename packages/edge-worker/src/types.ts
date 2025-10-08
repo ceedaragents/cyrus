@@ -3,7 +3,7 @@ import type { SDKMessage } from "cyrus-claude-runner";
 import type { CyrusAgentSession, Workspace } from "cyrus-core";
 import type { OAuthCallbackHandler } from "./SharedApplicationServer.js";
 
-export type RunnerType = "claude" | "codex" | "opencode";
+export type RunnerType = "claude" | "codex";
 
 export interface ClaudeRunnerModelConfig {
 	model?: string;
@@ -14,25 +14,15 @@ export interface CodexRunnerModelConfig {
 	model?: string;
 }
 
-export interface OpenCodeRunnerModelConfig {
-	provider?: string;
-	model?: string;
-}
-
 export interface CodexCliDefaults extends CodexRunnerModelConfig {
 	approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never";
 	sandbox?: "read-only" | "workspace-write" | "danger-full-access";
 	fullAuto?: boolean;
 }
 
-export interface OpenCodeCliDefaults extends OpenCodeRunnerModelConfig {
-	serverUrl?: string;
-}
-
 export interface CliDefaults {
 	claude?: ClaudeRunnerModelConfig;
 	codex?: CodexCliDefaults;
-	opencode?: OpenCodeCliDefaults;
 }
 
 export interface EdgeCredentials {
@@ -42,14 +32,12 @@ export interface EdgeCredentials {
 export interface RepositoryRunnerModels {
 	claude?: ClaudeRunnerModelConfig;
 	codex?: CodexRunnerModelConfig;
-	opencode?: OpenCodeRunnerModelConfig;
 }
 
 export interface RepositoryLabelAgentRoutingRule {
 	labels: string[];
 	runner: RunnerType;
 	model?: string;
-	provider?: string;
 }
 
 /**

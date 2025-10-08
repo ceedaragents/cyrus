@@ -1,6 +1,6 @@
 # Cyrus Multi-CLI & Label Routing Guide
 
-This fork of Cyrus adds Codex/OpenCode JSON streaming, session persistence, and
+This fork of Cyrus adds Codex JSON streaming, session persistence, and
 label-driven routing so you can orchestrate multiple runners from a single
 edge-worker deployment. This tutorial walks through the key workflows you need
 as an operator.
@@ -14,7 +14,6 @@ contain:
 {
   "labelAgentRouting": [
     { "labels": ["Codex"], "runner": "codex", "model": "o3" },
-    { "labels": ["OpenCode"], "runner": "opencode", "provider": "openai", "model": "o4-mini" },
     { "labels": ["Bug"], "runner": "claude", "model": "claude-3.7-sonnet" }
   ],
   "labelPrompts": {
@@ -47,7 +46,7 @@ still feeds into its instructions to keep behaviour consistent.
    `pnpm --filter cyrus-ai start` (post-build copies `dist/apps/cli/app.js` to
    `dist/app.js`, so the standard `cyrus` bin works out of the box).
 2. **Connect OpenAI (optional)** – `cyrus connect-openai` to store the API key for
-   Codex/OpenCode.
+   Codex.
 3. **Update repos** – use `cyrus add-repository` or edit `~/.cyrus/config.json`
    directly to add `labelAgentRouting` / `labelPrompts`.
 4. **Process helper** – run `./scripts/edge-process-helper.sh` to list or kill
@@ -58,7 +57,7 @@ still feeds into its instructions to keep behaviour consistent.
 
 ## 3. Verifying the Pipeline
 
-- `pnpm --filter cyrus-agent-runner test:run` – unit tests for Codex/Claude/OpenCode adapters (normalized thought/action/final events only).
+- `pnpm --filter cyrus-agent-runner test:run` – unit tests for Codex/Claude adapters (normalized thought/action/final events only).
 - `pnpm --filter cyrus-edge-worker test:run` – includes regression harness
   (`EdgeWorker.codex-integration.test.ts`) that mocks Linear and asserts thoughts,
   finals, and 🛠️ action cards when routing Codex sessions.
@@ -71,7 +70,7 @@ still feeds into its instructions to keep behaviour consistent.
 - **Prompt Overlaps** – you can map the same label to multiple prompts, but the
   first template in the check order (debugger → builder → scoper → orchestrator)
   wins. The edge-worker logs which prompt is chosen.
-- **Session Persistence** – non-Claude sessions (Codex/OpenCode) survive worker
+- **Session Persistence** – non-Claude sessions (Codex) survive worker
   restarts; the edge-worker reloads `sessionRunnerSelections` and continues
   streaming events when Linear triggers follow-ups.
 - **Action Logging** – every `action` event becomes a 🛠️ card in Linear with the
@@ -91,7 +90,6 @@ cyrus labels init-default-routing
 This will create the following label rules per repo unless they already exist:
 
 - `codex`, `cli-codex` → Codex runner
-- `opencode`, `cli-opencode` → OpenCode runner
 - `claude`, `cli-claude` → Claude runner
 
 You can still set repo-specific models or rely on global defaults.
@@ -104,5 +102,5 @@ You can still set repo-specific models or rely on global defaults.
   helper, new commands, etc.).
 
 With these pieces in place you can manage multi-runner workflows, keep prompts
-aligned with labels, and ensure Codex/OpenCode sessions behave identically to the
+aligned with labels, and ensure Codex sessions behave identically to the
 Claude integration.

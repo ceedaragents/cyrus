@@ -33,11 +33,10 @@ interface EdgeConfig {
   defaultFallbackModel?: string;   // existing (Claude)
 
   // NEW: multi-CLI
-  defaultCli?: "claude" | "codex" | "opencode";
+  defaultCli?: "claude" | "codex";
   cliDefaults?: {
     claude?: { model?: string; fallbackModel?: string };
     codex?: { model?: string; approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never"; sandbox?: "read-only" | "workspace-write" | "danger-full-access" };
-    opencode?: { provider?: string; model?: string; serverUrl?: string };
   };
   credentials?: { openaiApiKey?: string };
 }
@@ -53,19 +52,17 @@ export interface RepositoryConfig {
   // ...existing fields...
 
   // NEW: default runner for this repo
-  runner?: "claude" | "codex" | "opencode";
+  runner?: "claude" | "codex";
   // NEW: per-runner model overrides
   runnerModels?: {
     claude?: { model?: string; fallbackModel?: string };
     codex?: { model?: string };
-    opencode?: { provider?: string; model?: string };
   };
   // NEW: label-based CLI routing
   labelAgentRouting?: Array<{
     labels: string[];
-    runner: "claude" | "codex" | "opencode";
+    runner: "claude" | "codex";
     model?: string;
-    provider?: string; // opencode
   }>;
 }
 
@@ -73,11 +70,10 @@ export interface EdgeWorkerConfig {
   // ...existing fields...
 
   // NEW: global defaults
-  defaultCli?: "claude" | "codex" | "opencode";
+  defaultCli?: "claude" | "codex";
   cliDefaults?: {
     claude?: { model?: string; fallbackModel?: string };
     codex?: { model?: string; approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never"; sandbox?: "read-only" | "workspace-write" | "danger-full-access" };
-    opencode?: { provider?: string; model?: string; serverUrl?: string };
   };
   credentials?: { openaiApiKey?: string };
 }
@@ -88,7 +84,7 @@ export interface EdgeWorkerConfig {
 - No migration required; new fields are optional additions.
 - For now, EdgeApp continues to read/write the same `~/.cyrus/config.json` file.
 - When saving config, preserve unknown fields.
-- If `defaultCli` is missing on first run, show a one-time prompt in the CLI to pick `claude`, `codex`, or `opencode` and persist it (matches setup guidance in [`docs/specs/cli-commands.md`](cli-commands.md)).
+- If `defaultCli` is missing on first run, show a one-time prompt in the CLI to pick `claude` or `codex` and persist it (matches setup guidance in [`docs/specs/cli-commands.md`](cli-commands.md)).
 
 4) Do not change runtime model selection yet
 

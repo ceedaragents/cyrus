@@ -34,10 +34,8 @@ export interface SerializedCodexPermissions {
 }
 
 export interface SerializedSessionRunnerSelection {
-	type: "claude" | "codex" | "opencode";
+	type: "claude" | "codex";
 	model?: string;
-	provider?: string;
-	serverUrl?: string;
 	issueId: string;
 	resumeSessionId?: string;
 	promptType?: string;
@@ -58,7 +56,6 @@ export interface SerializableEdgeWorkerState {
 	// Completed non-Claude sessions so we suppress late events on resume
 	finalizedNonClaudeSessions?: string[];
 	// Cached session ids for resume flows
-	openCodeSessionCache?: Record<string, string>;
 	codexSessionCache?: Record<string, string>;
 }
 

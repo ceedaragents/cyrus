@@ -39,8 +39,7 @@ Manual Test Matrix
 - Expectation: Thought acknowledges key configured; run succeeds.
 
 6) OpenCode routing success
-- Start OpenCode server: `OPENCODE_PORT=17899 pnpm opencode dev` (example).
-- Set `cliDefaults.opencode.serverUrl` and repo routing rule (`runner=opencode`, provider/model set).
+- OpenCode validation steps deferred; consult opencode guidelines when adapter work resumes.
 - Create Linear issue with matching label.
 - Expectation: Linear thoughts stream SSE content; `DEBUG_EDGE` logs show session id reuse map creation.
 

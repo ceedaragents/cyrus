@@ -16,7 +16,7 @@ defaults for CLI routing.
    to them.
 4. Delete custom templates and detach their labels.
 5. Provide a helper command to seed global label routing so well-known labels
-   (`codex`, `cli-codex`, `claude`, `cli-claude`, `opencode`, `cli-opencode`) map
+   (`codex`, `cli-codex`, `claude`, `cli-claude`) map
    to the matching runner without specifying models.
 
 ## Non-Goals
@@ -173,7 +173,7 @@ features easily.
   `config.json` manually or use local scripts to seed routing defaults.
 - Once delivered, it will seed (or replace when `--force`) each target
   repository’s `labelAgentRouting` with three rules: codex/cli-codex → Codex,
-  opencode/cli-opencode → OpenCode, claude/cli-claude → Claude.
+  claude/cli-claude → Claude, codex/cli-codex → Codex.
 - The helper will leave `model`/`provider` empty so runner defaults apply and
   skip repos that already match the pattern unless `--force` is provided.
 

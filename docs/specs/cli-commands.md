@@ -14,16 +14,15 @@ Define CLI ergonomics needed to support the multi-CLI rollout in [`docs/multi-cl
 ## Commands
 
 ### connect-openai
-- Purpose: Help users persist or inject `OPENAI_API_KEY`, then sync it with Codex and OpenCode.
+- Purpose: Help users persist or inject `OPENAI_API_KEY`, then sync it with Codex.
 - Behavior:
   - Prompt for API key using hidden input when not supplied via `--api-key`.
   - Save the key to `~/.cyrus/config.json` under `credentials.openaiApiKey` unless already set and `--force` is omitted.
   - Remind users that environment variables override stored credentials for safety.
   - If `codex` is on PATH, run `codex login --api-key <key>` and surface non-zero exit guidance instead of throwing.
-  - If `cliDefaults.opencode.serverUrl` is set, call `PUT /auth/openai` with `{ type: "api", key }` to seed the OpenCode server.
   - Headless mode: support `--non-interactive --api-key <key>` to bypass prompts and exit non-zero when the flag is missing.
 
-### set-default-cli <claude|codex|opencode>
+### set-default-cli <claude|codex>
 - Update `defaultCli` in config and save.
 - When run interactively, confirm the change and remind about repo-level overrides.
 - Headless mode: accept `--non-interactive` (no prompts) to keep VPS workflows deterministic.
@@ -31,7 +30,6 @@ Define CLI ergonomics needed to support the multi-CLI rollout in [`docs/multi-cl
 
 ### set-default-model <cli> <model>
 - Update `cliDefaults[cli].model`.
-- For `opencode`, support `--provider <id>` (default `openai`). Print current provider/model before updating.
 - Suggest per-repo overrides when the active repository already defines `runnerModels`.
 
 ### migrate-config [--non-interactive|--interactive] [--backup-dir <path>]
@@ -49,7 +47,7 @@ Define CLI ergonomics needed to support the multi-CLI rollout in [`docs/multi-cl
 - Steps:
   - Test Linear proxy connectivity using existing tokens; report latency and status.
   - If any repo or default selects Codex, run `codex --version` and warn if unavailable.
-  - If `cliDefaults.opencode.serverUrl` is set, issue a `GET /health` (or `/`) request and report success/fail without mutating state.
+  - OpenCode health checks deferred alongside the adapter (see opencode guidelines when re-enabled).
   - Exit non-zero when any check fails; never modify config files.
 
 ## Flags & Examples
@@ -58,13 +56,12 @@ Define CLI ergonomics needed to support the multi-CLI rollout in [`docs/multi-cl
 cyrus connect-openai --non-interactive --api-key "$OPENAI_API_KEY"
 cyrus set-default-cli codex --non-interactive
 cyrus set-default-model codex o3
-cyrus set-default-model opencode o4-mini --provider openai
 cyrus migrate-config --backup-dir ~/.cyrus/backups
 cyrus validate
 ```
 
 ## Initial Setup Wizard Touchpoints
-- On first run (no `defaultCli` in config), prompt the user to choose `claude`, `codex`, or `opencode` before repository linking.
+- On first run (no `defaultCli` in config), prompt the user to choose `claude` or `codex` before repository linking.
 - Reuse the `set-default-cli` logic to persist the choice and echo next steps (e.g., `cyrus connect-openai`).
 
 ## Definition of Done

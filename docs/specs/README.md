@@ -19,7 +19,7 @@ Use these junior‑friendly, step‑by‑step guides to implement the spec. Foll
 - [docs/specs/runner-event-normalization.md](runner-event-normalization.md) — Draft (captures normalized event contract for adapter streaming)
 - [docs/specs/edge-worker-integration.md](edge-worker-integration.md) — Ready for Implementation (selection + streaming logic merged)
 - [docs/specs/phase-1-codex.md](phase-1-codex.md) — Ready for Implementation (spawn, error handling, and resume posture addressed)
-- [docs/specs/phase-2-opencode.md](phase-2-opencode.md) — Ready for Implementation (HTTP flows and session reuse completed)
+- [docs/specs/opencode-integration-guidelines.md](opencode-integration-guidelines.md) — Deferred (reference notes preserved while adapter remains out of scope)
 - [docs/specs/cli-commands.md](cli-commands.md) — Ready for Implementation (commands added with headless flags)
 - [docs/specs/testing-and-validation.md](testing-and-validation.md) — Ready for Implementation (validate command covers connectivity diagnostics)
 - [docs/specs/upgrade-and-migration.md](upgrade-and-migration.md) — Ready for Implementation (migration tooling available)
@@ -30,7 +30,7 @@ Use these junior‑friendly, step‑by‑step guides to implement the spec. Foll
 - [x] Runner interface finalized
 - [x] EdgeWorker integration plan finalized
 - [x] Codex adapter spec finalized
-- [x] OpenCode adapter spec finalized
+- [ ] OpenCode adapter spec (deferred)
 - [x] CLI commands spec finalized
 - [x] Testing/Validation plan finalized
 - [x] Upgrade/Migration plan finalized
@@ -42,7 +42,7 @@ Use these junior‑friendly, step‑by‑step guides to implement the spec. Foll
 - [docs/specs/runner-event-normalization.md](runner-event-normalization.md) — Normalized event model for CLI adapters
 - [docs/specs/edge-worker-integration.md](edge-worker-integration.md) — Hook selection + runners into EdgeWorker
 - [docs/specs/phase-1-codex.md](phase-1-codex.md) — Codex adapter implementation
-- [docs/specs/phase-2-opencode.md](phase-2-opencode.md) — OpenCode adapter implementation
+- [docs/specs/opencode-integration-guidelines.md](opencode-integration-guidelines.md) — Archived notes for future OpenCode adapter work
 - [docs/specs/cli-commands.md](cli-commands.md) — New CLI commands (connect-openai, defaults)
 - [docs/specs/testing-and-validation.md](testing-and-validation.md) — Manual test plans and acceptance criteria
 - [docs/specs/upgrade-and-migration.md](upgrade-and-migration.md) — Safe upgrades for existing VPS/Cloudflare setups

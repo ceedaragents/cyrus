@@ -11,24 +11,21 @@ Progress Checklist:
 - [x] Links to sub-guides
 - [ ] Final approval
 
-# Cyrus Multi-CLI Agent Support (Claude, Codex, OpenCode)
+# Cyrus Multi-CLI Agent Support (Claude & Codex)
 
 ## Goal
 
-Extend Cyrus beyond Claude Code by adding first-class support for additional local coding agents:
-
-- OpenAI Codex CLI (openai/codex)
-- OpenCode CLI (sst/opencode)
+Extend Cyrus beyond Claude Code by adding first-class support for the OpenAI Codex CLI (openai/codex).
 
 Users can:
 
 - Set a default CLI and a default model per CLI (globally and per repo)
-- Connect an OpenAI account (API key) for Codex and OpenCode
+- Connect an OpenAI account (API key) for Codex
 - Route Linear issues to a specific CLI based on labels
 
 This spec outlines UX, config, architecture, adapters, and concrete changes across this repo.
 
-For step-by-step, junior‑friendly guides, see [docs/specs/README.md](specs/README.md).
+For step-by-step, junior‑friendly guides, see [docs/specs/README.md](specs/README.md). Guidance for a future OpenCode adapter now lives in [docs/specs/opencode-integration-guidelines.md](specs/opencode-integration-guidelines.md).
 
 ## High-Level Design
 
@@ -36,7 +33,6 @@ Introduce a "Runner" abstraction so EdgeWorker can orchestrate any agent CLI wit
 
 - Wrap the current Claude flow behind a ClaudeRunnerAdapter
 - Add CodexRunnerAdapter using `codex exec --json` (non-interactive/CI mode)
-- Add OpenCodeRunnerAdapter via OpenCode’s local HTTP API (server endpoints + SSE)
 - Add selection logic to pick a runner per issue based on labels, per-repo override, or global defaults
 - Normalize adapter output through the event model captured in [runner-event-normalization.md](specs/runner-event-normalization.md) so the edge worker stays CLI-agnostic
 - Let Codex sandbox/approval flags come from config defaults (`cliDefaults.codex`); do not hard-code read-only
@@ -46,9 +42,9 @@ Initial implementation targets correctness and simple streaming (when available)
 ## User Experience
 
 - Global defaults live in `~/.cyrus/config.json`
-  - default CLI (e.g. `"claude"`, `"codex"`, or `"opencode"`)
+  - default CLI (e.g. `"claude"` or `"codex"`)
   - default model per CLI
-  - per-CLI settings (e.g. Codex approval policy, sandbox, OpenCode server URL)
+  - per-CLI settings (e.g. Codex approval policy, sandbox)
 - Per-repo overrides in the existing `repositories[]` entries
 - Label-based routing can pick a CLI and optionally override model for that CLI
 - New CLI commands in `cyrus` for connecting OpenAI and setting defaults
@@ -59,18 +55,17 @@ Add the following to the Edge app config (read from `~/.cyrus/config.json`). The
 
 Top-level additions (EdgeConfig):
 
-- `defaultCli`: "claude" | "codex" | "opencode"
+- `defaultCli`: "claude" | "codex"
 - `cliDefaults`:
   - `claude?: { model?: string, fallbackModel?: string }`
   - `codex?: { model?: string, approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never", sandbox?: "read-only" | "workspace-write" | "danger-full-access" }`
-  - `opencode?: { provider?: string, model?: string, serverUrl?: string }`
 - `credentials?: { openaiApiKey?: string }`  // optional; env vars preferred
 
 RepositoryConfig additions (packages/edge-worker/src/types.ts):
 
-- `runner?: "claude" | "codex" | "opencode"`  // default CLI for this repository
-- `runnerModels?: { claude?: { model?: string, fallbackModel?: string }, codex?: { model?: string }, opencode?: { provider?: string, model?: string } }`
-- `labelAgentRouting?: Array<{ labels: string[], runner: "claude" | "codex" | "opencode", model?: string, provider?: string }>`
+- `runner?: "claude" | "codex"`  // default CLI for this repository
+- `runnerModels?: { claude?: { model?: string, fallbackModel?: string }, codex?: { model?: string } }`
+- `labelAgentRouting?: Array<{ labels: string[], runner: "claude" | "codex", model?: string }>`
 
 Notes:
 
@@ -84,8 +79,7 @@ Notes:
   "defaultCli": "claude",
   "cliDefaults": {
     "claude": { "model": "claude-3.7-sonnet", "fallbackModel": "claude-3.5-sonnet" },
-    "codex": { "model": "o3", "approvalPolicy": "never", "sandbox": "workspace-write" },
-    "opencode": { "provider": "openai", "model": "o4-mini", "serverUrl": "http://localhost:17899" }
+    "codex": { "model": "o3", "approvalPolicy": "never", "sandbox": "workspace-write" }
   },
   "credentials": { "openaiApiKey": "env:OPENAI_API_KEY" },
   "repositories": [
@@ -99,13 +93,11 @@ Notes:
       "workspaceBaseDir": "/Users/me/.cyrus/workspaces/my-app",
       "runner": "codex",
       "runnerModels": {
-        "codex": { "model": "o3-mini" },
-        "opencode": { "provider": "openai", "model": "o3-mini" }
+        "codex": { "model": "o3-mini" }
       },
       "labelAgentRouting": [
         { "labels": ["PRD"], "runner": "claude", "model": "claude-3.7-sonnet" },
-        { "labels": ["Performance"], "runner": "codex", "model": "o3" },
-        { "labels": ["OpenSource"], "runner": "opencode", "provider": "openai", "model": "o4-mini" }
+        { "labels": ["Performance"], "runner": "codex", "model": "o3" }
       ],
       "labelPrompts": {
         "debugger": { "labels": ["Bug"], "allowedTools": "all" },
@@ -122,14 +114,13 @@ Notes:
 Create a minimal cross-CLI runner interface implemented by adapters:
 
 ```ts
-type RunnerType = "claude" | "codex" | "opencode";
+type RunnerType = "claude" | "codex";
 
 interface RunnerConfig {
   type: RunnerType;
   cwd: string;                 // workspace path
   prompt: string;              // initial prompt (already built by EdgeWorker)
   model?: string;              // per-runner model identifier
-  provider?: string;           // for opencode
   sandbox?: "read-only" | "workspace-write" | "danger-full-access"; // codex
   approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never"; // codex
   mcpServers?: McpServerConfig[]; // when applicable
@@ -151,7 +142,7 @@ Adapters:
 
 - ClaudeRunnerAdapter: wraps `cyrus-claude-runner` (no behavior change)
 - CodexRunnerAdapter: spawns `codex exec --json` with the given prompt and flags; parses JSON events into normalized thought/action/log/final outputs
-- OpenCodeRunnerAdapter: calls local server API (`/session`, `/session/:id/command`) and subscribes to `/event` SSE; maps events to RunnerEvent
+- *(Deferred)* OpenCodeRunnerAdapter: see [opencode-integration-guidelines](specs/opencode-integration-guidelines.md)
 
 ## Runner Selection Logic
 
@@ -208,32 +199,9 @@ Notes:
 - Codex doesn’t expose a JSON event stream by default; first pass will stream stdout lines to Linear
 - Codex manages file edits and git; our worktree isolation remains the right safety boundary
 
-### OpenCode CLI (sst/opencode)
+### Future Work: OpenCode CLI (sst/opencode)
 
-References:
-
-- Repo: https://github.com/sst/opencode (server code in `packages/opencode/src/server/server.ts`)
-- Server API endpoints: sessions, commands, auth; SSE stream at `/event`
-
-Auth:
-
-- Use `PUT /auth/:id` with body per `Auth.Info` to set credentials; for OpenAI: `{ "type": "api", "key": "sk-..." }` at id `openai`
-
-Provider/Model Selection:
-
-- Discover providers via `GET /config/providers`
-- For a prompt, use `POST /session` → `POST /session/:id/command` with body matching `SessionPrompt.CommandInput` (see SessionPrompt.PromptInput)
-- `PromptInput.model` accepts `{ providerID, modelID }`
-
-Streaming:
-
-- Subscribe to `GET /event` (SSE); filter by session id
-- Map streamed message parts (`MessageV2`) to `RunnerEvent` text/tool events
-
-Server URL:
-
-- Default from `cliDefaults.opencode.serverUrl`; user can override per repo
-- The adapter should detect connection errors and provide guidance to start OpenCode locally
+Implementation for OpenCode has been deferred. When we revisit it, reuse the preserved research in [docs/specs/opencode-integration-guidelines.md](specs/opencode-integration-guidelines.md) covering REST flows, SSE mapping, and auth expectations.
 
 ## Messaging Unification to Linear
 
@@ -273,8 +241,8 @@ New steps around current session creation:
 
 Add subcommands to `apps/cli/app.ts`:
 
-- `cyrus connect-openai` — prompts for `OPENAI_API_KEY`, stores in `~/.cyrus/config.json` under `credentials.openaiApiKey` (or uses env vars), applies to Codex (`codex login --api-key`) and OpenCode (`PUT /auth/openai`)
-- `cyrus set-default-cli <claude|codex|opencode>` — updates `defaultCli`
+- `cyrus connect-openai` — prompts for `OPENAI_API_KEY`, stores in `~/.cyrus/config.json` under `credentials.openaiApiKey` (or uses env vars), applies to Codex (`codex login --api-key`)
+- `cyrus set-default-cli <claude|codex>` — updates `defaultCli`
 - `cyrus set-default-model <cli> <model>` — updates `cliDefaults[cli].model`
 
 Wizard updates:
@@ -295,7 +263,7 @@ Runner abstraction and adapters:
   - Exports `Runner`, `RunnerConfig`, `RunnerEvent`, `RunnerFactory`
   - Implements `ClaudeRunnerAdapter` (wrap `cyrus-claude-runner`)
   - Implements `CodexRunnerAdapter` (spawns `codex exec`)
-  - Implements `OpenCodeRunnerAdapter` (HTTP + SSE)
+  - *(Deferred)* OpenCodeRunnerAdapter lives in [opencode-integration-guidelines](specs/opencode-integration-guidelines.md)
 
 Edge worker orchestration:
 
@@ -366,23 +334,16 @@ Phase 1: Codex adapter (non-interactive)
 - Add `cyrus connect-openai`
 - Add runner selection and repo/global defaults
 
-Phase 2: OpenCode adapter
+Phase 2: Messaging polish (Codex)
 
-- Adapter against local HTTP API with `/session` + `/session/:id/command` and `/event` SSE
-- Add optional `opencode.serverUrl` config
-- Add `cyrus connect-openai` support to set OpenCode auth via API
-
-Phase 3: Messaging polish
-
-- Richer event mapping for OpenCode tools
 - Optional Codex session resume support (`codex exec resume`)
+
+Deferred: OpenCode adapter work captured in [opencode-integration-guidelines](specs/opencode-integration-guidelines.md).
 
 ## Risks & Open Questions
 
 - Codex stdout is not an official API; output format may change. We mitigate by treating it as best-effort text streaming and posting a final summary on completion.
-- OpenCode server availability: we rely on a local server URL; we’ll provide clear guidance and connection checks, and make the URL configurable.
-- Tool gating parity: Claude has explicit tool/permission controls; Codex/OpenCode have different models. We’ll map Cyrus presets to Codex sandbox/approval policy and express intent in prompts for OpenCode.
-- SSE robustness: implement retries for OpenCode event stream to handle temporary disconnects.
+- Tool gating parity: Claude has explicit tool/permission controls while Codex relies on sandbox/approval flags. Map Cyrus presets carefully and document limitations.
 
 ## References (from this repo)
 
@@ -398,13 +359,8 @@ Phase 3: Messaging polish
    - Question: How should Cyrus tool presets map to Codex `--sandbox` and `--approval-policy`?
    - Recommendation: readOnly → `--sandbox read-only` + `--approval-policy never`; safe → `--sandbox workspace-write` + `--approval-policy on-request`; all → `--sandbox danger-full-access` + `--approval-policy never`.
 
-2. OpenCode provider default
-   - Question: If a provider is not specified for OpenCode, which should we use?
-   - Recommendation: Default to `provider=openai`; model resolved by repo → cliDefaults.opencode → fallback to prompt-only if missing.
-
-3. OpenCode server URL
-   - Question: What default server URL should we assume?
-   - Recommendation: `http://localhost:17899` with a clear guidance message if unreachable; make it configurable via `cliDefaults.opencode.serverUrl`.
+2. OpenCode defaults *(deferred)*
+   - Open questions around provider selection and server URL have moved to [opencode-integration-guidelines](specs/opencode-integration-guidelines.md).
 
 4. OpenAI API key storage
    - Question: Where should we store the user’s OpenAI API key (if they choose to persist it)?
@@ -448,10 +404,7 @@ Phase 3: Messaging polish
   - Non-interactive mode: docs/getting-started.md#cli-usage, docs/advanced.md#non-interactive--ci-mode
   - Auth via API key: docs/authentication.md
   - Config & flags: docs/config.md
-- OpenCode: https://github.com/sst/opencode
-  - Server API: `packages/opencode/src/server/server.ts`
-  - Auth model: `packages/opencode/src/auth/index.ts`
-  - Prompt input model: `packages/opencode/src/session/prompt.ts`
+- OpenCode references archived in [opencode-integration-guidelines](specs/opencode-integration-guidelines.md)
 
 ---
 

@@ -113,8 +113,6 @@ interface CodexRunnerPermissions {
 type RunnerSelection = {
 	type: RunnerType;
 	model?: string;
-	provider?: string;
-	serverUrl?: string;
 	promptType?: string;
 	codexPermissions?: CodexRunnerPermissions;
 };
@@ -167,8 +165,6 @@ export class EdgeWorker extends EventEmitter {
 	private sessionRunnerSelections: Map<string, SessionRunnerMetadata> =
 		new Map();
 	private nonClaudeRunners: Map<string, Runner> = new Map();
-	private openCodeSessionCache: Map<string, string> = new Map();
-
 	private codexSessionCache: Map<string, string> = new Map();
 	private finalizedNonClaudeSessions: Set<string> = new Set();
 
@@ -1356,9 +1352,7 @@ export class EdgeWorker extends EventEmitter {
 					existingNonClaudeRunner,
 				);
 			}
-			if (sessionRunnerSelection?.type === "opencode") {
-				this.openCodeSessionCache.delete(linearAgentActivitySessionId);
-			} else if (sessionRunnerSelection?.type === "codex") {
+			if (sessionRunnerSelection?.type === "codex") {
 				this.codexSessionCache.delete(linearAgentActivitySessionId);
 			}
 			this.sessionRunnerSelections.delete(linearAgentActivitySessionId);
@@ -1548,9 +1542,7 @@ export class EdgeWorker extends EventEmitter {
 				this.nonClaudeRunners.delete(sessionId);
 			}
 
-			if (metadata.type === "opencode") {
-				this.openCodeSessionCache.delete(sessionId);
-			} else if (metadata.type === "codex") {
+			if (metadata.type === "codex") {
 				this.codexSessionCache.delete(sessionId);
 			}
 
@@ -1625,44 +1617,30 @@ export class EdgeWorker extends EventEmitter {
 	): RunnerSelection {
 		const match: RunnerSelection | null = (() => {
 			for (const rule of repository.labelAgentRouting ?? []) {
-				if (rule.labels.some((label) => labels.includes(label))) {
-					const selection: RunnerSelection = {
-						type: rule.runner,
-						model: rule.model,
-						provider: rule.provider,
-					};
-
-					if (
-						selection.type === "opencode" &&
-						this.config.cliDefaults?.opencode?.serverUrl
-					) {
-						selection.serverUrl = this.config.cliDefaults.opencode.serverUrl;
-					}
-
-					return selection;
-				}
+				if (!rule.labels.some((label) => labels.includes(label))) continue;
+				const runner = this.normalizeRunnerType(rule.runner, {
+					scope: "labelAgentRouting",
+					repositoryId: repository.id,
+					labels,
+				});
+				if (!runner) continue;
+				return {
+					type: runner,
+					model: rule.model,
+				};
 			}
 
-			if (repository.runner) {
-				const runnerType = repository.runner;
-				if (runnerType === "codex") {
+			const repoRunner = this.normalizeRunnerType(repository.runner, {
+				scope: "repository.runner",
+				repositoryId: repository.id,
+			});
+			if (repoRunner) {
+				if (repoRunner === "codex") {
 					return {
 						type: "codex",
 						model:
 							repository.runnerModels?.codex?.model ||
 							this.config.cliDefaults?.codex?.model,
-					};
-				}
-				if (runnerType === "opencode") {
-					return {
-						type: "opencode",
-						model:
-							repository.runnerModels?.opencode?.model ||
-							this.config.cliDefaults?.opencode?.model,
-						provider:
-							repository.runnerModels?.opencode?.provider ||
-							this.config.cliDefaults?.opencode?.provider,
-						serverUrl: this.config.cliDefaults?.opencode?.serverUrl,
 					};
 				}
 				return {
@@ -1690,19 +1668,16 @@ export class EdgeWorker extends EventEmitter {
 			return match;
 		}
 
-		const defaultCli = this.config.defaultCli ?? "claude";
+		const defaultCli =
+			this.normalizeRunnerType(this.config.defaultCli, {
+				scope: "config.defaultCli",
+				repositoryId: repository.id,
+			}) ?? "claude";
 		let resolved: RunnerSelection;
 		if (defaultCli === "codex") {
 			resolved = {
 				type: "codex",
 				model: this.config.cliDefaults?.codex?.model,
-			};
-		} else if (defaultCli === "opencode") {
-			resolved = {
-				type: "opencode",
-				model: this.config.cliDefaults?.opencode?.model,
-				provider: this.config.cliDefaults?.opencode?.provider,
-				serverUrl: this.config.cliDefaults?.opencode?.serverUrl,
 			};
 		} else {
 			resolved = {
@@ -1720,6 +1695,27 @@ export class EdgeWorker extends EventEmitter {
 			labels,
 		});
 		return resolved;
+	}
+
+	private normalizeRunnerType(
+		runner: unknown,
+		context?: { scope: string; repositoryId?: string; labels?: string[] },
+	): RunnerType | undefined {
+		if (typeof runner === "string") {
+			const value = runner.toLowerCase();
+			if (value === "claude" || value === "codex") {
+				return value as RunnerType;
+			}
+		}
+		if (context) {
+			this.debugLog("[normalizeRunnerType] Ignoring unsupported runner", {
+				scope: context.scope,
+				repositoryId: context.repositoryId,
+				runner,
+				labels: context.labels,
+			});
+		}
+		return undefined;
 	}
 
 	private getOpenAiApiKey(): string | undefined {
@@ -3778,9 +3774,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const finalizedNonClaudeSessions = Array.from(
 			this.finalizedNonClaudeSessions.values(),
 		);
-		const openCodeSessionCache = Object.fromEntries(
-			this.openCodeSessionCache.entries(),
-		);
 		const codexSessionCache = Object.fromEntries(
 			this.codexSessionCache.entries(),
 		);
@@ -3791,7 +3784,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			childToParentAgentSession,
 			sessionRunnerSelections,
 			finalizedNonClaudeSessions,
-			openCodeSessionCache,
 			codexSessionCache,
 		};
 	}
@@ -3836,25 +3828,31 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		if (state.sessionRunnerSelections) {
 			this.sessionRunnerSelections.clear();
+			let restoredCount = 0;
 			for (const [sessionId, metadata] of Object.entries(
 				state.sessionRunnerSelections,
 			)) {
-				this.sessionRunnerSelections.set(sessionId, { ...metadata });
+				const runner = this.normalizeRunnerType(metadata.type, {
+					scope: "restore.sessionRunnerSelection",
+					repositoryId: metadata.issueId,
+				});
+				if (!runner) {
+					continue;
+				}
+				this.sessionRunnerSelections.set(sessionId, {
+					...metadata,
+					type: runner,
+				});
+				restoredCount += 1;
 			}
 			console.log(
-				`[EdgeWorker] Restored runner selections for ${this.sessionRunnerSelections.size} sessions`,
+				`[EdgeWorker] Restored runner selections for ${restoredCount} sessions`,
 			);
 		}
 
 		if (state.finalizedNonClaudeSessions) {
 			this.finalizedNonClaudeSessions = new Set(
 				state.finalizedNonClaudeSessions,
-			);
-		}
-
-		if (state.openCodeSessionCache) {
-			this.openCodeSessionCache = new Map(
-				Object.entries(state.openCodeSessionCache),
 			);
 		}
 
@@ -4082,12 +4080,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			`[markSessionComplete] Session finalized for ${repositoryId}`,
 			{ sessionId: linearAgentActivitySessionId },
 		);
-		const selection = this.sessionRunnerSelections.get(
-			linearAgentActivitySessionId,
-		);
-		if (selection?.type === "opencode") {
-			this.openCodeSessionCache.delete(linearAgentActivitySessionId);
-		}
 		void this.savePersistedState().catch((error) => {
 			this.debugLog(
 				"[markSessionComplete] Failed to persist completion state",
@@ -4118,7 +4110,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		const codexDefaults = this.config.cliDefaults?.codex;
-		const opencodeDefaults = this.config.cliDefaults?.opencode;
 		const repoRunnerModels = repository.runnerModels;
 		let selectionMeta = this.sessionRunnerSelections.get(
 			linearAgentActivitySessionId,
@@ -4188,32 +4179,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				);
 			}
 		} else {
-			const serverUrl =
-				selection.serverUrl ||
-				opencodeDefaults?.serverUrl ||
-				"http://localhost:17899";
-			const cachedSessionId =
-				this.openCodeSessionCache.get(linearAgentActivitySessionId) ||
-				undefined;
-			runnerConfig = {
-				type: "opencode",
-				cwd: workspacePath,
-				prompt,
-				model:
-					selection.model ||
-					repoRunnerModels?.opencode?.model ||
-					opencodeDefaults?.model,
-				provider:
-					selection.provider ||
-					repoRunnerModels?.opencode?.provider ||
-					opencodeDefaults?.provider ||
-					"openai",
-				serverUrl,
-				sessionId: cachedSessionId,
-				linearSessionId: linearAgentActivitySessionId,
-				openaiApiKey: this.getOpenAiApiKey(),
-				retryOnDisconnect: true,
-			};
+			throw new Error(
+				`Unsupported non-Claude runner type: ${selection.type as string}`,
+			);
 		}
 
 		this.debugLog(`[startNonClaudeRunner] Starting ${selection.type} runner`, {
@@ -4224,7 +4192,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				type: selection.type,
 				cwd: workspacePath,
 				model: runnerConfig.model,
-				provider: runnerConfig.provider,
 			},
 		});
 
@@ -4437,12 +4404,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					{ sessionId: linearAgentActivitySessionId },
 				);
 			}
-			if (selection.type === "opencode" && startResult.sessionId) {
-				this.openCodeSessionCache.set(
-					linearAgentActivitySessionId,
-					startResult.sessionId,
-				);
-			} else if (selection.type === "codex" && startResult.sessionId) {
+			if (selection.type === "codex" && startResult.sessionId) {
 				this.codexSessionCache.set(
 					linearAgentActivitySessionId,
 					startResult.sessionId,

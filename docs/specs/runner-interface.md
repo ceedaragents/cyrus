@@ -19,7 +19,7 @@ Package Layout
 TypeScript Interfaces (reference)
 
 ```ts
-export type RunnerType = "claude" | "codex" | "opencode";
+export type RunnerType = "claude" | "codex";
 
 export interface RunnerConfigBase {
   type: RunnerType;
@@ -33,16 +33,9 @@ export interface CodexOptions {
   approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never";
 }
 
-export interface OpenCodeOptions {
-  provider?: string; // eg. "openai"
-  model?: string;    // eg. "o4-mini"
-  serverUrl?: string; // eg. http://localhost:17899
-}
-
 export type RunnerConfig =
   | (RunnerConfigBase & { type: "claude"; model?: string; fallbackModel?: string })
   | (RunnerConfigBase & { type: "codex" } & CodexOptions)
-  | (RunnerConfigBase & { type: "opencode" } & OpenCodeOptions);
 
 // Normalized events emitted by adapters. See runner-event-normalization.md for details.
 export type RunnerEvent =
@@ -86,24 +79,11 @@ Adapters
   - Parses each JSON line and maps message types to normalized events (see `runner-event-normalization.md`).
   - Emits `capabilities.jsonStream = true` in `RunnerStartResult`.
 
-3) OpenCodeRunnerAdapter
-- HTTP client to OpenCode server:
-  - `POST /session?directory=<cwd>` → returns `{ id }`
-  - `POST /session/:id/command?directory=<cwd>` with body matching `SessionPrompt.CommandInput`:
-    ```json
-    {
-      "parts": [{ "type": "text", "text": "<prompt>" }],
-      "model": { "providerID": "openai", "modelID": "o4-mini" }
-    }
-    ```
-  - `GET /event` (SSE) and filter events for that session id
-- Streaming:
-  - Map `MessageV2` payloads to `thought` / `action` events.
-  - Emit `final` when OpenCode signals completion (or after a quiet timeout) so the edge worker can publish the summary.
+3) *(Deferred)* OpenCodeRunnerAdapter — see [opencode-integration-guidelines](opencode-integration-guidelines.md)
 
 Resume Support (initial posture)
 - Codex: Defer until stable `codex exec resume` and session id capture are available. Implementation should surface a TODO tied to the Phase 3 rollout in [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md).
-- OpenCode: Support resume by caching `session.id` keyed by the Linear agent session id and sending additional `/session/:id/command` calls (bridge hooks defined in [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md)).
+- OpenCode: deferred; refer to [opencode-integration-guidelines](opencode-integration-guidelines.md).
 
 Error handling (all adapters)
 - If start() throws: emit a single `error` event then reject/return.
@@ -116,6 +96,6 @@ Dependencies to add (Phase 2)
 ## Definition of Done
 
 - `packages/agent-runner` exposes `Runner`, `RunnerConfig`, `RunnerEvent`, and a factory aligned with [`docs/multi-cli-runner-spec.md`](../multi-cli-runner-spec.md).
-- Claude, Codex, and OpenCode adapter responsibilities include spawn/auth/stream semantics and error posture described above.
-- Resume guidance calls out Codex deferment and OpenCode session reuse, matching [`docs/specs/edge-worker-integration.md`](edge-worker-integration.md).
+- Claude and Codex adapter responsibilities include spawn/auth/stream semantics and error posture described above.
+- Resume guidance calls out Codex deferment; OpenCode session reuse remains deferred alongside its adapter guidelines.
 - Dependency notes keep adapters lightweight and compatible with the EdgeWorker runtime.

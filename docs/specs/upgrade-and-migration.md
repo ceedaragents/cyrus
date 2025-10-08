@@ -85,7 +85,7 @@ What this WILL NOT do
 - It will not change existing repository routes.
 
 User Choices after Upgrade
-- If you want to adopt multi‑CLI later: run `cyrus set-default-cli codex` (or `opencode`) and update per‑repo routing as needed.
+- If you want to adopt multi‑CLI later: run `cyrus set-default-cli codex` and update per-repo routing as needed.
 - To link OpenAI: run `cyrus connect-openai` (optional; leaves Cloudflare setup untouched).
 
 Troubleshooting

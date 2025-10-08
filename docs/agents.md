@@ -1,6 +1,6 @@
 # Cyrus Agents Overview
 
-Cyrus can route work to several local runners (Claude Code, Codex, OpenCode).
+Cyrus can route work to several local runners (Claude Code and Codex).
 Each runner lives in its own workspace package, and the CLI bundles the compiled
 artefacts under `apps/cli/dist` so operators can launch a single binary.
 

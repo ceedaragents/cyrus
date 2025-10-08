@@ -86,7 +86,7 @@ Commands:
   add-repository     Add a new repository configuration
   billing            Open Stripe billing portal (Pro plan only)
   set-customer-id    Set your Stripe customer ID
-  connect-openai     Store OpenAI credentials and sync Codex/OpenCode
+  connect-openai     Store OpenAI credentials and sync Codex
   set-default-cli    Set the global default CLI runner
   set-default-model  Configure default models for a CLI provider
   migrate-config     Backup and upgrade config for multi-CLI support
@@ -110,7 +110,7 @@ Examples:
   cyrus add-repository           Add a new repository interactively
   cyrus connect-openai --non-interactive --api-key $OPENAI_API_KEY
   cyrus set-default-cli codex
-  cyrus set-default-model opencode o4-mini --provider openai
+  cyrus set-default-model codex gpt-4o-mini
   cyrus migrate-config --backup-dir ~/.cyrus/backups
   cyrus validate
   cyrus --cyrus-home=/tmp/cyrus  Use custom config directory
@@ -153,7 +153,6 @@ function ensureCliDefaultsStructure(config: EdgeConfig): void {
 	config.cliDefaults = config.cliDefaults || {};
 	config.cliDefaults.claude = config.cliDefaults.claude || {};
 	config.cliDefaults.codex = config.cliDefaults.codex || {};
-	config.cliDefaults.opencode = config.cliDefaults.opencode || {};
 }
 
 function ensureCredentialsStructure(config: EdgeConfig): void {
@@ -177,35 +176,20 @@ function applyDefaultModel(
 	config: EdgeConfig,
 	cli: RunnerType,
 	model: string,
-	options: { provider?: string } = {},
 ): {
 	previousModel?: string;
-	previousProvider?: string;
 	changed: boolean;
 } {
 	ensureCliDefaultsStructure(config);
 	const cliDefaultsMap = config.cliDefaults!;
 	const cliDefaults = cliDefaultsMap[cli] as Record<string, any>;
 	const previousModel = cliDefaults?.model;
-	const previousProvider = cliDefaults?.provider;
 	let changed = false;
 	if (model && model !== previousModel) {
 		cliDefaults.model = model;
 		changed = true;
 	}
-	if (cli === "opencode" && options.provider) {
-		if (previousProvider !== options.provider) {
-			cliDefaults.provider = options.provider;
-			changed = true;
-		}
-	} else if (
-		cli === "opencode" &&
-		options.provider === undefined &&
-		!cliDefaults.provider
-	) {
-		cliDefaults.provider = "openai";
-	}
-	return { previousModel, previousProvider, changed };
+	return { previousModel, changed };
 }
 
 function ensureRepositoryScaffold(repo: RepositoryConfig): void {
@@ -213,11 +197,9 @@ function ensureRepositoryScaffold(repo: RepositoryConfig): void {
 	repo.runnerModels = repo.runnerModels || {
 		claude: {},
 		codex: {},
-		opencode: {},
 	};
 	repo.runnerModels.claude = repo.runnerModels.claude || {};
 	repo.runnerModels.codex = repo.runnerModels.codex || {};
-	repo.runnerModels.opencode = repo.runnerModels.opencode || {};
 	repo.labelAgentRouting = repo.labelAgentRouting || [];
 }
 
@@ -1158,8 +1140,6 @@ class EdgeApp {
 			config.cliDefaults.claude = config.cliDefaults.claude || {};
 		} else if (runner === "codex") {
 			config.cliDefaults.codex = config.cliDefaults.codex || {};
-		} else if (runner === "opencode") {
-			config.cliDefaults.opencode = config.cliDefaults.opencode || {};
 		}
 	}
 
@@ -1171,20 +1151,15 @@ class EdgeApp {
 		);
 		console.log("1. Claude (Anthropic Claude Code)");
 		console.log("2. Codex (OpenAI Codex CLI)");
-		console.log("3. OpenCode (SST OpenCode CLI)");
 
 		const choice = await this.askQuestion(
-			"\nChoose default CLI [1-3] (default: 1): ",
+			"\nChoose default CLI [1-2] (default: 1): ",
 		);
 
-		switch (choice) {
-			case "2":
-				return "codex";
-			case "3":
-				return "opencode";
-			default:
-				return "claude";
+		if (choice === "2") {
+			return "codex";
 		}
+		return "claude";
 	}
 
 	private copyLegacyModelDefaults(config: EdgeConfig): void {
@@ -2950,12 +2925,9 @@ async function connectOpenAiCommand() {
 	);
 
 	await runCodexLogin(keyToUse);
-	await seedOpenCodeAuthIfConfigured(config, keyToUse);
 
 	console.log("\n🎉 OpenAI credential setup complete.");
-	console.log(
-		"Run 'cyrus validate' to confirm Codex/OpenCode connectivity when ready.",
-	);
+	console.log("Run 'cyrus validate' to confirm Codex connectivity when ready.");
 }
 
 function runCodexLogin(apiKey: string): Promise<void> {
@@ -2989,40 +2961,6 @@ function runCodexLogin(apiKey: string): Promise<void> {
 	});
 }
 
-async function seedOpenCodeAuthIfConfigured(
-	config: EdgeConfig,
-	apiKey: string,
-): Promise<void> {
-	const serverUrl = config.cliDefaults?.opencode?.serverUrl;
-	if (!serverUrl) {
-		return;
-	}
-
-	const normalized = serverUrl.replace(/\/+$/, "");
-	const authUrl = `${normalized}/auth/openai`;
-
-	try {
-		const response = await fetch(authUrl, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ type: "api", key: apiKey }),
-		});
-
-		if (response.ok) {
-			console.log("\n✅ OpenCode server authenticated successfully.");
-		} else {
-			console.warn(
-				`\n⚠️  OpenCode auth request returned status ${response.status}.`,
-			);
-		}
-	} catch (error) {
-		console.warn(
-			"\n⚠️  Failed to reach OpenCode server:",
-			(error as Error).message,
-		);
-	}
-}
-
 async function setDefaultCliCommand() {
 	const commandArgs = args.slice(1);
 	const nonInteractive = hasFlag(commandArgs, "non-interactive");
@@ -3031,9 +2969,9 @@ async function setDefaultCliCommand() {
 	);
 	const target = positional[0]?.toLowerCase();
 
-	if (!target || !["claude", "codex", "opencode"].includes(target)) {
+	if (!target || !["claude", "codex"].includes(target)) {
 		console.error(
-			"Usage: cyrus set-default-cli <claude|codex|opencode> [--non-interactive]",
+			"Usage: cyrus set-default-cli <claude|codex> [--non-interactive]",
 		);
 		process.exit(1);
 	}
@@ -3063,7 +3001,7 @@ async function setDefaultCliCommand() {
 		);
 		if (runnerType !== "claude") {
 			console.log(
-				"Run 'cyrus connect-openai' to configure credentials for Codex/OpenCode.",
+				"Run 'cyrus connect-openai' to configure credentials for Codex.",
 			);
 		}
 	} else {
@@ -3073,21 +3011,17 @@ async function setDefaultCliCommand() {
 
 async function setDefaultModelCommand() {
 	const commandArgs = args.slice(1);
-	const argsWithoutProvider = removeFlagWithValue(commandArgs, "provider");
-	const positional = argsWithoutProvider.filter((arg) => !arg.startsWith("--"));
+	const positional = commandArgs.filter((arg) => !arg.startsWith("--"));
 	const cli = positional[0]?.toLowerCase();
 	const model = positional[1];
-	const providerFlag = getFlagValue(commandArgs, "provider");
 
 	if (!cli || !model) {
-		console.error(
-			"Usage: cyrus set-default-model <claude|codex|opencode> <model> [--provider <id>]",
-		);
+		console.error("Usage: cyrus set-default-model <claude|codex> <model>");
 		process.exit(1);
 	}
 
-	if (!["claude", "codex", "opencode"].includes(cli)) {
-		console.error("Unknown CLI. Expected claude, codex, or opencode.");
+	if (!["claude", "codex"].includes(cli)) {
+		console.error("Unknown CLI. Expected claude or codex.");
 		process.exit(1);
 	}
 
@@ -3099,11 +3033,8 @@ async function setDefaultModelCommand() {
 	const defaultsMap = config.cliDefaults!;
 	const defaults = defaultsMap[runnerType] as Record<string, any>;
 	const previousModel = defaults?.model;
-	const previousProvider = defaults?.provider;
 
-	const { changed } = applyDefaultModel(config, runnerType, model, {
-		provider: providerFlag,
-	});
+	const { changed } = applyDefaultModel(config, runnerType, model);
 
 	if (!changed) {
 		console.log(
@@ -3115,17 +3046,9 @@ async function setDefaultModelCommand() {
 	app.saveEdgeConfig(config);
 
 	console.log("\n✅ Default model updated.");
-	console.log(
-		`Previous: model=${previousModel ?? "(unset)"}$${
-			previousProvider ? ` provider=${previousProvider}` : ""
-		}`,
-	);
+	console.log(`Previous: model=${previousModel ?? "(unset)"}`);
 	const updated = defaultsMap[runnerType] as Record<string, any>;
-	console.log(
-		`Current: model=${updated.model ?? "(unset)"}$${
-			updated.provider ? ` provider=${updated.provider}` : ""
-		}`,
-	);
+	console.log(`Current: model=${updated.model ?? "(unset)"}`);
 	console.log(
 		"Repositories with runnerModels overrides will continue using their repository-specific models.",
 	);
@@ -3172,10 +3095,6 @@ async function migrateConfigCommand() {
 	if (config.cliDefaults?.codex === undefined) {
 		config.cliDefaults!.codex = {};
 		changes.push("cliDefaults.codex");
-	}
-	if (config.cliDefaults?.opencode === undefined) {
-		config.cliDefaults!.opencode = {};
-		changes.push("cliDefaults.opencode");
 	}
 
 	if (!config.credentials) {
@@ -3332,44 +3251,6 @@ async function validateCommand() {
 		}
 	} else {
 		console.log("\nℹ️  Codex CLI not required based on current configuration.");
-	}
-
-	const serverUrl = config.cliDefaults?.opencode?.serverUrl;
-	if (serverUrl) {
-		console.log("\n🔍 Checking OpenCode server health...");
-		const normalized = serverUrl.replace(/\/+$/, "");
-		const healthUrls = ["/health", "/"];
-		let healthy = false;
-		for (const path of healthUrls) {
-			if (healthy) break;
-			try {
-				const start = Date.now();
-				const response = await fetch(`${normalized}${path}`);
-				const latency = Date.now() - start;
-				if (response.ok) {
-					console.log(`  ✅ ${normalized}${path} reachable (${latency}ms).`);
-					healthy = true;
-				} else {
-					console.log(
-						`  ⚠️  ${normalized}${path} responded with status ${response.status}.`,
-					);
-				}
-			} catch (error) {
-				console.log(
-					`  ⚠️  Failed to reach ${normalized}${path}: ${(error as Error).message}`,
-				);
-			}
-		}
-		if (!healthy) {
-			hasErrors = true;
-			console.log(
-				"  ❌ OpenCode server did not respond successfully. Ensure it is running and reachable.",
-			);
-		}
-	} else {
-		console.log(
-			"\nℹ️  OpenCode server URL not configured. Skipping health check.",
-		);
 	}
 
 	if (hasErrors) {

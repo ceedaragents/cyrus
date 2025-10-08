@@ -25,27 +25,24 @@ New Utilities
 ```ts
 // packages/edge-worker/src/EdgeWorker.ts (private helper)
 private resolveRunnerSelection(labels: string[], repo: RepositoryConfig): {
-  type: "claude" | "codex" | "opencode";
+  type: "claude" | "codex";
   model?: string;
-  provider?: string; // for opencode
 } {
   // 1) labelAgentRouting
   for (const rule of repo.labelAgentRouting ?? []) {
     if (rule.labels.some((l) => labels.includes(l))) {
-      return { type: rule.runner, model: rule.model, provider: rule.provider };
+      return { type: rule.runner, model: rule.model };
     }
   }
   // 2) repo default
   if (repo.runner) {
     const rm = repo.runnerModels ?? {};
-    if (repo.runner === "opencode") return { type: "opencode", model: rm.opencode?.model, provider: rm.opencode?.provider };
     if (repo.runner === "codex") return { type: "codex", model: rm.codex?.model };
     return { type: "claude", model: rm.claude?.model };
   }
   // 3) global defaults (from this.config) — applies to fresh sessions & follow-ups
   const d = this.config.defaultCli ?? "claude";
   const cd = this.config.cliDefaults ?? {} as any;
-  if (d === "opencode") return { type: "opencode", model: cd.opencode?.model, provider: cd.opencode?.provider };
   if (d === "codex") return { type: "codex", model: cd.codex?.model };
   return { type: "claude", model: cd.claude?.model };
 }
@@ -74,7 +71,7 @@ if (selection.type === "claude") {
 ```ts
 // packages/edge-worker/src/EdgeWorker.ts (private helper)
 private async startNonClaudeRunner(opts: {
-  selection: { type: "codex" | "opencode"; model?: string; provider?: string };
+  selection: { type: "codex"; model?: string };
   cwd: string;
   prompt: string;
   repo: RepositoryConfig;
@@ -91,7 +88,6 @@ private async startNonClaudeRunner(opts: {
     cwd,
     prompt,
     ...(selection.type === "codex" ? { model: selection.model, sandbox: this.config.cliDefaults?.codex?.sandbox, approvalPolicy: this.config.cliDefaults?.codex?.approvalPolicy } : {}),
-    ...(selection.type === "opencode" ? { model: selection.model, provider: selection.provider, serverUrl: this.config.cliDefaults?.opencode?.serverUrl } : {}),
   });
 
   // Stream events to Linear as thoughts and action cards (mirror Claude cadence)
@@ -140,4 +136,4 @@ Testing
 - Runner selection helper enforces label → repo → global precedence for both fresh sessions and resumes.
 - Non-Claude bridge posts acknowledgements, streamed thoughts, and final summaries while reusing the attachment manifest.
 - Thought posting helper centralizes Linear activity creation to support all runner types.
-- OpenCode resume cache hooks are documented and align with [`docs/specs/phase-2-opencode.md`](phase-2-opencode.md).
+- OpenCode resume cache hooks remain deferred; see [opencode-integration-guidelines](opencode-integration-guidelines.md).
