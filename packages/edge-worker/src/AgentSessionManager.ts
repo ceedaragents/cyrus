@@ -40,9 +40,8 @@ export class AgentSessionManager {
 		prompt: string,
 		childSessionId: string,
 	) => Promise<void>;
-	private resumeNextPhase?: (
+	private resumeNextSubroutine?: (
 		linearAgentActivitySessionId: string,
-		nextPhase: "closure" | "summary",
 		claudeSessionId: string,
 	) => Promise<void>;
 
@@ -54,9 +53,8 @@ export class AgentSessionManager {
 			prompt: string,
 			childSessionId: string,
 		) => Promise<void>,
-		resumeNextPhase?: (
+		resumeNextSubroutine?: (
 			linearAgentActivitySessionId: string,
-			nextPhase: "closure" | "summary",
 			claudeSessionId: string,
 		) => Promise<void>,
 		procedureRouter?: ProcedureRouter,
@@ -64,7 +62,7 @@ export class AgentSessionManager {
 		this.linearClient = linearClient;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
-		this.resumeNextPhase = resumeNextPhase;
+		this.resumeNextSubroutine = resumeNextSubroutine;
 		this.procedureRouter = procedureRouter;
 	}
 
@@ -294,13 +292,11 @@ export class AgentSessionManager {
 			// Advance procedure state
 			this.procedureRouter.advanceToNextSubroutine(session, claudeSessionId);
 
-			// Trigger next subroutine using resumeNextPhase with "closure" as placeholder
-			// (EdgeWorker will handle procedure routing properly)
-			if (this.resumeNextPhase) {
+			// Trigger next subroutine
+			if (this.resumeNextSubroutine) {
 				try {
-					await this.resumeNextPhase(
+					await this.resumeNextSubroutine(
 						linearAgentActivitySessionId,
-						"closure", // Placeholder - EdgeWorker uses procedure metadata
 						claudeSessionId,
 					);
 				} catch (error) {
