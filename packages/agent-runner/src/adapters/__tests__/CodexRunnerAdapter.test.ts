@@ -88,7 +88,7 @@ describe("CodexRunnerAdapter", () => {
 			prompt: "do the thing",
 			model: "o4-mini",
 			approvalPolicy: "on-request",
-			sandbox: "workspace-write",
+			sandbox: "danger-full-access",
 			env: { TEST_ENV: "1" },
 		});
 
@@ -111,7 +111,7 @@ describe("CodexRunnerAdapter", () => {
 				"--approval-policy",
 				"on-request",
 				"--sandbox",
-				"workspace-write",
+				"danger-full-access",
 				"do the thing",
 			]),
 			expect.objectContaining({

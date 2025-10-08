@@ -135,7 +135,7 @@ describe("EdgeWorker Codex integration", () => {
 			cliDefaults: {
 				codex: {
 					approvalPolicy: "on-request",
-					sandbox: "workspace-write",
+					sandbox: "danger-full-access",
 				},
 			},
 		};
@@ -212,7 +212,7 @@ describe("EdgeWorker Codex integration", () => {
 				cwd: workspacePath,
 				prompt: promptBody,
 				approvalPolicy: "never",
-				sandbox: "workspace-write",
+				sandbox: "danger-full-access",
 				fullAuto: false,
 			}),
 		);

@@ -3401,7 +3401,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			},
 			safe: {
 				profile: "safe",
-				sandbox: "workspace-write",
+				sandbox: "danger-full-access",
 				approvalPolicy: "never",
 				fullAuto: false,
 			},
@@ -3409,7 +3409,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				profile: "all",
 				sandbox: "danger-full-access",
 				approvalPolicy: "never",
-				fullAuto: true,
+				fullAuto: false,
 			},
 		};
 

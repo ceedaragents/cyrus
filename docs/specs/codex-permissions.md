@@ -5,8 +5,8 @@
 Align Codex runs launched by Cyrus with the security semantics we already expose for Claude Code:
 
 - **readOnly** preset restricts Codex to inspection only.
-- **safe** preset allows local edits inside the workspace with escalation for risky operations.
-- **all** preset grants full automation for trusted repositories.
+- **safe** preset allows write-oriented workflows with the curated git/gh toolset while now running unsandboxed.
+- **all** preset grants full automation for trusted repositories and includes unrestricted Bash tooling.
 
 This keeps Linear issue routing, label prompts, and per-repo defaults consistent across runners.
 
@@ -17,15 +17,17 @@ Cyrus derives a permission profile for every session by examining the resolved t
 | Resolved preset | Codex sandbox | Codex approval policy | `--full-auto` | Intended behaviour |
 |-----------------|---------------|------------------------|----------------|--------------------|
 | `readOnly` (no write/edit/Bash tools) | `read-only` | `never` | `false` | Inspection only; any write or network request fails immediately |
-| `safe` (edits + curated git/gh commands) | `workspace-write` | `never` | `false` | Codex can edit files and run the approved git/gh workflow (status/diff/add/commit/push/merge/log/show/rev-parse/fetch/remote + `gh pr create/list/view/status`, `gh auth status`). Approvals are disabled so non-interactive sessions never stall. |
-| `all` (includes Bash/git or explicit allow-all) | `danger-full-access` | `never` | `true` | Unrestricted automation suitable for trusted repos and the PR flow. Cyrus also injects `--dangerously-bypass-approvals-and-sandbox` when the CLI supports it so Codex actually gains unrestricted access. |
+| `safe` (edits + curated git/gh commands) | `danger-full-access` | `never` | `false` | Codex can edit files and run the approved git/gh workflow (status/diff/add/commit/push/merge/log/show/rev-parse/fetch/remote + `gh pr create/list/view/status`, `gh auth status`). Sessions start unsandboxed so git/gh works without extra flags; approvals remain disabled. |
+| `all` (includes Bash/git or explicit allow-all) | `danger-full-access` | `never` | `false` | Same unsandboxed baseline but with unrestricted Bash support. Repositories must be explicitly trusted before routing to this preset. |
+
+> **Security trade-off:** any write-enabled Codex session now runs unsandboxed (`danger-full-access`). This keeps git/gh workflows aligned with Claude’s behaviour but shifts isolation responsibility to the surrounding infrastructure and routing policies.
 
 Fallbacks:
 
 - If a preset cannot be inferred, Cyrus uses repo/global `cliDefaults.codex` values.
 - Explicit overrides in routing rules or defaults still win; Cyrus only fills gaps.
 
-The safe preset expands to the following Bash allowlist:
+The safe preset expands to the following Bash allowlist; with the sandbox disabled we rely on this curated list to keep commands predictable:
 
 ```
 git status*
@@ -61,7 +63,7 @@ When starting a Codex session, EdgeWorker now passes the resolved profile to the
   model,
   sandbox,            // from profile or override
   approvalPolicy,     // from profile or override
-  fullAuto,           // true only for "all"
+  fullAuto,           // remains false; exec mode already runs full-auto
   resumeSessionId?,
   env: withOpenAiApiKey
 }
@@ -79,7 +81,7 @@ The adapter assumes modern Codex builds expose the stable `--json` stream flag a
 
 - Operators can still tune `~/.codex/config.toml`; Cyrus derives sandbox/approval from tool presets first and falls back to repo/global `cliDefaults` only when it cannot infer a profile.
 - To guarantee git access for follow-up sessions, route feature/PR labels to the `all` profile or set repository defaults accordingly.
-- Leave Codex’s native sandbox enabled unless delegated to another isolation layer (e.g. dedicated VM).
+- Codex’s native sandbox is now disabled for any write-enabled run; provide isolation through dedicated VMs or similar guardrails when necessary.
 
 ## CLI Compatibility Notes
 
@@ -97,7 +99,7 @@ To keep older CLIs working while we wait for official flag parity, the runner no
 - always requests `--json`, logging a diagnostic if the flag is absent from the help output;
 - only passes `--sandbox`/`--approval-policy` when the CLI supports them;
 - never falls back to the legacy `--dangerously-bypass-approvals-and-sandbox` flag, keeping behaviour aligned with the current Codex guidance;
-- falls back to `--full-auto` when the CLI lacks sandbox toggles so workspace-write sessions can still edit files; and
+- falls back to `--full-auto` when the CLI lacks sandbox toggles so write-enabled sessions can still edit files; and
 - logs a diagnostic message whenever we skip or substitute a flag so operators know why the command line changed.
 
 For the best experience, upgrade Codex CLI once a release restores explicit sandbox/approval controls. Cyrus will automatically start using the richer flags again as soon as they reappear in the help output.

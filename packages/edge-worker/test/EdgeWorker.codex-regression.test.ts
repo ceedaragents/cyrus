@@ -161,7 +161,7 @@ describe("EdgeWorker Codex regression", () => {
 			cliDefaults: {
 				codex: {
 					approvalPolicy: "on-request",
-					sandbox: "workspace-write",
+					sandbox: "danger-full-access",
 				},
 			},
 		};
@@ -239,7 +239,7 @@ describe("EdgeWorker Codex regression", () => {
 			prompt: promptBody,
 			cwd: workspacePath,
 			approvalPolicy: "never",
-			sandbox: "workspace-write",
+			sandbox: "danger-full-access",
 			fullAuto: false,
 		});
 		expect(fakeRunner.start).toHaveBeenCalledTimes(1);
@@ -298,7 +298,7 @@ describe("EdgeWorker Codex regression", () => {
 		).toEqual(
 			expect.objectContaining({
 				profile: "safe",
-				sandbox: "workspace-write",
+				sandbox: "danger-full-access",
 				approvalPolicy: "never",
 				fullAuto: false,
 			}),
@@ -350,7 +350,7 @@ describe("EdgeWorker Codex regression", () => {
 		).toEqual(
 			expect.objectContaining({
 				profile: "safe",
-				sandbox: "workspace-write",
+				sandbox: "danger-full-access",
 				approvalPolicy: "never",
 				fullAuto: false,
 			}),
@@ -404,7 +404,7 @@ describe("EdgeWorker Codex regression", () => {
 				resumeSessionId: "codex-run-123",
 				prompt: `${promptBody} follow-up`,
 				approvalPolicy: "never",
-				sandbox: "workspace-write",
+				sandbox: "danger-full-access",
 				fullAuto: false,
 			}),
 		);

@@ -52,7 +52,7 @@ After initial setup, Cyrus stores your configuration in `~/.cyrus/config.json`. 
 Each repository in the `repositories` array can have these optional properties:
 
 #### `allowedTools` (array of strings)
-Controls which tools Claude can use when processing issues. By default Cyrus enables the standard read/write tooling **plus a vetted git/GitHub CLI allowlist** (`git status|diff|add|commit|push|merge|log|show|rev-parse|fetch|remote`, `gh pr create|view|list|status`, `gh auth status`).
+Controls which tools Claude can use when processing issues. By default Cyrus enables the standard read/write tooling **plus a vetted git/GitHub CLI allowlist** (`git status|diff|add|commit|push|merge|log|show|rev-parse|fetch|remote`, `gh pr create|view|list|status`, `gh auth status`). Codex sessions inherit the same defaults and run unsandboxed for any write-enabled profile so these git/gh commands behave just like they do with Claude.
 
 Examples:
 - `["Read(**)", "Edit(**)", "Bash(git:status*)", "Bash(git:commit*)", "Task"]` - Allow reading, editing, and specific git commands
