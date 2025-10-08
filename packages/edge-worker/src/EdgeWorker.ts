@@ -1220,16 +1220,9 @@ export class EdgeWorker extends EventEmitter {
 			const { fullIssue: newFullIssue } = sessionData;
 			session = sessionData.session;
 
-			// Initialize phase metadata for three-phase execution
-			if (!session.metadata) {
-				session.metadata = {};
-			}
-			session.metadata.phase = {
-				current: "primary",
-				history: [],
-			};
+			// Procedure metadata is already initialized by createLinearAgentSession
 			console.log(
-				`[EdgeWorker] Initialized session ${linearAgentActivitySessionId} in primary phase (prompted webhook)`,
+				`[EdgeWorker] Initialized new session ${linearAgentActivitySessionId} (prompted webhook)`,
 			);
 
 			// Save state and emit events for new session
@@ -1246,16 +1239,9 @@ export class EdgeWorker extends EventEmitter {
 				repository.id,
 			);
 		} else {
-			// Existing session - reset phase to primary for new user interaction
-			if (!session.metadata) {
-				session.metadata = {};
-			}
-			session.metadata.phase = {
-				current: "primary",
-				history: [],
-			};
+			// Existing session continues with same procedure
 			console.log(
-				`[EdgeWorker] Reset session ${linearAgentActivitySessionId} to primary phase for new user prompt`,
+				`[EdgeWorker] Resuming existing session ${linearAgentActivitySessionId} for new user prompt`,
 			);
 		}
 

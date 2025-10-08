@@ -7,7 +7,7 @@
 
 import type { CyrusAgentSession } from "cyrus-core";
 import { SimpleClaudeRunner } from "cyrus-simple-agent-runner";
-import { getProcedureForClassification } from "./registry.js";
+import { getProcedureForClassification, PROCEDURES } from "./registry.js";
 import type {
 	ProcedureDefinition,
 	ProcedureMetadata,
@@ -68,11 +68,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	 * Load predefined procedures from registry
 	 */
 	private loadPredefinedProcedures(): void {
-		// Import at runtime to avoid circular dependencies
-		const registry = require("./registry.js");
-		for (const [name, procedure] of Object.entries(
-			registry.PROCEDURES as Record<string, ProcedureDefinition>,
-		)) {
+		for (const [name, procedure] of Object.entries(PROCEDURES)) {
 			this.procedures.set(name, procedure);
 		}
 	}
