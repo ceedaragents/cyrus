@@ -1216,11 +1216,13 @@ export class EdgeWorker extends EventEmitter {
 				session.metadata = {};
 			}
 
-			// Determine which procedure to use based on issue title and description
-			const issueDescription =
-				`${issue.title}\n\n${newFullIssue.description || ""}`.trim();
+			// For prompted events, use the actual prompt content from the user
+			// Combine with issue context for better routing
+			const promptBody = webhook.agentActivity.content.body;
+			const routingContext =
+				`${issue.title}\n\n${newFullIssue.description || ""}\n\nUser Request: ${promptBody}`.trim();
 			const routingDecision =
-				await this.procedureRouter.determineRoutine(issueDescription);
+				await this.procedureRouter.determineRoutine(routingContext);
 			const selectedProcedure = routingDecision.procedure;
 
 			// Initialize procedure metadata in session
