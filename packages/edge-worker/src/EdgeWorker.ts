@@ -55,6 +55,7 @@ import { LinearWebhookClient } from "cyrus-linear-webhook-client";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import { ProcedureRouter } from "./procedures/index.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type {
 	EdgeWorkerConfig,
@@ -91,6 +92,7 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
+	private procedureRouter: ProcedureRouter; // Intelligent workflow routing
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -99,6 +101,13 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Initialize procedure router with haiku model for fast classification
+		this.procedureRouter = new ProcedureRouter({
+			cyrusHome: this.cyrusHome,
+			model: "haiku",
+			timeoutMs: 10000,
+		});
 
 		console.log(
 			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
@@ -230,11 +239,11 @@ export class EdgeWorker extends EventEmitter {
 					},
 					async (
 						linearAgentActivitySessionId: string,
-						nextPhase: "closure" | "summary",
+						_nextPhase: "closure" | "summary",
 						_claudeSessionId: string,
 					) => {
 						console.log(
-							`[Phase Transition] Transitioning to ${nextPhase} phase for session ${linearAgentActivitySessionId}`,
+							`[Subroutine Transition] Advancing to next subroutine for session ${linearAgentActivitySessionId}`,
 						);
 
 						// Get the session
@@ -243,90 +252,80 @@ export class EdgeWorker extends EventEmitter {
 						);
 						if (!session) {
 							console.error(
-								`[Phase Transition] Session ${linearAgentActivitySessionId} not found in agent session manager`,
+								`[Subroutine Transition] Session ${linearAgentActivitySessionId} not found`,
 							);
 							return;
 						}
 
-						// Update session metadata with new phase
-						if (!session.metadata) {
-							session.metadata = {};
-						}
-						if (!session.metadata.phase) {
-							session.metadata.phase = {
-								current: "primary",
-								history: [],
-							};
-						}
-
-						// Record phase history
-						const previousPhase = session.metadata.phase.current;
-						session.metadata.phase.history =
-							session.metadata.phase.history || [];
-						session.metadata.phase.history.push({
-							phase: previousPhase,
-							completedAt: Date.now(),
-							claudeSessionId: session.claudeSessionId,
-						});
-
-						// Update to new phase
-						session.metadata.phase.current = nextPhase;
-						console.log(
-							`[Phase Transition] Updated session phase: ${previousPhase} → ${nextPhase}`,
+						// Advance to next subroutine
+						this.procedureRouter.advanceToNextSubroutine(
+							session,
+							session.claudeSessionId ?? null,
 						);
 
-						// Load phase-specific prompt
+						// Get next subroutine
+						const nextSubroutine =
+							this.procedureRouter.getCurrentSubroutine(session);
+
+						if (!nextSubroutine) {
+							console.log(
+								`[Subroutine Transition] Procedure complete for session ${linearAgentActivitySessionId}`,
+							);
+							return;
+						}
+
+						console.log(
+							`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
+						);
+
+						// Load subroutine prompt
 						const __filename = fileURLToPath(import.meta.url);
 						const __dirname = dirname(__filename);
-						const phasePromptPath =
-							nextPhase === "closure"
-								? join(__dirname, "prompts", "phase-closure.md")
-								: join(__dirname, "prompts", "phase-summary.md");
+						const subroutinePromptPath = join(
+							__dirname,
+							"prompts",
+							nextSubroutine.promptPath,
+						);
 
-						let phasePrompt: string;
+						let subroutinePrompt: string;
 						try {
-							phasePrompt = await readFile(phasePromptPath, "utf-8");
+							subroutinePrompt = await readFile(subroutinePromptPath, "utf-8");
 							console.log(
-								`[Phase Transition] Loaded ${nextPhase} phase prompt (${phasePrompt.length} characters)`,
+								`[Subroutine Transition] Loaded ${nextSubroutine.name} subroutine prompt (${subroutinePrompt.length} characters)`,
 							);
 						} catch (error) {
 							console.error(
-								`[Phase Transition] Failed to load phase prompt from ${phasePromptPath}:`,
+								`[Subroutine Transition] Failed to load subroutine prompt from ${subroutinePromptPath}:`,
 								error,
 							);
 							// Fallback to simple prompt
-							phasePrompt =
-								nextPhase === "closure"
-									? "Review all your work, run tests, create/update the PR, and ensure everything is production-ready."
-									: "Create a comprehensive summary of all work completed, suitable for posting to Linear.";
+							subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
 						}
 
-						// Resume Claude session with phase prompt
+						// Resume Claude session with subroutine prompt
 						try {
-							// For summary phase, set maxTurns=1 to keep it concise
-							const maxTurns = nextPhase === "summary" ? 1 : undefined;
-
 							await this.resumeClaudeSession(
 								session,
 								repo,
 								linearAgentActivitySessionId,
 								agentSessionManager,
-								phasePrompt,
+								subroutinePrompt,
 								"", // No attachment manifest
 								false, // Not a new session
 								[], // No additional allowed directories
-								maxTurns, // Limit summary phase to 3 turns
+								nextSubroutine.maxTurns, // Use subroutine-specific maxTurns
 							);
 							console.log(
-								`[Phase Transition] Successfully resumed session for ${nextPhase} phase${maxTurns ? ` (maxTurns=${maxTurns})` : ""}`,
+								`[Subroutine Transition] Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.maxTurns ? ` (maxTurns=${nextSubroutine.maxTurns})` : ""}`,
 							);
 						} catch (error) {
 							console.error(
-								`[Phase Transition] Failed to resume session for ${nextPhase} phase:`,
+								`[Subroutine Transition] Failed to resume session for ${nextSubroutine.name} subroutine:`,
 								error,
 							);
 						}
 					},
+					this.procedureRouter,
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
@@ -992,17 +991,30 @@ export class EdgeWorker extends EventEmitter {
 			allowedDirectories,
 		} = sessionData;
 
-		// Initialize phase metadata for three-phase execution
+		// Initialize procedure metadata using intelligent routing
 		if (!session.metadata) {
 			session.metadata = {};
 		}
-		session.metadata.phase = {
-			current: "primary",
-			history: [],
-		};
-		console.log(
-			`[EdgeWorker] Initialized session ${linearAgentActivitySessionId} in primary phase`,
+
+		// Determine which procedure to use based on issue description
+		const issueDescription = fullIssue.description || issue.title;
+		const routingDecision =
+			await this.procedureRouter.determineRoutine(issueDescription);
+		const selectedProcedure = routingDecision.procedure;
+
+		// Initialize procedure metadata in session
+		this.procedureRouter.initializeProcedureMetadata(
+			session,
+			selectedProcedure,
 		);
+
+		// Log routing decision
+		console.log(
+			`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId}:`,
+		);
+		console.log(`  Classification: ${routingDecision.classification}`);
+		console.log(`  Procedure: ${selectedProcedure.name}`);
+		console.log(`  Reasoning: ${routingDecision.reasoning}`);
 
 		// Fetch labels (needed for both model selection and system prompt determination)
 		const labels = await this.fetchIssueLabels(fullIssue);

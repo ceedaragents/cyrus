@@ -17,6 +17,7 @@ import type {
 	SerializedCyrusAgentSessionEntry,
 	Workspace,
 } from "cyrus-core";
+import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
 
 /**
  * Manages Linear Agent Sessions integration with Claude Code SDK
@@ -32,6 +33,7 @@ export class AgentSessionManager {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private procedureRouter?: ProcedureRouter;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -57,11 +59,13 @@ export class AgentSessionManager {
 			nextPhase: "closure" | "summary",
 			claudeSessionId: string,
 		) => Promise<void>,
+		procedureRouter?: ProcedureRouter,
 	) {
 		this.linearClient = linearClient;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.resumeNextPhase = resumeNextPhase;
+		this.procedureRouter = procedureRouter;
 	}
 
 	/**
@@ -114,7 +118,7 @@ export class AgentSessionManager {
 		linearSession.claudeSessionId = claudeSystemMessage.session_id;
 		linearSession.updatedAt = Date.now();
 		linearSession.metadata = {
-			...linearSession.metadata, // Preserve existing metadata (e.g., phase)
+			...linearSession.metadata, // Preserve existing metadata
 			model: claudeSystemMessage.model,
 			tools: claudeSystemMessage.tools,
 			permissionMode: claudeSystemMessage.permissionMode,
@@ -240,122 +244,139 @@ export class AgentSessionManager {
 			usage: resultMessage.usage,
 		});
 
-		// Handle result based on current phase (all sessions use phases now)
+		// Handle result using procedure routing system
 		if ("result" in resultMessage && resultMessage.result) {
-			const currentPhase = session.metadata?.phase?.current;
+			await this.handleProcedureCompletion(
+				session,
+				linearAgentActivitySessionId,
+				resultMessage,
+			);
+		}
+	}
+
+	/**
+	 * Handle completion using procedure routing system
+	 */
+	private async handleProcedureCompletion(
+		session: CyrusAgentSession,
+		linearAgentActivitySessionId: string,
+		resultMessage: SDKResultMessage,
+	): Promise<void> {
+		if (!this.procedureRouter) {
+			throw new Error("ProcedureRouter not available");
+		}
+
+		// Check if error occurred
+		if (resultMessage.subtype !== "success") {
+			console.log(
+				`[AgentSessionManager] Subroutine completed with error, not triggering next subroutine`,
+			);
+			return;
+		}
+
+		const claudeSessionId = session.claudeSessionId;
+		if (!claudeSessionId) {
+			console.error(
+				`[AgentSessionManager] No Claude session ID found for procedure session`,
+			);
+			return;
+		}
+
+		// Check if there's a next subroutine
+		const nextSubroutine = this.procedureRouter.getNextSubroutine(session);
+
+		if (nextSubroutine) {
+			// More subroutines to run - advance and trigger next
+			console.log(
+				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
+			);
+
+			// Advance procedure state
+			this.procedureRouter.advanceToNextSubroutine(session, claudeSessionId);
+
+			// Trigger next subroutine using resumeNextPhase with "closure" as placeholder
+			// (EdgeWorker will handle procedure routing properly)
+			if (this.resumeNextPhase) {
+				try {
+					await this.resumeNextPhase(
+						linearAgentActivitySessionId,
+						"closure", // Placeholder - EdgeWorker uses procedure metadata
+						claudeSessionId,
+					);
+				} catch (error) {
+					console.error(
+						`[AgentSessionManager] Failed to trigger next subroutine:`,
+						error,
+					);
+				}
+			}
+		} else {
+			// Procedure complete - post final result
+			console.log(
+				`[AgentSessionManager] All subroutines completed, posting final result to Linear`,
+			);
+			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+
+			// Handle child session completion
 			const isChildSession = this.getParentSessionId?.(
 				linearAgentActivitySessionId,
 			);
-
-			if (!currentPhase) {
-				// Non-phased session (shouldn't happen, but handle gracefully)
-				console.log(
-					`[AgentSessionManager] Non-phased session completed, posting result to Linear`,
+			if (isChildSession && this.resumeParentSession) {
+				await this.handleChildSessionCompletion(
+					linearAgentActivitySessionId,
+					resultMessage,
 				);
-				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
-				return;
 			}
+		}
+	}
 
-			if (resultMessage.subtype !== "success") {
-				// Error occurred - don't trigger next phase
-				console.log(
-					`[AgentSessionManager] Phase ${currentPhase} completed with error, not triggering next phase`,
-				);
-				return;
-			}
+	/**
+	 * Handle child session completion and resume parent
+	 */
+	private async handleChildSessionCompletion(
+		linearAgentActivitySessionId: string,
+		resultMessage: SDKResultMessage,
+	): Promise<void> {
+		if (!this.getParentSessionId || !this.resumeParentSession) {
+			return;
+		}
 
-			const claudeSessionId = session.claudeSessionId;
-			if (!claudeSessionId) {
-				console.error(
-					`[AgentSessionManager] No Claude session ID found for phase ${currentPhase}`,
-				);
-				return;
-			}
+		const parentAgentSessionId = this.getParentSessionId(
+			linearAgentActivitySessionId,
+		);
 
-			// Handle phase transitions (same for all sessions)
-			if (currentPhase === "primary") {
-				// Primary phase done - trigger closure (no Linear post)
-				console.log(
-					`[AgentSessionManager] Primary phase completed, triggering closure phase`,
-				);
-				if (this.resumeNextPhase) {
-					try {
-						await this.resumeNextPhase(
-							linearAgentActivitySessionId,
-							"closure",
-							claudeSessionId,
-						);
-					} catch (error) {
-						console.error(
-							`[AgentSessionManager] Failed to trigger closure phase:`,
-							error,
-						);
-					}
-				}
-			} else if (currentPhase === "closure") {
-				// Closure phase done - trigger summary (no Linear post)
-				console.log(
-					`[AgentSessionManager] Closure phase completed, triggering summary phase`,
-				);
-				if (this.resumeNextPhase) {
-					try {
-						await this.resumeNextPhase(
-							linearAgentActivitySessionId,
-							"summary",
-							claudeSessionId,
-						);
-					} catch (error) {
-						console.error(
-							`[AgentSessionManager] Failed to trigger summary phase:`,
-							error,
-						);
-					}
-				}
-			} else if (currentPhase === "summary") {
-				// Summary phase done - post final result to Linear
-				console.log(
-					`[AgentSessionManager] Summary phase completed, posting final result to Linear`,
-				);
-				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+		if (!parentAgentSessionId) {
+			console.error(
+				`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
+			);
+			return;
+		}
 
-				// If this is a child session, resume parent after posting summary
-				if (isChildSession && this.resumeParentSession) {
-					const parentAgentSessionId = this.getParentSessionId!(
-						linearAgentActivitySessionId,
-					);
+		console.log(
+			`[AgentSessionManager] Child session ${linearAgentActivitySessionId} completed, resuming parent ${parentAgentSessionId}`,
+		);
 
-					if (!parentAgentSessionId) {
-						console.error(
-							`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
-						);
-						return;
-					}
+		try {
+			const childResult =
+				"result" in resultMessage
+					? resultMessage.result
+					: "No result available";
+			const promptToParent = `Child agent session ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
 
-					console.log(
-						`[AgentSessionManager] Child session ${linearAgentActivitySessionId} completed, resuming parent ${parentAgentSessionId}`,
-					);
+			await this.resumeParentSession(
+				parentAgentSessionId,
+				promptToParent,
+				linearAgentActivitySessionId,
+			);
 
-					try {
-						const childResult = resultMessage.result;
-						const promptToParent = `Child agent session ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
-
-						await this.resumeParentSession(
-							parentAgentSessionId,
-							promptToParent,
-							linearAgentActivitySessionId,
-						);
-
-						console.log(
-							`[AgentSessionManager] Successfully resumed parent session ${parentAgentSessionId}`,
-						);
-					} catch (error) {
-						console.error(
-							`[AgentSessionManager] Failed to resume parent session:`,
-							error,
-						);
-					}
-				}
-			}
+			console.log(
+				`[AgentSessionManager] Successfully resumed parent session ${parentAgentSessionId}`,
+			);
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Failed to resume parent session:`,
+				error,
+			);
 		}
 	}
 
@@ -375,19 +396,13 @@ export class AgentSessionManager {
 							message,
 						);
 
-						// Post model notification thought only during primary phase
+						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
 						if (systemMessage.model) {
-							const session = this.sessions.get(linearAgentActivitySessionId);
-							const currentPhase = session?.metadata?.phase?.current;
-
-							// Only post model notification during primary phase
-							if (currentPhase === "primary" || !currentPhase) {
-								await this.postModelNotificationThought(
-									linearAgentActivitySessionId,
-									systemMessage.model,
-								);
-							}
+							await this.postModelNotificationThought(
+								linearAgentActivitySessionId,
+								systemMessage.model,
+							);
 						}
 					}
 					break;
@@ -675,13 +690,6 @@ export class AgentSessionManager {
 					break;
 				}
 				case "assistant": {
-					// Skip assistant messages during summary phase to avoid double-posting
-					// (the result will be posted as a response)
-					const currentPhase = session.metadata?.phase?.current;
-					if (currentPhase === "summary") {
-						return; // Don't post assistant messages in summary phase
-					}
-
 					// Assistant messages can be thoughts or responses
 					if (entry.metadata?.toolUseId) {
 						const toolName = entry.metadata.toolName || "Tool";
