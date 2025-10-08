@@ -40,14 +40,6 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
-		phase?: {
-			current: "primary" | "closure" | "summary";
-			history?: Array<{
-				phase: string;
-				completedAt: number;
-				claudeSessionId?: string;
-			}>;
-		};
 		procedure?: {
 			procedureName: string;
 			currentSubroutineIndex: number;
