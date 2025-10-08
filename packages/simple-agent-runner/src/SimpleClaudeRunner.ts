@@ -1,10 +1,6 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { ClaudeRunner } from "cyrus-claude-runner";
-import {
-	MaxTurnsExceededError,
-	NoResponseError,
-	SessionError,
-} from "./errors.js";
+import { NoResponseError, SessionError } from "./errors.js";
 import { SimpleAgentRunner } from "./SimpleAgentRunner.js";
 import type { SimpleAgentQueryOptions } from "./types.js";
 
@@ -71,16 +67,6 @@ export class SimpleClaudeRunner<T extends string> extends SimpleAgentRunner<T> {
 
 			if (sessionError) {
 				throw new SessionError(sessionError, messages);
-			}
-
-			// Check if we hit max turns
-			if (this.config.maxTurns) {
-				const assistantMessages = messages.filter(
-					(m) => m.type === "assistant",
-				);
-				if (assistantMessages.length >= this.config.maxTurns) {
-					throw new MaxTurnsExceededError(this.config.maxTurns, messages);
-				}
 			}
 
 			return messages;
