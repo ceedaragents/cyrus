@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
   - **Summary phase**: Generates a concise final summary (limited to 1 turn for efficiency)
 - **Sora 2 video generation support**: Added custom MCP tools for OpenAI Sora 2 video generation with three tools: `mcp__sora-tools__sora_generate_video` to start video generation (supports text-to-video and image-to-video via `input_reference` parameter; reference images must match target video resolution and be in JPEG, PNG, or WebP format only), `mcp__sora-tools__sora_check_status` to poll job status, and `mcp__sora-tools__sora_get_video` to download completed videos. Configure via `soraApiKey` and `soraOutputDirectory` in repository config.
 - **Simple agent runner package**: Added new `cyrus-simple-agent-runner` package for constrained agent queries that return one of a predefined set of responses (e.g., "yes", "no"). Features type-safe enumerated responses, comprehensive error handling, and progress tracking.
+- **Procedure routing system**: Infrastructure for intelligent workflow selection based on request type (questions, documentation edits, transient operations, or code changes). Uses `SimpleClaudeRunner` to classify requests and route them through appropriate sequences of subroutines. Includes modular subroutine prompts split from monolithic closure phase (verifications, git-gh, concise-summary, verbose-summary).
 
 ### Changed
 - **Cleaner Linear activity stream**:
