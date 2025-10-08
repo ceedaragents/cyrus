@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.5 to v0.1.8 for latest Claude Agent SDK improvements
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.9 to v0.1.10 - includes parity updates with Claude Code v2.0.10 and adds zod ^3.24.1 as peer dependency. See [@anthropic-ai/claude-agent-sdk v0.1.10 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0110---2025-01-08)
 
 ### Removed
 - **Legacy three-phase system**: Removed hardcoded three-phase execution (primary → closure → summary) in favor of intelligent procedure routing. This enables more appropriate workflows based on actual task requirements rather than forcing all tasks through the same three phases.
