@@ -24,6 +24,7 @@
 	"dependencies": {
 		"@linear/sdk": "^60.0.0",
 		"@ngrok/ngrok": "^1.5.1",
+		"chokidar": "^4.0.3",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-webhook-client": "workspace:*",

@@ -7,6 +7,7 @@ import {
 	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
+import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
 	ClaudeRunnerConfig,
 	HookCallbackMatcher,
@@ -93,6 +94,9 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
+	private configWatcher?: FSWatcher; // File watcher for config.json
+	private configPath?: string; // Path to config.json file
+	private tokenToRepoIds: Map<string, string[]> = new Map(); // Maps Linear token to repository IDs using that token
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -241,6 +245,13 @@ export class EdgeWorker extends EventEmitter {
 			const repos = tokenToRepos.get(repo.linearToken) || [];
 			repos.push(repo);
 			tokenToRepos.set(repo.linearToken, repos);
+
+			// Track token-to-repo-id mapping for dynamic config updates
+			const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
+			if (!repoIds.includes(repo.id)) {
+				repoIds.push(repo.id);
+			}
+			this.tokenToRepoIds.set(repo.linearToken, repoIds);
 		}
 
 		// Create one NDJSON client per unique token using shared application server
@@ -312,6 +323,11 @@ export class EdgeWorker extends EventEmitter {
 	async start(): Promise<void> {
 		// Load persisted state for each repository
 		await this.loadPersistedState();
+
+		// Start config file watcher if configPath is provided
+		if (this.configPath) {
+			this.startConfigWatcher();
+		}
 
 		// Start shared application server first
 		await this.sharedApplicationServer.start();
@@ -389,6 +405,13 @@ export class EdgeWorker extends EventEmitter {
 	 * Stop the edge worker
 	 */
 	async stop(): Promise<void> {
+		// Stop config file watcher
+		if (this.configWatcher) {
+			await this.configWatcher.close();
+			this.configWatcher = undefined;
+			console.log("✅ Config file watcher stopped");
+		}
+
 		try {
 			await this.savePersistedState();
 			console.log("✅ EdgeWorker state saved successfully");
@@ -423,6 +446,498 @@ export class EdgeWorker extends EventEmitter {
 
 		// Stop shared application server
 		await this.sharedApplicationServer.stop();
+	}
+
+	/**
+	 * Set the config file path for dynamic reloading
+	 */
+	setConfigPath(configPath: string): void {
+		this.configPath = configPath;
+	}
+
+	/**
+	 * Start watching config file for changes
+	 */
+	private startConfigWatcher(): void {
+		if (!this.configPath) {
+			console.warn("⚠️  No config path set, skipping config file watcher");
+			return;
+		}
+
+		console.log(`👀 Watching config file for changes: ${this.configPath}`);
+
+		this.configWatcher = chokidarWatch(this.configPath, {
+			persistent: true,
+			ignoreInitial: true,
+			awaitWriteFinish: {
+				stabilityThreshold: 500,
+				pollInterval: 100,
+			},
+		});
+
+		this.configWatcher.on("change", async () => {
+			console.log("🔄 Config file changed, reloading...");
+			await this.handleConfigChange();
+		});
+
+		this.configWatcher.on("error", (error) => {
+			console.error("❌ Config watcher error:", error);
+		});
+	}
+
+	/**
+	 * Handle configuration file changes
+	 */
+	private async handleConfigChange(): Promise<void> {
+		try {
+			const newConfig = await this.loadConfigSafely();
+			if (!newConfig) {
+				return;
+			}
+
+			const changes = this.detectRepositoryChanges(newConfig);
+
+			if (
+				changes.added.length === 0 &&
+				changes.modified.length === 0 &&
+				changes.removed.length === 0
+			) {
+				console.log("ℹ️  No repository changes detected");
+				return;
+			}
+
+			console.log(
+				`📊 Repository changes detected: ${changes.added.length} added, ${changes.modified.length} modified, ${changes.removed.length} removed`,
+			);
+
+			// Apply changes incrementally
+			await this.removeDeletedRepositories(changes.removed);
+			await this.updateModifiedRepositories(changes.modified);
+			await this.addNewRepositories(changes.added);
+
+			// Update config reference
+			this.config = newConfig;
+
+			console.log("✅ Configuration reloaded successfully");
+		} catch (error) {
+			console.error("❌ Failed to reload configuration:", error);
+		}
+	}
+
+	/**
+	 * Safely load configuration from file with validation
+	 */
+	private async loadConfigSafely(): Promise<EdgeWorkerConfig | null> {
+		try {
+			if (!this.configPath) {
+				console.error("❌ No config path set");
+				return null;
+			}
+
+			const configContent = await readFile(this.configPath, "utf-8");
+			const parsedConfig = JSON.parse(configContent);
+
+			// Merge with current EdgeWorker config structure
+			const newConfig: EdgeWorkerConfig = {
+				...this.config,
+				repositories: parsedConfig.repositories || [],
+				ngrokAuthToken:
+					parsedConfig.ngrokAuthToken || this.config.ngrokAuthToken,
+				defaultModel: parsedConfig.defaultModel || this.config.defaultModel,
+				defaultFallbackModel:
+					parsedConfig.defaultFallbackModel || this.config.defaultFallbackModel,
+				defaultAllowedTools:
+					parsedConfig.defaultAllowedTools || this.config.defaultAllowedTools,
+				defaultDisallowedTools:
+					parsedConfig.defaultDisallowedTools ||
+					this.config.defaultDisallowedTools,
+			};
+
+			// Basic validation
+			if (!Array.isArray(newConfig.repositories)) {
+				console.error("❌ Invalid config: repositories must be an array");
+				return null;
+			}
+
+			// Validate each repository has required fields
+			for (const repo of newConfig.repositories) {
+				if (
+					!repo.id ||
+					!repo.name ||
+					!repo.repositoryPath ||
+					!repo.baseBranch
+				) {
+					console.error(
+						`❌ Invalid repository config: missing required fields (id, name, repositoryPath, baseBranch)`,
+						repo,
+					);
+					return null;
+				}
+			}
+
+			return newConfig;
+		} catch (error) {
+			console.error("❌ Failed to load config file:", error);
+			return null;
+		}
+	}
+
+	/**
+	 * Detect changes between current and new repository configurations
+	 */
+	private detectRepositoryChanges(newConfig: EdgeWorkerConfig): {
+		added: RepositoryConfig[];
+		modified: RepositoryConfig[];
+		removed: RepositoryConfig[];
+	} {
+		const currentRepos = new Map(this.repositories);
+		const newRepos = new Map(newConfig.repositories.map((r) => [r.id, r]));
+
+		const added: RepositoryConfig[] = [];
+		const modified: RepositoryConfig[] = [];
+		const removed: RepositoryConfig[] = [];
+
+		// Find added and modified repositories
+		for (const [id, repo] of newRepos) {
+			if (!currentRepos.has(id)) {
+				added.push(repo);
+			} else {
+				const currentRepo = currentRepos.get(id);
+				if (currentRepo && !this.deepEqual(currentRepo, repo)) {
+					modified.push(repo);
+				}
+			}
+		}
+
+		// Find removed repositories
+		for (const [id, repo] of currentRepos) {
+			if (!newRepos.has(id)) {
+				removed.push(repo);
+			}
+		}
+
+		return { added, modified, removed };
+	}
+
+	/**
+	 * Deep equality check for repository configs
+	 */
+	private deepEqual(obj1: any, obj2: any): boolean {
+		return JSON.stringify(obj1) === JSON.stringify(obj2);
+	}
+
+	/**
+	 * Add new repositories to the running EdgeWorker
+	 */
+	private async addNewRepositories(repos: RepositoryConfig[]): Promise<void> {
+		for (const repo of repos) {
+			if (repo.isActive === false) {
+				console.log(`⏭️  Skipping inactive repository: ${repo.name}`);
+				continue;
+			}
+
+			try {
+				console.log(`➕ Adding repository: ${repo.name} (${repo.id})`);
+
+				// Add to internal map
+				this.repositories.set(repo.id, repo);
+
+				// Create Linear client
+				const linearClient = new LinearClient({
+					accessToken: repo.linearToken,
+				});
+				this.linearClients.set(repo.id, linearClient);
+
+				// Create AgentSessionManager with same pattern as constructor
+				const agentSessionManager = new AgentSessionManager(
+					linearClient,
+					(childSessionId: string) => {
+						return this.childToParentAgentSession.get(childSessionId);
+					},
+					async (
+						parentSessionId: string,
+						prompt: string,
+						childSessionId: string,
+					) => {
+						const parentSession =
+							agentSessionManager.getSession(parentSessionId);
+						if (!parentSession) {
+							console.error(
+								`[Parent Session Resume] Parent session ${parentSessionId} not found`,
+							);
+							return;
+						}
+
+						const childSession = agentSessionManager.getSession(childSessionId);
+						const childWorkspaceDirs: string[] = [];
+						if (childSession) {
+							childWorkspaceDirs.push(childSession.workspace.path);
+						}
+
+						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+
+						try {
+							await this.resumeClaudeSession(
+								parentSession,
+								repo,
+								parentSessionId,
+								agentSessionManager,
+								prompt,
+								"",
+								false,
+								childWorkspaceDirs,
+							);
+						} catch (error) {
+							console.error(
+								`[Parent Session Resume] Failed to resume parent session ${parentSessionId}:`,
+								error,
+							);
+						}
+					},
+				);
+				this.agentSessionManagers.set(repo.id, agentSessionManager);
+
+				// Update token-to-repo mapping
+				const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
+				if (!repoIds.includes(repo.id)) {
+					repoIds.push(repo.id);
+				}
+				this.tokenToRepoIds.set(repo.linearToken, repoIds);
+
+				// Set up webhook listener
+				await this.setupWebhookListener(repo);
+
+				console.log(`✅ Repository added successfully: ${repo.name}`);
+			} catch (error) {
+				console.error(`❌ Failed to add repository ${repo.name}:`, error);
+			}
+		}
+	}
+
+	/**
+	 * Update existing repositories
+	 */
+	private async updateModifiedRepositories(
+		repos: RepositoryConfig[],
+	): Promise<void> {
+		for (const repo of repos) {
+			try {
+				const oldRepo = this.repositories.get(repo.id);
+				if (!oldRepo) {
+					console.warn(
+						`⚠️  Repository ${repo.id} not found for update, skipping`,
+					);
+					continue;
+				}
+
+				console.log(`🔄 Updating repository: ${repo.name} (${repo.id})`);
+
+				// Update stored config
+				this.repositories.set(repo.id, repo);
+
+				// If token changed, recreate Linear client
+				if (oldRepo.linearToken !== repo.linearToken) {
+					console.log(`  🔑 Token changed, recreating Linear client`);
+					const linearClient = new LinearClient({
+						accessToken: repo.linearToken,
+					});
+					this.linearClients.set(repo.id, linearClient);
+
+					// Update token mapping
+					const oldRepoIds = this.tokenToRepoIds.get(oldRepo.linearToken) || [];
+					const filteredOldIds = oldRepoIds.filter((id) => id !== repo.id);
+					if (filteredOldIds.length > 0) {
+						this.tokenToRepoIds.set(oldRepo.linearToken, filteredOldIds);
+					} else {
+						this.tokenToRepoIds.delete(oldRepo.linearToken);
+					}
+
+					const newRepoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
+					if (!newRepoIds.includes(repo.id)) {
+						newRepoIds.push(repo.id);
+					}
+					this.tokenToRepoIds.set(repo.linearToken, newRepoIds);
+
+					// Reconnect webhook if needed
+					await this.reconnectWebhook(oldRepo, repo);
+				}
+
+				// If active status changed
+				if (oldRepo.isActive !== repo.isActive) {
+					if (repo.isActive === false) {
+						console.log(
+							`  ⏸️  Repository set to inactive - existing sessions will continue`,
+						);
+					} else {
+						console.log(`  ▶️  Repository reactivated`);
+						await this.setupWebhookListener(repo);
+					}
+				}
+
+				console.log(`✅ Repository updated successfully: ${repo.name}`);
+			} catch (error) {
+				console.error(`❌ Failed to update repository ${repo.name}:`, error);
+			}
+		}
+	}
+
+	/**
+	 * Remove deleted repositories
+	 */
+	private async removeDeletedRepositories(
+		repos: RepositoryConfig[],
+	): Promise<void> {
+		for (const repo of repos) {
+			try {
+				console.log(`🗑️  Removing repository: ${repo.name} (${repo.id})`);
+
+				// Check for active sessions
+				const manager = this.agentSessionManagers.get(repo.id);
+				const activeSessions = manager?.getActiveSessions() || [];
+
+				if (activeSessions.length > 0) {
+					console.warn(
+						`  ⚠️  Repository has ${activeSessions.length} active sessions - marking as inactive instead`,
+					);
+					// Mark as inactive but keep running
+					const updatedRepo = { ...repo, isActive: false };
+					this.repositories.set(repo.id, updatedRepo);
+					continue;
+				}
+
+				// Safe to remove
+				this.repositories.delete(repo.id);
+				this.linearClients.delete(repo.id);
+				this.agentSessionManagers.delete(repo.id);
+
+				// Update token mapping
+				const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
+				const filteredIds = repoIds.filter((id) => id !== repo.id);
+				if (filteredIds.length > 0) {
+					this.tokenToRepoIds.set(repo.linearToken, filteredIds);
+				} else {
+					this.tokenToRepoIds.delete(repo.linearToken);
+				}
+
+				// Clean up webhook listener if no other repos use the same token
+				await this.cleanupWebhookIfUnused(repo);
+
+				console.log(`✅ Repository removed successfully: ${repo.name}`);
+			} catch (error) {
+				console.error(`❌ Failed to remove repository ${repo.name}:`, error);
+			}
+		}
+	}
+
+	/**
+	 * Set up webhook listener for a repository
+	 */
+	private async setupWebhookListener(repo: RepositoryConfig): Promise<void> {
+		// Check if we already have a client for this token
+		const existingRepoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
+		const existingClient =
+			existingRepoIds.length > 0
+				? this.ndjsonClients.get(existingRepoIds[0] || "")
+				: null;
+
+		if (existingClient) {
+			console.log(
+				`  ℹ️  Reusing existing webhook connection for token ...${repo.linearToken.slice(-4)}`,
+			);
+			return;
+		}
+
+		// Create new NDJSON client for this token
+		const serverPort =
+			this.config.serverPort || this.config.webhookPort || 3456;
+		const serverHost = this.config.serverHost || "localhost";
+		const useLinearDirectWebhooks =
+			process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
+
+		const clientConfig = {
+			proxyUrl: this.config.proxyUrl,
+			token: repo.linearToken,
+			name: repo.name,
+			transport: "webhook" as const,
+			useExternalWebhookServer: true,
+			externalWebhookServer: this.sharedApplicationServer,
+			webhookPort: serverPort,
+			webhookPath: "/webhook",
+			webhookHost: serverHost,
+			...(this.config.baseUrl && { webhookBaseUrl: this.config.baseUrl }),
+			...(!this.config.baseUrl &&
+				this.config.webhookBaseUrl && {
+					webhookBaseUrl: this.config.webhookBaseUrl,
+				}),
+			onConnect: () => this.handleConnect(repo.id, [repo]),
+			onDisconnect: (reason?: string) =>
+				this.handleDisconnect(repo.id, [repo], reason),
+			onError: (error: Error) => this.handleError(error),
+		};
+
+		const ndjsonClient = useLinearDirectWebhooks
+			? new LinearWebhookClient({
+					...clientConfig,
+					onWebhook: (payload: any) =>
+						this.handleWebhook(payload as unknown as LinearWebhook, [repo]),
+				})
+			: new NdjsonClient(clientConfig);
+
+		if (!useLinearDirectWebhooks) {
+			(ndjsonClient as NdjsonClient).on("webhook", (data) =>
+				this.handleWebhook(data as LinearWebhook, [repo]),
+			);
+		}
+
+		this.ndjsonClients.set(repo.id, ndjsonClient);
+
+		// Connect the client
+		try {
+			await ndjsonClient.connect();
+			console.log(`  ✅ Webhook listener connected for ${repo.name}`);
+		} catch (error) {
+			console.error(`  ❌ Failed to connect webhook listener:`, error);
+		}
+	}
+
+	/**
+	 * Reconnect webhook when token changes
+	 */
+	private async reconnectWebhook(
+		oldRepo: RepositoryConfig,
+		newRepo: RepositoryConfig,
+	): Promise<void> {
+		console.log(`  🔌 Reconnecting webhook due to token change`);
+
+		// Disconnect old client if no other repos use it
+		await this.cleanupWebhookIfUnused(oldRepo);
+
+		// Set up new connection
+		await this.setupWebhookListener(newRepo);
+	}
+
+	/**
+	 * Clean up webhook listener if no other repositories use the token
+	 */
+	private async cleanupWebhookIfUnused(repo: RepositoryConfig): Promise<void> {
+		const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
+		const otherRepos = repoIds.filter((id) => id !== repo.id);
+
+		if (otherRepos.length === 0) {
+			// No other repos use this token, safe to disconnect
+			const client = this.ndjsonClients.get(repo.id);
+			if (client) {
+				console.log(
+					`  🔌 Disconnecting webhook for token ...${repo.linearToken.slice(-4)}`,
+				);
+				client.disconnect();
+				this.ndjsonClients.delete(repo.id);
+			}
+		} else {
+			console.log(
+				`  ℹ️  Token still used by ${otherRepos.length} other repository(ies), keeping connection`,
+			);
+		}
 	}
 
 	/**
