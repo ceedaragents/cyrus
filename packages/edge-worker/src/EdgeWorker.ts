@@ -169,6 +169,63 @@ export class EdgeWorker extends EventEmitter {
 	private finalizedNonClaudeSessions: Set<string> = new Set();
 	private stopRequestedSessions: Set<string> = new Set();
 	private codexActivityQueue: Map<string, Promise<void>> = new Map();
+	private codexQueueDrainTimeoutMs = 2000;
+
+	private async drainCodexActivityQueue(
+		linearAgentActivitySessionId: string,
+	): Promise<void> {
+		const pending = this.codexActivityQueue.get(linearAgentActivitySessionId);
+		if (!pending) {
+			return;
+		}
+
+		let timeoutId: NodeJS.Timeout | undefined;
+		let settled = false;
+		let timedOut = false;
+
+		const observedPending = pending
+			.then(() => {
+				settled = true;
+			})
+			.catch((error) => {
+				settled = true;
+				this.debugLog("[drainCodexActivityQueue] Pending task failed", {
+					sessionId: linearAgentActivitySessionId,
+					error,
+				});
+			});
+
+		const timeoutPromise = new Promise<void>((resolve) => {
+			timeoutId = setTimeout(resolve, this.codexQueueDrainTimeoutMs);
+			if (typeof timeoutId?.unref === "function") {
+				timeoutId.unref();
+			}
+		}).then(() => {
+			if (!settled) {
+				timedOut = true;
+			}
+		});
+
+		await Promise.race([observedPending, timeoutPromise]);
+
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+
+		if (timedOut) {
+			this.debugLog(
+				"[drainCodexActivityQueue] Timeout waiting for codex queue to settle",
+				{
+					sessionId: linearAgentActivitySessionId,
+					timeoutMs: this.codexQueueDrainTimeoutMs,
+				},
+			);
+		}
+
+		if (this.codexActivityQueue.get(linearAgentActivitySessionId) === pending) {
+			this.codexActivityQueue.delete(linearAgentActivitySessionId);
+		}
+	}
 
 	private async safeStopRunner(
 		linearAgentActivitySessionId: string,
@@ -185,6 +242,7 @@ export class EdgeWorker extends EventEmitter {
 				error,
 			});
 		}
+		await this.drainCodexActivityQueue(linearAgentActivitySessionId);
 		this.nonClaudeRunners.delete(linearAgentActivitySessionId);
 	}
 
