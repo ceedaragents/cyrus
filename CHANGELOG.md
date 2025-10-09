@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
   utility to surface and safely terminate lingering CLI/ngrok processes.
 
 ### Changed
+- Acknowledgements now render as response cards in Linear (Proxy Worker cards) instead of inline thoughts, improving visibility and separating acknowledgements from reasoning output.
 - Updated @anthropic-ai/claude-code from v1.0.95 to v1.0.112 for latest Claude Code improvements. See [Claude Code v1.0.112 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#10112)
 - Updated @anthropic-ai/sdk from v0.60.0 to v0.62.0 for latest Anthropic SDK improvements
 - Claude/OpenCode adapters and EdgeWorker now emit and persist normalized

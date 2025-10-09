@@ -3871,34 +3871,26 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		linearAgentActivitySessionId: string,
 		repositoryId: string,
 	): Promise<void> {
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			console.warn(
+				`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+			);
+			return;
+		}
+
+		const acknowledgment =
+			"I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.";
+
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
-				console.warn(
-					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
-				);
-				return;
-			}
-
-			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
-				content: {
-					type: "thought",
-					body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
-				},
-			};
-
-			const result = await linearClient.createAgentActivity(activityInput);
-			if (result.success) {
-				console.log(
-					`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
-				);
-			} else {
-				console.error(
-					`[EdgeWorker] Failed to post instant acknowledgment:`,
-					result,
-				);
-			}
+			await this.postResponse(
+				linearAgentActivitySessionId,
+				repositoryId,
+				acknowledgment,
+			);
+			console.log(
+				`[EdgeWorker] Posted instant acknowledgment response for session ${linearAgentActivitySessionId}`,
+			);
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting instant acknowledgment:`,
@@ -4774,38 +4766,27 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repositoryId: string,
 		isStreaming: boolean,
 	): Promise<void> {
-		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
-				console.warn(
-					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
-				);
-				return;
-			}
+		const linearClient = this.linearClients.get(repositoryId);
+		if (!linearClient) {
+			console.warn(
+				`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+			);
+			return;
+		}
 
+		try {
 			const message = isStreaming
 				? "I've queued up your message as guidance"
 				: "Getting started on that...";
 
-			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
-				content: {
-					type: "thought",
-					body: message,
-				},
-			};
-
-			const result = await linearClient.createAgentActivity(activityInput);
-			if (result.success) {
-				console.log(
-					`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`,
-				);
-			} else {
-				console.error(
-					`[EdgeWorker] Failed to post instant prompted acknowledgment:`,
-					result,
-				);
-			}
+			await this.postResponse(
+				linearAgentActivitySessionId,
+				repositoryId,
+				message,
+			);
+			console.log(
+				`[EdgeWorker] Posted instant prompted acknowledgment response for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`,
+			);
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting instant prompted acknowledgment:`,

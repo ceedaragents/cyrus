@@ -1,8 +1,6 @@
 import type { RunnerEvent } from "cyrus-agent-runner";
 import type { SpyInstance } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EdgeWorker } from "../src/EdgeWorker.js";
-import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
 const hoisted = vi.hoisted(() => ({
 	linearActivities: [] as Array<{
@@ -17,6 +15,24 @@ const hoisted = vi.hoisted(() => ({
 		createAgentActivity: SpyInstance;
 	}>,
 }));
+
+vi.mock("@linear/sdk", () => {
+	const LinearClient = vi.fn().mockImplementation(() => {
+		const instance = {
+			createAgentActivity: vi.fn(async (input: any) => {
+				hoisted.linearActivities.push(input);
+				return { success: true };
+			}),
+		};
+		hoisted.linearClients.push(instance);
+		return instance;
+	});
+
+	return { LinearClient };
+});
+
+import { EdgeWorker } from "../src/EdgeWorker.js";
+import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
 vi.mock("node:fs/promises", () => ({
 	readFile: vi.fn(),
@@ -34,21 +50,6 @@ vi.mock("cyrus-ndjson-client", () => ({
 		isConnected: vi.fn().mockReturnValue(true),
 	})),
 }));
-
-vi.mock("@linear/sdk", () => {
-	const LinearClient = vi.fn().mockImplementation(() => {
-		const instance = {
-			createAgentActivity: vi.fn(async (input: any) => {
-				hoisted.linearActivities.push(input);
-				return { success: true };
-			}),
-		};
-		hoisted.linearClients.push(instance);
-		return instance;
-	});
-
-	return { LinearClient };
-});
 
 vi.mock("../src/SharedApplicationServer.js", () => ({
 	SharedApplicationServer: vi.fn().mockImplementation(() => ({
@@ -384,5 +385,126 @@ describe("EdgeWorker Codex integration", () => {
 		expect((edgeWorker as any).finalizedNonClaudeSessions.has(sessionId)).toBe(
 			true,
 		);
+	});
+
+	it("posts instant acknowledgement as a response card when starting a session", async () => {
+		const createSessionSpy = vi
+			.spyOn(edgeWorker as any, "createLinearAgentSession")
+			.mockResolvedValue({
+				session: { workspace: { path: workspacePath } },
+				fullIssue: { id: "issue-123", identifier: issueIdentifier },
+				workspace: { path: workspacePath },
+				attachmentResult: { manifest: "{}", attachmentsDir: null },
+				attachmentsDir: "/tmp/cyrus-home/attachments",
+				allowedDirectories: [],
+				allowedTools: [],
+				disallowedTools: [],
+			});
+		vi.spyOn(edgeWorker as any, "fetchIssueLabels").mockResolvedValue([]);
+		vi.spyOn(
+			edgeWorker as any,
+			"determineSystemPromptFromLabels",
+		).mockResolvedValue(undefined);
+		vi.spyOn(edgeWorker as any, "buildPromptV2").mockResolvedValue({
+			prompt: "Prompt body",
+			version: undefined,
+		});
+		vi.spyOn(edgeWorker as any, "resolveRunnerSelection").mockReturnValue({
+			type: "codex",
+		});
+		vi.spyOn(edgeWorker as any, "deriveCodexPermissions").mockReturnValue(
+			undefined,
+		);
+		vi.spyOn(edgeWorker as any, "startNonClaudeRunner").mockResolvedValue(
+			undefined,
+		);
+
+		const webhook = {
+			type: "Issue",
+			action: "agentSessionCreated",
+			organizationId: "workspace-1",
+			agentSession: {
+				id: sessionId,
+				comment: { body: "New request" },
+				issue: { id: "issue-123", identifier: issueIdentifier },
+			},
+		} as any;
+
+		const handleAgentSessionCreated = (
+			edgeWorker as any
+		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
+		expect((edgeWorker as any).linearClients.has(repository.id)).toBe(true);
+		const postResponseSpy = vi.spyOn(edgeWorker as any, "postResponse");
+		await handleAgentSessionCreated(webhook, repository);
+
+		expect(createSessionSpy).toHaveBeenCalled();
+		await vi.waitFor(() => {
+			expect(postResponseSpy).toHaveBeenCalledWith(
+				sessionId,
+				repository.id,
+				expect.stringContaining("I've received your request"),
+			);
+		});
+		// We rely on postResponse spy which posts content.type: "response"
+	});
+
+	it("posts prompted acknowledgement as a response card for follow-up activity", async () => {
+		const streamingRunner = {
+			isStreaming: vi.fn().mockReturnValue(true),
+			stop: vi.fn(),
+			addStreamMessage: vi.fn(),
+		};
+		const agentSessionManager = {
+			getSession: vi.fn().mockReturnValue({
+				workspace: { path: workspacePath },
+				claudeRunner: streamingRunner,
+			}),
+			createResponseActivity: vi.fn().mockResolvedValue(undefined),
+			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
+		};
+		(edgeWorker as any).agentSessionManagers.set(
+			repository.id,
+			agentSessionManager,
+		);
+		(edgeWorker as any).sessionRunnerSelections.set(sessionId, {
+			type: "claude",
+			issueId: "issue-123",
+		});
+
+		const webhook = {
+			type: "AgentSessionEvent",
+			action: "prompted",
+			agentSession: {
+				id: sessionId,
+				issue: {
+					id: "issue-123",
+					identifier: issueIdentifier,
+					title: "Fix navigation",
+				},
+				creator: { name: "Linear User" },
+			},
+			agentActivity: {
+				sourceCommentId: "comment-1",
+				content: { type: "prompt", body: "stop working please" },
+			},
+		} as any;
+
+		const handlePrompt = (edgeWorker as any).handleUserPostedAgentActivity.bind(
+			edgeWorker,
+		);
+		expect((edgeWorker as any).linearClients.has(repository.id)).toBe(true);
+		const postResponseSpy = vi.spyOn(edgeWorker as any, "postResponse");
+		await handlePrompt(webhook, repository);
+
+		expect(streamingRunner.stop).not.toHaveBeenCalled();
+		expect(agentSessionManager.createResponseActivity).not.toHaveBeenCalled();
+		await vi.waitFor(() => {
+			expect(postResponseSpy).toHaveBeenCalledWith(
+				sessionId,
+				repository.id,
+				"I've queued up your message as guidance",
+			);
+		});
+		// We rely on postResponse spy which posts content.type: "response"
 	});
 });
