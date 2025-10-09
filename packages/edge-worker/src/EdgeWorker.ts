@@ -222,7 +222,10 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		if (this.codexActivityQueue.get(linearAgentActivitySessionId) === pending) {
+		if (
+			settled &&
+			this.codexActivityQueue.get(linearAgentActivitySessionId) === pending
+		) {
 			this.codexActivityQueue.delete(linearAgentActivitySessionId);
 		}
 	}

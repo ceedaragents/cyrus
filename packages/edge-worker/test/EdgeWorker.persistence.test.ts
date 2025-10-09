@@ -82,12 +82,10 @@ vi.mock("cyrus-core", async (importOriginal) => {
 
 const createDeferred = <T = void>() => {
 	let resolve!: (value: T | PromiseLike<T>) => void;
-	let reject!: (reason?: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
+	const promise = new Promise<T>((res) => {
 		resolve = res;
-		reject = rej;
 	});
-	return { promise, resolve, reject };
+	return { promise, resolve };
 };
 
 describe("EdgeWorker persistence", () => {
@@ -268,7 +266,7 @@ describe("EdgeWorker persistence", () => {
 		expect(runner.stop).toHaveBeenCalledTimes(1);
 	});
 
-	it("clears hanging codex queue promises after timeout", async () => {
+	it("retains hanging codex queue promises after timeout to preserve ordering", async () => {
 		vi.useFakeTimers();
 		try {
 			const edgeWorker = new EdgeWorker(config);
@@ -297,7 +295,18 @@ describe("EdgeWorker persistence", () => {
 
 			expect(
 				(edgeWorker as any).codexActivityQueue.has("session-timeout"),
-			).toBe(false);
+			).toBe(true);
+
+			const chainedTask = vi.fn().mockResolvedValue(undefined);
+
+			void (edgeWorker as any).enqueueCodexLinearActivity(
+				"session-timeout",
+				chainedTask,
+			);
+
+			await Promise.resolve();
+
+			expect(chainedTask).not.toHaveBeenCalled();
 			expect(runner.stop).toHaveBeenCalledTimes(1);
 		} finally {
 			vi.useRealTimers();
