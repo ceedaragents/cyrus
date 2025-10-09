@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Dynamic configuration reloading**: Configuration changes are now applied automatically without restarting Cyrus
+  - The `~/.cyrus/config.json` file is monitored for changes in real-time
+  - New repositories connect immediately when added to the configuration
+  - Modified repositories update seamlessly while preserving active sessions
+  - Removed repositories clean up safely after their sessions complete
+  - Linear tokens can be updated on the fly without interrupting active work
+  - Configuration backups are automatically created (keeps 10 most recent versions)
+  - Rollback support automatically reverts failed configuration changes
+  - Health check status tracking shows reload success/failure
+  - New `cyrus reload-config` command for manual configuration validation
+
 ### Changed
 - **Default model changed from opus to sonnet 4.5**: The default Claude model is now `sonnet` instead of `opus`
   - Fallback model changed from `sonnet` to `haiku`
