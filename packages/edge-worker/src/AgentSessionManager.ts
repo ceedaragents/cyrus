@@ -1277,4 +1277,78 @@ export class AgentSessionManager {
 			);
 		}
 	}
+
+	/**
+	 * Post an ephemeral "Routing your request..." thought and return the activity ID
+	 */
+	async postRoutingThought(
+		linearAgentActivitySessionId: string,
+	): Promise<string | null> {
+		try {
+			const result = await this.linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: "Routing your request…",
+				},
+				ephemeral: true,
+			});
+
+			if (result.success && result.agentActivity) {
+				const activity = await result.agentActivity;
+				console.log(
+					`[AgentSessionManager] Posted routing thought for session ${linearAgentActivitySessionId}`,
+				);
+				return activity.id;
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to post routing thought:`,
+					result,
+				);
+				return null;
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error posting routing thought:`,
+				error,
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Post the procedure selection result as a non-ephemeral thought
+	 */
+	async postProcedureSelectionThought(
+		linearAgentActivitySessionId: string,
+		procedureName: string,
+		classification: string,
+	): Promise<void> {
+		try {
+			const result = await this.linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: `Selected procedure: **${procedureName}** (classified as: ${classification})`,
+				},
+				ephemeral: false,
+			});
+
+			if (result.success) {
+				console.log(
+					`[AgentSessionManager] Posted procedure selection for session ${linearAgentActivitySessionId}: ${procedureName}`,
+				);
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to post procedure selection:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error posting procedure selection:`,
+				error,
+			);
+		}
+	}
 }

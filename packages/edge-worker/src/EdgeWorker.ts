@@ -986,6 +986,9 @@ export class EdgeWorker extends EventEmitter {
 			session.metadata = {};
 		}
 
+		// Post ephemeral "Routing..." thought
+		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
+
 		// Determine which procedure to use based on issue title and description
 		const issueDescription =
 			`${issue.title}\n\n${fullIssue.description || ""}`.trim();
@@ -997,6 +1000,13 @@ export class EdgeWorker extends EventEmitter {
 		this.procedureRouter.initializeProcedureMetadata(
 			session,
 			selectedProcedure,
+		);
+
+		// Post procedure selection result (replaces ephemeral routing thought)
+		await agentSessionManager.postProcedureSelectionThought(
+			linearAgentActivitySessionId,
+			selectedProcedure.name,
+			routingDecision.classification,
 		);
 
 		// Log routing decision
@@ -1216,6 +1226,11 @@ export class EdgeWorker extends EventEmitter {
 				session.metadata = {};
 			}
 
+			// Post ephemeral "Routing..." thought
+			await agentSessionManager.postRoutingThought(
+				linearAgentActivitySessionId,
+			);
+
 			// For prompted events, use the actual prompt content from the user
 			// Combine with issue context for better routing
 			const promptBody = webhook.agentActivity.content.body;
@@ -1229,6 +1244,13 @@ export class EdgeWorker extends EventEmitter {
 			this.procedureRouter.initializeProcedureMetadata(
 				session,
 				selectedProcedure,
+			);
+
+			// Post procedure selection result (replaces ephemeral routing thought)
+			await agentSessionManager.postProcedureSelectionThought(
+				linearAgentActivitySessionId,
+				selectedProcedure.name,
+				routingDecision.classification,
 			);
 
 			// Log routing decision
