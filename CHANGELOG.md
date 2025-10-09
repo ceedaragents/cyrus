@@ -7,9 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Dynamic configuration updates**: Cyrus now automatically detects and applies changes to `~/.cyrus/config.json` without requiring a restart
   - Add or remove repositories on the fly while Cyrus continues running
-  - Active agent sessions are never interrupted during configuration changes
+  - Removed repositories stop all active sessions and post notification messages to Linear
   - Webhook connections automatically reconnect when tokens are updated
-  - Repositories with active sessions are gracefully marked inactive instead of being removed
   - File watcher uses debouncing to handle rapid configuration changes smoothly
 
 ### Changed

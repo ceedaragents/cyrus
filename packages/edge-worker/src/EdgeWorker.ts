@@ -797,15 +797,50 @@ export class EdgeWorker extends EventEmitter {
 
 				if (activeSessions.length > 0) {
 					console.warn(
-						`  ⚠️  Repository has ${activeSessions.length} active sessions - marking as inactive instead`,
+						`  ⚠️  Repository has ${activeSessions.length} active sessions - stopping them`,
 					);
-					// Mark as inactive but keep running
-					const updatedRepo = { ...repo, isActive: false };
-					this.repositories.set(repo.id, updatedRepo);
-					continue;
+
+					// Stop all active sessions and notify Linear
+					for (const session of activeSessions) {
+						try {
+							console.log(`  🛑 Stopping session for issue ${session.issueId}`);
+
+							// Get the Claude runner for this session
+							const runner = manager?.getClaudeRunner(
+								session.linearAgentActivitySessionId,
+							);
+							if (runner) {
+								// Stop the Claude process
+								runner.stop();
+								console.log(
+									`  ✅ Stopped Claude runner for session ${session.linearAgentActivitySessionId}`,
+								);
+							}
+
+							// Post cancellation message to Linear
+							const linearClient = this.linearClients.get(repo.id);
+							if (linearClient) {
+								await linearClient.createAgentActivity({
+									agentSessionId: session.linearAgentActivitySessionId,
+									content: {
+										type: "response",
+										body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
+									},
+								});
+								console.log(
+									`  📤 Posted cancellation message to Linear for issue ${session.issueId}`,
+								);
+							}
+						} catch (error) {
+							console.error(
+								`  ❌ Failed to stop session ${session.linearAgentActivitySessionId}:`,
+								error,
+							);
+						}
+					}
 				}
 
-				// Safe to remove
+				// Remove repository from all maps
 				this.repositories.delete(repo.id);
 				this.linearClients.delete(repo.id);
 				this.agentSessionManagers.delete(repo.id);
