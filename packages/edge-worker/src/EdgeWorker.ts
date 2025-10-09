@@ -483,7 +483,7 @@ export class EdgeWorker extends EventEmitter {
 		this.isStarted = false;
 
 		// Check for pending repository removals one last time
-		this.checkPendingRemovals();
+		await this.checkPendingRemovals();
 	}
 
 	/**
@@ -827,7 +827,7 @@ export class EdgeWorker extends EventEmitter {
 				);
 			} else {
 				// Safe to remove immediately
-				this.removeRepository(repo);
+				await this.removeRepository(repo);
 			}
 		}
 
@@ -848,10 +848,41 @@ export class EdgeWorker extends EventEmitter {
 	/**
 	 * Remove a repository and clean up all associated resources
 	 */
-	private removeRepository(repo: RepositoryConfig): void {
+	private async removeRepository(repo: RepositoryConfig): Promise<void> {
 		console.log(
 			`[ConfigReload] Removing repository: ${repo.name} (${repo.id})`,
 		);
+
+		// CRITICAL: Stop all ClaudeRunners BEFORE removing the AgentSessionManager
+		const agentSessionManager = this.agentSessionManagers.get(repo.id);
+		if (agentSessionManager) {
+			const allSessions = agentSessionManager.getAllSessions();
+			console.log(
+				`[ConfigReload] Stopping ${allSessions.length} session(s) for ${repo.name}`,
+			);
+
+			for (const session of allSessions) {
+				if (session.claudeRunner) {
+					try {
+						session.claudeRunner.stop();
+						console.log(
+							`[ConfigReload] Stopped ClaudeRunner for session ${session.linearAgentActivitySessionId}`,
+						);
+					} catch (error) {
+						console.error(
+							`[ConfigReload] Error stopping runner for session ${session.linearAgentActivitySessionId}:`,
+							error,
+						);
+					}
+				}
+
+				// Mark session as complete
+				await agentSessionManager.updateSessionStatus(
+					session.linearAgentActivitySessionId,
+					LinearDocument.AgentSessionStatus.Complete,
+				);
+			}
+		}
 
 		// Disconnect and remove NDJSON client
 		const ndjsonClient = this.ndjsonClients.get(repo.id);
@@ -880,7 +911,7 @@ export class EdgeWorker extends EventEmitter {
 	/**
 	 * Check for pending repository removals and remove repos with no active sessions
 	 */
-	private checkPendingRemovals(): void {
+	private async checkPendingRemovals(): Promise<void> {
 		if (this.pendingRemovals.size === 0) {
 			return;
 		}
@@ -897,7 +928,7 @@ export class EdgeWorker extends EventEmitter {
 				console.log(
 					`[ConfigReload] No active sessions remaining for ${repo.name}, proceeding with removal`,
 				);
-				this.removeRepository(repo);
+				await this.removeRepository(repo);
 			} else {
 				console.log(
 					`[ConfigReload] Repository ${repo.name} still has ${activeSessions.length} active session(s), deferring removal`,
@@ -1650,7 +1681,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Check for pending repository removals
-			this.checkPendingRemovals();
+			await this.checkPendingRemovals();
 
 			return; // Exit early - stop signal handled
 		}
@@ -1748,7 +1779,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check for pending repository removals
-		this.checkPendingRemovals();
+		await this.checkPendingRemovals();
 
 		// Emit events
 		console.log(
@@ -1774,7 +1805,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Check for pending repository removals when a session completes
 			if (message.type === "result") {
-				this.checkPendingRemovals();
+				await this.checkPendingRemovals();
 			}
 		}
 	}
@@ -1803,7 +1834,7 @@ export class EdgeWorker extends EventEmitter {
 			}
 
 			// Check for pending repository removals
-			this.checkPendingRemovals();
+			await this.checkPendingRemovals();
 		}
 	}
 
