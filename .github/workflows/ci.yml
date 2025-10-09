@@ -35,7 +35,7 @@ jobs:
         EOF
     
     - name: Run Biome
-      run: pnpm biome ci
+      run: pnpm lint
     
     - name: Build Packages
       run: pnpm build
