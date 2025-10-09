@@ -440,4 +440,4 @@ This projects builds on the technologies built by the awesome teams at Linear, a
 
 ---
 
-_This README was last updated: June 11 2025_
+_This README was last updated: October 9 2025_
