@@ -37,6 +37,7 @@ Create a clear, concise summary for Linear that covers:
 - Be concise but comprehensive
 - Use markdown formatting for readability
 - Focus on what matters to stakeholders and reviewers
+- **To mention someone**: Use `https://linear.app/linear/profiles/username` syntax where `username` is the Linear username (e.g., `https://linear.app/linear/profiles/alice` to mention @alice)
 
 ## Constraints
 
