@@ -72,6 +72,7 @@ export class CodexRunnerAdapter implements Runner {
 	private child?: ChildProcessWithoutNullStreams;
 
 	private finalDelivered = false;
+	private stopRequested = false;
 	private stopWait?: Promise<void>;
 	private stopKillTimer?: NodeJS.Timeout;
 
@@ -188,7 +189,10 @@ export class CodexRunnerAdapter implements Runner {
 				const reason = signal
 					? `signal ${signal}`
 					: `exit code ${code ?? "unknown"}`;
-				if (this.finalDelivered) {
+				if (this.stopRequested) {
+					// Intentionally stopped; suppress error emission
+					this.emitLog(onEvent, `Codex stopped intentionally (${reason})`);
+				} else if (this.finalDelivered) {
 					this.emitLog(onEvent, `Codex exited with ${reason}`);
 				} else {
 					onEvent({
@@ -198,14 +202,23 @@ export class CodexRunnerAdapter implements Runner {
 						),
 					});
 				}
+				this.stopRequested = false;
 				return;
 			}
 
 			if (!this.finalDelivered) {
-				onEvent({
-					kind: "error",
-					error: new Error("Codex exited without delivering a final response"),
-				});
+				if (this.stopRequested) {
+					// Intentionally stopped; do not emit error
+					this.emitLog(onEvent, "Codex stopped intentionally (no final)");
+				} else {
+					onEvent({
+						kind: "error",
+						error: new Error(
+							"Codex exited without delivering a final response",
+						),
+					});
+				}
+				this.stopRequested = false;
 			}
 		});
 
@@ -221,6 +234,8 @@ export class CodexRunnerAdapter implements Runner {
 		if (!child) {
 			return;
 		}
+		// Mark that a stop was requested so close handler can suppress errors
+		this.stopRequested = true;
 		this.stopWait = new Promise<void>((resolve) => {
 			let completed = false;
 			const onClose = (): void => {
@@ -230,6 +245,7 @@ export class CodexRunnerAdapter implements Runner {
 					this.stopKillTimer = undefined;
 				}
 				this.stopWait = undefined;
+				this.stopRequested = false;
 				resolve();
 			};
 			child.once("close", onClose);

@@ -167,6 +167,7 @@ export class EdgeWorker extends EventEmitter {
 	private nonClaudeRunners: Map<string, Runner> = new Map();
 	private codexSessionCache: Map<string, string> = new Map();
 	private finalizedNonClaudeSessions: Set<string> = new Set();
+	private stopRequestedSessions: Set<string> = new Set();
 
 	private async safeStopRunner(
 		linearAgentActivitySessionId: string,
@@ -1336,6 +1337,9 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Received stop signal for agent activity session ${linearAgentActivitySessionId}`,
 			);
 
+			// Mark intentional stop to suppress downstream error handling
+			this.stopRequestedSessions.add(linearAgentActivitySessionId);
+
 			if (existingRunner) {
 				existingRunner.stop();
 				console.log(
@@ -1352,10 +1356,8 @@ export class EdgeWorker extends EventEmitter {
 					existingNonClaudeRunner,
 				);
 			}
-			if (sessionRunnerSelection?.type === "codex") {
-				this.codexSessionCache.delete(linearAgentActivitySessionId);
-			}
-			this.sessionRunnerSelections.delete(linearAgentActivitySessionId);
+			// Preserve Codex resume metadata and runner selection for follow-up resume
+			// Do not delete codexSessionCache or sessionRunnerSelections here
 			this.finalizedNonClaudeSessions.add(linearAgentActivitySessionId);
 			void this.savePersistedState().catch((error) => {
 				this.debugLog(
@@ -3777,6 +3779,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const codexSessionCache = Object.fromEntries(
 			this.codexSessionCache.entries(),
 		);
+		const stopRequestedSessions = Array.from(
+			this.stopRequestedSessions.values(),
+		);
 
 		return {
 			agentSessions,
@@ -3785,6 +3790,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			sessionRunnerSelections,
 			finalizedNonClaudeSessions,
 			codexSessionCache,
+			stopRequestedSessions,
 		};
 	}
 
@@ -3861,6 +3867,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			console.log(
 				`[EdgeWorker] Restored ${this.codexSessionCache.size} codex session cache entries`,
 			);
+		}
+
+		if (state.stopRequestedSessions) {
+			this.stopRequestedSessions = new Set(state.stopRequestedSessions);
 		}
 	}
 
@@ -4176,6 +4186,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			);
 		}
 
+		// Clear any stale stop flag when a fresh runner starts
+		this.stopRequestedSessions.delete(linearAgentActivitySessionId);
+
 		this.debugLog(`[startNonClaudeRunner] Starting ${selection.type} runner`, {
 			sessionId: linearAgentActivitySessionId,
 			issueIdentifier,
@@ -4363,6 +4376,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							`[startNonClaudeRunner] Suppressing error after final (${selection.type})`,
 							{ message: event.error.message },
 						);
+						return;
+					}
+					// Suppress error emission if this session was intentionally stopped
+					if (this.stopRequestedSessions.has(linearAgentActivitySessionId)) {
+						this.debugLog(
+							`[startNonClaudeRunner] Suppressing error after intentional stop (${selection.type})`,
+							{ message: event.error.message },
+						);
+						this.stopRequestedSessions.delete(linearAgentActivitySessionId);
+						void this.safeStopRunner(linearAgentActivitySessionId, runner);
 						return;
 					}
 					const errorWithCause = event.error as Error & { cause?: unknown };

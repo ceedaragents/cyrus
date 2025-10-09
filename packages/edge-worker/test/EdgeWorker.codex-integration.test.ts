@@ -379,9 +379,9 @@ describe("EdgeWorker Codex integration", () => {
 			expect.stringContaining("I've stopped working"),
 		);
 		expect((edgeWorker as any).sessionRunnerSelections.has(sessionId)).toBe(
-			false,
+			true,
 		);
-		expect((edgeWorker as any).codexSessionCache.has(sessionId)).toBe(false);
+		expect((edgeWorker as any).codexSessionCache.has(sessionId)).toBe(true);
 		expect((edgeWorker as any).finalizedNonClaudeSessions.has(sessionId)).toBe(
 			true,
 		);

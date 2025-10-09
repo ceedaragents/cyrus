@@ -109,6 +109,7 @@ describe("EdgeWorker Codex regression", () => {
 	let postActionMock: ReturnType<typeof vi.fn>;
 	let postResponseMock: ReturnType<typeof vi.fn>;
 	let markSessionCompleteMock: ReturnType<typeof vi.fn>;
+	let postErrorMock: ReturnType<typeof vi.fn>;
 
 	const sessionId = "linear-session-001";
 	const issueIdentifier = "TEST-42";
@@ -182,6 +183,8 @@ describe("EdgeWorker Codex regression", () => {
 		(edgeWorker as any).postAction = postActionMock;
 		(edgeWorker as any).postResponse = postResponseMock;
 		(edgeWorker as any).markSessionComplete = markSessionCompleteMock;
+		postErrorMock = vi.fn().mockResolvedValue(undefined);
+		(edgeWorker as any).postError = postErrorMock;
 
 		(edgeWorker as any).sessionRunnerSelections.set(sessionId, {
 			issueId: "issue-123",
@@ -408,5 +411,107 @@ describe("EdgeWorker Codex regression", () => {
 				fullAuto: false,
 			}),
 		);
+	});
+
+	it("suppresses error when codex runner stops intentionally and preserves resume id", async () => {
+		// Prepare runner that captures onEvent handler
+		let capturedOnEvent: ((e: any) => void) | undefined;
+		fakeRunner = {
+			start: vi.fn(async (onEvent: (event: any) => void) => {
+				capturedOnEvent = onEvent;
+				// Simulate session id being reported by Codex
+				onEvent({ kind: "session", id: "codex-run-abc" });
+				return {
+					sessionId: "codex-run-abc",
+					capabilities: { jsonStream: true },
+				};
+			}),
+			stop: vi.fn().mockResolvedValue(undefined),
+		};
+		runnerFactoryMock.create.mockReset();
+		runnerFactoryMock.create.mockReturnValue(fakeRunner);
+
+		// Start initial non-Claude runner
+		await (edgeWorker as any).startNonClaudeRunner({
+			selection: { type: "codex", model: "o4-mini" },
+			repository,
+			prompt: promptBody,
+			workspacePath,
+			linearAgentActivitySessionId: sessionId,
+			issueIdentifier,
+			isFollowUp: false,
+		});
+		expect((edgeWorker as any).codexSessionCache.get(sessionId)).toBe(
+			"codex-run-abc",
+		);
+
+		// Issue a stop signal via webhook path
+		const agentSessionManager = {
+			getSession: vi.fn().mockReturnValue({
+				workspace: { path: workspacePath },
+				issueId: "issue-123",
+			}),
+			createResponseActivity: vi.fn().mockResolvedValue(undefined),
+			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
+		};
+		(edgeWorker as any).agentSessionManagers.set(
+			repository.id,
+			agentSessionManager,
+		);
+		const stopWebhook = {
+			type: "AgentSessionEvent",
+			action: "prompted",
+			agentSession: {
+				id: sessionId,
+				issue: { id: "issue-123", identifier: issueIdentifier, title: "X" },
+				creator: { name: "User" },
+			},
+			agentActivity: {
+				id: "activity-1",
+				signal: "stop",
+				content: { type: "prompt", body: "Stop" },
+				sourceCommentId: "comment-1",
+			},
+		} as any;
+
+		await (edgeWorker as any).handleUserPostedAgentActivity(
+			stopWebhook,
+			repository,
+		);
+
+		// Simulate adapter reporting an error after stop
+		capturedOnEvent?.({
+			kind: "error",
+			error: new Error("Codex exited without delivering a final response"),
+		});
+
+		await flushAsync();
+		expect(postErrorMock).not.toHaveBeenCalled();
+		// Resume id must be preserved
+		expect((edgeWorker as any).codexSessionCache.get(sessionId)).toBe(
+			"codex-run-abc",
+		);
+
+		// Start follow-up and ensure resume id is wired through
+		const followUpRunner = {
+			start: vi.fn(async () => ({
+				sessionId: "codex-run-def",
+				capabilities: { jsonStream: true },
+			})),
+			stop: vi.fn().mockResolvedValue(undefined),
+		};
+		runnerFactoryMock.create.mockReset();
+		runnerFactoryMock.create.mockReturnValue(followUpRunner as any);
+		await (edgeWorker as any).startNonClaudeRunner({
+			selection: { type: "codex", model: "o4-mini" },
+			repository,
+			prompt: `${promptBody} follow-up`,
+			workspacePath,
+			linearAgentActivitySessionId: sessionId,
+			issueIdentifier,
+			isFollowUp: true,
+		});
+		const createdConfig = runnerFactoryMock.create.mock.calls[0]?.[0];
+		expect(createdConfig?.resumeSessionId).toBe("codex-run-abc");
 	});
 });

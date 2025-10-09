@@ -57,6 +57,8 @@ export interface SerializableEdgeWorkerState {
 	finalizedNonClaudeSessions?: string[];
 	// Cached session ids for resume flows
 	codexSessionCache?: Record<string, string>;
+	// Sessions that were intentionally stopped to suppress transient errors
+	stopRequestedSessions?: string[];
 }
 
 /**
