@@ -198,6 +198,7 @@ Notes:
 
 - Codex doesn’t expose a JSON event stream by default; first pass will stream stdout lines to Linear
 - Codex manages file edits and git; our worktree isolation remains the right safety boundary
+- Linear posts (thoughts/actions/responses/errors) flow through a per-session queue so they reach Linear in emission order. This serialization currently applies only to Codex activity; Claude and other runners retain their existing post behavior.
 
 ### Future Work: OpenCode CLI (sst/opencode)
 

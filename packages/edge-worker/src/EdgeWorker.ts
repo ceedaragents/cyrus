@@ -168,6 +168,7 @@ export class EdgeWorker extends EventEmitter {
 	private codexSessionCache: Map<string, string> = new Map();
 	private finalizedNonClaudeSessions: Set<string> = new Set();
 	private stopRequestedSessions: Set<string> = new Set();
+	private codexActivityQueue: Map<string, Promise<void>> = new Map();
 
 	private async safeStopRunner(
 		linearAgentActivitySessionId: string,
@@ -3909,6 +3910,37 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 	}
 
+	private enqueueCodexLinearActivity(
+		sessionId: string,
+		task: () => Promise<void>,
+	): Promise<void> {
+		const previous =
+			this.codexActivityQueue.get(sessionId) ?? Promise.resolve();
+
+		const queuedTask = previous
+			.catch((error) => {
+				this.debugLog("[enqueueCodexLinearActivity] Previous task failed", {
+					sessionId,
+					error,
+				});
+			})
+			.then(() => task())
+			.catch((error) => {
+				this.debugLog("[enqueueCodexLinearActivity] Task failed", {
+					sessionId,
+					error,
+				});
+			})
+			.finally(() => {
+				if (this.codexActivityQueue.get(sessionId) === queuedTask) {
+					this.codexActivityQueue.delete(sessionId);
+				}
+			});
+
+		this.codexActivityQueue.set(sessionId, queuedTask);
+		return queuedTask;
+	}
+
 	private async postThought(
 		linearAgentActivitySessionId: string,
 		repositoryId: string,
@@ -4257,16 +4289,28 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					if (text.length === 0) {
 						return;
 					}
-					void this.postThought(
-						linearAgentActivitySessionId,
-						repository.id,
-						text,
-					).catch((error) => {
-						this.debugLog(
-							`[startNonClaudeRunner] Failed posting thought (${selection.type})`,
-							error,
+					const postThoughtTask = async (): Promise<void> => {
+						try {
+							await this.postThought(
+								linearAgentActivitySessionId,
+								repository.id,
+								text,
+							);
+						} catch (error) {
+							this.debugLog(
+								`[startNonClaudeRunner] Failed posting thought (${selection.type})`,
+								error,
+							);
+						}
+					};
+					if (selection.type === "codex") {
+						void this.enqueueCodexLinearActivity(
+							linearAgentActivitySessionId,
+							postThoughtTask,
 						);
-					});
+					} else {
+						void postThoughtTask();
+					}
 					return;
 				}
 				case "action": {
@@ -4283,17 +4327,29 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							detail: event.detail,
 						},
 					);
-					void this.postAction(
-						linearAgentActivitySessionId,
-						repository.id,
-						actionLabel,
-						event.detail,
-					).catch((error) => {
-						this.debugLog(
-							`[startNonClaudeRunner] Failed posting action (${selection.type})`,
-							error,
+					const postActionTask = async (): Promise<void> => {
+						try {
+							await this.postAction(
+								linearAgentActivitySessionId,
+								repository.id,
+								actionLabel,
+								event.detail,
+							);
+						} catch (error) {
+							this.debugLog(
+								`[startNonClaudeRunner] Failed posting action (${selection.type})`,
+								error,
+							);
+						}
+					};
+					if (selection.type === "codex") {
+						void this.enqueueCodexLinearActivity(
+							linearAgentActivitySessionId,
+							postActionTask,
 						);
-					});
+					} else {
+						void postActionTask();
+					}
 					return;
 				}
 				case "log": {
@@ -4308,16 +4364,28 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					if (text.length === 0) {
 						return;
 					}
-					void this.postResponse(
-						linearAgentActivitySessionId,
-						repository.id,
-						text,
-					).catch((error) => {
-						this.debugLog(
-							`[startNonClaudeRunner] Failed posting response (${selection.type})`,
-							error,
+					const postResponseTask = async (): Promise<void> => {
+						try {
+							await this.postResponse(
+								linearAgentActivitySessionId,
+								repository.id,
+								text,
+							);
+						} catch (error) {
+							this.debugLog(
+								`[startNonClaudeRunner] Failed posting response (${selection.type})`,
+								error,
+							);
+						}
+					};
+					if (selection.type === "codex") {
+						void this.enqueueCodexLinearActivity(
+							linearAgentActivitySessionId,
+							postResponseTask,
 						);
-					});
+					} else {
+						void postResponseTask();
+					}
 					return;
 				}
 				case "final": {
@@ -4339,20 +4407,30 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					});
 					void (async () => {
 						await this.safeStopRunner(linearAgentActivitySessionId, runner);
-						try {
-							const text = event.text.trim();
-							if (text.length > 0) {
-								await this.postResponse(
+						const text = event.text.trim();
+						if (text.length > 0) {
+							const postFinalResponse = async (): Promise<void> => {
+								try {
+									await this.postResponse(
+										linearAgentActivitySessionId,
+										repository.id,
+										text,
+									);
+								} catch (error) {
+									this.debugLog(
+										`[startNonClaudeRunner] Failed posting final response (${selection.type})`,
+										error,
+									);
+								}
+							};
+							if (selection.type === "codex") {
+								await this.enqueueCodexLinearActivity(
 									linearAgentActivitySessionId,
-									repository.id,
-									text,
+									postFinalResponse,
 								);
+							} else {
+								await postFinalResponse();
 							}
-						} catch (error) {
-							this.debugLog(
-								`[startNonClaudeRunner] Failed posting final response (${selection.type})`,
-								error,
-							);
 						}
 						try {
 							await this.markSessionComplete(
@@ -4396,16 +4474,28 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						event.error,
 						`${selection.type} runner error`,
 					);
-					void this.postError(
-						linearAgentActivitySessionId,
-						repository.id,
-						err.message,
-					).catch((postError) => {
-						this.debugLog(
-							`[startNonClaudeRunner] Failed posting error (${selection.type})`,
-							postError,
+					const postErrorTask = async (): Promise<void> => {
+						try {
+							await this.postError(
+								linearAgentActivitySessionId,
+								repository.id,
+								err.message,
+							);
+						} catch (postError) {
+							this.debugLog(
+								`[startNonClaudeRunner] Failed posting error (${selection.type})`,
+								postError,
+							);
+						}
+					};
+					if (selection.type === "codex") {
+						void this.enqueueCodexLinearActivity(
+							linearAgentActivitySessionId,
+							postErrorTask,
 						);
-					});
+					} else {
+						void postErrorTask();
+					}
 					return;
 				}
 			}

@@ -251,6 +251,53 @@ describe("EdgeWorker Codex integration", () => {
 		);
 	});
 
+	it("serializes Codex Linear activity posts in emission order", async () => {
+		const linearClient =
+			hoisted.linearClients[0] ??
+			((edgeWorker as any).linearClients.get(repository.id) as
+				| undefined
+				| { createAgentActivity: SpyInstance });
+		expect(linearClient).toBeDefined();
+		if (!linearClient) {
+			throw new Error("Expected Linear client mock to exist");
+		}
+		const completionOrder: string[] = [];
+
+		const delayedActivity = async (input: { content: { type: string } }) => {
+			const delayByType: Record<string, number> = {
+				response: 5,
+				action: 10,
+				thought: 20,
+			};
+			const delay = delayByType[input.content.type] ?? 0;
+			await new Promise((resolve) => setTimeout(resolve, delay));
+			completionOrder.push(input.content.type);
+			hoisted.linearActivities.push(input as any);
+			return { success: true };
+		};
+
+		const candidate = (linearClient as any).createAgentActivity;
+		if (candidate && typeof candidate.mockImplementation === "function") {
+			candidate.mockImplementation(delayedActivity);
+		} else {
+			(linearClient as any).createAgentActivity = vi.fn(delayedActivity);
+		}
+
+		await (edgeWorker as any).startNonClaudeRunner({
+			selection: { type: "codex", model: "o4-mini" },
+			repository,
+			prompt: promptBody,
+			workspacePath,
+			linearAgentActivitySessionId: sessionId,
+			issueIdentifier,
+			isFollowUp: false,
+		});
+
+		await vi.waitFor(() => {
+			expect(completionOrder).toEqual(["thought", "action", "response"]);
+		});
+	});
+
 	it("posts errors but keeps codex runner active after command failure", async () => {
 		runnerEvents = [
 			{
