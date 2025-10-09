@@ -6,6 +6,8 @@ export { AgentSessionManager } from "./AgentSessionManager.js";
 export type {
 	ConfigurationChanges,
 	ConfigurationManagerEvents,
+	ConfigurationStatus,
+	RepositoryModification,
 } from "./ConfigurationManager.js";
 export { ConfigurationManager } from "./ConfigurationManager.js";
 export { EdgeWorker } from "./EdgeWorker.js";

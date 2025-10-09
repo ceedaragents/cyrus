@@ -96,6 +96,7 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private isStarted: boolean = false; // Track if EdgeWorker has been started
+	private pendingRemovals: Map<string, RepositoryConfig> = new Map(); // Tracks repositories pending removal due to active sessions
 
 	constructor(config: EdgeWorkerConfig, configManager?: ConfigurationManager) {
 		super();
@@ -108,8 +109,20 @@ export class EdgeWorker extends EventEmitter {
 			new ConfigurationManager(join(this.cyrusHome, "config.json"), config);
 
 		// Listen for configuration changes
-		this.configManager.on("config:reloaded", (newConfig, changes) => {
-			this.handleConfigurationReload(newConfig, changes);
+		this.configManager.on("config:reloaded", async (newConfig, changes) => {
+			try {
+				await this.handleConfigurationReload(newConfig, changes);
+			} catch (error) {
+				const err = error instanceof Error ? error : new Error(String(error));
+				console.error(
+					"[EdgeWorker] Configuration reload failed, triggering rollback:",
+					err,
+				);
+				// Trigger rollback in ConfigurationManager
+				await this.configManager.rollback(err);
+				// Re-emit error for CLI to handle
+				this.emit("error", err);
+			}
 		});
 
 		this.configManager.on("config:error", (error) => {
@@ -659,7 +672,8 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Handle modified repositories (apply updates to existing repos)
-		for (const repo of changes.repositoriesModified) {
+		for (const modification of changes.repositoriesModified) {
+			const repo = modification.repository;
 			console.log(
 				`[ConfigReload] Updating repository: ${repo.name} (${repo.id})`,
 			);
@@ -667,13 +681,105 @@ export class EdgeWorker extends EventEmitter {
 			// Update repository in map
 			this.repositories.set(repo.id, repo);
 
-			// Check if Linear token changed - if so, update client
-			const existingClient = this.linearClients.get(repo.id);
-			if (existingClient) {
-				// For now, log a warning - full token update requires reconnecting clients
-				console.log(`[ConfigReload] ⚠️  Repository ${repo.name} was modified`);
+			// Handle Linear token changes
+			if (modification.tokenChanged) {
 				console.log(
-					`[ConfigReload] Note: Some changes (like token updates) require restart for full effect`,
+					`[ConfigReload] ⚠️  Linear token changed for repository ${repo.name}`,
+				);
+				console.log(`[ConfigReload] Hot-swapping Linear client...`);
+
+				try {
+					// Create new Linear client with new token
+					const newLinearClient = new LinearClient({
+						accessToken: repo.linearToken,
+					});
+
+					// Update Linear client in map
+					this.linearClients.set(repo.id, newLinearClient);
+
+					// Update AgentSessionManager's Linear client
+					const agentSessionManager = this.agentSessionManagers.get(repo.id);
+					if (agentSessionManager) {
+						agentSessionManager.updateLinearClient(newLinearClient);
+					}
+
+					// Reconnect NDJSON/webhook client with new token
+					const existingClient = this.ndjsonClients.get(repo.id);
+					if (existingClient) {
+						console.log(
+							`[ConfigReload] Disconnecting old NDJSON client for ${repo.name}`,
+						);
+						existingClient.disconnect();
+
+						// Create new NDJSON client with new token
+						const serverPort =
+							this.config.serverPort || this.config.webhookPort || 3456;
+						const serverHost = this.config.serverHost || "localhost";
+						const useLinearDirectWebhooks =
+							process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() ===
+							"true";
+
+						const repos = [repo];
+
+						const clientConfig = {
+							proxyUrl: this.config.proxyUrl,
+							token: repo.linearToken,
+							name: repo.name,
+							transport: "webhook" as const,
+							useExternalWebhookServer: true,
+							externalWebhookServer: this.sharedApplicationServer,
+							webhookPort: serverPort,
+							webhookPath: "/webhook",
+							webhookHost: serverHost,
+							...(this.config.baseUrl && {
+								webhookBaseUrl: this.config.baseUrl,
+							}),
+							...(!this.config.baseUrl &&
+								this.config.webhookBaseUrl && {
+									webhookBaseUrl: this.config.webhookBaseUrl,
+								}),
+							onConnect: () => this.handleConnect(repo.id, repos),
+							onDisconnect: (reason?: string) =>
+								this.handleDisconnect(repo.id, repos, reason),
+							onError: (error: Error) => this.handleError(error),
+						};
+
+						const newNdjsonClient = useLinearDirectWebhooks
+							? new LinearWebhookClient({
+									...clientConfig,
+									onWebhook: (payload: any) =>
+										this.handleWebhook(
+											payload as unknown as LinearWebhook,
+											repos,
+										),
+								})
+							: new NdjsonClient(clientConfig);
+
+						if (!useLinearDirectWebhooks) {
+							(newNdjsonClient as NdjsonClient).on("webhook", (data) =>
+								this.handleWebhook(data as LinearWebhook, repos),
+							);
+						}
+
+						this.ndjsonClients.set(repo.id, newNdjsonClient);
+
+						// Connect the new client
+						await newNdjsonClient.connect();
+						console.log(
+							`[ConfigReload] ✅ Successfully reconnected with new token for ${repo.name}`,
+						);
+					}
+				} catch (error) {
+					console.error(
+						`[ConfigReload] ❌ Failed to hot-swap token for ${repo.name}:`,
+						error,
+					);
+					throw error; // Propagate error to trigger rollback
+				}
+			} else {
+				// Other modifications (non-token changes)
+				console.log(
+					`[ConfigReload] Repository ${repo.name} configuration updated (non-token changes)`,
 				);
 			}
 
@@ -688,7 +794,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Check if repository has active sessions
 			const agentSessionManager = this.agentSessionManagers.get(repo.id);
-			const activeSessions = agentSessionManager?.getAllClaudeRunners() || [];
+			const activeSessions = agentSessionManager?.getActiveSessions() || [];
 
 			if (activeSessions.length > 0) {
 				console.log(
@@ -697,30 +803,15 @@ export class EdgeWorker extends EventEmitter {
 				console.log(
 					`[ConfigReload] Will remove after active sessions complete`,
 				);
-				// For now, we log this - in a full implementation, we'd track this and remove later
+
+				// Add to pending removals map
+				this.pendingRemovals.set(repo.id, repo);
+				console.log(
+					`[ConfigReload] ⏳ Repository ${repo.name} queued for deferred removal`,
+				);
 			} else {
 				// Safe to remove immediately
-				console.log(
-					`[ConfigReload] Removing repository immediately: ${repo.name}`,
-				);
-
-				// Remove from repositories map
-				this.repositories.delete(repo.id);
-
-				// Disconnect and remove NDJSON client
-				const ndjsonClient = this.ndjsonClients.get(repo.id);
-				if (ndjsonClient) {
-					ndjsonClient.disconnect();
-					this.ndjsonClients.delete(repo.id);
-				}
-
-				// Remove Linear client
-				this.linearClients.delete(repo.id);
-
-				// Remove agent session manager
-				this.agentSessionManagers.delete(repo.id);
-
-				console.log(`[ConfigReload] ✅ Removed repository: ${repo.name}`);
+				this.removeRepository(repo);
 			}
 		}
 
@@ -736,6 +827,67 @@ export class EdgeWorker extends EventEmitter {
 
 		console.log("─".repeat(50));
 		console.log("✅ Configuration reload complete\n");
+	}
+
+	/**
+	 * Remove a repository and clean up all associated resources
+	 */
+	private removeRepository(repo: RepositoryConfig): void {
+		console.log(
+			`[ConfigReload] Removing repository: ${repo.name} (${repo.id})`,
+		);
+
+		// Disconnect and remove NDJSON client
+		const ndjsonClient = this.ndjsonClients.get(repo.id);
+		if (ndjsonClient) {
+			ndjsonClient.disconnect();
+			this.ndjsonClients.delete(repo.id);
+		}
+
+		// Remove from repositories map
+		this.repositories.delete(repo.id);
+
+		// Remove Linear client
+		this.linearClients.delete(repo.id);
+
+		// Remove agent session manager
+		this.agentSessionManagers.delete(repo.id);
+
+		// Remove from pending removals if it exists
+		this.pendingRemovals.delete(repo.id);
+
+		console.log(
+			`[ConfigReload] ✅ Successfully removed repository: ${repo.name}`,
+		);
+	}
+
+	/**
+	 * Check for pending repository removals and remove repos with no active sessions
+	 */
+	private checkPendingRemovals(): void {
+		if (this.pendingRemovals.size === 0) {
+			return;
+		}
+
+		console.log(
+			`[ConfigReload] Checking ${this.pendingRemovals.size} pending removal(s)...`,
+		);
+
+		for (const [repoId, repo] of this.pendingRemovals.entries()) {
+			const agentSessionManager = this.agentSessionManagers.get(repoId);
+			const activeSessions = agentSessionManager?.getActiveSessions() || [];
+
+			if (activeSessions.length === 0) {
+				console.log(
+					`[ConfigReload] No active sessions remaining for ${repo.name}, proceeding with removal`,
+				);
+				this.removeRepository(repo);
+			} else {
+				console.log(
+					`[ConfigReload] Repository ${repo.name} still has ${activeSessions.length} active session(s), deferring removal`,
+				);
+			}
+		}
 	}
 
 	/**
@@ -1585,6 +1737,11 @@ export class EdgeWorker extends EventEmitter {
 				linearAgentActivitySessionId,
 				message,
 			);
+
+			// Check for pending repository removals when a session completes
+			if (message.type === "result") {
+				this.checkPendingRemovals();
+			}
 		}
 	}
 

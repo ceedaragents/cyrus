@@ -24,6 +24,7 @@
 	"dependencies": {
 		"@linear/sdk": "^58.1.0",
 		"@ngrok/ngrok": "^1.5.1",
+		"chokidar": "^4.0.3",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-webhook-client": "workspace:*",
@@ -31,7 +32,7 @@
 		"file-type": "^18.7.0"
 	},
 	"devDependencies": {
-		"@types/node": "^20.0.0",
+		"@types/node": "^20.19.4",
 		"@vitest/coverage-v8": "^1.6.1",
 		"axios": "^1.6.0",
 		"typescript": "^5.3.3",

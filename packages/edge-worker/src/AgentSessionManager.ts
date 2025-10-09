@@ -54,6 +54,14 @@ export class AgentSessionManager {
 	}
 
 	/**
+	 * Update the Linear client (e.g., when token is refreshed during config reload)
+	 */
+	updateLinearClient(newLinearClient: LinearClient): void {
+		console.log("[AgentSessionManager] Updating Linear client");
+		this.linearClient = newLinearClient;
+	}
+
+	/**
 	 * Initialize a Linear agent session from webhook
 	 * The session is already created by Linear, we just need to track it
 	 */
