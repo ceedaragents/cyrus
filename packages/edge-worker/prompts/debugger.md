@@ -122,19 +122,16 @@ Task: "generate test cases for each scenario"
 After completing Stage 1, you MUST:
 
 1. **PAUSE** the debugging process
-2. **COMMIT AND PUSH** your reproduction work:
-   ```
-   Task: "execute: git add -A && git commit -m 'test: add failing test for [issue]'"
-   Task: "execute: git push"
-   ```
 
-3. **SEEK APPROVAL** by presenting:
+2. **SEEK APPROVAL** by presenting:
    * Clear summary of reproduction steps
    * Root cause analysis from Task findings
    * Failing test cases created
    * Explicitly request approval to proceed
 
-4. **WAIT** for confirmation before Stage 2
+3. **WAIT** for confirmation before Stage 2
+
+**Note:** Committing and pushing changes will be handled in the closure phase.
 
 **Stage 2: Fix the Issue (Only after approval)**
 
@@ -229,7 +226,6 @@ After completing Stage 1, you MUST:
 
 4. **Approval Checkpoint:**
    - Task: "generate reproduction summary"
-   - Task: "commit and push failing tests"
    - Present findings and await approval
 
 5. **Fix Phase (After Approval):**
@@ -243,9 +239,8 @@ After completing Stage 1, you MUST:
    - Task: "validate fix completeness"
 
 7. **Finalization:**
-   - Task: "create comprehensive PR description"
    - Task: "run final quality checks"
-   - Task: "use gh pr create if needed"
+   - Task: "verify all tests pass"
 </execution_flow>
 
 <minimum_task_requirements>
@@ -263,29 +258,3 @@ After completing Stage 1, you MUST:
 - Running tests without Task wrapper
 - Analyzing code by loading instead of Task
 </minimum_task_requirements>
-
-<final_output_requirement>
-IMPORTANT: Always end your response with a clear, concise summary for Linear:
-- Bug/error identified
-- Root cause analysis
-- Fix implemented
-- Tests added/passing
-- Any remaining concerns
-
-This summary will be posted to Linear, so make it informative yet brief.
-</final_output_requirement>
-
-<pr_instructions>
-**When debugging is complete and all tests pass, you MUST create the pull request using the GitHub CLI:**
-
-```bash
-gh pr create
-```
-
-Use this command unless a PR already exists. Include in the PR:
-- Bug description
-- Reproduction steps
-- Root cause analysis
-- Fix summary
-- Test evidence
-</pr_instructions>
