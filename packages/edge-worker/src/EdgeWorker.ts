@@ -290,16 +290,24 @@ export class EdgeWorker extends EventEmitter {
 			const ndjsonClient = useLinearDirectWebhooks
 				? new LinearWebhookClient({
 						...clientConfig,
-						onWebhook: (payload: any) =>
-							this.handleWebhook(payload as unknown as LinearWebhook, repos),
+						onWebhook: (payload: any) => {
+							// Get fresh repositories for this token to avoid stale closures
+							const freshRepos = this.getRepositoriesForToken(token);
+							this.handleWebhook(
+								payload as unknown as LinearWebhook,
+								freshRepos,
+							);
+						},
 					})
 				: new NdjsonClient(clientConfig);
 
 			// Set up webhook handler for NdjsonClient (LinearWebhookClient uses onWebhook in constructor)
 			if (!useLinearDirectWebhooks) {
-				(ndjsonClient as NdjsonClient).on("webhook", (data) =>
-					this.handleWebhook(data as LinearWebhook, repos),
-				);
+				(ndjsonClient as NdjsonClient).on("webhook", (data) => {
+					// Get fresh repositories for this token to avoid stale closures
+					const freshRepos = this.getRepositoriesForToken(token);
+					this.handleWebhook(data as LinearWebhook, freshRepos);
+				});
 			}
 
 			// Optional heartbeat logging (only for NdjsonClient)
@@ -453,6 +461,22 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	setConfigPath(configPath: string): void {
 		this.configPath = configPath;
+	}
+
+	/**
+	 * Get fresh list of repositories for a given Linear token
+	 * This ensures webhook handlers always work with current repository state
+	 */
+	private getRepositoriesForToken(token: string): RepositoryConfig[] {
+		const repoIds = this.tokenToRepoIds.get(token) || [];
+		const repos: RepositoryConfig[] = [];
+		for (const repoId of repoIds) {
+			const repo = this.repositories.get(repoId);
+			if (repo) {
+				repos.push(repo);
+			}
+		}
+		return repos;
 	}
 
 	/**
@@ -913,15 +937,20 @@ export class EdgeWorker extends EventEmitter {
 		const ndjsonClient = useLinearDirectWebhooks
 			? new LinearWebhookClient({
 					...clientConfig,
-					onWebhook: (payload: any) =>
-						this.handleWebhook(payload as unknown as LinearWebhook, [repo]),
+					onWebhook: (payload: any) => {
+						// Get fresh repositories for this token to avoid stale closures
+						const freshRepos = this.getRepositoriesForToken(repo.linearToken);
+						this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
+					},
 				})
 			: new NdjsonClient(clientConfig);
 
 		if (!useLinearDirectWebhooks) {
-			(ndjsonClient as NdjsonClient).on("webhook", (data) =>
-				this.handleWebhook(data as LinearWebhook, [repo]),
-			);
+			(ndjsonClient as NdjsonClient).on("webhook", (data) => {
+				// Get fresh repositories for this token to avoid stale closures
+				const freshRepos = this.getRepositoriesForToken(repo.linearToken);
+				this.handleWebhook(data as LinearWebhook, freshRepos);
+			});
 		}
 
 		this.ndjsonClients.set(repo.id, ndjsonClient);

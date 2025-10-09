@@ -11,6 +11,12 @@ All notable changes to this project will be documented in this file.
   - Webhook connections automatically reconnect when tokens are updated
   - File watcher uses debouncing to handle rapid configuration changes smoothly
 
+### Fixed
+- **Repository isolation in webhook routing**: Fixed critical bug where removing one repository could affect sessions in other repositories
+  - Webhook handlers now use fresh repository lookups instead of stale closures
+  - Ensures sessions are only stopped for the repository being removed
+  - Prevents cross-contamination between repositories sharing the same Linear token
+
 ### Changed
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.10 to v0.1.11 - includes parity updates with Claude Code v2.0.11. See [@anthropic-ai/claude-agent-sdk v0.1.11 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0111---2025-01-09)
