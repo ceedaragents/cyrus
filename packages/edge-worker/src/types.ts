@@ -36,9 +36,9 @@ export interface RepositoryConfig {
 	model?: string; // Claude model to use for this repository (e.g., "opus", "sonnet", "haiku")
 	fallbackModel?: string; // Fallback model if primary model is unavailable
 
-	// Sora AI configuration (OpenAI)
-	soraApiKey?: string; // OpenAI API key for Sora video generation
-	soraOutputDirectory?: string; // Directory to save generated videos (defaults to workspace path)
+	// OpenAI configuration (for Sora video generation and DALL-E image generation)
+	openaiApiKey?: string; // OpenAI API key for Sora and DALL-E
+	openaiOutputDirectory?: string; // Directory to save generated media (defaults to workspace path)
 
 	// Label-based system prompt configuration
 	labelPrompts?: {

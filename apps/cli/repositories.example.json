@@ -11,8 +11,8 @@
 			"isActive": true,
 			"promptTemplatePath": "./agent-prompt-template.md",
 			"mcpConfigPath": "./mcp-config.json",
-			"soraApiKey": "your-openai-api-key",
-			"soraOutputDirectory": "/path/to/save/videos"
+			"openaiApiKey": "your-openai-api-key",
+			"openaiOutputDirectory": "/path/to/save/videos"
 		},
 		{
 			"id": "repo2",

@@ -18,6 +18,7 @@ import type {
 import {
 	ClaudeRunner,
 	createCyrusToolsServer,
+	createImageToolsServer,
 	createSoraToolsServer,
 	getAllTools,
 	getCoordinatorTools,
@@ -2851,14 +2852,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}),
 		};
 
-		// Add Sora MCP server if API key is configured
-		if (repository.soraApiKey) {
+		// Add OpenAI-based MCP servers if API key is configured
+		if (repository.openaiApiKey) {
+			// Sora video generation tools
 			mcpConfig["sora-tools"] = createSoraToolsServer({
-				apiKey: repository.soraApiKey,
-				outputDirectory: repository.soraOutputDirectory,
+				apiKey: repository.openaiApiKey,
+				outputDirectory: repository.openaiOutputDirectory,
 			});
+
+			// DALL-E image generation tools
+			mcpConfig["image-tools"] = createImageToolsServer({
+				apiKey: repository.openaiApiKey,
+				outputDirectory: repository.openaiOutputDirectory,
+			});
+
 			console.log(
-				`[EdgeWorker] Configured Sora MCP server for repository: ${repository.name}`,
+				`[EdgeWorker] Configured OpenAI MCP servers (Sora + DALL-E) for repository: ${repository.name}`,
 			);
 		}
 
