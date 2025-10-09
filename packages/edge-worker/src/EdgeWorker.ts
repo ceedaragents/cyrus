@@ -3941,6 +3941,14 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		return queuedTask;
 	}
 
+	private formatInlineErrorMessage(message: string): string {
+		const trimmed = (message ?? "").trim();
+		if (trimmed.length === 0) {
+			return "❌ Error encountered.";
+		}
+		return trimmed.startsWith("❌") ? trimmed : `❌ ${trimmed}`;
+	}
+
 	private async postThought(
 		linearAgentActivitySessionId: string,
 		repositoryId: string,
@@ -4467,23 +4475,35 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						return;
 					}
 					const errorWithCause = event.error as Error & { cause?: unknown };
-					if (!errorWithCause.cause) {
+					const hasEmbeddedCause =
+						errorWithCause.cause !== undefined && errorWithCause.cause !== null;
+					if (!hasEmbeddedCause) {
 						void this.safeStopRunner(linearAgentActivitySessionId, runner);
 					}
 					const err = this.normalizeError(
 						event.error,
 						`${selection.type} runner error`,
 					);
-					const postErrorTask = async (): Promise<void> => {
+					const postLinearActivity = async (): Promise<void> => {
 						try {
-							await this.postError(
-								linearAgentActivitySessionId,
-								repository.id,
-								err.message,
-							);
+							if (hasEmbeddedCause) {
+								await this.postThought(
+									linearAgentActivitySessionId,
+									repository.id,
+									this.formatInlineErrorMessage(err.message),
+								);
+							} else {
+								await this.postError(
+									linearAgentActivitySessionId,
+									repository.id,
+									err.message,
+								);
+							}
 						} catch (postError) {
 							this.debugLog(
-								`[startNonClaudeRunner] Failed posting error (${selection.type})`,
+								`[startNonClaudeRunner] Failed posting ${
+									hasEmbeddedCause ? "inline error thought" : "error"
+								} (${selection.type})`,
 								postError,
 							);
 						}
@@ -4491,10 +4511,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					if (selection.type === "codex") {
 						void this.enqueueCodexLinearActivity(
 							linearAgentActivitySessionId,
-							postErrorTask,
+							postLinearActivity,
 						);
 					} else {
-						void postErrorTask();
+						void postLinearActivity();
 					}
 					return;
 				}

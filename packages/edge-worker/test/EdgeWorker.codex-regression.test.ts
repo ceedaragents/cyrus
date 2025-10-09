@@ -314,6 +314,70 @@ describe("EdgeWorker Codex regression", () => {
 		expect(missingClientLog).toBeUndefined();
 	});
 
+	it("surfaces recoverable runner errors inline with ❌ prefix", async () => {
+		const recoverableError = new Error("Tool invocation failed");
+		(recoverableError as Error & { cause?: unknown }).cause = {
+			type: "item.failed",
+			message: "execution failed",
+		};
+
+		fakeRunner.start.mockImplementationOnce(async (onEvent: any) => {
+			onEvent({ kind: "error", error: recoverableError });
+			onEvent({ kind: "response", text: "Continuing after failure" });
+			onEvent({ kind: "final", text: "Run finished" });
+			return { capabilities: { jsonStream: true } };
+		});
+
+		await (edgeWorker as any).startNonClaudeRunner({
+			selection: { type: "codex", model: "o4-mini" },
+			repository,
+			prompt: promptBody,
+			workspacePath,
+			linearAgentActivitySessionId: sessionId,
+			issueIdentifier,
+			isFollowUp: false,
+		});
+
+		await flushAsync();
+		await flushAsync();
+
+		expect(postThoughtMock).toHaveBeenCalledWith(
+			sessionId,
+			repository.id,
+			expect.stringMatching(/^❌ .*Tool invocation failed/),
+		);
+		expect(postErrorMock).not.toHaveBeenCalled();
+	});
+
+	it("posts error cards for terminal runner failures", async () => {
+		const fatalError = new Error("Codex process crashed");
+
+		fakeRunner.start.mockImplementationOnce(async (onEvent: any) => {
+			onEvent({ kind: "error", error: fatalError });
+			return { capabilities: { jsonStream: true } };
+		});
+
+		await (edgeWorker as any).startNonClaudeRunner({
+			selection: { type: "codex", model: "o4-mini" },
+			repository,
+			prompt: promptBody,
+			workspacePath,
+			linearAgentActivitySessionId: sessionId,
+			issueIdentifier,
+			isFollowUp: false,
+		});
+
+		await flushAsync();
+		await flushAsync();
+
+		expect(postErrorMock).toHaveBeenCalledWith(
+			sessionId,
+			repository.id,
+			"Codex process crashed",
+		);
+		expect(postThoughtMock).not.toHaveBeenCalled();
+	});
+
 	it("persists codex session cache across restart for follow-up", async () => {
 		runnerFactoryMock.create.mockReset();
 		runnerFactoryMock.create.mockReturnValue(fakeRunner);

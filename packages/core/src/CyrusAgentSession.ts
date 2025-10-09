@@ -56,5 +56,7 @@ export interface CyrusAgentSessionEntry {
 		timestamp: number; // e.g. Date.now()
 		durationMs?: number;
 		isError?: boolean;
+		isTerminalError?: boolean;
+		resultSubtype?: string;
 	};
 }
