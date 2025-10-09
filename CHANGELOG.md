@@ -10,11 +10,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Acknowledgements now render as response cards in Linear (Proxy Worker cards) instead of inline thoughts, improving visibility and separating acknowledgements from reasoning output.
+- Codex sessions now deliver thoughts, actions, and final answers to Linear in the order they were emitted, preventing final messages from appearing before tool updates.
 - Updated @anthropic-ai/claude-code from v1.0.95 to v1.0.112 for latest Claude Code improvements. See [Claude Code v1.0.112 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#10112)
 - Updated @anthropic-ai/sdk from v0.60.0 to v0.62.0 for latest Anthropic SDK improvements
 - Claude/OpenCode adapters and EdgeWorker now emit and persist normalized
   thought/action/final events, aligning the JSON streaming pipeline with Codex
   resume requirements.
+
+### Fixed
+- Stopping an in-flight session no longer posts a follow-up error card; the next comment automatically resumes the same Codex context.
+- Recoverable tool and runner errors now appear inline with a ❌ prefix, while only terminal failures surface as Proxy Worker error cards.
 
 ### Removed
 - Dropped the `___LAST_MESSAGE_MARKER___` sentinel from all prompts; completion

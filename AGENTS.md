@@ -184,6 +184,13 @@ When working on this codebase, follow these practices:
 - **Edge Worker**: `packages/edge-worker/src/EdgeWorker.ts`
 - **OAuth Flow**: `apps/proxy/src/services/OAuthService.mjs`
 
+## Linear Messaging Behavior
+
+- **Acknowledgement cards** – The first reply Cyrus sends on a session is now a Proxy Worker card rather than an inline thought, so users immediately see that work has started.
+- **Stop confirmations without noise** – Issuing a “Stop” comment halts the active runner and posts a single confirmation card; the legacy “Codex exited without delivering a final response” error is suppressed, and the next follow-up resumes the same Codex thread.
+- **Ordered Codex updates** – Thoughts, tool logs, and final responses from Codex flow through a per-session queue to Linear. This guarantees the final answer appears after the preceding tool activity even when events land milliseconds apart.
+- **Inline ❌ markers for recoverable issues** – Non-terminal tool failures and permission denials surface as inline thoughts prefixed with `❌`, keeping the main conversation readable while reserving error cards for terminal failures that stop the run.
+
 ## Testing MCP Linear Integration
 
 To test the Linear MCP (Model Context Protocol) integration in the claude-runner package:
@@ -265,4 +272,3 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
    ```
 
 This ensures that when pnpm resolves `workspace:*` references during CLI publishing, it uses the latest published package versions rather than outdated ones.
-
