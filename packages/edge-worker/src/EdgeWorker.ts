@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
 	type Comment,
 	LinearClient,
+	LinearDocument,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
 import type {
@@ -437,21 +438,33 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		// get all claudeRunners
-		const claudeRunners: ClaudeRunner[] = [];
-		for (const agentSessionManager of this.agentSessionManagers.values()) {
-			claudeRunners.push(...agentSessionManager.getAllClaudeRunners());
-		}
+		// Stop all sessions and mark them as complete
+		for (const [
+			repositoryId,
+			agentSessionManager,
+		] of this.agentSessionManagers.entries()) {
+			const activeSessions = agentSessionManager.getActiveSessions();
 
-		// Kill all Claude processes with null checking
-		for (const runner of claudeRunners) {
-			if (runner) {
-				try {
-					runner.stop();
-				} catch (error) {
-					console.error("Error stopping Claude runner:", error);
+			for (const session of activeSessions) {
+				// Stop the runner if it exists
+				if (session.claudeRunner) {
+					try {
+						session.claudeRunner.stop();
+					} catch (error) {
+						console.error("Error stopping Claude runner:", error);
+					}
 				}
+
+				// Mark session as complete
+				await agentSessionManager.updateSessionStatus(
+					session.linearAgentActivitySessionId,
+					LinearDocument.AgentSessionStatus.Complete,
+				);
 			}
+
+			console.log(
+				`[EdgeWorker] Stopped ${activeSessions.length} sessions for repository ${repositoryId}`,
+			);
 		}
 
 		// Disconnect all NDJSON clients
@@ -468,6 +481,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// Mark as stopped
 		this.isStarted = false;
+
+		// Check for pending repository removals one last time
+		this.checkPendingRemovals();
 	}
 
 	/**
@@ -1627,6 +1643,15 @@ export class EdgeWorker extends EventEmitter {
 				stopConfirmation,
 			);
 
+			// Mark session as complete (stopped by user)
+			await agentSessionManager.updateSessionStatus(
+				linearAgentActivitySessionId,
+				LinearDocument.AgentSessionStatus.Complete,
+			);
+
+			// Check for pending repository removals
+			this.checkPendingRemovals();
+
 			return; // Exit early - stop signal handled
 		}
 
@@ -1692,18 +1717,24 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Get all Claude runners for this specific issue
-		const claudeRunners = agentSessionManager.getClaudeRunnersForIssue(
-			issue.id,
-		);
+		// Get all sessions for this specific issue
+		const sessions = agentSessionManager.getSessionsByIssueId(issue.id);
 
 		// Stop all Claude runners for this issue
-		const activeThreadCount = claudeRunners.length;
-		for (const runner of claudeRunners) {
-			console.log(
-				`[EdgeWorker] Stopping Claude runner for issue ${issue.identifier}`,
+		const activeThreadCount = sessions.length;
+		for (const session of sessions) {
+			if (session.claudeRunner) {
+				console.log(
+					`[EdgeWorker] Stopping Claude runner for issue ${issue.identifier}`,
+				);
+				session.claudeRunner.stop();
+			}
+
+			// Mark session as complete (stopped due to unassignment)
+			await agentSessionManager.updateSessionStatus(
+				session.linearAgentActivitySessionId,
+				LinearDocument.AgentSessionStatus.Complete,
 			);
-			runner.stop();
 		}
 
 		// Post ONE farewell comment on the issue (not in any thread) if there were active sessions
@@ -1715,6 +1746,9 @@ export class EdgeWorker extends EventEmitter {
 				// No parentId - post as a new comment on the issue
 			);
 		}
+
+		// Check for pending repository removals
+		this.checkPendingRemovals();
 
 		// Emit events
 		console.log(
@@ -1747,10 +1781,30 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Handle Claude session error
-	 * TODO: improve this
 	 */
-	private async handleClaudeError(error: Error): Promise<void> {
+	private async handleClaudeError(
+		error: Error,
+		sessionId?: string,
+		repositoryId?: string,
+	): Promise<void> {
 		console.error("Unhandled claude error:", error);
+
+		// Mark session as error state if we have session context
+		if (sessionId && repositoryId) {
+			const agentSessionManager = this.agentSessionManagers.get(repositoryId);
+			if (agentSessionManager) {
+				await agentSessionManager.updateSessionStatus(
+					sessionId,
+					LinearDocument.AgentSessionStatus.Error,
+				);
+				console.log(
+					`[EdgeWorker] Marked session ${sessionId} as error due to Claude error`,
+				);
+			}
+
+			// Check for pending repository removals
+			this.checkPendingRemovals();
+		}
 	}
 
 	/**
@@ -3381,7 +3435,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					repository.id,
 				);
 			},
-			onError: (error: Error) => this.handleClaudeError(error),
+			onError: (error: Error) =>
+				this.handleClaudeError(
+					error,
+					linearAgentActivitySessionId,
+					repository.id,
+				),
 		};
 
 		if (resumeSessionId) {

@@ -349,7 +349,7 @@ export class AgentSessionManager {
 	/**
 	 * Update session status and metadata
 	 */
-	private async updateSessionStatus(
+	async updateSessionStatus(
 		linearAgentActivitySessionId: string,
 		status: LinearDocument.AgentSessionStatus,
 		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
