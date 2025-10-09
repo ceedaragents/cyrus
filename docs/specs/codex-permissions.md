@@ -83,6 +83,20 @@ The adapter assumes modern Codex builds expose the stable `--json` stream flag a
 - To guarantee git access for follow-up sessions, route feature/PR labels to the `all` profile or set repository defaults accordingly.
 - Codex’s native sandbox is now disabled for any write-enabled run; provide isolation through dedicated VMs or similar guardrails when necessary.
 
+### Local Codex CLI Defaults
+
+Codex must be allowed to reach the network and use its built-in web search tool whenever Cyrus runs it in `workspace-write` mode. Make sure your `~/.codex/config.toml` contains:
+
+```
+[sandbox_workspace_write]
+network_access = true
+
+[tools]
+web_search = true
+```
+
+These defaults prevent Cyrus sessions from failing when Codex needs to fetch dependencies, external docs, or invoke the Codex web search tooling.
+
 ## CLI Compatibility Notes
 
 As of Codex CLI **0.42** (`codex-cli 0.42.0`), the non-interactive `codex exec` help output no longer lists `--sandbox` or `--approval-policy`. Running Cyrus with that release caused every Codex spawn to fail immediately with:
