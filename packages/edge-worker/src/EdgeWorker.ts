@@ -1895,7 +1895,13 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Handle Claude session error
-	 * TODO: improve this
+	 * TODO: Add session context to properly handle errors:
+	 *   1. Pass linearAgentActivitySessionId, repositoryId, and issueId to this method
+	 *   2. Update session status to Error via AgentSessionManager.updateSessionStatus()
+	 *   3. Post error activity to Linear via AgentSessionManager.createErrorActivity()
+	 *   4. Emit session:error event for external handlers
+	 *   5. Consider retry logic for transient errors (network failures, rate limits)
+	 * Currently only logs the error without context or Linear notification.
 	 */
 	private async handleClaudeError(error: Error): Promise<void> {
 		console.error("Unhandled claude error:", error);
