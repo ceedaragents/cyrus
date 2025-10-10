@@ -614,6 +614,10 @@ class EdgeApp {
 		// Create and start EdgeWorker
 		this.edgeWorker = new EdgeWorker(config);
 
+		// Set config path for dynamic reloading
+		const configPath = this.getEdgeConfigPath();
+		this.edgeWorker.setConfigPath(configPath);
+
 		// Set up event handlers
 		this.setupEventHandlers();
 
