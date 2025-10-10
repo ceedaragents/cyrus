@@ -10,7 +10,9 @@
 			"workspaceBaseDir": "/path/to/workspaces/repo1",
 			"isActive": true,
 			"promptTemplatePath": "./agent-prompt-template.md",
-			"mcpConfigPath": "./mcp-config.json"
+			"mcpConfigPath": "./mcp-config.json",
+			"openaiApiKey": "your-openai-api-key",
+			"openaiOutputDirectory": "/path/to/save/videos"
 		},
 		{
 			"id": "repo2",

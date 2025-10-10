@@ -20,6 +20,7 @@
 		"@anthropic-ai/sdk": "^0.65.0",
 		"@linear/sdk": "^60.0.0",
 		"fs-extra": "^11.3.0",
+		"openai": "^6.2.0",
 		"zod": "^3.23.0"
 	},
 	"devDependencies": {
