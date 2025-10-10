@@ -163,76 +163,14 @@ export class EdgeWorker extends EventEmitter {
 						);
 						return parentId;
 					},
-					async (
-						parentSessionId: string,
-						prompt: string,
-						childSessionId: string,
-					) => {
-						console.log(
-							`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
+					async (parentSessionId, prompt, childSessionId) => {
+						await this.handleResumeParentSession(
+							parentSessionId,
+							prompt,
+							childSessionId,
+							repo,
+							agentSessionManager,
 						);
-
-						// Get the parent session and repository
-						// This works because by the time this callback runs, agentSessionManager is fully initialized
-						console.log(
-							`[Parent Session Resume] Retrieving parent session ${parentSessionId} from agent session manager`,
-						);
-						const parentSession =
-							agentSessionManager.getSession(parentSessionId);
-						if (!parentSession) {
-							console.error(
-								`[Parent Session Resume] Parent session ${parentSessionId} not found in agent session manager`,
-							);
-							return;
-						}
-
-						console.log(
-							`[Parent Session Resume] Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
-						);
-
-						// Get the child session to access its workspace path
-						const childSession = agentSessionManager.getSession(childSessionId);
-						const childWorkspaceDirs: string[] = [];
-						if (childSession) {
-							childWorkspaceDirs.push(childSession.workspace.path);
-							console.log(
-								`[Parent Session Resume] Adding child workspace to parent allowed directories: ${childSession.workspace.path}`,
-							);
-						} else {
-							console.warn(
-								`[Parent Session Resume] Could not find child session ${childSessionId} to add workspace to parent allowed directories`,
-							);
-						}
-
-						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
-
-						// Resume the parent session with the child's result
-						console.log(
-							`[Parent Session Resume] Resuming parent Claude session with child results`,
-						);
-						try {
-							await this.resumeClaudeSession(
-								parentSession,
-								repo,
-								parentSessionId,
-								agentSessionManager,
-								prompt,
-								"", // No attachment manifest for child results
-								false, // Not a new session
-								childWorkspaceDirs, // Add child workspace directories to parent's allowed directories
-							);
-							console.log(
-								`[Parent Session Resume] Successfully resumed parent session ${parentSessionId} with child results`,
-							);
-						} catch (error) {
-							console.error(
-								`[Parent Session Resume] Failed to resume parent session ${parentSessionId}:`,
-								error,
-							);
-							console.error(
-								`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${repo.name}`,
-							);
-						}
 					},
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
@@ -480,6 +418,83 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Handle resuming a parent session when a child session completes
+	 * This is the core logic used by the resume parent session callback
+	 * Extracted to reduce duplication between constructor and addNewRepositories
+	 */
+	private async handleResumeParentSession(
+		parentSessionId: string,
+		prompt: string,
+		childSessionId: string,
+		repo: RepositoryConfig,
+		agentSessionManager: AgentSessionManager,
+	): Promise<void> {
+		console.log(
+			`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
+		);
+
+		// Get the parent session and repository
+		console.log(
+			`[Parent Session Resume] Retrieving parent session ${parentSessionId} from agent session manager`,
+		);
+		const parentSession = agentSessionManager.getSession(parentSessionId);
+		if (!parentSession) {
+			console.error(
+				`[Parent Session Resume] Parent session ${parentSessionId} not found in agent session manager`,
+			);
+			return;
+		}
+
+		console.log(
+			`[Parent Session Resume] Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
+		);
+
+		// Get the child session to access its workspace path
+		const childSession = agentSessionManager.getSession(childSessionId);
+		const childWorkspaceDirs: string[] = [];
+		if (childSession) {
+			childWorkspaceDirs.push(childSession.workspace.path);
+			console.log(
+				`[Parent Session Resume] Adding child workspace to parent allowed directories: ${childSession.workspace.path}`,
+			);
+		} else {
+			console.warn(
+				`[Parent Session Resume] Could not find child session ${childSessionId} to add workspace to parent allowed directories`,
+			);
+		}
+
+		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+
+		// Resume the parent session with the child's result
+		console.log(
+			`[Parent Session Resume] Resuming parent Claude session with child results`,
+		);
+		try {
+			await this.resumeClaudeSession(
+				parentSession,
+				repo,
+				parentSessionId,
+				agentSessionManager,
+				prompt,
+				"", // No attachment manifest for child results
+				false, // Not a new session
+				childWorkspaceDirs, // Add child workspace directories to parent's allowed directories
+			);
+			console.log(
+				`[Parent Session Resume] Successfully resumed parent session ${parentSessionId} with child results`,
+			);
+		} catch (error) {
+			console.error(
+				`[Parent Session Resume] Failed to resume parent session ${parentSessionId}:`,
+				error,
+			);
+			console.error(
+				`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${repo.name}`,
+			);
+		}
+	}
+
+	/**
 	 * Start watching config file for changes
 	 */
 	private startConfigWatcher(): void {
@@ -678,45 +693,14 @@ export class EdgeWorker extends EventEmitter {
 					(childSessionId: string) => {
 						return this.childToParentAgentSession.get(childSessionId);
 					},
-					async (
-						parentSessionId: string,
-						prompt: string,
-						childSessionId: string,
-					) => {
-						const parentSession =
-							agentSessionManager.getSession(parentSessionId);
-						if (!parentSession) {
-							console.error(
-								`[Parent Session Resume] Parent session ${parentSessionId} not found`,
-							);
-							return;
-						}
-
-						const childSession = agentSessionManager.getSession(childSessionId);
-						const childWorkspaceDirs: string[] = [];
-						if (childSession) {
-							childWorkspaceDirs.push(childSession.workspace.path);
-						}
-
-						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
-
-						try {
-							await this.resumeClaudeSession(
-								parentSession,
-								repo,
-								parentSessionId,
-								agentSessionManager,
-								prompt,
-								"",
-								false,
-								childWorkspaceDirs,
-							);
-						} catch (error) {
-							console.error(
-								`[Parent Session Resume] Failed to resume parent session ${parentSessionId}:`,
-								error,
-							);
-						}
+					async (parentSessionId, prompt, childSessionId) => {
+						await this.handleResumeParentSession(
+							parentSessionId,
+							prompt,
+							childSessionId,
+							repo,
+							agentSessionManager,
+						);
 					},
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
