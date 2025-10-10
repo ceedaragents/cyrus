@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.55] - 2025-10-09
+
 ### Added
 - **Dynamic configuration updates**: Cyrus now automatically detects and applies changes to `~/.cyrus/config.json` without requiring a restart
   - Add or remove repositories on the fly while Cyrus continues running
@@ -14,6 +16,23 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.10 to v0.1.11 - includes parity updates with Claude Code v2.0.11. See [@anthropic-ai/claude-agent-sdk v0.1.11 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0111---2025-01-09)
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.30
+
+#### cyrus-core
+- cyrus-core@0.0.18
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.37
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.23
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.55
 
 ## [0.1.54] - 2025-10-04
 
