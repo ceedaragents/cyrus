@@ -1895,10 +1895,25 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Handle Claude session error
-	 * TODO: improve this
 	 */
 	private async handleClaudeError(error: Error): Promise<void> {
-		console.error("Unhandled claude error:", error);
+		console.error("Unhandled Claude error:");
+		console.error(`  Error name: ${error.name}`);
+		console.error(`  Error message: ${error.message}`);
+		if (error.stack) {
+			console.error(`  Stack trace:\n${error.stack}`);
+		}
+
+		// Log additional error properties if available
+		const additionalProps = Object.keys(error).filter(
+			(key) => key !== "name" && key !== "message" && key !== "stack",
+		);
+		if (additionalProps.length > 0) {
+			console.error("  Additional error properties:");
+			for (const prop of additionalProps) {
+				console.error(`    ${prop}: ${JSON.stringify((error as any)[prop])}`);
+			}
+		}
 	}
 
 	/**
