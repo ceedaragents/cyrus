@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.11 to v0.1.13 - includes parity updates with Claude Code v2.0.13. See [@anthropic-ai/claude-agent-sdk v0.1.13 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0113---2025-01-10)
+
 ## [0.1.55] - 2025-10-09
 
 ### Added
