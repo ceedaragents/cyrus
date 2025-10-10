@@ -9,7 +9,9 @@
 		"deploy": "wrangler deploy",
 		"preview": "wrangler preview",
 		"tail": "wrangler tail",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"setup": "./scripts/setup-wrangler.sh",
+		"cleanup": "./scripts/cleanup-wrangler.sh"
 	},
 	"dependencies": {
 		"itty-router": "^4.0.23"
