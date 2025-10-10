@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -118,7 +118,7 @@ export class PersistenceManager {
 		try {
 			const stateFile = this.getEdgeWorkerStateFilePath();
 			if (existsSync(stateFile)) {
-				await writeFile(stateFile, "", "utf8"); // Clear file instead of deleting
+				await unlink(stateFile);
 			}
 		} catch (error) {
 			console.error(`Failed to delete EdgeWorker state file:`, error);
