@@ -13,6 +13,7 @@ import {
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import dotenv from "dotenv";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
 export class AbortError extends Error {
@@ -229,6 +230,12 @@ export class ClaudeRunner extends EventEmitter {
 					err,
 				);
 			}
+		}
+
+		// Load environment variables from repository .env file
+		// This must happen BEFORE MCP config processing so the SDK can expand ${VAR} references
+		if (this.config.workingDirectory) {
+			this.loadRepositoryEnv(this.config.workingDirectory);
 		}
 
 		// Set up logging (initial setup without session ID)
@@ -643,6 +650,56 @@ export class ClaudeRunner extends EventEmitter {
 				console.log(
 					`[ClaudeRunner] Unhandled message type: ${(message as any).type}`,
 				);
+		}
+	}
+
+	/**
+	 * Load environment variables from repository .env file
+	 * Does not override existing process.env values
+	 */
+	private loadRepositoryEnv(workingDirectory: string): void {
+		try {
+			const envPath = join(workingDirectory, ".env");
+
+			if (existsSync(envPath)) {
+				console.log(`[ClaudeRunner] Loading environment from ${envPath}`);
+
+				// Load but don't override existing env vars
+				const result = dotenv.config({
+					path: envPath,
+					override: false, // Existing process.env takes precedence
+				});
+
+				if (result.error) {
+					console.warn(
+						`[ClaudeRunner] Failed to parse .env file:`,
+						result.error,
+					);
+				} else if (result.parsed) {
+					const loadedVars = Object.keys(result.parsed);
+
+					// Log loaded variable names (but filter sensitive ones)
+					const safeToLog = loadedVars.filter(
+						(name) => !/(TOKEN|KEY|SECRET|PASSWORD|API_KEY)/i.test(name),
+					);
+
+					if (safeToLog.length > 0) {
+						console.log(
+							`[ClaudeRunner] Loaded env vars: ${safeToLog.join(", ")}`,
+						);
+					}
+
+					const sensitiveCount = loadedVars.length - safeToLog.length;
+					if (sensitiveCount > 0) {
+						console.log(
+							`[ClaudeRunner] (${sensitiveCount} sensitive ${sensitiveCount === 1 ? "variable" : "variables"} hidden)`,
+						);
+					}
+				}
+			}
+		} catch (error) {
+			console.warn(`[ClaudeRunner] Error loading repository .env:`, error);
+			// Don't fail the session, just warn
 		}
 	}
 
