@@ -13,6 +13,7 @@ import {
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import dotenv from "dotenv";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
 export class AbortError extends Error {
@@ -236,6 +237,12 @@ export class ClaudeRunner extends EventEmitter {
 					err,
 				);
 			}
+		}
+
+		// Load environment variables from repository .env file
+		// This must happen BEFORE MCP config processing so the SDK can expand ${VAR} references
+		if (this.config.workingDirectory) {
+			this.loadRepositoryEnv(this.config.workingDirectory);
 		}
 
 		// Set up logging (initial setup without session ID)
@@ -655,6 +662,36 @@ export class ClaudeRunner extends EventEmitter {
 				console.log(
 					`[ClaudeRunner] Unhandled message type: ${(message as any).type}`,
 				);
+		}
+	}
+
+	/**
+	 * Load environment variables from repository .env file
+	 * Does not override existing process.env values
+	 */
+	private loadRepositoryEnv(workingDirectory: string): void {
+		try {
+			const envPath = join(workingDirectory, ".env");
+
+			if (existsSync(envPath)) {
+				// Load but don't override existing env vars
+				const result = dotenv.config({
+					path: envPath,
+					override: false, // Existing process.env takes precedence
+				});
+
+				if (result.error) {
+					console.warn(
+						`[ClaudeRunner] Failed to parse .env file:`,
+						result.error,
+					);
+				} else if (result.parsed && Object.keys(result.parsed).length > 0) {
+					console.log(`[ClaudeRunner] Loaded environment variables from .env`);
+				}
+			}
+		} catch (error) {
+			console.warn(`[ClaudeRunner] Error loading repository .env:`, error);
+			// Don't fail the session, just warn
 		}
 	}
 

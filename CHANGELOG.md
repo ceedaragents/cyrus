@@ -7,15 +7,44 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Intelligent procedure routing**: Cyrus now automatically selects the best workflow for each task by analyzing the request content. Simple questions get quick answers, documentation edits proceed directly to implementation, and code changes get the full workflow with verifications and git operations. Uses fast "haiku" model for 10-second classification.
 - **Modular subroutine system**: Workflows are composed of reusable subroutines (verifications, git-gh, concise-summary, verbose-summary) that can be mixed and matched based on the procedure selected.
+- **Environment variable support in MCP configs**: MCP configuration files can now reference environment variables from repository `.env` files using `${VAR}` and `${VAR:-default}` syntax, making it easier to manage API tokens and other sensitive configuration values
 - **Sora 2 video generation support**: Added custom MCP tools for OpenAI Sora 2 video generation with three tools: `mcp__sora-tools__sora_generate_video` to start video generation (supports text-to-video and image-to-video via `input_reference` parameter; reference images must match target video resolution and be in JPEG, PNG, or WebP format only), `mcp__sora-tools__sora_check_status` to poll job status, and `mcp__sora-tools__sora_get_video` to download completed videos. Configure via `soraApiKey` and `soraOutputDirectory` in repository config.
 - **Simple agent runner package**: Added new `cyrus-simple-agent-runner` package for constrained agent queries that return one of a predefined set of responses (e.g., "yes", "no"). Features type-safe enumerated responses, comprehensive error handling, and progress tracking.
 - **Image generation support**: Added GPT Image tool `mcp__image-tools__gpt_image_generate` for creating images from text prompts using OpenAI's gpt-image-1 model. Features superior instruction following, text rendering, and real-world knowledge. Supports customizable size (1024x1024, 1536x1024, 1024x1536), quality (low/medium/high/auto), background transparency, and output formats (PNG/JPEG/WebP). Images are automatically saved to disk.
-- **Sora 2 video generation support**: Added custom MCP tools for OpenAI Sora 2 video generation with three tools: `mcp__sora-tools__sora_generate_video` to start video generation (supports text-to-video and image-to-video via `input_reference` parameter; reference images must match target video resolution and be in JPEG, PNG, or WebP format only), `mcp__sora-tools__sora_check_status` to poll job status, and `mcp__sora-tools__sora_get_video` to download completed videos.
+
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.11 to v0.1.13 - includes parity updates with Claude Code v2.0.13. See [@anthropic-ai/claude-agent-sdk v0.1.13 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0113---2025-01-10)
+
+## [0.1.55] - 2025-10-09
+
+### Added
+- **Dynamic configuration updates**: Cyrus now automatically detects and applies changes to `~/.cyrus/config.json` without requiring a restart
+  - Add or remove repositories on the fly while Cyrus continues running
+  - Removed repositories stop all active sessions and post notification messages to Linear
+  - Webhook connections automatically reconnect when tokens are updated
+  - File watcher uses debouncing to handle rapid configuration changes smoothly
 
 ### Changed
 - **Breaking: OpenAI configuration naming**: Renamed repository config fields from `soraApiKey`/`soraOutputDirectory` to `openaiApiKey`/`openaiOutputDirectory` to reflect support for multiple OpenAI services (Sora and GPT Image). Update your repository config to use the new field names.
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.10 to v0.1.11 - includes parity updates with Claude Code v2.0.11. See [@anthropic-ai/claude-agent-sdk v0.1.11 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0111---2025-01-09)
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.30
+
+#### cyrus-core
+- cyrus-core@0.0.18
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.37
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.23
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.55
 
 ## [0.1.54] - 2025-10-04
 
