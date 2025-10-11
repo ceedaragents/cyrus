@@ -662,8 +662,6 @@ export class ClaudeRunner extends EventEmitter {
 			const envPath = join(workingDirectory, ".env");
 
 			if (existsSync(envPath)) {
-				console.log(`[ClaudeRunner] Loading environment from ${envPath}`);
-
 				// Load but don't override existing env vars
 				const result = dotenv.config({
 					path: envPath,
@@ -675,26 +673,8 @@ export class ClaudeRunner extends EventEmitter {
 						`[ClaudeRunner] Failed to parse .env file:`,
 						result.error,
 					);
-				} else if (result.parsed) {
-					const loadedVars = Object.keys(result.parsed);
-
-					// Log loaded variable names (but filter sensitive ones)
-					const safeToLog = loadedVars.filter(
-						(name) => !/(TOKEN|KEY|SECRET|PASSWORD|API_KEY)/i.test(name),
-					);
-
-					if (safeToLog.length > 0) {
-						console.log(
-							`[ClaudeRunner] Loaded env vars: ${safeToLog.join(", ")}`,
-						);
-					}
-
-					const sensitiveCount = loadedVars.length - safeToLog.length;
-					if (sensitiveCount > 0) {
-						console.log(
-							`[ClaudeRunner] (${sensitiveCount} sensitive ${sensitiveCount === 1 ? "variable" : "variables"} hidden)`,
-						);
-					}
+				} else if (result.parsed && Object.keys(result.parsed).length > 0) {
+					console.log(`[ClaudeRunner] Loaded environment variables from .env`);
 				}
 			}
 		} catch (error) {
