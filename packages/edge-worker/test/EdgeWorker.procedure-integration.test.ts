@@ -38,16 +38,10 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		);
 	});
 
-	describe("Full Workflow: Issue Classification → Execution → Completion", () => {
+	describe("Full Workflow: Procedure Execution → Completion", () => {
 		it("should handle full-development procedure end-to-end", async () => {
-			// Step 1: EdgeWorker determines routine based on issue description
-			const issueDescription =
-				"Add a new API endpoint for user authentication with proper error handling and tests";
-			const routingDecision =
-				await procedureRouter.determineRoutine(issueDescription);
-
-			expect(routingDecision.classification).toBe("code");
-			expect(routingDecision.procedure.name).toBe("full-development");
+			// Step 1: Use full-development procedure directly (skip AI classification for deterministic tests)
+			const fullDevProcedure = PROCEDURES["full-development"];
 
 			// Step 2: EdgeWorker creates session and initializes procedure metadata
 			const session: CyrusAgentSession = {
@@ -68,10 +62,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(
-				session,
-				routingDecision.procedure,
-			);
+			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
 
 			// Verify initial state
 			expect(session.metadata.procedure).toBeDefined();
@@ -140,14 +131,8 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		});
 
 		it("should handle documentation-edit procedure with correct suppressions", async () => {
-			// Step 1: Issue classification
-			const issueDescription =
-				"Update the README with installation instructions";
-			const routingDecision =
-				await procedureRouter.determineRoutine(issueDescription);
-
-			expect(routingDecision.classification).toBe("documentation");
-			expect(routingDecision.procedure.name).toBe("documentation-edit");
+			// Step 1: Use documentation-edit procedure directly (skip AI classification)
+			const docEditProcedure = PROCEDURES["documentation-edit"];
 
 			// Step 2: Create and initialize session
 			const session: CyrusAgentSession = {
@@ -168,10 +153,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(
-				session,
-				routingDecision.procedure,
-			);
+			procedureRouter.initializeProcedureMetadata(session, docEditProcedure);
 
 			// Step 3: Execute primary (no suppression)
 			let currentSubroutine = procedureRouter.getCurrentSubroutine(session);
@@ -203,13 +185,8 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		});
 
 		it("should handle simple-question procedure with minimal workflow", async () => {
-			// Step 1: Issue classification
-			const issueDescription = "What's the current test coverage percentage?";
-			const routingDecision =
-				await procedureRouter.determineRoutine(issueDescription);
-
-			expect(routingDecision.classification).toBe("question");
-			expect(routingDecision.procedure.name).toBe("simple-question");
+			// Step 1: Use simple-question procedure directly (skip AI classification)
+			const simpleQuestionProcedure = PROCEDURES["simple-question"];
 
 			// Step 2: Create and initialize session
 			const session: CyrusAgentSession = {
@@ -232,7 +209,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 
 			procedureRouter.initializeProcedureMetadata(
 				session,
-				routingDecision.procedure,
+				simpleQuestionProcedure,
 			);
 
 			// Step 3: Execute primary (no suppression)
