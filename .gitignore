@@ -30,6 +30,7 @@ workspaces
 
 **/.claude/settings.local.json
 
+!**/.env.example
 .env.secret-agents
 
 # Edge config
