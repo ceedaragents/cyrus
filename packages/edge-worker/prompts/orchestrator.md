@@ -77,6 +77,31 @@ Before merging any completed sub-issue, you MUST:
 3. **Validate Expected Outcomes**: Compare actual results against child's documented expectations
 4. **Document Verification Results**: Record what was tested and outcomes in parent issue
 
+**VERIFICATION TECHNIQUES:**
+
+Choose verification approach based on the type of work completed:
+
+**Automated Verification** (preferred when available):
+- Run test suites: `npm test`, `pnpm test`, `pytest`, etc.
+- Execute build processes: `npm run build`, `pnpm build`, etc.
+- Run linters: `npm run lint`, `eslint .`, etc.
+- Type checking: `tsc --noEmit`, `npm run typecheck`, etc.
+- Integration tests if provided by child agent
+
+**Interactive Verification** (for runtime behavior):
+- Start development servers: `npm run dev`, `pnpm dev`, etc.
+- Navigate to specified URLs in browser (use Playwright MCP tools)
+- Take screenshots of UI changes and READ them to confirm visual correctness
+- Test API endpoints with provided curl commands or HTTP tools
+- Verify service health checks and logs
+
+**Manual Verification** (for non-executable changes):
+- Review documentation changes for accuracy and completeness
+- Validate configuration file syntax and values
+- Check that file structure matches requirements
+- Confirm code patterns follow project conventions
+- Verify commit messages and PR descriptions
+
 **EVALUATION OUTCOMES:**
 
 **Success Criteria Met:**
