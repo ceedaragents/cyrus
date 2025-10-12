@@ -59,7 +59,7 @@ export class TokenEncryption {
 			refreshToken: encryptedRefreshToken
 				? this.arrayBufferToBase64(encryptedRefreshToken)
 				: undefined,
-			iv: this.arrayBufferToBase64(iv),
+			iv: this.arrayBufferToBase64(iv.buffer),
 		};
 	}
 
