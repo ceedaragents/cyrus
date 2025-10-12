@@ -57,7 +57,11 @@ import { LinearWebhookClient } from "cyrus-linear-webhook-client";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
-import { ProcedureRouter } from "./procedures/index.js";
+import {
+	type ProcedureDefinition,
+	ProcedureRouter,
+	type RequestClassification,
+} from "./procedures/index.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type {
 	EdgeWorkerConfig,
@@ -1557,38 +1561,10 @@ export class EdgeWorker extends EventEmitter {
 		// Post ephemeral "Routing..." thought
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
-		// Determine which procedure to use based on issue title and description
-		const issueDescription =
-			`${issue.title}\n\n${fullIssue.description || ""}`.trim();
-		const routingDecision =
-			await this.procedureRouter.determineRoutine(issueDescription);
-		const selectedProcedure = routingDecision.procedure;
-
-		// Initialize procedure metadata in session
-		this.procedureRouter.initializeProcedureMetadata(
-			session,
-			selectedProcedure,
-		);
-
-		// Post procedure selection result (replaces ephemeral routing thought)
-		await agentSessionManager.postProcedureSelectionThought(
-			linearAgentActivitySessionId,
-			selectedProcedure.name,
-			routingDecision.classification,
-		);
-
-		// Log routing decision
-		console.log(
-			`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId}:`,
-		);
-		console.log(`  Classification: ${routingDecision.classification}`);
-		console.log(`  Procedure: ${selectedProcedure.name}`);
-		console.log(`  Reasoning: ${routingDecision.reasoning}`);
-
-		// Fetch labels (needed for both model selection and system prompt determination)
+		// Fetch labels early (needed for label override check)
 		const labels = await this.fetchIssueLabels(fullIssue);
 
-		// Check if debugger label is present - if so, override to debugger-full procedure
+		// Check for label overrides BEFORE AI routing
 		const debuggerConfig = repository.labelPrompts?.debugger;
 		const debuggerLabels = Array.isArray(debuggerConfig)
 			? debuggerConfig
@@ -1597,35 +1573,6 @@ export class EdgeWorker extends EventEmitter {
 			labels.includes(label),
 		);
 
-		if (hasDebuggerLabel) {
-			// Override to debugger-full procedure
-			const debuggerProcedure =
-				this.procedureRouter.getProcedure("debugger-full");
-			if (debuggerProcedure) {
-				console.log(
-					`[EdgeWorker] Overriding to debugger-full procedure due to debugger label`,
-				);
-
-				// Re-initialize procedure metadata with debugger-full
-				this.procedureRouter.initializeProcedureMetadata(
-					session,
-					debuggerProcedure,
-				);
-
-				// Post updated procedure selection
-				await agentSessionManager.postProcedureSelectionThought(
-					linearAgentActivitySessionId,
-					debuggerProcedure.name,
-					"debugger",
-				);
-
-				console.log(
-					`[EdgeWorker] Using debugger-full procedure due to debugger label (was: ${selectedProcedure.name})`,
-				);
-			}
-		}
-
-		// Check if orchestrator label is present - if so, override to orchestrator-full procedure
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
@@ -1634,33 +1581,59 @@ export class EdgeWorker extends EventEmitter {
 			labels.includes(label),
 		);
 
-		if (hasOrchestratorLabel) {
-			// Override to orchestrator-full procedure
+		let finalProcedure: ProcedureDefinition;
+		let finalClassification: RequestClassification;
+
+		// If labels indicate a specific procedure, use that instead of AI routing
+		if (hasDebuggerLabel) {
+			const debuggerProcedure =
+				this.procedureRouter.getProcedure("debugger-full");
+			if (!debuggerProcedure) {
+				throw new Error("debugger-full procedure not found in registry");
+			}
+			finalProcedure = debuggerProcedure;
+			finalClassification = "debugger";
+			console.log(
+				`[EdgeWorker] Using debugger-full procedure due to debugger label (skipping AI routing)`,
+			);
+		} else if (hasOrchestratorLabel) {
 			const orchestratorProcedure =
 				this.procedureRouter.getProcedure("orchestrator-full");
-			if (orchestratorProcedure) {
-				console.log(
-					`[EdgeWorker] Overriding to orchestrator-full procedure due to orchestrator label`,
-				);
-
-				// Re-initialize procedure metadata with orchestrator-full
-				this.procedureRouter.initializeProcedureMetadata(
-					session,
-					orchestratorProcedure,
-				);
-
-				// Post updated procedure selection
-				await agentSessionManager.postProcedureSelectionThought(
-					linearAgentActivitySessionId,
-					orchestratorProcedure.name,
-					"orchestrator",
-				);
-
-				console.log(
-					`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (was: ${selectedProcedure.name})`,
-				);
+			if (!orchestratorProcedure) {
+				throw new Error("orchestrator-full procedure not found in registry");
 			}
+			finalProcedure = orchestratorProcedure;
+			finalClassification = "orchestrator";
+			console.log(
+				`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
+			);
+		} else {
+			// No label override - use AI routing
+			const issueDescription =
+				`${issue.title}\n\n${fullIssue.description || ""}`.trim();
+			const routingDecision =
+				await this.procedureRouter.determineRoutine(issueDescription);
+			finalProcedure = routingDecision.procedure;
+			finalClassification = routingDecision.classification;
+
+			// Log AI routing decision
+			console.log(
+				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
+			);
+			console.log(`  Classification: ${routingDecision.classification}`);
+			console.log(`  Procedure: ${finalProcedure.name}`);
+			console.log(`  Reasoning: ${routingDecision.reasoning}`);
 		}
+
+		// Initialize procedure metadata in session with final decision
+		this.procedureRouter.initializeProcedureMetadata(session, finalProcedure);
+
+		// Post single procedure selection result (replaces ephemeral routing thought)
+		await agentSessionManager.postProcedureSelectionThought(
+			linearAgentActivitySessionId,
+			finalProcedure.name,
+			finalClassification,
+		);
 
 		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
 		let systemPrompt: string | undefined;
