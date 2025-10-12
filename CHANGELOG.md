@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Image generation support**: Added GPT Image tools using OpenAI's Responses API with background mode to avoid timeouts. Three tools mirror the Sora pattern: `mcp__image-tools__gpt_image_generate` to start async image generation (returns job ID), `mcp__image-tools__gpt_image_check_status` to poll for completion, and `mcp__image-tools__gpt_image_get` to download completed images. Supports customizable size (1024x1024, 1536x1024, 1024x1536), quality (low/medium/high/auto), background transparency, and output formats (PNG/JPEG/WebP).
+- **Image generation support**: Added GPT Image (gpt-image-1) tools using OpenAI's Responses API with background mode. Two tools provide async image generation: `mcp__image-tools__gpt_image_generate` starts async image generation and returns a job ID, and `mcp__image-tools__gpt_image_get` checks status and downloads the image if ready (returns "not ready" if incomplete - agents can call again). Supports customizable size (1024x1024, 1536x1024, 1024x1536, auto), quality (low/medium/high/auto), background transparency, and output formats (PNG/JPEG/WebP). Uses gpt-5 model for tool invocation.
 - **Sora 2 video generation support**: Added custom MCP tools for OpenAI Sora 2 video generation with three tools: `mcp__sora-tools__sora_generate_video` to start video generation (supports text-to-video and image-to-video via `input_reference` parameter; reference images must match target video resolution and be in JPEG, PNG, or WebP format only), `mcp__sora-tools__sora_check_status` to poll job status, and `mcp__sora-tools__sora_get_video` to download completed videos.
 
 ### Changed

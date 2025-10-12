@@ -1,6 +1,11 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import fs from "fs-extra";
 import OpenAI from "openai";
+import type {
+	Response,
+	ResponseOutputItem,
+	Tool,
+} from "openai/resources/responses/responses";
 import { z } from "zod";
 
 /**
@@ -19,8 +24,28 @@ export interface ImageToolsOptions {
 }
 
 /**
+ * Extended ImageGenerationCall type with additional runtime fields
+ * that may be present but are not in the OpenAI SDK type definitions
+ */
+interface ExtendedImageGenerationCall
+	extends ResponseOutputItem.ImageGenerationCall {
+	revised_prompt?: string;
+	output_format?: string;
+}
+
+/**
+ * Extended Response metadata type that may contain output_format
+ */
+interface ExtendedResponseMetadata {
+	output_format?: string;
+	[key: string]: unknown;
+}
+
+/**
  * Create an SDK MCP server with GPT Image generation tools
  * Uses the Responses API with background mode for async generation
+ *
+ * @see https://platform.openai.com/docs/guides/background - Background mode documentation
  */
 export function createImageToolsServer(options: ImageToolsOptions) {
 	const { apiKey, outputDirectory = process.cwd() } = options;
@@ -33,7 +58,7 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 
 	const generateImageTool = tool(
 		"gpt_image_generate",
-		"Generate an image using GPT Image (gpt-image-1). This starts an async image generation job and returns a job ID. Use gpt_image_check_status to poll for completion, then gpt_image_get to download the image.",
+		"Generate an image using GPT Image (gpt-image-1). This starts an async image generation job and returns a job ID. Use gpt_image_get to wait for completion and download the image.",
 		{
 			prompt: z
 				.string()
@@ -107,7 +132,7 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 				}
 
 				// Build tool configuration
-				const toolConfig: any = {
+				const toolConfig: Tool.ImageGeneration = {
 					type: "image_generation",
 				};
 
@@ -121,7 +146,7 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 
 				// Use Responses API with background mode for async processing
 				const response = await client.responses.create({
-					model: "gpt-4o", // Wrapper model that can call image_generation tool
+					model: "gpt-5", // Wrapper model that can call image_generation tool
 					background: true, // Enable async mode
 					store: true, // Store result for retrieval
 					tools: [toolConfig],
@@ -146,7 +171,7 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 								jobId: response.id,
 								status: response.status,
 								message:
-									"Image generation job started. Use gpt_image_check_status to poll for completion.",
+									"Image generation job started. Use gpt_image_get to wait for completion and download the image.",
 							}),
 						},
 					],
@@ -168,99 +193,11 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 		},
 	);
 
-	const checkStatusTool = tool(
-		"gpt_image_check_status",
-		"Check the status of a GPT Image generation job. Poll this endpoint until status is 'completed' or 'failed'.",
-		{
-			jobId: z.string().describe("The job ID returned from gpt_image_generate"),
-		},
-		async ({ jobId }) => {
-			try {
-				console.log(`[ImageTools] Checking status for job: ${jobId}`);
-
-				// Retrieve response status from Responses API
-				const response = await client.responses.retrieve(jobId);
-
-				console.log(`[ImageTools] Job ${jobId} status: ${response.status}`);
-
-				// Check if completed
-				if (response.status === "completed") {
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: JSON.stringify({
-									success: true,
-									jobId: response.id,
-									status: response.status,
-									message:
-										"Image generation complete! Use gpt_image_get to download the image.",
-								}),
-							},
-						],
-					};
-				}
-
-				// Check if failed
-				if (response.status === "failed") {
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: JSON.stringify({
-									success: false,
-									jobId: response.id,
-									status: response.status,
-									error: "Image generation failed",
-								}),
-							},
-						],
-					};
-				}
-
-				// Still in progress
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: JSON.stringify({
-								success: true,
-								jobId: response.id,
-								status: response.status,
-								message: `Job is ${response.status}. Continue polling.`,
-							}),
-						},
-					],
-				};
-			} catch (error) {
-				console.error(
-					`[ImageTools] Error checking status for job ${jobId}:`,
-					error,
-				);
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: JSON.stringify({
-								success: false,
-								error: error instanceof Error ? error.message : String(error),
-							}),
-						},
-					],
-				};
-			}
-		},
-	);
-
 	const getImageTool = tool(
 		"gpt_image_get",
-		"Download a completed GPT Image and save it to disk. Returns the local file path.",
+		"Check if GPT Image generation is complete and download the image if ready. If not ready, returns status. Call this tool again later if the image is not ready yet.",
 		{
-			jobId: z
-				.string()
-				.describe(
-					"The job ID from gpt_image_generate (when status is completed)",
-				),
+			jobId: z.string().describe("The job ID from gpt_image_generate"),
 			filename: z
 				.string()
 				.optional()
@@ -270,29 +207,59 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 		},
 		async ({ jobId, filename }) => {
 			try {
-				console.log(`[ImageTools] Downloading image for job: ${jobId}`);
+				console.log(`[ImageTools] Checking image generation job: ${jobId}`);
 
-				// Retrieve completed response
-				// Cast to any since Responses API types may not be fully defined yet
-				const response: any = await client.responses.retrieve(jobId);
+				// Check job status once
+				const response: Response = await client.responses.retrieve(jobId);
 
+				console.log(`[ImageTools] Job ${jobId} status: ${response.status}`);
+
+				// If not completed, return status
 				if (response.status !== "completed") {
+					if (response.status === "failed") {
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: JSON.stringify({
+										success: false,
+										error: "Image generation failed",
+										jobId,
+										status: response.status,
+									}),
+								},
+							],
+						};
+					}
+
+					// Still in progress
 					return {
 						content: [
 							{
 								type: "text" as const,
 								text: JSON.stringify({
 									success: false,
-									error: `Job is not completed. Current status: ${response.status}`,
+									ready: false,
+									jobId,
+									status: response.status,
+									message: `Image is not ready yet. Current status: ${response.status}. Try calling gpt_image_get again in a few moments.`,
 								}),
 							},
 						],
 					};
 				}
 
+				// Image is ready - download it
+				console.log(
+					`[ImageTools] Image generation completed for job: ${jobId}`,
+				);
+
 				// Extract image data from output
 				const imageGenerationCall = response.output?.find(
-					(item: any) => item.type === "image_generation_call",
+					(
+						item: ResponseOutputItem,
+					): item is ResponseOutputItem.ImageGenerationCall =>
+						item.type === "image_generation_call",
 				);
 
 				if (!imageGenerationCall) {
@@ -310,7 +277,8 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 				}
 
 				const base64Data = imageGenerationCall.result;
-				const revisedPrompt = imageGenerationCall.revised_prompt;
+				const extendedCall = imageGenerationCall as ExtendedImageGenerationCall;
+				const revisedPrompt = extendedCall.revised_prompt;
 
 				if (!base64Data) {
 					return {
@@ -332,10 +300,11 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 				// Ensure output directory exists
 				await fs.ensureDir(outputDirectory);
 
-				// Determine file extension from output_format in response metadata
+				// Determine file extension from output_format in response
 				const outputFormat =
-					imageGenerationCall.output_format ||
-					response.metadata?.output_format ||
+					extendedCall.output_format ||
+					(response.metadata as ExtendedResponseMetadata | undefined)
+						?.output_format ||
 					"png";
 				const ext = outputFormat.toLowerCase();
 
@@ -393,6 +362,6 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 	return createSdkMcpServer({
 		name: "image-tools",
 		version: "1.0.0",
-		tools: [generateImageTool, checkStatusTool, getImageTool],
+		tools: [generateImageTool, getImageTool],
 	});
 }
