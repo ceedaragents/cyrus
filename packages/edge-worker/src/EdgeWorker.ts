@@ -1806,8 +1806,8 @@ export class EdgeWorker extends EventEmitter {
 
 			// Post instant acknowledgment for existing session BEFORE any async work
 			// Check streaming status first to determine the message
-			const existingRunner = session?.claudeRunner;
-			const isCurrentlyStreaming = existingRunner?.isStreaming() || false;
+			const isCurrentlyStreaming =
+				session?.claudeRunner?.isStreaming() || false;
 
 			await this.postInstantPromptedAcknowledgment(
 				linearAgentActivitySessionId,
@@ -1818,12 +1818,19 @@ export class EdgeWorker extends EventEmitter {
 			// Need to fetch full issue for routing context
 			const linearClient = this.linearClients.get(repository.id);
 			if (linearClient) {
-				fullIssue = await linearClient.issue(issue.id);
+				try {
+					fullIssue = await linearClient.issue(issue.id);
+				} catch (error) {
+					console.warn(
+						`[EdgeWorker] Failed to fetch full issue for routing: ${issue.id}`,
+						error,
+					);
+					// Continue with degraded routing context
+				}
 			}
 		}
 
 		// Check if runner is actively streaming before routing
-		// Note: existingRunner already defined above for existing sessions
 		const existingRunner = session?.claudeRunner;
 		const isStreaming = existingRunner?.isStreaming() || false;
 
@@ -1841,6 +1848,11 @@ export class EdgeWorker extends EventEmitter {
 
 			// For prompted events, use the actual prompt content from the user
 			// Combine with issue context for better routing
+			if (!fullIssue) {
+				console.warn(
+					`[EdgeWorker] Routing without full issue details for ${linearAgentActivitySessionId}`,
+				);
+			}
 			const promptBody = webhook.agentActivity.content.body;
 			const routingContext =
 				`${issue.title}\n\n${fullIssue?.description || ""}\n\nUser Request: ${promptBody}`.trim();
