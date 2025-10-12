@@ -1625,6 +1625,43 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
+		// Check if orchestrator label is present - if so, override to orchestrator-full procedure
+		const orchestratorConfig = repository.labelPrompts?.orchestrator;
+		const orchestratorLabels = Array.isArray(orchestratorConfig)
+			? orchestratorConfig
+			: orchestratorConfig?.labels;
+		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
+			labels.includes(label),
+		);
+
+		if (hasOrchestratorLabel) {
+			// Override to orchestrator-full procedure
+			const orchestratorProcedure =
+				this.procedureRouter.getProcedure("orchestrator-full");
+			if (orchestratorProcedure) {
+				console.log(
+					`[EdgeWorker] Overriding to orchestrator-full procedure due to orchestrator label`,
+				);
+
+				// Re-initialize procedure metadata with orchestrator-full
+				this.procedureRouter.initializeProcedureMetadata(
+					session,
+					orchestratorProcedure,
+				);
+
+				// Post updated procedure selection
+				await agentSessionManager.postProcedureSelectionThought(
+					linearAgentActivitySessionId,
+					orchestratorProcedure.name,
+					"orchestrator",
+				);
+
+				console.log(
+					`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (was: ${selectedProcedure.name})`,
+				);
+			}
+		}
+
 		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;

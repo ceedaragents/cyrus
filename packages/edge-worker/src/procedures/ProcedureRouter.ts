@@ -35,6 +35,7 @@ export class ProcedureRouter {
 				"transient",
 				"code",
 				"debugger",
+				"orchestrator",
 			],
 			cyrusHome: config.cyrusHome,
 			model: config.model || "haiku",
@@ -69,6 +70,11 @@ Analyze the Linear issue request and classify it into ONE of these categories:
 - ONLY use this if the user specifically asks for: "debug this with approval workflow", "reproduce the bug first", "show me the root cause before fixing"
 - DO NOT use for regular bug reports - those should use "code"
 - Examples: "Debug this issue and get my approval before fixing", "Reproduce the authentication bug with approval checkpoint"
+
+**orchestrator**: User EXPLICITLY requests decomposition into sub-issues with specialized agent delegation.
+- ONLY use this if the user specifically asks for: "break this into sub-issues", "orchestrate this work", "use sub-agents", "delegate to specialized agents"
+- DO NOT use for regular complex work - those should use "code"
+- Examples: "Orchestrate this feature with sub-issues", "Break this down and delegate to specialized agents", "Create sub-tasks for this epic"
 
 **code**: Request involves code changes, features, bugs, or refactoring (DEFAULT for most work).
 - Examples: "Fix bug in X", "Add feature Y", "Refactor module Z", "Implement new API endpoint", "Fix the login issue"

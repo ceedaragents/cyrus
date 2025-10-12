@@ -101,6 +101,13 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			SUBROUTINES.verboseSummary,
 		],
 	},
+
+	"orchestrator-full": {
+		name: "orchestrator-full",
+		description:
+			"Full orchestration workflow with decomposition and delegation to sub-agents",
+		subroutines: [SUBROUTINES.primary, SUBROUTINES.verboseSummary],
+	},
 };
 
 /**
@@ -115,6 +122,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	transient: "simple-question",
 	code: "full-development",
 	debugger: "debugger-full",
+	orchestrator: "orchestrator-full",
 };
 
 /**
