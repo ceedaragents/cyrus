@@ -18,6 +18,7 @@ import type {
 	Workspace,
 } from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
+import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
 /**
  * Manages Linear Agent Sessions integration with Claude Code SDK
@@ -34,6 +35,7 @@ export class AgentSessionManager {
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
 	private procedureRouter?: ProcedureRouter;
+	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -56,12 +58,14 @@ export class AgentSessionManager {
 			linearAgentActivitySessionId: string,
 		) => Promise<void>,
 		procedureRouter?: ProcedureRouter,
+		sharedApplicationServer?: SharedApplicationServer,
 	) {
 		this.linearClient = linearClient;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.resumeNextSubroutine = resumeNextSubroutine;
 		this.procedureRouter = procedureRouter;
+		this.sharedApplicationServer = sharedApplicationServer;
 	}
 
 	/**
@@ -282,12 +286,97 @@ export class AgentSessionManager {
 		const nextSubroutine = this.procedureRouter.getNextSubroutine(session);
 
 		if (nextSubroutine) {
-			// More subroutines to run - advance and trigger next
+			// More subroutines to run - check if current subroutine requires approval
+			const currentSubroutine =
+				this.procedureRouter.getCurrentSubroutine(session);
+
+			if (currentSubroutine?.requiresApproval) {
+				console.log(
+					`[AgentSessionManager] Current subroutine "${currentSubroutine.name}" requires approval before proceeding`,
+				);
+
+				// Check if SharedApplicationServer is available
+				if (!this.sharedApplicationServer) {
+					console.error(
+						`[AgentSessionManager] SharedApplicationServer not available for approval workflow`,
+					);
+					await this.createErrorActivity(
+						linearAgentActivitySessionId,
+						"Approval workflow failed: Server not available",
+					);
+					return;
+				}
+
+				// Extract the final result from the completed subroutine
+				const subroutineResult =
+					"result" in resultMessage && resultMessage.result
+						? resultMessage.result
+						: "No result available";
+
+				try {
+					// Register approval request with server
+					const approvalRequest =
+						this.sharedApplicationServer.registerApprovalRequest(
+							linearAgentActivitySessionId,
+						);
+
+					// Post approval elicitation to Linear with auth signal URL
+					const approvalMessage = `The previous step has completed. Please review the result below and approve to continue:\n\n${subroutineResult}`;
+
+					await this.createApprovalElicitation(
+						linearAgentActivitySessionId,
+						approvalMessage,
+						approvalRequest.url,
+					);
+
+					console.log(
+						`[AgentSessionManager] Waiting for approval at URL: ${approvalRequest.url}`,
+					);
+
+					// Wait for approval
+					const { approved, feedback } = await approvalRequest.promise;
+
+					if (!approved) {
+						console.log(
+							`[AgentSessionManager] Approval rejected for session ${linearAgentActivitySessionId}`,
+						);
+						await this.createErrorActivity(
+							linearAgentActivitySessionId,
+							`Workflow stopped: User rejected approval.${feedback ? `\n\nFeedback: ${feedback}` : ""}`,
+						);
+						return; // Stop workflow
+					}
+
+					console.log(
+						`[AgentSessionManager] Approval granted, continuing to next subroutine`,
+					);
+
+					// Optionally post feedback as a thought
+					if (feedback) {
+						await this.createThoughtActivity(
+							linearAgentActivitySessionId,
+							`User feedback: ${feedback}`,
+						);
+					}
+
+					// Continue with advancement (fall through to existing code)
+				} catch (error) {
+					console.error(
+						`[AgentSessionManager] Approval request failed:`,
+						error,
+					);
+					await this.createErrorActivity(
+						linearAgentActivitySessionId,
+						`Workflow stopped: Approval request failed - ${(error as Error).message}`,
+					);
+					return; // Stop workflow
+				}
+			}
+
+			// Advance procedure state
 			console.log(
 				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
-
-			// Advance procedure state
 			this.procedureRouter.advanceToNextSubroutine(session, claudeSessionId);
 
 			// Trigger next subroutine
@@ -1160,6 +1249,53 @@ export class AgentSessionManager {
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error creating elicitation activity:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Create an approval elicitation activity with auth signal
+	 */
+	async createApprovalElicitation(
+		sessionId: string,
+		body: string,
+		approvalUrl: string,
+	): Promise<void> {
+		const session = this.sessions.get(sessionId);
+		if (!session || !session.linearAgentActivitySessionId) {
+			console.warn(
+				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
+			);
+			return;
+		}
+
+		try {
+			const result = await this.linearClient.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
+					type: "elicitation",
+					body,
+				},
+				signal: "auth" as any, // Type assertion because SDK types might not be up to date
+				signalMetadata: {
+					url: approvalUrl,
+				} as any, // Type assertion for signalMetadata
+			});
+
+			if (result.success) {
+				console.log(
+					`[AgentSessionManager] Created approval elicitation for session ${sessionId} with URL: ${approvalUrl}`,
+				);
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to create approval elicitation:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error creating approval elicitation:`,
 				error,
 			);
 		}

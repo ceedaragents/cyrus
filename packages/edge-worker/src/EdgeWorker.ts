@@ -259,6 +259,7 @@ export class EdgeWorker extends EventEmitter {
 						}
 					},
 					this.procedureRouter,
+					this.sharedApplicationServer,
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
@@ -789,6 +790,9 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
+					undefined, // No resumeNextSubroutine callback for dynamically added repos
+					this.procedureRouter,
+					this.sharedApplicationServer,
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 
