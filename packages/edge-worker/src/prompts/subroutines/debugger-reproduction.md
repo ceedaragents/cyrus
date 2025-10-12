@@ -86,10 +86,13 @@ I will wait for your approval before making any code changes.
 - ❌ **DO NOT implement any fixes** - this is reproduction only
 - ❌ **DO NOT modify production code** - only test files
 - ❌ **DO NOT commit or push anything** - that happens in later phases
+- ❌ **DO NOT create TodoWrite lists** - this is analysis/reproduction, not implementation
 - ✅ **DO use Task extensively** for all analysis
 - ✅ **DO create a clear, failing test**
 - ✅ **DO provide detailed root cause analysis**
 - ✅ **DO explicitly request approval** at the end
+
+**Why no TodoWrite?** This phase is about understanding and reproducing the bug through investigation and analysis. Todo lists are for tracking implementation work, which happens in the debugger-fix subroutine after approval. Focus on Task-driven exploration and presenting your findings in the required format above.
 
 ## What Happens Next
 
