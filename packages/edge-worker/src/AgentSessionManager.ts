@@ -333,8 +333,19 @@ export class AgentSessionManager {
 						`[AgentSessionManager] Waiting for approval at URL: ${approvalRequest.url}`,
 					);
 
-					// Wait for approval
-					const { approved, feedback } = await approvalRequest.promise;
+					// Wait for approval with timeout (30 minutes)
+					const approvalTimeout = 30 * 60 * 1000;
+					const timeoutPromise = new Promise<never>((_, reject) =>
+						setTimeout(
+							() => reject(new Error("Approval timeout")),
+							approvalTimeout,
+						),
+					);
+
+					const { approved, feedback } = await Promise.race([
+						approvalRequest.promise,
+						timeoutPromise,
+					]);
 
 					if (!approved) {
 						console.log(
@@ -361,14 +372,25 @@ export class AgentSessionManager {
 
 					// Continue with advancement (fall through to existing code)
 				} catch (error) {
-					console.error(
-						`[AgentSessionManager] Approval request failed:`,
-						error,
-					);
-					await this.createErrorActivity(
-						linearAgentActivitySessionId,
-						`Workflow stopped: Approval request failed - ${(error as Error).message}`,
-					);
+					const errorMessage = (error as Error).message;
+					if (errorMessage === "Approval timeout") {
+						console.log(
+							`[AgentSessionManager] Approval timed out for session ${linearAgentActivitySessionId}`,
+						);
+						await this.createErrorActivity(
+							linearAgentActivitySessionId,
+							"Workflow stopped: Approval request timed out after 30 minutes.",
+						);
+					} else {
+						console.error(
+							`[AgentSessionManager] Approval request failed:`,
+							error,
+						);
+						await this.createErrorActivity(
+							linearAgentActivitySessionId,
+							`Workflow stopped: Approval request failed - ${errorMessage}`,
+						);
+					}
 					return; // Stop workflow
 				}
 			}

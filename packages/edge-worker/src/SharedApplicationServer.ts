@@ -130,6 +130,15 @@ export class SharedApplicationServer {
 	 * Stop the shared application server
 	 */
 	async stop(): Promise<void> {
+		// Reject all pending approvals before shutdown
+		for (const [sessionId, approval] of this.pendingApprovals) {
+			approval.reject(new Error("Server shutting down"));
+			console.log(
+				`🔐 Rejected pending approval for session ${sessionId} due to shutdown`,
+			);
+		}
+		this.pendingApprovals.clear();
+
 		// Stop ngrok tunnel first
 		if (this.ngrokListener) {
 			try {
@@ -851,6 +860,18 @@ export class SharedApplicationServer {
 	}
 
 	/**
+	 * Escape HTML special characters to prevent XSS attacks
+	 */
+	private escapeHtml(unsafe: string): string {
+		return unsafe
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&#039;");
+	}
+
+	/**
 	 * Register an approval request and get approval URL
 	 */
 	registerApprovalRequest(sessionId: string): {
@@ -1105,7 +1126,7 @@ export class SharedApplicationServer {
           <body style="font-family: system-ui; max-width: 600px; margin: 50px auto; padding: 20px;">
             <h1>${approved ? "✅ Approval Granted" : "❌ Approval Rejected"}</h1>
             <p>Your decision has been recorded. The agent will ${approved ? "proceed with the next step" : "stop the current workflow"}.</p>
-            ${feedback ? `<p><strong>Feedback provided:</strong> ${feedback}</p>` : ""}
+            ${feedback ? `<p><strong>Feedback provided:</strong> ${this.escapeHtml(feedback)}</p>` : ""}
             <p style="margin-top: 30px; color: #666;">You can close this window and return to Linear.</p>
             <script>setTimeout(() => window.close(), 5000)</script>
           </body>
