@@ -6,16 +6,7 @@ import {
 } from "node:http";
 import { URL } from "node:url";
 import { forward } from "@ngrok/ngrok";
-import { DEFAULT_PROXY_URL } from "cyrus-core";
-
-/**
- * OAuth callback handler interface
- */
-export type OAuthCallbackHandler = (
-	token: string,
-	workspaceId: string,
-	workspaceName: string,
-) => Promise<void>;
+import { DEFAULT_PROXY_URL, type OAuthCallbackHandler } from "cyrus-core";
 
 /**
  * OAuth callback state for tracking flows

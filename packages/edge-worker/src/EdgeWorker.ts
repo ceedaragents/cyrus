@@ -28,6 +28,7 @@ import {
 } from "cyrus-claude-runner";
 import type {
 	CyrusAgentSession,
+	EdgeWorkerConfig,
 	IssueMinimal,
 	LinearAgentSessionCreatedWebhook,
 	LinearAgentSessionPromptedWebhook,
@@ -40,6 +41,7 @@ import type {
 	LinearWebhookComment,
 	LinearWebhookGuidanceRule,
 	LinearWebhookIssue,
+	RepositoryConfig,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
@@ -63,12 +65,7 @@ import {
 	type RequestClassification,
 } from "./procedures/index.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
-import type {
-	EdgeWorkerConfig,
-	EdgeWorkerEvents,
-	LinearAgentSessionData,
-	RepositoryConfig,
-} from "./types.js";
+import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(

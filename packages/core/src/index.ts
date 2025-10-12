@@ -9,6 +9,14 @@ export type {
 	Workspace,
 } from "./CyrusAgentSession.js";
 
+// Configuration types
+export type {
+	EdgeConfig,
+	EdgeWorkerConfig,
+	OAuthCallbackHandler,
+	RepositoryConfig,
+} from "./config-types.js";
+
 // Constants
 export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {

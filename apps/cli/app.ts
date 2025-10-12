@@ -13,13 +13,13 @@ import { basename, dirname, resolve } from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import type { Issue } from "@linear/sdk";
-import { DEFAULT_PROXY_URL } from "cyrus-core";
 import {
-	EdgeWorker,
+	DEFAULT_PROXY_URL,
+	type EdgeConfig,
 	type EdgeWorkerConfig,
 	type RepositoryConfig,
-	SharedApplicationServer,
-} from "cyrus-edge-worker";
+} from "cyrus-core";
+import { EdgeWorker, SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import open from "open";
 
@@ -101,15 +101,6 @@ interface LinearCredentials {
 	linearToken: string;
 	linearWorkspaceId: string;
 	linearWorkspaceName: string;
-}
-
-interface EdgeConfig {
-	repositories: RepositoryConfig[];
-	ngrokAuthToken?: string;
-	stripeCustomerId?: string;
-	defaultModel?: string; // Default Claude model to use across all repositories
-	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
-	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
 }
 
 interface Workspace {
@@ -903,7 +894,7 @@ class EdgeApp {
 							"\nSelect workspace (number) or press Enter for new: ",
 						);
 
-						const index = parseInt(choice) - 1;
+						const index = parseInt(choice, 10) - 1;
 						if (index >= 0 && index < workspaceList.length) {
 							const ws = workspaceList[index];
 							if (ws) {
@@ -1693,7 +1684,7 @@ async function refreshTokenCommand() {
 			...Array.from({ length: tokenStatuses.length }, (_, i) => i),
 		);
 	} else {
-		const index = parseInt(answer) - 1;
+		const index = parseInt(answer, 10) - 1;
 		if (Number.isNaN(index) || index < 0 || index >= tokenStatuses.length) {
 			console.error("Invalid selection");
 			process.exit(1);
