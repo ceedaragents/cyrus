@@ -42,6 +42,7 @@ interface ExtendedImageGenerationCall
  * Create an SDK MCP server with GPT Image generation tools
  * Uses the Responses API with background mode for async generation
  *
+ * @see https://platform.openai.com/docs/guides/image-generation?image-generation-model=gpt-image-1 - GPT Image documentation
  * @see https://platform.openai.com/docs/guides/background - Background mode documentation
  */
 export function createImageToolsServer(options: ImageToolsOptions) {
