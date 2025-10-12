@@ -22,6 +22,8 @@ This subroutine can be used for various approval scenarios:
 
 Present your findings/plan in a clear, structured format and explicitly request approval.
 
+**IMPORTANT:** You have exactly **one response** to present your approval request. Make it comprehensive and complete in a single message.
+
 ### Required Format
 
 Your output MUST follow this structure:

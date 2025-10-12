@@ -1588,6 +1588,43 @@ export class EdgeWorker extends EventEmitter {
 		// Fetch labels (needed for both model selection and system prompt determination)
 		const labels = await this.fetchIssueLabels(fullIssue);
 
+		// Check if debugger label is present - if so, override to debugger-full procedure
+		const debuggerConfig = repository.labelPrompts?.debugger;
+		const debuggerLabels = Array.isArray(debuggerConfig)
+			? debuggerConfig
+			: debuggerConfig?.labels;
+		const hasDebuggerLabel = debuggerLabels?.some((label) =>
+			labels.includes(label),
+		);
+
+		if (hasDebuggerLabel) {
+			// Override to debugger-full procedure
+			const debuggerProcedure =
+				this.procedureRouter.getProcedure("debugger-full");
+			if (debuggerProcedure) {
+				console.log(
+					`[EdgeWorker] Overriding to debugger-full procedure due to debugger label`,
+				);
+
+				// Re-initialize procedure metadata with debugger-full
+				this.procedureRouter.initializeProcedureMetadata(
+					session,
+					debuggerProcedure,
+				);
+
+				// Post updated procedure selection
+				await agentSessionManager.postProcedureSelectionThought(
+					linearAgentActivitySessionId,
+					debuggerProcedure.name,
+					"debugger",
+				);
+
+				console.log(
+					`[EdgeWorker] Using debugger-full procedure due to debugger label (was: ${selectedProcedure.name})`,
+				);
+			}
+		}
+
 		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;

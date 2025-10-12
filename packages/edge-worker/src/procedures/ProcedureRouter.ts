@@ -29,7 +29,13 @@ export class ProcedureRouter {
 	constructor(config: ProcedureRouterConfig) {
 		// Initialize SimpleClaudeRunner for routing decisions
 		this.routingRunner = new SimpleClaudeRunner({
-			validResponses: ["question", "documentation", "transient", "code"],
+			validResponses: [
+				"question",
+				"documentation",
+				"transient",
+				"code",
+				"debugger",
+			],
 			cyrusHome: config.cyrusHome,
 			model: config.model || "haiku",
 			fallbackModel: "sonnet",
@@ -59,8 +65,14 @@ Analyze the Linear issue request and classify it into ONE of these categories:
 **transient**: Request involves MCP tools, temporary files, or no codebase interaction.
 - Examples: "Search the web for X", "Generate a diagram", "Use Linear MCP to check issues"
 
-**code**: Request involves code changes, features, bugs, or refactoring.
-- Examples: "Fix bug in X", "Add feature Y", "Refactor module Z", "Implement new API endpoint"
+**debugger**: User EXPLICITLY requests the full debugging workflow with reproduction and approval.
+- ONLY use this if the user specifically asks for: "debug this with approval workflow", "reproduce the bug first", "show me the root cause before fixing"
+- DO NOT use for regular bug reports - those should use "code"
+- Examples: "Debug this issue and get my approval before fixing", "Reproduce the authentication bug with approval checkpoint"
+
+**code**: Request involves code changes, features, bugs, or refactoring (DEFAULT for most work).
+- Examples: "Fix bug in X", "Add feature Y", "Refactor module Z", "Implement new API endpoint", "Fix the login issue"
+- Use this for ALL standard bug fixes and features
 
 IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	}

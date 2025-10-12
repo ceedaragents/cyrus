@@ -22,6 +22,7 @@ export const SUBROUTINES = {
 		name: "get-approval",
 		promptPath: "subroutines/get-approval.md",
 		description: "Request user approval before proceeding",
+		maxTurns: 1,
 		requiresApproval: true, // Flag to trigger approval workflow
 	},
 	debuggerFix: {
@@ -113,6 +114,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	documentation: "documentation-edit",
 	transient: "simple-question",
 	code: "full-development",
+	debugger: "debugger-full",
 };
 
 /**

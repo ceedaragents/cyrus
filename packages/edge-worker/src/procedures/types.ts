@@ -67,7 +67,8 @@ export type RequestClassification =
 	| "question"
 	| "documentation"
 	| "transient"
-	| "code";
+	| "code"
+	| "debugger";
 
 /**
  * Result of procedure routing decision
