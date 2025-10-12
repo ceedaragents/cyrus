@@ -1760,6 +1760,8 @@ export class EdgeWorker extends EventEmitter {
 
 		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
 		let isNewSession = false;
+		let fullIssue: any;
+
 		if (!session) {
 			console.log(
 				`[EdgeWorker] No existing session found for agent activity session ${linearAgentActivitySessionId}, creating new session`,
@@ -1782,9 +1784,39 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Destructure session data for new session
-			const { fullIssue: newFullIssue } = sessionData;
+			fullIssue = sessionData.fullIssue;
 			session = sessionData.session;
 
+			console.log(
+				`[EdgeWorker] Created new session ${linearAgentActivitySessionId} (prompted webhook)`,
+			);
+
+			// Save state and emit events for new session
+			await this.savePersistedState();
+			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			this.config.handlers?.onSessionStart?.(
+				fullIssue.id,
+				fullIssue,
+				repository.id,
+			);
+		} else {
+			console.log(
+				`[EdgeWorker] Found existing session ${linearAgentActivitySessionId} for new user prompt`,
+			);
+
+			// Need to fetch full issue for routing context
+			const linearClient = this.linearClients.get(repository.id);
+			if (linearClient) {
+				fullIssue = await linearClient.issue(issue.id);
+			}
+		}
+
+		// Check if runner is actively streaming before routing
+		const existingRunner = session?.claudeRunner;
+		const isStreaming = existingRunner?.isStreaming() || false;
+
+		// Always route procedure for new comments, UNLESS actively streaming
+		if (!isStreaming) {
 			// Initialize procedure metadata using intelligent routing
 			if (!session.metadata) {
 				session.metadata = {};
@@ -1799,12 +1831,12 @@ export class EdgeWorker extends EventEmitter {
 			// Combine with issue context for better routing
 			const promptBody = webhook.agentActivity.content.body;
 			const routingContext =
-				`${issue.title}\n\n${newFullIssue.description || ""}\n\nUser Request: ${promptBody}`.trim();
+				`${issue.title}\n\n${fullIssue?.description || ""}\n\nUser Request: ${promptBody}`.trim();
 			const routingDecision =
 				await this.procedureRouter.determineRoutine(routingContext);
 			const selectedProcedure = routingDecision.procedure;
 
-			// Initialize procedure metadata in session
+			// Initialize procedure metadata in session (resets for each new comment)
 			this.procedureRouter.initializeProcedureMetadata(
 				session,
 				selectedProcedure,
@@ -1819,33 +1851,14 @@ export class EdgeWorker extends EventEmitter {
 
 			// Log routing decision
 			console.log(
-				`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId} (prompted webhook):`,
+				`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId} (prompted webhook, ${isNewSession ? "new" : "existing"} session):`,
 			);
 			console.log(`  Classification: ${routingDecision.classification}`);
 			console.log(`  Procedure: ${selectedProcedure.name}`);
 			console.log(`  Reasoning: ${routingDecision.reasoning}`);
-
-			console.log(
-				`[EdgeWorker] Initialized new session ${linearAgentActivitySessionId} (prompted webhook)`,
-			);
-
-			// Save state and emit events for new session
-			await this.savePersistedState();
-			this.emit(
-				"session:started",
-				newFullIssue.id,
-				newFullIssue,
-				repository.id,
-			);
-			this.config.handlers?.onSessionStart?.(
-				newFullIssue.id,
-				newFullIssue,
-				repository.id,
-			);
 		} else {
-			// Existing session continues with same procedure
 			console.log(
-				`[EdgeWorker] Resuming existing session ${linearAgentActivitySessionId} for new user prompt`,
+				`[EdgeWorker] Skipping routing for ${linearAgentActivitySessionId} - runner is actively streaming`,
 			);
 		}
 
@@ -1857,7 +1870,6 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
-		const existingRunner = session.claudeRunner;
 		if (!isNewSession) {
 			// Only post acknowledgment for existing sessions (new sessions already handled it above)
 			await this.postInstantPromptedAcknowledgment(

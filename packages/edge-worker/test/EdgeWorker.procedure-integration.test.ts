@@ -370,6 +370,66 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		});
 	});
 
+	describe("Procedure Routing on New Comments", () => {
+		it("should route fresh procedure for each new comment in same session", async () => {
+			// Simulate an existing session that has a procedure already running
+			const session: CyrusAgentSession = {
+				linearAgentActivitySessionId: "session-routing-test",
+				type: "comment_thread" as const,
+				status: "active" as const,
+				context: "comment_thread" as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueId: "issue-routing",
+				issue: {
+					id: "issue-routing",
+					identifier: "TEST-ROUTING",
+					title: "Test Routing",
+				},
+				workspace: { path: "/test/workspace", isGitWorktree: false },
+				claudeSessionId: "claude-routing",
+				metadata: {
+					procedure: {
+						procedureName: "full-development",
+						currentSubroutineIndex: 2, // Mid-procedure
+						subroutineHistory: [
+							{
+								subroutine: "primary",
+								completedAt: Date.now(),
+								claudeSessionId: "claude-routing",
+							},
+							{
+								subroutine: "verifications",
+								completedAt: Date.now(),
+								claudeSessionId: "claude-routing",
+							},
+						],
+					},
+				},
+			};
+
+			// Verify initial state
+			expect(session.metadata.procedure?.procedureName).toBe(
+				"full-development",
+			);
+			expect(session.metadata.procedure?.currentSubroutineIndex).toBe(2);
+			expect(session.metadata.procedure?.subroutineHistory).toHaveLength(2);
+
+			// Now simulate a new comment arriving (EdgeWorker would route this)
+			// In the new behavior, initializeProcedureMetadata is called again
+			const newProcedure = PROCEDURES["simple-question"];
+			procedureRouter.initializeProcedureMetadata(session, newProcedure);
+
+			// Verify procedure was reset to the new one
+			expect(session.metadata.procedure?.procedureName).toBe("simple-question");
+			expect(session.metadata.procedure?.currentSubroutineIndex).toBe(0);
+			expect(session.metadata.procedure?.subroutineHistory).toHaveLength(0);
+
+			// This demonstrates that each new comment gets fresh procedure routing
+			// rather than continuing the old procedure
+		});
+	});
+
 	describe("Error Handling", () => {
 		it("should handle errors during procedure execution gracefully", () => {
 			const session: CyrusAgentSession = {
