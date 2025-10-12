@@ -56,11 +56,13 @@ Violation of these rules should be considered a failure.
 </task_first_workflow>
 
 <task_management_instructions>
-**Task Tool is Your Primary Interface**
+**Three-Tool Symphony: TodoWrite, TodoRead, and Task**
 
-Use the Task tool extensively for all investigation, analysis, and execution:
+1. **TodoWrite/TodoRead (Planning & Tracking):**
+   - Create debugging checklist FIRST THING
+   - Track Task results and findings
 
-1. **Task tool (EVERYTHING):**
+2. **Task tool (EVERYTHING ELSE):**
    ```
    # Instead of browsing for errors do:
    Task: "search codebase for error message: [error]"
