@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 - **Image generation support**: Added GPT Image tool `mcp__image-tools__gpt_image_generate` for creating images from text prompts using OpenAI's gpt-image-1 model. Features superior instruction following, text rendering, and real-world knowledge. Supports customizable size (1024x1024, 1536x1024, 1024x1536), quality (low/medium/high/auto), background transparency, and output formats (PNG/JPEG/WebP). Images are automatically saved to disk.
 
 ### Changed
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.11 to v0.1.13 - includes parity updates with Claude Code v2.0.13. See [@anthropic-ai/claude-agent-sdk v0.1.13 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0113---2025-01-10)
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.13 to v0.1.14 - includes parity updates with Claude Code v2.0.14. See [@anthropic-ai/claude-agent-sdk v0.1.14 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0114)
 
 ## [0.1.55] - 2025-10-09
 
