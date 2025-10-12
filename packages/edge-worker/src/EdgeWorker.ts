@@ -1804,6 +1804,17 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Found existing session ${linearAgentActivitySessionId} for new user prompt`,
 			);
 
+			// Post instant acknowledgment for existing session BEFORE any async work
+			// Check streaming status first to determine the message
+			const existingRunner = session?.claudeRunner;
+			const isCurrentlyStreaming = existingRunner?.isStreaming() || false;
+
+			await this.postInstantPromptedAcknowledgment(
+				linearAgentActivitySessionId,
+				repository.id,
+				isCurrentlyStreaming,
+			);
+
 			// Need to fetch full issue for routing context
 			const linearClient = this.linearClients.get(repository.id);
 			if (linearClient) {
@@ -1812,6 +1823,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check if runner is actively streaming before routing
+		// Note: existingRunner already defined above for existing sessions
 		const existingRunner = session?.claudeRunner;
 		const isStreaming = existingRunner?.isStreaming() || false;
 
@@ -1869,15 +1881,8 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
-		if (!isNewSession) {
-			// Only post acknowledgment for existing sessions (new sessions already handled it above)
-			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
-				repository.id,
-				existingRunner?.isStreaming() || false,
-			);
-		}
+		// Acknowledgment already posted above for both new and existing sessions
+		// (before any async routing work to ensure instant user feedback)
 
 		// Get Linear client for this repository
 		const linearClient = this.linearClients.get(repository.id);
