@@ -1905,10 +1905,8 @@ export class EdgeWorker extends EventEmitter {
 				);
 			}
 			const promptBody = webhook.agentActivity.content.body;
-			const routingContext =
-				`${issue.title}\n\n${fullIssue?.description || ""}\n\nUser Request: ${promptBody}`.trim();
 			const routingDecision =
-				await this.procedureRouter.determineRoutine(routingContext);
+				await this.procedureRouter.determineRoutine(promptBody.trim());
 			const selectedProcedure = routingDecision.procedure;
 
 			// Initialize procedure metadata in session (resets for each new comment)
