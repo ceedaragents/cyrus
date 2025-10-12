@@ -111,15 +111,14 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 					};
 				}
 
-				// Build request parameters
+				// Build request parameters - gpt-image-1 returns base64 by default
 				const requestParams: any = {
 					model: "gpt-image-1",
 					prompt,
 					n: 1,
-					response_format: "b64_json", // Use base64 for permanent storage
 				};
 
-				// Add optional parameters
+				// Add optional parameters (only if not auto)
 				if (size !== "auto") requestParams.size = size;
 				if (quality !== "auto") requestParams.quality = quality;
 				if (background !== "auto") requestParams.background = background;
