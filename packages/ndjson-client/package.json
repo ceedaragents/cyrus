@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-ndjson-client",
-	"version": "0.0.23",
+	"version": "0.0.24",
 	"description": "NDJSON streaming client for proxy communication",
 	"type": "module",
 	"main": "dist/index.js",
