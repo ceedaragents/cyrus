@@ -1760,7 +1760,7 @@ export class EdgeWorker extends EventEmitter {
 
 		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
 		let isNewSession = false;
-		let fullIssue: any;
+		let fullIssue: LinearIssue | null = null;
 
 		if (!session) {
 			console.log(
