@@ -2,9 +2,6 @@ import type { Issue as LinearIssue } from "@linear/sdk";
 import type { SDKMessage } from "cyrus-claude-runner";
 import type { CyrusAgentSession, Workspace } from "cyrus-core";
 
-// Re-export types from cyrus-core for backward compatibility
-export type { EdgeWorkerConfig, RepositoryConfig } from "cyrus-core";
-
 /**
  * Events emitted by EdgeWorker
  */
