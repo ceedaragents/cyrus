@@ -1299,10 +1299,10 @@ export class AgentSessionManager {
 					type: "elicitation",
 					body,
 				},
-				signal: "auth" as any, // Type assertion because SDK types might not be up to date
+				signal: LinearDocument.AgentActivitySignal.Auth,
 				signalMetadata: {
 					url: approvalUrl,
-				} as any, // Type assertion for signalMetadata
+				},
 			});
 
 			if (result.success) {
