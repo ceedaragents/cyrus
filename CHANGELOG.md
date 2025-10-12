@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.57] - 2025-10-12
+
+### Fixed
+- Fixed missing `cyrus-simple-agent-runner` package publication that broke installation of cyrus-ai@0.1.56
+
+### Packages
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.2
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.39
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.57
+
 ## [0.1.56] - 2025-10-12
 
 ### Added
@@ -31,6 +47,9 @@ All notable changes to this project will be documented in this file.
 
 #### cyrus-ndjson-client
 - cyrus-ndjson-client@0.0.24
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.2
 
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.56
