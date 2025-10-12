@@ -3423,14 +3423,14 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				outputDirectory: repository.openaiOutputDirectory,
 			});
 
-			// DALL-E image generation tools
+			// GPT Image generation tools
 			mcpConfig["image-tools"] = createImageToolsServer({
 				apiKey: repository.openaiApiKey,
 				outputDirectory: repository.openaiOutputDirectory,
 			});
 
 			console.log(
-				`[EdgeWorker] Configured OpenAI MCP servers (Sora + DALL-E) for repository: ${repository.name}`,
+				`[EdgeWorker] Configured OpenAI MCP servers (Sora + GPT Image) for repository: ${repository.name}`,
 			);
 		}
 
