@@ -23,6 +23,9 @@ export interface SubroutineDefinition {
 
 	/** Whether to suppress posting thoughts/actions (still posts final summary) */
 	suppressThoughtPosting?: boolean;
+
+	/** Whether this subroutine requires user approval before advancing to next step */
+	requiresApproval?: boolean;
 }
 
 /**

@@ -13,6 +13,22 @@ export const SUBROUTINES = {
 		promptPath: "primary", // Special: resolved via label (debugger/builder/scoper/orchestrator)
 		description: "Main work execution phase",
 	},
+	debuggerReproduction: {
+		name: "debugger-reproduction",
+		promptPath: "subroutines/debugger-reproduction.md",
+		description: "Reproduce bug and perform root cause analysis",
+	},
+	getApproval: {
+		name: "get-approval",
+		promptPath: "subroutines/get-approval.md",
+		description: "Request user approval before proceeding",
+		requiresApproval: true, // Flag to trigger approval workflow
+	},
+	debuggerFix: {
+		name: "debugger-fix",
+		promptPath: "subroutines/debugger-fix.md",
+		description: "Implement minimal fix based on approved reproduction",
+	},
 	verifications: {
 		name: "verifications",
 		promptPath: "subroutines/verifications.md",
@@ -65,6 +81,20 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		description: "For code changes requiring full verification and PR creation",
 		subroutines: [
 			SUBROUTINES.primary,
+			SUBROUTINES.verifications,
+			SUBROUTINES.gitGh,
+			SUBROUTINES.verboseSummary,
+		],
+	},
+
+	"debugger-full": {
+		name: "debugger-full",
+		description:
+			"Full debugging workflow with reproduction, approval, fix, and verification",
+		subroutines: [
+			SUBROUTINES.debuggerReproduction,
+			SUBROUTINES.getApproval,
+			SUBROUTINES.debuggerFix,
 			SUBROUTINES.verifications,
 			SUBROUTINES.gitGh,
 			SUBROUTINES.verboseSummary,
