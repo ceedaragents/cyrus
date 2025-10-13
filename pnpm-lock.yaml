@@ -235,7 +235,7 @@ importers:
   packages/simple-agent-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.11
+        specifier: ^0.1.14
         version: 0.1.14(zod@3.25.76)
       cyrus-claude-runner:
         specifier: workspace:*
