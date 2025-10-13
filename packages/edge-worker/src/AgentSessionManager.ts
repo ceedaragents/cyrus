@@ -244,13 +244,20 @@ export class AgentSessionManager {
 			usage: resultMessage.usage,
 		});
 
-		// Handle result using procedure routing system
-		if ("result" in resultMessage && resultMessage.result) {
+		// Handle result using procedure routing system (only if procedure router is available)
+		if (
+			"result" in resultMessage &&
+			resultMessage.result &&
+			this.procedureRouter
+		) {
 			await this.handleProcedureCompletion(
 				session,
 				linearAgentActivitySessionId,
 				resultMessage,
 			);
+		} else {
+			// No procedure router available or no result field, post the result entry
+			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 		}
 	}
 

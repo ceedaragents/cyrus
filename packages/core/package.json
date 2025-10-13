@@ -9,7 +9,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc && npm run postbuild",
+		"postbuild": "if [ -d dist/core/src ]; then cp -r dist/core/src/* dist/ && rm -rf dist/core dist/claude-runner; fi",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run --passWithNoTests",

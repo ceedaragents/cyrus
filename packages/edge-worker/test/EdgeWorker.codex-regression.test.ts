@@ -37,6 +37,20 @@ vi.mock("../src/SharedApplicationServer.js", () => ({
 vi.mock("../src/AgentSessionManager.js", () => ({
 	AgentSessionManager: vi.fn().mockImplementation(() => ({
 		serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
+		postRoutingThought: vi.fn().mockResolvedValue(null),
+		postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+		createLinearAgentSession: vi.fn().mockReturnValue({
+			linearAgentActivitySessionId: "mock-session-id",
+			type: "commentThread",
+			status: "active",
+			context: "commentThread",
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+			issueId: "mock-issue-id",
+		}),
+		getSession: vi.fn(),
+		addClaudeRunner: vi.fn(),
+		handleClaudeMessage: vi.fn(),
 	})),
 }));
 vi.mock("cyrus-linear-webhook-client", () => ({
@@ -517,6 +531,8 @@ describe("EdgeWorker Codex regression", () => {
 			}),
 			createResponseActivity: vi.fn().mockResolvedValue(undefined),
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
+			postRoutingThought: vi.fn().mockResolvedValue(null),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 		(edgeWorker as any).agentSessionManagers.set(
 			repository.id,

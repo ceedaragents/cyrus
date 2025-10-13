@@ -62,6 +62,20 @@ vi.mock("../src/SharedApplicationServer.js", () => ({
 vi.mock("../src/AgentSessionManager.js", () => ({
 	AgentSessionManager: vi.fn().mockImplementation(() => ({
 		serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
+		postRoutingThought: vi.fn().mockResolvedValue(null),
+		postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+		createLinearAgentSession: vi.fn().mockReturnValue({
+			linearAgentActivitySessionId: "mock-session-id",
+			type: "commentThread",
+			status: "active",
+			context: "commentThread",
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+			issueId: "mock-issue-id",
+		}),
+		getSession: vi.fn(),
+		addClaudeRunner: vi.fn(),
+		handleClaudeMessage: vi.fn(),
 	})),
 }));
 
@@ -352,6 +366,8 @@ describe("EdgeWorker Codex integration", () => {
 			}),
 			createResponseActivity: vi.fn().mockResolvedValue(undefined),
 			serializeState: vi.fn(),
+			postRoutingThought: vi.fn().mockResolvedValue(null),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 		(edgeWorker as any).agentSessionManagers.set(
 			repository.id,
@@ -435,6 +451,27 @@ describe("EdgeWorker Codex integration", () => {
 	});
 
 	it("posts instant acknowledgement as a response card when starting a session", async () => {
+		// Manually set agentSessionManager to ensure it has all required methods
+		const agentSessionManager = {
+			createLinearAgentSession: vi.fn().mockReturnValue({
+				linearAgentActivitySessionId: "mock-session-id",
+				type: "commentThread",
+				status: "active",
+				context: "commentThread",
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueId: "mock-issue-id",
+			}),
+			getSession: vi.fn(),
+			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
+			postRoutingThought: vi.fn().mockResolvedValue(null),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+		};
+		(edgeWorker as any).agentSessionManagers.set(
+			repository.id,
+			agentSessionManager,
+		);
+
 		const createSessionSpy = vi
 			.spyOn(edgeWorker as any, "createLinearAgentSession")
 			.mockResolvedValue({
@@ -508,6 +545,7 @@ describe("EdgeWorker Codex integration", () => {
 			}),
 			createResponseActivity: vi.fn().mockResolvedValue(undefined),
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
+			postRoutingThought: vi.fn().mockResolvedValue(null),
 		};
 		(edgeWorker as any).agentSessionManagers.set(
 			repository.id,
