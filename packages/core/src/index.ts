@@ -21,8 +21,10 @@ export type {
 export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {
 	SerializableEdgeWorkerState,
+	SerializedCodexPermissions,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	SerializedSessionRunnerSelection,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
 // Webhook types

@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Automated Codex→EdgeWorker regression harness and a `scripts/edge-process-helper.sh`
+  utility to surface and safely terminate lingering CLI/ngrok processes.
+
+### Changed
+- Acknowledgements now render as response cards in Linear (Proxy Worker cards) instead of inline thoughts, improving visibility and separating acknowledgements from reasoning output.
+- Codex sessions now deliver thoughts, actions, and final answers to Linear in the order they were emitted, preventing final messages from appearing before tool updates.
+- Updated @anthropic-ai/claude-code from v1.0.95 to v1.0.112 for latest Claude Code improvements. See [Claude Code v1.0.112 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#10112)
+- Updated @anthropic-ai/sdk from v0.60.0 to v0.62.0 for latest Anthropic SDK improvements
+- Claude/OpenCode adapters and EdgeWorker now emit and persist normalized
+  thought/action/final events, aligning the JSON streaming pipeline with Codex
+  resume requirements.
+
+### Fixed
+- Stopping an in-flight session no longer posts a follow-up error card; the next comment automatically resumes the same Codex context.
+- Recoverable tool and runner errors now appear inline with a ❌ prefix, while only terminal failures surface as Proxy Worker error cards.
+
+### Removed
+- Dropped the `___LAST_MESSAGE_MARKER___` sentinel from all prompts; completion
+  detection now relies on CLI-native metadata across Claude, Codex, and OpenCode.
+
 ## [0.1.57] - 2025-10-12
 
 ### Fixed
@@ -546,7 +567,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Simplified initial setup by removing configuration prompts for MCP, labels, Linear teams, allowed tools, and workspace directory
   - MCP configuration is now optional with no default prompt
-  - Allowed tools default to all standard tools plus Bash(git:*) and Bash(gh:*) for immediate productivity
+  - Allowed tools default to all standard tools plus a vetted git/gh command allowlist (status/diff/add/commit/branch/push/merge/log/show/rev-parse/fetch + `gh pr create/list/view/status`, `gh auth status`) for immediate productivity
   - Label-based system prompts now have defaults: "Bug" for debugger mode, "Feature,Improvement" for builder mode, and "PRD" for scoper mode
   - Team-based routing defaults to all workspace issues (no team filtering)
   - Workspace directory automatically uses `~/.cyrus/workspaces/<repo-name>`

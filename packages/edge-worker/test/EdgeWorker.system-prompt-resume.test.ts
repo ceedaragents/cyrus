@@ -228,7 +228,6 @@ Issue: {{issue_identifier}}`;
 		expect(capturedClaudeRunnerConfig.appendSystemPrompt).toContain(
 			"You are in debugger mode. Fix bugs systematically.",
 		);
-		// Note: LAST_MESSAGE_MARKER removed as part of three-phase execution system
 	});
 
 	it("should include system prompt when resuming ClaudeRunner (bug fixed)", async () => {
@@ -267,10 +266,9 @@ Issue: {{issue_identifier}}`;
 		// Assert - Bug is now fixed: system prompt is included!
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
 		expect(capturedClaudeRunnerConfig).toBeDefined();
-		// System prompt should include BOTH the debugger prompt AND the marker
+		// System prompt should include the debugger prompt text
 		expect(capturedClaudeRunnerConfig.appendSystemPrompt).toContain(
 			"You are in debugger mode. Fix bugs systematically.",
 		);
-		// Note: LAST_MESSAGE_MARKER removed as part of three-phase execution system
 	});
 });

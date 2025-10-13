@@ -24,6 +24,24 @@ export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry;
 /**
  * Serializable EdgeWorker state for persistence
  */
+export type SerializedCodexPermissionProfile = "readOnly" | "safe" | "all";
+
+export interface SerializedCodexPermissions {
+	profile: SerializedCodexPermissionProfile;
+	sandbox: "read-only" | "workspace-write" | "danger-full-access";
+	approvalPolicy: "untrusted" | "on-failure" | "on-request" | "never";
+	fullAuto: boolean;
+}
+
+export interface SerializedSessionRunnerSelection {
+	type: "claude" | "codex";
+	model?: string;
+	issueId: string;
+	resumeSessionId?: string;
+	promptType?: string;
+	codexPermissions?: SerializedCodexPermissions;
+}
+
 export interface SerializableEdgeWorkerState {
 	// Agent Session state - keyed by repository ID, since that's how we construct AgentSessionManagers
 	agentSessions?: Record<string, Record<string, SerializedCyrusAgentSession>>;
@@ -33,6 +51,14 @@ export interface SerializableEdgeWorkerState {
 	>;
 	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
+	// Session runner metadata for non-Claude sessions
+	sessionRunnerSelections?: Record<string, SerializedSessionRunnerSelection>;
+	// Completed non-Claude sessions so we suppress late events on resume
+	finalizedNonClaudeSessions?: string[];
+	// Cached session ids for resume flows
+	codexSessionCache?: Record<string, string>;
+	// Sessions that were intentionally stopped to suppress transient errors
+	stopRequestedSessions?: string[];
 }
 
 /**
@@ -68,7 +94,7 @@ export class PersistenceManager {
 			await this.ensurePersistenceDirectory();
 			const stateFile = this.getEdgeWorkerStateFilePath();
 			const stateData = {
-				version: "2.0",
+				version: "2.1",
 				savedAt: new Date().toISOString(),
 				state,
 			};
@@ -92,7 +118,8 @@ export class PersistenceManager {
 			const stateData = JSON.parse(await readFile(stateFile, "utf8"));
 
 			// Validate state structure
-			if (!stateData.state || stateData.version !== "2.0") {
+			const supportedVersions = ["2.0", "2.1"];
+			if (!stateData.state || !supportedVersions.includes(stateData.version)) {
 				console.warn(`Invalid or outdated state file, ignoring`);
 				return null;
 			}

@@ -9,7 +9,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc && npm run postbuild",
+		"postbuild": "[ -d dist/simple-agent-runner/src ] && cp -r dist/simple-agent-runner/src/* dist/ && rm -rf dist/simple-agent-runner dist/claude-runner || true",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run --passWithNoTests",

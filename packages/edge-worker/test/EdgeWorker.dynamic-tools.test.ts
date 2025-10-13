@@ -58,7 +58,7 @@ import {
 } from "cyrus-claude-runner";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
-import { EdgeWorker } from "../src/EdgeWorker.js";
+import { EdgeWorker, SAFE_BASH_TOOL_ALLOWLIST } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
@@ -202,6 +202,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const scoperTools = buildAllowedTools(repository, "scoper");
 			expect(scoperTools).toEqual([
 				...getSafeTools(),
+				...SAFE_BASH_TOOL_ALLOWLIST,
 				"mcp__linear",
 				"mcp__cyrus-tools",
 			]);
@@ -242,6 +243,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const builderTools = buildAllowedTools(repository, "builder");
 			expect(builderTools).toEqual([
 				...getSafeTools(),
+				...SAFE_BASH_TOOL_ALLOWLIST,
 				"mcp__linear",
 				"mcp__cyrus-tools",
 			]);
@@ -354,6 +356,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const builderTools = buildAllowedTools(repository, "builder");
 			expect(builderTools).toEqual([
 				...getSafeTools(),
+				...SAFE_BASH_TOOL_ALLOWLIST,
 				"mcp__linear",
 				"mcp__cyrus-tools",
 			]);

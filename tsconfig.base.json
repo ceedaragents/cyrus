@@ -20,13 +20,14 @@
 		"noUncheckedIndexedAccess": true,
 		"baseUrl": ".",
 		"paths": {
-			"cyrus-core": ["packages/core/src"],
-			"cyrus-claude-parser": ["packages/claude-parser/src"],
-			"cyrus-linear-client": ["packages/linear-client/src"],
-			"cyrus-history-stream": ["packages/history-stream/src"],
-			"cyrus-edge-worker": ["packages/edge-worker/src"],
-			"cyrus-claude-runner": ["packages/claude-runner/src"],
-			"cyrus-ndjson-client": ["packages/ndjson-client/src"]
+			"cyrus-core": ["packages/core/src/index.ts"],
+			"cyrus-claude-parser": ["packages/claude-parser/src/index.ts"],
+			"cyrus-linear-client": ["packages/linear-client/src/index.ts"],
+			"cyrus-history-stream": ["packages/history-stream/src/index.ts"],
+			"cyrus-edge-worker": ["packages/edge-worker/src/index.ts"],
+			"cyrus-claude-runner": ["packages/claude-runner/src/index.ts"],
+			"cyrus-ndjson-client": ["packages/ndjson-client/src/index.ts"],
+			"cyrus-agent-runner": ["packages/agent-runner/src/index.ts"]
 		}
 	},
 	"exclude": ["node_modules", "dist", "build"]

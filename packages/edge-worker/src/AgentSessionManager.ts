@@ -244,13 +244,20 @@ export class AgentSessionManager {
 			usage: resultMessage.usage,
 		});
 
-		// Handle result using procedure routing system
-		if ("result" in resultMessage && resultMessage.result) {
+		// Handle result using procedure routing system (only if procedure router is available)
+		if (
+			"result" in resultMessage &&
+			resultMessage.result &&
+			this.procedureRouter
+		) {
 			await this.handleProcedureCompletion(
 				session,
 				linearAgentActivitySessionId,
 				resultMessage,
 			);
+		} else {
+			// No procedure router available or no result field, post the result entry
+			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 		}
 	}
 
@@ -580,14 +587,18 @@ export class AgentSessionManager {
 		linearAgentActivitySessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
+		const normalizedResult = this.normalizeResultEntry(resultMessage);
+
 		const resultEntry: CyrusAgentSessionEntry = {
 			claudeSessionId: resultMessage.session_id,
 			type: "result",
-			content: "result" in resultMessage ? resultMessage.result : "",
+			content: normalizedResult.content,
 			metadata: {
 				timestamp: Date.now(),
 				durationMs: resultMessage.duration_ms,
-				isError: resultMessage.is_error,
+				isError: normalizedResult.isError,
+				isTerminalError: normalizedResult.isTerminalError,
+				resultSubtype: normalizedResult.subtype,
 			},
 		};
 
@@ -693,6 +704,209 @@ export class AgentSessionManager {
 			}
 		}
 		return null;
+	}
+
+	private normalizeResultEntry(resultMessage: SDKResultMessage): {
+		content: string;
+		isError: boolean;
+		isTerminalError: boolean;
+		subtype: string;
+	} {
+		const subtype =
+			typeof resultMessage.subtype === "string"
+				? resultMessage.subtype
+				: "error";
+
+		if (subtype === "success") {
+			const successContent =
+				"result" in resultMessage && typeof resultMessage.result === "string"
+					? resultMessage.result
+					: "";
+			return {
+				content: successContent,
+				isError: Boolean(resultMessage.is_error),
+				isTerminalError: false,
+				subtype,
+			};
+		}
+
+		const content = this.buildResultErrorMessage(resultMessage);
+
+		const hasExplicitNonErrorFlag =
+			typeof resultMessage.is_error === "boolean" &&
+			resultMessage.is_error === false;
+
+		return {
+			content,
+			isError: true,
+			isTerminalError:
+				!hasExplicitNonErrorFlag && !this.isNonTerminalResultSubtype(subtype),
+			subtype,
+		};
+	}
+
+	private isNonTerminalResultSubtype(subtype: string): boolean {
+		const normalized = subtype.trim().toLowerCase();
+		if (!normalized) {
+			return false;
+		}
+		if (
+			normalized === "error_during_execution" ||
+			normalized.includes("tool") ||
+			normalized.endsWith("_retryable")
+		) {
+			return true;
+		}
+		return false;
+	}
+
+	private formatResultSubtypeLabel(subtype: string): string {
+		const normalized = subtype
+			.trim()
+			.replace(/[_\s]+/g, " ")
+			.toLowerCase();
+		if (!normalized) {
+			return "unknown error";
+		}
+		return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+	}
+
+	private describeResultSubtype(subtype: string): string {
+		const normalized = subtype.trim().toLowerCase();
+		switch (normalized) {
+			case "success":
+				return "Run completed successfully.";
+			case "error_during_execution":
+				return "Tool execution failed during the run.";
+			case "error_max_turns":
+				return "Run stopped after reaching the maximum number of turns.";
+			case "error":
+				return "Run encountered an error.";
+			default:
+				return `Run ended with ${this.formatResultSubtypeLabel(subtype)}.`;
+		}
+	}
+
+	private buildResultErrorMessage(resultMessage: SDKResultMessage): string {
+		const subtype =
+			typeof resultMessage.subtype === "string"
+				? resultMessage.subtype
+				: "error";
+
+		const parts: string[] = [];
+
+		const description = this.describeResultSubtype(subtype);
+		if (description) {
+			parts.push(description);
+		}
+
+		const errorDetail = this.extractResultErrorDetail(resultMessage);
+		if (errorDetail) {
+			parts.push(errorDetail);
+		}
+
+		if ("result" in resultMessage && resultMessage.result) {
+			const trimmed = resultMessage.result.trim();
+			if (trimmed.length > 0) {
+				parts.push(trimmed);
+			}
+		}
+
+		if (
+			Array.isArray(resultMessage.permission_denials) &&
+			resultMessage.permission_denials.length > 0
+		) {
+			const permissionSummary = resultMessage.permission_denials
+				.map((denial) => this.formatPermissionDenialSummary(denial))
+				.filter((value): value is string => Boolean(value))
+				.join("\n");
+			if (permissionSummary) {
+				parts.push(`Permissions:\n${permissionSummary}`);
+			}
+		}
+
+		const message = parts
+			.map((part) => part.trim())
+			.filter(Boolean)
+			.join("\n\n");
+		if (message.length > 0) {
+			return message;
+		}
+
+		return "Run ended with an unknown error.";
+	}
+
+	private extractResultErrorDetail(
+		resultMessage: SDKResultMessage,
+	): string | undefined {
+		const errorValue = (resultMessage as any).error;
+		if (typeof errorValue === "string" && errorValue.trim().length > 0) {
+			return errorValue.trim();
+		}
+		if (errorValue && typeof errorValue === "object") {
+			const prioritizedKeys = ["message", "detail", "details", "reason"];
+			for (const key of prioritizedKeys) {
+				const value = (errorValue as Record<string, unknown>)[key];
+				if (typeof value === "string" && value.trim().length > 0) {
+					return value.trim();
+				}
+			}
+			try {
+				const serialized = JSON.stringify(errorValue);
+				if (serialized && serialized !== "{}") {
+					return serialized;
+				}
+			} catch (_error) {
+				// ignore serialization issues
+			}
+		}
+
+		const reason = (resultMessage as any).reason;
+		if (typeof reason === "string" && reason.trim().length > 0) {
+			return reason.trim();
+		}
+
+		return undefined;
+	}
+
+	private formatPermissionDenialSummary(
+		denial: SDKPermissionDenialLike,
+	): string | undefined {
+		if (!denial) {
+			return undefined;
+		}
+
+		const name =
+			typeof denial.tool_name === "string" ? denial.tool_name.trim() : "";
+		const toolId =
+			typeof denial.tool_use_id === "string" ? denial.tool_use_id.trim() : "";
+
+		let summary = name || "Tool";
+		if (toolId) {
+			summary = `${summary} (${toolId})`;
+		}
+
+		const input = denial.tool_input;
+		if (input && typeof input === "object") {
+			try {
+				const serialized = JSON.stringify(input);
+				if (serialized && serialized !== "{}") {
+					return `${summary}: ${serialized}`;
+				}
+			} catch (_error) {
+				// ignore serialization issues
+			}
+		}
+
+		return summary.length > 0 ? summary : undefined;
+	}
+
+	private formatInlineErrorBody(body: string): string {
+		const trimmed = body.trim();
+		if (trimmed.length === 0) {
+			return "❌ Error encountered.";
+		}
+		return trimmed.startsWith("❌") ? trimmed : `❌ ${trimmed}`;
 	}
 
 	/**
@@ -888,20 +1102,58 @@ export class AgentSessionManager {
 					};
 					break;
 
-				case "result":
-					// Result messages can be responses or errors
-					if (entry.metadata?.isError) {
-						content = {
-							type: "error",
-							body: entry.content,
-						};
+				case "result": {
+					const subtype = entry.metadata?.resultSubtype;
+					const isExplicitError = Boolean(entry.metadata?.isError);
+					const isError =
+						isExplicitError ||
+						(typeof subtype === "string" && subtype !== "success");
+
+					const trimmedContent = entry.content.trim();
+					const fallbackBody =
+						typeof subtype === "string" && subtype !== "success"
+							? this.describeResultSubtype(subtype)
+							: "";
+					const baseBody =
+						trimmedContent.length > 0 ? trimmedContent : fallbackBody.trim();
+
+					if (isError) {
+						const isTerminal =
+							entry.metadata?.isTerminalError ??
+							(typeof subtype === "string"
+								? !this.isNonTerminalResultSubtype(subtype)
+								: true);
+
+						const body =
+							baseBody.length > 0
+								? baseBody
+								: this.describeResultSubtype(
+										typeof subtype === "string" ? subtype : "error",
+									);
+
+						if (isTerminal) {
+							content = {
+								type: "error",
+								body,
+							};
+						} else {
+							content = {
+								type: "thought",
+								body: this.formatInlineErrorBody(body),
+							};
+						}
 					} else {
+						const responseBody =
+							baseBody.length > 0
+								? baseBody
+								: this.describeResultSubtype("success");
 						content = {
 							type: "response",
-							body: entry.content,
+							body: responseBody,
 						};
 					}
 					break;
+				}
 
 				default:
 					// Default to thought
@@ -1510,3 +1762,8 @@ export class AgentSessionManager {
 		}
 	}
 }
+type SDKPermissionDenialLike = {
+	tool_name?: string;
+	tool_use_id?: string;
+	tool_input?: Record<string, unknown>;
+};

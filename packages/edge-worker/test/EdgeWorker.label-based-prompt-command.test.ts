@@ -326,7 +326,6 @@ Issue: {{issue_identifier}}`;
 		expect(capturedClaudeRunnerConfig.appendSystemPrompt).toContain(
 			"You are in debugger mode. Fix bugs systematically.",
 		);
-		// Note: LAST_MESSAGE_MARKER removed as part of three-phase execution system
 	});
 
 	it("should NOT include system prompt content for regular mentions without /label-based-prompt", async () => {
@@ -358,10 +357,7 @@ Issue: {{issue_identifier}}`;
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
 		expect(capturedClaudeRunnerConfig).toBeDefined();
 
-		// Should NOT include debugger system prompt for regular mentions - only the marker
-		expect(capturedClaudeRunnerConfig.appendSystemPrompt).not.toContain(
-			"You are in debugger mode. Fix bugs systematically.",
-		);
-		// Note: LAST_MESSAGE_MARKER removed as part of three-phase execution system
+		// Should NOT include debugger system prompt for regular mentions
+		expect(capturedClaudeRunnerConfig.appendSystemPrompt).toBe("");
 	});
 });

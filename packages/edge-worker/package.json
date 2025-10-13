@@ -3,8 +3,8 @@
 	"version": "0.0.39",
 	"description": "Unified edge worker for processing Linear issues with Claude",
 	"type": "module",
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
+	"main": "dist/edge-worker/src/index.js",
+	"types": "dist/edge-worker/src/index.d.ts",
 	"files": [
 		"dist",
 		"prompt-template-v2.md",
@@ -26,6 +26,7 @@
 		"@linear/sdk": "^60.0.0",
 		"@ngrok/ngrok": "^1.5.1",
 		"chokidar": "^4.0.3",
+		"cyrus-agent-runner": "workspace:*",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-webhook-client": "workspace:*",
