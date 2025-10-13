@@ -85,10 +85,11 @@ async function main() {
 	// Test 2: Only Linear MCP server
 	await testMCPConfig("Only Linear MCP", {
 		linear: {
-			type: "stdio",
-			command: "npx",
-			args: ["-y", "@tacticlaunch/mcp-linear"],
-			env: { LINEAR_API_TOKEN: process.env.LINEAR_API_TOKEN },
+			type: "http",
+			url: "https://mcp.linear.app/mcp",
+			headers: {
+				Authorization: `Bearer ${process.env.LINEAR_API_TOKEN}`,
+			},
 		},
 	});
 
@@ -102,10 +103,11 @@ async function main() {
 		"All MCP servers (production config)",
 		{
 			linear: {
-				type: "stdio",
-				command: "npx",
-				args: ["-y", "@tacticlaunch/mcp-linear"],
-				env: { LINEAR_API_TOKEN: process.env.LINEAR_API_TOKEN },
+				type: "http",
+				url: "https://mcp.linear.app/mcp",
+				headers: {
+					Authorization: `Bearer ${process.env.LINEAR_API_TOKEN}`,
+				},
 			},
 		},
 		["/Users/agentops/code/ceedarmcpconfig.json"],

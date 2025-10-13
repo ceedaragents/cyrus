@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-edge-worker",
-	"version": "0.0.31",
+	"version": "0.0.39",
 	"description": "Unified edge worker for processing Linear issues with Claude",
 	"type": "module",
 	"main": "dist/edge-worker/src/index.js",
@@ -13,7 +13,8 @@
 		"prompts"
 	],
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc && npm run copy-prompts",
+		"copy-prompts": "mkdir -p dist/prompts/subroutines && cp -r src/prompts/subroutines/*.md dist/prompts/subroutines/",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run",
@@ -22,13 +23,15 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@linear/sdk": "^58.0.0",
+		"@linear/sdk": "^60.0.0",
 		"@ngrok/ngrok": "^1.5.1",
+		"chokidar": "^4.0.3",
 		"cyrus-agent-runner": "workspace:*",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-webhook-client": "workspace:*",
 		"cyrus-ndjson-client": "workspace:*",
+		"cyrus-simple-agent-runner": "workspace:*",
 		"file-type": "^18.7.0"
 	},
 	"devDependencies": {

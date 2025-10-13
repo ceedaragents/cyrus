@@ -25,6 +25,259 @@ All notable changes to this project will be documented in this file.
 - Dropped the `___LAST_MESSAGE_MARKER___` sentinel from all prompts; completion
   detection now relies on CLI-native metadata across Claude, Codex, and OpenCode.
 
+## [0.1.57] - 2025-10-12
+
+### Fixed
+- Fixed missing `cyrus-simple-agent-runner` package publication that broke installation of cyrus-ai@0.1.56
+
+### Packages
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.2
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.39
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.57
+
+## [0.1.56] - 2025-10-12
+
+### Added
+- **Intelligent procedure routing**: Cyrus now automatically selects the best workflow for each task by analyzing the request content. Simple questions get quick answers, documentation edits proceed directly to implementation, and code changes get the full workflow with verifications and git operations. Uses fast "haiku" model for 10-second classification.
+- **Modular subroutine system**: Workflows are composed of reusable subroutines (verifications, git-gh, concise-summary, verbose-summary) that can be mixed and matched based on the procedure selected.
+- **Environment variable support in MCP configs**: MCP configuration files can now reference environment variables from repository `.env` files using `${VAR}` and `${VAR:-default}` syntax, making it easier to manage API tokens and other sensitive configuration values
+- **Sora 2 video generation support**: Added custom MCP tools for OpenAI Sora 2 video generation with three tools: `mcp__sora-tools__sora_generate_video` to start video generation (supports text-to-video and image-to-video via `input_reference` parameter; reference images must match target video resolution and be in JPEG, PNG, or WebP format only), `mcp__sora-tools__sora_check_status` to poll job status, and `mcp__sora-tools__sora_get_video` to download completed videos
+- **Simple agent runner package**: Added new `cyrus-simple-agent-runner` package for constrained agent queries that return one of a predefined set of responses (e.g., "yes", "no"). Features type-safe enumerated responses, comprehensive error handling, and progress tracking.
+- **Image generation support**: Added GPT Image tools using OpenAI's Responses API with background mode. Two tools provide async image generation: `mcp__image-tools__gpt_image_generate` starts async image generation and returns a job ID, and `mcp__image-tools__gpt_image_get` checks status and downloads the image if ready (returns "not ready" if incomplete - agents can call again). Supports customizable size (1024x1024, 1536x1024, 1024x1536, auto), quality (low/medium/high/auto), background transparency, and output formats (PNG/JPEG/WebP). Uses gpt-5 model for tool invocation.
+
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.13 to v0.1.14 - includes parity updates with Claude Code v2.0.14. See [@anthropic-ai/claude-agent-sdk v0.1.14 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0114)
+- **Breaking: OpenAI configuration naming**: Renamed repository config fields from `soraApiKey`/`soraOutputDirectory` to `openaiApiKey`/`openaiOutputDirectory` to reflect support for multiple OpenAI services (Sora and GPT Image). Update your repository config to use the new field names.
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.31
+
+#### cyrus-core
+- cyrus-core@0.0.19
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.38
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.24
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.2
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.56
+
+## [0.1.55] - 2025-10-09
+
+### Added
+- **Dynamic configuration updates**: Cyrus now automatically detects and applies changes to `~/.cyrus/config.json` without requiring a restart
+  - Add or remove repositories on the fly while Cyrus continues running
+  - Removed repositories stop all active sessions and post notification messages to Linear
+  - Webhook connections automatically reconnect when tokens are updated
+  - File watcher uses debouncing to handle rapid configuration changes smoothly
+
+### Changed
+- **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.10 to v0.1.11 - includes parity updates with Claude Code v2.0.11. See [@anthropic-ai/claude-agent-sdk v0.1.11 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0111---2025-01-09)
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.30
+
+#### cyrus-core
+- cyrus-core@0.0.18
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.37
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.23
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.55
+
+## [0.1.54] - 2025-10-04
+
+### Added
+- **Automatic MCP config detection**: Cyrus now automatically detects and loads `.mcp.json` files in the repository root. The `.mcp.json` serves as a base configuration that can be extended by explicit `mcpConfigPath` settings, allowing for composable MCP server configurations.
+
+### Fixed
+- **Custom instructions now work correctly**: Fixed critical bug where `appendSystemPrompt` was being silently ignored, causing Cyrus to not follow custom instructions or agent guidance. The feature has been fixed to use the correct SDK API (`systemPrompt.append`), making custom prompts and Linear agent guidance work as intended.
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.29
+
+#### cyrus-core
+- cyrus-core@0.0.17
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.36
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.22
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.54
+
+## [0.1.53] - 2025-10-04
+
+### Added
+- **Agent guidance injection**: Cyrus now automatically receives and includes both workspace-level and team-specific agent guidance from Linear in all prompts. When both types of guidance are configured, both are included in the prompt, with team-specific guidance taking precedence as specified by Linear's guidance system.
+
+### Changed
+- Updated @linear/sdk from v58.1.0 to v60.0.0 to support agent guidance feature
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.28
+
+#### cyrus-core
+- cyrus-core@0.0.16
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.35
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.21
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.53
+
+## [0.1.52] - 2025-10-04
+
+### Changed
+- Version bump for all packages to ensure proper dependency resolution
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.27
+
+#### cyrus-core
+- cyrus-core@0.0.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.34
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.20
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.52
+
+## [0.1.51] - 2025-10-04
+
+### Fixed
+- **Restored file-based settings loading**: Fixed regression from claude-agent-sdk update where CLAUDE.md files, settings files, and custom slash commands were not being loaded
+  - Added explicit `settingSources: ["user", "project", "local"]` configuration to ClaudeRunner
+  - This restores backwards compatibility with existing user configurations
+  - See [Claude Code SDK Migration Guide](https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default)
+
+### Changed
+- **Default model changed from opus to sonnet 4.5**: The default Claude model is now `sonnet` instead of `opus`
+  - Fallback model changed from `sonnet` to `haiku`
+  - Label-based model selection still available - users can add `opus`, `sonnet`, or `haiku` labels to issues to override the default
+  - Affects all new sessions that don't explicitly specify a model in config
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.0 to v0.1.5 for latest Claude Agent SDK improvements
+- Updated @anthropic-ai/sdk from v0.64.0 to v0.65.0 for latest Anthropic SDK improvements
+  - Added support for Claude Sonnet 4.5 and context management features
+  - See [@anthropic-ai/sdk v0.65.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.64.0...sdk-v0.65.0)
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.26
+
+#### cyrus-core
+- cyrus-core@0.0.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.33
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.19
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.51
+
+## [0.1.50] - 2025-09-30
+
+### Added
+- **Global setup script support**: Added `global_setup_script` optional field in config.json
+  - Runs before repository-specific `cyrus-setup.sh` when creating git worktrees
+  - Supports ~ expansion for home directory paths
+  - Same environment variables passed to both global and repository scripts (LINEAR_ISSUE_ID, LINEAR_ISSUE_IDENTIFIER, LINEAR_ISSUE_TITLE)
+  - 5-minute timeout to prevent hanging scripts
+  - Comprehensive error handling and logging for both global and repository scripts
+  - Script failures don't prevent worktree creation
+  - Cross-platform support (bash, PowerShell, cmd, bat)
+
+- **Ephemeral agent activities for tool calls**: Standard tool calls now post ephemeral activities to Linear
+  - Tool calls (except Task and TodoWrite) create ephemeral activities that disappear when replaced
+  - Tool responses create non-ephemeral activities showing original tool name and input
+  - Tool outputs are wrapped in `+++Tool Output` collapsible blocks (collapsed by default)
+  - Tool errors display as "{ToolName} (Error)" for better clarity
+  - Subtasks maintain arrow emoji (↪) prefix for visual hierarchy
+  - TodoWrite tool results are skipped to prevent duplicate activities
+  - Reduces visual clutter in Linear while preserving important information
+
+### Changed
+- **Linear SDK upgraded to v58.1.0**: Updated across all packages to support ephemeral agent activity field
+  - Added `ephemeral: boolean` support for agent activities
+  - Maintained backward compatibility with existing non-ephemeral activities
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.26
+
+#### cyrus-core
+- cyrus-core@0.0.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.33
+
+#### cyrus-linear-webhook-client
+- cyrus-linear-webhook-client@0.0.3
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.19
+
+## [0.1.49] - 2025-09-29
+
+### Changed
+- **Migrated from Claude Code SDK to Claude Agent SDK**: Replaced `@anthropic-ai/claude-code` v1.0.128 with `@anthropic-ai/claude-agent-sdk` v0.1.0
+  - Updated all imports and type references to use the new package name
+  - Handled breaking change: SDK no longer uses Claude Code's system prompt by default - now explicitly requests Claude Code preset to maintain backward compatibility
+  - No changes needed for settings sources as the codebase doesn't rely on automatic settings file loading
+- Updated @anthropic-ai/sdk from v0.62.0 to v0.64.0 for latest Anthropic SDK improvements
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.25
+
+#### cyrus-core
+- cyrus-core@0.0.13
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.32
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.49
+
 ## [0.1.48] - 2025-01-11
 
 ### Added

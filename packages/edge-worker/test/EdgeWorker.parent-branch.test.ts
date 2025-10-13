@@ -129,6 +129,8 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 			getAllClaudeRunners: vi.fn().mockReturnValue([]),
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
+			postRoutingThought: vi.fn().mockResolvedValue(null),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
 			() => mockAgentSessionManager,

@@ -7,7 +7,7 @@ import type {
 	SDKResultMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
-} from "@anthropic-ai/claude-code";
+} from "@anthropic-ai/claude-agent-sdk";
 
 export interface ClaudeRunnerConfig {
 	workingDirectory?: string;
@@ -22,6 +22,7 @@ export interface ClaudeRunnerConfig {
 	mcpConfig?: Record<string, McpServerConfig>; // Additional/override MCP servers
 	model?: string; // Claude model to use (e.g., "opus", "sonnet", "haiku")
 	fallbackModel?: string; // Fallback model if primary model is unavailable
+	maxTurns?: number; // Maximum number of turns before completing the session
 	cyrusHome: string; // Cyrus home directory
 	promptVersions?: {
 		// Optional prompt template version information
@@ -58,7 +59,7 @@ export type {
 	SDKResultMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
-} from "@anthropic-ai/claude-code";
+} from "@anthropic-ai/claude-agent-sdk";
 // Re-export Anthropic API message types
 export type {
 	Message as APIAssistantMessage,

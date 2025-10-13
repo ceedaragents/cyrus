@@ -1,8 +1,12 @@
 import type { Issue as LinearIssue } from "@linear/sdk";
 import type { SDKMessage } from "cyrus-claude-runner";
-import type { CyrusAgentSession, Workspace } from "cyrus-core";
-import type { OAuthCallbackHandler } from "./SharedApplicationServer.js";
+import type {
+	CyrusAgentSession,
+	OAuthCallbackHandler,
+	Workspace,
+} from "cyrus-core";
 
+export type { OAuthCallbackHandler };
 export type RunnerType = "claude" | "codex";
 
 export interface ClaudeRunnerModelConfig {
@@ -89,6 +93,10 @@ export interface RepositoryConfig {
 	fallbackModel?: string; // Fallback model if primary model is unavailable
 	runnerModels?: RepositoryRunnerModels; // Per-runner model configuration overrides
 	labelAgentRouting?: RepositoryLabelAgentRoutingRule[]; // Label-based runner routing rules
+
+	// OpenAI configuration (for Sora video generation and DALL-E image generation)
+	openaiApiKey?: string; // OpenAI API key for Sora and DALL-E
+	openaiOutputDirectory?: string; // Directory to save generated media (defaults to workspace path)
 
 	// Label-based system prompt configuration
 	labelPrompts?: {

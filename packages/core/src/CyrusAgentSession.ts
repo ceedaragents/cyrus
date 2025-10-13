@@ -40,6 +40,15 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		procedure?: {
+			procedureName: string;
+			currentSubroutineIndex: number;
+			subroutineHistory: Array<{
+				subroutine: string;
+				completedAt: number;
+				claudeSessionId: string | null;
+			}>;
+		};
 	};
 }
 
@@ -53,6 +62,7 @@ export interface CyrusAgentSessionEntry {
 		toolName?: string;
 		toolInput?: any;
 		parentToolUseId?: string;
+		toolResultError?: boolean; // Error status from tool_result blocks
 		timestamp: number; // e.g. Date.now()
 		durationMs?: number;
 		isError?: boolean;

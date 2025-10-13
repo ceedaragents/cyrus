@@ -3,6 +3,8 @@
  * These are the exact structures Linear sends in webhooks
  */
 
+import type { LinearDocument } from "@linear/sdk";
+
 /**
  * Linear team data from webhooks
  */
@@ -185,6 +187,17 @@ export interface LinearWebhookCreator {
 }
 
 /**
+ * Agent guidance types - re-exported from @linear/sdk for convenience
+ */
+export type LinearWebhookGuidanceRule =
+	LinearDocument.GuidanceRuleWebhookPayload;
+export type LinearWebhookOrganizationOrigin =
+	LinearDocument.OrganizationOriginWebhookPayload;
+export type LinearWebhookTeamOrigin = LinearDocument.TeamOriginWebhookPayload;
+export type LinearWebhookTeamWithParent =
+	LinearDocument.TeamWithParentWebhookPayload;
+
+/**
  * Agent Session data from webhooks
  */
 export interface LinearWebhookAgentSession {
@@ -248,6 +261,7 @@ export interface LinearAgentSessionCreatedWebhook {
 	oauthClientId: string;
 	appUserId: string;
 	agentSession: LinearWebhookAgentSession;
+	guidance?: LinearWebhookGuidanceRule[];
 	webhookTimestamp: string;
 	webhookId: string;
 }
@@ -264,6 +278,7 @@ export interface LinearAgentSessionPromptedWebhook {
 	appUserId: string;
 	agentSession: LinearWebhookAgentSession;
 	agentActivity: LinearWebhookAgentActivity;
+	guidance?: LinearWebhookGuidanceRule[];
 	webhookTimestamp: string;
 	webhookId: string;
 }

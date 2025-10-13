@@ -83,14 +83,13 @@ async function main() {
 		// Workspace name for logging
 		workspaceName: "claude-runner-test",
 
-		// MCP configuration - using stdio server with env variable
+		// MCP configuration - using official Linear HTTP MCP server
 		mcpConfig: {
 			linear: {
-				type: "stdio",
-				command: "npx",
-				args: ["-y", "@tacticlaunch/mcp-linear"],
-				env: {
-					LINEAR_API_TOKEN: process.env.LINEAR_API_TOKEN,
+				type: "http",
+				url: "https://mcp.linear.app/mcp",
+				headers: {
+					Authorization: `Bearer ${process.env.LINEAR_API_TOKEN}`,
 				},
 			},
 		},

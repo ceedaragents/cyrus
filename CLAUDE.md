@@ -207,7 +207,7 @@ To test the Linear MCP (Model Context Protocol) integration in the claude-runner
 
 The test script demonstrates:
 - Loading Linear API token from environment variables
-- Configuring the `@tacticlaunch/mcp-linear` MCP server
+- Configuring the official Linear HTTP MCP server
 - Listing available MCP tools
 - Using Linear MCP tools to fetch user info and issues
 - Proper error handling and logging
@@ -218,7 +218,7 @@ The script will show:
 - Current user information
 - Issues in your Linear workspace
 
-This integration is automatically available in all Cyrus sessions - the EdgeWorker automatically configures the Linear MCP server for each repository using its Linear token.
+This integration is automatically available in all Cyrus sessions - the EdgeWorker automatically configures the official Linear MCP server for each repository using its Linear token.
 
 ## Publishing
 
@@ -245,24 +245,60 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
    pnpm install  # Ensures all workspace dependencies are up to date
    ```
 
-2. **Build and publish underlying packages first** (if they've changed):
+2. **Build all packages from root first**:
    ```bash
-   cd packages/core && pnpm install && pnpm build && pnpm publish --access public
-   cd ../claude-runner && pnpm install && pnpm build && pnpm publish --access public  
-   cd ../edge-worker && pnpm install && pnpm build && pnpm publish --access public
-   cd ../ndjson-client && pnpm install && pnpm build && pnpm publish --access public
+   pnpm build  # Builds all packages to ensure dependencies are resolved
    ```
 
-3. **Install again from root to update lockfile**:
+3. **Publish packages in dependency order**:
+
+   **IMPORTANT**: Publish in this exact order to avoid dependency resolution issues:
+
    ```bash
-   cd ../.. # Back to root
-   pnpm install  # Updates lockfile with published package versions
+   # 1. Packages with no internal dependencies
+   cd packages/ndjson-client && pnpm publish --access public --no-git-checks
+   cd ../..
+   pnpm install  # Update lockfile
+
+   # 2. Packages that depend on external deps only
+   cd packages/claude-runner && pnpm publish --access public --no-git-checks
+   cd ../..
+   pnpm install  # Update lockfile
+
+   # 3. Core package (depends on claude-runner)
+   cd packages/core && pnpm publish --access public --no-git-checks
+   cd ../..
+   pnpm install  # Update lockfile
+
+   # 4. Simple agent runner (depends on claude-runner)
+   cd packages/simple-agent-runner && pnpm publish --access public --no-git-checks
+   cd ../..
+   pnpm install  # Update lockfile
+
+   # 5. Edge worker (depends on core, claude-runner, ndjson-client, simple-agent-runner)
+   cd packages/edge-worker && pnpm publish --access public --no-git-checks
+   cd ../..
+   pnpm install  # Update lockfile
    ```
 
 4. **Finally publish the CLI**:
    ```bash
-   cd apps/cli && pnpm install && pnpm build && pnpm publish --access public
+   pnpm install  # Final install to ensure all deps are latest
+   cd apps/cli && pnpm publish --access public --no-git-checks
+   cd ../..
    ```
 
-This ensures that when pnpm resolves `workspace:*` references during CLI publishing, it uses the latest published package versions rather than outdated ones.
+5. **Create git tag and push**:
+   ```bash
+   git tag v0.1.XX
+   git push origin <branch-name>
+   git push origin v0.1.XX
+   ```
+
+**Key Notes:**
+- Always use `--no-git-checks` flag to publish from feature branches
+- Run `pnpm install` after each publish to update the lockfile
+- The `simple-agent-runner` package MUST be published before `edge-worker`
+- Build all packages once at the start, then publish without rebuilding
+- This ensures `workspace:*` references resolve to published versions
 

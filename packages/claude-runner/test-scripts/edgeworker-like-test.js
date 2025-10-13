@@ -45,11 +45,10 @@ async function main() {
 		// Add Linear MCP server exactly like EdgeWorker does
 		mcpConfig: {
 			linear: {
-				type: "stdio",
-				command: "npx",
-				args: ["-y", "@tacticlaunch/mcp-linear"],
-				env: {
-					LINEAR_API_TOKEN: process.env.LINEAR_API_TOKEN,
+				type: "http",
+				url: "https://mcp.linear.app/mcp",
+				headers: {
+					Authorization: `Bearer ${process.env.LINEAR_API_TOKEN}`,
 				},
 			},
 		},

@@ -407,6 +407,42 @@ echo "Repository setup complete for issue: $LINEAR_ISSUE_IDENTIFIER"
 
 Make sure the script is executable: `chmod +x cyrus-setup.sh`
 
+## Global Setup Script
+
+In addition to repository-specific `cyrus-setup.sh` scripts, you can configure a global setup script that runs for **all** repositories when creating new worktrees.
+
+### Configuration
+
+Add `global_setup_script` to your `~/.cyrus/config.json`:
+
+```json
+{
+  "repositories": [...],
+  "global_setup_script": "/opt/cyrus/bin/global-setup.sh"
+}
+```
+
+### Execution Order
+
+When creating a new worktree:
+1. **Global script** runs first (if configured)
+2. **Repository script** (`cyrus-setup.sh`) runs second (if exists)
+
+Both scripts receive the same environment variables and run in the worktree directory.
+
+### Use Cases
+
+- **Team-wide tooling** that applies to all repositories
+- **Shared credential** setup
+
+Make sure the script is executable: `chmod +x /opt/cyrus/bin/global-setup.sh`
+
+### Error Handling
+
+- If the global script fails, Cyrus logs the error but continues with repository script execution
+- Both scripts have a 5-minute timeout to prevent hanging
+- Script failures don't prevent worktree creation
+
 ## Submitting Work To GitHub
 
 When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authentication. This means:

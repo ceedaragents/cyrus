@@ -12,8 +12,9 @@ import http from "node:http";
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import type { Issue } from "@linear/sdk";
-import { DEFAULT_PROXY_URL } from "cyrus-core";
+import { DEFAULT_PROXY_URL, type EdgeConfig } from "cyrus-core";
 import {
 	type CliDefaults,
 	type EdgeCredentials,
@@ -64,11 +65,17 @@ if (cyrusHomeArg) {
 	CYRUS_HOME = resolve(homedir(), ".cyrus");
 }
 
-// Note: __dirname removed since version is now hardcoded
+// Get the directory of the current module for reading package.json
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Read package.json to get the actual version
+const packageJsonPath = resolve(__dirname, "..", "package.json");
+const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 
 // Handle --version argument
 if (args.includes("--version")) {
-	console.log("0.1.37");
+	console.log(packageJson.version);
 	process.exit(0);
 }
 
@@ -132,12 +139,9 @@ interface LinearCredentials {
 	linearWorkspaceName: string;
 }
 
-interface EdgeConfig {
-	repositories: RepositoryConfig[];
-	ngrokAuthToken?: string;
-	stripeCustomerId?: string;
-	defaultModel?: string; // Default Claude model to use across all repositories
-	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
+// Extend EdgeConfig locally with multi-CLI fields that aren't in core yet
+interface ExtendedEdgeConfig extends Omit<EdgeConfig, "repositories"> {
+	repositories: RepositoryConfig[]; // Override with extended RepositoryConfig from edge-worker
 	defaultCli?: RunnerType; // Default runner to use when repository doesn't override
 	cliDefaults?: CliDefaults; // Default per-runner configuration options
 	credentials?: EdgeCredentials; // Stored credential references (e.g., OpenAI API key)
@@ -149,18 +153,18 @@ interface Workspace {
 	isGitWorktree: boolean;
 }
 
-function ensureCliDefaultsStructure(config: EdgeConfig): void {
+function ensureCliDefaultsStructure(config: ExtendedEdgeConfig): void {
 	config.cliDefaults = config.cliDefaults || {};
 	config.cliDefaults.claude = config.cliDefaults.claude || {};
 	config.cliDefaults.codex = config.cliDefaults.codex || {};
 }
 
-function ensureCredentialsStructure(config: EdgeConfig): void {
+function ensureCredentialsStructure(config: ExtendedEdgeConfig): void {
 	config.credentials = config.credentials || {};
 }
 
 function applyDefaultCli(
-	config: EdgeConfig,
+	config: ExtendedEdgeConfig,
 	target: RunnerType,
 ): { previous?: RunnerType; changed: boolean } {
 	ensureCliDefaultsStructure(config);
@@ -173,7 +177,7 @@ function applyDefaultCli(
 }
 
 function applyDefaultModel(
-	config: EdgeConfig,
+	config: ExtendedEdgeConfig,
 	cli: RunnerType,
 	model: string,
 ): {
@@ -203,7 +207,7 @@ function ensureRepositoryScaffold(repo: RepositoryConfig): void {
 	repo.labelAgentRouting = repo.labelAgentRouting || [];
 }
 
-function copyLegacyModelDefaultsToCli(config: EdgeConfig): void {
+function copyLegacyModelDefaultsToCli(config: ExtendedEdgeConfig): void {
 	if (!config.defaultModel && !config.defaultFallbackModel) {
 		return;
 	}
@@ -960,7 +964,7 @@ async function promptsCommand(): Promise<void> {
 	}
 }
 
-function configRequiresCodex(config: EdgeConfig): boolean {
+function configRequiresCodex(config: ExtendedEdgeConfig): boolean {
 	if (config.defaultCli === "codex") {
 		return true;
 	}
@@ -1085,12 +1089,12 @@ class EdgeApp {
 	 * Load edge configuration (credentials and repositories)
 	 * Note: Strips promptTemplatePath from all repositories to ensure built-in template is used
 	 */
-	loadEdgeConfig(): EdgeConfig {
+	loadEdgeConfig(): ExtendedEdgeConfig {
 		// Migrate from legacy location if needed
 		this.migrateConfigIfNeeded();
 
 		const edgeConfigPath = this.getEdgeConfigPath();
-		let config: EdgeConfig = { repositories: [] };
+		let config: ExtendedEdgeConfig = { repositories: [] };
 
 		if (existsSync(edgeConfigPath)) {
 			try {
@@ -1119,7 +1123,7 @@ class EdgeApp {
 	/**
 	 * Save edge configuration
 	 */
-	saveEdgeConfig(config: EdgeConfig): void {
+	saveEdgeConfig(config: ExtendedEdgeConfig): void {
 		const edgeConfigPath = this.getEdgeConfigPath();
 		const configDir = dirname(edgeConfigPath);
 
@@ -1132,7 +1136,7 @@ class EdgeApp {
 	}
 
 	private ensureCliDefaultsBucket(
-		config: EdgeConfig,
+		config: ExtendedEdgeConfig,
 		runner: RunnerType,
 	): void {
 		config.cliDefaults = config.cliDefaults || {};
@@ -1162,7 +1166,7 @@ class EdgeApp {
 		return "claude";
 	}
 
-	private copyLegacyModelDefaults(config: EdgeConfig): void {
+	private copyLegacyModelDefaults(config: ExtendedEdgeConfig): void {
 		if (!config.cliDefaults?.claude) {
 			return;
 		}
@@ -1177,7 +1181,9 @@ class EdgeApp {
 		}
 	}
 
-	private async ensureDefaultCliConfigured(config: EdgeConfig): Promise<void> {
+	private async ensureDefaultCliConfigured(
+		config: ExtendedEdgeConfig,
+	): Promise<void> {
 		if (config.defaultCli) {
 			this.ensureCliDefaultsBucket(config, config.defaultCli);
 			if (config.defaultCli === "claude") {
@@ -1380,7 +1386,9 @@ class EdgeApp {
 	/**
 	 * Get ngrok auth token from config or prompt user
 	 */
-	async getNgrokAuthToken(config: EdgeConfig): Promise<string | undefined> {
+	async getNgrokAuthToken(
+		config: ExtendedEdgeConfig,
+	): Promise<string | undefined> {
 		// Return existing token if available
 		if (config.ngrokAuthToken) {
 			return config.ngrokAuthToken;
@@ -1589,6 +1597,10 @@ class EdgeApp {
 
 		// Create and start EdgeWorker
 		this.edgeWorker = new EdgeWorker(config);
+
+		// Set config path for dynamic reloading
+		const configPath = this.getEdgeConfigPath();
+		this.edgeWorker.setConfigPath(configPath);
 
 		// Set up event handlers
 		this.setupEventHandlers();
@@ -1884,7 +1896,7 @@ class EdgeApp {
 							"\nSelect workspace (number) or press Enter for new: ",
 						);
 
-						const index = parseInt(choice) - 1;
+						const index = parseInt(choice, 10) - 1;
 						if (index >= 0 && index < workspaceList.length) {
 							const ws = workspaceList[index];
 							if (ws) {
@@ -2174,6 +2186,106 @@ class EdgeApp {
 	}
 
 	/**
+	 * Run a setup script with proper error handling and logging
+	 */
+	private async runSetupScript(
+		scriptPath: string,
+		scriptType: "global" | "repository",
+		workspacePath: string,
+		issue: Issue,
+	): Promise<void> {
+		const { execSync } = await import("node:child_process");
+		const { existsSync, statSync } = await import("node:fs");
+		const { basename } = await import("node:path");
+		const os = await import("node:os");
+
+		// Expand ~ to home directory
+		const expandedPath = scriptPath.replace(/^~/, os.homedir());
+
+		// Check if script exists
+		if (!existsSync(expandedPath)) {
+			console.warn(
+				`⚠️  ${scriptType === "global" ? "Global" : "Repository"} setup script not found: ${scriptPath}`,
+			);
+			return;
+		}
+
+		// Check if script is executable (Unix only)
+		if (process.platform !== "win32") {
+			try {
+				const stats = statSync(expandedPath);
+				// Check if file has execute permission for the owner
+				if (!(stats.mode & 0o100)) {
+					console.warn(
+						`⚠️  ${scriptType === "global" ? "Global" : "Repository"} setup script is not executable: ${scriptPath}`,
+					);
+					console.warn(`   Run: chmod +x "${expandedPath}"`);
+					return;
+				}
+			} catch (error) {
+				console.warn(
+					`⚠️  Cannot check permissions for ${scriptType} setup script: ${(error as Error).message}`,
+				);
+				return;
+			}
+		}
+
+		const scriptName = basename(expandedPath);
+		console.log(`ℹ️  Running ${scriptType} setup script: ${scriptName}`);
+
+		try {
+			// Determine the command based on the script extension and platform
+			let command: string;
+			const isWindows = process.platform === "win32";
+
+			if (scriptPath.endsWith(".ps1")) {
+				command = `powershell -ExecutionPolicy Bypass -File "${expandedPath}"`;
+			} else if (scriptPath.endsWith(".cmd") || scriptPath.endsWith(".bat")) {
+				command = `"${expandedPath}"`;
+			} else if (isWindows) {
+				// On Windows, try to run with bash if available (Git Bash/WSL)
+				command = `bash "${expandedPath}"`;
+			} else {
+				// On Unix, run directly with bash
+				command = `bash "${expandedPath}"`;
+			}
+
+			execSync(command, {
+				cwd: workspacePath,
+				stdio: "inherit",
+				env: {
+					...process.env,
+					LINEAR_ISSUE_ID: issue.id,
+					LINEAR_ISSUE_IDENTIFIER: issue.identifier,
+					LINEAR_ISSUE_TITLE: issue.title || "",
+				},
+				timeout: 5 * 60 * 1000, // 5 minute timeout
+			});
+
+			console.log(
+				`✅ ${scriptType === "global" ? "Global" : "Repository"} setup script completed successfully`,
+			);
+		} catch (error) {
+			const errorMessage =
+				(error as any).signal === "SIGTERM"
+					? "Script execution timed out (exceeded 5 minutes)"
+					: (error as Error).message;
+
+			console.error(
+				`❌ ${scriptType === "global" ? "Global" : "Repository"} setup script failed: ${errorMessage}`,
+			);
+
+			// Log stderr if available
+			if ((error as any).stderr) {
+				console.error("   stderr:", (error as any).stderr.toString());
+			}
+
+			// Continue execution despite setup script failure
+			console.log(`   Continuing with worktree creation...`);
+		}
+	}
+
+	/**
 	 * Create a git worktree for an issue
 	 */
 	async createGitWorktree(
@@ -2382,27 +2494,34 @@ class EdgeApp {
 				stdio: "pipe",
 			});
 
-			// Check for setup scripts in the repository root (cross-platform)
+			// First, run the global setup script if configured
+			const config = this.loadEdgeConfig();
+			if (config.global_setup_script) {
+				await this.runSetupScript(
+					config.global_setup_script,
+					"global",
+					workspacePath,
+					issue,
+				);
+			}
+
+			// Then, check for repository setup scripts (cross-platform)
 			const isWindows = process.platform === "win32";
 			const setupScripts = [
 				{
 					file: "cyrus-setup.sh",
-					command: "bash cyrus-setup.sh",
 					platform: "unix",
 				},
 				{
 					file: "cyrus-setup.ps1",
-					command: "powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1",
 					platform: "windows",
 				},
 				{
 					file: "cyrus-setup.cmd",
-					command: "cyrus-setup.cmd",
 					platform: "windows",
 				},
 				{
 					file: "cyrus-setup.bat",
-					command: "cyrus-setup.bat",
 					platform: "windows",
 				},
 			];
@@ -2428,25 +2547,13 @@ class EdgeApp {
 			const scriptToRun = availableScript || fallbackScript;
 
 			if (scriptToRun) {
-				console.log(`Running ${scriptToRun.file} in new worktree...`);
-				try {
-					execSync(scriptToRun.command, {
-						cwd: workspacePath,
-						stdio: "inherit",
-						env: {
-							...process.env,
-							LINEAR_ISSUE_ID: issue.id,
-							LINEAR_ISSUE_IDENTIFIER: issue.identifier,
-							LINEAR_ISSUE_TITLE: issue.title || "",
-						},
-					});
-				} catch (error) {
-					console.warn(
-						`Warning: ${scriptToRun.file} failed:`,
-						(error as Error).message,
-					);
-					// Continue despite setup script failure
-				}
+				const scriptPath = join(repository.repositoryPath, scriptToRun.file);
+				await this.runSetupScript(
+					scriptPath,
+					"repository",
+					workspacePath,
+					issue,
+				);
 			}
 
 			return {
@@ -2579,7 +2686,7 @@ async function refreshTokenCommand() {
 			...Array.from({ length: tokenStatuses.length }, (_, i) => i),
 		);
 	} else {
-		const index = parseInt(answer) - 1;
+		const index = parseInt(answer, 10) - 1;
 		if (Number.isNaN(index) || index < 0 || index >= tokenStatuses.length) {
 			console.error("Invalid selection");
 			process.exit(1);
@@ -2791,7 +2898,7 @@ async function setCustomerIdCommand() {
 		}
 
 		// Load existing config or create new one
-		let config: EdgeConfig = { repositories: [] };
+		let config: ExtendedEdgeConfig = { repositories: [] };
 
 		if (existsSync(configPath)) {
 			config = JSON.parse(readFileSync(configPath, "utf-8"));
