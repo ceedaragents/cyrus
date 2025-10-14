@@ -9,6 +9,15 @@ import { forward } from "@ngrok/ngrok";
 import { DEFAULT_PROXY_URL, type OAuthCallbackHandler } from "cyrus-core";
 
 /**
+ * Timeout constants (in milliseconds)
+ */
+const OAUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const OAUTH_STATE_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutes
+const APPROVAL_EXPIRATION_MS = 30 * 60 * 1000; // 30 minutes
+const WINDOW_AUTO_CLOSE_SHORT_MS = 5000; // 5 seconds
+const WINDOW_AUTO_CLOSE_LONG_MS = 10000; // 10 seconds
+
+/**
  * OAuth callback state for tracking flows
  */
 export interface OAuthCallback {
@@ -294,7 +303,7 @@ export class SharedApplicationServer {
 						reject(new Error("OAuth timeout"));
 					}
 				},
-				5 * 60 * 1000,
+				OAUTH_TIMEOUT_MS,
 			);
 		});
 	}
@@ -539,7 +548,7 @@ export class SharedApplicationServer {
                   Connect Another Workspace
                 </a>
               </p>
-              <script>setTimeout(() => window.close(), 10000)</script>
+              <script>setTimeout(() => window.close(), ${WINDOW_AUTO_CLOSE_LONG_MS})</script>
             </body>
           </html>
         `);
@@ -629,7 +638,7 @@ export class SharedApplicationServer {
 			// Clean up expired states (older than 10 minutes)
 			const now = Date.now();
 			for (const [stateKey, stateData] of this.oauthStates) {
-				if (now - stateData.createdAt > 10 * 60 * 1000) {
+				if (now - stateData.createdAt > OAUTH_STATE_EXPIRATION_MS) {
 					this.oauthStates.delete(stateKey);
 				}
 			}
@@ -722,7 +731,7 @@ export class SharedApplicationServer {
                 Connect Another Workspace
               </a>
             </p>
-            <script>setTimeout(() => window.close(), 10000)</script>
+            <script>setTimeout(() => window.close(), ${WINDOW_AUTO_CLOSE_LONG_MS})</script>
           </body>
         </html>
       `);
@@ -872,7 +881,7 @@ export class SharedApplicationServer {
 		// Clean up expired approvals (older than 30 minutes)
 		const now = Date.now();
 		for (const [key, approval] of this.pendingApprovals) {
-			if (now - approval.createdAt > 30 * 60 * 1000) {
+			if (now - approval.createdAt > APPROVAL_EXPIRATION_MS) {
 				approval.reject(new Error("Approval request expired"));
 				this.pendingApprovals.delete(key);
 			}
@@ -1119,7 +1128,7 @@ export class SharedApplicationServer {
             <p>Your decision has been recorded. The agent will ${approved ? "proceed with the next step" : "stop the current workflow"}.</p>
             ${feedback ? `<p><strong>Feedback provided:</strong> ${this.escapeHtml(feedback)}</p>` : ""}
             <p style="margin-top: 30px; color: #666;">You can close this window and return to Linear.</p>
-            <script>setTimeout(() => window.close(), 5000)</script>
+            <script>setTimeout(() => window.close(), ${WINDOW_AUTO_CLOSE_SHORT_MS})</script>
           </body>
         </html>
       `);

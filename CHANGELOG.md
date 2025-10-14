@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Improved code maintainability by extracting magic numbers to named constants in SharedApplicationServer
+
 ## [0.1.57] - 2025-10-12
 
 ### Fixed
