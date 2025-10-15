@@ -9,8 +9,6 @@ This package is a TypeScript port of the Go-based `cyrus-update-server`, designe
 - GitHub credential configuration
 - Repository cloning and management
 - Cyrus configuration updates
-- MCP (Model Context Protocol) server setup
-- Environment variable management
 
 ## Installation
 
@@ -157,21 +155,6 @@ Retrieve current Cyrus configuration.
 }
 ```
 
-#### `POST /api/config/cyrus-env`
-
-Update Cyrus environment variables.
-
-**Request:**
-```json
-{
-  "variables": {
-    "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-xxx",
-    "CYRUS_SERVER_PORT": "3000"
-  },
-  "backupEnv": true
-}
-```
-
 #### `POST /api/config/repository`
 
 Clone a repository.
@@ -226,83 +209,6 @@ List all repositories.
     "path": "/path/to/repo"
   }
 ]
-```
-
-#### `POST /api/config/mcp`
-
-Configure MCP servers.
-
-**Request:**
-```json
-{
-  "mcpServers": {
-    "linear": {
-      "command": "npx",
-      "args": ["-y", "@linear/mcp-server-linear"],
-      "env": {
-        "LINEAR_API_KEY": "lin_api_xxx"
-      }
-    }
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "MCP servers configured successfully",
-  "files_written": ["/home/user/.cyrus/mcp-linear.json"]
-}
-```
-
-#### `POST /api/config/test-mcp`
-
-Test MCP server connectivity.
-
-**Request:**
-```json
-{
-  "transportType": "stdio",
-  "command": "npx",
-  "commandArgs": [
-    { "value": "-y", "order": 0 },
-    { "value": "@linear/mcp-server-linear", "order": 1 }
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "server_info": {
-    "name": "linear-mcp",
-    "version": "1.0.0"
-  },
-  "tools": [
-    {
-      "name": "list_issues",
-      "description": "List Linear issues"
-    }
-  ]
-}
-```
-
-#### `POST /api/config/env-variables`
-
-Update environment variables manifest.
-
-**Request:**
-```json
-{
-  "repository": "my-repo",
-  "file_path": "/path/to/.env",
-  "variables": [
-    { "key": "API_KEY", "value": "xxx" }
-  ],
-  "append": false
-}
 ```
 
 ## Direct Handler Usage
@@ -378,7 +284,6 @@ npm run dev        # Watch mode for development
 - **cors**: CORS middleware
 - **helmet**: Security headers
 - **morgan**: HTTP request logger
-- **yaml**: YAML parsing for env manifests
 
 ## License
 

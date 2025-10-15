@@ -47,68 +47,6 @@ export interface RepositoryConfigItem {
 	labelPrompts?: Record<string, string[]>;
 }
 
-export interface CyrusEnvPayload {
-	variables: Record<string, string>;
-	restartCyrus?: boolean;
-	backupEnv?: boolean;
-}
-
-export interface EnvVariablesPayload {
-	repository: string;
-	file_path: string;
-	variables: Array<{ key: string; value: string }>;
-	append?: boolean;
-}
-
-export interface EnvManifest {
-	version: string;
-	repositories: Record<string, RepositoryConfig>;
-}
-
-export interface RepositoryConfig {
-	env_files: Record<string, EnvFileConfig>;
-}
-
-export interface EnvFileConfig {
-	variables: Record<string, string>;
-	last_updated: string;
-}
-
-export interface MCPServerConfig {
-	command?: string;
-	args?: string[];
-	env?: Record<string, string>;
-	url?: string;
-	transport?: "stdio" | "sse" | "http";
-	headers?: Record<string, string>;
-}
-
-export interface ConfigureMCPPayload {
-	mcpServers: Record<string, MCPServerConfig>;
-}
-
-export interface TestMCPPayload {
-	transportType: "stdio" | "sse" | "http";
-	serverUrl?: string;
-	command?: string;
-	commandArgs?: Array<{ value: string; order: number }>;
-	headers?: Array<{ name: string; value: string }>;
-	envVars?: Array<{ key: string; value: string }>;
-}
-
-export interface TestMCPResponse {
-	success: boolean;
-	server_info?: {
-		name: string;
-		version: string;
-	};
-	tools?: Array<{
-		name: string;
-		description?: string;
-	}>;
-	error?: string;
-}
-
 export interface ConfigServerOptions {
 	port: number;
 	secret: string;

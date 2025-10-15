@@ -41,7 +41,6 @@ export class ConfigServer {
 			workspacesDir || path.join(path.dirname(cyrusHome), "cyrus-workspaces");
 		const actualRepositoriesDir =
 			repositoriesDir || path.join(path.dirname(cyrusHome), "cyrus-app");
-		const manifestPath = path.join(cyrusHome, "env-manifest.yml");
 
 		// Public routes (no auth required)
 		this.app.use("/", healthRouter);
@@ -52,7 +51,6 @@ export class ConfigServer {
 			cyrusHome,
 			repositoriesDir: actualRepositoriesDir,
 			workspacesDir: actualWorkspacesDir,
-			manifestPath,
 		});
 
 		this.app.use("/api/config", authMiddleware, configRouter);

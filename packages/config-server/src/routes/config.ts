@@ -2,36 +2,26 @@ import path from "node:path";
 import type { Router as RouterType } from "express";
 import { type Request, type Response, Router } from "express";
 import { handleCyrusConfig } from "../handlers/config-handler";
-import {
-	handleUpdateCyrusEnv,
-	handleUpdateEnvVariables,
-} from "../handlers/env-handler";
 import { handleGitHubCredentials } from "../handlers/github-handler";
-import { handleConfigureMCP, handleTestMCP } from "../handlers/mcp-handler";
 import {
 	handleCloneRepository,
 	handleDeleteRepository,
 	handleListRepositories,
 } from "../handlers/repository-handler";
 import type {
-	ConfigureMCPPayload,
 	CyrusConfigPayload,
-	CyrusEnvPayload,
 	DeleteRepositoryPayload,
-	EnvVariablesPayload,
 	GitHubCredentialsPayload,
 	RepositoryPayload,
-	TestMCPPayload,
 } from "../types";
 
 export function createConfigRouter(options: {
 	cyrusHome: string;
 	repositoriesDir: string;
 	workspacesDir: string;
-	manifestPath: string;
 }): RouterType {
 	const router = Router();
-	const { cyrusHome, repositoriesDir, workspacesDir, manifestPath } = options;
+	const { cyrusHome, repositoriesDir, workspacesDir } = options;
 
 	/**
 	 * POST /api/config/github
@@ -93,45 +83,6 @@ export function createConfigRouter(options: {
 	});
 
 	/**
-	 * POST /api/config/cyrus-env
-	 * Update Cyrus environment variables
-	 */
-	router.post("/cyrus-env", async (req: Request, res: Response) => {
-		try {
-			const payload: CyrusEnvPayload = req.body;
-			const cyrusAppDir = path.dirname(repositoriesDir); // repositories are in cyrus-app/
-			await handleUpdateCyrusEnv(payload, cyrusAppDir);
-			res.json({
-				success: true,
-				message: "Cyrus environment variables updated successfully",
-			});
-		} catch (error) {
-			res.status(500).json({
-				error: error instanceof Error ? error.message : "Unknown error",
-			});
-		}
-	});
-
-	/**
-	 * POST /api/config/env-variables
-	 * Update environment variables manifest
-	 */
-	router.post("/env-variables", async (req: Request, res: Response) => {
-		try {
-			const payload: EnvVariablesPayload = req.body;
-			await handleUpdateEnvVariables(payload, manifestPath);
-			res.json({
-				success: true,
-				message: "Environment variables updated successfully",
-			});
-		} catch (error) {
-			res.status(500).json({
-				error: error instanceof Error ? error.message : "Unknown error",
-			});
-		}
-	});
-
-	/**
 	 * POST /api/config/repository
 	 * Clone a repository
 	 */
@@ -186,43 +137,6 @@ export function createConfigRouter(options: {
 		} catch (error) {
 			res.status(500).json({
 				error: error instanceof Error ? error.message : "Unknown error",
-			});
-		}
-	});
-
-	/**
-	 * POST /api/config/mcp
-	 * Configure MCP servers
-	 */
-	router.post("/mcp", async (req: Request, res: Response) => {
-		try {
-			const payload: ConfigureMCPPayload = req.body;
-			const filesWritten = await handleConfigureMCP(payload, cyrusHome);
-			res.json({
-				success: true,
-				message: "MCP servers configured successfully",
-				files_written: filesWritten,
-			});
-		} catch (error) {
-			res.status(500).json({
-				error: error instanceof Error ? error.message : "Unknown error",
-			});
-		}
-	});
-
-	/**
-	 * POST /api/config/test-mcp
-	 * Test MCP server connectivity
-	 */
-	router.post("/test-mcp", async (req: Request, res: Response) => {
-		try {
-			const payload: TestMCPPayload = req.body;
-			const result = await handleTestMCP(payload);
-			res.json(result);
-		} catch (error) {
-			res.status(500).json({
-				error: error instanceof Error ? error.message : "Unknown error",
-				success: false,
 			});
 		}
 	});

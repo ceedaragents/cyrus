@@ -192,12 +192,11 @@ describe("handleCyrusConfig", () => {
 
 		expect(config.disallowedTools).toEqual(["Bash(sudo:*)"]);
 		expect(config.ngrokAuthToken).toBe("");
-		expect(config.stripeCustomerId).toBe("cus_8172616126");
 		expect(config.defaultModel).toBe("opus");
 		expect(config.defaultFallbackModel).toBe("sonnet");
-		expect(config.global_setup_script).toBe(
-			"/opt/cyrus/scripts/global-setup.sh",
-		);
+		// stripeCustomerId and global_setup_script should not be present when not provided
+		expect(config.stripeCustomerId).toBeUndefined();
+		expect(config.global_setup_script).toBeUndefined();
 	});
 
 	it("should respect custom global configuration values", async () => {

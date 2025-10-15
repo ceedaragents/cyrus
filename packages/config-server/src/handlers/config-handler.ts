@@ -61,10 +61,8 @@ const DEFAULT_LABEL_PROMPTS = {
  */
 const DEFAULT_DISALLOWED_TOOLS = ["Bash(sudo:*)"];
 const DEFAULT_NGROK_AUTH_TOKEN = "";
-const DEFAULT_STRIPE_CUSTOMER_ID = "cus_8172616126";
 const DEFAULT_MODEL = "opus";
 const DEFAULT_FALLBACK_MODEL = "sonnet";
-const DEFAULT_GLOBAL_SETUP_SCRIPT = "/opt/cyrus/scripts/global-setup.sh";
 
 /**
  * Interface for the complete config.json structure
@@ -73,10 +71,10 @@ interface CyrusConfig {
 	repositories: Record<string, unknown>[];
 	disallowedTools: string[];
 	ngrokAuthToken: string;
-	stripeCustomerId: string;
+	stripeCustomerId?: string;
 	defaultModel: string;
 	defaultFallbackModel: string;
-	global_setup_script: string;
+	global_setup_script?: string;
 }
 
 /**
@@ -165,13 +163,18 @@ function buildConfig(payload: CyrusConfigPayload): CyrusConfig {
 				? payload.disallowedTools
 				: DEFAULT_DISALLOWED_TOOLS,
 		ngrokAuthToken: payload.ngrokAuthToken ?? DEFAULT_NGROK_AUTH_TOKEN,
-		stripeCustomerId: payload.stripeCustomerId ?? DEFAULT_STRIPE_CUSTOMER_ID,
 		defaultModel: payload.defaultModel ?? DEFAULT_MODEL,
 		defaultFallbackModel:
 			payload.defaultFallbackModel ?? DEFAULT_FALLBACK_MODEL,
-		global_setup_script:
-			payload.global_setup_script ?? DEFAULT_GLOBAL_SETUP_SCRIPT,
 	};
+
+	// Add optional fields only if provided
+	if (payload.stripeCustomerId) {
+		config.stripeCustomerId = payload.stripeCustomerId;
+	}
+	if (payload.global_setup_script) {
+		config.global_setup_script = payload.global_setup_script;
+	}
 
 	return config;
 }
