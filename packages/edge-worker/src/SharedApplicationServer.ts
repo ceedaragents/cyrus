@@ -71,16 +71,14 @@ export class SharedApplicationServer {
 	constructor(
 		port: number = 3456,
 		host: string = "localhost",
-		tunnelToken?: string | { ngrok?: string; cloudflare?: string },
+		tunnelToken?: { ngrok?: string; cloudflare?: string },
 		proxyUrl?: string,
 	) {
 		this.port = port;
 		this.host = host;
 
-		// Support both old (ngrokAuthToken) and new (tunnelToken object) formats
-		if (typeof tunnelToken === "string") {
-			this.ngrokAuthToken = tunnelToken || null;
-		} else if (tunnelToken) {
+		// Extract tunnel tokens from object
+		if (tunnelToken) {
 			this.ngrokAuthToken = tunnelToken.ngrok || null;
 			this.cloudflareToken = tunnelToken.cloudflare || null;
 		}
@@ -114,20 +112,8 @@ export class SharedApplicationServer {
 				if (!isExternalHost) {
 					// Prioritize Cloudflare tunnel over ngrok
 					if (this.cloudflareToken) {
-						try {
-							await this.startCloudflareTunnel();
-						} catch (error) {
-							console.error("🔴 Failed to start Cloudflare tunnel:", error);
-							// Try ngrok as fallback if available
-							if (this.ngrokAuthToken) {
-								console.log("🔄 Falling back to ngrok...");
-								try {
-									await this.startNgrokTunnel();
-								} catch (ngrokError) {
-									console.error("🔴 Failed to start ngrok tunnel:", ngrokError);
-								}
-							}
-						}
+						// If cloudflareToken is set, ONLY use Cloudflare (no fallback)
+						await this.startCloudflareTunnel();
 					} else if (this.ngrokAuthToken) {
 						try {
 							await this.startNgrokTunnel();
@@ -255,10 +241,10 @@ export class SharedApplicationServer {
 		try {
 			console.log("🔗 Starting Cloudflare tunnel...");
 
-			// Create tunnel with quick tunnel (no authentication required for testing)
-			// In production, use token-based authentication
+			// Create tunnel with token-based authentication
 			this.cloudflareTunnel = createCloudflareTunnel({
 				"--url": `http://localhost:${this.port}`,
+				"--token": this.cloudflareToken,
 				"--no-autoupdate": true,
 			});
 
