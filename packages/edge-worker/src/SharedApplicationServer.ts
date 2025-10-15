@@ -6,6 +6,7 @@ import {
 } from "node:http";
 import { URL } from "node:url";
 import { forward } from "@ngrok/ngrok";
+import { tunnel as createCloudflareTunnel, type Tunnel } from "cloudflared";
 import { DEFAULT_PROXY_URL, type OAuthCallbackHandler } from "cyrus-core";
 
 /**
@@ -62,17 +63,28 @@ export class SharedApplicationServer {
 	private ngrokListener: any = null;
 	private ngrokAuthToken: string | null = null;
 	private ngrokUrl: string | null = null;
+	private cloudflareToken: string | null = null;
+	private cloudflareTunnel: Tunnel | null = null;
+	private cloudflareUrl: string | null = null;
 	private proxyUrl: string;
 
 	constructor(
 		port: number = 3456,
 		host: string = "localhost",
-		ngrokAuthToken?: string,
+		tunnelToken?: string | { ngrok?: string; cloudflare?: string },
 		proxyUrl?: string,
 	) {
 		this.port = port;
 		this.host = host;
-		this.ngrokAuthToken = ngrokAuthToken || null;
+
+		// Support both old (ngrokAuthToken) and new (tunnelToken object) formats
+		if (typeof tunnelToken === "string") {
+			this.ngrokAuthToken = tunnelToken || null;
+		} else if (tunnelToken) {
+			this.ngrokAuthToken = tunnelToken.ngrok || null;
+			this.cloudflareToken = tunnelToken.cloudflare || null;
+		}
+
 		this.proxyUrl = proxyUrl || process.env.PROXY_URL || DEFAULT_PROXY_URL;
 	}
 
@@ -95,15 +107,34 @@ export class SharedApplicationServer {
 					`🔗 Shared application server listening on http://${this.host}:${this.port}`,
 				);
 
-				// Start ngrok tunnel if auth token is provided and not external host
+				// Start tunnel if auth token is provided and not external host
 				const isExternalHost =
 					process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
-				if (this.ngrokAuthToken && !isExternalHost) {
-					try {
-						await this.startNgrokTunnel();
-					} catch (error) {
-						console.error("🔴 Failed to start ngrok tunnel:", error);
-						// Don't reject here - server can still work without ngrok
+
+				if (!isExternalHost) {
+					// Prioritize Cloudflare tunnel over ngrok
+					if (this.cloudflareToken) {
+						try {
+							await this.startCloudflareTunnel();
+						} catch (error) {
+							console.error("🔴 Failed to start Cloudflare tunnel:", error);
+							// Try ngrok as fallback if available
+							if (this.ngrokAuthToken) {
+								console.log("🔄 Falling back to ngrok...");
+								try {
+									await this.startNgrokTunnel();
+								} catch (ngrokError) {
+									console.error("🔴 Failed to start ngrok tunnel:", ngrokError);
+								}
+							}
+						}
+					} else if (this.ngrokAuthToken) {
+						try {
+							await this.startNgrokTunnel();
+						} catch (error) {
+							console.error("🔴 Failed to start ngrok tunnel:", error);
+							// Don't reject here - server can still work without tunnel
+						}
 					}
 				}
 
@@ -130,7 +161,19 @@ export class SharedApplicationServer {
 		}
 		this.pendingApprovals.clear();
 
-		// Stop ngrok tunnel first
+		// Stop Cloudflare tunnel first if running
+		if (this.cloudflareTunnel) {
+			try {
+				this.cloudflareTunnel.stop();
+				this.cloudflareTunnel = null;
+				this.cloudflareUrl = null;
+				console.log("🔗 Cloudflare tunnel stopped");
+			} catch (error) {
+				console.error("🔴 Failed to stop Cloudflare tunnel:", error);
+			}
+		}
+
+		// Stop ngrok tunnel if running
 		if (this.ngrokListener) {
 			try {
 				await this.ngrokListener.close();
@@ -161,9 +204,14 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Get the base URL for the server (ngrok URL if available, otherwise local URL)
+	 * Get the base URL for the server (Cloudflare or ngrok URL if available, otherwise local URL)
 	 */
 	getBaseUrl(): string {
+		// Prioritize Cloudflare tunnel URL
+		if (this.cloudflareUrl) {
+			return this.cloudflareUrl;
+		}
+		// Fall back to ngrok URL
 		if (this.ngrokUrl) {
 			return this.ngrokUrl;
 		}
@@ -192,6 +240,71 @@ export class SharedApplicationServer {
 			process.env.CYRUS_BASE_URL = this.ngrokUrl || undefined;
 		} catch (error) {
 			console.error("🔴 Failed to start ngrok tunnel:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Start Cloudflare tunnel for the server
+	 */
+	private async startCloudflareTunnel(): Promise<void> {
+		if (!this.cloudflareToken) {
+			return;
+		}
+
+		try {
+			console.log("🔗 Starting Cloudflare tunnel...");
+
+			// Create tunnel with quick tunnel (no authentication required for testing)
+			// In production, use token-based authentication
+			this.cloudflareTunnel = createCloudflareTunnel({
+				"--url": `http://localhost:${this.port}`,
+				"--no-autoupdate": true,
+			});
+
+			// Wait for the tunnel URL to be available
+			await new Promise<void>((resolve, reject) => {
+				const timeout = setTimeout(() => {
+					reject(new Error("Timeout waiting for Cloudflare tunnel URL"));
+				}, 30000); // 30 second timeout
+
+				if (this.cloudflareTunnel) {
+					// Listen for URL event
+					this.cloudflareTunnel.on("url", (url: string) => {
+						this.cloudflareUrl = url;
+						clearTimeout(timeout);
+						console.log(`🌐 Cloudflare tunnel active: ${this.cloudflareUrl}`);
+						resolve();
+					});
+
+					// Listen for connection event
+					this.cloudflareTunnel.on("connected", (connection: any) => {
+						console.log(`✅ Cloudflare tunnel connected:`, connection);
+					});
+
+					// Listen for error event
+					this.cloudflareTunnel.on("error", (error: Error) => {
+						console.error(`🔴 Cloudflare tunnel error:`, error);
+						clearTimeout(timeout);
+						reject(error);
+					});
+
+					// Listen for exit event
+					this.cloudflareTunnel.on("exit", (code: number | null) => {
+						if (code !== null && code !== 0) {
+							console.log(`⚠️ Cloudflare tunnel exited with code ${code}`);
+						}
+					});
+				} else {
+					clearTimeout(timeout);
+					reject(new Error("Failed to create Cloudflare tunnel"));
+				}
+			});
+
+			// Override CYRUS_BASE_URL with Cloudflare URL
+			process.env.CYRUS_BASE_URL = this.cloudflareUrl || undefined;
+		} catch (error) {
+			console.error("🔴 Failed to start Cloudflare tunnel:", error);
 			throw error;
 		}
 	}
@@ -300,10 +413,14 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Get the public URL (ngrok URL if available, otherwise base URL)
+	 * Get the public URL (Cloudflare or ngrok URL if available, otherwise base URL)
 	 */
 	getPublicUrl(): string {
-		// Use ngrok URL if available
+		// Prioritize Cloudflare tunnel URL
+		if (this.cloudflareUrl) {
+			return this.cloudflareUrl;
+		}
+		// Fall back to ngrok URL
 		if (this.ngrokUrl) {
 			return this.ngrokUrl;
 		}

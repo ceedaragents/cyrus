@@ -125,10 +125,20 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
 		const serverHost = config.serverHost || "localhost";
+
+		// Support both ngrok and Cloudflare tunnels
+		const tunnelToken =
+			config.cloudflareToken || config.ngrokAuthToken
+				? {
+						ngrok: config.ngrokAuthToken,
+						cloudflare: config.cloudflareToken,
+					}
+				: undefined;
+
 		this.sharedApplicationServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
-			config.ngrokAuthToken,
+			tunnelToken,
 			config.proxyUrl,
 		);
 
@@ -671,6 +681,8 @@ export class EdgeWorker extends EventEmitter {
 				repositories: parsedConfig.repositories || [],
 				ngrokAuthToken:
 					parsedConfig.ngrokAuthToken || this.config.ngrokAuthToken,
+				cloudflareToken:
+					parsedConfig.cloudflareToken || this.config.cloudflareToken,
 				defaultModel: parsedConfig.defaultModel || this.config.defaultModel,
 				defaultFallbackModel:
 					parsedConfig.defaultFallbackModel || this.config.defaultFallbackModel,

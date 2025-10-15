@@ -26,6 +26,7 @@
 		"@linear/sdk": "^60.0.0",
 		"@ngrok/ngrok": "^1.5.1",
 		"chokidar": "^4.0.3",
+		"cloudflared": "^0.7.1",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-webhook-client": "workspace:*",

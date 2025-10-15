@@ -84,7 +84,8 @@ export interface EdgeWorkerConfig {
 	webhookPort?: number; // Legacy support - now uses serverPort
 	serverPort?: number; // Unified server port for both webhooks and OAuth callbacks (default: 3456)
 	serverHost?: string; // Server host address ('localhost' or '0.0.0.0', default: 'localhost')
-	ngrokAuthToken?: string; // Ngrok auth token for tunnel creation
+	ngrokAuthToken?: string; // Deprecated: Ngrok auth token for tunnel creation (use cloudflareToken instead)
+	cloudflareToken?: string; // Cloudflare tunnel token for tunnel creation
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
@@ -169,7 +170,8 @@ export interface EdgeWorkerConfig {
  */
 export interface EdgeConfig {
 	repositories: RepositoryConfig[];
-	ngrokAuthToken?: string;
+	ngrokAuthToken?: string; // Deprecated: Use cloudflareToken instead
+	cloudflareToken?: string; // Cloudflare tunnel token
 	stripeCustomerId?: string;
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
