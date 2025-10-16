@@ -113,7 +113,12 @@ export class SharedApplicationServer {
 					// Prioritize Cloudflare tunnel over ngrok
 					if (this.cloudflareToken) {
 						// If cloudflareToken is set, ONLY use Cloudflare (no fallback)
-						await this.startCloudflareTunnel();
+						try {
+							await this.startCloudflareTunnel();
+						} catch (error) {
+							console.error("🔴 Failed to start Cloudflare tunnel:", error);
+							// Don't reject here - server can still work without tunnel
+						}
 					} else if (this.ngrokAuthToken) {
 						try {
 							await this.startNgrokTunnel();
