@@ -143,6 +143,38 @@ The agent automatically moves issues to the "started" state when assigned. Linea
 - **Standard Types**: `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`
 - **Issue Assignment Behavior**: When an issue is assigned to the agent, it automatically transitions to a state with `type === 'started'` (In Progress)
 
+## Tunnel Configuration
+
+Cyrus requires a tunnel to make your local server accessible for Linear webhook delivery. The system supports both Cloudflare Tunnels and ngrok, with Cloudflare Tunnels taking priority.
+
+### Cloudflare Tunnels (Recommended)
+
+1. **Setup**: Create a tunnel in your [Cloudflare dashboard](https://one.dash.cloudflare.com/) → Access → Tunnels
+2. **Token**: Copy the tunnel token and add it to your config:
+   ```json
+   {
+     "cloudflareToken": "your-cloudflare-tunnel-token-here",
+     "repositories": [...]
+   }
+   ```
+3. **Automatic Priority**: If `cloudflareToken` is present, Cyrus will use Cloudflare Tunnels and skip ngrok setup entirely
+
+### ngrok (Fallback)
+
+- Used automatically when no `cloudflareToken` is configured
+- Prompts for ngrok auth token on first run
+- Requires free ngrok account from https://ngrok.com/
+
+### External Host Configuration
+
+For custom reverse proxy setups, set environment variables:
+```bash
+export CYRUS_HOST_EXTERNAL=true
+export CYRUS_BASE_URL=https://your-domain.com
+```
+
+This skips all tunnel setup and uses your provided base URL.
+
 ## Important Development Notes
 
 1. **Edge-Proxy Architecture**: The project is transitioning to separate OAuth/webhook handling from Claude processing.

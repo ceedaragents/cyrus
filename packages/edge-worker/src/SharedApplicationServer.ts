@@ -253,24 +253,24 @@ export class SharedApplicationServer {
 				"--no-autoupdate": true,
 			});
 
-			// Wait for the tunnel URL to be available
+			// Wait for tunnel to establish connection
 			await new Promise<void>((resolve, reject) => {
 				const timeout = setTimeout(() => {
-					reject(new Error("Timeout waiting for Cloudflare tunnel URL"));
+					reject(new Error("Timeout waiting for Cloudflare tunnel to connect"));
 				}, 30000); // 30 second timeout
 
 				if (this.cloudflareTunnel) {
-					// Listen for URL event
-					this.cloudflareTunnel.on("url", (url: string) => {
-						this.cloudflareUrl = url;
-						clearTimeout(timeout);
-						console.log(`🌐 Cloudflare tunnel active: ${this.cloudflareUrl}`);
-						resolve();
-					});
+					let connectionEstablished = false;
 
-					// Listen for connection event
+					// Listen for connection event (indicates tunnel is working)
 					this.cloudflareTunnel.on("connected", (connection: any) => {
 						console.log(`✅ Cloudflare tunnel connected:`, connection);
+						if (!connectionEstablished) {
+							connectionEstablished = true;
+							clearTimeout(timeout);
+							console.log(`🌐 Cloudflare tunnel active`);
+							resolve();
+						}
 					});
 
 					// Listen for error event
@@ -291,9 +291,6 @@ export class SharedApplicationServer {
 					reject(new Error("Failed to create Cloudflare tunnel"));
 				}
 			});
-
-			// Override CYRUS_BASE_URL with Cloudflare URL
-			process.env.CYRUS_BASE_URL = this.cloudflareUrl || undefined;
 		} catch (error) {
 			console.error("🔴 Failed to start Cloudflare tunnel:", error);
 			throw error;
