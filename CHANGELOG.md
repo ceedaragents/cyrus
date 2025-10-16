@@ -8,7 +8,6 @@ All notable changes to this project will be documented in this file.
 - **Cloudflare Tunnels support**: Cyrus now supports Cloudflare Tunnels as an alternative to ngrok for webhook forwarding
   - Configure `cloudflareToken` in your config to use Cloudflare Tunnels
   - Automatically prioritizes Cloudflare over ngrok when both tokens are present
-  - Falls back to ngrok if Cloudflare tunnel fails to start
   - Full backward compatibility with existing ngrok configurations
 
 ### Changed
