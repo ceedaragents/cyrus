@@ -250,7 +250,6 @@ export class SharedApplicationServer {
 			this.cloudflareTunnel = createCloudflareTunnel({
 				"--url": `http://localhost:${this.port}`,
 				"--token": this.cloudflareToken,
-				"--no-autoupdate": true,
 			});
 
 			// Wait for tunnel to establish connection
