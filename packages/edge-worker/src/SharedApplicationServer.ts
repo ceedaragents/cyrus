@@ -262,6 +262,15 @@ export class SharedApplicationServer {
 				if (this.cloudflareTunnel) {
 					let connectionEstablished = false;
 
+					// Add debug logging for stdout/stderr
+					this.cloudflareTunnel.on("stdout", (data: string) => {
+						console.log(`[Cloudflare stdout]`, data.trim());
+					});
+
+					this.cloudflareTunnel.on("stderr", (data: string) => {
+						console.log(`[Cloudflare stderr]`, data.trim());
+					});
+
 					// Listen for connection event (indicates tunnel is working)
 					this.cloudflareTunnel.on("connected", (connection: any) => {
 						console.log(`✅ Cloudflare tunnel connected:`, connection);
