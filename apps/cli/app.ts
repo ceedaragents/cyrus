@@ -396,6 +396,13 @@ class EdgeApp {
 	}
 
 	/**
+	 * Get cloudflare tunnel token from config
+	 */
+	getCloudflareToken(config: EdgeConfig): string | undefined {
+		return config.cloudflareToken;
+	}
+
+	/**
 	 * Get ngrok auth token from config or prompt user
 	 */
 	async getNgrokAuthToken(config: EdgeConfig): Promise<string | undefined> {
@@ -482,12 +489,14 @@ class EdgeApp {
 		proxyUrl: string;
 		repositories: RepositoryConfig[];
 	}): Promise<void> {
-		// Get ngrok auth token (prompt if needed and not external host)
+		// Get tunnel tokens (cloudflare and ngrok)
+		let cloudflareToken: string | undefined;
 		let ngrokAuthToken: string | undefined;
 		const isExternalHost =
 			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
 		if (!isExternalHost) {
 			const config = this.loadEdgeConfig();
+			cloudflareToken = this.getCloudflareToken(config);
 			ngrokAuthToken = await this.getNgrokAuthToken(config);
 		}
 
@@ -512,6 +521,7 @@ class EdgeApp {
 				? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 				: 3456,
 			serverHost: isExternalHost ? "0.0.0.0" : "localhost",
+			cloudflareToken,
 			ngrokAuthToken,
 			features: {
 				enableContinuation: true,
