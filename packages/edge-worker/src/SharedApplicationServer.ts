@@ -6,7 +6,7 @@ import {
 } from "node:http";
 import { URL } from "node:url";
 import { forward } from "@ngrok/ngrok";
-import { tunnel as createCloudflareTunnel, type Tunnel } from "cloudflared";
+import { tunnel as createCloudflareTunnel, type Tunnel, ConfigHandler } from "cloudflared";
 import { DEFAULT_PROXY_URL, type OAuthCallbackHandler } from "cyrus-core";
 
 /**
@@ -252,24 +252,47 @@ export class SharedApplicationServer {
 				"--token": this.cloudflareToken,
 			});
 
-			// Wait for tunnel to establish connection
+			// Add ConfigHandler to capture URL from tunnel configuration
+			const configHandler = new ConfigHandler(this.cloudflareTunnel);
+			configHandler.on("config", (configData) => {
+				console.log(`📋 Cloudflare tunnel config received:`, configData);
+			});
+
+			// Wait for tunnel to establish connection and capture URL
 			await new Promise<void>((resolve, reject) => {
 				const timeout = setTimeout(() => {
 					reject(new Error("Timeout waiting for Cloudflare tunnel to connect"));
 				}, 30000); // 30 second timeout
 
 				if (this.cloudflareTunnel) {
-					let connectionEstablished = false;
+					let isConnected = false;
+					let hasUrl = false;
+
+					const checkComplete = () => {
+						if (isConnected && hasUrl) {
+							clearTimeout(timeout);
+							console.log(`🌐 Cloudflare tunnel fully active: ${this.cloudflareUrl}`);
+							resolve();
+						}
+					};
+
+					// Listen for URL event (from ConfigHandler for token-based tunnels)
+					this.cloudflareTunnel.on("url", (url: string) => {
+						// Ensure URL has protocol for token-based tunnels
+						if (!url.startsWith("http")) {
+							url = `https://${url}`;
+						}
+						this.cloudflareUrl = url;
+						console.log(`🌐 Cloudflare tunnel URL detected: ${this.cloudflareUrl}`);
+						hasUrl = true;
+						checkComplete();
+					});
 
 					// Listen for connection event (indicates tunnel is working)
 					this.cloudflareTunnel.on("connected", (connection: any) => {
 						console.log(`✅ Cloudflare tunnel connected:`, connection);
-						if (!connectionEstablished) {
-							connectionEstablished = true;
-							clearTimeout(timeout);
-							console.log(`🌐 Cloudflare tunnel active`);
-							resolve();
-						}
+						isConnected = true;
+						checkComplete();
 					});
 
 					// Listen for error event
@@ -290,6 +313,11 @@ export class SharedApplicationServer {
 					reject(new Error("Failed to create Cloudflare tunnel"));
 				}
 			});
+
+			// Override CYRUS_BASE_URL with Cloudflare URL if available
+			if (this.cloudflareUrl) {
+				process.env.CYRUS_BASE_URL = this.cloudflareUrl;
+			}
 		} catch (error) {
 			console.error("🔴 Failed to start Cloudflare tunnel:", error);
 			throw error;
