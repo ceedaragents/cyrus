@@ -14,9 +14,6 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.14 to v0.1.15 - includes parity with Claude Code v2.0.15, environment type improvements, and startup performance improvements for MCP servers. See [@anthropic-ai/claude-agent-sdk v0.1.15 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0115)
 
-### Deprecated
-- `ngrokAuthToken` configuration field - use `cloudflareToken` instead (ngrok will continue to work but is deprecated)
-
 ## [0.1.57] - 2025-10-12
 
 ### Fixed
