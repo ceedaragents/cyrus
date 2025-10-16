@@ -406,6 +406,12 @@ class EdgeApp {
 	 * Get ngrok auth token from config or prompt user
 	 */
 	async getNgrokAuthToken(config: EdgeConfig): Promise<string | undefined> {
+		// Skip ngrok setup if Cloudflare token is available (Cloudflare has priority)
+		if (config.cloudflareToken) {
+			console.log(`\n🚀 Using Cloudflare Tunnels (skipping ngrok setup)`);
+			return undefined;
+		}
+
 		// Return existing token if available
 		if (config.ngrokAuthToken) {
 			return config.ngrokAuthToken;
