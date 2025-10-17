@@ -1,0 +1,40 @@
+{
+  "name": "cyrus-cloudflare-transport",
+  "version": "0.1.0",
+  "description": "Cloudflare tunnel-based transport client for Cyrus",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cyrus",
+    "cloudflare",
+    "tunnel",
+    "transport",
+    "linear"
+  ],
+  "author": "Ceedar",
+  "license": "ISC",
+  "dependencies": {
+    "cloudflared": "^0.6.0",
+    "cyrus-core": "workspace:*",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
