@@ -554,6 +554,18 @@ export class EdgeWorker extends EventEmitter {
 
 		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
+		// Re-route procedure when resuming from child (same as prompted events)
+		// This resets the currentSubroutine to avoid suppression issues
+		console.log(
+			`[Parent Session Resume] Re-routing procedure for parent session ${parentSessionId}`,
+		);
+		await this.rerouteProcedureForSession(
+			parentSession,
+			parentSessionId,
+			agentSessionManager,
+			prompt,
+		);
+
 		// Resume the parent session with the child's result
 		console.log(
 			`[Parent Session Resume] Resuming parent Claude session with child results`,
@@ -3621,6 +3633,18 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					// Format the feedback as a prompt for the child session with enhanced markdown formatting
 					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
 
+					// Re-route procedure when giving feedback to child (same as prompted events)
+					// This resets the currentSubroutine to avoid suppression issues
+					console.log(
+						`[EdgeWorker] Re-routing procedure for child session ${childSessionId} after receiving feedback`,
+					);
+					await this.rerouteProcedureForSession(
+						childSession,
+						childSessionId,
+						childAgentSessionManager,
+						feedbackPrompt,
+					);
+
 					// Resume the CHILD session with the feedback from the parent
 					// Important: We don't await the full session completion to avoid timeouts.
 					// The feedback is delivered immediately when the session starts, so we can
@@ -4154,6 +4178,52 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				error,
 			);
 		}
+	}
+
+	/**
+	 * Re-route procedure for a session (used when resuming from child or give feedback)
+	 * This ensures the currentSubroutine is reset to avoid suppression issues
+	 */
+	private async rerouteProcedureForSession(
+		session: CyrusAgentSession,
+		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
+		promptBody: string,
+	): Promise<void> {
+		// Initialize procedure metadata using intelligent routing
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+
+		// Post ephemeral "Routing..." thought
+		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
+
+		// Route based on the prompt content
+		const routingDecision = await this.procedureRouter.determineRoutine(
+			promptBody.trim(),
+		);
+		const selectedProcedure = routingDecision.procedure;
+
+		// Initialize procedure metadata in session (resets currentSubroutine)
+		this.procedureRouter.initializeProcedureMetadata(
+			session,
+			selectedProcedure,
+		);
+
+		// Post procedure selection result (replaces ephemeral routing thought)
+		await agentSessionManager.postProcedureSelectionThought(
+			linearAgentActivitySessionId,
+			selectedProcedure.name,
+			routingDecision.classification,
+		);
+
+		// Log routing decision
+		console.log(
+			`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId}:`,
+		);
+		console.log(`  Classification: ${routingDecision.classification}`);
+		console.log(`  Procedure: ${selectedProcedure.name}`);
+		console.log(`  Reasoning: ${routingDecision.reasoning}`);
 	}
 
 	/**

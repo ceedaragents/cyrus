@@ -99,6 +99,8 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				claudeRunner: mockClaudeRunner,
 			}),
 			getClaudeRunner: vi.fn().mockReturnValue(mockClaudeRunner),
+			postRoutingThought: vi.fn().mockResolvedValue(undefined),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 
 		// Mock parent session manager (for different repository)
