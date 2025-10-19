@@ -1,0 +1,37 @@
+{
+	"name": "@cyrus/claude-agent-runner",
+	"version": "0.1.0",
+	"description": "Claude Code implementation of IAgentRunner abstraction",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run --passWithNoTests"
+	},
+	"keywords": [
+		"cyrus",
+		"claude",
+		"agent",
+		"runner"
+	],
+	"author": "Ceedar",
+	"license": "MIT",
+	"dependencies": {
+		"@cyrus/abstractions": "workspace:*",
+		"cyrus-claude-runner": "workspace:*"
+	},
+	"devDependencies": {
+		"typescript": "^5.3.3",
+		"vitest": "^3.0.2"
+	}
+}

@@ -1,0 +1,27 @@
+{
+	"name": "@cyrus/cli-renderer",
+	"version": "0.1.0",
+	"description": "CLI/Terminal implementation of IOutputRenderer",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "echo 'Tests TODO'",
+		"test:run": "echo 'Tests TODO'"
+	},
+	"dependencies": {
+		"@cyrus/abstractions": "workspace:*",
+		"chalk": "^5.3.0",
+		"marked": "^11.1.1",
+		"marked-terminal": "^7.0.0",
+		"ora": "^8.0.1"
+	},
+	"devDependencies": {
+		"@types/marked-terminal": "^3.1.3",
+		"@types/node": "^20.19.21",
+		"typescript": "^5.3.3"
+	}
+}

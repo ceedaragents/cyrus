@@ -1,0 +1,517 @@
+
+> cyrus-monorepo@1.0.1 test:packages:run /Users/agentops/code/cyrus-workspaces/CYPACK-204
+> pnpm --filter './packages/*' test:run
+
+Scope: 7 of 10 workspace projects
+packages/abstractions test:run$ echo 'No tests for pure interface package'
+packages/claude-runner test:run$ vitest run
+packages/ndjson-client test:run$ vitest run
+packages/abstractions test:run: No tests for pure interface package
+packages/abstractions test:run: Done
+packages/claude-runner test:run:  RUN  v1.6.1 /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner
+packages/ndjson-client test:run:  RUN  v1.6.1 /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/ndjson-client
+packages/ndjson-client test:run:  ✓ test/NdjsonClient.test.ts  (9 tests) 4ms
+packages/ndjson-client test:run:  ✓ test/WebhookTransport.test.ts  (6 tests) 3ms
+packages/ndjson-client test:run:  Test Files  2 passed (2)
+packages/ndjson-client test:run:       Tests  15 passed (15)
+packages/ndjson-client test:run:    Start at  11:20:24
+packages/ndjson-client test:run:    Duration  271ms (transform 62ms, setup 0ms, collect 71ms, tests 7ms, environment 0ms, prepare 98ms)
+packages/claude-runner test:run:  ✓ test/tools/cyrus-tools/fs-extra-import.test.ts  (5 tests) 2ms
+packages/claude-runner test:run:  ✓ test/config.test.ts  (21 tests) 4ms
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > start() > should start Claude session with basic prompt
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-132Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-132Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 12 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-132Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-132Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > start() > should handle workspace configuration properly
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test-workspace/session-pending-2025-10-19T18-20-25-133Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test-workspace/session-pending-2025-10-19T18-20-25-133Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test-workspace/session-test-session-2025-10-19T18-20-25-133Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test-workspace/session-test-session-2025-10-19T18-20-25-133Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > start() > should use system prompt if provided
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-133Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-133Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-133Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-133Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > start() > should throw error if session already running
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-134Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-134Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 12 characters
+packages/claude-runner test:run:  ✓ test/disallowed-tools.test.ts  (4 tests) 7ms
+packages/claude-runner test:run: stdout | test/disallowed-tools.test.ts > ClaudeRunner - disallowedTools > should pass disallowedTools to Claude Code when configured
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /test/cyrus/logs/test/session-pending-2025-10-19T18-20-25-132Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /test/cyrus/logs/test/session-pending-2025-10-19T18-20-25-132Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 11 characters
+packages/claude-runner test:run: [ClaudeRunner] Disallowed tools configured: [ 'Bash', 'WebFetch' ]
+packages/claude-runner test:run: [ClaudeRunner] Skipping invalid .mcp.json at /test/.mcp.json
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/disallowed-tools.test.ts > ClaudeRunner - disallowedTools > should not pass disallowedTools when not configured
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /test/cyrus/logs/test/session-pending-2025-10-19T18-20-25-134Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /test/cyrus/logs/test/session-pending-2025-10-19T18-20-25-134Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 11 characters
+packages/claude-runner test:run: [ClaudeRunner] Skipping invalid .mcp.json at /test/.mcp.json
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/disallowed-tools.test.ts > ClaudeRunner - disallowedTools > should handle empty disallowedTools array
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /test/cyrus/logs/test/session-pending-2025-10-19T18-20-25-134Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /test/cyrus/logs/test/session-pending-2025-10-19T18-20-25-134Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 11 characters
+packages/claude-runner test:run: [ClaudeRunner] Skipping invalid .mcp.json at /test/.mcp.json
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stderr | test/disallowed-tools.test.ts > ClaudeRunner - disallowedTools > should pass disallowedTools to Claude Code when configured
+packages/claude-runner test:run: [ClaudeRunner] Failed to parse .env file: Error: ENOENT: no such file or directory, open '/test/.env'
+packages/claude-runner test:run:     at Object.readFileSync (node:fs:441:20)
+packages/claude-runner test:run:     at Object.configDotenv (/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/dotenv@16.6.1/node_modules/dotenv/lib/main.js:244:44)
+packages/claude-runner test:run:     at Object.config (/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/dotenv@16.6.1/node_modules/dotenv/lib/main.js:291:25)
+packages/claude-runner test:run:     at ClaudeRunner.loadRepositoryEnv (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:678:27)
+packages/claude-runner test:run:     at ClaudeRunner.startWithPrompt (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:245:9)
+packages/claude-runner test:run:     at ClaudeRunner.start (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:174:15)
+packages/claude-runner test:run:     at /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/disallowed-tools.test.ts:68:16
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:135:14
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:60:26
+packages/claude-runner test:run:     at runTest (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:781:17) {
+packages/claude-runner test:run:   errno: -2,
+packages/claude-runner test:run:   code: 'ENOENT',
+packages/claude-runner test:run:   syscall: 'open',
+packages/claude-runner test:run:   path: '/test/.env'
+packages/claude-runner test:run: }
+packages/claude-runner test:run: stderr | test/disallowed-tools.test.ts > ClaudeRunner - disallowedTools > should not pass disallowedTools when not configured
+packages/claude-runner test:run: [ClaudeRunner] Failed to parse .env file: Error: ENOENT: no such file or directory, open '/test/.env'
+packages/claude-runner test:run:     at Object.readFileSync (node:fs:441:20)
+packages/claude-runner test:run:     at Object.configDotenv (/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/dotenv@16.6.1/node_modules/dotenv/lib/main.js:244:44)
+packages/claude-runner test:run:     at Object.config (/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/dotenv@16.6.1/node_modules/dotenv/lib/main.js:291:25)
+packages/claude-runner test:run:     at ClaudeRunner.loadRepositoryEnv (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:678:27)
+packages/claude-runner test:run:     at ClaudeRunner.startWithPrompt (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:245:9)
+packages/claude-runner test:run:     at ClaudeRunner.start (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:174:15)
+packages/claude-runner test:run:     at /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/disallowed-tools.test.ts:100:16
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:135:14
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:60:26
+packages/claude-runner test:run:     at runTest (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:781:17) {
+packages/claude-runner test:run:   errno: -2,
+packages/claude-runner test:run:   code: 'ENOENT',
+packages/claude-runner test:run:   syscall: 'open',
+packages/claude-runner test:run:   path: '/test/.env'
+packages/claude-runner test:run: }
+packages/claude-runner test:run: stderr | test/disallowed-tools.test.ts > ClaudeRunner - disallowedTools > should handle empty disallowedTools array
+packages/claude-runner test:run: [ClaudeRunner] Failed to parse .env file: Error: ENOENT: no such file or directory, open '/test/.env'
+packages/claude-runner test:run:     at Object.readFileSync (node:fs:441:20)
+packages/claude-runner test:run:     at Object.configDotenv (/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/dotenv@16.6.1/node_modules/dotenv/lib/main.js:244:44)
+packages/claude-runner test:run:     at Object.config (/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/dotenv@16.6.1/node_modules/dotenv/lib/main.js:291:25)
+packages/claude-runner test:run:     at ClaudeRunner.loadRepositoryEnv (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:678:27)
+packages/claude-runner test:run:     at ClaudeRunner.startWithPrompt (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:245:9)
+packages/claude-runner test:run:     at ClaudeRunner.start (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:174:15)
+packages/claude-runner test:run:     at /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/disallowed-tools.test.ts:132:16
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:135:14
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:60:26
+packages/claude-runner test:run:     at runTest (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:781:17) {
+packages/claude-runner test:run:   errno: -2,
+packages/claude-runner test:run:   code: 'ENOENT',
+packages/claude-runner test:run:   syscall: 'open',
+packages/claude-runner test:run:   path: '/test/.env'
+packages/claude-runner test:run: }
+packages/claude-runner test:run: stderr | test/disallowed-tools.test.ts > ClaudeRunner - disallowedTools > should log disallowedTools when configured
+packages/claude-runner test:run: [ClaudeRunner] Failed to parse .env file: Error: ENOENT: no such file or directory, open '/test/.env'
+packages/claude-runner test:run:     at Object.readFileSync (node:fs:441:20)
+packages/claude-runner test:run:     at Object.configDotenv (/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/dotenv@16.6.1/node_modules/dotenv/lib/main.js:244:44)
+packages/claude-runner test:run:     at Object.config (/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/dotenv@16.6.1/node_modules/dotenv/lib/main.js:291:25)
+packages/claude-runner test:run:     at ClaudeRunner.loadRepositoryEnv (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:678:27)
+packages/claude-runner test:run:     at ClaudeRunner.startWithPrompt (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:245:9)
+packages/claude-runner test:run:     at ClaudeRunner.start (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:174:15)
+packages/claude-runner test:run:     at /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/disallowed-tools.test.ts:163:16
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:135:14
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:60:26
+packages/claude-runner test:run:     at runTest (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:781:17) {
+packages/claude-runner test:run:   errno: -2,
+packages/claude-runner test:run:   code: 'ENOENT',
+packages/claude-runner test:run:   syscall: 'open',
+packages/claude-runner test:run:   path: '/test/.env'
+packages/claude-runner test:run: }
+packages/claude-runner test:run: stdout | test/disallowed-tools.test.ts > ClaudeRunner - disallowedTools > should log disallowedTools when configured
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /test/cyrus/logs/test/session-pending-2025-10-19T18-20-25-135Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /test/cyrus/logs/test/session-pending-2025-10-19T18-20-25-135Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Disallowed tools configured: [ 'Bash', 'SystemAccess', 'DangerousTool' ]
+packages/claude-runner test:run: [ClaudeRunner] Skipping invalid .mcp.json at /test/.mcp.json
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/ndjson-client test:run: Done
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > start() > should throw error if session already running
+packages/claude-runner test:run: [ClaudeRunner] Stopping Claude session
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > start() > should emit message events for each SDK message
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-146Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-146Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-146Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-146Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 2 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > start() > should emit complete event with all messages
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-146Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-146Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-146Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-146Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > stop() > should stop running session
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-146Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-146Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > stop() > should stop running session
+packages/claude-runner test:run: [ClaudeRunner] Stopping Claude session
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 0 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > isRunning() > should return true during session
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-159Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-159Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run:  ✓ test/ClaudeRunner.test.ts  (32 tests) 50ms
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > isRunning() > should return true during session
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 0 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Message Processing > should emit text events for assistant text content
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-170Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-170Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-170Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-170Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Message Processing > should emit tool-use events for tool calls
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-170Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-170Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-170Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-170Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Error Handling > should emit error event on query failure
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-171Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-171Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Error Handling > should handle AbortError gracefully
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-173Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-173Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session was aborted
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Error Handling > should handle SIGTERM (exit code 143) gracefully
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-175Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-175Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session was terminated gracefully (SIGTERM)
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Session Info > should return session info after starting
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-175Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-175Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-175Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-175Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Session ID Extraction > should extract session ID from first Claude message
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-175Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-175Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Unhandled message type: start
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: extracted-session-123
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-extracted-session-123-2025-10-19T18-20-25-175Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-extracted-session-123-2025-10-19T18-20-25-175Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 2 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Session ID Extraction > should update streaming prompt when session ID is extracted
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-176Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-176Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: new-session-456
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-new-session-456-2025-10-19T18-20-25-176Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-new-session-456-2025-10-19T18-20-25-176Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Session ID Extraction > should handle messages without session ID gracefully
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-176Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-176Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Session ID Extraction > should only extract session ID once from first message that has it
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-176Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-176Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: first-session-id
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-first-session-id-2025-10-19T18-20-25-176Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-first-session-id-2025-10-19T18-20-25-176Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 2 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Message History > should collect all messages during session
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-176Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-176Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-177Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-177Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 2 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Message History > should return copy of messages array
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-177Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-177Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-177Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-177Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Dual Logging System > should create both detailed and readable log streams
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test-dual-logging/session-pending-2025-10-19T18-20-25-178Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test-dual-logging/session-pending-2025-10-19T18-20-25-178Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test-dual-logging/session-test-session-2025-10-19T18-20-25-178Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test-dual-logging/session-test-session-2025-10-19T18-20-25-178Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Dual Logging System > should process assistant messages for readable log
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-178Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-178Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-178Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-178Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 3 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Dual Logging System > should filter system messages from readable log
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-178Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-178Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-178Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-178Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 2 messages
+packages/claude-runner test:run: stdout | test/ClaudeRunner.test.ts > ClaudeRunner > Dual Logging System > should filter TodoWrite tool calls from readable log
+packages/claude-runner test:run: [ClaudeRunner] Starting new session (session ID will be assigned by Claude)
+packages/claude-runner test:run: [ClaudeRunner] Working directory: /tmp/test
+packages/claude-runner test:run: [ClaudeRunner] Created working directory
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-179Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-pending-2025-10-19T18-20-25-179Z.md
+packages/claude-runner test:run: [ClaudeRunner] Starting query with string prompt length: 4 characters
+packages/claude-runner test:run: [ClaudeRunner] Session ID assigned by Claude: test-session
+packages/claude-runner test:run: [ClaudeRunner] Creating detailed log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-179Z.jsonl
+packages/claude-runner test:run: [ClaudeRunner] Creating readable log: /tmp/test-cyrus-home/logs/test/session-test-session-2025-10-19T18-20-25-179Z.md
+packages/claude-runner test:run: [ClaudeRunner] Session completed with 1 messages
+packages/claude-runner test:run: stderr | test/ClaudeRunner.test.ts > ClaudeRunner > Error Handling > should emit error event on query failure
+packages/claude-runner test:run: [ClaudeRunner] Session error: Error: Query failed
+packages/claude-runner test:run:     at /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/ClaudeRunner.test.ts:427:22
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:135:14
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:60:26
+packages/claude-runner test:run:     at runTest (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:781:17)
+packages/claude-runner test:run:     at runSuite (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)
+packages/claude-runner test:run:     at runSuite (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)
+packages/claude-runner test:run:     at runSuite (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)
+packages/claude-runner test:run:     at runFiles (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:958:5)
+packages/claude-runner test:run:     at startTests (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:967:3)
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/vitest@1.6.1_@types+node@20.19.21/node_modules/vitest/dist/chunks/runtime-runBaseTests.oAvMKtQC.js:116:7
+packages/claude-runner test:run: stderr | test/ClaudeRunner.test.ts > ClaudeRunner > Error Handling > should handle AbortError gracefully
+packages/claude-runner test:run: [ClaudeRunner] Session error: AbortError: Session aborted
+packages/claude-runner test:run:     at Proxy.<anonymous> (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/ClaudeRunner.test.ts:446:11)
+packages/claude-runner test:run:     at AsyncGenerator.next (<anonymous>)
+packages/claude-runner test:run:     at ClaudeRunner.startWithPrompt (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:419:21)
+packages/claude-runner test:run:     at ClaudeRunner.start (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:174:15)
+packages/claude-runner test:run:     at /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/ClaudeRunner.test.ts:449:17
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:135:14
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:60:26
+packages/claude-runner test:run:     at runTest (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:781:17)
+packages/claude-runner test:run:     at runSuite (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)
+packages/claude-runner test:run:     at runSuite (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)
+packages/claude-runner test:run: stderr | test/ClaudeRunner.test.ts > ClaudeRunner > Error Handling > should handle SIGTERM (exit code 143) gracefully
+packages/claude-runner test:run: [ClaudeRunner] Session error: Error: Claude Code process exited with code 143
+packages/claude-runner test:run:     at Proxy.<anonymous> (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/ClaudeRunner.test.ts:461:11)
+packages/claude-runner test:run:     at AsyncGenerator.next (<anonymous>)
+packages/claude-runner test:run:     at ClaudeRunner.startWithPrompt (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:419:21)
+packages/claude-runner test:run:     at ClaudeRunner.start (/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/src/ClaudeRunner.ts:174:15)
+packages/claude-runner test:run:     at /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/claude-runner/test/ClaudeRunner.test.ts:464:17
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:135:14
+packages/claude-runner test:run:     at file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:60:26
+packages/claude-runner test:run:     at runTest (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:781:17)
+packages/claude-runner test:run:     at runSuite (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)
+packages/claude-runner test:run:     at runSuite (file:///Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/@vitest+runner@1.6.1/node_modules/@vitest/runner/dist/index.js:909:15)
+packages/claude-runner test:run:  ✓ test/tools/cyrus-tools/get-child-issues-integration.test.ts  (4 tests) 3ms
+packages/claude-runner test:run:  Test Files  5 passed (5)
+packages/claude-runner test:run:       Tests  66 passed (66)
+packages/claude-runner test:run:    Start at  11:20:24
+packages/claude-runner test:run:    Duration  381ms (transform 200ms, setup 0ms, collect 402ms, tests 66ms, environment 0ms, prepare 295ms)
+packages/claude-runner test:run: Done
+packages/core test:run$ vitest run --passWithNoTests
+packages/simple-agent-runner test:run$ vitest run --passWithNoTests
+packages/simple-agent-runner test:run:  RUN  v1.6.1 /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/simple-agent-runner
+packages/core test:run:  RUN  v1.6.1 /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/core
+packages/core test:run: include: **/*.{test,spec}.?(c|m)[jt]s?(x)
+packages/core test:run: exclude:  **/node_modules/**, **/dist/**, **/cypress/**, **/.{idea,git,cache,output,temp}/**, **/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*
+packages/core test:run: watch exclude:  **/node_modules/**, **/dist/**
+packages/core test:run: No test files found, exiting with code 0
+packages/core test:run: Done
+packages/simple-agent-runner test:run:  ✓ test/errors.test.ts  (10 tests) 4ms
+packages/simple-agent-runner test:run:  ✓ test/SimpleAgentRunner.test.ts  (14 tests) 212ms
+packages/simple-agent-runner test:run:  Test Files  2 passed (2)
+packages/simple-agent-runner test:run:       Tests  24 passed (24)
+packages/simple-agent-runner test:run:    Start at  11:20:25
+packages/simple-agent-runner test:run:    Duration  369ms (transform 42ms, setup 0ms, collect 49ms, tests 216ms, environment 0ms, prepare 75ms)
+packages/simple-agent-runner test:run: Done
+packages/edge-worker test:run$ vitest run
+packages/edge-worker test:run:  RUN  v1.6.1 /Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/edge-worker
+packages/edge-worker test:run:  ❯ test/EdgeWorker.feedback-delivery.test.ts  (0 test)
+packages/edge-worker test:run:  ❯ test/EdgeWorker.label-based-prompt-command.test.ts  (0 test)
+packages/edge-worker test:run:  ❯ test/EdgeWorker.dynamic-tools.test.ts  (0 test)
+packages/edge-worker test:run:  ❯ test/EdgeWorker.system-prompt-resume.test.ts  (0 test)
+packages/edge-worker test:run:  ❯ test/EdgeWorker.feedback-timeout.test.ts  (0 test)
+packages/edge-worker test:run:  ❯ test/EdgeWorker.parent-branch.test.ts  (0 test)
+packages/edge-worker test:run:  ✓ test/version-extraction.test.ts  (5 tests) 2ms
+packages/edge-worker test:run:  ❯ test/EdgeWorker.versioning.test.ts  (0 test)
+packages/edge-worker test:run:  ❯ test/EdgeWorker.repository-routing.test.ts  (0 test)
+packages/edge-worker test:run:  ❯ test/EdgeWorker.attachments.test.ts  (0 test)
+packages/edge-worker test:run:  ❯ test/EdgeWorker.procedure-routing.test.ts  (0 test)
+packages/edge-worker test:run:  ✓ test/AgentSessionManager.model-notification.test.ts  (4 tests) 3ms
+packages/edge-worker test:run:  ❯ test/EdgeWorker.procedure-integration.test.ts  (0 test)
+packages/edge-worker test:run: ⎯⎯⎯⎯⎯⎯ Failed Suites 11 ⎯⎯⎯⎯⎯⎯
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.attachments.test.ts [ test/EdgeWorker.attachments.test.ts ]
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.repository-routing.test.ts [ test/EdgeWorker.repository-routing.test.ts ]
+packages/edge-worker test:run: Error: Failed to resolve entry for package "cyrus-claude-runner". The package may have incorrect main/module/exports specified in its package.json.
+packages/edge-worker test:run:  ❯ packageEntryFailure ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46638:15
+packages/edge-worker test:run:  ❯ resolvePackageEntry ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46635:3
+packages/edge-worker test:run:  ❯ tryNodeResolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46451:16
+packages/edge-worker test:run:  ❯ ResolveIdContext.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46201:19
+packages/edge-worker test:run:  ❯ PluginContainer.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49018:17
+packages/edge-worker test:run:  ❯ TransformPluginContext.resolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49178:15
+packages/edge-worker test:run:  ❯ normalizeUrl ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:64299:26
+packages/edge-worker test:run:  ❯ async file:/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:64438:39
+packages/edge-worker test:run: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.dynamic-tools.test.ts [ test/EdgeWorker.dynamic-tools.test.ts ]
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.label-based-prompt-command.test.ts [ test/EdgeWorker.label-based-prompt-command.test.ts ]
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.parent-branch.test.ts [ test/EdgeWorker.parent-branch.test.ts ]
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.system-prompt-resume.test.ts [ test/EdgeWorker.system-prompt-resume.test.ts ]
+packages/edge-worker test:run: Error: Failed to resolve entry for package "cyrus-claude-runner". The package may have incorrect main/module/exports specified in its package.json.
+packages/edge-worker test:run:  ❯ packageEntryFailure ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46638:15
+packages/edge-worker test:run:  ❯ resolvePackageEntry ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46635:3
+packages/edge-worker test:run:  ❯ tryNodeResolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46451:16
+packages/edge-worker test:run:  ❯ ResolveIdContext.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46201:19
+packages/edge-worker test:run:  ❯ PluginContainer.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49018:17
+packages/edge-worker test:run:  ❯ TransformPluginContext.resolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49178:15
+packages/edge-worker test:run:  ❯ normalizeUrl ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:64299:26
+packages/edge-worker test:run:  ❯ async file:/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:64438:39
+packages/edge-worker test:run: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.feedback-delivery.test.ts [ test/EdgeWorker.feedback-delivery.test.ts ]
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.feedback-timeout.test.ts [ test/EdgeWorker.feedback-timeout.test.ts ]
+packages/edge-worker test:run: Error: Failed to resolve entry for package "cyrus-claude-runner". The package may have incorrect main/module/exports specified in its package.json.
+packages/edge-worker test:run:  ❯ packageEntryFailure ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46638:15
+packages/edge-worker test:run:  ❯ resolvePackageEntry ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46635:3
+packages/edge-worker test:run:  ❯ tryNodeResolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46451:16
+packages/edge-worker test:run:  ❯ ResolveIdContext.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46201:19
+packages/edge-worker test:run:  ❯ PluginContainer.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49018:17
+packages/edge-worker test:run:  ❯ TransformPluginContext.resolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49178:15
+packages/edge-worker test:run:  ❯ normalizeUrl ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:64299:26
+packages/edge-worker test:run:  ❯ async file:/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:64438:39
+packages/edge-worker test:run: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.procedure-integration.test.ts [ test/EdgeWorker.procedure-integration.test.ts ]
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.procedure-routing.test.ts [ test/EdgeWorker.procedure-routing.test.ts ]
+packages/edge-worker test:run: Error: Failed to resolve entry for package "cyrus-simple-agent-runner". The package may have incorrect main/module/exports specified in its package.json.
+packages/edge-worker test:run:  ❯ packageEntryFailure ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46638:15
+packages/edge-worker test:run:  ❯ resolvePackageEntry ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46635:3
+packages/edge-worker test:run:  ❯ tryNodeResolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46451:16
+packages/edge-worker test:run:  ❯ ResolveIdContext.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46201:19
+packages/edge-worker test:run:  ❯ PluginContainer.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49018:17
+packages/edge-worker test:run:  ❯ TransformPluginContext.resolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49178:15
+packages/edge-worker test:run:  ❯ normalizeUrl ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:64299:26
+packages/edge-worker test:run:  ❯ async file:/Users/agentops/code/cyrus-workspaces/CYPACK-204/node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:64438:39
+packages/edge-worker test:run: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+packages/edge-worker test:run:  FAIL  test/EdgeWorker.versioning.test.ts [ test/EdgeWorker.versioning.test.ts ]
+packages/edge-worker test:run: Error: Failed to resolve entry for package "cyrus-ndjson-client". The package may have incorrect main/module/exports specified in its package.json.
+packages/edge-worker test:run:  ❯ packageEntryFailure ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46638:15
+packages/edge-worker test:run:  ❯ resolvePackageEntry ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46635:3
+packages/edge-worker test:run:  ❯ tryNodeResolve ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46451:16
+packages/edge-worker test:run:  ❯ ResolveIdContext.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:46201:19
+packages/edge-worker test:run:  ❯ PluginContainer.resolveId ../../node_modules/.pnpm/vite@5.4.20_@types+node@20.19.21/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:49018:17
+packages/edge-worker test:run: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+packages/edge-worker test:run:  Test Files  11 failed | 2 passed (13)
+packages/edge-worker test:run:       Tests  9 passed (9)
+packages/edge-worker test:run:    Start at  11:20:26
+packages/edge-worker test:run:    Duration  353ms (transform 386ms, setup 236ms, collect 162ms, tests 5ms, environment 1ms, prepare 796ms)
+packages/edge-worker test:run: Failed
+/Users/agentops/code/cyrus-workspaces/CYPACK-204/packages/edge-worker:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  cyrus-edge-worker@0.0.39 test:run: `vitest run`
+Exit status 1
+ ELIFECYCLE  Command failed with exit code 1.

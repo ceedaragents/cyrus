@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **I/O Abstraction System**: Introduced comprehensive abstraction layer for agent I/O, enabling extensibility and testability
+  - New `@cyrus/abstractions` package with platform-agnostic interfaces for agents, inputs, outputs, and orchestration
+  - `IAgentRunner` interface enables support for multiple agent tools beyond Claude (GPT Engineer, Aider, etc.)
+  - `IInputSource` and `IOutputRenderer` interfaces allow connecting to various platforms (Linear, Slack, Discord, CLI, etc.)
+  - `IOrchestrator` coordinates inputs, agents, and outputs with configurable routing
+  - All interfaces fully typed with TypeScript generics and comprehensive JSDoc documentation
+- **Reference Implementations**: Created working implementations of all abstractions
+  - `@cyrus/claude-agent-runner` - Adapter wrapping ClaudeRunner to implement IAgentRunner
+  - `@cyrus/linear-input` - Linear webhook input source implementation
+  - `@cyrus/linear-renderer` - Linear output renderer with comment-based rendering
+  - `@cyrus/cli-renderer` - Terminal UI renderer with colored output, spinners, and activity tracking
+  - `@cyrus/orchestrator` - Central coordinator with event-driven architecture and pattern-based routing
+  - All implementations include comprehensive error handling and type safety
+
 ### Changed
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.19 to v0.1.21 - includes parity with Claude Code v2.0.21. See [@anthropic-ai/claude-agent-sdk v0.1.21 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0121)
 - Updated @anthropic-ai/sdk from v0.66.0 to v0.67.0 - see [@anthropic-ai/sdk v0.67.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.66.0...sdk-v0.67.0)

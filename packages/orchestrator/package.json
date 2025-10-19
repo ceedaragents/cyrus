@@ -1,0 +1,22 @@
+{
+	"name": "@cyrus/orchestrator",
+	"version": "0.1.0",
+	"description": "Core orchestrator implementation",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "echo 'Tests TODO'",
+		"test:run": "echo 'Tests TODO'"
+	},
+	"dependencies": {
+		"@cyrus/abstractions": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^24.8.1",
+		"typescript": "^5.3.3"
+	}
+}

@@ -1,0 +1,33 @@
+{
+	"name": "@cyrus/abstractions",
+	"version": "0.1.0",
+	"description": "Core abstractions and interfaces for the Cyrus I/O system",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "echo 'No tests for pure interface package'",
+		"test:run": "echo 'No tests for pure interface package'"
+	},
+	"keywords": [
+		"cyrus",
+		"abstractions",
+		"interfaces",
+		"io"
+	],
+	"author": "Ceedar",
+	"license": "MIT",
+	"devDependencies": {
+		"typescript": "^5.3.3",
+		"vitest": "^3.0.2"
+	}
+}

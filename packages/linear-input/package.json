@@ -1,0 +1,23 @@
+{
+	"name": "@cyrus/linear-input",
+	"version": "0.1.0",
+	"description": "Linear webhook implementation of IInputSource",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "echo 'Tests TODO'",
+		"test:run": "echo 'Tests TODO'"
+	},
+	"dependencies": {
+		"@cyrus/abstractions": "workspace:*",
+		"cyrus-linear-webhook-client": "workspace:*",
+		"@linear/sdk": "60.0.0"
+	},
+	"devDependencies": {
+		"typescript": "^5.3.3"
+	}
+}
