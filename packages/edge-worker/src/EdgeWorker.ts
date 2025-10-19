@@ -554,17 +554,37 @@ export class EdgeWorker extends EventEmitter {
 
 		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
-		// Re-route procedure when resuming from child (same as prompted events)
-		// This resets the currentSubroutine to avoid suppression issues
-		console.log(
-			`[Parent Session Resume] Re-routing procedure for parent session ${parentSessionId}`,
-		);
-		await this.rerouteProcedureForSession(
-			parentSession,
-			parentSessionId,
-			agentSessionManager,
-			prompt,
-		);
+		// Check if runner is actively streaming before routing (same as prompted events)
+		const existingRunner = parentSession.claudeRunner;
+		const isStreaming = existingRunner?.isStreaming() || false;
+
+		// Always route procedure for resume, UNLESS actively streaming
+		if (!isStreaming) {
+			// Re-route procedure when resuming from child (same as prompted events)
+			// This resets the currentSubroutine to avoid suppression issues
+			console.log(
+				`[Parent Session Resume] Re-routing procedure for parent session ${parentSessionId}`,
+			);
+			await this.rerouteProcedureForSession(
+				parentSession,
+				parentSessionId,
+				agentSessionManager,
+				prompt,
+			);
+		} else {
+			console.log(
+				`[Parent Session Resume] Skipping routing for ${parentSessionId} - runner is actively streaming`,
+			);
+		}
+
+		// Handle streaming case - add message to existing stream
+		if (existingRunner?.isStreaming()) {
+			console.log(
+				`[Parent Session Resume] Adding child result to existing stream for parent session ${parentSessionId}`,
+			);
+			existingRunner.addStreamMessage(prompt);
+			return; // Exit early - message has been added to stream
+		}
 
 		// Resume the parent session with the child's result
 		console.log(
@@ -3633,17 +3653,41 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					// Format the feedback as a prompt for the child session with enhanced markdown formatting
 					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
 
-					// Re-route procedure when giving feedback to child (same as prompted events)
-					// This resets the currentSubroutine to avoid suppression issues
-					console.log(
-						`[EdgeWorker] Re-routing procedure for child session ${childSessionId} after receiving feedback`,
-					);
-					await this.rerouteProcedureForSession(
-						childSession,
-						childSessionId,
-						childAgentSessionManager,
-						feedbackPrompt,
-					);
+					// Check if runner is actively streaming before routing (same as prompted events)
+					const existingRunner = childSession.claudeRunner;
+					const isStreaming = existingRunner?.isStreaming() || false;
+
+					// Always route procedure for feedback, UNLESS actively streaming
+					if (!isStreaming) {
+						// Re-route procedure when giving feedback to child (same as prompted events)
+						// This resets the currentSubroutine to avoid suppression issues
+						console.log(
+							`[EdgeWorker] Re-routing procedure for child session ${childSessionId} after receiving feedback`,
+						);
+						await this.rerouteProcedureForSession(
+							childSession,
+							childSessionId,
+							childAgentSessionManager,
+							feedbackPrompt,
+						);
+					} else {
+						console.log(
+							`[EdgeWorker] Skipping routing for ${childSessionId} - runner is actively streaming`,
+						);
+					}
+
+					// Handle streaming case - add message to existing stream
+					if (existingRunner?.isStreaming()) {
+						console.log(
+							`[EdgeWorker] Adding feedback to existing stream for child session ${childSessionId}`,
+						);
+						existingRunner.addStreamMessage(feedbackPrompt);
+						// Return success immediately after adding to stream
+						console.log(
+							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
+						);
+						return true;
+					}
 
 					// Resume the CHILD session with the feedback from the parent
 					// Important: We don't await the full session completion to avoid timeouts.
