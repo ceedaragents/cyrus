@@ -1,0 +1,29 @@
+{
+  "name": "cyrus-interfaces",
+  "version": "0.1.0",
+  "description": "TypeScript interface definitions for Cyrus I/O abstractions",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "cyrus",
+    "interfaces",
+    "io",
+    "abstractions"
+  ],
+  "author": "Ceedar",
+  "license": "MIT"
+}
