@@ -26,6 +26,7 @@ export class LinearOutputRenderer
 
 	private client: LinearClient;
 	private sessions: Map<string, LinearRendererSession> = new Map();
+	private isInitialized = false;
 
 	constructor(name: string, apiToken: string) {
 		super();
@@ -34,7 +35,7 @@ export class LinearOutputRenderer
 	}
 
 	async initialize(): Promise<void> {
-		this.initialized = true;
+		this.isInitialized = true;
 		this.emit("initialized");
 	}
 
@@ -43,7 +44,7 @@ export class LinearOutputRenderer
 			await session.close?.();
 		}
 		this.sessions.clear();
-		this.initialized = false;
+		this.isInitialized = false;
 		this.emit("shutdown");
 	}
 
