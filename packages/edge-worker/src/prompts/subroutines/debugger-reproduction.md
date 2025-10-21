@@ -68,17 +68,13 @@ After completing your investigation, you MUST present your findings in this exac
 - User impact: [description]
 
 ## Proposed Fix Approach
-[High-level description of how you plan to fix it - do NOT implement yet]
+[High-level description of how you plan to fix it]
 
 ---
 
-**🔴 APPROVAL REQUIRED**
+**✅ REPRODUCTION COMPLETE**
 
-I have completed the reproduction phase and identified the root cause.
-
-**Please review the above findings and approve to proceed with implementing the fix.**
-
-I will wait for your approval before making any code changes.
+I have completed the reproduction phase and identified the root cause. The fix implementation phase will begin automatically.
 ```
 
 ## Critical Constraints
@@ -86,21 +82,18 @@ I will wait for your approval before making any code changes.
 - ❌ **DO NOT implement any fixes** - this is reproduction only
 - ❌ **DO NOT modify production code** - only test files
 - ❌ **DO NOT commit or push anything** - that happens in later phases
-- ❌ **DO NOT create todos for fixing the issue** - fix planning happens after approval in debugger-fix phase
+- ❌ **DO NOT create todos for fixing the issue** - fix planning happens in debugger-fix phase
 - ✅ **DO use Task extensively** for all analysis
 - ✅ **DO create a clear, failing test**
 - ✅ **DO provide detailed root cause analysis**
-- ✅ **DO explicitly request approval** at the end
 - ✅ **DO use TodoWrite for tracking reproduction/analysis tasks** if helpful (e.g., "Investigate error X", "Create test for Y")
 
 ## What Happens Next
 
-After you present your findings and request approval:
+After you present your findings:
 
-1. The system will pause this subroutine
-2. An **approval elicitation** will be posted to Linear
-3. The user will review and either approve or provide feedback
-4. If approved, the next subroutine (fix implementation) will begin
-5. If feedback is given, you'll incorporate it and re-present
+1. This subroutine will complete
+2. The next subroutine (fix implementation) will begin automatically
+3. You will implement the fix based on your reproduction and analysis
 
 **Remember**: Your job is to UNDERSTAND and REPRODUCE the bug, not to fix it yet!

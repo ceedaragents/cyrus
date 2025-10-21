@@ -91,10 +91,9 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 	"debugger-full": {
 		name: "debugger-full",
 		description:
-			"Full debugging workflow with reproduction, approval, fix, and verification",
+			"Full debugging workflow with reproduction, fix, and verification",
 		subroutines: [
 			SUBROUTINES.debuggerReproduction,
-			SUBROUTINES.getApproval,
 			SUBROUTINES.debuggerFix,
 			SUBROUTINES.verifications,
 			SUBROUTINES.gitGh,
