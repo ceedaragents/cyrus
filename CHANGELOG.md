@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Cloudflare Tunnel Transport Client**: New `cyrus-cloudflare-tunnel-client` package for receiving configuration updates and webhooks from cyrus-hosted
+  - Uses Cloudflare tunnels via `cloudflared` npm package for secure communication
+  - Validates customer subscriptions with cyrus-hosted API
+  - Handles configuration updates (GitHub credentials, repositories, environment variables, MCP servers)
+  - Receives Linear webhook payloads forwarded through cyrus-hosted
+  - Repository management (clone/verify repositories at specified paths)
+  - All file operations restricted to `~/.cyrus` directory for security
+  - Will replace `ndjson-client` for customers using cyrus-hosted service
+
 ### Changed
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.19 - includes parity with Claude Code v2.0.19. See [@anthropic-ai/claude-agent-sdk v0.1.19 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0119)
 - Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
