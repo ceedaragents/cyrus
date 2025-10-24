@@ -554,6 +554,39 @@ export class EdgeWorker extends EventEmitter {
 
 		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
+		// Post thought to Linear showing child result receipt
+		const linearClient = this.linearClients.get(repo.id);
+		if (linearClient && childSession) {
+			const childIssueId = childSession.issueId;
+			const resultThought = `Received result from sub-issue ${childIssueId}:\n\n${prompt}`;
+
+			try {
+				const result = await linearClient.createAgentActivity({
+					agentSessionId: parentSessionId,
+					content: {
+						type: "thought",
+						body: resultThought,
+					},
+				});
+
+				if (result.success) {
+					console.log(
+						`[Parent Session Resume] Posted child result receipt thought for parent session ${parentSessionId}`,
+					);
+				} else {
+					console.error(
+						`[Parent Session Resume] Failed to post child result receipt thought:`,
+						result,
+					);
+				}
+			} catch (error) {
+				console.error(
+					`[Parent Session Resume] Error posting child result receipt thought:`,
+					error,
+				);
+			}
+		}
+
 		// Use centralized streaming check and routing logic
 		console.log(
 			`[Parent Session Resume] Handling child result for parent session ${parentSessionId}`,
@@ -3508,6 +3541,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
 					);
 
+					// Find the parent session ID for context
+					const parentSessionId =
+						this.childToParentAgentSession.get(childSessionId);
+
 					// Find the repository containing the child session
 					// We need to search all repositories for this child session
 					let childRepo: RepositoryConfig | undefined;
@@ -3541,6 +3578,53 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					console.log(
 						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
 					);
+
+					// Get parent session info for better context in the thought
+					let parentIssueId: string | undefined;
+					if (parentSessionId) {
+						// Find parent session across all repositories
+						for (const manager of this.agentSessionManagers.values()) {
+							const parentSession = manager.getSession(parentSessionId);
+							if (parentSession) {
+								parentIssueId = parentSession.issueId;
+								break;
+							}
+						}
+					}
+
+					// Post thought to Linear showing feedback receipt
+					const linearClient = this.linearClients.get(childRepo.id);
+					if (linearClient) {
+						const feedbackThought = parentIssueId
+							? `Received feedback from orchestrator (${parentIssueId}):\n\n${message}`
+							: `Received feedback from orchestrator:\n\n${message}`;
+
+						try {
+							const result = await linearClient.createAgentActivity({
+								agentSessionId: childSessionId,
+								content: {
+									type: "thought",
+									body: feedbackThought,
+								},
+							});
+
+							if (result.success) {
+								console.log(
+									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
+								);
+							} else {
+								console.error(
+									`[EdgeWorker] Failed to post feedback receipt thought:`,
+									result,
+								);
+							}
+						} catch (error) {
+							console.error(
+								`[EdgeWorker] Error posting feedback receipt thought:`,
+								error,
+							);
+						}
+					}
 
 					// Format the feedback as a prompt for the child session with enhanced markdown formatting
 					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
