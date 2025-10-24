@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Debugger workflow now proceeds directly from bug reproduction to fix implementation without requiring manual approval
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.23 to v0.1.25 - includes bug fixes for project-level skills loading, system message skills field, type exports, and parity with Claude Code v2.0.25. See [@anthropic-ai/claude-agent-sdk v0.1.25 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0125)
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.25 to v0.1.26 - includes parity updates with Claude Code v2.0.26. See [@anthropic-ai/claude-agent-sdk v0.1.26 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0126)
 
 ## [0.1.57] - 2025-10-12
 
