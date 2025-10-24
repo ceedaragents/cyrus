@@ -15,14 +15,17 @@ export async function handleTestMcp(
 		if (!payload.transportType) {
 			return {
 				success: false,
-				error: "Invalid payload: transportType is required",
+				error: "MCP test requires transport type",
+				details:
+					'The transportType field is required and must be either "stdio" or "sse".',
 			};
 		}
 
 		if (payload.transportType !== "stdio" && payload.transportType !== "sse") {
 			return {
 				success: false,
-				error: 'Invalid transportType: must be either "stdio" or "sse"',
+				error: "Invalid MCP transport type",
+				details: `Transport type "${payload.transportType}" is not supported. Must be either "stdio" or "sse".`,
 			};
 		}
 
@@ -31,14 +34,18 @@ export async function handleTestMcp(
 			if (!payload.command) {
 				return {
 					success: false,
-					error: "Invalid payload: command is required for stdio transport",
+					error: "MCP stdio transport requires command",
+					details:
+						"The command field is required when using stdio transport type.",
 				};
 			}
 		} else if (payload.transportType === "sse") {
 			if (!payload.serverUrl) {
 				return {
 					success: false,
-					error: "Invalid payload: serverUrl is required for sse transport",
+					error: "MCP SSE transport requires server URL",
+					details:
+						"The serverUrl field is required when using SSE transport type.",
 				};
 			}
 		}
@@ -62,12 +69,13 @@ export async function handleTestMcp(
 					version: "0.0.0",
 					protocol: "mcp/1.0",
 				},
+				note: "This is a placeholder response. Full MCP testing will be implemented in a future update.",
 			},
 		};
 	} catch (error) {
 		return {
 			success: false,
-			error: "Failed to test MCP connection",
+			error: "MCP connection test failed",
 			details: error instanceof Error ? error.message : String(error),
 		};
 	}

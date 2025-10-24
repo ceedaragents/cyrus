@@ -15,18 +15,25 @@ export async function handleCyrusConfig(
 		if (!payload.repositories || !Array.isArray(payload.repositories)) {
 			return {
 				success: false,
-				error: "Invalid payload: repositories array is required",
+				error: "Configuration update requires repositories array",
+				details:
+					"The repositories field must be provided as an array, even if empty.",
 			};
 		}
 
 		// Validate each repository has required fields
 		for (const repo of payload.repositories) {
 			if (!repo.id || !repo.name || !repo.repositoryPath || !repo.baseBranch) {
+				const missingFields: string[] = [];
+				if (!repo.id) missingFields.push("id");
+				if (!repo.name) missingFields.push("name");
+				if (!repo.repositoryPath) missingFields.push("repositoryPath");
+				if (!repo.baseBranch) missingFields.push("baseBranch");
+
 				return {
 					success: false,
-					error:
-						"Invalid repository configuration: id, name, repositoryPath, and baseBranch are required",
-					details: `Repository: ${repo.name || "unknown"}`,
+					error: "Repository configuration is incomplete",
+					details: `Repository "${repo.name || "unknown"}" is missing required fields: ${missingFields.join(", ")}`,
 				};
 			}
 		}
@@ -130,14 +137,14 @@ export async function handleCyrusConfig(
 		} catch (error) {
 			return {
 				success: false,
-				error: "Failed to write configuration file",
-				details: error instanceof Error ? error.message : String(error),
+				error: "Failed to save configuration file",
+				details: `Could not write configuration to ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
 			};
 		}
 	} catch (error) {
 		return {
 			success: false,
-			error: "Failed to process configuration update",
+			error: "Configuration update failed",
 			details: error instanceof Error ? error.message : String(error),
 		};
 	}

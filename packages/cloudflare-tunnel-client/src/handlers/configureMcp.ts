@@ -15,7 +15,9 @@ export async function handleConfigureMcp(
 		if (!payload.mcpServers || typeof payload.mcpServers !== "object") {
 			return {
 				success: false,
-				error: "Invalid payload: mcpServers object is required",
+				error: "MCP configuration requires server definitions",
+				details:
+					"The mcpServers field must be an object containing server configurations.",
 			};
 		}
 
@@ -23,7 +25,8 @@ export async function handleConfigureMcp(
 		if (serverSlugs.length === 0) {
 			return {
 				success: false,
-				error: "No MCP servers provided",
+				error: "No MCP servers to configure",
+				details: "At least one MCP server configuration must be provided.",
 			};
 		}
 
@@ -60,8 +63,8 @@ export async function handleConfigureMcp(
 			} catch (error) {
 				return {
 					success: false,
-					error: `Failed to write MCP config file for ${slug}`,
-					details: error instanceof Error ? error.message : String(error),
+					error: `Failed to save MCP server configuration for "${slug}"`,
+					details: `Could not write to ${mcpFilePath}: ${error instanceof Error ? error.message : String(error)}`,
 				};
 			}
 		}
@@ -77,7 +80,7 @@ export async function handleConfigureMcp(
 	} catch (error) {
 		return {
 			success: false,
-			error: "Failed to configure MCP servers",
+			error: "MCP server configuration failed",
 			details: error instanceof Error ? error.message : String(error),
 		};
 	}

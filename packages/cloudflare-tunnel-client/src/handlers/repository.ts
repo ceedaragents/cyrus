@@ -45,7 +45,9 @@ export async function handleRepository(
 		if (!payload.repoUrl || typeof payload.repoUrl !== "string") {
 			return {
 				success: false,
-				error: "Invalid payload: repoUrl is required",
+				error: "Repository URL is required",
+				details:
+					"Please provide a valid Git repository URL (e.g., https://github.com/user/repo.git)",
 			};
 		}
 
@@ -63,8 +65,8 @@ export async function handleRepository(
 			} catch (error) {
 				return {
 					success: false,
-					error: "Failed to create repos directory",
-					details: error instanceof Error ? error.message : String(error),
+					error: "Failed to create repositories directory",
+					details: `Could not create directory at ${reposDir}: ${error instanceof Error ? error.message : String(error)}`,
 				};
 			}
 		}
@@ -86,9 +88,8 @@ export async function handleRepository(
 
 			return {
 				success: false,
-				error:
-					"Directory exists but is not a git repository. Please remove it manually.",
-				details: `Path: ${repoPath}`,
+				error: "Directory exists but is not a Git repository",
+				details: `A non-Git directory already exists at ${repoPath}. Please remove it manually or choose a different repository name.`,
 			};
 		}
 
@@ -101,8 +102,8 @@ export async function handleRepository(
 			if (!isGitRepository(repoPath)) {
 				return {
 					success: false,
-					error: "Git clone completed but repository verification failed",
-					details: `Path: ${repoPath}`,
+					error: "Repository clone verification failed",
+					details: `Git clone command completed, but the cloned directory at ${repoPath} does not appear to be a valid Git repository.`,
 				};
 			}
 
@@ -117,16 +118,18 @@ export async function handleRepository(
 				},
 			};
 		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
 			return {
 				success: false,
 				error: "Failed to clone repository",
-				details: error instanceof Error ? error.message : String(error),
+				details: `Could not clone repository from ${payload.repoUrl}: ${errorMessage}. Please verify the URL is correct and you have access to the repository.`,
 			};
 		}
 	} catch (error) {
 		return {
 			success: false,
-			error: "Failed to process repository request",
+			error: "Repository operation failed",
 			details: error instanceof Error ? error.message : String(error),
 		};
 	}

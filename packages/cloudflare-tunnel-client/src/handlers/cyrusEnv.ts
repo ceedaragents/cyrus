@@ -15,7 +15,9 @@ export async function handleCyrusEnv(
 		if (!payload || typeof payload !== "object") {
 			return {
 				success: false,
-				error: "Invalid payload: environment variables object is required",
+				error: "Environment variables update requires valid data",
+				details:
+					"Payload must be an object containing environment variable key-value pairs.",
 			};
 		}
 
@@ -26,7 +28,9 @@ export async function handleCyrusEnv(
 		if (envVars.length === 0) {
 			return {
 				success: false,
-				error: "No environment variables provided",
+				error: "No environment variables to update",
+				details:
+					"At least one environment variable must be provided in the request.",
 			};
 		}
 
@@ -91,14 +95,14 @@ export async function handleCyrusEnv(
 		} catch (error) {
 			return {
 				success: false,
-				error: "Failed to write environment file",
-				details: error instanceof Error ? error.message : String(error),
+				error: "Failed to save environment variables",
+				details: `Could not write to ${envPath}: ${error instanceof Error ? error.message : String(error)}`,
 			};
 		}
 	} catch (error) {
 		return {
 			success: false,
-			error: "Failed to process environment variables update",
+			error: "Environment variables update failed",
 			details: error instanceof Error ? error.message : String(error),
 		};
 	}
