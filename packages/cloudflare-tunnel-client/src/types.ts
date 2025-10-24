@@ -25,19 +25,11 @@ export interface CloudflareTunnelClientConfig {
 }
 
 /**
- * GitHub credentials update payload
- */
-export interface GitHubCredentialsPayload {
-	token: string; // GitHub App installation token
-}
-
-/**
  * Repository configuration payload
  */
 export interface RepositoryPayload {
-	path: string; // Local path where repository should be cloned
 	repoUrl: string; // Git clone URL
-	name?: string; // Repository name
+	name?: string; // Optional repository name (extracted from URL if not provided)
 }
 
 /**

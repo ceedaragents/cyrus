@@ -8,9 +8,9 @@ All notable changes to this project will be documented in this file.
 - **Cloudflare Tunnel Transport Client**: New `cyrus-cloudflare-tunnel-client` package for receiving configuration updates and webhooks from cyrus-hosted
   - Uses Cloudflare tunnels via `cloudflared` npm package for secure communication
   - Validates customer subscriptions with cyrus-hosted API
-  - Handles configuration updates (GitHub credentials, repositories, environment variables, MCP servers)
+  - Handles configuration updates (repositories, environment variables, MCP servers)
   - Receives Linear webhook payloads forwarded through cyrus-hosted
-  - Repository management (clone/verify repositories at specified paths)
+  - Repository management (automatically clones/verifies repositories to `~/.cyrus/repos/<repo-name>`)
   - All file operations restricted to `~/.cyrus` directory for security
   - Will replace `ndjson-client` for customers using cyrus-hosted service
 

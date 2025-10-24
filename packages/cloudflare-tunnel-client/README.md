@@ -7,8 +7,7 @@ Cloudflare tunnel client for receiving configuration updates and Linear webhooks
 This package provides a transport client that uses Cloudflare tunnels to receive:
 - Configuration updates from the Cyrus hosted service
 - Linear webhook payloads forwarded through cyrus-hosted
-- Repository management requests (clone/verify repositories)
-- GitHub credential updates
+- Repository management requests (clone/verify repositories to `~/.cyrus/repos`)
 - MCP server configuration
 
 ## Features
@@ -58,9 +57,6 @@ await client.authenticate();
 
 The client exposes these endpoints for cyrus-hosted to call:
 
-### `/api/github-credential`
-Update GitHub CLI authentication.
-
 ### `/api/cyrus-config`
 Update `~/.cyrus/config.json` with repository configurations.
 
@@ -68,7 +64,7 @@ Update `~/.cyrus/config.json` with repository configurations.
 Update `~/.cyrus/.env` (primarily for Claude API token).
 
 ### `/api/repository`
-Clone or verify a repository at a specified path.
+Clone or verify a repository to `~/.cyrus/repos/<repo-name>`. Repository name is extracted from the URL or provided explicitly.
 
 ### `/api/test-mcp`
 Test MCP server connectivity (placeholder implementation).

@@ -11,7 +11,6 @@ import { install } from "cloudflared";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig, readCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
-import { handleGitHubCredentials } from "./handlers/githubCredentials.js";
 import { handleRepository } from "./handlers/repository.js";
 import { handleTestMcp } from "./handlers/testMcp.js";
 import { SubscriptionValidator } from "./SubscriptionValidator.js";
@@ -22,7 +21,6 @@ import type {
 	ConfigureMcpPayload,
 	CyrusConfigPayload,
 	CyrusEnvPayload,
-	GitHubCredentialsPayload,
 	RepositoryPayload,
 	TestMcpPayload,
 } from "./types.js";
@@ -238,11 +236,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 				return;
 			}
 
-			if (url === "/api/github-credential" && req.method === "POST") {
-				response = await handleGitHubCredentials(
-					parsedBody as GitHubCredentialsPayload,
-				);
-			} else if (url === "/api/cyrus-config" && req.method === "POST") {
+			if (url === "/api/cyrus-config" && req.method === "POST") {
 				response = await handleCyrusConfig(
 					parsedBody as CyrusConfigPayload,
 					this.config.cyrusHome,
@@ -256,7 +250,10 @@ export class CloudflareTunnelClient extends EventEmitter {
 					this.config.cyrusHome,
 				);
 			} else if (url === "/api/repository" && req.method === "POST") {
-				response = await handleRepository(parsedBody as RepositoryPayload);
+				response = await handleRepository(
+					parsedBody as RepositoryPayload,
+					this.config.cyrusHome,
+				);
 			} else if (url === "/api/test-mcp" && req.method === "POST") {
 				response = await handleTestMcp(parsedBody as TestMcpPayload);
 			} else if (url === "/api/configure-mcp" && req.method === "POST") {
