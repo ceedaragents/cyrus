@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Procedure routing is now reset when resuming parent sessions from child completion, preventing excessive thought and action suppression logs
+
 ### Changed
 - Debugger workflow now proceeds directly from bug reproduction to fix implementation without requiring manual approval
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.25 to v0.1.26 - includes parity updates with Claude Code v2.0.26. See [@anthropic-ai/claude-agent-sdk v0.1.26 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0126)
