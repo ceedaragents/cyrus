@@ -42,10 +42,7 @@ export async function handleRepository(
 ): Promise<ApiResponse> {
 	try {
 		// Validate payload
-		if (
-			!payload.repository_url ||
-			typeof payload.repository_url !== "string"
-		) {
+		if (!payload.repository_url || typeof payload.repository_url !== "string") {
 			return {
 				success: false,
 				error: "Repository URL is required",

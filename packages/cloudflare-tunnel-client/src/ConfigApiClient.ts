@@ -25,7 +25,11 @@ export class ConfigApiClient {
 	static async getConfig(authKey: string): Promise<ConfigApiResponse> {
 		try {
 			// Validate auth key
-			if (!authKey || typeof authKey !== "string" || authKey.trim().length === 0) {
+			if (
+				!authKey ||
+				typeof authKey !== "string" ||
+				authKey.trim().length === 0
+			) {
 				return {
 					success: false,
 					error: "Auth key is required",
@@ -33,7 +37,7 @@ export class ConfigApiClient {
 			}
 
 			// Call config API with auth key
-			const url = `${this.CONFIG_API_URL}?auth_key=${encodeURIComponent(authKey)}`;
+			const url = `${ConfigApiClient.CONFIG_API_URL}?auth_key=${encodeURIComponent(authKey)}`;
 			const response = await fetch(url);
 
 			if (!response.ok) {

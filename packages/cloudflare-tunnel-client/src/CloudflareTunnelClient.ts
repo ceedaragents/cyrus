@@ -63,7 +63,9 @@ export class CloudflareTunnelClient extends EventEmitter {
 	 */
 	async authenticate(): Promise<void> {
 		try {
-			const configResponse = await ConfigApiClient.getConfig(this.config.authKey);
+			const configResponse = await ConfigApiClient.getConfig(
+				this.config.authKey,
+			);
 
 			// Check if config retrieval was successful
 			if (!ConfigApiClient.isValid(configResponse)) {
