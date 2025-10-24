@@ -21,10 +21,17 @@ export async function handleCyrusEnv(
 			};
 		}
 
-		// Ensure at least one environment variable is provided
-		const envVars = Object.entries(payload).filter(
-			([_, value]) => value !== undefined,
-		);
+		// Extract environment variables from payload
+		// The payload may have a 'variables' key containing the env vars,
+		// or the env vars may be directly in the payload
+		const envVarsSource = payload.variables || payload;
+		const envVars = Object.entries(envVarsSource).filter(
+			([key, value]) =>
+				value !== undefined &&
+				typeof value === "string" &&
+				!["variables", "restartCyrus", "backupEnv"].includes(key),
+		) as [string, string][];
+
 		if (envVars.length === 0) {
 			return {
 				success: false,
@@ -80,6 +87,21 @@ export async function handleCyrusEnv(
 			.map(([key, value]) => `${key}=${value}`)
 			.join("\n");
 
+		// Backup existing env file if requested
+		if (payload.backupEnv && existsSync(envPath)) {
+			try {
+				const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+				const backupPath = join(cyrusHome, `.env.backup-${timestamp}`);
+				const existingEnvFile = readFileSync(envPath, "utf-8");
+				writeFileSync(backupPath, existingEnvFile, "utf-8");
+			} catch (backupError) {
+				// Log but don't fail - backup is not critical
+				console.warn(
+					`Failed to backup env: ${backupError instanceof Error ? backupError.message : String(backupError)}`,
+				);
+			}
+		}
+
 		// Write env file
 		try {
 			writeFileSync(envPath, `${envContent}\n`, "utf-8");
@@ -90,6 +112,7 @@ export async function handleCyrusEnv(
 				data: {
 					envPath,
 					variablesUpdated: envVars.map(([key]) => key),
+					restartCyrus: payload.restartCyrus || false,
 				},
 			};
 		} catch (error) {

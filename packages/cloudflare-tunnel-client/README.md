@@ -57,11 +57,11 @@ await client.authenticate();
 
 The client exposes these endpoints for cyrus-hosted to call:
 
-### `/api/cyrus-config`
-Update `~/.cyrus/config.json` with repository configurations.
+### `/api/update/cyrus-config`
+Update `~/.cyrus/config.json` with repository configurations. Supports optional `restartCyrus` and `backupConfig` flags.
 
-### `/api/cyrus-env`
-Update `~/.cyrus/.env` (primarily for Claude API token).
+### `/api/update/cyrus-env`
+Update `~/.cyrus/.env` (primarily for Claude API token). Supports optional `restartCyrus` and `backupEnv` flags.
 
 ### `/api/repository`
 Clone or verify a repository to `~/.cyrus/repos/<repo-name>`. Repository name is extracted from the URL or provided explicitly.

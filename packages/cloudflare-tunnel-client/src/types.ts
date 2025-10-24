@@ -56,14 +56,19 @@ export interface CyrusConfigPayload {
 	defaultModel?: string;
 	defaultFallbackModel?: string;
 	global_setup_script?: string;
+	restartCyrus?: boolean;
+	backupConfig?: boolean;
 }
 
 /**
  * Cyrus environment variables payload (for Claude token)
  */
 export interface CyrusEnvPayload {
+	variables?: Record<string, string>;
 	ANTHROPIC_API_KEY?: string;
-	[key: string]: string | undefined;
+	restartCyrus?: boolean;
+	backupEnv?: boolean;
+	[key: string]: string | boolean | Record<string, string> | undefined;
 }
 
 /**
@@ -107,6 +112,7 @@ export interface CloudflareTunnelClientEvents {
 	configUpdate: () => void;
 	error: (error: Error) => void;
 	ready: (tunnelUrl: string) => void;
+	restart: (reason: "config" | "env") => void;
 }
 
 /**

@@ -122,6 +122,21 @@ export async function handleCyrusConfig(
 			config.global_setup_script = payload.global_setup_script;
 		}
 
+		// Backup existing config if requested
+		if (payload.backupConfig && existsSync(configPath)) {
+			try {
+				const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+				const backupPath = join(cyrusHome, `config.backup-${timestamp}.json`);
+				const existingConfig = readFileSync(configPath, "utf-8");
+				writeFileSync(backupPath, existingConfig, "utf-8");
+			} catch (backupError) {
+				// Log but don't fail - backup is not critical
+				console.warn(
+					`Failed to backup config: ${backupError instanceof Error ? backupError.message : String(backupError)}`,
+				);
+			}
+		}
+
 		// Write config file
 		try {
 			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
@@ -132,6 +147,7 @@ export async function handleCyrusConfig(
 				data: {
 					configPath,
 					repositoriesCount: repositories.length,
+					restartCyrus: payload.restartCyrus || false,
 				},
 			};
 		} catch (error) {

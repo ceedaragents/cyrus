@@ -236,19 +236,26 @@ export class CloudflareTunnelClient extends EventEmitter {
 				return;
 			}
 
-			if (url === "/api/cyrus-config" && req.method === "POST") {
+			if (url === "/api/update/cyrus-config" && req.method === "POST") {
 				response = await handleCyrusConfig(
 					parsedBody as CyrusConfigPayload,
 					this.config.cyrusHome,
 				);
 				if (response.success) {
 					this.emit("configUpdate");
+					// Emit restart event if requested
+					if (response.data?.restartCyrus) {
+						this.emit("restart", "config");
+					}
 				}
-			} else if (url === "/api/cyrus-env" && req.method === "POST") {
+			} else if (url === "/api/update/cyrus-env" && req.method === "POST") {
 				response = await handleCyrusEnv(
 					parsedBody as CyrusEnvPayload,
 					this.config.cyrusHome,
 				);
+				if (response.success && response.data?.restartCyrus) {
+					this.emit("restart", "env");
+				}
 			} else if (url === "/api/repository" && req.method === "POST") {
 				response = await handleRepository(
 					parsedBody as RepositoryPayload,
