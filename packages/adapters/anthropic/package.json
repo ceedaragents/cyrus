@@ -1,0 +1,39 @@
+{
+	"name": "cyrus-adapter-anthropic",
+	"version": "0.1.0",
+	"description": "Anthropic Claude adapter for Cyrus IAgentRunner interface",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [
+		"cyrus",
+		"anthropic",
+		"claude",
+		"agent",
+		"adapter"
+	],
+	"author": "Cyrus Team",
+	"license": "MIT",
+	"dependencies": {
+		"cyrus-interfaces": "workspace:*",
+		"cyrus-claude-runner": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.2",
+		"typescript": "^5.7.3",
+		"vitest": "^2.1.8"
+	}
+}
