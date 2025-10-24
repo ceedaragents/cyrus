@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Orchestrator and sub-issue communication is now visible in Linear activity: feedback from orchestrator to sub-issues and results from sub-issues to orchestrator are posted as thoughts with clear context
+
 ### Fixed
 - Procedure routing is now reset when resuming parent sessions from child completion, preventing excessive thought and action suppression logs
 
