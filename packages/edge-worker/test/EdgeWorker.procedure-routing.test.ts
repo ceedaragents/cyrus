@@ -111,7 +111,7 @@ describe("EdgeWorker - Procedure Routing", () => {
 
 			procedureRouter.advanceToNextSubroutine(session, null);
 			expect(procedureRouter.getCurrentSubroutine(session)?.name).toBe(
-				"verbose-summary",
+				"concise-summary",
 			);
 
 			procedureRouter.advanceToNextSubroutine(session, null);
@@ -160,22 +160,22 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
 		});
 
-		it("should suppress thoughts/actions but not responses during verbose-summary", async () => {
+		it("should suppress thoughts/actions but not responses during concise-summary in full-development", async () => {
 			const session = { metadata: {} } as any;
 			const fullDevProcedure = PROCEDURES["full-development"];
 
-			// Initialize with full-development procedure (ends with verbose-summary)
+			// Initialize with full-development procedure (ends with concise-summary)
 			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
 
-			// Advance to verbose-summary subroutine (skip 3 subroutines)
+			// Advance to concise-summary subroutine (skip 3 subroutines)
 			procedureRouter.advanceToNextSubroutine(session, null); // primary -> verifications
 			procedureRouter.advanceToNextSubroutine(session, null); // verifications -> git-gh
-			procedureRouter.advanceToNextSubroutine(session, null); // git-gh -> verbose-summary
+			procedureRouter.advanceToNextSubroutine(session, null); // git-gh -> concise-summary
 
 			// Get current subroutine
 			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
 
-			expect(currentSubroutine?.name).toBe("verbose-summary");
+			expect(currentSubroutine?.name).toBe("concise-summary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
 		});
 

@@ -84,7 +84,7 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			SUBROUTINES.primary,
 			SUBROUTINES.verifications,
 			SUBROUTINES.gitGh,
-			SUBROUTINES.verboseSummary,
+			SUBROUTINES.conciseSummary,
 		],
 	},
 
