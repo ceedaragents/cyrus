@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - All workflows (full-development, debugger-full, orchestrator-full) now end with concise summary instead of verbose summary
 - Non-summary subroutines (debugger-fix, debugger-reproduction, verifications, git-gh) now explicitly avoid posting Linear comments and end with brief 1-sentence completion messages
 - Orchestrator agents are now strongly discouraged from posting Linear comments to current issues; comments only used when triggering sub-agent sessions on child issues
+- Orchestrator agents are explicitly instructed not to assign themselves (Cyrus) as a delegate when creating sub-issues
 - Tool call result outputs are no longer wrapped in collapsible sections in Linear comments
 - Concise summary format now uses collapsible sections for "Changes Made" and "Files Modified" to keep summaries brief
 
