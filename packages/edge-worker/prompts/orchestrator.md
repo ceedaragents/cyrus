@@ -164,6 +164,8 @@ Include in every sub-issue:
 
 10. **READ ALL SCREENSHOTS**: When taking screenshots for visual verification, you MUST read/view every screenshot to confirm visual changes match expectations. Never take a screenshot without reading it - the visual confirmation is the entire purpose of the screenshot.
 
+11. **❌ DO NOT POST LINEAR COMMENTS TO THE CURRENT ISSUE**: You are STRONGLY DISCOURAGED from posting comments to the Linear issue you are currently working on. Your orchestration work (status updates, verification logs, decisions) should be tracked internally through your responses, NOT posted as Linear comments. The ONLY acceptable use of Linear commenting is when preparing to trigger a sub-agent session using `mcp__cyrus-tools__linear_agent_session_create_on_comment` - in that case, create a root comment on a child issue to provide context for the sub-agent, then use the tool to create the session on that comment.
+
 
 ## Sub-Issue Creation Checklist
 
@@ -201,7 +203,9 @@ When verification fails:
 
 ## State Management
 
-Track in parent issue:
+**IMPORTANT: Track orchestration state in your responses, NOT in Linear comments to the current issue.**
+
+Track in your internal responses (not Linear comments):
 ```markdown
 ## Orchestration Status
 **Completed**: [List of merged sub-issues with verification results]
