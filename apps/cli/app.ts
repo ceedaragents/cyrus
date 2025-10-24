@@ -633,6 +633,94 @@ class EdgeApp {
 	}
 
 	/**
+	 * Start Cloudflare tunnel client (Pro plan only)
+	 */
+	async startCloudflareClient(): Promise<void> {
+		// Validate required environment variables
+		const cloudflareToken = process.env.CLOUDFLARE_TOKEN;
+		const cyrusApiKey = process.env.CYRUS_API_KEY;
+
+		if (!cloudflareToken || !cyrusApiKey) {
+			console.error("\n❌ Missing required credentials");
+			console.log("─".repeat(50));
+			console.log("Cloudflare tunnel mode requires authentication.");
+			console.log("\nRequired environment variables:");
+			console.log(
+				`  CLOUDFLARE_TOKEN: ${cloudflareToken ? "✅ Set" : "❌ Missing"}`,
+			);
+			console.log(`  CYRUS_API_KEY: ${cyrusApiKey ? "✅ Set" : "❌ Missing"}`);
+			console.log("\nPlease run: cyrus auth <auth-key>");
+			console.log(
+				"Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus",
+			);
+			process.exit(1);
+		}
+
+		console.log("\n🌩️  Starting Cloudflare Tunnel Client");
+		console.log("─".repeat(50));
+
+		try {
+			const { CloudflareTunnelClient } = await import(
+				"cyrus-cloudflare-tunnel-client"
+			);
+
+			// Get auth key from config or environment
+			// For now, we'll use the API key as the auth key since it's what we validate against
+			const authKey = cyrusApiKey;
+
+			const client = new CloudflareTunnelClient({
+				authKey,
+				cyrusHome: this.cyrusHome,
+				onWebhook: (payload) => {
+					console.log("\n📨 Webhook received from Linear");
+					console.log(`Action: ${payload.action || "Unknown"}`);
+					console.log(`Type: ${payload.type || "Unknown"}`);
+					// TODO: Forward webhook to EdgeWorker or handle directly
+				},
+				onConfigUpdate: () => {
+					console.log("\n🔄 Configuration updated from cyrus-hosted");
+				},
+				onError: (error) => {
+					console.error("\n❌ Cloudflare client error:", error.message);
+				},
+				onReady: (tunnelUrl) => {
+					console.log("\n✅ Cloudflare tunnel established");
+					console.log(`🔗 Tunnel URL: ${tunnelUrl}`);
+					console.log("─".repeat(50));
+					console.log("\n💎 Pro Plan Active - Using Cloudflare Tunnel");
+					console.log(
+						"🚀 Cyrus is now ready to receive webhooks and config updates",
+					);
+					console.log("─".repeat(50));
+				},
+			});
+
+			// Authenticate and start the tunnel
+			await client.authenticate();
+
+			// Handle graceful shutdown
+			process.on("SIGINT", () => {
+				console.log("\n\n🛑 Shutting down Cloudflare tunnel...");
+				client.disconnect();
+				process.exit(0);
+			});
+
+			process.on("SIGTERM", () => {
+				console.log("\n\n🛑 Shutting down Cloudflare tunnel...");
+				client.disconnect();
+				process.exit(0);
+			});
+		} catch (error) {
+			console.error("\n❌ Failed to start Cloudflare tunnel:");
+			console.error((error as Error).message);
+			console.log(
+				"\nIf you're having issues, try re-authenticating with: cyrus auth <auth-key>",
+			);
+			process.exit(1);
+		}
+	}
+
+	/**
 	 * Check subscription status with the Cyrus API
 	 */
 	async checkSubscriptionStatus(customerId: string): Promise<{
@@ -1025,7 +1113,21 @@ class EdgeApp {
 				}
 			}
 
-			// Validate we have repositories
+			// Check if using Cloudflare tunnel mode (Pro plan)
+			const isLegacy = edgeConfig.isLegacy !== false; // Default to true if not set
+
+			if (!isLegacy) {
+				// Pro plan with Cloudflare tunnel
+				console.log("\n💎 Pro Plan Detected");
+				console.log("─".repeat(50));
+				console.log("Using Cloudflare tunnel for secure connectivity");
+
+				// Start Cloudflare tunnel client (will validate credentials and start)
+				await this.startCloudflareClient();
+				return; // Exit early - Cloudflare client handles everything
+			}
+
+			// Legacy mode - validate we have repositories
 			if (repositories.length === 0) {
 				console.error("❌ No repositories configured");
 				console.log(
@@ -1034,7 +1136,7 @@ class EdgeApp {
 				process.exit(1);
 			}
 
-			// Start the edge worker
+			// Start the edge worker (legacy mode)
 			await this.startEdgeWorker({ proxyUrl, repositories });
 
 			// Display plan status
