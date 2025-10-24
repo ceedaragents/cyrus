@@ -97,7 +97,7 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			SUBROUTINES.debuggerFix,
 			SUBROUTINES.verifications,
 			SUBROUTINES.gitGh,
-			SUBROUTINES.verboseSummary,
+			SUBROUTINES.conciseSummary,
 		],
 	},
 
@@ -105,7 +105,7 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		name: "orchestrator-full",
 		description:
 			"Full orchestration workflow with decomposition and delegation to sub-agents",
-		subroutines: [SUBROUTINES.primary, SUBROUTINES.verboseSummary],
+		subroutines: [SUBROUTINES.primary, SUBROUTINES.conciseSummary],
 	},
 };
 
