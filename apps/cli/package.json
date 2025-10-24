@@ -42,6 +42,7 @@
 	"dependencies": {
 		"@linear/sdk": "^60.0.0",
 		"cyrus-claude-runner": "workspace:*",
+		"cyrus-cloudflare-tunnel-client": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-edge-worker": "workspace:*",
 		"cyrus-ndjson-client": "workspace:*",

@@ -39,6 +39,9 @@ importers:
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../../packages/claude-runner
+      cyrus-cloudflare-tunnel-client:
+        specifier: workspace:*
+        version: link:../../packages/cloudflare-tunnel-client
       cyrus-core:
         specifier: workspace:*
         version: link:../../packages/core

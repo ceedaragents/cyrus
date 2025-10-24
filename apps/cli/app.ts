@@ -44,6 +44,13 @@ if (cyrusHomeArg) {
 	CYRUS_HOME = resolve(homedir(), ".cyrus");
 }
 
+// CRITICAL: Source .env file from CYRUS_HOME before any other operations
+// This ensures CLOUDFLARE_TOKEN, CYRUS_API_KEY, and other credentials are available
+const cyrusEnvPath = resolve(CYRUS_HOME, ".env");
+if (existsSync(cyrusEnvPath)) {
+	dotenv.config({ path: cyrusEnvPath });
+}
+
 // Get the directory of the current module for reading package.json
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -67,6 +74,7 @@ Usage: cyrus [command] [options]
 
 Commands:
   start              Start the edge worker (default)
+  auth <auth-key>    Authenticate with Cyrus Pro plan using auth key
   check-tokens       Check the status of all Linear tokens
   refresh-token      Refresh a specific Linear token
   add-repository     Add a new repository configuration
@@ -81,6 +89,7 @@ Options:
 
 Examples:
   cyrus                          Start the edge worker
+  cyrus auth <your-auth-key>     Authenticate and start using Pro plan
   cyrus check-tokens             Check all Linear token statuses
   cyrus refresh-token            Interactive token refresh
   cyrus add-repository           Add a new repository interactively
@@ -1921,6 +1930,93 @@ async function setCustomerIdCommand() {
 	}
 }
 
+// Command: auth
+async function authCommand() {
+	// Get auth key from command line arguments
+	const authKey = args[1];
+
+	if (!authKey || typeof authKey !== "string" || authKey.trim().length === 0) {
+		console.error("❌ Error: Auth key is required");
+		console.log("\nUsage: cyrus auth <auth-key>");
+		console.log(
+			"\nGet your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus",
+		);
+		process.exit(1);
+	}
+
+	console.log("\n🔑 Authenticating with Cyrus...");
+	console.log("─".repeat(50));
+
+	try {
+		// Import ConfigApiClient
+		const { ConfigApiClient } = await import("cyrus-cloudflare-tunnel-client");
+
+		// Call the config API to get credentials
+		console.log("Validating auth key...");
+		const configResponse = await ConfigApiClient.getConfig(authKey);
+
+		if (!ConfigApiClient.isValid(configResponse)) {
+			console.error("\n❌ Authentication failed");
+			console.error(configResponse.error || "Invalid response from server");
+			console.log("\nPlease verify your auth key is correct.");
+			console.log(
+				"Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus",
+			);
+			process.exit(1);
+		}
+
+		console.log("✅ Authentication successful!");
+
+		// Ensure CYRUS_HOME directory exists
+		if (!existsSync(CYRUS_HOME)) {
+			mkdirSync(CYRUS_HOME, { recursive: true });
+		}
+
+		// Store tokens in ~/.cyrus/.env file
+		const envPath = resolve(CYRUS_HOME, ".env");
+		const envContent = `# Cyrus Authentication Credentials
+# Generated on ${new Date().toISOString()}
+CLOUDFLARE_TOKEN=${configResponse.config!.cloudflareToken}
+CYRUS_API_KEY=${configResponse.config!.apiKey}
+`;
+
+		writeFileSync(envPath, envContent, "utf-8");
+		console.log(`✅ Credentials saved to ${envPath}`);
+
+		// Update config.json with isLegacy: false
+		const app = new EdgeApp(CYRUS_HOME);
+		const configPath = app.getEdgeConfigPath();
+		let config: EdgeConfig = { repositories: [] };
+
+		if (existsSync(configPath)) {
+			try {
+				config = JSON.parse(readFileSync(configPath, "utf-8"));
+			} catch (_e) {
+				console.warn("⚠️  Could not read existing config, will create new one");
+			}
+		}
+
+		// Set isLegacy to false to enable Cloudflare tunnel mode
+		config.isLegacy = false;
+
+		app.saveEdgeConfig(config);
+		console.log(`✅ Configuration updated (isLegacy: false)`);
+
+		console.log("\n✨ Setup complete! Starting Cyrus...");
+		console.log("─".repeat(50));
+		console.log();
+
+		// Start the edge app with the new configuration
+		const edgeApp = new EdgeApp(CYRUS_HOME);
+		await edgeApp.start();
+	} catch (error) {
+		console.error("\n❌ Authentication failed:");
+		console.error((error as Error).message);
+		console.log("\nPlease try again or contact support if the issue persists.");
+		process.exit(1);
+	}
+}
+
 // Command: billing
 async function billingCommand() {
 	const app = new EdgeApp(CYRUS_HOME);
@@ -1996,6 +2092,13 @@ switch (command) {
 
 	case "add-repository":
 		addRepositoryCommand().catch((error) => {
+			console.error("Error:", error);
+			process.exit(1);
+		});
+		break;
+
+	case "auth":
+		authCommand().catch((error) => {
 			console.error("Error:", error);
 			process.exit(1);
 		});
