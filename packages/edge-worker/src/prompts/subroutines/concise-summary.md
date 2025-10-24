@@ -40,10 +40,15 @@ Create a clear, brief summary that covers:
 
 [Brief description of what was done]
 
-## Changes
-
++++Changes Made
 - [Key change 1]
 - [Key change 2]
++++
+
++++Files Modified
+- [File 1]
+- [File 2]
++++
 
 ## Status
 
@@ -51,3 +56,12 @@ Create a clear, brief summary that covers:
 
 [PR link if applicable]
 ```
+
+## Collapsible Sections
+
+**IMPORTANT**: When creating your summary, make the following sections collapsible (collapsed by default):
+
+- **"Changes Made"** section - Wrap with `+++Changes Made\n...\n+++`
+- **"Files Modified"** section - Wrap with `+++Files Modified\n...\n+++`
+
+This keeps the summary concise while preserving detailed information for those who want to expand and read it.

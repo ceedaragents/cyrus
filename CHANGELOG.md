@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.25 to v0.1.26 - includes parity updates with Claude Code v2.0.26. See [@anthropic-ai/claude-agent-sdk v0.1.26 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0126)
 - Full coding workflow now ends with concise summary instead of verbose summary
 - Non-summary subroutines (debugger-fix, debugger-reproduction, verifications, git-gh) now explicitly avoid posting Linear comments and end with brief 1-sentence completion messages
+- Orchestrator agents are now strongly discouraged from posting Linear comments to current issues; comments only used when triggering sub-agent sessions on child issues
+- Tool call result outputs are no longer wrapped in collapsible sections in Linear comments
+- Concise summary format now uses collapsible sections for "Changes Made" and "Files Modified" to keep summaries brief
 
 ## [0.1.57] - 2025-10-12
 
