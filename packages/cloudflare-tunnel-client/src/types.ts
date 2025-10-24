@@ -1,22 +1,10 @@
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 
 /**
- * Subscription status response from cyrus-hosted
- */
-export interface SubscriptionStatusResponse {
-	hasActiveSubscription: boolean;
-	status: string;
-	requiresPayment: boolean;
-	isReturningCustomer?: boolean;
-	cloudflareToken?: string;
-	apiKey?: string;
-}
-
-/**
  * Configuration for the Cloudflare tunnel client
  */
 export interface CloudflareTunnelClientConfig {
-	customerId: string; // Stripe customer ID
+	authKey: string; // Auth key from cyrus-hosted onboarding
 	cyrusHome: string; // ~/.cyrus directory path
 	onWebhook?: (payload: LinearWebhookPayload) => void; // Callback for webhooks
 	onConfigUpdate?: () => void; // Callback when config is updated
@@ -26,10 +14,11 @@ export interface CloudflareTunnelClientConfig {
 
 /**
  * Repository configuration payload
+ * Matches the format sent by cyrus-hosted
  */
 export interface RepositoryPayload {
-	repoUrl: string; // Git clone URL
-	name?: string; // Optional repository name (extracted from URL if not provided)
+	repository_url: string; // Git clone URL
+	repository_name: string; // Repository name (required)
 }
 
 /**

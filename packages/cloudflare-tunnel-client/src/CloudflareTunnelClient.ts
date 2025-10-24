@@ -8,12 +8,12 @@ import {
 } from "node:http";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 import { install } from "cloudflared";
+import { ConfigApiClient } from "./ConfigApiClient.js";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig, readCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
 import { handleRepository } from "./handlers/repository.js";
 import { handleTestMcp } from "./handlers/testMcp.js";
-import { SubscriptionValidator } from "./SubscriptionValidator.js";
 import type {
 	ApiResponse,
 	CloudflareTunnelClientConfig,
@@ -59,39 +59,28 @@ export class CloudflareTunnelClient extends EventEmitter {
 	}
 
 	/**
-	 * Authenticate with customer ID and start the tunnel
+	 * Authenticate with auth key and start the tunnel
 	 */
 	async authenticate(): Promise<void> {
 		try {
-			const subscriptionStatus = await SubscriptionValidator.validate(
-				this.config.customerId,
-			);
+			const configResponse = await ConfigApiClient.getConfig(this.config.authKey);
 
-			// Check if subscription is valid
-			if (!SubscriptionValidator.isValid(subscriptionStatus)) {
-				if (!subscriptionStatus.hasActiveSubscription) {
-					throw new Error(
-						"No active subscription found. Please subscribe at https://www.atcyrus.com",
-					);
-				}
-
-				if (subscriptionStatus.requiresPayment) {
-					throw new Error(
-						"Payment required. Please update your payment method at https://www.atcyrus.com",
-					);
-				}
-
-				throw new Error("Authentication failed: Missing required credentials");
+			// Check if config retrieval was successful
+			if (!ConfigApiClient.isValid(configResponse)) {
+				throw new Error(
+					configResponse.error ||
+						"Failed to retrieve configuration. Please verify your auth key is correct.",
+				);
 			}
 
 			// Store API key for authentication
-			this.apiKey = subscriptionStatus.apiKey!;
+			this.apiKey = configResponse.config!.apiKey;
 
 			// Store API key in config for persistence
 			await this.storeApiKey(this.apiKey);
 
 			// Start Cloudflare tunnel
-			await this.startTunnel(subscriptionStatus.cloudflareToken!);
+			await this.startTunnel(configResponse.config!.cloudflareToken);
 		} catch (error) {
 			this.emit("error", error as Error);
 			throw error;
@@ -256,7 +245,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 				if (response.success && response.data?.restartCyrus) {
 					this.emit("restart", "env");
 				}
-			} else if (url === "/api/repository" && req.method === "POST") {
+			} else if (url === "/api/update/repository" && req.method === "POST") {
 				response = await handleRepository(
 					parsedBody as RepositoryPayload,
 					this.config.cyrusHome,
@@ -338,7 +327,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 		try {
 			const config = readCyrusConfig(this.config.cyrusHome);
 			config.apiKey = apiKey;
-			config.stripeCustomerId = this.config.customerId;
+			config.authKey = this.config.authKey;
 
 			// Write back to config
 			const { writeFileSync } = await import("node:fs");

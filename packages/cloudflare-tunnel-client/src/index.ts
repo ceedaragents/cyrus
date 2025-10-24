@@ -1,3 +1,3 @@
 export { CloudflareTunnelClient } from "./CloudflareTunnelClient.js";
-export { SubscriptionValidator } from "./SubscriptionValidator.js";
+export { ConfigApiClient } from "./ConfigApiClient.js";
 export * from "./types.js";

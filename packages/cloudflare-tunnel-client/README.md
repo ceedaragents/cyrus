@@ -30,7 +30,7 @@ npm install cyrus-cloudflare-tunnel-client
 import { CloudflareTunnelClient } from 'cyrus-cloudflare-tunnel-client';
 
 const client = new CloudflareTunnelClient({
-  customerId: 'cus_xxxxx',
+  authKey: 'xxx_your_auth_key_from_onboarding',
   cyrusHome: '/Users/you/.cyrus',
   onWebhook: (payload) => {
     console.log('Received webhook:', payload);
@@ -63,26 +63,29 @@ Update `~/.cyrus/config.json` with repository configurations. Supports optional 
 ### `/api/update/cyrus-env`
 Update `~/.cyrus/.env` (primarily for Claude API token). Supports optional `restartCyrus` and `backupEnv` flags.
 
-### `/api/repository`
-Clone or verify a repository to `~/.cyrus/repos/<repo-name>`. Repository name is extracted from the URL or provided explicitly.
+### `/api/update/repository`
+Clone or verify a repository to `~/.cyrus/repos/<repo-name>`. Expects `repository_url` and `repository_name` in payload.
 
 ### `/api/test-mcp`
-Test MCP server connectivity (placeholder implementation).
+Test MCP server connectivity (placeholder for future implementation).
 
 ### `/api/configure-mcp`
 Write MCP configuration files to `~/.cyrus/mcp-{slug}.json`.
 
 ### `/webhook`
-Receive Linear webhook payloads.
+Receive Linear webhook payloads forwarded from cyrus-hosted.
 
 ## Authentication Flow
 
-1. Client calls subscription API with customer ID
-2. API validates subscription and returns:
+1. User completes Pro plan checkout on cyrus-hosted
+2. cyrus-hosted generates auth key and displays it in onboarding UI
+3. User runs `cyrus auth <auth_key>` in CLI
+4. Client calls `/api/config?auth_key=xxx` on cyrus-hosted
+5. API validates auth key and returns:
    - `cloudflareToken`: For tunnel setup
-   - `apiKey`: For authenticating incoming requests
-3. Client starts Cloudflare tunnel
-4. Client listens for authenticated requests from cyrus-hosted
+   - `apiKey`: For authenticating incoming requests from cyrus-hosted
+6. Client starts Cloudflare tunnel with token
+7. Client listens for authenticated requests from cyrus-hosted
 
 ## Security
 

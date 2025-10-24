@@ -42,7 +42,10 @@ export async function handleRepository(
 ): Promise<ApiResponse> {
 	try {
 		// Validate payload
-		if (!payload.repoUrl || typeof payload.repoUrl !== "string") {
+		if (
+			!payload.repository_url ||
+			typeof payload.repository_url !== "string"
+		) {
 			return {
 				success: false,
 				error: "Repository URL is required",
@@ -51,8 +54,9 @@ export async function handleRepository(
 			};
 		}
 
-		// Extract repository name from URL
-		const repoName = payload.name || getRepoNameFromUrl(payload.repoUrl);
+		// Use repository name from payload or extract from URL
+		const repoName =
+			payload.repository_name || getRepoNameFromUrl(payload.repository_url);
 
 		// Construct path within ~/.cyrus/repos
 		const reposDir = join(cyrusHome, "repos");
@@ -95,7 +99,7 @@ export async function handleRepository(
 
 		// Clone the repository
 		try {
-			const cloneCmd = `git clone "${payload.repoUrl}" "${repoPath}"`;
+			const cloneCmd = `git clone "${payload.repository_url}" "${repoPath}"`;
 			await execAsync(cloneCmd);
 
 			// Verify the clone was successful
@@ -113,7 +117,7 @@ export async function handleRepository(
 				data: {
 					path: repoPath,
 					name: repoName,
-					repoUrl: payload.repoUrl,
+					repository_url: payload.repository_url,
 					action: "cloned",
 				},
 			};
@@ -123,7 +127,7 @@ export async function handleRepository(
 			return {
 				success: false,
 				error: "Failed to clone repository",
-				details: `Could not clone repository from ${payload.repoUrl}: ${errorMessage}. Please verify the URL is correct and you have access to the repository.`,
+				details: `Could not clone repository from ${payload.repository_url}: ${errorMessage}. Please verify the URL is correct and you have access to the repository.`,
 			};
 		}
 	} catch (error) {
