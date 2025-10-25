@@ -63,6 +63,7 @@ import {
 	type ProcedureDefinition,
 	ProcedureRouter,
 	type RequestClassification,
+	type SubroutineDefinition,
 } from "./procedures/index.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
@@ -1737,7 +1738,7 @@ export class EdgeWorker extends EventEmitter {
 									attachmentResult.manifest,
 									guidance,
 								)
-							: await this.buildPromptV2(
+							: await this.buildIssueContextPrompt(
 									fullIssue,
 									repository,
 									undefined,
@@ -1748,7 +1749,15 @@ export class EdgeWorker extends EventEmitter {
 			let { prompt, version: userPromptVersion } = promptResult;
 
 			// Append initial subroutine prompt if procedure is initialized
-			prompt = await this.appendInitialSubroutinePrompt(prompt, session);
+			const currentSubroutine =
+				this.procedureRouter.getCurrentSubroutine(session);
+			if (currentSubroutine) {
+				const subroutinePrompt =
+					await this.loadSubroutinePrompt(currentSubroutine);
+				if (subroutinePrompt) {
+					prompt = `${prompt}\n\n${subroutinePrompt}`;
+				}
+			}
 
 			// Update runner with version information
 			if (userPromptVersion || systemPromptVersion) {
@@ -2701,7 +2710,7 @@ ${reply.body}
 	 * @param guidance Optional agent guidance rules from Linear
 	 * @returns Formatted prompt string
 	 */
-	private async buildPromptV2(
+	private async buildIssueContextPrompt(
 		issue: LinearIssue,
 		repository: RepositoryConfig,
 		newComment?: LinearWebhookComment,
@@ -2709,7 +2718,7 @@ ${reply.body}
 		guidance?: LinearWebhookGuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		console.log(
-			`[EdgeWorker] buildPromptV2 called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
+			`[EdgeWorker] buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
 		);
 
 		try {
@@ -2883,50 +2892,6 @@ Base branch: ${baseBranch}
 ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
 
 			return { prompt: fallbackPrompt, version: undefined };
-		}
-	}
-
-	/**
-	 * Append initial subroutine prompt to the base prompt if procedure is initialized
-	 * This ensures the first subroutine receives its guidance prompt combined with the issue context
-	 */
-	private async appendInitialSubroutinePrompt(
-		basePrompt: string,
-		session: CyrusAgentSession,
-	): Promise<string> {
-		const currentSubroutine =
-			this.procedureRouter.getCurrentSubroutine(session);
-
-		if (!currentSubroutine) {
-			// No procedure initialized, return base prompt as-is
-			return basePrompt;
-		}
-
-		console.log(
-			`[EdgeWorker] Loading initial subroutine prompt: ${currentSubroutine.name}`,
-		);
-
-		const __filename = fileURLToPath(import.meta.url);
-		const __dirname = dirname(__filename);
-		const subroutinePromptPath = join(
-			__dirname,
-			"prompts",
-			currentSubroutine.promptPath,
-		);
-
-		try {
-			const subroutinePrompt = await readFile(subroutinePromptPath, "utf-8");
-			console.log(
-				`[EdgeWorker] Appending ${currentSubroutine.name} subroutine prompt (${subroutinePrompt.length} characters)`,
-			);
-			return `${basePrompt}\n\n${subroutinePrompt}`;
-		} catch (error) {
-			console.warn(
-				`[EdgeWorker] Failed to load initial subroutine prompt from ${subroutinePromptPath}, continuing without it:`,
-				error,
-			);
-			// Continue without subroutine prompt - not critical for initial session
-			return basePrompt;
 		}
 	}
 
@@ -3749,31 +3714,90 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Build prompt for a session - handles both new and existing sessions
+	 * Build the complete prompt for a session - shows full prompt assembly in one place
+	 *
+	 * New session prompt structure:
+	 * 1. Issue context (from buildIssueContextPrompt)
+	 * 2. Initial subroutine prompt (if procedure initialized)
+	 * 3. User comment
+	 *
+	 * Existing session prompt structure:
+	 * 1. User comment
+	 * 2. Attachment manifest (if present)
 	 */
 	private async buildSessionPrompt(
 		isNewSession: boolean,
+		session: CyrusAgentSession,
 		fullIssue: LinearIssue,
 		repository: RepositoryConfig,
 		promptBody: string,
 		attachmentManifest?: string,
 	): Promise<string> {
 		if (isNewSession) {
-			// For completely new sessions, create a complete initial prompt
-			const promptResult = await this.buildPromptV2(
+			// Build the complete initial prompt with all components visible
+			const parts: string[] = [];
+
+			// 1. Issue context (title, description, comments, attachments, etc.)
+			const issueContextResult = await this.buildIssueContextPrompt(
 				fullIssue,
 				repository,
 				undefined,
 				attachmentManifest,
 			);
-			// Add the user's comment to the initial prompt
-			return `${promptResult.prompt}\n\nUser comment: ${promptBody}`;
+			parts.push(issueContextResult.prompt);
+
+			// 2. Initial subroutine prompt (workflow guidance if procedure initialized)
+			const currentSubroutine =
+				this.procedureRouter.getCurrentSubroutine(session);
+			if (currentSubroutine) {
+				const subroutinePrompt =
+					await this.loadSubroutinePrompt(currentSubroutine);
+				if (subroutinePrompt) {
+					parts.push(subroutinePrompt);
+				}
+			}
+
+			// 3. User comment
+			parts.push(`User comment: ${promptBody}`);
+
+			// Assemble complete prompt
+			return parts.join("\n\n");
 		} else {
 			// For existing sessions, just use the comment with attachment manifest
 			const manifestSuffix = attachmentManifest
 				? `\n\n${attachmentManifest}`
 				: "";
 			return `${promptBody}${manifestSuffix}`;
+		}
+	}
+
+	/**
+	 * Load a subroutine prompt file
+	 * Extracted helper to make prompt assembly more readable
+	 */
+	private async loadSubroutinePrompt(
+		subroutine: SubroutineDefinition,
+	): Promise<string | null> {
+		const __filename = fileURLToPath(import.meta.url);
+		const __dirname = dirname(__filename);
+		const subroutinePromptPath = join(
+			__dirname,
+			"prompts",
+			subroutine.promptPath,
+		);
+
+		try {
+			const prompt = await readFile(subroutinePromptPath, "utf-8");
+			console.log(
+				`[EdgeWorker] Loaded ${subroutine.name} subroutine prompt (${prompt.length} characters)`,
+			);
+			return prompt;
+		} catch (error) {
+			console.warn(
+				`[EdgeWorker] Failed to load subroutine prompt from ${subroutinePromptPath}:`,
+				error,
+			);
+			return null;
 		}
 	}
 
@@ -4428,6 +4452,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Prepare the full prompt
 		const fullPrompt = await this.buildSessionPrompt(
 			isNewSession,
+			session,
 			fullIssue,
 			repository,
 			promptBody,
