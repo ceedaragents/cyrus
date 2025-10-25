@@ -5,11 +5,13 @@ import { basename, join } from "node:path";
 import type { Issue } from "@linear/sdk";
 import type { RepositoryConfig } from "cyrus-core";
 import type { Workspace } from "../config/types.js";
+import type { Logger } from "./Logger.js";
 
 /**
  * Service responsible for Git worktree operations
  */
 export class GitService {
+	constructor(private logger: Logger) {}
 	/**
 	 * Check if a branch exists locally or remotely
 	 */
@@ -60,7 +62,7 @@ export class GitService {
 
 		// Check if script exists
 		if (!existsSync(expandedPath)) {
-			console.warn(
+			this.logger.warn(
 				`⚠️  ${scriptType === "global" ? "Global" : "Repository"} setup script not found: ${scriptPath}`,
 			);
 			return;
@@ -72,14 +74,14 @@ export class GitService {
 				const stats = statSync(expandedPath);
 				// Check if file has execute permission for the owner
 				if (!(stats.mode & 0o100)) {
-					console.warn(
+					this.logger.warn(
 						`⚠️  ${scriptType === "global" ? "Global" : "Repository"} setup script is not executable: ${scriptPath}`,
 					);
-					console.warn(`   Run: chmod +x "${expandedPath}"`);
+					this.logger.warn(`   Run: chmod +x "${expandedPath}"`);
 					return;
 				}
 			} catch (error) {
-				console.warn(
+				this.logger.warn(
 					`⚠️  Cannot check permissions for ${scriptType} setup script: ${(error as Error).message}`,
 				);
 				return;
@@ -87,7 +89,7 @@ export class GitService {
 		}
 
 		const scriptName = basename(expandedPath);
-		console.log(`ℹ️  Running ${scriptType} setup script: ${scriptName}`);
+		this.logger.info(`ℹ️  Running ${scriptType} setup script: ${scriptName}`);
 
 		try {
 			// Determine the command based on the script extension and platform
@@ -118,7 +120,7 @@ export class GitService {
 				timeout: 5 * 60 * 1000, // 5 minute timeout
 			});
 
-			console.log(
+			this.logger.info(
 				`✅ ${scriptType === "global" ? "Global" : "Repository"} setup script completed successfully`,
 			);
 		} catch (error) {
@@ -127,17 +129,17 @@ export class GitService {
 					? "Script execution timed out (exceeded 5 minutes)"
 					: (error as Error).message;
 
-			console.error(
+			this.logger.error(
 				`❌ ${scriptType === "global" ? "Global" : "Repository"} setup script failed: ${errorMessage}`,
 			);
 
 			// Log stderr if available
 			if ((error as any).stderr) {
-				console.error("   stderr:", (error as any).stderr.toString());
+				this.logger.error("   stderr:", (error as any).stderr.toString());
 			}
 
 			// Continue execution despite setup script failure
-			console.log(`   Continuing with worktree creation...`);
+			this.logger.info(`   Continuing with worktree creation...`);
 		}
 	}
 
@@ -157,7 +159,9 @@ export class GitService {
 					stdio: "pipe",
 				});
 			} catch (_e) {
-				console.error(`${repository.repositoryPath} is not a git repository`);
+				this.logger.error(
+					`${repository.repositoryPath} is not a git repository`,
+				);
 				throw new Error("Not a git repository");
 			}
 
@@ -182,7 +186,7 @@ export class GitService {
 				});
 
 				if (worktrees.includes(workspacePath)) {
-					console.log(
+					this.logger.info(
 						`Worktree already exists at ${workspacePath}, using existing`,
 					);
 					return {
@@ -213,7 +217,7 @@ export class GitService {
 			try {
 				const parent = await (issue as any).parent;
 				if (parent) {
-					console.log(
+					this.logger.info(
 						`Issue ${issue.identifier} has parent: ${parent.identifier}`,
 					);
 
@@ -234,24 +238,24 @@ export class GitService {
 
 					if (parentBranchExists) {
 						baseBranch = parentBranchName;
-						console.log(
+						this.logger.info(
 							`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
 						);
 					} else {
-						console.log(
+						this.logger.info(
 							`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
 						);
 					}
 				}
 			} catch (_error) {
 				// Parent field might not exist or couldn't be fetched, use default base branch
-				console.log(
+				this.logger.info(
 					`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,
 				);
 			}
 
 			// Fetch latest changes from remote
-			console.log("Fetching latest changes from remote...");
+			this.logger.info("Fetching latest changes from remote...");
 			let hasRemote = true;
 			try {
 				execSync("git fetch origin", {
@@ -259,7 +263,7 @@ export class GitService {
 					stdio: "pipe",
 				});
 			} catch (e) {
-				console.warn(
+				this.logger.warn(
 					"Warning: git fetch failed, proceeding with local branch:",
 					(e as Error).message,
 				);
@@ -284,13 +288,13 @@ export class GitService {
 						useRemoteBranch =
 							remoteOutput && remoteOutput.toString().trim().length > 0;
 						if (!useRemoteBranch) {
-							console.log(
+							this.logger.info(
 								`Base branch '${baseBranch}' not found on remote, checking locally...`,
 							);
 						}
 					} catch {
 						// Base branch doesn't exist remotely, use local or fall back to default
-						console.log(
+						this.logger.info(
 							`Base branch '${baseBranch}' not found on remote, checking locally...`,
 						);
 					}
@@ -298,7 +302,7 @@ export class GitService {
 					if (useRemoteBranch) {
 						// Use remote version of base branch
 						const remoteBranch = `origin/${baseBranch}`;
-						console.log(
+						this.logger.info(
 							`Creating git worktree at ${workspacePath} from ${remoteBranch}`,
 						);
 						worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`;
@@ -310,13 +314,13 @@ export class GitService {
 								stdio: "pipe",
 							});
 							// Use local base branch
-							console.log(
+							this.logger.info(
 								`Creating git worktree at ${workspacePath} from local ${baseBranch}`,
 							);
 							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
 						} catch {
 							// Base branch doesn't exist locally either, fall back to remote default
-							console.log(
+							this.logger.info(
 								`Base branch '${baseBranch}' not found locally, falling back to remote ${repository.baseBranch}`,
 							);
 							const defaultRemoteBranch = `origin/${repository.baseBranch}`;
@@ -325,14 +329,14 @@ export class GitService {
 					}
 				} else {
 					// No remote, use local branch
-					console.log(
+					this.logger.info(
 						`Creating git worktree at ${workspacePath} from local ${baseBranch}`,
 					);
 					worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
 				}
 			} else {
 				// Branch already exists, just check it out
-				console.log(
+				this.logger.info(
 					`Creating git worktree at ${workspacePath} with existing branch ${branchName}`,
 				);
 				worktreeCmd = `git worktree add "${workspacePath}" "${branchName}"`;
@@ -409,7 +413,10 @@ export class GitService {
 				isGitWorktree: true,
 			};
 		} catch (error) {
-			console.error("Failed to create git worktree:", (error as Error).message);
+			this.logger.error(
+				"Failed to create git worktree:",
+				(error as Error).message,
+			);
 			// Fall back to regular directory if git worktree fails
 			const fallbackPath = join(repository.workspaceBaseDir, issue.identifier);
 			mkdirSync(fallbackPath, { recursive: true });

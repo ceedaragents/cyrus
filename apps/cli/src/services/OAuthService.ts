@@ -1,6 +1,7 @@
 import type { SharedApplicationServer } from "cyrus-edge-worker";
 import open from "open";
 import type { LinearCredentials } from "../config/types.js";
+import type { Logger } from "./Logger.js";
 
 /**
  * Service responsible for OAuth flow orchestration
@@ -8,7 +9,8 @@ import type { LinearCredentials } from "../config/types.js";
 export class OAuthService {
 	constructor(
 		_serverPort: number,
-		private baseUrl?: string,
+		private baseUrl: string | undefined,
+		_logger: Logger, // Reserved for future logging needs
 	) {}
 
 	/**

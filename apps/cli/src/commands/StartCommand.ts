@@ -31,11 +31,10 @@ export class StartCommand extends BaseCommand {
 						edgeConfig.stripeCustomerId,
 					);
 				} catch (error) {
-					console.error("\n⚠️ Warning: Could not validate subscription");
+					this.logger.warn("Warning: Could not validate subscription");
 					this.logDivider();
-					console.error(
-						"Unable to connect to subscription service:",
-						(error as Error).message,
+					this.logger.error(
+						`Unable to connect to subscription service: ${(error as Error).message}`,
 					);
 					process.exit(1);
 				}
@@ -46,9 +45,9 @@ export class StartCommand extends BaseCommand {
 
 			if (!isLegacy) {
 				// Pro plan with Cloudflare tunnel
-				console.log("\n💎 Pro Plan Detected");
+				this.logger.info("\n💎 Pro Plan Detected");
 				this.logDivider();
-				console.log("Using Cloudflare tunnel for secure connectivity");
+				this.logger.info("Using Cloudflare tunnel for secure connectivity");
 
 				// Start Cloudflare tunnel client (will validate credentials and start)
 				try {
@@ -63,10 +62,10 @@ export class StartCommand extends BaseCommand {
 			// Legacy mode - validate we have repositories
 			if (repositories.length === 0) {
 				this.logError("No repositories configured");
-				console.log(
+				this.logger.info(
 					"\nRepositories must be configured in ~/.cyrus/config.json",
 				);
-				console.log(
+				this.logger.info(
 					"See https://github.com/ceedaragents/cyrus#configuration for details",
 				);
 				process.exit(1);
@@ -79,40 +78,43 @@ export class StartCommand extends BaseCommand {
 			});
 
 			// Display plan status
-			console.log(`\n${"─".repeat(70)}`);
+			this.logger.raw("");
+			this.logger.divider(70);
 			if (isUsingDefaultProxy && edgeConfig.stripeCustomerId) {
-				console.log("💎 Plan: Cyrus Pro");
-				console.log(`📋 Customer ID: ${edgeConfig.stripeCustomerId}`);
-				console.log('💳 Manage subscription: Run "cyrus billing"');
+				this.logger.info("💎 Plan: Cyrus Pro");
+				this.logger.info(`📋 Customer ID: ${edgeConfig.stripeCustomerId}`);
+				this.logger.info('💳 Manage subscription: Run "cyrus billing"');
 			} else if (!isUsingDefaultProxy) {
-				console.log("🛠️  Plan: Community (Self-hosted proxy)");
-				console.log(`🔗 Proxy URL: ${proxyUrl}`);
+				this.logger.info("🛠️  Plan: Community (Self-hosted proxy)");
+				this.logger.info(`🔗 Proxy URL: ${proxyUrl}`);
 			}
-			console.log("─".repeat(70));
+			this.logger.divider(70);
 
 			// Display OAuth information after EdgeWorker is started
 			const serverPort = this.app.worker.getServerPort();
 			const oauthCallbackBaseUrl =
 				process.env.CYRUS_BASE_URL || `http://localhost:${serverPort}`;
-			console.log(`\n🔐 OAuth server running on port ${serverPort}`);
-			console.log(`👉 To authorize Linear (new workspace or re-auth):`);
-			console.log(
+			this.logger.info(`\n🔐 OAuth server running on port ${serverPort}`);
+			this.logger.info(`👉 To authorize Linear (new workspace or re-auth):`);
+			this.logger.info(
 				`   ${proxyUrl}/oauth/authorize?callback=${oauthCallbackBaseUrl}/callback`,
 			);
-			console.log("─".repeat(70));
+			this.logger.divider(70);
 
 			// Setup signal handlers
 			this.app.setupSignalHandlers();
 		} catch (error: any) {
-			console.error("\n❌ Failed to start edge application:", error.message);
+			this.logger.error(`Failed to start edge application: ${error.message}`);
 
 			// Provide more specific guidance for common errors
 			if (error.message?.includes("Failed to connect any repositories")) {
-				console.error("\n💡 This usually happens when:");
-				console.error("   - All Linear OAuth tokens have expired");
-				console.error("   - The Linear API is temporarily unavailable");
-				console.error("   - Your network connection is having issues");
-				console.error("\nPlease check your edge configuration and try again.");
+				this.logger.info("\n💡 This usually happens when:");
+				this.logger.info("   - All Linear OAuth tokens have expired");
+				this.logger.info("   - The Linear API is temporarily unavailable");
+				this.logger.info("   - Your network connection is having issues");
+				this.logger.info(
+					"\nPlease check your edge configuration and try again.",
+				);
 			}
 
 			await this.app.shutdown();
@@ -124,31 +126,33 @@ export class StartCommand extends BaseCommand {
 	 * Handle Pro plan prompt for users without customer ID
 	 */
 	private async handleProPlanPrompt(): Promise<void> {
-		console.log("\n🎯 Pro Plan Required");
+		this.logger.info("\n🎯 Pro Plan Required");
 		this.logDivider();
-		console.log("You are using the default Cyrus proxy URL.");
-		console.log("\nWith Cyrus Pro you get:");
-		console.log("• No-hassle configuration");
-		console.log("• Priority support");
-		console.log("• Help fund product development");
-		console.log("\nChoose an option:");
-		console.log("1. Start a free trial");
-		console.log("2. I have a customer ID to enter");
-		console.log("3. Setup your own proxy (advanced)");
-		console.log("4. Exit");
+		this.logger.info("You are using the default Cyrus proxy URL.");
+		this.logger.info("\nWith Cyrus Pro you get:");
+		this.logger.info("• No-hassle configuration");
+		this.logger.info("• Priority support");
+		this.logger.info("• Help fund product development");
+		this.logger.info("\nChoose an option:");
+		this.logger.info("1. Start a free trial");
+		this.logger.info("2. I have a customer ID to enter");
+		this.logger.info("3. Setup your own proxy (advanced)");
+		this.logger.info("4. Exit");
 
 		const choice = await CLIPrompts.ask("\nYour choice (1-4): ");
 
 		if (choice === "1") {
-			console.log("\n👉 Opening your browser to start a free trial...");
-			console.log("Visit: https://www.atcyrus.com/pricing");
+			this.logger.info("\n👉 Opening your browser to start a free trial...");
+			this.logger.info("Visit: https://www.atcyrus.com/pricing");
 			await open("https://www.atcyrus.com/pricing");
 			process.exit(0);
 		} else if (choice === "2") {
-			console.log(
+			this.logger.info(
 				"\n📋 After completing payment, you'll see your customer ID on the success page.",
 			);
-			console.log('It starts with "cus_" and can be copied from the website.');
+			this.logger.info(
+				'It starts with "cus_" and can be copied from the website.',
+			);
 
 			const customerId = await CLIPrompts.ask(
 				"\nPaste your customer ID here: ",
@@ -161,23 +165,27 @@ export class StartCommand extends BaseCommand {
 			});
 
 			this.logSuccess("Customer ID saved successfully!");
-			console.log("Continuing with startup...\n");
+			this.logger.info("Continuing with startup...\n");
 		} else if (choice === "3") {
-			console.log("\n🔧 Self-Hosted Proxy Setup");
+			this.logger.info("\n🔧 Self-Hosted Proxy Setup");
 			this.logDivider();
-			console.log(
+			this.logger.info(
 				"Configure your own Linear app and proxy to have full control over your stack.",
 			);
-			console.log("\nDocumentation:");
-			console.log("• Linear OAuth setup: https://linear.app/developers/agents");
-			console.log(
+			this.logger.info("\nDocumentation:");
+			this.logger.info(
+				"• Linear OAuth setup: https://linear.app/developers/agents",
+			);
+			this.logger.info(
 				"• Proxy implementation: https://github.com/ceedaragents/cyrus/tree/main/apps/proxy-worker",
 			);
-			console.log("\nOnce deployed, set the PROXY_URL environment variable:");
-			console.log("export PROXY_URL=https://your-proxy-url.com");
+			this.logger.info(
+				"\nOnce deployed, set the PROXY_URL environment variable:",
+			);
+			this.logger.info("export PROXY_URL=https://your-proxy-url.com");
 			process.exit(0);
 		} else {
-			console.log("\nExiting...");
+			this.logger.info("\nExiting...");
 			process.exit(0);
 		}
 	}

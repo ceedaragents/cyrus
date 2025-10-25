@@ -1,7 +1,10 @@
+import type { Logger } from "./Logger.js";
+
 /**
  * Service responsible for subscription and billing operations
  */
 export class SubscriptionService {
+	constructor(private logger: Logger) {}
 	/**
 	 * Check subscription status with the Cyrus API
 	 */
@@ -56,22 +59,22 @@ export class SubscriptionService {
 		requiresPayment: boolean;
 		isReturningCustomer?: boolean;
 	}): never {
-		console.error("\n❌ Subscription Invalid");
-		console.log("─".repeat(50));
+		this.logger.error("\n❌ Subscription Invalid");
+		this.logger.info("─".repeat(50));
 
 		if (subscriptionStatus.isReturningCustomer) {
-			console.log("Your subscription has expired or been cancelled.");
-			console.log(`Status: ${subscriptionStatus.status}`);
-			console.log(
+			this.logger.info("Your subscription has expired or been cancelled.");
+			this.logger.info(`Status: ${subscriptionStatus.status}`);
+			this.logger.info(
 				"\nPlease visit https://www.atcyrus.com/pricing to reactivate your subscription.",
 			);
 		} else {
-			console.log("No active subscription found for this customer ID.");
-			console.log(
+			this.logger.info("No active subscription found for this customer ID.");
+			this.logger.info(
 				"\nPlease visit https://www.atcyrus.com/pricing to start a subscription.",
 			);
-			console.log("Once you obtain a valid customer ID,");
-			console.log("Run: cyrus set-customer-id cus_XXXXX");
+			this.logger.info("Once you obtain a valid customer ID,");
+			this.logger.info("Run: cyrus set-customer-id cus_XXXXX");
 		}
 
 		process.exit(1);
@@ -81,7 +84,7 @@ export class SubscriptionService {
 	 * Validate subscription and handle failures
 	 */
 	async validateAndHandleSubscription(customerId: string): Promise<void> {
-		console.log("\n🔐 Validating subscription...");
+		this.logger.info("\n🔐 Validating subscription...");
 		try {
 			const subscriptionStatus = await this.checkSubscriptionStatus(customerId);
 
@@ -89,11 +92,11 @@ export class SubscriptionService {
 				this.handleSubscriptionFailure(subscriptionStatus);
 			}
 
-			console.log(`✅ Subscription active (${subscriptionStatus.status})`);
+			this.logger.info(`✅ Subscription active (${subscriptionStatus.status})`);
 		} catch (error) {
-			console.error("\n❌ Failed to validate subscription");
-			console.log(`Error: ${(error as Error).message}`);
-			console.log(
+			this.logger.error("\n❌ Failed to validate subscription");
+			this.logger.info(`Error: ${(error as Error).message}`);
+			this.logger.info(
 				'Run "cyrus set-customer-id cus_XXXXX" with a valid customer ID',
 			);
 			process.exit(1);

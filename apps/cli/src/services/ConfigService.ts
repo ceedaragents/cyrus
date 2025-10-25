@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { EdgeConfig } from "../config/types.js";
+import type { Logger } from "./Logger.js";
 
 /**
  * Service responsible for configuration management
@@ -9,7 +10,10 @@ import type { EdgeConfig } from "../config/types.js";
 export class ConfigService {
 	private configPath: string;
 
-	constructor(cyrusHome: string) {
+	constructor(
+		cyrusHome: string,
+		private logger: Logger,
+	) {
 		this.configPath = resolve(cyrusHome, "config.json");
 	}
 
@@ -31,7 +35,9 @@ export class ConfigService {
 				const content = readFileSync(this.configPath, "utf-8");
 				config = JSON.parse(content);
 			} catch (e) {
-				console.error("Failed to load edge config:", (e as Error).message);
+				this.logger.error(
+					`Failed to load edge config: ${(e as Error).message}`,
+				);
 			}
 		}
 
@@ -40,7 +46,7 @@ export class ConfigService {
 			config.repositories = config.repositories.map((repo) => {
 				const { promptTemplatePath, ...repoWithoutTemplate } = repo;
 				if (promptTemplatePath) {
-					console.log(
+					this.logger.info(
 						`Ignoring custom prompt template for repository: ${repo.name} (using built-in template)`,
 					);
 				}

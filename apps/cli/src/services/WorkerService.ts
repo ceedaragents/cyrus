@@ -5,6 +5,7 @@ import { DEFAULT_SERVER_PORT, parsePort } from "../config/constants.js";
 import type { Workspace } from "../config/types.js";
 import type { ConfigService } from "./ConfigService.js";
 import type { GitService } from "./GitService.js";
+import type { Logger } from "./Logger.js";
 
 /**
  * Service responsible for EdgeWorker and Cloudflare tunnel management
@@ -18,6 +19,7 @@ export class WorkerService {
 		private configService: ConfigService,
 		private gitService: GitService,
 		private cyrusHome: string,
+		private logger: Logger,
 	) {}
 
 	/**
@@ -106,11 +108,11 @@ export class WorkerService {
 		// Start the worker
 		await this.edgeWorker.start();
 
-		console.log("\n✅ Edge worker started successfully");
-		console.log(`Configured proxy URL: ${config.proxyUrl}`);
-		console.log(`Managing ${repositories.length} repositories:`);
+		this.logger.success("Edge worker started successfully");
+		this.logger.info(`Configured proxy URL: ${config.proxyUrl}`);
+		this.logger.info(`Managing ${repositories.length} repositories:`);
 		repositories.forEach((repo) => {
-			console.log(`  - ${repo.name} (${repo.repositoryPath})`);
+			this.logger.info(`  - ${repo.name} (${repo.repositoryPath})`);
 		});
 	}
 
@@ -140,8 +142,8 @@ export class WorkerService {
 			);
 		}
 
-		console.log("\n🌩️  Starting Cloudflare Tunnel Client");
-		console.log("─".repeat(50));
+		this.logger.info("\n🌩️  Starting Cloudflare Tunnel Client");
+		this.logger.divider(50);
 
 		try {
 			const { CloudflareTunnelClient } = await import(
@@ -158,30 +160,30 @@ export class WorkerService {
 				onWebhook:
 					onWebhook ||
 					((payload) => {
-						console.log("\n📨 Webhook received from Linear");
-						console.log(`Action: ${payload.action || "Unknown"}`);
-						console.log(`Type: ${payload.type || "Unknown"}`);
+						this.logger.info("\n📨 Webhook received from Linear");
+						this.logger.info(`Action: ${payload.action || "Unknown"}`);
+						this.logger.info(`Type: ${payload.type || "Unknown"}`);
 						// TODO: Forward webhook to EdgeWorker or handle directly
 					}),
 				onConfigUpdate:
 					onConfigUpdate ||
 					(() => {
-						console.log("\n🔄 Configuration updated from cyrus-hosted");
+						this.logger.info("\n🔄 Configuration updated from cyrus-hosted");
 					}),
 				onError:
 					onError ||
 					((error) => {
-						console.error("\n❌ Cloudflare client error:", error.message);
+						this.logger.error(`\nCloudflare client error: ${error.message}`);
 					}),
 				onReady: (tunnelUrl) => {
-					console.log("\n✅ Cloudflare tunnel established");
-					console.log(`🔗 Tunnel URL: ${tunnelUrl}`);
-					console.log("─".repeat(50));
-					console.log("\n💎 Pro Plan Active - Using Cloudflare Tunnel");
-					console.log(
+					this.logger.success("Cloudflare tunnel established");
+					this.logger.info(`🔗 Tunnel URL: ${tunnelUrl}`);
+					this.logger.divider(50);
+					this.logger.info("\n💎 Pro Plan Active - Using Cloudflare Tunnel");
+					this.logger.info(
 						"🚀 Cyrus is now ready to receive webhooks and config updates",
 					);
-					console.log("─".repeat(50));
+					this.logger.divider(50);
 				},
 			});
 
@@ -208,7 +210,7 @@ export class WorkerService {
 		this.edgeWorker.on(
 			"session:started",
 			(issueId: string, _issue: Issue, repositoryId: string) => {
-				console.log(
+				this.logger.info(
 					`Started session for issue ${issueId} in repository ${repositoryId}`,
 				);
 			},
@@ -217,7 +219,7 @@ export class WorkerService {
 		this.edgeWorker.on(
 			"session:ended",
 			(issueId: string, exitCode: number | null, repositoryId: string) => {
-				console.log(
+				this.logger.info(
 					`Session for issue ${issueId} ended with exit code ${exitCode} in repository ${repositoryId}`,
 				);
 			},
@@ -225,14 +227,14 @@ export class WorkerService {
 
 		// Connection events
 		this.edgeWorker.on("connected", (token: string) => {
-			console.log(
-				`✅ Connected to proxy with token ending in ...${token.slice(-4)}`,
+			this.logger.success(
+				`Connected to proxy with token ending in ...${token.slice(-4)}`,
 			);
 		});
 
 		this.edgeWorker.on("disconnected", (token: string, reason?: string) => {
-			console.error(
-				`❌ Disconnected from proxy (token ...${token.slice(-4)}): ${
+			this.logger.error(
+				`Disconnected from proxy (token ...${token.slice(-4)}): ${
 					reason || "Unknown reason"
 				}`,
 			);
@@ -240,7 +242,7 @@ export class WorkerService {
 
 		// Error events
 		this.edgeWorker.on("error", (error: Error) => {
-			console.error("EdgeWorker error:", error);
+			this.logger.error(`EdgeWorker error: ${error.message}`);
 		});
 	}
 
@@ -251,7 +253,7 @@ export class WorkerService {
 		if (this.isShuttingDown) return;
 		this.isShuttingDown = true;
 
-		console.log("\nShutting down edge worker...");
+		this.logger.info("\nShutting down edge worker...");
 
 		// Stop edge worker (includes stopping shared application server)
 		if (this.edgeWorker) {
@@ -260,10 +262,10 @@ export class WorkerService {
 
 		// Stop Cloudflare client if running
 		if (this.cloudflareClient) {
-			console.log("\n🛑 Shutting down Cloudflare tunnel...");
+			this.logger.info("\n🛑 Shutting down Cloudflare tunnel...");
 			this.cloudflareClient.disconnect();
 		}
 
-		console.log("Shutdown complete");
+		this.logger.info("Shutdown complete");
 	}
 }

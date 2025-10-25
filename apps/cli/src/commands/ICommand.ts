@@ -1,4 +1,5 @@
 import type { Application } from "../Application.js";
+import type { Logger } from "../services/Logger.js";
 
 /**
  * Interface for all CLI commands
@@ -15,7 +16,11 @@ export interface ICommand {
  * Base class for commands with common functionality
  */
 export abstract class BaseCommand implements ICommand {
-	constructor(protected app: Application) {}
+	protected logger: Logger;
+
+	constructor(protected app: Application) {
+		this.logger = app.logger;
+	}
 
 	abstract execute(args: string[]): Promise<void>;
 
@@ -23,7 +28,7 @@ export abstract class BaseCommand implements ICommand {
 	 * Helper to exit with error
 	 */
 	protected exitWithError(message: string, code = 1): never {
-		console.error(message);
+		this.logger.error(message);
 		process.exit(code);
 	}
 
@@ -31,20 +36,20 @@ export abstract class BaseCommand implements ICommand {
 	 * Helper to log success
 	 */
 	protected logSuccess(message: string): void {
-		console.log(`✅ ${message}`);
+		this.logger.success(message);
 	}
 
 	/**
 	 * Helper to log error
 	 */
 	protected logError(message: string): void {
-		console.error(`❌ ${message}`);
+		this.logger.error(message);
 	}
 
 	/**
 	 * Helper to log section divider
 	 */
 	protected logDivider(): void {
-		console.log("─".repeat(50));
+		this.logger.divider(50);
 	}
 }
