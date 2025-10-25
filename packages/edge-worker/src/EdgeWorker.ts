@@ -1745,7 +1745,40 @@ export class EdgeWorker extends EventEmitter {
 									guidance,
 								);
 
-			const { prompt, version: userPromptVersion } = promptResult;
+			let { prompt, version: userPromptVersion } = promptResult;
+
+			// If procedure is initialized, append the first subroutine prompt
+			const currentSubroutine =
+				this.procedureRouter.getCurrentSubroutine(session);
+			if (currentSubroutine) {
+				console.log(
+					`[EdgeWorker] Loading initial subroutine prompt: ${currentSubroutine.name}`,
+				);
+				const __filename = fileURLToPath(import.meta.url);
+				const __dirname = dirname(__filename);
+				const subroutinePromptPath = join(
+					__dirname,
+					"prompts",
+					currentSubroutine.promptPath,
+				);
+
+				try {
+					const subroutinePrompt = await readFile(
+						subroutinePromptPath,
+						"utf-8",
+					);
+					console.log(
+						`[EdgeWorker] Appending ${currentSubroutine.name} subroutine prompt (${subroutinePrompt.length} characters)`,
+					);
+					prompt = `${prompt}\n\n${subroutinePrompt}`;
+				} catch (error) {
+					console.warn(
+						`[EdgeWorker] Failed to load initial subroutine prompt from ${subroutinePromptPath}, continuing without it:`,
+						error,
+					);
+					// Continue without subroutine prompt - not critical for initial session
+				}
+			}
 
 			// Update runner with version information
 			if (userPromptVersion || systemPromptVersion) {

@@ -36,7 +36,6 @@ Provide a well-formatted markdown response that directly answers the user's ques
 
 ### Example Format
 
-```markdown
 The authentication flow works as follows:
 
 1. User credentials are validated in `src/auth/validator.ts:45`
@@ -49,7 +48,8 @@ The authentication flow works as follows:
 - `src/middleware/auth.ts:89` - Session management
 
 **Note:** Token expiration is set to 24 hours by default, configurable via `JWT_EXPIRY_HOURS`.
-```
+
+---
 
 Your response should be:
 - **Clear** - Easy to understand
