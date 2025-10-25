@@ -85,31 +85,33 @@ export class CloudflareTunnelClient extends EventEmitter {
 
 			this.tunnelProcess = tunnel.process;
 
-			// Capture tunnel URL from cloudflared output
-			this.tunnelProcess.stdout?.on("data", (data: Buffer) => {
-				const output = data.toString();
-
-				// Look for the tunnel URL in the output (supports both trycloudflare.com and cfargotunnel.com)
-				const urlMatch = output.match(
-					/https:\/\/[a-z0-9-]+\.(trycloudflare\.com|cfargotunnel\.com)/,
-				);
-				if (urlMatch && !this.tunnelUrl) {
-					this.tunnelUrl = urlMatch[0];
-					this.connected = true;
-					this.emit("connect");
+			// Listen for URL event from tunnel (emitted by TryCloudflareHandler or ConfigHandler)
+			tunnel.on("url", (url: string) => {
+				// Ensure URL has protocol for token-based tunnels
+				if (!url.startsWith("http")) {
+					url = `https://${url}`;
+				}
+				if (!this.tunnelUrl) {
+					this.tunnelUrl = url;
 					this.emit("ready", this.tunnelUrl);
 				}
 			});
 
-			this.tunnelProcess.stderr?.on("data", (data: Buffer) => {
-				const errorMessage = data.toString();
-				// Only emit actual errors, not informational messages
-				if (errorMessage.includes("ERR") || errorMessage.includes("error")) {
-					this.emit("error", new Error(`Tunnel error: ${errorMessage}`));
+			// Listen for connection event (indicates tunnel is working)
+			tunnel.on("connected", (_connection: any) => {
+				if (!this.connected) {
+					this.connected = true;
+					this.emit("connect");
 				}
 			});
 
-			this.tunnelProcess.on("exit", (code: number) => {
+			// Listen for error event
+			tunnel.on("error", (error: Error) => {
+				this.emit("error", error);
+			});
+
+			// Listen for exit event
+			tunnel.on("exit", (code: number | null) => {
 				this.connected = false;
 				this.emit("disconnect", `Tunnel process exited with code ${code}`);
 			});
