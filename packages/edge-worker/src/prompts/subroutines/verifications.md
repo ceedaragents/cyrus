@@ -38,9 +38,12 @@ You have completed the primary work on this issue. Now perform thorough verifica
 
 ## Expected Output
 
-Provide a brief summary of:
-- What quality checks you performed
-- Test results and coverage
-- Any issues found and fixed
-- Linting and type checking results
-- Confirmation that all verifications passed
+**IMPORTANT: Do NOT post Linear comments.** Your output is for internal workflow only.
+
+Provide a brief completion message (1 sentence max):
+
+```
+All verifications passed - [X] tests passing, linting clean, types valid.
+```
+
+Example: "All verifications passed - 47 tests passing, linting clean, types valid."

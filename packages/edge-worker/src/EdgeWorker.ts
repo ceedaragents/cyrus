@@ -63,7 +63,13 @@ import {
 	type ProcedureDefinition,
 	ProcedureRouter,
 	type RequestClassification,
+	type SubroutineDefinition,
 } from "./procedures/index.js";
+import {
+	buildPrompt,
+	type PromptAssemblyHelpers,
+	type PromptAssemblyInput,
+} from "./prompt-assembly/index.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
@@ -1714,60 +1720,41 @@ export class EdgeWorker extends EventEmitter {
 			`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`,
 		);
 		try {
-			// Choose the appropriate prompt builder based on trigger type and system prompt
-			const promptResult =
-				isMentionTriggered && isLabelBasedPromptRequested
-					? await this.buildLabelBasedPrompt(
-							fullIssue,
-							repository,
-							attachmentResult.manifest,
-							guidance,
-						)
-					: isMentionTriggered
-						? await this.buildMentionPrompt(
-								fullIssue,
-								agentSession,
-								attachmentResult.manifest,
-								guidance,
-							)
-						: systemPrompt
-							? await this.buildLabelBasedPrompt(
-									fullIssue,
-									repository,
-									attachmentResult.manifest,
-									guidance,
-								)
-							: await this.buildPromptV2(
-									fullIssue,
-									repository,
-									undefined,
-									attachmentResult.manifest,
-									guidance,
-								);
+			// Create input for unified prompt assembly
+			const input: PromptAssemblyInput = {
+				session,
+				fullIssue,
+				repository,
+				userComment: commentBody || "", // Empty for delegation, present for mentions
+				attachmentManifest: attachmentResult.manifest,
+				guidance,
+				agentSession,
+				labels,
+				isNewSession: true,
+				isStreaming: false, // Not yet streaming
+				isMentionTriggered: isMentionTriggered || false,
+				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
+			};
 
-			const { prompt, version: userPromptVersion } = promptResult;
+			// Use unified prompt assembly
+			const helpers = this.createPromptAssemblyHelpers();
+			const assembly = await buildPrompt(input, helpers);
 
-			// Update runner with version information
-			if (userPromptVersion || systemPromptVersion) {
+			// Update runner with version information (if available)
+			// Note: Version tracking will need to be added to PromptAssembly metadata in future
+			if (systemPromptVersion) {
 				runner.updatePromptVersions({
-					userPromptVersion,
 					systemPromptVersion,
 				});
 			}
 
-			const promptType =
-				isMentionTriggered && isLabelBasedPromptRequested
-					? "label-based-prompt-command"
-					: isMentionTriggered
-						? "mention"
-						: systemPrompt
-							? "label-based"
-							: "fallback";
+			// Log metadata for debugging
 			console.log(
-				`[EdgeWorker] Initial prompt built successfully using ${promptType} workflow, length: ${prompt.length} characters`,
+				`[EdgeWorker] Initial prompt built successfully - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}, length: ${assembly.userPrompt.length} characters`,
 			);
+
 			console.log(`[EdgeWorker] Starting Claude streaming session`);
-			const sessionInfo = await runner.startStreaming(prompt);
+			const sessionInfo = await runner.startStreaming(assembly.userPrompt);
 			console.log(
 				`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`,
 			);
@@ -2698,7 +2685,7 @@ ${reply.body}
 	 * @param guidance Optional agent guidance rules from Linear
 	 * @returns Formatted prompt string
 	 */
-	private async buildPromptV2(
+	private async buildIssueContextPrompt(
 		issue: LinearIssue,
 		repository: RepositoryConfig,
 		newComment?: LinearWebhookComment,
@@ -2706,7 +2693,7 @@ ${reply.body}
 		guidance?: LinearWebhookGuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		console.log(
-			`[EdgeWorker] buildPromptV2 called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
+			`[EdgeWorker] buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
 		);
 
 		try {
@@ -3702,32 +3689,147 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Build prompt for a session - handles both new and existing sessions
+	 * Build the complete prompt for a session - shows full prompt assembly in one place
+	 *
+	 * New session prompt structure:
+	 * 1. Issue context (from buildIssueContextPrompt)
+	 * 2. Initial subroutine prompt (if procedure initialized)
+	 * 3. User comment
+	 *
+	 * Existing session prompt structure:
+	 * 1. User comment
+	 * 2. Attachment manifest (if present)
 	 */
 	private async buildSessionPrompt(
 		isNewSession: boolean,
+		session: CyrusAgentSession,
 		fullIssue: LinearIssue,
 		repository: RepositoryConfig,
 		promptBody: string,
 		attachmentManifest?: string,
 	): Promise<string> {
-		if (isNewSession) {
-			// For completely new sessions, create a complete initial prompt
-			const promptResult = await this.buildPromptV2(
-				fullIssue,
-				repository,
-				undefined,
-				attachmentManifest,
+		// Fetch labels for system prompt determination
+		const labels = await this.fetchIssueLabels(fullIssue);
+
+		// Create input for unified prompt assembly
+		const input: PromptAssemblyInput = {
+			session,
+			fullIssue,
+			repository,
+			userComment: promptBody,
+			attachmentManifest,
+			isNewSession,
+			isStreaming: false, // This path is only for non-streaming prompts
+			labels,
+		};
+
+		// Use unified prompt assembly
+		const helpers = this.createPromptAssemblyHelpers();
+		const assembly = await buildPrompt(input, helpers);
+
+		// Log metadata for debugging
+		console.log(
+			`[EdgeWorker] Built prompt - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}`,
+		);
+
+		return assembly.userPrompt;
+	}
+
+	/**
+	 * Load a subroutine prompt file
+	 * Extracted helper to make prompt assembly more readable
+	 */
+	private async loadSubroutinePrompt(
+		subroutine: SubroutineDefinition,
+	): Promise<string | null> {
+		const __filename = fileURLToPath(import.meta.url);
+		const __dirname = dirname(__filename);
+		const subroutinePromptPath = join(
+			__dirname,
+			"prompts",
+			subroutine.promptPath,
+		);
+
+		try {
+			const prompt = await readFile(subroutinePromptPath, "utf-8");
+			console.log(
+				`[EdgeWorker] Loaded ${subroutine.name} subroutine prompt (${prompt.length} characters)`,
 			);
-			// Add the user's comment to the initial prompt
-			return `${promptResult.prompt}\n\nUser comment: ${promptBody}`;
-		} else {
-			// For existing sessions, just use the comment with attachment manifest
-			const manifestSuffix = attachmentManifest
-				? `\n\n${attachmentManifest}`
-				: "";
-			return `${promptBody}${manifestSuffix}`;
+			return prompt;
+		} catch (error) {
+			console.warn(
+				`[EdgeWorker] Failed to load subroutine prompt from ${subroutinePromptPath}:`,
+				error,
+			);
+			return null;
 		}
+	}
+
+	/**
+	 * Create prompt assembly helpers adapter
+	 * Bridges the new unified prompt assembly interface with existing EdgeWorker methods
+	 */
+	private createPromptAssemblyHelpers(): PromptAssemblyHelpers {
+		return {
+			determineSystemPrompt: async (labels, repository) => {
+				const result = await this.determineSystemPromptFromLabels(
+					labels,
+					repository,
+				);
+				return result?.prompt;
+			},
+
+			buildIssueContext: async (
+				issue,
+				repository,
+				promptType,
+				attachmentManifest,
+				guidance,
+				agentSession,
+			) => {
+				// Delegate to appropriate builder based on promptType
+				if (promptType === "mention") {
+					if (!agentSession) {
+						throw new Error(
+							"agentSession is required for mention-triggered prompts",
+						);
+					}
+					return this.buildMentionPrompt(
+						issue,
+						agentSession,
+						attachmentManifest,
+						guidance,
+					);
+				} else if (
+					promptType === "label-based" ||
+					promptType === "label-based-prompt-command"
+				) {
+					return this.buildLabelBasedPrompt(
+						issue,
+						repository,
+						attachmentManifest,
+						guidance,
+					);
+				} else {
+					// Fallback to standard issue context
+					return this.buildIssueContextPrompt(
+						issue,
+						repository,
+						undefined, // No new comment for initial prompt assembly
+						attachmentManifest,
+						guidance,
+					);
+				}
+			},
+
+			getCurrentSubroutine: (session) => {
+				return this.procedureRouter.getCurrentSubroutine(session);
+			},
+
+			loadSubroutinePrompt: async (subroutine) => {
+				return this.loadSubroutinePrompt(subroutine);
+			},
+		};
 	}
 
 	/**
@@ -4381,6 +4483,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Prepare the full prompt
 		const fullPrompt = await this.buildSessionPrompt(
 			isNewSession,
+			session,
 			fullIssue,
 			repository,
 			promptBody,

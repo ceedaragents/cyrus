@@ -41,41 +41,15 @@ Task: "identify missing validation or error handling"
 
 ## Output Format
 
-After completing your investigation, you MUST present your findings in this exact format:
+**IMPORTANT: Do NOT post Linear comments.** Your output is for internal workflow only.
 
-```markdown
-# Bug Reproduction Complete
+After completing your investigation, provide a brief completion message (1 sentence max):
 
-## Summary
-[One paragraph summary of the bug]
-
-## Root Cause
-[Detailed explanation of what's causing the bug]
-
-## Reproduction Steps
-1. [Step 1]
-2. [Step 2]
-3. [Expected vs Actual behavior]
-
-## Failing Test Case
-- File: [path to test file]
-- Test name: [name of failing test]
-- Status: ✅ Test created and failing as expected
-
-## Impact Assessment
-- Severity: [Critical/High/Medium/Low]
-- Affected components: [list]
-- User impact: [description]
-
-## Proposed Fix Approach
-[High-level description of how you plan to fix it]
-
----
-
-**✅ REPRODUCTION COMPLETE**
-
-I have completed the reproduction phase and identified the root cause. The fix implementation phase will begin automatically.
 ```
+Reproduction complete - root cause identified in [component/file] and failing test created.
+```
+
+Example: "Reproduction complete - root cause identified in session expiry logic and failing test created."
 
 ## Critical Constraints
 
