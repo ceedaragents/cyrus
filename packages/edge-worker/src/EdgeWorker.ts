@@ -557,8 +557,9 @@ export class EdgeWorker extends EventEmitter {
 		// Post thought to Linear showing child result receipt
 		const linearClient = this.linearClients.get(repo.id);
 		if (linearClient && childSession) {
-			const childIssueId = childSession.issueId;
-			const resultThought = `Received result from sub-issue ${childIssueId}:\n\n${prompt}`;
+			const childIssueIdentifier =
+				childSession.issue?.identifier || childSession.issueId;
+			const resultThought = `Received result from sub-issue ${childIssueIdentifier}:\n\n---\n\n${prompt}\n\n---`;
 
 			try {
 				const result = await linearClient.createAgentActivity({
@@ -3586,7 +3587,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						for (const manager of this.agentSessionManagers.values()) {
 							const parentSession = manager.getSession(parentSessionId);
 							if (parentSession) {
-								parentIssueId = parentSession.issueId;
+								parentIssueId =
+									parentSession.issue?.identifier || parentSession.issueId;
 								break;
 							}
 						}
@@ -3596,8 +3598,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					const linearClient = this.linearClients.get(childRepo.id);
 					if (linearClient) {
 						const feedbackThought = parentIssueId
-							? `Received feedback from orchestrator (${parentIssueId}):\n\n${message}`
-							: `Received feedback from orchestrator:\n\n${message}`;
+							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
+							: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
 
 						try {
 							const result = await linearClient.createAgentActivity({
