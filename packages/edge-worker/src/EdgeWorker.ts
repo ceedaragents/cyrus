@@ -1747,38 +1747,8 @@ export class EdgeWorker extends EventEmitter {
 
 			let { prompt, version: userPromptVersion } = promptResult;
 
-			// If procedure is initialized, append the first subroutine prompt
-			const currentSubroutine =
-				this.procedureRouter.getCurrentSubroutine(session);
-			if (currentSubroutine) {
-				console.log(
-					`[EdgeWorker] Loading initial subroutine prompt: ${currentSubroutine.name}`,
-				);
-				const __filename = fileURLToPath(import.meta.url);
-				const __dirname = dirname(__filename);
-				const subroutinePromptPath = join(
-					__dirname,
-					"prompts",
-					currentSubroutine.promptPath,
-				);
-
-				try {
-					const subroutinePrompt = await readFile(
-						subroutinePromptPath,
-						"utf-8",
-					);
-					console.log(
-						`[EdgeWorker] Appending ${currentSubroutine.name} subroutine prompt (${subroutinePrompt.length} characters)`,
-					);
-					prompt = `${prompt}\n\n${subroutinePrompt}`;
-				} catch (error) {
-					console.warn(
-						`[EdgeWorker] Failed to load initial subroutine prompt from ${subroutinePromptPath}, continuing without it:`,
-						error,
-					);
-					// Continue without subroutine prompt - not critical for initial session
-				}
-			}
+			// Append initial subroutine prompt if procedure is initialized
+			prompt = await this.appendInitialSubroutinePrompt(prompt, session);
 
 			// Update runner with version information
 			if (userPromptVersion || systemPromptVersion) {
@@ -2913,6 +2883,50 @@ Base branch: ${baseBranch}
 ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
 
 			return { prompt: fallbackPrompt, version: undefined };
+		}
+	}
+
+	/**
+	 * Append initial subroutine prompt to the base prompt if procedure is initialized
+	 * This ensures the first subroutine receives its guidance prompt combined with the issue context
+	 */
+	private async appendInitialSubroutinePrompt(
+		basePrompt: string,
+		session: CyrusAgentSession,
+	): Promise<string> {
+		const currentSubroutine =
+			this.procedureRouter.getCurrentSubroutine(session);
+
+		if (!currentSubroutine) {
+			// No procedure initialized, return base prompt as-is
+			return basePrompt;
+		}
+
+		console.log(
+			`[EdgeWorker] Loading initial subroutine prompt: ${currentSubroutine.name}`,
+		);
+
+		const __filename = fileURLToPath(import.meta.url);
+		const __dirname = dirname(__filename);
+		const subroutinePromptPath = join(
+			__dirname,
+			"prompts",
+			currentSubroutine.promptPath,
+		);
+
+		try {
+			const subroutinePrompt = await readFile(subroutinePromptPath, "utf-8");
+			console.log(
+				`[EdgeWorker] Appending ${currentSubroutine.name} subroutine prompt (${subroutinePrompt.length} characters)`,
+			);
+			return `${basePrompt}\n\n${subroutinePrompt}`;
+		} catch (error) {
+			console.warn(
+				`[EdgeWorker] Failed to load initial subroutine prompt from ${subroutinePromptPath}, continuing without it:`,
+				error,
+			);
+			// Continue without subroutine prompt - not critical for initial session
+			return basePrompt;
 		}
 	}
 
