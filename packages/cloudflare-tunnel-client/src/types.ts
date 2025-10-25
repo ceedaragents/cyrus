@@ -4,7 +4,6 @@ import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
  * Configuration for the Cloudflare tunnel client
  */
 export interface CloudflareTunnelClientConfig {
-	authKey: string; // Auth key from cyrus-hosted onboarding
 	cyrusHome: string; // ~/.cyrus directory path
 	onWebhook?: (payload: LinearWebhookPayload) => void; // Callback for webhooks
 	onConfigUpdate?: () => void; // Callback when config is updated

@@ -150,12 +150,7 @@ export class WorkerService {
 				"cyrus-cloudflare-tunnel-client"
 			);
 
-			// Get auth key from config or environment
-			// For now, we'll use the API key as the auth key since it's what we validate against
-			const authKey = cyrusApiKey;
-
 			const client = new CloudflareTunnelClient({
-				authKey,
 				cyrusHome: this.cyrusHome,
 				onWebhook:
 					onWebhook ||
@@ -187,8 +182,8 @@ export class WorkerService {
 				},
 			});
 
-			// Authenticate and start the tunnel
-			await client.authenticate();
+			// Start the tunnel with credentials from environment
+			await client.startTunnel(cloudflareToken, cyrusApiKey);
 
 			// Store client for cleanup (Application handles signal handlers)
 			this.cloudflareClient = client;
