@@ -8,9 +8,8 @@ import {
 } from "node:http";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 import { install } from "cloudflared";
-import { ConfigApiClient } from "./ConfigApiClient.js";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
-import { handleCyrusConfig, readCyrusConfig } from "./handlers/cyrusConfig.js";
+import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
 import { handleRepository } from "./handlers/repository.js";
 import { handleTestMcp } from "./handlers/testMcp.js";
@@ -59,40 +58,11 @@ export class CloudflareTunnelClient extends EventEmitter {
 	}
 
 	/**
-	 * Authenticate with auth key and start the tunnel
+	 * Start the Cloudflare tunnel with the provided token and API key
 	 */
-	async authenticate(): Promise<void> {
-		try {
-			const configResponse = await ConfigApiClient.getConfig(
-				this.config.authKey,
-			);
-
-			// Check if config retrieval was successful
-			if (!ConfigApiClient.isValid(configResponse)) {
-				throw new Error(
-					configResponse.error ||
-						"Failed to retrieve configuration. Please verify your auth key is correct.",
-				);
-			}
-
-			// Store API key for authentication
-			this.apiKey = configResponse.config!.apiKey;
-
-			// Store API key in config for persistence
-			await this.storeApiKey(this.apiKey);
-
-			// Start Cloudflare tunnel
-			await this.startTunnel(configResponse.config!.cloudflareToken);
-		} catch (error) {
-			this.emit("error", error as Error);
-			throw error;
-		}
-	}
-
-	/**
-	 * Start the Cloudflare tunnel
-	 */
-	private async startTunnel(cloudflareToken: string): Promise<void> {
+	async startTunnel(cloudflareToken: string, apiKey: string): Promise<void> {
+		// Store API key for authentication
+		this.apiKey = apiKey;
 		try {
 			// Ensure cloudflared binary is installed
 			const bin = await install(cloudflareToken);
@@ -320,26 +290,6 @@ export class CloudflareTunnelClient extends EventEmitter {
 				reject(error);
 			});
 		});
-	}
-
-	/**
-	 * Store API key in config for persistence
-	 */
-	private async storeApiKey(apiKey: string): Promise<void> {
-		try {
-			const config = readCyrusConfig(this.config.cyrusHome);
-			config.apiKey = apiKey;
-			config.authKey = this.config.authKey;
-
-			// Write back to config
-			const { writeFileSync } = await import("node:fs");
-			const { join } = await import("node:path");
-			const configPath = join(this.config.cyrusHome, "config.json");
-
-			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-		} catch {
-			// Don't throw - this is not critical
-		}
 	}
 
 	/**
