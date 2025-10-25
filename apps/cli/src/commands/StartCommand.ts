@@ -51,8 +51,13 @@ export class StartCommand extends BaseCommand {
 				console.log("Using Cloudflare tunnel for secure connectivity");
 
 				// Start Cloudflare tunnel client (will validate credentials and start)
-				await this.app.worker.startCloudflareClient({});
-				return; // Exit early - Cloudflare client handles everything
+				try {
+					await this.app.worker.startCloudflareClient({});
+					return; // Exit early - Cloudflare client handles everything
+				} catch (error) {
+					this.logError((error as Error).message);
+					process.exit(1);
+				}
 			}
 
 			// Legacy mode - validate we have repositories

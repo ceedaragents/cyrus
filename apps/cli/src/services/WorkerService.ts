@@ -1,6 +1,7 @@
 import type { Issue } from "@linear/sdk";
 import type { EdgeWorkerConfig, RepositoryConfig } from "cyrus-core";
 import { EdgeWorker } from "cyrus-edge-worker";
+import { DEFAULT_SERVER_PORT, parsePort } from "../config/constants.js";
 import type { Workspace } from "../config/types.js";
 import type { ConfigService } from "./ConfigService.js";
 import type { GitService } from "./GitService.js";
@@ -10,6 +11,7 @@ import type { GitService } from "./GitService.js";
  */
 export class WorkerService {
 	private edgeWorker: EdgeWorker | null = null;
+	private cloudflareClient: any = null;
 	private isShuttingDown = false;
 
 	constructor(
@@ -29,7 +31,7 @@ export class WorkerService {
 	 * Get the server port from EdgeWorker
 	 */
 	getServerPort(): number {
-		return this.edgeWorker?.getServerPort() || 3456;
+		return this.edgeWorker?.getServerPort() || DEFAULT_SERVER_PORT;
 	}
 
 	/**
@@ -51,6 +53,9 @@ export class WorkerService {
 		const isExternalHost =
 			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
 
+		// Load config once for model defaults
+		const edgeConfig = this.configService.load();
+
 		// Create EdgeWorker configuration
 		const config: EdgeWorkerConfig = {
 			proxyUrl,
@@ -62,16 +67,12 @@ export class WorkerService {
 				process.env.DISALLOWED_TOOLS?.split(",").map((t) => t.trim()) ||
 				undefined,
 			// Model configuration: environment variables take precedence over config file
-			defaultModel:
-				process.env.CYRUS_DEFAULT_MODEL ||
-				this.configService.load().defaultModel,
+			defaultModel: process.env.CYRUS_DEFAULT_MODEL || edgeConfig.defaultModel,
 			defaultFallbackModel:
 				process.env.CYRUS_DEFAULT_FALLBACK_MODEL ||
-				this.configService.load().defaultFallbackModel,
+				edgeConfig.defaultFallbackModel,
 			webhookBaseUrl: process.env.CYRUS_BASE_URL,
-			serverPort: process.env.CYRUS_SERVER_PORT
-				? parseInt(process.env.CYRUS_SERVER_PORT, 10)
-				: 3456,
+			serverPort: parsePort(process.env.CYRUS_SERVER_PORT, DEFAULT_SERVER_PORT),
 			serverHost: isExternalHost ? "0.0.0.0" : "localhost",
 			ngrokAuthToken,
 			features: {
@@ -82,12 +83,10 @@ export class WorkerService {
 					issue: Issue,
 					repository: RepositoryConfig,
 				): Promise<Workspace> => {
-					const globalSetupScript =
-						this.configService.load().global_setup_script;
 					return this.gitService.createGitWorktree(
 						issue,
 						repository,
-						globalSetupScript,
+						edgeConfig.global_setup_script,
 					);
 				},
 				onOAuthCallback,
@@ -130,19 +129,15 @@ export class WorkerService {
 		const cyrusApiKey = process.env.CYRUS_API_KEY;
 
 		if (!cloudflareToken || !cyrusApiKey) {
-			console.error("\n❌ Missing required credentials");
-			console.log("─".repeat(50));
-			console.log("Cloudflare tunnel mode requires authentication.");
-			console.log("\nRequired environment variables:");
-			console.log(
-				`  CLOUDFLARE_TOKEN: ${cloudflareToken ? "✅ Set" : "❌ Missing"}`,
+			const missing = [];
+			if (!cloudflareToken) missing.push("CLOUDFLARE_TOKEN");
+			if (!cyrusApiKey) missing.push("CYRUS_API_KEY");
+
+			throw new Error(
+				`Missing required credentials: ${missing.join(", ")}. ` +
+					`Please run: cyrus auth <auth-key>. ` +
+					`Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus`,
 			);
-			console.log(`  CYRUS_API_KEY: ${cyrusApiKey ? "✅ Set" : "❌ Missing"}`);
-			console.log("\nPlease run: cyrus auth <auth-key>");
-			console.log(
-				"Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus",
-			);
-			process.exit(1);
 		}
 
 		console.log("\n🌩️  Starting Cloudflare Tunnel Client");
@@ -193,25 +188,13 @@ export class WorkerService {
 			// Authenticate and start the tunnel
 			await client.authenticate();
 
-			// Handle graceful shutdown
-			process.on("SIGINT", () => {
-				console.log("\n\n🛑 Shutting down Cloudflare tunnel...");
-				client.disconnect();
-				process.exit(0);
-			});
-
-			process.on("SIGTERM", () => {
-				console.log("\n\n🛑 Shutting down Cloudflare tunnel...");
-				client.disconnect();
-				process.exit(0);
-			});
+			// Store client for cleanup (Application handles signal handlers)
+			this.cloudflareClient = client;
 		} catch (error) {
-			console.error("\n❌ Failed to start Cloudflare tunnel:");
-			console.error((error as Error).message);
-			console.log(
-				"\nIf you're having issues, try re-authenticating with: cyrus auth <auth-key>",
+			throw new Error(
+				`Failed to start Cloudflare tunnel: ${(error as Error).message}. ` +
+					`If you're having issues, try re-authenticating with: cyrus auth <auth-key>`,
 			);
-			process.exit(1);
 		}
 	}
 
@@ -273,6 +256,12 @@ export class WorkerService {
 		// Stop edge worker (includes stopping shared application server)
 		if (this.edgeWorker) {
 			await this.edgeWorker.stop();
+		}
+
+		// Stop Cloudflare client if running
+		if (this.cloudflareClient) {
+			console.log("\n🛑 Shutting down Cloudflare tunnel...");
+			this.cloudflareClient.disconnect();
 		}
 
 		console.log("Shutdown complete");

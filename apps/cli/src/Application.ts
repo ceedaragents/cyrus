@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import { SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
+import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
 import { ConfigService } from "./services/ConfigService.js";
 import { GitService } from "./services/GitService.js";
 import { OAuthService } from "./services/OAuthService.js";
@@ -31,9 +32,10 @@ export class Application {
 		this.subscription = new SubscriptionService();
 
 		// OAuth and Worker services need runtime configuration
-		const serverPort = process.env.CYRUS_SERVER_PORT
-			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
-			: 3456;
+		const serverPort = parsePort(
+			process.env.CYRUS_SERVER_PORT,
+			DEFAULT_SERVER_PORT,
+		);
 		const baseUrl = process.env.CYRUS_BASE_URL;
 
 		this.oauth = new OAuthService(serverPort, baseUrl);
@@ -58,9 +60,10 @@ export class Application {
 	 * Create a temporary SharedApplicationServer for OAuth
 	 */
 	async createTempServer(): Promise<SharedApplicationServer> {
-		const serverPort = process.env.CYRUS_SERVER_PORT
-			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
-			: 3456;
+		const serverPort = parsePort(
+			process.env.CYRUS_SERVER_PORT,
+			DEFAULT_SERVER_PORT,
+		);
 		return new SharedApplicationServer(serverPort);
 	}
 
