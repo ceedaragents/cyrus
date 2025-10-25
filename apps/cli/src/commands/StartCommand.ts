@@ -14,7 +14,26 @@ export class StartCommand extends BaseCommand {
 			let edgeConfig = this.app.config.load();
 			const repositories = edgeConfig.repositories || [];
 
-			// Check if using default proxy URL without a customer ID
+			// Check if using Cloudflare tunnel mode (Pro plan)
+			const isLegacy = edgeConfig.isLegacy !== false; // Default to true if not set
+
+			if (!isLegacy) {
+				// Pro plan with Cloudflare tunnel - no customer validation needed
+				this.logger.info("\n💎 Pro Plan Detected");
+				this.logDivider();
+				this.logger.info("Using Cloudflare tunnel for secure connectivity");
+
+				// Start Cloudflare tunnel client (will validate credentials and start)
+				try {
+					await this.app.worker.startCloudflareClient({});
+					return; // Exit early - Cloudflare client handles everything
+				} catch (error) {
+					this.logError((error as Error).message);
+					process.exit(1);
+				}
+			}
+
+			// Legacy mode - check if using default proxy URL without a customer ID
 			const isUsingDefaultProxy = this.app.isUsingDefaultProxy();
 			const hasCustomerId = !!edgeConfig.stripeCustomerId;
 
@@ -36,25 +55,6 @@ export class StartCommand extends BaseCommand {
 					this.logger.error(
 						`Unable to connect to subscription service: ${(error as Error).message}`,
 					);
-					process.exit(1);
-				}
-			}
-
-			// Check if using Cloudflare tunnel mode (Pro plan)
-			const isLegacy = edgeConfig.isLegacy !== false; // Default to true if not set
-
-			if (!isLegacy) {
-				// Pro plan with Cloudflare tunnel
-				this.logger.info("\n💎 Pro Plan Detected");
-				this.logDivider();
-				this.logger.info("Using Cloudflare tunnel for secure connectivity");
-
-				// Start Cloudflare tunnel client (will validate credentials and start)
-				try {
-					await this.app.worker.startCloudflareClient({});
-					return; // Exit early - Cloudflare client handles everything
-				} catch (error) {
-					this.logError((error as Error).message);
 					process.exit(1);
 				}
 			}
