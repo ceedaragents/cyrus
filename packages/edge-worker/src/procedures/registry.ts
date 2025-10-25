@@ -10,7 +10,7 @@ import type { ProcedureDefinition, RequestClassification } from "./types.js";
 export const SUBROUTINES = {
 	primary: {
 		name: "primary",
-		promptPath: "primary", // Special: resolved via label (debugger/builder/scoper/orchestrator)
+		promptPath: "primary", // Special: resolved via label (debugger/builder/scoper/orchestrator) or direct user input
 		description: "Main work execution phase",
 	},
 	debuggerReproduction: {
@@ -54,6 +54,23 @@ export const SUBROUTINES = {
 		description: "Detailed summary with implementation details",
 		suppressThoughtPosting: true,
 	},
+	questionInvestigation: {
+		name: "question-investigation",
+		promptPath: "subroutines/question-investigation.md",
+		description: "Gather information needed to answer a question",
+	},
+	questionAnswer: {
+		name: "question-answer",
+		promptPath: "subroutines/question-answer.md",
+		maxTurns: 1,
+		description: "Format final answer to user question",
+		suppressThoughtPosting: true,
+	},
+	codingActivity: {
+		name: "coding-activity",
+		promptPath: "subroutines/coding-activity.md",
+		description: "Implementation phase for code changes (no git/gh operations)",
+	},
 } as const;
 
 /**
@@ -63,7 +80,10 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 	"simple-question": {
 		name: "simple-question",
 		description: "For questions or requests that don't modify the codebase",
-		subroutines: [SUBROUTINES.primary, SUBROUTINES.conciseSummary],
+		subroutines: [
+			SUBROUTINES.questionInvestigation,
+			SUBROUTINES.questionAnswer,
+		],
 	},
 
 	"documentation-edit": {
@@ -81,7 +101,7 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		name: "full-development",
 		description: "For code changes requiring full verification and PR creation",
 		subroutines: [
-			SUBROUTINES.primary,
+			SUBROUTINES.codingActivity,
 			SUBROUTINES.verifications,
 			SUBROUTINES.gitGh,
 			SUBROUTINES.conciseSummary,

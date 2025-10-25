@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 - Orchestrator agents are explicitly instructed not to assign themselves (Cyrus) as a delegate when creating sub-issues
 - Tool call result outputs are no longer wrapped in collapsible sections in Linear comments
 - Concise summary format now uses collapsible sections for "Changes Made" and "Files Modified" to keep summaries brief
+- Simple-question workflow now has two phases: investigation (gather information without answering) and answer formatting (provide markdown-formatted response)
+- Full-development workflow now starts with dedicated coding-activity subroutine (implementation and testing only, no git/gh operations)
 
 ## [0.1.57] - 2025-10-12
 
