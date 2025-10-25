@@ -3,6 +3,7 @@ import { KVOAuthStorage } from "./KVOAuthStorage";
 
 export class OAuthService {
 	private tokenStorage: KVOAuthStorage;
+	private readonly OAUTH_CALLBACK_PATH = "/oauth/callback";
 
 	constructor(
 		private env: Env,
@@ -18,6 +19,13 @@ export class OAuthService {
 	}
 
 	/**
+	 * Get the OAuth redirect URI for this proxy instance
+	 */
+	private getRedirectUri(): string {
+		return `${this.env.PROXY_URL}${this.OAUTH_CALLBACK_PATH}`;
+	}
+
+	/**
 	 * Handle OAuth authorization request
 	 */
 	async handleAuthorize(request: Request): Promise<Response> {
@@ -28,7 +36,7 @@ export class OAuthService {
 		const state = crypto.randomUUID();
 
 		// Build redirect URI with callback if provided
-		let redirectUri = this.env.OAUTH_REDIRECT_URI;
+		let redirectUri = this.getRedirectUri();
 		if (callbackParam) {
 			const redirectUrl = new URL(redirectUri);
 			redirectUrl.searchParams.set("callback", callbackParam);
@@ -48,7 +56,7 @@ export class OAuthService {
 		// Build Linear OAuth URL
 		const authUrl = new URL("https://linear.app/oauth/authorize");
 		authUrl.searchParams.set("client_id", this.env.LINEAR_CLIENT_ID);
-		authUrl.searchParams.set("redirect_uri", this.env.OAUTH_REDIRECT_URI);
+		authUrl.searchParams.set("redirect_uri", this.getRedirectUri());
 		authUrl.searchParams.set("response_type", "code");
 		authUrl.searchParams.set("state", state);
 		authUrl.searchParams.set(
@@ -219,7 +227,7 @@ export class OAuthService {
 				grant_type: "authorization_code",
 				client_id: this.env.LINEAR_CLIENT_ID,
 				client_secret: this.env.LINEAR_CLIENT_SECRET,
-				redirect_uri: this.env.OAUTH_REDIRECT_URI,
+				redirect_uri: this.getRedirectUri(),
 				code: code,
 			}),
 		});

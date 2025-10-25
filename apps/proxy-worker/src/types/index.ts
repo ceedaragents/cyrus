@@ -15,7 +15,7 @@ export interface Env {
 	ENCRYPTION_KEY: string;
 
 	// Environment variables
-	OAUTH_REDIRECT_URI: string;
+	PROXY_URL: string;
 	SIMULATE_DISCONNECT?: string;
 	DISCONNECT_AFTER_MS?: string;
 }
