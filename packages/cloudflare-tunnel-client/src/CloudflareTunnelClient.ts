@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
@@ -7,7 +8,7 @@ import {
 	type ServerResponse,
 } from "node:http";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import { install } from "cloudflared";
+import { bin, install } from "cloudflared";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
@@ -58,14 +59,16 @@ export class CloudflareTunnelClient extends EventEmitter {
 	}
 
 	/**
-	 * Start the Cloudflare tunnel with the provided token and API key
+	 * Start the Cloudflare tunnel with the provided API key
 	 */
-	async startTunnel(cloudflareToken: string, apiKey: string): Promise<void> {
+	async startTunnel(apiKey: string): Promise<void> {
 		// Store API key for authentication
 		this.apiKey = apiKey;
 		try {
 			// Ensure cloudflared binary is installed
-			const bin = await install(cloudflareToken);
+			if (!existsSync(bin)) {
+				await install(bin);
+			}
 
 			// Create HTTP server first
 			this.server = createServer((req, res) => {

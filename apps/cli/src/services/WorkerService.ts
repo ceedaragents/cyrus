@@ -127,16 +127,11 @@ export class WorkerService {
 		const { onWebhook, onConfigUpdate, onError } = params;
 
 		// Validate required environment variables
-		const cloudflareToken = process.env.CLOUDFLARE_TOKEN;
 		const cyrusApiKey = process.env.CYRUS_API_KEY;
 
-		if (!cloudflareToken || !cyrusApiKey) {
-			const missing = [];
-			if (!cloudflareToken) missing.push("CLOUDFLARE_TOKEN");
-			if (!cyrusApiKey) missing.push("CYRUS_API_KEY");
-
+		if (!cyrusApiKey) {
 			throw new Error(
-				`Missing required credentials: ${missing.join(", ")}. ` +
+				`Missing required credential: CYRUS_API_KEY. ` +
 					`Please run: cyrus auth <auth-key>. ` +
 					`Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus`,
 			);
@@ -182,8 +177,8 @@ export class WorkerService {
 				},
 			});
 
-			// Start the tunnel with credentials from environment
-			await client.startTunnel(cloudflareToken, cyrusApiKey);
+			// Start the tunnel with API key for authentication
+			await client.startTunnel(cyrusApiKey);
 
 			// Store client for cleanup (Application handles signal handlers)
 			this.cloudflareClient = client;
