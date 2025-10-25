@@ -182,7 +182,7 @@ export class WorkerService {
 				},
 			});
 
-			// Start the tunnel with credentials from environment
+			// Start the tunnel with Cloudflare token and API key
 			await client.startTunnel(cloudflareToken, cyrusApiKey);
 
 			// Store client for cleanup (Application handles signal handlers)
