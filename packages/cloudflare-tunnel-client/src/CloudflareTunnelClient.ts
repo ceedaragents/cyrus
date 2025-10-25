@@ -8,7 +8,7 @@ import {
 	type ServerResponse,
 } from "node:http";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import { bin, install } from "cloudflared";
+import { bin, install, Tunnel } from "cloudflared";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
@@ -59,9 +59,9 @@ export class CloudflareTunnelClient extends EventEmitter {
 	}
 
 	/**
-	 * Start the Cloudflare tunnel with the provided API key
+	 * Start the Cloudflare tunnel with the provided token and API key
 	 */
-	async startTunnel(apiKey: string): Promise<void> {
+	async startTunnel(cloudflareToken: string, apiKey: string): Promise<void> {
 		// Store API key for authentication
 		this.apiKey = apiKey;
 		try {
@@ -78,22 +78,20 @@ export class CloudflareTunnelClient extends EventEmitter {
 			// Start server on a local port
 			const port = await this.startLocalServer();
 
-			// Start cloudflared tunnel pointing to our local server
-			const { spawn } = await import("node:child_process");
+			// Start cloudflared tunnel with token authentication
+			const tunnel = Tunnel.withToken(cloudflareToken, {
+				url: `http://localhost:${port}`,
+			});
 
-			this.tunnelProcess = spawn(bin, [
-				"tunnel",
-				"--url",
-				`http://localhost:${port}`,
-			]);
+			this.tunnelProcess = tunnel.process;
 
 			// Capture tunnel URL from cloudflared output
 			this.tunnelProcess.stdout?.on("data", (data: Buffer) => {
 				const output = data.toString();
 
-				// Look for the tunnel URL in the output
+				// Look for the tunnel URL in the output (supports both trycloudflare.com and cfargotunnel.com)
 				const urlMatch = output.match(
-					/https:\/\/[a-z0-9-]+\.trycloudflare\.com/,
+					/https:\/\/[a-z0-9-]+\.(trycloudflare\.com|cfargotunnel\.com)/,
 				);
 				if (urlMatch && !this.tunnelUrl) {
 					this.tunnelUrl = urlMatch[0];
@@ -105,7 +103,10 @@ export class CloudflareTunnelClient extends EventEmitter {
 
 			this.tunnelProcess.stderr?.on("data", (data: Buffer) => {
 				const errorMessage = data.toString();
-				this.emit("error", new Error(`Tunnel error: ${errorMessage}`));
+				// Only emit actual errors, not informational messages
+				if (errorMessage.includes("ERR") || errorMessage.includes("error")) {
+					this.emit("error", new Error(`Tunnel error: ${errorMessage}`));
+				}
 			});
 
 			this.tunnelProcess.on("exit", (code: number) => {
