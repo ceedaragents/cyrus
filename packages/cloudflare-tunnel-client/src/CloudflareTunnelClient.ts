@@ -8,7 +8,7 @@ import {
 	type ServerResponse,
 } from "node:http";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import { bin, install, Tunnel } from "cloudflared";
+import { bin, ConfigHandler, install, tunnel } from "cloudflared";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
@@ -78,15 +78,19 @@ export class CloudflareTunnelClient extends EventEmitter {
 			// Start server on a local port
 			const port = await this.startLocalServer();
 
-			// Start cloudflared tunnel with token authentication
-			const tunnel = Tunnel.withToken(cloudflareToken, {
-				url: `http://localhost:${port}`,
+			// Create tunnel with token-based authentication
+			const cloudflaredTunnel = tunnel({
+				"--url": `http://localhost:${port}`,
+				"--token": cloudflareToken,
 			});
 
-			this.tunnelProcess = tunnel.process;
+			this.tunnelProcess = cloudflaredTunnel.process;
 
-			// Listen for URL event from tunnel (emitted by TryCloudflareHandler or ConfigHandler)
-			tunnel.on("url", (url: string) => {
+			// Add ConfigHandler to capture URL from tunnel configuration
+			new ConfigHandler(cloudflaredTunnel);
+
+			// Listen for URL event (from ConfigHandler for token-based tunnels)
+			cloudflaredTunnel.on("url", (url: string) => {
 				// Ensure URL has protocol for token-based tunnels
 				if (!url.startsWith("http")) {
 					url = `https://${url}`;
@@ -98,7 +102,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 			});
 
 			// Listen for connection event (indicates tunnel is working)
-			tunnel.on("connected", (_connection: any) => {
+			cloudflaredTunnel.on("connected", (_connection: any) => {
 				if (!this.connected) {
 					this.connected = true;
 					this.emit("connect");
@@ -106,12 +110,12 @@ export class CloudflareTunnelClient extends EventEmitter {
 			});
 
 			// Listen for error event
-			tunnel.on("error", (error: Error) => {
+			cloudflaredTunnel.on("error", (error: Error) => {
 				this.emit("error", error);
 			});
 
 			// Listen for exit event
-			tunnel.on("exit", (code: number | null) => {
+			cloudflaredTunnel.on("exit", (code: number | null) => {
 				this.connected = false;
 				this.emit("disconnect", `Tunnel process exited with code ${code}`);
 			});
