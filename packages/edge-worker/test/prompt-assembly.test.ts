@@ -201,9 +201,9 @@ describe("Prompt Assembly", () => {
 				.streamingSession()
 				.withUserComment("Review the attached file")
 				.withAttachments("Attachment: screenshot.png")
-				.expectUserPrompt(
-					"Review the attached file\n\nAttachment: screenshot.png",
-				)
+				.expectUserPrompt(`Review the attached file
+
+Attachment: screenshot.png`)
 				.expectSystemPrompt(undefined)
 				.expectComponents("user-comment", "attachment-manifest")
 				.expectPromptType("continuation")
@@ -232,7 +232,9 @@ describe("Prompt Assembly", () => {
 				.continuationSession()
 				.withUserComment("Here's more context")
 				.withAttachments("Attachment: error-log.txt")
-				.expectUserPrompt("Here's more context\n\nAttachment: error-log.txt")
+				.expectUserPrompt(`Here's more context
+
+Attachment: error-log.txt`)
 				.expectSystemPrompt(undefined)
 				.expectComponents("user-comment", "attachment-manifest")
 				.expectPromptType("continuation")
@@ -497,7 +499,9 @@ describe("Prompt Assembly", () => {
 				.continuationSession()
 				.withUserComment("Test")
 				.withAttachments("file.txt")
-				.expectUserPrompt("Test\n\nfile.txt")
+				.expectUserPrompt(`Test
+
+file.txt`)
 				.expectSystemPrompt(undefined)
 				.expectPromptType("continuation")
 				.verify();
