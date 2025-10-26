@@ -65,12 +65,13 @@ import {
 	type RequestClassification,
 	type SubroutineDefinition,
 } from "./procedures/index.js";
-import {
-	buildPrompt,
-	type IssueContextResult,
-	type PromptAssemblyInput,
-	type PromptType,
-} from "./prompt-assembly/index.js";
+import type {
+	IssueContextResult,
+	PromptAssembly,
+	PromptAssemblyInput,
+	PromptComponent,
+	PromptType,
+} from "./prompt-assembly/types.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
@@ -1660,15 +1661,8 @@ export class EdgeWorker extends EventEmitter {
 				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
 			};
 
-			// Use unified prompt assembly with EdgeWorker instance methods as helpers
-			const assembly = await buildPrompt(input, {
-				determineSystemPrompt: this.determineSystemPromptForAssembly.bind(this),
-				buildIssueContext: this.buildIssueContextForPromptAssembly.bind(this),
-				getCurrentSubroutine: this.procedureRouter.getCurrentSubroutine.bind(
-					this.procedureRouter,
-				),
-				loadSubroutinePrompt: this.loadSubroutinePrompt.bind(this),
-			});
+			// Use unified prompt assembly
+			const assembly = await this.assemblePrompt(input);
 
 			// Get systemPromptVersion for tracking (TODO: add to PromptAssembly metadata)
 			let systemPromptVersion: string | undefined;
@@ -3722,15 +3716,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			labels,
 		};
 
-		// Use unified prompt assembly with EdgeWorker instance methods as helpers
-		const assembly = await buildPrompt(input, {
-			determineSystemPrompt: this.determineSystemPromptForAssembly.bind(this),
-			buildIssueContext: this.buildIssueContextForPromptAssembly.bind(this),
-			getCurrentSubroutine: this.procedureRouter.getCurrentSubroutine.bind(
-				this.procedureRouter,
-			),
-			loadSubroutinePrompt: this.loadSubroutinePrompt.bind(this),
-		});
+		// Use unified prompt assembly
+		const assembly = await this.assemblePrompt(input);
 
 		// Log metadata for debugging
 		console.log(
@@ -3738,6 +3725,170 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 
 		return assembly.userPrompt;
+	}
+
+	/**
+	 * Assemble a complete prompt - unified entry point for all prompt building
+	 * This method contains all prompt assembly logic in one place
+	 */
+	private async assemblePrompt(
+		input: PromptAssemblyInput,
+	): Promise<PromptAssembly> {
+		// If actively streaming, just pass through the comment
+		if (input.isStreaming) {
+			return this.buildStreamingPrompt(input);
+		}
+
+		// If new session, build full prompt with all components
+		if (input.isNewSession) {
+			return this.buildNewSessionPrompt(input);
+		}
+
+		// Existing session continuation - just user comment + attachments
+		return this.buildContinuationPrompt(input);
+	}
+
+	/**
+	 * Build prompt for actively streaming session - pass through user comment as-is
+	 */
+	private buildStreamingPrompt(input: PromptAssemblyInput): PromptAssembly {
+		const components: PromptComponent[] = ["user-comment"];
+		if (input.attachmentManifest) {
+			components.push("attachment-manifest");
+		}
+
+		const parts: string[] = [input.userComment];
+		if (input.attachmentManifest) {
+			parts.push(input.attachmentManifest);
+		}
+
+		return {
+			systemPrompt: undefined,
+			userPrompt: parts.join("\n\n"),
+			metadata: {
+				components,
+				promptType: "continuation",
+				isNewSession: false,
+				isStreaming: true,
+			},
+		};
+	}
+
+	/**
+	 * Build prompt for new session - includes issue context, subroutine prompt, and user comment
+	 */
+	private async buildNewSessionPrompt(
+		input: PromptAssemblyInput,
+	): Promise<PromptAssembly> {
+		const components: PromptComponent[] = [];
+		const parts: string[] = [];
+
+		// 1. Determine system prompt from labels
+		// Only for delegation (not mentions) or when /label-based-prompt is requested
+		let systemPrompt: string | undefined;
+		if (!input.isMentionTriggered || input.isLabelBasedPromptRequested) {
+			systemPrompt = await this.determineSystemPromptForAssembly(
+				input.labels || [],
+				input.repository,
+			);
+		}
+
+		// 2. Build issue context using appropriate builder
+		const promptType = this.determinePromptType(input, !!systemPrompt);
+		const issueContext = await this.buildIssueContextForPromptAssembly(
+			input.fullIssue,
+			input.repository,
+			promptType,
+			input.attachmentManifest,
+			input.guidance,
+			input.agentSession,
+		);
+
+		parts.push(issueContext.prompt);
+		components.push("issue-context");
+
+		// 3. Load and append initial subroutine prompt
+		const currentSubroutine = this.procedureRouter.getCurrentSubroutine(
+			input.session,
+		);
+		let subroutineName: string | undefined;
+		if (currentSubroutine) {
+			const subroutinePrompt =
+				await this.loadSubroutinePrompt(currentSubroutine);
+			if (subroutinePrompt) {
+				parts.push(subroutinePrompt);
+				components.push("subroutine-prompt");
+				subroutineName = currentSubroutine.name;
+			}
+		}
+
+		// 4. Add user comment (if present)
+		if (input.userComment.trim()) {
+			parts.push(`User comment: ${input.userComment}`);
+			components.push("user-comment");
+		}
+
+		// 5. Add guidance rules (if present)
+		if (input.guidance && input.guidance.length > 0) {
+			components.push("guidance-rules");
+		}
+
+		return {
+			systemPrompt,
+			userPrompt: parts.join("\n\n"),
+			metadata: {
+				components,
+				subroutineName,
+				promptType,
+				isNewSession: true,
+				isStreaming: false,
+			},
+		};
+	}
+
+	/**
+	 * Build prompt for existing session continuation - user comment and attachments only
+	 */
+	private buildContinuationPrompt(input: PromptAssemblyInput): PromptAssembly {
+		const components: PromptComponent[] = ["user-comment"];
+		if (input.attachmentManifest) {
+			components.push("attachment-manifest");
+		}
+
+		const parts: string[] = [input.userComment];
+		if (input.attachmentManifest) {
+			parts.push(input.attachmentManifest);
+		}
+
+		return {
+			systemPrompt: undefined,
+			userPrompt: parts.join("\n\n"),
+			metadata: {
+				components,
+				promptType: "continuation",
+				isNewSession: false,
+				isStreaming: false,
+			},
+		};
+	}
+
+	/**
+	 * Determine the prompt type based on input flags and system prompt availability
+	 */
+	private determinePromptType(
+		input: PromptAssemblyInput,
+		hasSystemPrompt: boolean,
+	): PromptType {
+		if (input.isMentionTriggered && input.isLabelBasedPromptRequested) {
+			return "label-based-prompt-command";
+		}
+		if (input.isMentionTriggered) {
+			return "mention";
+		}
+		if (hasSystemPrompt) {
+			return "label-based";
+		}
+		return "fallback";
 	}
 
 	/**

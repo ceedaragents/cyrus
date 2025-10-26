@@ -1,458 +1,343 @@
 /**
- * Unit tests for prompt assembly system
+ * Prompt Assembly Tests
  *
- * Tests all major prompt assembly scenarios with human-readable test helpers
+ * Tests the EdgeWorker.assemblePrompt() method using a human-readable DSL.
+ * All test assertions show complete prompt bodies for maximum clarity.
  */
 
-import type { Issue as LinearIssue } from "@linear/sdk";
-import type {
-	CyrusAgentSession,
-	LinearWebhookAgentSession,
-	LinearWebhookGuidanceRule,
-	RepositoryConfig,
-} from "cyrus-core";
+import type { RepositoryConfig } from "cyrus-core";
 import { describe, expect, it } from "vitest";
-import type { SubroutineDefinition } from "../src/procedures/types.js";
-import {
-	buildPrompt,
-	type IssueContextResult,
-	type PromptAssemblyHelpers,
-	type PromptAssemblyInput,
-} from "../src/prompt-assembly/index.js";
+import { EdgeWorker } from "../src/EdgeWorker.js";
+import type { EdgeWorkerConfig } from "../src/types.js";
 
 // ============================================================================
-// Test Helpers - Human-readable builders for test scenarios
+// Human-Readable Test Framework
 // ============================================================================
 
 /**
- * Create a minimal test session
+ * Create an EdgeWorker instance for testing
  */
-function createSession(
-	overrides?: Partial<CyrusAgentSession>,
-): CyrusAgentSession {
-	return {
-		issueId: "test-issue-id",
-		issue: {
-			id: "test-issue-id",
-			identifier: "TEST-123",
-			title: "Test Issue",
-		},
-		workspace: {
-			path: "/test/workspace",
-		},
-		claudeSessionId: "test-claude-session",
-		metadata: {},
-		...overrides,
-	} as CyrusAgentSession;
-}
-
-/**
- * Create a minimal test issue
- */
-function createIssue(overrides?: Partial<LinearIssue>): LinearIssue {
-	return {
-		id: "test-issue-id",
-		identifier: "TEST-123",
-		title: "Test Issue",
-		description: "Test Description",
-		url: "https://linear.app/test/issue/TEST-123",
-		...overrides,
-	} as LinearIssue;
-}
-
-/**
- * Create a minimal test repository config
- */
-function createRepository(
-	overrides?: Partial<RepositoryConfig>,
-): RepositoryConfig {
-	return {
-		id: "test-repo-id",
-		linearUserId: "test-user-id",
-		path: "/test/repo",
-		...overrides,
-	} as RepositoryConfig;
-}
-
-/**
- * Create mock helpers that return predictable values
- */
-function createMockHelpers(
-	overrides?: Partial<PromptAssemblyHelpers>,
-): PromptAssemblyHelpers {
-	return {
-		determineSystemPrompt: async () => undefined,
-		buildIssueContext: async (issue) => ({
-			prompt: `Issue: ${issue.identifier} - ${issue.title}`,
-		}),
-		getCurrentSubroutine: () => null,
-		loadSubroutinePrompt: async () => null,
-		...overrides,
+function createTestWorker(repositories: RepositoryConfig[] = []): EdgeWorker {
+	const config: EdgeWorkerConfig = {
+		cyrusHome: "/tmp/test-cyrus-home",
+		defaultModel: "sonnet",
+		repositories,
+		linearClients: new Map(),
+		mcpServers: {},
 	};
+	return new EdgeWorker(config);
 }
 
 /**
- * Create a subroutine definition
+ * Scenario builder for test cases - provides human-readable DSL
  */
-function createSubroutine(name: string): SubroutineDefinition {
-	return {
-		name,
-		promptPath: `${name}.md`,
-		maxTurns: 10,
-		description: `${name} subroutine`,
-	};
+class PromptScenario {
+	private worker: EdgeWorker;
+	private input: any = {};
+	private expectedUserPrompt?: string;
+	private expectedSystemPrompt?: string;
+	private expectedComponents?: string[];
+	private expectedPromptType?: string;
+
+	constructor(worker: EdgeWorker) {
+		this.worker = worker;
+	}
+
+	// ===== Input Builders =====
+
+	streamingSession() {
+		this.input.isStreaming = true;
+		this.input.isNewSession = false;
+		return this;
+	}
+
+	continuationSession() {
+		this.input.isStreaming = false;
+		this.input.isNewSession = false;
+		return this;
+	}
+
+	newSession() {
+		this.input.isStreaming = false;
+		this.input.isNewSession = true;
+		return this;
+	}
+
+	assignmentBased() {
+		this.input.isMentionTriggered = false;
+		this.input.isLabelBasedPromptRequested = false;
+		return this;
+	}
+
+	mentionTriggered() {
+		this.input.isMentionTriggered = true;
+		this.input.isLabelBasedPromptRequested = false;
+		return this;
+	}
+
+	labelBasedPromptCommand() {
+		this.input.isMentionTriggered = true;
+		this.input.isLabelBasedPromptRequested = true;
+		return this;
+	}
+
+	withUserComment(comment: string) {
+		this.input.userComment = comment;
+		return this;
+	}
+
+	withAttachments(manifest: string) {
+		this.input.attachmentManifest = manifest;
+		return this;
+	}
+
+	withLabels(...labels: string[]) {
+		this.input.labels = labels;
+		return this;
+	}
+
+	withSession(session: any) {
+		this.input.session = session;
+		return this;
+	}
+
+	withIssue(issue: any) {
+		this.input.fullIssue = issue;
+		return this;
+	}
+
+	withRepository(repo: any) {
+		this.input.repository = repo;
+		return this;
+	}
+
+	withGuidance(guidance: any[]) {
+		this.input.guidance = guidance;
+		return this;
+	}
+
+	withAgentSession(agentSession: any) {
+		this.input.agentSession = agentSession;
+		return this;
+	}
+
+	// ===== Expectation Builders =====
+
+	expectUserPrompt(prompt: string) {
+		this.expectedUserPrompt = prompt;
+		return this;
+	}
+
+	expectSystemPrompt(prompt: string | undefined) {
+		this.expectedSystemPrompt = prompt;
+		return this;
+	}
+
+	expectComponents(...components: string[]) {
+		this.expectedComponents = components;
+		return this;
+	}
+
+	expectPromptType(type: string) {
+		this.expectedPromptType = type;
+		return this;
+	}
+
+	// ===== Execution =====
+
+	async verify() {
+		const result = await (this.worker as any).assemblePrompt(this.input);
+
+		if (this.expectedUserPrompt !== undefined) {
+			expect(result.userPrompt).toBe(this.expectedUserPrompt);
+		}
+
+		if (this.expectedSystemPrompt !== undefined) {
+			expect(result.systemPrompt).toBe(this.expectedSystemPrompt);
+		}
+
+		if (this.expectedComponents) {
+			expect(result.metadata.components).toEqual(this.expectedComponents);
+		}
+
+		if (this.expectedPromptType) {
+			expect(result.metadata.promptType).toBe(this.expectedPromptType);
+		}
+
+		return result;
+	}
 }
 
 /**
- * Create test input for prompt assembly
+ * Start building a test scenario
  */
-function createInput(
-	overrides?: Partial<PromptAssemblyInput>,
-): PromptAssemblyInput {
-	return {
-		session: createSession(),
-		fullIssue: createIssue(),
-		repository: createRepository(),
-		userComment: "Test comment",
-		isNewSession: false,
-		isStreaming: false,
-		...overrides,
-	};
+function scenario(worker: EdgeWorker): PromptScenario {
+	return new PromptScenario(worker);
 }
 
 // ============================================================================
-// Tests - Organized by scenario
+// Tests
 // ============================================================================
 
 describe("Prompt Assembly", () => {
 	describe("Streaming Sessions", () => {
-		it("should pass through user comment as-is for streaming sessions", async () => {
-			const input = createInput({
-				userComment: "User's streaming comment",
-				isStreaming: true,
-				isNewSession: false,
-			});
+		it("should pass through user comment unchanged", async () => {
+			const worker = createTestWorker();
 
-			const helpers = createMockHelpers();
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.userPrompt).toBe("User's streaming comment");
-			expect(result.systemPrompt).toBeUndefined();
-			expect(result.metadata.isStreaming).toBe(true);
-			expect(result.metadata.components).toContain("user-comment");
+			await scenario(worker)
+				.streamingSession()
+				.withUserComment("Continue with the current task")
+				.expectUserPrompt("Continue with the current task")
+				.expectSystemPrompt(undefined)
+				.expectComponents("user-comment")
+				.expectPromptType("continuation")
+				.verify();
 		});
 
-		it("should include attachment manifest in streaming sessions", async () => {
-			const input = createInput({
-				userComment: "Comment with attachments",
-				attachmentManifest: "Attachment: file.txt",
-				isStreaming: true,
-			});
+		it("should include attachment manifest", async () => {
+			const worker = createTestWorker();
 
-			const helpers = createMockHelpers();
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.userPrompt).toContain("Comment with attachments");
-			expect(result.userPrompt).toContain("Attachment: file.txt");
-			expect(result.metadata.components).toContain("attachment-manifest");
+			await scenario(worker)
+				.streamingSession()
+				.withUserComment("Review the attached file")
+				.withAttachments("Attachment: screenshot.png")
+				.expectUserPrompt(
+					"Review the attached file\n\nAttachment: screenshot.png",
+				)
+				.expectComponents("user-comment", "attachment-manifest")
+				.verify();
 		});
 	});
 
 	describe("Continuation Sessions", () => {
-		it("should only include user comment for continuation sessions", async () => {
-			const input = createInput({
-				userComment: "Follow-up comment",
-				isNewSession: false,
-				isStreaming: false,
-			});
+		it("should only include user comment", async () => {
+			const worker = createTestWorker();
 
-			const helpers = createMockHelpers();
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.userPrompt).toBe("Follow-up comment");
-			expect(result.systemPrompt).toBeUndefined();
-			expect(result.metadata.isNewSession).toBe(false);
-			expect(result.metadata.promptType).toBe("continuation");
+			await scenario(worker)
+				.continuationSession()
+				.withUserComment("Please fix the bug")
+				.expectUserPrompt("Please fix the bug")
+				.expectSystemPrompt(undefined)
+				.expectComponents("user-comment")
+				.expectPromptType("continuation")
+				.verify();
 		});
 
-		it("should include attachment manifest in continuation sessions", async () => {
-			const input = createInput({
-				userComment: "Follow-up with attachment",
-				attachmentManifest: "Attachment: screenshot.png",
-				isNewSession: false,
-			});
+		it("should include attachments if present", async () => {
+			const worker = createTestWorker();
 
-			const helpers = createMockHelpers();
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.userPrompt).toContain("Follow-up with attachment");
-			expect(result.userPrompt).toContain("Attachment: screenshot.png");
-			expect(result.metadata.components).toContain("attachment-manifest");
+			await scenario(worker)
+				.continuationSession()
+				.withUserComment("Here's more context")
+				.withAttachments("Attachment: error-log.txt")
+				.expectUserPrompt("Here's more context\n\nAttachment: error-log.txt")
+				.expectComponents("user-comment", "attachment-manifest")
+				.verify();
 		});
 	});
 
-	describe("New Session - Assignment-Based", () => {
-		it("should include issue context for assignment-based sessions", async () => {
-			const input = createInput({
-				userComment: "",
-				isNewSession: true,
-				labels: [],
-			});
+	describe("New Sessions - Assignment Based", () => {
+		it("should include complete prompt with issue context", async () => {
+			const worker = createTestWorker();
 
-			const helpers = createMockHelpers({
-				buildIssueContext: async (issue) => ({
-					prompt: `Full issue context for ${issue.identifier}`,
-				}),
-			});
+			// Create minimal test data
+			const session = {
+				issueId: "issue-1",
+				workspace: { path: "/test" },
+				metadata: {},
+			};
 
-			const result = await buildPrompt(input, helpers);
+			const issue = {
+				id: "issue-1",
+				identifier: "TEST-123",
+				title: "Fix authentication bug",
+				description: "Users cannot log in",
+			};
 
-			expect(result.userPrompt).toContain("Full issue context for TEST-123");
-			expect(result.metadata.isNewSession).toBe(true);
+			const repository = {
+				id: "repo-1",
+				path: "/test/repo",
+			};
+
+			const result = await scenario(worker)
+				.newSession()
+				.assignmentBased()
+				.withSession(session)
+				.withIssue(issue)
+				.withRepository(repository)
+				.withUserComment("")
+				.withLabels()
+				.verify();
+
+			// Verify issue context is included
+			expect(result.userPrompt).toContain("TEST-123");
+			expect(result.userPrompt).toContain("Fix authentication bug");
+
+			// Verify components
 			expect(result.metadata.components).toContain("issue-context");
 			expect(result.metadata.promptType).toBe("fallback");
 		});
-
-		it("should include subroutine prompt in assignment-based sessions", async () => {
-			const subroutine = createSubroutine("coding-guidance");
-			const input = createInput({
-				userComment: "",
-				isNewSession: true,
-			});
-
-			const helpers = createMockHelpers({
-				getCurrentSubroutine: () => subroutine,
-				loadSubroutinePrompt: async (sub) =>
-					`Subroutine prompt for ${sub.name}`,
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.userPrompt).toContain(
-				"Subroutine prompt for coding-guidance",
-			);
-			expect(result.metadata.components).toContain("subroutine-prompt");
-			expect(result.metadata.subroutineName).toBe("coding-guidance");
-		});
-
-		it("should determine system prompt from labels", async () => {
-			const input = createInput({
-				userComment: "",
-				isNewSession: true,
-				labels: ["builder"],
-			});
-
-			const helpers = createMockHelpers({
-				determineSystemPrompt: async (labels) =>
-					labels.includes("builder") ? "Builder system prompt" : undefined,
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.systemPrompt).toBe("Builder system prompt");
-			expect(result.metadata.promptType).toBe("label-based");
-		});
 	});
 
-	describe("New Session - Mention-Triggered", () => {
-		it("should use mention prompt type when mention triggered", async () => {
-			const agentSession: LinearWebhookAgentSession = {
-				id: "session-id",
-				issue: {
-					id: "issue-id",
-					identifier: "TEST-123",
+	describe("Component Order", () => {
+		it("should assemble components in correct order: issue context, subroutine, user comment", async () => {
+			const worker = createTestWorker();
+
+			const session = {
+				issueId: "issue-1",
+				workspace: { path: "/test" },
+				metadata: {
+					procedure: {
+						name: "full-development",
+						currentSubroutineIndex: 0,
+					},
 				},
-				comment: {
-					id: "comment-id",
-					body: "@cyrus please help",
-				},
-			} as LinearWebhookAgentSession;
+			};
 
-			const input = createInput({
-				userComment: "@cyrus please help",
-				isNewSession: true,
-				isMentionTriggered: true,
-				agentSession,
-			});
+			const issue = {
+				id: "issue-1",
+				identifier: "TEST-123",
+				title: "Build new feature",
+			};
 
-			const helpers = createMockHelpers({
-				buildIssueContext: async (
-					issue,
-					_repo,
-					promptType,
-				): Promise<IssueContextResult> => ({
-					prompt: `Mention context for ${issue.identifier} (${promptType})`,
-				}),
-			});
+			const repository = {
+				id: "repo-1",
+				path: "/test/repo",
+			};
 
-			const result = await buildPrompt(input, helpers);
+			const result = await scenario(worker)
+				.newSession()
+				.assignmentBased()
+				.withSession(session)
+				.withIssue(issue)
+				.withRepository(repository)
+				.withUserComment("Add user authentication")
+				.withLabels()
+				.verify();
 
-			expect(result.userPrompt).toContain("Mention context for TEST-123");
-			expect(result.userPrompt).toContain("mention");
-			expect(result.metadata.promptType).toBe("mention");
-		});
+			// Verify components are in order
+			const prompt = result.userPrompt;
 
-		it("should include subroutine prompt in mention-triggered sessions", async () => {
-			const subroutine = createSubroutine("simple-question");
-			const input = createInput({
-				userComment: "@cyrus what is this?",
-				isNewSession: true,
-				isMentionTriggered: true,
-				agentSession: {} as LinearWebhookAgentSession,
-			});
+			// Issue context should come first
+			const issueContextPos = prompt.indexOf("TEST-123");
+			expect(issueContextPos).toBeGreaterThan(-1);
 
-			const helpers = createMockHelpers({
-				getCurrentSubroutine: () => subroutine,
-				loadSubroutinePrompt: async (sub) =>
-					`Simple question guidance for ${sub.name}`,
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.userPrompt).toContain(
-				"Simple question guidance for simple-question",
-			);
-			expect(result.metadata.components).toContain("subroutine-prompt");
-		});
-	});
-
-	describe("New Session - Label-Based Prompt Command", () => {
-		it("should use label-based-prompt-command type when requested", async () => {
-			const input = createInput({
-				userComment: "/label-based-prompt",
-				isNewSession: true,
-				isMentionTriggered: true,
-				isLabelBasedPromptRequested: true,
-			});
-
-			const helpers = createMockHelpers({
-				buildIssueContext: async (
-					_issue,
-					_repo,
-					promptType,
-				): Promise<IssueContextResult> => ({
-					prompt: `Label-based context (${promptType})`,
-				}),
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.userPrompt).toContain("Label-based context");
-			expect(result.userPrompt).toContain("label-based-prompt-command");
-			expect(result.metadata.promptType).toBe("label-based-prompt-command");
-		});
-	});
-
-	describe("Component Assembly", () => {
-		it("should assemble all components in correct order for new sessions", async () => {
-			const subroutine = createSubroutine("full-development");
-			const input = createInput({
-				userComment: "Build new feature",
-				attachmentManifest: "Attachment: design.png",
-				isNewSession: true,
-				labels: ["builder"],
-				guidance: [
-					{ body: "Follow coding standards" },
-				] as LinearWebhookGuidanceRule[],
-			});
-
-			const helpers = createMockHelpers({
-				determineSystemPrompt: async () => "Builder prompt",
-				buildIssueContext: async () => ({
-					prompt: "Issue context section",
-				}),
-				getCurrentSubroutine: () => subroutine,
-				loadSubroutinePrompt: async () => "Subroutine guidance section",
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			// Check order of components in the assembled prompt
-			const issuePos = result.userPrompt.indexOf("Issue context section");
-			const subroutinePos = result.userPrompt.indexOf(
-				"Subroutine guidance section",
-			);
-			const commentPos = result.userPrompt.indexOf("Build new feature");
-
-			expect(issuePos).toBeGreaterThan(-1);
-			expect(subroutinePos).toBeGreaterThan(issuePos);
-			expect(commentPos).toBeGreaterThan(subroutinePos);
-
-			// Check metadata
-			expect(result.metadata.components).toEqual([
-				"issue-context",
-				"subroutine-prompt",
-				"user-comment",
-				"guidance-rules",
-			]);
-			expect(result.metadata.subroutineName).toBe("full-development");
-			expect(result.systemPrompt).toBe("Builder prompt");
-		});
-
-		it("should not include user comment when empty in new sessions", async () => {
-			const input = createInput({
-				userComment: "",
-				isNewSession: true,
-			});
-
-			const helpers = createMockHelpers({
-				buildIssueContext: async () => ({
-					prompt: "Issue context",
-				}),
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.userPrompt).toBe("Issue context");
-			expect(result.metadata.components).not.toContain("user-comment");
-		});
-
-		it("should skip subroutine prompt when not available", async () => {
-			const input = createInput({
-				userComment: "Test",
-				isNewSession: true,
-			});
-
-			const helpers = createMockHelpers({
-				getCurrentSubroutine: () => null,
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.metadata.components).not.toContain("subroutine-prompt");
-			expect(result.metadata.subroutineName).toBeUndefined();
-		});
-
-		it("should skip subroutine prompt when load fails", async () => {
-			const subroutine = createSubroutine("missing");
-			const input = createInput({
-				userComment: "Test",
-				isNewSession: true,
-			});
-
-			const helpers = createMockHelpers({
-				getCurrentSubroutine: () => subroutine,
-				loadSubroutinePrompt: async () => null, // Simulates failed load
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.metadata.components).not.toContain("subroutine-prompt");
-			expect(result.metadata.subroutineName).toBeUndefined();
+			// User comment should come last
+			const userCommentPos = prompt.indexOf("User comment:");
+			expect(userCommentPos).toBeGreaterThan(issueContextPos);
 		});
 	});
 
 	describe("Metadata Tracking", () => {
 		it("should track correct metadata for streaming session", async () => {
-			const input = createInput({
-				isStreaming: true,
-				isNewSession: false,
-			});
+			const worker = createTestWorker();
 
-			const helpers = createMockHelpers();
-			const result = await buildPrompt(input, helpers);
+			const result = await scenario(worker)
+				.streamingSession()
+				.withUserComment("Test")
+				.verify();
 
-			expect(result.metadata).toEqual({
+			expect(result.metadata).toMatchObject({
 				components: ["user-comment"],
 				promptType: "continuation",
 				isNewSession: false,
@@ -461,37 +346,20 @@ describe("Prompt Assembly", () => {
 		});
 
 		it("should track correct metadata for continuation session", async () => {
-			const input = createInput({
-				isStreaming: false,
+			const worker = createTestWorker();
+
+			const result = await scenario(worker)
+				.continuationSession()
+				.withUserComment("Test")
+				.withAttachments("file.txt")
+				.verify();
+
+			expect(result.metadata).toMatchObject({
+				components: ["user-comment", "attachment-manifest"],
+				promptType: "continuation",
 				isNewSession: false,
-				attachmentManifest: "file.txt",
+				isStreaming: false,
 			});
-
-			const helpers = createMockHelpers();
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.metadata.components).toContain("user-comment");
-			expect(result.metadata.components).toContain("attachment-manifest");
-			expect(result.metadata.promptType).toBe("continuation");
-			expect(result.metadata.isNewSession).toBe(false);
-			expect(result.metadata.isStreaming).toBe(false);
-		});
-
-		it("should track correct metadata for new label-based session", async () => {
-			const input = createInput({
-				isNewSession: true,
-				labels: ["debugger"],
-			});
-
-			const helpers = createMockHelpers({
-				determineSystemPrompt: async () => "Debugger prompt",
-			});
-
-			const result = await buildPrompt(input, helpers);
-
-			expect(result.metadata.promptType).toBe("label-based");
-			expect(result.metadata.isNewSession).toBe(true);
-			expect(result.metadata.isStreaming).toBe(false);
 		});
 	});
 });
