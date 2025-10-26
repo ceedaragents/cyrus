@@ -240,8 +240,8 @@ describe("Prompt Assembly", () => {
 		});
 	});
 
-	describe("New Sessions - Assignment Based", () => {
-		it("should include complete prompt with issue context", async () => {
+	describe("New Sessions", () => {
+		it("assignment-based (no labels) - should have undefined system prompt", async () => {
 			const worker = createTestWorker();
 
 			// Create minimal test data
@@ -271,10 +271,9 @@ describe("Prompt Assembly", () => {
 				.withRepository(repository)
 				.withUserComment("")
 				.withLabels()
+				.expectSystemPrompt(undefined)
+				.expectPromptType("fallback")
 				.verify();
-
-			// Verify system prompt is undefined for assignment without labels
-			expect(result.systemPrompt).toBeUndefined();
 
 			// Verify issue context is included in full prompt
 			expect(result.userPrompt).toContain("TEST-123");
@@ -282,7 +281,48 @@ describe("Prompt Assembly", () => {
 
 			// Verify components
 			expect(result.metadata.components).toContain("issue-context");
-			expect(result.metadata.promptType).toBe("fallback");
+		});
+
+		it("assignment-based (with user comment) - should include user comment in prompt", async () => {
+			const worker = createTestWorker();
+
+			// Create minimal test data
+			const session = {
+				issueId: "issue-1",
+				workspace: { path: "/test" },
+				metadata: {},
+			};
+
+			const issue = {
+				id: "issue-1",
+				identifier: "TEST-456",
+				title: "Implement new feature",
+				description: "Add payment processing",
+			};
+
+			const repository = {
+				id: "repo-1",
+				path: "/test/repo",
+			};
+
+			const result = await scenario(worker)
+				.newSession()
+				.assignmentBased()
+				.withSession(session)
+				.withIssue(issue)
+				.withRepository(repository)
+				.withUserComment("Please add Stripe integration")
+				.withLabels()
+				.expectSystemPrompt(undefined)
+				.expectPromptType("fallback")
+				.verify();
+
+			// Verify issue context is included in full prompt
+			expect(result.userPrompt).toContain("TEST-456");
+			expect(result.userPrompt).toContain("Implement new feature");
+			expect(result.userPrompt).toContain(
+				"User comment: Please add Stripe integration",
+			);
 		});
 	});
 
@@ -320,10 +360,9 @@ describe("Prompt Assembly", () => {
 				.withRepository(repository)
 				.withUserComment("Add user authentication")
 				.withLabels()
+				.expectSystemPrompt(undefined)
+				.expectPromptType("fallback")
 				.verify();
-
-			// Verify system prompt is undefined for assignment without labels
-			expect(result.systemPrompt).toBeUndefined();
 
 			// Verify full prompt structure and components are in order
 			const prompt = result.userPrompt;
@@ -343,6 +382,54 @@ describe("Prompt Assembly", () => {
 		});
 	});
 
+	describe("System Prompt Behavior", () => {
+		it("should show explicit expectation for defined system prompt", async () => {
+			const worker = createTestWorker();
+
+			const session = {
+				issueId: "issue-1",
+				workspace: { path: "/test" },
+				metadata: {},
+			};
+
+			const issue = {
+				id: "issue-1",
+				identifier: "TEST-SYSTEM",
+				title: "Task with system prompt",
+				description: "Example task",
+			};
+
+			const repository = {
+				id: "repo-1",
+				path: "/test/repo",
+			};
+
+			// This test demonstrates the pattern for checking a defined system prompt
+			// In practice, system prompts are only returned when:
+			// 1. Labels match a template in determineSystemPromptFromLabels()
+			// 2. Assignment-based (not mention) OR /label-based-prompt command
+			const result = await scenario(worker)
+				.newSession()
+				.assignmentBased()
+				.withSession(session)
+				.withIssue(issue)
+				.withRepository(repository)
+				.withUserComment("")
+				.withLabels()
+				.expectSystemPrompt(undefined) // This would be a string if labels matched
+				.expectPromptType("fallback")
+				.verify();
+
+			// This demonstrates how to check for a defined system prompt
+			// In a real scenario with matching labels:
+			// expect(result.systemPrompt).toBeDefined();
+			// expect(result.systemPrompt).toContain("expected content");
+
+			// For this test with no matching labels:
+			expect(result.systemPrompt).toBeUndefined();
+		});
+	});
+
 	describe("Metadata Tracking", () => {
 		it("should track correct metadata for streaming session", async () => {
 			const worker = createTestWorker();
@@ -350,13 +437,10 @@ describe("Prompt Assembly", () => {
 			const result = await scenario(worker)
 				.streamingSession()
 				.withUserComment("Test")
+				.expectUserPrompt("Test")
+				.expectSystemPrompt(undefined)
+				.expectPromptType("continuation")
 				.verify();
-
-			// Verify system prompt is undefined
-			expect(result.systemPrompt).toBeUndefined();
-
-			// Verify full user prompt
-			expect(result.userPrompt).toBe("Test");
 
 			// Verify metadata
 			expect(result.metadata).toMatchObject({
@@ -374,13 +458,10 @@ describe("Prompt Assembly", () => {
 				.continuationSession()
 				.withUserComment("Test")
 				.withAttachments("file.txt")
+				.expectUserPrompt("Test\n\nfile.txt")
+				.expectSystemPrompt(undefined)
+				.expectPromptType("continuation")
 				.verify();
-
-			// Verify system prompt is undefined
-			expect(result.systemPrompt).toBeUndefined();
-
-			// Verify full user prompt
-			expect(result.userPrompt).toBe("Test\n\nfile.txt");
 
 			// Verify metadata
 			expect(result.metadata).toMatchObject({
