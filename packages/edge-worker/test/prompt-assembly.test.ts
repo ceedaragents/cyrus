@@ -383,7 +383,7 @@ describe("Prompt Assembly", () => {
 	});
 
 	describe("System Prompt Behavior", () => {
-		it("should show explicit expectation for defined system prompt", async () => {
+		it("should return undefined system prompt when no labels configured", async () => {
 			const worker = createTestWorker();
 
 			const session = {
@@ -395,7 +395,7 @@ describe("Prompt Assembly", () => {
 			const issue = {
 				id: "issue-1",
 				identifier: "TEST-SYSTEM",
-				title: "Task with system prompt",
+				title: "Task without system prompt",
 				description: "Example task",
 			};
 
@@ -404,11 +404,7 @@ describe("Prompt Assembly", () => {
 				path: "/test/repo",
 			};
 
-			// This test demonstrates the pattern for checking a defined system prompt
-			// In practice, system prompts are only returned when:
-			// 1. Labels match a template in determineSystemPromptFromLabels()
-			// 2. Assignment-based (not mention) OR /label-based-prompt command
-			const result = await scenario(worker)
+			await scenario(worker)
 				.newSession()
 				.assignmentBased()
 				.withSession(session)
@@ -416,17 +412,60 @@ describe("Prompt Assembly", () => {
 				.withRepository(repository)
 				.withUserComment("")
 				.withLabels()
-				.expectSystemPrompt(undefined) // This would be a string if labels matched
+				.expectSystemPrompt(undefined)
 				.expectPromptType("fallback")
 				.verify();
+		});
 
-			// This demonstrates how to check for a defined system prompt
-			// In a real scenario with matching labels:
-			// expect(result.systemPrompt).toBeDefined();
-			// expect(result.systemPrompt).toContain("expected content");
+		it("should return defined system prompt when labels match configuration", async () => {
+			// Create repository with labelPrompts configuration
+			const repository = {
+				id: "repo-1",
+				path: "/test/repo",
+				linearToken: "test-token-123", // Mock token for testing
+				labelPrompts: {
+					builder: ["feature", "enhancement"],
+					debugger: ["bug", "hotfix"],
+				},
+			};
 
-			// For this test with no matching labels:
-			expect(result.systemPrompt).toBeUndefined();
+			const worker = createTestWorker([repository]);
+
+			const session = {
+				issueId: "issue-1",
+				workspace: { path: "/test" },
+				metadata: {},
+			};
+
+			const issue = {
+				id: "issue-1",
+				identifier: "TEST-WITH-PROMPT",
+				title: "Feature with builder prompt",
+				description: "Task that should trigger builder system prompt",
+			};
+
+			const result = await scenario(worker)
+				.newSession()
+				.assignmentBased()
+				.withSession(session)
+				.withIssue(issue)
+				.withRepository(repository)
+				.withUserComment("Build the payment integration")
+				.withLabels("feature")
+				.expectPromptType("label-based")
+				.verify();
+
+			// Verify system prompt is defined when labels match
+			expect(result.systemPrompt).toBeDefined();
+			expect(typeof result.systemPrompt).toBe("string");
+			expect(result.systemPrompt?.length).toBeGreaterThan(0);
+
+			// Verify user prompt contains expected content
+			expect(result.userPrompt).toContain("TEST-WITH-PROMPT");
+			expect(result.userPrompt).toContain("Feature with builder prompt");
+			expect(result.userPrompt).toContain(
+				"User comment: Build the payment integration",
+			);
 		});
 	});
 
