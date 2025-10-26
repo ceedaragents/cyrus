@@ -67,8 +67,9 @@ import {
 } from "./procedures/index.js";
 import {
 	buildPrompt,
-	type PromptAssemblyHelpers,
+	type IssueContextResult,
 	type PromptAssemblyInput,
+	type PromptType,
 } from "./prompt-assembly/index.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
@@ -1638,83 +1639,6 @@ export class EdgeWorker extends EventEmitter {
 			finalClassification,
 		);
 
-		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
-		let systemPrompt: string | undefined;
-		let systemPromptVersion: string | undefined;
-		let promptType:
-			| "debugger"
-			| "builder"
-			| "scoper"
-			| "orchestrator"
-			| undefined;
-
-		if (!isMentionTriggered || isLabelBasedPromptRequested) {
-			// Determine system prompt based on labels (delegation case or /label-based-prompt command)
-			const systemPromptResult = await this.determineSystemPromptFromLabels(
-				labels,
-				repository,
-			);
-			systemPrompt = systemPromptResult?.prompt;
-			systemPromptVersion = systemPromptResult?.version;
-			promptType = systemPromptResult?.type;
-
-			// Post thought about system prompt selection
-			if (systemPrompt) {
-				await this.postSystemPromptSelectionThought(
-					linearAgentActivitySessionId,
-					labels,
-					repository.id,
-				);
-			}
-		} else {
-			console.log(
-				`[EdgeWorker] Skipping system prompt for mention-triggered session ${linearAgentActivitySessionId}`,
-			);
-		}
-
-		// Build allowed tools list with Linear MCP tools (now with prompt type context)
-		const allowedTools = this.buildAllowedTools(repository, promptType);
-		const disallowedTools = this.buildDisallowedTools(repository, promptType);
-
-		console.log(
-			`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
-			allowedTools,
-		);
-		if (disallowedTools.length > 0) {
-			console.log(
-				`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
-				disallowedTools,
-			);
-		}
-
-		// Create Claude runner with attachment directory access and optional system prompt
-		const runnerConfig = this.buildClaudeRunnerConfig(
-			session,
-			repository,
-			linearAgentActivitySessionId,
-			systemPrompt,
-			allowedTools,
-			allowedDirectories,
-			disallowedTools,
-			undefined, // resumeSessionId
-			labels, // Pass labels for model override
-		);
-		const runner = new ClaudeRunner(runnerConfig);
-
-		// Store runner by comment ID
-		agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
-
-		// Save state after mapping changes
-		await this.savePersistedState();
-
-		// Emit events using full Linear issue
-		this.emit("session:started", fullIssue.id, fullIssue, repository.id);
-		this.config.handlers?.onSessionStart?.(
-			fullIssue.id,
-			fullIssue,
-			repository.id,
-		);
-
 		// Build and start Claude with initial prompt using full issue (streaming mode)
 		console.log(
 			`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`,
@@ -1736,12 +1660,87 @@ export class EdgeWorker extends EventEmitter {
 				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
 			};
 
-			// Use unified prompt assembly
-			const helpers = this.createPromptAssemblyHelpers();
-			const assembly = await buildPrompt(input, helpers);
+			// Use unified prompt assembly with EdgeWorker instance methods as helpers
+			const assembly = await buildPrompt(input, {
+				determineSystemPrompt: this.determineSystemPromptForAssembly.bind(this),
+				buildIssueContext: this.buildIssueContextForPromptAssembly.bind(this),
+				getCurrentSubroutine: this.procedureRouter.getCurrentSubroutine.bind(
+					this.procedureRouter,
+				),
+				loadSubroutinePrompt: this.loadSubroutinePrompt.bind(this),
+			});
+
+			// Get systemPromptVersion for tracking (TODO: add to PromptAssembly metadata)
+			let systemPromptVersion: string | undefined;
+			let promptType:
+				| "debugger"
+				| "builder"
+				| "scoper"
+				| "orchestrator"
+				| undefined;
+
+			if (!isMentionTriggered || isLabelBasedPromptRequested) {
+				const systemPromptResult = await this.determineSystemPromptFromLabels(
+					labels,
+					repository,
+				);
+				systemPromptVersion = systemPromptResult?.version;
+				promptType = systemPromptResult?.type;
+
+				// Post thought about system prompt selection
+				if (assembly.systemPrompt) {
+					await this.postSystemPromptSelectionThought(
+						linearAgentActivitySessionId,
+						labels,
+						repository.id,
+					);
+				}
+			}
+
+			// Build allowed tools list with Linear MCP tools (now with prompt type context)
+			const allowedTools = this.buildAllowedTools(repository, promptType);
+			const disallowedTools = this.buildDisallowedTools(repository, promptType);
+
+			console.log(
+				`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
+				allowedTools,
+			);
+			if (disallowedTools.length > 0) {
+				console.log(
+					`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
+					disallowedTools,
+				);
+			}
+
+			// Create Claude runner with system prompt from assembly
+			const runnerConfig = this.buildClaudeRunnerConfig(
+				session,
+				repository,
+				linearAgentActivitySessionId,
+				assembly.systemPrompt,
+				allowedTools,
+				allowedDirectories,
+				disallowedTools,
+				undefined, // resumeSessionId
+				labels, // Pass labels for model override
+			);
+			const runner = new ClaudeRunner(runnerConfig);
+
+			// Store runner by comment ID
+			agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
+
+			// Save state after mapping changes
+			await this.savePersistedState();
+
+			// Emit events using full Linear issue
+			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			this.config.handlers?.onSessionStart?.(
+				fullIssue.id,
+				fullIssue,
+				repository.id,
+			);
 
 			// Update runner with version information (if available)
-			// Note: Version tracking will need to be added to PromptAssembly metadata in future
 			if (systemPromptVersion) {
 				runner.updatePromptVersions({
 					systemPromptVersion,
@@ -3723,9 +3722,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			labels,
 		};
 
-		// Use unified prompt assembly
-		const helpers = this.createPromptAssemblyHelpers();
-		const assembly = await buildPrompt(input, helpers);
+		// Use unified prompt assembly with EdgeWorker instance methods as helpers
+		const assembly = await buildPrompt(input, {
+			determineSystemPrompt: this.determineSystemPromptForAssembly.bind(this),
+			buildIssueContext: this.buildIssueContextForPromptAssembly.bind(this),
+			getCurrentSubroutine: this.procedureRouter.getCurrentSubroutine.bind(
+				this.procedureRouter,
+			),
+			loadSubroutinePrompt: this.loadSubroutinePrompt.bind(this),
+		});
 
 		// Log metadata for debugging
 		console.log(
@@ -3766,70 +3771,63 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Create prompt assembly helpers adapter
-	 * Bridges the new unified prompt assembly interface with existing EdgeWorker methods
+	 * Adapter method for prompt assembly - extracts just the prompt string
 	 */
-	private createPromptAssemblyHelpers(): PromptAssemblyHelpers {
-		return {
-			determineSystemPrompt: async (labels, repository) => {
-				const result = await this.determineSystemPromptFromLabels(
-					labels,
-					repository,
-				);
-				return result?.prompt;
-			},
+	private async determineSystemPromptForAssembly(
+		labels: string[],
+		repository: RepositoryConfig,
+	): Promise<string | undefined> {
+		const result = await this.determineSystemPromptFromLabels(
+			labels,
+			repository,
+		);
+		return result?.prompt;
+	}
 
-			buildIssueContext: async (
+	/**
+	 * Adapter method for prompt assembly - routes to appropriate issue context builder
+	 */
+	private async buildIssueContextForPromptAssembly(
+		issue: LinearIssue,
+		repository: RepositoryConfig,
+		promptType: PromptType,
+		attachmentManifest?: string,
+		guidance?: LinearWebhookGuidanceRule[],
+		agentSession?: LinearWebhookAgentSession,
+	): Promise<IssueContextResult> {
+		// Delegate to appropriate builder based on promptType
+		if (promptType === "mention") {
+			if (!agentSession) {
+				throw new Error(
+					"agentSession is required for mention-triggered prompts",
+				);
+			}
+			return this.buildMentionPrompt(
 				issue,
-				repository,
-				promptType,
+				agentSession,
 				attachmentManifest,
 				guidance,
-				agentSession,
-			) => {
-				// Delegate to appropriate builder based on promptType
-				if (promptType === "mention") {
-					if (!agentSession) {
-						throw new Error(
-							"agentSession is required for mention-triggered prompts",
-						);
-					}
-					return this.buildMentionPrompt(
-						issue,
-						agentSession,
-						attachmentManifest,
-						guidance,
-					);
-				} else if (
-					promptType === "label-based" ||
-					promptType === "label-based-prompt-command"
-				) {
-					return this.buildLabelBasedPrompt(
-						issue,
-						repository,
-						attachmentManifest,
-						guidance,
-					);
-				} else {
-					// Fallback to standard issue context
-					return this.buildIssueContextPrompt(
-						issue,
-						repository,
-						undefined, // No new comment for initial prompt assembly
-						attachmentManifest,
-						guidance,
-					);
-				}
-			},
-
-			getCurrentSubroutine: (session) => {
-				return this.procedureRouter.getCurrentSubroutine(session);
-			},
-
-			loadSubroutinePrompt: async (subroutine) => {
-				return this.loadSubroutinePrompt(subroutine);
-			},
-		};
+			);
+		}
+		if (
+			promptType === "label-based" ||
+			promptType === "label-based-prompt-command"
+		) {
+			return this.buildLabelBasedPrompt(
+				issue,
+				repository,
+				attachmentManifest,
+				guidance,
+			);
+		}
+		// Fallback to standard issue context
+		return this.buildIssueContextPrompt(
+			issue,
+			repository,
+			undefined, // No new comment for initial prompt assembly
+			attachmentManifest,
+			guidance,
+		);
 	}
 
 	/**

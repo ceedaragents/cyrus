@@ -31,7 +31,7 @@ import type {
  * - Streaming sessions: pass through user comment as-is
  *
  * @param input - All information needed to assemble the prompt
- * @param helpers - Injected helper functions (for testability)
+ * @param helpers - Helper functions for accessing EdgeWorker methods (for testability)
  * @returns Complete prompt assembly with metadata
  */
 export async function buildPrompt(
@@ -91,10 +91,14 @@ async function buildNewSessionPrompt(
 	const parts: string[] = [];
 
 	// 1. Determine system prompt from labels
-	const systemPrompt = await helpers.determineSystemPrompt(
-		input.labels || [],
-		input.repository,
-	);
+	// Only for delegation (not mentions) or when /label-based-prompt is requested
+	let systemPrompt: string | undefined;
+	if (!input.isMentionTriggered || input.isLabelBasedPromptRequested) {
+		systemPrompt = await helpers.determineSystemPrompt(
+			input.labels || [],
+			input.repository,
+		);
+	}
 
 	// 2. Build issue context using appropriate builder
 	const promptType = determinePromptType(input, !!systemPrompt);
@@ -112,12 +116,14 @@ async function buildNewSessionPrompt(
 
 	// 3. Load and append initial subroutine prompt
 	const currentSubroutine = helpers.getCurrentSubroutine(input.session);
+	let subroutineName: string | undefined;
 	if (currentSubroutine) {
 		const subroutinePrompt =
 			await helpers.loadSubroutinePrompt(currentSubroutine);
 		if (subroutinePrompt) {
 			parts.push(subroutinePrompt);
 			components.push("subroutine-prompt");
+			subroutineName = currentSubroutine.name;
 		}
 	}
 
@@ -137,7 +143,7 @@ async function buildNewSessionPrompt(
 		userPrompt: parts.join("\n\n"),
 		metadata: {
 			components,
-			subroutineName: currentSubroutine?.name,
+			subroutineName,
 			promptType,
 			isNewSession: true,
 			isStreaming: false,
