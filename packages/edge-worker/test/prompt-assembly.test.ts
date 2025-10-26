@@ -248,24 +248,24 @@ Attachment: error-log.txt`)
 
 			// Create minimal test data
 			const session = {
-				issueId: "issue-1",
+				issueId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
 				workspace: { path: "/test" },
 				metadata: {},
 			};
 
 			const issue = {
-				id: "issue-1",
-				identifier: "TEST-123",
+				id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+				identifier: "CEE-123",
 				title: "Fix authentication bug",
 				description: "Users cannot log in",
 			};
 
 			const repository = {
-				id: "repo-1",
+				id: "repo-uuid-1234-5678-90ab-cdef12345678",
 				path: "/test/repo",
 			};
 
-			const result = await scenario(worker)
+			await scenario(worker)
 				.newSession()
 				.assignmentBased()
 				.withSession(session)
@@ -273,16 +273,89 @@ Attachment: error-log.txt`)
 				.withRepository(repository)
 				.withUserComment("")
 				.withLabels()
+				.expectUserPrompt(`You are a masterful software engineer contributing to the undefined project.
+
+<context>
+  <repository>undefined</repository>
+  <working_directory>undefined</working_directory>
+  <base_branch>undefined</base_branch>
+</context>
+
+<linear_issue>
+  <id>a1b2c3d4-e5f6-7890-abcd-ef1234567890</id>
+  <identifier>CEE-123</identifier>
+  <title>Fix authentication bug</title>
+  <description>
+Users cannot log in
+  </description>
+  <state>Unknown</state>
+  <priority>None</priority>
+  <url></url>
+</linear_issue>
+
+<linear_comments>
+No comments yet.
+</linear_comments>
+
+
+
+<task_management_instructions>
+CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
+- IMMEDIATELY create a comprehensive task list at the beginning of your work
+- Break down complex tasks into smaller, actionable items
+- Mark tasks as 'in_progress' when you start them
+- Mark tasks as 'completed' immediately after finishing them
+- Only have ONE task 'in_progress' at a time
+- Add new tasks as you discover them during your work
+- Your first response should focus on creating a thorough task breakdown
+
+Remember: Your first message is internal planning. Use this time to:
+1. Thoroughly analyze the 
+2. Create detailed todos using TodoWrite
+3. Plan your approach systematically
+</task_management_instructions>
+
+<situation_assessment>
+YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
+
+**Situation 1 - Execute**: Clear problem definition AND clear solution definition
+- Look for specific acceptance criteria, clear requirements, well-defined outcomes
+- Action: Create implementation tasks and execute
+
+**Situation 2 - Clarify**: Vague problem or unclear acceptance criteria  
+- Look for ambiguities, missing requirements, unclear goals
+- Action: Create investigation tasks and ask clarifying questions
+</situation_assessment>
+
+<execution_instructions>
+### If Situation 1 (Execute):
+1. Use TodoWrite to create tasks including:
+   - Understanding current branch status
+   - Implementation tasks (by component/feature)
+   - Testing tasks
+
+2. Check branch status:
+   \`\`\`
+   git diff undefined...HEAD
+   \`\`\`
+
+3. Work through tasks systematically
+4. Ensure code quality throughout implementation
+
+### If Situation 2 (Clarify):
+1. Use TodoWrite to create investigation tasks
+2. Explore codebase for context
+3. DO NOT make code changes
+4. Provide clear summary of:
+   - What you understand
+   - What needs clarification
+   - Specific questions
+   - Suggested acceptance criteria
+</execution_instructions>`)
 				.expectSystemPrompt(undefined)
 				.expectPromptType("fallback")
+				.expectComponents("issue-context")
 				.verify();
-
-			// Verify issue context is included in full prompt
-			expect(result.userPrompt).toContain("TEST-123");
-			expect(result.userPrompt).toContain("Fix authentication bug");
-
-			// Verify components
-			expect(result.metadata.components).toContain("issue-context");
 		});
 
 		it("assignment-based (with user comment) - should include user comment in prompt", async () => {
@@ -290,24 +363,24 @@ Attachment: error-log.txt`)
 
 			// Create minimal test data
 			const session = {
-				issueId: "issue-1",
+				issueId: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
 				workspace: { path: "/test" },
 				metadata: {},
 			};
 
 			const issue = {
-				id: "issue-1",
-				identifier: "TEST-456",
+				id: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+				identifier: "CEE-456",
 				title: "Implement new feature",
 				description: "Add payment processing",
 			};
 
 			const repository = {
-				id: "repo-1",
+				id: "repo-uuid-2345-6789-01bc-def123456789",
 				path: "/test/repo",
 			};
 
-			const result = await scenario(worker)
+			await scenario(worker)
 				.newSession()
 				.assignmentBased()
 				.withSession(session)
@@ -315,16 +388,91 @@ Attachment: error-log.txt`)
 				.withRepository(repository)
 				.withUserComment("Please add Stripe integration")
 				.withLabels()
+				.expectUserPrompt(`You are a masterful software engineer contributing to the undefined project.
+
+<context>
+  <repository>undefined</repository>
+  <working_directory>undefined</working_directory>
+  <base_branch>undefined</base_branch>
+</context>
+
+<linear_issue>
+  <id>b2c3d4e5-f6a7-8901-bcde-f12345678901</id>
+  <identifier>CEE-456</identifier>
+  <title>Implement new feature</title>
+  <description>
+Add payment processing
+  </description>
+  <state>Unknown</state>
+  <priority>None</priority>
+  <url></url>
+</linear_issue>
+
+<linear_comments>
+No comments yet.
+</linear_comments>
+
+
+
+<task_management_instructions>
+CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
+- IMMEDIATELY create a comprehensive task list at the beginning of your work
+- Break down complex tasks into smaller, actionable items
+- Mark tasks as 'in_progress' when you start them
+- Mark tasks as 'completed' immediately after finishing them
+- Only have ONE task 'in_progress' at a time
+- Add new tasks as you discover them during your work
+- Your first response should focus on creating a thorough task breakdown
+
+Remember: Your first message is internal planning. Use this time to:
+1. Thoroughly analyze the 
+2. Create detailed todos using TodoWrite
+3. Plan your approach systematically
+</task_management_instructions>
+
+<situation_assessment>
+YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
+
+**Situation 1 - Execute**: Clear problem definition AND clear solution definition
+- Look for specific acceptance criteria, clear requirements, well-defined outcomes
+- Action: Create implementation tasks and execute
+
+**Situation 2 - Clarify**: Vague problem or unclear acceptance criteria  
+- Look for ambiguities, missing requirements, unclear goals
+- Action: Create investigation tasks and ask clarifying questions
+</situation_assessment>
+
+<execution_instructions>
+### If Situation 1 (Execute):
+1. Use TodoWrite to create tasks including:
+   - Understanding current branch status
+   - Implementation tasks (by component/feature)
+   - Testing tasks
+
+2. Check branch status:
+   \`\`\`
+   git diff undefined...HEAD
+   \`\`\`
+
+3. Work through tasks systematically
+4. Ensure code quality throughout implementation
+
+### If Situation 2 (Clarify):
+1. Use TodoWrite to create investigation tasks
+2. Explore codebase for context
+3. DO NOT make code changes
+4. Provide clear summary of:
+   - What you understand
+   - What needs clarification
+   - Specific questions
+   - Suggested acceptance criteria
+</execution_instructions>
+
+User comment: Please add Stripe integration`)
 				.expectSystemPrompt(undefined)
 				.expectPromptType("fallback")
+				.expectComponents("issue-context", "user-comment")
 				.verify();
-
-			// Verify issue context is included in full prompt
-			expect(result.userPrompt).toContain("TEST-456");
-			expect(result.userPrompt).toContain("Implement new feature");
-			expect(result.userPrompt).toContain(
-				"User comment: Please add Stripe integration",
-			);
 		});
 	});
 
@@ -333,7 +481,7 @@ Attachment: error-log.txt`)
 			const worker = createTestWorker();
 
 			const session = {
-				issueId: "issue-1",
+				issueId: "c3d4e5f6-a7b8-9012-cdef-123456789012",
 				workspace: { path: "/test" },
 				metadata: {
 					procedure: {
@@ -344,17 +492,17 @@ Attachment: error-log.txt`)
 			};
 
 			const issue = {
-				id: "issue-1",
-				identifier: "TEST-123",
+				id: "c3d4e5f6-a7b8-9012-cdef-123456789012",
+				identifier: "CEE-789",
 				title: "Build new feature",
 			};
 
 			const repository = {
-				id: "repo-1",
+				id: "repo-uuid-3456-7890-12cd-ef1234567890",
 				path: "/test/repo",
 			};
 
-			const result = await scenario(worker)
+			await scenario(worker)
 				.newSession()
 				.assignmentBased()
 				.withSession(session)
@@ -362,25 +510,91 @@ Attachment: error-log.txt`)
 				.withRepository(repository)
 				.withUserComment("Add user authentication")
 				.withLabels()
+				.expectUserPrompt(`You are a masterful software engineer contributing to the undefined project.
+
+<context>
+  <repository>undefined</repository>
+  <working_directory>undefined</working_directory>
+  <base_branch>undefined</base_branch>
+</context>
+
+<linear_issue>
+  <id>c3d4e5f6-a7b8-9012-cdef-123456789012</id>
+  <identifier>CEE-789</identifier>
+  <title>Build new feature</title>
+  <description>
+No description provided
+  </description>
+  <state>Unknown</state>
+  <priority>None</priority>
+  <url></url>
+</linear_issue>
+
+<linear_comments>
+No comments yet.
+</linear_comments>
+
+
+
+<task_management_instructions>
+CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
+- IMMEDIATELY create a comprehensive task list at the beginning of your work
+- Break down complex tasks into smaller, actionable items
+- Mark tasks as 'in_progress' when you start them
+- Mark tasks as 'completed' immediately after finishing them
+- Only have ONE task 'in_progress' at a time
+- Add new tasks as you discover them during your work
+- Your first response should focus on creating a thorough task breakdown
+
+Remember: Your first message is internal planning. Use this time to:
+1. Thoroughly analyze the 
+2. Create detailed todos using TodoWrite
+3. Plan your approach systematically
+</task_management_instructions>
+
+<situation_assessment>
+YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
+
+**Situation 1 - Execute**: Clear problem definition AND clear solution definition
+- Look for specific acceptance criteria, clear requirements, well-defined outcomes
+- Action: Create implementation tasks and execute
+
+**Situation 2 - Clarify**: Vague problem or unclear acceptance criteria  
+- Look for ambiguities, missing requirements, unclear goals
+- Action: Create investigation tasks and ask clarifying questions
+</situation_assessment>
+
+<execution_instructions>
+### If Situation 1 (Execute):
+1. Use TodoWrite to create tasks including:
+   - Understanding current branch status
+   - Implementation tasks (by component/feature)
+   - Testing tasks
+
+2. Check branch status:
+   \`\`\`
+   git diff undefined...HEAD
+   \`\`\`
+
+3. Work through tasks systematically
+4. Ensure code quality throughout implementation
+
+### If Situation 2 (Clarify):
+1. Use TodoWrite to create investigation tasks
+2. Explore codebase for context
+3. DO NOT make code changes
+4. Provide clear summary of:
+   - What you understand
+   - What needs clarification
+   - Specific questions
+   - Suggested acceptance criteria
+</execution_instructions>
+
+User comment: Add user authentication`)
 				.expectSystemPrompt(undefined)
 				.expectPromptType("fallback")
+				.expectComponents("issue-context", "user-comment")
 				.verify();
-
-			// Verify full prompt structure and components are in order
-			const prompt = result.userPrompt;
-
-			// Issue context should come first
-			const issueContextPos = prompt.indexOf("TEST-123");
-			expect(issueContextPos).toBeGreaterThan(-1);
-
-			// User comment should come last
-			const userCommentPos = prompt.indexOf("User comment:");
-			expect(userCommentPos).toBeGreaterThan(issueContextPos);
-
-			// Verify full prompt contains all expected parts
-			expect(prompt).toContain("TEST-123");
-			expect(prompt).toContain("Build new feature");
-			expect(prompt).toContain("User comment: Add user authentication");
 		});
 	});
 
@@ -389,20 +603,20 @@ Attachment: error-log.txt`)
 			const worker = createTestWorker();
 
 			const session = {
-				issueId: "issue-1",
+				issueId: "d4e5f6a7-b8c9-0123-def1-234567890123",
 				workspace: { path: "/test" },
 				metadata: {},
 			};
 
 			const issue = {
-				id: "issue-1",
-				identifier: "TEST-SYSTEM",
+				id: "d4e5f6a7-b8c9-0123-def1-234567890123",
+				identifier: "CEE-1000",
 				title: "Task without system prompt",
 				description: "Example task",
 			};
 
 			const repository = {
-				id: "repo-1",
+				id: "repo-uuid-4567-8901-23de-f12345678901",
 				path: "/test/repo",
 			};
 
@@ -422,7 +636,7 @@ Attachment: error-log.txt`)
 		it("should return defined system prompt when labels match configuration", async () => {
 			// Create repository with labelPrompts configuration
 			const repository = {
-				id: "repo-1",
+				id: "repo-uuid-5678-9012-34ef-123456789012",
 				path: "/test/repo",
 				linearToken: "test-token-123", // Mock token for testing
 				labelPrompts: {
@@ -434,14 +648,14 @@ Attachment: error-log.txt`)
 			const worker = createTestWorker([repository]);
 
 			const session = {
-				issueId: "issue-1",
+				issueId: "e5f6a7b8-c9d0-1234-ef12-345678901234",
 				workspace: { path: "/test" },
 				metadata: {},
 			};
 
 			const issue = {
-				id: "issue-1",
-				identifier: "TEST-WITH-PROMPT",
+				id: "e5f6a7b8-c9d0-1234-ef12-345678901234",
+				identifier: "CEE-2000",
 				title: "Feature with builder prompt",
 				description: "Task that should trigger builder system prompt",
 			};
@@ -455,15 +669,18 @@ Attachment: error-log.txt`)
 				.withUserComment("Build the payment integration")
 				.withLabels("feature")
 				.expectPromptType("label-based")
+				.expectComponents("issue-context", "user-comment")
 				.verify();
 
 			// Verify system prompt is defined when labels match
 			expect(result.systemPrompt).toBeDefined();
 			expect(typeof result.systemPrompt).toBe("string");
 			expect(result.systemPrompt?.length).toBeGreaterThan(0);
+			expect(result.systemPrompt).toContain("builder");
+			expect(result.systemPrompt).toContain("Task tool");
 
-			// Verify user prompt contains expected content
-			expect(result.userPrompt).toContain("TEST-WITH-PROMPT");
+			// Verify user prompt structure
+			expect(result.userPrompt).toContain("CEE-2000");
 			expect(result.userPrompt).toContain("Feature with builder prompt");
 			expect(result.userPrompt).toContain(
 				"User comment: Build the payment integration",
