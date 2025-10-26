@@ -204,7 +204,9 @@ describe("Prompt Assembly", () => {
 				.expectUserPrompt(
 					"Review the attached file\n\nAttachment: screenshot.png",
 				)
+				.expectSystemPrompt(undefined)
 				.expectComponents("user-comment", "attachment-manifest")
+				.expectPromptType("continuation")
 				.verify();
 		});
 	});
@@ -231,7 +233,9 @@ describe("Prompt Assembly", () => {
 				.withUserComment("Here's more context")
 				.withAttachments("Attachment: error-log.txt")
 				.expectUserPrompt("Here's more context\n\nAttachment: error-log.txt")
+				.expectSystemPrompt(undefined)
 				.expectComponents("user-comment", "attachment-manifest")
+				.expectPromptType("continuation")
 				.verify();
 		});
 	});
@@ -269,7 +273,10 @@ describe("Prompt Assembly", () => {
 				.withLabels()
 				.verify();
 
-			// Verify issue context is included
+			// Verify system prompt is undefined for assignment without labels
+			expect(result.systemPrompt).toBeUndefined();
+
+			// Verify issue context is included in full prompt
 			expect(result.userPrompt).toContain("TEST-123");
 			expect(result.userPrompt).toContain("Fix authentication bug");
 
@@ -315,7 +322,10 @@ describe("Prompt Assembly", () => {
 				.withLabels()
 				.verify();
 
-			// Verify components are in order
+			// Verify system prompt is undefined for assignment without labels
+			expect(result.systemPrompt).toBeUndefined();
+
+			// Verify full prompt structure and components are in order
 			const prompt = result.userPrompt;
 
 			// Issue context should come first
@@ -325,6 +335,11 @@ describe("Prompt Assembly", () => {
 			// User comment should come last
 			const userCommentPos = prompt.indexOf("User comment:");
 			expect(userCommentPos).toBeGreaterThan(issueContextPos);
+
+			// Verify full prompt contains all expected parts
+			expect(prompt).toContain("TEST-123");
+			expect(prompt).toContain("Build new feature");
+			expect(prompt).toContain("User comment: Add user authentication");
 		});
 	});
 
@@ -337,6 +352,13 @@ describe("Prompt Assembly", () => {
 				.withUserComment("Test")
 				.verify();
 
+			// Verify system prompt is undefined
+			expect(result.systemPrompt).toBeUndefined();
+
+			// Verify full user prompt
+			expect(result.userPrompt).toBe("Test");
+
+			// Verify metadata
 			expect(result.metadata).toMatchObject({
 				components: ["user-comment"],
 				promptType: "continuation",
@@ -354,6 +376,13 @@ describe("Prompt Assembly", () => {
 				.withAttachments("file.txt")
 				.verify();
 
+			// Verify system prompt is undefined
+			expect(result.systemPrompt).toBeUndefined();
+
+			// Verify full user prompt
+			expect(result.userPrompt).toBe("Test\n\nfile.txt");
+
+			// Verify metadata
 			expect(result.metadata).toMatchObject({
 				components: ["user-comment", "attachment-manifest"],
 				promptType: "continuation",
