@@ -71,6 +71,7 @@ Analyze the Linear issue request and classify it into ONE of these categories:
 - Examples: "Can you help with the authentication system?", "I need to improve performance", "Add a new feature for user management"
 - Use when requirements are unclear, missing details, or user asks for a plan/proposal
 - DO NOT use if the request has clear, specific requirements (use "code" instead)
+- DO NOT use for adding/writing tests, fixing tests, or other test-related work (use "code" instead)
 
 **debugger**: User EXPLICITLY requests the full debugging workflow with reproduction and approval.
 - ONLY use this if the user specifically asks for: "debug this with approval workflow", "reproduce the bug first", "show me the root cause before fixing"
@@ -85,6 +86,8 @@ Analyze the Linear issue request and classify it into ONE of these categories:
 **code**: Request involves code changes with clear, specific requirements (DEFAULT for most work).
 - Examples: "Fix bug in X", "Add feature Y", "Refactor module Z", "Implement new API endpoint", "Fix the login issue"
 - Use this for ALL standard bug fixes and features with clear requirements
+- Use this for ALL test-related work: "Add unit tests", "Fix failing tests", "Write test coverage", etc.
+- Use this when user explicitly says "Classify as full development", "classify as code", or similar
 
 IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	}
