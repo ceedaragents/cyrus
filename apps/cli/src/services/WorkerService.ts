@@ -118,6 +118,7 @@ export class WorkerService {
 
 	/**
 	 * Start Cloudflare tunnel client (Pro plan only)
+	 * Requires EdgeWorker to be started first to get SharedApplicationServer
 	 */
 	async startCloudflareClient(params: {
 		onWebhook?: (payload: any) => void;
@@ -142,6 +143,14 @@ export class WorkerService {
 			);
 		}
 
+		// EdgeWorker must be started first to get SharedApplicationServer
+		if (!this.edgeWorker) {
+			throw new Error(
+				"EdgeWorker must be started before Cloudflare tunnel client. " +
+					"This is a programming error - please report this issue.",
+			);
+		}
+
 		this.logger.info("\n🌩️  Starting Cloudflare Tunnel Client");
 		this.logger.divider(50);
 
@@ -150,37 +159,43 @@ export class WorkerService {
 				"cyrus-cloudflare-tunnel-client"
 			);
 
-			const client = new CloudflareTunnelClient({
-				cyrusHome: this.cyrusHome,
-				onWebhook:
-					onWebhook ||
-					((payload) => {
-						this.logger.info("\n📨 Webhook received from Linear");
-						this.logger.info(`Action: ${payload.action || "Unknown"}`);
-						this.logger.info(`Type: ${payload.type || "Unknown"}`);
-						// TODO: Forward webhook to EdgeWorker or handle directly
-					}),
-				onConfigUpdate:
-					onConfigUpdate ||
-					(() => {
-						this.logger.info("\n🔄 Configuration updated from cyrus-hosted");
-					}),
-				onError:
-					onError ||
-					((error) => {
-						this.logger.error(`\nCloudflare client error: ${error.message}`);
-					}),
-				onReady: (tunnelUrl) => {
-					this.logger.success("Cloudflare tunnel established");
-					this.logger.info(`🔗 Tunnel URL: ${tunnelUrl}`);
-					this.logger.divider(50);
-					this.logger.info("\n💎 Pro Plan Active - Using Cloudflare Tunnel");
-					this.logger.info(
-						"🚀 Cyrus is now ready to receive webhooks and config updates",
-					);
-					this.logger.divider(50);
+			// Get SharedApplicationServer from EdgeWorker
+			const sharedServer = this.edgeWorker.getSharedApplicationServer();
+
+			const client = new CloudflareTunnelClient(
+				{
+					cyrusHome: this.cyrusHome,
+					onWebhook:
+						onWebhook ||
+						((payload) => {
+							this.logger.info("\n📨 Webhook received from Linear");
+							this.logger.info(`Action: ${payload.action || "Unknown"}`);
+							this.logger.info(`Type: ${payload.type || "Unknown"}`);
+							// TODO: Forward webhook to EdgeWorker or handle directly
+						}),
+					onConfigUpdate:
+						onConfigUpdate ||
+						(() => {
+							this.logger.info("\n🔄 Configuration updated from cyrus-hosted");
+						}),
+					onError:
+						onError ||
+						((error) => {
+							this.logger.error(`\nCloudflare client error: ${error.message}`);
+						}),
+					onReady: (tunnelUrl) => {
+						this.logger.success("Cloudflare tunnel established");
+						this.logger.info(`🔗 Tunnel URL: ${tunnelUrl}`);
+						this.logger.divider(50);
+						this.logger.info("\n💎 Pro Plan Active - Using Cloudflare Tunnel");
+						this.logger.info(
+							"🚀 Cyrus is now ready to receive webhooks and config updates",
+						);
+						this.logger.divider(50);
+					},
 				},
-			});
+				sharedServer, // Pass SharedApplicationServer instance
+			);
 
 			// Start the tunnel with Cloudflare token and API key
 			await client.startTunnel(cloudflareToken, cyrusApiKey);

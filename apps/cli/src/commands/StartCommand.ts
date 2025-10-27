@@ -23,10 +23,24 @@ export class StartCommand extends BaseCommand {
 				this.logDivider();
 				this.logger.info("Using Cloudflare tunnel for secure connectivity");
 
-				// Start Cloudflare tunnel client (will validate credentials and start)
+				// Start EdgeWorker first (needed for SharedApplicationServer)
+				// Note: Pro plan mode will skip ndjson client creation in EdgeWorker
+				try {
+					await this.app.worker.startEdgeWorker({
+						proxyUrl,
+						repositories,
+					});
+				} catch (error) {
+					this.logError(
+						`Failed to start Edge Worker: ${(error as Error).message}`,
+					);
+					process.exit(1);
+				}
+
+				// Then start Cloudflare tunnel client (will register with SharedApplicationServer)
 				try {
 					await this.app.worker.startCloudflareClient({});
-					return; // Exit early - Cloudflare client handles everything
+					return; // Exit early - Cloudflare tunnel handles webhooks
 				} catch (error) {
 					this.logError((error as Error).message);
 					process.exit(1);

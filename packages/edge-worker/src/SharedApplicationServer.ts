@@ -56,6 +56,13 @@ export class SharedApplicationServer {
 		{ createdAt: number; redirectUri?: string }
 	>();
 	private pendingApprovals = new Map<string, ApprovalCallback>();
+	private customHandlers = new Map<
+		string,
+		{
+			method: string;
+			handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+		}
+	>();
 	private port: number;
 	private host: string;
 	private isListening = false;
@@ -248,6 +255,33 @@ export class SharedApplicationServer {
 	}
 
 	/**
+	 * Register a custom handler for a specific path and method
+	 */
+	registerCustomHandler(
+		path: string,
+		method: string,
+		handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
+	): void {
+		const key = `${method.toUpperCase()}:${path}`;
+		this.customHandlers.set(key, { method: method.toUpperCase(), handler });
+		console.log(
+			`🔗 Registered custom handler: ${method.toUpperCase()} ${path}`,
+		);
+	}
+
+	/**
+	 * Unregister a custom handler
+	 */
+	unregisterCustomHandler(path: string, method: string): void {
+		const key = `${method.toUpperCase()}:${path}`;
+		if (this.customHandlers.delete(key)) {
+			console.log(
+				`🔗 Unregistered custom handler: ${method.toUpperCase()} ${path}`,
+			);
+		}
+	}
+
+	/**
 	 * Start OAuth flow and return promise that resolves when callback is received
 	 */
 	async startOAuthFlow(proxyUrl: string): Promise<{
@@ -339,6 +373,16 @@ export class SharedApplicationServer {
 		try {
 			const url = new URL(req.url!, `http://${this.host}:${this.port}`);
 
+			// Check for custom handlers first
+			const handlerKey = `${req.method?.toUpperCase()}:${url.pathname}`;
+			const customHandler = this.customHandlers.get(handlerKey);
+
+			if (customHandler) {
+				await customHandler.handler(req, res);
+				return;
+			}
+
+			// Fall back to built-in handlers
 			if (url.pathname === "/webhook") {
 				await this.handleWebhookRequest(req, res);
 			} else if (url.pathname === "/callback") {

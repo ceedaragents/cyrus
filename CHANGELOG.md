@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
   - Will replace `ndjson-client` for customers using cyrus-hosted service
 
 ### Changed
+- **Cloudflare Tunnel Integration**: Refactored CloudflareTunnelClient to use SharedApplicationServer instead of running its own HTTP server, eliminating port conflicts and unifying transport handling across legacy and Pro plan modes
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.19 - includes parity with Claude Code v2.0.19. See [@anthropic-ai/claude-agent-sdk v0.1.19 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0119)
 - Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
 

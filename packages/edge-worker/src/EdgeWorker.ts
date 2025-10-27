@@ -2928,6 +2928,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
+	 * Get the SharedApplicationServer instance
+	 */
+	getSharedApplicationServer(): SharedApplicationServer {
+		return this.sharedApplicationServer;
+	}
+
+	/**
 	 * Get the OAuth callback URL
 	 */
 	getOAuthCallbackUrl(): string {
