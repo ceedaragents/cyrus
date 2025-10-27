@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed bug where initial subroutine prompts were not applied to comment-triggered new sessions (only worked for assignment-based sessions)
+- Improved routing classification to correctly identify test-related requests (e.g., "add unit tests", "fix failing tests") as code work instead of planning tasks
 
 ## [0.1.57] - 2025-10-12
 
