@@ -154,6 +154,11 @@ export class PromptScenario {
 		return this;
 	}
 
+	withMentionTriggered(triggered: boolean) {
+		this.input.isMentionTriggered = triggered;
+		return this;
+	}
+
 	// ===== Expectation Builders =====
 
 	expectUserPrompt(prompt: string) {
