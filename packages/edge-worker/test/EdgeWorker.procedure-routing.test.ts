@@ -96,7 +96,7 @@ describe("EdgeWorker - Procedure Routing", () => {
 
 			// Check each subroutine
 			expect(procedureRouter.getCurrentSubroutine(session)?.name).toBe(
-				"primary",
+				"coding-activity",
 			);
 
 			procedureRouter.advanceToNextSubroutine(session, null);
@@ -140,23 +140,23 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(SUBROUTINES.gitGh.suppressThoughtPosting).toBeUndefined();
 		});
 
-		it("should suppress thoughts/actions but not responses during concise-summary", async () => {
+		it("should suppress thoughts/actions but not responses during question-answer", async () => {
 			const session = { metadata: {} } as any;
 			const simpleQuestionProcedure = PROCEDURES["simple-question"];
 
-			// Initialize with simple-question procedure (ends with concise-summary)
+			// Initialize with simple-question procedure (ends with question-answer)
 			procedureRouter.initializeProcedureMetadata(
 				session,
 				simpleQuestionProcedure,
 			);
 
-			// Advance to concise-summary subroutine
+			// Advance to question-answer subroutine
 			procedureRouter.advanceToNextSubroutine(session, null);
 
 			// Get current subroutine
 			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
 
-			expect(currentSubroutine?.name).toBe("concise-summary");
+			expect(currentSubroutine?.name).toBe("question-answer");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
 		});
 
@@ -168,7 +168,7 @@ describe("EdgeWorker - Procedure Routing", () => {
 			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
 
 			// Advance to concise-summary subroutine (skip 3 subroutines)
-			procedureRouter.advanceToNextSubroutine(session, null); // primary -> verifications
+			procedureRouter.advanceToNextSubroutine(session, null); // coding-activity -> verifications
 			procedureRouter.advanceToNextSubroutine(session, null); // verifications -> git-gh
 			procedureRouter.advanceToNextSubroutine(session, null); // git-gh -> concise-summary
 
@@ -179,7 +179,7 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
 		});
 
-		it("should NOT suppress during primary subroutine", async () => {
+		it("should NOT suppress during coding-activity subroutine", async () => {
 			const session = { metadata: {} } as any;
 			const fullDevProcedure = PROCEDURES["full-development"];
 
@@ -187,7 +187,7 @@ describe("EdgeWorker - Procedure Routing", () => {
 
 			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
 
-			expect(currentSubroutine?.name).toBe("primary");
+			expect(currentSubroutine?.name).toBe("coding-activity");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 		});
 
