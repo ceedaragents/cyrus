@@ -188,7 +188,6 @@ export class CloudflareTunnelClient extends EventEmitter {
 		// Register webhook verification strategy (uses unified /webhook endpoint)
 		this.server.registerWebhookVerificationStrategy({
 			name: "cloudflare-api-key",
-			priority: 10, // Higher priority than legacy handlers
 			verify: async (req: IncomingMessage, body: string) => {
 				return this.verifyWebhook(req, body);
 			},
