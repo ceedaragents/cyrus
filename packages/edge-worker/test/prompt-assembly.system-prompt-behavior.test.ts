@@ -71,7 +71,7 @@ No comments yet.
 		expect(result.systemPrompt).not.toContain("debugger");
 	});
 
-	it("should return label-based system prompt with shared instructions appended", async () => {
+	it("should return label-based system prompt without shared instructions", async () => {
 		// Create repository with labelPrompts configuration
 		const repository = {
 			id: "repo-uuid-5678-9012-34ef-123456789012",
@@ -139,7 +139,7 @@ Build the payment integration
 			.expectComponents("issue-context", "user-comment")
 			.verify();
 
-		// Verify system prompt contains BOTH label-based content AND shared instructions
+		// Verify system prompt contains ONLY label-based content (NO shared instructions)
 		expect(result.systemPrompt).toBeDefined();
 		expect(typeof result.systemPrompt).toBe("string");
 		expect(result.systemPrompt?.length).toBeGreaterThan(0);
@@ -149,9 +149,13 @@ Build the payment integration
 		expect(result.systemPrompt).toContain("Task tool");
 		expect(result.systemPrompt).toContain("<builder_specific_instructions>");
 
-		// Check for shared instructions appended to the system prompt
-		expect(result.systemPrompt).toContain("<task_management_instructions>");
-		expect(result.systemPrompt).toContain("<situation_assessment>");
-		expect(result.systemPrompt).toContain("<execution_instructions>");
+		// Verify scenarios-system-prompt instructions are NOT included in label-based prompts
+		// Check for unique content from scenarios-system-prompt that won't be in builder prompt
+		expect(result.systemPrompt).not.toContain(
+			"CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively",
+		);
+		expect(result.systemPrompt).not.toContain("YOU ARE IN 1 OF 2 SITUATIONS");
+		expect(result.systemPrompt).not.toContain("**Situation 1 - Execute**");
+		expect(result.systemPrompt).not.toContain("**Situation 2 - Clarify**");
 	});
 });

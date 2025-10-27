@@ -3796,15 +3796,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			);
 		}
 
-		// 2. Always append shared instructions to system prompt
-		// If no label-based prompt exists, create a minimal fallback system prompt
-		const sharedInstructions = await this.loadSharedInstructions();
+		// 2. Determine system prompt based on prompt type
+		// Label-based: Use only the label-based system prompt
+		// Fallback: Use scenarios system prompt (shared instructions)
 		let systemPrompt: string;
 		if (labelBasedSystemPrompt) {
-			// Append to existing label-based system prompt
-			systemPrompt = `${labelBasedSystemPrompt}\n\n${sharedInstructions}`;
+			// Use label-based system prompt as-is (no shared instructions)
+			systemPrompt = labelBasedSystemPrompt;
 		} else {
-			// Create fallback system prompt with just the shared instructions
+			// Use scenarios system prompt for fallback cases
+			const sharedInstructions = await this.loadSharedInstructions();
 			systemPrompt = sharedInstructions;
 		}
 
