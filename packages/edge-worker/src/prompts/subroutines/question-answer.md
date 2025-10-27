@@ -1,7 +1,7 @@
 # Answer Question
 
 Provide a clear, direct answer using investigation findings:
-- Use markdown formatting (posted to Linear)
+- Present in Linear-compatible markdown (supports `+++collapsible+++`, @mentions via `https://linear.app/linear/profiles/username`)
 - Include code references with line numbers
 - Be complete but concise
 

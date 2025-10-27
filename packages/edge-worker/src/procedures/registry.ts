@@ -71,6 +71,19 @@ export const SUBROUTINES = {
 		promptPath: "subroutines/coding-activity.md",
 		description: "Implementation phase for code changes (no git/gh operations)",
 	},
+	preparation: {
+		name: "preparation",
+		promptPath: "subroutines/preparation.md",
+		description:
+			"Analyze request to determine if clarification or planning is needed",
+	},
+	planSummary: {
+		name: "plan-summary",
+		promptPath: "subroutines/plan-summary.md",
+		maxTurns: 1,
+		description: "Present clarifying questions or implementation plan",
+		suppressThoughtPosting: true,
+	},
 } as const;
 
 /**
@@ -126,6 +139,13 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		description:
 			"Full orchestration workflow with decomposition and delegation to sub-agents",
 		subroutines: [SUBROUTINES.primary, SUBROUTINES.conciseSummary],
+	},
+
+	"plan-mode": {
+		name: "plan-mode",
+		description:
+			"Planning mode for requests needing clarification or implementation planning",
+		subroutines: [SUBROUTINES.preparation, SUBROUTINES.planSummary],
 	},
 };
 

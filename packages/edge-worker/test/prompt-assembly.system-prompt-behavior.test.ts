@@ -65,8 +65,9 @@ No comments yet.
 		// Verify system prompt contains shared instructions (but no label-based prompt)
 		expect(result.systemPrompt).toBeDefined();
 		expect(result.systemPrompt).toContain("<task_management_instructions>");
-		expect(result.systemPrompt).toContain("<situation_assessment>");
-		expect(result.systemPrompt).toContain("<execution_instructions>");
+		expect(result.systemPrompt).toContain(
+			"CRITICAL: You MUST use the TodoWrite",
+		);
 		expect(result.systemPrompt).not.toContain("builder");
 		expect(result.systemPrompt).not.toContain("debugger");
 	});
@@ -149,8 +150,8 @@ Build the payment integration
 		expect(result.systemPrompt).toContain("Task tool");
 		expect(result.systemPrompt).toContain("<builder_specific_instructions>");
 
-		// Verify scenarios-system-prompt instructions are NOT included in label-based prompts
-		// Check for unique content from scenarios-system-prompt that won't be in builder prompt
+		// Verify fallback-system-prompt instructions are NOT included in label-based prompts
+		// Check for unique content from fallback-system-prompt that won't be in builder prompt
 		expect(result.systemPrompt).not.toContain(
 			"CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively",
 		);
