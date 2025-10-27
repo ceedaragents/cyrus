@@ -27,10 +27,30 @@ describe("Prompt Assembly - Continuation Sessions", () => {
 		await scenario(worker)
 			.continuationSession()
 			.withUserComment("Here's more context")
-			.withAttachments("Attachment: error-log.txt")
+			.withAttachments(`
+## New Attachments from Comment
+
+Downloaded 1 new attachment.
+
+### New Attachments
+1. attachment_0001.txt - Original URL: https://linear.app/attachments/error-log.txt
+   Local path: /path/to/attachments/attachment_0001.txt
+
+You can use the Read tool to view these files.
+`)
 			.expectUserPrompt(`Here's more context
 
-Attachment: error-log.txt`)
+
+## New Attachments from Comment
+
+Downloaded 1 new attachment.
+
+### New Attachments
+1. attachment_0001.txt - Original URL: https://linear.app/attachments/error-log.txt
+   Local path: /path/to/attachments/attachment_0001.txt
+
+You can use the Read tool to view these files.
+`)
 			.expectSystemPrompt(undefined)
 			.expectComponents("user-comment", "attachment-manifest")
 			.expectPromptType("continuation")

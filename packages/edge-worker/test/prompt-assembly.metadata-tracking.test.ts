@@ -34,10 +34,30 @@ describe("Prompt Assembly - Metadata Tracking", () => {
 		const result = await scenario(worker)
 			.continuationSession()
 			.withUserComment("Test")
-			.withAttachments("file.txt")
+			.withAttachments(`
+## New Attachments from Comment
+
+Downloaded 1 new attachment.
+
+### New Attachments
+1. file.txt - Original URL: https://linear.app/attachments/file.txt
+   Local path: /path/to/attachments/file.txt
+
+You can use the Read tool to view these files.
+`)
 			.expectUserPrompt(`Test
 
-file.txt`)
+
+## New Attachments from Comment
+
+Downloaded 1 new attachment.
+
+### New Attachments
+1. file.txt - Original URL: https://linear.app/attachments/file.txt
+   Local path: /path/to/attachments/file.txt
+
+You can use the Read tool to view these files.
+`)
 			.expectSystemPrompt(undefined)
 			.expectPromptType("continuation")
 			.verify();

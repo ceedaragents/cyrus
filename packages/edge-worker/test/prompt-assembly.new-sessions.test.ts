@@ -8,7 +8,7 @@ import { describe, it } from "vitest";
 import { createTestWorker, scenario } from "./prompt-assembly-utils.js";
 
 describe("Prompt Assembly - New Sessions", () => {
-	it("assignment-based (no labels) - should have undefined system prompt", async () => {
+	it("assignment-based (no labels) - should have system prompt with shared instructions", async () => {
 		const worker = createTestWorker();
 
 		// Create minimal test data
@@ -38,9 +38,7 @@ describe("Prompt Assembly - New Sessions", () => {
 			.withRepository(repository)
 			.withUserComment("")
 			.withLabels()
-			.expectUserPrompt(`You are a masterful software engineer contributing to the undefined project.
-
-<context>
+			.expectUserPrompt(`<context>
   <repository>undefined</repository>
   <working_directory>undefined</working_directory>
   <base_branch>undefined</base_branch>
@@ -60,11 +58,8 @@ Users cannot log in
 
 <linear_comments>
 No comments yet.
-</linear_comments>
-
-
-
-<task_management_instructions>
+</linear_comments>`)
+			.expectSystemPrompt(`<task_management_instructions>
 CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
 - IMMEDIATELY create a comprehensive task list at the beginning of your work
 - Break down complex tasks into smaller, actionable items
@@ -75,7 +70,7 @@ CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
 - Your first response should focus on creating a thorough task breakdown
 
 Remember: Your first message is internal planning. Use this time to:
-1. Thoroughly analyze the 
+1. Thoroughly analyze the issue and requirements
 2. Create detailed todos using TodoWrite
 3. Plan your approach systematically
 </task_management_instructions>
@@ -87,7 +82,7 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
 - Look for specific acceptance criteria, clear requirements, well-defined outcomes
 - Action: Create implementation tasks and execute
 
-**Situation 2 - Clarify**: Vague problem or unclear acceptance criteria  
+**Situation 2 - Clarify**: Vague problem or unclear acceptance criteria
 - Look for ambiguities, missing requirements, unclear goals
 - Action: Create investigation tasks and ask clarifying questions
 </situation_assessment>
@@ -99,10 +94,7 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
    - Implementation tasks (by component/feature)
    - Testing tasks
 
-2. Check branch status:
-   \`\`\`
-   git diff undefined...HEAD
-   \`\`\`
+2. Check branch status using git commands
 
 3. Work through tasks systematically
 4. Ensure code quality throughout implementation
@@ -117,13 +109,12 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
    - Specific questions
    - Suggested acceptance criteria
 </execution_instructions>`)
-			.expectSystemPrompt(undefined)
 			.expectPromptType("fallback")
 			.expectComponents("issue-context")
 			.verify();
 	});
 
-	it("assignment-based (with user comment) - should include user comment in prompt", async () => {
+	it("assignment-based (with user comment) - should include user comment in XML wrapper", async () => {
 		const worker = createTestWorker();
 
 		// Create minimal test data
@@ -153,9 +144,7 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
 			.withRepository(repository)
 			.withUserComment("Please add Stripe integration")
 			.withLabels()
-			.expectUserPrompt(`You are a masterful software engineer contributing to the undefined project.
-
-<context>
+			.expectUserPrompt(`<context>
   <repository>undefined</repository>
   <working_directory>undefined</working_directory>
   <base_branch>undefined</base_branch>
@@ -177,9 +166,10 @@ Add payment processing
 No comments yet.
 </linear_comments>
 
-
-
-<task_management_instructions>
+<user_comment>
+Please add Stripe integration
+</user_comment>`)
+			.expectSystemPrompt(`<task_management_instructions>
 CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
 - IMMEDIATELY create a comprehensive task list at the beginning of your work
 - Break down complex tasks into smaller, actionable items
@@ -190,7 +180,7 @@ CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
 - Your first response should focus on creating a thorough task breakdown
 
 Remember: Your first message is internal planning. Use this time to:
-1. Thoroughly analyze the 
+1. Thoroughly analyze the issue and requirements
 2. Create detailed todos using TodoWrite
 3. Plan your approach systematically
 </task_management_instructions>
@@ -202,7 +192,7 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
 - Look for specific acceptance criteria, clear requirements, well-defined outcomes
 - Action: Create implementation tasks and execute
 
-**Situation 2 - Clarify**: Vague problem or unclear acceptance criteria  
+**Situation 2 - Clarify**: Vague problem or unclear acceptance criteria
 - Look for ambiguities, missing requirements, unclear goals
 - Action: Create investigation tasks and ask clarifying questions
 </situation_assessment>
@@ -214,10 +204,7 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
    - Implementation tasks (by component/feature)
    - Testing tasks
 
-2. Check branch status:
-   \`\`\`
-   git diff undefined...HEAD
-   \`\`\`
+2. Check branch status using git commands
 
 3. Work through tasks systematically
 4. Ensure code quality throughout implementation
@@ -231,10 +218,7 @@ YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
    - What needs clarification
    - Specific questions
    - Suggested acceptance criteria
-</execution_instructions>
-
-User comment: Please add Stripe integration`)
-			.expectSystemPrompt(undefined)
+</execution_instructions>`)
 			.expectPromptType("fallback")
 			.expectComponents("issue-context", "user-comment")
 			.verify();

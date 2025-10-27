@@ -27,10 +27,30 @@ describe("Prompt Assembly - Streaming Sessions", () => {
 		await scenario(worker)
 			.streamingSession()
 			.withUserComment("Review the attached file")
-			.withAttachments("Attachment: screenshot.png")
+			.withAttachments(`
+## New Attachments from Comment
+
+Downloaded 1 new attachment.
+
+### New Images
+1. image_0001.png - Original URL: https://linear.app/attachments/abc123.png
+   Local path: /path/to/attachments/image_0001.png
+
+You can use the Read tool to view these images.
+`)
 			.expectUserPrompt(`Review the attached file
 
-Attachment: screenshot.png`)
+
+## New Attachments from Comment
+
+Downloaded 1 new attachment.
+
+### New Images
+1. image_0001.png - Original URL: https://linear.app/attachments/abc123.png
+   Local path: /path/to/attachments/image_0001.png
+
+You can use the Read tool to view these images.
+`)
 			.expectSystemPrompt(undefined)
 			.expectComponents("user-comment", "attachment-manifest")
 			.expectPromptType("continuation")

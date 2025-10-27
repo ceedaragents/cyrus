@@ -15,11 +15,25 @@ import type { EdgeWorkerConfig } from "../src/types.js";
 export function createTestWorker(
 	repositories: RepositoryConfig[] = [],
 ): EdgeWorker {
+	// Create mock LinearClients for each repository
+	const linearClients = new Map();
+	for (const repo of repositories) {
+		// Create a minimal mock LinearClient with required methods
+		const mockClient = {
+			comments: () => Promise.resolve({ nodes: [] }),
+			comment: () => Promise.resolve({ user: null }),
+			client: {
+				rawRequest: () => Promise.resolve({ data: { comment: { body: "" } } }),
+			},
+		};
+		linearClients.set(repo.id, mockClient as any);
+	}
+
 	const config: EdgeWorkerConfig = {
 		cyrusHome: "/tmp/test-cyrus-home",
 		defaultModel: "sonnet",
 		repositories,
-		linearClients: new Map(),
+		linearClients,
 		mcpServers: {},
 	};
 	return new EdgeWorker(config);
@@ -105,6 +119,18 @@ export class PromptScenario {
 
 	withRepository(repo: any) {
 		this.input.repository = repo;
+		// Also ensure the worker has a LinearClient for this repository
+		if (!(this.worker as any).linearClients.has(repo.id)) {
+			const mockClient = {
+				comments: () => Promise.resolve({ nodes: [] }),
+				comment: () => Promise.resolve({ user: null }),
+				client: {
+					rawRequest: () =>
+						Promise.resolve({ data: { comment: { body: "" } } }),
+				},
+			};
+			(this.worker as any).linearClients.set(repo.id, mockClient);
+		}
 		return this;
 	}
 

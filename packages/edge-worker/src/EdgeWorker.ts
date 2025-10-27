@@ -2809,8 +2809,8 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 					.replace(/{{new_comment_timestamp}}/g, new Date().toLocaleString())
 					.replace(/{{new_comment_content}}/g, newComment.body || "");
 			} else {
-				// Remove the new comment section entirely
-				prompt = prompt.replace(/{{#if new_comment}}[\s\S]*?{{\/if}}/g, "");
+				// Remove the new comment section entirely (including preceding newlines)
+				prompt = prompt.replace(/\n*{{#if new_comment}}[\s\S]*?{{\/if}}/g, "");
 			}
 
 			// Append agent guidance if present
@@ -3785,16 +3785,32 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// 1. Determine system prompt from labels
 		// Only for delegation (not mentions) or when /label-based-prompt is requested
-		let systemPrompt: string | undefined;
+		let labelBasedSystemPrompt: string | undefined;
 		if (!input.isMentionTriggered || input.isLabelBasedPromptRequested) {
-			systemPrompt = await this.determineSystemPromptForAssembly(
+			labelBasedSystemPrompt = await this.determineSystemPromptForAssembly(
 				input.labels || [],
 				input.repository,
 			);
 		}
 
-		// 2. Build issue context using appropriate builder
-		const promptType = this.determinePromptType(input, !!systemPrompt);
+		// 2. Always append shared instructions to system prompt
+		// If no label-based prompt exists, create a minimal fallback system prompt
+		const sharedInstructions = await this.loadSharedInstructions();
+		let systemPrompt: string;
+		if (labelBasedSystemPrompt) {
+			// Append to existing label-based system prompt
+			systemPrompt = `${labelBasedSystemPrompt}\n\n${sharedInstructions}`;
+		} else {
+			// Create fallback system prompt with just the shared instructions
+			systemPrompt = sharedInstructions;
+		}
+
+		// 3. Build issue context using appropriate builder
+		// Use label-based prompt ONLY if we have a label-based system prompt
+		const promptType = this.determinePromptType(
+			input,
+			!!labelBasedSystemPrompt,
+		);
 		const issueContext = await this.buildIssueContextForPromptAssembly(
 			input.fullIssue,
 			input.repository,
@@ -3807,7 +3823,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		parts.push(issueContext.prompt);
 		components.push("issue-context");
 
-		// 3. Load and append initial subroutine prompt
+		// 4. Load and append initial subroutine prompt
 		const currentSubroutine = this.procedureRouter.getCurrentSubroutine(
 			input.session,
 		);
@@ -3822,13 +3838,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}
 		}
 
-		// 4. Add user comment (if present)
+		// 5. Add user comment (if present)
 		if (input.userComment.trim()) {
-			parts.push(`User comment: ${input.userComment}`);
+			parts.push(`<user_comment>\n${input.userComment}\n</user_comment>`);
 			components.push("user-comment");
 		}
 
-		// 5. Add guidance rules (if present)
+		// 6. Add guidance rules (if present)
 		if (input.guidance && input.guidance.length > 0) {
 			components.push("guidance-rules");
 		}
@@ -3918,6 +3934,31 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				error,
 			);
 			return null;
+		}
+	}
+
+	/**
+	 * Load shared instructions that get appended to all system prompts
+	 */
+	private async loadSharedInstructions(): Promise<string> {
+		const __filename = fileURLToPath(import.meta.url);
+		const __dirname = dirname(__filename);
+		const instructionsPath = join(
+			__dirname,
+			"..",
+			"prompts",
+			"shared-instructions.md",
+		);
+
+		try {
+			const instructions = await readFile(instructionsPath, "utf-8");
+			return instructions;
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to load shared instructions from ${instructionsPath}:`,
+				error,
+			);
+			return ""; // Return empty string if file can't be loaded
 		}
 	}
 
