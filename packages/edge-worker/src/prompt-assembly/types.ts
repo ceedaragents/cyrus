@@ -80,6 +80,12 @@ export interface PromptAssemblyInput {
 	/** User's comment text (or empty string for initial assignment) */
 	userComment: string;
 
+	/** Author of the comment (for multi-player context) */
+	commentAuthor?: string;
+
+	/** Timestamp of the comment (for multi-player context) */
+	commentTimestamp?: string;
+
 	/** Attachment manifest string (if any attachments) */
 	attachmentManifest?: string;
 

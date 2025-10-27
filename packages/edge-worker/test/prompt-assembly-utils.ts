@@ -97,6 +97,16 @@ export class PromptScenario {
 		return this;
 	}
 
+	withCommentAuthor(author: string) {
+		this.input.commentAuthor = author;
+		return this;
+	}
+
+	withCommentTimestamp(timestamp: string) {
+		this.input.commentTimestamp = timestamp;
+		return this;
+	}
+
 	withAttachments(manifest: string) {
 		this.input.attachmentManifest = manifest;
 		return this;
@@ -167,6 +177,10 @@ export class PromptScenario {
 	}
 
 	// ===== Execution =====
+
+	async build() {
+		return await (this.worker as any).assemblePrompt(this.input);
+	}
 
 	async verify() {
 		const result = await (this.worker as any).assemblePrompt(this.input);

@@ -1944,6 +1944,9 @@ export class EdgeWorker extends EventEmitter {
 		await mkdir(attachmentsDir, { recursive: true });
 
 		let attachmentManifest = "";
+		let commentAuthor: string | undefined;
+		let commentTimestamp: string | undefined;
+
 		try {
 			const result = await linearClient.client.rawRequest(
 				`
@@ -1955,6 +1958,8 @@ export class EdgeWorker extends EventEmitter {
               updatedAt
               user {
                 name
+                displayName
+                email
                 id
               }
             }
@@ -1962,6 +1967,15 @@ export class EdgeWorker extends EventEmitter {
         `,
 				{ id: commentId },
 			);
+
+			// Extract comment metadata for multi-player context
+			const comment = (result.data as any).comment;
+			if (comment) {
+				const user = comment.user;
+				commentAuthor =
+					user?.displayName || user?.name || user?.email || "Unknown";
+				commentTimestamp = comment.createdAt || new Date().toISOString();
+			}
 
 			// Count existing attachments
 			const existingFiles = await readdir(attachmentsDir).catch(() => []);
@@ -1971,7 +1985,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Download new attachments from the comment
 			const downloadResult = await this.downloadCommentAttachments(
-				(result.data as any).comment.body,
+				comment.body,
 				attachmentsDir,
 				repository.linearToken,
 				existingAttachmentCount,
@@ -2039,6 +2053,9 @@ export class EdgeWorker extends EventEmitter {
 				attachmentManifest,
 				isNewSession,
 				[], // No additional allowed directories for regular continuation
+				undefined, // maxTurns
+				commentAuthor,
+				commentTimestamp,
 			);
 		} catch (error) {
 			console.error("Failed to continue conversation:", error);
@@ -3703,6 +3720,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repository: RepositoryConfig,
 		promptBody: string,
 		attachmentManifest?: string,
+		commentAuthor?: string,
+		commentTimestamp?: string,
 	): Promise<string> {
 		// Fetch labels for system prompt determination
 		const labels = await this.fetchIssueLabels(fullIssue);
@@ -3713,6 +3732,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			fullIssue,
 			repository,
 			userComment: promptBody,
+			commentAuthor,
+			commentTimestamp,
 			attachmentManifest,
 			isNewSession,
 			isStreaming: false, // This path is only for non-streaming prompts
@@ -3875,7 +3896,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			components.push("attachment-manifest");
 		}
 
-		const parts: string[] = [input.userComment];
+		// Wrap comment in XML with author and timestamp for multi-player context
+		const author = input.commentAuthor || "Unknown";
+		const timestamp = input.commentTimestamp || new Date().toISOString();
+
+		const commentXml = `<new_comment>
+  <author>${author}</author>
+  <timestamp>${timestamp}</timestamp>
+  <content>
+${input.userComment}
+  </content>
+</new_comment>`;
+
+		const parts: string[] = [commentXml];
 		if (input.attachmentManifest) {
 			parts.push(input.attachmentManifest);
 		}
@@ -4583,6 +4616,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		isNewSession: boolean = false,
 		additionalAllowedDirectories: string[] = [],
 		maxTurns?: number,
+		commentAuthor?: string,
+		commentTimestamp?: string,
 	): Promise<void> {
 		// Check for existing runner
 		const existingRunner = session.claudeRunner;
@@ -4682,6 +4717,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			repository,
 			promptBody,
 			attachmentManifest,
+			commentAuthor,
+			commentTimestamp,
 		);
 
 		// Start streaming session

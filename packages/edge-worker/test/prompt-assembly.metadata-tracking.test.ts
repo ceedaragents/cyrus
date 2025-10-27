@@ -45,22 +45,25 @@ Downloaded 1 new attachment.
 
 You can use the Read tool to view these files.
 `)
-			.expectUserPrompt(`Test
+			.build();
 
+		// Verify XML structure with author and timestamp
+		expect(result.userPrompt).toContain("<new_comment>");
+		expect(result.userPrompt).toContain("<author>Unknown</author>");
+		expect(result.userPrompt).toMatch(
+			/<timestamp>[\d-]+T[\d:.]+Z<\/timestamp>/,
+		);
+		expect(result.userPrompt).toContain("<content>\nTest\n  </content>");
+		expect(result.userPrompt).toContain("</new_comment>");
 
-## New Attachments from Comment
+		// Verify attachments are included after XML
+		expect(result.userPrompt).toContain("## New Attachments from Comment");
+		expect(result.userPrompt).toContain("Downloaded 1 new attachment.");
+		expect(result.userPrompt).toContain(
+			"1. file.txt - Original URL: https://linear.app/attachments/file.txt",
+		);
 
-Downloaded 1 new attachment.
-
-### New Attachments
-1. file.txt - Original URL: https://linear.app/attachments/file.txt
-   Local path: /path/to/attachments/file.txt
-
-You can use the Read tool to view these files.
-`)
-			.expectSystemPrompt(undefined)
-			.expectPromptType("continuation")
-			.verify();
+		expect(result.systemPrompt).toBeUndefined();
 
 		// Verify metadata
 		expect(result.metadata).toMatchObject({
