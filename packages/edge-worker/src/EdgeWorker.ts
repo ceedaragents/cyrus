@@ -2695,11 +2695,14 @@ ${reply.body}
 				repository.promptTemplatePath ||
 				this.config.features?.promptTemplatePath;
 
-			// If no custom template, use the v2 template
+			// If no custom template, use the standard issue assigned user prompt template
 			if (!templatePath) {
 				const __filename = fileURLToPath(import.meta.url);
 				const __dirname = dirname(__filename);
-				templatePath = resolve(__dirname, "../prompt-template-v2.md");
+				templatePath = resolve(
+					__dirname,
+					"../prompts/standard-issue-assigned-user-prompt.md",
+				);
 			}
 
 			// Load the template
@@ -3947,7 +3950,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			__dirname,
 			"..",
 			"prompts",
-			"shared-instructions.md",
+			"scenarios-system-prompt.md",
 		);
 
 		try {
