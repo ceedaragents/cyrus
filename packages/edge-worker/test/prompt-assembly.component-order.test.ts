@@ -33,8 +33,6 @@ describe("Prompt Assembly - Component Order", () => {
 			path: "/test/repo",
 		};
 
-		// Note: This test verifies component ordering but doesn't check full prompt body
-		// since subroutine prompts are loaded from files and may change
 		await scenario(worker)
 			.newSession()
 			.assignmentBased()
@@ -45,6 +43,81 @@ describe("Prompt Assembly - Component Order", () => {
 			.withLabels()
 			.expectPromptType("fallback")
 			.expectComponents("issue-context", "user-comment")
+			.expectSystemPrompt(`<task_management_instructions>
+CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
+- IMMEDIATELY create a comprehensive task list at the beginning of your work
+- Break down complex tasks into smaller, actionable items
+- Mark tasks as 'in_progress' when you start them
+- Mark tasks as 'completed' immediately after finishing them
+- Only have ONE task 'in_progress' at a time
+- Add new tasks as you discover them during your work
+- Your first response should focus on creating a thorough task breakdown
+
+Remember: Your first message is internal planning. Use this time to:
+1. Thoroughly analyze the issue and requirements
+2. Create detailed todos using TodoWrite
+3. Plan your approach systematically
+</task_management_instructions>
+
+<situation_assessment>
+YOU ARE IN 1 OF 2 SITUATIONS - determine which one:
+
+**Situation 1 - Execute**: Clear problem definition AND clear solution definition
+- Look for specific acceptance criteria, clear requirements, well-defined outcomes
+- Action: Create implementation tasks and execute
+
+**Situation 2 - Clarify**: Vague problem or unclear acceptance criteria
+- Look for ambiguities, missing requirements, unclear goals
+- Action: Create investigation tasks and ask clarifying questions
+</situation_assessment>
+
+<execution_instructions>
+### If Situation 1 (Execute):
+1. Use TodoWrite to create tasks including:
+   - Understanding current branch status
+   - Implementation tasks (by component/feature)
+   - Testing tasks
+
+2. Check branch status using git commands
+
+3. Work through tasks systematically
+4. Ensure code quality throughout implementation
+
+### If Situation 2 (Clarify):
+1. Use TodoWrite to create investigation tasks
+2. Explore codebase for context
+3. DO NOT make code changes
+4. Provide clear summary of:
+   - What you understand
+   - What needs clarification
+   - Specific questions
+   - Suggested acceptance criteria
+</execution_instructions>`)
+			.expectUserPrompt(`<context>
+  <repository>undefined</repository>
+  <working_directory>undefined</working_directory>
+  <base_branch>undefined</base_branch>
+</context>
+
+<linear_issue>
+  <id>c3d4e5f6-a7b8-9012-cdef-123456789012</id>
+  <identifier>CEE-789</identifier>
+  <title>Build new feature</title>
+  <description>
+No description provided
+  </description>
+  <state>Unknown</state>
+  <priority>None</priority>
+  <url></url>
+</linear_issue>
+
+<linear_comments>
+No comments yet.
+</linear_comments>
+
+<user_comment>
+Add user authentication
+</user_comment>`)
 			.verify();
 	});
 });
