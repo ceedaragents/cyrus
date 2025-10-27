@@ -67,7 +67,7 @@ describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
 			},
 		};
 
-		const result = await scenario(worker)
+		await scenario(worker)
 			.newSession()
 			.withSession(session)
 			.withIssue(issue)
@@ -78,16 +78,30 @@ describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
 			.withAgentSession(agentSession)
 			.withMentionTriggered(true)
 			.withLabels()
-			.build();
+			.expectUserPrompt(
+				`You were mentioned in a Linear comment. Please help with the following request.
 
-		// Verify the mention prompt includes the comment content
-		expect(result.userPrompt).toContain("<mention_request>");
-		expect(result.userPrompt).toContain("Please help with this issue");
-		expect(result.userPrompt).toContain("</mention_request>");
+<linear_issue>
+  <id>test-issue-123</id>
+  <identifier>TEST-123</identifier>
+  <title>Test Issue</title>
+  <url>undefined</url>
+</linear_issue>
 
-		// Verify metadata
-		expect(result.metadata.promptType).toBe("mention");
-		expect(result.metadata.isNewSession).toBe(true);
+<mention_request>
+Please help with this issue
+</mention_request>
+
+IMPORTANT: You were specifically mentioned in the comment above. Focus on addressing the specific question or request in the mention. You can use the Linear MCP tools to fetch additional context about the issue if needed.
+
+<user_comment>
+Please help with this issue
+</user_comment>`,
+			)
+			.expectSystemPrompt(undefined)
+			.expectPromptType("mention")
+			.expectComponents("issue-context", "user-comment")
+			.verify();
 	});
 
 	it("should include author and timestamp metadata when building issue context with new comment", async () => {
@@ -114,7 +128,7 @@ describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
 			path: "/test/repo",
 		};
 
-		const result = await scenario(worker)
+		await scenario(worker)
 			.newSession()
 			.assignmentBased()
 			.withSession(session)
@@ -124,19 +138,49 @@ describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
 			.withCommentAuthor("Bob Jones")
 			.withCommentTimestamp("2025-01-27T15:45:00Z")
 			.withLabels()
-			.build();
+			.expectUserPrompt(`<context>
+  <repository>undefined</repository>
+  <working_directory>undefined</working_directory>
+  <base_branch>undefined</base_branch>
+</context>
 
-		// For assignment-based new sessions, the comment goes in <user_comment>
-		// The {{new_comment_*}} template variables are used in buildIssueContextPrompt
-		// which is only called with a newComment parameter in older code paths
-		expect(result.userPrompt).toContain("<user_comment>");
-		expect(result.userPrompt).toContain("This is a new comment on the issue");
-		expect(result.userPrompt).toContain("</user_comment>");
+<linear_issue>
+  <id>test-issue-456</id>
+  <identifier>TEST-456</identifier>
+  <title>Another Test Issue</title>
+  <description>
+Another test description
+  </description>
+  <state>Unknown</state>
+  <priority>None</priority>
+  <url></url>
+</linear_issue>
 
-		// Verify metadata
-		expect(result.metadata.promptType).toBe("fallback");
-		expect(result.metadata.isNewSession).toBe(true);
-		expect(result.metadata.components).toContain("user-comment");
+<linear_comments>
+No comments yet.
+</linear_comments>
+
+<user_comment>
+This is a new comment on the issue
+</user_comment>`)
+			.expectSystemPrompt(`<task_management_instructions>
+CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
+- IMMEDIATELY create a comprehensive task list at the beginning of your work
+- Break down complex tasks into smaller, actionable items
+- Mark tasks as 'in_progress' when you start them
+- Mark tasks as 'completed' immediately after finishing them
+- Only have ONE task 'in_progress' at a time
+- Add new tasks as you discover them during your work
+- Your first response should focus on creating a thorough task breakdown
+
+Remember: Your first message is internal planning. Use this time to:
+1. Thoroughly analyze the issue and requirements
+2. Create detailed todos using TodoWrite
+3. Plan your approach systematically
+</task_management_instructions>`)
+			.expectPromptType("fallback")
+			.expectComponents("issue-context", "user-comment")
+			.verify();
 	});
 
 	it("should handle new comment metadata for continuation sessions", async () => {
