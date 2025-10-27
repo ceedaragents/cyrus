@@ -1,13 +1,14 @@
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import {
-	createServer,
 	type IncomingMessage,
 	type Server,
 	type ServerResponse,
+	createServer,
 } from "node:http";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import { install } from "cloudflared";
+import { Tunnel, bin, install } from "cloudflared";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
@@ -45,6 +46,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 	private tunnelUrl: string | null = null;
 	private apiKey: string | null = null;
 	private connected = false;
+	private connectionCount = 0;
 
 	constructor(config: CloudflareTunnelClientConfig) {
 		super();
@@ -65,7 +67,9 @@ export class CloudflareTunnelClient extends EventEmitter {
 		this.apiKey = apiKey;
 		try {
 			// Ensure cloudflared binary is installed
-			const bin = await install(cloudflareToken);
+			if (!existsSync(bin)) {
+				await install(bin);
+			}
 
 			// Create HTTP server first
 			this.server = createServer((req, res) => {
@@ -74,44 +78,51 @@ export class CloudflareTunnelClient extends EventEmitter {
 
 			// Start server on a local port
 			const port = await this.startLocalServer();
+			console.log(`Started server on localhost:${port}`);
 
-			// Start cloudflared tunnel pointing to our local server
-			const { spawn } = await import("node:child_process");
+			// Create tunnel with token-based authentication (no URL needed for remotely-managed tunnels)
+			const tunnel = Tunnel.withToken(cloudflareToken);
 
-			this.tunnelProcess = spawn(bin, [
-				"tunnel",
-				"--url",
-				`http://localhost:${port}`,
-			]);
-
-			// Capture tunnel URL from cloudflared output
-			this.tunnelProcess.stdout?.on("data", (data: Buffer) => {
-				const output = data.toString();
-
-				// Look for the tunnel URL in the output
-				const urlMatch = output.match(
-					/https:\/\/[a-z0-9-]+\.trycloudflare\.com/,
-				);
-				if (urlMatch && !this.tunnelUrl) {
-					this.tunnelUrl = urlMatch[0];
-					this.connected = true;
-					this.emit("connect");
+			// Listen for URL event (from ConfigHandler for token-based tunnels)
+			tunnel.on("url", (url: string) => {
+				// Ensure URL has protocol for token-based tunnels
+				if (!url.startsWith("http")) {
+					url = `https://${url}`;
+				}
+				if (!this.tunnelUrl) {
+					this.tunnelUrl = url;
 					this.emit("ready", this.tunnelUrl);
 				}
 			});
 
-			this.tunnelProcess.stderr?.on("data", (data: Buffer) => {
-				const errorMessage = data.toString();
-				this.emit("error", new Error(`Tunnel error: ${errorMessage}`));
+			// Listen for connection event (Cloudflare establishes 4 connections per tunnel)
+			tunnel.on("connected", (connection: any) => {
+				this.connectionCount++;
+				console.log(
+					`Cloudflare tunnel connection ${this.connectionCount}/4 established:`,
+					connection,
+				);
+
+				// Mark as connected on first connection, but log all 4
+				if (!this.connected) {
+					this.connected = true;
+					this.emit("connect");
+				}
 			});
 
-			this.tunnelProcess.on("exit", (code: number) => {
+			// Listen for error event
+			tunnel.on("error", (error: Error) => {
+				this.emit("error", error);
+			});
+
+			// Listen for exit event
+			tunnel.on("exit", (code: number | null) => {
 				this.connected = false;
 				this.emit("disconnect", `Tunnel process exited with code ${code}`);
 			});
 
 			// Wait for tunnel URL to be available (with timeout)
-			await this.waitForTunnelUrl(30000); // 30 second timeout
+			await this.waitForTunnelToConnect(30000); // 30 second timeout
 		} catch (error) {
 			this.emit("error", error as Error);
 			throw error;
@@ -129,7 +140,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 			}
 
 			// Use port 0 to let the OS assign an available port
-			this.server.listen(0, "localhost", () => {
+			this.server.listen(3456, "localhost", () => {
 				const address = this.server?.address();
 				if (address && typeof address === "object") {
 					resolve(address.port);
@@ -147,10 +158,10 @@ export class CloudflareTunnelClient extends EventEmitter {
 	/**
 	 * Wait for tunnel URL to be available
 	 */
-	private async waitForTunnelUrl(timeout: number): Promise<void> {
+	private async waitForTunnelToConnect(timeout: number): Promise<void> {
 		const startTime = Date.now();
 
-		while (!this.tunnelUrl) {
+		while (!this.connected) {
 			if (Date.now() - startTime > timeout) {
 				throw new Error("Timeout waiting for tunnel URL");
 			}
