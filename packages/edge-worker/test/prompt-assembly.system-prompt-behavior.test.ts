@@ -150,8 +150,8 @@ Build the payment integration
 		expect(result.systemPrompt).toContain("Task tool");
 		expect(result.systemPrompt).toContain("<builder_specific_instructions>");
 
-		// Verify fallback-system-prompt instructions are NOT included in label-based prompts
-		// Check for unique content from fallback-system-prompt that won't be in builder prompt
+		// Verify todolist-system-prompt-extension instructions are NOT included in label-based prompts
+		// Check for unique content from todolist-system-prompt-extension that won't be in builder prompt
 		expect(result.systemPrompt).not.toContain(
 			"CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively",
 		);

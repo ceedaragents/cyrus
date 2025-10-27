@@ -159,6 +159,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	question: "simple-question",
 	documentation: "documentation-edit",
 	transient: "simple-question",
+	planning: "plan-mode",
 	code: "full-development",
 	debugger: "debugger-full",
 	orchestrator: "orchestrator-full",

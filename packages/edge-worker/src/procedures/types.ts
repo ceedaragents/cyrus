@@ -67,6 +67,7 @@ export type RequestClassification =
 	| "question"
 	| "documentation"
 	| "transient"
+	| "planning"
 	| "code"
 	| "debugger"
 	| "orchestrator";

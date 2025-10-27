@@ -3951,7 +3951,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			__dirname,
 			"..",
 			"prompts",
-			"fallback-system-prompt.md",
+			"todolist-system-prompt-extension.md",
 		);
 
 		try {
