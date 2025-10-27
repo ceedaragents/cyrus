@@ -2416,11 +2416,14 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Building mention prompt for issue ${issue.identifier}`,
 			);
 
-			// Get the mention comment body
+			// Get the mention comment metadata
 			const mentionContent = agentSession.comment?.body || "";
+			const authorName =
+				agentSession.creator?.name || agentSession.creator?.id || "Unknown";
+			const timestamp = agentSession.createdAt || new Date().toISOString();
 
-			// Build a simple prompt focused on the mention
-			let prompt = `You were mentioned in a Linear comment. Please help with the following request.
+			// Build a focused prompt with comment metadata
+			let prompt = `You were mentioned in a Linear comment on this issue:
 
 <linear_issue>
   <id>${issue.id}</id>
@@ -2429,11 +2432,15 @@ export class EdgeWorker extends EventEmitter {
   <url>${issue.url}</url>
 </linear_issue>
 
-<mention_request>
+<mention_comment>
+  <author>${authorName}</author>
+  <timestamp>${timestamp}</timestamp>
+  <content>
 ${mentionContent}
-</mention_request>
+  </content>
+</mention_comment>
 
-IMPORTANT: You were specifically mentioned in the comment above. Focus on addressing the specific question or request in the mention. You can use the Linear MCP tools to fetch additional context about the issue if needed.`;
+Focus on addressing the specific request in the mention. You can use the Linear MCP tools to fetch additional context if needed.`;
 
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
@@ -3864,8 +3871,23 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		// 5. Add user comment (if present)
-		if (input.userComment.trim()) {
-			parts.push(`<user_comment>\n${input.userComment}\n</user_comment>`);
+		// Skip for mention-triggered prompts since the comment is already in the mention block
+		if (input.userComment.trim() && !input.isMentionTriggered) {
+			// If we have author/timestamp metadata, include it for multi-player context
+			if (input.commentAuthor || input.commentTimestamp) {
+				const author = input.commentAuthor || "Unknown";
+				const timestamp = input.commentTimestamp || new Date().toISOString();
+				parts.push(`<user_comment>
+  <author>${author}</author>
+  <timestamp>${timestamp}</timestamp>
+  <content>
+${input.userComment}
+  </content>
+</user_comment>`);
+			} else {
+				// Legacy format without metadata
+				parts.push(`<user_comment>\n${input.userComment}\n</user_comment>`);
+			}
 			components.push("user-comment");
 		}
 

@@ -284,7 +284,7 @@ Issue: {{issue_identifier}}`;
 
 		// Should use mention prompt template
 		expect(capturedPrompt).toContain("You were mentioned in a Linear comment");
-		expect(capturedPrompt).toContain("<mention_request>");
+		expect(capturedPrompt).toContain("<mention_comment>");
 		expect(capturedPrompt).toContain("@cyrus can you help me with this issue?");
 
 		// Should NOT contain label-based prompt template text

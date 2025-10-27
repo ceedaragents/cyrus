@@ -79,7 +79,7 @@ describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
 			.withMentionTriggered(true)
 			.withLabels()
 			.expectUserPrompt(
-				`You were mentioned in a Linear comment. Please help with the following request.
+				`You were mentioned in a Linear comment on this issue:
 
 <linear_issue>
   <id>test-issue-123</id>
@@ -88,19 +88,19 @@ describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
   <url>undefined</url>
 </linear_issue>
 
-<mention_request>
+<mention_comment>
+  <author>Alice Smith</author>
+  <timestamp>2025-01-27T14:30:00Z</timestamp>
+  <content>
 Please help with this issue
-</mention_request>
+  </content>
+</mention_comment>
 
-IMPORTANT: You were specifically mentioned in the comment above. Focus on addressing the specific question or request in the mention. You can use the Linear MCP tools to fetch additional context about the issue if needed.
-
-<user_comment>
-Please help with this issue
-</user_comment>`,
+Focus on addressing the specific request in the mention. You can use the Linear MCP tools to fetch additional context if needed.`,
 			)
 			.expectSystemPrompt(undefined)
 			.expectPromptType("mention")
-			.expectComponents("issue-context", "user-comment")
+			.expectComponents("issue-context")
 			.verify();
 	});
 
@@ -161,7 +161,11 @@ No comments yet.
 </linear_comments>
 
 <user_comment>
+  <author>Bob Jones</author>
+  <timestamp>2025-01-27T15:45:00Z</timestamp>
+  <content>
 This is a new comment on the issue
+  </content>
 </user_comment>`)
 			.expectSystemPrompt(`<task_management_instructions>
 CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
