@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Cloudflare Tunnel Integration**: Refactored CloudflareTunnelClient to use SharedApplicationServer instead of running its own HTTP server, eliminating port conflicts and unifying transport handling across legacy and Pro plan modes
+- **Unified Webhook Handling**: All transport modes (Legacy/proxy, Pro Plan/Cloudflare tunnel, Direct webhooks) now use a single `/webhook` endpoint with pluggable verification strategies, simplifying webhook processing and enabling transport-specific authentication methods
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.19 - includes parity with Claude Code v2.0.19. See [@anthropic-ai/claude-agent-sdk v0.1.19 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0119)
 - Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
 

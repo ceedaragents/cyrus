@@ -185,16 +185,45 @@ export class CloudflareTunnelClient extends EventEmitter {
 			},
 		);
 
-		// Register webhook handler (different signature for Linear webhooks)
-		this.server.registerCustomHandler(
-			"/webhook",
-			"POST",
-			async (req: IncomingMessage, res: ServerResponse) => {
-				await this.handleWebhookRequest(req, res);
+		// Register webhook verification strategy (uses unified /webhook endpoint)
+		this.server.registerWebhookVerificationStrategy({
+			name: "cloudflare-api-key",
+			priority: 10, // Higher priority than legacy handlers
+			verify: async (req: IncomingMessage, body: string) => {
+				return this.verifyWebhook(req, body);
 			},
-		);
+		});
 
 		console.log("✅ Cloudflare tunnel handlers registered successfully");
+	}
+
+	/**
+	 * Verify webhook request using CYRUS_API_KEY
+	 * Used by the webhook verification strategy
+	 */
+	private async verifyWebhook(
+		req: IncomingMessage,
+		body: string,
+	): Promise<boolean> {
+		try {
+			// Verify authorization header
+			if (!this.verifyAuth(req.headers.authorization)) {
+				console.log(
+					"🔐 Cloudflare webhook verification failed: Invalid API key",
+				);
+				return false;
+			}
+
+			// Parse and emit webhook event
+			const payload = JSON.parse(body) as LinearWebhookPayload;
+			this.emit("webhook", payload);
+
+			console.log("🔐 Cloudflare webhook verified and processed successfully");
+			return true;
+		} catch (error) {
+			console.error("🔐 Error verifying Cloudflare webhook:", error);
+			return false;
+		}
 	}
 
 	/**
@@ -351,37 +380,6 @@ export class CloudflareTunnelClient extends EventEmitter {
 			res.writeHead(response.success ? 200 : 400, {
 				"Content-Type": "application/json",
 			});
-			res.end(JSON.stringify(response));
-		} catch (error) {
-			this.handleError(error, res);
-		}
-	}
-
-	/**
-	 * Handle /webhook requests
-	 */
-	private async handleWebhookRequest(
-		req: IncomingMessage,
-		res: ServerResponse,
-	): Promise<void> {
-		try {
-			if (!this.verifyAuth(req.headers.authorization)) {
-				res.writeHead(401, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ success: false, error: "Unauthorized" }));
-				return;
-			}
-
-			const body = await this.readBody(req);
-			const parsedBody = JSON.parse(body) as LinearWebhookPayload;
-
-			this.emit("webhook", parsedBody);
-
-			const response: ApiResponse = {
-				success: true,
-				message: "Webhook received",
-			};
-
-			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify(response));
 		} catch (error) {
 			this.handleError(error, res);

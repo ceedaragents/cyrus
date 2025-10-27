@@ -32,6 +32,31 @@ export interface ApprovalCallback {
 }
 
 /**
+ * Webhook verification strategy interface
+ * Allows different transports to provide their own verification logic
+ */
+export interface WebhookVerificationStrategy {
+	/**
+	 * Verify the webhook request
+	 * @param req - Incoming HTTP request
+	 * @param body - Request body as string
+	 * @returns Promise<boolean> - true if verification succeeds
+	 */
+	verify(req: IncomingMessage, body: string): Promise<boolean>;
+
+	/**
+	 * Name of the verification strategy (for logging)
+	 */
+	name: string;
+
+	/**
+	 * Priority for trying verification strategies (lower = higher priority)
+	 * Default: 100
+	 */
+	priority?: number;
+}
+
+/**
  * Shared application server that handles both webhooks and OAuth callbacks on a single port
  * Consolidates functionality from SharedWebhookServer and CLI OAuth server
  */
@@ -63,6 +88,7 @@ export class SharedApplicationServer {
 			handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 		}
 	>();
+	private webhookVerificationStrategies: WebhookVerificationStrategy[] = [];
 	private port: number;
 	private host: string;
 	private isListening = false;
@@ -282,6 +308,37 @@ export class SharedApplicationServer {
 	}
 
 	/**
+	 * Register a webhook verification strategy
+	 * Strategies are tried in priority order (lower number = higher priority)
+	 */
+	registerWebhookVerificationStrategy(
+		strategy: WebhookVerificationStrategy,
+	): void {
+		this.webhookVerificationStrategies.push(strategy);
+		// Sort by priority (lower = higher priority)
+		this.webhookVerificationStrategies.sort(
+			(a, b) => (a.priority || 100) - (b.priority || 100),
+		);
+		console.log(
+			`🔐 Registered webhook verification strategy: ${strategy.name} (priority: ${strategy.priority || 100})`,
+		);
+	}
+
+	/**
+	 * Unregister a webhook verification strategy by name
+	 */
+	unregisterWebhookVerificationStrategy(name: string): void {
+		const initialLength = this.webhookVerificationStrategies.length;
+		this.webhookVerificationStrategies =
+			this.webhookVerificationStrategies.filter(
+				(strategy) => strategy.name !== name,
+			);
+		if (this.webhookVerificationStrategies.length < initialLength) {
+			console.log(`🔐 Unregistered webhook verification strategy: ${name}`);
+		}
+	}
+
+	/**
 	 * Start OAuth flow and return promise that resolves when callback is received
 	 */
 	async startOAuthFlow(proxyUrl: string): Promise<{
@@ -404,6 +461,7 @@ export class SharedApplicationServer {
 
 	/**
 	 * Handle incoming webhook requests
+	 * Uses verification strategies for flexible authentication
 	 */
 	private async handleWebhookRequest(
 		req: IncomingMessage,
@@ -456,16 +514,60 @@ export class SharedApplicationServer {
 				return;
 			}
 
-			// Otherwise, handle as proxy-style webhook
-			// Read request body
+			// Read request body for verification strategies
 			let body = "";
 			req.on("data", (chunk) => {
 				body += chunk.toString();
 			});
 
-			req.on("end", () => {
+			req.on("end", async () => {
 				try {
-					// For proxy-style webhooks, we need the signature header
+					// Try verification strategies first (for Cloudflare tunnel, etc.)
+					if (this.webhookVerificationStrategies.length > 0) {
+						console.log(
+							`🔐 Trying ${this.webhookVerificationStrategies.length} verification strategies`,
+						);
+
+						for (const strategy of this.webhookVerificationStrategies) {
+							try {
+								const verified = await strategy.verify(req, body);
+								if (verified) {
+									console.log(
+										`🔐 Webhook verified using strategy: ${strategy.name}`,
+									);
+
+									// Emit to any registered webhook handlers
+									for (const [token, { handler }] of this.webhookHandlers) {
+										try {
+											// For strategies, we don't have signature/timestamp
+											// Just pass empty strings to maintain compatibility
+											handler(body, "", "");
+										} catch (error) {
+											console.error(
+												`🔗 Error in webhook handler for token ...${token.slice(-4)}:`,
+												error,
+											);
+										}
+									}
+
+									res.writeHead(200, { "Content-Type": "text/plain" });
+									res.end("OK");
+									return;
+								}
+							} catch (error) {
+								console.error(
+									`🔐 Error in verification strategy ${strategy.name}:`,
+									error,
+								);
+							}
+						}
+
+						console.log(
+							`🔐 All verification strategies failed, falling back to legacy handlers`,
+						);
+					}
+
+					// Fall back to legacy proxy-style webhook handlers
 					const signature = req.headers["x-webhook-signature"] as string;
 					const timestamp = req.headers["x-webhook-timestamp"] as string;
 
