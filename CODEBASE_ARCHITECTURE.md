@@ -3,7 +3,7 @@
 ## Executive Summary
 
 The Cyrus codebase is a TypeScript/JavaScript monorepo organized with a clear separation of concerns:
-- **Apps**: CLI (main application) and Proxy Worker (OAuth/webhook handling)
+- **Apps**: CLI (main application)
 - **Packages**: Shared libraries for edge workers, clients, and utilities
 
 The architecture has evolved toward a **unified webhook handling pattern** where:
@@ -18,8 +18,7 @@ The architecture has evolved toward a **unified webhook handling pattern** where
 ```
 cyrus-workspaces/
 ├── apps/
-│   ├── cli/               # Main CLI application
-│   └── proxy-worker/      # OAuth/webhook proxy (cloud-based)
+│   └── cli/               # Main CLI application
 │
 └── packages/
     ├── cloudflare-tunnel-client/  # Cloudflare tunnel implementation
