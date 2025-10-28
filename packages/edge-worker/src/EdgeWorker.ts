@@ -554,12 +554,46 @@ export class EdgeWorker extends EventEmitter {
 
 		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
-		// Resume the parent session with the child's result
+		// Post thought to Linear showing child result receipt
+		const linearClient = this.linearClients.get(repo.id);
+		if (linearClient && childSession) {
+			const childIssueIdentifier =
+				childSession.issue?.identifier || childSession.issueId;
+			const resultThought = `Received result from sub-issue ${childIssueIdentifier}:\n\n---\n\n${prompt}\n\n---`;
+
+			try {
+				const result = await linearClient.createAgentActivity({
+					agentSessionId: parentSessionId,
+					content: {
+						type: "thought",
+						body: resultThought,
+					},
+				});
+
+				if (result.success) {
+					console.log(
+						`[Parent Session Resume] Posted child result receipt thought for parent session ${parentSessionId}`,
+					);
+				} else {
+					console.error(
+						`[Parent Session Resume] Failed to post child result receipt thought:`,
+						result,
+					);
+				}
+			} catch (error) {
+				console.error(
+					`[Parent Session Resume] Error posting child result receipt thought:`,
+					error,
+				);
+			}
+		}
+
+		// Use centralized streaming check and routing logic
 		console.log(
-			`[Parent Session Resume] Resuming parent Claude session with child results`,
+			`[Parent Session Resume] Handling child result for parent session ${parentSessionId}`,
 		);
 		try {
-			await this.resumeClaudeSession(
+			await this.handlePromptWithStreamingCheck(
 				parentSession,
 				repo,
 				parentSessionId,
@@ -568,9 +602,10 @@ export class EdgeWorker extends EventEmitter {
 				"", // No attachment manifest for child results
 				false, // Not a new session
 				childWorkspaceDirs, // Add child workspace directories to parent's allowed directories
+				"parent resume from child",
 			);
 			console.log(
-				`[Parent Session Resume] Successfully resumed parent session ${parentSessionId} with child results`,
+				`[Parent Session Resume] Successfully handled child result for parent session ${parentSessionId}`,
 			);
 		} catch (error) {
 			console.error(
@@ -1878,60 +1913,8 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// Check if runner is actively streaming before routing
-		const existingRunner = session?.claudeRunner;
-		const isStreaming = existingRunner?.isStreaming() || false;
-
-		// Always route procedure for new comments, UNLESS actively streaming
-		if (!isStreaming) {
-			// Initialize procedure metadata using intelligent routing
-			if (!session.metadata) {
-				session.metadata = {};
-			}
-
-			// Post ephemeral "Routing..." thought
-			await agentSessionManager.postRoutingThought(
-				linearAgentActivitySessionId,
-			);
-
-			// For prompted events, use the actual prompt content from the user
-			// Combine with issue context for better routing
-			if (!fullIssue) {
-				console.warn(
-					`[EdgeWorker] Routing without full issue details for ${linearAgentActivitySessionId}`,
-				);
-			}
-			const promptBody = webhook.agentActivity.content.body;
-			const routingDecision = await this.procedureRouter.determineRoutine(
-				promptBody.trim(),
-			);
-			const selectedProcedure = routingDecision.procedure;
-
-			// Initialize procedure metadata in session (resets for each new comment)
-			this.procedureRouter.initializeProcedureMetadata(
-				session,
-				selectedProcedure,
-			);
-
-			// Post procedure selection result (replaces ephemeral routing thought)
-			await agentSessionManager.postProcedureSelectionThought(
-				linearAgentActivitySessionId,
-				selectedProcedure.name,
-				routingDecision.classification,
-			);
-
-			// Log routing decision
-			console.log(
-				`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId} (prompted webhook, ${isNewSession ? "new" : "existing"} session):`,
-			);
-			console.log(`  Classification: ${routingDecision.classification}`);
-			console.log(`  Procedure: ${selectedProcedure.name}`);
-			console.log(`  Reasoning: ${routingDecision.reasoning}`);
-		} else {
-			console.log(
-				`[EdgeWorker] Skipping routing for ${linearAgentActivitySessionId} - runner is actively streaming`,
-			);
-		}
+		// Note: Routing and streaming check happens later in handlePromptWithStreamingCheck
+		// after attachments are processed
 
 		// Ensure session is not null after creation/retrieval
 		if (!session) {
@@ -2014,6 +1997,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Stop the existing runner if it's active
+			const existingRunner = session.claudeRunner;
 			if (existingRunner) {
 				existingRunner.stop();
 				console.log(
@@ -2031,26 +2015,9 @@ export class EdgeWorker extends EventEmitter {
 			return; // Exit early - stop signal handled
 		}
 
-		// Check if there's an existing runner for this comment thread
-		if (existingRunner?.isStreaming()) {
-			// Add comment with attachment manifest to existing stream
-			console.log(
-				`[EdgeWorker] Adding comment to existing stream for agent activity session ${linearAgentActivitySessionId}`,
-			);
-
-			// Append attachment manifest to the prompt if we have one
-			let fullPrompt = promptBody;
-			if (attachmentManifest) {
-				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
-			}
-
-			existingRunner.addStreamMessage(fullPrompt);
-			return; // Exit early - comment has been added to stream
-		}
-
-		// Use the new resumeClaudeSession function
+		// Use centralized streaming check and routing logic
 		try {
-			await this.resumeClaudeSession(
+			await this.handlePromptWithStreamingCheck(
 				session,
 				repository,
 				linearAgentActivitySessionId,
@@ -2059,19 +2026,10 @@ export class EdgeWorker extends EventEmitter {
 				attachmentManifest,
 				isNewSession,
 				[], // No additional allowed directories for regular continuation
+				`prompted webhook (${isNewSession ? "new" : "existing"} session)`,
 			);
 		} catch (error) {
-			console.error("Failed to continue conversation:", error);
-			// Remove any partially created session
-			// this.sessionManager.removeSession(threadRootCommentId)
-			// this.commentToRepo.delete(threadRootCommentId)
-			// this.commentToIssue.delete(threadRootCommentId)
-			// // Start fresh for root comments, or fall back to issue assignment
-			// if (isRootComment) {
-			//   await this.handleNewRootComment(issue, comment, repository)
-			// } else {
-			//   await this.handleIssueAssigned(issue, repository)
-			// }
+			console.error("Failed to handle prompted webhook:", error);
 		}
 	}
 
@@ -3584,6 +3542,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
 					);
 
+					// Find the parent session ID for context
+					const parentSessionId =
+						this.childToParentAgentSession.get(childSessionId);
+
 					// Find the repository containing the child session
 					// We need to search all repositories for this child session
 					let childRepo: RepositoryConfig | undefined;
@@ -3618,14 +3580,66 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
 					);
 
+					// Get parent session info for better context in the thought
+					let parentIssueId: string | undefined;
+					if (parentSessionId) {
+						// Find parent session across all repositories
+						for (const manager of this.agentSessionManagers.values()) {
+							const parentSession = manager.getSession(parentSessionId);
+							if (parentSession) {
+								parentIssueId =
+									parentSession.issue?.identifier || parentSession.issueId;
+								break;
+							}
+						}
+					}
+
+					// Post thought to Linear showing feedback receipt
+					const linearClient = this.linearClients.get(childRepo.id);
+					if (linearClient) {
+						const feedbackThought = parentIssueId
+							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
+							: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
+
+						try {
+							const result = await linearClient.createAgentActivity({
+								agentSessionId: childSessionId,
+								content: {
+									type: "thought",
+									body: feedbackThought,
+								},
+							});
+
+							if (result.success) {
+								console.log(
+									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
+								);
+							} else {
+								console.error(
+									`[EdgeWorker] Failed to post feedback receipt thought:`,
+									result,
+								);
+							}
+						} catch (error) {
+							console.error(
+								`[EdgeWorker] Error posting feedback receipt thought:`,
+								error,
+							);
+						}
+					}
+
 					// Format the feedback as a prompt for the child session with enhanced markdown formatting
 					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
 
-					// Resume the CHILD session with the feedback from the parent
+					// Use centralized streaming check and routing logic
 					// Important: We don't await the full session completion to avoid timeouts.
 					// The feedback is delivered immediately when the session starts, so we can
 					// return success right away while the session continues in the background.
-					this.resumeClaudeSession(
+					console.log(
+						`[EdgeWorker] Handling feedback delivery to child session ${childSessionId}`,
+					);
+
+					this.handlePromptWithStreamingCheck(
 						childSession,
 						childRepo,
 						childSessionId,
@@ -3634,6 +3648,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						"", // No attachment manifest for feedback
 						false, // Not a new session
 						[], // No additional allowed directories for feedback
+						"give feedback to child",
 					)
 						.then(() => {
 							console.log(
@@ -3642,12 +3657,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						})
 						.catch((error) => {
 							console.error(
-								`[EdgeWorker] Failed to complete child session with feedback:`,
+								`[EdgeWorker] Failed to process feedback in child session:`,
 								error,
 							);
 						});
 
-					// Return success immediately after initiating the session
+					// Return success immediately after initiating the handling
 					console.log(
 						`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
 					);
@@ -4154,6 +4169,136 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				error,
 			);
 		}
+	}
+
+	/**
+	 * Re-route procedure for a session (used when resuming from child or give feedback)
+	 * This ensures the currentSubroutine is reset to avoid suppression issues
+	 */
+	private async rerouteProcedureForSession(
+		session: CyrusAgentSession,
+		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
+		promptBody: string,
+	): Promise<void> {
+		// Initialize procedure metadata using intelligent routing
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+
+		// Post ephemeral "Routing..." thought
+		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
+
+		// Route based on the prompt content
+		const routingDecision = await this.procedureRouter.determineRoutine(
+			promptBody.trim(),
+		);
+		const selectedProcedure = routingDecision.procedure;
+
+		// Initialize procedure metadata in session (resets currentSubroutine)
+		this.procedureRouter.initializeProcedureMetadata(
+			session,
+			selectedProcedure,
+		);
+
+		// Post procedure selection result (replaces ephemeral routing thought)
+		await agentSessionManager.postProcedureSelectionThought(
+			linearAgentActivitySessionId,
+			selectedProcedure.name,
+			routingDecision.classification,
+		);
+
+		// Log routing decision
+		console.log(
+			`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId}:`,
+		);
+		console.log(`  Classification: ${routingDecision.classification}`);
+		console.log(`  Procedure: ${selectedProcedure.name}`);
+		console.log(`  Reasoning: ${routingDecision.reasoning}`);
+	}
+
+	/**
+	 * Handle prompt with streaming check - centralized logic for all input types
+	 *
+	 * This method implements the unified pattern for handling prompts:
+	 * 1. Check if runner is actively streaming
+	 * 2. Route procedure if NOT streaming (resets currentSubroutine)
+	 * 3. Add to stream if streaming, OR resume session if not
+	 *
+	 * @param session The Cyrus agent session
+	 * @param repository Repository configuration
+	 * @param linearAgentActivitySessionId Linear agent activity session ID
+	 * @param agentSessionManager Agent session manager instance
+	 * @param promptBody The prompt text to send
+	 * @param attachmentManifest Optional attachment manifest to append
+	 * @param isNewSession Whether this is a new session
+	 * @param additionalAllowedDirs Additional directories to allow access to
+	 * @param logContext Context string for logging (e.g., "prompted webhook", "parent resume")
+	 * @returns true if message was added to stream, false if session was resumed
+	 */
+	private async handlePromptWithStreamingCheck(
+		session: CyrusAgentSession,
+		repository: RepositoryConfig,
+		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
+		promptBody: string,
+		attachmentManifest: string,
+		isNewSession: boolean,
+		additionalAllowedDirs: string[],
+		logContext: string,
+	): Promise<boolean> {
+		// Check if runner is actively streaming before routing
+		const existingRunner = session.claudeRunner;
+		const isStreaming = existingRunner?.isStreaming() || false;
+
+		// Always route procedure for new input, UNLESS actively streaming
+		if (!isStreaming) {
+			await this.rerouteProcedureForSession(
+				session,
+				linearAgentActivitySessionId,
+				agentSessionManager,
+				promptBody,
+			);
+			console.log(`[EdgeWorker] Routed procedure for ${logContext}`);
+		} else {
+			console.log(
+				`[EdgeWorker] Skipping routing for ${linearAgentActivitySessionId} (${logContext}) - runner is actively streaming`,
+			);
+		}
+
+		// Handle streaming case - add message to existing stream
+		if (existingRunner?.isStreaming()) {
+			console.log(
+				`[EdgeWorker] Adding prompt to existing stream for ${linearAgentActivitySessionId} (${logContext})`,
+			);
+
+			// Append attachment manifest to the prompt if we have one
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
+			existingRunner.addStreamMessage(fullPrompt);
+			return true; // Message added to stream
+		}
+
+		// Not streaming - resume/start session
+		console.log(
+			`[EdgeWorker] Resuming Claude session for ${linearAgentActivitySessionId} (${logContext})`,
+		);
+
+		await this.resumeClaudeSession(
+			session,
+			repository,
+			linearAgentActivitySessionId,
+			agentSessionManager,
+			promptBody,
+			attachmentManifest,
+			isNewSession,
+			additionalAllowedDirs,
+		);
+
+		return false; // Session was resumed
 	}
 
 	/**
