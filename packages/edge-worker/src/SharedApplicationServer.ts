@@ -44,8 +44,8 @@ export class SharedApplicationServer {
 			handler: (body: string, signature: string, timestamp?: string) => boolean;
 		}
 	>();
-	// Separate handlers for LinearWebhookClient that handle raw req/res
-	private linearWebhookHandlers = new Map<
+	// Separate handlers for LinearEventTransport that handle raw req/res
+	private linearEventTransportHandlers = new Map<
 		string,
 		(req: IncomingMessage, res: ServerResponse) => Promise<void>
 	>();
@@ -217,7 +217,7 @@ export class SharedApplicationServer {
 			);
 		} else if (typeof secretOrHandler === "function") {
 			// linear-webhook-client style registration
-			this.linearWebhookHandlers.set(token, secretOrHandler);
+			this.linearEventTransportHandlers.set(token, secretOrHandler);
 			console.log(
 				`🔗 Registered webhook handler (direct-style) for token ending in ...${token.slice(-4)}`,
 			);
@@ -231,7 +231,7 @@ export class SharedApplicationServer {
 	 */
 	unregisterWebhookHandler(token: string): void {
 		const hadProxyHandler = this.webhookHandlers.delete(token);
-		const hadDirectHandler = this.linearWebhookHandlers.delete(token);
+		const hadDirectHandler = this.linearEventTransportHandlers.delete(token);
 		if (hadProxyHandler || hadDirectHandler) {
 			console.log(
 				`🔗 Unregistered webhook handler for token ending in ...${token.slice(-4)}`,
@@ -379,15 +379,15 @@ export class SharedApplicationServer {
 			const linearSignature = req.headers["linear-signature"] as string;
 			const isDirectWebhook = !!linearSignature;
 
-			if (isDirectWebhook && this.linearWebhookHandlers.size > 0) {
+			if (isDirectWebhook && this.linearEventTransportHandlers.size > 0) {
 				// For direct Linear webhooks, pass the raw request to the handler
-				// The LinearWebhookClient will handle its own signature verification
+				// The LinearEventTransport will handle its own signature verification
 				console.log(
-					`🔗 Direct Linear webhook received, trying ${this.linearWebhookHandlers.size} direct handlers`,
+					`🔗 Direct Linear webhook received, trying ${this.linearEventTransportHandlers.size} direct handlers`,
 				);
 
 				// Try each direct handler
-				for (const [token, handler] of this.linearWebhookHandlers) {
+				for (const [token, handler] of this.linearEventTransportHandlers) {
 					try {
 						// The handler will manage the response
 						await handler(req, res);
@@ -405,7 +405,7 @@ export class SharedApplicationServer {
 
 				// No direct handler could process it
 				console.error(
-					`🔗 Direct webhook processing failed for all ${this.linearWebhookHandlers.size} handlers`,
+					`🔗 Direct webhook processing failed for all ${this.linearEventTransportHandlers.size} handlers`,
 				);
 				res.writeHead(401, { "Content-Type": "text/plain" });
 				res.end("Unauthorized");

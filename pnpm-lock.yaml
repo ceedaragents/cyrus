@@ -209,9 +209,9 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
-      cyrus-linear-webhook-client:
+      cyrus-linear-event-transport:
         specifier: workspace:*
-        version: link:../linear-webhook-client
+        version: link:../linear-event-transport
       cyrus-ndjson-client:
         specifier: workspace:*
         version: link:../ndjson-client
@@ -241,7 +241,7 @@ importers:
         specifier: ^3.1.0
         version: 3.1.0(typescript@5.9.3)(vitest@1.6.1(@types/node@20.19.21))
 
-  packages/linear-webhook-client:
+  packages/linear-event-transport:
     dependencies:
       '@linear/sdk':
         specifier: ^58.0.0
@@ -253,6 +253,9 @@ importers:
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.21)
 
   packages/ndjson-client:
     devDependencies:

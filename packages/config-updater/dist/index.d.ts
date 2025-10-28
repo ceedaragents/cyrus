@@ -6,11 +6,11 @@
  * repositories, and MCP server configurations.
  */
 export { ConfigUpdater } from "./ConfigUpdater.js";
+export { handleConfigureMcp } from "./handlers/configureMcp.js";
 export { handleCyrusConfig, readCyrusConfig } from "./handlers/cyrusConfig.js";
 export { handleCyrusEnv } from "./handlers/cyrusEnv.js";
 export { handleRepository } from "./handlers/repository.js";
 export { handleTestMcp } from "./handlers/testMcp.js";
-export { handleConfigureMcp } from "./handlers/configureMcp.js";
 export type {
 	ApiResponse,
 	ConfigureMcpPayload,
