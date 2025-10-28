@@ -331,7 +331,7 @@ export class EdgeWorker extends EventEmitter {
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
-			firstRepo.linearToken, // Use linear token as API key for authentication
+			process.env.CYRUS_API_KEY || ""
 		);
 
 		// Register config update routes
