@@ -6,7 +6,6 @@ import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
 import { ConfigService } from "./services/ConfigService.js";
 import { GitService } from "./services/GitService.js";
 import { Logger } from "./services/Logger.js";
-import { OAuthService } from "./services/OAuthService.js";
 import { WorkerService } from "./services/WorkerService.js";
 
 /**
@@ -14,7 +13,6 @@ import { WorkerService } from "./services/WorkerService.js";
  */
 export class Application {
 	public readonly config: ConfigService;
-	public readonly oauth: OAuthService;
 	public readonly git: GitService;
 	public readonly worker: WorkerService;
 	public readonly logger: Logger;
@@ -31,7 +29,6 @@ export class Application {
 		// Initialize services
 		this.config = new ConfigService(cyrusHome, this.logger);
 		this.git = new GitService(this.logger);
-		this.oauth = new OAuthService();
 		this.worker = new WorkerService(
 			this.config,
 			this.git,
