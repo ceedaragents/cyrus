@@ -27,6 +27,8 @@
 		"@ngrok/ngrok": "^1.5.1",
 		"chokidar": "^4.0.3",
 		"cyrus-claude-runner": "workspace:*",
+		"cyrus-cloudflare-tunnel-client": "workspace:*",
+		"cyrus-config-updater": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",

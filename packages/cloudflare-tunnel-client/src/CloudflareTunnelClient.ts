@@ -77,6 +77,9 @@ export class CloudflareTunnelClient extends EventEmitter {
 					connection,
 				);
 
+				// Emit 'connected' event for each connection (for external listeners)
+				this.emit("connected", connection);
+
 				// Mark as connected on first connection, but log all 4
 				if (!this.connected) {
 					this.connected = true;

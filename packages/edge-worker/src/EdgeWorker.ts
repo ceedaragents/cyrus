@@ -26,6 +26,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	CyrusAgentSession,
 	EdgeWorkerConfig,
@@ -88,7 +89,8 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
-	private eventTransports: Map<string, LinearEventTransport> = new Map(); // event transports for webhook delivery, one per linear token
+	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
+	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
@@ -96,7 +98,6 @@ export class EdgeWorker extends EventEmitter {
 	private procedureRouter: ProcedureRouter; // Intelligent workflow routing
 	private configWatcher?: FSWatcher; // File watcher for config.json
 	private configPath?: string; // Path to config.json file
-	private tokenToRepoIds: Map<string, string[]> = new Map(); // Maps Linear token to repository IDs using that token
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -255,23 +256,7 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// Group repositories by token to minimize NDJSON connections
-		const tokenToRepos = new Map<string, RepositoryConfig[]>();
-		for (const repo of this.repositories.values()) {
-			const repos = tokenToRepos.get(repo.linearToken) || [];
-			repos.push(repo);
-			tokenToRepos.set(repo.linearToken, repos);
-
-			// Track token-to-repo-id mapping for dynamic config updates
-			const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
-			if (!repoIds.includes(repo.id)) {
-				repoIds.push(repo.id);
-			}
-			this.tokenToRepoIds.set(repo.linearToken, repoIds);
-		}
-
-		// Event transports will be created and registered after server starts
-		// Store token info for later initialization
+		// Components will be initialized and registered in start() method after server starts
 	}
 
 	/**
@@ -286,72 +271,75 @@ export class EdgeWorker extends EventEmitter {
 			this.startConfigWatcher();
 		}
 
-		// Start shared application server first
+		// Start shared application server first (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
 		await this.sharedApplicationServer.start();
 
-		// Now create and register event transports (after server is started)
-		await this.initializeEventTransports();
+		// Initialize and register components after server is started
+		await this.initializeComponents();
 	}
 
 	/**
-	 * Initialize event transports after server has started
+	 * Initialize and register components after server has started
 	 */
-	private async initializeEventTransports(): Promise<void> {
-		// Group repositories by token to create one transport per token
-		const tokenToRepos = new Map<string, RepositoryConfig[]>();
-		for (const repo of this.repositories.values()) {
-			const repos = tokenToRepos.get(repo.linearToken) || [];
-			repos.push(repo);
-			tokenToRepos.set(repo.linearToken, repos);
+	private async initializeComponents(): Promise<void> {
+		// Get the first active repository for configuration
+		const firstRepo = Array.from(this.repositories.values())[0];
+		if (!firstRepo) {
+			throw new Error("No active repositories configured");
 		}
 
-		// Create one LinearEventTransport per unique token
-		for (const [token, repos] of tokenToRepos) {
-			if (!repos || repos.length === 0) continue;
-			const firstRepo = repos[0];
-			if (!firstRepo) continue;
-			const primaryRepoId = firstRepo.id;
+		// 1. Create and register LinearEventTransport
+		const useDirectWebhooks =
+			process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
+		const verificationMode = useDirectWebhooks ? "direct" : "proxy";
 
-			// Determine verification mode
-			const useDirectWebhooks =
-				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
-			const verificationMode = useDirectWebhooks ? "direct" : "proxy";
+		// Get appropriate secret based on mode
+		const secret = useDirectWebhooks
+			? process.env.LINEAR_WEBHOOK_SECRET || ""
+			: firstRepo.linearToken;
 
-			// Get appropriate secret based on mode
-			const secret = useDirectWebhooks
-				? process.env.LINEAR_WEBHOOK_SECRET || ""
-				: token;
+		this.linearEventTransport = new LinearEventTransport({
+			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+			verificationMode,
+			secret,
+		});
 
-			// Create LinearEventTransport
-			const eventTransport = new LinearEventTransport({
-				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-				verificationMode,
-				secret,
-			});
+		// Listen for webhook events
+		this.linearEventTransport.on("webhook", (payload: any) => {
+			// Get all active repositories for webhook handling
+			const repos = Array.from(this.repositories.values());
+			this.handleWebhook(payload as unknown as LinearWebhook, repos);
+		});
 
-			// Listen for webhook events
-			eventTransport.on("webhook", (payload: any) => {
-				const freshRepos = this.getRepositoriesForToken(token);
-				this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
-			});
+		// Listen for errors
+		this.linearEventTransport.on("error", (error: Error) => {
+			this.handleError(error);
+		});
 
-			// Listen for errors
-			eventTransport.on("error", (error: Error) => {
-				this.handleError(error);
-			});
-
-			// Register the /webhook endpoint
-			eventTransport.register();
-
-			// Store with the first repo's ID as the key
-			this.eventTransports.set(primaryRepoId, eventTransport);
-		}
+		// Register the /webhook endpoint
+		this.linearEventTransport.register();
 
 		console.log(
-			`✅ Linear event transports registered (${this.eventTransports.size} unique tokens)`,
+			`✅ Linear event transport registered (${verificationMode} mode)`,
 		);
 		console.log(
 			`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
+		);
+
+		// 2. Create and register ConfigUpdater
+		this.configUpdater = new ConfigUpdater(
+			this.sharedApplicationServer.getFastifyInstance(),
+			this.cyrusHome,
+			firstRepo.linearToken, // Use linear token as API key for authentication
+		);
+
+		// Register config update routes
+		this.configUpdater.register();
+
+		console.log("✅ Config updater registered");
+		console.log("   Routes: /api/update/cyrus-config, /api/update/cyrus-env,");
+		console.log(
+			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
 	}
 
@@ -393,10 +381,11 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// Clear event transports (no disconnect needed, routes are removed when server stops)
-		this.eventTransports.clear();
+		// Clear event transport (no explicit cleanup needed, routes are removed when server stops)
+		this.linearEventTransport = null;
+		this.configUpdater = null;
 
-		// Stop shared application server
+		// Stop shared application server (this also stops Cloudflare tunnel if running)
 		await this.sharedApplicationServer.stop();
 	}
 
@@ -405,22 +394,6 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	setConfigPath(configPath: string): void {
 		this.configPath = configPath;
-	}
-
-	/**
-	 * Get fresh list of repositories for a given Linear token
-	 * This ensures webhook handlers always work with current repository state
-	 */
-	private getRepositoriesForToken(token: string): RepositoryConfig[] {
-		const repoIds = this.tokenToRepoIds.get(token) || [];
-		const repos: RepositoryConfig[] = [];
-		for (const repoId of repoIds) {
-			const repo = this.repositories.get(repoId);
-			if (repo) {
-				repos.push(repo);
-			}
-		}
-		return repos;
 	}
 
 	/**
@@ -714,16 +687,6 @@ export class EdgeWorker extends EventEmitter {
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 
-				// Update token-to-repo mapping
-				const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
-				if (!repoIds.includes(repo.id)) {
-					repoIds.push(repo.id);
-				}
-				this.tokenToRepoIds.set(repo.linearToken, repoIds);
-
-				// Set up webhook listener
-				await this.setupWebhookListener(repo);
-
 				console.log(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
 				console.error(`❌ Failed to add repository ${repo.name}:`, error);
@@ -759,24 +722,6 @@ export class EdgeWorker extends EventEmitter {
 						accessToken: repo.linearToken,
 					});
 					this.linearClients.set(repo.id, linearClient);
-
-					// Update token mapping
-					const oldRepoIds = this.tokenToRepoIds.get(oldRepo.linearToken) || [];
-					const filteredOldIds = oldRepoIds.filter((id) => id !== repo.id);
-					if (filteredOldIds.length > 0) {
-						this.tokenToRepoIds.set(oldRepo.linearToken, filteredOldIds);
-					} else {
-						this.tokenToRepoIds.delete(oldRepo.linearToken);
-					}
-
-					const newRepoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
-					if (!newRepoIds.includes(repo.id)) {
-						newRepoIds.push(repo.id);
-					}
-					this.tokenToRepoIds.set(repo.linearToken, newRepoIds);
-
-					// Reconnect webhook if needed
-					await this.reconnectWebhook(oldRepo, repo);
 				}
 
 				// If active status changed
@@ -787,7 +732,6 @@ export class EdgeWorker extends EventEmitter {
 						);
 					} else {
 						console.log(`  ▶️  Repository reactivated`);
-						await this.setupWebhookListener(repo);
 					}
 				}
 
@@ -862,118 +806,10 @@ export class EdgeWorker extends EventEmitter {
 				this.linearClients.delete(repo.id);
 				this.agentSessionManagers.delete(repo.id);
 
-				// Update token mapping
-				const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
-				const filteredIds = repoIds.filter((id) => id !== repo.id);
-				if (filteredIds.length > 0) {
-					this.tokenToRepoIds.set(repo.linearToken, filteredIds);
-				} else {
-					this.tokenToRepoIds.delete(repo.linearToken);
-				}
-
-				// Clean up webhook listener if no other repos use the same token
-				await this.cleanupWebhookIfUnused(repo);
-
 				console.log(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
 				console.error(`❌ Failed to remove repository ${repo.name}:`, error);
 			}
-		}
-	}
-
-	/**
-	 * Set up webhook listener for a repository
-	 */
-	private async setupWebhookListener(repo: RepositoryConfig): Promise<void> {
-		// Check if we already have a transport for this token
-		const existingRepoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
-		const existingTransport =
-			existingRepoIds.length > 0
-				? this.eventTransports.get(existingRepoIds[0] || "")
-				: null;
-
-		if (existingTransport) {
-			console.log(
-				`  ℹ️  Reusing existing event transport for token ...${repo.linearToken.slice(-4)}`,
-			);
-			return;
-		}
-
-		// Determine verification mode
-		const useDirectWebhooks =
-			process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
-		const verificationMode = useDirectWebhooks ? "direct" : "proxy";
-
-		// Get appropriate secret based on mode
-		const secret = useDirectWebhooks
-			? process.env.LINEAR_WEBHOOK_SECRET || ""
-			: repo.linearToken;
-
-		// Create LinearEventTransport
-		const eventTransport = new LinearEventTransport({
-			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-			verificationMode,
-			secret,
-		});
-
-		// Listen for webhook events
-		eventTransport.on("webhook", (payload: any) => {
-			// Get fresh repositories for this token to avoid stale closures
-			const freshRepos = this.getRepositoriesForToken(repo.linearToken);
-			this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
-		});
-
-		// Listen for errors
-		eventTransport.on("error", (error: Error) => {
-			this.handleError(error);
-		});
-
-		// Register the /webhook endpoint
-		eventTransport.register();
-
-		this.eventTransports.set(repo.id, eventTransport);
-
-		console.log(`  ✅ Event transport registered for ${repo.name}`);
-	}
-
-	/**
-	 * Reconnect webhook when token changes
-	 */
-	private async reconnectWebhook(
-		oldRepo: RepositoryConfig,
-		newRepo: RepositoryConfig,
-	): Promise<void> {
-		console.log(`  🔌 Reconnecting webhook due to token change`);
-
-		// Disconnect old client if no other repos use it
-		await this.cleanupWebhookIfUnused(oldRepo);
-
-		// Set up new connection
-		await this.setupWebhookListener(newRepo);
-	}
-
-	/**
-	 * Clean up event transport if no other repositories use the token
-	 */
-	private async cleanupWebhookIfUnused(repo: RepositoryConfig): Promise<void> {
-		const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
-		const otherRepos = repoIds.filter((id) => id !== repo.id);
-
-		if (otherRepos.length === 0) {
-			// No other repos use this token, safe to remove
-			const transport = this.eventTransports.get(repo.id);
-			if (transport) {
-				console.log(
-					`  🔌 Removing event transport for token ...${repo.linearToken.slice(-4)}`,
-				);
-				// Remove all listeners
-				transport.removeAllListeners();
-				this.eventTransports.delete(repo.id);
-			}
-		} else {
-			console.log(
-				`  ℹ️  Token still used by ${otherRepos.length} other repository(ies), keeping transport`,
-			);
 		}
 	}
 
@@ -2762,25 +2598,23 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	getConnectionStatus(): Map<string, boolean> {
 		const status = new Map<string, boolean>();
-		// Event transports are always "connected" once registered
-		for (const repoId of this.eventTransports.keys()) {
-			status.set(repoId, true);
+		// Single event transport is "connected" if it exists
+		if (this.linearEventTransport) {
+			// Mark all repositories as connected since they share the single transport
+			for (const repoId of this.repositories.keys()) {
+				status.set(repoId, true);
+			}
 		}
 		return status;
 	}
 
 	/**
-	 * Get event transport by token (for testing purposes)
+	 * Get event transport (for testing purposes)
 	 * @internal
 	 */
-	_getClientByToken(token: string): any {
-		for (const [repoId, transport] of this.eventTransports) {
-			const repo = this.repositories.get(repoId);
-			if (repo?.linearToken === token) {
-				return transport;
-			}
-		}
-		return undefined;
+	_getClientByToken(_token: string): any {
+		// Return the single shared event transport
+		return this.linearEventTransport;
 	}
 
 	/**

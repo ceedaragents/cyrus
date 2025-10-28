@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { CloudflareTunnelClient } from "cyrus-cloudflare-tunnel-client";
 import Fastify, { type FastifyInstance } from "fastify";
 
 /**
@@ -47,6 +48,7 @@ export class SharedApplicationServer {
 	private port: number;
 	private host: string;
 	private isListening = false;
+	private tunnelClient: CloudflareTunnelClient | null = null;
 
 	constructor(port: number = 3456, host: string = "localhost") {
 		this.port = port;
@@ -76,11 +78,76 @@ export class SharedApplicationServer {
 				`🔗 Shared application server listening on http://${this.host}:${this.port}`,
 			);
 
-			// TODO: Cloudflare tunnel will be started here
+			// Start Cloudflare tunnel if CLOUDFLARE_TOKEN is set
+			if (process.env.CLOUDFLARE_TOKEN) {
+				await this.startCloudflareTunnel(process.env.CLOUDFLARE_TOKEN);
+			}
 		} catch (error) {
 			this.isListening = false;
 			throw error;
 		}
+	}
+
+	/**
+	 * Start Cloudflare tunnel and wait for 4 'connected' events
+	 */
+	private async startCloudflareTunnel(cloudflareToken: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			let connectionCount = 0;
+			const requiredConnections = 4;
+
+			this.tunnelClient = new CloudflareTunnelClient(
+				cloudflareToken,
+				this.port,
+			);
+
+			// Listen for connection events (Cloudflare establishes 4 connections per tunnel)
+			this.tunnelClient.on("connected", () => {
+				connectionCount++;
+				console.log(
+					`🔗 Cloudflare tunnel connection ${connectionCount}/${requiredConnections} established`,
+				);
+
+				if (connectionCount === requiredConnections) {
+					console.log("✅ Cloudflare tunnel fully connected and ready");
+					resolve();
+				}
+			});
+
+			// Listen for ready event to get tunnel URL
+			this.tunnelClient.on("ready", (tunnelUrl: string) => {
+				console.log(`🔗 Cloudflare tunnel URL: ${tunnelUrl}`);
+				// Update CYRUS_BASE_URL if not already set
+				if (!process.env.CYRUS_BASE_URL) {
+					process.env.CYRUS_BASE_URL = tunnelUrl;
+				}
+			});
+
+			// Listen for error events
+			this.tunnelClient.on("error", (error: Error) => {
+				console.error("❌ Cloudflare tunnel error:", error);
+				reject(error);
+			});
+
+			// Listen for disconnect events
+			this.tunnelClient.on("disconnect", (reason: string) => {
+				console.log(`🔗 Cloudflare tunnel disconnected: ${reason}`);
+			});
+
+			// Start the tunnel
+			this.tunnelClient.startTunnel().catch(reject);
+
+			// Timeout after 30 seconds
+			setTimeout(() => {
+				if (connectionCount < requiredConnections) {
+					reject(
+						new Error(
+							`Timeout waiting for Cloudflare tunnel (${connectionCount}/${requiredConnections} connections)`,
+						),
+					);
+				}
+			}, 30000);
+		});
 	}
 
 	/**
@@ -95,6 +162,13 @@ export class SharedApplicationServer {
 			);
 		}
 		this.pendingApprovals.clear();
+
+		// Stop Cloudflare tunnel if running
+		if (this.tunnelClient) {
+			this.tunnelClient.disconnect();
+			this.tunnelClient = null;
+			console.log("🔗 Cloudflare tunnel stopped");
+		}
 
 		if (this.app && this.isListening) {
 			await this.app.close();
