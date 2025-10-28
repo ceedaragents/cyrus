@@ -8,7 +8,7 @@
  * {{new_comment_content}} template variables in standard-issue-assigned-user-prompt.md
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import { createTestWorker, scenario } from "./prompt-assembly-utils.js";
 
 describe("Prompt Assembly - New Comment Metadata in Agent Sessions", () => {
@@ -191,24 +191,23 @@ Remember: Your first message is internal planning. Use this time to:
 		const worker = createTestWorker();
 
 		// Continuation sessions should wrap comments in XML with metadata
-		const result = await scenario(worker)
+		await scenario(worker)
 			.continuationSession()
 			.withUserComment("Follow-up comment")
 			.withCommentAuthor("Charlie Brown")
 			.withCommentTimestamp("2025-01-27T16:00:00Z")
-			.build();
-
-		// Verify XML structure with author and timestamp
-		expect(result.userPrompt).toContain("<new_comment>");
-		expect(result.userPrompt).toContain("<author>Charlie Brown</author>");
-		expect(result.userPrompt).toContain(
-			"<timestamp>2025-01-27T16:00:00Z</timestamp>",
-		);
-		expect(result.userPrompt).toContain("<content>\nFollow-up comment\n");
-		expect(result.userPrompt).toContain("</new_comment>");
-
-		// Verify metadata
-		expect(result.metadata.promptType).toBe("continuation");
-		expect(result.metadata.isNewSession).toBe(false);
+			.expectUserPrompt(
+				`<new_comment>
+  <author>Charlie Brown</author>
+  <timestamp>2025-01-27T16:00:00Z</timestamp>
+  <content>
+Follow-up comment
+  </content>
+</new_comment>`,
+			)
+			.expectSystemPrompt(undefined)
+			.expectPromptType("continuation")
+			.expectComponents("user-comment")
+			.verify();
 	});
 });
