@@ -1,0 +1,23 @@
+
+> cyrus-config-updater@0.1.0 test:run /Users/agentops/code/cyrus-workspaces/CYPACK-236/packages/config-updater
+> vitest run
+
+
+ RUN  v3.2.4 /Users/agentops/code/cyrus-workspaces/CYPACK-236/packages/config-updater
+
+ ✓ src/__tests__/testMcp.test.ts (7 tests) 2ms
+ ✓ src/__tests__/configureMcp.test.ts (8 tests) 5ms
+ ✓ src/__tests__/cyrusEnv.test.ts (10 tests) 6ms
+ ✓ src/__tests__/cyrusConfig.test.ts (9 tests) 6ms
+ ✓ src/__tests__/ConfigUpdater.test.ts (12 tests) 7ms
+ ✓ src/__tests__/repository.test.ts (8 tests) 3652ms
+   ✓ handleRepository > should extract repository name from URL when not provided  570ms
+   ✓ handleRepository > should use provided repository_name  463ms
+   ✓ handleRepository > should create repos directory if it does not exist  480ms
+   ✓ handleRepository > should extract repository name from various URL formats  2004ms
+
+ Test Files  6 passed (6)
+      Tests  54 passed (54)
+   Start at  19:57:49
+   Duration  3.86s (transform 146ms, setup 0ms, collect 223ms, tests 3.68s, environment 0ms, prepare 242ms)
+
