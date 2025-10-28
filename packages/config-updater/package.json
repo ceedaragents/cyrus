@@ -1,0 +1,28 @@
+{
+	"name": "cyrus-config-updater",
+	"version": "0.0.1",
+	"description": "Config updater module for Cyrus applications",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run"
+	},
+	"dependencies": {
+		"@linear/sdk": "^58.0.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^1.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

@@ -24,12 +24,12 @@
 	},
 	"dependencies": {
 		"@linear/sdk": "^60.0.0",
-		"@ngrok/ngrok": "^1.5.1",
+		"cloudflared": "^0.7.1",
 		"chokidar": "^4.0.3",
 		"cyrus-claude-runner": "workspace:*",
+		"cyrus-config-updater": "workspace:*",
 		"cyrus-core": "workspace:*",
-		"cyrus-linear-webhook-client": "workspace:*",
-		"cyrus-ndjson-client": "workspace:*",
+		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
 		"file-type": "^18.7.0"
 	},

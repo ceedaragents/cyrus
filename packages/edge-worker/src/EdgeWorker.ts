@@ -55,8 +55,6 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
-import { LinearWebhookClient } from "cyrus-linear-webhook-client";
-import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import {
@@ -128,7 +126,6 @@ export class EdgeWorker extends EventEmitter {
 		this.sharedApplicationServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
-			config.ngrokAuthToken,
 			config.proxyUrl,
 		);
 
@@ -669,8 +666,6 @@ export class EdgeWorker extends EventEmitter {
 			const newConfig: EdgeWorkerConfig = {
 				...this.config,
 				repositories: parsedConfig.repositories || [],
-				ngrokAuthToken:
-					parsedConfig.ngrokAuthToken || this.config.ngrokAuthToken,
 				defaultModel: parsedConfig.defaultModel || this.config.defaultModel,
 				defaultFallbackModel:
 					parsedConfig.defaultFallbackModel || this.config.defaultFallbackModel,

@@ -1,0 +1,28 @@
+{
+	"name": "cyrus-linear-event-transport",
+	"version": "0.0.1",
+	"description": "Linear event transport module for direct webhook handling",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run"
+	},
+	"dependencies": {
+		"@linear/sdk": "^58.0.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^1.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}
