@@ -1,4 +1,7 @@
-import type { SharedApplicationServer } from "cyrus-edge-worker";
+import type {
+	OAuthHandlerModule,
+	SharedApplicationServer,
+} from "cyrus-edge-worker";
 import open from "open";
 import type { LinearCredentials } from "../config/types.js";
 import type { Logger } from "./Logger.js";
@@ -15,24 +18,17 @@ export class OAuthService {
 
 	/**
 	 * Start OAuth flow using an existing EdgeWorker's shared server
+	 * TODO: Update this to use OAuthHandlerModule from EdgeWorker
 	 */
 	async startFlowWithServer(
-		proxyUrl: string,
-		server: SharedApplicationServer,
+		_proxyUrl: string,
+		_server: SharedApplicationServer,
 	): Promise<LinearCredentials> {
-		const port = server.getPort();
-		const callbackBaseUrl = this.baseUrl || `http://localhost:${port}`;
-		const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
-
-		// Let SharedApplicationServer print the messages, but we handle browser opening
-		const resultPromise = server.startOAuthFlow(proxyUrl);
-
-		// Open browser after SharedApplicationServer prints its messages
-		open(authUrl).catch(() => {
-			// Error is already communicated by SharedApplicationServer
-		});
-
-		return resultPromise;
+		// This method needs refactoring to work with the new handler module pattern
+		// The EdgeWorker should expose the OAuthHandlerModule for this use case
+		throw new Error(
+			"startFlowWithServer needs to be updated for the new handler module pattern",
+		);
 	}
 
 	/**
@@ -40,9 +36,12 @@ export class OAuthService {
 	 */
 	async startFlowWithTempServer(
 		proxyUrl: string,
-		createServer: () => Promise<SharedApplicationServer>,
+		createServer: () => Promise<{
+			server: SharedApplicationServer;
+			oauthHandler: OAuthHandlerModule;
+		}>,
 	): Promise<LinearCredentials> {
-		const tempServer = await createServer();
+		const { server: tempServer, oauthHandler } = await createServer();
 
 		try {
 			// Start the server
@@ -52,12 +51,12 @@ export class OAuthService {
 			const callbackBaseUrl = this.baseUrl || `http://localhost:${port}`;
 			const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
 
-			// Start OAuth flow (this prints the messages)
-			const resultPromise = tempServer.startOAuthFlow(proxyUrl);
+			// Start OAuth flow using the OAuth handler module
+			const resultPromise = oauthHandler.startOAuthFlow();
 
-			// Open browser after SharedApplicationServer prints its messages
+			// Open browser after messages are printed
 			open(authUrl).catch(() => {
-				// Error is already communicated by SharedApplicationServer
+				// Error is already communicated
 			});
 
 			// Wait for OAuth flow to complete

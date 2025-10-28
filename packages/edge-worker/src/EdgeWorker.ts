@@ -59,6 +59,7 @@ import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import { ApprovalHandlerModule, OAuthHandlerModule } from "./handlers/index.js";
 import {
 	type ProcedureDefinition,
 	ProcedureRouter,
@@ -93,6 +94,8 @@ export class EdgeWorker extends EventEmitter {
 		new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
+	private oauthHandlerModule: OAuthHandlerModule;
+	private approvalHandlerModule: ApprovalHandlerModule;
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureRouter: ProcedureRouter; // Intelligent workflow routing
@@ -122,19 +125,40 @@ export class EdgeWorker extends EventEmitter {
 			`[EdgeWorker Constructor] Parent-child mapping initialized with 0 entries`,
 		);
 
-		// Initialize shared application server
+		// Initialize shared application server (no default handlers)
 		const serverPort = config.serverPort || config.webhookPort || 3456;
 		const serverHost = config.serverHost || "localhost";
 		this.sharedApplicationServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
-			config.ngrokAuthToken,
-			config.proxyUrl,
 		);
+
+		// Initialize handler modules
+		this.oauthHandlerModule = new OAuthHandlerModule({
+			proxyUrl: config.proxyUrl,
+			getBaseUrl: () => this.sharedApplicationServer.getBaseUrl(),
+			host: serverHost,
+			port: serverPort,
+		});
+
+		this.approvalHandlerModule = new ApprovalHandlerModule({
+			getBaseUrl: () => this.sharedApplicationServer.getBaseUrl(),
+			host: serverHost,
+			port: serverPort,
+		});
+
+		// Register handler modules with the server
+		this.oauthHandlerModule.register((method, path, handler) => {
+			this.sharedApplicationServer.registerHandler(method, path, handler);
+		});
+
+		this.approvalHandlerModule.register((method, path, handler) => {
+			this.sharedApplicationServer.registerHandler(method, path, handler);
+		});
 
 		// Register OAuth callback handler if provided
 		if (config.handlers?.onOAuthCallback) {
-			this.sharedApplicationServer.registerOAuthCallbackHandler(
+			this.oauthHandlerModule.registerOAuthCallbackHandler(
 				config.handlers.onOAuthCallback,
 			);
 		}
@@ -260,7 +284,7 @@ export class EdgeWorker extends EventEmitter {
 						}
 					},
 					this.procedureRouter,
-					this.sharedApplicationServer,
+					this.approvalHandlerModule,
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
@@ -800,7 +824,7 @@ export class EdgeWorker extends EventEmitter {
 					},
 					undefined, // No resumeNextSubroutine callback for dynamically added repos
 					this.procedureRouter,
-					this.sharedApplicationServer,
+					this.approvalHandlerModule,
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 
@@ -2920,13 +2944,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	/**
 	 * Start OAuth flow using the shared application server
 	 */
-	async startOAuthFlow(proxyUrl?: string): Promise<{
+	async startOAuthFlow(_proxyUrl?: string): Promise<{
 		linearToken: string;
 		linearWorkspaceId: string;
 		linearWorkspaceName: string;
 	}> {
-		const oauthProxyUrl = proxyUrl || this.config.proxyUrl;
-		return this.sharedApplicationServer.startOAuthFlow(oauthProxyUrl);
+		return this.oauthHandlerModule.startOAuthFlow();
 	}
 
 	/**

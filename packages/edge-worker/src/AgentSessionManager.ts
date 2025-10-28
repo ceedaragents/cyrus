@@ -17,8 +17,8 @@ import type {
 	SerializedCyrusAgentSessionEntry,
 	Workspace,
 } from "cyrus-core";
+import type { ApprovalHandlerModule } from "./handlers/ApprovalHandlerModule.js";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
-import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
 /**
  * Manages Linear Agent Sessions integration with Claude Code SDK
@@ -35,7 +35,7 @@ export class AgentSessionManager {
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
 	private procedureRouter?: ProcedureRouter;
-	private sharedApplicationServer?: SharedApplicationServer;
+	private approvalHandlerModule?: ApprovalHandlerModule;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -58,14 +58,14 @@ export class AgentSessionManager {
 			linearAgentActivitySessionId: string,
 		) => Promise<void>,
 		procedureRouter?: ProcedureRouter,
-		sharedApplicationServer?: SharedApplicationServer,
+		approvalHandlerModule?: ApprovalHandlerModule,
 	) {
 		this.linearClient = linearClient;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.resumeNextSubroutine = resumeNextSubroutine;
 		this.procedureRouter = procedureRouter;
-		this.sharedApplicationServer = sharedApplicationServer;
+		this.approvalHandlerModule = approvalHandlerModule;
 	}
 
 	/**
@@ -295,10 +295,10 @@ export class AgentSessionManager {
 					`[AgentSessionManager] Current subroutine "${currentSubroutine.name}" requires approval before proceeding`,
 				);
 
-				// Check if SharedApplicationServer is available
-				if (!this.sharedApplicationServer) {
+				// Check if ApprovalHandlerModule is available
+				if (!this.approvalHandlerModule) {
 					console.error(
-						`[AgentSessionManager] SharedApplicationServer not available for approval workflow`,
+						`[AgentSessionManager] ApprovalHandlerModule not available for approval workflow`,
 					);
 					await this.createErrorActivity(
 						linearAgentActivitySessionId,
@@ -316,7 +316,7 @@ export class AgentSessionManager {
 				try {
 					// Register approval request with server
 					const approvalRequest =
-						this.sharedApplicationServer.registerApprovalRequest(
+						this.approvalHandlerModule.registerApprovalRequest(
 							linearAgentActivitySessionId,
 						);
 
