@@ -257,7 +257,7 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// Components will be initialized and registered in start() method after server starts
+		// Components will be initialized and registered in start() method before server starts
 	}
 
 	/**
@@ -272,15 +272,15 @@ export class EdgeWorker extends EventEmitter {
 			this.startConfigWatcher();
 		}
 
-		// Start shared application server first (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
-		await this.sharedApplicationServer.start();
-
-		// Initialize and register components after server is started
+		// Initialize and register components BEFORE starting server (routes must be registered before listen())
 		await this.initializeComponents();
+
+		// Start shared application server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
+		await this.sharedApplicationServer.start();
 	}
 
 	/**
-	 * Initialize and register components after server has started
+	 * Initialize and register components (routes) before server starts
 	 */
 	private async initializeComponents(): Promise<void> {
 		// Get the first active repository for configuration

@@ -56,6 +56,19 @@ export class SharedApplicationServer {
 	}
 
 	/**
+	 * Initialize the Fastify app instance (must be called before registering routes)
+	 */
+	initializeFastify(): void {
+		if (this.app) {
+			return; // Already initialized
+		}
+
+		this.app = Fastify({
+			logger: false,
+		});
+	}
+
+	/**
 	 * Start the shared application server
 	 */
 	async start(): Promise<void> {
@@ -63,12 +76,11 @@ export class SharedApplicationServer {
 			return; // Already listening
 		}
 
-		this.app = Fastify({
-			logger: false,
-		});
+		// Initialize Fastify if not already done
+		this.initializeFastify();
 
 		try {
-			await this.app.listen({
+			await this.app!.listen({
 				port: this.port,
 				host: this.host,
 			});
@@ -182,14 +194,11 @@ export class SharedApplicationServer {
 
 	/**
 	 * Get the Fastify instance for registering routes
+	 * Initializes Fastify if not already done
 	 */
 	getFastifyInstance(): FastifyInstance {
-		if (!this.app) {
-			throw new Error(
-				"Fastify instance not available - server must be started first",
-			);
-		}
-		return this.app;
+		this.initializeFastify();
+		return this.app!;
 	}
 
 	/**
