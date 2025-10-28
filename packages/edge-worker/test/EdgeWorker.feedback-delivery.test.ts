@@ -1,6 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner, createCyrusToolsServer } from "cyrus-claude-runner";
-import { LinearWebhookClient } from "cyrus-linear-event-transport";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -120,16 +120,20 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
+					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getWebhookUrl: vi
+						.fn()
+						.mockReturnValue("http://localhost:3456/webhook"),
 					registerOAuthCallbackHandler: vi.fn(),
 				}) as any,
 		);
 
-		vi.mocked(LinearWebhookClient).mockImplementation(
+		vi.mocked(LinearEventTransport).mockImplementation(
 			() =>
 				({
-					connect: vi.fn().mockResolvedValue(undefined),
-					disconnect: vi.fn(),
-					isConnected: vi.fn().mockReturnValue(true),
+					register: vi.fn(),
+					on: vi.fn(),
+					removeAllListeners: vi.fn(),
 				}) as any,
 		);
 
