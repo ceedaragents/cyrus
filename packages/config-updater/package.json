@@ -1,0 +1,36 @@
+{
+	"name": "cyrus-config-updater",
+	"version": "0.1.0",
+	"description": "Configuration update handlers for Cyrus",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [
+		"cyrus",
+		"config",
+		"configuration"
+	],
+	"author": "Cyrus Team",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^22.10.5",
+		"typescript": "^5.7.3",
+		"vitest": "^3.0.5"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	}
+}
