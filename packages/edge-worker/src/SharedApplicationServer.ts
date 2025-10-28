@@ -5,7 +5,6 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { URL } from "node:url";
-import { forward } from "@ngrok/ngrok";
 import { DEFAULT_PROXY_URL, type OAuthCallbackHandler } from "cyrus-core";
 
 /**
@@ -32,19 +31,28 @@ export interface ApprovalCallback {
 }
 
 /**
- * Shared application server that handles both webhooks and OAuth callbacks on a single port
- * Consolidates functionality from SharedWebhookServer and CLI OAuth server
+ * Configuration for SharedApplicationServer
+ */
+export interface SharedApplicationServerConfig {
+	port?: number;
+	host?: string;
+	proxyUrl?: string;
+	cloudflareToken?: string; // Cloudflare tunnel token
+	apiKey?: string; // API key for Cloudflare tunnel authentication
+}
+
+/**
+ * Shared application server that provides a base HTTP server for modules to register handlers
+ * Modules like linear-event-transport and config-updater register their endpoints with this server
  */
 export class SharedApplicationServer {
 	private server: ReturnType<typeof createServer> | null = null;
-	private webhookHandlers = new Map<
+	// Map of path -> handler for registered modules
+	private moduleHandlers = new Map<
 		string,
-		{
-			secret: string;
-			handler: (body: string, signature: string, timestamp?: string) => boolean;
-		}
+		(req: IncomingMessage, res: ServerResponse) => Promise<void>
 	>();
-	// Separate handlers for LinearWebhookClient that handle raw req/res
+	// Separate handlers for LinearWebhookClient that handle raw req/res (for backwards compatibility)
 	private linearWebhookHandlers = new Map<
 		string,
 		(req: IncomingMessage, res: ServerResponse) => Promise<void>
@@ -59,21 +67,19 @@ export class SharedApplicationServer {
 	private port: number;
 	private host: string;
 	private isListening = false;
-	private ngrokListener: any = null;
-	private ngrokAuthToken: string | null = null;
-	private ngrokUrl: string | null = null;
 	private proxyUrl: string;
+	private cloudflareTunnel: any | null = null;
+	private cloudflareToken: string | null = null;
+	private apiKey: string | null = null;
 
-	constructor(
-		port: number = 3456,
-		host: string = "localhost",
-		ngrokAuthToken?: string,
-		proxyUrl?: string,
-	) {
-		this.port = port;
-		this.host = host;
-		this.ngrokAuthToken = ngrokAuthToken || null;
-		this.proxyUrl = proxyUrl || process.env.PROXY_URL || DEFAULT_PROXY_URL;
+	constructor(config: SharedApplicationServerConfig = {}) {
+		this.port = config.port || 3456;
+		this.host = config.host || "localhost";
+		this.proxyUrl =
+			config.proxyUrl || process.env.PROXY_URL || DEFAULT_PROXY_URL;
+		this.cloudflareToken =
+			config.cloudflareToken || process.env.CLOUDFLARE_TOKEN || null;
+		this.apiKey = config.apiKey || process.env.CYRUS_API_KEY || null;
 	}
 
 	/**
@@ -95,15 +101,13 @@ export class SharedApplicationServer {
 					`🔗 Shared application server listening on http://${this.host}:${this.port}`,
 				);
 
-				// Start ngrok tunnel if auth token is provided and not external host
-				const isExternalHost =
-					process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
-				if (this.ngrokAuthToken && !isExternalHost) {
+				// Start Cloudflare tunnel if token is provided
+				if (this.cloudflareToken && this.apiKey) {
 					try {
-						await this.startNgrokTunnel();
+						await this.startCloudflareTunnel();
 					} catch (error) {
-						console.error("🔴 Failed to start ngrok tunnel:", error);
-						// Don't reject here - server can still work without ngrok
+						console.error("🔴 Failed to start Cloudflare tunnel:", error);
+						// Don't reject here - server can still work without tunnel
 					}
 				}
 
@@ -130,15 +134,14 @@ export class SharedApplicationServer {
 		}
 		this.pendingApprovals.clear();
 
-		// Stop ngrok tunnel first
-		if (this.ngrokListener) {
+		// Stop Cloudflare tunnel first
+		if (this.cloudflareTunnel) {
 			try {
-				await this.ngrokListener.close();
-				this.ngrokListener = null;
-				this.ngrokUrl = null;
-				console.log("🔗 Ngrok tunnel stopped");
+				this.cloudflareTunnel.disconnect();
+				this.cloudflareTunnel = null;
+				console.log("🔗 Cloudflare tunnel stopped");
 			} catch (error) {
-				console.error("🔴 Failed to stop ngrok tunnel:", error);
+				console.error("🔴 Failed to stop Cloudflare tunnel:", error);
 			}
 		}
 
@@ -161,78 +164,93 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Get the base URL for the server (ngrok URL if available, otherwise local URL)
+	 * Get the base URL for the server (tunnel URL if available, otherwise local URL)
 	 */
 	getBaseUrl(): string {
-		if (this.ngrokUrl) {
-			return this.ngrokUrl;
+		if (this.cloudflareTunnel) {
+			const tunnelUrl = this.cloudflareTunnel.getTunnelUrl();
+			if (tunnelUrl) {
+				return tunnelUrl;
+			}
 		}
 		return process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`;
 	}
 
 	/**
-	 * Start ngrok tunnel for the server
+	 * Start Cloudflare tunnel for the server
 	 */
-	private async startNgrokTunnel(): Promise<void> {
-		if (!this.ngrokAuthToken) {
+	private async startCloudflareTunnel(): Promise<void> {
+		if (!this.cloudflareToken || !this.apiKey) {
 			return;
 		}
 
 		try {
-			console.log("🔗 Starting ngrok tunnel...");
-			this.ngrokListener = await forward({
-				addr: this.port,
-				authtoken: this.ngrokAuthToken,
+			// Dynamically import CloudflareTunnelClient
+			const { CloudflareTunnelClient } = await import(
+				"../../cloudflare-tunnel-client/dist/index.js"
+			);
+
+			console.log("🔗 Starting Cloudflare tunnel...");
+			this.cloudflareTunnel = new CloudflareTunnelClient({
+				cyrusHome: process.env.CYRUS_HOME || `${process.env.HOME}/.cyrus`,
 			});
 
-			this.ngrokUrl = this.ngrokListener.url();
-			console.log(`🌐 Ngrok tunnel active: ${this.ngrokUrl}`);
+			// Start the tunnel
+			await this.cloudflareTunnel.startTunnel(
+				this.cloudflareToken,
+				this.apiKey,
+			);
 
-			// Override CYRUS_BASE_URL with ngrok URL
-			process.env.CYRUS_BASE_URL = this.ngrokUrl || undefined;
+			const tunnelUrl = this.cloudflareTunnel.getTunnelUrl();
+			if (tunnelUrl) {
+				console.log(`🌐 Cloudflare tunnel active: ${tunnelUrl}`);
+				// Override CYRUS_BASE_URL with tunnel URL
+				process.env.CYRUS_BASE_URL = tunnelUrl;
+			}
 		} catch (error) {
-			console.error("🔴 Failed to start ngrok tunnel:", error);
+			console.error("🔴 Failed to start Cloudflare tunnel:", error);
 			throw error;
 		}
 	}
 
 	/**
-	 * Register a webhook handler for a specific token
-	 * Supports two signatures:
-	 * 1. For ndjson-client: (token, secret, handler)
-	 * 2. For linear-webhook-client: (token, handler) where handler takes (req, res)
+	 * Register a handler for a specific path (used by modules)
+	 */
+	registerHandler(
+		path: string,
+		handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
+	): void {
+		this.moduleHandlers.set(path, handler);
+		console.log(`🔗 Registered handler for path: ${path}`);
+	}
+
+	/**
+	 * Unregister a handler for a specific path
+	 */
+	unregisterHandler(path: string): void {
+		if (this.moduleHandlers.delete(path)) {
+			console.log(`🔗 Unregistered handler for path: ${path}`);
+		}
+	}
+
+	/**
+	 * Register a webhook handler for a specific token (for backwards compatibility with LinearWebhookClient)
 	 */
 	registerWebhookHandler(
 		token: string,
-		secretOrHandler:
-			| string
-			| ((req: IncomingMessage, res: ServerResponse) => Promise<void>),
-		handler?: (body: string, signature: string, timestamp?: string) => boolean,
+		handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
 	): void {
-		if (typeof secretOrHandler === "string" && handler) {
-			// ndjson-client style registration
-			this.webhookHandlers.set(token, { secret: secretOrHandler, handler });
-			console.log(
-				`🔗 Registered webhook handler (proxy-style) for token ending in ...${token.slice(-4)}`,
-			);
-		} else if (typeof secretOrHandler === "function") {
-			// linear-webhook-client style registration
-			this.linearWebhookHandlers.set(token, secretOrHandler);
-			console.log(
-				`🔗 Registered webhook handler (direct-style) for token ending in ...${token.slice(-4)}`,
-			);
-		} else {
-			throw new Error("Invalid webhook handler registration parameters");
-		}
+		this.linearWebhookHandlers.set(token, handler);
+		console.log(
+			`🔗 Registered webhook handler (direct-style) for token ending in ...${token.slice(-4)}`,
+		);
 	}
 
 	/**
 	 * Unregister a webhook handler
 	 */
 	unregisterWebhookHandler(token: string): void {
-		const hadProxyHandler = this.webhookHandlers.delete(token);
-		const hadDirectHandler = this.linearWebhookHandlers.delete(token);
-		if (hadProxyHandler || hadDirectHandler) {
+		if (this.linearWebhookHandlers.delete(token)) {
 			console.log(
 				`🔗 Unregistered webhook handler for token ending in ...${token.slice(-4)}`,
 			);
@@ -300,12 +318,15 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Get the public URL (ngrok URL if available, otherwise base URL)
+	 * Get the public URL (tunnel URL if available, otherwise base URL)
 	 */
 	getPublicUrl(): string {
-		// Use ngrok URL if available
-		if (this.ngrokUrl) {
-			return this.ngrokUrl;
+		// Use Cloudflare tunnel URL if available
+		if (this.cloudflareTunnel) {
+			const tunnelUrl = this.cloudflareTunnel.getTunnelUrl();
+			if (tunnelUrl) {
+				return tunnelUrl;
+			}
 		}
 		// If CYRUS_BASE_URL is set (could be from external proxy), use that
 		if (process.env.CYRUS_BASE_URL) {
@@ -330,7 +351,7 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Handle incoming requests (both webhooks and OAuth callbacks)
+	 * Handle incoming requests (routes to registered modules or built-in handlers)
 	 */
 	private async handleRequest(
 		req: IncomingMessage,
@@ -339,6 +360,14 @@ export class SharedApplicationServer {
 		try {
 			const url = new URL(req.url!, `http://${this.host}:${this.port}`);
 
+			// Check if there's a registered module handler for this path
+			const moduleHandler = this.moduleHandlers.get(url.pathname);
+			if (moduleHandler) {
+				await moduleHandler(req, res);
+				return;
+			}
+
+			// Handle built-in endpoints
 			if (url.pathname === "/webhook") {
 				await this.handleWebhookRequest(req, res);
 			} else if (url.pathname === "/callback") {
@@ -412,70 +441,10 @@ export class SharedApplicationServer {
 				return;
 			}
 
-			// Otherwise, handle as proxy-style webhook
-			// Read request body
-			let body = "";
-			req.on("data", (chunk) => {
-				body += chunk.toString();
-			});
-
-			req.on("end", () => {
-				try {
-					// For proxy-style webhooks, we need the signature header
-					const signature = req.headers["x-webhook-signature"] as string;
-					const timestamp = req.headers["x-webhook-timestamp"] as string;
-
-					console.log(
-						`🔗 Proxy webhook received with ${body.length} bytes, ${this.webhookHandlers.size} registered handlers`,
-					);
-
-					if (!signature) {
-						console.log("🔗 Webhook rejected: Missing signature header");
-						res.writeHead(400, { "Content-Type": "text/plain" });
-						res.end("Missing signature");
-						return;
-					}
-
-					// Try each registered handler until one verifies the signature
-					let handlerAttempts = 0;
-					for (const [token, { handler }] of this.webhookHandlers) {
-						handlerAttempts++;
-						try {
-							if (handler(body, signature, timestamp)) {
-								// Handler verified signature and processed webhook
-								res.writeHead(200, { "Content-Type": "text/plain" });
-								res.end("OK");
-								console.log(
-									`🔗 Webhook delivered to token ending in ...${token.slice(-4)} (attempt ${handlerAttempts}/${this.webhookHandlers.size})`,
-								);
-								return;
-							}
-						} catch (error) {
-							console.error(
-								`🔗 Error in webhook handler for token ...${token.slice(-4)}:`,
-								error,
-							);
-						}
-					}
-
-					// No handler could verify the signature
-					console.error(
-						`🔗 Webhook signature verification failed for all ${this.webhookHandlers.size} registered handlers`,
-					);
-					res.writeHead(401, { "Content-Type": "text/plain" });
-					res.end("Unauthorized");
-				} catch (error) {
-					console.error("🔗 Error processing webhook:", error);
-					res.writeHead(400, { "Content-Type": "text/plain" });
-					res.end("Bad Request");
-				}
-			});
-
-			req.on("error", (error) => {
-				console.error("🔗 Request error:", error);
-				res.writeHead(500, { "Content-Type": "text/plain" });
-				res.end("Internal Server Error");
-			});
+			// If no handlers, return error
+			console.error("🔗 No webhook handlers registered");
+			res.writeHead(404, { "Content-Type": "text/plain" });
+			res.end("No webhook handlers registered");
 		} catch (error) {
 			console.error("🔗 Webhook request error:", error);
 			res.writeHead(500, { "Content-Type": "text/plain" });
@@ -534,7 +503,7 @@ export class SharedApplicationServer {
               <p>You can close this window and return to the terminal.</p>
               <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
               <p style="margin-top: 30px;">
-                <a href="${this.proxyUrl}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback" 
+                <a href="${this.proxyUrl}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback"
                    style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                   Connect Another Workspace
                 </a>
@@ -717,7 +686,7 @@ export class SharedApplicationServer {
             <p>You can close this window and return to the terminal.</p>
             <p>Your Linear workspace <strong>${workspaceInfo.organization.name}</strong> has been connected.</p>
             <p style="margin-top: 30px;">
-              <a href="${this.getBaseUrl()}/oauth/authorize" 
+              <a href="${this.getBaseUrl()}/oauth/authorize"
                  style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                 Connect Another Workspace
               </a>

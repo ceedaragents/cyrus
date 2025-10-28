@@ -125,12 +125,13 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
 		const serverHost = config.serverHost || "localhost";
-		this.sharedApplicationServer = new SharedApplicationServer(
-			serverPort,
-			serverHost,
-			config.ngrokAuthToken,
-			config.proxyUrl,
-		);
+		this.sharedApplicationServer = new SharedApplicationServer({
+			port: serverPort,
+			host: serverHost,
+			proxyUrl: config.proxyUrl,
+			cloudflareToken: process.env.CLOUDFLARE_TOKEN,
+			apiKey: process.env.CYRUS_API_KEY,
+		});
 
 		// Register OAuth callback handler if provided
 		if (config.handlers?.onOAuthCallback) {

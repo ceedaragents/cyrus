@@ -73,7 +73,7 @@ export class Application {
 			process.env.CYRUS_SERVER_PORT,
 			DEFAULT_SERVER_PORT,
 		);
-		return new SharedApplicationServer(serverPort);
+		return new SharedApplicationServer({ port: serverPort });
 	}
 
 	/**

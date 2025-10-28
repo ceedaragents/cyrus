@@ -161,6 +161,22 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.21)
 
+  packages/config-updater:
+    dependencies:
+      '@linear/sdk':
+        specifier: ^40.0.0
+        version: 40.0.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.12.7
+        version: 20.19.21
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.21)
+
   packages/core:
     dependencies:
       '@linear/sdk':
