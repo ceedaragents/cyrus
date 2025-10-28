@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock dependencies BEFORE imports
-vi.mock("cyrus-ndjson-client");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("cyrus-claude-runner", () => ({
 	ClaudeRunner: vi.fn(),
 	getSafeTools: vi.fn(() => [
@@ -56,7 +56,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
-import { NdjsonClient } from "cyrus-ndjson-client";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
@@ -116,8 +116,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				}) as any,
 		);
 
-		// Mock NdjsonClient
-		vi.mocked(NdjsonClient).mockImplementation(
+		// Mock LinearEventTransport
+		vi.mocked(LinearEventTransport).mockImplementation(
 			() =>
 				({
 					connect: vi.fn().mockResolvedValue(undefined),

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LinearWebhookClient } from "../src/LinearWebhookClient";
-import type { LinearWebhookClientConfig, StatusUpdate } from "../src/types";
+import { LinearEventTransport } from "../src/LinearEventTransport";
+import type { LinearEventTransportConfig, StatusUpdate } from "../src/types";
 
 // Create a mock transport instance
 const mockTransport = {
@@ -30,9 +30,9 @@ vi.mock("../src/transports/WebhookTransport.js", () => ({
 	WebhookTransport: vi.fn(() => mockTransport),
 }));
 
-describe("LinearWebhookClient", () => {
-	let client: LinearWebhookClient;
-	let config: LinearWebhookClientConfig;
+describe("LinearEventTransport", () => {
+	let client: LinearEventTransport;
+	let config: LinearEventTransportConfig;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -61,14 +61,14 @@ describe("LinearWebhookClient", () => {
 
 	describe("constructor", () => {
 		it("should initialize with webhook transport", () => {
-			client = new LinearWebhookClient(config);
+			client = new LinearEventTransport(config);
 			expect(client).toBeDefined();
 			expect(client.isConnected()).toBe(false);
 		});
 
 		it("should throw error for unsupported transport", () => {
 			expect(() => {
-				new LinearWebhookClient({
+				new LinearEventTransport({
 					...config,
 					transport: "sse" as any,
 				});
@@ -81,7 +81,7 @@ describe("LinearWebhookClient", () => {
 			const onDisconnect = vi.fn();
 			const onError = vi.fn();
 
-			client = new LinearWebhookClient({
+			client = new LinearEventTransport({
 				...config,
 				onWebhook,
 				onConnect,
@@ -113,7 +113,7 @@ describe("LinearWebhookClient", () => {
 				return Promise.resolve();
 			});
 
-			client = new LinearWebhookClient(config);
+			client = new LinearEventTransport(config);
 			await client.connect();
 
 			expect(mockTransport.connect).toHaveBeenCalled();
@@ -123,7 +123,7 @@ describe("LinearWebhookClient", () => {
 		it("should call transport connect method", async () => {
 			mockTransport.connected = false;
 
-			client = new LinearWebhookClient(config);
+			client = new LinearEventTransport(config);
 			await client.connect();
 
 			expect(mockTransport.connect).toHaveBeenCalled();
@@ -137,7 +137,7 @@ describe("LinearWebhookClient", () => {
 				mockTransport.connected = false;
 			});
 
-			client = new LinearWebhookClient(config);
+			client = new LinearEventTransport(config);
 			await client.disconnect();
 
 			expect(mockTransport.disconnect).toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe("LinearWebhookClient", () => {
 				metadata: { result: "success" },
 			};
 
-			client = new LinearWebhookClient(config);
+			client = new LinearEventTransport(config);
 			await client.sendStatus(statusUpdate);
 
 			expect(mockTransport.sendStatus).toHaveBeenCalledWith(statusUpdate);
@@ -162,7 +162,7 @@ describe("LinearWebhookClient", () => {
 
 	describe("isConnected", () => {
 		it("should return transport connection status", () => {
-			client = new LinearWebhookClient(config);
+			client = new LinearEventTransport(config);
 
 			mockTransport.connected = false;
 			mockTransport.isConnected.mockReturnValue(false);
@@ -181,7 +181,7 @@ describe("LinearWebhookClient", () => {
 			const disconnectListener = vi.fn();
 			const errorListener = vi.fn();
 
-			client = new LinearWebhookClient(config);
+			client = new LinearEventTransport(config);
 			client.on("event", eventListener);
 			client.on("connect", connectListener);
 			client.on("disconnect", disconnectListener);

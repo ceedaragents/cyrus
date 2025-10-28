@@ -1,7 +1,7 @@
 {
-	"name": "cyrus-linear-webhook-client",
+	"name": "cyrus-linear-event-transport",
 	"version": "0.0.3",
-	"description": "Linear webhook client for direct webhook forwarding",
+	"description": "Linear event transport for delivering webhook payloads to SharedApplicationServer",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",

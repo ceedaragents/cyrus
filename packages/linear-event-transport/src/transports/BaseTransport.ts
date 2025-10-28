@@ -1,15 +1,15 @@
 import { EventEmitter } from "node:events";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import type { LinearWebhookClientConfig, StatusUpdate } from "../types.js";
+import type { LinearEventTransportConfig, StatusUpdate } from "../types.js";
 
 /**
- * Base transport class for Linear webhook client communication
+ * Base transport class for Linear event transport communication
  */
 export abstract class BaseTransport extends EventEmitter {
-	protected config: LinearWebhookClientConfig;
+	protected config: LinearEventTransportConfig;
 	protected connected = false;
 
-	constructor(config: LinearWebhookClientConfig) {
+	constructor(config: LinearEventTransportConfig) {
 		super();
 		this.config = config;
 	}

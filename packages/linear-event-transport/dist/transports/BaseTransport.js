@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 /**
- * Base transport class for Linear webhook client communication
+ * Base transport class for Linear event transport communication
  */
 export class BaseTransport extends EventEmitter {
 	config;

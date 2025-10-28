@@ -1,5 +1,5 @@
 /**
- * Types for Linear webhook client
+ * Types for Linear event transport
  */
 export {};
 //# sourceMappingURL=types.js.map

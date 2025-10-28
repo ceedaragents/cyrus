@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebhookTransport } from "../src/transports/WebhookTransport";
-import type { LinearWebhookClientConfig } from "../src/types";
+import type { LinearEventTransportConfig } from "../src/types";
 
 // Mock fetch globally
 global.fetch = vi.fn();
 
 describe("WebhookTransport", () => {
 	let transport: WebhookTransport;
-	let config: LinearWebhookClientConfig;
+	let config: LinearEventTransportConfig;
 
 	beforeEach(() => {
 		vi.clearAllMocks();

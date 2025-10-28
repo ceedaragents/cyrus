@@ -1,4 +1,4 @@
-import type { LinearWebhookClientConfig, StatusUpdate } from "../types.js";
+import type { LinearEventTransportConfig, StatusUpdate } from "../types.js";
 import { BaseTransport } from "./BaseTransport.js";
 /**
  * Webhook transport for receiving events via HTTP webhooks
@@ -8,7 +8,7 @@ export declare class WebhookTransport extends BaseTransport {
 	private server;
 	private webhookClient;
 	private webhookUrl;
-	constructor(config: LinearWebhookClientConfig);
+	constructor(config: LinearEventTransportConfig);
 	connect(): Promise<void>;
 	disconnect(): void;
 	sendStatus(update: StatusUpdate): Promise<void>;

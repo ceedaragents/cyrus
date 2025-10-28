@@ -1,12 +1,6 @@
 import { randomUUID } from "node:crypto";
-import {
-	createServer,
-	type IncomingMessage,
-	type ServerResponse,
-} from "node:http";
-import { URL } from "node:url";
-import { forward } from "@ngrok/ngrok";
 import { DEFAULT_PROXY_URL, type OAuthCallbackHandler } from "cyrus-core";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 
 /**
  * OAuth callback state for tracking flows
@@ -33,10 +27,10 @@ export interface ApprovalCallback {
 
 /**
  * Shared application server that handles both webhooks and OAuth callbacks on a single port
- * Consolidates functionality from SharedWebhookServer and CLI OAuth server
+ * Uses Fastify for improved endpoint and handler management
  */
 export class SharedApplicationServer {
-	private server: ReturnType<typeof createServer> | null = null;
+	private fastify: ReturnType<typeof Fastify> | null = null;
 	private webhookHandlers = new Map<
 		string,
 		{
@@ -44,10 +38,10 @@ export class SharedApplicationServer {
 			handler: (body: string, signature: string, timestamp?: string) => boolean;
 		}
 	>();
-	// Separate handlers for LinearWebhookClient that handle raw req/res
+	// Separate handlers for LinearEventTransport that handle raw request/reply
 	private linearWebhookHandlers = new Map<
 		string,
-		(req: IncomingMessage, res: ServerResponse) => Promise<void>
+		(req: FastifyRequest, reply: FastifyReply) => Promise<void>
 	>();
 	private oauthCallbacks = new Map<string, OAuthCallback>();
 	private oauthCallbackHandler: OAuthCallbackHandler | null = null;
@@ -59,21 +53,20 @@ export class SharedApplicationServer {
 	private port: number;
 	private host: string;
 	private isListening = false;
-	private ngrokListener: any = null;
-	private ngrokAuthToken: string | null = null;
-	private ngrokUrl: string | null = null;
+	private cloudflareToken: string | null = null;
 	private proxyUrl: string;
 
 	constructor(
 		port: number = 3456,
 		host: string = "localhost",
-		ngrokAuthToken?: string,
+		_ngrokAuthToken?: string, // Kept for backwards compatibility but ignored
 		proxyUrl?: string,
 	) {
 		this.port = port;
 		this.host = host;
-		this.ngrokAuthToken = ngrokAuthToken || null;
+		// NGROK is no longer supported
 		this.proxyUrl = proxyUrl || process.env.PROXY_URL || DEFAULT_PROXY_URL;
+		this.cloudflareToken = process.env.CLOUDFLARE_TOKEN || null;
 	}
 
 	/**
@@ -84,37 +77,67 @@ export class SharedApplicationServer {
 			return; // Already listening
 		}
 
-		return new Promise((resolve, reject) => {
-			this.server = createServer((req, res) => {
-				this.handleRequest(req, res);
-			});
+		try {
+			// Create Fastify instance
+			this.fastify = Fastify({ logger: false });
 
-			this.server.listen(this.port, this.host, async () => {
-				this.isListening = true;
+			// Register routes
+			this.fastify.post(
+				"/webhook",
+				async (request: FastifyRequest, reply: FastifyReply) => {
+					await this.handleWebhookRequest(request, reply);
+				},
+			);
+
+			this.fastify.get(
+				"/callback",
+				async (request: FastifyRequest, reply: FastifyReply) => {
+					await this.handleOAuthCallback(request, reply);
+				},
+			);
+
+			this.fastify.get(
+				"/oauth/authorize",
+				async (request: FastifyRequest, reply: FastifyReply) => {
+					await this.handleOAuthAuthorize(request, reply);
+				},
+			);
+
+			this.fastify.get(
+				"/approval",
+				async (request: FastifyRequest, reply: FastifyReply) => {
+					await this.handleApprovalRequest(request, reply);
+				},
+			);
+
+			// Catch-all for undefined routes
+			this.fastify.all(
+				"*",
+				async (_request: FastifyRequest, reply: FastifyReply) => {
+					reply.code(404).send({ error: "Not Found" });
+				},
+			);
+
+			// Start listening
+			await this.fastify.listen({ port: this.port, host: this.host });
+
+			this.isListening = true;
+			console.log(
+				`🔗 Shared application server listening on http://${this.host}:${this.port}`,
+			);
+
+			// Note about Cloudflare tunnel
+			if (this.cloudflareToken) {
+				console.log("🔗 Cloudflare tunnel is configured via CLOUDFLARE_TOKEN");
 				console.log(
-					`🔗 Shared application server listening on http://${this.host}:${this.port}`,
+					"   Note: Tunnel must be managed separately via cloudflared",
 				);
-
-				// Start ngrok tunnel if auth token is provided and not external host
-				const isExternalHost =
-					process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
-				if (this.ngrokAuthToken && !isExternalHost) {
-					try {
-						await this.startNgrokTunnel();
-					} catch (error) {
-						console.error("🔴 Failed to start ngrok tunnel:", error);
-						// Don't reject here - server can still work without ngrok
-					}
-				}
-
-				resolve();
-			});
-
-			this.server.on("error", (error) => {
-				this.isListening = false;
-				reject(error);
-			});
-		});
+			}
+		} catch (error) {
+			this.isListening = false;
+			console.error("🔴 Failed to start shared application server:", error);
+			throw error;
+		}
 	}
 
 	/**
@@ -130,26 +153,14 @@ export class SharedApplicationServer {
 		}
 		this.pendingApprovals.clear();
 
-		// Stop ngrok tunnel first
-		if (this.ngrokListener) {
+		if (this.fastify && this.isListening) {
 			try {
-				await this.ngrokListener.close();
-				this.ngrokListener = null;
-				this.ngrokUrl = null;
-				console.log("🔗 Ngrok tunnel stopped");
+				await this.fastify.close();
+				this.isListening = false;
+				console.log("🔗 Shared application server stopped");
 			} catch (error) {
-				console.error("🔴 Failed to stop ngrok tunnel:", error);
+				console.error("🔴 Failed to stop shared application server:", error);
 			}
-		}
-
-		if (this.server && this.isListening) {
-			return new Promise((resolve) => {
-				this.server!.close(() => {
-					this.isListening = false;
-					console.log("🔗 Shared application server stopped");
-					resolve();
-				});
-			});
 		}
 	}
 
@@ -161,62 +172,33 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Get the base URL for the server (ngrok URL if available, otherwise local URL)
+	 * Get the base URL for the server
 	 */
 	getBaseUrl(): string {
-		if (this.ngrokUrl) {
-			return this.ngrokUrl;
-		}
 		return process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`;
-	}
-
-	/**
-	 * Start ngrok tunnel for the server
-	 */
-	private async startNgrokTunnel(): Promise<void> {
-		if (!this.ngrokAuthToken) {
-			return;
-		}
-
-		try {
-			console.log("🔗 Starting ngrok tunnel...");
-			this.ngrokListener = await forward({
-				addr: this.port,
-				authtoken: this.ngrokAuthToken,
-			});
-
-			this.ngrokUrl = this.ngrokListener.url();
-			console.log(`🌐 Ngrok tunnel active: ${this.ngrokUrl}`);
-
-			// Override CYRUS_BASE_URL with ngrok URL
-			process.env.CYRUS_BASE_URL = this.ngrokUrl || undefined;
-		} catch (error) {
-			console.error("🔴 Failed to start ngrok tunnel:", error);
-			throw error;
-		}
 	}
 
 	/**
 	 * Register a webhook handler for a specific token
 	 * Supports two signatures:
-	 * 1. For ndjson-client: (token, secret, handler)
-	 * 2. For linear-webhook-client: (token, handler) where handler takes (req, res)
+	 * 1. For NDJSON proxy: (token, secret, handler)
+	 * 2. For linear-event-transport: (token, handler) where handler takes (req, reply)
 	 */
 	registerWebhookHandler(
 		token: string,
 		secretOrHandler:
 			| string
-			| ((req: IncomingMessage, res: ServerResponse) => Promise<void>),
+			| ((req: FastifyRequest, reply: FastifyReply) => Promise<void>),
 		handler?: (body: string, signature: string, timestamp?: string) => boolean,
 	): void {
 		if (typeof secretOrHandler === "string" && handler) {
-			// ndjson-client style registration
+			// Proxy-style registration (deprecated)
 			this.webhookHandlers.set(token, { secret: secretOrHandler, handler });
 			console.log(
 				`🔗 Registered webhook handler (proxy-style) for token ending in ...${token.slice(-4)}`,
 			);
 		} else if (typeof secretOrHandler === "function") {
-			// linear-webhook-client style registration
+			// Linear event transport registration
 			this.linearWebhookHandlers.set(token, secretOrHandler);
 			console.log(
 				`🔗 Registered webhook handler (direct-style) for token ending in ...${token.slice(-4)}`,
@@ -300,88 +282,37 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Get the public URL (ngrok URL if available, otherwise base URL)
-	 */
-	getPublicUrl(): string {
-		// Use ngrok URL if available
-		if (this.ngrokUrl) {
-			return this.ngrokUrl;
-		}
-		// If CYRUS_BASE_URL is set (could be from external proxy), use that
-		if (process.env.CYRUS_BASE_URL) {
-			return process.env.CYRUS_BASE_URL;
-		}
-		// Default to local URL
-		return `http://${this.host}:${this.port}`;
-	}
-
-	/**
-	 * Get the webhook URL for registration with proxy
+	 * Get the webhook URL for registration
 	 */
 	getWebhookUrl(): string {
-		return `${this.getPublicUrl()}/webhook`;
+		return `${this.getBaseUrl()}/webhook`;
 	}
 
 	/**
-	 * Get the OAuth callback URL for registration with proxy
+	 * Get the OAuth callback URL
 	 */
 	getOAuthCallbackUrl(): string {
-		return `http://${this.host}:${this.port}/callback`;
-	}
-
-	/**
-	 * Handle incoming requests (both webhooks and OAuth callbacks)
-	 */
-	private async handleRequest(
-		req: IncomingMessage,
-		res: ServerResponse,
-	): Promise<void> {
-		try {
-			const url = new URL(req.url!, `http://${this.host}:${this.port}`);
-
-			if (url.pathname === "/webhook") {
-				await this.handleWebhookRequest(req, res);
-			} else if (url.pathname === "/callback") {
-				await this.handleOAuthCallback(req, res, url);
-			} else if (url.pathname === "/oauth/authorize") {
-				await this.handleOAuthAuthorize(req, res, url);
-			} else if (url.pathname === "/approval") {
-				await this.handleApprovalRequest(req, res, url);
-			} else {
-				res.writeHead(404, { "Content-Type": "text/plain" });
-				res.end("Not Found");
-			}
-		} catch (error) {
-			console.error("🔗 Request handling error:", error);
-			res.writeHead(500, { "Content-Type": "text/plain" });
-			res.end("Internal Server Error");
-		}
+		return `${this.getBaseUrl()}/callback`;
 	}
 
 	/**
 	 * Handle incoming webhook requests
 	 */
 	private async handleWebhookRequest(
-		req: IncomingMessage,
-		res: ServerResponse,
+		request: FastifyRequest,
+		reply: FastifyReply,
 	): Promise<void> {
 		try {
-			console.log(`🔗 Incoming webhook request: ${req.method} ${req.url}`);
-
-			if (req.method !== "POST") {
-				console.log(`🔗 Rejected non-POST request: ${req.method}`);
-				res.writeHead(405, { "Content-Type": "text/plain" });
-				res.end("Method Not Allowed");
-				return;
-			}
+			console.log(
+				`🔗 Incoming webhook request: ${request.method} ${request.url}`,
+			);
 
 			// Check if this is a direct Linear webhook (has linear-signature header)
-			const linearSignature = req.headers["linear-signature"] as string;
+			const linearSignature = request.headers["linear-signature"] as string;
 			const isDirectWebhook = !!linearSignature;
 
 			if (isDirectWebhook && this.linearWebhookHandlers.size > 0) {
-				// For direct Linear webhooks, pass the raw request to the handler
-				// The LinearWebhookClient will handle its own signature verification
+				// For direct Linear webhooks, pass the request to handler
 				console.log(
 					`🔗 Direct Linear webhook received, trying ${this.linearWebhookHandlers.size} direct handlers`,
 				);
@@ -390,7 +321,7 @@ export class SharedApplicationServer {
 				for (const [token, handler] of this.linearWebhookHandlers) {
 					try {
 						// The handler will manage the response
-						await handler(req, res);
+						await handler(request, reply);
 						console.log(
 							`🔗 Direct webhook delivered to token ending in ...${token.slice(-4)}`,
 						);
@@ -407,79 +338,54 @@ export class SharedApplicationServer {
 				console.error(
 					`🔗 Direct webhook processing failed for all ${this.linearWebhookHandlers.size} handlers`,
 				);
-				res.writeHead(401, { "Content-Type": "text/plain" });
-				res.end("Unauthorized");
+				reply.code(401).send({ error: "Unauthorized" });
 				return;
 			}
 
 			// Otherwise, handle as proxy-style webhook
-			// Read request body
-			let body = "";
-			req.on("data", (chunk) => {
-				body += chunk.toString();
-			});
+			const body = JSON.stringify(request.body);
+			const signature = request.headers["x-webhook-signature"] as string;
+			const timestamp = request.headers["x-webhook-timestamp"] as string;
 
-			req.on("end", () => {
+			console.log(
+				`🔗 Proxy webhook received with ${body.length} bytes, ${this.webhookHandlers.size} registered handlers`,
+			);
+
+			if (!signature) {
+				console.log("🔗 Webhook rejected: Missing signature header");
+				reply.code(400).send({ error: "Missing signature" });
+				return;
+			}
+
+			// Try each registered handler until one verifies the signature
+			let handlerAttempts = 0;
+			for (const [token, { handler }] of this.webhookHandlers) {
+				handlerAttempts++;
 				try {
-					// For proxy-style webhooks, we need the signature header
-					const signature = req.headers["x-webhook-signature"] as string;
-					const timestamp = req.headers["x-webhook-timestamp"] as string;
-
-					console.log(
-						`🔗 Proxy webhook received with ${body.length} bytes, ${this.webhookHandlers.size} registered handlers`,
-					);
-
-					if (!signature) {
-						console.log("🔗 Webhook rejected: Missing signature header");
-						res.writeHead(400, { "Content-Type": "text/plain" });
-						res.end("Missing signature");
+					if (handler(body, signature, timestamp)) {
+						// Handler verified signature and processed webhook
+						reply.code(200).send({ success: true });
+						console.log(
+							`🔗 Webhook delivered to token ending in ...${token.slice(-4)} (attempt ${handlerAttempts}/${this.webhookHandlers.size})`,
+						);
 						return;
 					}
-
-					// Try each registered handler until one verifies the signature
-					let handlerAttempts = 0;
-					for (const [token, { handler }] of this.webhookHandlers) {
-						handlerAttempts++;
-						try {
-							if (handler(body, signature, timestamp)) {
-								// Handler verified signature and processed webhook
-								res.writeHead(200, { "Content-Type": "text/plain" });
-								res.end("OK");
-								console.log(
-									`🔗 Webhook delivered to token ending in ...${token.slice(-4)} (attempt ${handlerAttempts}/${this.webhookHandlers.size})`,
-								);
-								return;
-							}
-						} catch (error) {
-							console.error(
-								`🔗 Error in webhook handler for token ...${token.slice(-4)}:`,
-								error,
-							);
-						}
-					}
-
-					// No handler could verify the signature
-					console.error(
-						`🔗 Webhook signature verification failed for all ${this.webhookHandlers.size} registered handlers`,
-					);
-					res.writeHead(401, { "Content-Type": "text/plain" });
-					res.end("Unauthorized");
 				} catch (error) {
-					console.error("🔗 Error processing webhook:", error);
-					res.writeHead(400, { "Content-Type": "text/plain" });
-					res.end("Bad Request");
+					console.error(
+						`🔗 Error in webhook handler for token ...${token.slice(-4)}:`,
+						error,
+					);
 				}
-			});
+			}
 
-			req.on("error", (error) => {
-				console.error("🔗 Request error:", error);
-				res.writeHead(500, { "Content-Type": "text/plain" });
-				res.end("Internal Server Error");
-			});
+			// No handler could verify the signature
+			console.error(
+				`🔗 Webhook signature verification failed for all ${this.webhookHandlers.size} registered handlers`,
+			);
+			reply.code(401).send({ error: "Unauthorized" });
 		} catch (error) {
 			console.error("🔗 Webhook request error:", error);
-			res.writeHead(500, { "Content-Type": "text/plain" });
-			res.end("Internal Server Error");
+			reply.code(500).send({ error: "Internal Server Error" });
 		}
 	}
 
@@ -487,13 +393,16 @@ export class SharedApplicationServer {
 	 * Handle OAuth callback requests
 	 */
 	private async handleOAuthCallback(
-		_req: IncomingMessage,
-		res: ServerResponse,
-		url: URL,
+		request: FastifyRequest,
+		reply: FastifyReply,
 	): Promise<void> {
 		try {
-			const code = url.searchParams.get("code");
-			const state = url.searchParams.get("state");
+			const query = request.query as Record<string, any>;
+			const code = query.code as string | undefined;
+			const state = query.state as string | undefined;
+			const token = query.token as string | undefined;
+			const workspaceId = query.workspaceId as string | undefined;
+			const workspaceName = query.workspaceName as string | undefined;
 
 			// Check if this is a direct Linear callback (has code and state)
 			const isExternalHost =
@@ -503,15 +412,11 @@ export class SharedApplicationServer {
 
 			// Handle direct callback if both external host and direct webhooks are enabled
 			if (code && state && isExternalHost && isDirectWebhooks) {
-				await this.handleDirectLinearCallback(_req, res, url);
+				await this.handleDirectLinearCallback(request, reply);
 				return;
 			}
 
 			// Otherwise handle as proxy callback
-			const token = url.searchParams.get("token");
-			const workspaceId = url.searchParams.get("workspaceId");
-			const workspaceName = url.searchParams.get("workspaceName");
-
 			if (token && workspaceId && workspaceName) {
 				// Success! Return the Linear credentials
 				const linearCredentials = {
@@ -521,8 +426,7 @@ export class SharedApplicationServer {
 				};
 
 				// Send success response
-				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-				res.end(`
+				reply.type("text/html; charset=utf-8").send(`
           <!DOCTYPE html>
           <html>
             <head>
@@ -534,7 +438,7 @@ export class SharedApplicationServer {
               <p>You can close this window and return to the terminal.</p>
               <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
               <p style="margin-top: 30px;">
-                <a href="${this.proxyUrl}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback" 
+                <a href="${this.proxyUrl}/oauth/authorize?callback=${this.getBaseUrl()}/callback"
                    style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                   Connect Another Workspace
                 </a>
@@ -566,8 +470,10 @@ export class SharedApplicationServer {
 					}
 				}
 			} else {
-				res.writeHead(400, { "Content-Type": "text/html" });
-				res.end("<h1>Error: No token received</h1>");
+				reply
+					.type("text/html")
+					.code(400)
+					.send("<h1>Error: No token received</h1>");
 
 				// Reject any waiting promises
 				for (const [id, callback] of this.oauthCallbacks) {
@@ -577,8 +483,7 @@ export class SharedApplicationServer {
 			}
 		} catch (error) {
 			console.error("🔐 OAuth callback error:", error);
-			res.writeHead(500, { "Content-Type": "text/plain" });
-			res.end("Internal Server Error");
+			reply.code(500).send({ error: "Internal Server Error" });
 		}
 	}
 
@@ -586,9 +491,8 @@ export class SharedApplicationServer {
 	 * Handle OAuth authorization requests for direct Linear OAuth
 	 */
 	private async handleOAuthAuthorize(
-		_req: IncomingMessage,
-		res: ServerResponse,
-		_url: URL,
+		_request: FastifyRequest,
+		reply: FastifyReply,
 	): Promise<void> {
 		try {
 			// Check if we're in external host mode with direct webhooks
@@ -602,18 +506,18 @@ export class SharedApplicationServer {
 				// Redirect to proxy OAuth endpoint
 				const callbackBaseUrl = this.getBaseUrl();
 				const proxyAuthUrl = `${this.proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
-				res.writeHead(302, { Location: proxyAuthUrl });
-				res.end();
+				reply.redirect(proxyAuthUrl);
 				return;
 			}
 
 			// Check for LINEAR_CLIENT_ID
 			const clientId = process.env.LINEAR_CLIENT_ID;
 			if (!clientId) {
-				res.writeHead(400, { "Content-Type": "text/plain" });
-				res.end(
-					"LINEAR_CLIENT_ID environment variable is required for direct OAuth",
-				);
+				reply
+					.code(400)
+					.send(
+						"LINEAR_CLIENT_ID environment variable is required for direct OAuth",
+					);
 				return;
 			}
 
@@ -650,12 +554,10 @@ export class SharedApplicationServer {
 			console.log(`🔐 Redirecting to Linear OAuth: ${authUrl.toString()}`);
 
 			// Redirect to Linear OAuth
-			res.writeHead(302, { Location: authUrl.toString() });
-			res.end();
+			reply.redirect(authUrl.toString());
 		} catch (error) {
 			console.error("🔐 OAuth authorize error:", error);
-			res.writeHead(500, { "Content-Type": "text/plain" });
-			res.end("Internal Server Error");
+			reply.code(500).send({ error: "Internal Server Error" });
 		}
 	}
 
@@ -663,25 +565,23 @@ export class SharedApplicationServer {
 	 * Handle direct Linear OAuth callback (exchange code for token)
 	 */
 	private async handleDirectLinearCallback(
-		_req: IncomingMessage,
-		res: ServerResponse,
-		url: URL,
+		request: FastifyRequest,
+		reply: FastifyReply,
 	): Promise<void> {
 		try {
-			const code = url.searchParams.get("code");
-			const state = url.searchParams.get("state");
+			const query = request.query as Record<string, any>;
+			const code = query.code as string | undefined;
+			const state = query.state as string | undefined;
 
 			if (!code || !state) {
-				res.writeHead(400, { "Content-Type": "text/plain" });
-				res.end("Missing code or state parameter");
+				reply.code(400).send("Missing code or state parameter");
 				return;
 			}
 
 			// Validate state
 			const stateData = this.oauthStates.get(state);
 			if (!stateData) {
-				res.writeHead(400, { "Content-Type": "text/plain" });
-				res.end("Invalid or expired state");
+				reply.code(400).send("Invalid or expired state");
 				return;
 			}
 
@@ -704,8 +604,7 @@ export class SharedApplicationServer {
 			};
 
 			// Send success response
-			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-			res.end(`
+			reply.type("text/html; charset=utf-8").send(`
         <!DOCTYPE html>
         <html>
           <head>
@@ -717,7 +616,7 @@ export class SharedApplicationServer {
             <p>You can close this window and return to the terminal.</p>
             <p>Your Linear workspace <strong>${workspaceInfo.organization.name}</strong> has been connected.</p>
             <p style="margin-top: 30px;">
-              <a href="${this.getBaseUrl()}/oauth/authorize" 
+              <a href="${this.getBaseUrl()}/oauth/authorize"
                  style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                 Connect Another Workspace
               </a>
@@ -754,8 +653,9 @@ export class SharedApplicationServer {
 			}
 		} catch (error) {
 			console.error("🔐 Direct Linear callback error:", error);
-			res.writeHead(500, { "Content-Type": "text/plain" });
-			res.end(`OAuth failed: ${(error as Error).message}`);
+			reply
+				.code(500)
+				.send({ error: `OAuth failed: ${(error as Error).message}` });
 
 			// Reject any waiting promises
 			for (const [id, callback] of this.oauthCallbacks) {
@@ -904,18 +804,20 @@ export class SharedApplicationServer {
 	 * Handle approval requests
 	 */
 	private async handleApprovalRequest(
-		_req: IncomingMessage,
-		res: ServerResponse,
-		url: URL,
+		request: FastifyRequest,
+		reply: FastifyReply,
 	): Promise<void> {
 		try {
-			const sessionId = url.searchParams.get("session");
-			const action = url.searchParams.get("action"); // "approve" or "reject"
-			const feedback = url.searchParams.get("feedback");
+			const query = request.query as Record<string, any>;
+			const sessionId = query.session as string | undefined;
+			const action = query.action as string | undefined; // "approve" or "reject"
+			const feedback = query.feedback as string | undefined;
 
 			if (!sessionId) {
-				res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-				res.end(`
+				reply
+					.type("text/html; charset=utf-8")
+					.code(400)
+					.send(`
           <!DOCTYPE html>
           <html>
             <head>
@@ -936,8 +838,7 @@ export class SharedApplicationServer {
 			// If no action specified, show approval UI
 			if (!action) {
 				const approvalExists = !!approval;
-				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-				res.end(`
+				reply.type("text/html; charset=utf-8").send(`
           <!DOCTYPE html>
           <html>
             <head>
@@ -1078,8 +979,10 @@ export class SharedApplicationServer {
 
 			// Handle approval/rejection
 			if (!approval) {
-				res.writeHead(410, { "Content-Type": "text/html; charset=utf-8" });
-				res.end(`
+				reply
+					.code(410)
+					.type("text/html; charset=utf-8")
+					.send(`
           <!DOCTYPE html>
           <html>
             <head>
@@ -1106,8 +1009,7 @@ export class SharedApplicationServer {
 			);
 
 			// Send success response
-			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-			res.end(`
+			reply.type("text/html; charset=utf-8").send(`
         <!DOCTYPE html>
         <html>
           <head>
@@ -1125,8 +1027,7 @@ export class SharedApplicationServer {
       `);
 		} catch (error) {
 			console.error("🔐 Approval request error:", error);
-			res.writeHead(500, { "Content-Type": "text/plain" });
-			res.end("Internal Server Error");
+			reply.code(500).send({ error: "Internal Server Error" });
 		}
 	}
 }

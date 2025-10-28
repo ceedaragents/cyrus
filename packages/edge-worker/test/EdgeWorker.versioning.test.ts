@@ -12,7 +12,7 @@ vi.mock("fs/promises", () => ({
 }));
 
 // Mock other dependencies
-vi.mock("cyrus-ndjson-client");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("cyrus-claude-runner");
 vi.mock("@linear/sdk");
 vi.mock("../src/SharedApplicationServer.js");

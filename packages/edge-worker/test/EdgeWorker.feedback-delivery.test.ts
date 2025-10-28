@@ -1,6 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner, createCyrusToolsServer } from "cyrus-claude-runner";
-import { NdjsonClient } from "cyrus-ndjson-client";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -9,7 +9,7 @@ import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
 // Mock all dependencies
 vi.mock("fs/promises");
-vi.mock("cyrus-ndjson-client");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("cyrus-claude-runner");
 vi.mock("@linear/sdk");
 vi.mock("../src/SharedApplicationServer.js");
@@ -124,7 +124,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				}) as any,
 		);
 
-		vi.mocked(NdjsonClient).mockImplementation(
+		vi.mocked(LinearEventTransport).mockImplementation(
 			() =>
 				({
 					connect: vi.fn().mockResolvedValue(undefined),

@@ -6,7 +6,7 @@ import {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 } from "cyrus-core";
-import { NdjsonClient } from "cyrus-ndjson-client";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -22,7 +22,7 @@ vi.mock("fs/promises", () => ({
 }));
 
 // Mock dependencies
-vi.mock("cyrus-ndjson-client");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("cyrus-claude-runner");
 vi.mock("@linear/sdk");
 vi.mock("../src/SharedApplicationServer.js");
@@ -146,8 +146,8 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 				}) as any,
 		);
 
-		// Mock NdjsonClient
-		vi.mocked(NdjsonClient).mockImplementation(
+		// Mock LinearEventTransport
+		vi.mocked(LinearEventTransport).mockImplementation(
 			() =>
 				({
 					connect: vi.fn().mockResolvedValue(undefined),

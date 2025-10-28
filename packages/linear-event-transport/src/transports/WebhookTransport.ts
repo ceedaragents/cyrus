@@ -7,7 +7,7 @@ import {
 	LinearWebhookClient,
 	type LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
-import type { LinearWebhookClientConfig, StatusUpdate } from "../types.js";
+import type { LinearEventTransportConfig, StatusUpdate } from "../types.js";
 import { BaseTransport } from "./BaseTransport.js";
 
 /**
@@ -19,7 +19,7 @@ export class WebhookTransport extends BaseTransport {
 	private webhookClient: LinearWebhookClient | null = null;
 	private webhookUrl: string;
 
-	constructor(config: LinearWebhookClientConfig) {
+	constructor(config: LinearEventTransportConfig) {
 		super(config);
 
 		// Build webhook URL using webhookBaseUrl if provided, otherwise construct from parts
