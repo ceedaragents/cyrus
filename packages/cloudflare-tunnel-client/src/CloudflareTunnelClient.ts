@@ -2,7 +2,6 @@ import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 import { bin, install, Tunnel } from "cloudflared";
 import {
 	handleConfigureMcp,
@@ -188,8 +187,8 @@ export class CloudflareTunnelClient extends EventEmitter {
 		// Register webhook verification strategy (uses unified /webhook endpoint)
 		this.server.registerWebhookVerificationStrategy({
 			name: "cloudflare-api-key",
-			verify: async (req: IncomingMessage, body: string) => {
-				return this.verifyWebhook(req, body);
+			verify: async (req: IncomingMessage) => {
+				return this.verifyWebhook(req);
 			},
 		});
 
@@ -199,11 +198,11 @@ export class CloudflareTunnelClient extends EventEmitter {
 	/**
 	 * Verify webhook request using CYRUS_API_KEY
 	 * Used by the webhook verification strategy
+	 *
+	 * Note: This method only performs verification. The SharedApplicationServer
+	 * will parse the payload and emit it to registered webhook event handlers.
 	 */
-	private async verifyWebhook(
-		req: IncomingMessage,
-		body: string,
-	): Promise<boolean> {
+	private async verifyWebhook(req: IncomingMessage): Promise<boolean> {
 		try {
 			// Verify authorization header
 			if (!this.verifyAuth(req.headers.authorization)) {
@@ -212,10 +211,6 @@ export class CloudflareTunnelClient extends EventEmitter {
 				);
 				return false;
 			}
-
-			// Parse and emit webhook event
-			const payload = JSON.parse(body) as LinearWebhookPayload;
-			this.emit("webhook", payload);
 
 			console.log("🔐 Cloudflare webhook verified and processed successfully");
 			return true;

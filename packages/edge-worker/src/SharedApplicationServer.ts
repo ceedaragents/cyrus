@@ -51,11 +51,18 @@ export interface WebhookVerificationStrategy {
 }
 
 /**
+ * Webhook event handler that receives pre-verified webhook payloads
+ * This is the new simplified interface - handlers no longer need to verify signatures
+ */
+export type WebhookEventHandler = (payload: any) => void | Promise<void>;
+
+/**
  * Shared application server that handles both webhooks and OAuth callbacks on a single port
  * Consolidates functionality from SharedWebhookServer and CLI OAuth server
  */
 export class SharedApplicationServer {
 	private server: ReturnType<typeof createServer> | null = null;
+	// Legacy webhook handlers (for backward compatibility with proxy-style verification)
 	private webhookHandlers = new Map<
 		string,
 		{
@@ -63,6 +70,8 @@ export class SharedApplicationServer {
 			handler: (body: string, signature: string, timestamp?: string) => boolean;
 		}
 	>();
+	// New event-based webhook handlers (receive pre-verified payloads)
+	private webhookEventHandlers = new Map<string, WebhookEventHandler>();
 	// Separate handlers for LinearWebhookClient that handle raw req/res
 	private linearWebhookHandlers = new Map<
 		string,
@@ -255,12 +264,27 @@ export class SharedApplicationServer {
 	}
 
 	/**
+	 * Register a webhook event handler that receives pre-verified payloads
+	 * This is the recommended way to register webhook handlers when using verification strategies
+	 */
+	registerWebhookEventHandler(
+		token: string,
+		handler: WebhookEventHandler,
+	): void {
+		this.webhookEventHandlers.set(token, handler);
+		console.log(
+			`🔗 Registered webhook event handler for token ending in ...${token.slice(-4)}`,
+		);
+	}
+
+	/**
 	 * Unregister a webhook handler
 	 */
 	unregisterWebhookHandler(token: string): void {
 		const hadProxyHandler = this.webhookHandlers.delete(token);
 		const hadDirectHandler = this.linearWebhookHandlers.delete(token);
-		if (hadProxyHandler || hadDirectHandler) {
+		const hadEventHandler = this.webhookEventHandlers.delete(token);
+		if (hadProxyHandler || hadDirectHandler || hadEventHandler) {
 			console.log(
 				`🔗 Unregistered webhook handler for token ending in ...${token.slice(-4)}`,
 			);
@@ -522,7 +546,30 @@ export class SharedApplicationServer {
 									`🔐 Webhook verified using strategy: ${this.webhookVerificationStrategy.name}`,
 								);
 
-								// Emit to any registered webhook handlers
+								// Parse webhook payload
+								let payload: any;
+								try {
+									payload = JSON.parse(body);
+								} catch (error) {
+									console.error("🔗 Failed to parse webhook payload:", error);
+									res.writeHead(400, { "Content-Type": "text/plain" });
+									res.end("Invalid JSON");
+									return;
+								}
+
+								// Emit to new event-based webhook handlers (pre-verified payloads)
+								for (const [token, handler] of this.webhookEventHandlers) {
+									try {
+										await handler(payload);
+									} catch (error) {
+										console.error(
+											`🔗 Error in webhook event handler for token ...${token.slice(-4)}:`,
+											error,
+										);
+									}
+								}
+
+								// Also emit to legacy webhook handlers for backward compatibility
 								for (const [token, { handler }] of this.webhookHandlers) {
 									try {
 										// For strategies, we don't have signature/timestamp
@@ -530,7 +577,7 @@ export class SharedApplicationServer {
 										handler(body, "", "");
 									} catch (error) {
 										console.error(
-											`🔗 Error in webhook handler for token ...${token.slice(-4)}:`,
+											`🔗 Error in legacy webhook handler for token ...${token.slice(-4)}:`,
 											error,
 										);
 									}

@@ -261,19 +261,29 @@ export class WebhookTransport extends BaseTransport {
 			);
 		}
 
-		// Register this transport instance with the external server
+		// Check if server supports new event-based registration (recommended)
 		if (
+			typeof this.config.externalWebhookServer.registerWebhookEventHandler ===
+			"function"
+		) {
+			// New event-based registration: receives pre-verified payloads
+			// No need to verify signatures - verification strategies handle that
+			this.config.externalWebhookServer.registerWebhookEventHandler(
+				this.config.token,
+				(payload: any) => {
+					this.handleEvent(payload);
+				},
+			);
+		} else if (
 			typeof this.config.externalWebhookServer.registerWebhookHandler ===
 			"function"
 		) {
+			// Legacy registration: verify signatures for proxy-style webhooks
 			this.config.externalWebhookServer.registerWebhookHandler(
 				this.config.token,
 				this.webhookSecret,
 				(body: string, signature: string, timestamp?: string) => {
-					// If signature is empty, webhook was already verified by a verification strategy
-					// (e.g., Cloudflare tunnel using CYRUS_API_KEY). Skip signature check in this case.
-					// Otherwise, verify signature as usual for proxy-style webhooks.
-					if (!signature || this.verifySignature(body, signature, timestamp)) {
+					if (this.verifySignature(body, signature, timestamp)) {
 						const event = JSON.parse(body);
 						this.handleEvent(event);
 						return true; // Signature verified and handled
