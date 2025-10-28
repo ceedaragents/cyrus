@@ -6,7 +6,7 @@ import {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 } from "cyrus-core";
-import { LinearWebhookClient } from "cyrus-linear-webhook-client";
+import { LinearWebhookClient } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -23,7 +23,7 @@ vi.mock("fs/promises", () => ({
 
 // Mock dependencies
 vi.mock("cyrus-claude-runner");
-vi.mock("cyrus-linear-webhook-client");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("@linear/sdk");
 vi.mock("../src/SharedApplicationServer.js");
 vi.mock("../src/AgentSessionManager.js");

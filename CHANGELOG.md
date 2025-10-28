@@ -15,6 +15,11 @@ All notable changes to this project will be documented in this file.
   - Will replace `ndjson-client` for customers using cyrus-hosted service
 
 ### Changed
+- **Linear Event Transport**: Refactored `cyrus-linear-webhook-client` to `cyrus-linear-event-transport` for simplified webhook handling
+  - Package now directly registers /webhook endpoint with Fastify server
+  - Supports dual verification modes: direct Linear webhooks (LINEAR_DIRECT_WEBHOOKS) and proxy authentication
+  - Removed complex transport abstractions (WebhookTransport, BaseTransport) in favor of direct route registration
+  - Routes registered after server startup for improved initialization flow
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.19 - includes parity with Claude Code v2.0.19. See [@anthropic-ai/claude-agent-sdk v0.1.19 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0119)
 - Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
 

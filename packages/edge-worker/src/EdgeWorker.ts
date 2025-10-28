@@ -55,7 +55,7 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
-import { LinearWebhookClient } from "cyrus-linear-webhook-client";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import {
@@ -88,7 +88,7 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
-	private webhookClients: Map<string, LinearWebhookClient> = new Map(); // listeners for webhook events, one per linear token
+	private eventTransports: Map<string, LinearEventTransport> = new Map(); // event transports for webhook delivery, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
@@ -270,48 +270,8 @@ export class EdgeWorker extends EventEmitter {
 			this.tokenToRepoIds.set(repo.linearToken, repoIds);
 		}
 
-		// Create one LinearWebhookClient per unique token using shared application server
-		for (const [token, repos] of tokenToRepos) {
-			if (!repos || repos.length === 0) continue;
-			const firstRepo = repos[0];
-			if (!firstRepo) continue;
-			const primaryRepoId = firstRepo.id;
-
-			const clientConfig = {
-				proxyUrl: config.proxyUrl,
-				token: token,
-				name: repos.map((r) => r.name).join(", "), // Pass repository names
-				transport: "webhook" as const,
-				// Use shared application server instead of individual servers
-				useExternalWebhookServer: true,
-				externalWebhookServer: this.sharedApplicationServer,
-				webhookPort: serverPort, // All clients use same port
-				webhookPath: "/webhook",
-				webhookHost: serverHost,
-				...(config.baseUrl && { webhookBaseUrl: config.baseUrl }),
-				// Legacy fallback support
-				...(!config.baseUrl &&
-					config.webhookBaseUrl && { webhookBaseUrl: config.webhookBaseUrl }),
-				onConnect: () => this.handleConnect(primaryRepoId, repos),
-				onDisconnect: (reason?: string) =>
-					this.handleDisconnect(primaryRepoId, repos, reason),
-				onError: (error: Error) => this.handleError(error),
-			};
-
-			// Create LinearWebhookClient
-			const webhookClient = new LinearWebhookClient({
-				...clientConfig,
-				onWebhook: (payload: any) => {
-					// Get fresh repositories for this token to avoid stale closures
-					const freshRepos = this.getRepositoriesForToken(token);
-					this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
-				},
-			});
-
-			// Store with the first repo's ID as the key (for error messages)
-			// But also store the token mapping for lookup
-			this.webhookClients.set(primaryRepoId, webhookClient);
-		}
+		// Event transports will be created and registered after server starts
+		// Store token info for later initialization
 	}
 
 	/**
@@ -329,73 +289,70 @@ export class EdgeWorker extends EventEmitter {
 		// Start shared application server first
 		await this.sharedApplicationServer.start();
 
-		// Connect all NDJSON clients
-		const connections = Array.from(this.webhookClients.entries()).map(
-			async ([repoId, client]) => {
-				try {
-					await client.connect();
-				} catch (error: any) {
-					const repoConfig = this.config.repositories.find(
-						(r) => r.id === repoId,
-					);
-					const repoName = repoConfig?.name || repoId;
+		// Now create and register event transports (after server is started)
+		await this.initializeEventTransports();
+	}
 
-					// Check if it's an authentication error
-					if (error.isAuthError || error.code === "LINEAR_AUTH_FAILED") {
-						console.error(
-							`\n❌ Linear authentication failed for repository: ${repoName}`,
-						);
-						console.error(
-							`   Workspace: ${repoConfig?.linearWorkspaceName || repoConfig?.linearWorkspaceId || "Unknown"}`,
-						);
-						console.error(`   Error: ${error.message}`);
-						console.error(`\n   To fix this issue:`);
-						console.error(`   1. Run: cyrus refresh-token`);
-						console.error(`   2. Complete the OAuth flow in your browser`);
-						console.error(
-							`   3. The configuration will be automatically updated\n`,
-						);
-						console.error(
-							`   You can also check all tokens with: cyrus check-tokens\n`,
-						);
-
-						// Continue with other repositories instead of failing completely
-						return { repoId, success: false, error };
-					}
-
-					// For other errors, still log but with less guidance
-					console.error(`\n❌ Failed to connect repository: ${repoName}`);
-					console.error(`   Error: ${error.message}\n`);
-					return { repoId, success: false, error };
-				}
-				return { repoId, success: true };
-			},
-		);
-
-		const results = await Promise.all(connections);
-		const failures = results.filter((r) => !r.success);
-
-		if (failures.length === this.webhookClients.size) {
-			// All connections failed
-			throw new Error(
-				"Failed to connect any repositories. Please check your configuration and Linear tokens.",
-			);
-		} else if (failures.length > 0) {
-			// Some connections failed
-			console.warn(
-				`\n⚠️  Connected ${results.length - failures.length} out of ${results.length} repositories`,
-			);
-			console.warn(`   The following repositories could not be connected:`);
-			failures.forEach((f) => {
-				const repoConfig = this.config.repositories.find(
-					(r) => r.id === f.repoId,
-				);
-				console.warn(`   - ${repoConfig?.name || f.repoId}`);
-			});
-			console.warn(
-				`\n   Cyrus will continue running with the available repositories.\n`,
-			);
+	/**
+	 * Initialize event transports after server has started
+	 */
+	private async initializeEventTransports(): Promise<void> {
+		// Group repositories by token to create one transport per token
+		const tokenToRepos = new Map<string, RepositoryConfig[]>();
+		for (const repo of this.repositories.values()) {
+			const repos = tokenToRepos.get(repo.linearToken) || [];
+			repos.push(repo);
+			tokenToRepos.set(repo.linearToken, repos);
 		}
+
+		// Create one LinearEventTransport per unique token
+		for (const [token, repos] of tokenToRepos) {
+			if (!repos || repos.length === 0) continue;
+			const firstRepo = repos[0];
+			if (!firstRepo) continue;
+			const primaryRepoId = firstRepo.id;
+
+			// Determine verification mode
+			const useDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
+			const verificationMode = useDirectWebhooks ? "direct" : "proxy";
+
+			// Get appropriate secret based on mode
+			const secret = useDirectWebhooks
+				? process.env.LINEAR_WEBHOOK_SECRET || ""
+				: token;
+
+			// Create LinearEventTransport
+			const eventTransport = new LinearEventTransport({
+				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+				verificationMode,
+				secret,
+			});
+
+			// Listen for webhook events
+			eventTransport.on("webhook", (payload: any) => {
+				const freshRepos = this.getRepositoriesForToken(token);
+				this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
+			});
+
+			// Listen for errors
+			eventTransport.on("error", (error: Error) => {
+				this.handleError(error);
+			});
+
+			// Register the /webhook endpoint
+			eventTransport.register();
+
+			// Store with the first repo's ID as the key
+			this.eventTransports.set(primaryRepoId, eventTransport);
+		}
+
+		console.log(
+			`✅ Linear event transports registered (${this.eventTransports.size} unique tokens)`,
+		);
+		console.log(
+			`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
+		);
 	}
 
 	/**
@@ -436,10 +393,8 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// Disconnect all NDJSON clients
-		for (const client of this.webhookClients.values()) {
-			client.disconnect();
-		}
+		// Clear event transports (no disconnect needed, routes are removed when server stops)
+		this.eventTransports.clear();
 
 		// Stop shared application server
 		await this.sharedApplicationServer.stop();
@@ -930,64 +885,55 @@ export class EdgeWorker extends EventEmitter {
 	 * Set up webhook listener for a repository
 	 */
 	private async setupWebhookListener(repo: RepositoryConfig): Promise<void> {
-		// Check if we already have a client for this token
+		// Check if we already have a transport for this token
 		const existingRepoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
-		const existingClient =
+		const existingTransport =
 			existingRepoIds.length > 0
-				? this.webhookClients.get(existingRepoIds[0] || "")
+				? this.eventTransports.get(existingRepoIds[0] || "")
 				: null;
 
-		if (existingClient) {
+		if (existingTransport) {
 			console.log(
-				`  ℹ️  Reusing existing webhook connection for token ...${repo.linearToken.slice(-4)}`,
+				`  ℹ️  Reusing existing event transport for token ...${repo.linearToken.slice(-4)}`,
 			);
 			return;
 		}
 
-		// Create new LinearWebhookClient for this token
-		const serverPort =
-			this.config.serverPort || this.config.webhookPort || 3456;
-		const serverHost = this.config.serverHost || "localhost";
+		// Determine verification mode
+		const useDirectWebhooks =
+			process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
+		const verificationMode = useDirectWebhooks ? "direct" : "proxy";
 
-		const clientConfig = {
-			proxyUrl: this.config.proxyUrl,
-			token: repo.linearToken,
-			name: repo.name,
-			transport: "webhook" as const,
-			useExternalWebhookServer: true,
-			externalWebhookServer: this.sharedApplicationServer,
-			webhookPort: serverPort,
-			webhookPath: "/webhook",
-			webhookHost: serverHost,
-			...(this.config.baseUrl && { webhookBaseUrl: this.config.baseUrl }),
-			...(!this.config.baseUrl &&
-				this.config.webhookBaseUrl && {
-					webhookBaseUrl: this.config.webhookBaseUrl,
-				}),
-			onConnect: () => this.handleConnect(repo.id, [repo]),
-			onDisconnect: (reason?: string) =>
-				this.handleDisconnect(repo.id, [repo], reason),
-			onError: (error: Error) => this.handleError(error),
-		};
+		// Get appropriate secret based on mode
+		const secret = useDirectWebhooks
+			? process.env.LINEAR_WEBHOOK_SECRET || ""
+			: repo.linearToken;
 
-		const webhookClient = new LinearWebhookClient({
-			...clientConfig,
-			onWebhook: (payload: any) => {
-				// Get fresh repositories for this token to avoid stale closures
-				const freshRepos = this.getRepositoriesForToken(repo.linearToken);
-				this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
-			},
+		// Create LinearEventTransport
+		const eventTransport = new LinearEventTransport({
+			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+			verificationMode,
+			secret,
 		});
 
-		this.webhookClients.set(repo.id, webhookClient);
+		// Listen for webhook events
+		eventTransport.on("webhook", (payload: any) => {
+			// Get fresh repositories for this token to avoid stale closures
+			const freshRepos = this.getRepositoriesForToken(repo.linearToken);
+			this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
+		});
 
-		// Connect the client
-		try {
-			await webhookClient.connect();
-			console.log(`  ✅ Webhook listener connected for ${repo.name}`);
-		} catch (error) {
-			console.error(`  ❌ Failed to connect webhook listener:`, error);
-		}
+		// Listen for errors
+		eventTransport.on("error", (error: Error) => {
+			this.handleError(error);
+		});
+
+		// Register the /webhook endpoint
+		eventTransport.register();
+
+		this.eventTransports.set(repo.id, eventTransport);
+
+		console.log(`  ✅ Event transport registered for ${repo.name}`);
 	}
 
 	/**
@@ -1007,50 +953,28 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Clean up webhook listener if no other repositories use the token
+	 * Clean up event transport if no other repositories use the token
 	 */
 	private async cleanupWebhookIfUnused(repo: RepositoryConfig): Promise<void> {
 		const repoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
 		const otherRepos = repoIds.filter((id) => id !== repo.id);
 
 		if (otherRepos.length === 0) {
-			// No other repos use this token, safe to disconnect
-			const client = this.webhookClients.get(repo.id);
-			if (client) {
+			// No other repos use this token, safe to remove
+			const transport = this.eventTransports.get(repo.id);
+			if (transport) {
 				console.log(
-					`  🔌 Disconnecting webhook for token ...${repo.linearToken.slice(-4)}`,
+					`  🔌 Removing event transport for token ...${repo.linearToken.slice(-4)}`,
 				);
-				client.disconnect();
-				this.webhookClients.delete(repo.id);
+				// Remove all listeners
+				transport.removeAllListeners();
+				this.eventTransports.delete(repo.id);
 			}
 		} else {
 			console.log(
-				`  ℹ️  Token still used by ${otherRepos.length} other repository(ies), keeping connection`,
+				`  ℹ️  Token still used by ${otherRepos.length} other repository(ies), keeping transport`,
 			);
 		}
-	}
-
-	/**
-	 * Handle connection established
-	 */
-	private handleConnect(clientId: string, repos: RepositoryConfig[]): void {
-		// Get the token for backward compatibility with events
-		const token = repos[0]?.linearToken || clientId;
-		this.emit("connected", token);
-		// Connection logged by CLI app event handler
-	}
-
-	/**
-	 * Handle disconnection
-	 */
-	private handleDisconnect(
-		clientId: string,
-		repos: RepositoryConfig[],
-		reason?: string,
-	): void {
-		// Get the token for backward compatibility with events
-		const token = repos[0]?.linearToken || clientId;
-		this.emit("disconnected", token, reason);
 	}
 
 	/**
@@ -2838,21 +2762,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	getConnectionStatus(): Map<string, boolean> {
 		const status = new Map<string, boolean>();
-		for (const [repoId, client] of this.webhookClients) {
-			status.set(repoId, client.isConnected());
+		// Event transports are always "connected" once registered
+		for (const repoId of this.eventTransports.keys()) {
+			status.set(repoId, true);
 		}
 		return status;
 	}
 
 	/**
-	 * Get webhook client by token (for testing purposes)
+	 * Get event transport by token (for testing purposes)
 	 * @internal
 	 */
 	_getClientByToken(token: string): any {
-		for (const [repoId, client] of this.webhookClients) {
+		for (const [repoId, transport] of this.eventTransports) {
 			const repo = this.repositories.get(repoId);
 			if (repo?.linearToken === token) {
-				return client;
+				return transport;
 			}
 		}
 		return undefined;

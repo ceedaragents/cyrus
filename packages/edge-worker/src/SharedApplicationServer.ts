@@ -37,7 +37,7 @@ export class SharedApplicationServer {
 			handler: (body: string, signature: string, timestamp?: string) => boolean;
 		}
 	>();
-	// Separate handlers for LinearWebhookClient that handle raw req/res
+	// Legacy handlers for direct Linear webhook registration (deprecated)
 	private linearWebhookHandlers = new Map<
 		string,
 		(req: IncomingMessage, res: ServerResponse) => Promise<void>
@@ -111,6 +111,18 @@ export class SharedApplicationServer {
 	}
 
 	/**
+	 * Get the Fastify instance for registering routes
+	 */
+	getFastifyInstance(): FastifyInstance {
+		if (!this.app) {
+			throw new Error(
+				"Fastify instance not available - server must be started first",
+			);
+		}
+		return this.app;
+	}
+
+	/**
 	 * Get the base URL for the server
 	 */
 	getBaseUrl(): string {
@@ -118,10 +130,12 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Register a webhook handler for a specific token
+	 * Register a webhook handler for a specific token (LEGACY - deprecated)
 	 * Supports two signatures:
 	 * 1. For ndjson-client: (token, secret, handler)
-	 * 2. For linear-webhook-client: (token, handler) where handler takes (req, res)
+	 * 2. For legacy direct registration: (token, handler) where handler takes (req, res)
+	 *
+	 * NOTE: New code should use LinearEventTransport which registers routes directly with Fastify
 	 */
 	registerWebhookHandler(
 		token: string,
@@ -137,10 +151,10 @@ export class SharedApplicationServer {
 				`🔗 Registered webhook handler (proxy-style) for token ending in ...${token.slice(-4)}`,
 			);
 		} else if (typeof secretOrHandler === "function") {
-			// linear-webhook-client style registration
+			// Legacy direct registration
 			this.linearWebhookHandlers.set(token, secretOrHandler);
 			console.log(
-				`🔗 Registered webhook handler (direct-style) for token ending in ...${token.slice(-4)}`,
+				`🔗 Registered webhook handler (legacy direct-style) for token ending in ...${token.slice(-4)}`,
 			);
 		} else {
 			throw new Error("Invalid webhook handler registration parameters");
