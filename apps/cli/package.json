@@ -45,7 +45,6 @@
 		"cyrus-cloudflare-tunnel-client": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-edge-worker": "workspace:*",
-		"cyrus-ndjson-client": "workspace:*",
 		"dotenv": "^16.5.0",
 		"express": "^5.1.0",
 		"file-type": "^21.0.0",

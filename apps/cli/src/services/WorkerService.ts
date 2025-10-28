@@ -121,10 +121,9 @@ export class WorkerService {
 	 */
 	async startCloudflareClient(params: {
 		onWebhook?: (payload: any) => void;
-		onConfigUpdate?: () => void;
 		onError?: (error: Error) => void;
 	}): Promise<void> {
-		const { onWebhook, onConfigUpdate, onError } = params;
+		const { onWebhook, onError } = params;
 
 		// Validate required environment variables
 		const cloudflareToken = process.env.CLOUDFLARE_TOKEN;
@@ -151,7 +150,6 @@ export class WorkerService {
 			);
 
 			const client = new CloudflareTunnelClient({
-				cyrusHome: this.cyrusHome,
 				onWebhook:
 					onWebhook ||
 					((payload) => {
@@ -159,11 +157,6 @@ export class WorkerService {
 						this.logger.info(`Action: ${payload.action || "Unknown"}`);
 						this.logger.info(`Type: ${payload.type || "Unknown"}`);
 						// TODO: Forward webhook to EdgeWorker or handle directly
-					}),
-				onConfigUpdate:
-					onConfigUpdate ||
-					(() => {
-						this.logger.info("\n🔄 Configuration updated from cyrus-hosted");
 					}),
 				onError:
 					onError ||

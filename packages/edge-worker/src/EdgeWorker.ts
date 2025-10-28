@@ -26,6 +26,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	CyrusAgentSession,
 	EdgeWorkerConfig,
@@ -55,8 +56,7 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
-import { LinearWebhookClient } from "cyrus-linear-webhook-client";
-import { NdjsonClient } from "cyrus-ndjson-client";
+import { LinearWebhookClient } from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import {
@@ -89,10 +89,10 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
-	private ndjsonClients: Map<string, NdjsonClient | LinearWebhookClient> =
-		new Map(); // listeners for webhook events, one per linear token
+	private webhookClients: Map<string, LinearWebhookClient> = new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
+	private configUpdater?: ConfigUpdater; // Configuration update handler
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureRouter: ProcedureRouter; // Intelligent workflow routing
@@ -138,6 +138,29 @@ export class EdgeWorker extends EventEmitter {
 			this.sharedApplicationServer.registerOAuthCallbackHandler(
 				config.handlers.onOAuthCallback,
 			);
+		}
+
+		// Initialize ConfigUpdater if CYRUS_API_KEY is available (for Cloudflare tunnel mode)
+		if (process.env.CYRUS_API_KEY) {
+			this.configUpdater = new ConfigUpdater({
+				cyrusHome: this.cyrusHome,
+				apiKey: process.env.CYRUS_API_KEY,
+				onConfigUpdate: () => {
+					console.log("📝 Configuration updated");
+				},
+				onRestart: (reason) => {
+					console.log(`🔄 Restart requested: ${reason}`);
+					// TODO: Implement restart logic if needed
+				},
+				onError: (error) => {
+					console.error("❌ ConfigUpdater error:", error);
+				},
+			});
+
+			// Register ConfigUpdater handlers with SharedApplicationServer
+			this.configUpdater.registerHandlers((path, handler) => {
+				this.sharedApplicationServer.registerHandler(path, handler);
+			});
 		}
 
 		// Initialize repositories
@@ -282,16 +305,12 @@ export class EdgeWorker extends EventEmitter {
 			this.tokenToRepoIds.set(repo.linearToken, repoIds);
 		}
 
-		// Create one NDJSON client per unique token using shared application server
+		// Create one LinearWebhookClient per unique token using shared application server
 		for (const [token, repos] of tokenToRepos) {
 			if (!repos || repos.length === 0) continue;
 			const firstRepo = repos[0];
 			if (!firstRepo) continue;
 			const primaryRepoId = firstRepo.id;
-
-			// Determine which client to use based on environment variable
-			const useLinearDirectWebhooks =
-				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
 
 			const clientConfig = {
 				proxyUrl: config.proxyUrl,
@@ -314,42 +333,19 @@ export class EdgeWorker extends EventEmitter {
 				onError: (error: Error) => this.handleError(error),
 			};
 
-			// Create the appropriate client based on configuration
-			const ndjsonClient = useLinearDirectWebhooks
-				? new LinearWebhookClient({
-						...clientConfig,
-						onWebhook: (payload: any) => {
-							// Get fresh repositories for this token to avoid stale closures
-							const freshRepos = this.getRepositoriesForToken(token);
-							this.handleWebhook(
-								payload as unknown as LinearWebhook,
-								freshRepos,
-							);
-						},
-					})
-				: new NdjsonClient(clientConfig);
-
-			// Set up webhook handler for NdjsonClient (LinearWebhookClient uses onWebhook in constructor)
-			if (!useLinearDirectWebhooks) {
-				(ndjsonClient as NdjsonClient).on("webhook", (data) => {
+			// Create LinearWebhookClient
+			const webhookClient = new LinearWebhookClient({
+				...clientConfig,
+				onWebhook: (payload: any) => {
 					// Get fresh repositories for this token to avoid stale closures
 					const freshRepos = this.getRepositoriesForToken(token);
-					this.handleWebhook(data as LinearWebhook, freshRepos);
-				});
-			}
-
-			// Optional heartbeat logging (only for NdjsonClient)
-			if (process.env.DEBUG_EDGE === "true" && !useLinearDirectWebhooks) {
-				(ndjsonClient as NdjsonClient).on("heartbeat", () => {
-					console.log(
-						`❤️ Heartbeat received for token ending in ...${token.slice(-4)}`,
-					);
-				});
-			}
+					this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
+				},
+			});
 
 			// Store with the first repo's ID as the key (for error messages)
 			// But also store the token mapping for lookup
-			this.ndjsonClients.set(primaryRepoId, ndjsonClient);
+			this.webhookClients.set(primaryRepoId, webhookClient);
 		}
 	}
 
@@ -369,7 +365,7 @@ export class EdgeWorker extends EventEmitter {
 		await this.sharedApplicationServer.start();
 
 		// Connect all NDJSON clients
-		const connections = Array.from(this.ndjsonClients.entries()).map(
+		const connections = Array.from(this.webhookClients.entries()).map(
 			async ([repoId, client]) => {
 				try {
 					await client.connect();
@@ -414,7 +410,7 @@ export class EdgeWorker extends EventEmitter {
 		const results = await Promise.all(connections);
 		const failures = results.filter((r) => !r.success);
 
-		if (failures.length === this.ndjsonClients.size) {
+		if (failures.length === this.webhookClients.size) {
 			// All connections failed
 			throw new Error(
 				"Failed to connect any repositories. Please check your configuration and Linear tokens.",
@@ -476,7 +472,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Disconnect all NDJSON clients
-		for (const client of this.ndjsonClients.values()) {
+		for (const client of this.webhookClients.values()) {
 			client.disconnect();
 		}
 
@@ -973,7 +969,7 @@ export class EdgeWorker extends EventEmitter {
 		const existingRepoIds = this.tokenToRepoIds.get(repo.linearToken) || [];
 		const existingClient =
 			existingRepoIds.length > 0
-				? this.ndjsonClients.get(existingRepoIds[0] || "")
+				? this.webhookClients.get(existingRepoIds[0] || "")
 				: null;
 
 		if (existingClient) {
@@ -983,12 +979,10 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Create new NDJSON client for this token
+		// Create new webhook client for this token
 		const serverPort =
 			this.config.serverPort || this.config.webhookPort || 3456;
 		const serverHost = this.config.serverHost || "localhost";
-		const useLinearDirectWebhooks =
-			process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
 
 		const clientConfig = {
 			proxyUrl: this.config.proxyUrl,
@@ -1011,30 +1005,20 @@ export class EdgeWorker extends EventEmitter {
 			onError: (error: Error) => this.handleError(error),
 		};
 
-		const ndjsonClient = useLinearDirectWebhooks
-			? new LinearWebhookClient({
-					...clientConfig,
-					onWebhook: (payload: any) => {
-						// Get fresh repositories for this token to avoid stale closures
-						const freshRepos = this.getRepositoriesForToken(repo.linearToken);
-						this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
-					},
-				})
-			: new NdjsonClient(clientConfig);
-
-		if (!useLinearDirectWebhooks) {
-			(ndjsonClient as NdjsonClient).on("webhook", (data) => {
+		const webhookClient = new LinearWebhookClient({
+			...clientConfig,
+			onWebhook: (payload: any) => {
 				// Get fresh repositories for this token to avoid stale closures
 				const freshRepos = this.getRepositoriesForToken(repo.linearToken);
-				this.handleWebhook(data as LinearWebhook, freshRepos);
-			});
-		}
+				this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
+			},
+		});
 
-		this.ndjsonClients.set(repo.id, ndjsonClient);
+		this.webhookClients.set(repo.id, webhookClient);
 
 		// Connect the client
 		try {
-			await ndjsonClient.connect();
+			await webhookClient.connect();
 			console.log(`  ✅ Webhook listener connected for ${repo.name}`);
 		} catch (error) {
 			console.error(`  ❌ Failed to connect webhook listener:`, error);
@@ -1066,13 +1050,13 @@ export class EdgeWorker extends EventEmitter {
 
 		if (otherRepos.length === 0) {
 			// No other repos use this token, safe to disconnect
-			const client = this.ndjsonClients.get(repo.id);
+			const client = this.webhookClients.get(repo.id);
 			if (client) {
 				console.log(
 					`  🔌 Disconnecting webhook for token ...${repo.linearToken.slice(-4)}`,
 				);
 				client.disconnect();
-				this.ndjsonClients.delete(repo.id);
+				this.webhookClients.delete(repo.id);
 			}
 		} else {
 			console.log(
@@ -2889,7 +2873,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	getConnectionStatus(): Map<string, boolean> {
 		const status = new Map<string, boolean>();
-		for (const [repoId, client] of this.ndjsonClients) {
+		for (const [repoId, client] of this.webhookClients) {
 			status.set(repoId, client.isConnected());
 		}
 		return status;
@@ -2900,7 +2884,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * @internal
 	 */
 	_getClientByToken(token: string): any {
-		for (const [repoId, client] of this.ndjsonClients) {
+		for (const [repoId, client] of this.webhookClients) {
 			const repo = this.repositories.get(repoId);
 			if (repo?.linearToken === token) {
 				return client;

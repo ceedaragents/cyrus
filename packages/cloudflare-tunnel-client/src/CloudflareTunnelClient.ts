@@ -2,27 +2,16 @@ import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import {
+	createServer,
 	type IncomingMessage,
 	type Server,
 	type ServerResponse,
-	createServer,
 } from "node:http";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import { Tunnel, bin, install } from "cloudflared";
-import { handleConfigureMcp } from "./handlers/configureMcp.js";
-import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
-import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
-import { handleRepository } from "./handlers/repository.js";
-import { handleTestMcp } from "./handlers/testMcp.js";
+import { bin, install, Tunnel } from "cloudflared";
 import type {
-	ApiResponse,
 	CloudflareTunnelClientConfig,
 	CloudflareTunnelClientEvents,
-	ConfigureMcpPayload,
-	CyrusConfigPayload,
-	CyrusEnvPayload,
-	RepositoryPayload,
-	TestMcpPayload,
 } from "./types.js";
 
 export declare interface CloudflareTunnelClient {
@@ -37,10 +26,9 @@ export declare interface CloudflareTunnelClient {
 }
 
 /**
- * Cloudflare tunnel client for receiving config updates and webhooks from cyrus-hosted
+ * Cloudflare tunnel client for receiving webhooks from cyrus-hosted
  */
 export class CloudflareTunnelClient extends EventEmitter {
-	private config: CloudflareTunnelClientConfig;
 	private server: Server | null = null;
 	private tunnelProcess: ChildProcess | null = null;
 	private tunnelUrl: string | null = null;
@@ -48,13 +36,11 @@ export class CloudflareTunnelClient extends EventEmitter {
 	private connected = false;
 	private connectionCount = 0;
 
-	constructor(config: CloudflareTunnelClientConfig) {
+	constructor(config: CloudflareTunnelClientConfig = {}) {
 		super();
-		this.config = config;
 
 		// Forward config callbacks to events
 		if (config.onWebhook) this.on("webhook", config.onWebhook);
-		if (config.onConfigUpdate) this.on("configUpdate", config.onConfigUpdate);
 		if (config.onError) this.on("error", config.onError);
 		if (config.onReady) this.on("ready", config.onReady);
 	}
@@ -172,6 +158,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 
 	/**
 	 * Handle incoming HTTP requests
+	 * Note: This only handles webhook events. Config updates are handled by ConfigUpdater module.
 	 */
 	private async handleRequest(
 		req: IncomingMessage,
@@ -191,82 +178,49 @@ export class CloudflareTunnelClient extends EventEmitter {
 
 			// Route request based on URL
 			const url = req.url || "/";
-			let response: ApiResponse;
 
 			// Parse JSON body safely
 			let parsedBody: any;
 			try {
 				parsedBody = JSON.parse(body);
 			} catch (error) {
-				response = {
-					success: false,
-					error: "Invalid JSON in request body",
-					details: error instanceof Error ? error.message : String(error),
-				};
 				res.writeHead(400, { "Content-Type": "application/json" });
-				res.end(JSON.stringify(response));
+				res.end(
+					JSON.stringify({
+						success: false,
+						error: "Invalid JSON in request body",
+						details: error instanceof Error ? error.message : String(error),
+					}),
+				);
 				return;
 			}
 
-			if (url === "/api/update/cyrus-config" && req.method === "POST") {
-				response = await handleCyrusConfig(
-					parsedBody as CyrusConfigPayload,
-					this.config.cyrusHome,
-				);
-				if (response.success) {
-					this.emit("configUpdate");
-					// Emit restart event if requested
-					if (response.data?.restartCyrus) {
-						this.emit("restart", "config");
-					}
-				}
-			} else if (url === "/api/update/cyrus-env" && req.method === "POST") {
-				response = await handleCyrusEnv(
-					parsedBody as CyrusEnvPayload,
-					this.config.cyrusHome,
-				);
-				if (response.success && response.data?.restartCyrus) {
-					this.emit("restart", "env");
-				}
-			} else if (url === "/api/update/repository" && req.method === "POST") {
-				response = await handleRepository(
-					parsedBody as RepositoryPayload,
-					this.config.cyrusHome,
-				);
-			} else if (url === "/api/test-mcp" && req.method === "POST") {
-				response = await handleTestMcp(parsedBody as TestMcpPayload);
-			} else if (url === "/api/configure-mcp" && req.method === "POST") {
-				response = await handleConfigureMcp(
-					parsedBody as ConfigureMcpPayload,
-					this.config.cyrusHome,
-				);
-			} else if (url === "/webhook" && req.method === "POST") {
+			if (url === "/webhook" && req.method === "POST") {
 				// Handle Linear webhook
 				this.emit("webhook", parsedBody as LinearWebhookPayload);
-				response = { success: true, message: "Webhook received" };
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ success: true, message: "Webhook received" }));
 			} else {
-				response = {
-					success: false,
-					error: `Unknown endpoint: ${url}`,
-				};
+				// All other endpoints should be handled by ConfigUpdater or other modules
+				res.writeHead(404, { "Content-Type": "application/json" });
+				res.end(
+					JSON.stringify({
+						success: false,
+						error: `Unknown endpoint: ${url}`,
+					}),
+				);
 			}
-
-			// Send response
-			res.writeHead(response.success ? 200 : 400, {
-				"Content-Type": "application/json",
-			});
-			res.end(JSON.stringify(response));
 		} catch (error) {
 			this.emit("error", error as Error);
 
-			const response: ApiResponse = {
-				success: false,
-				error: "Internal server error",
-				details: error instanceof Error ? error.message : String(error),
-			};
-
 			res.writeHead(500, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(response));
+			res.end(
+				JSON.stringify({
+					success: false,
+					error: "Internal server error",
+					details: error instanceof Error ? error.message : String(error),
+				}),
+			);
 		}
 	}
 

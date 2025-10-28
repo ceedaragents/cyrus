@@ -191,9 +191,7 @@ export class SharedApplicationServer {
 			);
 
 			console.log("🔗 Starting Cloudflare tunnel...");
-			this.cloudflareTunnel = new CloudflareTunnelClient({
-				cyrusHome: process.env.CYRUS_HOME || `${process.env.HOME}/.cyrus`,
-			});
+			this.cloudflareTunnel = new CloudflareTunnelClient();
 
 			// Start the tunnel
 			await this.cloudflareTunnel.startTunnel(
