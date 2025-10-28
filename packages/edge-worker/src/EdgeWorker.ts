@@ -48,6 +48,7 @@ import type {
 	SerializedCyrusAgentSessionEntry,
 } from "cyrus-core";
 import {
+	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isIssueAssignedWebhook,
@@ -2625,7 +2626,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		linearWorkspaceId: string;
 		linearWorkspaceName: string;
 	}> {
-		const oauthProxyUrl = proxyUrl || this.config.proxyUrl;
+		const oauthProxyUrl = proxyUrl || this.config.proxyUrl || DEFAULT_PROXY_URL;
 		return this.sharedApplicationServer.startOAuthFlow(oauthProxyUrl);
 	}
 

@@ -12,7 +12,6 @@ import type { Logger } from "./Logger.js";
  */
 export class WorkerService {
 	private edgeWorker: EdgeWorker | null = null;
-	private cloudflareClient: any = null;
 	private isShuttingDown = false;
 
 	constructor(
@@ -40,7 +39,6 @@ export class WorkerService {
 	 * Start the EdgeWorker with given configuration
 	 */
 	async startEdgeWorker(params: {
-		proxyUrl: string;
 		repositories: RepositoryConfig[];
 		ngrokAuthToken?: string;
 		onOAuthCallback?: (
@@ -49,7 +47,7 @@ export class WorkerService {
 			workspaceName: string,
 		) => Promise<void>;
 	}): Promise<void> {
-		const { proxyUrl, repositories, ngrokAuthToken, onOAuthCallback } = params;
+		const { repositories, ngrokAuthToken, onOAuthCallback } = params;
 
 		// Determine if using external host
 		const isExternalHost =
@@ -60,7 +58,6 @@ export class WorkerService {
 
 		// Create EdgeWorker configuration
 		const config: EdgeWorkerConfig = {
-			proxyUrl,
 			repositories,
 			cyrusHome: this.cyrusHome,
 			defaultAllowedTools:
@@ -109,76 +106,10 @@ export class WorkerService {
 		await this.edgeWorker.start();
 
 		this.logger.success("Edge worker started successfully");
-		this.logger.info(`Configured proxy URL: ${config.proxyUrl}`);
 		this.logger.info(`Managing ${repositories.length} repositories:`);
 		repositories.forEach((repo) => {
 			this.logger.info(`  - ${repo.name} (${repo.repositoryPath})`);
 		});
-	}
-
-	/**
-	 * Start Cloudflare tunnel client (Pro plan only)
-	 * Note: Webhooks and config updates are now handled by SharedApplicationServer
-	 */
-	async startCloudflareClient(): Promise<void> {
-		// Validate required environment variables
-		const cloudflareToken = process.env.CLOUDFLARE_TOKEN;
-
-		if (!cloudflareToken) {
-			throw new Error(
-				`Missing required credential: CLOUDFLARE_TOKEN. ` +
-					`Please run: cyrus auth <auth-key>. ` +
-					`Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus`,
-			);
-		}
-
-		// Get the server port from EdgeWorker
-		const localPort = this.getServerPort();
-
-		this.logger.info("\n🌩️  Starting Cloudflare Tunnel Client");
-		this.logger.divider(50);
-
-		try {
-			const { CloudflareTunnelClient } = await import(
-				"cyrus-cloudflare-tunnel-client"
-			);
-
-			const client = new CloudflareTunnelClient(
-				cloudflareToken,
-				localPort,
-				(tunnelUrl: string) => {
-					this.logger.success("Cloudflare tunnel established");
-					this.logger.info(`🔗 Tunnel URL: ${tunnelUrl}`);
-					this.logger.divider(50);
-					this.logger.info("\n💎 Pro Plan Active - Using Cloudflare Tunnel");
-					this.logger.info(
-						"🚀 Tunnel established and ready to forward requests",
-					);
-					this.logger.divider(50);
-				},
-			);
-
-			// Set up error handler
-			client.on("error", (error: Error) => {
-				this.logger.error(`\nCloudflare tunnel error: ${error.message}`);
-			});
-
-			// Set up disconnect handler
-			client.on("disconnect", (reason: string) => {
-				this.logger.warn(`\nCloudflare tunnel disconnected: ${reason}`);
-			});
-
-			// Start the tunnel
-			await client.startTunnel();
-
-			// Store client for cleanup (Application handles signal handlers)
-			this.cloudflareClient = client;
-		} catch (error) {
-			throw new Error(
-				`Failed to start Cloudflare tunnel: ${(error as Error).message}. ` +
-					`If you're having issues, try re-authenticating with: cyrus auth <auth-key>`,
-			);
-		}
 	}
 
 	/**
@@ -236,15 +167,9 @@ export class WorkerService {
 
 		this.logger.info("\nShutting down edge worker...");
 
-		// Stop edge worker (includes stopping shared application server)
+		// Stop edge worker (includes stopping shared application server and Cloudflare tunnel)
 		if (this.edgeWorker) {
 			await this.edgeWorker.stop();
-		}
-
-		// Stop Cloudflare client if running
-		if (this.cloudflareClient) {
-			this.logger.info("\n🛑 Shutting down Cloudflare tunnel...");
-			this.cloudflareClient.disconnect();
 		}
 
 		this.logger.info("Shutdown complete");

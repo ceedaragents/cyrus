@@ -78,7 +78,7 @@ export interface RepositoryConfig {
  */
 export interface EdgeWorkerConfig {
 	// Proxy connection config
-	proxyUrl: string;
+	proxyUrl?: string; // Optional - defaults to DEFAULT_PROXY_URL for OAuth flows
 	baseUrl?: string;
 	webhookBaseUrl?: string; // Legacy support - use baseUrl instead
 	webhookPort?: number; // Legacy support - now uses serverPort

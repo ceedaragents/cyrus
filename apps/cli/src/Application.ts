@@ -7,7 +7,6 @@ import { ConfigService } from "./services/ConfigService.js";
 import { GitService } from "./services/GitService.js";
 import { Logger } from "./services/Logger.js";
 import { OAuthService } from "./services/OAuthService.js";
-import { SubscriptionService } from "./services/SubscriptionService.js";
 import { WorkerService } from "./services/WorkerService.js";
 
 /**
@@ -17,7 +16,6 @@ export class Application {
 	public readonly config: ConfigService;
 	public readonly oauth: OAuthService;
 	public readonly git: GitService;
-	public readonly subscription: SubscriptionService;
 	public readonly worker: WorkerService;
 	public readonly logger: Logger;
 
@@ -33,7 +31,6 @@ export class Application {
 		// Initialize services
 		this.config = new ConfigService(cyrusHome, this.logger);
 		this.git = new GitService(this.logger);
-		this.subscription = new SubscriptionService(this.logger);
 
 		// OAuth and Worker services need runtime configuration
 		const serverPort = parsePort(

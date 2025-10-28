@@ -20,8 +20,18 @@ All notable changes to this project will be documented in this file.
   - Supports dual verification modes: direct Linear webhooks (LINEAR_DIRECT_WEBHOOKS) and proxy authentication
   - Removed complex transport abstractions (WebhookTransport, BaseTransport) in favor of direct route registration
   - Routes registered after server startup for improved initialization flow
+- **Simplified CLI startup**: Removed legacy onboarding flows and subscription validation
+  - Cloudflare tunnel now starts automatically when CLOUDFLARE_TOKEN is present
+  - Removed Pro plan prompts and customer validation code
+  - Removed `billing` and `set-customer-id` commands
+  - Streamlined `auth` command to focus on authentication only
+  - All tunnel management now handled by SharedApplicationServer
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.19 - includes parity with Claude Code v2.0.19. See [@anthropic-ai/claude-agent-sdk v0.1.19 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0119)
 - Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
+
+### Removed
+- **Subscription service**: Removed customer validation and subscription checking code
+- **Billing commands**: Removed `billing` and `set-customer-id` CLI commands
 
 ## [0.1.57] - 2025-10-12
 
