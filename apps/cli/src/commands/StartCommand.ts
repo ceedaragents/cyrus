@@ -177,9 +177,6 @@ export class StartCommand extends BaseCommand {
 				"• Linear OAuth setup: https://linear.app/developers/agents",
 			);
 			this.logger.info(
-				"• Proxy implementation: https://github.com/ceedaragents/cyrus/tree/main/apps/proxy-worker",
-			);
-			this.logger.info(
 				"\nOnce deployed, set the PROXY_URL environment variable:",
 			);
 			this.logger.info("export PROXY_URL=https://your-proxy-url.com");
