@@ -126,16 +126,7 @@ export class EdgeWorker extends EventEmitter {
 		this.sharedApplicationServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
-			config.ngrokAuthToken,
-			config.proxyUrl,
 		);
-
-		// Register OAuth callback handler if provided
-		if (config.handlers?.onOAuthCallback) {
-			this.sharedApplicationServer.registerOAuthCallbackHandler(
-				config.handlers.onOAuthCallback,
-			);
-		}
 
 		// Initialize repositories
 		for (const repo of config.repositories) {

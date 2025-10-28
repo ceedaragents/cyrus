@@ -30,6 +30,7 @@
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-webhook-client": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
+		"fastify": "^5.2.0",
 		"file-type": "^18.7.0"
 	},
 	"devDependencies": {

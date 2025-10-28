@@ -2,13 +2,13 @@ import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import {
+	createServer,
 	type IncomingMessage,
 	type Server,
 	type ServerResponse,
-	createServer,
 } from "node:http";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import { Tunnel, bin, install } from "cloudflared";
+import { bin, install, Tunnel } from "cloudflared";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
