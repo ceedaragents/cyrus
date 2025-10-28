@@ -55,7 +55,7 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 } from "cyrus-core";
-import { LinearWebhookClient } from "cyrus-linear-webhook-client";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
@@ -89,7 +89,7 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
-	private ndjsonClients: Map<string, NdjsonClient | LinearWebhookClient> =
+	private ndjsonClients: Map<string, NdjsonClient | LinearEventTransport> =
 		new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
@@ -297,6 +297,11 @@ export class EdgeWorker extends EventEmitter {
 				token: token,
 				name: repos.map((r) => r.name).join(", "), // Pass repository names
 				transport: "webhook" as const,
+				// Add verification config for LinearEventTransport
+				...(useLinearDirectWebhooks && {
+					verificationMethod: "hmac" as const,
+					webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
+				}),
 				// Use shared application server instead of individual servers
 				useExternalWebhookServer: true,
 				externalWebhookServer: this.sharedApplicationServer,
@@ -315,8 +320,10 @@ export class EdgeWorker extends EventEmitter {
 
 			// Create the appropriate client based on configuration
 			const ndjsonClient = useLinearDirectWebhooks
-				? new LinearWebhookClient({
+				? new LinearEventTransport({
 						...clientConfig,
+						verificationMethod: "hmac" as const,
+						webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
 						onWebhook: (payload: any) => {
 							// Get fresh repositories for this token to avoid stale closures
 							const freshRepos = this.getRepositoriesForToken(token);
@@ -328,7 +335,7 @@ export class EdgeWorker extends EventEmitter {
 					})
 				: new NdjsonClient(clientConfig);
 
-			// Set up webhook handler for NdjsonClient (LinearWebhookClient uses onWebhook in constructor)
+			// Set up webhook handler for NdjsonClient (LinearEventTransport uses onWebhook in constructor)
 			if (!useLinearDirectWebhooks) {
 				(ndjsonClient as NdjsonClient).on("webhook", (data) => {
 					// Get fresh repositories for this token to avoid stale closures
@@ -1011,8 +1018,10 @@ export class EdgeWorker extends EventEmitter {
 		};
 
 		const ndjsonClient = useLinearDirectWebhooks
-			? new LinearWebhookClient({
+			? new LinearEventTransport({
 					...clientConfig,
+					verificationMethod: "hmac" as const,
+					webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
 					onWebhook: (payload: any) => {
 						// Get fresh repositories for this token to avoid stale closures
 						const freshRepos = this.getRepositoriesForToken(repo.linearToken);
