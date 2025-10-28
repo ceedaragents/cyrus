@@ -297,7 +297,7 @@ export class EdgeWorker extends EventEmitter {
 		// Get appropriate secret based on mode
 		const secret = useDirectWebhooks
 			? process.env.LINEAR_WEBHOOK_SECRET || ""
-			: firstRepo.linearToken;
+			: process.env.CYRUS_API_KEY || "";
 
 		this.linearEventTransport = new LinearEventTransport({
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
