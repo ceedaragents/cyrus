@@ -1927,6 +1927,8 @@ export class EdgeWorker extends EventEmitter {
 		await mkdir(attachmentsDir, { recursive: true });
 
 		let attachmentManifest = "";
+		let commentAuthor: string | undefined;
+		let commentTimestamp: string | undefined;
 
 		try {
 			const result = await linearClient.client.rawRequest(
@@ -1951,6 +1953,14 @@ export class EdgeWorker extends EventEmitter {
 
 			// Extract comment data
 			const comment = (result.data as any).comment;
+
+			// Extract comment metadata for multi-player context
+			if (comment) {
+				const user = comment.user;
+				commentAuthor =
+					user?.displayName || user?.name || user?.email || "Unknown";
+				commentTimestamp = comment.createdAt || new Date().toISOString();
+			}
 
 			// Count existing attachments
 			const existingFiles = await readdir(attachmentsDir).catch(() => []);
@@ -2013,6 +2023,8 @@ export class EdgeWorker extends EventEmitter {
 				isNewSession,
 				[], // No additional allowed directories for regular continuation
 				`prompted webhook (${isNewSession ? "new" : "existing"} session)`,
+				commentAuthor,
+				commentTimestamp,
 			);
 		} catch (error) {
 			console.error("Failed to handle prompted webhook:", error);
@@ -4586,6 +4598,8 @@ ${input.userComment}
 		isNewSession: boolean,
 		additionalAllowedDirs: string[],
 		logContext: string,
+		commentAuthor?: string,
+		commentTimestamp?: string,
 	): Promise<boolean> {
 		// Check if runner is actively streaming before routing
 		const existingRunner = session.claudeRunner;
@@ -4636,6 +4650,9 @@ ${input.userComment}
 			attachmentManifest,
 			isNewSession,
 			additionalAllowedDirs,
+			undefined, // maxTurns
+			commentAuthor,
+			commentTimestamp,
 		);
 
 		return false; // Session was resumed
