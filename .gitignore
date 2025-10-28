@@ -36,3 +36,6 @@ workspaces
 .edge-config.json
 
 CLAUDE.local.md
+
+# Build outputs
+dist/
