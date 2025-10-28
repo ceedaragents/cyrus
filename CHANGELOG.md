@@ -13,10 +13,22 @@ All notable changes to this project will be documented in this file.
   - Repository management (automatically clones/verifies repositories to `~/.cyrus/repos/<repo-name>`)
   - All file operations restricted to `~/.cyrus` directory for security
   - Will replace `ndjson-client` for customers using cyrus-hosted service
+- **Modular application server architecture**: New pluggable module system for HTTP request handling
+  - New `cyrus-linear-event-transport` package for receiving Linear webhooks with configurable verification methods (direct Linear HMAC or Bearer token)
+  - New `cyrus-config-updater` package for centralized configuration and MCP management
+  - Supports both ngrok and Cloudflare tunnel transport automatically
 
 ### Changed
+- **Application server refactoring**: `SharedApplicationServer` now uses a pluggable module registration system instead of hardcoded webhook handlers
+  - Modules implement `ApplicationModule` interface with `initialize()`, `handleRequest()`, and `destroy()` methods
+  - Replaces ngrok tunnel support with Cloudflare tunnel support (starts automatically when `CLOUDFLARE_TOKEN` is set)
+  - Request routing checks registered modules before built-in handlers
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.19 - includes parity with Claude Code v2.0.19. See [@anthropic-ai/claude-agent-sdk v0.1.19 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0119)
 - Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
+
+### Removed
+- Removed `ndjson-client` package (replaced by `cyrus-linear-event-transport` and `cyrus-config-updater`)
+- Removed `proxy-worker` application (functionality moved to `cyrus-config-updater`)
 
 ## [0.1.57] - 2025-10-12
 
