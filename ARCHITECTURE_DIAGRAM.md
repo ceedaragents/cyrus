@@ -24,23 +24,12 @@
 │  ┌──────────────────┐              │  └──────────────────────────┘  │
 │  │  Proxy Worker    │              │                                │
 │  │ (apps/proxy/)    │              │  ┌──────────────────────────┐  │
-│  │                  │              │  │    NdjsonClient          │  │
-│  │ - OAuth endpoint │              │  │  (ndjson-client/)        │  │
+│  │                  │              │  │ LinearEventTransport     │  │
+│  │ - OAuth endpoint │              │  │(linear-event-transport/) │  │
 │  │ - Webhook proxy  │              │  │                          │  │
-│  │ - Token manager  │              │  │ - Proxy integration      │  │
-│  │ - Config updates │              │  │ - HMAC signature verify  │  │
-│  └──────────────────┘              │  │ - External server mode   │  │
-│                                    │  │ - EdgeEvent stream       │  │
-│                                    │  └──────────────────────────┘  │
-│                                    │                                │
-│                                    │  ┌──────────────────────────┐  │
-│                                    │  │  LinearWebhookClient     │  │
-│                                    │  │ (linear-webhook-client/) │  │
-│                                    │  │                          │  │
-│                                    │  │ - Direct webhooks        │  │
-│                                    │  │ - Linear SDK integration │  │
-│                                    │  │ - External server mode   │  │
-│                                    │  │ - linear-signature check │  │
+│  │ - Token manager  │              │  │ - Direct webhooks        │  │
+│  │ - Config updates │              │  │ - Linear SDK HMAC verify │  │
+│  └──────────────────┘              │  │ - Webhook registration   │  │
 │                                    │  └──────────────────────────┘  │
 │                                    │                                │
 │                                    │  ┌──────────────────────────┐  │
@@ -78,7 +67,7 @@ LINEAR WEBHOOKS (Multiple Sources)
 ├─ Direct Webhooks (linear-signature header)
 │  └─► POST /webhook ◄─────────────────────────────┐
 │                                                   │
-├─ Proxy Webhooks (x-webhook-signature header)     │
+├─ ngrok Tunnel Webhooks                           │
 │  └─► POST /webhook ◄───────────────────────────┐ │
 │                                                 │ │
 └─ Cloudflare Tunnel (POST via tunnel)            │ │
@@ -88,46 +77,47 @@ LINEAR WEBHOOKS (Multiple Sources)
                         │ SharedApplicationServer          │
                         │ /webhook Handler                 │
                         │                                  │
-                        │ 1. Detect webhook type           │
-                        │    (header-based)                │
-                        │ 2. Route to handler              │
-                        │ 3. Signature verification        │
+                        │ 1. Route to handler              │
+                        │ 2. HMAC signature verification   │
                         └──────────────┬──────────────────┘
                                        │
-                    ┌──────────────────┼──────────────────┐
-                    │                  │                  │
-                    ▼                  ▼                  ▼
-            ┌────────────────┐ ┌────────────────┐ ┌──────────────┐
-            │ NdjsonClient   │ │LinearWebhook   │ │ EdgeWorker   │
-            │ Handler        │ │ Client Handler │ │ handleWebhook│
-            │                │ │                │ │              │
-            │ Signature:     │ │ Signature:     │ │ Processes    │
-            │ (body, sig,    │ │ (req, res)     │ │ Linear event │
-            │  timestamp)    │ │                │ │              │
-            │ => boolean     │ │ => Promise     │ │ Emits to     │
-            │                │ │                │ │ handlers:    │
-            │ Emits:         │ │ Emits:         │ │ - onIssue    │
-            │ webhook event  │ │ webhook event  │ │ - onComment  │
-            └────────┬───────┘ └────────┬───────┘ └──────────────┘
-                     │                  │
-                     └──────────────────┼────────────────────┐
-                                        │                    │
-                            ┌───────────▼──────────┐  ┌──────▼───────┐
-                            │ Webhook Processing   │  │ Linear API   │
-                            │                      │  │ Updates      │
-                            │ - Parse Linear event │  │              │
-                            │ - Get issue details  │  │ - Post       │
-                            │ - Check assignment   │  │   comments   │
-                            │ - Manage sessions    │  │ - Update     │
-                            └──────┬───────────────┘  │   states     │
-                                   │                  │ - Create     │
-                            ┌──────▼──────────┐      │   issues     │
-                            │ Claude Runner   │      └──────────────┘
-                            │                │
-                            │ - Execute tool │
-                            │ - Generate     │
-                            │   responses    │
-                            └────────────────┘
+                                       ▼
+                            ┌──────────────────────┐
+                            │ LinearEventTransport │
+                            │ Handler              │
+                            │                      │
+                            │ Signature:           │
+                            │ (req, res)           │
+                            │ => Promise           │
+                            │                      │
+                            │ Emits:               │
+                            │ webhook event        │
+                            └──────────┬───────────┘
+                                       │
+                            ┌──────────▼──────────┐
+                            │ EdgeWorker          │
+                            │ handleWebhook       │
+                            │                     │
+                            │ - Parse Linear      │
+                            │   event             │
+                            │ - Get issue details │
+                            │ - Check assignment  │
+                            │ - Manage sessions   │
+                            └──────┬──────────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    │              │              │
+             ┌──────▼───────┐ ┌───▼────────┐ ┌──▼──────────┐
+             │ Claude Runner│ │ Linear API │ │ Linear      │
+             │              │ │ Updates    │ │ Comments    │
+             │ - Execute    │ │            │ │             │
+             │   tool       │ │ - Post     │ │ - Post      │
+             │ - Generate   │ │   comments │ │   status    │
+             │   responses  │ │ - Update   │ │   updates   │
+             └──────────────┘ │   states   │ └─────────────┘
+                              │ - Create   │
+                              │   issues   │
+                              └────────────┘
 ```
 
 ## Request Flow for Webhook Registration
@@ -143,70 +133,54 @@ LINEAR WEBHOOKS (Multiple Sources)
          │ - Create HTTP server on port 3456
          │ - Start ngrok tunnel
          │ - Emit ready event with tunnel URL
-         └────┬──────────────┬──────────────┐
-              │              │              │
-       ┌──────▼──┐    ┌──────▼──┐    ┌─────▼─────┐
-       │ FOR     │    │ FOR     │    │ FOR ALL   │
-       │ EACH    │    │ EACH    │    │ REMAINING│
-       │ TOKEN   │    │ REPO    │    │           │
-       └──────┬──┘    └──────┬──┘    └─────┬─────┘
-              │              │             │
-        ┌─────▼────────┐     │             │
-        │ Create Client│     │             │
-        │ (NdjsonClient│     │             │
-        │  OR Linear   │     │             │
-        │  WebhookCl)  │     │             │
-        └─────┬────────┘     │             │
-              │              │             │
-        ┌─────▼──────────────────────────┐
-        │ client.connect()                │
-        └─────┬──────────────────────────┘
+         └────┬──────────────────┘
               │
-        ┌─────▼──────────────┐
-        │ NdjsonClient Flow  │           LinearWebhookClient Flow
-        │ (Proxy-based)      │           ─────────────────────────
-        │                    │
-        │ 1. registerWebhook()
-        │    POST /edge/register
-        │    to proxy with token
-        │
-        │ 2. Receive webhookSecret
-        │
-        │ 3. registerWithExtServer()
-        │    .registerWebhookHandler(
-        │      token,
-        │      secret,
-        │      (body, sig, time) => {
-        │        verify HMAC
-        │        return boolean
-        │      }
-        │    )
-        │
-        │ 4. SharedApplicationServer
-        │    stores in
-        │    webhookHandlers map
-        │
-        └─────┬──────────────┘
+       ┌──────▼──────┐
+       │ FOR EACH    │
+       │ TOKEN/REPO  │
+       └──────┬──────┘
+              │
+        ┌─────▼────────────┐
+        │ Create           │
+        │ LinearEvent      │
+        │ Transport        │
+        └─────┬────────────┘
+              │
+        ┌─────▼──────────────────────────┐
+        │ transport.connect()             │
+        │                                 │
+        │ 1. Register webhook with Linear │
+        │    using Linear SDK             │
+        │                                 │
+        │ 2. Register handler with        │
+        │    SharedApplicationServer      │
+        │    .registerLinearHandler()     │
+        │                                 │
+        │ 3. Handler receives (req, res)  │
+        │    and verifies Linear SDK      │
+        │    signature                    │
+        └─────┬───────────────────────────┘
               │
         ┌─────▼──────────────┐
         │ INCOMING WEBHOOK   │
         │ POST /webhook      │
         │                    │
         │ 1. Detect header:  │
-        │    x-webhook-sig   │
-        │    (NdjsonClient)  │
+        │    linear-signature│
         │                    │
-        │ 2. Try each handler
-        │    until one        │
-        │    verifies sig     │
-        │    and returns true │
+        │ 2. Route to Linear │
+        │    handler         │
         │                    │
-        │ 3. Handler emits   │
+        │ 3. Handler verifies│
+        │    signature via   │
+        │    Linear SDK      │
+        │                    │
+        │ 4. Handler emits   │
         │    webhook event   │
         │                    │
-        │ 4. EdgeWorker.on   │
-        │    (webhook, data)│
-        │    processes it     │
+        │ 5. EdgeWorker.on   │
+        │    (webhook, data) │
+        │    processes it    │
         └────────────────────┘
 ```
 
@@ -218,61 +192,50 @@ LINEAR WEBHOOKS (Multiple Sources)
 └────────────┬────────────────────────────────────────────────┘
              │
     ┌────────▼──────────┐
-    │ SharedApplication
+    │ SharedApplication │
     │ Server.handleRequest
     └────────┬───────────┘
              │
     ┌────────▼──────────────┐
     │ handleWebhookRequest()│
     │                       │
-    │ - Check if Direct     │
-    │   (linear-signature?) │
-    │ - Check if Proxy      │
-    │   (x-webhook-*)       │
+    │ - Check for           │
+    │   linear-signature    │
+    │   header              │
     └────────┬──────────────┘
              │
-       ┌─────┴─────┐
-       │           │
-   ┌───▼───┐   ┌───▼──────┐
-   │Direct │   │Proxy     │
-   │Mode   │   │Mode      │
-   └───┬───┘   └───┬──────┘
-       │           │
-    ┌──▼──────┐ ┌─▼────────────────┐
-    │ For each│ │For each handler  │
-    │ linear  │ │in webhookHandlers│
-    │ webhook │ │map:              │
-    │ handler │ │                  │
-    │ (req,   │ │ handler(body,    │
-    │  res)   │ │   signature,     │
-    │         │ │   timestamp)     │
-    └────┬────┘ │                  │
-         │      │ Returns boolean: │
-    ┌────▼──┐   │ ┌─ true: Done!   │
-    │Linear │   │ │ (emit event)   │
-    │SDK    │   │ └─ false: Try    │
-    │verifies   │   next handler   │
-    │signature  │                  │
-    │& handles  │ 500+ handlers    │
-    │response   │ can co-exist     │
-    └──────┘    └──────────────────┘
-               │
-        ┌──────▼────────┐
-        │ Handler       │
-        │ returns       │
-        │ true/false    │
-        │ (signature    │
-        │  verified?)   │
-        └──────┬────────┘
-               │
-        ┌──────▼────────────┐
-        │ If true: respond  │
-        │ 200 OK            │
-        │ If false: try     │
-        │ next handler      │
-        │ If all fail:      │
-        │ respond 401       │
-        └────────────────────┘
+             ▼
+    ┌────────────────────┐
+    │ For each Linear    │
+    │ webhook handler:   │
+    │                    │
+    │ handler(req, res)  │
+    │                    │
+    │ - Linear SDK       │
+    │   verifies HMAC    │
+    │   signature        │
+    │                    │
+    │ - Parses webhook   │
+    │   payload          │
+    │                    │
+    │ - Emits webhook    │
+    │   event to         │
+    │   EdgeWorker       │
+    │                    │
+    │ - Responds 200 OK  │
+    └────────────────────┘
+             │
+             ▼
+    ┌────────────────────┐
+    │ EdgeWorker         │
+    │ handleWebhook()    │
+    │                    │
+    │ - Parse event type │
+    │ - Get issue details│
+    │ - Check assignment │
+    │ - Manage sessions  │
+    │ - Run Claude       │
+    └────────────────────┘
 ```
 
 ## Data Flow: Token to Handler Registration
@@ -308,107 +271,103 @@ TOKEN LIFECYCLE
         │ 1 (abc123) │  │ 2 (def456) │ │(xyzABC)    │
         └───┬────────┘  └───┬────────┘ └───┬────────┘
             │               │              │
-        ┌───▼──────────────────────────────────────┐
-        │ Create NdjsonClient or LinearWebhookCl   │
-        │ with config:                             │
-        │  {                                       │
-        │    token: "abc123",                      │
-        │    externalWebhookServer:                │
-        │      this.sharedApplicationServer,       │
-        │    useExternalWebhookServer: true,       │
-        │    ...                                   │
-        │  }                                       │
-        └───┬──────────────────────────────────────┘
-            │
-        ┌───▼────────────┐
-        │ client.        │
-        │ connect()      │
-        │                │
-        │ (if NdjsonCl)  │
-        │ POST /edge/    │
-        │ register to    │
-        │ proxy with     │
-        │ token=abc123   │
-        │                │
-        │ Response:      │
-        │ {              │
-        │  webhookSecret │
-        │  : "sec_xyz"   │
-        │ }              │
-        └───┬────────────┘
+        ┌───▼─────────────────────────────────┐
+        │ Create LinearEventTransport         │
+        │ with config:                        │
+        │  {                                  │
+        │    token: "abc123",                 │
+        │    linearClient: LinearClient,      │
+        │    externalWebhookServer:           │
+        │      this.sharedApplicationServer,  │
+        │    webhookUrl: baseUrl + '/webhook',│
+        │  }                                  │
+        └───┬─────────────────────────────────┘
             │
         ┌───▼────────────────────────────┐
-        │ registerWithExtServer()         │
-        │                                │
-        │ Call SharedApplicationServer.  │
-        │ registerWebhookHandler(        │
-        │   "abc123",                    │
-        │   "sec_xyz",                   │
-        │   (body,sig,time) => {...}    │
-        │ )                              │
-        └───┬────────────────────────────┘
+        │ transport.connect()             │
+        │                                 │
+        │ 1. Register webhook with Linear │
+        │    via Linear SDK:              │
+        │    linearClient.createWebhook({ │
+        │      url: webhookUrl,           │
+        │      resourceTypes: [...],      │
+        │    })                           │
+        │                                 │
+        │ 2. Linear responds with webhook │
+        │    ID and signing secret        │
+        └───┬─────────────────────────────┘
+            │
+        ┌───▼───────────────────────────────┐
+        │ registerLinearHandler()            │
+        │                                    │
+        │ Call SharedApplicationServer.      │
+        │ registerLinearHandler(             │
+        │   handler: (req, res) => {         │
+        │     // Verify Linear signature     │
+        │     // Parse webhook payload       │
+        │     // Emit to EdgeWorker          │
+        │   }                                │
+        │ )                                  │
+        └───┬────────────────────────────────┘
             │
         ┌───▼──────────────────────────────────┐
         │ SharedApplicationServer stores:      │
         │                                      │
-        │ this.webhookHandlers.set(            │
-        │   "abc123",                          │
-        │   {                                  │
-        │     secret: "sec_xyz",               │
-        │     handler: (body,sig,time)=>{}    │
+        │ this.linearWebhookHandlers.push(     │
+        │   (req, res) => {                    │
+        │     // Linear SDK verification       │
+        │     // Event emission                │
         │   }                                  │
         │ )                                    │
         │                                      │
-        │ Map structure after all tokens:      │
-        │ {                                    │
-        │   "abc123" -> {...},                 │
-        │   "def456" -> {...},                 │
-        │   "xyzABC" -> {...}                  │
-        │ }                                    │
-        └────────────────────────────────────┘
+        │ Array of handlers for all tokens     │
+        └──────────────────────────────────────┘
                        │
                        │
         INCOMING WEBHOOK ARRIVES
-        (from any token source)
+        (from Linear)
                        │
         ┌──────────────▼──────────────┐
         │ POST /webhook               │
         │ Body: {"type": "issue", ...}│
         │ Headers: {                  │
-        │   x-webhook-signature:      │
-        │     sha256=abc123...,        │
-        │   x-webhook-timestamp: 123  │
+        │   linear-signature:         │
+        │     t=timestamp,v1=hash     │
         │ }                           │
         └──────────────┬──────────────┘
                        │
         ┌──────────────▼──────────────┐
         │ handleWebhookRequest()      │
         │                             │
+        │ Detect linear-signature     │
+        │ header present              │
+        │                             │
         │ for each handler in         │
-        │ webhookHandlers             │
-        │   result =                  │
-        │     handler(body, sig, ts)  │
-        │   if (result) {             │
-        │     respond 200             │
-        │     return                  │
-        │   }                         │
+        │ linearWebhookHandlers:      │
+        │   handler(req, res)         │
+        │                             │
+        │ Handler uses Linear SDK     │
+        │ to verify signature         │
         └──────────────┬──────────────┘
                        │
         ┌──────────────▼──────────────┐
-        │ Handler matched!            │
-        │ Signal verified!            │
+        │ Handler verified signature  │
         │                             │
         │ Emit webhook event:         │
-        │ ndjsonClient.emit(          │
+        │ transport.emit(             │
         │   "webhook",                │
         │   {data from body}          │
         │ )                           │
+        │                             │
+        │ Respond 200 OK              │
         └──────────────┬──────────────┘
                        │
         ┌──────────────▼──────────────┐
         │ EdgeWorker listening:       │
-        │ client.on("webhook", (d)=>  │
-        │   this.handleWebhook(d)     │
+        │ transport.on("webhook",     │
+        │   (data) => {               │
+        │     this.handleWebhook(data)│
+        │   }                         │
         │ )                           │
         │                             │
         │ Processes webhook           │
@@ -489,16 +448,20 @@ WEBHOOK URL REGISTRATION
 ════════════════════════════════════════════════════════════════
 
 ┌──────────────────────────────────────┐
-│ NdjsonClient.connect()               │
+│ LinearEventTransport.connect()       │
 │                                      │
-│ Calls registerWebhook():             │
-│ POST /edge/register                  │
-│ to proxy with:                       │
+│ Registers webhook directly with      │
+│ Linear via Linear SDK:               │
 │ {                                    │
-│   webhookUrl:                        │
+│   url:                               │
 │     https://abc123.ngrok.io/webhook, │
-│   linearToken: "token_abc123"        │
+│   resourceTypes: ["Issue",           │
+│     "Comment", "IssueLabel"]         │
 │ }                                    │
+│                                      │
+│ Linear responds with webhook ID      │
+│ and signing secret for HMAC          │
+│ verification                         │
 └────────────────────────────────────┘
 ```
 
@@ -519,49 +482,65 @@ INITIALIZATION:
        ├─> HTTP server listening on localhost:30135
        └─> Ngrok tunnel: https://abc123.ngrok.io
 
-2. NdjsonClient.connect()
-   ├─> registerWebhook()
-   │   └─> POST /edge/register to proxy
-   │       └─> Response: {webhookSecret: "secret_xyz"}
+2. LinearEventTransport.connect()
+   ├─> Register webhook with Linear SDK
+   │   └─> linearClient.createWebhook({
+   │         url: "https://abc123.ngrok.io/webhook",
+   │         resourceTypes: ["Issue", "Comment", "IssueLabel"]
+   │       })
+   │   └─> Response: {id: "webhook_xyz", secret: "signing_secret"}
    │
-   └─> registerWithExternalServer()
-       └─> sharedApplicationServer.registerWebhookHandler(
-           "linear_abc123",
-           "secret_xyz",
-           (body, sig, time) => {
-             // Verify HMAC
-             const expected = hmac(secret, time + '.' + body)
-             return sig === expected
+   └─> registerLinearHandler()
+       └─> sharedApplicationServer.registerLinearHandler(
+           (req, res) => {
+             // Parse Linear webhook signature header
+             const signature = req.headers['linear-signature']
+
+             // Verify signature using Linear SDK
+             if (linearClient.verifyWebhookSignature(
+               req.body,
+               signature,
+               secret
+             )) {
+               // Emit webhook event to EdgeWorker
+               transport.emit("webhook", req.body)
+               res.status(200).send("OK")
+             } else {
+               // Signature verification failed
+               // Continue to next handler
+             }
            }
          )
 
 LINEAR WEBHOOK ARRIVES:
 3. POST https://abc123.ngrok.io/webhook
    Headers:
-     x-webhook-signature: sha256=abc123...
-     x-webhook-timestamp: 1234567890
-   Body: {"type": "issue.created", "data": {...}}
+     linear-signature: t=1234567890,v1=abc123...
+   Body: {"action": "create", "type": "Issue", "data": {...}}
 
 4. SharedApplicationServer.handleRequest()
    └─> handleWebhookRequest()
-       ├─> Check for linear-signature header: NO
-       ├─> Check for x-webhook-signature header: YES
-       └─> This is PROXY-STYLE webhook
-           └─> for each handler in webhookHandlers:
-               ├─> Call handler for "linear_abc123"
-               │   └─> Verify HMAC signature
-               │   └─> Returns: TRUE
+       ├─> Detect linear-signature header: YES
+       └─> This is LINEAR DIRECT webhook
+           └─> for each handler in linearWebhookHandlers:
+               ├─> Call handler(req, res)
+               │   └─> Verify Linear SDK signature
+               │   └─> Emit webhook event
+               │   └─> Respond 200 OK
                │
-               ├─> Handler verified signature!
-               └─> Response: 200 OK
+               └─> Handler verified signature!
 
-5. NdjsonClient emits webhook event
-   └─> (ndjsonClient as NdjsonClient).on("webhook", (data) => {
+5. LinearEventTransport emits webhook event
+   └─> transport.emit("webhook", webhookPayload)
+
+6. EdgeWorker receives webhook event
+   └─> transport.on("webhook", (data) => {
          this.handleWebhook(data, [repo])
        })
 
-6. EdgeWorker.handleWebhook(payload, repos)
-   ├─> Parse webhook type: "issue.created"
+7. EdgeWorker.handleWebhook(payload, repos)
+   ├─> Parse webhook type: "Issue"
+   ├─> Parse webhook action: "create"
    ├─> Get issue details
    ├─> Check if assigned to Cyrus
    └─> If yes:

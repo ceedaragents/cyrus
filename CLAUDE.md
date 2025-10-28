@@ -41,8 +41,7 @@ cyrus/
     ├── core/         # Shared types and session management
     ├── claude-parser/# Claude stdout parsing with jq
     ├── claude-runner/# Claude CLI execution wrapper
-    ├── edge-worker/  # Edge worker client implementation
-    └── ndjson-client/# NDJSON streaming client
+    └── edge-worker/  # Edge worker client implementation
 ```
 
 For a detailed visual representation of how these components interact and map Claude Code sessions to Linear comment threads, see @architecture.md.
@@ -255,27 +254,22 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
    **IMPORTANT**: Publish in this exact order to avoid dependency resolution issues:
 
    ```bash
-   # 1. Packages with no internal dependencies
-   cd packages/ndjson-client && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 2. Packages that depend on external deps only
+   # 1. Packages that depend on external deps only
    cd packages/claude-runner && pnpm publish --access public --no-git-checks
    cd ../..
    pnpm install  # Update lockfile
 
-   # 3. Core package (depends on claude-runner)
+   # 2. Core package (depends on claude-runner)
    cd packages/core && pnpm publish --access public --no-git-checks
    cd ../..
    pnpm install  # Update lockfile
 
-   # 4. Simple agent runner (depends on claude-runner)
+   # 3. Simple agent runner (depends on claude-runner)
    cd packages/simple-agent-runner && pnpm publish --access public --no-git-checks
    cd ../..
    pnpm install  # Update lockfile
 
-   # 5. Edge worker (depends on core, claude-runner, ndjson-client, simple-agent-runner)
+   # 4. Edge worker (depends on core, claude-runner, simple-agent-runner)
    cd packages/edge-worker && pnpm publish --access public --no-git-checks
    cd ../..
    pnpm install  # Update lockfile

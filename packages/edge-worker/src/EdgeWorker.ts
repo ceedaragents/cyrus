@@ -56,7 +56,6 @@ import {
 	PersistenceManager,
 } from "cyrus-core";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
-import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { ApprovalHandlerModule, OAuthHandlerModule } from "./handlers/index.js";
@@ -90,8 +89,7 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
-	private ndjsonClients: Map<string, NdjsonClient | LinearEventTransport> =
-		new Map(); // listeners for webhook events, one per linear token
+	private ndjsonClients: Map<string, LinearEventTransport> = new Map(); // listeners for webhook events, one per linear token
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private oauthHandlerModule: OAuthHandlerModule;
@@ -312,20 +310,13 @@ export class EdgeWorker extends EventEmitter {
 			if (!firstRepo) continue;
 			const primaryRepoId = firstRepo.id;
 
-			// Determine which client to use based on environment variable
-			const useLinearDirectWebhooks =
-				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
-
 			const clientConfig = {
 				proxyUrl: config.proxyUrl,
 				token: token,
 				name: repos.map((r) => r.name).join(", "), // Pass repository names
 				transport: "webhook" as const,
-				// Add verification config for LinearEventTransport
-				...(useLinearDirectWebhooks && {
-					verificationMethod: "hmac" as const,
-					webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
-				}),
+				verificationMethod: "hmac" as const,
+				webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
 				// Use shared application server instead of individual servers
 				useExternalWebhookServer: true,
 				externalWebhookServer: this.sharedApplicationServer,
@@ -342,40 +333,15 @@ export class EdgeWorker extends EventEmitter {
 				onError: (error: Error) => this.handleError(error),
 			};
 
-			// Create the appropriate client based on configuration
-			const ndjsonClient = useLinearDirectWebhooks
-				? new LinearEventTransport({
-						...clientConfig,
-						verificationMethod: "hmac" as const,
-						webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
-						onWebhook: (payload: any) => {
-							// Get fresh repositories for this token to avoid stale closures
-							const freshRepos = this.getRepositoriesForToken(token);
-							this.handleWebhook(
-								payload as unknown as LinearWebhook,
-								freshRepos,
-							);
-						},
-					})
-				: new NdjsonClient(clientConfig);
-
-			// Set up webhook handler for NdjsonClient (LinearEventTransport uses onWebhook in constructor)
-			if (!useLinearDirectWebhooks) {
-				(ndjsonClient as NdjsonClient).on("webhook", (data) => {
+			// Create LinearEventTransport client
+			const ndjsonClient = new LinearEventTransport({
+				...clientConfig,
+				onWebhook: (payload: any) => {
 					// Get fresh repositories for this token to avoid stale closures
 					const freshRepos = this.getRepositoriesForToken(token);
-					this.handleWebhook(data as LinearWebhook, freshRepos);
-				});
-			}
-
-			// Optional heartbeat logging (only for NdjsonClient)
-			if (process.env.DEBUG_EDGE === "true" && !useLinearDirectWebhooks) {
-				(ndjsonClient as NdjsonClient).on("heartbeat", () => {
-					console.log(
-						`❤️ Heartbeat received for token ending in ...${token.slice(-4)}`,
-					);
-				});
-			}
+					this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
+				},
+			});
 
 			// Store with the first repo's ID as the key (for error messages)
 			// But also store the token mapping for lookup
@@ -1013,18 +979,18 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Create new NDJSON client for this token
+		// Create new LinearEventTransport client for this token
 		const serverPort =
 			this.config.serverPort || this.config.webhookPort || 3456;
 		const serverHost = this.config.serverHost || "localhost";
-		const useLinearDirectWebhooks =
-			process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
 
 		const clientConfig = {
 			proxyUrl: this.config.proxyUrl,
 			token: repo.linearToken,
 			name: repo.name,
 			transport: "webhook" as const,
+			verificationMethod: "hmac" as const,
+			webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
 			useExternalWebhookServer: true,
 			externalWebhookServer: this.sharedApplicationServer,
 			webhookPort: serverPort,
@@ -1041,26 +1007,14 @@ export class EdgeWorker extends EventEmitter {
 			onError: (error: Error) => this.handleError(error),
 		};
 
-		const ndjsonClient = useLinearDirectWebhooks
-			? new LinearEventTransport({
-					...clientConfig,
-					verificationMethod: "hmac" as const,
-					webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
-					onWebhook: (payload: any) => {
-						// Get fresh repositories for this token to avoid stale closures
-						const freshRepos = this.getRepositoriesForToken(repo.linearToken);
-						this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
-					},
-				})
-			: new NdjsonClient(clientConfig);
-
-		if (!useLinearDirectWebhooks) {
-			(ndjsonClient as NdjsonClient).on("webhook", (data) => {
+		const ndjsonClient = new LinearEventTransport({
+			...clientConfig,
+			onWebhook: (payload: any) => {
 				// Get fresh repositories for this token to avoid stale closures
 				const freshRepos = this.getRepositoriesForToken(repo.linearToken);
-				this.handleWebhook(data as LinearWebhook, freshRepos);
-			});
-		}
+				this.handleWebhook(payload as unknown as LinearWebhook, freshRepos);
+			},
+		});
 
 		this.ndjsonClients.set(repo.id, ndjsonClient);
 

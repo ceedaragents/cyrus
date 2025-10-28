@@ -8,7 +8,7 @@ The Cyrus codebase is a TypeScript/JavaScript monorepo organized with a clear se
 
 The architecture has evolved toward a **unified webhook handling pattern** where:
 1. A single `SharedApplicationServer` manages HTTP webhooks and OAuth flows
-2. Multiple `NdjsonClient` and `LinearWebhookClient` instances register handlers with the shared server
+2. Multiple `LinearEventTransport` instances register handlers with the shared server
 3. All clients use a common tunnel infrastructure (ngrok or Cloudflare)
 
 ---
@@ -23,8 +23,7 @@ cyrus-workspaces/
 │
 └── packages/
     ├── cloudflare-tunnel-client/  # Cloudflare tunnel implementation
-    ├── linear-webhook-client/     # Linear webhook direct integration
-    ├── ndjson-client/             # Proxy-based webhook client
+    ├── linear-event-transport/    # Linear webhook transport with HMAC verification
     ├── edge-worker/               # Main orchestration engine
     ├── claude-runner/             # Claude Code execution
     ├── core/                      # Shared types and utilities
@@ -44,18 +43,14 @@ Central HTTP server that handles both webhooks and OAuth callbacks on a single p
 **Key Characteristics**:
 - **Port Management**: Configurable port (default 3456) and host
 - **ngrok Integration**: Automatic tunnel setup for external exposure
-- **Dual Webhook Handling**:
-  - Proxy-style webhooks (HMAC signature verification)
-  - Direct Linear webhooks (Linear SDK signature verification)
+- **Webhook Handling**:
+  - Direct Linear webhooks with HMAC signature verification
 
 **Registered Handlers**:
 
 1. **Webhook Handler** (`/webhook` - POST)
    - Routes incoming POST requests to registered webhook handlers
-   - Supports two registration styles:
-     - **Proxy-style**: `registerWebhookHandler(token, secret, handler)`
-     - **Direct-style**: `registerWebhookHandler(token, handler)`
-   - Auto-detects webhook type based on headers
+   - Uses Linear webhook signature verification with HMAC
    - Signature verification per handler
 
 2. **OAuth Callback Handler** (`/callback` - GET)
@@ -91,93 +86,25 @@ registerApprovalRequest(sessionId): {promise, url}  // Create approval
 ```
 
 **State Management**:
-- `webhookHandlers`: Proxy-style handlers (token -> {secret, handler})
-- `linearWebhookHandlers`: Direct-style handlers (token -> handler)
+- `webhookHandlers`: Linear webhook handlers (token -> {secret, handler})
 - `oauthCallbacks`: Pending OAuth flows (flowId -> {resolve, reject})
 - `oauthStates`: CSRF tokens for direct OAuth
 - `pendingApprovals`: User approval requests (sessionId -> callback)
 
 ---
 
-### 2. NdjsonClient Package
-**Location**: `/packages/ndjson-client/`
-
-**Purpose**: 
-Client for communicating with Cyrus proxy server via NDJSON streaming protocol.
-
-**Entry Point**: `NdjsonClient.ts`
-```typescript
-export class NdjsonClient extends EventEmitter {
-  private transport: WebhookTransport;
-  
-  async connect(): Promise<void>
-  async sendStatus(update: StatusUpdate): Promise<void>
-  disconnect(): void
-  isConnected(): boolean
-}
-```
-
-**Key Events**:
-- `connect`: Connected to proxy
-- `disconnect`: Connection lost
-- `event`: New NDJSON event received
-- `webhook`: Webhook data (legacy)
-- `heartbeat`: Proxy heartbeat signal
-- `error`: Connection error
-
-**Transport Layer** (`WebhookTransport.ts`):
-
-1. **Registration Phase**:
-   ```
-   1. POST /edge/register to proxy
-   2. Receives webhookSecret from proxy
-   3. Registers with SharedApplicationServer
-   4. Handler signature: (body, signature, timestamp) => boolean
-   ```
-
-2. **External Server Integration**:
-   - If `useExternalWebhookServer=true` and `externalWebhookServer` provided:
-     - Calls `externalWebhookServer.registerWebhookHandler(token, secret, handler)`
-     - Handler verifies HMAC signature using `webhookSecret`
-     - Returns true/false based on signature validity
-
-3. **Webhook Handling**:
-   - Receives webhooks via SharedApplicationServer
-   - Verifies HMAC-SHA256 signature: `sha256=${hmac(secret, timestamp.body)}`
-   - Parses as `EdgeEvent` and emits
-
-**Configuration**:
-```typescript
-interface NdjsonClientConfig {
-  proxyUrl: string                    // Proxy URL for registration
-  token: string                       // Linear token (auth header)
-  transport: "webhook"               // Only type supported
-  webhookPort?: number               // Port for webhook server (3000)
-  webhookHost?: string               // Host for webhook server
-  webhookBaseUrl?: string            // Alternative full URL
-  webhookPath?: string               // Path for webhook endpoint
-  externalWebhookServer?: any        // SharedApplicationServer instance
-  useExternalWebhookServer?: boolean // Use SharedApplicationServer
-  onEvent?: (event: EdgeEvent) => void
-  onConnect/Disconnect/Error?: callback
-}
-```
-
----
-
-### 3. LinearWebhookClient Package
-**Location**: `/packages/linear-webhook-client/`
+### 2. LinearEventTransport Package
+**Location**: `/packages/linear-event-transport/`
 
 **Purpose**:
-Client for receiving webhooks directly from Linear (Direct Webhooks mode).
+Client for receiving webhooks directly from Linear with HMAC signature verification.
 
-**Entry Point**: `LinearWebhookClient.ts`
+**Entry Point**: `LinearEventTransport.ts`
 ```typescript
-export class LinearWebhookClient extends EventEmitter {
-  private transport: WebhookTransport;
-  
+export class LinearEventTransport extends EventEmitter {
+  private webhookClient: LinearWebhookClient;
+
   async connect(): Promise<void>
-  async sendStatus(update: StatusUpdate): Promise<void>
   disconnect(): void
   isConnected(): boolean
 }
@@ -189,42 +116,28 @@ export class LinearWebhookClient extends EventEmitter {
 - `webhook`: Linear webhook payload
 - `error`: Connection error
 
-**Transport Layer** (`WebhookTransport.ts`):
+**Transport Layer**:
 
-1. **Uses Linear SDK Webhook Client**:
-   - Creates `LinearWebhookClient` from `@linear/sdk/webhooks`
-   - Gets handler via `webhookClient.createHandler()`
-   - Handler validates `linear-signature` header
+1. **Linear SDK Webhook Integration**:
+   - Uses `@linear/sdk/webhooks` for webhook handling
+   - Validates `linear-signature` header using Linear's HMAC verification
+   - Automatically registers webhook with Linear
 
-2. **Two Operational Modes**:
-
-   **Mode A: Standalone HTTP Server**
-   - Creates own HTTP server on configured port
-   - Linear webhooks POST to this server
-   - Linear SDK verifies signature automatically
-
-   **Mode B: External Webhook Server**
+2. **Registration with SharedApplicationServer**:
    - Registers handler with SharedApplicationServer
-   - `registerWebhookHandler(token, async (req, res) => webhookHandler(req, res))`
-   - Signature verification done by Linear SDK inside handler
-
-3. **Direct Registration Pattern**:
-   - SharedApplicationServer detects `linear-signature` header
-   - Routes to direct handler (req, res) style
-   - Handler manages own response
+   - Handler verifies HMAC signature using Linear webhook secret
+   - Emits webhook events for processing
 
 **Configuration**:
 ```typescript
-interface LinearWebhookClientConfig {
-  proxyUrl: string                    // For status updates
+interface LinearEventTransportConfig {
   token: string                       // Linear token
-  transport: "webhook"               // Only type supported
-  webhookPort?: number
-  webhookHost?: string
-  webhookBaseUrl?: string
-  webhookPath?: string
-  externalWebhookServer?: any        // SharedApplicationServer
-  useExternalWebhookServer?: boolean
+  webhookPort?: number                // Port for webhook server
+  webhookHost?: string                // Host for webhook server
+  webhookBaseUrl?: string             // Full webhook URL
+  webhookPath?: string                // Webhook endpoint path
+  externalWebhookServer?: any         // SharedApplicationServer
+  useExternalWebhookServer?: boolean  // Use shared server
   onWebhook?: (payload: LinearWebhookPayload) => void
   onConnect/Disconnect/Error?: callback
 }
@@ -232,7 +145,7 @@ interface LinearWebhookClientConfig {
 
 ---
 
-### 4. CloudflareTunnelClient Package
+### 3. CloudflareTunnelClient Package
 **Location**: `/packages/cloudflare-tunnel-client/`
 
 **Purpose**:
@@ -282,7 +195,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 
 ---
 
-### 5. EdgeWorker.ts
+### 4. EdgeWorker.ts
 **Location**: `/packages/edge-worker/src/EdgeWorker.ts`
 
 **Purpose**:
@@ -292,9 +205,9 @@ Orchestrates the entire edge worker, managing webhooks, Claude sessions, and Lin
 
 1. **Webhook Client Management**:
    ```typescript
-   private ndjsonClients: Map<string, NdjsonClient | LinearWebhookClient>
+   private linearEventTransports: Map<string, LinearEventTransport>
    ```
-   - One client per Linear token
+   - One transport per Linear token
    - Clients share the `SharedApplicationServer`
    - Each repository can have different tokens
 
@@ -302,13 +215,12 @@ Orchestrates the entire edge worker, managing webhooks, Claude sessions, and Lin
 
    For each Linear token:
    ```
-   1. Create NdjsonClient or LinearWebhookClient
+   1. Create LinearEventTransport
    2. Set useExternalWebhookServer: true
    3. Pass this.sharedApplicationServer as externalWebhookServer
    4. On connect, client calls:
-      - registerWebhook() with proxy (gets webhookSecret)
       - registerWithExternalServer() with SharedApplicationServer
-      - SharedApplicationServer.registerWebhookHandler(token, secret, handler)
+      - SharedApplicationServer.registerWebhookHandler(token, handler)
    5. Incoming webhooks routed through SharedApplicationServer
    ```
 
@@ -333,10 +245,8 @@ Orchestrates the entire edge worker, managing webhooks, Claude sessions, and Lin
 
 4. **Client Configuration Pattern**:
    ```typescript
-   const clientConfig = {
-     proxyUrl: this.config.proxyUrl,
+   const transportConfig = {
      token: token,
-     transport: "webhook" as const,
      // CRITICAL: Use shared application server
      useExternalWebhookServer: true,
      externalWebhookServer: this.sharedApplicationServer,
@@ -346,17 +256,15 @@ Orchestrates the entire edge worker, managing webhooks, Claude sessions, and Lin
      onConnect: () => this.handleConnect(repoId, repos),
      onDisconnect: (reason) => this.handleDisconnect(repoId, repos, reason),
      onError: (error) => this.handleError(error),
+     onWebhook: (payload) => this.handleWebhook(payload, repos),
    };
-   
-   const client = useLinearDirectWebhooks
-     ? new LinearWebhookClient({...clientConfig, onWebhook: handler})
-     : new NdjsonClient(clientConfig);
+
+   const transport = new LinearEventTransport(transportConfig);
    ```
 
 5. **Webhook Handling**:
-   - NdjsonClient: `client.on("webhook", (data) => ...)`
-   - LinearWebhookClient: `onWebhook` callback in config
-   - Both route to `this.handleWebhook(payload, repos)`
+   - LinearEventTransport: `onWebhook` callback in config
+   - Routes to `this.handleWebhook(payload, repos)`
 
 6. **OAuth Flow**:
    ```typescript
@@ -377,12 +285,12 @@ Orchestrates the entire edge worker, managing webhooks, Claude sessions, and Lin
                            │
                 ┌──────────┴────────┬──────────────────┐
                 │                   │                  │
-         [Direct: via Linear]  [Proxy: via Edge]  [Cloudflare: via Tunnel]
+         [Direct: via Linear]  [ngrok Tunnel]    [Cloudflare: via Tunnel]
                 │                   │                  │
                 ▼                   ▼                  ▼
         ┌──────────────┐     ┌────────────┐    ┌─────────────────┐
-        │ Direct Link  │     │   Proxy    │    │ Cloudflare      │
-        │ (linear-sig) │     │ (HMAC-SHA) │    │ Tunnel          │
+        │ Direct Link  │     │   ngrok    │    │ Cloudflare      │
+        │ (linear-sig) │     │   Tunnel   │    │ Tunnel          │
         └──────┬───────┘     └─────┬──────┘    └────────┬────────┘
                │                   │                    │
                └───────────────────┼────────────────────┘
@@ -391,39 +299,29 @@ Orchestrates the entire edge worker, managing webhooks, Claude sessions, and Lin
                     │ SharedApplicationServer:   │
                     │ /webhook (POST)            │
                     │                            │
-                    │ - Detects webhook type    │
-                    │ - Routes to handler       │
-                    │ - Verifies signature      │
+                    │ - Routes to handler        │
+                    │ - Verifies HMAC signature  │
                     └──────────────┬─────────────┘
                                    │
-            ┌──────────────────────┼──────────────────────┐
-            │                      │                      │
-            ▼                      ▼                      ▼
-    ┌───────────────────┐  ┌───────────────────┐  ┌──────────────┐
-    │ NdjsonClient      │  │ LinearWebhook     │  │ EdgeWorker   │
-    │ registerHandler   │  │ Client            │  │ handleWebhook│
-    │ (token, secret,   │  │ registerHandler   │  │              │
-    │  fn)              │  │ (token, fn)       │  │ Processes    │
-    │                   │  │                   │  │ Linear event │
-    │ Verifies HMAC     │  │ Linear SDK        │  │              │
-    │                   │  │ verifies sig      │  │ Creates      │
-    │ Emits webhook     │  │                   │  │ Claude       │
-    │ event            │  │ Emits webhook     │  │ session      │
-    └─────────┬─────────┘  │ event            │  └──────────────┘
-              │            └────────┬────────┘
-              │                     │
-              └─────────┬───────────┘
-                        │
-            ┌──────────▼──────────┐
-            │ EdgeWorker.       │
-            │ handleWebhook()    │
-            │                    │
-            │ - Parse Linear     │
-            │   event            │
-            │ - Create issue or  │
-            │   start session    │
-            │ - Post to Linear   │
-            └────────────────────┘
+                                   ▼
+                    ┌───────────────────────────┐
+                    │ LinearEventTransport      │
+                    │ registerHandler           │
+                    │ (token, handler)          │
+                    │                           │
+                    │ Verifies Linear HMAC      │
+                    │ Emits webhook event       │
+                    └────────┬──────────────────┘
+                             │
+                ┌────────────▼──────────┐
+                │ EdgeWorker.           │
+                │ handleWebhook()       │
+                │                       │
+                │ - Parse Linear event  │
+                │ - Create/resume issue │
+                │ - Start session       │
+                │ - Post to Linear      │
+                └───────────────────────┘
 ```
 
 ---
@@ -432,19 +330,7 @@ Orchestrates the entire edge worker, managing webhooks, Claude sessions, and Lin
 
 ### SharedApplicationServer Signatures
 
-**Proxy-style Handler** (used by NdjsonClient):
-```typescript
-registerWebhookHandler(
-  token: string,
-  secret: string,
-  handler: (body: string, signature: string, timestamp?: string) => boolean
-): void
-```
-- **Return**: `true` if signature verified and handled, `false` otherwise
-- **Usage**: Called sequentially until one returns true
-- **Verification**: Handler must verify HMAC-SHA256 signature
-
-**Direct-style Handler** (used by LinearWebhookClient):
+**LinearEventTransport Handler**:
 ```typescript
 registerWebhookHandler(
   token: string,
@@ -452,8 +338,8 @@ registerWebhookHandler(
 ): void
 ```
 - **Return**: Promise (handler manages response)
-- **Usage**: Called if `linear-signature` header detected
-- **Verification**: Handler (via Linear SDK) handles signature verification
+- **Usage**: Called when Linear webhook is received
+- **Verification**: Handler (via Linear SDK) verifies HMAC signature using webhook secret
 
 ---
 
@@ -500,29 +386,25 @@ User runs: cyrus login
 
 ### Client Setup (start() method):
 ```typescript
-async setupClientsForTokens() {
+async setupTransportsForTokens() {
   for (const token of uniqueTokens) {
     const repos = this.getRepositoriesForToken(token);
-    
-    const clientConfig = {
-      proxyUrl: this.config.proxyUrl,
+
+    const transportConfig = {
       token: token,
-      transport: "webhook",
       useExternalWebhookServer: true,
       externalWebhookServer: this.sharedApplicationServer,  // ← KEY
       webhookPort: serverPort,
       webhookPath: "/webhook",
       webhookHost: serverHost,
+      onWebhook: (payload) => this.handleWebhook(payload, repos),
       // ... other config
     };
-    
-    // Choose client type
-    const client = useLinearDirectWebhooks
-      ? new LinearWebhookClient({...clientConfig, onWebhook: handler})
-      : new NdjsonClient(clientConfig);
-    
-    this.ndjsonClients.set(repo.id, client);
-    await client.connect();
+
+    const transport = new LinearEventTransport(transportConfig);
+
+    this.linearEventTransports.set(repo.id, transport);
+    await transport.connect();
   }
 }
 ```
@@ -588,10 +470,9 @@ if (approved) {
 - Each client registers its own handler
 - Server manages routing and signature verification
 
-### 3. Dual Transport Pattern
-- NdjsonClient: HMAC-SHA256 signature verification
-- LinearWebhookClient: Linear SDK signature verification
-- Both support standalone OR shared server mode
+### 3. Direct Webhook Pattern
+- LinearEventTransport: Linear SDK HMAC signature verification
+- Supports standalone OR shared server mode
 
 ### 4. Promise-based OAuth
 - OAuth flow returns Promise<credentials>
@@ -616,18 +497,11 @@ import { DEFAULT_PROXY_URL, type OAuthCallbackHandler } from "cyrus-core"
 // Node built-ins: http, crypto, url
 ```
 
-### NdjsonClient Dependencies
+### LinearEventTransport Dependencies
 ```typescript
-import { WebhookTransport } from "./transports/WebhookTransport"
-import type { NdjsonClientConfig, NdjsonClientEvents } from "./types"
-// Node built-ins: events
-```
-
-### LinearWebhookClient Dependencies
-```typescript
-import { LinearWebhookClient as LinearSdkWebhookClient } from "@linear/sdk/webhooks"
-import { WebhookTransport } from "./transports/WebhookTransport"
-// Node built-ins: events
+import { LinearWebhookClient } from "@linear/sdk/webhooks"
+import type { LinearEventTransportConfig } from "./types"
+// Node built-ins: events, http
 ```
 
 ### CloudflareTunnelClient Dependencies
@@ -639,8 +513,7 @@ import { type LinearWebhookPayload } from "@linear/sdk/webhooks"
 
 ### EdgeWorker Dependencies
 ```typescript
-import { LinearWebhookClient } from "cyrus-linear-webhook-client"
-import { NdjsonClient } from "cyrus-ndjson-client"
+import { LinearEventTransport } from "cyrus-linear-event-transport"
 import { SharedApplicationServer } from "./SharedApplicationServer"
 import { AgentSessionManager } from "./AgentSessionManager"
 import { ProcedureRouter } from "./procedures"
@@ -659,8 +532,7 @@ import { ProcedureRouter } from "./procedures"
 - `LINEAR_CLIENT_SECRET` - For direct Linear OAuth
 
 ### Webhook Configuration
-- `LINEAR_WEBHOOK_SECRET` - For LinearWebhookClient
-- `LINEAR_DIRECT_WEBHOOKS` - Use direct webhooks (LinearWebhookClient)
+- `LINEAR_WEBHOOK_SECRET` - For LinearEventTransport HMAC verification
 
 ### OAuth Configuration
 - `PROXY_URL` - Edge proxy server URL (default: cyrus-proxy.com)
@@ -671,24 +543,23 @@ import { ProcedureRouter } from "./procedures"
 
 ### What Works
 1. ✅ Unified SharedApplicationServer with ngrok tunneling
-2. ✅ Webhook handler registration (both styles)
-3. ✅ NdjsonClient with HMAC verification
-4. ✅ LinearWebhookClient with Linear SDK verification
-5. ✅ OAuth flow (both proxy and direct)
-6. ✅ Approval request handling
-7. ✅ CloudflareTunnelClient for remote deployment
+2. ✅ Webhook handler registration with LinearEventTransport
+3. ✅ Linear SDK HMAC signature verification
+4. ✅ OAuth flow (both proxy and direct)
+5. ✅ Approval request handling
+6. ✅ CloudflareTunnelClient for remote deployment
 
 ### Integration Points
 1. **EdgeWorker creates** SharedApplicationServer
-2. **EdgeWorker passes** SharedApplicationServer to client configs
-3. **Clients register** handlers with SharedApplicationServer
-4. **SharedApplicationServer routes** webhooks to correct client
-5. **Clients emit** events that EdgeWorker handles
+2. **EdgeWorker passes** SharedApplicationServer to transport configs
+3. **Transports register** handlers with SharedApplicationServer
+4. **SharedApplicationServer routes** webhooks to correct transport
+5. **Transports emit** events that EdgeWorker handles
 
 ### Design Benefits
 1. **Scalability**: Single port for all webhooks
-2. **Flexibility**: Support multiple client types simultaneously
-3. **Simplicity**: Clients don't manage HTTP servers
-4. **Robustness**: Centralized error handling and logging
-5. **Testability**: Can mock SharedApplicationServer in tests
+2. **Simplicity**: Transports don't manage HTTP servers
+3. **Robustness**: Centralized error handling and logging
+4. **Testability**: Can mock SharedApplicationServer in tests
+5. **Security**: HMAC signature verification using Linear SDK
 
