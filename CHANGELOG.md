@@ -4,9 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Orchestrator and sub-issue communication is now visible in Linear activity: feedback from orchestrator to sub-issues and results from sub-issues to orchestrator are posted as thoughts with clear context
+
+### Fixed
+- Procedure routing is now reset when resuming parent sessions from child completion, preventing excessive thought and action suppression logs
+
 ### Changed
 - Debugger workflow now proceeds directly from bug reproduction to fix implementation without requiring manual approval
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.25 to v0.1.27 - includes parity updates with Claude Code v2.0.27 and adds support for plugins field in Options. See [@anthropic-ai/claude-agent-sdk v0.1.27 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0127)
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.25 to v0.1.28 - includes parity updates with Claude Code v2.0.28 and fixes custom tools timing out after 30 seconds instead of respecting the MCP_TOOL_TIMEOUT environment variable. See [@anthropic-ai/claude-agent-sdk v0.1.28 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0128)
 - All workflows (full-development, debugger-full, orchestrator-full) now end with concise summary instead of verbose summary
 - Non-summary subroutines (debugger-fix, debugger-reproduction, verifications, git-gh) now explicitly avoid posting Linear comments and end with brief 1-sentence completion messages
 - Orchestrator agents are now strongly discouraged from posting Linear comments to current issues; comments only used when triggering sub-agent sessions on child issues
