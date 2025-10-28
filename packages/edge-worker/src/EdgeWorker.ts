@@ -1163,11 +1163,10 @@ export class EdgeWorker extends EventEmitter {
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPostedAgentActivity(webhook, repository);
 			} else {
-				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-					console.log(
-						`[handleWebhook] Unhandled webhook type: ${(webhook as any).action} for repository ${repository.name}`,
-					);
-				}
+				console.warn(
+					`[EdgeWorker] Unhandled webhook - type: "${(webhook as any).type}", action: "${(webhook as any).action}" for repository "${repository.name}". ` +
+						`Set CYRUS_WEBHOOK_DEBUG=true for full payload details.`,
+				);
 			}
 		} catch (error) {
 			console.error(
