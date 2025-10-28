@@ -117,10 +117,6 @@ export class SharedApplicationServer {
 			// Listen for ready event to get tunnel URL
 			this.tunnelClient.on("ready", (tunnelUrl: string) => {
 				console.log(`🔗 Cloudflare tunnel URL: ${tunnelUrl}`);
-				// Update CYRUS_BASE_URL if not already set
-				if (!process.env.CYRUS_BASE_URL) {
-					process.env.CYRUS_BASE_URL = tunnelUrl;
-				}
 			});
 
 			// Listen for error events
@@ -197,13 +193,6 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Get the base URL for the server
-	 */
-	getBaseUrl(): string {
-		return process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`;
-	}
-
-	/**
 	 * Register a webhook handler for a specific token (LEGACY - deprecated)
 	 * Supports two signatures:
 	 * 1. For ndjson-client: (token, secret, handler)
@@ -272,7 +261,7 @@ export class SharedApplicationServer {
 				process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
 			const useDirectOAuth = isExternalHost && process.env.LINEAR_CLIENT_ID;
 
-			const callbackBaseUrl = this.getBaseUrl();
+			const callbackBaseUrl = `http://${this.host}:${this.port}`;
 			let authUrl: string;
 
 			if (useDirectOAuth) {
@@ -301,22 +290,10 @@ export class SharedApplicationServer {
 	}
 
 	/**
-	 * Get the public URL
-	 */
-	getPublicUrl(): string {
-		// If CYRUS_BASE_URL is set (could be from external proxy), use that
-		if (process.env.CYRUS_BASE_URL) {
-			return process.env.CYRUS_BASE_URL;
-		}
-		// Default to local URL
-		return `http://${this.host}:${this.port}`;
-	}
-
-	/**
-	 * Get the webhook URL for registration with proxy
+	 * Get the webhook URL
 	 */
 	getWebhookUrl(): string {
-		return `${this.getPublicUrl()}/webhook`;
+		return `http://${this.host}:${this.port}/webhook`;
 	}
 
 	/**
@@ -355,7 +332,7 @@ export class SharedApplicationServer {
 		);
 
 		// Generate approval URL
-		const url = `${this.getBaseUrl()}/approval?session=${encodeURIComponent(sessionId)}`;
+		const url = `http://${this.host}:${this.port}/approval?session=${encodeURIComponent(sessionId)}`;
 
 		console.log(
 			`🔐 Registered approval request for session ${sessionId}: ${url}`,

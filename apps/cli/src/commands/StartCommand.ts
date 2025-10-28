@@ -29,14 +29,11 @@ export class StartCommand extends BaseCommand {
 
 			// Display server information
 			const serverPort = this.app.worker.getServerPort();
-			const baseUrl =
-				process.env.CYRUS_BASE_URL || `http://localhost:${serverPort}`;
 
 			this.logger.raw("");
 			this.logger.divider(70);
 			this.logger.success("Edge worker started successfully");
 			this.logger.info(`🔗 Server running on port ${serverPort}`);
-			this.logger.info(`📍 Base URL: ${baseUrl}`);
 
 			if (process.env.CLOUDFLARE_TOKEN) {
 				this.logger.info("🌩️  Cloudflare tunnel: Active");

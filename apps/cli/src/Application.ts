@@ -31,15 +31,7 @@ export class Application {
 		// Initialize services
 		this.config = new ConfigService(cyrusHome, this.logger);
 		this.git = new GitService(this.logger);
-
-		// OAuth and Worker services need runtime configuration
-		const serverPort = parsePort(
-			process.env.CYRUS_SERVER_PORT,
-			DEFAULT_SERVER_PORT,
-		);
-		const baseUrl = process.env.CYRUS_BASE_URL;
-
-		this.oauth = new OAuthService(serverPort, baseUrl, this.logger);
+		this.oauth = new OAuthService();
 		this.worker = new WorkerService(
 			this.config,
 			this.git,

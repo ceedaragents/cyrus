@@ -1,18 +1,11 @@
 import type { SharedApplicationServer } from "cyrus-edge-worker";
 import open from "open";
 import type { LinearCredentials } from "../config/types.js";
-import type { Logger } from "./Logger.js";
 
 /**
  * Service responsible for OAuth flow orchestration
  */
 export class OAuthService {
-	constructor(
-		_serverPort: number,
-		private baseUrl: string | undefined,
-		_logger: Logger, // Reserved for future logging needs
-	) {}
-
 	/**
 	 * Start OAuth flow using an existing EdgeWorker's shared server
 	 */
@@ -21,7 +14,7 @@ export class OAuthService {
 		server: SharedApplicationServer,
 	): Promise<LinearCredentials> {
 		const port = server.getPort();
-		const callbackBaseUrl = this.baseUrl || `http://localhost:${port}`;
+		const callbackBaseUrl = `http://localhost:${port}`;
 		const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
 
 		// Let SharedApplicationServer print the messages, but we handle browser opening
@@ -49,7 +42,7 @@ export class OAuthService {
 			await tempServer.start();
 
 			const port = tempServer.getPort();
-			const callbackBaseUrl = this.baseUrl || `http://localhost:${port}`;
+			const callbackBaseUrl = `http://localhost:${port}`;
 			const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
 
 			// Start OAuth flow (this prints the messages)
