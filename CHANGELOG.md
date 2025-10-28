@@ -14,6 +14,9 @@ All notable changes to this project will be documented in this file.
   - All file operations restricted to `~/.cyrus` directory for security
   - Will replace `ndjson-client` for customers using cyrus-hosted service
 
+### Fixed
+- Webhooks received through Cloudflare tunnel are now properly processed after verification
+
 ### Changed
 - **Cloudflare Tunnel Integration**: Refactored CloudflareTunnelClient to use SharedApplicationServer instead of running its own HTTP server, eliminating port conflicts and unifying transport handling across legacy and Pro plan modes
 - **Unified Webhook Handling**: All transport modes (Legacy/proxy, Pro Plan/Cloudflare tunnel, Direct webhooks) now use a single `/webhook` endpoint with pluggable verification strategies, simplifying webhook processing and enabling transport-specific authentication methods

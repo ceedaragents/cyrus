@@ -270,7 +270,10 @@ export class WebhookTransport extends BaseTransport {
 				this.config.token,
 				this.webhookSecret,
 				(body: string, signature: string, timestamp?: string) => {
-					if (this.verifySignature(body, signature, timestamp)) {
+					// If signature is empty, webhook was already verified by a verification strategy
+					// (e.g., Cloudflare tunnel using CYRUS_API_KEY). Skip signature check in this case.
+					// Otherwise, verify signature as usual for proxy-style webhooks.
+					if (!signature || this.verifySignature(body, signature, timestamp)) {
 						const event = JSON.parse(body);
 						this.handleEvent(event);
 						return true; // Signature verified and handled
