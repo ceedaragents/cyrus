@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
-import { SharedApplicationServer } from "cyrus-edge-worker";
+import { OAuthHandlerModule, SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
 import { ConfigService } from "./services/ConfigService.js";
@@ -66,14 +66,31 @@ export class Application {
 	}
 
 	/**
-	 * Create a temporary SharedApplicationServer for OAuth
+	 * Create a temporary SharedApplicationServer for OAuth with handler modules
 	 */
-	async createTempServer(): Promise<SharedApplicationServer> {
+	async createTempServer(): Promise<{
+		server: SharedApplicationServer;
+		oauthHandler: OAuthHandlerModule;
+	}> {
 		const serverPort = parsePort(
 			process.env.CYRUS_SERVER_PORT,
 			DEFAULT_SERVER_PORT,
 		);
-		return new SharedApplicationServer(serverPort);
+		const server = new SharedApplicationServer(serverPort);
+
+		// Create and register OAuth handler module
+		const oauthHandler = new OAuthHandlerModule({
+			proxyUrl: this.getProxyUrl(),
+			getBaseUrl: () => server.getBaseUrl(),
+			host: "localhost",
+			port: serverPort,
+		});
+
+		oauthHandler.register((method, path, handler) => {
+			server.registerHandler(method, path, handler);
+		});
+
+		return { server, oauthHandler };
 	}
 
 	/**

@@ -142,7 +142,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
-					registerOAuthCallbackHandler: vi.fn(),
+					registerHandler: vi.fn(),
 				}) as any,
 		);
 

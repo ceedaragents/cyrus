@@ -99,8 +99,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
-					setWebhookHandler: vi.fn(),
-					setOAuthCallbackHandler: vi.fn(),
+					registerHandler: vi.fn(),
+					registerWebhookHandler: vi.fn(),
 				}) as any,
 		);
 
