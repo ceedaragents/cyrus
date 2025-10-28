@@ -213,7 +213,6 @@ registerWebhookHandler(
 
 ### Configuration
 - CLI App: `/apps/cli/src/Application.ts`
-- Proxy Worker: `/apps/proxy-worker/` (OAuth/webhook proxy)
 
 ---
 

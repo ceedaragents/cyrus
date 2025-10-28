@@ -905,9 +905,6 @@ class EdgeApp {
 						"• Linear OAuth setup: https://linear.app/developers/agents",
 					);
 					console.log(
-						"• Proxy implementation: https://github.com/ceedaragents/cyrus/tree/main/apps/proxy-worker",
-					);
-					console.log(
 						"\nOnce deployed, set the PROXY_URL environment variable:",
 					);
 					console.log("export PROXY_URL=https://your-proxy-url.com");
