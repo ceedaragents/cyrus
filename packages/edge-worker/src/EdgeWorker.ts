@@ -63,7 +63,15 @@ import {
 	type ProcedureDefinition,
 	ProcedureRouter,
 	type RequestClassification,
+	type SubroutineDefinition,
 } from "./procedures/index.js";
+import type {
+	IssueContextResult,
+	PromptAssembly,
+	PromptAssemblyInput,
+	PromptComponent,
+	PromptType,
+} from "./prompt-assembly/types.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
@@ -1667,142 +1675,114 @@ export class EdgeWorker extends EventEmitter {
 			finalClassification,
 		);
 
-		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
-		let systemPrompt: string | undefined;
-		let systemPromptVersion: string | undefined;
-		let promptType:
-			| "debugger"
-			| "builder"
-			| "scoper"
-			| "orchestrator"
-			| undefined;
-
-		if (!isMentionTriggered || isLabelBasedPromptRequested) {
-			// Determine system prompt based on labels (delegation case or /label-based-prompt command)
-			const systemPromptResult = await this.determineSystemPromptFromLabels(
-				labels,
-				repository,
-			);
-			systemPrompt = systemPromptResult?.prompt;
-			systemPromptVersion = systemPromptResult?.version;
-			promptType = systemPromptResult?.type;
-
-			// Post thought about system prompt selection
-			if (systemPrompt) {
-				await this.postSystemPromptSelectionThought(
-					linearAgentActivitySessionId,
-					labels,
-					repository.id,
-				);
-			}
-		} else {
-			console.log(
-				`[EdgeWorker] Skipping system prompt for mention-triggered session ${linearAgentActivitySessionId}`,
-			);
-		}
-
-		// Build allowed tools list with Linear MCP tools (now with prompt type context)
-		const allowedTools = this.buildAllowedTools(repository, promptType);
-		const disallowedTools = this.buildDisallowedTools(repository, promptType);
-
-		console.log(
-			`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
-			allowedTools,
-		);
-		if (disallowedTools.length > 0) {
-			console.log(
-				`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
-				disallowedTools,
-			);
-		}
-
-		// Create Claude runner with attachment directory access and optional system prompt
-		const runnerConfig = this.buildClaudeRunnerConfig(
-			session,
-			repository,
-			linearAgentActivitySessionId,
-			systemPrompt,
-			allowedTools,
-			allowedDirectories,
-			disallowedTools,
-			undefined, // resumeSessionId
-			labels, // Pass labels for model override
-		);
-		const runner = new ClaudeRunner(runnerConfig);
-
-		// Store runner by comment ID
-		agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
-
-		// Save state after mapping changes
-		await this.savePersistedState();
-
-		// Emit events using full Linear issue
-		this.emit("session:started", fullIssue.id, fullIssue, repository.id);
-		this.config.handlers?.onSessionStart?.(
-			fullIssue.id,
-			fullIssue,
-			repository.id,
-		);
-
 		// Build and start Claude with initial prompt using full issue (streaming mode)
 		console.log(
 			`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`,
 		);
 		try {
-			// Choose the appropriate prompt builder based on trigger type and system prompt
-			const promptResult =
-				isMentionTriggered && isLabelBasedPromptRequested
-					? await this.buildLabelBasedPrompt(
-							fullIssue,
-							repository,
-							attachmentResult.manifest,
-							guidance,
-						)
-					: isMentionTriggered
-						? await this.buildMentionPrompt(
-								fullIssue,
-								agentSession,
-								attachmentResult.manifest,
-								guidance,
-							)
-						: systemPrompt
-							? await this.buildLabelBasedPrompt(
-									fullIssue,
-									repository,
-									attachmentResult.manifest,
-									guidance,
-								)
-							: await this.buildPromptV2(
-									fullIssue,
-									repository,
-									undefined,
-									attachmentResult.manifest,
-									guidance,
-								);
+			// Create input for unified prompt assembly
+			const input: PromptAssemblyInput = {
+				session,
+				fullIssue,
+				repository,
+				userComment: commentBody || "", // Empty for delegation, present for mentions
+				attachmentManifest: attachmentResult.manifest,
+				guidance,
+				agentSession,
+				labels,
+				isNewSession: true,
+				isStreaming: false, // Not yet streaming
+				isMentionTriggered: isMentionTriggered || false,
+				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
+			};
 
-			const { prompt, version: userPromptVersion } = promptResult;
+			// Use unified prompt assembly
+			const assembly = await this.assemblePrompt(input);
 
-			// Update runner with version information
-			if (userPromptVersion || systemPromptVersion) {
+			// Get systemPromptVersion for tracking (TODO: add to PromptAssembly metadata)
+			let systemPromptVersion: string | undefined;
+			let promptType:
+				| "debugger"
+				| "builder"
+				| "scoper"
+				| "orchestrator"
+				| undefined;
+
+			if (!isMentionTriggered || isLabelBasedPromptRequested) {
+				const systemPromptResult = await this.determineSystemPromptFromLabels(
+					labels,
+					repository,
+				);
+				systemPromptVersion = systemPromptResult?.version;
+				promptType = systemPromptResult?.type;
+
+				// Post thought about system prompt selection
+				if (assembly.systemPrompt) {
+					await this.postSystemPromptSelectionThought(
+						linearAgentActivitySessionId,
+						labels,
+						repository.id,
+					);
+				}
+			}
+
+			// Build allowed tools list with Linear MCP tools (now with prompt type context)
+			const allowedTools = this.buildAllowedTools(repository, promptType);
+			const disallowedTools = this.buildDisallowedTools(repository, promptType);
+
+			console.log(
+				`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
+				allowedTools,
+			);
+			if (disallowedTools.length > 0) {
+				console.log(
+					`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
+					disallowedTools,
+				);
+			}
+
+			// Create Claude runner with system prompt from assembly
+			const runnerConfig = this.buildClaudeRunnerConfig(
+				session,
+				repository,
+				linearAgentActivitySessionId,
+				assembly.systemPrompt,
+				allowedTools,
+				allowedDirectories,
+				disallowedTools,
+				undefined, // resumeSessionId
+				labels, // Pass labels for model override
+			);
+			const runner = new ClaudeRunner(runnerConfig);
+
+			// Store runner by comment ID
+			agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
+
+			// Save state after mapping changes
+			await this.savePersistedState();
+
+			// Emit events using full Linear issue
+			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			this.config.handlers?.onSessionStart?.(
+				fullIssue.id,
+				fullIssue,
+				repository.id,
+			);
+
+			// Update runner with version information (if available)
+			if (systemPromptVersion) {
 				runner.updatePromptVersions({
-					userPromptVersion,
 					systemPromptVersion,
 				});
 			}
 
-			const promptType =
-				isMentionTriggered && isLabelBasedPromptRequested
-					? "label-based-prompt-command"
-					: isMentionTriggered
-						? "mention"
-						: systemPrompt
-							? "label-based"
-							: "fallback";
+			// Log metadata for debugging
 			console.log(
-				`[EdgeWorker] Initial prompt built successfully using ${promptType} workflow, length: ${prompt.length} characters`,
+				`[EdgeWorker] Initial prompt built successfully - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}, length: ${assembly.userPrompt.length} characters`,
 			);
+
 			console.log(`[EdgeWorker] Starting Claude streaming session`);
-			const sessionInfo = await runner.startStreaming(prompt);
+			const sessionInfo = await runner.startStreaming(assembly.userPrompt);
 			console.log(
 				`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`,
 			);
@@ -1947,6 +1927,9 @@ export class EdgeWorker extends EventEmitter {
 		await mkdir(attachmentsDir, { recursive: true });
 
 		let attachmentManifest = "";
+		let commentAuthor: string | undefined;
+		let commentTimestamp: string | undefined;
+
 		try {
 			const result = await linearClient.client.rawRequest(
 				`
@@ -1958,6 +1941,8 @@ export class EdgeWorker extends EventEmitter {
               updatedAt
               user {
                 name
+                displayName
+                email
                 id
               }
             }
@@ -1965,6 +1950,17 @@ export class EdgeWorker extends EventEmitter {
         `,
 				{ id: commentId },
 			);
+
+			// Extract comment data
+			const comment = (result.data as any).comment;
+
+			// Extract comment metadata for multi-player context
+			if (comment) {
+				const user = comment.user;
+				commentAuthor =
+					user?.displayName || user?.name || user?.email || "Unknown";
+				commentTimestamp = comment.createdAt || new Date().toISOString();
+			}
 
 			// Count existing attachments
 			const existingFiles = await readdir(attachmentsDir).catch(() => []);
@@ -1974,7 +1970,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Download new attachments from the comment
 			const downloadResult = await this.downloadCommentAttachments(
-				(result.data as any).comment.body,
+				comment.body,
 				attachmentsDir,
 				repository.linearToken,
 				existingAttachmentCount,
@@ -2027,6 +2023,8 @@ export class EdgeWorker extends EventEmitter {
 				isNewSession,
 				[], // No additional allowed directories for regular continuation
 				`prompted webhook (${isNewSession ? "new" : "existing"} session)`,
+				commentAuthor,
+				commentTimestamp,
 			);
 		} catch (error) {
 			console.error("Failed to handle prompted webhook:", error);
@@ -2377,11 +2375,14 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Building mention prompt for issue ${issue.identifier}`,
 			);
 
-			// Get the mention comment body
+			// Get the mention comment metadata
 			const mentionContent = agentSession.comment?.body || "";
+			const authorName =
+				agentSession.creator?.name || agentSession.creator?.id || "Unknown";
+			const timestamp = agentSession.createdAt || new Date().toISOString();
 
-			// Build a simple prompt focused on the mention
-			let prompt = `You were mentioned in a Linear comment. Please help with the following request.
+			// Build a focused prompt with comment metadata
+			let prompt = `You were mentioned in a Linear comment on this issue:
 
 <linear_issue>
   <id>${issue.id}</id>
@@ -2390,11 +2391,15 @@ export class EdgeWorker extends EventEmitter {
   <url>${issue.url}</url>
 </linear_issue>
 
-<mention_request>
+<mention_comment>
+  <author>${authorName}</author>
+  <timestamp>${timestamp}</timestamp>
+  <content>
 ${mentionContent}
-</mention_request>
+  </content>
+</mention_comment>
 
-IMPORTANT: You were specifically mentioned in the comment above. Focus on addressing the specific question or request in the mention. You can use the Linear MCP tools to fetch additional context about the issue if needed.`;
+Focus on addressing the specific request in the mention. You can use the Linear MCP tools to fetch additional context if needed.`;
 
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
@@ -2656,7 +2661,7 @@ ${reply.body}
 	 * @param guidance Optional agent guidance rules from Linear
 	 * @returns Formatted prompt string
 	 */
-	private async buildPromptV2(
+	private async buildIssueContextPrompt(
 		issue: LinearIssue,
 		repository: RepositoryConfig,
 		newComment?: LinearWebhookComment,
@@ -2664,7 +2669,7 @@ ${reply.body}
 		guidance?: LinearWebhookGuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		console.log(
-			`[EdgeWorker] buildPromptV2 called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
+			`[EdgeWorker] buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
 		);
 
 		try {
@@ -2673,11 +2678,14 @@ ${reply.body}
 				repository.promptTemplatePath ||
 				this.config.features?.promptTemplatePath;
 
-			// If no custom template, use the v2 template
+			// If no custom template, use the standard issue assigned user prompt template
 			if (!templatePath) {
 				const __filename = fileURLToPath(import.meta.url);
 				const __dirname = dirname(__filename);
-				templatePath = resolve(__dirname, "../prompt-template-v2.md");
+				templatePath = resolve(
+					__dirname,
+					"../prompts/standard-issue-assigned-user-prompt.md",
+				);
 			}
 
 			// Load the template
@@ -2787,8 +2795,8 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 					.replace(/{{new_comment_timestamp}}/g, new Date().toLocaleString())
 					.replace(/{{new_comment_content}}/g, newComment.body || "");
 			} else {
-				// Remove the new comment section entirely
-				prompt = prompt.replace(/{{#if new_comment}}[\s\S]*?{{\/if}}/g, "");
+				// Remove the new comment section entirely (including preceding newlines)
+				prompt = prompt.replace(/\n*{{#if new_comment}}[\s\S]*?{{\/if}}/g, "");
 			}
 
 			// Append agent guidance if present
@@ -3717,32 +3725,376 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Build prompt for a session - handles both new and existing sessions
+	 * Build the complete prompt for a session - shows full prompt assembly in one place
+	 *
+	 * New session prompt structure:
+	 * 1. Issue context (from buildIssueContextPrompt)
+	 * 2. Initial subroutine prompt (if procedure initialized)
+	 * 3. User comment
+	 *
+	 * Existing session prompt structure:
+	 * 1. User comment
+	 * 2. Attachment manifest (if present)
 	 */
 	private async buildSessionPrompt(
 		isNewSession: boolean,
+		session: CyrusAgentSession,
 		fullIssue: LinearIssue,
 		repository: RepositoryConfig,
 		promptBody: string,
 		attachmentManifest?: string,
+		commentAuthor?: string,
+		commentTimestamp?: string,
 	): Promise<string> {
-		if (isNewSession) {
-			// For completely new sessions, create a complete initial prompt
-			const promptResult = await this.buildPromptV2(
-				fullIssue,
-				repository,
-				undefined,
-				attachmentManifest,
-			);
-			// Add the user's comment to the initial prompt
-			return `${promptResult.prompt}\n\nUser comment: ${promptBody}`;
-		} else {
-			// For existing sessions, just use the comment with attachment manifest
-			const manifestSuffix = attachmentManifest
-				? `\n\n${attachmentManifest}`
-				: "";
-			return `${promptBody}${manifestSuffix}`;
+		// Fetch labels for system prompt determination
+		const labels = await this.fetchIssueLabels(fullIssue);
+
+		// Create input for unified prompt assembly
+		const input: PromptAssemblyInput = {
+			session,
+			fullIssue,
+			repository,
+			userComment: promptBody,
+			commentAuthor,
+			commentTimestamp,
+			attachmentManifest,
+			isNewSession,
+			isStreaming: false, // This path is only for non-streaming prompts
+			labels,
+		};
+
+		// Use unified prompt assembly
+		const assembly = await this.assemblePrompt(input);
+
+		// Log metadata for debugging
+		console.log(
+			`[EdgeWorker] Built prompt - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}`,
+		);
+
+		return assembly.userPrompt;
+	}
+
+	/**
+	 * Assemble a complete prompt - unified entry point for all prompt building
+	 * This method contains all prompt assembly logic in one place
+	 */
+	private async assemblePrompt(
+		input: PromptAssemblyInput,
+	): Promise<PromptAssembly> {
+		// If actively streaming, just pass through the comment
+		if (input.isStreaming) {
+			return this.buildStreamingPrompt(input);
 		}
+
+		// If new session, build full prompt with all components
+		if (input.isNewSession) {
+			return this.buildNewSessionPrompt(input);
+		}
+
+		// Existing session continuation - just user comment + attachments
+		return this.buildContinuationPrompt(input);
+	}
+
+	/**
+	 * Build prompt for actively streaming session - pass through user comment as-is
+	 */
+	private buildStreamingPrompt(input: PromptAssemblyInput): PromptAssembly {
+		const components: PromptComponent[] = ["user-comment"];
+		if (input.attachmentManifest) {
+			components.push("attachment-manifest");
+		}
+
+		const parts: string[] = [input.userComment];
+		if (input.attachmentManifest) {
+			parts.push(input.attachmentManifest);
+		}
+
+		return {
+			systemPrompt: undefined,
+			userPrompt: parts.join("\n\n"),
+			metadata: {
+				components,
+				promptType: "continuation",
+				isNewSession: false,
+				isStreaming: true,
+			},
+		};
+	}
+
+	/**
+	 * Build prompt for new session - includes issue context, subroutine prompt, and user comment
+	 */
+	private async buildNewSessionPrompt(
+		input: PromptAssemblyInput,
+	): Promise<PromptAssembly> {
+		const components: PromptComponent[] = [];
+		const parts: string[] = [];
+
+		// 1. Determine system prompt from labels
+		// Only for delegation (not mentions) or when /label-based-prompt is requested
+		let labelBasedSystemPrompt: string | undefined;
+		if (!input.isMentionTriggered || input.isLabelBasedPromptRequested) {
+			labelBasedSystemPrompt = await this.determineSystemPromptForAssembly(
+				input.labels || [],
+				input.repository,
+			);
+		}
+
+		// 2. Determine system prompt based on prompt type
+		// Label-based: Use only the label-based system prompt
+		// Fallback: Use scenarios system prompt (shared instructions)
+		let systemPrompt: string;
+		if (labelBasedSystemPrompt) {
+			// Use label-based system prompt as-is (no shared instructions)
+			systemPrompt = labelBasedSystemPrompt;
+		} else {
+			// Use scenarios system prompt for fallback cases
+			const sharedInstructions = await this.loadSharedInstructions();
+			systemPrompt = sharedInstructions;
+		}
+
+		// 3. Build issue context using appropriate builder
+		// Use label-based prompt ONLY if we have a label-based system prompt
+		const promptType = this.determinePromptType(
+			input,
+			!!labelBasedSystemPrompt,
+		);
+		const issueContext = await this.buildIssueContextForPromptAssembly(
+			input.fullIssue,
+			input.repository,
+			promptType,
+			input.attachmentManifest,
+			input.guidance,
+			input.agentSession,
+		);
+
+		parts.push(issueContext.prompt);
+		components.push("issue-context");
+
+		// 4. Load and append initial subroutine prompt
+		const currentSubroutine = this.procedureRouter.getCurrentSubroutine(
+			input.session,
+		);
+		let subroutineName: string | undefined;
+		if (currentSubroutine) {
+			const subroutinePrompt =
+				await this.loadSubroutinePrompt(currentSubroutine);
+			if (subroutinePrompt) {
+				parts.push(subroutinePrompt);
+				components.push("subroutine-prompt");
+				subroutineName = currentSubroutine.name;
+			}
+		}
+
+		// 5. Add user comment (if present)
+		// Skip for mention-triggered prompts since the comment is already in the mention block
+		if (input.userComment.trim() && !input.isMentionTriggered) {
+			// If we have author/timestamp metadata, include it for multi-player context
+			if (input.commentAuthor || input.commentTimestamp) {
+				const author = input.commentAuthor || "Unknown";
+				const timestamp = input.commentTimestamp || new Date().toISOString();
+				parts.push(`<user_comment>
+  <author>${author}</author>
+  <timestamp>${timestamp}</timestamp>
+  <content>
+${input.userComment}
+  </content>
+</user_comment>`);
+			} else {
+				// Legacy format without metadata
+				parts.push(`<user_comment>\n${input.userComment}\n</user_comment>`);
+			}
+			components.push("user-comment");
+		}
+
+		// 6. Add guidance rules (if present)
+		if (input.guidance && input.guidance.length > 0) {
+			components.push("guidance-rules");
+		}
+
+		return {
+			systemPrompt,
+			userPrompt: parts.join("\n\n"),
+			metadata: {
+				components,
+				subroutineName,
+				promptType,
+				isNewSession: true,
+				isStreaming: false,
+			},
+		};
+	}
+
+	/**
+	 * Build prompt for existing session continuation - user comment and attachments only
+	 */
+	private buildContinuationPrompt(input: PromptAssemblyInput): PromptAssembly {
+		const components: PromptComponent[] = ["user-comment"];
+		if (input.attachmentManifest) {
+			components.push("attachment-manifest");
+		}
+
+		// Wrap comment in XML with author and timestamp for multi-player context
+		const author = input.commentAuthor || "Unknown";
+		const timestamp = input.commentTimestamp || new Date().toISOString();
+
+		const commentXml = `<new_comment>
+  <author>${author}</author>
+  <timestamp>${timestamp}</timestamp>
+  <content>
+${input.userComment}
+  </content>
+</new_comment>`;
+
+		const parts: string[] = [commentXml];
+		if (input.attachmentManifest) {
+			parts.push(input.attachmentManifest);
+		}
+
+		return {
+			systemPrompt: undefined,
+			userPrompt: parts.join("\n\n"),
+			metadata: {
+				components,
+				promptType: "continuation",
+				isNewSession: false,
+				isStreaming: false,
+			},
+		};
+	}
+
+	/**
+	 * Determine the prompt type based on input flags and system prompt availability
+	 */
+	private determinePromptType(
+		input: PromptAssemblyInput,
+		hasSystemPrompt: boolean,
+	): PromptType {
+		if (input.isMentionTriggered && input.isLabelBasedPromptRequested) {
+			return "label-based-prompt-command";
+		}
+		if (input.isMentionTriggered) {
+			return "mention";
+		}
+		if (hasSystemPrompt) {
+			return "label-based";
+		}
+		return "fallback";
+	}
+
+	/**
+	 * Load a subroutine prompt file
+	 * Extracted helper to make prompt assembly more readable
+	 */
+	private async loadSubroutinePrompt(
+		subroutine: SubroutineDefinition,
+	): Promise<string | null> {
+		const __filename = fileURLToPath(import.meta.url);
+		const __dirname = dirname(__filename);
+		const subroutinePromptPath = join(
+			__dirname,
+			"prompts",
+			subroutine.promptPath,
+		);
+
+		try {
+			const prompt = await readFile(subroutinePromptPath, "utf-8");
+			console.log(
+				`[EdgeWorker] Loaded ${subroutine.name} subroutine prompt (${prompt.length} characters)`,
+			);
+			return prompt;
+		} catch (error) {
+			console.warn(
+				`[EdgeWorker] Failed to load subroutine prompt from ${subroutinePromptPath}:`,
+				error,
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Load shared instructions that get appended to all system prompts
+	 */
+	private async loadSharedInstructions(): Promise<string> {
+		const __filename = fileURLToPath(import.meta.url);
+		const __dirname = dirname(__filename);
+		const instructionsPath = join(
+			__dirname,
+			"..",
+			"prompts",
+			"todolist-system-prompt-extension.md",
+		);
+
+		try {
+			const instructions = await readFile(instructionsPath, "utf-8");
+			return instructions;
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to load shared instructions from ${instructionsPath}:`,
+				error,
+			);
+			return ""; // Return empty string if file can't be loaded
+		}
+	}
+
+	/**
+	 * Adapter method for prompt assembly - extracts just the prompt string
+	 */
+	private async determineSystemPromptForAssembly(
+		labels: string[],
+		repository: RepositoryConfig,
+	): Promise<string | undefined> {
+		const result = await this.determineSystemPromptFromLabels(
+			labels,
+			repository,
+		);
+		return result?.prompt;
+	}
+
+	/**
+	 * Adapter method for prompt assembly - routes to appropriate issue context builder
+	 */
+	private async buildIssueContextForPromptAssembly(
+		issue: LinearIssue,
+		repository: RepositoryConfig,
+		promptType: PromptType,
+		attachmentManifest?: string,
+		guidance?: LinearWebhookGuidanceRule[],
+		agentSession?: LinearWebhookAgentSession,
+	): Promise<IssueContextResult> {
+		// Delegate to appropriate builder based on promptType
+		if (promptType === "mention") {
+			if (!agentSession) {
+				throw new Error(
+					"agentSession is required for mention-triggered prompts",
+				);
+			}
+			return this.buildMentionPrompt(
+				issue,
+				agentSession,
+				attachmentManifest,
+				guidance,
+			);
+		}
+		if (
+			promptType === "label-based" ||
+			promptType === "label-based-prompt-command"
+		) {
+			return this.buildLabelBasedPrompt(
+				issue,
+				repository,
+				attachmentManifest,
+				guidance,
+			);
+		}
+		// Fallback to standard issue context
+		return this.buildIssueContextPrompt(
+			issue,
+			repository,
+			undefined, // No new comment for initial prompt assembly
+			attachmentManifest,
+			guidance,
+		);
 	}
 
 	/**
@@ -4246,6 +4598,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		isNewSession: boolean,
 		additionalAllowedDirs: string[],
 		logContext: string,
+		commentAuthor?: string,
+		commentTimestamp?: string,
 	): Promise<boolean> {
 		// Check if runner is actively streaming before routing
 		const existingRunner = session.claudeRunner;
@@ -4296,6 +4650,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			attachmentManifest,
 			isNewSession,
 			additionalAllowedDirs,
+			undefined, // maxTurns
+			commentAuthor,
+			commentTimestamp,
 		);
 
 		return false; // Session was resumed
@@ -4432,6 +4789,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		isNewSession: boolean = false,
 		additionalAllowedDirectories: string[] = [],
 		maxTurns?: number,
+		commentAuthor?: string,
+		commentTimestamp?: string,
 	): Promise<void> {
 		// Check for existing runner
 		const existingRunner = session.claudeRunner;
@@ -4526,10 +4885,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Prepare the full prompt
 		const fullPrompt = await this.buildSessionPrompt(
 			isNewSession,
+			session,
 			fullIssue,
 			repository,
 			promptBody,
 			attachmentManifest,
+			commentAuthor,
+			commentTimestamp,
 		);
 
 		// Start streaming session

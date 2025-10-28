@@ -12,7 +12,20 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Debugger workflow now proceeds directly from bug reproduction to fix implementation without requiring manual approval
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.27 to v0.1.28 - includes parity updates with Claude Code v2.0.28 and fixes custom tools timing out after 30 seconds instead of respecting the MCP_TOOL_TIMEOUT environment variable. See [@anthropic-ai/claude-agent-sdk v0.1.28 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0128)
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.25 to v0.1.28 - includes parity updates with Claude Code v2.0.28 and fixes custom tools timing out after 30 seconds instead of respecting the MCP_TOOL_TIMEOUT environment variable. See [@anthropic-ai/claude-agent-sdk v0.1.28 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0128)
+- All workflows (full-development, debugger-full, orchestrator-full) now end with concise summary instead of verbose summary
+- Non-summary subroutines (debugger-fix, debugger-reproduction, verifications, git-gh) now explicitly avoid posting Linear comments and end with brief 1-sentence completion messages
+- Orchestrator agents are now strongly discouraged from posting Linear comments to current issues; comments only used when triggering sub-agent sessions on child issues
+- Orchestrator agents are explicitly instructed not to assign themselves (Cyrus) as a delegate when creating sub-issues
+- Tool call result outputs are no longer wrapped in collapsible sections in Linear comments
+- Concise summary format now uses collapsible sections for "Changes Made" and "Files Modified" to keep summaries brief
+- Simple-question workflow now has two phases: investigation (gather information without answering) and answer formatting (provide markdown-formatted response)
+- Initial subroutine prompts are now consistently loaded for all new sessions (assignment-based and comment-based), ensuring agents receive proper workflow guidance from the start
+- Full-development workflow now starts with dedicated coding-activity subroutine (implementation and testing only, no git/gh operations)
+
+### Fixed
+- Fixed bug where initial subroutine prompts were not applied to comment-triggered new sessions (only worked for assignment-based sessions)
+- Improved routing classification to correctly identify test-related requests (e.g., "add unit tests", "fix failing tests") as code work instead of planning tasks
 
 ## [0.1.57] - 2025-10-12
 
