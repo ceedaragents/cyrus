@@ -2,10 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { bin, install, Tunnel } from "cloudflared";
-import type {
-	CloudflareTunnelClientConfig,
-	CloudflareTunnelClientEvents,
-} from "./types.js";
+import type { CloudflareTunnelClientEvents } from "./types.js";
 
 export declare interface CloudflareTunnelClient {
 	on<K extends keyof CloudflareTunnelClientEvents>(
@@ -20,30 +17,35 @@ export declare interface CloudflareTunnelClient {
 
 /**
  * Cloudflare tunnel client for establishing tunnels to local services
- * Handles ONLY tunnel establishment - config update endpoints are handled by ConfigUpdater
+ * Handles ONLY tunnel establishment - HTTP handling is done by SharedApplicationServer
  */
 export class CloudflareTunnelClient extends EventEmitter {
 	private tunnelProcess: ChildProcess | null = null;
 	private tunnelUrl: string | null = null;
 	private connected = false;
 	private connectionCount = 0;
+	private cloudflareToken: string;
 	private localPort: number;
 
-	constructor(config: CloudflareTunnelClientConfig, localPort: number) {
+	constructor(
+		cloudflareToken: string,
+		localPort: number,
+		onReady?: (tunnelUrl: string) => void,
+	) {
 		super();
+		this.cloudflareToken = cloudflareToken;
 		this.localPort = localPort;
 
-		// Forward config callbacks to events
-		if (config.onWebhook) this.on("webhook", config.onWebhook);
-		if (config.onConfigUpdate) this.on("configUpdate", config.onConfigUpdate);
-		if (config.onError) this.on("error", config.onError);
-		if (config.onReady) this.on("ready", config.onReady);
+		// Set up onReady callback if provided
+		if (onReady) {
+			this.on("ready", onReady);
+		}
 	}
 
 	/**
-	 * Start the Cloudflare tunnel with the provided token
+	 * Start the Cloudflare tunnel
 	 */
-	async startTunnel(cloudflareToken: string): Promise<void> {
+	async startTunnel(): Promise<void> {
 		try {
 			// Ensure cloudflared binary is installed
 			if (!existsSync(bin)) {
@@ -53,7 +55,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 			console.log(`Starting tunnel to localhost:${this.localPort}`);
 
 			// Create tunnel with token-based authentication (no URL needed for remotely-managed tunnels)
-			const tunnel = Tunnel.withToken(cloudflareToken);
+			const tunnel = Tunnel.withToken(this.cloudflareToken);
 
 			// Listen for URL event (from ConfigHandler for token-based tunnels)
 			tunnel.on("url", (url: string) => {

@@ -125,9 +125,6 @@ importers:
 
   packages/cloudflare-tunnel-client:
     dependencies:
-      '@linear/sdk':
-        specifier: ^40.0.0
-        version: 40.0.0
       cloudflared:
         specifier: ^0.7.1
         version: 0.7.1
@@ -631,10 +628,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@linear/sdk@40.0.0':
-    resolution: {integrity: sha512-R4lyDIivdi00fO+DYPs7gWNX221dkPJhgDowFrsfos/rNG6o5HixsCPgwXWtKN0GA0nlqLvFTmzvzLXpud1xKw==}
-    engines: {node: '>=12.x', yarn: 1.x}
 
   '@linear/sdk@58.1.0':
     resolution: {integrity: sha512-sqzo1j+uZsxeJlMTV2mrBH3yukB/liev7IySmkZil0ka7ic6b4RE9Jk3x+ohw8YgYB52IRR3SPWzhWu96E6W9g==}
@@ -2689,14 +2682,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@linear/sdk@40.0.0':
-    dependencies:
-      '@graphql-typed-document-node/core': 3.2.0(graphql@15.10.1)
-      graphql: 15.10.1
-      isomorphic-unfetch: 3.1.0
-    transitivePeerDependencies:
-      - encoding
 
   '@linear/sdk@58.1.0':
     dependencies:

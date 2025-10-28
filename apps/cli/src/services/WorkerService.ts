@@ -118,29 +118,22 @@ export class WorkerService {
 
 	/**
 	 * Start Cloudflare tunnel client (Pro plan only)
+	 * Note: Webhooks and config updates are now handled by SharedApplicationServer
 	 */
-	async startCloudflareClient(params: {
-		onWebhook?: (payload: any) => void;
-		onConfigUpdate?: () => void;
-		onError?: (error: Error) => void;
-	}): Promise<void> {
-		const { onWebhook, onConfigUpdate, onError } = params;
-
+	async startCloudflareClient(): Promise<void> {
 		// Validate required environment variables
 		const cloudflareToken = process.env.CLOUDFLARE_TOKEN;
-		const cyrusApiKey = process.env.CYRUS_API_KEY;
 
-		if (!cloudflareToken || !cyrusApiKey) {
-			const missing = [];
-			if (!cloudflareToken) missing.push("CLOUDFLARE_TOKEN");
-			if (!cyrusApiKey) missing.push("CYRUS_API_KEY");
-
+		if (!cloudflareToken) {
 			throw new Error(
-				`Missing required credentials: ${missing.join(", ")}. ` +
+				`Missing required credential: CLOUDFLARE_TOKEN. ` +
 					`Please run: cyrus auth <auth-key>. ` +
 					`Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus`,
 			);
 		}
+
+		// Get the server port from EdgeWorker
+		const localPort = this.getServerPort();
 
 		this.logger.info("\n🌩️  Starting Cloudflare Tunnel Client");
 		this.logger.divider(50);
@@ -150,40 +143,33 @@ export class WorkerService {
 				"cyrus-cloudflare-tunnel-client"
 			);
 
-			const client = new CloudflareTunnelClient({
-				cyrusHome: this.cyrusHome,
-				onWebhook:
-					onWebhook ||
-					((payload) => {
-						this.logger.info("\n📨 Webhook received from Linear");
-						this.logger.info(`Action: ${payload.action || "Unknown"}`);
-						this.logger.info(`Type: ${payload.type || "Unknown"}`);
-						// TODO: Forward webhook to EdgeWorker or handle directly
-					}),
-				onConfigUpdate:
-					onConfigUpdate ||
-					(() => {
-						this.logger.info("\n🔄 Configuration updated from cyrus-hosted");
-					}),
-				onError:
-					onError ||
-					((error) => {
-						this.logger.error(`\nCloudflare client error: ${error.message}`);
-					}),
-				onReady: (tunnelUrl) => {
+			const client = new CloudflareTunnelClient(
+				cloudflareToken,
+				localPort,
+				(tunnelUrl: string) => {
 					this.logger.success("Cloudflare tunnel established");
 					this.logger.info(`🔗 Tunnel URL: ${tunnelUrl}`);
 					this.logger.divider(50);
 					this.logger.info("\n💎 Pro Plan Active - Using Cloudflare Tunnel");
 					this.logger.info(
-						"🚀 Cyrus is now ready to receive webhooks and config updates",
+						"🚀 Tunnel established and ready to forward requests",
 					);
 					this.logger.divider(50);
 				},
+			);
+
+			// Set up error handler
+			client.on("error", (error: Error) => {
+				this.logger.error(`\nCloudflare tunnel error: ${error.message}`);
 			});
 
-			// Start the tunnel with Cloudflare token and API key
-			await client.startTunnel(cloudflareToken, cyrusApiKey);
+			// Set up disconnect handler
+			client.on("disconnect", (reason: string) => {
+				this.logger.warn(`\nCloudflare tunnel disconnected: ${reason}`);
+			});
+
+			// Start the tunnel
+			await client.startTunnel();
 
 			// Store client for cleanup (Application handles signal handlers)
 			this.cloudflareClient = client;

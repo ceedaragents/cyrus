@@ -25,7 +25,7 @@ export class StartCommand extends BaseCommand {
 
 				// Start Cloudflare tunnel client (will validate credentials and start)
 				try {
-					await this.app.worker.startCloudflareClient({});
+					await this.app.worker.startCloudflareClient();
 					return; // Exit early - Cloudflare client handles everything
 				} catch (error) {
 					this.logError((error as Error).message);
