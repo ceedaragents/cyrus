@@ -3,10 +3,7 @@ import type { ApiResponse, CyrusConfigPayload } from "../types.js";
  * Handle Cyrus configuration update
  * Updates the ~/.cyrus/config.json file with the provided configuration
  */
-export declare function handleCyrusConfig(
-	payload: CyrusConfigPayload,
-	cyrusHome: string,
-): Promise<ApiResponse>;
+export declare function handleCyrusConfig(payload: CyrusConfigPayload, cyrusHome: string): Promise<ApiResponse>;
 /**
  * Read current Cyrus configuration
  */
