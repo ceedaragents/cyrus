@@ -46,21 +46,17 @@ The Cyrus codebase has evolved toward a **unified webhook server pattern**:
 ```
 Linear Webhooks (3 possible sources)
   ├─ Direct webhooks (linear-signature header)
-  ├─ Proxy webhooks (x-webhook-signature header)  
+  ├─ ngrok tunnel webhooks
   └─ Cloudflare tunnel webhooks
          │
          ▼
 SharedApplicationServer (/webhook endpoint)
-  ├─ Detects webhook type
   ├─ Routes to registered handler
-  └─ Verifies signature
+  └─ Verifies HMAC signature
          │
-    ┌────┴────┐
-    ▼         ▼
-NdjsonClient  LinearWebhookClient
-Handler       Handler
-    │         │
-    └────┬────┘
+         ▼
+LinearEventTransport
+Handler
          │
     ┌────▼──────────────┐
     │ EdgeWorker        │
@@ -79,25 +75,17 @@ Handler       Handler
 - Location: `/packages/edge-worker/src/SharedApplicationServer.ts`
 - Purpose: Single HTTP server for all webhooks and OAuth flows
 - Key Features:
-  - Handles 2+ webhook styles simultaneously
   - ngrok tunnel integration
   - OAuth callback handler
   - Approval request management
-  - HMAC and Linear signature verification
+  - HMAC signature verification via Linear SDK
 
-**NdjsonClient (Proxy-based)**
-- Location: `/packages/ndjson-client/`
-- Purpose: Client for proxy-based webhook delivery
-- Registration: `registerWebhookHandler(token, secret, handler)`
-- Handler Signature: `(body, sig, timestamp) => boolean`
-- Signature: HMAC-SHA256
-
-**LinearWebhookClient (Direct-based)**
-- Location: `/packages/linear-webhook-client/`
-- Purpose: Client for direct Linear webhook delivery
+**LinearEventTransport (Direct Linear Webhooks)**
+- Location: `/packages/linear-event-transport/`
+- Purpose: Transport for direct Linear webhook delivery
 - Registration: `registerWebhookHandler(token, handler)`
 - Handler Signature: `(req, res) => Promise<void>`
-- Signature: Linear SDK validates `linear-signature` header
+- Signature: Linear SDK HMAC verification
 
 **CloudflareTunnelClient (Remote Deployment)**
 - Location: `/packages/cloudflare-tunnel-client/`
@@ -125,41 +113,27 @@ Handler       Handler
 1. EdgeWorker creates SharedApplicationServer
 
 2. For each unique Linear token:
-   a. Create NdjsonClient or LinearWebhookClient
+   a. Create LinearEventTransport
    b. Pass SharedApplicationServer as externalWebhookServer
-   c. Call client.connect()
-   
-3. Client.connect():
-   a. (NdjsonClient) Register with proxy → get webhookSecret
-   b. Call registerWithExternalServer(SharedApplicationServer)
-   c. SharedApplicationServer.registerWebhookHandler(token, secret, handler)
+   c. Call transport.connect()
 
-4. SharedApplicationServer stores handler:
-   - NdjsonClient: webhookHandlers map
-   - LinearWebhookClient: linearWebhookHandlers map
+3. Transport.connect():
+   a. Register webhook with Linear
+   b. Call registerWithExternalServer(SharedApplicationServer)
+   c. SharedApplicationServer.registerWebhookHandler(token, handler)
+
+4. SharedApplicationServer stores handler in webhookHandlers map
 
 5. Incoming webhook:
-   a. SharedApplicationServer detects type (via headers)
-   b. Routes to correct handler type
-   c. Handler verifies signature
-   d. Emits webhook event
-   e. EdgeWorker processes event
+   a. SharedApplicationServer routes to handler
+   b. Handler verifies HMAC signature via Linear SDK
+   c. Emits webhook event
+   d. EdgeWorker processes event
 ```
 
 ### Registration Signatures
 
-**NdjsonClient** (Proxy-style, HMAC):
-```typescript
-registerWebhookHandler(
-  token: string,
-  secret: string,
-  handler: (body: string, signature: string, timestamp?: string) => boolean
-): void
-```
-- Returns: boolean (true = handled, false = try next)
-- Used for: HMAC signature verification
-
-**LinearWebhookClient** (Direct-style, Linear SDK):
+**LinearEventTransport** (Linear SDK HMAC):
 ```typescript
 registerWebhookHandler(
   token: string,
@@ -167,7 +141,7 @@ registerWebhookHandler(
 ): void
 ```
 - Returns: Promise (handler manages response)
-- Used for: Linear SDK signature verification
+- Used for: Linear SDK HMAC signature verification
 
 ---
 
@@ -176,10 +150,9 @@ registerWebhookHandler(
 ### All Endpoints on SharedApplicationServer
 
 1. **POST /webhook**
-   - Receives webhooks from all sources
-   - Auto-detects type via headers
-   - Routes to appropriate handler
-   - Supports multiple simultaneous handlers
+   - Receives webhooks from Linear
+   - Routes to registered handler
+   - Verifies HMAC signature via Linear SDK
 
 2. **GET /callback**
    - OAuth callback (proxy mode)
@@ -208,8 +181,7 @@ registerWebhookHandler(
 - `PROXY_URL` - Proxy server URL (default: cyrus-proxy.com)
 
 **Webhooks**:
-- `LINEAR_WEBHOOK_SECRET` - For LinearWebhookClient
-- `LINEAR_DIRECT_WEBHOOKS` - Use direct webhooks
+- `LINEAR_WEBHOOK_SECRET` - For LinearEventTransport HMAC verification
 
 ### Port Selection
 
@@ -236,13 +208,8 @@ registerWebhookHandler(
 ### Core Components
 - SharedApplicationServer: `/packages/edge-worker/src/SharedApplicationServer.ts`
 - EdgeWorker: `/packages/edge-worker/src/EdgeWorker.ts`
-- NdjsonClient: `/packages/ndjson-client/src/NdjsonClient.ts`
-- LinearWebhookClient: `/packages/linear-webhook-client/src/LinearWebhookClient.ts`
+- LinearEventTransport: `/packages/linear-event-transport/src/LinearEventTransport.ts`
 - CloudflareTunnelClient: `/packages/cloudflare-tunnel-client/src/CloudflareTunnelClient.ts`
-
-### Transport Layers
-- NdjsonClient WebhookTransport: `/packages/ndjson-client/src/transports/WebhookTransport.ts`
-- LinearWebhookClient WebhookTransport: `/packages/linear-webhook-client/src/transports/WebhookTransport.ts`
 
 ### Configuration
 - CLI App: `/apps/cli/src/Application.ts`
@@ -258,20 +225,16 @@ registerWebhookHandler(
 
 2. **EdgeWorker ← → SharedApplicationServer**
    - Creates shared server instance
-   - Passes to client configs
+   - Passes to transport configs
    - Listens to webhook events
 
-3. **NdjsonClient ← → SharedApplicationServer**
-   - Registers proxy-style handler
+3. **LinearEventTransport ← → SharedApplicationServer**
+   - Registers webhook handler
    - Emits webhook events
 
-4. **LinearWebhookClient ← → SharedApplicationServer**
-   - Registers direct-style handler
-   - Emits webhook events
-
-5. **Webhook Sources ← → SharedApplicationServer**
-   - Direct webhooks (linear-signature)
-   - Proxy webhooks (x-webhook-signature)
+4. **Webhook Sources ← → SharedApplicationServer**
+   - Direct Linear webhooks (linear-signature)
+   - ngrok tunnel webhooks
    - Cloudflare tunnel webhooks
 
 ---
@@ -285,28 +248,28 @@ registerWebhookHandler(
 4. Cross-reference with EdgeWorker integration
 
 ### To Modify Handler Registration
-1. Understand both registration styles
+1. Review LinearEventTransport registration pattern
 2. Check how EdgeWorker passes configs
-3. Review signature verification logic
-4. Test with both NdjsonClient and LinearWebhookClient
+3. Review Linear SDK signature verification logic
+4. Test with LinearEventTransport
 
-### To Add New Webhook Type
-1. Add detection logic in handleWebhookRequest()
-2. Create new handler map in SharedApplicationServer
-3. Implement handler registration method
-4. Update EdgeWorker client setup
+### To Enhance Webhook Handling
+1. Review handleWebhookRequest() in SharedApplicationServer
+2. Update handler logic in LinearEventTransport
+3. Test signature verification
+4. Update EdgeWorker transport setup
 
 ---
 
 ## Summary Statistics
 
-- **Package Count**: 7 main packages + 2 apps
-- **Webhook Handler Types**: 2 (proxy-style, direct-style)
+- **Package Count**: 6 main packages + 2 apps
+- **Webhook Handler Type**: 1 (Linear SDK HMAC)
 - **OAuth Modes**: 2 (proxy, direct)
 - **Tunnel Types**: 2 (ngrok, Cloudflare)
 - **HTTP Endpoints**: 4 main routes
-- **Handler Registry Maps**: 2 (webhookHandlers, linearWebhookHandlers)
-- **Supported Signature Schemes**: 2 (HMAC-SHA256, Linear SDK)
+- **Handler Registry Maps**: 1 (webhookHandlers)
+- **Supported Signature Scheme**: Linear SDK HMAC verification
 
 ---
 

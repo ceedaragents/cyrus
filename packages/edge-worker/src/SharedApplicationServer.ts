@@ -72,7 +72,7 @@ export class SharedApplicationServer {
 	/**
 	 * Register a webhook handler for a specific token
 	 * Supports two signatures:
-	 * 1. For ndjson-client: (token, secret, handler)
+	 * 1. Legacy proxy-style: (token, secret, handler)
 	 * 2. For linear-event-transport: (token, handler) where handler takes (req, res)
 	 */
 	registerWebhookHandler(
@@ -83,7 +83,7 @@ export class SharedApplicationServer {
 		handler?: (body: string, signature: string, timestamp?: string) => boolean,
 	): void {
 		if (typeof secretOrHandler === "string" && handler) {
-			// ndjson-client style registration
+			// Legacy proxy-style registration (kept for backward compatibility)
 			this.webhookHandlers.set(token, { secret: secretOrHandler, handler });
 			console.log(
 				`🔗 Registered webhook handler (proxy-style) for token ending in ...${token.slice(-4)}`,

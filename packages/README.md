@@ -52,36 +52,35 @@ This directory contains the core packages that make up the Cyrus monorepo. Each 
 - `getAllTools()` - List available Claude tools
 - Process configuration types
 
-### @cyrus/ndjson-client
-**Scope**: NDJSON streaming communication with edge proxy
+### @cyrus/linear-event-transport
+**Scope**: Direct Linear webhook handling with HMAC verification
 
 **Responsibilities**:
-- Establish persistent HTTP connections for NDJSON streaming
-- Handle authentication with OAuth tokens
-- Parse incoming NDJSON events (webhooks, heartbeats)
-- Send status updates back to proxy
-- Manage reconnection and error handling
-- Emit events for webhook data
+- Receive webhooks directly from Linear
+- Verify HMAC signatures using Linear SDK
+- Register webhooks with Linear automatically
+- Emit webhook events for processing
+- Handle webhook lifecycle (connect/disconnect)
 
 **Key Exports**:
-- `NdjsonClient` - Main client class
-- `WebhookEvent` - Webhook event types
-- `StatusUpdate` - Status update types
+- `LinearEventTransport` - Main transport class
+- `LinearWebhookPayload` - Webhook payload types
 - Configuration interfaces
 
 ### @cyrus/edge-worker
 **Scope**: Orchestrate Linear webhooks, Claude processing, and API responses
 
 **Responsibilities**:
-- Connect to edge proxy via NDJSON streaming
 - Process Linear webhook events (issue assignment, comments)
 - Manage Claude sessions for each issue
 - Post responses back to Linear via API
 - Handle multiple repository/workspace configurations
 - Coordinate between all other packages
+- Manage SharedApplicationServer for webhook routing
 
 **Key Exports**:
 - `EdgeWorker` - Main orchestrator class
+- `SharedApplicationServer` - Webhook server
 - `RepositoryConfig` - Repository configuration
 - `EdgeWorkerConfig` - Full configuration interface
 - Event types and handlers
@@ -93,14 +92,14 @@ This directory contains the core packages that make up the Cyrus monorepo. Each 
   ├── @cyrus/core (Session, SessionManager)
   ├── @cyrus/claude-parser (ClaudeEvent types)
   ├── @cyrus/claude-runner (ClaudeRunner)
-  ├── @cyrus/ndjson-client (NdjsonClient)
+  ├── @cyrus/linear-event-transport (LinearEventTransport)
   └── @linear/sdk (Linear API)
 
 @cyrus/claude-runner
   └── @cyrus/claude-parser (for event types)
 
-@cyrus/ndjson-client
-  └── (no internal dependencies)
+@cyrus/linear-event-transport
+  └── @linear/sdk/webhooks (Linear webhook handling)
 
 @cyrus/claude-parser
   └── (no internal dependencies)

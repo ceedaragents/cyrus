@@ -48,9 +48,6 @@ importers:
       cyrus-edge-worker:
         specifier: workspace:*
         version: link:../../packages/edge-worker
-      cyrus-ndjson-client:
-        specifier: workspace:*
-        version: link:../../packages/ndjson-client
       dotenv:
         specifier: ^16.5.0
         version: 16.6.1
@@ -212,9 +209,6 @@ importers:
       cyrus-linear-event-transport:
         specifier: workspace:*
         version: link:../linear-event-transport
-      cyrus-ndjson-client:
-        specifier: workspace:*
-        version: link:../ndjson-client
       cyrus-simple-agent-runner:
         specifier: workspace:*
         version: link:../simple-agent-runner
@@ -256,18 +250,6 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.21)
-
-  packages/ndjson-client:
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.21
-      typescript:
-        specifier: ^5.3.3
-        version: 5.9.3
-      vitest:
-        specifier: ^1.1.0
-        version: 1.6.1(@types/node@20.19.21)
 
   packages/simple-agent-runner:
     dependencies:

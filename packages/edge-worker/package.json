@@ -29,7 +29,6 @@
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-event-transport": "workspace:*",
-		"cyrus-ndjson-client": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
 		"file-type": "^18.7.0"
 	},

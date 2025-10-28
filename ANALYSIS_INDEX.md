@@ -40,8 +40,7 @@ This analysis provides a comprehensive map of the Cyrus codebase architecture, f
 - Package structure (7 packages + 2 apps)
 - Component deep dives:
   - SharedApplicationServer.ts (1,133 lines)
-  - NdjsonClient package
-  - LinearWebhookClient package
+  - LinearEventTransport package
   - CloudflareTunnelClient package
   - EdgeWorker.ts
 - Webhook flow diagrams
@@ -114,16 +113,10 @@ This analysis provides a comprehensive map of the Cyrus codebase architecture, f
 - **Key Methods**: start(), stop(), registerWebhookHandler(), startOAuthFlow()
 - **Features**: ngrok tunnel, dual webhook styles, OAuth callback handling
 
-### NdjsonClient
-- **File**: `/packages/ndjson-client/`
-- **Role**: Proxy-based webhook client
-- **Key Feature**: HMAC-SHA256 signature verification
-- **Handler Signature**: `(body, sig, timestamp) => boolean`
-
-### LinearWebhookClient
-- **File**: `/packages/linear-webhook-client/`
-- **Role**: Direct webhook client
-- **Key Feature**: Linear SDK signature verification
+### LinearEventTransport
+- **File**: `/packages/linear-event-transport/`
+- **Role**: Direct Linear webhook client
+- **Key Feature**: Linear SDK HMAC signature verification
 - **Handler Signature**: `(req, res) => Promise<void>`
 
 ### CloudflareTunnelClient
@@ -143,26 +136,22 @@ This analysis provides a comprehensive map of the Cyrus codebase architecture, f
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                 INCOMING WEBHOOKS                       │
-│  (Direct, Proxy, or Cloudflare tunnel)                  │
+│  (Direct, ngrok, or Cloudflare tunnel)                  │
 └──────────────────────┬──────────────────────────────────┘
                        │
          ┌─────────────▼──────────────┐
          │ SharedApplicationServer    │
-         │ - Detects webhook type     │
-         │ - Verifies signature       │
+         │ - Verifies HMAC signature  │
          │ - Routes to handler        │
          └──────────────┬──────────────┘
                         │
-          ┌─────────────┴──────────────┐
-          │                            │
-     ┌────▼──────────────┐  ┌─────────▼────────────┐
-     │ NdjsonClient      │  │ LinearWebhookClient  │
-     │ Handler           │  │ Handler              │
-     └────┬──────────────┘  └─────────┬────────────┘
-          │                           │
-          └───────────────┬───────────┘
-                          │
-                  ┌───────▼────────┐
+                        ▼
+          ┌──────────────────────────┐
+          │ LinearEventTransport     │
+          │ Handler                  │
+          └──────────────┬───────────┘
+                         │
+                  ┌──────▼─────────┐
                   │ EdgeWorker     │
                   │ handleWebhook()│
                   │ - Parse        │
@@ -183,9 +172,9 @@ Multiple webhook types handled by single HTTP server
 - Used by: All webhook clients via SharedApplicationServer
 
 ### Pattern 2: External Server Integration
-Clients support passing external HTTP server
+Transports support passing external HTTP server
 - Benefit: Shared resources, scalability
-- Used by: NdjsonClient and LinearWebhookClient
+- Used by: LinearEventTransport
 
 ### Pattern 3: Handler Registry
 Token-keyed handler storage with sequential attempts
