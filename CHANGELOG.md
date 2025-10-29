@@ -4,11 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.58] - 2025-10-29
+
 ### Added
 - Orchestrator and sub-issue communication is now visible in Linear activity: feedback from orchestrator to sub-issues and results from sub-issues to orchestrator are posted as thoughts with clear context
 
 ### Fixed
 - Procedure routing is now reset when resuming parent sessions from child completion, preventing excessive thought and action suppression logs
+- Fixed bug where initial subroutine prompts were not applied to comment-triggered new sessions (only worked for assignment-based sessions)
+- Improved routing classification to correctly identify test-related requests (e.g., "add unit tests", "fix failing tests") as code work instead of planning tasks
 
 ### Changed
 - Debugger workflow now proceeds directly from bug reproduction to fix implementation without requiring manual approval
@@ -23,9 +27,19 @@ All notable changes to this project will be documented in this file.
 - Initial subroutine prompts are now consistently loaded for all new sessions (assignment-based and comment-based), ensuring agents receive proper workflow guidance from the start
 - Full-development workflow now starts with dedicated coding-activity subroutine (implementation and testing only, no git/gh operations)
 
-### Fixed
-- Fixed bug where initial subroutine prompts were not applied to comment-triggered new sessions (only worked for assignment-based sessions)
-- Improved routing classification to correctly identify test-related requests (e.g., "add unit tests", "fix failing tests") as code work instead of planning tasks
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.20
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.40
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.3
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.58
 
 ## [0.1.57] - 2025-10-12
 
