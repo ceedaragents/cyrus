@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, watch } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import { SharedApplicationServer } from "cyrus-edge-worker";
@@ -17,6 +17,7 @@ export class Application {
 	public readonly git: GitService;
 	public readonly worker: WorkerService;
 	public readonly logger: Logger;
+	private envWatcher?: ReturnType<typeof watch>;
 
 	constructor(public readonly cyrusHome: string) {
 		// Initialize logger first
@@ -26,10 +27,10 @@ export class Application {
 		this.ensureRequiredDirectories();
 
 		// Load environment variables from CYRUS_HOME/.env
-		const cyrusEnvPath = `${cyrusHome}/.env`;
-		if (existsSync(cyrusEnvPath)) {
-			dotenv.config({ path: cyrusEnvPath });
-		}
+		this.loadEnvFile();
+
+		// Watch .env file for changes and reload
+		this.setupEnvFileWatcher();
 
 		// Initialize services
 		this.config = new ConfigService(cyrusHome, this.logger);
@@ -40,6 +41,42 @@ export class Application {
 			cyrusHome,
 			this.logger,
 		);
+	}
+
+	/**
+	 * Load environment variables from ~/.cyrus/.env file
+	 */
+	private loadEnvFile(): void {
+		const cyrusEnvPath = join(this.cyrusHome, ".env");
+		if (existsSync(cyrusEnvPath)) {
+			dotenv.config({ path: cyrusEnvPath, override: true });
+			this.logger.info(`🔧 Loaded environment variables from ${cyrusEnvPath}`);
+		}
+	}
+
+	/**
+	 * Setup file watcher for .env file to reload on changes
+	 */
+	private setupEnvFileWatcher(): void {
+		const cyrusEnvPath = join(this.cyrusHome, ".env");
+
+		// Only watch if file exists
+		if (!existsSync(cyrusEnvPath)) {
+			return;
+		}
+
+		try {
+			this.envWatcher = watch(cyrusEnvPath, (eventType) => {
+				if (eventType === "change") {
+					this.logger.info("🔄 .env file changed, reloading...");
+					this.loadEnvFile();
+				}
+			});
+
+			this.logger.info(`👀 Watching .env file for changes: ${cyrusEnvPath}`);
+		} catch (error) {
+			this.logger.error(`❌ Failed to watch .env file: ${error}`);
+		}
 	}
 
 	/**
@@ -94,6 +131,11 @@ export class Application {
 	 * Handle graceful shutdown
 	 */
 	async shutdown(): Promise<void> {
+		// Close .env file watcher
+		if (this.envWatcher) {
+			this.envWatcher.close();
+		}
+
 		await this.worker.stop();
 		process.exit(0);
 	}
