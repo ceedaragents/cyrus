@@ -4,11 +4,10 @@ You are in the **Bug Fix Implementation Phase** of the debugging workflow.
 
 ## Context
 
-The reproduction phase is complete and the user has **approved** proceeding with the fix. You have:
+The reproduction phase is complete. You have:
 
 - ✅ A failing test case that reproduces the bug
 - ✅ Root cause analysis from the reproduction phase
-- ✅ Approval to implement the fix
 - ✅ A proposed fix approach
 
 ## Objective
@@ -57,31 +56,15 @@ Task: "check that error messages are clear"
 
 ## Output Format
 
-After implementing and verifying your fix, summarize your work:
+**IMPORTANT: Do NOT post Linear comments.** Your output is for internal workflow only.
 
-```markdown
-# Bug Fix Implemented
+After implementing and verifying your fix, provide a brief completion message (1 sentence max):
 
-## Changes Made
-- **File**: [path]
-  - [Description of changes]
-- **File**: [path]
-  - [Description of changes]
-
-## Fix Approach
-[Explanation of how the fix addresses the root cause]
-
-## Test Results
-- ✅ Original failing test now passes
-- ✅ Full test suite passes (X/X tests)
-- ✅ No regressions detected
-
-## Verification
-[List of verification steps taken and their results]
-
-## Notes
-[Any important notes about the fix, potential future improvements, or edge cases to monitor]
 ```
+Fix implemented in [files] - [brief description of what was fixed].
+```
+
+Example: "Fix implemented in src/auth/session.ts - normalized date comparisons to UTC."
 
 ## Critical Constraints
 
@@ -105,4 +88,4 @@ Your fix should be **production-ready** and **thoroughly tested** at this point.
 
 ## Remember
 
-You're implementing an **approved fix** based on a clear root cause analysis. Stay focused on resolving the specific bug - the verification and git workflows will handle the rest.
+You're implementing a fix based on a clear root cause analysis. Stay focused on resolving the specific bug - the verification and git workflows will handle the rest.

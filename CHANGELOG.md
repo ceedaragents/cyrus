@@ -31,13 +31,49 @@ All notable changes to this project will be documented in this file.
   - Removed `billing` and `set-customer-id` commands
   - Streamlined `auth` command to focus on authentication only
   - All tunnel management now handled by SharedApplicationServer
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.19 - includes parity with Claude Code v2.0.19. See [@anthropic-ai/claude-agent-sdk v0.1.19 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0119)
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.28 - includes parity updates with Claude Code v2.0.28 and fixes custom tools timing out after 30 seconds instead of respecting the MCP_TOOL_TIMEOUT environment variable. See [@anthropic-ai/claude-agent-sdk v0.1.28 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0128)
 - Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
 
 ### Removed
 - **Subscription service**: Removed customer validation and subscription checking code
 - **Billing commands**: Removed `billing` and `set-customer-id` CLI commands
 - **Deprecated config parameter**: Removed `isLegacy` from EdgeConfig (replaced by setup waiting mode)
+
+## [0.1.58] - 2025-10-29
+
+### Added
+- Orchestrator and sub-issue communication is now visible in Linear activity: feedback from orchestrator to sub-issues and results from sub-issues to orchestrator are posted as thoughts with clear context
+
+### Fixed
+- Procedure routing is now reset when resuming parent sessions from child completion, preventing excessive thought and action suppression logs
+- Fixed bug where initial subroutine prompts were not applied to comment-triggered new sessions (only worked for assignment-based sessions)
+- Improved routing classification to correctly identify test-related requests (e.g., "add unit tests", "fix failing tests") as code work instead of planning tasks
+
+### Changed
+- Debugger workflow now proceeds directly from bug reproduction to fix implementation without requiring manual approval
+- All workflows (full-development, debugger-full, orchestrator-full) now end with concise summary instead of verbose summary
+- Non-summary subroutines (debugger-fix, debugger-reproduction, verifications, git-gh) now explicitly avoid posting Linear comments and end with brief 1-sentence completion messages
+- Orchestrator agents are now strongly discouraged from posting Linear comments to current issues; comments only used when triggering sub-agent sessions on child issues
+- Orchestrator agents are explicitly instructed not to assign themselves (Cyrus) as a delegate when creating sub-issues
+- Tool call result outputs are no longer wrapped in collapsible sections in Linear comments
+- Concise summary format now uses collapsible sections for "Changes Made" and "Files Modified" to keep summaries brief
+- Simple-question workflow now has two phases: investigation (gather information without answering) and answer formatting (provide markdown-formatted response)
+- Initial subroutine prompts are now consistently loaded for all new sessions (assignment-based and comment-based), ensuring agents receive proper workflow guidance from the start
+- Full-development workflow now starts with dedicated coding-activity subroutine (implementation and testing only, no git/gh operations)
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.20
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.40
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.3
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.58
 
 ## [0.1.57] - 2025-10-12
 
