@@ -99,6 +99,8 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				claudeRunner: mockClaudeRunner,
 			}),
 			getClaudeRunner: vi.fn().mockReturnValue(mockClaudeRunner),
+			postRoutingThought: vi.fn().mockResolvedValue(undefined),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 
 		// Mock parent session manager (for different repository)
@@ -221,6 +223,10 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 			// Assert - The feedback delivery should return quickly
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Should return in less than 100ms (not wait for the 10-second session)
@@ -266,6 +272,10 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			expect(result).toBe(true);
 			expect(duration).toBeLessThan(100); // Returns immediately
 			expect(sessionCompleted).toBe(false); // Session still running
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Wait a bit and verify session completes in background

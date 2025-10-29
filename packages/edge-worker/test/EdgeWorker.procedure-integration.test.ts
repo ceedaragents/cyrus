@@ -71,12 +71,12 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			);
 			expect(session.metadata.procedure?.currentSubroutineIndex).toBe(0);
 
-			// Step 3: Execute primary subroutine (manually simulated completion)
+			// Step 3: Execute coding-activity subroutine (manually simulated completion)
 			let currentSubroutine = procedureRouter.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("primary");
+			expect(currentSubroutine?.name).toBe("coding-activity");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 4: Primary completes, AgentSessionManager checks for next subroutine
+			// Step 4: coding-activity completes, AgentSessionManager checks for next subroutine
 			let nextSubroutine = procedureRouter.getNextSubroutine(session);
 			expect(nextSubroutine).toBeDefined();
 			expect(nextSubroutine?.name).toBe("verifications");
@@ -100,14 +100,14 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			expect(currentSubroutine?.name).toBe("git-gh");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 9: git-gh completes, advance to verbose-summary (last subroutine)
+			// Step 9: git-gh completes, advance to concise-summary (last subroutine)
 			nextSubroutine = procedureRouter.getNextSubroutine(session);
-			expect(nextSubroutine?.name).toBe("verbose-summary");
+			expect(nextSubroutine?.name).toBe("concise-summary");
 			procedureRouter.advanceToNextSubroutine(session, "claude-123");
 
-			// Step 10: Execute verbose-summary (with thought suppression!)
+			// Step 10: Execute concise-summary (with thought suppression!)
 			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("verbose-summary");
+			expect(currentSubroutine?.name).toBe("concise-summary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true); // Suppression active!
 
 			// Step 11: Check that we're at the last subroutine
@@ -115,11 +115,11 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			expect(nextSubroutine).toBeNull(); // No more subroutines
 			expect(procedureRouter.isProcedureComplete(session)).toBe(true);
 
-			// Verify subroutine history (only 3 recorded because we're still AT verbose-summary)
+			// Verify subroutine history (only 3 recorded because we're still AT concise-summary)
 			// History only records completed subroutines when advancing AWAY from them
 			expect(session.metadata.procedure?.subroutineHistory).toHaveLength(3);
 			expect(session.metadata.procedure?.subroutineHistory[0].subroutine).toBe(
-				"primary",
+				"coding-activity",
 			);
 			expect(session.metadata.procedure?.subroutineHistory[1].subroutine).toBe(
 				"verifications",
@@ -127,7 +127,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			expect(session.metadata.procedure?.subroutineHistory[2].subroutine).toBe(
 				"git-gh",
 			);
-			// verbose-summary is NOT yet in history because we haven't advanced away from it
+			// concise-summary is NOT yet in history because we haven't advanced away from it
 		});
 
 		it("should handle documentation-edit procedure with correct suppressions", async () => {
@@ -212,18 +212,18 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				simpleQuestionProcedure,
 			);
 
-			// Step 3: Execute primary (no suppression)
+			// Step 3: Execute question-investigation (no suppression)
 			let currentSubroutine = procedureRouter.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("primary");
+			expect(currentSubroutine?.name).toBe("question-investigation");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 4: Advance to concise-summary (WITH suppression)
+			// Step 4: Advance to question-answer (WITH suppression)
 			let nextSubroutine = procedureRouter.getNextSubroutine(session);
-			expect(nextSubroutine?.name).toBe("concise-summary");
+			expect(nextSubroutine?.name).toBe("question-answer");
 			procedureRouter.advanceToNextSubroutine(session, "claude-789");
 
 			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("concise-summary");
+			expect(currentSubroutine?.name).toBe("question-answer");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
 
 			// Step 5: Procedure complete
@@ -234,8 +234,8 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 	});
 
 	describe("Thought/Action Suppression in AgentSessionManager", () => {
-		it("should suppress thoughts during concise-summary subroutine", async () => {
-			// Create a session already at concise-summary
+		it("should suppress thoughts during question-answer subroutine", async () => {
+			// Create a session already at question-answer
 			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "session-suppress-1",
 				type: "comment_thread" as const,
@@ -254,7 +254,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				metadata: {
 					procedure: {
 						procedureName: "simple-question",
-						currentSubroutineIndex: 1, // concise-summary
+						currentSubroutineIndex: 1, // question-answer
 						subroutineHistory: [],
 					},
 				},
@@ -265,15 +265,15 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 
 			// Verify suppression is active
 			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("concise-summary");
+			expect(currentSubroutine?.name).toBe("question-answer");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
 
 			// The AgentSessionManager.syncEntryToLinear method checks this flag
 			// and skips posting thoughts/actions when suppressThoughtPosting is true
 		});
 
-		it("should NOT suppress thoughts during primary subroutine", async () => {
-			// Create a session at primary
+		it("should NOT suppress thoughts during coding-activity subroutine", async () => {
+			// Create a session at coding-activity
 			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "session-no-suppress",
 				type: "comment_thread" as const,
@@ -292,14 +292,14 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				metadata: {
 					procedure: {
 						procedureName: "full-development",
-						currentSubroutineIndex: 0, // primary
+						currentSubroutineIndex: 0, // coding-activity
 						subroutineHistory: [],
 					},
 				},
 			};
 
 			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("primary");
+			expect(currentSubroutine?.name).toBe("coding-activity");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 		});
 	});

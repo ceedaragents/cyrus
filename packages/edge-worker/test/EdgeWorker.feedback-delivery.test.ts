@@ -97,6 +97,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				claudeRunner: mockClaudeRunner,
 			}),
 			getClaudeRunner: vi.fn().mockReturnValue(mockClaudeRunner),
+			postRoutingThought: vi.fn().mockResolvedValue(undefined),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 
 		// Mock parent session manager (for different repository)
@@ -208,6 +210,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			const resumeArgs = resumeClaudeSessionSpy.mock.calls[0];
@@ -266,6 +272,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert - Should still work but with generic parent reference
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			const prompt = resumeClaudeSessionSpy.mock.calls[0][4];
@@ -349,6 +359,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert - Now returns true immediately (fire-and-forget)
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Wait a bit for the async error handling to occur
@@ -356,7 +370,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// The error is logged asynchronously
 			expect(console.error).toHaveBeenCalledWith(
-				`[EdgeWorker] Failed to complete child session with feedback:`,
+				`[EdgeWorker] Failed to process feedback in child session:`,
 				expect.any(Error),
 			);
 		});
@@ -402,6 +416,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert - Should find the child in the correct repository
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Verify the child was found in one of the repositories

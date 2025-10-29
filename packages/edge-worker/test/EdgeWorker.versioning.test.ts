@@ -113,8 +113,10 @@ Repository: {{repository_name}}`;
 		// Spy on console.log to check for version logging
 		const logSpy = vi.spyOn(console, "log");
 
-		// Use reflection to test the buildPromptV2 method
-		const buildPromptV2 = (edgeWorker as any).buildPromptV2.bind(edgeWorker);
+		// Use reflection to test the buildIssueContextPrompt method
+		const buildIssueContextPrompt = (
+			edgeWorker as any
+		).buildIssueContextPrompt.bind(edgeWorker);
 
 		const mockIssue = {
 			id: "issue-123",
@@ -127,7 +129,7 @@ Repository: {{repository_name}}`;
 			branchName: "test-branch",
 		};
 
-		await buildPromptV2(mockIssue, mockConfig.repositories[0]);
+		await buildIssueContextPrompt(mockIssue, mockConfig.repositories[0]);
 
 		// Check that version was logged
 		expect(logSpy).toHaveBeenCalledWith(
@@ -144,8 +146,10 @@ Repository: {{repository_name}}`;
 
 		const logSpy = vi.spyOn(console, "log");
 
-		// Use reflection to test the buildPromptV2 method
-		const buildPromptV2 = (edgeWorker as any).buildPromptV2.bind(edgeWorker);
+		// Use reflection to test the buildIssueContextPrompt method
+		const buildIssueContextPrompt = (
+			edgeWorker as any
+		).buildIssueContextPrompt.bind(edgeWorker);
 
 		const mockIssue = {
 			id: "issue-123",
@@ -158,7 +162,7 @@ Repository: {{repository_name}}`;
 			branchName: "test-branch",
 		};
 
-		await buildPromptV2(mockIssue, mockConfig.repositories[0]);
+		await buildIssueContextPrompt(mockIssue, mockConfig.repositories[0]);
 
 		// Check that version was NOT logged
 		const versionLogs = logSpy.mock.calls.filter((call) =>
