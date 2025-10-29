@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, watch } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { RepositoryConfig } from "cyrus-core";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import { SharedApplicationServer } from "cyrus-edge-worker";
@@ -144,9 +144,20 @@ export class Application {
 	private startConfigWatcher(): void {
 		const configPath = this.config.getConfigPath();
 
-		// Only watch if file exists
+		// Create empty config file if it doesn't exist
 		if (!existsSync(configPath)) {
-			return;
+			try {
+				const configDir = dirname(configPath);
+				if (!existsSync(configDir)) {
+					mkdirSync(configDir, { recursive: true });
+				}
+				// Create empty config with empty repositories array
+				this.config.save({ repositories: [] });
+				this.logger.info(`📝 Created empty config file: ${configPath}`);
+			} catch (error) {
+				this.logger.error(`❌ Failed to create config file: ${error}`);
+				return;
+			}
 		}
 
 		try {
