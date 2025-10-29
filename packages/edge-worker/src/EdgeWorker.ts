@@ -56,6 +56,7 @@ import {
 	isIssueNewCommentWebhook,
 	isIssueUnassignedWebhook,
 	PersistenceManager,
+	resolvePath,
 } from "cyrus-core";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
@@ -130,10 +131,28 @@ export class EdgeWorker extends EventEmitter {
 			serverHost,
 		);
 
-		// Initialize repositories
+		// Initialize repositories with path resolution
 		for (const repo of config.repositories) {
 			if (repo.isActive !== false) {
-				this.repositories.set(repo.id, repo);
+				// Resolve paths that may contain tilde (~) prefix
+				const resolvedRepo: RepositoryConfig = {
+					...repo,
+					repositoryPath: resolvePath(repo.repositoryPath),
+					workspaceBaseDir: resolvePath(repo.workspaceBaseDir),
+					mcpConfigPath: Array.isArray(repo.mcpConfigPath)
+						? repo.mcpConfigPath.map(resolvePath)
+						: repo.mcpConfigPath
+							? resolvePath(repo.mcpConfigPath)
+							: undefined,
+					promptTemplatePath: repo.promptTemplatePath
+						? resolvePath(repo.promptTemplatePath)
+						: undefined,
+					openaiOutputDirectory: repo.openaiOutputDirectory
+						? resolvePath(repo.openaiOutputDirectory)
+						: undefined,
+				};
+
+				this.repositories.set(repo.id, resolvedRepo);
 
 				// Create Linear client for this repository's workspace
 				const linearClient = new LinearClient({
@@ -331,7 +350,7 @@ export class EdgeWorker extends EventEmitter {
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
-			process.env.CYRUS_API_KEY || ""
+			process.env.CYRUS_API_KEY || "",
 		);
 
 		// Register config update routes
@@ -658,8 +677,26 @@ export class EdgeWorker extends EventEmitter {
 			try {
 				console.log(`➕ Adding repository: ${repo.name} (${repo.id})`);
 
+				// Resolve paths that may contain tilde (~) prefix
+				const resolvedRepo: RepositoryConfig = {
+					...repo,
+					repositoryPath: resolvePath(repo.repositoryPath),
+					workspaceBaseDir: resolvePath(repo.workspaceBaseDir),
+					mcpConfigPath: Array.isArray(repo.mcpConfigPath)
+						? repo.mcpConfigPath.map(resolvePath)
+						: repo.mcpConfigPath
+							? resolvePath(repo.mcpConfigPath)
+							: undefined,
+					promptTemplatePath: repo.promptTemplatePath
+						? resolvePath(repo.promptTemplatePath)
+						: undefined,
+					openaiOutputDirectory: repo.openaiOutputDirectory
+						? resolvePath(repo.openaiOutputDirectory)
+						: undefined,
+				};
+
 				// Add to internal map
-				this.repositories.set(repo.id, repo);
+				this.repositories.set(repo.id, resolvedRepo);
 
 				// Create Linear client
 				const linearClient = new LinearClient({
@@ -713,8 +750,26 @@ export class EdgeWorker extends EventEmitter {
 
 				console.log(`🔄 Updating repository: ${repo.name} (${repo.id})`);
 
+				// Resolve paths that may contain tilde (~) prefix
+				const resolvedRepo: RepositoryConfig = {
+					...repo,
+					repositoryPath: resolvePath(repo.repositoryPath),
+					workspaceBaseDir: resolvePath(repo.workspaceBaseDir),
+					mcpConfigPath: Array.isArray(repo.mcpConfigPath)
+						? repo.mcpConfigPath.map(resolvePath)
+						: repo.mcpConfigPath
+							? resolvePath(repo.mcpConfigPath)
+							: undefined,
+					promptTemplatePath: repo.promptTemplatePath
+						? resolvePath(repo.promptTemplatePath)
+						: undefined,
+					openaiOutputDirectory: repo.openaiOutputDirectory
+						? resolvePath(repo.openaiOutputDirectory)
+						: undefined,
+				};
+
 				// Update stored config
-				this.repositories.set(repo.id, repo);
+				this.repositories.set(repo.id, resolvedRepo);
 
 				// If token changed, recreate Linear client
 				if (oldRepo.linearToken !== repo.linearToken) {
