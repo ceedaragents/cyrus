@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { handleCheckGh } from "./handlers/checkGh.js";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
@@ -6,6 +7,7 @@ import { handleRepository } from "./handlers/repository.js";
 import { handleTestMcp } from "./handlers/testMcp.js";
 import type {
 	ApiResponse,
+	CheckGhPayload,
 	ConfigureMcpPayload,
 	CyrusConfigPayload,
 	CyrusEnvPayload,
@@ -15,7 +17,7 @@ import type {
 
 /**
  * ConfigUpdater registers configuration update routes with a Fastify server
- * Handles: cyrus-config, cyrus-env, repository, test-mcp, configure-mcp endpoints
+ * Handles: cyrus-config, cyrus-env, repository, test-mcp, configure-mcp, check-gh endpoints
  */
 export class ConfigUpdater {
 	private fastify: FastifyInstance;
@@ -38,6 +40,7 @@ export class ConfigUpdater {
 		this.registerRoute("/api/update/repository", this.handleRepositoryRoute);
 		this.registerRoute("/api/test-mcp", this.handleTestMcpRoute);
 		this.registerRoute("/api/configure-mcp", this.handleConfigureMcpRoute);
+		this.registerRoute("/api/check-gh", this.handleCheckGhRoute);
 	}
 
 	/**
@@ -140,5 +143,14 @@ export class ConfigUpdater {
 		payload: ConfigureMcpPayload,
 	): Promise<ApiResponse> {
 		return handleConfigureMcp(payload, this.cyrusHome);
+	}
+
+	/**
+	 * Handle GitHub CLI check
+	 */
+	private async handleCheckGhRoute(
+		payload: CheckGhPayload,
+	): Promise<ApiResponse> {
+		return handleCheckGh(payload, this.cyrusHome);
 	}
 }
