@@ -65,6 +65,10 @@ CYRUS_SETUP_PENDING=true
 			writeFileSync(envPath, envContent, "utf-8");
 			this.logSuccess(`Credentials saved to ${envPath}`);
 
+			// Reload environment variables to pick up CYRUS_SETUP_PENDING
+			const dotenv = await import("dotenv");
+			dotenv.config({ path: envPath, override: true });
+
 			console.log("\n✨ Setup complete! Starting Cyrus...");
 			this.logDivider();
 			console.log();
