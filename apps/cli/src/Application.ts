@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import { SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
@@ -20,6 +21,10 @@ export class Application {
 	constructor(public readonly cyrusHome: string) {
 		// Initialize logger first
 		this.logger = new Logger();
+
+		// Ensure required directories exist
+		this.ensureRequiredDirectories();
+
 		// Load environment variables from CYRUS_HOME/.env
 		const cyrusEnvPath = `${cyrusHome}/.env`;
 		if (existsSync(cyrusEnvPath)) {
@@ -35,6 +40,29 @@ export class Application {
 			cyrusHome,
 			this.logger,
 		);
+	}
+
+	/**
+	 * Ensure required Cyrus directories exist
+	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs
+	 */
+	private ensureRequiredDirectories(): void {
+		const requiredDirs = ["repos", "worktrees", "mcp-configs"];
+
+		for (const dir of requiredDirs) {
+			const dirPath = join(this.cyrusHome, dir);
+			if (!existsSync(dirPath)) {
+				try {
+					mkdirSync(dirPath, { recursive: true });
+					this.logger.info(`📁 Created directory: ${dirPath}`);
+				} catch (error) {
+					this.logger.error(
+						`❌ Failed to create directory ${dirPath}: ${error}`,
+					);
+					throw error;
+				}
+			}
+		}
 	}
 
 	/**
