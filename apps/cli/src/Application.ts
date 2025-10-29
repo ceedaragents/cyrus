@@ -239,6 +239,9 @@ export class Application {
 				this.configWatcher = undefined;
 			}
 
+			// Stop the setup waiting mode server before starting EdgeWorker
+			await this.worker.stopSetupWaitingMode();
+
 			// Start the EdgeWorker with the new configuration
 			await this.worker.startEdgeWorker({
 				repositories,

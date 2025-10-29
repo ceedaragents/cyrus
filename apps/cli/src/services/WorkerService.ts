@@ -12,6 +12,7 @@ import type { Logger } from "./Logger.js";
  */
 export class WorkerService {
 	private edgeWorker: EdgeWorker | null = null;
+	private setupWaitingServer: any = null; // SharedApplicationServer instance during setup waiting mode
 	private isShuttingDown = false;
 
 	constructor(
@@ -53,12 +54,15 @@ export class WorkerService {
 		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
 
 		// Create and start SharedApplicationServer
-		const server = new SharedApplicationServer(serverPort, serverHost);
-		server.initializeFastify();
+		this.setupWaitingServer = new SharedApplicationServer(
+			serverPort,
+			serverHost,
+		);
+		this.setupWaitingServer.initializeFastify();
 
 		// Register ConfigUpdater routes
 		const configUpdater = new ConfigUpdater(
-			server.getFastifyInstance(),
+			this.setupWaitingServer.getFastifyInstance(),
 			this.cyrusHome,
 			process.env.CYRUS_API_KEY || "",
 		);
@@ -73,7 +77,7 @@ export class WorkerService {
 		);
 
 		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
-		await server.start();
+		await this.setupWaitingServer.start();
 
 		this.logger.raw("");
 		this.logger.divider(70);
@@ -89,6 +93,19 @@ export class WorkerService {
 		this.logger.info("Your Cyrus instance is ready to receive configuration.");
 		this.logger.info("Complete setup at: https://www.atcyrus.com/onboarding");
 		this.logger.divider(70);
+	}
+
+	/**
+	 * Stop the setup waiting mode server
+	 * Must be called before starting EdgeWorker to avoid port conflicts
+	 */
+	async stopSetupWaitingMode(): Promise<void> {
+		if (this.setupWaitingServer) {
+			this.logger.info("🛑 Stopping setup waiting mode server...");
+			await this.setupWaitingServer.stop();
+			this.setupWaitingServer = null;
+			this.logger.info("✅ Setup waiting mode server stopped");
+		}
 	}
 
 	/**
@@ -222,6 +239,12 @@ export class WorkerService {
 		this.isShuttingDown = true;
 
 		this.logger.info("\nShutting down edge worker...");
+
+		// Stop setup waiting mode server if still running
+		if (this.setupWaitingServer) {
+			await this.setupWaitingServer.stop();
+			this.setupWaitingServer = null;
+		}
 
 		// Stop edge worker (includes stopping shared application server and Cloudflare tunnel)
 		if (this.edgeWorker) {
