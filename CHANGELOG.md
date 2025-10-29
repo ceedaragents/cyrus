@@ -13,6 +13,11 @@ All notable changes to this project will be documented in this file.
   - Repository management (automatically clones/verifies repositories to `~/.cyrus/repos/<repo-name>`)
   - All file operations restricted to `~/.cyrus` directory for security
   - Will replace `ndjson-client` for customers using cyrus-hosted service
+- **Setup Waiting Mode**: After running `cyrus auth`, the client now enters a waiting state to receive configuration from the server
+  - Automatically starts server infrastructure (SharedApplicationServer, ConfigUpdater) without repositories
+  - Displays clear waiting status and instructions to complete setup
+  - Auto-transitions to normal operation when server pushes repository configuration
+  - Watches config.json for changes and starts EdgeWorker when repositories are added
 
 ### Changed
 - **Linear Event Transport**: Refactored `cyrus-linear-webhook-client` to `cyrus-linear-event-transport` for simplified webhook handling
@@ -32,6 +37,7 @@ All notable changes to this project will be documented in this file.
 ### Removed
 - **Subscription service**: Removed customer validation and subscription checking code
 - **Billing commands**: Removed `billing` and `set-customer-id` CLI commands
+- **Deprecated config parameter**: Removed `isLegacy` from EdgeConfig (replaced by setup waiting mode)
 
 ## [0.1.57] - 2025-10-12
 

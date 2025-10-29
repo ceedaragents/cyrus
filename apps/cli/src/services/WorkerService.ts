@@ -12,6 +12,7 @@ import type { Logger } from "./Logger.js";
  */
 export class WorkerService {
 	private edgeWorker: EdgeWorker | null = null;
+	private setupWaitingServer: any = null; // SharedApplicationServer instance during setup waiting mode
 	private isShuttingDown = false;
 
 	constructor(
@@ -33,6 +34,78 @@ export class WorkerService {
 	 */
 	getServerPort(): number {
 		return this.edgeWorker?.getServerPort() || DEFAULT_SERVER_PORT;
+	}
+
+	/**
+	 * Start setup waiting mode - server infrastructure only, no EdgeWorker
+	 * Used after initial authentication while waiting for server configuration
+	 */
+	async startSetupWaitingMode(): Promise<void> {
+		const { SharedApplicationServer } = await import("cyrus-edge-worker");
+		const { ConfigUpdater } = await import("cyrus-config-updater");
+
+		// Determine server configuration
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const serverPort = parsePort(
+			process.env.CYRUS_SERVER_PORT,
+			DEFAULT_SERVER_PORT,
+		);
+		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
+
+		// Create and start SharedApplicationServer
+		this.setupWaitingServer = new SharedApplicationServer(
+			serverPort,
+			serverHost,
+		);
+		this.setupWaitingServer.initializeFastify();
+
+		// Register ConfigUpdater routes
+		const configUpdater = new ConfigUpdater(
+			this.setupWaitingServer.getFastifyInstance(),
+			this.cyrusHome,
+			process.env.CYRUS_API_KEY || "",
+		);
+		configUpdater.register();
+
+		this.logger.info("✅ Config updater registered");
+		this.logger.info(
+			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
+		);
+		this.logger.info(
+			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
+
+		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
+		await this.setupWaitingServer.start();
+
+		this.logger.raw("");
+		this.logger.divider(70);
+		this.logger.info("⏳ Waiting for configuration from server...");
+		this.logger.info(`🔗 Server running on port ${serverPort}`);
+
+		if (process.env.CLOUDFLARE_TOKEN) {
+			this.logger.info("🌩️  Cloudflare tunnel: Active");
+		}
+
+		this.logger.info("📡 Config updater: Ready");
+		this.logger.raw("");
+		this.logger.info("Your Cyrus instance is ready to receive configuration.");
+		this.logger.info("Complete setup at: https://www.atcyrus.com/onboarding");
+		this.logger.divider(70);
+	}
+
+	/**
+	 * Stop the setup waiting mode server
+	 * Must be called before starting EdgeWorker to avoid port conflicts
+	 */
+	async stopSetupWaitingMode(): Promise<void> {
+		if (this.setupWaitingServer) {
+			this.logger.info("🛑 Stopping setup waiting mode server...");
+			await this.setupWaitingServer.stop();
+			this.setupWaitingServer = null;
+			this.logger.info("✅ Setup waiting mode server stopped");
+		}
 	}
 
 	/**
@@ -166,6 +239,12 @@ export class WorkerService {
 		this.isShuttingDown = true;
 
 		this.logger.info("\nShutting down edge worker...");
+
+		// Stop setup waiting mode server if still running
+		if (this.setupWaitingServer) {
+			await this.setupWaitingServer.stop();
+			this.setupWaitingServer = null;
+		}
 
 		// Stop edge worker (includes stopping shared application server and Cloudflare tunnel)
 		if (this.edgeWorker) {

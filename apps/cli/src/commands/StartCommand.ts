@@ -10,7 +10,25 @@ export class StartCommand extends BaseCommand {
 			const edgeConfig = this.app.config.load();
 			const repositories = edgeConfig.repositories || [];
 
-			// Validate we have repositories configured
+			// Check if we're in setup waiting mode (no repositories + CYRUS_SETUP_PENDING flag)
+			if (
+				repositories.length === 0 &&
+				process.env.CYRUS_SETUP_PENDING === "true"
+			) {
+				// Enable setup waiting mode and start config watcher
+				this.app.enableSetupWaitingMode();
+
+				// Start setup waiting mode - server only, no EdgeWorker
+				await this.app.worker.startSetupWaitingMode();
+
+				// Setup signal handlers for graceful shutdown
+				this.app.setupSignalHandlers();
+
+				// Keep process alive and wait for configuration
+				return;
+			}
+
+			// Validate we have repositories configured (normal operation mode)
 			if (repositories.length === 0) {
 				this.logError("No repositories configured");
 				this.logger.info(
