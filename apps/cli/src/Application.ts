@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, watch } from "node:fs";
 import { join } from "node:path";
+import type { RepositoryConfig } from "cyrus-core";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import { SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
@@ -18,6 +19,8 @@ export class Application {
 	public readonly worker: WorkerService;
 	public readonly logger: Logger;
 	private envWatcher?: ReturnType<typeof watch>;
+	private configWatcher?: ReturnType<typeof watch>;
+	private isInSetupWaitingMode = false;
 
 	constructor(public readonly cyrusHome: string) {
 		// Initialize logger first
@@ -128,12 +131,143 @@ export class Application {
 	}
 
 	/**
+	 * Enable setup waiting mode and start watching config.json for repositories
+	 */
+	enableSetupWaitingMode(): void {
+		this.isInSetupWaitingMode = true;
+		this.startConfigWatcher();
+	}
+
+	/**
+	 * Setup file watcher for config.json to detect when repositories are added
+	 */
+	private startConfigWatcher(): void {
+		const configPath = this.config.getConfigPath();
+
+		// Only watch if file exists
+		if (!existsSync(configPath)) {
+			return;
+		}
+
+		try {
+			this.configWatcher = watch(configPath, async (eventType) => {
+				if (eventType === "change" && this.isInSetupWaitingMode) {
+					this.logger.info(
+						"🔄 Configuration file changed, checking for repositories...",
+					);
+
+					// Reload config and check if repositories were added
+					const edgeConfig = this.config.load();
+					const repositories = edgeConfig.repositories || [];
+
+					if (repositories.length > 0) {
+						this.logger.success("✅ Configuration received!");
+						this.logger.info(
+							`📦 Starting edge worker with ${repositories.length} repository(ies)...`,
+						);
+
+						// Remove CYRUS_SETUP_PENDING flag from .env
+						await this.removeSetupPendingFlag();
+
+						// Transition to normal operation mode
+						await this.transitionToNormalMode(repositories);
+					}
+				}
+			});
+
+			this.logger.info(
+				`👀 Watching config.json for repository configuration: ${configPath}`,
+			);
+		} catch (error) {
+			this.logger.error(`❌ Failed to watch config.json: ${error}`);
+		}
+	}
+
+	/**
+	 * Remove CYRUS_SETUP_PENDING flag from .env file
+	 */
+	private async removeSetupPendingFlag(): Promise<void> {
+		const { readFile, writeFile } = await import("node:fs/promises");
+		const envPath = join(this.cyrusHome, ".env");
+
+		if (!existsSync(envPath)) {
+			return;
+		}
+
+		try {
+			const envContent = await readFile(envPath, "utf-8");
+			const updatedContent = envContent
+				.split("\n")
+				.filter((line) => !line.startsWith("CYRUS_SETUP_PENDING="))
+				.join("\n");
+
+			await writeFile(envPath, updatedContent, "utf-8");
+			this.logger.info("✅ Removed CYRUS_SETUP_PENDING flag from .env");
+
+			// Reload environment variables
+			this.loadEnvFile();
+		} catch (error) {
+			this.logger.error(
+				`❌ Failed to remove CYRUS_SETUP_PENDING flag: ${error}`,
+			);
+		}
+	}
+
+	/**
+	 * Transition from setup waiting mode to normal operation
+	 */
+	private async transitionToNormalMode(
+		repositories: RepositoryConfig[],
+	): Promise<void> {
+		try {
+			this.isInSetupWaitingMode = false;
+
+			// Close config watcher
+			if (this.configWatcher) {
+				this.configWatcher.close();
+				this.configWatcher = undefined;
+			}
+
+			// Start the EdgeWorker with the new configuration
+			await this.worker.startEdgeWorker({
+				repositories,
+			});
+
+			// Display server information
+			const serverPort = this.worker.getServerPort();
+
+			this.logger.raw("");
+			this.logger.divider(70);
+			this.logger.success("Edge worker started successfully");
+			this.logger.info(`🔗 Server running on port ${serverPort}`);
+
+			if (process.env.CLOUDFLARE_TOKEN) {
+				this.logger.info("🌩️  Cloudflare tunnel: Active");
+			}
+
+			this.logger.info(`\n📦 Managing ${repositories.length} repositories:`);
+			repositories.forEach((repo) => {
+				this.logger.info(`   • ${repo.name} (${repo.repositoryPath})`);
+			});
+			this.logger.divider(70);
+		} catch (error) {
+			this.logger.error(`❌ Failed to transition to normal mode: ${error}`);
+			process.exit(1);
+		}
+	}
+
+	/**
 	 * Handle graceful shutdown
 	 */
 	async shutdown(): Promise<void> {
 		// Close .env file watcher
 		if (this.envWatcher) {
 			this.envWatcher.close();
+		}
+
+		// Close config file watcher
+		if (this.configWatcher) {
+			this.configWatcher.close();
 		}
 
 		await this.worker.stop();

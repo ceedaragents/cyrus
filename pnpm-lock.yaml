@@ -42,6 +42,9 @@ importers:
       cyrus-cloudflare-tunnel-client:
         specifier: workspace:*
         version: link:../../packages/cloudflare-tunnel-client
+      cyrus-config-updater:
+        specifier: workspace:*
+        version: link:../../packages/config-updater
       cyrus-core:
         specifier: workspace:*
         version: link:../../packages/core

@@ -36,6 +36,62 @@ export class WorkerService {
 	}
 
 	/**
+	 * Start setup waiting mode - server infrastructure only, no EdgeWorker
+	 * Used after initial authentication while waiting for server configuration
+	 */
+	async startSetupWaitingMode(): Promise<void> {
+		const { SharedApplicationServer } = await import("cyrus-edge-worker");
+		const { ConfigUpdater } = await import("cyrus-config-updater");
+
+		// Determine server configuration
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const serverPort = parsePort(
+			process.env.CYRUS_SERVER_PORT,
+			DEFAULT_SERVER_PORT,
+		);
+		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
+
+		// Create and start SharedApplicationServer
+		const server = new SharedApplicationServer(serverPort, serverHost);
+		server.initializeFastify();
+
+		// Register ConfigUpdater routes
+		const configUpdater = new ConfigUpdater(
+			server.getFastifyInstance(),
+			this.cyrusHome,
+			process.env.CYRUS_API_KEY || "",
+		);
+		configUpdater.register();
+
+		this.logger.info("✅ Config updater registered");
+		this.logger.info(
+			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
+		);
+		this.logger.info(
+			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
+
+		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
+		await server.start();
+
+		this.logger.raw("");
+		this.logger.divider(70);
+		this.logger.info("⏳ Waiting for configuration from server...");
+		this.logger.info(`🔗 Server running on port ${serverPort}`);
+
+		if (process.env.CLOUDFLARE_TOKEN) {
+			this.logger.info("🌩️  Cloudflare tunnel: Active");
+		}
+
+		this.logger.info("📡 Config updater: Ready");
+		this.logger.raw("");
+		this.logger.info("Your Cyrus instance is ready to receive configuration.");
+		this.logger.info("Complete setup at: https://www.atcyrus.com/onboarding");
+		this.logger.divider(70);
+	}
+
+	/**
 	 * Start the EdgeWorker with given configuration
 	 */
 	async startEdgeWorker(params: {

@@ -43,6 +43,7 @@
 		"@linear/sdk": "^60.0.0",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-cloudflare-tunnel-client": "workspace:*",
+		"cyrus-config-updater": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-edge-worker": "workspace:*",
 		"dotenv": "^16.5.0",
