@@ -31,8 +31,6 @@ All notable changes to this project will be documented in this file.
   - Removed `billing` and `set-customer-id` commands
   - Streamlined `auth` command to focus on authentication only
   - All tunnel management now handled by SharedApplicationServer
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.28 - includes parity updates with Claude Code v2.0.28 and fixes custom tools timing out after 30 seconds instead of respecting the MCP_TOOL_TIMEOUT environment variable. See [@anthropic-ai/claude-agent-sdk v0.1.28 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0128)
-- Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
 
 ### Removed
 - **Subscription service**: Removed customer validation and subscription checking code
