@@ -44,9 +44,12 @@ All verification checks have passed. Now commit your changes and create or updat
 
 ## Expected Output
 
-Provide a brief summary of:
-- Commit messages used
-- Files committed
-- PR status (created or updated)
-- PR URL
-- Any issues encountered during git/gh operations
+**IMPORTANT: Do NOT post Linear comments.** Your output is for internal workflow only.
+
+Provide a brief completion message (1 sentence max):
+
+```
+Changes committed and PR [created/updated] at [PR URL].
+```
+
+Example: "Changes committed and PR created at https://github.com/org/repo/pull/123."

@@ -1,6 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner, createCyrusToolsServer } from "cyrus-claude-runner";
-import { NdjsonClient } from "cyrus-ndjson-client";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -9,8 +9,8 @@ import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
 // Mock all dependencies
 vi.mock("fs/promises");
-vi.mock("cyrus-ndjson-client");
 vi.mock("cyrus-claude-runner");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("@linear/sdk");
 vi.mock("../src/SharedApplicationServer.js");
 vi.mock("../src/AgentSessionManager.js");
@@ -99,6 +99,8 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				claudeRunner: mockClaudeRunner,
 			}),
 			getClaudeRunner: vi.fn().mockReturnValue(mockClaudeRunner),
+			postRoutingThought: vi.fn().mockResolvedValue(undefined),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 
 		// Mock parent session manager (for different repository)
@@ -122,17 +124,20 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
+					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getWebhookUrl: vi
+						.fn()
+						.mockReturnValue("http://localhost:3456/webhook"),
 					registerOAuthCallbackHandler: vi.fn(),
 				}) as any,
 		);
 
-		vi.mocked(NdjsonClient).mockImplementation(
+		vi.mocked(LinearEventTransport).mockImplementation(
 			() =>
 				({
-					connect: vi.fn().mockResolvedValue(undefined),
-					disconnect: vi.fn(),
+					register: vi.fn(),
 					on: vi.fn(),
-					isConnected: vi.fn().mockReturnValue(true),
+					removeAllListeners: vi.fn(),
 				}) as any,
 		);
 
@@ -218,6 +223,10 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 			// Assert - The feedback delivery should return quickly
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Should return in less than 100ms (not wait for the 10-second session)
@@ -263,6 +272,10 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			expect(result).toBe(true);
 			expect(duration).toBeLessThan(100); // Returns immediately
 			expect(sessionCompleted).toBe(false); // Session still running
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Wait a bit and verify session completes in background

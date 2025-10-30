@@ -18,7 +18,7 @@ export class AuthCommand extends BaseCommand {
 			this.logError("Error: Auth key is required");
 			console.log("\nUsage: cyrus auth <auth-key>");
 			console.log(
-				"\nGet your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus",
+				"\nGet your auth key from: https://app.atcyrus.com/onboarding/auth-cyrus",
 			);
 			process.exit(1);
 		}
@@ -41,7 +41,7 @@ export class AuthCommand extends BaseCommand {
 				console.error(configResponse.error || "Invalid response from server");
 				console.log("\nPlease verify your auth key is correct.");
 				console.log(
-					"Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus",
+					"Get your auth key from: https://app.atcyrus.com/onboarding/auth-cyrus",
 				);
 				process.exit(1);
 			}
@@ -59,17 +59,15 @@ export class AuthCommand extends BaseCommand {
 # Generated on ${new Date().toISOString()}
 CLOUDFLARE_TOKEN=${configResponse.config!.cloudflareToken}
 CYRUS_API_KEY=${configResponse.config!.apiKey}
+CYRUS_SETUP_PENDING=true
 `;
 
 			writeFileSync(envPath, envContent, "utf-8");
 			this.logSuccess(`Credentials saved to ${envPath}`);
 
-			// Update config.json with isLegacy: false
-			this.app.config.update((config) => {
-				config.isLegacy = false;
-				return config;
-			});
-			this.logSuccess("Configuration updated (isLegacy: false)");
+			// Reload environment variables to pick up CYRUS_SETUP_PENDING
+			const dotenv = await import("dotenv");
+			dotenv.config({ path: envPath, override: true });
 
 			console.log("\n✨ Setup complete! Starting Cyrus...");
 			this.logDivider();

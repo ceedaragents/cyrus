@@ -10,7 +10,7 @@ import type { ProcedureDefinition, RequestClassification } from "./types.js";
 export const SUBROUTINES = {
 	primary: {
 		name: "primary",
-		promptPath: "primary", // Special: resolved via label (debugger/builder/scoper/orchestrator)
+		promptPath: "primary", // Special: resolved via label (debugger/builder/scoper/orchestrator) or direct user input
 		description: "Main work execution phase",
 	},
 	debuggerReproduction: {
@@ -54,6 +54,36 @@ export const SUBROUTINES = {
 		description: "Detailed summary with implementation details",
 		suppressThoughtPosting: true,
 	},
+	questionInvestigation: {
+		name: "question-investigation",
+		promptPath: "subroutines/question-investigation.md",
+		description: "Gather information needed to answer a question",
+	},
+	questionAnswer: {
+		name: "question-answer",
+		promptPath: "subroutines/question-answer.md",
+		maxTurns: 1,
+		description: "Format final answer to user question",
+		suppressThoughtPosting: true,
+	},
+	codingActivity: {
+		name: "coding-activity",
+		promptPath: "subroutines/coding-activity.md",
+		description: "Implementation phase for code changes (no git/gh operations)",
+	},
+	preparation: {
+		name: "preparation",
+		promptPath: "subroutines/preparation.md",
+		description:
+			"Analyze request to determine if clarification or planning is needed",
+	},
+	planSummary: {
+		name: "plan-summary",
+		promptPath: "subroutines/plan-summary.md",
+		maxTurns: 1,
+		description: "Present clarifying questions or implementation plan",
+		suppressThoughtPosting: true,
+	},
 } as const;
 
 /**
@@ -63,7 +93,10 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 	"simple-question": {
 		name: "simple-question",
 		description: "For questions or requests that don't modify the codebase",
-		subroutines: [SUBROUTINES.primary, SUBROUTINES.conciseSummary],
+		subroutines: [
+			SUBROUTINES.questionInvestigation,
+			SUBROUTINES.questionAnswer,
+		],
 	},
 
 	"documentation-edit": {
@@ -81,24 +114,23 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		name: "full-development",
 		description: "For code changes requiring full verification and PR creation",
 		subroutines: [
-			SUBROUTINES.primary,
+			SUBROUTINES.codingActivity,
 			SUBROUTINES.verifications,
 			SUBROUTINES.gitGh,
-			SUBROUTINES.verboseSummary,
+			SUBROUTINES.conciseSummary,
 		],
 	},
 
 	"debugger-full": {
 		name: "debugger-full",
 		description:
-			"Full debugging workflow with reproduction, approval, fix, and verification",
+			"Full debugging workflow with reproduction, fix, and verification",
 		subroutines: [
 			SUBROUTINES.debuggerReproduction,
-			SUBROUTINES.getApproval,
 			SUBROUTINES.debuggerFix,
 			SUBROUTINES.verifications,
 			SUBROUTINES.gitGh,
-			SUBROUTINES.verboseSummary,
+			SUBROUTINES.conciseSummary,
 		],
 	},
 
@@ -106,7 +138,14 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		name: "orchestrator-full",
 		description:
 			"Full orchestration workflow with decomposition and delegation to sub-agents",
-		subroutines: [SUBROUTINES.primary, SUBROUTINES.verboseSummary],
+		subroutines: [SUBROUTINES.primary, SUBROUTINES.conciseSummary],
+	},
+
+	"plan-mode": {
+		name: "plan-mode",
+		description:
+			"Planning mode for requests needing clarification or implementation planning",
+		subroutines: [SUBROUTINES.preparation, SUBROUTINES.planSummary],
 	},
 };
 
@@ -120,6 +159,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	question: "simple-question",
 	documentation: "documentation-edit",
 	transient: "simple-question",
+	planning: "plan-mode",
 	code: "full-development",
 	debugger: "debugger-full",
 	orchestrator: "orchestrator-full",

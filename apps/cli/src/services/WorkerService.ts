@@ -12,7 +12,7 @@ import type { Logger } from "./Logger.js";
  */
 export class WorkerService {
 	private edgeWorker: EdgeWorker | null = null;
-	private cloudflareClient: any = null;
+	private setupWaitingServer: any = null; // SharedApplicationServer instance during setup waiting mode
 	private isShuttingDown = false;
 
 	constructor(
@@ -37,10 +37,81 @@ export class WorkerService {
 	}
 
 	/**
+	 * Start setup waiting mode - server infrastructure only, no EdgeWorker
+	 * Used after initial authentication while waiting for server configuration
+	 */
+	async startSetupWaitingMode(): Promise<void> {
+		const { SharedApplicationServer } = await import("cyrus-edge-worker");
+		const { ConfigUpdater } = await import("cyrus-config-updater");
+
+		// Determine server configuration
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const serverPort = parsePort(
+			process.env.CYRUS_SERVER_PORT,
+			DEFAULT_SERVER_PORT,
+		);
+		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
+
+		// Create and start SharedApplicationServer
+		this.setupWaitingServer = new SharedApplicationServer(
+			serverPort,
+			serverHost,
+		);
+		this.setupWaitingServer.initializeFastify();
+
+		// Register ConfigUpdater routes
+		const configUpdater = new ConfigUpdater(
+			this.setupWaitingServer.getFastifyInstance(),
+			this.cyrusHome,
+			process.env.CYRUS_API_KEY || "",
+		);
+		configUpdater.register();
+
+		this.logger.info("✅ Config updater registered");
+		this.logger.info(
+			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
+		);
+		this.logger.info(
+			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
+
+		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
+		await this.setupWaitingServer.start();
+
+		this.logger.raw("");
+		this.logger.divider(70);
+		this.logger.info("⏳ Waiting for configuration from server...");
+		this.logger.info(`🔗 Server running on port ${serverPort}`);
+
+		if (process.env.CLOUDFLARE_TOKEN) {
+			this.logger.info("🌩️  Cloudflare tunnel: Active");
+		}
+
+		this.logger.info("📡 Config updater: Ready");
+		this.logger.raw("");
+		this.logger.info("Your Cyrus instance is ready to receive configuration.");
+		this.logger.info("Complete setup at: https://app.atcyrus.com/onboarding");
+		this.logger.divider(70);
+	}
+
+	/**
+	 * Stop the setup waiting mode server
+	 * Must be called before starting EdgeWorker to avoid port conflicts
+	 */
+	async stopSetupWaitingMode(): Promise<void> {
+		if (this.setupWaitingServer) {
+			this.logger.info("🛑 Stopping setup waiting mode server...");
+			await this.setupWaitingServer.stop();
+			this.setupWaitingServer = null;
+			this.logger.info("✅ Setup waiting mode server stopped");
+		}
+	}
+
+	/**
 	 * Start the EdgeWorker with given configuration
 	 */
 	async startEdgeWorker(params: {
-		proxyUrl: string;
 		repositories: RepositoryConfig[];
 		ngrokAuthToken?: string;
 		onOAuthCallback?: (
@@ -49,7 +120,7 @@ export class WorkerService {
 			workspaceName: string,
 		) => Promise<void>;
 	}): Promise<void> {
-		const { proxyUrl, repositories, ngrokAuthToken, onOAuthCallback } = params;
+		const { repositories, ngrokAuthToken, onOAuthCallback } = params;
 
 		// Determine if using external host
 		const isExternalHost =
@@ -60,7 +131,6 @@ export class WorkerService {
 
 		// Create EdgeWorker configuration
 		const config: EdgeWorkerConfig = {
-			proxyUrl,
 			repositories,
 			cyrusHome: this.cyrusHome,
 			defaultAllowedTools:
@@ -109,90 +179,10 @@ export class WorkerService {
 		await this.edgeWorker.start();
 
 		this.logger.success("Edge worker started successfully");
-		this.logger.info(`Configured proxy URL: ${config.proxyUrl}`);
 		this.logger.info(`Managing ${repositories.length} repositories:`);
 		repositories.forEach((repo) => {
 			this.logger.info(`  - ${repo.name} (${repo.repositoryPath})`);
 		});
-	}
-
-	/**
-	 * Start Cloudflare tunnel client (Pro plan only)
-	 */
-	async startCloudflareClient(params: {
-		onWebhook?: (payload: any) => void;
-		onConfigUpdate?: () => void;
-		onError?: (error: Error) => void;
-	}): Promise<void> {
-		const { onWebhook, onConfigUpdate, onError } = params;
-
-		// Validate required environment variables
-		const cloudflareToken = process.env.CLOUDFLARE_TOKEN;
-		const cyrusApiKey = process.env.CYRUS_API_KEY;
-
-		if (!cloudflareToken || !cyrusApiKey) {
-			const missing = [];
-			if (!cloudflareToken) missing.push("CLOUDFLARE_TOKEN");
-			if (!cyrusApiKey) missing.push("CYRUS_API_KEY");
-
-			throw new Error(
-				`Missing required credentials: ${missing.join(", ")}. ` +
-					`Please run: cyrus auth <auth-key>. ` +
-					`Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus`,
-			);
-		}
-
-		this.logger.info("\n🌩️  Starting Cloudflare Tunnel Client");
-		this.logger.divider(50);
-
-		try {
-			const { CloudflareTunnelClient } = await import(
-				"cyrus-cloudflare-tunnel-client"
-			);
-
-			const client = new CloudflareTunnelClient({
-				cyrusHome: this.cyrusHome,
-				onWebhook:
-					onWebhook ||
-					((payload) => {
-						this.logger.info("\n📨 Webhook received from Linear");
-						this.logger.info(`Action: ${payload.action || "Unknown"}`);
-						this.logger.info(`Type: ${payload.type || "Unknown"}`);
-						// TODO: Forward webhook to EdgeWorker or handle directly
-					}),
-				onConfigUpdate:
-					onConfigUpdate ||
-					(() => {
-						this.logger.info("\n🔄 Configuration updated from cyrus-hosted");
-					}),
-				onError:
-					onError ||
-					((error) => {
-						this.logger.error(`\nCloudflare client error: ${error.message}`);
-					}),
-				onReady: (tunnelUrl) => {
-					this.logger.success("Cloudflare tunnel established");
-					this.logger.info(`🔗 Tunnel URL: ${tunnelUrl}`);
-					this.logger.divider(50);
-					this.logger.info("\n💎 Pro Plan Active - Using Cloudflare Tunnel");
-					this.logger.info(
-						"🚀 Cyrus is now ready to receive webhooks and config updates",
-					);
-					this.logger.divider(50);
-				},
-			});
-
-			// Start the tunnel with Cloudflare token and API key
-			await client.startTunnel(cloudflareToken, cyrusApiKey);
-
-			// Store client for cleanup (Application handles signal handlers)
-			this.cloudflareClient = client;
-		} catch (error) {
-			throw new Error(
-				`Failed to start Cloudflare tunnel: ${(error as Error).message}. ` +
-					`If you're having issues, try re-authenticating with: cyrus auth <auth-key>`,
-			);
-		}
 	}
 
 	/**
@@ -250,15 +240,15 @@ export class WorkerService {
 
 		this.logger.info("\nShutting down edge worker...");
 
-		// Stop edge worker (includes stopping shared application server)
-		if (this.edgeWorker) {
-			await this.edgeWorker.stop();
+		// Stop setup waiting mode server if still running
+		if (this.setupWaitingServer) {
+			await this.setupWaitingServer.stop();
+			this.setupWaitingServer = null;
 		}
 
-		// Stop Cloudflare client if running
-		if (this.cloudflareClient) {
-			this.logger.info("\n🛑 Shutting down Cloudflare tunnel...");
-			this.cloudflareClient.disconnect();
+		// Stop edge worker (includes stopping shared application server and Cloudflare tunnel)
+		if (this.edgeWorker) {
+			await this.edgeWorker.stop();
 		}
 
 		this.logger.info("Shutdown complete");

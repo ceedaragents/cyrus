@@ -47,6 +47,49 @@ cyrus/
 
 For a detailed visual representation of how these components interact and map Claude Code sessions to Linear comment threads, see @architecture.md.
 
+## Testing Best Practices
+
+### Prompt Assembly Tests
+
+When working with prompt assembly tests in `packages/edge-worker/test/prompt-assembly*.test.ts`:
+
+**CRITICAL: Always assert the ENTIRE prompt, never use partial checks like `.toContain()`**
+
+- Use `.expectUserPrompt()` with the complete expected prompt string
+- Use `.expectSystemPrompt()` with the complete expected system prompt (or `undefined`)
+- Use `.expectComponents()` to verify all prompt components
+- Use `.expectPromptType()` to verify the prompt type
+- Always call `.verify()` to execute all assertions
+
+This ensures comprehensive test coverage and catches regressions in prompt structure, formatting, and content. Partial assertions with `.toContain()` are too weak and can miss important changes.
+
+**Example**:
+```typescript
+// ✅ CORRECT - Full prompt assertion
+await scenario(worker)
+  .newSession()
+  .withUserComment("Test comment")
+  .expectUserPrompt(`<user_comment>
+  <author>Test User</author>
+  <timestamp>2025-01-27T12:00:00Z</timestamp>
+  <content>
+Test comment
+  </content>
+</user_comment>`)
+  .expectSystemPrompt(undefined)
+  .expectPromptType("continuation")
+  .expectComponents("user-comment")
+  .verify();
+
+// ❌ INCORRECT - Partial assertion (too weak)
+const result = await scenario(worker)
+  .newSession()
+  .withUserComment("Test comment")
+  .build();
+expect(result.userPrompt).toContain("<user_comment>");
+expect(result.userPrompt).toContain("Test User");
+```
+
 ## Common Commands
 
 ### Monorepo-wide Commands (run from root)

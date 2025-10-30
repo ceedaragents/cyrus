@@ -1,6 +1,27 @@
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import type { Issue as LinearIssue } from "@linear/sdk";
 import type { SDKMessage } from "cyrus-claude-runner";
 import type { Workspace } from "./CyrusAgentSession.js";
+
+/**
+ * Resolve path with tilde (~) expansion
+ * Expands ~ to the user's home directory and resolves to absolute path
+ *
+ * @param path - Path that may contain ~ prefix (e.g., "~/.cyrus/repos/myrepo")
+ * @returns Absolute path with ~ expanded
+ *
+ * @example
+ * resolvePath("~/projects/myapp") // "/home/user/projects/myapp"
+ * resolvePath("/absolute/path") // "/absolute/path"
+ * resolvePath("relative/path") // "/current/working/dir/relative/path"
+ */
+export function resolvePath(path: string): string {
+	if (path.startsWith("~/")) {
+		return resolve(homedir(), path.slice(2));
+	}
+	return resolve(path);
+}
 
 /**
  * OAuth callback handler type
@@ -78,7 +99,7 @@ export interface RepositoryConfig {
  */
 export interface EdgeWorkerConfig {
 	// Proxy connection config
-	proxyUrl: string;
+	proxyUrl?: string; // Optional - defaults to DEFAULT_PROXY_URL for OAuth flows
 	baseUrl?: string;
 	webhookBaseUrl?: string; // Legacy support - use baseUrl instead
 	webhookPort?: number; // Legacy support - now uses serverPort
@@ -174,5 +195,4 @@ export interface EdgeConfig {
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
-	isLegacy?: boolean; // When false, use Cloudflare tunnel client; when true (default), use ndjson/ngrok
 }

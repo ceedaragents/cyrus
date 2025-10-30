@@ -1,6 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner, createCyrusToolsServer } from "cyrus-claude-runner";
-import { NdjsonClient } from "cyrus-ndjson-client";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -9,8 +9,8 @@ import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
 // Mock all dependencies
 vi.mock("fs/promises");
-vi.mock("cyrus-ndjson-client");
 vi.mock("cyrus-claude-runner");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("@linear/sdk");
 vi.mock("../src/SharedApplicationServer.js");
 vi.mock("../src/AgentSessionManager.js");
@@ -97,6 +97,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				claudeRunner: mockClaudeRunner,
 			}),
 			getClaudeRunner: vi.fn().mockReturnValue(mockClaudeRunner),
+			postRoutingThought: vi.fn().mockResolvedValue(undefined),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 
 		// Mock parent session manager (for different repository)
@@ -120,17 +122,20 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
+					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getWebhookUrl: vi
+						.fn()
+						.mockReturnValue("http://localhost:3456/webhook"),
 					registerOAuthCallbackHandler: vi.fn(),
 				}) as any,
 		);
 
-		vi.mocked(NdjsonClient).mockImplementation(
+		vi.mocked(LinearEventTransport).mockImplementation(
 			() =>
 				({
-					connect: vi.fn().mockResolvedValue(undefined),
-					disconnect: vi.fn(),
+					register: vi.fn(),
 					on: vi.fn(),
-					isConnected: vi.fn().mockReturnValue(true),
+					removeAllListeners: vi.fn(),
 				}) as any,
 		);
 
@@ -205,6 +210,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			const resumeArgs = resumeClaudeSessionSpy.mock.calls[0];
@@ -263,6 +272,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert - Should still work but with generic parent reference
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			const prompt = resumeClaudeSessionSpy.mock.calls[0][4];
@@ -346,6 +359,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert - Now returns true immediately (fire-and-forget)
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Wait a bit for the async error handling to occur
@@ -353,7 +370,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// The error is logged asynchronously
 			expect(console.error).toHaveBeenCalledWith(
-				`[EdgeWorker] Failed to complete child session with feedback:`,
+				`[EdgeWorker] Failed to process feedback in child session:`,
 				expect.any(Error),
 			);
 		});
@@ -399,6 +416,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert - Should find the child in the correct repository
 			expect(result).toBe(true);
+
+			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Verify the child was found in one of the repositories

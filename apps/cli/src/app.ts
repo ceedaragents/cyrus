@@ -6,10 +6,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Application } from "./Application.js";
 import { AuthCommand } from "./commands/AuthCommand.js";
-import { BillingCommand } from "./commands/BillingCommand.js";
 import { CheckTokensCommand } from "./commands/CheckTokensCommand.js";
 import { RefreshTokenCommand } from "./commands/RefreshTokenCommand.js";
-import { SetCustomerIdCommand } from "./commands/SetCustomerIdCommand.js";
 import { StartCommand } from "./commands/StartCommand.js";
 
 // Parse command line arguments
@@ -54,11 +52,9 @@ Usage: cyrus [command] [options]
 
 Commands:
   start              Start the edge worker (default)
-  auth <auth-key>    Authenticate with Cyrus Pro plan using auth key
+  auth <auth-key>    Authenticate with Cyrus using auth key
   check-tokens       Check the status of all Linear tokens
   refresh-token      Refresh a specific Linear token
-  billing            Open Stripe billing portal (Pro plan only)
-  set-customer-id    Set your Stripe customer ID
 
 Options:
   --version          Show version number
@@ -67,7 +63,7 @@ Options:
 
 Examples:
   cyrus                          Start the edge worker
-  cyrus auth <your-auth-key>     Authenticate and start using Pro plan
+  cyrus auth <your-auth-key>     Authenticate and start
   cyrus check-tokens             Check all Linear token statuses
   cyrus refresh-token            Interactive token refresh
   cyrus --cyrus-home=/tmp/cyrus  Use custom config directory
@@ -101,14 +97,6 @@ const commandParams = commandArgs.slice(1);
 
 			case "refresh-token":
 				await new RefreshTokenCommand(app).execute(commandParams);
-				break;
-
-			case "billing":
-				await new BillingCommand(app).execute(commandParams);
-				break;
-
-			case "set-customer-id":
-				await new SetCustomerIdCommand(app).execute(commandParams);
 				break;
 
 			default:

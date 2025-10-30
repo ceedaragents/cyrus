@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, watch } from "node:fs";
+import { dirname, join } from "node:path";
+import type { RepositoryConfig } from "cyrus-core";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import { SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
@@ -6,8 +8,6 @@ import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
 import { ConfigService } from "./services/ConfigService.js";
 import { GitService } from "./services/GitService.js";
 import { Logger } from "./services/Logger.js";
-import { OAuthService } from "./services/OAuthService.js";
-import { SubscriptionService } from "./services/SubscriptionService.js";
 import { WorkerService } from "./services/WorkerService.js";
 
 /**
@@ -15,40 +15,94 @@ import { WorkerService } from "./services/WorkerService.js";
  */
 export class Application {
 	public readonly config: ConfigService;
-	public readonly oauth: OAuthService;
 	public readonly git: GitService;
-	public readonly subscription: SubscriptionService;
 	public readonly worker: WorkerService;
 	public readonly logger: Logger;
+	private envWatcher?: ReturnType<typeof watch>;
+	private configWatcher?: ReturnType<typeof watch>;
+	private isInSetupWaitingMode = false;
 
 	constructor(public readonly cyrusHome: string) {
 		// Initialize logger first
 		this.logger = new Logger();
+
+		// Ensure required directories exist
+		this.ensureRequiredDirectories();
+
 		// Load environment variables from CYRUS_HOME/.env
-		const cyrusEnvPath = `${cyrusHome}/.env`;
-		if (existsSync(cyrusEnvPath)) {
-			dotenv.config({ path: cyrusEnvPath });
-		}
+		this.loadEnvFile();
+
+		// Watch .env file for changes and reload
+		this.setupEnvFileWatcher();
 
 		// Initialize services
 		this.config = new ConfigService(cyrusHome, this.logger);
 		this.git = new GitService(this.logger);
-		this.subscription = new SubscriptionService(this.logger);
-
-		// OAuth and Worker services need runtime configuration
-		const serverPort = parsePort(
-			process.env.CYRUS_SERVER_PORT,
-			DEFAULT_SERVER_PORT,
-		);
-		const baseUrl = process.env.CYRUS_BASE_URL;
-
-		this.oauth = new OAuthService(serverPort, baseUrl, this.logger);
 		this.worker = new WorkerService(
 			this.config,
 			this.git,
 			cyrusHome,
 			this.logger,
 		);
+	}
+
+	/**
+	 * Load environment variables from ~/.cyrus/.env file
+	 */
+	private loadEnvFile(): void {
+		const cyrusEnvPath = join(this.cyrusHome, ".env");
+		if (existsSync(cyrusEnvPath)) {
+			dotenv.config({ path: cyrusEnvPath, override: true });
+			this.logger.info(`🔧 Loaded environment variables from ${cyrusEnvPath}`);
+		}
+	}
+
+	/**
+	 * Setup file watcher for .env file to reload on changes
+	 */
+	private setupEnvFileWatcher(): void {
+		const cyrusEnvPath = join(this.cyrusHome, ".env");
+
+		// Only watch if file exists
+		if (!existsSync(cyrusEnvPath)) {
+			return;
+		}
+
+		try {
+			this.envWatcher = watch(cyrusEnvPath, (eventType) => {
+				if (eventType === "change") {
+					this.logger.info("🔄 .env file changed, reloading...");
+					this.loadEnvFile();
+				}
+			});
+
+			this.logger.info(`👀 Watching .env file for changes: ${cyrusEnvPath}`);
+		} catch (error) {
+			this.logger.error(`❌ Failed to watch .env file: ${error}`);
+		}
+	}
+
+	/**
+	 * Ensure required Cyrus directories exist
+	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs
+	 */
+	private ensureRequiredDirectories(): void {
+		const requiredDirs = ["repos", "worktrees", "mcp-configs"];
+
+		for (const dir of requiredDirs) {
+			const dirPath = join(this.cyrusHome, dir);
+			if (!existsSync(dirPath)) {
+				try {
+					mkdirSync(dirPath, { recursive: true });
+					this.logger.info(`📁 Created directory: ${dirPath}`);
+				} catch (error) {
+					this.logger.error(
+						`❌ Failed to create directory ${dirPath}: ${error}`,
+					);
+					throw error;
+				}
+			}
+		}
 	}
 
 	/**
@@ -77,9 +131,159 @@ export class Application {
 	}
 
 	/**
+	 * Enable setup waiting mode and start watching config.json for repositories
+	 */
+	enableSetupWaitingMode(): void {
+		this.isInSetupWaitingMode = true;
+		this.startConfigWatcher();
+	}
+
+	/**
+	 * Setup file watcher for config.json to detect when repositories are added
+	 */
+	private startConfigWatcher(): void {
+		const configPath = this.config.getConfigPath();
+
+		// Create empty config file if it doesn't exist
+		if (!existsSync(configPath)) {
+			try {
+				const configDir = dirname(configPath);
+				if (!existsSync(configDir)) {
+					mkdirSync(configDir, { recursive: true });
+				}
+				// Create empty config with empty repositories array
+				this.config.save({ repositories: [] });
+				this.logger.info(`📝 Created empty config file: ${configPath}`);
+			} catch (error) {
+				this.logger.error(`❌ Failed to create config file: ${error}`);
+				return;
+			}
+		}
+
+		try {
+			this.configWatcher = watch(configPath, async (eventType) => {
+				if (eventType === "change" && this.isInSetupWaitingMode) {
+					this.logger.info(
+						"🔄 Configuration file changed, checking for repositories...",
+					);
+
+					// Reload config and check if repositories were added
+					const edgeConfig = this.config.load();
+					const repositories = edgeConfig.repositories || [];
+
+					if (repositories.length > 0) {
+						this.logger.success("✅ Configuration received!");
+						this.logger.info(
+							`📦 Starting edge worker with ${repositories.length} repository(ies)...`,
+						);
+
+						// Remove CYRUS_SETUP_PENDING flag from .env
+						await this.removeSetupPendingFlag();
+
+						// Transition to normal operation mode
+						await this.transitionToNormalMode(repositories);
+					}
+				}
+			});
+
+			this.logger.info(
+				`👀 Watching config.json for repository configuration: ${configPath}`,
+			);
+		} catch (error) {
+			this.logger.error(`❌ Failed to watch config.json: ${error}`);
+		}
+	}
+
+	/**
+	 * Remove CYRUS_SETUP_PENDING flag from .env file
+	 */
+	private async removeSetupPendingFlag(): Promise<void> {
+		const { readFile, writeFile } = await import("node:fs/promises");
+		const envPath = join(this.cyrusHome, ".env");
+
+		if (!existsSync(envPath)) {
+			return;
+		}
+
+		try {
+			const envContent = await readFile(envPath, "utf-8");
+			const updatedContent = envContent
+				.split("\n")
+				.filter((line) => !line.startsWith("CYRUS_SETUP_PENDING="))
+				.join("\n");
+
+			await writeFile(envPath, updatedContent, "utf-8");
+			this.logger.info("✅ Removed CYRUS_SETUP_PENDING flag from .env");
+
+			// Reload environment variables
+			this.loadEnvFile();
+		} catch (error) {
+			this.logger.error(
+				`❌ Failed to remove CYRUS_SETUP_PENDING flag: ${error}`,
+			);
+		}
+	}
+
+	/**
+	 * Transition from setup waiting mode to normal operation
+	 */
+	private async transitionToNormalMode(
+		repositories: RepositoryConfig[],
+	): Promise<void> {
+		try {
+			this.isInSetupWaitingMode = false;
+
+			// Close config watcher
+			if (this.configWatcher) {
+				this.configWatcher.close();
+				this.configWatcher = undefined;
+			}
+
+			// Stop the setup waiting mode server before starting EdgeWorker
+			await this.worker.stopSetupWaitingMode();
+
+			// Start the EdgeWorker with the new configuration
+			await this.worker.startEdgeWorker({
+				repositories,
+			});
+
+			// Display server information
+			const serverPort = this.worker.getServerPort();
+
+			this.logger.raw("");
+			this.logger.divider(70);
+			this.logger.success("Edge worker started successfully");
+			this.logger.info(`🔗 Server running on port ${serverPort}`);
+
+			if (process.env.CLOUDFLARE_TOKEN) {
+				this.logger.info("🌩️  Cloudflare tunnel: Active");
+			}
+
+			this.logger.info(`\n📦 Managing ${repositories.length} repositories:`);
+			repositories.forEach((repo) => {
+				this.logger.info(`   • ${repo.name} (${repo.repositoryPath})`);
+			});
+			this.logger.divider(70);
+		} catch (error) {
+			this.logger.error(`❌ Failed to transition to normal mode: ${error}`);
+			process.exit(1);
+		}
+	}
+
+	/**
 	 * Handle graceful shutdown
 	 */
 	async shutdown(): Promise<void> {
+		// Close .env file watcher
+		if (this.envWatcher) {
+			this.envWatcher.close();
+		}
+
+		// Close config file watcher
+		if (this.configWatcher) {
+			this.configWatcher.close();
+		}
+
 		await this.worker.stop();
 		process.exit(0);
 	}

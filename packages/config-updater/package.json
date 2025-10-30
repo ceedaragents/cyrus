@@ -1,0 +1,37 @@
+{
+	"name": "cyrus-config-updater",
+	"version": "0.1.0",
+	"description": "Configuration update handlers for Cyrus agent",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"fastify": "^5.2.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.12.7",
+		"typescript": "^5.4.5",
+		"vitest": "^2.0.0"
+	},
+	"keywords": [
+		"config",
+		"update",
+		"handler",
+		"cyrus"
+	],
+	"author": "Cyrus Team",
+	"license": "MIT"
+}
