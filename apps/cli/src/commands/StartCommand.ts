@@ -73,7 +73,7 @@ export class StartCommand extends BaseCommand {
 				this.logger.info("\n💡 Cloudflare tunnel requires:");
 				this.logger.info("   - CLOUDFLARE_TOKEN environment variable");
 				this.logger.info(
-					"   - Get your token from: https://www.atcyrus.com/onboarding",
+					"   - Get your token from: https://app.atcyrus.com/onboarding",
 				);
 			} else if (error.message?.includes("Failed to connect")) {
 				this.logger.info("\n💡 Connection issues can occur when:");

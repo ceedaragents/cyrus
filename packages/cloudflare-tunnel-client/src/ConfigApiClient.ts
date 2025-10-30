@@ -15,7 +15,7 @@ export interface ConfigApiResponse {
  * Authenticates using auth keys provided during onboarding
  */
 export class ConfigApiClient {
-	private static readonly CONFIG_API_URL = "https://www.atcyrus.com/api/config";
+	private static readonly CONFIG_API_URL = "https://app.atcyrus.com/api/config";
 
 	/**
 	 * Retrieve configuration using an auth key

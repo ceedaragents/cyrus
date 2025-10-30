@@ -18,7 +18,7 @@ export class AuthCommand extends BaseCommand {
 			this.logError("Error: Auth key is required");
 			console.log("\nUsage: cyrus auth <auth-key>");
 			console.log(
-				"\nGet your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus",
+				"\nGet your auth key from: https://app.atcyrus.com/onboarding/auth-cyrus",
 			);
 			process.exit(1);
 		}
@@ -41,7 +41,7 @@ export class AuthCommand extends BaseCommand {
 				console.error(configResponse.error || "Invalid response from server");
 				console.log("\nPlease verify your auth key is correct.");
 				console.log(
-					"Get your auth key from: https://www.atcyrus.com/onboarding/auth-cyrus",
+					"Get your auth key from: https://app.atcyrus.com/onboarding/auth-cyrus",
 				);
 				process.exit(1);
 			}

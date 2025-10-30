@@ -91,7 +91,7 @@ export class WorkerService {
 		this.logger.info("📡 Config updater: Ready");
 		this.logger.raw("");
 		this.logger.info("Your Cyrus instance is ready to receive configuration.");
-		this.logger.info("Complete setup at: https://www.atcyrus.com/onboarding");
+		this.logger.info("Complete setup at: https://app.atcyrus.com/onboarding");
 		this.logger.divider(70);
 	}
 
