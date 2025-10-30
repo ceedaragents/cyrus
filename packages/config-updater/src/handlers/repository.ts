@@ -32,7 +32,7 @@ function getRepoNameFromUrl(repoUrl: string): string {
 
 /**
  * Handle repository cloning or verification
- * - Clones repositories to ~/.cyrus/repos/<repo-name>
+ * - Clones repositories to ~/.cyrus/repos/<repo-name> using GitHub CLI (gh)
  * - If repository exists, verify it's a git repo and do nothing
  * - If repository doesn't exist, clone it to ~/.cyrus/repos/<repo-name>
  */
@@ -94,9 +94,9 @@ export async function handleRepository(
 			};
 		}
 
-		// Clone the repository
+		// Clone the repository using gh
 		try {
-			const cloneCmd = `git clone "${payload.repository_url}" "${repoPath}"`;
+			const cloneCmd = `gh repo clone "${payload.repository_url}" "${repoPath}"`;
 			await execAsync(cloneCmd);
 
 			// Verify the clone was successful
@@ -104,7 +104,7 @@ export async function handleRepository(
 				return {
 					success: false,
 					error: "Repository clone verification failed",
-					details: `Git clone command completed, but the cloned directory at ${repoPath} does not appear to be a valid Git repository.`,
+					details: `GitHub CLI clone command completed, but the cloned directory at ${repoPath} does not appear to be a valid Git repository.`,
 				};
 			}
 
@@ -124,7 +124,7 @@ export async function handleRepository(
 			return {
 				success: false,
 				error: "Failed to clone repository",
-				details: `Could not clone repository from ${payload.repository_url}: ${errorMessage}. Please verify the URL is correct and you have access to the repository.`,
+				details: `Could not clone repository from ${payload.repository_url} using GitHub CLI: ${errorMessage}. Please verify the URL is correct, you have access to the repository, and gh is authenticated.`,
 			};
 		}
 	} catch (error) {

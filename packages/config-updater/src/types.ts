@@ -78,6 +78,19 @@ export interface ConfigureMcpPayload {
 }
 
 /**
+ * Check GitHub CLI payload (empty - no parameters needed)
+ */
+export type CheckGhPayload = Record<string, never>;
+
+/**
+ * Check GitHub CLI response data
+ */
+export interface CheckGhData {
+	isInstalled: boolean;
+	isAuthenticated: boolean;
+}
+
+/**
  * Error response to send back to cyrus-hosted
  */
 export interface ErrorResponse {
