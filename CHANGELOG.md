@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0-rc] - 2025-10-29
+
 ### Added
 - **Cloudflare Tunnel Transport Client**: New `cyrus-cloudflare-tunnel-client` package for receiving configuration updates and webhooks from cyrus-hosted
   - Uses Cloudflare tunnels via `cloudflared` npm package for secure communication
@@ -36,6 +38,32 @@ All notable changes to this project will be documented in this file.
 - **Subscription service**: Removed customer validation and subscription checking code
 - **Billing commands**: Removed `billing` and `set-customer-id` CLI commands
 - **Deprecated config parameter**: Removed `isLegacy` from EdgeConfig (replaced by setup waiting mode)
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.0-rc
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.0-rc
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.0-rc
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.0-rc
+
+#### cyrus-core
+- cyrus-core@0.2.0-rc
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.0-rc
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.0-rc
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.0-rc
 
 ## [0.1.58] - 2025-10-29
 
