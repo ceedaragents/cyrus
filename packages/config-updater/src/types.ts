@@ -23,6 +23,8 @@ export interface CyrusConfigPayload {
 		allowedTools?: string[];
 		mcpConfigPath?: string[];
 		teamKeys?: string[];
+		routingLabels?: string[];
+		projectKeys?: string[];
 		labelPrompts?: Record<string, string[]>;
 	}>;
 	disallowedTools?: string[];

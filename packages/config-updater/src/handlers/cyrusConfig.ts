@@ -85,6 +85,14 @@ export async function handleCyrusConfig(
 				repoConfig.teamKeys = [];
 			}
 
+			if (repo.routingLabels && repo.routingLabels.length > 0) {
+				repoConfig.routingLabels = repo.routingLabels;
+			}
+
+			if (repo.projectKeys && repo.projectKeys.length > 0) {
+				repoConfig.projectKeys = repo.projectKeys;
+			}
+
 			if (repo.labelPrompts && Object.keys(repo.labelPrompts).length > 0) {
 				repoConfig.labelPrompts = repo.labelPrompts;
 			}
