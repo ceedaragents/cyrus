@@ -128,6 +128,7 @@ export class CLIRenderer implements Renderer {
 		this.isRunning = true;
 
 		// Render the React component
+		// Note: patchConsole defaults to true, allowing Ink to manage console output
 		this.inkInstance = render(
 			React.createElement(ActivityPanel, {
 				sessions: Array.from(this.sessions.values()),
@@ -140,9 +141,6 @@ export class CLIRenderer implements Renderer {
 					this.handleUserStop(sessionId, reason);
 				},
 			}),
-			{
-				patchConsole: false,
-			},
 		);
 	}
 
