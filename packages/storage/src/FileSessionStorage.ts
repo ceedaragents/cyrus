@@ -93,11 +93,8 @@ export class FileSessionStorage implements SessionStorage {
 			} catch (unlinkError: any) {
 				// Ignore ENOENT errors - file may have been cleaned up already
 				if (unlinkError?.code !== "ENOENT") {
-					// Log but don't throw - the write succeeded
-					console.warn(
-						`Failed to clean up temp file ${tempPath}:`,
-						unlinkError,
-					);
+					// Silently ignore cleanup errors - the write succeeded
+					// (console output would interfere with Ink UI rendering)
 				}
 			}
 		} catch (error) {
@@ -161,9 +158,7 @@ export class FileSessionStorage implements SessionStorage {
 				metadata = JSON.parse(data);
 			} catch (_error) {
 				// If metadata is corrupted, start fresh
-				console.warn(
-					`Corrupted metadata file for issue ${session.issueId}, recreating`,
-				);
+				// (silently handle to avoid interfering with Ink UI rendering)
 				metadata = {};
 			}
 		}
@@ -207,9 +202,9 @@ export class FileSessionStorage implements SessionStorage {
 			} else {
 				await this.atomicWrite(metadataPath, JSON.stringify(metadata, null, 2));
 			}
-		} catch (error) {
+		} catch (_error) {
 			// If metadata doesn't exist or is corrupted, that's okay
-			console.warn(`Failed to update metadata for issue ${issueId}:`, error);
+			// (silently handle to avoid interfering with Ink UI rendering)
 		}
 	}
 
@@ -304,8 +299,9 @@ export class FileSessionStorage implements SessionStorage {
 				try {
 					const data = await readFile(join(issueDir, file), "utf8");
 					sessions.push(this.deserializeSession(data));
-				} catch (error) {
-					console.warn(`Failed to load session file ${file}:`, error);
+				} catch (_error) {
+					// Silently skip corrupted session files
+					// (console output would interfere with Ink UI rendering)
 				}
 			}
 

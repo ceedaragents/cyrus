@@ -97,7 +97,6 @@ async function main() {
 
 	// Determine mode
 	const demoMode = args.demo ?? false;
-	const issueId = args.issue || "DEMO-1";
 
 	// Validate API key for real mode
 	if (!demoMode && !process.env.ANTHROPIC_API_KEY) {
@@ -114,7 +113,6 @@ async function main() {
 			args.cyrusHome ||
 			process.env.CYRUS_HOME ||
 			path.join(os.homedir(), ".cyrusd");
-		const workingDir = args.workingDir || process.cwd();
 		const sessionsDir = path.join(cyrusHome, "sessions");
 
 		// Initialize components based on mode
@@ -206,14 +204,10 @@ async function main() {
 		// Start the orchestrator
 		await orchestrator.start();
 
-		// Get the issue and start a session
 		// Note: Console output is suppressed after this point to avoid interfering with Ink UI
-		const issue = await issueTracker.getIssue(issueId);
-
-		// Start the session - this will trigger the renderer to display the UI
-		await orchestrator.startSession(issue, {
-			workingDirectory: workingDir,
-		});
+		// In demo mode, the issue watcher will automatically start a session for assigned issues.
+		// The orchestrator.start() call above initiates watching, which will detect the pre-assigned
+		// demo issue and automatically create a session for it. No need to manually call startSession().
 
 		// Keep the process running
 		// The orchestrator and renderer will handle everything from here
