@@ -266,6 +266,28 @@ importers:
         specifier: ^1.1.0
         version: 1.6.1(@types/node@20.19.21)
 
+  packages/issue-trackers:
+    dependencies:
+      '@linear/sdk':
+        specifier: ^60.0.0
+        version: 60.0.0
+      cyrus-interfaces:
+        specifier: workspace:*
+        version: link:../interfaces
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.18.13
+      '@vitest/coverage-v8':
+        specifier: ^2.1.8
+        version: 2.1.9(vitest@2.1.9(@types/node@22.18.13))
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.18.13)
+
   packages/linear-event-transport:
     dependencies:
       '@linear/sdk':
@@ -2936,7 +2958,7 @@ snapshots:
 
   '@types/jsonfile@6.1.4':
     dependencies:
-      '@types/node': 20.19.21
+      '@types/node': 22.18.13
 
   '@types/node@20.19.21':
     dependencies:
