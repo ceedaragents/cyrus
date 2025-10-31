@@ -2,8 +2,7 @@ import type { EventEmitter } from "node:events";
 import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
 import TextInput from "ink-text-input";
-// biome-ignore lint/style/useImportType: React is used as a value for JSX
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { ActivityItem, StatusIcons } from "../CLIRenderer.js";
 
 interface SessionState {
@@ -181,51 +180,52 @@ const SessionPanel: React.FC<SessionPanelProps> = React.memo(
 			[activities, scrollOffset],
 		);
 
-	return (
-		<Box
-			flexDirection="column"
-			borderStyle={isSelected ? "double" : "single"}
-			borderColor={isSelected ? "yellow" : "gray"}
-			paddingX={1}
-			marginY={1}
-		>
-			{/* Session header */}
-			<Box marginBottom={1}>
-				<Text bold>
-					{status === "running" && (
-						<>
-							<Spinner type="dots" />{" "}
-						</>
-					)}
-					{session.issueTitle}
-				</Text>
-				<Text dimColor> ({session.issueId})</Text>
-			</Box>
-
-			{/* Activities */}
-			{visibleActivities.length === 0 ? (
-				<Text dimColor>No activities yet...</Text>
-			) : (
-				visibleActivities.map((activity) => (
-					<ActivityItemComponent
-						key={activity.id}
-						activity={activity}
-						config={config}
-					/>
-				))
-			)}
-
-			{/* Scroll indicator */}
-			{activities.length > visibleActivities.length && (
-				<Box marginTop={1}>
-					<Text dimColor>
-						Showing {scrollOffset + 1}-{scrollOffset + visibleActivities.length}{" "}
-						of {activities.length} (Use ↑↓ to scroll)
+		return (
+			<Box
+				flexDirection="column"
+				borderStyle={isSelected ? "double" : "single"}
+				borderColor={isSelected ? "yellow" : "gray"}
+				paddingX={1}
+				marginY={1}
+			>
+				{/* Session header */}
+				<Box marginBottom={1}>
+					<Text bold>
+						{status === "running" && (
+							<>
+								<Spinner type="dots" />{" "}
+							</>
+						)}
+						{session.issueTitle}
 					</Text>
+					<Text dimColor> ({session.issueId})</Text>
 				</Box>
-			)}
-		</Box>
-	);
+
+				{/* Activities */}
+				{visibleActivities.length === 0 ? (
+					<Text dimColor>No activities yet...</Text>
+				) : (
+					visibleActivities.map((activity) => (
+						<ActivityItemComponent
+							key={activity.id}
+							activity={activity}
+							config={config}
+						/>
+					))
+				)}
+
+				{/* Scroll indicator */}
+				{activities.length > visibleActivities.length && (
+					<Box marginTop={1}>
+						<Text dimColor>
+							Showing {scrollOffset + 1}-
+							{scrollOffset + visibleActivities.length} of {activities.length}{" "}
+							(Use ↑↓ to scroll)
+						</Text>
+					</Box>
+				)}
+			</Box>
+		);
 	},
 );
 
