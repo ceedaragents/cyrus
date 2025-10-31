@@ -1,0 +1,26 @@
+{
+	"name": "cyrus-interfaces",
+	"version": "0.1.0",
+	"description": "Core I/O interface definitions for Cyrus architecture",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run --passWithNoTests",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^1.1.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}
