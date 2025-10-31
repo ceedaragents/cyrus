@@ -185,16 +185,23 @@ async function main() {
 			// Handled by renderer
 		});
 
-		orchestrator.on("session:started", () => {
-			// Handled by renderer
+		orchestrator.on("session:started", (sessionId, issueId) => {
+			console.error(
+				`[DEBUG] Session started: ${sessionId} for issue ${issueId}`,
+			);
 		});
 
-		orchestrator.on("session:completed", () => {
-			// Handled by renderer
+		orchestrator.on("session:completed", (sessionId, issueId) => {
+			console.error(
+				`[DEBUG] Session completed: ${sessionId} for issue ${issueId}`,
+			);
 		});
 
-		orchestrator.on("session:failed", () => {
-			// Handled by renderer
+		orchestrator.on("session:failed", (sessionId, issueId, error) => {
+			console.error(
+				`[DEBUG] Session failed: ${sessionId} for issue ${issueId}`,
+				error,
+			);
 		});
 
 		orchestrator.on("error", (error, context) => {

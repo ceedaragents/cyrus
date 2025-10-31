@@ -280,15 +280,26 @@ export class MockAgentRunner implements AgentRunner {
 	private emitEvent(sessionId: string, event: AgentEvent): void {
 		const session = this.sessions.get(sessionId);
 		if (!session) {
+			console.error(
+				`[DEBUG MockAgent] Session ${sessionId} not found, cannot emit event`,
+			);
 			return;
 		}
 
+		console.error(
+			`[DEBUG MockAgent] Emitting event type: ${event.type} for session ${sessionId}`,
+		);
 		session.events.push(event);
 
 		// Resolve any waiting iterators
 		if (session.eventResolvers.length > 0) {
 			const resolver = session.eventResolvers.shift()!;
 			resolver({ value: event, done: false });
+			console.error(
+				`[DEBUG MockAgent] Resolved waiting iterator for ${event.type}`,
+			);
+		} else {
+			console.error(`[DEBUG MockAgent] No waiting iterators, event buffered`);
 		}
 	}
 
