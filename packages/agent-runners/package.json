@@ -1,0 +1,50 @@
+{
+	"name": "@cyrus/agent-runners",
+	"version": "0.1.0",
+	"description": "Adapters for various agent runners to implement the AgentRunner interface",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./claude": {
+			"types": "./dist/claude/index.d.ts",
+			"import": "./dist/claude/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsc --build",
+		"dev": "tsc --build --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf dist"
+	},
+	"dependencies": {
+		"cyrus-claude-runner": "workspace:*",
+		"cyrus-interfaces": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.2",
+		"@vitest/coverage-v8": "^2.1.8",
+		"typescript": "^5.7.2",
+		"vitest": "^2.1.8"
+	},
+	"keywords": [
+		"cyrus",
+		"agent",
+		"runner",
+		"adapter",
+		"claude"
+	],
+	"author": "Cyrus Team",
+	"license": "MIT"
+}
