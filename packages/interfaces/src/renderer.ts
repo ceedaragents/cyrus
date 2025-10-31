@@ -74,78 +74,70 @@ export interface SessionSummary {
 }
 
 /**
- * Types of agent activity that can be rendered
- * Uses discriminated union for type safety
+ * Agent Activity Types - Aliased from Linear SDK
+ *
+ * These types are imported from the Linear SDK to ensure compatibility with Linear's
+ * Agent Activity API. All code should import these types from @cyrus/interfaces rather
+ * than directly from @linear/sdk to maintain a centralized import point.
+ *
+ * Linear's AgentActivity supports 6 content types:
+ * - action: Tool/action execution with action, parameter, and optional result
+ * - elicitation: Request for user input (has body)
+ * - error: Error message (has body)
+ * - prompt: Prompt requesting user action (has body)
+ * - response: Agent response (has body)
+ * - thought: Agent thinking/reasoning (has body)
+ *
+ * Activities include metadata such as id, timestamps, ephemeral flag, and optional signal.
+ *
+ * @see https://developers.linear.app/docs/graphql/working-with-the-graphql-api
+ * @see https://studio.apollographql.com/public/Linear-API
  */
-export type AgentActivity =
-	| ThinkingActivity
-	| FileModifiedActivity
-	| VerificationActivity
-	| StatusActivity;
+import type { LinearDocument } from "@linear/sdk";
 
 /**
- * Agent is thinking/processing
+ * Main AgentActivity type from Linear SDK
+ *
+ * Includes:
+ * - id: Unique identifier
+ * - createdAt/updatedAt: Timestamps
+ * - ephemeral: Whether activity disappears after next activity
+ * - content: Discriminated union of activity content types
+ * - signal: Optional control signal (auth, continue, select, stop)
+ * - signalMetadata/sourceMetadata: Optional metadata
  */
-export interface ThinkingActivity {
-	type: "thinking";
-	/**
-	 * What the agent is thinking about
-	 */
-	message: string;
-}
+export type AgentActivity = LinearDocument.AgentActivity;
 
 /**
- * Agent modified a file
+ * Union type of all possible agent activity content types
  */
-export interface FileModifiedActivity {
-	type: "file-modified";
-	/**
-	 * Path to the modified file
-	 */
-	path: string;
-	/**
-	 * Number of lines changed
-	 */
-	changes: number;
-	/**
-	 * Type of change (added, modified, deleted)
-	 */
-	changeType?: "added" | "modified" | "deleted";
-}
+export type AgentActivityContent = LinearDocument.AgentActivityContent;
 
 /**
- * Agent is verifying something (tests, builds, etc.)
+ * Activity type enum (action, elicitation, error, prompt, response, thought)
  */
-export interface VerificationActivity {
-	type: "verification";
-	/**
-	 * Current status of verification
-	 */
-	status: "running" | "passed" | "failed";
-	/**
-	 * Details about what is being verified
-	 */
-	details: string;
-	/**
-	 * Optional output from verification
-	 */
-	output?: string;
-}
+export type AgentActivityType = LinearDocument.AgentActivityType;
 
 /**
- * General status update
+ * Activity signal enum (auth, continue, select, stop)
  */
-export interface StatusActivity {
-	type: "status";
-	/**
-	 * Status message
-	 */
-	message: string;
-	/**
-	 * Optional severity level
-	 */
-	level?: "info" | "warning" | "error";
-}
+export type AgentActivitySignal = LinearDocument.AgentActivitySignal;
+
+/**
+ * Individual content types
+ */
+export type AgentActivityActionContent =
+	LinearDocument.AgentActivityActionContent;
+export type AgentActivityElicitationContent =
+	LinearDocument.AgentActivityElicitationContent;
+export type AgentActivityErrorContent =
+	LinearDocument.AgentActivityErrorContent;
+export type AgentActivityPromptContent =
+	LinearDocument.AgentActivityPromptContent;
+export type AgentActivityResponseContent =
+	LinearDocument.AgentActivityResponseContent;
+export type AgentActivityThoughtContent =
+	LinearDocument.AgentActivityThoughtContent;
 
 /**
  * User input types

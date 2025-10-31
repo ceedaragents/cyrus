@@ -13,10 +13,10 @@ This package provides pure TypeScript interface definitions that decouple the Cy
 
 ## Design Principles
 
-1. **Zero Runtime Dependencies** - Pure TypeScript types only
+1. **Minimal Runtime Dependencies** - Primarily TypeScript types, with Linear SDK types aliased for AgentActivity
 2. **Implementation Agnostic** - Works with any concrete implementation
 3. **Testability First** - Enables easy mocking and testing
-4. **Clean Separation** - Core logic never directly imports Linear or Claude SDKs
+4. **Centralized Type Imports** - All Linear types imported through this package for consistency
 5. **Extensibility** - Generic types and discriminated unions for flexibility
 
 ## Interfaces
@@ -68,6 +68,8 @@ interface Renderer {
   getUserInput(sessionId: string): AsyncIterable<UserInput>;
 }
 ```
+
+**Note:** `AgentActivity` types are aliased from Linear SDK to ensure compatibility with Linear's Agent Activity API. Import these through `cyrus-interfaces` rather than directly from `@linear/sdk`.
 
 ### SessionStorage
 
