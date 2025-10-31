@@ -3989,6 +3989,11 @@ ${input.userComment}
 	private async loadSubroutinePrompt(
 		subroutine: SubroutineDefinition,
 	): Promise<string | null> {
+		// Skip loading for "primary" - it's a placeholder that doesn't have a file
+		if (subroutine.promptPath === "primary") {
+			return null;
+		}
+
 		const __filename = fileURLToPath(import.meta.url);
 		const __dirname = dirname(__filename);
 		const subroutinePromptPath = join(
