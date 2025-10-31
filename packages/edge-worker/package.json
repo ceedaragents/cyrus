@@ -14,7 +14,7 @@
 	],
 	"scripts": {
 		"build": "tsc && npm run copy-prompts",
-		"copy-prompts": "mkdir -p dist/prompts/subroutines && cp -r src/prompts/subroutines/*.md dist/prompts/subroutines/",
+		"copy-prompts": "mkdir -p dist/prompts/subroutines && cp -r src/prompts/subroutines/*.md dist/prompts/subroutines/ && cp -r prompts/*.md dist/prompts/",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run",
