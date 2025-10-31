@@ -1,0 +1,33 @@
+{
+	"name": "cyrus-orchestrator",
+	"version": "0.1.0",
+	"description": "Core session orchestrator that coordinates AgentRunner, IssueTracker, Renderer, and Storage",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"test:watch": "vitest --watch",
+		"test:coverage": "vitest --coverage",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"cyrus-interfaces": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@vitest/coverage-v8": "^1.6.1",
+		"typescript": "^5.3.3",
+		"vitest": "^1.1.0",
+		"vitest-mock-extended": "^3.1.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

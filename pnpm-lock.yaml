@@ -308,6 +308,28 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
+  packages/orchestrator:
+    dependencies:
+      cyrus-interfaces:
+        specifier: workspace:*
+        version: link:../interfaces
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      '@vitest/coverage-v8':
+        specifier: ^1.6.1
+        version: 1.6.1(vitest@1.6.1(@types/node@20.19.21))
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.1.0
+        version: 1.6.1(@types/node@20.19.21)
+      vitest-mock-extended:
+        specifier: ^3.1.0
+        version: 3.1.0(typescript@5.9.3)(vitest@1.6.1(@types/node@20.19.21))
+
   packages/renderers:
     dependencies:
       chalk:
