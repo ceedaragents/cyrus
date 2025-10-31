@@ -96,6 +96,8 @@ export class CLIRenderer implements Renderer {
 	private eventEmitter = new EventEmitter();
 	private inputQueues: Map<string, UserInput[]> = new Map();
 	private isRunning = false;
+	private updateThrottleTimeout: NodeJS.Timeout | null = null;
+	private pendingUpdate = false;
 
 	constructor(config: CLIRendererConfig = {}) {
 		this.config = {
@@ -150,6 +152,12 @@ export class CLIRenderer implements Renderer {
 		}
 
 		this.isRunning = false;
+
+		// Clean up throttle timeout
+		if (this.updateThrottleTimeout) {
+			clearTimeout(this.updateThrottleTimeout);
+			this.updateThrottleTimeout = null;
+		}
 
 		if (this.inkInstance) {
 			this.inkInstance.unmount();
@@ -208,9 +216,36 @@ export class CLIRenderer implements Renderer {
 	}
 
 	/**
-	 * Emit state update to trigger re-render
+	 * Emit state update to trigger re-render (throttled to reduce flickering)
 	 */
 	private emitUpdate(): void {
+		// Mark that an update is pending
+		this.pendingUpdate = true;
+
+		// If already throttling, return and let the timeout handle it
+		if (this.updateThrottleTimeout) {
+			return;
+		}
+
+		// Emit immediately for the first update
+		this.doEmitUpdate();
+
+		// Set up throttle for subsequent updates (50ms throttle)
+		this.updateThrottleTimeout = setTimeout(() => {
+			this.updateThrottleTimeout = null;
+
+			// If there's a pending update, emit it
+			if (this.pendingUpdate) {
+				this.doEmitUpdate();
+			}
+		}, 50);
+	}
+
+	/**
+	 * Actually emit the update
+	 */
+	private doEmitUpdate(): void {
+		this.pendingUpdate = false;
 		this.eventEmitter.emit("update", Array.from(this.sessions.values()));
 	}
 

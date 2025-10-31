@@ -1,10 +1,9 @@
 import type { EventEmitter } from "node:events";
-import chalk from "chalk";
 import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
 import TextInput from "ink-text-input";
 // biome-ignore lint/style/useImportType: React is used as a value for JSX
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import type { ActivityItem, StatusIcons } from "../CLIRenderer.js";
 
 interface SessionState {
@@ -57,9 +56,12 @@ export const ActivityPanel: React.FC<ActivityPanelProps> = ({
 			setCurrentSessions(updatedSessions);
 
 			// Auto-select first session if none selected
-			if (!selectedSessionId && updatedSessions.length > 0) {
-				setSelectedSessionId(updatedSessions[0].session.id);
-			}
+			setSelectedSessionId((current) => {
+				if (!current && updatedSessions.length > 0) {
+					return updatedSessions[0].session.id;
+				}
+				return current;
+			});
 		};
 
 		eventEmitter.on("update", updateHandler);
@@ -67,7 +69,7 @@ export const ActivityPanel: React.FC<ActivityPanelProps> = ({
 		return () => {
 			eventEmitter.off("update", updateHandler);
 		};
-	}, [eventEmitter, selectedSessionId]);
+	}, [eventEmitter]); // Removed selectedSessionId dependency
 
 	// Handle keyboard input
 	useInput((input, key) => {
@@ -91,15 +93,19 @@ export const ActivityPanel: React.FC<ActivityPanelProps> = ({
 		}
 	});
 
-	const handleSubmit = (value: string) => {
-		if (value.trim() && selectedSessionId) {
-			onMessage(selectedSessionId, value.trim());
-			setInputValue("");
-		}
-	};
+	const handleSubmit = useCallback(
+		(value: string) => {
+			if (value.trim() && selectedSessionId) {
+				onMessage(selectedSessionId, value.trim());
+				setInputValue("");
+			}
+		},
+		[selectedSessionId, onMessage],
+	);
 
-	const selectedSession = currentSessions.find(
-		(s) => s.session.id === selectedSessionId,
+	const selectedSession = useMemo(
+		() => currentSessions.find((s) => s.session.id === selectedSessionId),
+		[currentSessions, selectedSessionId],
 	);
 
 	return (
@@ -165,16 +171,15 @@ interface SessionPanelProps {
 /**
  * Panel for displaying a single session's activities
  */
-const SessionPanel: React.FC<SessionPanelProps> = ({
-	sessionState,
-	config,
-	scrollOffset,
-	isSelected,
-}) => {
-	const { session, activities, status } = sessionState;
+const SessionPanel: React.FC<SessionPanelProps> = React.memo(
+	({ sessionState, config, scrollOffset, isSelected }) => {
+		const { session, activities, status } = sessionState;
 
-	// Apply scroll offset
-	const visibleActivities = activities.slice(scrollOffset, scrollOffset + 20);
+		// Apply scroll offset
+		const visibleActivities = useMemo(
+			() => activities.slice(scrollOffset, scrollOffset + 20),
+			[activities, scrollOffset],
+		);
 
 	return (
 		<Box
@@ -221,7 +226,8 @@ const SessionPanel: React.FC<SessionPanelProps> = ({
 			)}
 		</Box>
 	);
-};
+	},
+);
 
 interface ActivityItemProps {
 	activity: ActivityItem;
@@ -231,47 +237,44 @@ interface ActivityItemProps {
 /**
  * Single activity item display
  */
-const ActivityItemComponent: React.FC<ActivityItemProps> = ({
-	activity,
-	config,
-}) => {
-	const timestamp = activity.timestamp.toLocaleTimeString();
-	const icon = config.verboseFormatting ? activity.icon : "●";
+const ActivityItemComponent: React.FC<ActivityItemProps> = React.memo(
+	({ activity, config }) => {
+		const timestamp = activity.timestamp.toLocaleTimeString();
+		const icon = config.verboseFormatting ? activity.icon : "●";
 
-	// Colorize based on activity type
-	let colorFn = chalk.white;
-	switch (activity.type) {
-		case "error":
-			colorFn = chalk.red;
-			break;
-		case "complete":
-			colorFn = chalk.green;
-			break;
-		case "elicitation":
-		case "prompt":
-			colorFn = chalk.yellow;
-			break;
-		case "thought":
-			colorFn = chalk.cyan;
-			break;
-		case "action":
-		case "tool-use":
-			colorFn = chalk.blue;
-			break;
-	}
+		// Get color name based on activity type
+		const colorName = useMemo(() => {
+			switch (activity.type) {
+				case "error":
+					return "red";
+				case "complete":
+					return "green";
+				case "elicitation":
+				case "prompt":
+					return "yellow";
+				case "thought":
+					return "cyan";
+				case "action":
+				case "tool-use":
+					return "blue";
+				default:
+					return "white";
+			}
+		}, [activity.type]);
 
-	return (
-		<Box flexDirection="column" marginY={0}>
-			<Box>
-				<Text dimColor>[{timestamp}]</Text>
-				<Text> {icon} </Text>
-				<Text bold color={colorFn.constructor.name as any}>
-					{activity.type}
-				</Text>
+		return (
+			<Box flexDirection="column" marginY={0}>
+				<Box>
+					<Text dimColor>[{timestamp}]</Text>
+					<Text> {icon} </Text>
+					<Text bold color={colorName}>
+						{activity.type}
+					</Text>
+				</Box>
+				<Box paddingLeft={2}>
+					<Text>{activity.content}</Text>
+				</Box>
 			</Box>
-			<Box paddingLeft={2}>
-				<Text>{activity.content}</Text>
-			</Box>
-		</Box>
-	);
-};
+		);
+	},
+);
