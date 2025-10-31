@@ -4,8 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.59] - 2025-10-31
+
 ### Fixed
 - Skip loading 'primary' subroutine prompt to eliminate ENOENT error in logs - the "primary" promptPath is a placeholder with no corresponding file
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.20
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.40
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.3
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.59
 
 ## [0.1.58] - 2025-10-29
 
