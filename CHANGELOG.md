@@ -4,6 +4,131 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0-rc.2] - 2025-10-30
+
+### Fixed
+- Added missing `routingLabels` and `projectKeys` fields to `CyrusConfigPayload` type in config-updater package
+- Config handler now properly processes and saves label routing and project routing parameters when received from cyrus-hosted
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.0-rc.2
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.0-rc.2
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.0-rc.2
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.0-rc.2
+
+#### cyrus-core
+- cyrus-core@0.2.0-rc.2
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.0-rc.2
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.0-rc.2
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.0-rc.2
+
+## [0.2.0-rc.1] - 2025-10-30
+
+### Fixed
+- Fixed missing `dist/` directory in published packages by adding `"files": ["dist"]` to `cloudflare-tunnel-client` and `config-updater` package.json files
+- All packages now include their compiled TypeScript output when installed from npm
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.0-rc.1
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.0-rc.1
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.0-rc.1
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.0-rc.1
+
+#### cyrus-core
+- cyrus-core@0.2.0-rc.1
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.0-rc.1
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.0-rc.1
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.0-rc.1
+
+## [0.2.0-rc] - 2025-10-29
+
+### Added
+- **Cloudflare Tunnel Transport Client**: New `cyrus-cloudflare-tunnel-client` package for receiving configuration updates and webhooks from cyrus-hosted
+  - Uses Cloudflare tunnels via `cloudflared` npm package for secure communication
+  - Validates customer subscriptions with cyrus-hosted API
+  - Handles configuration updates (repositories, environment variables, MCP servers)
+  - Receives Linear webhook payloads forwarded through cyrus-hosted
+  - Repository management (automatically clones/verifies repositories to `~/.cyrus/repos/<repo-name>`)
+  - All file operations restricted to `~/.cyrus` directory for security
+  - Will replace `ndjson-client` for customers using cyrus-hosted service
+- **Setup Waiting Mode**: After running `cyrus auth`, the client now enters a waiting state to receive configuration from the server
+  - Automatically starts server infrastructure (SharedApplicationServer, ConfigUpdater) without repositories
+  - Displays clear waiting status and instructions to complete setup
+  - Auto-transitions to normal operation when server pushes repository configuration
+  - Watches config.json for changes and starts EdgeWorker when repositories are added
+
+### Changed
+- **Linear Event Transport**: Refactored `cyrus-linear-webhook-client` to `cyrus-linear-event-transport` for simplified webhook handling
+  - Package now directly registers /webhook endpoint with Fastify server
+  - Supports dual verification modes: direct Linear webhooks (LINEAR_DIRECT_WEBHOOKS) and proxy authentication
+  - Removed complex transport abstractions (WebhookTransport, BaseTransport) in favor of direct route registration
+  - Routes registered after server startup for improved initialization flow
+- **Simplified CLI startup**: Removed legacy onboarding flows and subscription validation
+  - Cloudflare tunnel now starts automatically when CLOUDFLARE_TOKEN is present
+  - Removed Pro plan prompts and customer validation code
+  - Removed `billing` and `set-customer-id` commands
+  - Streamlined `auth` command to focus on authentication only
+  - All tunnel management now handled by SharedApplicationServer
+
+### Removed
+- **Subscription service**: Removed customer validation and subscription checking code
+- **Billing commands**: Removed `billing` and `set-customer-id` CLI commands
+- **Deprecated config parameter**: Removed `isLegacy` from EdgeConfig (replaced by setup waiting mode)
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.0-rc
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.0-rc
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.0-rc
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.0-rc
+
+#### cyrus-core
+- cyrus-core@0.2.0-rc
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.0-rc
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.0-rc
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.0-rc
+
 ## [0.1.58] - 2025-10-29
 
 ### Added
@@ -16,7 +141,6 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Debugger workflow now proceeds directly from bug reproduction to fix implementation without requiring manual approval
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.25 to v0.1.28 - includes parity updates with Claude Code v2.0.28 and fixes custom tools timing out after 30 seconds instead of respecting the MCP_TOOL_TIMEOUT environment variable. See [@anthropic-ai/claude-agent-sdk v0.1.28 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0128)
 - All workflows (full-development, debugger-full, orchestrator-full) now end with concise summary instead of verbose summary
 - Non-summary subroutines (debugger-fix, debugger-reproduction, verifications, git-gh) now explicitly avoid posting Linear comments and end with brief 1-sentence completion messages
 - Orchestrator agents are now strongly discouraged from posting Linear comments to current issues; comments only used when triggering sub-agent sessions on child issues

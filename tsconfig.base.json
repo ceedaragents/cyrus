@@ -25,8 +25,7 @@
 			"cyrus-linear-client": ["packages/linear-client/src"],
 			"cyrus-history-stream": ["packages/history-stream/src"],
 			"cyrus-edge-worker": ["packages/edge-worker/src"],
-			"cyrus-claude-runner": ["packages/claude-runner/src"],
-			"cyrus-ndjson-client": ["packages/ndjson-client/src"]
+			"cyrus-claude-runner": ["packages/claude-runner/src"]
 		}
 	},
 	"exclude": ["node_modules", "dist", "build"]
