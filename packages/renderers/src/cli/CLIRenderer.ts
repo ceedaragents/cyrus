@@ -140,6 +140,9 @@ export class CLIRenderer implements Renderer {
 					this.handleUserStop(sessionId, reason);
 				},
 			}),
+			{
+				patchConsole: false,
+			},
 		);
 	}
 

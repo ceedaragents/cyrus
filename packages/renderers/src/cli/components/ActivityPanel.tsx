@@ -1,5 +1,5 @@
 import type { EventEmitter } from "node:events";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import Spinner from "ink-spinner";
 import TextInput from "ink-text-input";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -173,12 +173,34 @@ interface SessionPanelProps {
 const SessionPanel: React.FC<SessionPanelProps> = React.memo(
 	({ sessionState, config, scrollOffset, isSelected }) => {
 		const { session, activities, status } = sessionState;
+		const { stdout } = useStdout();
 
-		// Apply scroll offset
-		const visibleActivities = useMemo(
-			() => activities.slice(scrollOffset, scrollOffset + 20),
-			[activities, scrollOffset],
-		);
+		// Get terminal dimensions
+		const terminalHeight = stdout?.rows || 24;
+
+		// Calculate available height for activities
+		// Reserve: header (3) + session header (3) + input (3) + status (2) + margins = ~12 lines
+		const maxActivityLines = Math.max(5, terminalHeight - 12);
+
+		// Limit visible activities to prevent height overflow
+		// Show the most recent activities that fit within the terminal height
+		const visibleActivities = useMemo(() => {
+			// Calculate how many activities we can show based on terminal height
+			// Each activity takes roughly 3 lines (timestamp + type, content, spacing)
+			const maxVisibleCount = Math.floor(maxActivityLines / 3);
+
+			// Start from the end and show the most recent activities
+			const startIndex = Math.max(
+				0,
+				activities.length - maxVisibleCount + scrollOffset,
+			);
+			const endIndex = Math.min(
+				activities.length,
+				startIndex + maxVisibleCount,
+			);
+
+			return activities.slice(startIndex, endIndex);
+		}, [activities, scrollOffset, maxActivityLines]);
 
 		return (
 			<Box
@@ -201,26 +223,27 @@ const SessionPanel: React.FC<SessionPanelProps> = React.memo(
 					<Text dimColor> ({session.issueId})</Text>
 				</Box>
 
-				{/* Activities */}
-				{visibleActivities.length === 0 ? (
-					<Text dimColor>No activities yet...</Text>
-				) : (
-					visibleActivities.map((activity) => (
-						<ActivityItemComponent
-							key={activity.id}
-							activity={activity}
-							config={config}
-						/>
-					))
-				)}
+				{/* Activities container with overflow protection */}
+				<Box flexDirection="column" overflow="hidden">
+					{visibleActivities.length === 0 ? (
+						<Text dimColor>No activities yet...</Text>
+					) : (
+						visibleActivities.map((activity) => (
+							<ActivityItemComponent
+								key={activity.id}
+								activity={activity}
+								config={config}
+							/>
+						))
+					)}
+				</Box>
 
 				{/* Scroll indicator */}
 				{activities.length > visibleActivities.length && (
 					<Box marginTop={1}>
 						<Text dimColor>
-							Showing {scrollOffset + 1}-
-							{scrollOffset + visibleActivities.length} of {activities.length}{" "}
-							(Use ↑↓ to scroll)
+							Showing {visibleActivities.length} of {activities.length}{" "}
+							activities (Use ↑↓ to scroll)
 						</Text>
 					</Box>
 				)}
