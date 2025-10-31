@@ -3,8 +3,8 @@ import chalk from "chalk";
 import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
 import TextInput from "ink-text-input";
-import React from "react";
-import { useEffect, useState } from "react";
+// biome-ignore lint/style/useImportType: React is used as a value for JSX
+import React, { useEffect, useState } from "react";
 import type { ActivityItem, StatusIcons } from "../CLIRenderer.js";
 
 interface SessionState {
