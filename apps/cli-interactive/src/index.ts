@@ -193,52 +193,39 @@ async function main() {
 		process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 		// Set up orchestrator event handlers
+		// Note: We don't log these events to console to avoid interfering with Ink UI rendering
+		// The renderer handles displaying this information in the UI
 		orchestrator.on("started", () => {
-			console.log("📡 Orchestrator started\n");
+			// Handled by renderer
 		});
 
-		orchestrator.on("session:started", (sessionId, issueId) => {
-			console.log(`✅ Session started: ${sessionId} for issue ${issueId}\n`);
+		orchestrator.on("session:started", () => {
+			// Handled by renderer
 		});
 
-		orchestrator.on("session:completed", (sessionId, issueId) => {
-			console.log(
-				`\n✅ Session completed: ${sessionId} for issue ${issueId}\n`,
-			);
+		orchestrator.on("session:completed", () => {
+			// Handled by renderer
 		});
 
-		orchestrator.on("session:failed", (sessionId, issueId, error) => {
-			console.error(`\n❌ Session failed: ${sessionId} for issue ${issueId}`);
-			console.error(`   Error: ${error.message}\n`);
+		orchestrator.on("session:failed", () => {
+			// Handled by renderer
 		});
 
-		orchestrator.on("error", (error, context) => {
-			console.error(`\n❌ Orchestrator error:`, error);
-			if (context) {
-				console.error(`   Context:`, context);
-			}
+		orchestrator.on("error", () => {
+			// Handled by renderer
 		});
 
 		// Start the orchestrator
 		await orchestrator.start();
 
 		// Get the issue and start a session
-		console.log(`📋 Fetching issue: ${issueId}...\n`);
+		// Note: Console output is suppressed after this point to avoid interfering with Ink UI
 		const issue = await issueTracker.getIssue(issueId);
 
-		console.log(`📝 Issue: ${issue.title}`);
-		console.log(`   ${issue.description.split("\n")[0]}\n`);
-
-		console.log(`🎬 Starting agent session...\n`);
+		// Start the session - this will trigger the renderer to display the UI
 		await orchestrator.startSession(issue, {
 			workingDirectory: workingDir,
 		});
-
-		console.log(
-			"🎨 Rendering interactive UI below. Type messages to interact with the agent.\n",
-		);
-		console.log("─".repeat(80));
-		console.log();
 
 		// Keep the process running
 		// The orchestrator and renderer will handle everything from here

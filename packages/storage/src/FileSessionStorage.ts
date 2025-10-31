@@ -88,17 +88,24 @@ export class FileSessionStorage implements SessionStorage {
 			await writeFile(filePath, data, "utf8");
 
 			// Clean up temp file if it still exists
-			if (existsSync(tempPath)) {
+			try {
 				await unlink(tempPath);
+			} catch (unlinkError: any) {
+				// Ignore ENOENT errors - file may have been cleaned up already
+				if (unlinkError?.code !== "ENOENT") {
+					// Log but don't throw - the write succeeded
+					console.warn(
+						`Failed to clean up temp file ${tempPath}:`,
+						unlinkError,
+					);
+				}
 			}
 		} catch (error) {
 			// Clean up temp file on error
-			if (existsSync(tempPath)) {
-				try {
-					await unlink(tempPath);
-				} catch {
-					// Ignore cleanup errors
-				}
+			try {
+				await unlink(tempPath);
+			} catch {
+				// Ignore cleanup errors
 			}
 			throw error;
 		}
