@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed missing prompt files in published edge-worker package - build now copies root-level prompt files (builder.md, debugger.md, orchestrator.md, scoper.md) to dist directory
+
 ## [0.1.58] - 2025-10-29
 
 ### Added
