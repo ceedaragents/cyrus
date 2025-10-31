@@ -39,3 +39,4 @@ workspaces
 .edge-config.json
 
 CLAUDE.local.md
+packages/agent-runners/tsconfig.tsbuildinfo
