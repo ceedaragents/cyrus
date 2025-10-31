@@ -5,7 +5,13 @@
 		"rootDir": "./src",
 		"composite": true,
 		"declaration": true,
-		"declarationMap": true
+		"declarationMap": true,
+		"jsx": "react",
+		"moduleResolution": "bundler",
+		"noUncheckedIndexedAccess": false,
+		"paths": {
+			"cyrus-interfaces": ["../interfaces/src"]
+		}
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "test"]
