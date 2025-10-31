@@ -48,16 +48,21 @@ export type {
 // Re-export SessionSummary from renderer
 export type {
 	AgentActivity,
-	FileModifiedActivity,
+	AgentActivityActionContent,
+	AgentActivityContent,
+	AgentActivityElicitationContent,
+	AgentActivityErrorContent,
+	AgentActivityPromptContent,
+	AgentActivityResponseContent,
+	AgentActivitySignal,
+	AgentActivityThoughtContent,
+	AgentActivityType,
 	MessageInput,
 	RenderableSession,
 	Renderer,
 	SessionSummary as RendererSessionSummary,
 	SignalInput,
-	StatusActivity,
-	ThinkingActivity,
 	UserInput,
-	VerificationActivity,
 } from "./renderer.js";
 
 // Storage
