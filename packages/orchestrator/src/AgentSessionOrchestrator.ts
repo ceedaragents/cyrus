@@ -765,6 +765,9 @@ export class AgentSessionOrchestrator extends EventEmitter {
 				await this.storage.saveSession(sessionState);
 			}
 
+			// Abort ongoing operations (stops processUserInput loop)
+			activeSession.abortController.abort();
+
 			// Clean up
 			this.activeSessions.delete(sessionId);
 			this.sessionsByIssue.delete(issueId);
@@ -798,6 +801,9 @@ export class AgentSessionOrchestrator extends EventEmitter {
 
 			// Update session state
 			await this.storage.updateStatus(sessionId, "failed");
+
+			// Abort ongoing operations (stops processUserInput loop)
+			activeSession.abortController.abort();
 
 			// Clean up
 			this.activeSessions.delete(sessionId);
