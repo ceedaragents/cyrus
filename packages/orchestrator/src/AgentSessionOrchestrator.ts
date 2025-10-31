@@ -628,8 +628,15 @@ export class AgentSessionOrchestrator extends EventEmitter {
 	): Promise<void> {
 		const { sessionId } = activeSession;
 
+		console.error(
+			`[DEBUG Orchestrator] handleAgentEvent - sessionId: ${sessionId}, eventType: ${event.type}`,
+		);
+
 		switch (event.type) {
 			case "text": {
+				console.error(
+					`[DEBUG Orchestrator] Calling renderer.renderText with sessionId: ${sessionId}`,
+				);
 				await this.renderer.renderText(sessionId, event.content);
 
 				// Store as assistant message
@@ -646,6 +653,9 @@ export class AgentSessionOrchestrator extends EventEmitter {
 			}
 
 			case "tool-use": {
+				console.error(
+					`[DEBUG Orchestrator] Calling renderer.renderToolUse with sessionId: ${sessionId}`,
+				);
 				await this.renderer.renderToolUse(sessionId, event.tool, event.input);
 
 				// Store as tool message

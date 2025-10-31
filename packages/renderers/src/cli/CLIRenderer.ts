@@ -316,8 +316,19 @@ export class CLIRenderer implements Renderer {
 		content: string,
 		icon?: string,
 	): void {
+		console.error(
+			`[DEBUG CLIRenderer] addActivity called - sessionId: ${sessionId}, type: ${type}`,
+		);
+		console.error(
+			`[DEBUG CLIRenderer] Available sessions:`,
+			Array.from(this.sessions.keys()),
+		);
+
 		const state = this.sessions.get(sessionId);
 		if (!state) {
+			console.error(
+				`[DEBUG CLIRenderer] Session ${sessionId} not found in sessions map!`,
+			);
 			return;
 		}
 
@@ -329,6 +340,10 @@ export class CLIRenderer implements Renderer {
 			icon: icon || this.getActivityIcon(type),
 		};
 
+		console.error(
+			`[DEBUG CLIRenderer] Adding activity to session ${sessionId}, current activities count: ${state.activities.length}`,
+		);
+
 		state.activities.push(activity);
 
 		// Enforce max activities limit
@@ -336,6 +351,9 @@ export class CLIRenderer implements Renderer {
 			state.activities.shift();
 		}
 
+		console.error(
+			`[DEBUG CLIRenderer] Calling emitUpdate, new activities count: ${state.activities.length}`,
+		);
 		this.emitUpdate();
 	}
 
