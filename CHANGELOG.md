@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Skip loading 'primary' subroutine prompt to eliminate ENOENT error in logs - the "primary" promptPath is a placeholder with no corresponding file
+
 ## [0.1.58] - 2025-10-29
 
 ### Added
