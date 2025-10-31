@@ -197,8 +197,12 @@ async function main() {
 			// Handled by renderer
 		});
 
-		orchestrator.on("error", () => {
-			// Handled by renderer
+		orchestrator.on("error", (error, context) => {
+			// Log errors to stderr for debugging (doesn't interfere with Ink UI)
+			console.error("\n[Orchestrator Error]", error);
+			if (context) {
+				console.error("[Context]", context);
+			}
 		});
 
 		// Start the orchestrator
