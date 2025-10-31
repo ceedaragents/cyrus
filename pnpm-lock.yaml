@@ -105,11 +105,11 @@ importers:
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.28
-        version: 0.1.28(zod@3.25.76)
+        specifier: ^0.1.30
+        version: 0.1.30(zod@3.25.76)
       '@anthropic-ai/sdk':
-        specifier: ^0.67.0
-        version: 0.67.0(zod@3.25.76)
+        specifier: ^0.68.0
+        version: 0.68.0(zod@3.25.76)
       '@linear/sdk':
         specifier: ^60.0.0
         version: 60.0.0
@@ -235,8 +235,8 @@ importers:
   packages/simple-agent-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.28
-        version: 0.1.28(zod@3.25.76)
+        specifier: ^0.1.30
+        version: 0.1.30(zod@3.25.76)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -257,14 +257,14 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@anthropic-ai/claude-agent-sdk@0.1.28':
-    resolution: {integrity: sha512-latceXkaJbtV4mn2kqnbZgTZYlve+dhCGCW2liWhYdUv6KuoUEY6DK1VDzzHGnd2996fIBO/7E5PAAEHpsDing==}
+  '@anthropic-ai/claude-agent-sdk@0.1.30':
+    resolution: {integrity: sha512-lo1tqxCr2vygagFp6kUMHKSN6AAWlULCskwGKtLB/JcIXy/8H8GsLSKX54anTsvc9mBbCR8wWASdFmiiL9NSKA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       zod: ^3.24.1
 
-  '@anthropic-ai/sdk@0.67.0':
-    resolution: {integrity: sha512-Buxbf6jYJ+pPtfCgXe1pcFtZmdXPrbdqhBjiscFt9irS1G0hCsmR/fPA+DwKTk4GPjqeNnnCYNecXH6uVZ4G/A==}
+  '@anthropic-ai/sdk@0.68.0':
+    resolution: {integrity: sha512-SMYAmbbiprG8k1EjEPMTwaTqssDT7Ae+jxcR5kWXiqTlbwMR2AthXtscEVWOHkRfyAV5+y3PFYTJRNa3OJWIEw==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -2537,7 +2537,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@anthropic-ai/claude-agent-sdk@0.1.28(zod@3.25.76)':
+  '@anthropic-ai/claude-agent-sdk@0.1.30(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
     optionalDependencies:
@@ -2548,7 +2548,7 @@ snapshots:
       '@img/sharp-linux-x64': 0.33.5
       '@img/sharp-win32-x64': 0.33.5
 
-  '@anthropic-ai/sdk@0.67.0(zod@3.25.76)':
+  '@anthropic-ai/sdk@0.68.0(zod@3.25.76)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
