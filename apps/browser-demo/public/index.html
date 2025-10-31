@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyrus CLI Demo - Browser Emulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #252526;
+            border-bottom: 2px solid #00d9ff;
+            padding: 16px 20px;
+        }
+
+        .header h1 {
+            color: #00d9ff;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .header .subtitle {
+            color: #888;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .connection-status {
+            margin-top: 8px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            display: inline-block;
+        }
+
+        .connection-status.connected {
+            background: #0e6027;
+            color: #4ec9b0;
+        }
+
+        .connection-status.disconnected {
+            background: #5a1d1d;
+            color: #f48771;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        .session-container {
+            flex: 1;
+            background: #2d2d2d;
+            border: 2px solid #3e3e3e;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .session-header {
+            background: #323232;
+            padding: 12px 16px;
+            border-bottom: 1px solid #3e3e3e;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .session-status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .session-status.running {
+            background: #4ec9b0;
+        }
+
+        .session-status.complete {
+            background: #608b4e;
+            animation: none;
+        }
+
+        .session-status.error {
+            background: #f48771;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .session-title {
+            font-weight: bold;
+            color: #4ec9b0;
+        }
+
+        .session-id {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .activities-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .activities-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .activities-container::-webkit-scrollbar-track {
+            background: #2d2d2d;
+        }
+
+        .activities-container::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        .activities-container::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+
+        .activity-item {
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            background: #252526;
+            border-left: 3px solid #3e3e3e;
+            border-radius: 4px;
+        }
+
+        .activity-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .activity-timestamp {
+            color: #888;
+            font-size: 11px;
+        }
+
+        .activity-icon {
+            font-size: 14px;
+        }
+
+        .activity-type {
+            font-weight: bold;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .activity-type.text { color: #d4d4d4; }
+        .activity-type.tool-use { color: #569cd6; }
+        .activity-type.error { color: #f48771; }
+        .activity-type.complete { color: #608b4e; }
+        .activity-type.session-start { color: #4ec9b0; }
+
+        .activity-content {
+            color: #d4d4d4;
+            font-size: 13px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+            padding-left: 24px;
+        }
+
+        .input-container {
+            background: #252526;
+            border-top: 1px solid #3e3e3e;
+            padding: 16px;
+        }
+
+        .input-label {
+            color: #4ec9b0;
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .input-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .input-field {
+            flex: 1;
+            background: #1e1e1e;
+            border: 1px solid #3e3e3e;
+            color: #d4d4d4;
+            padding: 10px 12px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .btn-send {
+            background: #0e6027;
+            color: #4ec9b0;
+        }
+
+        .btn-stop {
+            background: #5a1d1d;
+            color: #f48771;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #888;
+            padding: 40px;
+        }
+
+        .keyboard-hint {
+            font-size: 11px;
+            color: #666;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Cyrus CLI Demo - Browser Emulator</h1>
+        <div class="subtitle">Interactive demonstration of Cyrus agent orchestrator and renderer system</div>
+        <div class="connection-status" id="connectionStatus">
+            Connecting...
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="session-container">
+            <div class="session-header" id="sessionHeader">
+                <div class="session-status running" id="sessionStatus"></div>
+                <div class="session-title" id="sessionTitle">Waiting for session...</div>
+                <div class="session-id" id="sessionId"></div>
+            </div>
+
+            <div class="activities-container" id="activitiesContainer">
+                <div class="empty-state">
+                    No activities yet. The session will start automatically when the demo initializes.
+                </div>
+            </div>
+
+            <div class="input-container">
+                <div class="input-label">
+                    Message Cyrus (Press Enter to send)
+                </div>
+                <div class="input-controls">
+                    <input
+                        type="text"
+                        class="input-field"
+                        id="messageInput"
+                        placeholder="Type your message to the agent..."
+                        disabled
+                    />
+                    <button class="btn btn-send" id="sendBtn" disabled>Send</button>
+                    <button class="btn btn-stop" id="stopBtn" disabled>Stop</button>
+                </div>
+                <div class="keyboard-hint">
+                    Press Enter to send message • Click Stop to halt agent execution
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
