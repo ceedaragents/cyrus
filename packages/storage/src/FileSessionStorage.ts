@@ -40,8 +40,13 @@ export class FileSessionStorage implements SessionStorage {
 	 * Ensure a directory exists, creating it if necessary
 	 */
 	private async ensureDirectory(path: string): Promise<void> {
-		if (!existsSync(path)) {
+		try {
 			await mkdir(path, { recursive: true });
+		} catch (error: any) {
+			// Ignore EEXIST errors (directory already exists)
+			if (error?.code !== "EEXIST") {
+				throw error;
+			}
 		}
 	}
 
