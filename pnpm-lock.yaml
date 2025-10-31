@@ -308,6 +308,25 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
+  packages/renderers:
+    dependencies:
+      cyrus-interfaces:
+        specifier: workspace:*
+        version: link:../interfaces
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.18.13
+      '@vitest/coverage-v8':
+        specifier: ^2.1.8
+        version: 2.1.9(vitest@2.1.9(@types/node@22.18.13))
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.18.13)
+
   packages/simple-agent-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':

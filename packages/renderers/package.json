@@ -1,0 +1,41 @@
+{
+	"name": "@cyrus/renderers",
+	"version": "0.1.0",
+	"description": "Renderer implementations for Cyrus (Linear comments, CLI output, etc.)",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./linear": {
+			"types": "./dist/linear/index.d.ts",
+			"import": "./dist/linear/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"cyrus-interfaces": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"@vitest/coverage-v8": "^2.1.8",
+		"typescript": "^5.7.3",
+		"vitest": "^2.1.8"
+	},
+	"keywords": [
+		"cyrus",
+		"linear",
+		"renderer",
+		"comment"
+	],
+	"author": "Cyrus Team",
+	"license": "MIT"
+}
