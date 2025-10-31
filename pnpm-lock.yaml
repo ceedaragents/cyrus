@@ -89,6 +89,40 @@ importers:
         specifier: ^3.1.4
         version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(yaml@2.8.1)
 
+  apps/cli-interactive:
+    dependencies:
+      '@cyrus/agent-runners':
+        specifier: workspace:*
+        version: link:../../packages/agent-runners
+      '@cyrus/renderers':
+        specifier: workspace:*
+        version: link:../../packages/renderers
+      cyrus-claude-runner:
+        specifier: workspace:*
+        version: link:../../packages/claude-runner
+      cyrus-interfaces:
+        specifier: workspace:*
+        version: link:../../packages/interfaces
+      cyrus-orchestrator:
+        specifier: workspace:*
+        version: link:../../packages/orchestrator
+      cyrus-storage:
+        specifier: workspace:*
+        version: link:../../packages/storage
+      dotenv:
+        specifier: ^16.5.0
+        version: 16.6.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(yaml@2.8.1)
+
   packages/agent-runners:
     dependencies:
       cyrus-claude-runner:
@@ -3191,7 +3225,7 @@ snapshots:
   '@types/fs-extra@11.0.4':
     dependencies:
       '@types/jsonfile': 6.1.4
-      '@types/node': 20.19.21
+      '@types/node': 22.18.13
 
   '@types/jsonfile@6.1.4':
     dependencies:

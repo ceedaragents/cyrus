@@ -1,0 +1,40 @@
+{
+	"name": "cyrus-cli-interactive",
+	"version": "0.1.0",
+	"description": "Interactive CLI demonstration of the Cyrus renderer architecture",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"start": "node dist/index.js",
+		"dev": "tsc --watch",
+		"test": "vitest run",
+		"test:run": "vitest run --passWithNoTests",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [
+		"cyrus",
+		"cli",
+		"interactive",
+		"renderer",
+		"demo"
+	],
+	"author": "",
+	"license": "MIT",
+	"dependencies": {
+		"cyrus-interfaces": "workspace:*",
+		"cyrus-orchestrator": "workspace:*",
+		"@cyrus/renderers": "workspace:*",
+		"@cyrus/agent-runners": "workspace:*",
+		"cyrus-storage": "workspace:*",
+		"cyrus-claude-runner": "workspace:*",
+		"dotenv": "^16.5.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^3.1.4"
+	}
+}
