@@ -99,10 +99,7 @@ async function main() {
 	const demoMode = args.demo ?? false;
 	const issueId = args.issue || "DEMO-1";
 
-	console.log("\n🚀 Cyrus CLI Interactive\n");
-	console.log(`Mode: ${demoMode ? "DEMO" : "REAL"}`);
-	console.log(`Issue: ${issueId}\n`);
-
+	// Validate API key for real mode
 	if (!demoMode && !process.env.ANTHROPIC_API_KEY) {
 		console.error(
 			"❌ Error: ANTHROPIC_API_KEY environment variable is required for real mode.",
@@ -120,29 +117,20 @@ async function main() {
 		const workingDir = args.workingDir || process.cwd();
 		const sessionsDir = path.join(cyrusHome, "sessions");
 
-		console.log(`Cyrus home: ${cyrusHome}`);
-		console.log(`Working directory: ${workingDir}`);
-		console.log(`Sessions directory: ${sessionsDir}\n`);
-
 		// Initialize components based on mode
 		let agentRunner: MockAgentRunner | ClaudeAgentRunner;
 		let issueTracker: MockIssueTracker;
 
 		if (demoMode) {
-			console.log("✨ Initializing demo components...\n");
 			agentRunner = new MockAgentRunner();
 			issueTracker = new MockIssueTracker();
 		} else {
-			console.log("🔧 Initializing real components...\n");
 			agentRunner = new ClaudeAgentRunner({
 				cyrusHome,
 			});
 
 			// For real mode, we'd need to initialize LinearIssueTracker
 			// For now, fallback to mock
-			console.warn(
-				"⚠️  Warning: Real LinearIssueTracker not implemented yet, using mock.\n",
-			);
 			issueTracker = new MockIssueTracker();
 		}
 
