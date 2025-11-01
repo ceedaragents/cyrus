@@ -234,25 +234,48 @@ Base Branch: {{base_branch}}`;
 	});
 
 	it("should use parent issue branch when issue has a parent", async () => {
-		// Arrange - Mock issue with parent
-		mockLinearClient.fetchIssue.mockResolvedValue({
-			id: "issue-123",
-			identifier: "TEST-123",
-			title: "Test Issue",
-			description: "This is a test issue",
-			url: "https://linear.app/test/issue/TEST-123",
-			branchName: "test-branch",
-			state: Promise.resolve({ name: "Todo" }),
-			team: { id: "team-123" },
-			labels: vi.fn().mockResolvedValue({
-				nodes: [],
-			}),
-			parent: Promise.resolve({
-				id: "parent-issue-456",
-				identifier: "TEST-456",
-				branchName: "parent-feature-branch",
-			}),
-		});
+		// Arrange - Mock issue with parent and parent issue
+		mockLinearClient.fetchIssue.mockImplementation(
+			async (idOrIdentifier: string) => {
+				if (
+					idOrIdentifier === "parent-issue-456" ||
+					idOrIdentifier === "TEST-456"
+				) {
+					// Return parent issue
+					return {
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						title: "Parent Issue",
+						branchName: "parent-feature-branch",
+						state: Promise.resolve({ name: "Todo" }),
+						team: { id: "team-123" },
+						labels: vi.fn().mockResolvedValue({ nodes: [] }),
+						parentId: undefined,
+						parent: Promise.resolve(null),
+					};
+				}
+				// Return child issue
+				return {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					description: "This is a test issue",
+					url: "https://linear.app/test/issue/TEST-123",
+					branchName: "test-branch",
+					state: Promise.resolve({ name: "Todo" }),
+					team: { id: "team-123" },
+					labels: vi.fn().mockResolvedValue({
+						nodes: [],
+					}),
+					parentId: "parent-issue-456",
+					parent: Promise.resolve({
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						branchName: "parent-feature-branch",
+					}),
+				};
+			},
+		);
 
 		const createdWebhook: LinearAgentSessionCreatedWebhook = {
 			type: "Issue",
@@ -287,26 +310,49 @@ Base Branch: {{base_branch}}`;
 	});
 
 	it("should fall back to repository baseBranch when parent has no branch name", async () => {
-		// Arrange - Mock issue with parent but no branch name
-		mockLinearClient.fetchIssue.mockResolvedValue({
-			id: "issue-123",
-			identifier: "TEST-123",
-			title: "Test Issue",
-			description: "This is a test issue",
-			url: "https://linear.app/test/issue/TEST-123",
-			branchName: "test-branch",
-			state: Promise.resolve({ name: "Todo" }),
-			team: { id: "team-123" },
-			labels: vi.fn().mockResolvedValue({
-				nodes: [],
-			}),
-			parent: Promise.resolve({
-				id: "parent-issue-456",
-				identifier: "TEST-456",
-				branchName: null, // Parent has no branch name
-				title: "Parent Issue Title", // Add title so branch name can be generated
-			}),
-		});
+		// Arrange - Mock issue with parent but parent has no branch name
+		mockLinearClient.fetchIssue.mockImplementation(
+			async (idOrIdentifier: string) => {
+				if (
+					idOrIdentifier === "parent-issue-456" ||
+					idOrIdentifier === "TEST-456"
+				) {
+					// Return parent issue with no branch name
+					return {
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						title: "Parent Issue Title",
+						branchName: null,
+						state: Promise.resolve({ name: "Todo" }),
+						team: { id: "team-123" },
+						labels: vi.fn().mockResolvedValue({ nodes: [] }),
+						parentId: undefined,
+						parent: Promise.resolve(null),
+					};
+				}
+				// Return child issue
+				return {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					description: "This is a test issue",
+					url: "https://linear.app/test/issue/TEST-123",
+					branchName: "test-branch",
+					state: Promise.resolve({ name: "Todo" }),
+					team: { id: "team-123" },
+					labels: vi.fn().mockResolvedValue({
+						nodes: [],
+					}),
+					parentId: "parent-issue-456",
+					parent: Promise.resolve({
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						branchName: null,
+						title: "Parent Issue Title",
+					}),
+				};
+			},
+		);
 
 		const createdWebhook: LinearAgentSessionCreatedWebhook = {
 			type: "Issue",
@@ -342,29 +388,56 @@ Base Branch: {{base_branch}}`;
 
 	it("should handle deeply nested parent issues", async () => {
 		// Arrange - Mock issue with nested parent structure
-		mockLinearClient.fetchIssue.mockResolvedValue({
-			id: "issue-123",
-			identifier: "TEST-123",
-			title: "Test Issue",
-			description: "This is a test issue",
-			url: "https://linear.app/test/issue/TEST-123",
-			branchName: "test-branch",
-			state: Promise.resolve({ name: "Todo" }),
-			team: { id: "team-123" },
-			labels: vi.fn().mockResolvedValue({
-				nodes: [],
-			}),
-			parent: Promise.resolve({
-				id: "parent-issue-456",
-				identifier: "TEST-456",
-				branchName: "parent-branch-456",
-				parent: {
-					id: "grandparent-issue-789",
-					identifier: "TEST-789",
-					branchName: "grandparent-branch-789",
-				},
-			}),
-		});
+		mockLinearClient.fetchIssue.mockImplementation(
+			async (idOrIdentifier: string) => {
+				if (
+					idOrIdentifier === "parent-issue-456" ||
+					idOrIdentifier === "TEST-456"
+				) {
+					// Return parent issue
+					return {
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						title: "Parent Issue",
+						branchName: "parent-branch-456",
+						state: Promise.resolve({ name: "Todo" }),
+						team: { id: "team-123" },
+						labels: vi.fn().mockResolvedValue({ nodes: [] }),
+						parentId: "grandparent-issue-789",
+						parent: Promise.resolve({
+							id: "grandparent-issue-789",
+							identifier: "TEST-789",
+							branchName: "grandparent-branch-789",
+						}),
+					};
+				}
+				// Return child issue
+				return {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					description: "This is a test issue",
+					url: "https://linear.app/test/issue/TEST-123",
+					branchName: "test-branch",
+					state: Promise.resolve({ name: "Todo" }),
+					team: { id: "team-123" },
+					labels: vi.fn().mockResolvedValue({
+						nodes: [],
+					}),
+					parentId: "parent-issue-456",
+					parent: Promise.resolve({
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						branchName: "parent-branch-456",
+						parent: {
+							id: "grandparent-issue-789",
+							identifier: "TEST-789",
+							branchName: "grandparent-branch-789",
+						},
+					}),
+				};
+			},
+		);
 
 		const createdWebhook: LinearAgentSessionCreatedWebhook = {
 			type: "Issue",
