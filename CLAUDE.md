@@ -345,3 +345,51 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
 - Build all packages once at the start, then publish without rebuilding
 - This ensures `workspace:*` references resolve to published versions
 
+## Browser Demo Interactive Element Selectors
+
+The browser demo (`apps/browser-demo`) contains the following interactive elements with their CSS selectors for testing and automation:
+
+### Sidebar Controls
+- **Sidebar Toggle**: `#sidebarToggle` - Hamburger menu (☰) to show/hide sidebar on mobile
+- **Export Session Button**: `#exportBtn` - Button with text "Export Session"
+- **Share Button**: `#shareBtn` - Button with text "Share"
+
+### Activity Controls
+- **Expand/Collapse Buttons**: `.expand-btn` - Toggle buttons for tool call details
+  - Each has unique ID: `#expand-activity_{activityId}` (e.g., `#expand-activity_1761959638058_d63z5l`)
+  - Shows ▼ when collapsed, ▲ when expanded
+- **Copy Buttons**: `.copy-btn` - Buttons to copy tool call input/output to clipboard
+  - Located within `.activity.tool-call` elements
+  - Text: "Copy"
+
+### Timeline Navigation
+- **Timeline Dots**: `.timeline-dot` - Navigation dots for jumping to specific activities
+  - Multiple dots representing each activity in the timeline
+- **System Event Dots**: `.system-dot` - Special dots for system events (session start/complete)
+
+### Message Controls
+- **Send Button**: `#sendBtn` - Button to send messages to Claude agent
+- **Stop Button**: `#stopBtn` - Button to stop/cancel running agent
+- **Message Input**: `#messageInput` - Text input field for typing messages
+
+### Activity-Specific Selectors
+- **Tool Call Activity**: `.activity.tool-call` - Container for tool execution activities
+- **Thought Activity**: `.activity.thought` - Container for agent thoughts (italic text with ~ icon)
+- **System Event**: `.activity.system-evt` - Container for system events
+- **Result Activity**: `.activity.result` - Container for completion results
+
+### Targeted Selectors for Specific Tools
+- **Glob Tool Call**: `.activity.tool-call:has(.tool-name:text("Glob"))`
+- **Read Tool Call**: `.activity.tool-call:has(.tool-name:text("Read"))`
+- **Edit Tool Call**: `.activity.tool-call:has(.tool-name:text("Edit"))`
+- **Bash Tool Call**: `.activity.tool-call:has(.tool-name:text("Bash"))`
+
+### Connection Status
+- **Connection Status Indicator**: `.connection-status` - Shows "Connected" or "Disconnected"
+  - Classes: `.connection-status.connected` or `.connection-status.disconnected`
+
+### Session Information
+- **Session Title**: `.session-title` - Displays the issue title
+- **Session ID**: `.session-id` - Displays the issue identifier
+- **Session Status Badge**: `.session-status` - Shows session state (Complete, Running, etc.)
+
