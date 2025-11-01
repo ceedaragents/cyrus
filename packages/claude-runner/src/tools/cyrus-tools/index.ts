@@ -250,10 +250,10 @@ export function createCyrusToolsServer(
 
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
+					const parentSessionId = options.parentSessionId!;
 					console.log(
-						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${parentSessionId}`,
 					);
-					const parentSessionId = options.parentSessionId;
 					options.onSessionCreated(agentSessionId, parentSessionId);
 				}
 
@@ -331,10 +331,10 @@ export function createCyrusToolsServer(
 
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
+					const parentSessionId = options.parentSessionId!;
 					console.log(
-						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${parentSessionId}`,
 					);
-					const parentSessionId = options.parentSessionId;
 					options.onSessionCreated(agentSessionId, parentSessionId);
 				}
 
