@@ -19,7 +19,7 @@ This is a **key deliverable for CYPACK-278**, demonstrating:
 - 📝 **Interactive Messaging**: Send messages to the agent during execution
 - 🛑 **Stop Signal**: Click button to send stop signal to agent
 - 📜 **Scrollable History**: Auto-scrolling activity log
-- 🎭 **Emulator Mode**: Mock components for testing without credentials
+- 🎭 **Fake Data Mode**: Mock components for testing without credentials
 - 🔌 **WebSocket Communication**: Efficient real-time bidirectional updates
 
 ## Architecture
@@ -55,7 +55,7 @@ This is a **key deliverable for CYPACK-278**, demonstrating:
 
 ### Component Responsibilities
 
-1. **MockAgentRunner**: Simulates Claude with realistic events (emulator mode)
+1. **MockAgentRunner**: Simulates Claude with realistic events (fake data mode)
 2. **MockIssueTracker**: Simulates Linear with an emulated issue
 3. **BrowserRenderer**: Sends activity updates to browser via WebSocket
 4. **FileSessionStorage**: Persists session state to filesystem
@@ -109,7 +109,7 @@ CYRUS_HOME=/tmp/cyrus pnpm start
 2. **WebSocket Server**: Handles real-time bidirectional communication
 3. **BrowserRenderer**: Implements the `Renderer` interface, sends JSON messages to browser
 4. **Orchestrator**: Same orchestration logic as CLI implementation
-5. **Mock Components**: Mock implementations for emulator mode
+5. **Mock Components**: Mock implementations for fake data mode
 
 ### Browser Side
 
@@ -183,8 +183,8 @@ apps/browser-demo/
 ├── src/
 │   ├── server.ts              # Main server entry point
 │   ├── BrowserRenderer.ts     # Renderer implementation for browser
-│   ├── MockAgentRunner.ts     # Simulated agent (for emulator mode)
-│   └── MockIssueTracker.ts    # Simulated issue tracker (for emulator mode)
+│   ├── MockAgentRunner.ts     # Simulated agent (for fake data mode)
+│   └── MockIssueTracker.ts    # Simulated issue tracker (for fake data mode)
 ├── public/
 │   ├── index.html             # Browser UI structure
 │   └── app.js                 # Browser client logic
@@ -209,7 +209,7 @@ apps/browser-demo/
 This app fulfills all acceptance criteria from CYPACK-278:
 
 - ✅ Simple web page (HTML + vanilla JS) that runs locally
-- ✅ Includes MockAgentRunner and MockIssueTracker for emulator mode
+- ✅ Includes MockAgentRunner and MockIssueTracker for fake data mode
 - ✅ Displays real-time activity log (text events, tool-use events)
 - ✅ Shows message input field at bottom (like Linear's "message Cyrus")
 - ✅ Supports stop button during agent execution
@@ -342,7 +342,7 @@ Then open: http://localhost:8080
 - **No build step for browser code**: HTML/JS served directly
 - **TypeScript only for server**: Browser uses vanilla JavaScript
 - **WebSocket for real-time**: Efficient bidirectional communication
-- **Mock components available**: MockAgentRunner and MockIssueTracker for emulator mode
+- **Mock components available**: MockAgentRunner and MockIssueTracker for fake data mode
 - **Same orchestrator**: Proves architecture works with different renderers
 
 ## Future Enhancements

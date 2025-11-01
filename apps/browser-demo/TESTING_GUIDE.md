@@ -40,7 +40,7 @@ Test switching between Mock and Claude agent implementations:
 - **Mock**: Simulated agent responses (no credentials needed)
 - **Claude**: Real Claude Code execution (requires authentication)
 
-**Note**: Changing runner modes requires server restart. Use `--emulator` flag for mock mode, omit for Claude mode.
+**Note**: Changing runner modes requires server restart. Use `--fake-data` flag for mock mode, omit for Claude mode.
 
 ### Issue Tracker Controls
 
@@ -283,7 +283,7 @@ pnpm start
 
 1. Verify WebSocket connection
 2. Check server logs for test control messages
-3. Ensure server is in correct mode (emulator vs. real)
+3. Ensure server is in correct mode (fake data vs. real)
 
 ### Session Storage Issues
 
