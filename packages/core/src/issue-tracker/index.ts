@@ -46,6 +46,16 @@
 export { IIssueTrackerService } from "./IIssueTrackerService.js";
 
 // ============================================================================
+// EVENT TRANSPORT
+// ============================================================================
+
+export type {
+	AgentEventTransportConfig,
+	AgentEventTransportEvents,
+	IAgentEventTransport,
+} from "./IAgentEventTransport.js";
+
+// ============================================================================
 // CORE TYPES
 // ============================================================================
 
@@ -70,6 +80,7 @@ export {
 // ADAPTERS
 // ============================================================================
 
+export { LinearAgentEventTransport } from "./adapters/LinearAgentEventTransport.js";
 export { LinearIssueTrackerService } from "./adapters/LinearIssueTrackerService.js";
 export * from "./adapters/LinearTypeAdapters.js";
 

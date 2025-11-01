@@ -23,10 +23,16 @@ export declare interface LinearEventTransport {
 /**
  * LinearEventTransport - Handles Linear webhook event delivery
  *
- * This class registers a POST /webhook endpoint with a Fastify server
+ * This class provides a platform-agnostic interface for handling Linear webhooks
+ * while managing Linear-specific webhook verification.
+ *
+ * It registers a POST /webhook endpoint with a Fastify server
  * and verifies incoming webhooks using either:
  * 1. LINEAR_DIRECT_WEBHOOKS mode: Verifies Linear's webhook signature
  * 2. Proxy mode: Verifies Bearer token authentication
+ *
+ * The class emits both legacy "webhook" events and new "event" events for
+ * backward compatibility during migration.
  */
 export class LinearEventTransport extends EventEmitter {
 	private config: LinearEventTransportConfig;
@@ -98,8 +104,10 @@ export class LinearEventTransport extends EventEmitter {
 				return;
 			}
 
-			// Emit webhook event with the validated payload
-			this.emit("webhook", request.body as LinearWebhookPayload);
+			// Emit both legacy "webhook" and new "event" for backward compatibility
+			const payload = request.body as LinearWebhookPayload;
+			this.emit("webhook", payload);
+			this.emit("event", payload); // Platform-agnostic event
 
 			// Send success response
 			reply.code(200).send({ success: true });
@@ -134,8 +142,10 @@ export class LinearEventTransport extends EventEmitter {
 		}
 
 		try {
-			// Emit webhook event with the payload
-			this.emit("webhook", request.body as LinearWebhookPayload);
+			// Emit both legacy "webhook" and new "event" for backward compatibility
+			const payload = request.body as LinearWebhookPayload;
+			this.emit("webhook", payload);
+			this.emit("event", payload); // Platform-agnostic event
 
 			// Send success response
 			reply.code(200).send({ success: true });

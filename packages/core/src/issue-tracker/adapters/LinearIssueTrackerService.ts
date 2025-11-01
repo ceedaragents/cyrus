@@ -9,6 +9,10 @@
  */
 
 import type { LinearClient } from "@linear/sdk";
+import type {
+	AgentEventTransportConfig,
+	IAgentEventTransport,
+} from "../IAgentEventTransport.js";
 import type { IIssueTrackerService } from "../IIssueTrackerService.js";
 import type {
 	AgentActivity,
@@ -829,5 +833,24 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			sdkVersion: "unknown", // LinearClient doesn't expose version
 			apiVersion: "graphql",
 		};
+	}
+
+	// ========================================================================
+	// EVENT TRANSPORT
+	// ========================================================================
+
+	/**
+	 * Create an event transport for receiving Linear webhook events.
+	 *
+	 * @param config - Transport configuration
+	 * @returns Linear event transport implementation
+	 */
+	createEventTransport(
+		config: AgentEventTransportConfig,
+	): IAgentEventTransport {
+		const {
+			LinearAgentEventTransport,
+		} = require("./LinearAgentEventTransport.js");
+		return new LinearAgentEventTransport(config);
 	}
 }

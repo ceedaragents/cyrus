@@ -28,8 +28,10 @@ export interface LinearEventTransportConfig {
  * Events emitted by LinearEventTransport
  */
 export interface LinearEventTransportEvents {
-	/** Emitted when a webhook is received and verified */
+	/** Emitted when a webhook is received and verified (legacy) */
 	webhook: (payload: LinearWebhookPayload) => void;
+	/** Emitted when an event is received and verified (platform-agnostic) */
+	event: (payload: LinearWebhookPayload) => void;
 	/** Emitted when an error occurs */
 	error: (error: Error) => void;
 }

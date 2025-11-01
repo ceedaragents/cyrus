@@ -35,7 +35,6 @@ import type {
 	// LinearIssueCommentMentionWebhook,
 	// LinearIssueNewCommentWebhook,
 	LinearIssueUnassignedWebhook,
-	LinearWebhook,
 	LinearWebhookAgentSession,
 	LinearWebhookComment,
 	LinearWebhookGuidanceRule,
@@ -47,19 +46,20 @@ import type {
 } from "cyrus-core";
 import {
 	AgentActivityContentType,
+	type AgentEvent,
 	DEFAULT_PROXY_URL,
+	type IAgentEventTransport,
 	type IIssueTrackerService,
-	isAgentSessionCreatedWebhook,
-	isAgentSessionPromptedWebhook,
-	isIssueAssignedWebhook,
-	isIssueCommentMentionWebhook,
-	isIssueNewCommentWebhook,
-	isIssueUnassignedWebhook,
+	isAgentSessionCreatedEvent,
+	isAgentSessionPromptedEvent,
+	isCommentMentionEvent,
+	isIssueAssignedEvent,
+	isIssueUnassignedEvent,
+	isNewCommentEvent,
 	LinearIssueTrackerService,
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
-import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import {
@@ -100,7 +100,7 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
-	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
+	private agentEventTransport: IAgentEventTransport | null = null; // Single event transport for webhook delivery
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
@@ -329,26 +329,32 @@ export class EdgeWorker extends EventEmitter {
 			? process.env.LINEAR_WEBHOOK_SECRET || ""
 			: process.env.CYRUS_API_KEY || "";
 
-		this.linearEventTransport = new LinearEventTransport({
+		// Get any issue tracker to create the event transport (all use same Linear credentials)
+		const issueTracker = this.issueTrackers.values().next().value;
+		if (!issueTracker) {
+			throw new Error("No issue tracker available to create event transport");
+		}
+
+		this.agentEventTransport = issueTracker.createEventTransport({
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 			verificationMode,
 			secret,
 		});
 
-		// Listen for webhook events
-		this.linearEventTransport.on("webhook", (payload: any) => {
-			// Get all active repositories for webhook handling
+		// Listen for agent events
+		this.agentEventTransport.on("event", (event: AgentEvent) => {
+			// Get all active repositories for event handling
 			const repos = Array.from(this.repositories.values());
-			this.handleWebhook(payload as unknown as LinearWebhook, repos);
+			this.handleAgentEvent(event, repos);
 		});
 
 		// Listen for errors
-		this.linearEventTransport.on("error", (error: Error) => {
+		this.agentEventTransport.on("error", (error: Error) => {
 			this.handleError(error);
 		});
 
 		// Register the /webhook endpoint
-		this.linearEventTransport.register();
+		this.agentEventTransport.register();
 
 		console.log(
 			`✅ Linear event transport registered (${verificationMode} mode)`,
@@ -413,7 +419,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Clear event transport (no explicit cleanup needed, routes are removed when server stops)
-		this.linearEventTransport = null;
+		this.agentEventTransport = null;
 		this.configUpdater = null;
 
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
@@ -918,29 +924,29 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Handle webhook events from proxy - now accepts native webhook payloads
+	 * Handle agent events from event transport - platform-agnostic event handling
 	 */
-	private async handleWebhook(
-		webhook: LinearWebhook,
+	private async handleAgentEvent(
+		event: AgentEvent,
 		repos: RepositoryConfig[],
 	): Promise<void> {
-		// Log verbose webhook info if enabled
+		// Log verbose event info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			console.log(
-				`[handleWebhook] Full webhook payload:`,
-				JSON.stringify(webhook, null, 2),
+				`[handleAgentEvent] Full event payload:`,
+				JSON.stringify(event, null, 2),
 			);
 		}
 
-		// Find the appropriate repository for this webhook
-		const repository = await this.findRepositoryForWebhook(webhook, repos);
+		// Find the appropriate repository for this event
+		const repository = await this.findRepositoryForEvent(event, repos);
 		if (!repository) {
 			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 				console.log(
-					`[handleWebhook] No repository configured for webhook from workspace ${webhook.organizationId}`,
+					`[handleAgentEvent] No repository configured for event from workspace ${event.organizationId}`,
 				);
 				console.log(
-					`[handleWebhook] Available repositories:`,
+					`[handleAgentEvent] Available repositories:`,
 					repos.map((r) => ({
 						name: r.name,
 						workspaceId: r.linearWorkspaceId,
@@ -953,35 +959,35 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		try {
-			// Handle specific webhook types with proper typing
-			// NOTE: Traditional webhooks (assigned, comment) are disabled in favor of agent session events
-			if (isIssueAssignedWebhook(webhook)) {
+			// Handle specific event types with proper typing
+			// NOTE: Traditional events (assigned, comment) are disabled in favor of agent session events
+			if (isIssueAssignedEvent(event)) {
 				return;
-			} else if (isIssueCommentMentionWebhook(webhook)) {
+			} else if (isCommentMentionEvent(event)) {
 				return;
-			} else if (isIssueNewCommentWebhook(webhook)) {
+			} else if (isNewCommentEvent(event)) {
 				return;
-			} else if (isIssueUnassignedWebhook(webhook)) {
-				// Keep unassigned webhook active
-				await this.handleIssueUnassignedWebhook(webhook, repository);
-			} else if (isAgentSessionCreatedWebhook(webhook)) {
-				await this.handleAgentSessionCreatedWebhook(webhook, repository);
-			} else if (isAgentSessionPromptedWebhook(webhook)) {
-				await this.handleUserPostedAgentActivity(webhook, repository);
+			} else if (isIssueUnassignedEvent(event)) {
+				// Keep unassigned event active
+				await this.handleIssueUnassignedWebhook(event, repository);
+			} else if (isAgentSessionCreatedEvent(event)) {
+				await this.handleAgentSessionCreatedWebhook(event, repository);
+			} else if (isAgentSessionPromptedEvent(event)) {
+				await this.handleUserPostedAgentActivity(event, repository);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					console.log(
-						`[handleWebhook] Unhandled webhook type: ${(webhook as any).action} for repository ${repository.name}`,
+						`[handleAgentEvent] Unhandled event type: ${(event as any).action} for repository ${repository.name}`,
 					);
 				}
 			}
 		} catch (error) {
 			console.error(
-				`[handleWebhook] Failed to process webhook: ${(webhook as any).action} for repository ${repository.name}`,
+				`[handleAgentEvent] Failed to process event: ${(event as any).action} for repository ${repository.name}`,
 				error,
 			);
-			// Don't re-throw webhook processing errors to prevent application crashes
-			// The error has been logged and individual webhook failures shouldn't crash the entire system
+			// Don't re-throw event processing errors to prevent application crashes
+			// The error has been logged and individual event failures shouldn't crash the entire system
 		}
 	}
 
@@ -1009,11 +1015,11 @@ export class EdgeWorker extends EventEmitter {
 	 * Now supports async operations for label-based and project-based routing
 	 * Priority: routingLabels > projectKeys > teamKeys
 	 */
-	private async findRepositoryForWebhook(
-		webhook: LinearWebhook,
+	private async findRepositoryForEvent(
+		event: AgentEvent,
 		repos: RepositoryConfig[],
 	): Promise<RepositoryConfig | null> {
-		const workspaceId = webhook.organizationId;
+		const workspaceId = event.organizationId;
 		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
 
 		// Get issue information from webhook
@@ -1022,17 +1028,18 @@ export class EdgeWorker extends EventEmitter {
 		let issueIdentifier: string | undefined;
 
 		// Handle agent session webhooks which have different structure
-		if (
-			isAgentSessionCreatedWebhook(webhook) ||
-			isAgentSessionPromptedWebhook(webhook)
-		) {
-			issueId = webhook.agentSession?.issue?.id;
-			teamKey = webhook.agentSession?.issue?.team?.key;
-			issueIdentifier = webhook.agentSession?.issue?.identifier;
+		if (isAgentSessionCreatedEvent(event)) {
+			issueId = (event as any).agentSession?.issue?.id;
+			teamKey = (event as any).agentSession?.issue?.team?.key;
+			issueIdentifier = (event as any).agentSession?.issue?.identifier;
+		} else if (isAgentSessionPromptedEvent(event)) {
+			issueId = (event as any).agentSession?.issue?.id;
+			teamKey = (event as any).agentSession?.issue?.team?.key;
+			issueIdentifier = (event as any).agentSession?.issue?.identifier;
 		} else {
-			issueId = webhook.notification?.issue?.id;
-			teamKey = webhook.notification?.issue?.team?.key;
-			issueIdentifier = webhook.notification?.issue?.identifier;
+			issueId = (event as any).notification?.issue?.id;
+			teamKey = (event as any).notification?.issue?.team?.key;
+			issueIdentifier = (event as any).notification?.issue?.identifier;
 		}
 
 		// Filter repos by workspace first
@@ -2627,7 +2634,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	getConnectionStatus(): Map<string, boolean> {
 		const status = new Map<string, boolean>();
 		// Single event transport is "connected" if it exists
-		if (this.linearEventTransport) {
+		if (this.agentEventTransport) {
 			// Mark all repositories as connected since they share the single transport
 			for (const repoId of this.repositories.keys()) {
 				status.set(repoId, true);
@@ -2642,7 +2649,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	_getClientByToken(_token: string): any {
 		// Return the single shared event transport
-		return this.linearEventTransport;
+		return this.agentEventTransport;
 	}
 
 	/**

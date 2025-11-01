@@ -9,6 +9,10 @@
  */
 
 import type {
+	AgentEventTransportConfig,
+	IAgentEventTransport,
+} from "./IAgentEventTransport.js";
+import type {
 	AgentActivity,
 	AgentActivityContent,
 	AgentSession,
@@ -679,4 +683,39 @@ export interface IIssueTrackerService {
 	 * ```
 	 */
 	getPlatformMetadata(): Record<string, any>;
+
+	// ========================================================================
+	// EVENT TRANSPORT
+	// ========================================================================
+
+	/**
+	 * Create an event transport for receiving webhook events.
+	 *
+	 * This factory method creates a platform-specific transport that handles
+	 * HTTP endpoints, authentication, and event delivery. The transport abstracts
+	 * away platform-specific details like webhook signature verification.
+	 *
+	 * @param config - Transport configuration
+	 * @returns Platform-specific event transport implementation
+	 *
+	 * @example
+	 * ```typescript
+	 * const transport = issueTracker.createEventTransport({
+	 *   fastifyServer: server.getFastifyInstance(),
+	 *   verificationMode: 'proxy',
+	 *   secret: process.env.CYRUS_API_KEY
+	 * });
+	 *
+	 * // Register HTTP endpoints
+	 * transport.register();
+	 *
+	 * // Listen for events
+	 * transport.on('event', (event: AgentEvent) => {
+	 *   if (isAgentSessionCreatedEvent(event)) {
+	 *     console.log('Session created:', event.agentSession.id);
+	 *   }
+	 * });
+	 * ```
+	 */
+	createEventTransport(config: AgentEventTransportConfig): IAgentEventTransport;
 }
