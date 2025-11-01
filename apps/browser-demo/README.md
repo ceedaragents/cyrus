@@ -109,7 +109,7 @@ CYRUS_HOME=/tmp/cyrus pnpm start
 2. **WebSocket Server**: Handles real-time bidirectional communication
 3. **BrowserRenderer**: Implements the `Renderer` interface, sends JSON messages to browser
 4. **Orchestrator**: Same orchestration logic as CLI demo
-5. **Mock Components**: Reused from `apps/cli-interactive`
+5. **Mock Components**: Mock implementations for testing
 
 ### Browser Side
 
