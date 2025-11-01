@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Platform-agnostic abstraction layer for Linear API operations via `IAgentPlatformAdapter` interface
+- Support for custom adapter implementations for agent platform operations
+- `MockAgentPlatformAdapter` for comprehensive testing without real Linear API calls
+- `AgentEvent` type alias for platform-agnostic webhook payload handling
+
+### Changed
+- Tool names and implementations now use adapter pattern instead of direct Linear SDK calls
+- Enhanced session management with configurable adapter support
+- Improved separation of concerns between Linear integration and core agent logic
+
 ## [0.2.0-rc.2] - 2025-10-30
 
 ### Fixed

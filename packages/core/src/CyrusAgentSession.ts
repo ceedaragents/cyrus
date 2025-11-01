@@ -4,7 +4,6 @@
  */
 
 import type { LinearDocument } from "@linear/sdk";
-import type { ClaudeRunner } from "cyrus-claude-runner";
 
 export interface IssueMinimal {
 	id: string;
@@ -31,7 +30,7 @@ export interface CyrusAgentSession {
 	issue: IssueMinimal;
 	workspace: Workspace;
 	claudeSessionId?: string; // this gets assigned once it initializes
-	claudeRunner?: ClaudeRunner;
+	claudeRunner?: any;
 	metadata?: {
 		model?: string;
 		tools?: string[];

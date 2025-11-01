@@ -1,71 +1,5 @@
-import { basename, extname } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
-import { LinearClient } from "@linear/sdk";
-import fs from "fs-extra";
 import { z } from "zod";
-
-/**
- * Detect MIME type based on file extension
- */
-function getMimeType(filename: string): string {
-	const ext = extname(filename).toLowerCase();
-	const mimeTypes: Record<string, string> = {
-		// Images
-		".png": "image/png",
-		".jpg": "image/jpeg",
-		".jpeg": "image/jpeg",
-		".gif": "image/gif",
-		".svg": "image/svg+xml",
-		".webp": "image/webp",
-		".bmp": "image/bmp",
-		".ico": "image/x-icon",
-
-		// Documents
-		".pdf": "application/pdf",
-		".doc": "application/msword",
-		".docx":
-			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		".xls": "application/vnd.ms-excel",
-		".xlsx":
-			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		".ppt": "application/vnd.ms-powerpoint",
-		".pptx":
-			"application/vnd.openxmlformats-officedocument.presentationml.presentation",
-
-		// Text
-		".txt": "text/plain",
-		".md": "text/markdown",
-		".csv": "text/csv",
-		".json": "application/json",
-		".xml": "application/xml",
-		".html": "text/html",
-		".css": "text/css",
-		".js": "application/javascript",
-		".ts": "application/typescript",
-
-		// Archives
-		".zip": "application/zip",
-		".tar": "application/x-tar",
-		".gz": "application/gzip",
-		".rar": "application/vnd.rar",
-		".7z": "application/x-7z-compressed",
-
-		// Media
-		".mp3": "audio/mpeg",
-		".wav": "audio/wav",
-		".mp4": "video/mp4",
-		".mov": "video/quicktime",
-		".avi": "video/x-msvideo",
-		".webm": "video/webm",
-
-		// Other
-		".log": "text/plain",
-		".yml": "text/yaml",
-		".yaml": "text/yaml",
-	};
-
-	return mimeTypes[ext] || "application/octet-stream";
-}
 
 /**
  * Options for creating Cyrus tools with session management capabilities
@@ -90,6 +24,12 @@ export interface CyrusToolsOptions {
 	 * The ID of the current parent session (if any)
 	 */
 	parentSessionId?: string;
+
+	/**
+	 * Optional custom adapter for agent platform operations
+	 * If not provided, will default to creating LinearAgentPlatformAdapter dynamically
+	 */
+	adapter?: any;
 }
 
 /**
@@ -99,9 +39,95 @@ export function createCyrusToolsServer(
 	linearApiToken: string,
 	options: CyrusToolsOptions = {},
 ) {
-	const linearClient = new LinearClient({ apiKey: linearApiToken });
+	// Lazy load the LinearAgentPlatformAdapter to avoid circular dependency
+	let adapter = options.adapter;
 
-	// Create tools with bound linear client
+	if (!adapter) {
+		// Dynamically import only if needed, to avoid circular dependency with cyrus-core
+		const initAdapter = async () => {
+			const { LinearAgentPlatformAdapter } = await import("cyrus-core");
+			return new LinearAgentPlatformAdapter({ apiToken: linearApiToken });
+		};
+
+		// For now, we create a wrapper that will call initAdapter when needed
+		// This is necessary because we can't use top-level await
+		let cachedAdapter: any | null = null;
+
+		const getAdapter = async () => {
+			if (!cachedAdapter) {
+				cachedAdapter = await initAdapter();
+			}
+			return cachedAdapter;
+		};
+
+		// Create a proxy adapter that defers initialization
+		adapter = {
+			async getIssue(issueId: string) {
+				return (await getAdapter()).getIssue(issueId);
+			},
+			async getChildIssues(issueId: string, options?: any) {
+				return (await getAdapter()).getChildIssues(issueId, options);
+			},
+			async getComment(commentId: string) {
+				return (await getAdapter()).getComment(commentId);
+			},
+			async createSessionOnIssue(issueId: string, externalLink?: string) {
+				return (await getAdapter()).createSessionOnIssue(issueId, externalLink);
+			},
+			async createSessionOnComment(commentId: string, externalLink?: string) {
+				return (await getAdapter()).createSessionOnComment(
+					commentId,
+					externalLink,
+				);
+			},
+			async updateSessionStatus(
+				sessionId: string,
+				status: string,
+				metadata?: Record<string, unknown>,
+			) {
+				return (await getAdapter()).updateSessionStatus(
+					sessionId,
+					status,
+					metadata,
+				);
+			},
+			async postAgentActivity(
+				sessionId: string,
+				content: string,
+				contentType:
+					| "prompt"
+					| "observation"
+					| "action"
+					| "error"
+					| "elicitation"
+					| "response",
+			) {
+				return (await getAdapter()).postAgentActivity(
+					sessionId,
+					content,
+					contentType,
+				);
+			},
+			async uploadFile(
+				filePath: string,
+				filename?: string,
+				contentType?: string,
+				makePublic?: boolean,
+			) {
+				return (await getAdapter()).uploadFile(
+					filePath,
+					filename,
+					contentType,
+					makePublic,
+				);
+			},
+			async giveFeedback(sessionId: string, message: string) {
+				return (await getAdapter()).giveFeedback(sessionId, message);
+			},
+		} as any;
+	}
+
+	// Create tools with bound adapter
 	const uploadTool = tool(
 		"linear_upload_file",
 		"Upload a file to Linear. Returns an asset URL that can be used in issue descriptions or comments.",
@@ -128,95 +154,27 @@ export function createCyrusToolsServer(
 		},
 		async ({ filePath, filename, contentType, makePublic }) => {
 			try {
-				// Read file and get stats
-				const stats = await fs.stat(filePath);
-				if (!stats.isFile()) {
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: JSON.stringify({
-									success: false,
-									error: `Path ${filePath} is not a file`,
-								}),
-							},
-						],
-					};
-				}
-
-				const fileBuffer = await fs.readFile(filePath);
-				const finalFilename = filename || basename(filePath);
-				const finalContentType = contentType || getMimeType(finalFilename);
-				const size = stats.size;
-
-				// Step 1: Request upload URL from Linear
-				console.log(
-					`Requesting upload URL for ${finalFilename} (${size} bytes, ${finalContentType})`,
+				// Use adapter for file upload
+				const result = await adapter.uploadFile(
+					filePath,
+					filename,
+					contentType,
+					makePublic,
 				);
 
-				// Use LinearClient's fileUpload method directly
-				const uploadPayload = await linearClient.fileUpload(
-					finalContentType,
-					finalFilename,
-					size,
-					{ makePublic },
-				);
-
-				if (!uploadPayload.success || !uploadPayload.uploadFile) {
+				if (!result.success) {
 					return {
 						content: [
 							{
 								type: "text" as const,
 								text: JSON.stringify({
 									success: false,
-									error: "Failed to get upload URL from Linear",
+									error: result.error || "Failed to upload file",
 								}),
 							},
 						],
 					};
 				}
-
-				const { uploadUrl, headers, assetUrl } = uploadPayload.uploadFile;
-
-				// Step 2: Upload the file to the provided URL
-				console.log(`Uploading file to Linear cloud storage...`);
-
-				// Create headers following Linear's documentation exactly
-				const uploadHeaders: Record<string, string> = {
-					"Content-Type": finalContentType,
-					"Cache-Control": "public, max-age=31536000",
-				};
-
-				// Then add the headers from Linear's response
-				// These override any defaults we set above
-				for (const header of headers) {
-					uploadHeaders[header.key] = header.value;
-				}
-
-				console.log(`Headers being sent:`, uploadHeaders);
-
-				const uploadResponse = await fetch(uploadUrl, {
-					method: "PUT",
-					headers: uploadHeaders,
-					body: fileBuffer,
-				});
-
-				if (!uploadResponse.ok) {
-					const errorText = await uploadResponse.text();
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: JSON.stringify({
-									success: false,
-									error: `Failed to upload file: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`,
-								}),
-							},
-						],
-					};
-				}
-
-				console.log(`File uploaded successfully: ${assetUrl}`);
 
 				// Return the asset URL and metadata
 				return {
@@ -225,10 +183,10 @@ export function createCyrusToolsServer(
 							type: "text" as const,
 							text: JSON.stringify({
 								success: true,
-								assetUrl,
-								filename: finalFilename,
-								size,
-								contentType: finalContentType,
+								assetUrl: result.assetUrl,
+								filename: result.filename,
+								size: result.size,
+								contentType: result.contentType,
 							}),
 						},
 					],
@@ -267,34 +225,11 @@ export function createCyrusToolsServer(
 		},
 		async ({ issueId, externalLink }) => {
 			try {
-				// Use raw GraphQL through the Linear client
-				// Access the underlying GraphQL client
-				const graphQLClient = (linearClient as any).client;
-
-				const mutation = `
-					mutation AgentSessionCreateOnIssue($input: AgentSessionCreateOnIssue!) {
-						agentSessionCreateOnIssue(input: $input) {
-							success
-							lastSyncId
-							agentSession {
-								id
-							}
-						}
-					}
-				`;
-
-				const variables = {
-					input: {
-						issueId,
-						...(externalLink && { externalLink }),
-					},
-				};
-
-				console.log(`Creating agent session for issue ${issueId}`);
-
-				const response = await graphQLClient.rawRequest(mutation, variables);
-
-				const result = response.data.agentSessionCreateOnIssue;
+				// Use adapter for session creation
+				const result = await adapter.createSessionOnIssue(
+					issueId,
+					externalLink,
+				);
 
 				if (!result.success) {
 					return {
@@ -303,14 +238,14 @@ export function createCyrusToolsServer(
 								type: "text" as const,
 								text: JSON.stringify({
 									success: false,
-									error: "Failed to create agent session",
+									error: result.error || "Failed to create agent session",
 								}),
 							},
 						],
 					};
 				}
 
-				const agentSessionId = result.agentSession.id;
+				const agentSessionId = result.agentSessionId;
 				console.log(`Agent session created successfully: ${agentSessionId}`);
 
 				// Register the child-to-parent mapping if we have a parent session
@@ -318,7 +253,8 @@ export function createCyrusToolsServer(
 					console.log(
 						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
-					options.onSessionCreated(agentSessionId, options.parentSessionId);
+					const parentSessionId = options.parentSessionId;
+					options.onSessionCreated(agentSessionId, parentSessionId);
 				}
 
 				return {
@@ -367,34 +303,11 @@ export function createCyrusToolsServer(
 		},
 		async ({ commentId, externalLink }) => {
 			try {
-				// Use raw GraphQL through the Linear client
-				// Access the underlying GraphQL client
-				const graphQLClient = (linearClient as any).client;
-
-				const mutation = `
-					mutation AgentSessionCreateOnComment($input: AgentSessionCreateOnComment!) {
-						agentSessionCreateOnComment(input: $input) {
-							success
-							lastSyncId
-							agentSession {
-								id
-							}
-						}
-					}
-				`;
-
-				const variables = {
-					input: {
-						commentId,
-						...(externalLink && { externalLink }),
-					},
-				};
-
-				console.log(`Creating agent session for comment ${commentId}`);
-
-				const response = await graphQLClient.rawRequest(mutation, variables);
-
-				const result = response.data.agentSessionCreateOnComment;
+				// Use adapter for session creation on comment
+				const result = await adapter.createSessionOnComment(
+					commentId,
+					externalLink,
+				);
 
 				if (!result.success) {
 					return {
@@ -403,14 +316,15 @@ export function createCyrusToolsServer(
 								type: "text" as const,
 								text: JSON.stringify({
 									success: false,
-									error: "Failed to create agent session on comment",
+									error:
+										result.error || "Failed to create agent session on comment",
 								}),
 							},
 						],
 					};
 				}
 
-				const agentSessionId = result.agentSession.id;
+				const agentSessionId = result.agentSessionId;
 				console.log(
 					`Agent session created successfully on comment: ${agentSessionId}`,
 				);
@@ -420,7 +334,8 @@ export function createCyrusToolsServer(
 					console.log(
 						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
-					options.onSessionCreated(agentSessionId, options.parentSessionId);
+					const parentSessionId = options.parentSessionId;
+					options.onSessionCreated(agentSessionId, parentSessionId);
 				}
 
 				return {
@@ -561,17 +476,10 @@ export function createCyrusToolsServer(
 			includeArchived = false,
 		}) => {
 			try {
-				// Validate and clamp limit
-				const finalLimit = Math.min(Math.max(1, limit), 250);
+				// Use adapter to fetch parent issue and child issues
+				const parentIssue = await adapter.getIssue(issueId);
 
-				console.log(
-					`Getting child issues for ${issueId} (limit: ${finalLimit})`,
-				);
-
-				// Fetch the parent issue first
-				const issue = await linearClient.issue(issueId);
-
-				if (!issue) {
+				if (!parentIssue) {
 					return {
 						content: [
 							{
@@ -585,51 +493,12 @@ export function createCyrusToolsServer(
 					};
 				}
 
-				// Build the filter for child issues
-				const filter: any = {};
-
-				if (!includeCompleted) {
-					filter.state = { type: { neq: "completed" } };
-				}
-
-				if (!includeArchived) {
-					filter.archivedAt = { null: true };
-				}
-
-				// Get child issues using the children() method
-				const childrenConnection = await issue.children({
-					first: finalLimit,
-					...(Object.keys(filter).length > 0 && { filter }),
+				// Get child issues using adapter
+				const childrenData = await adapter.getChildIssues(issueId, {
+					limit,
+					includeCompleted,
+					includeArchived,
 				});
-
-				// Extract the child issues from the connection
-				const children = await childrenConnection.nodes;
-
-				// Process each child to get detailed information
-				const childrenData = await Promise.all(
-					children.map(async (child) => {
-						const [state, assignee] = await Promise.all([
-							child.state,
-							child.assignee,
-						]);
-
-						return {
-							id: child.id,
-							identifier: child.identifier,
-							title: child.title,
-							state: state?.name || "Unknown",
-							stateType: state?.type || null,
-							assignee: assignee?.name || null,
-							assigneeId: assignee?.id || null,
-							priority: child.priority,
-							priorityLabel: child.priorityLabel,
-							createdAt: child.createdAt.toISOString(),
-							updatedAt: child.updatedAt.toISOString(),
-							url: child.url,
-							archivedAt: child.archivedAt?.toISOString() || null,
-						};
-					}),
-				);
 
 				console.log(`Found ${childrenData.length} child issues for ${issueId}`);
 
@@ -641,10 +510,10 @@ export function createCyrusToolsServer(
 								{
 									success: true,
 									parentIssue: {
-										id: issue.id,
-										identifier: issue.identifier,
-										title: issue.title,
-										url: issue.url,
+										id: parentIssue.id,
+										identifier: parentIssue.identifier,
+										title: parentIssue.title,
+										url: parentIssue.url,
 									},
 									childCount: childrenData.length,
 									children: childrenData,

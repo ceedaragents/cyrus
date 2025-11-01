@@ -2,13 +2,30 @@
 // export type { SessionOptions, , NarrativeItem } from './Session.js'
 // export { ClaudeSessionManager as SessionManager } from './ClaudeSessionManager.js'
 
+export { LinearAgentPlatformAdapter } from "./adapters/LinearAgentPlatformAdapter.js";
+export { MockAgentPlatformAdapter } from "./adapters/MockAgentPlatformAdapter.js";
+// Agent platform adapters and type aliases
+export type {
+	AdapterConfig,
+	AgentEvent,
+	AgentSessionCreateResult,
+	ChildIssueData,
+	CommentData,
+	FileUploadResult,
+	GetChildIssuesOptions,
+	IAgentPlatformAdapter,
+	IAgentSessionAdapter,
+	ICommentAdapter,
+	IIssueAdapter,
+	IssueData,
+} from "./adapters/types.js";
+export { AgentSessionStatus } from "./adapters/types.js";
 export type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
 	IssueMinimal,
 	Workspace,
 } from "./CyrusAgentSession.js";
-
 // Configuration types
 export type {
 	EdgeConfig,
@@ -17,7 +34,6 @@ export type {
 	RepositoryConfig,
 } from "./config-types.js";
 export { resolvePath } from "./config-types.js";
-
 // Constants
 export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {
