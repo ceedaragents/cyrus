@@ -1055,7 +1055,7 @@ export class EdgeWorker extends EventEmitter {
 				try {
 					// Fetch the issue to get labels
 					const issue = await linearClient.fetchIssue(issueId);
-					const labels = await this.fetchIssueLabels(issue);
+					const labels = await this.fetchIssueLabels(issue as any);
 
 					// Check each repo with routing labels
 					for (const repo of reposWithRoutingLabels) {
@@ -1645,7 +1645,7 @@ export class EdgeWorker extends EventEmitter {
 			const linearClient = this.issueTrackers.get(repository.id);
 			if (linearClient) {
 				try {
-					fullIssue = await linearClient.fetchIssue(issue.id);
+					fullIssue = (await linearClient.fetchIssue(issue.id)) as any;
 				} catch (error) {
 					console.warn(
 						`[EdgeWorker] Failed to fetch full issue for routing: ${issue.id}`,
@@ -1721,7 +1721,7 @@ export class EdgeWorker extends EventEmitter {
 			if (comment) {
 				const user = comment.user;
 				commentAuthor =
-					user?.displayName || user?.name || user?.email || "Unknown";
+					(user as any)?.displayName || user?.name || user?.email || "Unknown";
 				commentTimestamp = comment.createdAt || new Date().toISOString();
 			}
 
@@ -2042,8 +2042,8 @@ export class EdgeWorker extends EventEmitter {
 						id: team.id,
 						name: team.name,
 						key: team.key,
-						description: team.description || "",
-						color: team.color,
+						description: (team as any).description || "",
+						color: (team as any).color,
 					});
 				}
 				workspaceTeams = teamsArray
@@ -2265,16 +2265,23 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 		// Check if issue has a parent
 		try {
-			const parent = await issue.parentId;
-			if (parent) {
+			const parentId = issue.parentId;
+			if (parentId) {
 				console.log(
-					`[EdgeWorker] Issue ${issue.identifier} has parent: ${parent.identifier}`,
+					`[EdgeWorker] Issue ${await issue.identifier} has parent: ${parentId}`,
 				);
 
-				// Get parent's branch name
+				// Get parent's branch name - fetch the parent issue
+				const parent = await this.issueTrackers
+					.get(repository.id)
+					?.fetchIssue(parentId);
+				if (!parent) {
+					console.warn(`[EdgeWorker] Could not fetch parent issue ${parentId}`);
+					return baseBranch; // Fall back to default
+				}
 				const parentRawBranchName =
-					parent.branchName ||
-					`${parent.identifier}-${parent.title
+					(parent as any).branchName ||
+					`${await parent.identifier}-${(await parent.title)
 						?.toLowerCase()
 						.replace(/\s+/g, "-")
 						.substring(0, 30)}`;
@@ -2353,9 +2360,9 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 		// Second pass: assign replies to their threads
 		for (const comment of comments) {
-			const parent = await comment.parentId;
-			if (parent?.id) {
-				const thread = threads.get(parent.id);
+			const parentComment = await comment.parent;
+			if (parentComment?.id) {
+				const thread = threads.get(parentComment.id);
 				if (thread) {
 					thread.replies.push(comment);
 				}
@@ -2372,7 +2379,10 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			// Format root comment
 			const rootUser = await rootComment.user;
 			const rootAuthor =
-				rootUser?.displayName || rootUser?.name || rootUser?.email || "Unknown";
+				(rootUser as any)?.displayName ||
+				rootUser?.name ||
+				rootUser?.email ||
+				"Unknown";
 			const rootTime = new Date(rootComment.createdAt).toLocaleString();
 
 			let threadText = `<comment_thread>
@@ -2390,7 +2400,7 @@ ${rootComment.body}
 				for (const reply of thread.replies) {
 					const replyUser = await reply.user;
 					const replyAuthor =
-						replyUser?.displayName ||
+						(replyUser as any)?.displayName ||
 						replyUser?.name ||
 						replyUser?.email ||
 						"Unknown";
@@ -2480,9 +2490,7 @@ ${reply.body}
 					console.log(
 						`[EdgeWorker] Fetching comments for issue ${issue.identifier}`,
 					);
-					const comments = await linearClient.fetchComments({
-						filter: { issue: { id: { eq: issue.id } } },
-					});
+					const comments = await linearClient.fetchComments(issue.id);
 
 					const commentNodes = comments.nodes;
 					if (commentNodes.length > 0) {
@@ -2545,7 +2553,10 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 						const fullComment = await linearClient.fetchComment(newComment.id);
 						const user = await fullComment.user;
 						authorName =
-							user?.displayName || user?.name || user?.email || "Unknown";
+							(user as any)?.displayName ||
+							user?.name ||
+							user?.email ||
+							"Unknown";
 					} catch (error) {
 						console.error("Failed to fetch comment author:", error);
 					}
@@ -2698,9 +2709,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}
 
 			// Get available workflow states for the issue's team
-			const teamStates = await linearClient.fetchWorkflowStates({
-				filter: { team: { id: { eq: team.id } } },
-			});
+			const teamStates = await linearClient.fetchWorkflowStates(team.id);
 
 			const states = teamStates;
 
@@ -2711,7 +2720,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				(state) => state.type === "started",
 			);
 			const startedState = startedStates.sort(
-				(a, b) => a.position - b.position,
+				(a, b) => (a.position ?? 0) - (b.position ?? 0),
 			)[0];
 
 			if (!startedState) {
@@ -2785,7 +2794,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (parentId) {
 			commentInput.parentId = parentId;
 		}
-		await linearClient.createComment(issueId, commentInput);
+		await linearClient.createComment(_issueId, commentInput);
 	}
 
 	/**
@@ -2879,9 +2888,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				}
 
 				try {
-					const comments = await linearClient.fetchComments({
-						filter: { issue: { id: { eq: issue.id } } },
-					});
+					const comments = await linearClient.fetchComments(issue.id);
 					const commentNodes = comments.nodes;
 					for (const comment of commentNodes) {
 						const urls = this.extractAttachmentUrls(comment.body);
@@ -4679,17 +4686,15 @@ ${input.userComment}
 
 			// Check if issue has a parent
 			try {
-				const parent = await fullIssue.parentId;
-				if (parent) {
-					console.log(
-						`[EdgeWorker] Issue ${issueId} has parent: ${parent.identifier}`,
-					);
+				const parentId = fullIssue.parentId;
+				if (parentId) {
+					console.log(`[EdgeWorker] Issue ${issueId} has parent: ${parentId}`);
 				}
 			} catch (_error) {
 				// Parent field might not exist, ignore error
 			}
 
-			return fullIssue;
+			return fullIssue as any;
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Failed to fetch issue details for ${issueId}:`,
