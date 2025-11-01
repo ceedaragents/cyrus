@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+- Deleted non-functional `apps/cli-interactive` demo application
+
 ## [0.2.0-rc.2] - 2025-10-30
 
 ### Fixed

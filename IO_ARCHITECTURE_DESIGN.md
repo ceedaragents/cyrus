@@ -370,11 +370,11 @@ interface SessionState {
 - Uses only interfaces, never concrete implementations
 - Coordinates AgentRunner, IssueTracker, Renderer, Storage
 
-### Phase 6: Build CLI Interactive Demo
-- New app: `apps/cli-interactive/`
-- Uses CLIRenderer to emulate Linear experience
+### Phase 6: Build Interactive Demo
+- Build demo application to test renderer model
+- Uses renderer to emulate Linear experience
 - Proves renderer model works
-- Shows agent activity in terminal TUI
+- Shows agent activity in real-time
 
 ### Phase 7: Integration Testing Framework
 - New package: `packages/integration-tests/`
@@ -534,17 +534,17 @@ After implementation, verification requires:
    pnpm typecheck
    ```
 
-3. **Demo CLI Interactive**
+3. **Demo Interactive Application**
    ```bash
-   cd apps/cli-interactive
-   pnpm start --issue CYPACK-264
+   cd apps/browser-demo
+   pnpm start
    ```
 
-   Expected: Terminal UI showing:
+   Expected: Browser UI showing:
    - Activity panel with real-time updates
    - Input field for messaging
    - Stop button functionality
-   - Attachment support
+   - WebSocket-based real-time updates
 
 4. **Integration Test**
    ```bash
