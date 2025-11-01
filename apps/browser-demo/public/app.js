@@ -5,6 +5,7 @@ class CyrusDemoClient {
 		this.currentSessionId = null;
 		this.reconnectAttempts = 0;
 		this.maxReconnectAttempts = 5;
+		this.renderedActivityIds = new Set(); // Track rendered activities to prevent duplicates
 
 		this.elements = {
 			connectionStatus: document.getElementById("connectionStatus"),
@@ -89,7 +90,10 @@ class CyrusDemoClient {
 	}
 
 	updateSession(sessionState) {
-		console.log("Updating session:", sessionState);
+		// If this is a new session, clear the rendered activity IDs
+		if (this.currentSessionId !== sessionState.session.id) {
+			this.renderedActivityIds.clear();
+		}
 
 		// Update current session ID
 		this.currentSessionId = sessionState.session.id;
@@ -101,7 +105,7 @@ class CyrusDemoClient {
 		// Update session status
 		this.elements.sessionStatus.className = `session-status ${sessionState.status}`;
 
-		// Update activities
+		// Update activities (only render new ones)
 		this.renderActivities(sessionState.activities);
 
 		// Enable/disable input based on session status
@@ -124,21 +128,41 @@ class CyrusDemoClient {
 			return;
 		}
 
-		this.elements.activitiesContainer.innerHTML = activities
-			.map((activity) => {
-				const timestamp = new Date(activity.timestamp).toLocaleTimeString();
-				return `
-                <div class="activity-item">
-                    <div class="activity-header">
-                        <span class="activity-timestamp">[${timestamp}]</span>
-                        <span class="activity-icon">${activity.icon}</span>
-                        <span class="activity-type ${activity.type}">${activity.type}</span>
-                    </div>
-                    <div class="activity-content">${this.escapeHtml(activity.content)}</div>
+		// Remove empty state if present
+		const emptyState =
+			this.elements.activitiesContainer.querySelector(".empty-state");
+		if (emptyState) {
+			emptyState.remove();
+		}
+
+		// Only render activities we haven't seen before
+		for (const activity of activities) {
+			// Skip if already rendered
+			if (this.renderedActivityIds.has(activity.id)) {
+				continue;
+			}
+
+			// Mark as rendered
+			this.renderedActivityIds.add(activity.id);
+
+			// Create activity element
+			const activityElement = document.createElement("div");
+			activityElement.className = "activity-item";
+			activityElement.setAttribute("data-activity-id", activity.id);
+
+			const timestamp = new Date(activity.timestamp).toLocaleTimeString();
+			activityElement.innerHTML = `
+                <div class="activity-header">
+                    <span class="activity-timestamp">[${timestamp}]</span>
+                    <span class="activity-icon">${activity.icon}</span>
+                    <span class="activity-type ${activity.type}">${activity.type}</span>
                 </div>
+                <div class="activity-content">${this.escapeHtml(activity.content)}</div>
             `;
-			})
-			.join("");
+
+			// Append to container
+			this.elements.activitiesContainer.appendChild(activityElement);
+		}
 	}
 
 	escapeHtml(text) {
