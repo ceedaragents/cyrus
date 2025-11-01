@@ -203,14 +203,14 @@ export class BrowserRenderer implements Renderer {
 	 */
 	private getActivityIcon(type: string): string {
 		const iconMap: Record<string, string> = {
-			thought: "💭",
-			action: "🔧",
+			thought: "~",
+			action: "⚙",
 			response: "💬",
-			error: "❌",
+			error: "✗",
 			elicitation: "❓",
 			prompt: "📝",
-			"tool-use": "🛠️",
-			complete: "✅",
+			"tool-use": "⚙",
+			complete: "✓",
 			"session-start": "●",
 		};
 
