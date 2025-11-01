@@ -73,8 +73,8 @@ class CyrusDemoClient {
 	updateConnectionStatus(connected) {
 		this.elements.connectionStatus.className = `connection-status ${connected ? "connected" : "disconnected"}`;
 		this.elements.connectionStatus.textContent = connected
-			? "● Connected"
-			: "○ Disconnected";
+			? "Connected"
+			: "Disconnected";
 	}
 
 	handleMessage(message) {
