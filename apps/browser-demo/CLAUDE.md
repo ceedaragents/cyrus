@@ -777,6 +777,60 @@ Respect accessibility preferences:
 - **Playwright MCP**: Use for browser automation (see CLAUDE.md:Linear Create Issue Process)
 - **Visual Regression**: Screenshots at key states
 
+### Screenshot Preferences for Testing
+
+**Philosophy**: When taking screenshots for testing or verification, prefer targeted, element-specific screenshots over full-page captures. This makes it easier to focus on specific UI elements and ensures the code structure matches the documented selectors.
+
+#### Screenshot Guidelines
+
+1. **Use Element Selectors When Possible**:
+   - Target specific DOM elements using CSS selectors
+   - Example: `.activity.tool-call` for tool call cards
+   - Example: `.session-status` for session status badge
+   - Reduces noise and focuses on the element being tested
+
+2. **Selector Documentation Must Match Code**:
+   - All documented selectors in CLAUDE.md must exist in `public/index.html` or `public/app.js`
+   - Keep the "Browser Demo Interactive Element Selectors" section up-to-date
+   - Test selectors work correctly: `document.querySelector('.selector')`
+
+3. **When to Use Full-Page Screenshots**:
+   - Initial load verification
+   - Layout/responsive testing
+   - Overall visual regression testing
+   - When context around an element matters
+
+4. **When to Use Targeted Screenshots**:
+   - Verifying specific tool rendering (Read, Edit, Bash, etc.)
+   - Testing individual components (modals, buttons, inputs)
+   - Focusing on interaction states (hover, focus, expanded/collapsed)
+   - Documenting bugs or unexpected behavior
+
+5. **Screenshot Naming Convention**:
+   - Descriptive names: `read-tool-expanded.png` not `screenshot1.png`
+   - Include state: `edit-tool-collapsed.png` vs `edit-tool-expanded.png`
+   - Include timestamp if multiple captures: `modal-2025-11-01T02-45-10.png`
+
+#### Using Playwright MCP for Screenshots
+
+**Full Page**:
+```javascript
+mcp__playwright__playwright_screenshot({
+  name: "full-page-view",
+  fullPage: true
+})
+```
+
+**Targeted Element** (Preferred):
+```javascript
+mcp__playwright__playwright_screenshot({
+  name: "read-tool-expanded",
+  selector: ".activity.tool-call .read-tool" // Target specific element
+})
+```
+
+**Note**: While Playwright MCP's `selector` parameter may have limitations with complex selectors like `:has()` or `:contains()`, always attempt targeted screenshots first. Fall back to full-page screenshots only when necessary, then crop mentally/visually when reviewing.
+
 ### Performance Targets
 
 - **First Contentful Paint**: < 1s
