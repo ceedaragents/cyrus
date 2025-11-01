@@ -393,3 +393,136 @@ The browser demo (`apps/browser-demo`) contains the following interactive elemen
 - **Session ID**: `.session-id` - Displays the issue identifier
 - **Session Status Badge**: `.session-status` - Shows session state (Complete, Running, etc.)
 
+## Browser Emulator Testing Framework
+
+**CRITICAL REQUIREMENT**: The browser emulator (`apps/browser-demo`) is the **mandatory testing framework** for all Cyrus development work. NO pull request can be merged without evidence of test-driving changes in the emulator.
+
+### Purpose and Philosophy
+
+The browser demo is not just a demonstration tool - it is a comprehensive Linear emulator and testing framework for the entire I/O abstraction system. It provides a controlled, Linear-like environment for testing all core abstractions:
+
+- **IssueTracker**: Issue and comment management APIs
+- **Renderer**: Activity rendering and UI updates
+- **AgentRunner**: Claude Code execution and session handling
+- **SessionStorage**: Session persistence and state management
+
+The emulator serves dual purposes:
+
+1. **Testing Framework**: Validates that I/O abstractions work correctly before shipping
+2. **Visual Proof**: Provides concrete evidence that changes function as intended
+
+If a feature cannot be tested in the emulator, the emulator must be enhanced first to support that testing capability. This ensures our abstractions remain testable and well-designed.
+
+### Mandatory Development Workflow
+
+Every PR must follow this workflow:
+
+1. **Build Feature**: Implement your changes in the relevant packages
+2. **Enhance Emulator** (if needed): If the emulator cannot test your changes, enhance it first
+3. **Test-Drive**: Run your changes in the emulator and verify behavior
+4. **Capture Evidence**: Document test results with screenshots, session logs, or interaction flows
+5. **Submit PR**: Include test-drive evidence in your PR description
+
+### What Qualifies as Test-Drive Evidence
+
+Your PR must include one or more of the following:
+
+**Screenshots**: Visual proof of emulator UI showing:
+- Expected behavior working correctly
+- Error handling functioning properly
+- State transitions happening as designed
+- Activity timeline showing proper sequencing
+
+**Session Logs**: Exported session data demonstrating:
+- Correct prompt assembly
+- Proper tool execution
+- Expected state changes
+- Accurate persistence behavior
+
+**Interaction Flows**: Step-by-step descriptions showing:
+- User actions taken in emulator
+- Agent responses observed
+- State changes verified
+- Edge cases tested
+
+**Example Evidence Format**:
+```markdown
+## Emulator Test-Drive Evidence
+
+### Test Scenario: Sub-agent delegation with parent feedback
+
+1. Started session with issue "Create user authentication"
+2. Agent created 3 sub-issues
+3. Verified activity panel shows delegation events
+4. Provided feedback via message input
+5. Confirmed sub-agent received feedback in activity log
+
+Screenshots:
+- Initial delegation: [screenshot-delegation.png]
+- Feedback flow: [screenshot-feedback.png]
+- Final state: [screenshot-complete.png]
+
+Session log: Available at apps/browser-demo/sessions/test-delegation-20250131.json
+```
+
+### Running the Emulator
+
+The emulator supports two modes:
+
+**Demo Mode** (Standalone):
+```bash
+cd apps/browser-demo
+pnpm install
+pnpm dev
+```
+
+Opens at http://localhost:3000 with mock Linear environment. Use this for rapid iteration and testing without Linear API dependencies.
+
+**Real Mode** (Connected to Cyrus):
+```bash
+# Terminal 1: Start Cyrus edge worker
+cd apps/cli
+CYRUS_SERVER_PORT=8080 pnpm start --cyrus-home=/path/to/.cyrus
+
+# Terminal 2: Start browser demo with Cyrus connection
+cd apps/browser-demo
+CYRUS_SERVER_URL=http://localhost:8080 pnpm dev
+```
+
+Opens at http://localhost:3000 connected to real Cyrus instance. Use this for integration testing with actual Linear issues.
+
+### Relationship to Linear Integration
+
+The emulator and real Linear integration work together:
+
+- **Emulator**: Provides fast, controlled testing environment with mock Linear API
+- **Linear Integration**: Connects to real Linear workspace via `apps/cli` and edge worker
+
+Key differences:
+
+| Aspect | Emulator | Real Linear |
+|--------|----------|-------------|
+| **Speed** | Instant responses | Network latency |
+| **Data** | Mock issues/comments | Real workspace data |
+| **State** | In-memory only | Persisted to Linear |
+| **Testing** | Rapid iteration | Integration validation |
+| **Required for PR** | Yes - must test-drive | No - but recommended |
+
+**Best practice**: Test-drive in emulator first, then validate with real Linear integration before shipping.
+
+### Interactive Element Selectors
+
+For detailed selector documentation to use in automated testing or interaction scripts, see the [Browser Demo Interactive Element Selectors](#browser-demo-interactive-element-selectors) section above.
+
+### Why This Requirement Exists
+
+This requirement ensures:
+
+1. **Abstractions Stay Testable**: If you can't test it in the emulator, the abstraction design needs work
+2. **Visual Verification**: Screenshots prove the feature works before code review
+3. **Regression Prevention**: Emulator tests catch breaking changes early
+4. **Documentation**: Test evidence serves as living documentation of feature behavior
+5. **Quality Bar**: Forces thorough testing before PR submission
+
+**Remember**: The emulator is not optional - it is a core development requirement that keeps our abstractions clean, testable, and reliable.
+
