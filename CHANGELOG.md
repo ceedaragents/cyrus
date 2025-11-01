@@ -11,7 +11,6 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.30 - see [@anthropic-ai/claude-agent-sdk v0.1.30 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0130)
 - Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 - see [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.67.0...sdk-v0.68.0)
-- Added comprehensive unit tests for Orchestrator label routing enforcement covering edge cases like child agent results, builder-like prompts, and label variants
 
 ## [0.1.59] - 2025-10-31
 
