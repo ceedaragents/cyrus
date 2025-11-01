@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.30 - includes new `--max-budget-usd` flag functionality, fixes for hooks in stream mode, and parity updates with Claude Code v2.0.29-31. See [@anthropic-ai/claude-agent-sdk v0.1.30 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0130)
+- Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 - adds ability to clear thinking in context management. See [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0680)
+
 ## [0.2.0-rc.2] - 2025-10-30
 
 ### Fixed
