@@ -62,16 +62,19 @@ EXAMPLES:
   # Run in demo mode (no credentials needed)
   cyrus-browser-demo --demo
 
-  # Run with real Claude (requires ANTHROPIC_API_KEY)
+  # Run with real Claude (requires authentication)
   cyrus-browser-demo
 
   # Run on custom port
   cyrus-browser-demo --port 8080
 
 ENVIRONMENT VARIABLES:
-  ANTHROPIC_API_KEY   API key for Claude (required for real mode)
-  CYRUS_HOME          Cyrus home directory (default: ~/.cyrusd)
-  PORT                Port to run the server on (default: 3000)
+  CLAUDE_CODE_OAUTH_TOKEN  OAuth token for Claude (recommended, get via: claude setup-token)
+  ANTHROPIC_API_KEY        API key for Claude (alternative to OAuth token)
+  CYRUS_HOME               Cyrus home directory (default: ~/.cyrusd)
+  PORT                     Port to run the server on (default: 3000)
+
+  Note: Use either CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, not both
 
 For more information, see the README.md file.
 `);
@@ -90,6 +93,7 @@ const PORT = args.port || Number.parseInt(process.env.PORT || "3000", 10);
 const CYRUS_HOME = process.env.CYRUS_HOME || path.join(os.homedir(), ".cyrusd");
 const SESSIONS_DIR = path.join(CYRUS_HOME, "sessions", "browser-demo");
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN;
 
 /**
  * Browser Demo Server
@@ -100,14 +104,30 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 async function main() {
 	console.log("🚀 Starting Cyrus Browser Demo Server...\n");
 
-	// Validate API key for real mode
-	if (!DEMO_MODE && !ANTHROPIC_API_KEY) {
-		console.error(
-			"❌ Error: ANTHROPIC_API_KEY environment variable is required for real mode",
-		);
-		console.error("   Set it in your environment or run with --demo flag");
-		console.error("   Example: export ANTHROPIC_API_KEY=your_api_key_here\n");
-		process.exit(1);
+	// Validate authentication for real mode
+	if (!DEMO_MODE) {
+		const hasApiKey = !!ANTHROPIC_API_KEY;
+		const hasOAuthToken = !!CLAUDE_CODE_OAUTH_TOKEN;
+
+		if (!hasApiKey && !hasOAuthToken) {
+			console.error("❌ Error: Authentication required for real mode");
+			console.error("   Set one of the following environment variables:");
+			console.error(
+				"   - CLAUDE_CODE_OAUTH_TOKEN (recommended, get via: claude setup-token)",
+			);
+			console.error("   - ANTHROPIC_API_KEY");
+			console.error("   Or run with --demo flag for demo mode\n");
+			process.exit(1);
+		}
+
+		if (hasApiKey && hasOAuthToken) {
+			console.error(
+				"❌ Error: Both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN are set",
+			);
+			console.error("   Please use only one authentication method");
+			console.error("   Unset one of the environment variables\n");
+			process.exit(1);
+		}
 	}
 
 	// Create Express app
