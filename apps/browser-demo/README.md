@@ -19,7 +19,7 @@ This is a **key deliverable for CYPACK-278**, demonstrating:
 - 📝 **Interactive Messaging**: Send messages to the agent during execution
 - 🛑 **Stop Signal**: Click button to send stop signal to agent
 - 📜 **Scrollable History**: Auto-scrolling activity log
-- 🎭 **Demo Mode**: Mock components for testing without credentials
+- 🎭 **Emulator Mode**: Mock components for testing without credentials
 - 🔌 **WebSocket Communication**: Efficient real-time bidirectional updates
 
 ## Architecture
@@ -55,8 +55,8 @@ This is a **key deliverable for CYPACK-278**, demonstrating:
 
 ### Component Responsibilities
 
-1. **MockAgentRunner**: Simulates Claude with realistic events
-2. **MockIssueTracker**: Simulates Linear with a demo issue
+1. **MockAgentRunner**: Simulates Claude with realistic events (emulator mode)
+2. **MockIssueTracker**: Simulates Linear with an emulated issue
 3. **BrowserRenderer**: Sends activity updates to browser via WebSocket
 4. **FileSessionStorage**: Persists session state to filesystem
 5. **Orchestrator**: Coordinates all components and routes events
@@ -83,9 +83,9 @@ pnpm start
 
 Then open your browser to: **http://localhost:3000**
 
-The demo will automatically:
+The application will automatically:
 - Start the orchestrator
-- Detect the pre-assigned demo issue
+- Detect the pre-assigned emulated issue
 - Begin a mock agent session
 - Display real-time activity in the browser
 
@@ -108,8 +108,8 @@ CYRUS_HOME=/tmp/cyrus pnpm start
 1. **Express Server**: Serves static HTML/CSS/JS files
 2. **WebSocket Server**: Handles real-time bidirectional communication
 3. **BrowserRenderer**: Implements the `Renderer` interface, sends JSON messages to browser
-4. **Orchestrator**: Same orchestration logic as CLI demo
-5. **Mock Components**: Mock implementations for testing
+4. **Orchestrator**: Same orchestration logic as CLI implementation
+5. **Mock Components**: Mock implementations for emulator mode
 
 ### Browser Side
 
@@ -183,8 +183,8 @@ apps/browser-demo/
 ├── src/
 │   ├── server.ts              # Main server entry point
 │   ├── BrowserRenderer.ts     # Renderer implementation for browser
-│   ├── MockAgentRunner.ts     # Simulated agent (reused from CLI demo)
-│   └── MockIssueTracker.ts    # Simulated issue tracker (reused)
+│   ├── MockAgentRunner.ts     # Simulated agent (for emulator mode)
+│   └── MockIssueTracker.ts    # Simulated issue tracker (for emulator mode)
 ├── public/
 │   ├── index.html             # Browser UI structure
 │   └── app.js                 # Browser client logic
@@ -193,23 +193,23 @@ apps/browser-demo/
 └── README.md                  # This file
 ```
 
-## Comparison with CLI Demo
+## Comparison with CLI Implementation
 
-| Feature | CLI Demo | Browser Demo |
+| Feature | CLI Implementation | Browser Implementation |
 |---------|----------|--------------|
 | **UI Framework** | React/Ink (terminal) | Vanilla HTML/JS (browser) |
 | **Renderer** | CLIRenderer | BrowserRenderer |
 | **Communication** | Direct (same process) | WebSocket |
 | **Display** | Terminal UI | Web page |
 | **Accessibility** | Requires terminal access | Access via browser |
-| **Use Case** | Local development | Remote demos, screenshots |
+| **Use Case** | Local development | Remote access, screenshots |
 
 ## Verification
 
 This app fulfills all acceptance criteria from CYPACK-278:
 
 - ✅ Simple web page (HTML + vanilla JS) that runs locally
-- ✅ Reuses MockAgentRunner and MockIssueTracker from CLI demo
+- ✅ Includes MockAgentRunner and MockIssueTracker for emulator mode
 - ✅ Displays real-time activity log (text events, tool-use events)
 - ✅ Shows message input field at bottom (like Linear's "message Cyrus")
 - ✅ Supports stop button during agent execution
@@ -342,7 +342,7 @@ Then open: http://localhost:8080
 - **No build step for browser code**: HTML/JS served directly
 - **TypeScript only for server**: Browser uses vanilla JavaScript
 - **WebSocket for real-time**: Efficient bidirectional communication
-- **Reuses demo components**: Same MockAgentRunner and MockIssueTracker as CLI demo
+- **Mock components available**: MockAgentRunner and MockIssueTracker for emulator mode
 - **Same orchestrator**: Proves architecture works with different renderers
 
 ## Future Enhancements
