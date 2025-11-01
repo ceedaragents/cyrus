@@ -45,7 +45,7 @@ function handleTestControlMessage(
 				JSON.stringify({
 					type: "test:response",
 					action: "success",
-					message: `Note: Switching runner modes requires server restart with --emulator flag or without`,
+					message: `Note: Switching runner modes requires server restart with --demo flag or without`,
 				}),
 			);
 			break;
@@ -231,7 +231,7 @@ function runTestScenario(
 
 // Parse command-line arguments
 interface CLIArgs {
-	emulator?: boolean;
+	demo?: boolean;
 	port?: number;
 	help?: boolean;
 }
@@ -244,8 +244,8 @@ function parseArgs(args: string[]): CLIArgs {
 
 		if (arg === "--help" || arg === "-h") {
 			parsed.help = true;
-		} else if (arg === "--emulator") {
-			parsed.emulator = true;
+		} else if (arg === "--demo") {
+			parsed.demo = true;
 		} else if (arg === "--port" || arg === "-p") {
 			const portArg = args[++i];
 			if (portArg) {
@@ -265,13 +265,13 @@ USAGE:
   cyrus-browser-demo [OPTIONS]
 
 OPTIONS:
-  --emulator          Run in emulator mode with mock components (no real Claude/Linear)
+  --demo              Run in demo mode with mock components (no real Claude/Linear)
   --port, -p <PORT>   Port to run the server on (default: 3000)
   --help, -h          Show this help message
 
 EXAMPLES:
-  # Run in emulator mode (no credentials needed)
-  cyrus-browser-demo --emulator
+  # Run in demo mode (no credentials needed)
+  cyrus-browser-demo --demo
 
   # Run with real Claude (requires authentication)
   cyrus-browser-demo
@@ -299,7 +299,7 @@ if (args.help) {
 }
 
 // Configuration
-const EMULATOR_MODE = args.emulator ?? false;
+const DEMO_MODE = args.demo ?? false;
 const PORT = args.port || Number.parseInt(process.env.PORT || "3000", 10);
 const CYRUS_HOME = process.env.CYRUS_HOME || path.join(os.homedir(), ".cyrusd");
 const SESSIONS_DIR = path.join(CYRUS_HOME, "sessions", "browser-demo");
@@ -310,13 +310,13 @@ const CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN;
  * Browser Demo Server
  *
  * Serves the browser UI and manages WebSocket connections for real-time updates.
- * Supports both emulator mode (mock) and real mode (Claude Code).
+ * Supports both demo mode (mock) and real mode (Claude Code).
  */
 async function main() {
 	console.log("🚀 Starting Cyrus Browser Demo Server...\n");
 
 	// Validate authentication for real mode
-	if (!EMULATOR_MODE) {
+	if (!DEMO_MODE) {
 		const hasApiKey = !!ANTHROPIC_API_KEY;
 		const hasOAuthToken = !!CLAUDE_CODE_OAUTH_TOKEN;
 
@@ -327,7 +327,7 @@ async function main() {
 				"   - CLAUDE_CODE_OAUTH_TOKEN (recommended, get via: claude setup-token)",
 			);
 			console.error("   - ANTHROPIC_API_KEY");
-			console.error("   Or run with --emulator flag for emulator mode\n");
+			console.error("   Or run with --demo flag for demo mode\n");
 			process.exit(1);
 		}
 
@@ -368,9 +368,9 @@ async function main() {
 
 	let agentRunner: AgentRunner;
 
-	if (EMULATOR_MODE) {
+	if (DEMO_MODE) {
 		agentRunner = new MockAgentRunner();
-		console.log(`   ✓ Mock Agent Runner (emulator mode)`);
+		console.log(`   ✓ Mock Agent Runner (demo mode)`);
 	} else {
 		agentRunner = new ClaudeAgentRunner({
 			cyrusHome: CYRUS_HOME,
@@ -492,12 +492,12 @@ async function main() {
 		console.log(`   📂 Public directory: ${publicDir}`);
 		console.log(`   💾 Sessions directory: ${SESSIONS_DIR}`);
 		console.log(
-			`   🎭 Mode: ${EMULATOR_MODE ? "Emulator mode (mock responses)" : "Real (Claude Code)"}`,
+			`   🎭 Mode: ${DEMO_MODE ? "Demo (mock responses)" : "Real (Claude Code)"}`,
 		);
 		console.log(
 			`\n   🎯 Open the URL in your browser to see the interactive demo`,
 		);
-		if (!EMULATOR_MODE) {
+		if (!DEMO_MODE) {
 			console.log(
 				`   🤖 Using real Claude Code agent - sessions will show actual Claude responses`,
 			);
