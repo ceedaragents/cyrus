@@ -2,11 +2,8 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	type Comment,
-	LinearClient,
-	type Issue as LinearIssue,
-} from "@linear/sdk";
+import type { Issue as LinearIssue } from "@linear/sdk";
+import { LinearClient } from "@linear/sdk";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
 	ClaudeRunnerConfig,
@@ -49,12 +46,14 @@ import type {
 } from "cyrus-core";
 import {
 	DEFAULT_PROXY_URL,
+	type IIssueTrackerService,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
 	isIssueUnassignedWebhook,
+	LinearIssueTrackerService,
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
@@ -98,7 +97,7 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
-	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
+	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
@@ -166,7 +165,9 @@ export class EdgeWorker extends EventEmitter {
 				const linearClient = new LinearClient({
 					accessToken: repo.linearToken,
 				});
-				this.linearClients.set(repo.id, linearClient);
+				// Create issue tracker service (Linear adapter)
+				const issueTracker = new LinearIssueTrackerService(linearClient);
+				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
 				//
@@ -179,7 +180,7 @@ export class EdgeWorker extends EventEmitter {
 				// This allows the AgentSessionManager to call back into itself to access its own sessions,
 				// enabling child sessions to trigger parent session resumption using the same manager instance.
 				const agentSessionManager = new AgentSessionManager(
-					linearClient,
+					issueTracker,
 					(childSessionId: string) => {
 						console.log(
 							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
@@ -473,7 +474,7 @@ export class EdgeWorker extends EventEmitter {
 		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
 		// Post thought to Linear showing child result receipt
-		const linearClient = this.linearClients.get(repo.id);
+		const linearClient = this.issueTrackers.get(repo.id);
 		if (linearClient && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -745,11 +746,13 @@ export class EdgeWorker extends EventEmitter {
 				const linearClient = new LinearClient({
 					accessToken: repo.linearToken,
 				});
-				this.linearClients.set(repo.id, linearClient);
+				// Create issue tracker service (Linear adapter)
+				const issueTracker = new LinearIssueTrackerService(linearClient);
+				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager with same pattern as constructor
 				const agentSessionManager = new AgentSessionManager(
-					linearClient,
+					issueTracker,
 					(childSessionId: string) => {
 						return this.childToParentAgentSession.get(childSessionId);
 					},
@@ -820,7 +823,9 @@ export class EdgeWorker extends EventEmitter {
 					const linearClient = new LinearClient({
 						accessToken: repo.linearToken,
 					});
-					this.linearClients.set(repo.id, linearClient);
+					// Create issue tracker service (Linear adapter)
+					const issueTracker = new LinearIssueTrackerService(linearClient);
+					this.issueTrackers.set(repo.id, issueTracker);
 				}
 
 				// If active status changed
@@ -878,7 +883,7 @@ export class EdgeWorker extends EventEmitter {
 							}
 
 							// Post cancellation message to Linear
-							const linearClient = this.linearClients.get(repo.id);
+							const linearClient = this.issueTrackers.get(repo.id);
 							if (linearClient) {
 								await linearClient.createAgentActivity({
 									agentSessionId: session.linearAgentActivitySessionId,
@@ -902,7 +907,7 @@ export class EdgeWorker extends EventEmitter {
 
 				// Remove repository from all maps
 				this.repositories.delete(repo.id);
-				this.linearClients.delete(repo.id);
+				this.issueTrackers.delete(repo.id);
 				this.agentSessionManagers.delete(repo.id);
 
 				console.log(`✅ Repository removed successfully: ${repo.name}`);
@@ -1052,7 +1057,7 @@ export class EdgeWorker extends EventEmitter {
 		if (reposWithRoutingLabels.length > 0 && issueId && workspaceRepos[0]) {
 			// We need a Linear client to fetch labels
 			// Use the first workspace repo's client temporarily
-			const linearClient = this.linearClients.get(workspaceRepos[0].id);
+			const linearClient = this.issueTrackers.get(workspaceRepos[0].id);
 
 			if (linearClient) {
 				try {
@@ -1645,7 +1650,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Need to fetch full issue for routing context
-			const linearClient = this.linearClients.get(repository.id);
+			const linearClient = this.issueTrackers.get(repository.id);
 			if (linearClient) {
 				try {
 					fullIssue = await linearClient.issue(issue.id);
@@ -1673,7 +1678,7 @@ export class EdgeWorker extends EventEmitter {
 		// (before any async routing work to ensure instant user feedback)
 
 		// Get Linear client for this repository
-		const linearClient = this.linearClients.get(repository.id);
+		const linearClient = this.issueTrackers.get(repository.id);
 		if (!linearClient) {
 			console.error(
 				"Unexpected: There was no LinearClient for the repository with id",
@@ -2021,7 +2026,7 @@ export class EdgeWorker extends EventEmitter {
 			}
 
 			// Get LinearClient for this repository
-			const linearClient = this.linearClients.get(repository.id);
+			const linearClient = this.issueTrackers.get(repository.id);
 			if (!linearClient) {
 				console.error(`No LinearClient found for repository ${repository.id}`);
 				throw new Error(
@@ -2475,7 +2480,7 @@ ${reply.body}
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
-			const linearClient = this.linearClients.get(repository.id);
+			const linearClient = this.issueTrackers.get(repository.id);
 			let commentThreads = "No comments yet.";
 
 			if (linearClient && issue.id) {
@@ -2676,7 +2681,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
+			const linearClient = this.issueTrackers.get(repositoryId);
 			if (!linearClient) {
 				console.warn(
 					`No Linear client found for repository ${repositoryId}, skipping state update`,
@@ -2758,7 +2763,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	// private async postInitialComment(issueId: string, repositoryId: string): Promise<void> {
 	//   const body = "I'm getting started right away."
 	//   // Get the Linear client for this repository
-	//   const linearClient = this.linearClients.get(repositoryId)
+	//   const linearClient = this.issueTrackers.get(repositoryId)
 	//   if (!linearClient) {
 	//     throw new Error(`No Linear client found for repository ${repositoryId}`)
 	//   }
@@ -2779,7 +2784,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		parentId?: string,
 	): Promise<void> {
 		// Get the Linear client for this repository
-		const linearClient = this.linearClients.get(repositoryId);
+		const linearClient = this.issueTrackers.get(repositoryId);
 		if (!linearClient) {
 			throw new Error(`No Linear client found for repository ${repositoryId}`);
 		}
@@ -2858,7 +2863,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 			// Extract URLs from comments if available
 			const commentUrls: string[] = [];
-			const linearClient = this.linearClients.get(repository.id);
+			const linearClient = this.issueTrackers.get(repository.id);
 
 			// Fetch native Linear attachments (e.g., Sentry links)
 			const nativeAttachments: Array<{ title: string; url: string }> = [];
@@ -3368,7 +3373,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					}
 
 					// Post thought to Linear showing feedback receipt
-					const linearClient = this.linearClients.get(childRepo.id);
+					const linearClient = this.issueTrackers.get(childRepo.id);
 					if (linearClient) {
 						const feedbackThought = parentIssueId
 							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
@@ -4210,7 +4215,7 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
+			const linearClient = this.issueTrackers.get(repositoryId);
 			if (!linearClient) {
 				console.warn(
 					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
@@ -4253,7 +4258,7 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
+			const linearClient = this.issueTrackers.get(repositoryId);
 			if (!linearClient) {
 				console.warn(
 					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
@@ -4432,7 +4437,7 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
+			const linearClient = this.issueTrackers.get(repositoryId);
 			if (!linearClient) {
 				console.warn(
 					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
@@ -4680,7 +4685,7 @@ ${input.userComment}
 		isStreaming: boolean,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
+			const linearClient = this.issueTrackers.get(repositoryId);
 			if (!linearClient) {
 				console.warn(
 					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
@@ -4726,7 +4731,7 @@ ${input.userComment}
 		issueId: string,
 		repositoryId: string,
 	): Promise<LinearIssue | null> {
-		const linearClient = this.linearClients.get(repositoryId);
+		const linearClient = this.issueTrackers.get(repositoryId);
 		if (!linearClient) {
 			console.warn(
 				`[EdgeWorker] No Linear client found for repository ${repositoryId}`,

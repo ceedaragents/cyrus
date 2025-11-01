@@ -20,6 +20,9 @@ export { resolvePath } from "./config-types.js";
 
 // Constants
 export { DEFAULT_PROXY_URL } from "./constants.js";
+// Issue Tracker Abstraction
+export type { IIssueTrackerService } from "./issue-tracker/index.js";
+export { LinearIssueTrackerService, AgentActivityContentType } from "./issue-tracker/index.js";
 export type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
