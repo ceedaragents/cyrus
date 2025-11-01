@@ -2785,7 +2785,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (parentId) {
 			commentInput.parentId = parentId;
 		}
-		await linearClient.createComment(issueId, commentInput);
+		await linearClient.createComment(commentData);
 	}
 
 	/**

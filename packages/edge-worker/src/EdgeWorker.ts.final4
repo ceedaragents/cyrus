@@ -489,8 +489,9 @@ export class EdgeWorker extends EventEmitter {
 				});
 
 				console.log(
-					`[Parent Session Resume] Posted child result receipt thought for parent session ${parentSessionId}`,
-				);
+						`[Parent Session Resume] Posted child result receipt thought for parent session ${parentSessionId}`,
+					);
+				
 			} catch (error) {
 				console.error(
 					`[Parent Session Resume] Error posting child result receipt thought:`,
@@ -877,13 +878,10 @@ export class EdgeWorker extends EventEmitter {
 							// Post cancellation message to Linear
 							const linearClient = this.issueTrackers.get(repo.id);
 							if (linearClient) {
-								await linearClient.createAgentActivity(
-									session.linearAgentActivitySessionId,
-									{
-										type: AgentActivityContentType.Response,
-										body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
-									},
-								);
+								await linearClient.createAgentActivity(session.linearAgentActivitySessionId, {
+									type: AgentActivityContentType.Response,
+									body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
+								});
 								console.log(
 									`  📤 Posted cancellation message to Linear for issue ${session.issueId}`,
 								);
@@ -2542,7 +2540,8 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				let authorName = "Unknown";
 				if (linearClient) {
 					try {
-						const fullComment = await linearClient.fetchComment(newComment.id);
+						const fullComment = await linearClient.fetchComment(newComment.id,
+						);
 						const user = await fullComment.user;
 						authorName =
 							user?.displayName || user?.name || user?.email || "Unknown";
@@ -2768,7 +2767,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * Post a comment to Linear
 	 */
 	private async postComment(
-		_issueId: string,
+		issueId: string,
 		body: string,
 		repositoryId: string,
 		parentId?: string,
@@ -2785,7 +2784,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (parentId) {
 			commentInput.parentId = parentId;
 		}
-		await linearClient.createComment(issueId, commentInput);
+		await linearClient.createComment(commentData);
 	}
 
 	/**
@@ -3375,8 +3374,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							});
 
 							console.log(
-								`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
-							);
+									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
+								);
+							
 						} catch (error) {
 							console.error(
 								`[EdgeWorker] Error posting feedback receipt thought:`,
@@ -4207,8 +4207,9 @@ ${input.userComment}
 				body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
 			});
 			console.log(
-				`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
-			);
+					`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
+				);
+			
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting instant acknowledgment:`,
@@ -4238,8 +4239,9 @@ ${input.userComment}
 				body: "Resuming from child session",
 			});
 			console.log(
-				`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
-			);
+					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
+				);
+			
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting parent resumption acknowledgment:`,

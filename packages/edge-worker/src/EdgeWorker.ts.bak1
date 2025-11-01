@@ -483,14 +483,24 @@ export class EdgeWorker extends EventEmitter {
 			const resultThought = `Received result from sub-issue ${childIssueIdentifier}:\n\n---\n\n${prompt}\n\n---`;
 
 			try {
-				await linearClient.createAgentActivity(parentSessionId, {
-					type: AgentActivityContentType.Thought,
-					body: resultThought,
+				const result = await linearClient.createAgentActivity({
+					agentSessionId: parentSessionId,
+					content: {
+						type: "thought",
+						body: resultThought,
+					},
 				});
 
-				console.log(
-					`[Parent Session Resume] Posted child result receipt thought for parent session ${parentSessionId}`,
-				);
+				if (result.success) {
+					console.log(
+						`[Parent Session Resume] Posted child result receipt thought for parent session ${parentSessionId}`,
+					);
+				} else {
+					console.error(
+						`[Parent Session Resume] Failed to post child result receipt thought:`,
+						result,
+					);
+				}
 			} catch (error) {
 				console.error(
 					`[Parent Session Resume] Error posting child result receipt thought:`,
@@ -877,13 +887,13 @@ export class EdgeWorker extends EventEmitter {
 							// Post cancellation message to Linear
 							const linearClient = this.issueTrackers.get(repo.id);
 							if (linearClient) {
-								await linearClient.createAgentActivity(
-									session.linearAgentActivitySessionId,
-									{
-										type: AgentActivityContentType.Response,
+								await linearClient.createAgentActivity({
+									agentSessionId: session.linearAgentActivitySessionId,
+									content: {
+										type: "response",
 										body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
 									},
-								);
+								});
 								console.log(
 									`  📤 Posted cancellation message to Linear for issue ${session.issueId}`,
 								);
@@ -1054,7 +1064,7 @@ export class EdgeWorker extends EventEmitter {
 			if (linearClient) {
 				try {
 					// Fetch the issue to get labels
-					const issue = await linearClient.fetchIssue(issueId);
+					const issue = await linearClient.issue(issueId);
 					const labels = await this.fetchIssueLabels(issue);
 
 					// Check each repo with routing labels
@@ -1645,7 +1655,7 @@ export class EdgeWorker extends EventEmitter {
 			const linearClient = this.issueTrackers.get(repository.id);
 			if (linearClient) {
 				try {
-					fullIssue = await linearClient.fetchIssue(issue.id);
+					fullIssue = await linearClient.issue(issue.id);
 				} catch (error) {
 					console.warn(
 						`[EdgeWorker] Failed to fetch full issue for routing: ${issue.id}`,
@@ -1694,7 +1704,7 @@ export class EdgeWorker extends EventEmitter {
 		let commentTimestamp: string | undefined;
 
 		try {
-			const result = await linearClient.rawGraphQLRequest(
+			const result = await linearClient.client.rawRequest(
 				`
           query GetComment($id: String!) {
             comment(id: $id) {
@@ -2035,7 +2045,7 @@ export class EdgeWorker extends EventEmitter {
 				);
 
 				// Fetch teams
-				const teamsConnection = await linearClient.fetchTeams();
+				const teamsConnection = await linearClient.teams();
 				const teamsArray = [];
 				for (const team of teamsConnection.nodes) {
 					teamsArray.push({
@@ -2054,7 +2064,7 @@ export class EdgeWorker extends EventEmitter {
 					.join("\n");
 
 				// Fetch labels
-				const labelsConnection = await linearClient.fetchLabels();
+				const labelsConnection = await linearClient.issueLabels();
 				const labelsArray = [];
 				for (const label of labelsConnection.nodes) {
 					labelsArray.push({
@@ -2265,7 +2275,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 		// Check if issue has a parent
 		try {
-			const parent = await issue.parentId;
+			const parent = await issue.parent;
 			if (parent) {
 				console.log(
 					`[EdgeWorker] Issue ${issue.identifier} has parent: ${parent.identifier}`,
@@ -2343,7 +2353,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 		// First pass: identify root comments and create thread structure
 		for (const comment of comments) {
-			const parent = await comment.parentId;
+			const parent = await comment.parent;
 			if (!parent) {
 				// This is a root comment
 				rootComments.push(comment);
@@ -2353,7 +2363,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 		// Second pass: assign replies to their threads
 		for (const comment of comments) {
-			const parent = await comment.parentId;
+			const parent = await comment.parent;
 			if (parent?.id) {
 				const thread = threads.get(parent.id);
 				if (thread) {
@@ -2480,7 +2490,7 @@ ${reply.body}
 					console.log(
 						`[EdgeWorker] Fetching comments for issue ${issue.identifier}`,
 					);
-					const comments = await linearClient.fetchComments({
+					const comments = await linearClient.comments({
 						filter: { issue: { id: { eq: issue.id } } },
 					});
 
@@ -2542,7 +2552,9 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				let authorName = "Unknown";
 				if (linearClient) {
 					try {
-						const fullComment = await linearClient.fetchComment(newComment.id);
+						const fullComment = await linearClient.comment({
+							id: newComment.id,
+						});
 						const user = await fullComment.user;
 						authorName =
 							user?.displayName || user?.name || user?.email || "Unknown";
@@ -2698,7 +2710,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}
 
 			// Get available workflow states for the issue's team
-			const teamStates = await linearClient.fetchWorkflowStates({
+			const teamStates = await linearClient.workflowStates({
 				filter: { team: { id: { eq: team.id } } },
 			});
 
@@ -2768,7 +2780,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * Post a comment to Linear
 	 */
 	private async postComment(
-		_issueId: string,
+		issueId: string,
 		body: string,
 		repositoryId: string,
 		parentId?: string,
@@ -2778,14 +2790,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (!linearClient) {
 			throw new Error(`No Linear client found for repository ${repositoryId}`);
 		}
-		const commentInput: { body: string; parentId?: string } = {
+		const commentData: { issueId: string; body: string; parentId?: string } = {
+			issueId,
 			body,
 		};
 		// Add parent ID if provided (for reply)
 		if (parentId) {
-			commentInput.parentId = parentId;
+			commentData.parentId = parentId;
 		}
-		await linearClient.createComment(issueId, commentInput);
+		await linearClient.createComment(commentData);
 	}
 
 	/**
@@ -2879,7 +2892,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				}
 
 				try {
-					const comments = await linearClient.fetchComments({
+					const comments = await linearClient.comments({
 						filter: { issue: { id: { eq: issue.id } } },
 					});
 					const commentNodes = comments.nodes;
@@ -3369,14 +3382,24 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
 
 						try {
-							await linearClient.createAgentActivity(childSessionId, {
-								type: AgentActivityContentType.Thought,
-								body: feedbackThought,
+							const result = await linearClient.createAgentActivity({
+								agentSessionId: childSessionId,
+								content: {
+									type: "thought",
+									body: feedbackThought,
+								},
 							});
 
-							console.log(
-								`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
-							);
+							if (result.success) {
+								console.log(
+									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
+								);
+							} else {
+								console.error(
+									`[EdgeWorker] Failed to post feedback receipt thought:`,
+									result,
+								);
+							}
 						} catch (error) {
 							console.error(
 								`[EdgeWorker] Error posting feedback receipt thought:`,
@@ -4202,13 +4225,25 @@ ${input.userComment}
 				return;
 			}
 
-			await linearClient.createAgentActivity(linearAgentActivitySessionId, {
-				type: AgentActivityContentType.Thought,
-				body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
-			});
-			console.log(
-				`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
-			);
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
+				},
+			};
+
+			const result = await linearClient.createAgentActivity(activityInput);
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post instant acknowledgment:`,
+					result,
+				);
+			}
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting instant acknowledgment:`,
@@ -4233,13 +4268,25 @@ ${input.userComment}
 				return;
 			}
 
-			await linearClient.createAgentActivity(linearAgentActivitySessionId, {
-				type: AgentActivityContentType.Thought,
-				body: "Resuming from child session",
-			});
-			console.log(
-				`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
-			);
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: "Resuming from child session",
+				},
+			};
+
+			const result = await linearClient.createAgentActivity(activityInput);
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post parent resumption acknowledgment:`,
+					result,
+				);
+			}
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting parent resumption acknowledgment:`,
@@ -4466,13 +4513,25 @@ ${input.userComment}
 				return;
 			}
 
-			await linearClient.createAgentActivity(linearAgentActivitySessionId, {
-				type: AgentActivityContentType.Thought,
-				body: `Entering '${selectedPromptType}' mode because of the '${triggerLabel}' label. I'll follow the ${selectedPromptType} process...`,
-			});
-			console.log(
-				`[EdgeWorker] Posted system prompt selection thought for session ${linearAgentActivitySessionId} (${selectedPromptType} mode)`,
-			);
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: `Entering '${selectedPromptType}' mode because of the '${triggerLabel}' label. I'll follow the ${selectedPromptType} process...`,
+				},
+			};
+
+			const result = await linearClient.createAgentActivity(activityInput);
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted system prompt selection thought for session ${linearAgentActivitySessionId} (${selectedPromptType} mode)`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post system prompt selection thought:`,
+					result,
+				);
+			}
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting system prompt selection thought:`,
@@ -4640,13 +4699,25 @@ ${input.userComment}
 				? "I've queued up your message as guidance"
 				: "Getting started on that...";
 
-			await linearClient.createAgentActivity(linearAgentActivitySessionId, {
-				type: AgentActivityContentType.Thought,
-				body: message,
-			});
-			console.log(
-				`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`,
-			);
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: message,
+				},
+			};
+
+			const result = await linearClient.createAgentActivity(activityInput);
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post instant prompted acknowledgment:`,
+					result,
+				);
+			}
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting instant prompted acknowledgment:`,
@@ -4672,14 +4743,14 @@ ${input.userComment}
 
 		try {
 			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`);
-			const fullIssue = await linearClient.fetchIssue(issueId);
+			const fullIssue = await linearClient.issue(issueId);
 			console.log(
 				`[EdgeWorker] Successfully fetched issue details for ${issueId}`,
 			);
 
 			// Check if issue has a parent
 			try {
-				const parent = await fullIssue.parentId;
+				const parent = await fullIssue.parent;
 				if (parent) {
 					console.log(
 						`[EdgeWorker] Issue ${issueId} has parent: ${parent.identifier}`,
