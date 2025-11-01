@@ -219,6 +219,13 @@ When working on this codebase, follow these practices:
    - Group related changes together
    - Example: "New comments now feed into existing sessions" NOT "Implemented AsyncIterable<SDKUserMessage> for ClaudeRunner"
 
+3. **Do Not Commit Random Markdown Files**:
+   - **NEVER commit standalone markdown files** for documentation, notes, or evidence purposes
+   - Test-drive evidence must be included in **Linear comments** or **PR descriptions**, not committed as files
+   - This includes files like `TEST_DRIVE_EVIDENCE.md`, `NOTES.md`, `TODO.md`, etc.
+   - Exception: Only commit markdown files that are part of the official documentation structure (like `CLAUDE.md`, `README.md`, `CHANGELOG.md`, or files in a `docs/` directory)
+   - See the [Browser Emulator Testing Framework](#browser-emulator-testing-framework) section for proper evidence formats
+
 ## Key Code Paths
 
 - **Linear Integration**: `apps/cli/services/LinearIssueService.mjs`
