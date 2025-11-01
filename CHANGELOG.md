@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Suppressed unnecessary error logs when stopping Claude sessions
+
 ## [0.1.59] - 2025-10-31
 
 ### Fixed
