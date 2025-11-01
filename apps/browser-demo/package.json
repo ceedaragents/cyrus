@@ -7,6 +7,8 @@
 	"scripts": {
 		"dev": "node dist/server.js",
 		"start": "node dist/server.js",
+		"start:emulator": "node dist/server.js --emulator",
+		"start:real": "node dist/server.js",
 		"typecheck": "tsc --noEmit",
 		"build": "tsc"
 	},
