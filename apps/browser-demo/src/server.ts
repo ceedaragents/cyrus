@@ -410,7 +410,8 @@ async function main() {
 		ws.on("message", (data: Buffer) => {
 			try {
 				const message = JSON.parse(data.toString());
-				// Only handle test:* messages here, let renderer handle user:* messages
+
+				// Handle test:* messages
 				if (message.type?.startsWith("test:")) {
 					handleTestControlMessage(ws, message, {
 						orchestrator,
@@ -419,7 +420,53 @@ async function main() {
 						agentRunner,
 					});
 				}
-				// user:message and user:stop are handled by BrowserRenderer.addClient
+
+				// Handle user:message - bridge to issue tracker for event-driven continuation
+				if (
+					message.type === "user:message" &&
+					message.sessionId &&
+					message.message
+				) {
+					// Get the issue ID from the session
+					const sessionState = (renderer as any).sessions?.get(
+						message.sessionId,
+					);
+					if (sessionState?.session?.issueId) {
+						const issueId = sessionState.session.issueId;
+						console.log(
+							`[DEBUG Server] User message received for session ${message.sessionId}, posting to issue ${issueId}`,
+						);
+
+						// Post comment to issue tracker to trigger event-driven flow
+						issueTracker
+							.addComment(issueId, {
+								author: {
+									id: "user-1",
+									name: "Demo User",
+									email: "user@demo.com",
+								},
+								content: message.message,
+								createdAt: new Date(),
+								isRoot: true,
+							})
+							.then((commentId) => {
+								console.log(
+									`[DEBUG Server] Posted comment ${commentId} to issue ${issueId}`,
+								);
+							})
+							.catch((error) => {
+								console.error(
+									`[DEBUG Server] Failed to post comment to issue ${issueId}:`,
+									error,
+								);
+							});
+					} else {
+						console.warn(
+							`[DEBUG Server] Session ${message.sessionId} not found or has no issue ID`,
+						);
+					}
+				}
+				// user:stop is handled by BrowserRenderer.addClient
 			} catch (error) {
 				console.error("Failed to parse WebSocket message:", error);
 			}

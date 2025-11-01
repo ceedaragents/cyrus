@@ -489,6 +489,9 @@ export class AgentSessionOrchestrator extends EventEmitter {
 	 * Handle an issue event
 	 */
 	private async handleIssueEvent(event: IssueEvent): Promise<void> {
+		console.log(
+			`[Orchestrator] Received ${event.type} event for issue ${event.issue?.identifier || "unknown"}`,
+		);
 		switch (event.type) {
 			case "assigned": {
 				// Start a new session when an issue is assigned
@@ -514,14 +517,23 @@ export class AgentSessionOrchestrator extends EventEmitter {
 			case "comment-added": {
 				// Handle new comments as user input
 				const sessionId = this.sessionsByIssue.get(event.issue.id);
+				console.log(
+					`[Orchestrator] comment-added: sessionId=${sessionId}, hasContent=${!!event.comment.content}`,
+				);
 				if (sessionId && event.comment.content) {
 					// Send to existing active session
+					console.log(
+						`[Orchestrator] Sending comment to existing session ${sessionId}`,
+					);
 					await this.withRetry(
 						() => this.handleUserInput(sessionId, event.comment.content),
 						"handle comment",
 					);
 				} else if (!sessionId && event.comment.content) {
 					// No active session - start a new continuation session (like prompted event)
+					console.log(
+						`[Orchestrator] No active session for issue ${event.issue.identifier}, starting new continuation session`,
+					);
 					await this.withRetry(
 						() => this.startSession(event.issue),
 						"start continuation session",

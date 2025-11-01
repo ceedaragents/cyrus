@@ -1,7 +1,6 @@
 import { EventEmitter } from "node:events";
 import type {
 	AgentActivity,
-	MessageInput,
 	RenderableSession,
 	Renderer,
 	SessionSummary,
@@ -96,12 +95,12 @@ export class BrowserRenderer implements Renderer {
 	private handleClientMessage(message: WSMessage): void {
 		switch (message.type) {
 			case "user:message": {
-				const input: MessageInput = {
-					type: "message",
-					content: message.message,
-					timestamp: new Date(),
-				};
-				this.enqueueInput(message.sessionId, input);
+				// User messages are now handled by server.ts which posts to issue tracker
+				// This allows the orchestrator to handle continuation sessions via events
+				// (see server.ts WebSocket message handler)
+				console.log(
+					`[BrowserRenderer] Ignoring user:message (handled by issue tracker event flow)`,
+				);
 				break;
 			}
 			case "user:stop": {

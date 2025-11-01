@@ -256,6 +256,9 @@ This demo simulates how Cyrus would work on a real Linear issue.`,
 	 * Emit an event to all watchers
 	 */
 	private emitEvent(event: IssueEvent): void {
+		console.log(
+			`[MockIssueTracker] Emitting ${event.type} event for issue ${event.issue.identifier} to ${this.eventCallbacks.length} callback(s)`,
+		);
 		for (const callback of this.eventCallbacks) {
 			callback(event);
 		}
