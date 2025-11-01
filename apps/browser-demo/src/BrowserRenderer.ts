@@ -201,20 +201,9 @@ export class BrowserRenderer implements Renderer {
 	/**
 	 * Get icon for activity type
 	 */
-	private getActivityIcon(type: string): string {
-		const iconMap: Record<string, string> = {
-			thought: "💭",
-			action: "🔧",
-			response: "💬",
-			error: "❌",
-			elicitation: "❓",
-			prompt: "📝",
-			"tool-use": "🛠️",
-			complete: "✅",
-			"session-start": "●",
-		};
-
-		return iconMap[type] || "●";
+	private getActivityIcon(_type: string): string {
+		// No icons - Apple doesn't use emojis in system UI
+		return "";
 	}
 
 	/**
@@ -291,7 +280,7 @@ export class BrowserRenderer implements Renderer {
 			session.id,
 			"session-start",
 			`Session started for issue: ${session.issueTitle}`,
-			"●",
+			"",
 		);
 	}
 
@@ -311,7 +300,7 @@ export class BrowserRenderer implements Renderer {
 	}
 
 	async renderText(sessionId: string, text: string): Promise<void> {
-		this.addActivity(sessionId, "text", text, "💬");
+		this.addActivity(sessionId, "text", text, "");
 	}
 
 	async renderToolUse(
@@ -320,7 +309,7 @@ export class BrowserRenderer implements Renderer {
 		input: unknown,
 	): Promise<void> {
 		const content = `Tool: ${tool}\nInput: ${JSON.stringify(input, null, 2)}`;
-		this.addActivity(sessionId, "tool-use", content, "🛠️");
+		this.addActivity(sessionId, "tool-use", content, "");
 	}
 
 	async renderComplete(
@@ -347,7 +336,7 @@ export class BrowserRenderer implements Renderer {
 			.filter(Boolean)
 			.join("\n");
 
-		this.addActivity(sessionId, "complete", summaryText, "✅");
+		this.addActivity(sessionId, "complete", summaryText, "");
 	}
 
 	async renderError(sessionId: string, error: Error): Promise<void> {
@@ -363,7 +352,7 @@ export class BrowserRenderer implements Renderer {
 			sessionId,
 			"error",
 			`Error: ${error.message}\n${error.stack || ""}`,
-			"❌",
+			"",
 		);
 	}
 

@@ -116,8 +116,6 @@
 
         .connection-status {
             margin-top: 20px;
-            padding: 10px 20px;
-            border-radius: 12px; /* Larger, softer radius */
             font-size: 14px;
             display: inline-flex;
             align-items: center;
@@ -128,14 +126,13 @@
 
         .connection-status::before {
             content: '';
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
             background: currentColor;
         }
 
         .connection-status.connected {
-            background: var(--accent-green-light);
             color: var(--accent-green);
         }
 
@@ -144,7 +141,6 @@
         }
 
         .connection-status.disconnected {
-            background: var(--accent-red-light);
             color: var(--accent-red);
         }
 
@@ -318,48 +314,33 @@
         }
 
         .activity-icon {
-            font-size: 20px;
-            line-height: 1;
-            flex-shrink: 0;
+            display: none; /* No icons in Apple UI */
         }
 
         .activity-type {
-            font-weight: 600;
-            font-size: 12px;
+            font-weight: 500;
+            font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
+            letter-spacing: 0.6px;
             flex-shrink: 0;
-            padding: 4px 10px;
-            border-radius: 6px;
-            background: var(--bg-secondary);
-        }
-
-        .activity-type.text { color: var(--text-primary); }
-        .activity-type.tool-use {
-            color: var(--accent-blue);
-            background: var(--accent-blue-light);
-        }
-        .activity-type.error {
-            color: var(--accent-red);
-            background: var(--accent-red-light);
-        }
-        .activity-type.complete {
-            color: var(--accent-green);
-            background: var(--accent-green-light);
-        }
-        .activity-type.session-start {
-            color: var(--accent-blue);
-            background: var(--accent-blue-light);
+            color: var(--text-tertiary);
         }
 
         .activity-content {
             color: var(--text-primary);
-            font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace; /* SF Mono only for code/content */
-            font-size: 14px;
-            line-height: 1.7;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            font-size: 15px;
+            line-height: 1.6;
             white-space: pre-wrap;
             word-break: break-word;
             padding-left: 32px;
+        }
+
+        /* Use SF Mono only for code blocks within activity content */
+        .activity-content code,
+        .activity-content pre {
+            font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 14px;
         }
 
         .input-container {
@@ -468,15 +449,8 @@
             color: var(--text-secondary);
             padding: 80px 40px; /* More generous */
             animation: fade-in 0.8s var(--transition-smooth);
-        }
-
-        .empty-state::before {
-            content: '⏳';
-            display: block;
-            font-size: 64px; /* Larger icon */
-            margin-bottom: 24px;
-            opacity: 0.4;
-            animation: gentle-pulse 3s ease-in-out infinite;
+            font-size: 15px;
+            font-weight: 500;
         }
 
         @keyframes gentle-pulse {
