@@ -108,6 +108,25 @@
             transition: padding 0.3s var(--transition-smooth);
         }
 
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 32px;
+            margin-bottom: 16px;
+        }
+
+        .header-left {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .header-right {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+        }
+
         .header h1 {
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
             color: var(--text-primary);
@@ -122,6 +141,75 @@
             font-size: 15px;
             font-weight: 400;
             line-height: 1.6;
+        }
+
+        /* Issue Switcher */
+        .issue-switcher {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .issue-selector {
+            min-width: 280px;
+            background: var(--bg-secondary);
+            border: 1.5px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 10px 36px 10px 16px;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s var(--transition-smooth);
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8"><path fill="%2386868B" d="M1.41 0L6 4.59L10.59 0L12 1.41l-6 6l-6-6z"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+        }
+
+        .issue-selector:hover {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-light);
+        }
+
+        .issue-selector:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-light);
+        }
+
+        .btn-create-issue {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s var(--transition-smooth);
+            white-space: nowrap;
+        }
+
+        .btn-create-issue:hover {
+            background: #0066CC;
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-create-issue:active {
+            transform: translateY(0);
+        }
+
+        .btn-create-issue .btn-icon {
+            font-size: 20px;
+            line-height: 1;
+            font-weight: 300;
         }
 
         .connection-status {
@@ -1161,8 +1249,28 @@
                 padding: 20px 24px;
             }
 
+            .header-content {
+                flex-direction: column;
+                gap: 20px;
+            }
+
             .header h1 {
                 font-size: 24px;
+            }
+
+            .issue-switcher {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .issue-selector {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .btn-create-issue {
+                width: 100%;
+                justify-content: center;
             }
 
             .activities-container {
@@ -1226,6 +1334,12 @@
             padding: 32px;
             transform: scale(0.95) translateY(10px);
             transition: transform 0.3s var(--transition-spring);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-large {
+            max-width: 600px;
         }
 
         .modal-overlay.visible .modal {
@@ -1319,6 +1433,115 @@
             background: #CC2E24;
         }
 
+        /* Form Styles */
+        .modal-form {
+            margin-bottom: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .form-input,
+        .form-textarea,
+        .form-select {
+            width: 100%;
+            background: var(--bg-tertiary);
+            border: 1.5px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            transition: all 0.3s var(--transition-smooth);
+        }
+
+        .form-input:focus,
+        .form-textarea:focus,
+        .form-select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--accent-blue-light);
+            background: var(--bg-secondary);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 100px;
+            line-height: 1.6;
+        }
+
+        .form-select {
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8"><path fill="%2386868B" d="M1.41 0L6 4.59L10.59 0L12 1.41l-6 6l-6-6z"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            padding-right: 40px;
+            cursor: pointer;
+        }
+
+        /* Label Selector */
+        .label-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .label-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border: 1.5px solid var(--border-color);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s var(--transition-smooth);
+            user-select: none;
+        }
+
+        .label-chip:hover {
+            border-color: var(--text-tertiary);
+            background: var(--bg-secondary);
+        }
+
+        .label-chip.selected {
+            background: var(--accent-blue-light);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .label-chip.selected .label-dot {
+            box-shadow: 0 0 0 2px currentColor;
+        }
+
+        .label-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            transition: box-shadow 0.2s var(--transition-smooth);
+        }
+
+        .label-text {
+            flex: 1;
+        }
+
         /* ============================================
            PRINT STYLES
            ============================================ */
@@ -1341,8 +1564,23 @@
 
     <!-- Header -->
     <div class="header" role="banner">
-        <h1>Cyrus CLI Demo</h1>
-        <div class="subtitle">Interactive demonstration of Cyrus agent orchestrator with real Claude Code execution</div>
+        <div class="header-content">
+            <div class="header-left">
+                <h1>Cyrus CLI Demo</h1>
+                <div class="subtitle">Interactive demonstration of Cyrus agent orchestrator with real Claude Code execution</div>
+            </div>
+            <div class="header-right">
+                <div class="issue-switcher">
+                    <select class="issue-selector" id="issueSelector" aria-label="Select issue">
+                        <option value="">No issues</option>
+                    </select>
+                    <button class="btn-create-issue" id="createIssueBtn" aria-label="Create new issue">
+                        <span class="btn-icon">+</span>
+                        <span class="btn-text">New Issue</span>
+                    </button>
+                </div>
+            </div>
+        </div>
         <div class="connection-status" id="connectionStatus" role="status" aria-live="polite">
             Connecting...
         </div>
@@ -1443,6 +1681,87 @@
             <input type="text" class="modal-input" id="modalInput" style="display: none;" />
             <div class="modal-actions" id="modalActions">
                 <!-- Buttons will be added dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Issue Modal -->
+    <div class="modal-overlay" id="createIssueModal">
+        <div class="modal modal-large" role="dialog" aria-labelledby="createIssueTitle">
+            <div class="modal-header">
+                <h2 class="modal-title" id="createIssueTitle">Create New Test Issue</h2>
+                <p class="modal-message">Create a new test issue to demonstrate the agent's capabilities</p>
+            </div>
+
+            <div class="modal-form">
+                <div class="form-group">
+                    <label for="issueTitle" class="form-label">Title</label>
+                    <input
+                        type="text"
+                        class="form-input"
+                        id="issueTitle"
+                        placeholder="Enter issue title..."
+                        autocomplete="off"
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="issueDescription" class="form-label">Description</label>
+                    <textarea
+                        class="form-textarea"
+                        id="issueDescription"
+                        rows="4"
+                        placeholder="Describe what you want the agent to do..."
+                    ></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Labels</label>
+                    <div class="label-selector" id="labelSelector">
+                        <div class="label-chip" data-label="bug">
+                            <span class="label-dot" style="background: var(--accent-red);"></span>
+                            <span class="label-text">Bug</span>
+                        </div>
+                        <div class="label-chip" data-label="feature">
+                            <span class="label-dot" style="background: var(--accent-blue);"></span>
+                            <span class="label-text">Feature</span>
+                        </div>
+                        <div class="label-chip" data-label="enhancement">
+                            <span class="label-dot" style="background: var(--accent-green);"></span>
+                            <span class="label-text">Enhancement</span>
+                        </div>
+                        <div class="label-chip" data-label="documentation">
+                            <span class="label-dot" style="background: var(--accent-purple);"></span>
+                            <span class="label-text">Documentation</span>
+                        </div>
+                        <div class="label-chip" data-label="refactor">
+                            <span class="label-dot" style="background: var(--accent-orange);"></span>
+                            <span class="label-text">Refactor</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="issueAssignee" class="form-label">Assignee</label>
+                    <select class="form-select" id="issueAssignee">
+                        <option value="cyrus">Cyrus Agent</option>
+                        <option value="user">User</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="issueStatus" class="form-label">Status</label>
+                    <select class="form-select" id="issueStatus">
+                        <option value="todo">Todo</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="done">Done</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="modal-btn modal-btn-cancel" id="cancelCreateIssue">Cancel</button>
+                <button class="modal-btn modal-btn-primary" id="confirmCreateIssue">Create Issue</button>
             </div>
         </div>
     </div>

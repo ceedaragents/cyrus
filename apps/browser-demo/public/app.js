@@ -9,6 +9,11 @@ class CyrusDemoClient {
 		this.sessionStartTime = null;
 		this.durationInterval = null;
 
+		// Multi-issue management
+		this.issues = new Map(); // Map of issueId -> issue data
+		this.currentIssueId = null;
+		this.nextIssueId = 1;
+
 		// Statistics counters
 		this.stats = {
 			thoughts: 0,
@@ -19,6 +24,8 @@ class CyrusDemoClient {
 		this.elements = {
 			// Header
 			connectionStatus: document.getElementById("connectionStatus"),
+			issueSelector: document.getElementById("issueSelector"),
+			createIssueBtn: document.getElementById("createIssueBtn"),
 
 			// Sidebar
 			sidebarSessionTitle: document.getElementById("sidebarSessionTitle"),
@@ -39,6 +46,16 @@ class CyrusDemoClient {
 			messageInput: document.getElementById("messageInput"),
 			sendBtn: document.getElementById("sendBtn"),
 			stopBtn: document.getElementById("stopBtn"),
+
+			// Create Issue Modal
+			createIssueModal: document.getElementById("createIssueModal"),
+			issueTitle: document.getElementById("issueTitle"),
+			issueDescription: document.getElementById("issueDescription"),
+			labelSelector: document.getElementById("labelSelector"),
+			issueAssignee: document.getElementById("issueAssignee"),
+			issueStatus: document.getElementById("issueStatus"),
+			cancelCreateIssue: document.getElementById("cancelCreateIssue"),
+			confirmCreateIssue: document.getElementById("confirmCreateIssue"),
 		};
 
 		this.connect();
@@ -982,7 +999,266 @@ class CyrusDemoClient {
 			this.elements.activitiesContainer.scrollHeight;
 	}
 
+	/**
+	 * Create a new issue
+	 */
+	createIssue(title, description, labels, assignee, status) {
+		const issueId = `DEMO-${this.nextIssueId++}`;
+		const issue = {
+			id: issueId,
+			title,
+			description,
+			labels: labels || [],
+			assignee,
+			status,
+			sessionId: null,
+			activities: [],
+			createdAt: new Date().toISOString(),
+		};
+
+		this.issues.set(issueId, issue);
+		this.updateIssueSelector();
+
+		// Automatically switch to the new issue
+		this.switchToIssue(issueId);
+
+		return issue;
+	}
+
+	/**
+	 * Switch to a different issue
+	 */
+	switchToIssue(issueId) {
+		if (!this.issues.has(issueId)) {
+			console.error(`Issue ${issueId} not found`);
+			return;
+		}
+
+		const previousIssueId = this.currentIssueId;
+		this.currentIssueId = issueId;
+		const issue = this.issues.get(issueId);
+
+		// Update selector
+		this.elements.issueSelector.value = issueId;
+
+		// Save current session state if switching away
+		if (previousIssueId && this.issues.has(previousIssueId)) {
+			const prevIssue = this.issues.get(previousIssueId);
+			prevIssue.activities = this.getAllActivitiesFromDOM();
+			prevIssue.stats = { ...this.stats };
+		}
+
+		// Clear rendered activities and stats
+		this.renderedActivityIds.clear();
+		this.resetStats();
+
+		// Update sidebar with new issue info
+		this.elements.sidebarSessionTitle.textContent = issue.title;
+		this.elements.sidebarSessionId.textContent = issue.id;
+
+		// Render the issue's activities
+		this.renderActivities(issue.activities);
+
+		// Restore stats if available
+		if (issue.stats) {
+			this.stats = { ...issue.stats };
+			this.updateStatsDisplay();
+		}
+
+		console.log(`Switched to issue: ${issueId}`);
+	}
+
+	/**
+	 * Get all activities from the DOM (for state preservation)
+	 */
+	getAllActivitiesFromDOM() {
+		const activities = [];
+		const activityElements =
+			this.elements.activitiesContainer.querySelectorAll(".activity");
+
+		activityElements.forEach((el, index) => {
+			const activityId =
+				el.getAttribute("data-activity-id") || `activity-${index}`;
+			activities.push({
+				id: activityId,
+				type: el.className.split(" ")[1] || "thought",
+				content: el.textContent.trim(),
+				timestamp: new Date().toISOString(),
+			});
+		});
+
+		return activities;
+	}
+
+	/**
+	 * Update the issue selector dropdown
+	 */
+	updateIssueSelector() {
+		const selector = this.elements.issueSelector;
+		selector.innerHTML = "";
+
+		if (this.issues.size === 0) {
+			const option = document.createElement("option");
+			option.value = "";
+			option.textContent = "No issues";
+			selector.appendChild(option);
+			selector.disabled = true;
+			return;
+		}
+
+		selector.disabled = false;
+
+		// Add all issues to selector
+		for (const [issueId, issue] of this.issues) {
+			const option = document.createElement("option");
+			option.value = issueId;
+			option.textContent = `${issueId}: ${issue.title}`;
+			selector.appendChild(option);
+		}
+
+		// Set current issue as selected
+		if (this.currentIssueId) {
+			selector.value = this.currentIssueId;
+		}
+	}
+
+	/**
+	 * Navigate to next issue (keyboard shortcut)
+	 */
+	nextIssue() {
+		const issueIds = Array.from(this.issues.keys());
+		if (issueIds.length === 0) return;
+
+		const currentIndex = issueIds.indexOf(this.currentIssueId);
+		const nextIndex = (currentIndex + 1) % issueIds.length;
+		this.switchToIssue(issueIds[nextIndex]);
+	}
+
+	/**
+	 * Navigate to previous issue (keyboard shortcut)
+	 */
+	previousIssue() {
+		const issueIds = Array.from(this.issues.keys());
+		if (issueIds.length === 0) return;
+
+		const currentIndex = issueIds.indexOf(this.currentIssueId);
+		const prevIndex = (currentIndex - 1 + issueIds.length) % issueIds.length;
+		this.switchToIssue(issueIds[prevIndex]);
+	}
+
+	/**
+	 * Show create issue modal
+	 */
+	showCreateIssueModal() {
+		this.elements.createIssueModal.classList.add("visible");
+		setTimeout(() => this.elements.issueTitle.focus(), 100);
+	}
+
+	/**
+	 * Hide create issue modal
+	 */
+	hideCreateIssueModal() {
+		this.elements.createIssueModal.classList.remove("visible");
+		// Clear form
+		this.elements.issueTitle.value = "";
+		this.elements.issueDescription.value = "";
+		this.elements.labelSelector
+			.querySelectorAll(".label-chip")
+			.forEach((chip) => {
+				chip.classList.remove("selected");
+			});
+		this.elements.issueAssignee.value = "cyrus";
+		this.elements.issueStatus.value = "todo";
+	}
+
+	/**
+	 * Handle create issue form submission
+	 */
+	handleCreateIssue() {
+		const title = this.elements.issueTitle.value.trim();
+		const description = this.elements.issueDescription.value.trim();
+
+		if (!title) {
+			this.elements.issueTitle.focus();
+			return;
+		}
+
+		// Get selected labels
+		const selectedLabels = Array.from(
+			this.elements.labelSelector.querySelectorAll(".label-chip.selected"),
+		).map((chip) => chip.getAttribute("data-label"));
+
+		const assignee = this.elements.issueAssignee.value;
+		const status = this.elements.issueStatus.value;
+
+		// Create the issue
+		this.createIssue(title, description, selectedLabels, assignee, status);
+
+		// Hide modal
+		this.hideCreateIssueModal();
+
+		// Show success notification
+		console.log(`Created issue: ${title}`);
+	}
+
 	setupEventListeners() {
+		// Issue selector
+		this.elements.issueSelector.addEventListener("change", (e) => {
+			const issueId = e.target.value;
+			if (issueId) {
+				this.switchToIssue(issueId);
+			}
+		});
+
+		// Create issue button
+		this.elements.createIssueBtn.addEventListener("click", () => {
+			this.showCreateIssueModal();
+		});
+
+		// Create issue modal buttons
+		this.elements.cancelCreateIssue.addEventListener("click", () => {
+			this.hideCreateIssueModal();
+		});
+
+		this.elements.confirmCreateIssue.addEventListener("click", () => {
+			this.handleCreateIssue();
+		});
+
+		// Label chip selection
+		this.elements.labelSelector
+			.querySelectorAll(".label-chip")
+			.forEach((chip) => {
+				chip.addEventListener("click", () => {
+					chip.classList.toggle("selected");
+				});
+			});
+
+		// Close create issue modal on overlay click
+		this.elements.createIssueModal.addEventListener("click", (e) => {
+			if (e.target === this.elements.createIssueModal) {
+				this.hideCreateIssueModal();
+			}
+		});
+
+		// Keyboard shortcuts
+		document.addEventListener("keydown", (e) => {
+			// Cmd+[ or Ctrl+[ - Previous issue
+			if ((e.metaKey || e.ctrlKey) && e.key === "[") {
+				e.preventDefault();
+				this.previousIssue();
+			}
+			// Cmd+] or Ctrl+] - Next issue
+			if ((e.metaKey || e.ctrlKey) && e.key === "]") {
+				e.preventDefault();
+				this.nextIssue();
+			}
+			// Escape - Close modals
+			if (e.key === "Escape") {
+				this.hideCreateIssueModal();
+				this.hideModal();
+			}
+		});
+
 		// Send button
 		this.elements.sendBtn.addEventListener("click", () => {
 			this.sendMessage();
