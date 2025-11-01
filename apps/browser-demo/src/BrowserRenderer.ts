@@ -201,9 +201,20 @@ export class BrowserRenderer implements Renderer {
 	/**
 	 * Get icon for activity type
 	 */
-	private getActivityIcon(_type: string): string {
-		// No icons - Apple doesn't use emojis in system UI
-		return "";
+	private getActivityIcon(type: string): string {
+		const iconMap: Record<string, string> = {
+			thought: "~",
+			action: "⚙",
+			response: "💬",
+			error: "✗",
+			elicitation: "❓",
+			prompt: "📝",
+			"tool-use": "⚙",
+			complete: "✓",
+			"session-start": "●",
+		};
+
+		return iconMap[type] || "●";
 	}
 
 	/**
