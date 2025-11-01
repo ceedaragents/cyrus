@@ -515,9 +515,16 @@ export class AgentSessionOrchestrator extends EventEmitter {
 				// Handle new comments as user input
 				const sessionId = this.sessionsByIssue.get(event.issue.id);
 				if (sessionId && event.comment.content) {
+					// Send to existing active session
 					await this.withRetry(
 						() => this.handleUserInput(sessionId, event.comment.content),
 						"handle comment",
+					);
+				} else if (!sessionId && event.comment.content) {
+					// No active session - start a new continuation session (like prompted event)
+					await this.withRetry(
+						() => this.startSession(event.issue),
+						"start continuation session",
 					);
 				}
 				break;
