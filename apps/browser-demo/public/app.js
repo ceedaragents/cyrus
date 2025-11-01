@@ -340,31 +340,35 @@ class CyrusDemoClient {
 		const timestamp = this.formatTimestamp(activity.timestamp);
 
 		// Parse tool name and input/output from content
-		const { toolName, input, output } = this.parseToolContent(activity.content);
+		const { toolName, input, output, params } = this.parseToolContent(
+			activity.content,
+		);
+
+		// Render based on tool type
+		const toolRenderer = this.getToolRenderer(toolName);
+		const renderedContent = toolRenderer(
+			toolName,
+			input,
+			output,
+			params,
+			activity.id,
+		);
 
 		div.innerHTML = `
             <div class="activity-header" onclick="window.cyrusClient.toggleToolOutput('${activity.id}')">
                 <div class="activity-title">
-                    <span class="tool-icon">⚙</span>
+                    <span class="tool-icon">${this.getToolIcon(toolName)}</span>
                     <strong class="tool-name">${this.escapeHtml(toolName)}</strong>
                 </div>
-                <button class="expand-btn" id="expand-${activity.id}">▼</button>
+                <button class="expand-btn" id="expand-${activity.id}" aria-label="Expand output">▼</button>
             </div>
             <time class="activity-timestamp">${timestamp}</time>
-            <div class="activity-input">
-                <code class="language-bash">${this.escapeHtml(input)}</code>
-            </div>
-            <div class="activity-output collapsed" id="output-${activity.id}">
-                <code class="language-bash">${this.escapeHtml(output)}</code>
-            </div>
-            <button class="copy-btn" onclick="window.cyrusClient.copyCode('${activity.id}', \`${this.escapeForTemplate(input)}\`)">
-                Copy
-            </button>
+            ${renderedContent}
         `;
 
 		// Apply syntax highlighting
 		setTimeout(() => {
-			const codeBlocks = div.querySelectorAll("code");
+			const codeBlocks = div.querySelectorAll("pre code");
 			codeBlocks.forEach((block) => {
 				if (window.Prism) {
 					window.Prism.highlightElement(block);
@@ -436,13 +440,311 @@ class CyrusDemoClient {
 	}
 
 	/**
-	 * Parse tool call content to extract tool name, input, and output
+	 * Get appropriate icon for tool type
+	 */
+	getToolIcon(toolName) {
+		const iconMap = {
+			Read: "📄",
+			Edit: "✏️",
+			Write: "📝",
+			Bash: "⚡",
+			Glob: "📁",
+			Grep: "🔍",
+			TodoWrite: "✅",
+			TodoRead: "📋",
+			Task: "🤖",
+			WebFetch: "🌐",
+			WebSearch: "🔎",
+		};
+		return iconMap[toolName] || "⚙️";
+	}
+
+	/**
+	 * Get renderer function for specific tool type
+	 */
+	getToolRenderer(toolName) {
+		const renderers = {
+			Read: this.renderReadTool.bind(this),
+			Edit: this.renderEditTool.bind(this),
+			Write: this.renderWriteTool.bind(this),
+			Bash: this.renderBashTool.bind(this),
+			Glob: this.renderGlobTool.bind(this),
+			Grep: this.renderGrepTool.bind(this),
+			TodoWrite: this.renderTodoWriteTool.bind(this),
+		};
+		return renderers[toolName] || this.renderGenericTool.bind(this);
+	}
+
+	/**
+	 * Detect file language for syntax highlighting
+	 */
+	detectLanguage(filePath) {
+		if (!filePath) return "plaintext";
+		const ext = filePath.split(".").pop().toLowerCase();
+		const langMap = {
+			js: "javascript",
+			mjs: "javascript",
+			jsx: "jsx",
+			ts: "typescript",
+			tsx: "tsx",
+			json: "json",
+			html: "markup",
+			xml: "markup",
+			css: "css",
+			scss: "scss",
+			py: "python",
+			rb: "ruby",
+			go: "go",
+			rs: "rust",
+			java: "java",
+			c: "c",
+			cpp: "cpp",
+			sh: "bash",
+			bash: "bash",
+			zsh: "bash",
+			md: "markdown",
+			yaml: "yaml",
+			yml: "yaml",
+			toml: "toml",
+			sql: "sql",
+		};
+		return langMap[ext] || "plaintext";
+	}
+
+	/**
+	 * Render Read tool (file contents with syntax highlighting)
+	 */
+	renderReadTool(_toolName, input, output, params, activityId) {
+		const filePath = params.file_path || input;
+		const language = this.detectLanguage(filePath);
+		const hasLineNumbers = output.includes("→");
+
+		return `
+            <div class="tool-params">
+                <span class="param-label">File:</span>
+                <code class="param-value">${this.escapeHtml(filePath)}</code>
+            </div>
+            <div class="activity-output collapsed" id="output-${activityId}">
+                <div class="output-header">
+                    <span class="output-label">File Contents</span>
+                    <button class="copy-output-btn" onclick="window.cyrusClient.copyOutput('${activityId}')">Copy</button>
+                </div>
+                <pre class="code-block ${hasLineNumbers ? "with-line-numbers" : ""}"><code class="language-${language}">${this.escapeHtml(output)}</code></pre>
+            </div>
+        `;
+	}
+
+	/**
+	 * Render Edit tool (diff display)
+	 */
+	renderEditTool(_toolName, _input, output, params, activityId) {
+		const filePath = params.file_path || "file";
+		const oldString = params.old_string || "";
+		const newString = params.new_string || "";
+
+		return `
+            <div class="tool-params">
+                <span class="param-label">File:</span>
+                <code class="param-value">${this.escapeHtml(filePath)}</code>
+            </div>
+            <div class="activity-output collapsed" id="output-${activityId}">
+                <div class="output-header">
+                    <span class="output-label">Changes</span>
+                    <button class="copy-output-btn" onclick="window.cyrusClient.copyOutput('${activityId}')">Copy Diff</button>
+                </div>
+                <div class="diff-view">
+                    <div class="diff-section removed">
+                        <div class="diff-label">− Removed</div>
+                        <pre><code class="language-diff">${this.escapeHtml(oldString)}</code></pre>
+                    </div>
+                    <div class="diff-section added">
+                        <div class="diff-label">+ Added</div>
+                        <pre><code class="language-diff">${this.escapeHtml(newString)}</code></pre>
+                    </div>
+                </div>
+                ${output !== "(no output)" ? `<div class="edit-result">${this.escapeHtml(output)}</div>` : ""}
+            </div>
+        `;
+	}
+
+	/**
+	 * Render Write tool (file creation)
+	 */
+	renderWriteTool(_toolName, input, output, params, activityId) {
+		const filePath = params.file_path || input;
+		const language = this.detectLanguage(filePath);
+		const content = params.content || output;
+
+		return `
+            <div class="tool-params">
+                <span class="param-label">Created:</span>
+                <code class="param-value">${this.escapeHtml(filePath)}</code>
+            </div>
+            <div class="activity-output collapsed" id="output-${activityId}">
+                <div class="output-header">
+                    <span class="output-label">File Contents</span>
+                    <button class="copy-output-btn" onclick="window.cyrusClient.copyOutput('${activityId}')">Copy</button>
+                </div>
+                <pre class="code-block"><code class="language-${language}">${this.escapeHtml(content)}</code></pre>
+            </div>
+        `;
+	}
+
+	/**
+	 * Render Bash tool (terminal-style output)
+	 */
+	renderBashTool(_toolName, input, output, params, activityId) {
+		const command = params.command || input;
+
+		return `
+            <div class="tool-params bash-command">
+                <span class="param-label">$</span>
+                <code class="param-value">${this.escapeHtml(command)}</code>
+            </div>
+            <div class="activity-output collapsed" id="output-${activityId}">
+                <div class="output-header">
+                    <span class="output-label">Output</span>
+                    <button class="copy-output-btn" onclick="window.cyrusClient.copyOutput('${activityId}')">Copy</button>
+                </div>
+                <pre class="terminal-output"><code>${this.escapeHtml(output)}</code></pre>
+            </div>
+        `;
+	}
+
+	/**
+	 * Render Glob tool (file list)
+	 */
+	renderGlobTool(_toolName, input, output, params, activityId) {
+		const pattern = params.pattern || input;
+		const files = output
+			.split("\n")
+			.filter((line) => line.trim())
+			.filter((line) => !line.includes("(no output)"));
+		const fileCount = files.length;
+
+		return `
+            <div class="tool-params">
+                <span class="param-label">Pattern:</span>
+                <code class="param-value">${this.escapeHtml(pattern)}</code>
+                <span class="file-count">${fileCount} file${fileCount !== 1 ? "s" : ""}</span>
+            </div>
+            <div class="activity-output collapsed" id="output-${activityId}">
+                <div class="output-header">
+                    <span class="output-label">Matched Files</span>
+                    <button class="copy-output-btn" onclick="window.cyrusClient.copyOutput('${activityId}')">Copy List</button>
+                </div>
+                <ul class="file-list">
+                    ${files.map((file) => `<li class="file-item"><code>${this.escapeHtml(file)}</code></li>`).join("")}
+                </ul>
+            </div>
+        `;
+	}
+
+	/**
+	 * Render Grep tool (search results)
+	 */
+	renderGrepTool(_toolName, input, output, params, activityId) {
+		const pattern = params.pattern || input;
+		const matches = output
+			.split("\n")
+			.filter((line) => line.trim())
+			.filter((line) => !line.includes("(no output)"));
+		const matchCount = matches.length;
+
+		return `
+            <div class="tool-params">
+                <span class="param-label">Pattern:</span>
+                <code class="param-value">${this.escapeHtml(pattern)}</code>
+                <span class="file-count">${matchCount} match${matchCount !== 1 ? "es" : ""}</span>
+            </div>
+            <div class="activity-output collapsed" id="output-${activityId}">
+                <div class="output-header">
+                    <span class="output-label">Search Results</span>
+                    <button class="copy-output-btn" onclick="window.cyrusClient.copyOutput('${activityId}')">Copy Results</button>
+                </div>
+                <pre class="search-results"><code>${this.escapeHtml(output)}</code></pre>
+            </div>
+        `;
+	}
+
+	/**
+	 * Render TodoWrite tool (task list)
+	 */
+	renderTodoWriteTool(_toolName, input, output, _params, activityId) {
+		// Try to parse todos from input or output
+		let todos = [];
+		try {
+			const todoData = JSON.parse(input);
+			if (todoData.todos && Array.isArray(todoData.todos)) {
+				todos = todoData.todos;
+			}
+		} catch {
+			// If parsing fails, show raw output
+		}
+
+		const todoHtml =
+			todos.length > 0
+				? todos
+						.map((todo) => {
+							const statusIcon =
+								{
+									completed: "✓",
+									in_progress: "⟳",
+									pending: "○",
+								}[todo.status] || "○";
+							const statusClass = todo.status || "pending";
+							return `
+                        <li class="todo-item ${statusClass}">
+                            <span class="todo-status">${statusIcon}</span>
+                            <span class="todo-content">${this.escapeHtml(todo.content || todo.activeForm || "")}</span>
+                        </li>
+                    `;
+						})
+						.join("")
+				: `<pre><code>${this.escapeHtml(output)}</code></pre>`;
+
+		return `
+            <div class="tool-params">
+                <span class="param-label">Tasks:</span>
+                <span class="file-count">${todos.length} todo${todos.length !== 1 ? "s" : ""}</span>
+            </div>
+            <div class="activity-output collapsed" id="output-${activityId}">
+                <div class="output-header">
+                    <span class="output-label">Task List</span>
+                    <button class="copy-output-btn" onclick="window.cyrusClient.copyOutput('${activityId}')">Copy</button>
+                </div>
+                ${todos.length > 0 ? `<ul class="todo-list">${todoHtml}</ul>` : todoHtml}
+            </div>
+        `;
+	}
+
+	/**
+	 * Render generic tool (fallback for unknown tools)
+	 */
+	renderGenericTool(_toolName, input, output, _params, activityId) {
+		return `
+            <div class="tool-params">
+                <code class="param-value">${this.escapeHtml(input)}</code>
+            </div>
+            <div class="activity-output collapsed" id="output-${activityId}">
+                <div class="output-header">
+                    <span class="output-label">Output</span>
+                    <button class="copy-output-btn" onclick="window.cyrusClient.copyOutput('${activityId}')">Copy</button>
+                </div>
+                <pre class="code-block"><code>${this.escapeHtml(output)}</code></pre>
+            </div>
+        `;
+	}
+
+	/**
+	 * Parse tool call content to extract tool name, input, output, and parameters
 	 */
 	parseToolContent(content) {
 		const lines = content.split("\n");
 		let toolName = "Tool";
 		let input = "";
 		let output = "";
+		const params = {};
 
 		let currentSection = null;
 
@@ -464,12 +766,48 @@ class CyrusDemoClient {
 			} else if (line.startsWith("Action:")) {
 				toolName = line.substring(7).trim();
 			} else if (line.startsWith("Parameter:")) {
-				currentSection = "input";
-				input = line.substring(10).trim();
+				currentSection = "params";
+				const paramLine = line.substring(10).trim();
+				// Try to parse as JSON
+				try {
+					const paramData = JSON.parse(paramLine);
+					Object.assign(params, paramData);
+				} catch {
+					// If not JSON, just store as-is
+					params.raw = paramLine;
+				}
+			} else if (line.includes(":") && currentSection === null) {
+				// Try to extract parameters like "file_path: /path/to/file"
+				const [key, ...valueParts] = line.split(":");
+				if (key && valueParts.length > 0) {
+					const cleanKey = key.trim().toLowerCase();
+					const value = valueParts.join(":").trim();
+					if (
+						[
+							"file_path",
+							"pattern",
+							"command",
+							"old_string",
+							"new_string",
+							"selector",
+							"url",
+						].includes(cleanKey)
+					) {
+						params[cleanKey] = value;
+					}
+				}
 			} else if (currentSection === "input" && line.trim()) {
 				input += (input ? "\n" : "") + line;
 			} else if (currentSection === "output" && line.trim()) {
 				output += (output ? "\n" : "") + line;
+			} else if (currentSection === "params" && line.trim()) {
+				// Continue reading parameter data
+				try {
+					const paramData = JSON.parse(line.trim());
+					Object.assign(params, paramData);
+				} catch {
+					// Ignore parse errors
+				}
 			}
 		}
 
@@ -483,6 +821,7 @@ class CyrusDemoClient {
 			toolName,
 			input: input || "(empty)",
 			output: output || "(no output)",
+			params,
 		};
 	}
 
@@ -501,7 +840,41 @@ class CyrusDemoClient {
 	}
 
 	/**
-	 * Copy code to clipboard
+	 * Copy output content to clipboard
+	 */
+	async copyOutput(activityId) {
+		try {
+			const outputElement = document.getElementById(`output-${activityId}`);
+			if (!outputElement) return;
+
+			// Extract text content from the output
+			const codeBlocks = outputElement.querySelectorAll("code");
+			const textContent =
+				codeBlocks.length > 0
+					? Array.from(codeBlocks)
+							.map((block) => block.textContent)
+							.join("\n")
+					: outputElement.textContent;
+
+			await navigator.clipboard.writeText(textContent);
+
+			// Visual feedback
+			const btn = event.target;
+			const originalText = btn.textContent;
+			btn.classList.add("copied");
+			btn.textContent = "Copied!";
+
+			setTimeout(() => {
+				btn.classList.remove("copied");
+				btn.textContent = originalText;
+			}, 2000);
+		} catch (error) {
+			console.error("Failed to copy:", error);
+		}
+	}
+
+	/**
+	 * Copy code to clipboard (legacy function, kept for compatibility)
 	 */
 	async copyCode(_activityId, code) {
 		try {
