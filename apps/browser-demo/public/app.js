@@ -609,9 +609,17 @@ class CyrusDemoClient {
 			this.sendMessage();
 		});
 
-		// Enter key in input
+		// Enter key in input (regular Enter)
 		this.elements.messageInput.addEventListener("keypress", (e) => {
 			if (e.key === "Enter") {
+				this.sendMessage();
+			}
+		});
+
+		// Cmd+Enter / Ctrl+Enter keyboard shortcut
+		this.elements.messageInput.addEventListener("keydown", (e) => {
+			if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+				e.preventDefault();
 				this.sendMessage();
 			}
 		});
@@ -634,6 +642,23 @@ class CyrusDemoClient {
 		// Share button
 		this.elements.shareBtn.addEventListener("click", () => {
 			this.shareSession();
+		});
+
+		// Close modal when clicking overlay
+		const modalOverlay = document.getElementById("modalOverlay");
+		if (modalOverlay) {
+			modalOverlay.addEventListener("click", (e) => {
+				if (e.target === modalOverlay) {
+					this.hideModal();
+				}
+			});
+		}
+
+		// Escape key to close modal
+		document.addEventListener("keydown", (e) => {
+			if (e.key === "Escape") {
+				this.hideModal();
+			}
 		});
 	}
 
@@ -694,18 +719,182 @@ class CyrusDemoClient {
 		URL.revokeObjectURL(url);
 	}
 
-	shareSession() {
+	async shareSession() {
 		if (navigator.share) {
-			navigator.share({
-				title: "Cyrus Session",
-				text: `Check out my Cyrus agent session: ${this.elements.sidebarSessionTitle.textContent}`,
-				url: window.location.href,
-			});
+			try {
+				await navigator.share({
+					title: "Cyrus Session",
+					text: `Check out my Cyrus agent session: ${this.elements.sidebarSessionTitle.textContent}`,
+					url: window.location.href,
+				});
+			} catch (error) {
+				// User cancelled share - that's okay, do nothing
+				if (error.name !== "AbortError") {
+					console.error("Error sharing:", error);
+				}
+			}
 		} else {
 			// Fallback: copy URL to clipboard
-			navigator.clipboard.writeText(window.location.href);
-			alert("Session URL copied to clipboard!");
+			await navigator.clipboard.writeText(window.location.href);
+			this.showNotification("Success", "Session URL copied to clipboard!");
 		}
+	}
+
+	/**
+	 * Show a notification modal (replaces alert)
+	 */
+	showNotification(title, message) {
+		const modalOverlay = document.getElementById("modalOverlay");
+		const modalTitle = document.getElementById("modalTitle");
+		const modalMessage = document.getElementById("modalMessage");
+		const modalInput = document.getElementById("modalInput");
+		const modalActions = document.getElementById("modalActions");
+
+		modalTitle.textContent = title;
+		modalMessage.textContent = message;
+		modalInput.style.display = "none";
+
+		// Clear previous buttons
+		modalActions.innerHTML = "";
+
+		// Add OK button
+		const okBtn = document.createElement("button");
+		okBtn.className = "modal-btn modal-btn-primary";
+		okBtn.textContent = "OK";
+		okBtn.onclick = () => this.hideModal();
+		modalActions.appendChild(okBtn);
+
+		// Show modal
+		modalOverlay.classList.add("visible");
+
+		// Focus OK button
+		setTimeout(() => okBtn.focus(), 100);
+	}
+
+	/**
+	 * Show a confirmation modal (replaces confirm)
+	 */
+	showConfirm(title, message, onConfirm, onCancel = null) {
+		const modalOverlay = document.getElementById("modalOverlay");
+		const modalTitle = document.getElementById("modalTitle");
+		const modalMessage = document.getElementById("modalMessage");
+		const modalInput = document.getElementById("modalInput");
+		const modalActions = document.getElementById("modalActions");
+
+		modalTitle.textContent = title;
+		modalMessage.textContent = message;
+		modalInput.style.display = "none";
+
+		// Clear previous buttons
+		modalActions.innerHTML = "";
+
+		// Add Cancel button
+		const cancelBtn = document.createElement("button");
+		cancelBtn.className = "modal-btn modal-btn-cancel";
+		cancelBtn.textContent = "Cancel";
+		cancelBtn.onclick = () => {
+			this.hideModal();
+			if (onCancel) onCancel();
+		};
+		modalActions.appendChild(cancelBtn);
+
+		// Add Confirm button
+		const confirmBtn = document.createElement("button");
+		confirmBtn.className = "modal-btn modal-btn-danger";
+		confirmBtn.textContent = "Confirm";
+		confirmBtn.onclick = () => {
+			this.hideModal();
+			onConfirm();
+		};
+		modalActions.appendChild(confirmBtn);
+
+		// Show modal
+		modalOverlay.classList.add("visible");
+
+		// Focus confirm button
+		setTimeout(() => confirmBtn.focus(), 100);
+	}
+
+	/**
+	 * Show a prompt modal (replaces prompt)
+	 */
+	showPrompt(title, message, defaultValue = "", onSubmit, onCancel = null) {
+		const modalOverlay = document.getElementById("modalOverlay");
+		const modalTitle = document.getElementById("modalTitle");
+		const modalMessage = document.getElementById("modalMessage");
+		const modalInput = document.getElementById("modalInput");
+		const modalActions = document.getElementById("modalActions");
+
+		modalTitle.textContent = title;
+		modalMessage.textContent = message;
+		modalInput.style.display = "block";
+		modalInput.value = defaultValue;
+
+		// Clear previous buttons
+		modalActions.innerHTML = "";
+
+		// Add Cancel button
+		const cancelBtn = document.createElement("button");
+		cancelBtn.className = "modal-btn modal-btn-cancel";
+		cancelBtn.textContent = "Cancel";
+		cancelBtn.onclick = () => {
+			this.hideModal();
+			if (onCancel) onCancel();
+		};
+		modalActions.appendChild(cancelBtn);
+
+		// Add Submit button
+		const submitBtn = document.createElement("button");
+		submitBtn.className = "modal-btn modal-btn-primary";
+		submitBtn.textContent = "Submit";
+		submitBtn.onclick = () => {
+			const value = modalInput.value.trim();
+			this.hideModal();
+			onSubmit(value);
+		};
+		modalActions.appendChild(submitBtn);
+
+		// Show modal
+		modalOverlay.classList.add("visible");
+
+		// Focus input and select text
+		setTimeout(() => {
+			modalInput.focus();
+			modalInput.select();
+		}, 100);
+
+		// Handle Enter key in input
+		const enterHandler = (e) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				const value = modalInput.value.trim();
+				this.hideModal();
+				onSubmit(value);
+			}
+		};
+		modalInput.addEventListener("keypress", enterHandler);
+
+		// Store handler for cleanup
+		modalInput._enterHandler = enterHandler;
+	}
+
+	/**
+	 * Hide the modal
+	 */
+	hideModal() {
+		const modalOverlay = document.getElementById("modalOverlay");
+		const modalInput = document.getElementById("modalInput");
+
+		modalOverlay.classList.remove("visible");
+
+		// Clean up event listener if it exists
+		if (modalInput._enterHandler) {
+			modalInput.removeEventListener("keypress", modalInput._enterHandler);
+			delete modalInput._enterHandler;
+		}
+
+		// Clear input value
+		modalInput.value = "";
 	}
 }
 
