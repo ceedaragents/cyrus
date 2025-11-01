@@ -912,7 +912,13 @@ class CyrusDemoClient {
 	scrollToActivity(activityId) {
 		const activity = document.getElementById(`activity-${activityId}`);
 		if (activity) {
-			activity.scrollIntoView({ behavior: "smooth", block: "center" });
+			// Use 'nearest' to prevent unwanted page scrolling
+			// This keeps the activity visible without disrupting the overall layout
+			activity.scrollIntoView({
+				behavior: "smooth",
+				block: "nearest",
+				inline: "nearest",
+			});
 			activity.classList.add("highlight");
 			setTimeout(() => activity.classList.remove("highlight"), 2000);
 
