@@ -104,10 +104,7 @@ export class LinearEventTransport extends EventEmitter {
 				return;
 			}
 
-			// Emit both legacy "webhook" and new "event" for backward compatibility
-			const payload = request.body as LinearWebhookPayload;
-			this.emit("webhook", payload);
-			this.emit("event", payload); // Platform-agnostic event
+			this.emit("webhook", request.body as LinearWebhookPayload);
 
 			// Send success response
 			reply.code(200).send({ success: true });
@@ -142,10 +139,7 @@ export class LinearEventTransport extends EventEmitter {
 		}
 
 		try {
-			// Emit both legacy "webhook" and new "event" for backward compatibility
-			const payload = request.body as LinearWebhookPayload;
-			this.emit("webhook", payload);
-			this.emit("event", payload); // Platform-agnostic event
+			this.emit("webhook", request.body as LinearWebhookPayload);
 
 			// Send success response
 			reply.code(200).send({ success: true });

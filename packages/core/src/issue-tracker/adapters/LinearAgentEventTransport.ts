@@ -24,8 +24,8 @@ export class LinearAgentEventTransport implements IAgentEventTransport {
 		const { LinearEventTransport } = require("cyrus-linear-event-transport");
 		this.transport = new LinearEventTransport(config);
 
-		// Forward the "event" events from LinearEventTransport's "event" emission
-		this.transport.on("event", (payload: any) => {
+		// Forward the "webhook" events from LinearEventTransport as "event" (platform-agnostic)
+		this.transport.on("webhook", (payload: any) => {
 			this.emitEvent("event", payload);
 		});
 
