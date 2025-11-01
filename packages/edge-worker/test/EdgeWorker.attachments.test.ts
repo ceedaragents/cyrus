@@ -81,9 +81,10 @@ describe("EdgeWorker - Native Attachments", () => {
 				} as AttachmentConnection),
 			} as unknown as LinearIssue;
 
-			// Mock LinearClient
+			// Mock IssueTrackerService
 			const mockLinearClient = {
-				comments: vi.fn().mockResolvedValue({ nodes: [] }),
+				fetchIssue: vi.fn().mockResolvedValue(mockIssue),
+				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
 			};
 			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 
@@ -121,7 +122,8 @@ describe("EdgeWorker - Native Attachments", () => {
 			} as unknown as LinearIssue;
 
 			const mockLinearClient = {
-				comments: vi.fn().mockResolvedValue({ nodes: [] }),
+				fetchIssue: vi.fn().mockResolvedValue(mockIssue),
+				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
 			};
 			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 
@@ -148,7 +150,8 @@ describe("EdgeWorker - Native Attachments", () => {
 			} as unknown as LinearIssue;
 
 			const mockLinearClient = {
-				comments: vi.fn().mockResolvedValue({ nodes: [] }),
+				fetchIssue: vi.fn().mockResolvedValue(mockIssue),
+				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
 			};
 			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 
