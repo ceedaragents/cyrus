@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Renamed `AgentSessionOrchestrator` to `MasterSessionManager` for clarity
+- `IssueTracker.addComment()` now returns full `Comment` object instead of just ID (enables proper root comment / agent session mapping)
+- Added `getMember()` and `listLabels()` methods to IssueTracker interface for full issue tracker abstraction
+
 ### Removed
 - Deleted non-functional `apps/cli-interactive` demo application
 
