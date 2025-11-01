@@ -8,7 +8,6 @@ class CyrusDemoClient {
 		this.renderedActivityIds = new Set();
 		this.sessionStartTime = null;
 		this.durationInterval = null;
-		this.currentRunnerMode = "mock"; // 'mock' or 'claude'
 
 		// Statistics counters
 		this.stats = {
@@ -34,32 +33,12 @@ class CyrusDemoClient {
 			timelineScrubber: document.getElementById("timelineScrubber"),
 			exportBtn: document.getElementById("exportBtn"),
 			shareBtn: document.getElementById("shareBtn"),
-			downloadLogBtn: document.getElementById("downloadLogBtn"),
-			screenshotBtn: document.getElementById("screenshotBtn"),
 
 			// Main content
 			activitiesContainer: document.getElementById("activitiesContainer"),
 			messageInput: document.getElementById("messageInput"),
 			sendBtn: document.getElementById("sendBtn"),
 			stopBtn: document.getElementById("stopBtn"),
-
-			// Test controls
-			toggleMockRunner: document.getElementById("toggleMockRunner"),
-			toggleClaudeRunner: document.getElementById("toggleClaudeRunner"),
-			createIssueBtn: document.getElementById("createIssueBtn"),
-			listIssuesBtn: document.getElementById("listIssuesBtn"),
-			simulateCommentBtn: document.getElementById("simulateCommentBtn"),
-			viewStorageBtn: document.getElementById("viewStorageBtn"),
-			loadSessionBtn: document.getElementById("loadSessionBtn"),
-			clearStorageBtn: document.getElementById("clearStorageBtn"),
-			scenarioSelect: document.getElementById("scenarioSelect"),
-			runScenarioBtn: document.getElementById("runScenarioBtn"),
-
-			// Modal
-			infoModal: document.getElementById("infoModal"),
-			modalTitle: document.getElementById("modalTitle"),
-			modalBody: document.getElementById("modalBody"),
-			modalClose: document.getElementById("modalClose"),
 		};
 
 		this.connect();
@@ -130,9 +109,6 @@ class CyrusDemoClient {
 				break;
 			case "activity:new":
 				this.addActivity(message.sessionId, message.activity);
-				break;
-			case "test:response":
-				this.handleTestControlResponse(message);
 				break;
 			default:
 				console.warn("Unknown message type:", message.type);
@@ -633,9 +609,17 @@ class CyrusDemoClient {
 			this.sendMessage();
 		});
 
-		// Enter key in input
+		// Enter key in input (regular Enter)
 		this.elements.messageInput.addEventListener("keypress", (e) => {
 			if (e.key === "Enter") {
+				this.sendMessage();
+			}
+		});
+
+		// Cmd+Enter / Ctrl+Enter keyboard shortcut
+		this.elements.messageInput.addEventListener("keydown", (e) => {
+			if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+				e.preventDefault();
 				this.sendMessage();
 			}
 		});
@@ -660,68 +644,20 @@ class CyrusDemoClient {
 			this.shareSession();
 		});
 
-		// Download log button
-		this.elements.downloadLogBtn.addEventListener("click", () => {
-			this.downloadActivityLog();
-		});
+		// Close modal when clicking overlay
+		const modalOverlay = document.getElementById("modalOverlay");
+		if (modalOverlay) {
+			modalOverlay.addEventListener("click", (e) => {
+				if (e.target === modalOverlay) {
+					this.hideModal();
+				}
+			});
+		}
 
-		// Screenshot button
-		this.elements.screenshotBtn.addEventListener("click", () => {
-			this.captureScreenshot();
-		});
-
-		// Runner mode toggle
-		this.elements.toggleMockRunner.addEventListener("click", () => {
-			this.switchRunnerMode("mock");
-		});
-
-		this.elements.toggleClaudeRunner.addEventListener("click", () => {
-			this.switchRunnerMode("claude");
-		});
-
-		// Issue tracker controls
-		this.elements.createIssueBtn.addEventListener("click", () => {
-			this.createTestIssue();
-		});
-
-		this.elements.listIssuesBtn.addEventListener("click", () => {
-			this.listAllIssues();
-		});
-
-		this.elements.simulateCommentBtn.addEventListener("click", () => {
-			this.simulateUserComment();
-		});
-
-		// Session storage controls
-		this.elements.viewStorageBtn.addEventListener("click", () => {
-			this.viewStoredSessions();
-		});
-
-		this.elements.loadSessionBtn.addEventListener("click", () => {
-			this.loadPreviousSession();
-		});
-
-		this.elements.clearStorageBtn.addEventListener("click", () => {
-			this.clearAllSessions();
-		});
-
-		// Test scenario controls
-		this.elements.scenarioSelect.addEventListener("change", (e) => {
-			this.elements.runScenarioBtn.disabled = !e.target.value;
-		});
-
-		this.elements.runScenarioBtn.addEventListener("click", () => {
-			this.runTestScenario();
-		});
-
-		// Modal controls
-		this.elements.modalClose.addEventListener("click", () => {
-			this.closeModal();
-		});
-
-		this.elements.infoModal.addEventListener("click", (e) => {
-			if (e.target === this.elements.infoModal) {
-				this.closeModal();
+		// Escape key to close modal
+		document.addEventListener("keydown", (e) => {
+			if (e.key === "Escape") {
+				this.hideModal();
 			}
 		});
 	}
@@ -783,314 +719,182 @@ class CyrusDemoClient {
 		URL.revokeObjectURL(url);
 	}
 
-	shareSession() {
+	async shareSession() {
 		if (navigator.share) {
-			navigator.share({
-				title: "Cyrus Session",
-				text: `Check out my Cyrus agent session: ${this.elements.sidebarSessionTitle.textContent}`,
-				url: window.location.href,
-			});
+			try {
+				await navigator.share({
+					title: "Cyrus Session",
+					text: `Check out my Cyrus agent session: ${this.elements.sidebarSessionTitle.textContent}`,
+					url: window.location.href,
+				});
+			} catch (error) {
+				// User cancelled share - that's okay, do nothing
+				if (error.name !== "AbortError") {
+					console.error("Error sharing:", error);
+				}
+			}
 		} else {
 			// Fallback: copy URL to clipboard
-			navigator.clipboard.writeText(window.location.href);
-			alert("Session URL copied to clipboard!");
+			await navigator.clipboard.writeText(window.location.href);
+			this.showNotification("Success", "Session URL copied to clipboard!");
 		}
 	}
 
-	// ========================================
-	// TEST CONTROL METHODS
-	// ========================================
+	/**
+	 * Show a notification modal (replaces alert)
+	 */
+	showNotification(title, message) {
+		const modalOverlay = document.getElementById("modalOverlay");
+		const modalTitle = document.getElementById("modalTitle");
+		const modalMessage = document.getElementById("modalMessage");
+		const modalInput = document.getElementById("modalInput");
+		const modalActions = document.getElementById("modalActions");
+
+		modalTitle.textContent = title;
+		modalMessage.textContent = message;
+		modalInput.style.display = "none";
+
+		// Clear previous buttons
+		modalActions.innerHTML = "";
+
+		// Add OK button
+		const okBtn = document.createElement("button");
+		okBtn.className = "modal-btn modal-btn-primary";
+		okBtn.textContent = "OK";
+		okBtn.onclick = () => this.hideModal();
+		modalActions.appendChild(okBtn);
+
+		// Show modal
+		modalOverlay.classList.add("visible");
+
+		// Focus OK button
+		setTimeout(() => okBtn.focus(), 100);
+	}
 
 	/**
-	 * Download activity log as JSON
+	 * Show a confirmation modal (replaces confirm)
 	 */
-	downloadActivityLog() {
-		const activities = Array.from(
-			this.elements.activitiesContainer.querySelectorAll(".activity"),
-		);
+	showConfirm(title, message, onConfirm, onCancel = null) {
+		const modalOverlay = document.getElementById("modalOverlay");
+		const modalTitle = document.getElementById("modalTitle");
+		const modalMessage = document.getElementById("modalMessage");
+		const modalInput = document.getElementById("modalInput");
+		const modalActions = document.getElementById("modalActions");
 
-		const activityLog = activities.map((activity) => {
-			const type = activity.className.split(" ")[1];
-			const id = activity.getAttribute("data-activity-id");
-			const content = activity.textContent.trim();
-			return { id, type, content };
-		});
+		modalTitle.textContent = title;
+		modalMessage.textContent = message;
+		modalInput.style.display = "none";
 
-		const logData = {
-			sessionId: this.currentSessionId,
-			sessionTitle: this.elements.sidebarSessionTitle.textContent,
-			exportedAt: new Date().toISOString(),
-			stats: this.stats,
-			activities: activityLog,
+		// Clear previous buttons
+		modalActions.innerHTML = "";
+
+		// Add Cancel button
+		const cancelBtn = document.createElement("button");
+		cancelBtn.className = "modal-btn modal-btn-cancel";
+		cancelBtn.textContent = "Cancel";
+		cancelBtn.onclick = () => {
+			this.hideModal();
+			if (onCancel) onCancel();
 		};
+		modalActions.appendChild(cancelBtn);
 
-		const blob = new Blob([JSON.stringify(logData, null, 2)], {
-			type: "application/json",
-		});
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `cyrus-activity-log-${this.currentSessionId || Date.now()}.json`;
-		a.click();
-		URL.revokeObjectURL(url);
+		// Add Confirm button
+		const confirmBtn = document.createElement("button");
+		confirmBtn.className = "modal-btn modal-btn-danger";
+		confirmBtn.textContent = "Confirm";
+		confirmBtn.onclick = () => {
+			this.hideModal();
+			onConfirm();
+		};
+		modalActions.appendChild(confirmBtn);
 
-		this.showNotification("Activity log downloaded successfully!");
+		// Show modal
+		modalOverlay.classList.add("visible");
+
+		// Focus confirm button
+		setTimeout(() => confirmBtn.focus(), 100);
 	}
 
 	/**
-	 * Capture screenshot using html2canvas (if available) or browser API
+	 * Show a prompt modal (replaces prompt)
 	 */
-	async captureScreenshot() {
-		try {
-			// Simple approach: notify user to use browser screenshot tools
-			this.showModal(
-				"Screenshot Capture",
-				`<p>To capture a screenshot of the current session:</p>
-				<ol>
-					<li><strong>Chrome/Edge:</strong> Press Ctrl+Shift+P (Cmd+Shift+P on Mac), type "screenshot", and select "Capture full size screenshot"</li>
-					<li><strong>Firefox:</strong> Right-click and select "Take a Screenshot"</li>
-					<li><strong>Safari:</strong> Press Cmd+Shift+4 for selection tool</li>
-				</ol>
-				<p>Alternatively, use the browser's built-in DevTools screenshot feature for high-quality captures.</p>`,
-			);
-		} catch (error) {
-			console.error("Screenshot error:", error);
-			this.showNotification("Screenshot capture not available", "error");
-		}
-	}
+	showPrompt(title, message, defaultValue = "", onSubmit, onCancel = null) {
+		const modalOverlay = document.getElementById("modalOverlay");
+		const modalTitle = document.getElementById("modalTitle");
+		const modalMessage = document.getElementById("modalMessage");
+		const modalInput = document.getElementById("modalInput");
+		const modalActions = document.getElementById("modalActions");
 
-	/**
-	 * Switch between Mock and Claude runner modes
-	 */
-	switchRunnerMode(mode) {
-		if (this.currentRunnerMode === mode) {
-			return;
-		}
+		modalTitle.textContent = title;
+		modalMessage.textContent = message;
+		modalInput.style.display = "block";
+		modalInput.value = defaultValue;
 
-		this.currentRunnerMode = mode;
+		// Clear previous buttons
+		modalActions.innerHTML = "";
 
-		// Update UI
-		if (mode === "mock") {
-			this.elements.toggleMockRunner.classList.add("active");
-			this.elements.toggleClaudeRunner.classList.remove("active");
-		} else {
-			this.elements.toggleClaudeRunner.classList.add("active");
-			this.elements.toggleMockRunner.classList.remove("active");
-		}
+		// Add Cancel button
+		const cancelBtn = document.createElement("button");
+		cancelBtn.className = "modal-btn modal-btn-cancel";
+		cancelBtn.textContent = "Cancel";
+		cancelBtn.onclick = () => {
+			this.hideModal();
+			if (onCancel) onCancel();
+		};
+		modalActions.appendChild(cancelBtn);
 
-		// Send mode change to server
-		this.ws.send(
-			JSON.stringify({
-				type: "test:switch-runner",
-				mode: mode,
-			}),
-		);
+		// Add Submit button
+		const submitBtn = document.createElement("button");
+		submitBtn.className = "modal-btn modal-btn-primary";
+		submitBtn.textContent = "Submit";
+		submitBtn.onclick = () => {
+			const value = modalInput.value.trim();
+			this.hideModal();
+			onSubmit(value);
+		};
+		modalActions.appendChild(submitBtn);
 
-		this.showNotification(
-			`Switched to ${mode === "mock" ? "Mock" : "Claude"} Agent Runner`,
-		);
-	}
+		// Show modal
+		modalOverlay.classList.add("visible");
 
-	/**
-	 * Create a test issue
-	 */
-	createTestIssue() {
-		const title = prompt(
-			"Enter issue title:",
-			"Test Issue: Implement new feature",
-		);
-		if (!title) return;
-
-		const description = prompt(
-			"Enter issue description:",
-			"This is a test issue for demonstrating Cyrus agent capabilities.",
-		);
-
-		this.ws.send(
-			JSON.stringify({
-				type: "test:create-issue",
-				title,
-				description: description || "",
-			}),
-		);
-
-		this.showNotification("Test issue created successfully!");
-	}
-
-	/**
-	 * List all issues
-	 */
-	listAllIssues() {
-		this.ws.send(
-			JSON.stringify({
-				type: "test:list-issues",
-			}),
-		);
-	}
-
-	/**
-	 * Simulate a user comment
-	 */
-	simulateUserComment() {
-		if (!this.currentSessionId) {
-			this.showNotification("No active session", "error");
-			return;
-		}
-
-		const comment = prompt(
-			"Enter user comment:",
-			"Can you add more tests to the implementation?",
-		);
-		if (!comment) return;
-
-		this.ws.send(
-			JSON.stringify({
-				type: "test:simulate-comment",
-				sessionId: this.currentSessionId,
-				comment,
-			}),
-		);
-
-		this.showNotification("User comment simulated!");
-	}
-
-	/**
-	 * View stored sessions
-	 */
-	viewStoredSessions() {
-		this.ws.send(
-			JSON.stringify({
-				type: "test:view-storage",
-			}),
-		);
-	}
-
-	/**
-	 * Load previous session
-	 */
-	loadPreviousSession() {
-		const sessionId = prompt(
-			"Enter session ID to load:",
-			this.currentSessionId || "",
-		);
-		if (!sessionId) return;
-
-		this.ws.send(
-			JSON.stringify({
-				type: "test:load-session",
-				sessionId,
-			}),
-		);
-	}
-
-	/**
-	 * Clear all sessions from storage
-	 */
-	clearAllSessions() {
-		if (
-			!confirm(
-				"Are you sure you want to clear all stored sessions? This cannot be undone.",
-			)
-		) {
-			return;
-		}
-
-		this.ws.send(
-			JSON.stringify({
-				type: "test:clear-storage",
-			}),
-		);
-
-		this.showNotification("All sessions cleared from storage");
-	}
-
-	/**
-	 * Run a test scenario
-	 */
-	runTestScenario() {
-		const scenario = this.elements.scenarioSelect.value;
-		if (!scenario) return;
-
-		this.ws.send(
-			JSON.stringify({
-				type: "test:run-scenario",
-				scenario,
-			}),
-		);
-
-		this.showNotification(`Running test scenario: ${scenario}`);
-	}
-
-	/**
-	 * Show modal with title and content
-	 */
-	showModal(title, content) {
-		this.elements.modalTitle.textContent = title;
-		this.elements.modalBody.innerHTML = content;
-		this.elements.infoModal.classList.add("open");
-	}
-
-	/**
-	 * Close modal
-	 */
-	closeModal() {
-		this.elements.infoModal.classList.remove("open");
-	}
-
-	/**
-	 * Show notification (using browser native or fallback to alert)
-	 */
-	showNotification(message, type = "success") {
-		// Create a temporary notification element
-		const notification = document.createElement("div");
-		notification.style.cssText = `
-			position: fixed;
-			top: 24px;
-			right: 24px;
-			padding: 16px 24px;
-			background: ${type === "error" ? "var(--accent-red)" : "var(--accent-green)"};
-			color: white;
-			border-radius: 8px;
-			box-shadow: var(--shadow-lg);
-			z-index: 10000;
-			font-size: 14px;
-			font-weight: 600;
-			animation: slide-in-right 0.3s ease-out;
-		`;
-		notification.textContent = message;
-
-		document.body.appendChild(notification);
-
+		// Focus input and select text
 		setTimeout(() => {
-			notification.style.animation = "slide-out-right 0.3s ease-in";
-			setTimeout(() => notification.remove(), 300);
-		}, 3000);
+			modalInput.focus();
+			modalInput.select();
+		}, 100);
+
+		// Handle Enter key in input
+		const enterHandler = (e) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				const value = modalInput.value.trim();
+				this.hideModal();
+				onSubmit(value);
+			}
+		};
+		modalInput.addEventListener("keypress", enterHandler);
+
+		// Store handler for cleanup
+		modalInput._enterHandler = enterHandler;
 	}
 
 	/**
-	 * Handle test control responses from server
+	 * Hide the modal
 	 */
-	handleTestControlResponse(message) {
-		switch (message.action) {
-			case "list-issues":
-				this.showModal(
-					"All Issues",
-					`<pre>${JSON.stringify(message.data, null, 2)}</pre>`,
-				);
-				break;
-			case "view-storage":
-				this.showModal(
-					"Stored Sessions",
-					`<pre>${JSON.stringify(message.data, null, 2)}</pre>`,
-				);
-				break;
-			case "error":
-				this.showNotification(message.message, "error");
-				break;
-			case "success":
-				this.showNotification(message.message, "success");
-				break;
+	hideModal() {
+		const modalOverlay = document.getElementById("modalOverlay");
+		const modalInput = document.getElementById("modalInput");
+
+		modalOverlay.classList.remove("visible");
+
+		// Clean up event listener if it exists
+		if (modalInput._enterHandler) {
+			modalInput.removeEventListener("keypress", modalInput._enterHandler);
+			delete modalInput._enterHandler;
 		}
+
+		// Clear input value
+		modalInput.value = "";
 	}
 }
 
