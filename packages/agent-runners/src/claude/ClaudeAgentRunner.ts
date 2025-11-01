@@ -257,7 +257,7 @@ export class ClaudeAgentRunner implements AgentRunner {
 			return false;
 		}
 
-		return sessionState.runner.isRunning();
+		return sessionState.sessionInfo.isRunning;
 	}
 
 	/**

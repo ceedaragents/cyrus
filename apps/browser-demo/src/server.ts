@@ -406,16 +406,20 @@ async function main() {
 		console.log("🔌 New browser client connected");
 		renderer.addClient(ws);
 
-		// Handle test control messages
+		// Handle test control messages (renderer.addClient already handles user:* messages)
 		ws.on("message", (data: Buffer) => {
 			try {
 				const message = JSON.parse(data.toString());
-				handleTestControlMessage(ws, message, {
-					orchestrator,
-					issueTracker,
-					storage,
-					agentRunner,
-				});
+				// Only handle test:* messages here, let renderer handle user:* messages
+				if (message.type?.startsWith("test:")) {
+					handleTestControlMessage(ws, message, {
+						orchestrator,
+						issueTracker,
+						storage,
+						agentRunner,
+					});
+				}
+				// user:message and user:stop are handled by BrowserRenderer.addClient
 			} catch (error) {
 				console.error("Failed to parse WebSocket message:", error);
 			}
