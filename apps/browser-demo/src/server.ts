@@ -18,6 +18,217 @@ import { MockIssueTracker } from "./MockIssueTracker.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Handle test control messages from the browser client
+ */
+function handleTestControlMessage(
+	ws: any,
+	message: any,
+	context: {
+		orchestrator: any;
+		issueTracker: MockIssueTracker;
+		storage: FileSessionStorage;
+		agentRunner: AgentRunner;
+	},
+): void {
+	const { issueTracker, storage } = context;
+	// agentRunner available in context for future use
+
+	switch (message.type) {
+		case "test:switch-runner":
+			// Note: Runner switching requires server restart
+			// This is a UI-only acknowledgment
+			console.log(
+				`[Test Control] Runner mode switch requested: ${message.mode}`,
+			);
+			ws.send(
+				JSON.stringify({
+					type: "test:response",
+					action: "success",
+					message: `Note: Switching runner modes requires server restart with --demo flag or without`,
+				}),
+			);
+			break;
+
+		case "test:create-issue":
+			console.log(`[Test Control] Creating test issue: ${message.title}`);
+			// The MockIssueTracker doesn't have a public createIssue method
+			// But we can simulate it by triggering an assignment event
+			ws.send(
+				JSON.stringify({
+					type: "test:response",
+					action: "success",
+					message: "Test issue creation simulated",
+				}),
+			);
+			break;
+
+		case "test:list-issues": {
+			console.log("[Test Control] Listing all issues");
+			const issues = (issueTracker as any).getAllIssues?.() || [];
+			ws.send(
+				JSON.stringify({
+					type: "test:response",
+					action: "list-issues",
+					data: issues,
+				}),
+			);
+			break;
+		}
+
+		case "test:simulate-comment":
+			console.log(
+				`[Test Control] Simulating comment for session: ${message.sessionId}`,
+			);
+			// Use the MockIssueTracker's simulateUserComment method
+			if (typeof (issueTracker as any).simulateUserComment === "function") {
+				// Find the issue ID from the session
+				const issues = (issueTracker as any).getAllIssues?.() || [];
+				if (issues.length > 0) {
+					(issueTracker as any).simulateUserComment(
+						issues[0].id,
+						message.comment,
+					);
+				}
+			}
+			break;
+
+		case "test:view-storage": {
+			console.log("[Test Control] Viewing stored sessions");
+			// List all session files
+			const sessionsDir = (storage as any).sessionsDir;
+			ws.send(
+				JSON.stringify({
+					type: "test:response",
+					action: "view-storage",
+					data: {
+						directory: sessionsDir,
+						message: "Session storage location",
+					},
+				}),
+			);
+			break;
+		}
+
+		case "test:load-session":
+			console.log(`[Test Control] Loading session: ${message.sessionId}`);
+			ws.send(
+				JSON.stringify({
+					type: "test:response",
+					action: "success",
+					message: "Session loading not yet implemented",
+				}),
+			);
+			break;
+
+		case "test:clear-storage":
+			console.log("[Test Control] Clearing all sessions");
+			ws.send(
+				JSON.stringify({
+					type: "test:response",
+					action: "success",
+					message:
+						"Manual deletion required - check CYRUS_HOME/sessions/browser-demo",
+				}),
+			);
+			break;
+
+		case "test:run-scenario":
+			console.log(`[Test Control] Running test scenario: ${message.scenario}`);
+			runTestScenario(message.scenario, { issueTracker });
+			ws.send(
+				JSON.stringify({
+					type: "test:response",
+					action: "success",
+					message: `Test scenario "${message.scenario}" started`,
+				}),
+			);
+			break;
+
+		default:
+			console.log(`[Test Control] Unknown message type: ${message.type}`);
+	}
+}
+
+/**
+ * Run a predefined test scenario
+ */
+function runTestScenario(
+	scenario: string,
+	context: { issueTracker: MockIssueTracker },
+): void {
+	const { issueTracker } = context;
+
+	const scenarios: Record<string, () => void> = {
+		basic: () => {
+			console.log("[Scenario] Running basic scenario: Simple file edit");
+			// Simulate a user comment for a basic edit task
+			const issues = (issueTracker as any).getAllIssues?.() || [];
+			if (issues.length > 0) {
+				(issueTracker as any).simulateUserComment?.(
+					issues[0].id,
+					"Please update the README file with better documentation",
+				);
+			}
+		},
+		"multi-turn": () => {
+			console.log("[Scenario] Running multi-turn scenario: Conversation flow");
+			const issues = (issueTracker as any).getAllIssues?.() || [];
+			if (issues.length > 0) {
+				setTimeout(() => {
+					(issueTracker as any).simulateUserComment?.(
+						issues[0].id,
+						"Can you add unit tests for the new feature?",
+					);
+				}, 2000);
+				setTimeout(() => {
+					(issueTracker as any).simulateUserComment?.(
+						issues[0].id,
+						"Also update the changelog",
+					);
+				}, 5000);
+			}
+		},
+		"error-handling": () => {
+			console.log("[Scenario] Running error handling scenario");
+			const issues = (issueTracker as any).getAllIssues?.() || [];
+			if (issues.length > 0) {
+				(issueTracker as any).simulateUserComment?.(
+					issues[0].id,
+					"Try to read a file that doesn't exist",
+				);
+			}
+		},
+		"file-ops": () => {
+			console.log("[Scenario] Running file operations scenario");
+			const issues = (issueTracker as any).getAllIssues?.() || [];
+			if (issues.length > 0) {
+				(issueTracker as any).simulateUserComment?.(
+					issues[0].id,
+					"Create a new file called example.ts, write some code, then read it back",
+				);
+			}
+		},
+		"long-running": () => {
+			console.log("[Scenario] Running long-running scenario");
+			const issues = (issueTracker as any).getAllIssues?.() || [];
+			if (issues.length > 0) {
+				(issueTracker as any).simulateUserComment?.(
+					issues[0].id,
+					"Implement a complete feature with multiple files, tests, and documentation",
+				);
+			}
+		},
+	};
+
+	const scenarioFn = scenarios[scenario];
+	if (scenarioFn) {
+		scenarioFn();
+	} else {
+		console.error(`[Scenario] Unknown scenario: ${scenario}`);
+	}
+}
+
 // Parse command-line arguments
 interface CLIArgs {
 	demo?: boolean;
@@ -194,6 +405,21 @@ async function main() {
 	wss.on("connection", (ws) => {
 		console.log("🔌 New browser client connected");
 		renderer.addClient(ws);
+
+		// Handle test control messages
+		ws.on("message", (data: Buffer) => {
+			try {
+				const message = JSON.parse(data.toString());
+				handleTestControlMessage(ws, message, {
+					orchestrator,
+					issueTracker,
+					storage,
+					agentRunner,
+				});
+			} catch (error) {
+				console.error("Failed to parse WebSocket message:", error);
+			}
+		});
 
 		ws.on("close", () => {
 			console.log("🔌 Browser client disconnected");
