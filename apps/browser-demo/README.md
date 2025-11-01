@@ -1,16 +1,51 @@
 # Cyrus Browser Demo
 
-Browser-based interactive emulator for the Cyrus CLI demo. This application provides a web interface that demonstrates the orchestrator → renderer → UI flow with real-time activity updates, user input, and session management.
+Browser-based interactive emulator for Cyrus CLI. This application provides a web interface for testing and developing Cyrus with real-time activity updates, user input, and session management.
 
 ## Overview
 
-This is a **key deliverable for CYPACK-278**, demonstrating:
+The browser emulator is the **primary testing framework** for all Cyrus I/O abstractions, providing two modes:
 
-- ✅ **BrowserRenderer**: Real-time activity display via WebSocket
-- ✅ **Orchestrator**: Coordination between all components
-- ✅ **Mock Components**: Simulated agent and issue tracker
-- ✅ **Interactive UI**: Send messages, view activity, stop sessions
-- ✅ **Web Interface**: Browser-based alternative to CLI demo
+- 🎭 **Emulator Mode**: Mock data for rapid testing without credentials
+- 🤖 **Real Mode**: Actual Claude Code execution for integration testing
+
+Key features:
+
+- ✅ **Real-time Activity Display**: See Claude's thought process and tool executions
+- ✅ **Interactive Messaging**: Send messages and provide feedback
+- ✅ **Session Persistence**: Sessions saved to filesystem
+- ✅ **No External Dependencies**: Embedded ClaudeRunner in real mode
+- ✅ **Simple Workflow**: Single command to start
+
+## Quick Start
+
+### Emulator Mode (Mock Data - No Credentials Needed)
+
+```bash
+cd apps/browser-demo
+pnpm build
+pnpm start:emulator
+# Open http://localhost:3000
+```
+
+This mode uses mock data and instant responses - perfect for UI development and testing without Claude API access.
+
+### Real Mode (Actual Claude Code)
+
+```bash
+cd apps/browser-demo
+pnpm build
+
+# Set up authentication (choose ONE):
+export CLAUDE_CODE_OAUTH_TOKEN="your-token-here"  # Recommended
+# OR
+export ANTHROPIC_API_KEY="your-api-key"
+
+pnpm start
+# Open http://localhost:3000
+```
+
+This mode runs actual Claude Code sessions - use for integration testing and verifying real behavior.
 
 ## Features
 
@@ -19,7 +54,8 @@ This is a **key deliverable for CYPACK-278**, demonstrating:
 - 📝 **Interactive Messaging**: Send messages to the agent during execution
 - 🛑 **Stop Signal**: Click button to send stop signal to agent
 - 📜 **Scrollable History**: Auto-scrolling activity log
-- 🎭 **Demo Mode**: Mock components for testing without credentials
+- 🎭 **Emulator Mode**: Mock components for testing without credentials
+- 🤖 **Real Mode**: Embedded ClaudeRunner for actual Claude sessions
 - 🔌 **WebSocket Communication**: Efficient real-time bidirectional updates
 
 ## Architecture
@@ -74,32 +110,37 @@ pnpm build
 
 ## Usage
 
-### Quick Start
+### Available Scripts
+
+| Script | Description | Use Case |
+|--------|-------------|----------|
+| `pnpm start` | Real mode (default) | Integration testing with actual Claude |
+| `pnpm start:emulator` | Emulator mode | UI development, no credentials needed |
+| `pnpm start:real` | Real mode (explicit) | Same as `pnpm start` |
+| `pnpm build` | Build TypeScript | Before running |
+| `pnpm typecheck` | Type checking | Development |
+
+### Command-Line Options
 
 ```bash
-cd apps/browser-demo
-pnpm start
+# Run with custom port
+pnpm start --port 8080
+
+# Run in emulator mode
+pnpm start --emulator
+
+# Get help
+pnpm start --help
 ```
 
-Then open your browser to: **http://localhost:3000**
+### Environment Variables
 
-The demo will automatically:
-- Start the orchestrator
-- Detect the pre-assigned demo issue
-- Begin a mock agent session
-- Display real-time activity in the browser
-
-### Custom Port
-
-```bash
-PORT=8080 pnpm start
-```
-
-### Custom Cyrus Home
-
-```bash
-CYRUS_HOME=/tmp/cyrus pnpm start
-```
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token from `claude setup-token` | Real mode only |
+| `ANTHROPIC_API_KEY` | Alternative to OAuth token | Real mode only |
+| `CYRUS_HOME` | Session storage directory | Optional (default: `~/.cyrusd`) |
+| `PORT` | Server port | Optional (default: `3000`) |
 
 ## How It Works
 
@@ -193,107 +234,100 @@ apps/browser-demo/
 └── README.md                  # This file
 ```
 
-## Comparison with CLI Demo
+## Modes Comparison
 
-| Feature | CLI Demo | Browser Demo |
-|---------|----------|--------------|
-| **UI Framework** | React/Ink (terminal) | Vanilla HTML/JS (browser) |
-| **Renderer** | CLIRenderer | BrowserRenderer |
-| **Communication** | Direct (same process) | WebSocket |
-| **Display** | Terminal UI | Web page |
-| **Accessibility** | Requires terminal access | Access via browser |
-| **Use Case** | Local development | Remote demos, screenshots |
+| Aspect | Emulator Mode | Real Mode |
+|--------|---------------|-----------|
+| **Authentication** | None required | OAuth token or API key |
+| **Speed** | Instant responses | Real Claude latency |
+| **Data** | Mock issues/activities | Actual file operations |
+| **Use Case** | UI dev, rapid testing | Integration testing |
+| **Claude Behavior** | Simulated with preset responses | Real Claude Code execution |
+| **File System** | Mock operations | Actual file reads/writes |
+| **Sessions** | Saved to disk | Saved to disk |
+
+## Workflow Comparison: Before vs After
+
+### Before (Complex - Two Processes)
+
+```bash
+# Terminal 1: Start Cyrus CLI edge worker
+cd apps/cli
+CYRUS_SERVER_PORT=8080 pnpm start --cyrus-home=/path/to/.cyrus
+
+# Terminal 2: Start browser demo pointing to CLI
+cd apps/browser-demo
+CYRUS_SERVER_URL=http://localhost:8080 pnpm dev
+```
+
+### After (Simple - One Command)
+
+```bash
+# Emulator mode (mock data)
+cd apps/browser-demo
+pnpm start:emulator
+
+# Real mode (actual Claude)
+cd apps/browser-demo
+export CLAUDE_CODE_OAUTH_TOKEN="..."
+pnpm start
+```
 
 ## Verification
 
-This app fulfills all acceptance criteria from CYPACK-278:
-
-- ✅ Simple web page (HTML + vanilla JS) that runs locally
-- ✅ Reuses MockAgentRunner and MockIssueTracker from CLI demo
-- ✅ Displays real-time activity log (text events, tool-use events)
-- ✅ Shows message input field at bottom (like Linear's "message Cyrus")
-- ✅ Supports stop button during agent execution
-- ✅ Displays session status (running, complete, error) with visual indicators
-- ✅ Extremely simple to build and run: `npm run start`
-- ✅ Provides clear verification instructions (see below)
-
-## Verification Instructions
-
-To verify this implementation works correctly:
-
-### 1. Start the Demo
+### Emulator Mode Verification
 
 ```bash
 cd apps/browser-demo
+pnpm build
+pnpm start:emulator
+# Open http://localhost:3000
+```
+
+**Expected behavior:**
+- ✅ Server starts without requiring credentials
+- ✅ Mock issue appears automatically
+- ✅ Mock activities stream in real-time
+- ✅ Can send messages and get instant mock responses
+- ✅ Session completes with mock summary
+
+### Real Mode Verification
+
+```bash
+cd apps/browser-demo
+pnpm build
+export CLAUDE_CODE_OAUTH_TOKEN="your-token"
+pnpm start
+# Open http://localhost:3000
+```
+
+**Expected behavior:**
+- ✅ Server validates authentication
+- ✅ Real ClaudeRunner initializes
+- ✅ Can create issues or load existing ones
+- ✅ See actual Claude thoughts and tool executions
+- ✅ Real file operations (Read, Edit, Bash, etc.)
+- ✅ Session persists to `~/.cyrusd/sessions/browser-demo/`
+
+### Error Handling Verification
+
+```bash
+# Test without credentials (should fail gracefully)
+cd apps/browser-demo
+pnpm build
+unset CLAUDE_CODE_OAUTH_TOKEN
+unset ANTHROPIC_API_KEY
 pnpm start
 ```
 
 **Expected output:**
 ```
-🚀 Starting Cyrus Browser Demo Server...
-
-📦 Initializing components...
-   ✓ Mock Agent Runner
-   ✓ Mock Issue Tracker
-   ✓ Browser Renderer
-   ✓ File Session Storage
-   ✓ Agent Session Orchestrator
-
-🎬 Starting orchestrator...
-   ✓ Orchestrator watching for issues
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🌐 Browser Demo Server running!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-   📍 URL: http://localhost:3000
-
-   Press Ctrl+C to stop the server
+❌ Error: Authentication required for real mode
+   Set one of the following environment variables:
+   - CLAUDE_CODE_OAUTH_TOKEN (recommended, get via: claude setup-token)
+   - ANTHROPIC_API_KEY
+   Or run with --emulator flag for emulator mode
 ```
-
-### 2. Open Browser
-
-Navigate to: **http://localhost:3000**
-
-### 3. Verify UI Elements
-
-The page should display:
-- **Header**: "Cyrus CLI Demo - Browser Emulator"
-- **Connection status**: Green "● Connected"
-- **Session header**: Shows issue title "Demo: Build a new feature (DEMO-1)"
-- **Status indicator**: Pulsing green dot (running)
-- **Activity log**: Activities appearing in real-time
-- **Message input**: Text field at bottom
-- **Send button**: Enabled during session
-- **Stop button**: Enabled during session
-
-### 4. Verify Real-time Activity
-
-You should see activities appearing automatically:
-1. "Session started for issue: Demo: Build a new feature"
-2. "Analyzing the issue..."
-3. Tool use: Glob, Read, Edit
-4. Text responses from agent
-5. Eventually: "Session completed" with summary
-
-### 5. Test Interactive Messaging
-
-1. Type a message in the input field: "Can you add more tests?"
-2. Press Enter or click Send
-3. Verify the agent responds with: "Received your message..."
-4. Verify new activities appear
-
-### 6. Test Stop Button
-
-1. If session is still running, click "Stop"
-2. Verify session status changes to "complete"
-3. Verify stop message appears in activity log
-4. Verify input field becomes disabled
-
-### 7. Verify Auto-scroll
-
-- Activity log should automatically scroll to show latest activity
-- Scrollbar should be at the bottom
 
 ## Expected Visual Appearance
 
@@ -307,61 +341,99 @@ The UI should look like a terminal emulator with:
 
 ## Troubleshooting
 
-### Server won't start
+### Authentication Error (Real Mode)
+
+```
+❌ Error: Authentication required for real mode
+```
+
+**Solution:** Set up authentication before starting:
+```bash
+# Option 1: OAuth token (recommended)
+export CLAUDE_CODE_OAUTH_TOKEN="$(claude setup-token)"
+
+# Option 2: API key
+export ANTHROPIC_API_KEY="your-api-key"
+
+# Or use emulator mode instead
+pnpm start:emulator
+```
+
+### Both Auth Methods Set
+
+```
+❌ Error: Both ANTHROPIC_API_KEY and CLAUDE_CODE_OAUTH_TOKEN are set
+```
+
+**Solution:** Use only one authentication method:
+```bash
+unset ANTHROPIC_API_KEY
+# OR
+unset CLAUDE_CODE_OAUTH_TOKEN
+```
+
+### Server Won't Start
 
 Make sure dependencies are installed:
 ```bash
-cd /Users/agentops/code/cyrus-workspaces/CYPACK-278
+cd apps/browser-demo
 pnpm install
 pnpm build
 ```
 
-### Browser shows "Disconnected"
+### Browser Shows "Disconnected"
 
 1. Check server is running
 2. Refresh the browser page
 3. Check console for errors (F12)
 
-### No activities appearing
+### No Activities Appearing
 
 1. Check server console for errors
 2. Verify WebSocket connection (should see "New browser client connected")
 3. Refresh browser page
 
-### Port 3000 already in use
+### Port 3000 Already in Use
 
 Use a different port:
 ```bash
-PORT=8080 pnpm start
+pnpm start --port 8080
 ```
 
 Then open: http://localhost:8080
 
 ## Technical Notes
 
+- **No external dependencies in real mode**: Embedded ClaudeRunner handles everything
 - **No build step for browser code**: HTML/JS served directly
 - **TypeScript only for server**: Browser uses vanilla JavaScript
 - **WebSocket for real-time**: Efficient bidirectional communication
-- **Reuses demo components**: Same MockAgentRunner and MockIssueTracker as CLI demo
-- **Same orchestrator**: Proves architecture works with different renderers
+- **Session persistence**: All sessions saved to `CYRUS_HOME/sessions/browser-demo/`
+- **Same orchestrator**: Works with both mock and real agent runners
 
-## Future Enhancements
+## Key Differences from Previous Architecture
 
-Potential improvements:
-- Add React for more complex UI
-- Support multiple concurrent sessions
-- Add session history/replay
-- File upload/attachment support
-- Theme customization
-- Mobile-responsive design
+### What Changed
+
+1. **No separate CLI process needed**: Browser demo now embeds ClaudeRunner directly
+2. **Flag renamed**: `--demo` → `--emulator` for clarity
+3. **Real mode is default**: Emulator mode requires explicit flag
+4. **Simplified workflow**: Single command instead of two terminals
+
+### What Stayed the Same
+
+- All core abstractions (AgentRunner, IssueTracker, Renderer, Storage)
+- Session persistence mechanism
+- WebSocket communication protocol
+- Browser UI and interaction model
 
 ## Related Issues
 
-- **CYPACK-278**: Browser demo (this implementation)
-- **CYPACK-264**: Renderer abstraction (parent issue)
-- **CYPACK-270**: CLI renderer implementation
+- **CYPACK-300**: Enable real Claude testing through browser emulator (this implementation)
+- **CYPACK-298**: Rename --demo to --emulator flag
+- **CYPACK-264**: Renderer abstraction (parent architecture)
+- **CYPACK-278**: Original browser demo implementation
 - **CYPACK-272**: Session orchestrator
-- **CYPACK-267**: Claude agent adapter
 
 ## License
 

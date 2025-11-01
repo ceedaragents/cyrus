@@ -231,7 +231,7 @@ function runTestScenario(
 
 // Parse command-line arguments
 interface CLIArgs {
-	demo?: boolean;
+	emulator?: boolean;
 	port?: number;
 	help?: boolean;
 }
@@ -244,8 +244,8 @@ function parseArgs(args: string[]): CLIArgs {
 
 		if (arg === "--help" || arg === "-h") {
 			parsed.help = true;
-		} else if (arg === "--demo") {
-			parsed.demo = true;
+		} else if (arg === "--emulator") {
+			parsed.emulator = true;
 		} else if (arg === "--port" || arg === "-p") {
 			const portArg = args[++i];
 			if (portArg) {
@@ -265,16 +265,16 @@ USAGE:
   cyrus-browser-demo [OPTIONS]
 
 OPTIONS:
-  --demo              Run in demo mode with mock components (no real Claude/Linear)
+  --emulator          Run in emulator mode with mock data (no real Claude/Linear)
   --port, -p <PORT>   Port to run the server on (default: 3000)
   --help, -h          Show this help message
 
 EXAMPLES:
-  # Run in demo mode (no credentials needed)
-  cyrus-browser-demo --demo
-
-  # Run with real Claude (requires authentication)
+  # Run with real Claude Code (default, requires authentication)
   cyrus-browser-demo
+
+  # Run in emulator mode (mock data, no credentials needed)
+  cyrus-browser-demo --emulator
 
   # Run on custom port
   cyrus-browser-demo --port 8080
@@ -299,7 +299,7 @@ if (args.help) {
 }
 
 // Configuration
-const DEMO_MODE = args.demo ?? false;
+const EMULATOR_MODE = args.emulator ?? false;
 const PORT = args.port || Number.parseInt(process.env.PORT || "3000", 10);
 const CYRUS_HOME = process.env.CYRUS_HOME || path.join(os.homedir(), ".cyrusd");
 const SESSIONS_DIR = path.join(CYRUS_HOME, "sessions", "browser-demo");
@@ -316,7 +316,7 @@ async function main() {
 	console.log("🚀 Starting Cyrus Browser Demo Server...\n");
 
 	// Validate authentication for real mode
-	if (!DEMO_MODE) {
+	if (!EMULATOR_MODE) {
 		const hasApiKey = !!ANTHROPIC_API_KEY;
 		const hasOAuthToken = !!CLAUDE_CODE_OAUTH_TOKEN;
 
@@ -327,7 +327,7 @@ async function main() {
 				"   - CLAUDE_CODE_OAUTH_TOKEN (recommended, get via: claude setup-token)",
 			);
 			console.error("   - ANTHROPIC_API_KEY");
-			console.error("   Or run with --demo flag for demo mode\n");
+			console.error("   Or run with --emulator flag for emulator mode\n");
 			process.exit(1);
 		}
 
@@ -368,9 +368,9 @@ async function main() {
 
 	let agentRunner: AgentRunner;
 
-	if (DEMO_MODE) {
+	if (EMULATOR_MODE) {
 		agentRunner = new MockAgentRunner();
-		console.log(`   ✓ Mock Agent Runner (demo mode)`);
+		console.log(`   ✓ Mock Agent Runner (emulator mode)`);
 	} else {
 		agentRunner = new ClaudeAgentRunner({
 			cyrusHome: CYRUS_HOME,
@@ -492,12 +492,12 @@ async function main() {
 		console.log(`   📂 Public directory: ${publicDir}`);
 		console.log(`   💾 Sessions directory: ${SESSIONS_DIR}`);
 		console.log(
-			`   🎭 Mode: ${DEMO_MODE ? "Demo (mock responses)" : "Real (Claude Code)"}`,
+			`   🎭 Mode: ${EMULATOR_MODE ? "Emulator (mock responses)" : "Real (Claude Code)"}`,
 		);
 		console.log(
 			`\n   🎯 Open the URL in your browser to see the interactive demo`,
 		);
-		if (!DEMO_MODE) {
+		if (!EMULATOR_MODE) {
 			console.log(
 				`   🤖 Using real Claude Code agent - sessions will show actual Claude responses`,
 			);
