@@ -5,7 +5,7 @@
 		"rootDir": "./src",
 		"composite": true,
 		"module": "ESNext",
-		"moduleResolution": "bundler",
+		"moduleResolution": "node",
 		"esModuleInterop": true,
 		"allowSyntheticDefaultImports": true
 	},
