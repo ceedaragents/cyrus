@@ -355,6 +355,190 @@
         }
 
         /* ============================================
+           TEST CONTROLS
+           ============================================ */
+        .test-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .toggle-group {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 3px;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s var(--transition-smooth);
+        }
+
+        .toggle-btn.active {
+            background: var(--accent-blue);
+            color: white;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .toggle-btn:hover:not(.active) {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .control-btn {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s var(--transition-smooth);
+            text-align: left;
+        }
+
+        .control-btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--accent-blue);
+            transform: translateX(2px);
+        }
+
+        .control-select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s var(--transition-smooth);
+        }
+
+        .control-select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 2px var(--accent-blue-light);
+        }
+
+        /* Modal for displaying info */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            animation: fade-in 0.2s var(--transition-smooth);
+        }
+
+        .modal.open {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            animation: slide-up 0.3s var(--transition-spring);
+        }
+
+        @keyframes slide-up {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            transition: all 0.2s var(--transition-smooth);
+        }
+
+        .modal-close:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .modal-body pre {
+            background: var(--bg-code);
+            border-radius: 6px;
+            padding: 12px;
+            overflow-x: auto;
+            font-family: 'SF Mono', 'Monaco', monospace;
+            font-size: 12px;
+        }
+
+        /* ============================================
            MAIN CONTENT (Activity Timeline)
            ============================================ */
         .main-content {
@@ -921,6 +1105,53 @@
                 <div class="sidebar-actions">
                     <button class="sidebar-btn" id="exportBtn">Export Session</button>
                     <button class="sidebar-btn" id="shareBtn">Share</button>
+                    <button class="sidebar-btn" id="downloadLogBtn">Download Activity Log</button>
+                    <button class="sidebar-btn" id="screenshotBtn">Capture Screenshot</button>
+                </div>
+            </div>
+
+            <!-- Test Controls -->
+            <div class="sidebar-section">
+                <h3>Test Controls</h3>
+                <div class="test-controls">
+                    <!-- AgentRunner Mode Toggle -->
+                    <div class="control-group">
+                        <label class="control-label">Agent Runner</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn active" id="toggleMockRunner">Mock</button>
+                            <button class="toggle-btn" id="toggleClaudeRunner">Claude</button>
+                        </div>
+                    </div>
+
+                    <!-- Issue Management -->
+                    <div class="control-group">
+                        <label class="control-label">Issue Tracker</label>
+                        <button class="control-btn" id="createIssueBtn">Create Test Issue</button>
+                        <button class="control-btn" id="listIssuesBtn">List All Issues</button>
+                        <button class="control-btn" id="simulateCommentBtn">Simulate User Comment</button>
+                    </div>
+
+                    <!-- Session Management -->
+                    <div class="control-group">
+                        <label class="control-label">Session Storage</label>
+                        <button class="control-btn" id="viewStorageBtn">View Stored Sessions</button>
+                        <button class="control-btn" id="loadSessionBtn">Load Previous Session</button>
+                        <button class="control-btn" id="clearStorageBtn">Clear All Sessions</button>
+                    </div>
+
+                    <!-- Test Scenarios -->
+                    <div class="control-group">
+                        <label class="control-label">Test Scenarios</label>
+                        <select class="control-select" id="scenarioSelect">
+                            <option value="">Select a scenario...</option>
+                            <option value="basic">Basic: Simple file edit</option>
+                            <option value="multi-turn">Multi-turn: Conversation flow</option>
+                            <option value="error-handling">Error: Handle failures</option>
+                            <option value="file-ops">File ops: Read/Edit/Write</option>
+                            <option value="long-running">Long: Extended session</option>
+                        </select>
+                        <button class="control-btn" id="runScenarioBtn" disabled>Run Scenario</button>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -951,6 +1182,19 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Info Modal -->
+    <div class="modal" id="infoModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">Information</h3>
+                <button class="modal-close" id="modalClose" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Content will be injected here -->
+            </div>
+        </div>
     </div>
 
     <!-- Prism.js for syntax highlighting -->
