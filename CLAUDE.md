@@ -47,6 +47,43 @@ cyrus/
 
 For a detailed visual representation of how these components interact and map Claude Code sessions to Linear comment threads, see @architecture.md.
 
+## Linear Agent Sessions and Webhook Events
+
+### Core Webhook Events
+
+Linear sends two primary types of webhook events for agent interactions:
+
+1. **`agent session created`** - Triggered when a new agent session starts
+2. **`prompted`** - Triggered when user provides input to continue an existing session
+
+### Agent Session Creation Triggers
+
+Root comments do NOT always create agent sessions. Agent sessions are only created when ONE of these conditions is met:
+
+- **`create_agent_session_on_comment` fires** - Linear's automatic agent session creation
+- **Agent is @ mentioned** - User explicitly mentions the agent in a comment
+
+**Important**: An `agent session created` event can fire in the midst of an existing comment thread when a user replies and either @ mentions the agent or the `create_agent_session_on_comment` condition is met.
+
+### Comment Thread Structure
+
+```
+* Issue
+  * Root Comment 1 (may or may not create agent session)
+    * Reply 1a
+    * Reply 1b (could trigger new agent session if @ mention)
+  * Root Comment 2 (may or may not create agent session)
+```
+
+### Agent Session to Comment Mapping
+
+- One **Issue** can have **N Agent Sessions**
+- Each **Agent Session** corresponds to a **root comment** in Linear
+- But NOT all root comments create agent sessions (only when triggered by conditions above)
+- Agent sessions can be created mid-thread via @ mentions in replies
+
+For implementation details, see the Linear SDK types in `node_modules/@linear/sdk`.
+
 ## Testing Best Practices
 
 ### Prompt Assembly Tests
