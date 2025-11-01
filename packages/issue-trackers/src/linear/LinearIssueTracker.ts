@@ -13,6 +13,8 @@ import type {
 	IssueFilters,
 	IssueState,
 	IssueTracker,
+	Label,
+	Member,
 } from "cyrus-interfaces";
 import {
 	mapIssueStateType,
@@ -248,11 +250,14 @@ export class LinearIssueTracker implements IssueTracker {
 	 * Add a comment to an issue
 	 *
 	 * @param issueId - ID of the issue
-	 * @param comment - Comment to add
-	 * @returns Promise that resolves to the new comment ID
+	 * @param comment - Comment to add (without id, which will be generated)
+	 * @returns Promise that resolves to the complete Comment object (including generated id)
 	 * @throws Error if comment cannot be added
 	 */
-	async addComment(issueId: string, comment: Comment): Promise<string> {
+	async addComment(
+		issueId: string,
+		comment: Omit<Comment, "id">,
+	): Promise<Comment> {
 		try {
 			const commentData: {
 				issueId: string;
@@ -275,7 +280,18 @@ export class LinearIssueTracker implements IssueTracker {
 				throw new Error("Failed to retrieve created comment");
 			}
 
-			return newComment.id;
+			// Return the full Comment object
+			return {
+				id: newComment.id,
+				author: comment.author,
+				content: comment.content,
+				createdAt: comment.createdAt || new Date(),
+				isRoot: comment.isRoot,
+				parentId: comment.parentId,
+				updatedAt: newComment.updatedAt
+					? new Date(newComment.updatedAt)
+					: undefined,
+			};
 		} catch (error) {
 			throw new Error(
 				`Failed to add comment to issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -471,5 +487,59 @@ export class LinearIssueTracker implements IssueTracker {
 	 */
 	stopWatchers(): void {
 		this.eventEmitter.emit("stop-watchers");
+	}
+
+	/**
+	 * Get a member by their ID
+	 *
+	 * @param memberId - ID of the member
+	 * @returns Promise that resolves to the member
+	 * @throws Error if member is not found
+	 */
+	async getMember(memberId: string): Promise<Member> {
+		try {
+			const user = await this.client.user(memberId);
+			if (!user) {
+				throw new Error(`Member not found: ${memberId}`);
+			}
+			return {
+				id: user.id,
+				name: user.name,
+				email: user.email,
+				avatarUrl: user.avatarUrl,
+			};
+		} catch (error) {
+			throw new Error(
+				`Failed to get member ${memberId}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+
+	/**
+	 * List all available labels in the workspace/team
+	 *
+	 * @param teamId - Optional team ID to filter labels by team
+	 * @returns Promise that resolves to array of labels
+	 */
+	async listLabels(teamId?: string): Promise<Label[]> {
+		try {
+			const labels = teamId
+				? await this.client.issueLabels({
+						filter: { team: { id: { eq: teamId } } },
+					})
+				: await this.client.issueLabels();
+
+			const labelNodes = await labels.nodes;
+			return labelNodes.map((label) => ({
+				id: label.id,
+				name: label.name,
+				color: label.color,
+				description: label.description,
+			}));
+		} catch (error) {
+			throw new Error(
+				`Failed to list labels: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	}
 }

@@ -167,8 +167,10 @@ interface IssueTracker {
 
   /**
    * Add comment to issue
+   * Returns the complete Comment object with generated id
+   * Agent sessions correspond to root comments (isRoot: true)
    */
-  addComment(issueId: string, comment: Comment): Promise<string>
+  addComment(issueId: string, comment: Omit<Comment, 'id'>): Promise<Comment>
 
   /**
    * Get comments for issue
@@ -189,6 +191,16 @@ interface IssueTracker {
    * Send agent signal (start, stop, feedback)
    */
   sendSignal(issueId: string, signal: AgentSignal): Promise<void>
+
+  /**
+   * Get a member by their ID
+   */
+  getMember(memberId: string): Promise<Member>
+
+  /**
+   * List all available labels (optionally filtered by team)
+   */
+  listLabels(teamId?: string): Promise<Label[]>
 }
 
 interface Issue {
@@ -215,8 +227,9 @@ interface Comment {
   author: Member
   content: string
   createdAt: Date
-  isRoot: boolean  // vs reply
-  parentId?: string
+  isRoot: boolean  // Root comments start new agent sessions, replies continue existing sessions
+  parentId?: string // ID of parent comment if this is a reply
+  updatedAt?: Date
 }
 
 interface Member {

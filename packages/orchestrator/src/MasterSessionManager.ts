@@ -19,7 +19,7 @@ import type {
 } from "cyrus-interfaces";
 
 /**
- * Configuration options for AgentSessionOrchestrator
+ * Configuration options for MasterSessionManager
  */
 export interface OrchestratorConfig {
 	/** The member/user ID to watch for issue assignments */
@@ -70,7 +70,7 @@ interface ActiveSession {
  * Core orchestrator that coordinates AgentRunner, IssueTracker, Renderer, and Storage
  * using only abstract interfaces - no concrete implementations.
  */
-export class AgentSessionOrchestrator extends EventEmitter {
+export class MasterSessionManager extends EventEmitter {
 	private readonly agentRunner: AgentRunner;
 	private readonly issueTracker: IssueTracker;
 	private readonly renderer: Renderer;

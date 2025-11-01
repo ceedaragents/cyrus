@@ -14,9 +14,9 @@ import type {
 } from "cyrus-interfaces";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	AgentSessionOrchestrator,
+	MasterSessionManager,
 	type OrchestratorConfig,
-} from "./AgentSessionOrchestrator.js";
+} from "./MasterSessionManager.js";
 
 /**
  * Mock AgentRunner implementation
@@ -368,7 +368,7 @@ class MockSessionStorage implements SessionStorage {
 	}
 }
 
-describe("AgentSessionOrchestrator", () => {
+describe("MasterSessionManager", () => {
 	let agentRunner: MockAgentRunner;
 	let issueTracker: MockIssueTracker;
 	let renderer: MockRenderer;
@@ -389,7 +389,7 @@ describe("AgentSessionOrchestrator", () => {
 			maxConcurrentSessions: 5,
 		};
 
-		orchestrator = new AgentSessionOrchestrator(
+		orchestrator = new MasterSessionManager(
 			agentRunner,
 			issueTracker,
 			renderer,
@@ -414,7 +414,7 @@ describe("AgentSessionOrchestrator", () => {
 				memberId: "test-member",
 			};
 
-			const orch = new AgentSessionOrchestrator(
+			const orch = new MasterSessionManager(
 				agentRunner,
 				issueTracker,
 				renderer,
@@ -544,7 +544,7 @@ describe("AgentSessionOrchestrator", () => {
 				maxConcurrentSessions: 1,
 			};
 
-			const limitedOrchestrator = new AgentSessionOrchestrator(
+			const limitedOrchestrator = new MasterSessionManager(
 				agentRunner,
 				issueTracker,
 				renderer,

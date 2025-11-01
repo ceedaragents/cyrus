@@ -1,5 +1,5 @@
 export {
-	AgentSessionOrchestrator,
+	MasterSessionManager,
 	type OrchestratorConfig,
 	type OrchestratorEvents,
-} from "./AgentSessionOrchestrator.js";
+} from "./MasterSessionManager.js";

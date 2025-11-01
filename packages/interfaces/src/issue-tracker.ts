@@ -433,11 +433,11 @@ export interface IssueTracker {
 	 * Add a comment to an issue
 	 *
 	 * @param issueId - ID of the issue
-	 * @param comment - Comment to add
-	 * @returns Promise that resolves to the new comment ID
+	 * @param comment - Comment to add (without id, which will be generated)
+	 * @returns Promise that resolves to the complete Comment object (including generated id)
 	 * @throws Error if comment cannot be added
 	 */
-	addComment(issueId: string, comment: Comment): Promise<string>;
+	addComment(issueId: string, comment: Omit<Comment, "id">): Promise<Comment>;
 
 	/**
 	 * Get all comments for an issue
@@ -471,4 +471,21 @@ export interface IssueTracker {
 	 * @throws Error if signal cannot be sent
 	 */
 	sendSignal(issueId: string, signal: AgentSignal): Promise<void>;
+
+	/**
+	 * Get a member by their ID
+	 *
+	 * @param memberId - ID of the member
+	 * @returns Promise that resolves to the member
+	 * @throws Error if member is not found
+	 */
+	getMember(memberId: string): Promise<Member>;
+
+	/**
+	 * List all available labels in the workspace/team
+	 *
+	 * @param teamId - Optional team ID to filter labels by team
+	 * @returns Promise that resolves to array of labels
+	 */
+	listLabels(teamId?: string): Promise<Label[]>;
 }

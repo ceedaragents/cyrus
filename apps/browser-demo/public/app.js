@@ -155,10 +155,13 @@ class CyrusDemoClient {
 		// Update activities (only render new ones)
 		this.renderActivities(sessionState.activities);
 
-		// Enable/disable input based on session status
+		// Enable/disable controls based on session status
 		const isRunning = sessionState.status === "running";
-		this.elements.messageInput.disabled = !isRunning;
-		this.elements.sendBtn.disabled = !isRunning;
+		// Message input is ALWAYS enabled - allows multi-turn conversations like Linear's "prompted" webhook
+		// When session is complete, sending a message starts a new continuation session
+		this.elements.messageInput.disabled = false;
+		this.elements.sendBtn.disabled = false;
+		// Stop button only enabled when running
 		this.elements.stopBtn.disabled = !isRunning;
 	}
 

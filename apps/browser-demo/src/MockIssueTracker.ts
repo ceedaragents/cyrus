@@ -7,6 +7,7 @@ import type {
 	IssueFilters,
 	IssueState,
 	IssueTracker,
+	Label,
 	Member,
 } from "cyrus-interfaces";
 
@@ -159,7 +160,10 @@ This demo simulates how Cyrus would work on a real Linear issue.`,
 		});
 	}
 
-	async addComment(issueId: string, comment: Comment): Promise<string> {
+	async addComment(
+		issueId: string,
+		comment: Omit<Comment, "id">,
+	): Promise<Comment> {
 		const issue = await this.getIssue(issueId);
 		const comments = this.comments.get(issue.id) || [];
 
@@ -173,13 +177,16 @@ This demo simulates how Cyrus would work on a real Linear issue.`,
 		this.comments.set(issue.id, comments);
 
 		// Emit comment added event
+		console.log(
+			`[MockIssueTracker] Emitting comment-added event for issue ${issue.id}, comment: "${newComment.content}"`,
+		);
 		this.emitEvent({
 			type: "comment-added",
 			issue,
 			comment: newComment,
 		});
 
-		return newComment.id!;
+		return newComment;
 	}
 
 	async getComments(issueId: string): Promise<Comment[]> {
@@ -279,6 +286,51 @@ This demo simulates how Cyrus would work on a real Linear issue.`,
 		};
 
 		this.addComment(issueId, comment).catch(console.error);
+	}
+
+	async getMember(memberId: string): Promise<Member> {
+		// For demo purposes, return a mock member
+		// In real implementation, this would query the issue tracker
+		if (memberId === "agent-1") {
+			return {
+				id: "agent-1",
+				name: "Cyrus Demo Agent",
+				email: "demo@cyrus.ai",
+			};
+		}
+		if (memberId === "user-1") {
+			return {
+				id: "user-1",
+				name: "Demo User",
+				email: "user@demo.com",
+			};
+		}
+		throw new Error(`Member not found: ${memberId}`);
+	}
+
+	async listLabels(_teamId?: string): Promise<Label[]> {
+		// For demo purposes, return mock labels
+		// In real implementation, this would query the issue tracker based on teamId
+		return [
+			{
+				id: "label-demo",
+				name: "Demo",
+				color: "#5E6AD2",
+				description: "Demo label",
+			},
+			{
+				id: "label-bug",
+				name: "Bug",
+				color: "#E5484D",
+				description: "Something isn't working",
+			},
+			{
+				id: "label-feature",
+				name: "Feature",
+				color: "#46A758",
+				description: "New feature or request",
+			},
+		];
 	}
 
 	/**

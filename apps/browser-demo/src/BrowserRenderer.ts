@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type {
 	AgentActivity,
+	IssueTracker,
 	MessageInput,
 	RenderableSession,
 	Renderer,
@@ -59,6 +60,16 @@ export class BrowserRenderer implements Renderer {
 	private eventEmitter = new EventEmitter();
 	// Track activity content hashes to prevent duplicates from orchestrator
 	private activityHashes: Map<string, Set<string>> = new Map();
+	// Optional IssueTracker for posting comments (enables proper multi-turn conversations)
+	private issueTracker?: IssueTracker;
+
+	/**
+	 * Set the IssueTracker to enable comment-based message handling
+	 * This allows the browser emulator to work like Linear's prompted webhook flow
+	 */
+	setIssueTracker(issueTracker: IssueTracker): void {
+		this.issueTracker = issueTracker;
+	}
 
 	/**
 	 * Add a WebSocket client
@@ -96,15 +107,63 @@ export class BrowserRenderer implements Renderer {
 	private handleClientMessage(message: WSMessage): void {
 		switch (message.type) {
 			case "user:message": {
-				const input: MessageInput = {
-					type: "message",
-					content: message.message,
-					timestamp: new Date(),
-				};
-				this.enqueueInput(message.sessionId, input);
+				// If we have an IssueTracker, add comment to trigger proper workflow
+				// This mimics Linear's "prompted" webhook event behavior
+				if (this.issueTracker) {
+					const state = this.sessions.get(message.sessionId);
+					if (state) {
+						const issueId = state.session.issueId;
+						console.log(
+							`[BrowserRenderer] Adding comment to issue ${issueId}: "${message.message}"`,
+						);
+						this.issueTracker
+							.addComment(issueId, {
+								author: {
+									id: "browser-user",
+									name: "Browser User",
+									email: "user@browser.demo",
+								},
+								content: message.message,
+								createdAt: new Date(),
+								isRoot: true,
+							})
+							.then((comment) => {
+								console.log(
+									`[BrowserRenderer] Comment ${comment.id} added successfully to issue ${issueId}`,
+								);
+							})
+							.catch((error) => {
+								console.error(
+									`[BrowserRenderer] Failed to add comment to issue ${issueId}:`,
+									error,
+								);
+								// Fallback to direct enqueue if comment fails
+								const input: MessageInput = {
+									type: "message",
+									content: message.message,
+									timestamp: new Date(),
+								};
+								this.enqueueInput(message.sessionId, input);
+							});
+					} else {
+						console.warn(
+							`[BrowserRenderer] No session state found for sessionId: ${message.sessionId}`,
+						);
+					}
+				} else {
+					// Fallback: directly enqueue input if no IssueTracker
+					const input: MessageInput = {
+						type: "message",
+						content: message.message,
+						timestamp: new Date(),
+					};
+					this.enqueueInput(message.sessionId, input);
+				}
 				break;
 			}
 			case "user:stop": {
+				// Stop signals still go through direct input queue
+				// since they don't need the comment-added flow
 				const input: SignalInput = {
 					type: "signal",
 					signal: {

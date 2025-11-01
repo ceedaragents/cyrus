@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRunner } from "@cyrus/agent-runners";
 import { ClaudeAgentRunner } from "@cyrus/agent-runners";
-import { AgentSessionOrchestrator } from "cyrus-orchestrator";
+import { MasterSessionManager } from "cyrus-orchestrator";
 import { FileSessionStorage } from "cyrus-storage";
 import express from "express";
 import { WebSocketServer } from "ws";
@@ -382,12 +382,16 @@ async function main() {
 	const renderer = new BrowserRenderer();
 	const storage = new FileSessionStorage(SESSIONS_DIR);
 
+	// Wire IssueTracker to BrowserRenderer for proper comment-based message flow
+	// This enables the browser emulator to work like Linear's "prompted" webhook
+	renderer.setIssueTracker(issueTracker);
+
 	console.log(`   ✓ Mock Issue Tracker`);
-	console.log(`   ✓ Browser Renderer`);
+	console.log(`   ✓ Browser Renderer (with IssueTracker integration)`);
 	console.log(`   ✓ File Session Storage (${SESSIONS_DIR})`);
 
 	// Create orchestrator
-	const orchestrator = new AgentSessionOrchestrator(
+	const orchestrator = new MasterSessionManager(
 		agentRunner,
 		issueTracker,
 		renderer,
@@ -399,7 +403,7 @@ async function main() {
 		},
 	);
 
-	console.log(`   ✓ Agent Session Orchestrator\n`);
+	console.log(`   ✓ Master Session Manager\n`);
 
 	// Handle WebSocket connections
 	wss.on("connection", (ws) => {
