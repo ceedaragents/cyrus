@@ -17,6 +17,7 @@ import type {
 	SDKMessage,
 } from "cyrus-claude-runner";
 import {
+	AbortError,
 	ClaudeRunner,
 	createCyrusToolsServer,
 	createImageToolsServer,
@@ -2098,9 +2099,13 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Handle Claude session error
-	 * TODO: improve this
+	 * Silently ignores AbortError (user-initiated stop), logs other errors
 	 */
 	private async handleClaudeError(error: Error): Promise<void> {
+		// AbortError is expected when user stops Claude process, don't log it
+		if (error instanceof AbortError) {
+			return;
+		}
 		console.error("Unhandled claude error:", error);
 	}
 
