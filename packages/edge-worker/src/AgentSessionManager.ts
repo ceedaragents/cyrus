@@ -1,4 +1,4 @@
-import { type LinearClient, LinearDocument } from "@linear/sdk";
+import { LinearDocument } from "@linear/sdk";
 import type {
 	APIAssistantMessage,
 	APIUserMessage,
@@ -12,11 +12,13 @@ import type {
 import type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
+	IIssueTrackerService,
 	IssueMinimal,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 	Workspace,
 } from "cyrus-core";
+import { AgentActivityContentType } from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
@@ -28,7 +30,7 @@ import type { SharedApplicationServer } from "./SharedApplicationServer.js";
  * CURRENTLY BEING HANDLED 'per repository'
  */
 export class AgentSessionManager {
-	private linearClient: LinearClient;
+	private issueTracker: IIssueTrackerService;
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
@@ -47,7 +49,7 @@ export class AgentSessionManager {
 	) => Promise<void>;
 
 	constructor(
-		linearClient: LinearClient,
+		issueTracker: IIssueTrackerService,
 		getParentSessionId?: (childSessionId: string) => string | undefined,
 		resumeParentSession?: (
 			parentSessionId: string,
@@ -60,7 +62,7 @@ export class AgentSessionManager {
 		procedureRouter?: ProcedureRouter,
 		sharedApplicationServer?: SharedApplicationServer,
 	) {
-		this.linearClient = linearClient;
+		this.issueTracker = issueTracker;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.resumeNextSubroutine = resumeNextSubroutine;
@@ -733,7 +735,6 @@ export class AgentSessionManager {
 
 			// Build activity content based on entry type
 			let content: any;
-			let ephemeral = false;
 			switch (entry.type) {
 				case "user": {
 					const activeTaskId = this.activeTasksBySession.get(
@@ -741,7 +742,7 @@ export class AgentSessionManager {
 					);
 					if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
 						content = {
-							type: "thought",
+							type: AgentActivityContentType.Thought,
 							body: `✅ Task Completed\n\n\n\n${entry.content}\n\n---\n\n`,
 						};
 						this.activeTasksBySession.delete(linearAgentActivitySessionId);
@@ -776,7 +777,7 @@ export class AgentSessionManager {
 							const wrappedResult = toolResult.content?.trim() || "";
 
 							content = {
-								type: "action",
+								type: AgentActivityContentType.Action,
 								action: toolResult.isError ? `${toolName} (Error)` : toolName,
 								parameter: formattedInput,
 								result: wrappedResult,
@@ -819,11 +820,10 @@ export class AgentSessionManager {
 								entry.content,
 							);
 							content = {
-								type: "thought",
+								type: AgentActivityContentType.Thought,
 								body: formattedTodos,
 							};
 							// TodoWrite is not ephemeral
-							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Special handling for Task tool - add start marker and track active task
 							const parameter = entry.content;
@@ -838,13 +838,12 @@ export class AgentSessionManager {
 							}
 
 							content = {
-								type: "action",
+								type: AgentActivityContentType.Action,
 								action: displayName,
 								parameter: parameter,
 								// result will be added later when we get tool result
 							};
 							// Task is not ephemeral
-							ephemeral = false;
 						} else {
 							// Other tools - check if they're within an active Task
 							const parameter = entry.content;
@@ -860,18 +859,17 @@ export class AgentSessionManager {
 							}
 
 							content = {
-								type: "action",
+								type: AgentActivityContentType.Action,
 								action: displayName,
 								parameter: parameter,
 								// result will be added later when we get tool result
 							};
 							// Standard tool calls are ephemeral
-							ephemeral = true;
 						}
 					} else {
 						// Regular assistant message - create a thought
 						content = {
-							type: "thought",
+							type: AgentActivityContentType.Thought,
 							body: entry.content,
 						};
 					}
@@ -881,7 +879,7 @@ export class AgentSessionManager {
 				case "system":
 					// System messages are thoughts
 					content = {
-						type: "thought",
+						type: AgentActivityContentType.Thought,
 						body: entry.content,
 					};
 					break;
@@ -890,12 +888,12 @@ export class AgentSessionManager {
 					// Result messages can be responses or errors
 					if (entry.metadata?.isError) {
 						content = {
-							type: "error",
+							type: AgentActivityContentType.Error,
 							body: entry.content,
 						};
 					} else {
 						content = {
-							type: "response",
+							type: AgentActivityContentType.Response,
 							body: entry.content,
 						};
 					}
@@ -904,7 +902,7 @@ export class AgentSessionManager {
 				default:
 					// Default to thought
 					content = {
-						type: "thought",
+						type: AgentActivityContentType.Thought,
 						body: entry.content,
 					};
 			}
@@ -923,26 +921,15 @@ export class AgentSessionManager {
 				}
 			}
 
-			const activityInput: LinearDocument.AgentActivityCreateInput = {
-				agentSessionId: session.linearAgentActivitySessionId, // Use the Linear session ID
+			const agentActivity = await this.issueTracker.createAgentActivity(
+				session.linearAgentActivitySessionId, // Use the Linear session ID
 				content,
-				...(ephemeral && { ephemeral: true }),
-			};
+			);
 
-			const result = await this.linearClient.createAgentActivity(activityInput);
-
-			if (result.success && result.agentActivity) {
-				const agentActivity = await result.agentActivity;
-				entry.linearAgentActivityId = agentActivity.id;
-				console.log(
-					`[AgentSessionManager] Created ${content.type} activity ${entry.linearAgentActivityId}`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create Linear activity:`,
-					result,
-				);
-			}
+			entry.linearAgentActivityId = agentActivity.id;
+			console.log(
+				`[AgentSessionManager] Created ${content.type} activity ${entry.linearAgentActivityId}`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Failed to sync entry to Linear:`,
@@ -1077,24 +1064,17 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
-				content: {
-					type: "thought",
+			await this.issueTracker.createAgentActivity(
+				session.linearAgentActivitySessionId,
+				{
+					type: AgentActivityContentType.Thought,
 					body,
 				},
-			});
+			);
 
-			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created thought activity for session ${sessionId}`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create thought activity:`,
-					result,
-				);
-			}
+			console.log(
+				`[AgentSessionManager] Created thought activity for session ${sessionId}`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error creating thought activity:`,
@@ -1122,7 +1102,7 @@ export class AgentSessionManager {
 
 		try {
 			const content: any = {
-				type: "action",
+				type: AgentActivityContentType.Action,
 				action,
 				parameter,
 			};
@@ -1131,21 +1111,14 @@ export class AgentSessionManager {
 				content.result = result;
 			}
 
-			const response = await this.linearClient.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+			await this.issueTracker.createAgentActivity(
+				session.linearAgentActivitySessionId,
 				content,
-			});
+			);
 
-			if (response.success) {
-				console.log(
-					`[AgentSessionManager] Created action activity for session ${sessionId}`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create action activity:`,
-					response,
-				);
-			}
+			console.log(
+				`[AgentSessionManager] Created action activity for session ${sessionId}`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error creating action activity:`,
@@ -1167,24 +1140,17 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
-				content: {
-					type: "response",
+			await this.issueTracker.createAgentActivity(
+				session.linearAgentActivitySessionId,
+				{
+					type: AgentActivityContentType.Response,
 					body,
 				},
-			});
+			);
 
-			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created response activity for session ${sessionId}`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create response activity:`,
-					result,
-				);
-			}
+			console.log(
+				`[AgentSessionManager] Created response activity for session ${sessionId}`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error creating response activity:`,
@@ -1206,24 +1172,17 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
-				content: {
-					type: "error",
+			await this.issueTracker.createAgentActivity(
+				session.linearAgentActivitySessionId,
+				{
+					type: AgentActivityContentType.Error,
 					body,
 				},
-			});
+			);
 
-			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created error activity for session ${sessionId}`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create error activity:`,
-					result,
-				);
-			}
+			console.log(
+				`[AgentSessionManager] Created error activity for session ${sessionId}`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error creating error activity:`,
@@ -1248,24 +1207,17 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
-				content: {
-					type: "elicitation",
+			await this.issueTracker.createAgentActivity(
+				session.linearAgentActivitySessionId,
+				{
+					type: AgentActivityContentType.Elicitation,
 					body,
 				},
-			});
+			);
 
-			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created elicitation activity for session ${sessionId}`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create elicitation activity:`,
-					result,
-				);
-			}
+			console.log(
+				`[AgentSessionManager] Created elicitation activity for session ${sessionId}`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error creating elicitation activity:`,
@@ -1291,28 +1243,40 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
-				content: {
-					type: "elicitation",
+			// Note: This uses Linear-specific signal and signalMetadata features
+			// that aren't yet part of the IIssueTrackerService abstraction.
+			// We use rawGraphQLRequest to handle this platform-specific functionality.
+			await this.issueTracker.rawGraphQLRequest(
+				`
+				mutation CreateApprovalElicitation($sessionId: String!, $body: String!, $url: String!) {
+					agentActivityCreate(input: {
+						agentSessionId: $sessionId,
+						content: {
+							type: AgentActivityContentType.Elicitation,
+							body: $body
+						},
+						signal: Auth,
+						signalMetadata: {
+							url: $url
+						}
+					}) {
+						success
+						agentActivity {
+							id
+						}
+					}
+				}
+			`,
+				{
+					sessionId: session.linearAgentActivitySessionId,
 					body,
-				},
-				signal: LinearDocument.AgentActivitySignal.Auth,
-				signalMetadata: {
 					url: approvalUrl,
 				},
-			});
+			);
 
-			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created approval elicitation for session ${sessionId} with URL: ${approvalUrl}`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create approval elicitation:`,
-					result,
-				);
-			}
+			console.log(
+				`[AgentSessionManager] Created approval elicitation for session ${sessionId} with URL: ${approvalUrl}`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error creating approval elicitation:`,
@@ -1408,24 +1372,17 @@ export class AgentSessionManager {
 		model: string,
 	): Promise<void> {
 		try {
-			const result = await this.linearClient.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
-				content: {
-					type: "thought",
+			await this.issueTracker.createAgentActivity(
+				linearAgentActivitySessionId,
+				{
+					type: AgentActivityContentType.Thought,
 					body: `Using model: ${model}`,
 				},
-			});
+			);
 
-			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Posted model notification for session ${linearAgentActivitySessionId} (model: ${model})`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post model notification:`,
-					result,
-				);
-			}
+			console.log(
+				`[AgentSessionManager] Posted model notification for session ${linearAgentActivitySessionId} (model: ${model})`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error posting model notification:`,
@@ -1441,21 +1398,41 @@ export class AgentSessionManager {
 		linearAgentActivitySessionId: string,
 	): Promise<string | null> {
 		try {
-			const result = await this.linearClient.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
-				content: {
-					type: "thought",
-					body: "Routing your request…",
-				},
-				ephemeral: true,
-			});
+			// Note: This uses Linear-specific ephemeral feature that isn't yet part of the abstraction
+			const result = await this.issueTracker.rawGraphQLRequest<{
+				agentActivityCreate: {
+					success: boolean;
+					agentActivity?: { id: string };
+				};
+			}>(
+				`
+				mutation CreateRoutingThought($sessionId: String!) {
+					agentActivityCreate(input: {
+						agentSessionId: $sessionId,
+						content: {
+							type: AgentActivityContentType.Thought,
+							body: "Routing your request…"
+						},
+						ephemeral: true
+					}) {
+						success
+						agentActivity {
+							id
+						}
+					}
+				}
+			`,
+				{ sessionId: linearAgentActivitySessionId },
+			);
 
-			if (result.success && result.agentActivity) {
-				const activity = await result.agentActivity;
+			if (
+				result.agentActivityCreate.success &&
+				result.agentActivityCreate.agentActivity
+			) {
 				console.log(
 					`[AgentSessionManager] Posted routing thought for session ${linearAgentActivitySessionId}`,
 				);
-				return activity.id;
+				return result.agentActivityCreate.agentActivity.id;
 			} else {
 				console.error(
 					`[AgentSessionManager] Failed to post routing thought:`,
@@ -1481,25 +1458,17 @@ export class AgentSessionManager {
 		classification: string,
 	): Promise<void> {
 		try {
-			const result = await this.linearClient.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
-				content: {
-					type: "thought",
+			await this.issueTracker.createAgentActivity(
+				linearAgentActivitySessionId,
+				{
+					type: AgentActivityContentType.Thought,
 					body: `Selected procedure: **${procedureName}** (classified as: ${classification})`,
 				},
-				ephemeral: false,
-			});
+			);
 
-			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Posted procedure selection for session ${linearAgentActivitySessionId}: ${procedureName}`,
-				);
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post procedure selection:`,
-					result,
-				);
-			}
+			console.log(
+				`[AgentSessionManager] Posted procedure selection for session ${linearAgentActivitySessionId}: ${procedureName}`,
+			);
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error posting procedure selection:`,
