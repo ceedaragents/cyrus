@@ -41,6 +41,7 @@ interface SessionState {
  */
 type WSMessage =
 	| { type: "session:update"; data: SessionState }
+	| { type: "activity:new"; sessionId: string; activity: ActivityItem }
 	| { type: "session:start"; sessionId: string; session: RenderableSession }
 	| { type: "user:message"; sessionId: string; message: string }
 	| { type: "user:stop"; sessionId: string; reason?: string };
@@ -56,6 +57,8 @@ export class BrowserRenderer implements Renderer {
 	private clients: Set<WebSocket> = new Set();
 	private inputQueues: Map<string, UserInput[]> = new Map();
 	private eventEmitter = new EventEmitter();
+	// Track activity content hashes to prevent duplicates from orchestrator
+	private activityHashes: Map<string, Set<string>> = new Map();
 
 	/**
 	 * Add a WebSocket client
@@ -154,6 +157,14 @@ export class BrowserRenderer implements Renderer {
 	}
 
 	/**
+	 * Generate hash for activity content to detect duplicates
+	 */
+	private hashActivity(type: string, content: string): string {
+		// Simple hash: combine type and content
+		return `${type}:${content}`;
+	}
+
+	/**
 	 * Format activity content for display
 	 */
 	private formatActivityContent(activity: AgentActivity): string {
@@ -221,6 +232,23 @@ export class BrowserRenderer implements Renderer {
 			return;
 		}
 
+		// Check for duplicate content using hash
+		const contentHash = this.hashActivity(type, content);
+		let hashes = this.activityHashes.get(sessionId);
+		if (!hashes) {
+			hashes = new Set();
+			this.activityHashes.set(sessionId, hashes);
+		}
+
+		if (hashes.has(contentHash)) {
+			// Duplicate detected - skip adding
+			console.log(`[BrowserRenderer] Skipping duplicate activity: ${type}`);
+			return;
+		}
+
+		// Mark as seen
+		hashes.add(contentHash);
+
 		const activity: ActivityItem = {
 			id: this.generateActivityId(),
 			type,
@@ -231,10 +259,12 @@ export class BrowserRenderer implements Renderer {
 
 		state.activities.push(activity);
 
-		// Broadcast update to all clients
+		// Broadcast ONLY the new activity to all clients
+		// This prevents duplicates when clients append to their activity list
 		this.broadcast({
-			type: "session:update",
-			data: state,
+			type: "activity:new",
+			sessionId,
+			activity,
 		});
 	}
 
@@ -254,6 +284,8 @@ export class BrowserRenderer implements Renderer {
 
 		this.sessions.set(session.id, state);
 		this.inputQueues.set(session.id, []);
+		// Clear any existing hashes for this session
+		this.activityHashes.set(session.id, new Set());
 
 		this.addActivity(
 			session.id,

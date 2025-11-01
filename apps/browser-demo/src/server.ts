@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AgentRunner } from "@cyrus/agent-runners";
+import { ClaudeAgentRunner } from "@cyrus/agent-runners";
 import { AgentSessionOrchestrator } from "cyrus-orchestrator";
 import { FileSessionStorage } from "cyrus-storage";
 import express from "express";
@@ -15,26 +18,108 @@ import { MockIssueTracker } from "./MockIssueTracker.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Parse command-line arguments
+interface CLIArgs {
+	demo?: boolean;
+	port?: number;
+	help?: boolean;
+}
+
+function parseArgs(args: string[]): CLIArgs {
+	const parsed: CLIArgs = {};
+
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i];
+
+		if (arg === "--help" || arg === "-h") {
+			parsed.help = true;
+		} else if (arg === "--demo") {
+			parsed.demo = true;
+		} else if (arg === "--port" || arg === "-p") {
+			const portArg = args[++i];
+			if (portArg) {
+				parsed.port = Number.parseInt(portArg, 10);
+			}
+		}
+	}
+
+	return parsed;
+}
+
+function printHelp(): void {
+	console.log(`
+Cyrus Browser Demo - Browser-based interactive agent session viewer
+
+USAGE:
+  cyrus-browser-demo [OPTIONS]
+
+OPTIONS:
+  --demo              Run in demo mode with mock components (no real Claude/Linear)
+  --port, -p <PORT>   Port to run the server on (default: 3000)
+  --help, -h          Show this help message
+
+EXAMPLES:
+  # Run in demo mode (no credentials needed)
+  cyrus-browser-demo --demo
+
+  # Run with real Claude (requires ANTHROPIC_API_KEY)
+  cyrus-browser-demo
+
+  # Run on custom port
+  cyrus-browser-demo --port 8080
+
+ENVIRONMENT VARIABLES:
+  ANTHROPIC_API_KEY   API key for Claude (required for real mode)
+  CYRUS_HOME          Cyrus home directory (default: ~/.cyrusd)
+  PORT                Port to run the server on (default: 3000)
+
+For more information, see the README.md file.
+`);
+}
+
+const args = parseArgs(process.argv.slice(2));
+
+if (args.help) {
+	printHelp();
+	process.exit(0);
+}
+
 // Configuration
-const PORT = process.env.PORT || 3000;
+const DEMO_MODE = args.demo ?? false;
+const PORT = args.port || Number.parseInt(process.env.PORT || "3000", 10);
 const CYRUS_HOME = process.env.CYRUS_HOME || path.join(os.homedir(), ".cyrusd");
 const SESSIONS_DIR = path.join(CYRUS_HOME, "sessions", "browser-demo");
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 /**
  * Browser Demo Server
  *
  * Serves the browser UI and manages WebSocket connections for real-time updates.
- * Uses the same orchestrator, mock agent runner, and mock issue tracker as the CLI demo.
+ * Supports both demo mode (mock) and real mode (Claude Code).
  */
 async function main() {
 	console.log("🚀 Starting Cyrus Browser Demo Server...\n");
+
+	// Validate API key for real mode
+	if (!DEMO_MODE && !ANTHROPIC_API_KEY) {
+		console.error(
+			"❌ Error: ANTHROPIC_API_KEY environment variable is required for real mode",
+		);
+		console.error("   Set it in your environment or run with --demo flag");
+		console.error("   Example: export ANTHROPIC_API_KEY=your_api_key_here\n");
+		process.exit(1);
+	}
 
 	// Create Express app
 	const app = express();
 	const server = createServer(app);
 
 	// Serve static files
-	const publicDir = path.join(__dirname, "..", "public");
+	// Support both running from dist/ and from project root
+	let publicDir = path.join(__dirname, "..", "public");
+	if (!existsSync(publicDir)) {
+		publicDir = path.join(__dirname, "public");
+	}
 	console.log(`📂 Serving static files from: ${publicDir}`);
 	app.use(express.static(publicDir));
 
@@ -47,14 +132,25 @@ async function main() {
 	// Create WebSocket server
 	const wss = new WebSocketServer({ server });
 
-	// Initialize components
+	// Initialize components based on mode
 	console.log("📦 Initializing components...");
-	const agentRunner = new MockAgentRunner();
+
+	let agentRunner: AgentRunner;
+
+	if (DEMO_MODE) {
+		agentRunner = new MockAgentRunner();
+		console.log(`   ✓ Mock Agent Runner (demo mode)`);
+	} else {
+		agentRunner = new ClaudeAgentRunner({
+			cyrusHome: CYRUS_HOME,
+		});
+		console.log(`   ✓ Claude Agent Runner (real Claude Code)`);
+	}
+
 	const issueTracker = new MockIssueTracker();
 	const renderer = new BrowserRenderer();
 	const storage = new FileSessionStorage(SESSIONS_DIR);
 
-	console.log(`   ✓ Mock Agent Runner`);
 	console.log(`   ✓ Mock Issue Tracker`);
 	console.log(`   ✓ Browser Renderer`);
 	console.log(`   ✓ File Session Storage (${SESSIONS_DIR})`);
@@ -145,16 +241,21 @@ async function main() {
 	server.listen(PORT, () => {
 		console.log("━".repeat(60));
 		console.log(`🌐 Browser Demo Server running!`);
-		console.log(`━`.repeat(60));
+		console.log("━".repeat(60));
 		console.log(`\n   📍 URL: http://localhost:${PORT}`);
 		console.log(`   📂 Public directory: ${publicDir}`);
 		console.log(`   💾 Sessions directory: ${SESSIONS_DIR}`);
 		console.log(
-			`\n   🎯 Open the URL in your browser to see the interactive demo`,
+			`   🎭 Mode: ${DEMO_MODE ? "Demo (mock responses)" : "Real (Claude Code)"}`,
 		);
 		console.log(
-			`   📊 The demo will automatically start with a mock agent session`,
+			`\n   🎯 Open the URL in your browser to see the interactive demo`,
 		);
+		if (!DEMO_MODE) {
+			console.log(
+				`   🤖 Using real Claude Code agent - sessions will show actual Claude responses`,
+			);
+		}
 		console.log(`\n   Press Ctrl+C to stop the server\n`);
 		console.log("━".repeat(60));
 		console.log();
