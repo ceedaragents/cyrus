@@ -835,21 +835,21 @@ export class CLIIssueTrackerService
 	// RAW API ACCESS
 	// ========================================================================
 
-	async rawGraphQLRequest<T = any>(
+	async rawGraphQLRequest<T = unknown>(
 		_query: string,
-		_variables?: Record<string, any>,
+		_variables?: Record<string, unknown>,
 	): Promise<T> {
 		throw new Error(
 			"CLI issue tracker does not support GraphQL requests. Use the high-level API methods instead.",
 		);
 	}
 
-	async rawRESTRequest<T = any>(
+	async rawRESTRequest<T = unknown>(
 		_endpoint: string,
 		_options?: {
 			method?: string;
 			headers?: Record<string, string>;
-			body?: any;
+			body?: unknown;
 		},
 	): Promise<T> {
 		throw new Error(
@@ -865,7 +865,7 @@ export class CLIIssueTrackerService
 		return "cli";
 	}
 
-	getPlatformMetadata(): Record<string, any> {
+	getPlatformMetadata(): Record<string, unknown> {
 		return {
 			platform: "cli",
 			version: "1.0.0",

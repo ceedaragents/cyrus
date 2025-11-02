@@ -623,9 +623,9 @@ export interface IIssueTrackerService {
 	 * Use this method sparingly. Prefer standard interface methods where possible.
 	 * Platform-specific queries may not work across different implementations.
 	 */
-	rawGraphQLRequest<T = any>(
+	rawGraphQLRequest<T = unknown>(
 		query: string,
-		variables?: Record<string, any>,
+		variables?: Record<string, unknown>,
 	): Promise<T>;
 
 	/**
@@ -653,12 +653,12 @@ export interface IIssueTrackerService {
 	 * Use this method for platforms that don't support GraphQL.
 	 * Platform-specific REST calls may not work across different implementations.
 	 */
-	rawRESTRequest<T = any>(
+	rawRESTRequest<T = unknown>(
 		endpoint: string,
 		options?: {
 			method?: string;
 			headers?: Record<string, string>;
-			body?: any;
+			body?: unknown;
 		},
 	): Promise<T>;
 
@@ -690,7 +690,7 @@ export interface IIssueTrackerService {
 	 * console.log('API version:', metadata.apiVersion);
 	 * ```
 	 */
-	getPlatformMetadata(): Record<string, any>;
+	getPlatformMetadata(): Record<string, unknown>;
 
 	// ========================================================================
 	// EVENT TRANSPORT
