@@ -47,6 +47,60 @@ cyrus/
 
 For a detailed visual representation of how these components interact and map Claude Code sessions to Linear comment threads, see @architecture.md.
 
+## Code Quality Standards
+
+### Strict TypeScript - NO `any` Types
+
+**CRITICAL RULE**: NEVER use `any` type in this codebase. Always use proper TypeScript types.
+
+**Why**: The `any` type defeats TypeScript's purpose and allows bugs to slip through. This codebase maintains strict typing discipline.
+
+**What to use instead**:
+- **Generic types**: `<T>` for truly polymorphic code
+- **Union types**: `string | number` when multiple types are valid
+- **Interface types**: Define proper interfaces for objects
+- **`unknown`**: For truly unknown values that require type checking before use
+- **Type assertions**: `as Type` only when you have verified the type (sparingly)
+
+**Bad Examples (NEVER DO THIS)**:
+```typescript
+const issue: any = await fetchIssue();  // ❌ NO
+const labels = (issue as any).labels(); // ❌ NO
+function process(data: any) { }         // ❌ NO
+```
+
+**Good Examples**:
+```typescript
+const issue: Issue = await fetchIssue();              // ✅ YES
+const issue: LinearIssue = await fetchLinearIssue();  // ✅ YES
+function process<T>(data: T) { }                      // ✅ YES
+function process(data: unknown) {                     // ✅ YES
+  if (isIssue(data)) {
+    // Now data is typed as Issue
+  }
+}
+```
+
+### Architecture: Platform-Agnostic Layers
+
+**CRITICAL RULE**: EdgeWorker and other high-level components must have ZERO platform-specific logic.
+
+**Platform-specific code belongs ONLY in**:
+- `LinearIssueTrackerService` - Linear SDK-specific implementation
+- `CLIIssueTrackerService` - CLI platform-specific implementation
+- Other `*IssueTrackerService` implementations
+
+**EdgeWorker must NEVER**:
+- Check `typeof issue.labels === "function"`
+- Use runtime type detection to distinguish platforms
+- Call Linear SDK methods directly
+- Have any awareness of which platform it's running on
+
+**EdgeWorker must ONLY**:
+- Call methods on the `IIssueTrackerService` interface
+- Work with platform-agnostic types (`Issue`, `Comment`, `Label`, etc.)
+- Trust that the service implementations handle platform differences
+
 ## Testing Best Practices
 
 ### Prompt Assembly Tests
