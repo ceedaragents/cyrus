@@ -69,7 +69,9 @@ export class CLIEventTransport
 				action: "issueAssignedToYou",
 				createdAt: new Date().toISOString(),
 				organizationId: "cli-org",
-				data: {
+				oauthClientId: "cli-oauth-client",
+				appUserId: "cli-app-user",
+				notification: {
 					issue: {
 						id: issue.id,
 						identifier: issue.identifier,
@@ -77,8 +79,8 @@ export class CLIEventTransport
 						description: issue.description,
 					},
 				},
-				url: issue.url,
 				webhookTimestamp: Date.now(),
+				webhookId: `cli-webhook-${Date.now()}`,
 			} as unknown as AgentEvent;
 
 			this.deliverEvent(event);
@@ -91,15 +93,17 @@ export class CLIEventTransport
 				action: "issueCommentMention",
 				createdAt: new Date().toISOString(),
 				organizationId: "cli-org",
-				data: {
+				oauthClientId: "cli-oauth-client",
+				appUserId: "cli-app-user",
+				notification: {
 					comment: {
 						id: comment.id,
 						body: comment.body,
 						issueId: issue,
 					},
 				},
-				url: `https://example.com/issue/${issue}/comment/${comment.id}`,
 				webhookTimestamp: Date.now(),
+				webhookId: `cli-webhook-${Date.now()}`,
 			} as unknown as AgentEvent;
 
 			this.deliverEvent(event);
@@ -114,37 +118,51 @@ export class CLIEventTransport
 					action: "created",
 					createdAt: new Date().toISOString(),
 					organizationId: "cli-org",
-					data: {
-						agentSession: {
-							id: session.id,
-							issueId: session.issueId,
-							commentId: session.commentId,
-							status: session.status,
-							type: session.type,
-							// Include issue inside agentSession to match Linear webhook structure
-							issue: {
-								id: issue.id,
-								identifier: issue.identifier,
-								title: issue.title,
-								description: issue.description,
-								url: issue.url,
-								team: issue.team
-									? {
-											id: issue.team.id,
-											key: issue.team.key,
-											name: issue.team.name,
-										}
-									: undefined,
-							},
+					oauthClientId: "cli-oauth-client",
+					appUserId: "cli-app-user",
+					agentSession: {
+						id: session.id,
+						createdAt: session.createdAt,
+						updatedAt: session.updatedAt,
+						archivedAt: session.archivedAt,
+						creatorId: session.creatorId,
+						appUserId: session.appUserId,
+						commentId: session.commentId,
+						issueId: session.issueId,
+						status: session.status,
+						startedAt: session.startedAt,
+						endedAt: null,
+						type: session.type,
+						summary: null,
+						sourceMetadata: null,
+						organizationId: "cli-org",
+						creator: {
+							id: session.creatorId,
+							name: "CLI User",
 						},
+						comment: session.commentId
+							? {
+									id: session.commentId,
+									body: "",
+								}
+							: ({} as any),
 						issue: {
 							id: issue.id,
 							identifier: issue.identifier,
 							title: issue.title,
+							description: issue.description || "",
+							url: issue.url,
+							team: issue.team
+								? {
+										id: issue.team.id,
+										key: issue.team.key,
+										name: issue.team.name,
+									}
+								: undefined,
 						},
 					},
-					url: issue.url,
-					webhookTimestamp: Date.now(),
+					webhookTimestamp: Date.now().toString(),
+					webhookId: `cli-webhook-${Date.now()}`,
 				} as unknown as AgentEvent;
 
 				this.deliverEvent(event);
@@ -160,17 +178,17 @@ export class CLIEventTransport
 					action: "prompted",
 					createdAt: new Date().toISOString(),
 					organizationId: "cli-org",
-					data: {
-						agentSession: {
-							id: sessionId,
-						},
-						agentActivity: {
-							id: activity.id,
-							content: activity.content,
-						},
+					oauthClientId: "cli-oauth-client",
+					appUserId: "cli-app-user",
+					agentSession: {
+						id: sessionId,
 					},
-					url: `https://example.com/session/${sessionId}`,
-					webhookTimestamp: Date.now(),
+					agentActivity: {
+						id: activity.id,
+						content: activity.content,
+					},
+					webhookTimestamp: Date.now().toString(),
+					webhookId: `cli-webhook-${Date.now()}`,
 				} as unknown as AgentEvent;
 
 				this.deliverEvent(event);
