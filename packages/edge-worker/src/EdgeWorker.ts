@@ -78,6 +78,7 @@ import type {
 	PromptType,
 } from "./prompt-assembly/types.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { createBasicIssueTrackerServer } from "./tools/basic-issue-tracker.js";
 import { createCLIToolsServer } from "./tools/index.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
@@ -3340,8 +3341,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Only inject Linear MCP servers if platform is "linear" and token exists
 		if (repository.platform === "linear" && repository.linearToken) {
+			// Linear HTTP MCP server provides basic issue tracker tools
 			// https://linear.app/docs/mcp
-			mcpConfig.linear = {
+			mcpConfig["issue-tracker"] = {
 				type: "http",
 				url: "https://mcp.linear.app/mcp",
 				headers: {
@@ -3350,10 +3352,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			};
 		}
 
-		// Configure issue-tracker tools based on platform
+		// Configure issue-tracker-ext (extended tools) based on platform
 		if (repository.platform === "linear" && repository.linearToken) {
-			// Linear mode provides SDK-based issue tracker tools
-			mcpConfig["issue-tracker"] = createCyrusToolsServer(
+			// Linear mode: Linear HTTP MCP provides basic tools, SDK provides extended tools
+			mcpConfig["issue-tracker-ext"] = createCyrusToolsServer(
 				repository.linearToken,
 				{
 					parentSessionId,
@@ -3497,7 +3499,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			// CLI mode provides SDK-based issue tracker tools using in-memory storage
 			const issueTracker = this.issueTrackers.get(repository.id);
 			if (issueTracker && issueTracker instanceof CLIIssueTrackerService) {
-				mcpConfig["issue-tracker"] = createCLIToolsServer(issueTracker, {
+				// Basic issue tracker tools (replicate Linear MCP's core tools)
+				mcpConfig["issue-tracker"] =
+					createBasicIssueTrackerServer(issueTracker);
+
+				// Extended issue tracker tools (CLI-specific tools)
+				mcpConfig["issue-tracker-ext"] = createCLIToolsServer(issueTracker, {
 					parentSessionId,
 					onSessionCreated: (childSessionId, parentId) => {
 						console.log(
@@ -4260,9 +4267,14 @@ ${input.userComment}
 		}
 
 		// Issue tracker MCP tools that should always be available
-		// Both Linear and CLI modes provide an "issue-tracker" MCP server
+		// Both Linear and CLI modes provide TWO MCP servers:
+		// - "issue-tracker" for basic tools (create_comment, create_issue, get_issue, list_labels, list_teams)
+		// - "issue-tracker-ext" for extended tools (upload_file, agent_session_create, agent_give_feedback, get_child_issues)
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const issueTrackerMcpTools = ["mcp__linear", "mcp__issue-tracker"];
+		const issueTrackerMcpTools = [
+			"mcp__issue-tracker",
+			"mcp__issue-tracker-ext",
+		];
 
 		// Combine and deduplicate
 		const allTools = [...new Set([...baseTools, ...issueTrackerMcpTools])];

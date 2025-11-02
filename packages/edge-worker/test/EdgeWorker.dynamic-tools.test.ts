@@ -186,8 +186,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const debuggerTools = buildAllowedTools(repository, "debugger");
 			expect(debuggerTools).toEqual([
 				...getReadOnlyTools(),
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// Test builder prompt with custom array
@@ -196,16 +196,16 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Read",
 				"Edit",
 				"Task",
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// Test scoper prompt with safe preset
 			const scoperTools = buildAllowedTools(repository, "scoper");
 			expect(scoperTools).toEqual([
 				...getSafeTools(),
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -236,16 +236,16 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const debuggerTools = buildAllowedTools(repository, "debugger");
 			expect(debuggerTools).toEqual([
 				...getAllTools(),
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// Test builder prompt with global safe preset
 			const builderTools = buildAllowedTools(repository, "builder");
 			expect(builderTools).toEqual([
 				...getSafeTools(),
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// Test scoper prompt with global custom array
@@ -253,8 +253,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(scoperTools).toEqual([
 				"Read",
 				"WebFetch",
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -270,8 +270,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(tools).toEqual([
 				"Read",
 				"Write",
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -288,8 +288,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Read",
 				"Write",
 				"Edit",
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -309,23 +309,27 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const tools = buildAllowedTools(repository);
 			expect(tools).toEqual([
 				...getSafeTools(),
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
 		it("should always include Linear MCP tools", () => {
 			const repository: RepositoryConfig = {
 				...mockConfig.repositories[0],
-				allowedTools: ["Read", "mcp__linear"], // Already includes Linear MCP
+				allowedTools: ["Read", "mcp__issue-tracker"], // Already includes issue tracker MCP
 			};
 
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
 			const tools = buildAllowedTools(repository);
 
-			// Should deduplicate Linear MCP tools
-			expect(tools).toEqual(["Read", "mcp__linear", "mcp__issue-tracker"]);
-			expect(tools.filter((t) => t === "mcp__linear")).toHaveLength(1);
+			// Should deduplicate issue tracker MCP tools
+			expect(tools).toEqual([
+				"Read",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
+			]);
+			expect(tools.filter((t) => t === "mcp__issue-tracker")).toHaveLength(1);
 		});
 
 		it("should handle backward compatibility with old array-based labelPrompts", () => {
@@ -348,16 +352,16 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Read",
 				"Write",
 				"Edit",
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// New format should work as expected
 			const builderTools = buildAllowedTools(repository, "builder");
 			expect(builderTools).toEqual([
 				...getSafeTools(),
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -377,8 +381,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 
 			expect(tools).toEqual([
 				"CustomTool",
-				"mcp__linear",
 				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 	});

@@ -8,7 +8,7 @@ describe("linear_get_child_issues tool integration", () => {
 		// Verify the server has the expected MCP structure
 		expect(server).toBeDefined();
 		expect(server.type).toBe("sdk");
-		expect(server.name).toBe("issue-tracker");
+		expect(server.name).toBe("issue-tracker-ext");
 		expect(server.instance).toBeDefined();
 
 		// The actual McpServer instance should exist
@@ -30,7 +30,7 @@ describe("linear_get_child_issues tool integration", () => {
 		// Basic server structure check
 		expect(server).toBeDefined();
 		expect(server.type).toBe("sdk");
-		expect(server.name).toBe("issue-tracker");
+		expect(server.name).toBe("issue-tracker-ext");
 	});
 
 	it("should verify tool exists through successful server creation", () => {

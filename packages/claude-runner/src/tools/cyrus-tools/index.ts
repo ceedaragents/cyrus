@@ -673,7 +673,7 @@ export function createCyrusToolsServer(
 	);
 
 	return createSdkMcpServer({
-		name: "issue-tracker",
+		name: "issue-tracker-ext",
 		version: "1.0.0",
 		tools: [
 			uploadTool,

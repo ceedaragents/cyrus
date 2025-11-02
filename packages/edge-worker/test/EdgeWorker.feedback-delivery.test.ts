@@ -443,7 +443,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			);
 
 			// Assert
-			expect(_mcpConfig).toHaveProperty("issue-tracker");
+			expect(_mcpConfig).toHaveProperty("issue-tracker-ext");
 
 			// Verify createCyrusToolsServer was called with correct options
 			expect(createCyrusToolsServer).toHaveBeenCalledWith(
