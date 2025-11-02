@@ -345,3 +345,336 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
 - Build all packages once at the start, then publish without rebuilding
 - This ensures `workspace:*` references resolve to published versions
 
+## 🏎️ Driving the Lamborghini CLI
+
+The **Cyrus CLI Platform** is a premium command-line interface for testing and controlling Cyrus agent sessions. It's designed with beautiful output, excellent help, activity pagination, and professional error handling - the "Lamborghini of CLIs."
+
+### Quick Start
+
+**1. Build the packages:**
+```bash
+pnpm install
+pnpm build
+```
+
+**2. Start the CLI server:**
+```bash
+node start-cli-server.mjs
+```
+
+The server will start on port 3457 (default) and display beautiful colored output with the RPC endpoint.
+
+**3. Use the CLI tool:**
+```bash
+# Check server health
+packages/core/src/issue-tracker/adapters/cli-tool.mjs ping
+
+# View all commands
+packages/core/src/issue-tracker/adapters/cli-tool.mjs help
+
+# Get command-specific help
+packages/core/src/issue-tracker/adapters/cli-tool.mjs viewSession --help
+```
+
+### Premium Features
+
+- ✨ **Beautiful Colored Output** - Uses ANSI colors (no dependencies)
+- 📄 **Activity Pagination** - `--limit` and `--offset` flags for large datasets
+- 🔍 **Activity Search** - `--search` flag to filter activities
+- 💡 **Per-Command Help** - Every command has `--help`
+- 🏥 **Health Commands** - `ping`, `status`, `version`
+- 🔗 **Connection Feedback** - Shows RPC URL on every command
+- ⚡ **assignIssue Command** - Assign/reassign issues easily
+- 🚀 **Portable Server** - No absolute paths required
+- ❌ **Professional Errors** - Actionable error messages with suggestions
+
+### Essential Commands
+
+**Health & Status:**
+```bash
+cli-tool.mjs ping              # Check if server is running
+cli-tool.mjs status            # Get version, uptime, platform info
+cli-tool.mjs version           # Show version only
+```
+
+**Working with Issues:**
+```bash
+# Create an issue
+cli-tool.mjs createIssue --title "Fix bug" --description "Critical"
+
+# Assign to agent
+cli-tool.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
+
+# Create comment with agent mention (triggers session)
+cli-tool.mjs createComment --issue-id issue-1 --body "Fix this" --mention-agent
+```
+
+**Managing Sessions:**
+```bash
+# Start a session
+cli-tool.mjs startSession --issue-id issue-1
+
+# View session (with pagination)
+cli-tool.mjs viewSession --session-id session-1 --limit 10
+
+# View next page
+cli-tool.mjs viewSession --session-id session-1 --limit 10 --offset 10
+
+# Search activities
+cli-tool.mjs viewSession --session-id session-1 --search "error"
+
+# Send message to session
+cli-tool.mjs promptSession --session-id session-1 --message "Add tests"
+
+# Stop session
+cli-tool.mjs stopSession --session-id session-1
+```
+
+### Testing the Lamborghini CLI
+
+**Run the comprehensive test drive:**
+```bash
+./test-drive-lamborghini-cli.sh
+```
+
+This automated script tests:
+- All health commands
+- Help system (general + per-command)
+- Issue and member creation
+- assignIssue command
+- Agent session creation
+- Activity pagination with 15+ activities
+- Activity search functionality
+- Error handling edge cases
+- Beautiful colored output
+
+The test drive runs completely automated (with pauses for review) and verifies every premium feature works correctly.
+
+### Common Workflows
+
+**Workflow 1: Create issue, assign to agent, monitor session**
+```bash
+# Create issue
+cli-tool.mjs createIssue --title "Refactor API" --description "Clean up endpoints"
+# Output: { "id": "issue-1", ... }
+
+# Assign to agent (triggers session via event)
+cli-tool.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
+
+# Or manually start session
+cli-tool.mjs startSession --issue-id issue-1
+# Output: { "agentSessionId": "session-1", ... }
+
+# Monitor progress (paginated)
+cli-tool.mjs viewSession --session-id session-1 --limit 5
+
+# Add activities accumulate...
+
+# View next page
+cli-tool.mjs viewSession --session-id session-1 --limit 5 --offset 5
+
+# Search for specific activity
+cli-tool.mjs viewSession --session-id session-1 --search "completed"
+```
+
+**Workflow 2: Paginating large activity lists**
+```bash
+# Session has 100+ activities
+
+# View most recent 20 (default)
+cli-tool.mjs viewSession --session-id session-1
+
+# View most recent 10
+cli-tool.mjs viewSession --session-id session-1 --limit 10
+
+# View activities 20-30
+cli-tool.mjs viewSession --session-id session-1 --limit 10 --offset 20
+
+# Search for errors in last 50
+cli-tool.mjs viewSession --session-id session-1 --search "error" --limit 50
+```
+
+**Workflow 3: Scripted automation**
+```bash
+#!/bin/bash
+# Monitor session in real-time
+
+SESSION_ID="session-1"
+LAST_OFFSET=0
+
+while true; do
+  clear
+  echo "=== Session $SESSION_ID (refreshing every 5s) ==="
+  cli-tool.mjs viewSession --session-id "$SESSION_ID" --limit 5 --offset $LAST_OFFSET
+  sleep 5
+done
+```
+
+### Activity Pagination Details
+
+**Features:**
+- **Most Recent First**: Activities sorted reverse chronological
+- **Configurable Limit**: `--limit N` (default: 20, shows first N activities)
+- **Offset-Based**: `--offset N` (skip first N activities)
+- **Full-Text Search**: `--search "term"` (searches body, type, ID)
+- **Navigation Hints**: Shows "→ More available, use --offset X" automatically
+- **Count Display**: Shows "showing X of Y total"
+
+**Examples:**
+```bash
+# First page (most recent 20)
+cli-tool.mjs viewSession --session-id S --limit 20 --offset 0
+
+# Second page (next 20)
+cli-tool.mjs viewSession --session-id S --limit 20 --offset 20
+
+# Third page (next 20)
+cli-tool.mjs viewSession --session-id S --limit 20 --offset 40
+
+# Search and paginate
+cli-tool.mjs viewSession --session-id S --search "test" --limit 10 --offset 0
+```
+
+### Environment Variables
+
+**CYRUS_PORT**: Server port (default: 3457)
+```bash
+# Start server on custom port
+CYRUS_PORT=8080 node start-cli-server.mjs
+
+# Use CLI with custom port
+CYRUS_PORT=8080 cli-tool.mjs ping
+```
+
+**DEBUG**: Enable stack traces
+```bash
+DEBUG=1 cli-tool.mjs createIssue --title "Test"
+```
+
+### Troubleshooting
+
+**Server won't start:**
+- Check if port 3457 is already in use
+- Try a different port: `CYRUS_PORT=8080 node start-cli-server.mjs`
+- Build packages first: `pnpm build`
+
+**CLI can't connect:**
+- Verify server is running
+- Check port matches: `CYRUS_PORT=8080 cli-tool.mjs ping`
+- Look for errors in `/tmp/cyrus-cli-server.log`
+
+**Activities not showing:**
+- Session may be new (no activities yet)
+- Add test activity: `cli-tool.mjs promptSession --session-id S --message "test"`
+- Check offset isn't beyond total count
+
+**Module not found:**
+- Run `pnpm install` and `pnpm build`
+- Ensure you're in the repo root directory
+
+### Documentation
+
+- **CLI_TOOL_README.md** - Comprehensive CLI documentation
+- **test-drive-lamborghini-cli.sh** - Automated test script
+- **packages/core/src/issue-tracker/adapters/cli-tool.mjs** - CLI tool source
+- **packages/core/src/issue-tracker/adapters/CLIRPCServer.ts** - RPC server
+- **start-cli-server.mjs** - Server startup script
+
+### Architecture
+
+```
+┌──────────────────┐
+│  cli-tool.mjs    │  ← Beautiful CLI with colors, help, pagination
+│  (Client)        │
+└────────┬─────────┘
+         │ HTTP POST /cli/rpc (JSON-RPC)
+         ↓
+┌──────────────────────┐
+│  CLIRPCServer.ts     │  ← Fastify server, RPC endpoint handler
+│  (EdgeWorker/Core)   │     Handles: ping, status, assignIssue, viewSession, etc.
+└────────┬─────────────┘
+         │
+         ↓
+┌─────────────────────────────┐
+│  CLIIssueTrackerService.ts  │  ← In-memory storage
+│  (implements                │     Stores: issues, comments, sessions, activities
+│   IIssueTrackerService)     │     Events: session created, activity added, etc.
+└─────────────────────────────┘
+```
+
+### Development Workflow
+
+**Adding a new command:**
+
+1. **Add to `cli-tool.mjs`:**
+   - Add case to switch statement in `main()`
+   - Add entry to `showHelp()` function
+   - Add complete help to `showCommandHelp()` object
+
+2. **Add to `CLIRPCServer.ts`:**
+   - Add to `RPCCommand` type union
+   - Add handler in `handleCommand()` switch
+
+3. **Add to `CLIIssueTrackerService.ts`:**
+   - Implement service method if needed
+   - Follow existing patterns
+
+4. **Update docs:**
+   - Add to `CLI_TOOL_README.md`
+   - Add to `test-drive-lamborghini-cli.sh`
+   - Update this section of `CLAUDE.md`
+
+**Example: Adding `listSessions` command:**
+
+```typescript
+// cli-tool.mjs
+case "listSessions": {
+  method = "listAgentSessions";
+  rpcParams = {};
+  break;
+}
+
+// Add to showHelp():
+console.log(`    ${c.command("listSessions")}             List all agent sessions`);
+
+// Add to showCommandHelp():
+listSessions: {
+  description: "List all agent sessions",
+  usage: "cli-tool.mjs listSessions",
+  options: [],
+  examples: ["cli-tool.mjs listSessions"],
+}
+
+// CLIRPCServer.ts
+export type RPCCommand =
+  | ... existing ...
+  | { method: "listAgentSessions"; params?: Record<string, never> };
+
+case "listAgentSessions": {
+  const sessions = Array.from(this.issueTrackerService.getState().agentSessions.values());
+  return { success: true, data: sessions };
+}
+```
+
+### Tips & Best Practices
+
+1. **Always check server is running first**: `cli-tool.mjs ping`
+2. **Use --help liberally**: Every command has detailed help
+3. **Paginate large datasets**: Use `--limit` and `--offset` for 100+ activities
+4. **Search before paginating**: `--search "term"` filters first, then paginates
+5. **Watch most recent**: Default sort shows newest first (perfect for monitoring)
+6. **Script it**: CLI is designed for bash scripts and automation
+7. **Test with test drive**: Run `./test-drive-lamborghini-cli.sh` after changes
+
+### Why "Lamborghini CLI"?
+
+This CLI is built with premium quality:
+- ✨ Beautiful, professional output (think Vercel CLI, Railway CLI)
+- 📄 Handles large datasets elegantly (pagination > scrolling)
+- 💡 Self-documenting (excellent help system)
+- 🔍 Powerful search (find what you need fast)
+- ❌ Guides users with errors (never leaves you stuck)
+- 🚀 Production-ready (portable, testable, maintainable)
+
+It's not just functional - it's a joy to use. That's the Lamborghini standard.
+

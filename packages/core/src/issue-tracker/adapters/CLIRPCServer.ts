@@ -15,6 +15,8 @@ import type { CLIIssueTrackerService } from "./CLIIssueTrackerService.js";
  * RPC command types for the CLI issue tracker.
  */
 export type RPCCommand =
+	| { method: "ping"; params?: Record<string, never> }
+	| { method: "status"; params?: Record<string, never> }
 	| { method: "viewAgentSession"; params: { sessionId: string } }
 	| {
 			method: "promptAgentSession";
@@ -28,6 +30,10 @@ export type RPCCommand =
 				description?: string;
 				options?: Record<string, any>;
 			};
+	  }
+	| {
+			method: "assignIssue";
+			params: { issueId: string; assigneeId?: string | null };
 	  }
 	| {
 			method: "createComment";
@@ -81,6 +87,7 @@ export interface RPCResponse<T = any> {
 export class CLIRPCServer {
 	private fastifyServer: FastifyInstance;
 	private issueTrackerService: CLIIssueTrackerService;
+	private startTime: Date;
 
 	constructor(
 		fastifyServer: FastifyInstance,
@@ -88,6 +95,7 @@ export class CLIRPCServer {
 	) {
 		this.fastifyServer = fastifyServer;
 		this.issueTrackerService = issueTrackerService;
+		this.startTime = new Date();
 	}
 
 	/**
@@ -210,10 +218,55 @@ export class CLIRPCServer {
 	}
 
 	/**
+	 * Get server uptime in human-readable format
+	 */
+	private getUptime(): string {
+		const now = new Date();
+		const diff = now.getTime() - this.startTime.getTime();
+		const seconds = Math.floor(diff / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+
+		if (days > 0) {
+			return `${days}d ${hours % 24}h ${minutes % 60}m`;
+		}
+		if (hours > 0) {
+			return `${hours}h ${minutes % 60}m`;
+		}
+		if (minutes > 0) {
+			return `${minutes}m ${seconds % 60}s`;
+		}
+		return `${seconds}s`;
+	}
+
+	/**
 	 * Handle an RPC command.
 	 */
 	private async handleCommand(command: RPCCommand): Promise<RPCResponse> {
 		switch (command.method) {
+			case "ping": {
+				return {
+					success: true,
+					data: {
+						pong: true,
+						timestamp: new Date().toISOString(),
+					},
+				};
+			}
+
+			case "status": {
+				const metadata = this.issueTrackerService.getPlatformMetadata();
+				return {
+					success: true,
+					data: {
+						...metadata,
+						uptime: this.getUptime(),
+						startTime: this.startTime.toISOString(),
+					},
+				};
+			}
+
 			case "viewAgentSession": {
 				const session = await this.issueTrackerService.fetchAgentSession(
 					command.params.sessionId,
@@ -254,6 +307,19 @@ export class CLIRPCServer {
 					description: command.params.description,
 					...command.params.options,
 				});
+				return {
+					success: true,
+					data: issue,
+				};
+			}
+
+			case "assignIssue": {
+				const issue = await this.issueTrackerService.updateIssue(
+					command.params.issueId,
+					{
+						assigneeId: command.params.assigneeId ?? undefined,
+					},
+				);
 				return {
 					success: true,
 					data: issue,

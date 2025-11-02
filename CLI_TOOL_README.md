@@ -1,307 +1,710 @@
-# Cyrus CLI Tool - Command-Line Interface
+# 🏎️ Cyrus CLI Tool - Premium Command-Line Interface
 
-The Cyrus CLI tool provides a simple command-line interface for interacting with the Cyrus CLI IssueTracker platform.
+The **Lamborghini of CLIs** - A beautiful, professional command-line interface for the Cyrus platform with premium UX, excellent help, activity pagination, and search.
+
+## ✨ Premium Features
+
+- **🎨 Beautiful Output**: Colored, formatted output with emojis
+- **📄 Activity Pagination**: View large datasets with `--limit` and `--offset`
+- **🔍 Activity Search**: Filter activities with `--search`
+- **💡 Excellent Help**: Per-command help with `--help` flag
+- **🏥 Health Commands**: `ping`, `status`, `version` for server health
+- **🔗 Connection Feedback**: Shows RPC URL and connection status
+- **⚡ Progress Indicators**: Real-time feedback for all operations
+- **❌ Professional Errors**: Actionable error messages with suggestions
+- **🚀 Portable Server**: Start server without absolute paths
 
 ## Quick Start
 
-### 1. Start the Cyrus CLI Server
+### 1. Start the CLI Server
 
 ```bash
+# Default port (3457)
 node start-cli-server.mjs
-```
 
-The server will start on port 3457 by default. You can specify a different port:
-
-```bash
+# Custom port
 CYRUS_PORT=8080 node start-cli-server.mjs
 # or
 node start-cli-server.mjs 8080
 ```
 
+The server will display:
+```
+🏎️  Cyrus CLI Platform Server
+
+   Starting up...
+
+   Directory: /tmp/cyrus-cli-server
+   Port: 3457
+
+✅ Server is running!
+
+   RPC Endpoint:
+
+   http://localhost:3457/cli/rpc
+
+   Quick Start:
+
+   # Check server health
+   cli-tool.mjs ping
+
+   # Create an issue
+   cli-tool.mjs createIssue --title "Test Issue"
+
+   # View all commands
+   cli-tool.mjs help
+
+   Press Ctrl+C to stop.
+```
+
 ### 2. Use the CLI Tool
 
-Once the server is running, you can use the CLI tool from another terminal:
-
 ```bash
-# Create an issue
-packages/core/src/issue-tracker/adapters/cli-tool.mjs createIssue \
-  --title "Fix authentication bug" \
-  --description "Users cannot log in with OAuth"
+# Check if server is running
+packages/core/src/issue-tracker/adapters/cli-tool.mjs ping
 
-# Create a comment
-packages/core/src/issue-tracker/adapters/cli-tool.mjs createComment \
-  --issue-id issue-1 \
-  --body "This is blocking production" \
-  --mention-agent
+# View all commands
+packages/core/src/issue-tracker/adapters/cli-tool.mjs help
 
-# Start an agent session
-packages/core/src/issue-tracker/adapters/cli-tool.mjs startSession \
-  --issue-id issue-1
-
-# View the session
-packages/core/src/issue-tracker/adapters/cli-tool.mjs viewSession \
-  --session-id session-1
-
-# List all members
-packages/core/src/issue-tracker/adapters/cli-tool.mjs fetchMembers
+# Get help for a specific command
+packages/core/src/issue-tracker/adapters/cli-tool.mjs createIssue --help
 ```
 
 ## Installation (Optional)
 
-For easier access, create aliases or symlinks:
+Create aliases for easier access:
 
 ```bash
 # Add to your ~/.bashrc or ~/.zshrc
 alias cyrus-cli='packages/core/src/issue-tracker/adapters/cli-tool.mjs'
 alias cyrus-server='node start-cli-server.mjs'
 
-# Or create a symlink
+# Or create symlinks
 ln -s $(pwd)/packages/core/src/issue-tracker/adapters/cli-tool.mjs /usr/local/bin/cyrus-cli
 ln -s $(pwd)/start-cli-server.mjs /usr/local/bin/cyrus-server
 ```
 
-Then you can use:
-
+Then use:
 ```bash
 cyrus-server           # Start server
-cyrus-cli fetchMembers # Use CLI tool
+cyrus-cli ping         # Use CLI tool
+cyrus-cli help         # View help
 ```
 
-## Available Commands
+## Commands Reference
 
-### Issue Management
+### 🏥 Health & Status
 
-**Create an issue:**
+#### ping
+Check server connectivity.
+
 ```bash
-cli-tool.mjs createIssue --title "Issue title" [--description "Description"]
+cyrus-cli ping
 ```
 
-Example:
+**Output:**
+```
+🏓 Pinging Cyrus server...
+
+→ Connecting to http://localhost:3457/cli/rpc...
+✓ Connected
+
+✅ Server is responding
+   URL: http://localhost:3457/cli/rpc
+```
+
+#### status
+Get detailed server status and version.
+
 ```bash
-cli-tool.mjs createIssue --title "Fix login bug" --description "OAuth is broken"
+cyrus-cli status
 ```
 
-### Comment Management
+**Output:**
+```
+📊 Fetching server status...
 
-**Create a comment:**
+→ Connecting to http://localhost:3457/cli/rpc...
+✓ Connected
+
+✅ Server Status
+
+   Version: 1.0.0
+   Platform: cli
+   Mode: in-memory
+   Uptime: 5m 32s
+   URL: http://localhost:3457/cli/rpc
+```
+
+#### version
+Show server version (compact output).
+
 ```bash
-cli-tool.mjs createComment --issue-id <id> --body "Comment text" [--mention-agent]
+cyrus-cli version
 ```
 
-Example:
+**Output:**
+```
+1.0.0
+```
+
+### 📝 Issue Management
+
+#### createIssue
+Create a new issue.
+
 ```bash
-cli-tool.mjs createComment --issue-id issue-1 --body "@cyrus please fix" --mention-agent
+cyrus-cli createIssue --title <title> [options]
+
+# Options:
+#   --title         Issue title (required)
+#   --description   Issue description
+#   --assignee-id   User ID to assign
+#   --team-id       Team ID (default: team-1)
+#   --state-id      Workflow state ID (default: state-todo)
 ```
 
-The `--mention-agent` flag triggers an agent session automatically.
-
-### Agent Session Management
-
-**Start a session on an issue:**
+**Examples:**
 ```bash
-cli-tool.mjs startSession --issue-id <id>
+# Basic issue
+cyrus-cli createIssue --title "Fix login bug"
+
+# Issue with description
+cyrus-cli createIssue \
+  --title "Add dark mode" \
+  --description "Implement dark mode toggle in settings"
+
+# Assign to agent immediately
+cyrus-cli createIssue \
+  --title "Refactor API" \
+  --assignee-id agent-user-1
 ```
 
-**Start a session on a comment:**
+#### assignIssue
+Assign or reassign an issue to a user.
+
 ```bash
-cli-tool.mjs startSessionOnComment --comment-id <id>
+cyrus-cli assignIssue --issue-id <id> --assignee-id <user-id>
+
+# Options:
+#   --issue-id      Issue ID (required)
+#   --assignee-id   User ID to assign (omit to unassign)
 ```
 
-**View session details:**
+**Examples:**
 ```bash
-cli-tool.mjs viewSession --session-id <id>
+# Assign to agent
+cyrus-cli assignIssue --issue-id issue-1 --assignee-id agent-user-1
+
+# Reassign to another user
+cyrus-cli assignIssue --issue-id issue-1 --assignee-id user-2
+
+# Unassign
+cyrus-cli assignIssue --issue-id issue-1
 ```
 
-**Send a prompt to a session:**
+### 💬 Comment Management
+
+#### createComment
+Create a comment on an issue.
+
 ```bash
-cli-tool.mjs promptSession --session-id <id> --message "Your prompt here"
+cyrus-cli createComment --issue-id <id> --body <text> [options]
+
+# Options:
+#   --issue-id       Issue ID (required)
+#   --body           Comment text (required)
+#   --mention-agent  Mention agent (triggers session)
 ```
 
-**Stop a session:**
+**Examples:**
 ```bash
-cli-tool.mjs stopSession --session-id <id>
+# Regular comment
+cyrus-cli createComment \
+  --issue-id issue-1 \
+  --body "This is blocking production"
+
+# Mention agent (triggers session)
+cyrus-cli createComment \
+  --issue-id issue-1 \
+  --body "Please fix this urgently" \
+  --mention-agent
 ```
 
-### Team & Labels
+### 🤖 Agent Sessions
 
-**List all labels:**
+#### startSession
+Start an agent session on an issue.
+
 ```bash
-cli-tool.mjs fetchLabels
+cyrus-cli startSession --issue-id <id>
 ```
 
-**List all team members:**
+**Example:**
 ```bash
-cli-tool.mjs fetchMembers
+cyrus-cli startSession --issue-id issue-1
 ```
 
-**Create a label:**
+#### startSessionOnComment
+Start an agent session on a root comment.
+
 ```bash
-cli-tool.mjs createLabel --name "bug" [--color "#ff0000"]
+cyrus-cli startSessionOnComment --comment-id <id>
 ```
 
-**Create a team member:**
+**Example:**
 ```bash
-cli-tool.mjs createMember --name "John Doe" [--email "john@example.com"]
+cyrus-cli startSessionOnComment --comment-id comment-1
 ```
 
-### Debugging
+#### viewSession
+View agent session with **pagination** and **search**.
 
-**Get entire state:**
 ```bash
-cli-tool.mjs getState
+cyrus-cli viewSession --session-id <id> [options]
+
+# Options:
+#   --session-id   Session ID (required)
+#   --limit        Number of activities to show (default: 20)
+#   --offset       Starting offset (default: 0)
+#   --search       Search term to filter activities
 ```
 
-This returns the complete in-memory state including all issues, comments, sessions, labels, and users.
+**Output:**
+```
+→ Connecting to http://localhost:3457/cli/rpc...
+✓ Connected
+
+✅ Agent Session
+
+   ID: session-1
+   Status: pending
+   Type: issue
+   Issue ID: issue-1
+   Created: 1/27/2025, 10:30:00 AM
+   Updated: 1/27/2025, 10:35:00 AM
+
+📝 Activities (showing 10 of 25)
+
+1. activity-25 [STOP]
+   1/27/2025, 10:35:00 AM • Prompt
+   STOP
+
+2. activity-24
+   1/27/2025, 10:34:50 AM • Prompt
+   Test activity 15
+
+...
+
+→ More activities available. Use --offset 10 to see next page.
+```
+
+**Examples:**
+```bash
+# View first 10 activities
+cyrus-cli viewSession --session-id session-1 --limit 10
+
+# View next 10 activities
+cyrus-cli viewSession --session-id session-1 --limit 10 --offset 10
+
+# Search for errors
+cyrus-cli viewSession --session-id session-1 --search "error"
+
+# Search and limit
+cyrus-cli viewSession --session-id session-1 --search "bug" --limit 5
+```
+
+**Activity Pagination Features:**
+- ✅ Most recent activities first (reverse chronological)
+- ✅ Configurable page size with `--limit`
+- ✅ Offset-based pagination with `--offset`
+- ✅ Full-text search with `--search` (searches body, type, and ID)
+- ✅ Shows total count and current page range
+- ✅ Helpful navigation hints for next/previous pages
+
+#### promptSession
+Send a message to an agent session.
+
+```bash
+cyrus-cli promptSession --session-id <id> --message <text>
+```
+
+**Example:**
+```bash
+cyrus-cli promptSession \
+  --session-id session-1 \
+  --message "Please add error handling"
+```
+
+#### stopSession
+Stop a running agent session.
+
+```bash
+cyrus-cli stopSession --session-id <id>
+```
+
+**Example:**
+```bash
+cyrus-cli stopSession --session-id session-1
+```
+
+### 👥 Team & Labels
+
+#### fetchMembers
+List all team members.
+
+```bash
+cyrus-cli fetchMembers
+```
+
+#### createMember
+Create a new team member.
+
+```bash
+cyrus-cli createMember --name <name> [--email <email>]
+```
+
+**Examples:**
+```bash
+cyrus-cli createMember --name "Alice"
+cyrus-cli createMember --name "Bob" --email "bob@example.com"
+```
+
+#### fetchLabels
+List all labels.
+
+```bash
+cyrus-cli fetchLabels
+```
+
+#### createLabel
+Create a new label.
+
+```bash
+cyrus-cli createLabel --name <name> [--color <hex>]
+```
+
+**Examples:**
+```bash
+cyrus-cli createLabel --name "bug"
+cyrus-cli createLabel --name "urgent" --color "#ff0000"
+```
+
+### 🐛 Debugging
+
+#### getState
+Get entire in-memory state (for debugging).
+
+```bash
+cyrus-cli getState
+```
+
+**Output:** Complete JSON dump of:
+- Issues
+- Comments
+- Sessions
+- Labels
+- Users
+- Teams
+- Workflow states
 
 ## Environment Variables
 
-- `CYRUS_PORT` - Port where Cyrus server is running (default: 3457)
+### CYRUS_PORT
+Server port (default: 3457)
 
-Set the port when using the CLI tool:
-
+**Usage:**
 ```bash
-CYRUS_PORT=8080 cli-tool.mjs fetchMembers
+# Set before starting server
+CYRUS_PORT=8080 node start-cli-server.mjs
+
+# Set when using CLI tool
+CYRUS_PORT=8080 cyrus-cli ping
 ```
 
-## Examples
-
-### Complete Workflow
+### DEBUG
+Enable debug mode for stack traces.
 
 ```bash
-# Terminal 1: Start server
-node start-cli-server.mjs
+DEBUG=1 cyrus-cli createIssue --title "Test"
+```
 
-# Terminal 2: Interact with server
+## Error Handling
 
+The CLI provides professional, actionable error messages:
+
+### Missing Required Parameter
+```bash
+$ cyrus-cli createIssue
+
+❌ Missing required parameter: --title
+
+   Run cli-tool.mjs createIssue --help for usage.
+```
+
+### Connection Failed
+```bash
+$ cyrus-cli ping
+
+❌ Cannot connect to Cyrus server
+
+   Server URL: http://localhost:3457/cli/rpc
+   Make sure the CLI server is running.
+   Start it with: node start-cli-server.mjs
+```
+
+### Unknown Command
+```bash
+$ cyrus-cli unknownCommand
+
+❌ Unknown command: unknownCommand
+
+   Run cli-tool.mjs help to see all commands.
+   Run cli-tool.mjs unknownCommand --help for command-specific help.
+```
+
+### Invalid Resource
+```bash
+$ cyrus-cli viewSession --session-id invalid-999
+
+❌ Error: Agent session not found: invalid-999
+```
+
+## Complete Workflow Examples
+
+### Example 1: Create Issue and Start Session
+
+```bash
 # 1. Create an issue
-cli-tool.mjs createIssue --title "Implement dark mode" \
-  --description "Add dark mode toggle to settings"
+cyrus-cli createIssue \
+  --title "Fix authentication bug" \
+  --description "Users cannot login with OAuth"
 
 # Output: { "id": "issue-1", "identifier": "CLI-1", ... }
 
-# 2. Create a comment mentioning the agent
-cli-tool.mjs createComment --issue-id issue-1 \
-  --body "@cyrus can you implement this?" \
-  --mention-agent
+# 2. Assign to agent
+cyrus-cli assignIssue --issue-id issue-1 --assignee-id agent-user-1
 
-# This automatically triggers an agent session
+# 3. Start agent session
+cyrus-cli startSession --issue-id issue-1
 
-# 3. List all issues (via getState)
-cli-tool.mjs getState | jq '.issues'
+# Output: { "agentSessionId": "session-1", ... }
 
-# 4. View team members
-cli-tool.mjs fetchMembers
+# 4. View session progress
+cyrus-cli viewSession --session-id session-1 --limit 5
 
-# 5. Start another session manually
-cli-tool.mjs startSession --issue-id issue-1
+# 5. Send additional instructions
+cyrus-cli promptSession \
+  --session-id session-1 \
+  --message "Make sure to add error handling"
 
-# 6. View the session
-cli-tool.mjs viewSession --session-id session-1
+# 6. View updated session
+cyrus-cli viewSession --session-id session-1
 ```
 
-### Integration with Scripts
+### Example 2: Activity Pagination Workflow
+
+```bash
+# Start a session and add many activities
+cyrus-cli startSession --issue-id issue-1
+# (session-1 is created)
+
+# Add 50+ activities via prompts...
+# (activities accumulate over time)
+
+# View most recent 10
+cyrus-cli viewSession --session-id session-1 --limit 10
+
+# View next page
+cyrus-cli viewSession --session-id session-1 --limit 10 --offset 10
+
+# Search for errors
+cyrus-cli viewSession --session-id session-1 --search "error"
+
+# Search for specific activity
+cyrus-cli viewSession --session-id session-1 --search "activity-42"
+```
+
+### Example 3: Script Integration
 
 ```bash
 #!/bin/bash
 # create-issue-and-assign.sh
 
-# Create an issue
-ISSUE_JSON=$(cli-tool.mjs createIssue --title "$1" --description "$2")
+# Create issue and capture ID
+ISSUE_JSON=$(cyrus-cli createIssue --title "$1" --description "$2")
 ISSUE_ID=$(echo "$ISSUE_JSON" | jq -r '.id')
 
 echo "Created issue: $ISSUE_ID"
 
-# Start an agent session on it
-SESSION_JSON=$(cli-tool.mjs startSession --issue-id "$ISSUE_ID")
+# Assign to agent
+cyrus-cli assignIssue --issue-id "$ISSUE_ID" --assignee-id agent-user-1
+
+# Start session
+SESSION_JSON=$(cyrus-cli startSession --issue-id "$ISSUE_ID")
 SESSION_ID=$(echo "$SESSION_JSON" | jq -r '.agentSessionId')
 
 echo "Started session: $SESSION_ID"
 
-# View the session
-cli-tool.mjs viewSession --session-id "$SESSION_ID"
+# Monitor progress
+while true; do
+  clear
+  cyrus-cli viewSession --session-id "$SESSION_ID" --limit 5
+  sleep 5
+done
 ```
 
-Usage:
+**Usage:**
 ```bash
 ./create-issue-and-assign.sh "Fix bug" "This is urgent"
 ```
 
-### CI/CD Integration
+## Testing
 
-```yaml
-# .github/workflows/test.yml
-name: Test with Cyrus CLI
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Start Cyrus CLI server
-        run: |
-          node start-cli-server.mjs &
-          sleep 3
-
-      - name: Create test issue
-        run: |
-          cli-tool.mjs createIssue \
-            --title "CI Test Issue" \
-            --description "Automated test"
-
-      - name: Run tests
-        run: npm test
-```
-
-## Help
-
-View all available commands:
+### Run the Test Drive Script
 
 ```bash
-cli-tool.mjs help
-# or
-cli-tool.mjs --help
-# or
-cli-tool.mjs
+./test-drive-lamborghini-cli.sh
 ```
+
+This comprehensive test script demonstrates:
+- ✅ All health commands
+- ✅ Help system (general + per-command)
+- ✅ Issue and member creation
+- ✅ assignIssue command
+- ✅ Agent sessions
+- ✅ Activity pagination with 15+ activities
+- ✅ Activity search
+- ✅ Error handling for edge cases
+- ✅ Beautiful formatted output
+
+### Manual Testing Checklist
+
+- [ ] Server starts successfully with colors
+- [ ] `ping` shows connection feedback
+- [ ] `status` shows version and uptime
+- [ ] General `help` displays all commands
+- [ ] Per-command `--help` shows detailed usage
+- [ ] `createIssue` creates issues with all options
+- [ ] `assignIssue` assigns and reassigns users
+- [ ] `viewSession` shows paginated activities
+- [ ] `--limit` and `--offset` work correctly
+- [ ] `--search` filters activities
+- [ ] Most recent activities appear first
+- [ ] Navigation hints show next/previous pages
+- [ ] Error messages are clear and actionable
+- [ ] All output uses colors appropriately
 
 ## Troubleshooting
 
-**Error: Cannot connect to Cyrus server**
-```
-❌ Error: Cannot connect to Cyrus server at http://localhost:3457/cli/rpc
-   Make sure Cyrus is running with CLI platform enabled.
-   Set CYRUS_PORT environment variable if using a different port.
-```
-
-Solution: Make sure `start-cli-server.mjs` is running.
-
-**Port already in use**
-```
+### Port Already in Use
+```bash
 Error: listen EADDRINUSE: address already in use
 ```
 
-Solution: Use a different port:
+**Solution:** Use a different port:
 ```bash
 CYRUS_PORT=8080 node start-cli-server.mjs
-CYRUS_PORT=8080 cli-tool.mjs fetchMembers
+CYRUS_PORT=8080 cyrus-cli ping
 ```
 
-**Unknown command**
+### Cannot Connect to Server
+```bash
+❌ Cannot connect to Cyrus server at http://localhost:3457/cli/rpc
 ```
-❌ Error: Unknown command: xyz
+
+**Solutions:**
+1. Make sure server is running: `node start-cli-server.mjs`
+2. Check correct port: `CYRUS_PORT=<port> cyrus-cli ping`
+3. Verify server log: `cat /tmp/cyrus-cli-server.log`
+
+### Module Not Found
+```bash
+Error: Cannot find module './packages/edge-worker/dist/EdgeWorker.js'
 ```
 
-Solution: Run `cli-tool.mjs help` to see available commands.
+**Solution:** Build packages first:
+```bash
+pnpm install
+pnpm build
+```
 
-## Files
+### Activities Not Showing
+If `viewSession` shows no activities:
+- Session may be new (no activities yet)
+- Try adding activities: `cyrus-cli promptSession --session-id X --message "test"`
+- Check `--offset` isn't beyond total count
 
-- `start-cli-server.mjs` - Starts Cyrus EdgeWorker with CLI platform
-- `packages/core/src/issue-tracker/adapters/cli-tool.mjs` - CLI tool for RPC commands
-- `test-cli-platform.mjs` - Integration test script
-- `packages/core/src/issue-tracker/adapters/CLI_USAGE.md` - Complete API reference
+## Performance Notes
+
+- **Pagination**: Default limit is 20 activities for optimal performance
+- **Search**: Full-text search across all activity fields (body, type, ID)
+- **In-Memory**: All data stored in memory (resets on server restart)
+- **Connection**: Each command makes one RPC call (efficient)
+
+## Architecture
+
+```
+┌─────────────────┐
+│   cli-tool.mjs  │  ← Beautiful CLI with colors & help
+│   (Client)      │
+└────────┬────────┘
+         │ HTTP POST /cli/rpc
+         ↓
+┌─────────────────────┐
+│   CLIRPCServer.ts   │  ← RPC endpoint handler
+│   (FastifyServer)   │
+└────────┬────────────┘
+         │
+         ↓
+┌──────────────────────────┐
+│  CLIIssueTrackerService  │  ← In-memory storage
+│  (implements             │
+│   IIssueTrackerService)  │
+└──────────────────────────┘
+```
+
+## Contributing
+
+When adding new commands:
+
+1. **Add to `cli-tool.mjs`:**
+   - Add case in switch statement
+   - Add to `showHelp()` function
+   - Add to `showCommandHelp()` with examples
+
+2. **Add to `CLIRPCServer.ts`:**
+   - Add to `RPCCommand` type
+   - Add handler in `handleCommand()` switch
+
+3. **Add to `CLIIssueTrackerService.ts`:**
+   - Implement service method if needed
+
+4. **Update documentation:**
+   - Add to this README
+   - Add to test drive script
+   - Update CLAUDE.md
+
+## Version History
+
+- **v1.0.0** - Lamborghini CLI Release
+  - ✨ Beautiful colored output
+  - 📄 Activity pagination (`--limit`, `--offset`)
+  - 🔍 Activity search (`--search`)
+  - 💡 Per-command help (`--help`)
+  - 🏥 Health commands (`ping`, `status`, `version`)
+  - 🔗 Connection feedback
+  - ⚡ assignIssue command
+  - 🚀 Portable server startup
+  - ❌ Professional error messages
+  - 📝 Comprehensive documentation
 
 ## See Also
 
-- [CLI_USAGE.md](packages/core/src/issue-tracker/adapters/CLI_USAGE.md) - Complete API reference with HTTP/JSON-RPC details
-- [test-cli-platform.mjs](test-cli-platform.mjs) - Integration test examples
+- **CLAUDE.md** - "Driving the Lamborghini CLI" guide
+- **test-drive-lamborghini-cli.sh** - Comprehensive test script
+- **start-cli-server.mjs** - Server startup script
+
+---
+
+**🏎️  Built with premium quality. Drive with confidence. 🏎️**
