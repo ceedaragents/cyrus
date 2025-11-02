@@ -1434,7 +1434,10 @@ export class EdgeWorker extends EventEmitter {
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
 		// Fetch labels early (needed for label override check)
-		const labelNames = fullIssue.labels?.map((l) => l.name) || [];
+		const labelNames =
+			((fullIssue as unknown as { labels?: { name: string }[] }).labels?.map(
+				(l) => l.name,
+			) as string[]) || [];
 
 		// Check for label overrides BEFORE AI routing
 		const debuggerConfig = repository.labelPrompts?.debugger;
@@ -3683,24 +3686,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		commentTimestamp?: string,
 	): Promise<string> {
 		// Fetch labels for system prompt determination
-		let labelNames: string[] = [];
-		try {
-			const labelsData = (fullIssue as any).labels;
-			if (labelsData) {
-				// Handle both direct arrays and promises
-				const resolvedLabels = Array.isArray(labelsData)
-					? labelsData
-					: await labelsData;
-				if (Array.isArray(resolvedLabels)) {
-					labelNames = resolvedLabels.map((l: any) => l.name);
-				}
-			}
-		} catch (error) {
-			console.debug(
-				`[EdgeWorker] Could not fetch labels for issue ${fullIssue.identifier}:`,
-				error,
-			);
-		}
+		const labelNames =
+			((fullIssue as unknown as { labels?: { name: string }[] }).labels?.map(
+				(l) => l.name,
+			) as string[]) || [];
 
 		// Create input for unified prompt assembly
 		const input: PromptAssemblyInput = {
@@ -4752,24 +4741,10 @@ ${input.userComment}
 		}
 
 		// Fetch issue labels and determine system prompt
-		let labelNames: string[] = [];
-		try {
-			const labelsData = (fullIssue as any).labels;
-			if (labelsData) {
-				// Handle both direct arrays and promises
-				const resolvedLabels = Array.isArray(labelsData)
-					? labelsData
-					: await labelsData;
-				if (Array.isArray(resolvedLabels)) {
-					labelNames = resolvedLabels.map((l: any) => l.name);
-				}
-			}
-		} catch (error) {
-			console.debug(
-				`[resumeClaudeSession] Could not fetch labels for issue ${fullIssue.identifier}:`,
-				error,
-			);
-		}
+		const labelNames =
+			((fullIssue as unknown as { labels?: { name: string }[] }).labels?.map(
+				(l) => l.name,
+			) as string[]) || [];
 
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labelNames,
@@ -4901,7 +4876,7 @@ ${input.userComment}
 			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`);
 			const fullIssue = (await issueTracker.fetchIssue(
 				issueId,
-			)) as any as LinearIssue;
+			)) as unknown as LinearIssue;
 			console.log(
 				`[EdgeWorker] Successfully fetched issue details for ${issueId}`,
 			);
