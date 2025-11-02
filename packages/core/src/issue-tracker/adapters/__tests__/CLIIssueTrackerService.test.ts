@@ -398,6 +398,123 @@ describe("CLIIssueTrackerService", () => {
 			expect(activities).toHaveLength(2);
 		});
 
+		it("should create an ephemeral activity that gets replaced", async () => {
+			const issue = await service.createIssue({
+				title: "Test Issue",
+			});
+
+			const response = await service.createAgentSessionOnIssue({
+				issueId: issue.id,
+			});
+
+			// Create first ephemeral activity
+			const ephemeralActivity1 = await service.createAgentActivity(
+				response.agentSessionId,
+				{
+					type: AgentActivityContentType.Action,
+					body: "Ephemeral activity 1",
+				},
+				{ ephemeral: true },
+			);
+
+			expect(ephemeralActivity1.ephemeral).toBe(true);
+
+			// Verify it exists
+			let activities = await service.fetchAgentActivities(
+				response.agentSessionId,
+			);
+			expect(activities).toHaveLength(1);
+			expect(activities[0].content.body).toBe("Ephemeral activity 1");
+
+			// Create second ephemeral activity - should replace the first
+			const ephemeralActivity2 = await service.createAgentActivity(
+				response.agentSessionId,
+				{
+					type: AgentActivityContentType.Action,
+					body: "Ephemeral activity 2",
+				},
+				{ ephemeral: true },
+			);
+
+			// Verify the first ephemeral was replaced
+			activities = await service.fetchAgentActivities(response.agentSessionId);
+			expect(activities).toHaveLength(1);
+			expect(activities[0].content.body).toBe("Ephemeral activity 2");
+			expect(activities[0].id).toBe(ephemeralActivity2.id);
+		});
+
+		it("should replace ephemeral activity with non-ephemeral", async () => {
+			const issue = await service.createIssue({
+				title: "Test Issue",
+			});
+
+			const response = await service.createAgentSessionOnIssue({
+				issueId: issue.id,
+			});
+
+			// Create ephemeral activity
+			await service.createAgentActivity(
+				response.agentSessionId,
+				{
+					type: AgentActivityContentType.Action,
+					body: "Ephemeral progress",
+				},
+				{ ephemeral: true },
+			);
+
+			// Create non-ephemeral activity - should replace the ephemeral
+			await service.createAgentActivity(
+				response.agentSessionId,
+				{
+					type: AgentActivityContentType.Response,
+					body: "Final result",
+				},
+				{ ephemeral: false },
+			);
+
+			// Verify ephemeral was replaced by non-ephemeral
+			const activities = await service.fetchAgentActivities(
+				response.agentSessionId,
+			);
+			expect(activities).toHaveLength(1);
+			expect(activities[0].content.body).toBe("Final result");
+			expect(activities[0].ephemeral).toBe(false);
+		});
+
+		it("should not replace non-ephemeral activities", async () => {
+			const issue = await service.createIssue({
+				title: "Test Issue",
+			});
+
+			const response = await service.createAgentSessionOnIssue({
+				issueId: issue.id,
+			});
+
+			// Create non-ephemeral activity
+			await service.createAgentActivity(
+				response.agentSessionId,
+				{
+					type: AgentActivityContentType.Response,
+					body: "Permanent activity",
+				},
+				{ ephemeral: false },
+			);
+
+			// Create another activity - should NOT replace the previous
+			await service.createAgentActivity(response.agentSessionId, {
+				type: AgentActivityContentType.Response,
+				body: "Another activity",
+			});
+
+			// Verify both exist
+			const activities = await service.fetchAgentActivities(
+				response.agentSessionId,
+			);
+			expect(activities).toHaveLength(2);
+			expect(activities[0].content.body).toBe("Permanent activity");
+			expect(activities[1].content.body).toBe("Another activity");
+		});
+
 		it("should send prompt to agent session", async () => {
 			const issue = await service.createIssue({
 				title: "Test Issue",

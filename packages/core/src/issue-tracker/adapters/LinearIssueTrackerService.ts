@@ -17,6 +17,7 @@ import type { IIssueTrackerService } from "../IIssueTrackerService.js";
 import type {
 	AgentActivity,
 	AgentActivityContent,
+	AgentActivitySignal,
 	AgentSession,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
@@ -700,12 +701,24 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	async createAgentActivity(
 		sessionId: string,
 		content: AgentActivityContent,
+		options?: {
+			ephemeral?: boolean;
+			signal?: AgentActivitySignal;
+			signalMetadata?: Record<string, any>;
+		},
 	): Promise<AgentActivity> {
 		try {
 			const activityContent = toLinearActivityContent(content);
 			const createPayload = await this.linearClient.createAgentActivity({
 				agentSessionId: sessionId,
 				content: activityContent,
+				...(options?.ephemeral !== undefined && {
+					ephemeral: options.ephemeral,
+				}),
+				...(options?.signal !== undefined && { signal: options.signal }),
+				...(options?.signalMetadata !== undefined && {
+					signalMetadata: options.signalMetadata,
+				}),
 			});
 
 			if (!createPayload.success) {
@@ -727,6 +740,11 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					type: content.type,
 					body: content.body,
 				},
+				signal: createdActivity.signal as AgentActivitySignal | undefined,
+				signalMetadata: createdActivity.signalMetadata as
+					| Record<string, any>
+					| undefined,
+				ephemeral: createdActivity.ephemeral,
 				createdAt: createdActivity.createdAt.toISOString(),
 				updatedAt: createdActivity.updatedAt.toISOString(),
 				archivedAt: createdActivity.archivedAt?.toISOString() ?? null,

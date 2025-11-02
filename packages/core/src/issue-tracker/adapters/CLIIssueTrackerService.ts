@@ -39,7 +39,11 @@ import type {
 	User,
 	WorkflowState,
 } from "../types.js";
-import { AgentActivityContentType, WorkflowStateType } from "../types.js";
+import {
+	AgentActivityContentType,
+	AgentActivitySignal,
+	WorkflowStateType,
+} from "../types.js";
 import { CLIEventTransport } from "./CLIEventTransport.js";
 
 /**
@@ -705,8 +709,24 @@ export class CLIIssueTrackerService
 	async createAgentActivity(
 		sessionId: string,
 		content: AgentActivityContent,
+		options?: {
+			ephemeral?: boolean;
+			signal?: AgentActivitySignal;
+			signalMetadata?: Record<string, any>;
+		},
 	): Promise<AgentActivity> {
 		await this.fetchAgentSession(sessionId); // Ensure session exists
+
+		const activities = this.state.agentActivities.get(sessionId) || [];
+
+		// Ephemeral behavior: Remove the previous ephemeral activity if it exists
+		if (activities.length > 0) {
+			const lastActivity = activities[activities.length - 1];
+			if (lastActivity?.ephemeral) {
+				// Remove the last ephemeral activity
+				activities.pop();
+			}
+		}
 
 		const now = this.now();
 		const activity: AgentActivity = {
@@ -714,12 +734,14 @@ export class CLIIssueTrackerService
 			agentSessionId: sessionId,
 			agentContextId: null,
 			content,
+			signal: options?.signal,
+			signalMetadata: options?.signalMetadata,
+			ephemeral: options?.ephemeral ?? false,
 			createdAt: now,
 			updatedAt: now,
 			archivedAt: null,
 		};
 
-		const activities = this.state.agentActivities.get(sessionId) || [];
 		activities.push(activity);
 		this.state.agentActivities.set(sessionId, activities);
 
@@ -770,7 +792,7 @@ export class CLIIssueTrackerService
 				type: AgentActivityContentType.Prompt,
 				body: "STOP",
 			},
-			signal: "stop",
+			signal: AgentActivitySignal.Stop,
 			createdAt: now,
 			updatedAt: now,
 			archivedAt: null,
