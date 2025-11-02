@@ -167,6 +167,128 @@ describe("EdgeWorker - Native Attachments", () => {
 				"No attachments were found in this issue.",
 			);
 		});
+
+		it("should handle platform-agnostic Issue objects without attachments() method (CLI mode)", async () => {
+			// CYPACK-330 fix: CLI mode uses platform-agnostic Issue objects
+			// which don't have an attachments() method - should handle gracefully
+			const platformAgnosticIssue = {
+				id: "issue-999",
+				identifier: "PACK-999",
+				title: "CLI Platform Test Issue",
+				description: "Testing with platform-agnostic Issue object",
+				url: "https://linear.app/test/issue/PACK-999",
+				teamId: "team-1",
+				team: { id: "team-1", name: "Test Team", key: "TEST" },
+				state: { id: "state-1", name: "Todo", type: "unstarted" },
+				assigneeId: "user-1",
+				assignee: {
+					id: "user-1",
+					name: "Test User",
+					email: "test@example.com",
+				},
+				labels: [],
+				priority: 0,
+				parentId: null,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				archivedAt: null,
+				// NOTE: No attachments() method - this is a plain object, not a Linear SDK Issue
+				// Include attachments property (would be populated by CLIIssueTrackerService)
+				attachments: [],
+			} as unknown as LinearIssue;
+
+			const mockLinearClient = {
+				fetchIssue: vi.fn().mockResolvedValue(platformAgnosticIssue),
+				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
+			};
+			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
+
+			// Spy on console.error to verify NO error is logged (fix working)
+			const consoleErrorSpy = vi.spyOn(console, "error");
+
+			// With the fix, this should work without errors
+			const result = await (edgeWorker as any).downloadIssueAttachments(
+				platformAgnosticIssue,
+				mockConfig.repositories[0],
+				"/tmp/workspace",
+			);
+
+			// No error should be logged (fix is working)
+			expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+				expect.stringContaining("Failed to fetch attachments"),
+				expect.any(Error),
+			);
+
+			// Clean up
+			consoleErrorSpy.mockRestore();
+
+			// The result should be returned successfully
+			expect(result).toBeDefined();
+			expect(result.manifest).toContain(
+				"No attachments were found in this issue.",
+			);
+		});
+
+		it("should handle platform-agnostic Issue objects with attachments property", async () => {
+			// Test that platform-agnostic Issue objects with attachments work correctly
+			const platformAgnosticIssueWithAttachments = {
+				id: "issue-1000",
+				identifier: "PACK-1000",
+				title: "CLI Platform Test Issue with Attachments",
+				description:
+					"Testing with platform-agnostic Issue object with attachments",
+				url: "https://linear.app/test/issue/PACK-1000",
+				teamId: "team-1",
+				team: { id: "team-1", name: "Test Team", key: "TEST" },
+				state: { id: "state-1", name: "Todo", type: "unstarted" },
+				assigneeId: "user-1",
+				assignee: {
+					id: "user-1",
+					name: "Test User",
+					email: "test@example.com",
+				},
+				labels: [],
+				priority: 0,
+				parentId: null,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				archivedAt: null,
+				// Platform-agnostic Issue has attachments as a property, not a method
+				attachments: [
+					{
+						id: "attach-1",
+						title: "Test Attachment",
+						url: "https://example.com/attachment1",
+					},
+					{
+						id: "attach-2",
+						title: "Another Attachment",
+						url: "https://example.com/attachment2",
+					},
+				],
+			} as unknown as LinearIssue;
+
+			const mockLinearClient = {
+				fetchIssue: vi
+					.fn()
+					.mockResolvedValue(platformAgnosticIssueWithAttachments),
+				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
+			};
+			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
+
+			const result = await (edgeWorker as any).downloadIssueAttachments(
+				platformAgnosticIssueWithAttachments,
+				mockConfig.repositories[0],
+				"/tmp/workspace",
+			);
+
+			// Should include native attachments in manifest
+			expect(result.manifest).toContain("### Linear Issue Links");
+			expect(result.manifest).toContain("Test Attachment");
+			expect(result.manifest).toContain("https://example.com/attachment1");
+			expect(result.manifest).toContain("Another Attachment");
+			expect(result.manifest).toContain("https://example.com/attachment2");
+		});
 	});
 
 	describe("downloadCommentAttachments", () => {

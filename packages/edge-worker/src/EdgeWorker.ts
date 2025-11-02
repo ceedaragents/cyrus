@@ -1954,6 +1954,52 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Fetch issue attachments for a given issue
+	 * Handles both Linear SDK Issue objects (with attachments() method) and
+	 * platform-agnostic Issue objects (with attachments property)
+	 */
+	private async fetchIssueAttachments(
+		issue: LinearIssue,
+	): Promise<Array<{ title: string; url: string }>> {
+		try {
+			// Cast to any to access attachments - it's either a method or a property
+			const issueAny = issue as any;
+
+			// Check if attachments is a function (Linear SDK Issue) or a property (platform-agnostic Issue)
+			if (typeof issueAny.attachments === "function") {
+				// Linear SDK path: call attachments() method which returns Connection
+				const attachmentsConnection = await issueAny.attachments();
+				return attachmentsConnection.nodes.map((attachment: any) => ({
+					title: attachment.title || "Untitled attachment",
+					url: attachment.url,
+				}));
+			}
+
+			// Platform-agnostic path: access attachments property (Attachment[] | Promise<Attachment[]>)
+			const attachmentsOrPromise = issueAny.attachments;
+
+			if (!attachmentsOrPromise) {
+				return [];
+			}
+
+			// Resolve if it's a Promise, otherwise use directly
+			const attachments = await Promise.resolve(attachmentsOrPromise);
+
+			// Extract title and URL from Attachment[] array
+			return attachments.map((attachment: any) => ({
+				title: attachment.title || "Untitled attachment",
+				url: attachment.url,
+			}));
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to fetch attachments for issue ${issue.id}:`,
+				error,
+			);
+			return [];
+		}
+	}
+
+	/**
 	 * Determine system prompt based on issue labels and repository configuration
 	 */
 	private async determineSystemPromptFromLabels(
@@ -2934,27 +2980,17 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			const linearClient = this.issueTrackers.get(repository.id);
 
 			// Fetch native Linear attachments (e.g., Sentry links)
-			const nativeAttachments: Array<{ title: string; url: string }> = [];
+			// Use the helper method that handles both Linear SDK and platform-agnostic Issue objects
+			let nativeAttachments: Array<{ title: string; url: string }> = [];
 			if (linearClient && issue.id) {
-				try {
-					// Fetch native attachments using Linear SDK
+				console.log(
+					`[EdgeWorker] Fetching native attachments for issue ${issue.identifier}`,
+				);
+				nativeAttachments = await this.fetchIssueAttachments(issue);
+				if (nativeAttachments.length > 0) {
 					console.log(
-						`[EdgeWorker] Fetching native attachments for issue ${issue.identifier}`,
+						`[EdgeWorker] Found ${nativeAttachments.length} native attachments`,
 					);
-					const attachments = await issue.attachments();
-					if (attachments?.nodes) {
-						for (const attachment of attachments.nodes) {
-							nativeAttachments.push({
-								title: attachment.title || "Untitled attachment",
-								url: attachment.url,
-							});
-						}
-						console.log(
-							`[EdgeWorker] Found ${nativeAttachments.length} native attachments`,
-						);
-					}
-				} catch (error) {
-					console.error("Failed to fetch native attachments:", error);
 				}
 
 				try {
