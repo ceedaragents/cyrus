@@ -18,6 +18,7 @@ export type RPCCommand =
 	| { method: "ping"; params?: Record<string, never> }
 	| { method: "status"; params?: Record<string, never> }
 	| { method: "viewAgentSession"; params: { sessionId: string } }
+	| { method: "getActivity"; params: { sessionId: string; activityId: string } }
 	| {
 			method: "promptAgentSession";
 			params: { sessionId: string; message: string };
@@ -277,6 +278,25 @@ export class CLIRPCServer {
 				return {
 					success: true,
 					data: { session, activities },
+				};
+			}
+
+			case "getActivity": {
+				const activities = await this.issueTrackerService.fetchAgentActivities(
+					command.params.sessionId,
+				);
+				const activity = activities.find(
+					(a) => a.id === command.params.activityId,
+				);
+				if (!activity) {
+					return {
+						success: false,
+						error: `Activity not found: ${command.params.activityId}`,
+					};
+				}
+				return {
+					success: true,
+					data: activity,
 				};
 			}
 

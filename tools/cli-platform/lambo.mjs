@@ -197,7 +197,7 @@ function displayResult(result) {
  * Display paginated activities with search
  */
 function displayActivities(activities, options = {}) {
-  const { limit = 20, offset = 0, search = "" } = options;
+  const { limit = 20, offset = 0, search = "", full = false, previewLength = 200 } = options;
 
   // Filter by search term
   let filtered = activities;
@@ -247,12 +247,33 @@ function displayActivities(activities, options = {}) {
     const body = activity.content?.body || "";
     const signal = activity.signal ? ` [${c.warning(activity.signal.toUpperCase())}]` : "";
 
+    // Color-code activity types with emojis
+    let typeDisplay;
+    switch (type) {
+      case "thought":
+        typeDisplay = `💭 ${c.info(type)}`;
+        break;
+      case "action":
+        typeDisplay = `⚡ ${c.warning(type)}`;
+        break;
+      case "tool_use":
+        typeDisplay = `🔧 ${c.success(type)}`;
+        break;
+      case "error":
+        typeDisplay = `❌ ${c.error(type)}`;
+        break;
+      default:
+        typeDisplay = c.dim(type);
+    }
+
     console.log(c.bold(`${num}. ${activity.id}`) + signal);
-    console.log(c.dim(`   ${date} • ${type}`));
+    console.log(c.dim(`   ${date} • `) + typeDisplay);
 
     if (body) {
-      const preview = body.length > 100 ? body.slice(0, 100) + "..." : body;
-      console.log(`   ${preview.split("\n").join("\n   ")}`);
+      const displayBody = full
+        ? body
+        : (body.length > previewLength ? body.slice(0, previewLength) + "..." : body);
+      console.log(`   ${displayBody.split("\n").join("\n   ")}`);
     }
 
     console.log();
@@ -305,6 +326,7 @@ function showHelp() {
   console.log(`    ${c.command("startSession")}            Start an agent session on an issue`);
   console.log(`    ${c.command("startSessionOnComment")}   Start an agent session on a comment`);
   console.log(`    ${c.command("viewSession")}             View agent session with pagination`);
+  console.log(`    ${c.command("getActivity")}             View a single activity's full details`);
   console.log(`    ${c.command("promptSession")}           Send a prompt to an agent session`);
   console.log(`    ${c.command("stopSession")}             Stop an agent session`);
   console.log();
@@ -432,11 +454,15 @@ function showCommandHelp(command) {
         { name: "--limit", description: "Number of activities to show (default: 20)" },
         { name: "--offset", description: "Starting offset for pagination (default: 0)" },
         { name: "--search", description: "Search term to filter activities" },
+        { name: "--full", description: "Show complete activity bodies (no truncation)" },
+        { name: "--preview-length", description: "Characters to show in preview (default: 200)" },
       ],
       examples: [
         "lambo.mjs viewSession --session-id session-1",
         "lambo.mjs viewSession --session-id session-1 --limit 10 --offset 20",
         'lambo.mjs viewSession --session-id session-1 --search "error"',
+        "lambo.mjs viewSession --session-id session-1 --full",
+        "lambo.mjs viewSession --session-id session-1 --preview-length 500",
       ],
     },
     promptSession: {
@@ -457,6 +483,17 @@ function showCommandHelp(command) {
         { name: "--session-id", required: true, description: "Session ID (required)" },
       ],
       examples: ["lambo.mjs stopSession --session-id session-1"],
+    },
+    getActivity: {
+      description: "View a single activity's complete details",
+      usage: "lambo.mjs getActivity --session-id <id> --activity-id <id>",
+      options: [
+        { name: "--session-id", required: true, description: "Session ID (required)" },
+        { name: "--activity-id", required: true, description: "Activity ID (required)" },
+      ],
+      examples: [
+        "lambo.mjs getActivity --session-id session-1 --activity-id activity-5",
+      ],
     },
     fetchLabels: {
       description: "List all labels in the workspace",
@@ -606,8 +643,9 @@ async function main() {
           console.log(c.dim(`   Run ${c.command("lambo.mjs createIssue --help")} for usage.\n`));
           process.exit(1);
         }
-        method = "createIssue";
-        rpcParams = {
+
+        // Special handling for createIssue to highlight the issue ID
+        const result = await rpc("createIssue", {
           title: params.title,
           description: params.description,
           options: {
@@ -615,8 +653,23 @@ async function main() {
             teamId: params.teamId,
             stateId: params.stateId,
           },
-        };
-        break;
+        });
+
+        if (result.success) {
+          const issue = result.data;
+          console.log(c.success(`\n✅ Issue Created: ${c.bold(issue.identifier)}\n`));
+          printJSON(issue);
+          console.log();
+          console.log(c.dim(`💡 Next steps:`));
+          console.log(c.dim(`   • Start session: ${c.command(`lambo startSession --issue-id ${issue.id}`)}`));
+          console.log(c.dim(`   • Assign issue: ${c.command(`lambo assignIssue --issue-id ${issue.id} --assignee-id <user-id>`)}`));
+          console.log();
+        } else {
+          console.error(c.error(`\n❌ Error: ${result.error}\n`));
+          process.exit(1);
+        }
+
+        return; // Exit early, already handled output
       }
 
       case "getIssue": {
@@ -674,9 +727,24 @@ async function main() {
           console.log(c.dim(`   Run ${c.command("lambo.mjs startSession --help")} for usage.\n`));
           process.exit(1);
         }
-        method = "startAgentSessionOnIssue";
-        rpcParams = { issueId: params.issueId };
-        break;
+
+        // Special handling for startSession with helpful next steps
+        const result = await rpc("startAgentSessionOnIssue", { issueId: params.issueId });
+
+        if (result.success) {
+          const sessionId = result.data.agentSessionId;
+          console.log(c.success(`\n✅ Session Started: ${c.bold(sessionId)}\n`));
+          console.log(c.dim(`💡 Next steps:`));
+          console.log(c.dim(`   • View progress: ${c.command(`lambo viewSession --session-id ${sessionId}`)}`));
+          console.log(c.dim(`   • Send message: ${c.command(`lambo promptSession --session-id ${sessionId} --message "..."`)}`));
+          console.log(c.dim(`   • Stop session: ${c.command(`lambo stopSession --session-id ${sessionId}`)}`));
+          console.log();
+        } else {
+          console.error(c.error(`\n❌ Error: ${result.error}\n`));
+          process.exit(1);
+        }
+
+        return; // Exit early, already handled output
       }
 
       case "startSessionOnComment": {
@@ -703,9 +771,29 @@ async function main() {
         if (result.success) {
           const { session, activities } = result.data;
 
+          // Status badge with emoji
+          let statusBadge;
+          switch (session.status) {
+            case "executing":
+              statusBadge = `🟢 ${c.success(session.status)}`;
+              break;
+            case "pending":
+              statusBadge = `⚪ ${c.dim(session.status)}`;
+              break;
+            case "waiting":
+              statusBadge = `🟡 ${c.warning(session.status)}`;
+              break;
+            case "stopped":
+            case "failed":
+              statusBadge = `🔴 ${c.error(session.status)}`;
+              break;
+            default:
+              statusBadge = c.value(session.status);
+          }
+
           console.log(c.success("\n✅ Agent Session\n"));
           console.log(`   ${c.bold("ID:")} ${c.value(session.id)}`);
-          console.log(`   ${c.bold("Status:")} ${c.value(session.status)}`);
+          console.log(`   ${c.bold("Status:")} ${statusBadge}`);
           console.log(`   ${c.bold("Type:")} ${c.value(session.type)}`);
           console.log(`   ${c.bold("Issue ID:")} ${c.value(session.issueId)}`);
           if (session.commentId) {
@@ -719,6 +807,8 @@ async function main() {
             limit: params.limit,
             offset: params.offset,
             search: params.search,
+            full: params.full,
+            previewLength: params.previewLength,
           });
         } else {
           console.error(c.error(`\n❌ Error: ${result.error}\n`));
@@ -752,6 +842,43 @@ async function main() {
         method = "stopAgentSession";
         rpcParams = { sessionId: params.sessionId };
         break;
+      }
+
+      case "getActivity": {
+        if (!params.sessionId || !params.activityId) {
+          console.error(c.error("\n❌ Missing required parameters\n"));
+          console.log(c.dim("   Required: --session-id and --activity-id"));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs getActivity --help")} for usage.\n`));
+          process.exit(1);
+        }
+
+        // Special handling for getActivity to display full activity details
+        const result = await rpc("getActivity", {
+          sessionId: params.sessionId,
+          activityId: params.activityId,
+        });
+
+        if (result.success) {
+          const activity = result.data;
+          console.log(c.success("\n✅ Activity Details\n"));
+          console.log(`   ${c.bold("ID:")} ${c.value(activity.id)}`);
+          console.log(`   ${c.bold("Type:")} ${c.value(activity.content?.type || "unknown")}`);
+          console.log(`   ${c.bold("Created:")} ${c.dim(new Date(activity.createdAt).toLocaleString())}`);
+          if (activity.signal) {
+            console.log(`   ${c.bold("Signal:")} ${c.warning(activity.signal.toUpperCase())}`);
+          }
+          console.log();
+          console.log(c.bold("Body:"));
+          console.log();
+          const body = activity.content?.body || "(no content)";
+          console.log(body.split("\n").map(line => `   ${line}`).join("\n"));
+          console.log();
+        } else {
+          console.error(c.error(`\n❌ Error: ${result.error}\n`));
+          process.exit(1);
+        }
+
+        return; // Exit early, already handled output
       }
 
       // ====================================================================
