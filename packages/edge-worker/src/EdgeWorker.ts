@@ -230,24 +230,23 @@ export class EdgeWorker extends EventEmitter {
 							`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
 						);
 
-						// Load subroutine prompt
-						const __filename = fileURLToPath(import.meta.url);
-						const __dirname = dirname(__filename);
-						const subroutinePromptPath = join(
-							__dirname,
-							"prompts",
-							nextSubroutine.promptPath,
-						);
+						// Get workspace slug from session metadata for proper @mention formatting
+						const workspaceSlug = session.metadata?.workspaceSlug;
 
-						let subroutinePrompt: string;
+						// Load subroutine prompt
+						let subroutinePrompt: string | null;
 						try {
-							subroutinePrompt = await readFile(subroutinePromptPath, "utf-8");
-							console.log(
-								`[Subroutine Transition] Loaded ${nextSubroutine.name} subroutine prompt (${subroutinePrompt.length} characters)`,
+							subroutinePrompt = await this.loadSubroutinePrompt(
+								nextSubroutine,
+								workspaceSlug,
 							);
+							if (!subroutinePrompt) {
+								// Fallback if loadSubroutinePrompt returns null
+								subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
+							}
 						} catch (error) {
 							console.error(
-								`[Subroutine Transition] Failed to load subroutine prompt from ${subroutinePromptPath}:`,
+								`[Subroutine Transition] Failed to load subroutine prompt:`,
 								error,
 							);
 							// Fallback to simple prompt
@@ -1236,6 +1235,14 @@ export class EdgeWorker extends EventEmitter {
 			throw new Error(
 				`Failed to create session for agent activity session ${linearAgentActivitySessionId}`,
 			);
+		}
+
+		// Store workspace slug in session metadata for use in subroutine prompts
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+		if (fullIssue.url) {
+			session.metadata.workspaceSlug = this.extractWorkspaceSlug(fullIssue.url);
 		}
 
 		// Download attachments before creating Claude runner
@@ -3642,8 +3649,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 		let subroutineName: string | undefined;
 		if (currentSubroutine) {
-			const subroutinePrompt =
-				await this.loadSubroutinePrompt(currentSubroutine);
+			// Extract workspace slug from issue URL for proper @mention formatting
+			const workspaceSlug = input.fullIssue.url
+				? this.extractWorkspaceSlug(input.fullIssue.url)
+				: undefined;
+
+			const subroutinePrompt = await this.loadSubroutinePrompt(
+				currentSubroutine,
+				workspaceSlug,
+			);
 			if (subroutinePrompt) {
 				parts.push(subroutinePrompt);
 				components.push("subroutine-prompt");
@@ -3748,11 +3762,30 @@ ${input.userComment}
 	}
 
 	/**
+	 * Extract the workspace slug from a Linear issue URL
+	 * URL format: https://linear.app/{workspace}/issue/{identifier}/...
+	 */
+	private extractWorkspaceSlug(issueUrl: string): string {
+		try {
+			const url = new URL(issueUrl);
+			const pathParts = url.pathname.split("/").filter((p) => p);
+			// First part after the domain is the workspace slug
+			return pathParts[0] || "linear";
+		} catch (_error) {
+			console.warn(
+				`[EdgeWorker] Failed to parse issue URL ${issueUrl}, using default workspace`,
+			);
+			return "linear";
+		}
+	}
+
+	/**
 	 * Load a subroutine prompt file
 	 * Extracted helper to make prompt assembly more readable
 	 */
 	private async loadSubroutinePrompt(
 		subroutine: SubroutineDefinition,
+		workspaceSlug?: string,
 	): Promise<string | null> {
 		const __filename = fileURLToPath(import.meta.url);
 		const __dirname = dirname(__filename);
@@ -3763,10 +3796,19 @@ ${input.userComment}
 		);
 
 		try {
-			const prompt = await readFile(subroutinePromptPath, "utf-8");
+			let prompt = await readFile(subroutinePromptPath, "utf-8");
 			console.log(
 				`[EdgeWorker] Loaded ${subroutine.name} subroutine prompt (${prompt.length} characters)`,
 			);
+
+			// Perform template substitution if workspace slug is provided
+			if (workspaceSlug) {
+				prompt = prompt.replace(
+					/https:\/\/linear\.app\/linear\/profiles\//g,
+					`https://linear.app/${workspaceSlug}/profiles/`,
+				);
+			}
+
 			return prompt;
 		} catch (error) {
 			console.warn(
