@@ -44,7 +44,10 @@ export interface RepositoryConfig {
 	repositoryPath: string; // Local git repository path
 	baseBranch: string; // Branch to create worktrees from (main, master, etc.)
 
-	// Linear configuration
+	// Issue tracker platform configuration
+	platform?: "linear" | "cli"; // Issue tracker platform type (default: "linear")
+
+	// Linear configuration (used when platform === "linear" or not specified)
 	linearWorkspaceId: string; // Linear workspace/team ID
 	linearWorkspaceName?: string; // Linear workspace display name (optional, for UI)
 	linearToken: string; // OAuth token for this Linear workspace
@@ -138,6 +141,10 @@ export interface EdgeWorkerConfig {
 
 	// Cyrus home directory
 	cyrusHome: string;
+
+	// Agent configuration (for CLI mode)
+	agentHandle?: string; // The name/handle the agent responds to (e.g., "@cyrus", "cyrus")
+	agentUserId?: string; // The user ID of the agent (for CLI mode)
 
 	// Optional handlers that apps can implement
 	handlers?: {

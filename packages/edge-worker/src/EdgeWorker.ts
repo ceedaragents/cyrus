@@ -47,6 +47,8 @@ import type {
 import {
 	AgentActivityContentType,
 	type AgentEvent,
+	CLIIssueTrackerService,
+	CLIRPCServer,
 	DEFAULT_PROXY_URL,
 	type IAgentEventTransport,
 	type IIssueTrackerService,
@@ -163,12 +165,26 @@ export class EdgeWorker extends EventEmitter {
 
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create Linear client for this repository's workspace
-				const linearClient = new LinearClient({
-					accessToken: repo.linearToken,
-				});
-				// Create issue tracker service (Linear adapter)
-				const issueTracker = new LinearIssueTrackerService(linearClient);
+				// Create issue tracker service based on platform configuration
+				let issueTracker: IIssueTrackerService;
+				if (repo.platform === "cli") {
+					// CLI mode: create CLI issue tracker
+					const agentHandle = config.agentHandle || "@cyrus";
+					const agentUserId = config.agentUserId || "cli-agent-user";
+					issueTracker = new CLIIssueTrackerService({
+						agentHandle,
+						agentUserId,
+					});
+					console.log(
+						`[EdgeWorker] Created CLI issue tracker for ${repo.name} with agent handle: ${agentHandle}`,
+					);
+				} else {
+					// Linear mode (default): create Linear client and issue tracker
+					const linearClient = new LinearClient({
+						accessToken: repo.linearToken,
+					});
+					issueTracker = new LinearIssueTrackerService(linearClient);
+				}
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
@@ -356,12 +372,39 @@ export class EdgeWorker extends EventEmitter {
 		// Register the /webhook endpoint
 		this.agentEventTransport.register();
 
-		console.log(
-			`✅ Linear event transport registered (${verificationMode} mode)`,
-		);
+		console.log(`✅ Event transport registered (${verificationMode} mode)`);
 		console.log(
 			`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
 		);
+
+		// If any repository uses CLI mode, set up RPC server
+		const hasCLIRepo = Array.from(this.repositories.values()).some(
+			(repo) => repo.platform === "cli",
+		);
+		if (hasCLIRepo) {
+			// Get the first CLI issue tracker
+			for (const [repoId, repo] of this.repositories.entries()) {
+				if (repo.platform === "cli") {
+					const cliIssueTracker = this.issueTrackers.get(repoId);
+					if (
+						cliIssueTracker &&
+						cliIssueTracker instanceof CLIIssueTrackerService
+					) {
+						const rpcServer = new CLIRPCServer(
+							this.sharedApplicationServer.getFastifyInstance(),
+							cliIssueTracker,
+						);
+						rpcServer.register();
+						console.log("✅ CLI RPC server registered");
+						console.log(
+							`   RPC endpoint: http://localhost:${this.sharedApplicationServer.getPort()}/cli/rpc`,
+						);
+						console.log(`   Agent handle: ${cliIssueTracker.getAgentHandle()}`);
+						break; // Only set up one RPC server
+					}
+				}
+			}
+		}
 
 		// 2. Create and register ConfigUpdater
 		this.configUpdater = new ConfigUpdater(

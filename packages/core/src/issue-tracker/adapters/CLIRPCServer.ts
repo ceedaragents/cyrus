@@ -1,0 +1,361 @@
+/**
+ * Socket RPC server for controlling CLIIssueTrackerService via remote commands.
+ *
+ * This server provides a JSON-RPC-like interface over HTTP for controlling the
+ * CLI issue tracker. It's designed for testing and development workflows where
+ * you want to programmatically control Cyrus agent sessions.
+ *
+ * @module issue-tracker/adapters/CLIRPCServer
+ */
+
+import type { FastifyInstance } from "fastify";
+import type { CLIIssueTrackerService } from "./CLIIssueTrackerService.js";
+
+/**
+ * RPC command types for the CLI issue tracker.
+ */
+export type RPCCommand =
+	| { method: "viewAgentSession"; params: { sessionId: string } }
+	| {
+			method: "promptAgentSession";
+			params: { sessionId: string; message: string };
+	  }
+	| { method: "stopAgentSession"; params: { sessionId: string } }
+	| {
+			method: "createIssue";
+			params: {
+				title: string;
+				description?: string;
+				options?: Record<string, any>;
+			};
+	  }
+	| {
+			method: "createComment";
+			params: { issueId: string; body: string; mentionAgent?: boolean };
+	  }
+	| { method: "startAgentSessionOnIssue"; params: { issueId: string } }
+	| { method: "startAgentSessionOnComment"; params: { commentId: string } }
+	| {
+			method: "createLabel";
+			params: { name: string; options?: Record<string, any> };
+	  }
+	| {
+			method: "createMember";
+			params: { name: string; options?: Record<string, any> };
+	  }
+	| { method: "fetchLabels"; params?: Record<string, never> }
+	| { method: "fetchMembers"; params?: Record<string, never> }
+	| { method: "getState"; params?: Record<string, never> };
+
+/**
+ * RPC response type.
+ */
+export interface RPCResponse<T = any> {
+	success: boolean;
+	data?: T;
+	error?: string;
+}
+
+/**
+ * Socket RPC server for CLI issue tracker control.
+ *
+ * Registers HTTP endpoints on the Fastify server that accept JSON-RPC commands
+ * and execute them against the CLIIssueTrackerService.
+ *
+ * @example
+ * ```typescript
+ * const rpcServer = new CLIRPCServer(fastifyServer, issueTrackerService);
+ * rpcServer.register();
+ *
+ * // From a client:
+ * // POST /cli/rpc
+ * // {
+ * //   "method": "createIssue",
+ * //   "params": {
+ * //     "title": "Test issue",
+ * //     "description": "This is a test"
+ * //   }
+ * // }
+ * ```
+ */
+export class CLIRPCServer {
+	private fastifyServer: FastifyInstance;
+	private issueTrackerService: CLIIssueTrackerService;
+
+	constructor(
+		fastifyServer: FastifyInstance,
+		issueTrackerService: CLIIssueTrackerService,
+	) {
+		this.fastifyServer = fastifyServer;
+		this.issueTrackerService = issueTrackerService;
+	}
+
+	/**
+	 * Register RPC endpoints with the Fastify server.
+	 */
+	register(): void {
+		// Main RPC endpoint
+		this.fastifyServer.post("/cli/rpc", async (request) => {
+			try {
+				const command = request.body as RPCCommand;
+				const result = await this.handleCommand(command);
+				return result;
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		});
+
+		// Convenience endpoints for common operations
+		this.fastifyServer.post("/cli/issue", async (request) => {
+			try {
+				const params = request.body as any;
+				const issue = await this.issueTrackerService.createIssue(params);
+				return { success: true, data: issue };
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		});
+
+		this.fastifyServer.post("/cli/comment", async (request) => {
+			try {
+				const { issueId, body, mentionAgent } = request.body as any;
+				const finalBody = mentionAgent
+					? `${this.issueTrackerService.getAgentHandle()} ${body}`
+					: body;
+				const comment = await this.issueTrackerService.createComment(issueId, {
+					body: finalBody,
+				});
+				return { success: true, data: comment };
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		});
+
+		this.fastifyServer.post("/cli/session/start", async (request) => {
+			try {
+				const { issueId } = request.body as any;
+				const response =
+					await this.issueTrackerService.createAgentSessionOnIssue({ issueId });
+				return { success: true, data: response };
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		});
+
+		this.fastifyServer.post("/cli/session/prompt", async (request) => {
+			try {
+				const { sessionId, message } = request.body as any;
+				const activity = await this.issueTrackerService.promptAgentSession(
+					sessionId,
+					message,
+				);
+				return { success: true, data: activity };
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		});
+
+		this.fastifyServer.post("/cli/session/stop", async (request) => {
+			try {
+				const { sessionId } = request.body as any;
+				const activity =
+					await this.issueTrackerService.stopAgentSession(sessionId);
+				return { success: true, data: activity };
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		});
+
+		this.fastifyServer.get("/cli/session/:sessionId", async (request) => {
+			try {
+				const { sessionId } = request.params as any;
+				const session =
+					await this.issueTrackerService.fetchAgentSession(sessionId);
+				const activities =
+					await this.issueTrackerService.fetchAgentActivities(sessionId);
+				return {
+					success: true,
+					data: {
+						session,
+						activities,
+					},
+				};
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		});
+
+		console.log("[CLIRPCServer] RPC endpoints registered at /cli/rpc");
+	}
+
+	/**
+	 * Handle an RPC command.
+	 */
+	private async handleCommand(command: RPCCommand): Promise<RPCResponse> {
+		switch (command.method) {
+			case "viewAgentSession": {
+				const session = await this.issueTrackerService.fetchAgentSession(
+					command.params.sessionId,
+				);
+				const activities = await this.issueTrackerService.fetchAgentActivities(
+					command.params.sessionId,
+				);
+				return {
+					success: true,
+					data: { session, activities },
+				};
+			}
+
+			case "promptAgentSession": {
+				const activity = await this.issueTrackerService.promptAgentSession(
+					command.params.sessionId,
+					command.params.message,
+				);
+				return {
+					success: true,
+					data: activity,
+				};
+			}
+
+			case "stopAgentSession": {
+				const activity = await this.issueTrackerService.stopAgentSession(
+					command.params.sessionId,
+				);
+				return {
+					success: true,
+					data: activity,
+				};
+			}
+
+			case "createIssue": {
+				const issue = await this.issueTrackerService.createIssue({
+					title: command.params.title,
+					description: command.params.description,
+					...command.params.options,
+				});
+				return {
+					success: true,
+					data: issue,
+				};
+			}
+
+			case "createComment": {
+				const { issueId, body, mentionAgent } = command.params;
+				const finalBody = mentionAgent
+					? `${this.issueTrackerService.getAgentHandle()} ${body}`
+					: body;
+				const comment = await this.issueTrackerService.createComment(issueId, {
+					body: finalBody,
+				});
+				return {
+					success: true,
+					data: comment,
+				};
+			}
+
+			case "startAgentSessionOnIssue": {
+				const response =
+					await this.issueTrackerService.createAgentSessionOnIssue({
+						issueId: command.params.issueId,
+					});
+				return {
+					success: true,
+					data: response,
+				};
+			}
+
+			case "startAgentSessionOnComment": {
+				const response =
+					await this.issueTrackerService.createAgentSessionOnComment({
+						commentId: command.params.commentId,
+					});
+				return {
+					success: true,
+					data: response,
+				};
+			}
+
+			case "createLabel": {
+				const label = await this.issueTrackerService.createLabel({
+					name: command.params.name,
+					...command.params.options,
+				});
+				return {
+					success: true,
+					data: label,
+				};
+			}
+
+			case "createMember": {
+				const user = await this.issueTrackerService.createMember({
+					name: command.params.name,
+					...command.params.options,
+				});
+				return {
+					success: true,
+					data: user,
+				};
+			}
+
+			case "fetchLabels": {
+				const labels = await this.issueTrackerService.fetchLabels();
+				return {
+					success: true,
+					data: labels.nodes,
+				};
+			}
+
+			case "fetchMembers": {
+				const usersMap = this.issueTrackerService.getState().users;
+				const users = Array.from(usersMap.values());
+				return {
+					success: true,
+					data: users,
+				};
+			}
+
+			case "getState": {
+				const state = this.issueTrackerService.getState();
+				return {
+					success: true,
+					data: {
+						issues: Array.from(state.issues.values()),
+						comments: Array.from(state.comments.values()),
+						sessions: Array.from(state.agentSessions.values()),
+						labels: Array.from(state.labels.values()),
+						users: Array.from(state.users.values()),
+						teams: Array.from(state.teams.values()),
+						workflowStates: Array.from(state.workflowStates.values()),
+					},
+				};
+			}
+
+			default:
+				return {
+					success: false,
+					error: `Unknown method: ${(command as any).method}`,
+				};
+		}
+	}
+}

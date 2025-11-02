@@ -80,6 +80,9 @@ export {
 // ADAPTERS
 // ============================================================================
 
+export { CLIEventTransport } from "./adapters/CLIEventTransport.js";
+export { CLIIssueTrackerService } from "./adapters/CLIIssueTrackerService.js";
+export { CLIRPCServer } from "./adapters/CLIRPCServer.js";
 export { LinearAgentEventTransport } from "./adapters/LinearAgentEventTransport.js";
 export { LinearIssueTrackerService } from "./adapters/LinearIssueTrackerService.js";
 export * from "./adapters/LinearTypeAdapters.js";
@@ -96,7 +99,7 @@ export const VERSION = "1.0.0";
 /**
  * Supported platform types.
  */
-export const SUPPORTED_PLATFORMS = ["linear"] as const;
+export const SUPPORTED_PLATFORMS = ["linear", "cli"] as const;
 
 /**
  * Type for supported platform identifiers.
