@@ -1,11 +1,20 @@
 /**
  * Platform-agnostic types for issue tracking platforms.
  *
- * These types abstract away platform-specific details (Linear, GitHub, etc.)
- * to provide a unified interface for issue tracking operations.
+ * These types provide simplified interfaces that match Linear SDK GraphQL types structure.
+ * Linear SDK is the source of truth - these types are designed to be compatible subsets
+ * of Linear's types, omitting implementation-specific fields while maintaining core
+ * data structure compatibility.
+ *
+ * Following the pattern from AgentEvent.ts, we reference Linear SDK types via JSDoc
+ * and re-export Linear enums where they exist. This makes Linear the "source of truth"
+ * while keeping interfaces manageable.
  *
  * @module issue-tracker/types
+ * @see {@link https://linear.app/docs/graphql/api|Linear GraphQL API Documentation}
  */
+
+import type * as LinearSDK from "@linear/sdk";
 
 /**
  * Filter options for querying entities.
@@ -44,6 +53,12 @@ export interface PaginationOptions {
 
 /**
  * Platform-agnostic team representation.
+ *
+ * This interface is a simplified subset of Linear's Team GraphQL type,
+ * containing only the core fields needed for issue tracking operations.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.Team} - Linear's complete Team type
  */
 export interface Team {
 	/** Unique team identifier */
@@ -58,6 +73,12 @@ export interface Team {
 
 /**
  * Platform-agnostic user/actor representation.
+ *
+ * This interface is a simplified subset of Linear's User GraphQL type,
+ * containing only the core fields needed for issue tracking operations.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.User} - Linear's complete User type
  */
 export interface User {
 	/** Unique user identifier */
@@ -88,6 +109,12 @@ export enum WorkflowStateType {
 
 /**
  * Platform-agnostic workflow state/status representation.
+ *
+ * This interface is a simplified subset of Linear's WorkflowState GraphQL type,
+ * containing only the core fields needed for issue tracking operations.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.WorkflowState} - Linear's complete WorkflowState type
  */
 export interface WorkflowState {
 	/** Unique state identifier */
@@ -106,6 +133,12 @@ export interface WorkflowState {
 
 /**
  * Platform-agnostic label representation.
+ *
+ * This interface is a simplified subset of Linear's IssueLabel GraphQL type,
+ * containing only the core fields needed for issue tracking operations.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.IssueLabel} - Linear's complete IssueLabel type
  */
 export interface Label {
 	/** Unique label identifier */
@@ -137,6 +170,12 @@ export enum IssuePriority {
 
 /**
  * Platform-agnostic issue representation.
+ *
+ * This interface is a simplified subset of Linear's Issue GraphQL type,
+ * containing only the core fields needed for issue tracking operations.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.Issue} - Linear's complete Issue type
  */
 export interface Issue {
 	/** Unique issue identifier */
@@ -201,6 +240,12 @@ export interface IssueWithChildren extends Issue {
 
 /**
  * Platform-agnostic comment representation.
+ *
+ * This interface is a simplified subset of Linear's Comment GraphQL type,
+ * containing only the core fields needed for issue tracking operations.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.Comment} - Linear's complete Comment type
  */
 export interface Comment {
 	/** Unique comment identifier */
@@ -243,26 +288,36 @@ export interface CommentWithAttachments extends Comment {
 
 /**
  * Agent session status enumeration.
+ *
+ * Re-exported from Linear SDK. Linear SDK is the source of truth.
+ * Note: Linear uses "awaitingInput" while we historically used "awaiting-input".
+ * We now use Linear's enum directly for consistency.
+ *
+ * @see {@link LinearSDK.AgentSessionStatus} - Linear's AgentSessionStatus enum
  */
-export enum AgentSessionStatus {
-	Pending = "pending",
-	Active = "active",
-	Error = "error",
-	AwaitingInput = "awaiting-input",
-	Complete = "complete",
-}
+import { AgentSessionStatus } from "@linear/sdk";
+export { AgentSessionStatus };
+export type { AgentSessionStatus as AgentSessionStatusEnum } from "@linear/sdk";
 
 /**
  * Agent session type/context enumeration.
+ *
+ * Re-exported from Linear SDK. Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.AgentSessionType} - Linear's AgentSessionType enum
  */
-export enum AgentSessionType {
-	CommentThread = "commentThread",
-	Issue = "issue",
-	Document = "document",
-}
+import { AgentSessionType } from "@linear/sdk";
+export { AgentSessionType };
+export type { AgentSessionType as AgentSessionTypeEnum } from "@linear/sdk";
 
 /**
  * Platform-agnostic agent session representation.
+ *
+ * This interface is a simplified subset of Linear's AgentSession GraphQL type,
+ * containing only the core fields needed for agent session operations.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.AgentSession} - Linear's complete AgentSession type
  */
 export interface AgentSession {
 	/** Unique agent session identifier */
@@ -302,21 +357,31 @@ export interface AgentSession {
 }
 
 /**
- * Agent activity content type enumeration.
+ * Agent activity type enumeration.
+ *
+ * Re-exported from Linear SDK. Linear SDK is the source of truth.
+ * This is aliased as AgentActivityContentType for backward compatibility.
+ *
+ * @see {@link LinearSDK.AgentActivityType} - Linear's AgentActivityType enum
  */
-export enum AgentActivityContentType {
-	Prompt = "prompt",
-	Observation = "observation",
-	Action = "action",
-	Error = "error",
-	Elicitation = "elicitation",
-	Response = "response",
-	Thought = "thought",
-}
+import { AgentActivityType } from "@linear/sdk";
+export { AgentActivityType };
+export type { AgentActivityType as AgentActivityTypeEnum } from "@linear/sdk";
+
+/**
+ * Legacy alias for AgentActivityType.
+ * @deprecated Use AgentActivityType instead
+ */
+export const AgentActivityContentType = AgentActivityType;
+export type AgentActivityContentType = AgentActivityType;
 
 /**
  * Agent activity content structure.
- * Matches Linear SDK's agentActivity.content structure with full expressiveness.
+ *
+ * This is a simplified structure matching Linear SDK's agentActivity.content.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.AgentActivityContent} - Linear's complete AgentActivityContent type
  */
 export interface AgentActivityContent {
 	/** Content type */
@@ -333,17 +398,23 @@ export interface AgentActivityContent {
 
 /**
  * Agent activity signal enumeration.
- * Matches Linear SDK's AgentActivitySignal enum.
+ *
+ * Re-exported from Linear SDK. Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.AgentActivitySignal} - Linear's AgentActivitySignal enum
  */
-export enum AgentActivitySignal {
-	Auth = "auth",
-	Continue = "continue",
-	Select = "select",
-	Stop = "stop",
-}
+import { AgentActivitySignal } from "@linear/sdk";
+export { AgentActivitySignal };
+export type { AgentActivitySignal as AgentActivitySignalEnum } from "@linear/sdk";
 
 /**
  * Platform-agnostic agent activity representation.
+ *
+ * This interface is a simplified subset of Linear's AgentActivity GraphQL type,
+ * containing only the core fields needed for agent activity operations.
+ * Linear SDK is the source of truth.
+ *
+ * @see {@link LinearSDK.LinearDocument.AgentActivity} - Linear's complete AgentActivity type
  */
 export interface AgentActivity {
 	/** Unique activity identifier */
