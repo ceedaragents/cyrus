@@ -438,6 +438,12 @@ export interface CommentCreateInput {
 	body: string;
 	/** Parent comment ID (for threaded comments) */
 	parentId?: string;
+	/**
+	 * Asset URLs to attach to the comment (Linear-specific).
+	 * These URLs should be obtained from `requestFileUpload()` + upload workflow.
+	 * The URLs will be automatically embedded in the comment body as markdown images/links.
+	 */
+	attachmentUrls?: string[];
 	/** Additional platform-specific fields */
 	[key: string]: any;
 }

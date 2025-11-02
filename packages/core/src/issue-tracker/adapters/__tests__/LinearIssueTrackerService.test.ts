@@ -352,6 +352,184 @@ describe("LinearIssueTrackerService", () => {
 			});
 			expect(result.body).toBe("New comment");
 		});
+
+		it("should create a comment with image attachments appended as markdown", async () => {
+			const mockComment = {
+				id: "comment-new",
+				body: "Comment with images\n\n![attachment](https://linear.app/asset/image1.png)\n![attachment](https://linear.app/asset/image2.jpg)",
+				userId: "user-101",
+				user: Promise.resolve({
+					id: "user-101",
+					name: "John Doe",
+					displayName: "John Doe",
+					email: "john@example.com",
+					url: "https://linear.app/user/john",
+				}),
+				issueId: "issue-123",
+				parent: null,
+				createdAt: new Date("2025-01-05T00:00:00Z"),
+				updatedAt: new Date("2025-01-05T00:00:00Z"),
+				archivedAt: null,
+			};
+
+			vi.mocked(mockLinearClient.createComment).mockResolvedValue({
+				success: true,
+				comment: Promise.resolve(mockComment as any),
+			} as any);
+
+			const result = await service.createComment("issue-123", {
+				body: "Comment with images",
+				attachmentUrls: [
+					"https://linear.app/asset/image1.png",
+					"https://linear.app/asset/image2.jpg",
+				],
+			});
+
+			expect(mockLinearClient.createComment).toHaveBeenCalledWith({
+				issueId: "issue-123",
+				body: "Comment with images\n\n![attachment](https://linear.app/asset/image1.png)\n![attachment](https://linear.app/asset/image2.jpg)",
+				parentId: undefined,
+			});
+			expect(result.body).toContain(
+				"![attachment](https://linear.app/asset/image1.png)",
+			);
+			expect(result.body).toContain(
+				"![attachment](https://linear.app/asset/image2.jpg)",
+			);
+		});
+
+		it("should create a comment with non-image attachments as markdown links", async () => {
+			const mockComment = {
+				id: "comment-new",
+				body: "Comment with files\n\n[attachment](https://linear.app/asset/document.pdf)\n[attachment](https://linear.app/asset/data.csv)",
+				userId: "user-101",
+				user: Promise.resolve({
+					id: "user-101",
+					name: "John Doe",
+					displayName: "John Doe",
+					email: "john@example.com",
+					url: "https://linear.app/user/john",
+				}),
+				issueId: "issue-123",
+				parent: null,
+				createdAt: new Date("2025-01-05T00:00:00Z"),
+				updatedAt: new Date("2025-01-05T00:00:00Z"),
+				archivedAt: null,
+			};
+
+			vi.mocked(mockLinearClient.createComment).mockResolvedValue({
+				success: true,
+				comment: Promise.resolve(mockComment as any),
+			} as any);
+
+			const result = await service.createComment("issue-123", {
+				body: "Comment with files",
+				attachmentUrls: [
+					"https://linear.app/asset/document.pdf",
+					"https://linear.app/asset/data.csv",
+				],
+			});
+
+			expect(mockLinearClient.createComment).toHaveBeenCalledWith({
+				issueId: "issue-123",
+				body: "Comment with files\n\n[attachment](https://linear.app/asset/document.pdf)\n[attachment](https://linear.app/asset/data.csv)",
+				parentId: undefined,
+			});
+			expect(result.body).toContain(
+				"[attachment](https://linear.app/asset/document.pdf)",
+			);
+			expect(result.body).toContain(
+				"[attachment](https://linear.app/asset/data.csv)",
+			);
+		});
+
+		it("should create a comment with attachments only (no body text)", async () => {
+			const mockComment = {
+				id: "comment-new",
+				body: "![attachment](https://linear.app/asset/screenshot.png)",
+				userId: "user-101",
+				user: Promise.resolve({
+					id: "user-101",
+					name: "John Doe",
+					displayName: "John Doe",
+					email: "john@example.com",
+					url: "https://linear.app/user/john",
+				}),
+				issueId: "issue-123",
+				parent: null,
+				createdAt: new Date("2025-01-05T00:00:00Z"),
+				updatedAt: new Date("2025-01-05T00:00:00Z"),
+				archivedAt: null,
+			};
+
+			vi.mocked(mockLinearClient.createComment).mockResolvedValue({
+				success: true,
+				comment: Promise.resolve(mockComment as any),
+			} as any);
+
+			const result = await service.createComment("issue-123", {
+				body: "",
+				attachmentUrls: ["https://linear.app/asset/screenshot.png"],
+			});
+
+			expect(mockLinearClient.createComment).toHaveBeenCalledWith({
+				issueId: "issue-123",
+				body: "![attachment](https://linear.app/asset/screenshot.png)",
+				parentId: undefined,
+			});
+			expect(result.body).toBe(
+				"![attachment](https://linear.app/asset/screenshot.png)",
+			);
+		});
+
+		it("should create a comment with mixed image and non-image attachments", async () => {
+			const mockComment = {
+				id: "comment-new",
+				body: "Mixed attachments\n\n![attachment](https://linear.app/asset/image.png)\n[attachment](https://linear.app/asset/document.pdf)\n![attachment](https://linear.app/asset/photo.jpg)",
+				userId: "user-101",
+				user: Promise.resolve({
+					id: "user-101",
+					name: "John Doe",
+					displayName: "John Doe",
+					email: "john@example.com",
+					url: "https://linear.app/user/john",
+				}),
+				issueId: "issue-123",
+				parent: null,
+				createdAt: new Date("2025-01-05T00:00:00Z"),
+				updatedAt: new Date("2025-01-05T00:00:00Z"),
+				archivedAt: null,
+			};
+
+			vi.mocked(mockLinearClient.createComment).mockResolvedValue({
+				success: true,
+				comment: Promise.resolve(mockComment as any),
+			} as any);
+
+			const result = await service.createComment("issue-123", {
+				body: "Mixed attachments",
+				attachmentUrls: [
+					"https://linear.app/asset/image.png",
+					"https://linear.app/asset/document.pdf",
+					"https://linear.app/asset/photo.jpg",
+				],
+			});
+
+			expect(mockLinearClient.createComment).toHaveBeenCalledWith({
+				issueId: "issue-123",
+				body: "Mixed attachments\n\n![attachment](https://linear.app/asset/image.png)\n[attachment](https://linear.app/asset/document.pdf)\n![attachment](https://linear.app/asset/photo.jpg)",
+				parentId: undefined,
+			});
+			expect(result.body).toContain(
+				"![attachment](https://linear.app/asset/image.png)",
+			);
+			expect(result.body).toContain(
+				"[attachment](https://linear.app/asset/document.pdf)",
+			);
+			expect(result.body).toContain(
+				"![attachment](https://linear.app/asset/photo.jpg)",
+			);
+		});
 	});
 
 	describe("fetchTeams", () => {

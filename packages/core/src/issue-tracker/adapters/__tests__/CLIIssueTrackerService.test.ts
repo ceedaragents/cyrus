@@ -161,6 +161,51 @@ describe("CLIIssueTrackerService", () => {
 			expect(comment.body).toContain("@cyrus");
 			expect(issueId).toBe(issue.id);
 		});
+
+		it("should store attachment URLs in metadata when creating a comment", async () => {
+			const issue = await service.createIssue({
+				title: "Test Issue",
+			});
+
+			const comment = await service.createComment(issue.id, {
+				body: "Comment with attachments",
+				attachmentUrls: [
+					"https://example.com/file1.png",
+					"https://example.com/file2.pdf",
+				],
+			});
+
+			expect(comment.metadata).toBeDefined();
+			expect(comment.metadata?.attachmentUrls).toEqual([
+				"https://example.com/file1.png",
+				"https://example.com/file2.pdf",
+			]);
+		});
+
+		it("should not include metadata when no attachments are provided", async () => {
+			const issue = await service.createIssue({
+				title: "Test Issue",
+			});
+
+			const comment = await service.createComment(issue.id, {
+				body: "Comment without attachments",
+			});
+
+			expect(comment.metadata).toBeUndefined();
+		});
+
+		it("should handle empty attachmentUrls array", async () => {
+			const issue = await service.createIssue({
+				title: "Test Issue",
+			});
+
+			const comment = await service.createComment(issue.id, {
+				body: "Comment with empty attachments",
+				attachmentUrls: [],
+			});
+
+			expect(comment.metadata).toBeUndefined();
+		});
 	});
 
 	describe("Team Operations", () => {

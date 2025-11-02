@@ -455,6 +455,13 @@ export class CLIIssueTrackerService
 		await this.fetchIssue(issueId); // Ensure issue exists
 
 		const now = this.now();
+
+		// Store attachment URLs in metadata if provided
+		const metadata: Record<string, any> = {};
+		if (input.attachmentUrls && input.attachmentUrls.length > 0) {
+			metadata.attachmentUrls = input.attachmentUrls;
+		}
+
 		const comment: Comment = {
 			id: this.generateId("comment"),
 			body: input.body,
@@ -468,6 +475,7 @@ export class CLIIssueTrackerService
 			createdAt: now,
 			updatedAt: now,
 			archivedAt: null,
+			metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
 		};
 
 		this.state.comments.set(comment.id, comment);

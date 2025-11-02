@@ -309,9 +309,33 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		input: CommentCreateInput,
 	): Promise<Comment> {
 		try {
+			// Build the comment body, optionally appending attachment URLs
+			let finalBody = input.body;
+
+			// If attachment URLs are provided, append them to the comment body as markdown
+			if (input.attachmentUrls && input.attachmentUrls.length > 0) {
+				const attachmentMarkdown = input.attachmentUrls
+					.map((url) => {
+						// Detect if the URL is an image based on file extension
+						const isImage = /\.(png|jpg|jpeg|gif|svg|webp|bmp)$/i.test(url);
+						if (isImage) {
+							// Embed as markdown image
+							return `![attachment](${url})`;
+						}
+						// Otherwise, embed as markdown link
+						return `[attachment](${url})`;
+					})
+					.join("\n");
+
+				// Append attachments to the body with a separator if body is not empty
+				finalBody = input.body
+					? `${input.body}\n\n${attachmentMarkdown}`
+					: attachmentMarkdown;
+			}
+
 			const createPayload = await this.linearClient.createComment({
 				issueId,
-				body: input.body,
+				body: finalBody,
 				parentId: input.parentId,
 			});
 
