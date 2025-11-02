@@ -32,6 +32,7 @@ import type {
 	WorkflowState,
 } from "../types.js";
 import {
+	type AgentActivitySignal,
 	AgentSessionStatus,
 	AgentSessionType,
 	IssuePriority,
@@ -328,7 +329,7 @@ export interface LinearAgentActivityData {
 	agentContextId?: string | null;
 	sourceCommentId?: string;
 	content: LinearAgentActivityContentData;
-	signal?: "stop";
+	signal?: AgentActivitySignal;
 	createdAt: string;
 	updatedAt: string;
 	archivedAt?: string | null;
