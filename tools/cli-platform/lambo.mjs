@@ -269,7 +269,31 @@ function displayActivities(activities, options = {}) {
     console.log(c.bold(`${num}. ${activity.id}`) + signal);
     console.log(c.dim(`   ${date} • `) + typeDisplay);
 
-    if (body) {
+    // For action/tool_use activities, show action details if available
+    if ((type === "action" || type === "tool_use") && activity.content?.action) {
+      const action = activity.content.action;
+      const parameter = activity.content.parameter;
+      let actionSummary = c.dim(`${action}`);
+
+      // Try to extract useful info from parameter
+      if (parameter) {
+        if (typeof parameter === "string") {
+          const preview = parameter.length > 50 ? parameter.slice(0, 50) + "..." : parameter;
+          actionSummary += c.dim(`: ${preview}`);
+        } else if (parameter.path) {
+          actionSummary += c.dim(`: ${parameter.path}`);
+        } else if (parameter.file_path) {
+          actionSummary += c.dim(`: ${parameter.file_path}`);
+        } else if (parameter.command) {
+          const cmd = parameter.command.length > 50
+            ? parameter.command.slice(0, 50) + "..."
+            : parameter.command;
+          actionSummary += c.dim(`: ${cmd}`);
+        }
+      }
+
+      console.log(`   ${actionSummary}`);
+    } else if (body) {
       const displayBody = full
         ? body
         : (body.length > previewLength ? body.slice(0, previewLength) + "..." : body);
@@ -456,6 +480,7 @@ function showCommandHelp(command) {
         { name: "--search", description: "Search term to filter activities" },
         { name: "--full", description: "Show complete activity bodies (no truncation)" },
         { name: "--preview-length", description: "Characters to show in preview (default: 200)" },
+        { name: "--summary", description: "Show final response summary prominently" },
       ],
       examples: [
         "lambo.mjs viewSession --session-id session-1",
@@ -463,6 +488,7 @@ function showCommandHelp(command) {
         'lambo.mjs viewSession --session-id session-1 --search "error"',
         "lambo.mjs viewSession --session-id session-1 --full",
         "lambo.mjs viewSession --session-id session-1 --preview-length 500",
+        "lambo.mjs viewSession --session-id session-1 --summary",
       ],
     },
     promptSession: {
@@ -799,8 +825,46 @@ async function main() {
           if (session.commentId) {
             console.log(`   ${c.bold("Comment ID:")} ${c.value(session.commentId)}`);
           }
+          console.log(`   ${c.bold("Activities:")} ${c.value(activities.length)} total`);
+
+          // Show last activity time to indicate if actively working
+          if (activities.length > 0) {
+            const lastActivity = [...activities].sort((a, b) =>
+              new Date(b.createdAt) - new Date(a.createdAt)
+            )[0];
+            const lastUpdate = new Date(lastActivity.createdAt);
+            const now = new Date();
+            const secAgo = Math.floor((now - lastUpdate) / 1000);
+            const timeAgo = secAgo < 60
+              ? `${secAgo}s ago`
+              : secAgo < 3600
+                ? `${Math.floor(secAgo / 60)}m ago`
+                : `${Math.floor(secAgo / 3600)}h ago`;
+            console.log(`   ${c.bold("Last Activity:")} ${c.dim(timeAgo)}`);
+          }
+
           console.log(`   ${c.bold("Created:")} ${c.dim(new Date(session.createdAt).toLocaleString())}`);
           console.log(`   ${c.bold("Updated:")} ${c.dim(new Date(session.updatedAt).toLocaleString())}`);
+
+          // If --summary flag, find and display final response prominently
+          if (params.summary) {
+            const responseActivity = [...activities]
+              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+              .find(a => a.content?.type === "response");
+
+            if (responseActivity) {
+              console.log();
+              console.log(c.success("📋 Final Response Summary"));
+              console.log();
+              const body = responseActivity.content?.body || "(no content)";
+              console.log(body.split("\n").map(line => `   ${line}`).join("\n"));
+              console.log();
+            } else {
+              console.log();
+              console.log(c.dim("   No final response found yet."));
+              console.log();
+            }
+          }
 
           // Display paginated activities
           displayActivities(activities, {

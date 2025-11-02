@@ -41,6 +41,7 @@ const c = {
 
 const DEFAULT_PORT = 3457;
 const port = parseInt(process.env.CYRUS_PORT || process.argv[2] || DEFAULT_PORT);
+const repoPath = process.env.CYRUS_REPO_PATH || process.argv[3] || process.cwd();
 
 async function main() {
   console.log(c.bold("\n🏎️  Cyrus CLI Platform Server\n"));
@@ -52,6 +53,7 @@ async function main() {
   await mkdir(join(cyrusHome, "worktrees"), { recursive: true });
 
   console.log(c.dim(`   Directory: ${cyrusHome}`));
+  console.log(c.dim(`   Repository: ${repoPath}`));
   console.log(c.dim(`   Port: ${port}\n`));
 
   // Configure EdgeWorker with CLI platform
@@ -62,7 +64,7 @@ async function main() {
       {
         id: "cli-repo",
         name: "CLI Repository",
-        repositoryPath: process.cwd(),
+        repositoryPath: repoPath,
         baseBranch: "main",
         workspaceBaseDir: join(cyrusHome, "worktrees"),
         platform: "cli",
