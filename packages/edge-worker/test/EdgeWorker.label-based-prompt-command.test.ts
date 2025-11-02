@@ -77,9 +77,9 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "warn").mockImplementation(() => {});
 
-		// Mock LinearClient
+		// Mock IssueTrackerService
 		mockLinearClient = {
-			issue: vi.fn().mockResolvedValue({
+			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",
 				title: "Test Issue with Bug",
@@ -92,7 +92,7 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 					nodes: [{ name: "bug" }], // This should trigger debugger prompt
 				}),
 			}),
-			workflowStates: vi.fn().mockResolvedValue({
+			fetchWorkflowStates: vi.fn().mockResolvedValue({
 				nodes: [
 					{ id: "state-1", name: "Todo", type: "unstarted", position: 0 },
 					{ id: "state-2", name: "In Progress", type: "started", position: 1 },
@@ -100,7 +100,7 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 			}),
 			updateIssue: vi.fn().mockResolvedValue({ success: true }),
 			createAgentActivity: vi.fn().mockResolvedValue({ success: true }),
-			comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
 		};
 		vi.mocked(LinearClient).mockImplementation(() => mockLinearClient);
 
@@ -206,6 +206,9 @@ Issue: {{issue_identifier}}`;
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
+
+		// Add mock IssueTrackerService to edgeWorker
+		(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 	});
 
 	afterEach(() => {
