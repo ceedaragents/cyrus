@@ -1065,6 +1065,23 @@ export class EdgeWorker extends EventEmitter {
 		const workspaceId = event.organizationId;
 		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
 
+		// Handle CLI platform events (special case before Linear routing)
+		// CLI events have organizationId: "cli-org" and need platform-based routing
+		if (workspaceId === "cli-org") {
+			const cliRepo = repos.find((repo) => repo.platform === "cli");
+			if (cliRepo) {
+				console.log(
+					`[EdgeWorker] Repository selected: ${cliRepo.name} (CLI platform routing)`,
+				);
+				return cliRepo;
+			}
+			// Fallback: if no explicit CLI repo, use first repo
+			console.log(
+				`[EdgeWorker] No CLI platform repository found, using fallback`,
+			);
+			return repos[0] || null;
+		}
+
 		// Get issue information from webhook
 		let issueId: string | undefined;
 		let teamKey: string | undefined;
