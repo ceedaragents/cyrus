@@ -41,6 +41,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
+		platform: "linear",
 		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
@@ -53,7 +54,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
 
-		// Setup callbacks to be captured
+		// Setup callbacks to be captured (will be overwritten by createCyrusToolsServer mock)
 		mockOnFeedbackDelivery = vi.fn();
 		mockOnSessionCreated = vi.fn();
 
@@ -70,7 +71,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Return a mock structure that matches what the real function returns
 			return {
 				type: "sdk" as const,
-				name: "cyrus-tools",
+				name: "issue-tracker",
 				instance: {
 					_options: options,
 				},
@@ -442,7 +443,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			);
 
 			// Assert
-			expect(_mcpConfig).toHaveProperty("cyrus-tools");
+			expect(_mcpConfig).toHaveProperty("issue-tracker");
 
 			// Verify createCyrusToolsServer was called with correct options
 			expect(createCyrusToolsServer).toHaveBeenCalledWith(

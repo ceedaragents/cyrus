@@ -100,6 +100,9 @@ importers:
       '@linear/sdk':
         specifier: ^60.0.0
         version: 60.0.0
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
@@ -182,6 +185,9 @@ importers:
 
   packages/edge-worker:
     dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.1.28
+        version: 0.1.28(zod@4.1.12)
       '@linear/sdk':
         specifier: ^60.0.0
         version: 60.0.0
@@ -215,7 +221,16 @@ importers:
       file-type:
         specifier: ^18.7.0
         version: 18.7.0
+      fs-extra:
+        specifier: ^11.3.2
+        version: 11.3.2
+      zod:
+        specifier: ^4.1.12
+        version: 4.1.12
     devDependencies:
+      '@types/fs-extra':
+        specifier: ^11.0.4
+        version: 11.0.4
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.21
@@ -255,7 +270,7 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.28
-        version: 0.1.28(zod@3.25.76)
+        version: 0.1.28(zod@4.1.12)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -2378,6 +2393,9 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
+  zod@4.1.12:
+    resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
+
 snapshots:
 
   '@ampproject/remapping@2.3.0':
@@ -2388,6 +2406,17 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk@0.1.28(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
+    optionalDependencies:
+      '@img/sharp-darwin-arm64': 0.33.5
+      '@img/sharp-darwin-x64': 0.33.5
+      '@img/sharp-linux-arm': 0.33.5
+      '@img/sharp-linux-arm64': 0.33.5
+      '@img/sharp-linux-x64': 0.33.5
+      '@img/sharp-win32-x64': 0.33.5
+
+  '@anthropic-ai/claude-agent-sdk@0.1.28(zod@4.1.12)':
+    dependencies:
+      zod: 4.1.12
     optionalDependencies:
       '@img/sharp-darwin-arm64': 0.33.5
       '@img/sharp-darwin-x64': 0.33.5
@@ -4395,3 +4424,5 @@ snapshots:
   yocto-queue@1.2.1: {}
 
   zod@3.25.76: {}
+
+  zod@4.1.12: {}

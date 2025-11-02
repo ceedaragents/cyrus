@@ -41,6 +41,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
+		platform: "linear",
 		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
@@ -53,7 +54,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
 
-		// Setup callbacks to be captured
+		// Setup callbacks to be captured (will be overwritten by createCyrusToolsServer mock)
 		mockOnFeedbackDelivery = vi.fn();
 		_mockOnSessionCreated = vi.fn();
 

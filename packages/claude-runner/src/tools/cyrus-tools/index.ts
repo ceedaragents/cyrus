@@ -103,8 +103,8 @@ export function createCyrusToolsServer(
 
 	// Create tools with bound linear client
 	const uploadTool = tool(
-		"linear_upload_file",
-		"Upload a file to Linear. Returns an asset URL that can be used in issue descriptions or comments.",
+		"issue_tracker_upload_file",
+		"Upload a file. Returns an asset URL that can be used in issue descriptions or comments.",
 		{
 			filePath: z.string().describe("The absolute path to the file to upload"),
 			filename: z
@@ -250,8 +250,8 @@ export function createCyrusToolsServer(
 	);
 
 	const agentSessionTool = tool(
-		"linear_agent_session_create",
-		"Create an agent session on a Linear issue to track AI/bot activity.",
+		"issue_tracker_agent_session_create",
+		"Create an agent session on an issue to track AI/bot activity.",
 		{
 			issueId: z
 				.string()
@@ -350,8 +350,8 @@ export function createCyrusToolsServer(
 	);
 
 	const agentSessionOnCommentTool = tool(
-		"linear_agent_session_create_on_comment",
-		"Create an agent session on a Linear root comment (not a reply) to trigger a sub-agent for processing child issues or tasks. See Linear API docs: https://studio.apollographql.com/public/Linear-API/variant/current/schema/reference/inputs/AgentSessionCreateOnComment",
+		"issue_tracker_agent_session_create_on_comment",
+		"Create an agent session on a root comment (not a reply) to trigger a sub-agent for processing child issues or tasks.",
 		{
 			commentId: z
 				.string()
@@ -452,7 +452,7 @@ export function createCyrusToolsServer(
 	);
 
 	const giveFeedbackTool = tool(
-		"linear_agent_give_feedback",
+		"issue_tracker_agent_give_feedback",
 		"Provide feedback to a child agent session to continue its processing.",
 		{
 			agentSessionId: z
@@ -531,8 +531,8 @@ export function createCyrusToolsServer(
 	);
 
 	const getChildIssuesTool = tool(
-		"linear_get_child_issues",
-		"Get all child issues (sub-issues) for a given Linear issue. Takes an issue identifier like 'CYHOST-91' and returns a list of child issue ids and their titles.",
+		"issue_tracker_get_child_issues",
+		"Get all child issues (sub-issues) for a given issue. Takes an issue identifier and returns a list of child issue ids and their titles.",
 		{
 			issueId: z
 				.string()
@@ -673,7 +673,7 @@ export function createCyrusToolsServer(
 	);
 
 	return createSdkMcpServer({
-		name: "cyrus-tools",
+		name: "issue-tracker",
 		version: "1.0.0",
 		tools: [
 			uploadTool,

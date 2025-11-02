@@ -28,6 +28,7 @@ export type {
 	Comment,
 	IAgentEventTransport,
 	IIssueTrackerService,
+	Issue,
 } from "./issue-tracker/index.js";
 export {
 	AgentActivityContentType,

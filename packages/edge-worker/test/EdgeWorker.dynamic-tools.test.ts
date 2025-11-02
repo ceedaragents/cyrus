@@ -187,7 +187,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(debuggerTools).toEqual([
 				...getReadOnlyTools(),
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 
 			// Test builder prompt with custom array
@@ -197,7 +197,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Edit",
 				"Task",
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 
 			// Test scoper prompt with safe preset
@@ -205,7 +205,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(scoperTools).toEqual([
 				...getSafeTools(),
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 		});
 
@@ -237,7 +237,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(debuggerTools).toEqual([
 				...getAllTools(),
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 
 			// Test builder prompt with global safe preset
@@ -245,7 +245,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(builderTools).toEqual([
 				...getSafeTools(),
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 
 			// Test scoper prompt with global custom array
@@ -254,7 +254,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Read",
 				"WebFetch",
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 		});
 
@@ -271,7 +271,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Read",
 				"Write",
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 		});
 
@@ -289,7 +289,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Write",
 				"Edit",
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 		});
 
@@ -310,7 +310,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(tools).toEqual([
 				...getSafeTools(),
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 		});
 
@@ -324,7 +324,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const tools = buildAllowedTools(repository);
 
 			// Should deduplicate Linear MCP tools
-			expect(tools).toEqual(["Read", "mcp__linear", "mcp__cyrus-tools"]);
+			expect(tools).toEqual(["Read", "mcp__linear", "mcp__issue-tracker"]);
 			expect(tools.filter((t) => t === "mcp__linear")).toHaveLength(1);
 		});
 
@@ -349,7 +349,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Write",
 				"Edit",
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 
 			// New format should work as expected
@@ -357,7 +357,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(builderTools).toEqual([
 				...getSafeTools(),
 				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
 			]);
 		});
 
@@ -375,7 +375,11 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
 			const tools = buildAllowedTools(repository, "debugger");
 
-			expect(tools).toEqual(["CustomTool", "mcp__linear", "mcp__cyrus-tools"]);
+			expect(tools).toEqual([
+				"CustomTool",
+				"mcp__linear",
+				"mcp__issue-tracker",
+			]);
 		});
 	});
 
