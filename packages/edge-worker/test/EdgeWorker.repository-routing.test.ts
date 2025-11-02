@@ -87,7 +87,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			ceeWebhook.agentSession.issue.team.key = "CEE";
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				ceeWebhook,
 				mockConfig.repositories,
 			);
@@ -110,7 +110,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			bkWebhook.agentSession.issue.team.key = "BK";
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				bkWebhook,
 				mockConfig.repositories,
 			);
@@ -134,7 +134,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			// Note: no team key provided - should use identifier parsing
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				webhookWithoutTeamKey,
 				mockConfig.repositories,
 			);
@@ -157,7 +157,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			unmatchedWebhook.agentSession.issue.team.key = "UNKNOWN";
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				unmatchedWebhook,
 				mockConfig.repositories,
 			);
@@ -192,7 +192,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			agentSessionWebhook.agentSession.issue.team.key = "PROJ"; // Doesn't match any repo, should fallback to project routing
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				agentSessionWebhook,
 				mockConfig.repositories,
 			);
@@ -232,7 +232,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			agentSessionWebhook.agentSession.issue.team.key = "PROJ"; // Doesn't match any repo, should fallback to project routing
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				agentSessionWebhook,
 				mockConfig.repositories,
 			);
@@ -272,7 +272,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			agentSessionWebhook.agentSession.issue.team.key = "CEE"; // Would match ceedar repo via team routing, but project routing should win
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				agentSessionWebhook,
 				mockConfig.repositories,
 			);
@@ -307,7 +307,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			agentSessionWebhook.agentSession.issue.team.key = "PROJ"; // No team key match, will try project routing but fail
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				agentSessionWebhook,
 				mockConfig.repositories,
 			);
@@ -345,7 +345,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			});
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				traditionalWebhook,
 				mockConfig.repositories,
 			);
@@ -396,7 +396,7 @@ describe("EdgeWorker - Repository Routing", () => {
 			});
 
 			// Call the public method directly to test routing logic
-			const result = await edgeWorker.findRepositoryForWebhook(
+			const result = await edgeWorker.findRepositoryForEvent(
 				webhookWithoutMatchingTeam,
 				configWithCatchAll.repositories,
 			);
