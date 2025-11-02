@@ -31,6 +31,7 @@ export type {
 } from "./issue-tracker/index.js";
 export {
 	AgentActivityContentType,
+	AgentActivitySignal,
 	CLIEventTransport,
 	CLIIssueTrackerService,
 	CLIRPCServer,

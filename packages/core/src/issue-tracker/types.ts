@@ -316,12 +316,30 @@ export enum AgentActivityContentType {
 
 /**
  * Agent activity content structure.
+ * Matches Linear SDK's agentActivity.content structure with full expressiveness.
  */
 export interface AgentActivityContent {
 	/** Content type */
 	type: AgentActivityContentType;
 	/** Content body */
 	body: string;
+	/** Action name (for Action type activities) */
+	action?: string;
+	/** Action parameter (for Action type activities) */
+	parameter?: any;
+	/** Action result (for Action type activities) */
+	result?: any;
+}
+
+/**
+ * Agent activity signal enumeration.
+ * Matches Linear SDK's AgentActivitySignal enum.
+ */
+export enum AgentActivitySignal {
+	Auth = "auth",
+	Continue = "continue",
+	Select = "select",
+	Stop = "stop",
 }
 
 /**
@@ -338,8 +356,12 @@ export interface AgentActivity {
 	sourceCommentId?: string;
 	/** Activity content */
 	content: AgentActivityContent;
-	/** Optional signal modifier (e.g., "stop" for user interrupt) */
-	signal?: "stop";
+	/** Optional signal modifier (auth, continue, select, stop) */
+	signal?: AgentActivitySignal;
+	/** Signal metadata (additional context for the signal) */
+	signalMetadata?: Record<string, any>;
+	/** Whether this activity is ephemeral and should disappear after the next activity */
+	ephemeral?: boolean;
 	/** Creation timestamp (ISO 8601) */
 	createdAt: string;
 	/** Last update timestamp (ISO 8601) */
