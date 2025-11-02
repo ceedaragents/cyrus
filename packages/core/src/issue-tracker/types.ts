@@ -25,7 +25,7 @@ export interface FilterOptions {
 		null?: boolean;
 	};
 	/** Additional platform-specific filters */
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 /**
@@ -53,7 +53,7 @@ export interface Team {
 	/** Human-readable team name */
 	name: string;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -71,7 +71,7 @@ export interface User {
 	/** Avatar/profile picture URL */
 	avatarUrl?: string;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -101,7 +101,7 @@ export interface WorkflowState {
 	/** State position/order */
 	position?: number;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -121,7 +121,7 @@ export interface Label {
 	/** Whether this is a label group */
 	isGroup?: boolean;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -172,7 +172,7 @@ export interface Issue {
 	/** Archive timestamp (ISO 8601), null if not archived */
 	archivedAt?: string | null;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -224,7 +224,7 @@ export interface Comment {
 	/** Archive timestamp (ISO 8601), null if not archived */
 	archivedAt?: string | null;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -296,9 +296,9 @@ export interface AgentSession {
 	/** Archive timestamp (ISO 8601), null if not archived */
 	archivedAt?: string | null;
 	/** Source metadata (platform-specific) */
-	sourceMetadata?: any;
+	sourceMetadata?: Record<string, unknown>;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -347,7 +347,7 @@ export interface AgentActivity {
 	/** Archive timestamp (ISO 8601), null if not archived */
 	archivedAt?: string | null;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -427,7 +427,7 @@ export interface IssueUpdateInput {
 	/** Label IDs to set */
 	labelIds?: string[];
 	/** Additional platform-specific fields */
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 /**
@@ -439,7 +439,7 @@ export interface CommentCreateInput {
 	/** Parent comment ID (for threaded comments) */
 	parentId?: string;
 	/** Additional platform-specific fields */
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 /**
@@ -471,7 +471,7 @@ export interface PlatformConfig {
 	/** Organization/workspace ID */
 	organizationId?: string;
 	/** Additional platform-specific config */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -485,7 +485,7 @@ export interface RoutingConfig {
 	/** Label names to route on */
 	routingLabels?: string[];
 	/** Additional platform-specific routing */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -511,7 +511,7 @@ export interface WebhookConfig {
 	/** Webhook endpoint URL */
 	endpointUrl?: string;
 	/** Additional platform-specific config */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -525,7 +525,7 @@ export interface GuidanceRule {
 	/** Rule scope (organization, team, etc.) */
 	scope: "organization" | "team" | string;
 	/** Additional platform-specific metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -548,7 +548,7 @@ export interface Connection<T> {
 /**
  * Generic result type for operations.
  */
-export interface OperationResult<T = any> {
+export interface OperationResult<T = unknown> {
 	/** Whether the operation was successful */
 	success: boolean;
 	/** Result data */
@@ -556,5 +556,5 @@ export interface OperationResult<T = any> {
 	/** Error message if operation failed */
 	error?: string;
 	/** Additional metadata */
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 }

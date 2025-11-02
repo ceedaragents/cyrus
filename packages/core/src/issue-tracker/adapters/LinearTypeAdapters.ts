@@ -284,15 +284,68 @@ export function toLinearActivityContent(content: AgentActivityContent): {
 }
 
 /**
+ * Raw Linear GraphQL agent session data structure.
+ */
+export interface LinearAgentSessionData {
+	id: string;
+	issueId: string;
+	commentId?: string | null;
+	status: LinearDocument.AgentSessionStatus;
+	type: LinearDocument.AgentSessionType;
+	creatorId: string;
+	creator?: {
+		id: string;
+		name: string;
+		email: string;
+		url: string;
+		avatarUrl?: string | null;
+	} | null;
+	appUserId: string;
+	organizationId: string;
+	summary?: string | null;
+	startedAt?: string | null;
+	endedAt?: string | null;
+	createdAt: string;
+	updatedAt: string;
+	archivedAt?: string | null;
+	sourceMetadata?: Record<string, unknown> | null;
+}
+
+/**
+ * Raw Linear GraphQL agent activity content structure.
+ */
+export interface LinearAgentActivityContentData {
+	type: string;
+	body: string;
+}
+
+/**
+ * Raw Linear GraphQL agent activity data structure.
+ */
+export interface LinearAgentActivityData {
+	id: string;
+	agentSessionId: string;
+	agentContextId?: string | null;
+	sourceCommentId?: string;
+	content: LinearAgentActivityContentData;
+	signal?: "stop";
+	createdAt: string;
+	updatedAt: string;
+	archivedAt?: string | null;
+}
+
+/**
  * Convert Linear agent session data to platform-agnostic AgentSession.
  *
  * @param sessionData - Raw agent session data from Linear GraphQL response
  */
-export function adaptLinearAgentSession(sessionData: any): AgentSession {
+export function adaptLinearAgentSession(
+	sessionData: LinearAgentSessionData,
+): AgentSession {
 	return {
 		id: sessionData.id,
 		issueId: sessionData.issueId,
-		commentId: sessionData.commentId,
+		commentId: sessionData.commentId ?? undefined,
 		status: adaptLinearAgentSessionStatus(sessionData.status),
 		type: adaptLinearAgentSessionType(sessionData.type),
 		creatorId: sessionData.creatorId,
@@ -302,7 +355,7 @@ export function adaptLinearAgentSession(sessionData: any): AgentSession {
 					name: sessionData.creator.name,
 					email: sessionData.creator.email,
 					url: sessionData.creator.url,
-					avatarUrl: sessionData.creator.avatarUrl,
+					avatarUrl: sessionData.creator.avatarUrl ?? undefined,
 				}
 			: undefined,
 		appUserId: sessionData.appUserId,
@@ -313,7 +366,7 @@ export function adaptLinearAgentSession(sessionData: any): AgentSession {
 		createdAt: sessionData.createdAt,
 		updatedAt: sessionData.updatedAt,
 		archivedAt: sessionData.archivedAt ?? null,
-		sourceMetadata: sessionData.sourceMetadata,
+		sourceMetadata: sessionData.sourceMetadata ?? undefined,
 		metadata: {
 			linearSessionId: sessionData.id,
 		},
@@ -325,7 +378,9 @@ export function adaptLinearAgentSession(sessionData: any): AgentSession {
  *
  * @param activityData - Raw agent activity data from Linear GraphQL response
  */
-export function adaptLinearAgentActivity(activityData: any): AgentActivity {
+export function adaptLinearAgentActivity(
+	activityData: LinearAgentActivityData,
+): AgentActivity {
 	return {
 		id: activityData.id,
 		agentSessionId: activityData.agentSessionId,

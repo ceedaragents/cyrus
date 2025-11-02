@@ -29,7 +29,7 @@ export type RPCCommand =
 			params: {
 				title: string;
 				description?: string;
-				options?: Record<string, any>;
+				options?: Record<string, unknown>;
 			};
 	  }
 	| {
@@ -44,11 +44,11 @@ export type RPCCommand =
 	| { method: "startAgentSessionOnComment"; params: { commentId: string } }
 	| {
 			method: "createLabel";
-			params: { name: string; options?: Record<string, any> };
+			params: { name: string; options?: Record<string, unknown> };
 	  }
 	| {
 			method: "createMember";
-			params: { name: string; options?: Record<string, any> };
+			params: { name: string; options?: Record<string, unknown> };
 	  }
 	| { method: "fetchLabels"; params?: Record<string, never> }
 	| { method: "fetchMembers"; params?: Record<string, never> }
@@ -57,10 +57,40 @@ export type RPCCommand =
 /**
  * RPC response type.
  */
-export interface RPCResponse<T = any> {
+export interface RPCResponse<T = unknown> {
 	success: boolean;
 	data?: T;
 	error?: string;
+}
+
+/**
+ * Request body types for convenience endpoints.
+ */
+interface CreateIssueRequestBody {
+	title: string;
+	description?: string;
+	teamId?: string;
+	assigneeId?: string;
+	[key: string]: unknown;
+}
+
+interface CreateCommentRequestBody {
+	issueId: string;
+	body: string;
+	mentionAgent?: boolean;
+}
+
+interface PromptSessionRequestBody {
+	sessionId: string;
+	message: string;
+}
+
+interface StopSessionRequestBody {
+	sessionId: string;
+}
+
+interface ViewSessionParams {
+	sessionId: string;
 }
 
 /**
@@ -120,7 +150,7 @@ export class CLIRPCServer {
 		// Convenience endpoints for common operations
 		this.fastifyServer.post("/cli/issue", async (request) => {
 			try {
-				const params = request.body as any;
+				const params = request.body as CreateIssueRequestBody;
 				const issue = await this.issueTrackerService.createIssue(params);
 				return { success: true, data: issue };
 			} catch (error) {
@@ -133,7 +163,8 @@ export class CLIRPCServer {
 
 		this.fastifyServer.post("/cli/comment", async (request) => {
 			try {
-				const { issueId, body, mentionAgent } = request.body as any;
+				const { issueId, body, mentionAgent } =
+					request.body as CreateCommentRequestBody;
 				const finalBody = mentionAgent
 					? `${this.issueTrackerService.getAgentHandle()} ${body}`
 					: body;
@@ -151,7 +182,7 @@ export class CLIRPCServer {
 
 		this.fastifyServer.post("/cli/session/start", async (request) => {
 			try {
-				const { issueId } = request.body as any;
+				const { issueId } = request.body as { issueId: string };
 				const response =
 					await this.issueTrackerService.createAgentSessionOnIssue({ issueId });
 				return { success: true, data: response };
@@ -165,7 +196,7 @@ export class CLIRPCServer {
 
 		this.fastifyServer.post("/cli/session/prompt", async (request) => {
 			try {
-				const { sessionId, message } = request.body as any;
+				const { sessionId, message } = request.body as PromptSessionRequestBody;
 				const activity = await this.issueTrackerService.promptAgentSession(
 					sessionId,
 					message,
@@ -181,7 +212,7 @@ export class CLIRPCServer {
 
 		this.fastifyServer.post("/cli/session/stop", async (request) => {
 			try {
-				const { sessionId } = request.body as any;
+				const { sessionId } = request.body as StopSessionRequestBody;
 				const activity =
 					await this.issueTrackerService.stopAgentSession(sessionId);
 				return { success: true, data: activity };
@@ -195,7 +226,7 @@ export class CLIRPCServer {
 
 		this.fastifyServer.get("/cli/session/:sessionId", async (request) => {
 			try {
-				const { sessionId } = request.params as any;
+				const { sessionId } = request.params as ViewSessionParams;
 				const session =
 					await this.issueTrackerService.fetchAgentSession(sessionId);
 				const activities =
@@ -440,7 +471,7 @@ export class CLIRPCServer {
 			default:
 				return {
 					success: false,
-					error: `Unknown method: ${(command as any).method}`,
+					error: `Unknown method: ${(command as { method: string }).method}`,
 				};
 		}
 	}

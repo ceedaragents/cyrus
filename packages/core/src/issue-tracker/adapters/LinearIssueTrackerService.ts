@@ -46,8 +46,63 @@ import {
 	adaptLinearTeam,
 	adaptLinearUser,
 	adaptLinearWorkflowState,
+	type LinearAgentSessionData,
 	toLinearActivityContent,
 } from "./LinearTypeAdapters.js";
+
+/**
+ * Linear GraphQL response structure for rawRequest.
+ */
+interface LinearGraphQLResponse<T> {
+	data: T;
+}
+
+/**
+ * Linear client with raw request capability.
+ */
+interface LinearClientWithRawRequest {
+	client: {
+		rawRequest<T>(
+			query: string,
+			variables?: Record<string, unknown>,
+		): Promise<LinearGraphQLResponse<T>>;
+	};
+}
+
+/**
+ * Linear GraphQL comment data with user.
+ */
+interface LinearCommentData {
+	id: string;
+	body: string;
+	createdAt: string;
+	updatedAt: string;
+	archivedAt?: string | null;
+	userId: string;
+	issueId: string;
+	user?: {
+		id: string;
+		name: string;
+		displayName?: string | null;
+		email: string;
+		url: string;
+		avatarUrl?: string | null;
+	} | null;
+	parent?: {
+		id: string;
+	} | null;
+}
+
+/**
+ * Linear GraphQL agent session create response.
+ */
+interface LinearAgentSessionCreateData {
+	success: boolean;
+	lastSyncId: number;
+	agentSession: {
+		id: string;
+	};
+}
 
 /**
  * Linear implementation of IIssueTrackerService.
@@ -111,7 +166,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			const parentIssue = await this.linearClient.issue(issueId);
 
 			// Build filter based on options
-			const filter: any = {};
+			const filter: Record<string, unknown> = {};
 
 			if (options?.includeCompleted === false) {
 				filter.state = { type: { neq: "completed" } };
@@ -235,7 +290,9 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		commentId: string,
 	): Promise<CommentWithAttachments> {
 		try {
-			const result = await (this.linearClient as any).client.rawRequest(
+			const result = await (
+				this.linearClient as LinearClientWithRawRequest
+			).client.rawRequest<{ comment: LinearCommentData }>(
 				`
           query GetComment($id: String!) {
             comment(id: $id) {
@@ -263,7 +320,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				{ id: commentId },
 			);
 
-			const commentData = (result.data as any).comment;
+			const commentData = result.data.comment;
 			if (!commentData) {
 				throw new Error("Comment not found");
 			}
@@ -279,7 +336,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 							name: commentData.user.displayName || commentData.user.name,
 							email: commentData.user.email,
 							url: commentData.user.url,
-							avatarUrl: commentData.user.avatarUrl,
+							avatarUrl: commentData.user.avatarUrl ?? undefined,
 						}
 					: undefined,
 				issueId: commentData.issueId,
@@ -540,17 +597,18 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
         }
       `;
 
-			const result = await (this.linearClient as any).client.rawRequest(
-				mutation,
-				{
-					input: {
-						issueId: input.issueId,
-						externalLink: input.externalLink,
-					},
+			const result = await (
+				this.linearClient as LinearClientWithRawRequest
+			).client.rawRequest<{
+				agentSessionCreateOnIssue: LinearAgentSessionCreateData;
+			}>(mutation, {
+				input: {
+					issueId: input.issueId,
+					externalLink: input.externalLink,
 				},
-			);
+			});
 
-			const data = (result.data as any).agentSessionCreateOnIssue;
+			const data = result.data.agentSessionCreateOnIssue;
 
 			if (!data.success) {
 				throw new Error("Linear API returned success=false");
@@ -587,17 +645,18 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
         }
       `;
 
-			const result = await (this.linearClient as any).client.rawRequest(
-				mutation,
-				{
-					input: {
-						commentId: input.commentId,
-						externalLink: input.externalLink,
-					},
+			const result = await (
+				this.linearClient as LinearClientWithRawRequest
+			).client.rawRequest<{
+				agentSessionCreateOnComment: LinearAgentSessionCreateData;
+			}>(mutation, {
+				input: {
+					commentId: input.commentId,
+					externalLink: input.externalLink,
 				},
-			);
+			});
 
-			const data = (result.data as any).agentSessionCreateOnComment;
+			const data = result.data.agentSessionCreateOnComment;
 
 			if (!data.success) {
 				throw new Error("Linear API returned success=false");
@@ -649,11 +708,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
         }
       `;
 
-			const result = await (this.linearClient as any).client.rawRequest(query, {
+			const result = await (
+				this.linearClient as LinearClientWithRawRequest
+			).client.rawRequest<{ agentSession: LinearAgentSessionData }>(query, {
 				id: sessionId,
 			});
 
-			const sessionData = (result.data as any).agentSession;
+			const sessionData = result.data.agentSession;
 			if (!sessionData) {
 				throw new Error("Agent session not found");
 			}
@@ -776,16 +837,15 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	/**
 	 * Execute a raw GraphQL request.
 	 */
-	async rawGraphQLRequest<T = any>(
+	async rawGraphQLRequest<T = unknown>(
 		query: string,
-		variables?: Record<string, any>,
+		variables?: Record<string, unknown>,
 	): Promise<T> {
 		try {
-			const result = await (this.linearClient as any).client.rawRequest(
-				query,
-				variables,
-			);
-			return result.data as T;
+			const result = await (
+				this.linearClient as LinearClientWithRawRequest
+			).client.rawRequest<T>(query, variables);
+			return result.data;
 		} catch (error) {
 			throw new Error(
 				`Failed to execute raw GraphQL request: ${error instanceof Error ? error.message : String(error)}`,
@@ -800,12 +860,12 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Linear primarily uses GraphQL, so this method is not implemented.
 	 * Use rawGraphQLRequest instead.
 	 */
-	async rawRESTRequest<T = any>(
+	async rawRESTRequest<T = unknown>(
 		_endpoint: string,
 		_options?: {
 			method?: string;
 			headers?: Record<string, string>;
-			body?: any;
+			body?: unknown;
 		},
 	): Promise<T> {
 		throw new Error(
@@ -827,7 +887,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	/**
 	 * Get the platform's API version or other metadata.
 	 */
-	getPlatformMetadata(): Record<string, any> {
+	getPlatformMetadata(): Record<string, unknown> {
 		return {
 			platform: "linear",
 			sdkVersion: "unknown", // LinearClient doesn't expose version
