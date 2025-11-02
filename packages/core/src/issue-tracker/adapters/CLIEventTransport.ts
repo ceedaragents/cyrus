@@ -121,6 +121,21 @@ export class CLIEventTransport
 							commentId: session.commentId,
 							status: session.status,
 							type: session.type,
+							// Include issue inside agentSession to match Linear webhook structure
+							issue: {
+								id: issue.id,
+								identifier: issue.identifier,
+								title: issue.title,
+								description: issue.description,
+								url: issue.url,
+								team: issue.team
+									? {
+											id: issue.team.id,
+											key: issue.team.key,
+											name: issue.team.name,
+										}
+									: undefined,
+							},
 						},
 						issue: {
 							id: issue.id,
