@@ -172,6 +172,30 @@ export interface IIssueTrackerService {
 	 */
 	updateIssue(issueId: string, updates: IssueUpdateInput): Promise<Issue>;
 
+	/**
+	 * Fetch attachments for an issue.
+	 *
+	 * @param issueId - Issue ID to fetch attachments for
+	 * @returns Promise resolving to array of attachment metadata
+	 * @throws Error if issue not found or request fails
+	 *
+	 * @example
+	 * ```typescript
+	 * const attachments = await service.fetchIssueAttachments(issue.id);
+	 * for (const attachment of attachments) {
+	 *   console.log(`${attachment.title}: ${attachment.url}`);
+	 * }
+	 * ```
+	 *
+	 * @remarks
+	 * - Linear platform: Returns attachments from Linear SDK
+	 * - CLI platform: Returns empty array (no native attachments)
+	 * - Attachments are typically external links (Sentry, Datadog, etc.)
+	 */
+	fetchIssueAttachments(
+		issueId: string,
+	): Promise<Array<{ title: string; url: string }>>;
+
 	// ========================================================================
 	// COMMENT OPERATIONS
 	// ========================================================================

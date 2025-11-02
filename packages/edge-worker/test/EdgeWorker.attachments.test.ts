@@ -85,6 +85,11 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockLinearClient = {
 				fetchIssue: vi.fn().mockResolvedValue(mockIssue),
 				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
+				fetchIssueAttachments: vi
+					.fn()
+					.mockResolvedValue(
+						mockAttachments.map((a) => ({ title: a.title, url: a.url })),
+					),
 			};
 			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 
@@ -95,8 +100,10 @@ describe("EdgeWorker - Native Attachments", () => {
 				"/tmp/workspace",
 			);
 
-			// Verify attachments were fetched
-			expect(mockIssue.attachments).toHaveBeenCalled();
+			// Verify attachments were fetched via IssueTrackerService
+			expect(mockLinearClient.fetchIssueAttachments).toHaveBeenCalledWith(
+				"issue-123",
+			);
 
 			// Verify manifest includes native attachments
 			expect(result.manifest).toContain("### Linear Issue Links");
@@ -124,6 +131,7 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockLinearClient = {
 				fetchIssue: vi.fn().mockResolvedValue(mockIssue),
 				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
+				fetchIssueAttachments: vi.fn().mockResolvedValue([]),
 			};
 			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 
@@ -133,7 +141,9 @@ describe("EdgeWorker - Native Attachments", () => {
 				"/tmp/workspace",
 			);
 
-			expect(mockIssue.attachments).toHaveBeenCalled();
+			expect(mockLinearClient.fetchIssueAttachments).toHaveBeenCalledWith(
+				"issue-456",
+			);
 			expect(result.manifest).not.toContain("### Linear Issue Links");
 			expect(result.manifest).toContain(
 				"No attachments were found in this issue.",
@@ -152,6 +162,7 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockLinearClient = {
 				fetchIssue: vi.fn().mockResolvedValue(mockIssue),
 				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
+				fetchIssueAttachments: vi.fn().mockResolvedValue([]),
 			};
 			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 
@@ -162,7 +173,9 @@ describe("EdgeWorker - Native Attachments", () => {
 				"/tmp/workspace",
 			);
 
-			expect(mockIssue.attachments).toHaveBeenCalled();
+			expect(mockLinearClient.fetchIssueAttachments).toHaveBeenCalledWith(
+				"issue-789",
+			);
 			expect(result.manifest).toContain(
 				"No attachments were found in this issue.",
 			);
@@ -200,6 +213,7 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockLinearClient = {
 				fetchIssue: vi.fn().mockResolvedValue(platformAgnosticIssue),
 				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
+				fetchIssueAttachments: vi.fn().mockResolvedValue([]),
 			};
 			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 
@@ -273,6 +287,18 @@ describe("EdgeWorker - Native Attachments", () => {
 					.fn()
 					.mockResolvedValue(platformAgnosticIssueWithAttachments),
 				fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
+				fetchIssueAttachments: vi.fn().mockResolvedValue([
+					{
+						id: "attach-1",
+						title: "Test Attachment",
+						url: "https://example.com/attachment1",
+					},
+					{
+						id: "attach-2",
+						title: "Another Attachment",
+						url: "https://example.com/attachment2",
+					},
+				]),
 			};
 			(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 
