@@ -345,7 +345,7 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
 - Build all packages once at the start, then publish without rebuilding
 - This ensures `workspace:*` references resolve to published versions
 
-## 🏎️ Driving the Lamborghini CLI
+## 🏎️ Driving the Lambo
 
 The **Cyrus CLI Platform** is a premium command-line interface for testing and controlling Cyrus agent sessions. It's designed with beautiful output, excellent help, activity pagination, and professional error handling - the "Lamborghini of CLIs."
 
@@ -359,7 +359,7 @@ pnpm build
 
 **2. Start the CLI server:**
 ```bash
-node start-cli-server.mjs
+node tools/cli-platform/start-lambo.mjs
 ```
 
 The server will start on port 3457 (default) and display beautiful colored output with the RPC endpoint.
@@ -367,13 +367,13 @@ The server will start on port 3457 (default) and display beautiful colored outpu
 **3. Use the CLI tool:**
 ```bash
 # Check server health
-packages/core/src/issue-tracker/adapters/cli-tool.mjs ping
+tools/cli-platform/lambo.mjs ping
 
 # View all commands
-packages/core/src/issue-tracker/adapters/cli-tool.mjs help
+tools/cli-platform/lambo.mjs help
 
 # Get command-specific help
-packages/core/src/issue-tracker/adapters/cli-tool.mjs viewSession --help
+tools/cli-platform/lambo.mjs viewSession --help
 ```
 
 ### Premium Features
@@ -392,49 +392,49 @@ packages/core/src/issue-tracker/adapters/cli-tool.mjs viewSession --help
 
 **Health & Status:**
 ```bash
-cli-tool.mjs ping              # Check if server is running
-cli-tool.mjs status            # Get version, uptime, platform info
-cli-tool.mjs version           # Show version only
+lambo.mjs ping              # Check if server is running
+lambo.mjs status            # Get version, uptime, platform info
+lambo.mjs version           # Show version only
 ```
 
 **Working with Issues:**
 ```bash
 # Create an issue
-cli-tool.mjs createIssue --title "Fix bug" --description "Critical"
+lambo.mjs createIssue --title "Fix bug" --description "Critical"
 
 # Assign to agent
-cli-tool.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
+lambo.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
 
 # Create comment with agent mention (triggers session)
-cli-tool.mjs createComment --issue-id issue-1 --body "Fix this" --mention-agent
+lambo.mjs createComment --issue-id issue-1 --body "Fix this" --mention-agent
 ```
 
 **Managing Sessions:**
 ```bash
 # Start a session
-cli-tool.mjs startSession --issue-id issue-1
+lambo.mjs startSession --issue-id issue-1
 
 # View session (with pagination)
-cli-tool.mjs viewSession --session-id session-1 --limit 10
+lambo.mjs viewSession --session-id session-1 --limit 10
 
 # View next page
-cli-tool.mjs viewSession --session-id session-1 --limit 10 --offset 10
+lambo.mjs viewSession --session-id session-1 --limit 10 --offset 10
 
 # Search activities
-cli-tool.mjs viewSession --session-id session-1 --search "error"
+lambo.mjs viewSession --session-id session-1 --search "error"
 
 # Send message to session
-cli-tool.mjs promptSession --session-id session-1 --message "Add tests"
+lambo.mjs promptSession --session-id session-1 --message "Add tests"
 
 # Stop session
-cli-tool.mjs stopSession --session-id session-1
+lambo.mjs stopSession --session-id session-1
 ```
 
-### Testing the Lamborghini CLI
+### Testing the Lambo
 
 **Run the comprehensive test drive:**
 ```bash
-./test-drive-lamborghini-cli.sh
+./tools/cli-platform/test-drive-lambo.sh
 ```
 
 This automated script tests:
@@ -455,26 +455,26 @@ The test drive runs completely automated (with pauses for review) and verifies e
 **Workflow 1: Create issue, assign to agent, monitor session**
 ```bash
 # Create issue
-cli-tool.mjs createIssue --title "Refactor API" --description "Clean up endpoints"
+lambo.mjs createIssue --title "Refactor API" --description "Clean up endpoints"
 # Output: { "id": "issue-1", ... }
 
 # Assign to agent (triggers session via event)
-cli-tool.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
+lambo.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
 
 # Or manually start session
-cli-tool.mjs startSession --issue-id issue-1
+lambo.mjs startSession --issue-id issue-1
 # Output: { "agentSessionId": "session-1", ... }
 
 # Monitor progress (paginated)
-cli-tool.mjs viewSession --session-id session-1 --limit 5
+lambo.mjs viewSession --session-id session-1 --limit 5
 
 # Add activities accumulate...
 
 # View next page
-cli-tool.mjs viewSession --session-id session-1 --limit 5 --offset 5
+lambo.mjs viewSession --session-id session-1 --limit 5 --offset 5
 
 # Search for specific activity
-cli-tool.mjs viewSession --session-id session-1 --search "completed"
+lambo.mjs viewSession --session-id session-1 --search "completed"
 ```
 
 **Workflow 2: Paginating large activity lists**
@@ -482,16 +482,16 @@ cli-tool.mjs viewSession --session-id session-1 --search "completed"
 # Session has 100+ activities
 
 # View most recent 20 (default)
-cli-tool.mjs viewSession --session-id session-1
+lambo.mjs viewSession --session-id session-1
 
 # View most recent 10
-cli-tool.mjs viewSession --session-id session-1 --limit 10
+lambo.mjs viewSession --session-id session-1 --limit 10
 
 # View activities 20-30
-cli-tool.mjs viewSession --session-id session-1 --limit 10 --offset 20
+lambo.mjs viewSession --session-id session-1 --limit 10 --offset 20
 
 # Search for errors in last 50
-cli-tool.mjs viewSession --session-id session-1 --search "error" --limit 50
+lambo.mjs viewSession --session-id session-1 --search "error" --limit 50
 ```
 
 **Workflow 3: Scripted automation**
@@ -505,7 +505,7 @@ LAST_OFFSET=0
 while true; do
   clear
   echo "=== Session $SESSION_ID (refreshing every 5s) ==="
-  cli-tool.mjs viewSession --session-id "$SESSION_ID" --limit 5 --offset $LAST_OFFSET
+  lambo.mjs viewSession --session-id "$SESSION_ID" --limit 5 --offset $LAST_OFFSET
   sleep 5
 done
 ```
@@ -523,16 +523,16 @@ done
 **Examples:**
 ```bash
 # First page (most recent 20)
-cli-tool.mjs viewSession --session-id S --limit 20 --offset 0
+lambo.mjs viewSession --session-id S --limit 20 --offset 0
 
 # Second page (next 20)
-cli-tool.mjs viewSession --session-id S --limit 20 --offset 20
+lambo.mjs viewSession --session-id S --limit 20 --offset 20
 
 # Third page (next 20)
-cli-tool.mjs viewSession --session-id S --limit 20 --offset 40
+lambo.mjs viewSession --session-id S --limit 20 --offset 40
 
 # Search and paginate
-cli-tool.mjs viewSession --session-id S --search "test" --limit 10 --offset 0
+lambo.mjs viewSession --session-id S --search "test" --limit 10 --offset 0
 ```
 
 ### Environment Variables
@@ -540,32 +540,32 @@ cli-tool.mjs viewSession --session-id S --search "test" --limit 10 --offset 0
 **CYRUS_PORT**: Server port (default: 3457)
 ```bash
 # Start server on custom port
-CYRUS_PORT=8080 node start-cli-server.mjs
+CYRUS_PORT=8080 node tools/cli-platform/start-lambo.mjs
 
 # Use CLI with custom port
-CYRUS_PORT=8080 cli-tool.mjs ping
+CYRUS_PORT=8080 tools/cli-platform/lambo.mjs ping
 ```
 
 **DEBUG**: Enable stack traces
 ```bash
-DEBUG=1 cli-tool.mjs createIssue --title "Test"
+DEBUG=1 tools/cli-platform/lambo.mjs createIssue --title "Test"
 ```
 
 ### Troubleshooting
 
 **Server won't start:**
 - Check if port 3457 is already in use
-- Try a different port: `CYRUS_PORT=8080 node start-cli-server.mjs`
+- Try a different port: `CYRUS_PORT=8080 node tools/cli-platform/start-lambo.mjs`
 - Build packages first: `pnpm build`
 
 **CLI can't connect:**
 - Verify server is running
-- Check port matches: `CYRUS_PORT=8080 cli-tool.mjs ping`
+- Check port matches: `CYRUS_PORT=8080 tools/cli-platform/lambo.mjs ping`
 - Look for errors in `/tmp/cyrus-cli-server.log`
 
 **Activities not showing:**
 - Session may be new (no activities yet)
-- Add test activity: `cli-tool.mjs promptSession --session-id S --message "test"`
+- Add test activity: `tools/cli-platform/lambo.mjs promptSession --session-id S --message "test"`
 - Check offset isn't beyond total count
 
 **Module not found:**
@@ -574,17 +574,17 @@ DEBUG=1 cli-tool.mjs createIssue --title "Test"
 
 ### Documentation
 
-- **CLI_TOOL_README.md** - Comprehensive CLI documentation
-- **test-drive-lamborghini-cli.sh** - Automated test script
-- **packages/core/src/issue-tracker/adapters/cli-tool.mjs** - CLI tool source
+- **tools/cli-platform/CLI_TOOL_README.md** - Comprehensive CLI documentation
+- **tools/cli-platform/test-drive-lambo.sh** - Automated test script
+- **tools/cli-platform/lambo.mjs** - CLI tool source
 - **packages/core/src/issue-tracker/adapters/CLIRPCServer.ts** - RPC server
-- **start-cli-server.mjs** - Server startup script
+- **tools/cli-platform/start-lambo.mjs** - Server startup script
 
 ### Architecture
 
 ```
 ┌──────────────────┐
-│  cli-tool.mjs    │  ← Beautiful CLI with colors, help, pagination
+│  lambo.mjs    │  ← Beautiful CLI with colors, help, pagination
 │  (Client)        │
 └────────┬─────────┘
          │ HTTP POST /cli/rpc (JSON-RPC)
@@ -606,28 +606,28 @@ DEBUG=1 cli-tool.mjs createIssue --title "Test"
 
 **Adding a new command:**
 
-1. **Add to `cli-tool.mjs`:**
+1. **Add to `tools/cli-platform/lambo.mjs`:**
    - Add case to switch statement in `main()`
    - Add entry to `showHelp()` function
    - Add complete help to `showCommandHelp()` object
 
-2. **Add to `CLIRPCServer.ts`:**
+2. **Add to `packages/core/src/issue-tracker/adapters/CLIRPCServer.ts`:**
    - Add to `RPCCommand` type union
    - Add handler in `handleCommand()` switch
 
-3. **Add to `CLIIssueTrackerService.ts`:**
+3. **Add to `packages/core/src/issue-tracker/adapters/CLIIssueTrackerService.ts`:**
    - Implement service method if needed
    - Follow existing patterns
 
 4. **Update docs:**
-   - Add to `CLI_TOOL_README.md`
-   - Add to `test-drive-lamborghini-cli.sh`
+   - Add to `tools/cli-platform/CLI_TOOL_README.md`
+   - Add to `tools/cli-platform/test-drive-lambo.sh`
    - Update this section of `CLAUDE.md`
 
 **Example: Adding `listSessions` command:**
 
-```typescript
-// cli-tool.mjs
+```javascript
+// tools/cli-platform/lambo.mjs
 case "listSessions": {
   method = "listAgentSessions";
   rpcParams = {};
@@ -640,9 +640,9 @@ console.log(`    ${c.command("listSessions")}             List all agent session
 // Add to showCommandHelp():
 listSessions: {
   description: "List all agent sessions",
-  usage: "cli-tool.mjs listSessions",
+  usage: "lambo.mjs listSessions",
   options: [],
-  examples: ["cli-tool.mjs listSessions"],
+  examples: ["lambo.mjs listSessions"],
 }
 
 // CLIRPCServer.ts
@@ -658,15 +658,15 @@ case "listAgentSessions": {
 
 ### Tips & Best Practices
 
-1. **Always check server is running first**: `cli-tool.mjs ping`
+1. **Always check server is running first**: `tools/cli-platform/lambo.mjs ping`
 2. **Use --help liberally**: Every command has detailed help
 3. **Paginate large datasets**: Use `--limit` and `--offset` for 100+ activities
 4. **Search before paginating**: `--search "term"` filters first, then paginates
 5. **Watch most recent**: Default sort shows newest first (perfect for monitoring)
 6. **Script it**: CLI is designed for bash scripts and automation
-7. **Test with test drive**: Run `./test-drive-lamborghini-cli.sh` after changes
+7. **Test with test drive**: Run `./tools/cli-platform/test-drive-lambo.sh` after changes
 
-### Why "Lamborghini CLI"?
+### Why "Lambo"?
 
 This CLI is built with premium quality:
 - ✨ Beautiful, professional output (think Vercel CLI, Railway CLI)

@@ -20,12 +20,12 @@ The **Lamborghini of CLIs** - A beautiful, professional command-line interface f
 
 ```bash
 # Default port (3457)
-node start-cli-server.mjs
+node start-lambo.mjs
 
 # Custom port
-CYRUS_PORT=8080 node start-cli-server.mjs
+CYRUS_PORT=8080 node start-lambo.mjs
 # or
-node start-cli-server.mjs 8080
+node start-lambo.mjs 8080
 ```
 
 The server will display:
@@ -46,13 +46,13 @@ The server will display:
    Quick Start:
 
    # Check server health
-   cli-tool.mjs ping
+   lambo.mjs ping
 
    # Create an issue
-   cli-tool.mjs createIssue --title "Test Issue"
+   lambo.mjs createIssue --title "Test Issue"
 
    # View all commands
-   cli-tool.mjs help
+   lambo.mjs help
 
    Press Ctrl+C to stop.
 ```
@@ -61,13 +61,13 @@ The server will display:
 
 ```bash
 # Check if server is running
-packages/core/src/issue-tracker/adapters/cli-tool.mjs ping
+packages/core/src/issue-tracker/adapters/lambo.mjs ping
 
 # View all commands
-packages/core/src/issue-tracker/adapters/cli-tool.mjs help
+packages/core/src/issue-tracker/adapters/lambo.mjs help
 
 # Get help for a specific command
-packages/core/src/issue-tracker/adapters/cli-tool.mjs createIssue --help
+packages/core/src/issue-tracker/adapters/lambo.mjs createIssue --help
 ```
 
 ## Installation (Optional)
@@ -76,12 +76,12 @@ Create aliases for easier access:
 
 ```bash
 # Add to your ~/.bashrc or ~/.zshrc
-alias cyrus-cli='packages/core/src/issue-tracker/adapters/cli-tool.mjs'
-alias cyrus-server='node start-cli-server.mjs'
+alias cyrus-cli='packages/core/src/issue-tracker/adapters/lambo.mjs'
+alias cyrus-server='node start-lambo.mjs'
 
 # Or create symlinks
-ln -s $(pwd)/packages/core/src/issue-tracker/adapters/cli-tool.mjs /usr/local/bin/cyrus-cli
-ln -s $(pwd)/start-cli-server.mjs /usr/local/bin/cyrus-server
+ln -s $(pwd)/packages/core/src/issue-tracker/adapters/lambo.mjs /usr/local/bin/cyrus-cli
+ln -s $(pwd)/start-lambo.mjs /usr/local/bin/cyrus-server
 ```
 
 Then use:
@@ -416,7 +416,7 @@ Server port (default: 3457)
 **Usage:**
 ```bash
 # Set before starting server
-CYRUS_PORT=8080 node start-cli-server.mjs
+CYRUS_PORT=8080 node start-lambo.mjs
 
 # Set when using CLI tool
 CYRUS_PORT=8080 cyrus-cli ping
@@ -439,7 +439,7 @@ $ cyrus-cli createIssue
 
 ❌ Missing required parameter: --title
 
-   Run cli-tool.mjs createIssue --help for usage.
+   Run lambo.mjs createIssue --help for usage.
 ```
 
 ### Connection Failed
@@ -450,7 +450,7 @@ $ cyrus-cli ping
 
    Server URL: http://localhost:3457/cli/rpc
    Make sure the CLI server is running.
-   Start it with: node start-cli-server.mjs
+   Start it with: node start-lambo.mjs
 ```
 
 ### Unknown Command
@@ -459,8 +459,8 @@ $ cyrus-cli unknownCommand
 
 ❌ Unknown command: unknownCommand
 
-   Run cli-tool.mjs help to see all commands.
-   Run cli-tool.mjs unknownCommand --help for command-specific help.
+   Run lambo.mjs help to see all commands.
+   Run lambo.mjs unknownCommand --help for command-specific help.
 ```
 
 ### Invalid Resource
@@ -564,7 +564,7 @@ done
 ### Run the Test Drive Script
 
 ```bash
-./test-drive-lamborghini-cli.sh
+./test-drive-lambo.sh
 ```
 
 This comprehensive test script demonstrates:
@@ -604,7 +604,7 @@ Error: listen EADDRINUSE: address already in use
 
 **Solution:** Use a different port:
 ```bash
-CYRUS_PORT=8080 node start-cli-server.mjs
+CYRUS_PORT=8080 node start-lambo.mjs
 CYRUS_PORT=8080 cyrus-cli ping
 ```
 
@@ -614,7 +614,7 @@ CYRUS_PORT=8080 cyrus-cli ping
 ```
 
 **Solutions:**
-1. Make sure server is running: `node start-cli-server.mjs`
+1. Make sure server is running: `node start-lambo.mjs`
 2. Check correct port: `CYRUS_PORT=<port> cyrus-cli ping`
 3. Verify server log: `cat /tmp/cyrus-cli-server.log`
 
@@ -646,7 +646,7 @@ If `viewSession` shows no activities:
 
 ```
 ┌─────────────────┐
-│   cli-tool.mjs  │  ← Beautiful CLI with colors & help
+│   lambo.mjs  │  ← Beautiful CLI with colors & help
 │   (Client)      │
 └────────┬────────┘
          │ HTTP POST /cli/rpc
@@ -668,7 +668,7 @@ If `viewSession` shows no activities:
 
 When adding new commands:
 
-1. **Add to `cli-tool.mjs`:**
+1. **Add to `lambo.mjs`:**
    - Add case in switch statement
    - Add to `showHelp()` function
    - Add to `showCommandHelp()` with examples
@@ -687,7 +687,7 @@ When adding new commands:
 
 ## Version History
 
-- **v1.0.0** - Lamborghini CLI Release
+- **v1.0.0** - Lambo Release
   - ✨ Beautiful colored output
   - 📄 Activity pagination (`--limit`, `--offset`)
   - 🔍 Activity search (`--search`)
@@ -701,9 +701,9 @@ When adding new commands:
 
 ## See Also
 
-- **CLAUDE.md** - "Driving the Lamborghini CLI" guide
-- **test-drive-lamborghini-cli.sh** - Comprehensive test script
-- **start-cli-server.mjs** - Server startup script
+- **CLAUDE.md** - "Driving the Lambo" guide
+- **test-drive-lambo.sh** - Comprehensive test script
+- **start-lambo.mjs** - Server startup script
 
 ---
 

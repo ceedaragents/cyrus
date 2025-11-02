@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 🏎️  Lamborghini CLI Test Drive
+# 🏎️  Lambo Test Drive
 #
 # This script demonstrates all the premium features of the Cyrus CLI platform.
 # Run this to verify everything works beautifully!
@@ -22,8 +22,8 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m' # No Color
 
-# CLI tool path
-CLI_TOOL="packages/core/src/issue-tracker/adapters/cli-tool.mjs"
+# CLI tool path (relative to repo root)
+CLI_TOOL="tools/cli-platform/lambo.mjs"
 
 # Port for testing (use a different port from default to avoid conflicts)
 export CYRUS_PORT=3458
@@ -31,7 +31,7 @@ export CYRUS_PORT=3458
 echo -e "${BOLD}${CYAN}"
 echo "╔═══════════════════════════════════════════════════════════╗"
 echo "║                                                           ║"
-echo "║       🏎️  Lamborghini CLI - Test Drive Script 🏎️          ║"
+echo "║       🏎️  Lambo - Test Drive Script 🏎️          ║"
 echo "║                                                           ║"
 echo "║   Premium UX • Beautiful Output • Excellent Help         ║"
 echo "║                                                           ║"
@@ -84,8 +84,8 @@ echo -e "${BOLD}${MAGENTA}═══ Step 1: Start Server ═══${NC}\n"
 echo -e "${DIM}Starting Cyrus CLI server on port $CYRUS_PORT...${NC}"
 echo -e "${DIM}(Server will run in background)${NC}\n"
 
-# Start server in background
-node start-cli-server.mjs $CYRUS_PORT > /tmp/cyrus-cli-server.log 2>&1 &
+# Start server in background (from repo root)
+node tools/cli-platform/start-lambo.mjs $CYRUS_PORT > /tmp/cyrus-cli-server.log 2>&1 &
 SERVER_PID=$!
 
 echo -e "${GREEN}✓ Server started (PID: $SERVER_PID)${NC}"
@@ -259,7 +259,7 @@ echo "╔═══════════════════════�
 echo "║                                                           ║"
 echo "║              ✅ TEST DRIVE COMPLETE ✅                     ║"
 echo "║                                                           ║"
-echo "║   All features of the Lamborghini CLI are working!       ║"
+echo "║   All features of the Lambo are working!       ║"
 echo "║                                                           ║"
 echo "╚═══════════════════════════════════════════════════════════╝"
 echo -e "${NC}\n"
@@ -284,4 +284,4 @@ echo -e "${DIM}   • Check CLI_TOOL_README.md for documentation${NC}"
 echo -e "${DIM}   • See CLAUDE.md for \"Driving the Lamborghini\" guide${NC}"
 echo ""
 
-echo -e "${BOLD}${YELLOW}🎉 The Lamborghini CLI is ready to race! 🏎️${NC}\n"
+echo -e "${BOLD}${YELLOW}🎉 The Lambo is ready to race! 🏎️${NC}\n"

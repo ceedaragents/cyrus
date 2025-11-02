@@ -22,8 +22,8 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Import EdgeWorker using relative path from script location
-const { EdgeWorker } = await import(join(__dirname, "packages/edge-worker/dist/EdgeWorker.js"));
+// Import EdgeWorker using relative path from script location (go up to repo root first)
+const { EdgeWorker } = await import(join(__dirname, "../../packages/edge-worker/dist/EdgeWorker.js"));
 
 // ANSI color codes
 const c = {

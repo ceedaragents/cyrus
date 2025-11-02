@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Lambo CLI wrapper - forwards all commands to tools/cli-platform/lambo.mjs
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+exec node "${SCRIPT_DIR}/tools/cli-platform/lambo.mjs" "$@"

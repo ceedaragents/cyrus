@@ -127,9 +127,9 @@ Connecting to http://localhost:3458/cli/rpc...
 **Impact**: Users can't verify server is running before executing commands
 
 **Problem**: No command like:
-- `cli-tool.mjs ping` - Check if server is responding
-- `cli-tool.mjs status` - Get server status
-- `cli-tool.mjs version` - Get server version
+- `lambo.mjs ping` - Check if server is responding
+- `lambo.mjs status` - Get server status
+- `lambo.mjs version` - Get server version
 
 **Expected**: Add health check commands.
 
@@ -154,7 +154,7 @@ Connecting to http://localhost:3458/cli/rpc...
 
 **Problem**: Linear allows assigning issues to users. CLI platform should allow:
 ```bash
-cli-tool.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
+lambo.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
 ```
 
 **Expected**: Add `assignIssue` command or `--assignee` flag to `createIssue`.
@@ -167,8 +167,8 @@ cli-tool.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1
 
 **Problem**: Can't run:
 ```bash
-cli-tool.mjs createIssue --help
-cli-tool.mjs startSession --help
+lambo.mjs createIssue --help
+lambo.mjs startSession --help
 ```
 
 **Expected**: Each command should have its own help.
@@ -210,7 +210,7 @@ cli-tool.mjs startSession --help
 - **Config directory**: `/tmp/cyrus-cli-test/config`
 - **Project**: `/tmp/cyrus-cli-test/simple-project`
 - **Server port**: 3458
-- **CLI tool**: `packages/core/src/issue-tracker/adapters/cli-tool.mjs`
+- **CLI tool**: `packages/core/src/issue-tracker/adapters/lambo.mjs`
 - **Test file**: `calculator.js` with multiply bug
 
 ## Conclusion

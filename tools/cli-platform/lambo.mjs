@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * 🏎️  Cyrus CLI Tool - Premium command-line interface
+ * 🏎️  Lambo - Premium Cyrus CLI
  *
- * A beautiful, professional CLI for controlling Cyrus via RPC.
+ * A beautiful, professional command-line interface for controlling Cyrus via RPC.
  * Features: colors, pagination, search, excellent help, and premium UX.
  *
  * Usage:
- *   cli-tool.mjs <command> [options]
- *   cli-tool.mjs help
- *   cli-tool.mjs <command> --help
+ *   lambo <command> [options]
+ *   lambo help
+ *   lambo <command> --help
  */
 
 const DEFAULT_PORT = 3457;
@@ -154,7 +154,8 @@ function printJSON(obj, indent = 0) {
     console.log("[");
     obj.forEach((item, i) => {
       process.stdout.write(spaces + "  ");
-      printJSON(item, indent + 1);
+      const value = printJSON(item, indent + 1);
+      if (typeof value === 'string') process.stdout.write(value);
       console.log(i < obj.length - 1 ? "," : "");
     });
     console.log(spaces + "]");
@@ -167,7 +168,8 @@ function printJSON(obj, indent = 0) {
     console.log("{");
     keys.forEach((key, i) => {
       process.stdout.write(spaces + `  ${c.info(key)}: `);
-      printJSON(obj[key], indent + 1);
+      const value = printJSON(obj[key], indent + 1);
+      if (typeof value === 'string') process.stdout.write(value);
       console.log(i < keys.length - 1 ? "," : "");
     });
     console.log(spaces + "}");
@@ -278,8 +280,8 @@ function displayActivities(activities, options = {}) {
  * Show general help
  */
 function showHelp() {
-  console.log(c.bold("\n🏎️  Cyrus CLI Tool - Premium Interface\n"));
-  console.log(`${c.dim("Usage:")} ${c.command("cli-tool.mjs")} ${c.param("<command>")} ${c.dim("[options]")}\n`);
+  console.log(c.bold("\n🏎️  Lambo - Premium Cyrus CLI\n"));
+  console.log(`${c.dim("Usage:")} ${c.command("lambo")} ${c.param("<command>")} ${c.dim("[options]")}\n`);
 
   console.log(c.bold("📚 Commands:\n"));
 
@@ -320,8 +322,8 @@ function showHelp() {
 
   console.log(c.bold("💡 Per-Command Help:\n"));
   console.log(c.dim(`   Get detailed help for any command:`));
-  console.log(`   ${c.command("cli-tool.mjs createIssue --help")}`);
-  console.log(`   ${c.command("cli-tool.mjs viewSession --help")}`);
+  console.log(`   ${c.command("lambo.mjs createIssue --help")}`);
+  console.log(`   ${c.command("lambo.mjs viewSession --help")}`);
   console.log();
 
   console.log(c.bold("🌐 Environment:\n"));
@@ -330,16 +332,16 @@ function showHelp() {
 
   console.log(c.bold("✨ Examples:\n"));
   console.log(`   ${c.dim("# Check if server is running")}`);
-  console.log(`   ${c.command("cli-tool.mjs ping")}`);
+  console.log(`   ${c.command("lambo.mjs ping")}`);
   console.log();
   console.log(`   ${c.dim("# Create an issue")}`);
-  console.log(`   ${c.command('cli-tool.mjs createIssue --title "Fix bug" --description "Critical fix"')}`);
+  console.log(`   ${c.command('lambo.mjs createIssue --title "Fix bug" --description "Critical fix"')}`);
   console.log();
   console.log(`   ${c.dim("# View session with pagination")}`);
-  console.log(`   ${c.command("cli-tool.mjs viewSession --session-id session-1 --limit 10 --offset 20")}`);
+  console.log(`   ${c.command("lambo.mjs viewSession --session-id session-1 --limit 10 --offset 20")}`);
   console.log();
   console.log(`   ${c.dim("# Search activities")}`);
-  console.log(`   ${c.command('cli-tool.mjs viewSession --session-id session-1 --search "error"')}`);
+  console.log(`   ${c.command('lambo.mjs viewSession --session-id session-1 --search "error"')}`);
   console.log();
 }
 
@@ -350,25 +352,25 @@ function showCommandHelp(command) {
   const helps = {
     ping: {
       description: "Check server connectivity",
-      usage: "cli-tool.mjs ping",
+      usage: "lambo.mjs ping",
       options: [],
-      examples: ["cli-tool.mjs ping"],
+      examples: ["lambo.mjs ping"],
     },
     status: {
       description: "Get server status, version, and health information",
-      usage: "cli-tool.mjs status",
+      usage: "lambo.mjs status",
       options: [],
-      examples: ["cli-tool.mjs status"],
+      examples: ["lambo.mjs status"],
     },
     version: {
       description: "Show server version",
-      usage: "cli-tool.mjs version",
+      usage: "lambo.mjs version",
       options: [],
-      examples: ["cli-tool.mjs version"],
+      examples: ["lambo.mjs version"],
     },
     createIssue: {
       description: "Create a new issue in the CLI platform",
-      usage: "cli-tool.mjs createIssue --title <title> [options]",
+      usage: "lambo.mjs createIssue --title <title> [options]",
       options: [
         { name: "--title", required: true, description: "Issue title (required)" },
         { name: "--description", description: "Issue description" },
@@ -377,54 +379,54 @@ function showCommandHelp(command) {
         { name: "--state-id", description: "Workflow state ID (default: state-todo)" },
       ],
       examples: [
-        'cli-tool.mjs createIssue --title "Fix login bug"',
-        'cli-tool.mjs createIssue --title "Add feature" --description "New cool feature" --assignee-id agent-user-1',
+        'lambo.mjs createIssue --title "Fix login bug"',
+        'lambo.mjs createIssue --title "Add feature" --description "New cool feature" --assignee-id agent-user-1',
       ],
     },
     assignIssue: {
       description: "Assign an issue to a user or remove assignee",
-      usage: "cli-tool.mjs assignIssue --issue-id <id> --assignee-id <user-id>",
+      usage: "lambo.mjs assignIssue --issue-id <id> --assignee-id <user-id>",
       options: [
         { name: "--issue-id", required: true, description: "Issue ID (required)" },
         { name: "--assignee-id", description: "User ID to assign (omit to unassign)" },
       ],
       examples: [
-        "cli-tool.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1",
-        "cli-tool.mjs assignIssue --issue-id issue-1 --assignee-id user-2",
+        "lambo.mjs assignIssue --issue-id issue-1 --assignee-id agent-user-1",
+        "lambo.mjs assignIssue --issue-id issue-1 --assignee-id user-2",
       ],
     },
     createComment: {
       description: "Create a comment on an issue",
-      usage: "cli-tool.mjs createComment --issue-id <id> --body <text> [options]",
+      usage: "lambo.mjs createComment --issue-id <id> --body <text> [options]",
       options: [
         { name: "--issue-id", required: true, description: "Issue ID (required)" },
         { name: "--body", required: true, description: "Comment body text (required)" },
         { name: "--mention-agent", description: "Mention the agent (triggers session)" },
       ],
       examples: [
-        'cli-tool.mjs createComment --issue-id issue-1 --body "This is urgent"',
-        'cli-tool.mjs createComment --issue-id issue-1 --body "Please fix" --mention-agent',
+        'lambo.mjs createComment --issue-id issue-1 --body "This is urgent"',
+        'lambo.mjs createComment --issue-id issue-1 --body "Please fix" --mention-agent',
       ],
     },
     startSession: {
       description: "Start an agent session on an issue",
-      usage: "cli-tool.mjs startSession --issue-id <id>",
+      usage: "lambo.mjs startSession --issue-id <id>",
       options: [
         { name: "--issue-id", required: true, description: "Issue ID (required)" },
       ],
-      examples: ["cli-tool.mjs startSession --issue-id issue-1"],
+      examples: ["lambo.mjs startSession --issue-id issue-1"],
     },
     startSessionOnComment: {
       description: "Start an agent session on a root comment",
-      usage: "cli-tool.mjs startSessionOnComment --comment-id <id>",
+      usage: "lambo.mjs startSessionOnComment --comment-id <id>",
       options: [
         { name: "--comment-id", required: true, description: "Comment ID (required)" },
       ],
-      examples: ["cli-tool.mjs startSessionOnComment --comment-id comment-1"],
+      examples: ["lambo.mjs startSessionOnComment --comment-id comment-1"],
     },
     viewSession: {
       description: "View agent session details with pagination and search",
-      usage: "cli-tool.mjs viewSession --session-id <id> [options]",
+      usage: "lambo.mjs viewSession --session-id <id> [options]",
       options: [
         { name: "--session-id", required: true, description: "Session ID (required)" },
         { name: "--limit", description: "Number of activities to show (default: 20)" },
@@ -432,71 +434,71 @@ function showCommandHelp(command) {
         { name: "--search", description: "Search term to filter activities" },
       ],
       examples: [
-        "cli-tool.mjs viewSession --session-id session-1",
-        "cli-tool.mjs viewSession --session-id session-1 --limit 10 --offset 20",
-        'cli-tool.mjs viewSession --session-id session-1 --search "error"',
+        "lambo.mjs viewSession --session-id session-1",
+        "lambo.mjs viewSession --session-id session-1 --limit 10 --offset 20",
+        'lambo.mjs viewSession --session-id session-1 --search "error"',
       ],
     },
     promptSession: {
       description: "Send a prompt/message to an agent session",
-      usage: "cli-tool.mjs promptSession --session-id <id> --message <text>",
+      usage: "lambo.mjs promptSession --session-id <id> --message <text>",
       options: [
         { name: "--session-id", required: true, description: "Session ID (required)" },
         { name: "--message", required: true, description: "Message to send (required)" },
       ],
       examples: [
-        'cli-tool.mjs promptSession --session-id session-1 --message "Fix the bug"',
+        'lambo.mjs promptSession --session-id session-1 --message "Fix the bug"',
       ],
     },
     stopSession: {
       description: "Stop a running agent session",
-      usage: "cli-tool.mjs stopSession --session-id <id>",
+      usage: "lambo.mjs stopSession --session-id <id>",
       options: [
         { name: "--session-id", required: true, description: "Session ID (required)" },
       ],
-      examples: ["cli-tool.mjs stopSession --session-id session-1"],
+      examples: ["lambo.mjs stopSession --session-id session-1"],
     },
     fetchLabels: {
       description: "List all labels in the workspace",
-      usage: "cli-tool.mjs fetchLabels",
+      usage: "lambo.mjs fetchLabels",
       options: [],
-      examples: ["cli-tool.mjs fetchLabels"],
+      examples: ["lambo.mjs fetchLabels"],
     },
     fetchMembers: {
       description: "List all team members",
-      usage: "cli-tool.mjs fetchMembers",
+      usage: "lambo.mjs fetchMembers",
       options: [],
-      examples: ["cli-tool.mjs fetchMembers"],
+      examples: ["lambo.mjs fetchMembers"],
     },
     createLabel: {
       description: "Create a new label",
-      usage: "cli-tool.mjs createLabel --name <name> [options]",
+      usage: "lambo.mjs createLabel --name <name> [options]",
       options: [
         { name: "--name", required: true, description: "Label name (required)" },
         { name: "--color", description: "Label color (hex code, e.g., #ff0000)" },
       ],
       examples: [
-        'cli-tool.mjs createLabel --name "bug"',
-        'cli-tool.mjs createLabel --name "urgent" --color "#ff0000"',
+        'lambo.mjs createLabel --name "bug"',
+        'lambo.mjs createLabel --name "urgent" --color "#ff0000"',
       ],
     },
     createMember: {
       description: "Create a new team member",
-      usage: "cli-tool.mjs createMember --name <name> [options]",
+      usage: "lambo.mjs createMember --name <name> [options]",
       options: [
         { name: "--name", required: true, description: "Member name (required)" },
         { name: "--email", description: "Member email address" },
       ],
       examples: [
-        'cli-tool.mjs createMember --name "John Doe"',
-        'cli-tool.mjs createMember --name "Jane Smith" --email "jane@example.com"',
+        'lambo.mjs createMember --name "John Doe"',
+        'lambo.mjs createMember --name "Jane Smith" --email "jane@example.com"',
       ],
     },
     getState: {
       description: "Get entire in-memory state (for debugging)",
-      usage: "cli-tool.mjs getState",
+      usage: "lambo.mjs getState",
       options: [],
-      examples: ["cli-tool.mjs getState"],
+      examples: ["lambo.mjs getState"],
     },
   };
 
@@ -504,7 +506,7 @@ function showCommandHelp(command) {
 
   if (!help) {
     console.error(c.error(`\n❌ Unknown command: ${command}\n`));
-    console.log(c.dim(`   Run ${c.command("cli-tool.mjs help")} to see all commands.\n`));
+    console.log(c.dim(`   Run ${c.command("lambo.mjs help")} to see all commands.\n`));
     process.exit(1);
   }
 
@@ -601,7 +603,7 @@ async function main() {
       case "createIssue": {
         if (!params.title) {
           console.error(c.error("\n❌ Missing required parameter: --title\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs createIssue --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs createIssue --help")} for usage.\n`));
           process.exit(1);
         }
         method = "createIssue";
@@ -620,7 +622,7 @@ async function main() {
       case "getIssue": {
         if (!params.issueId) {
           console.error(c.error("\n❌ Missing required parameter: --issue-id\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs getIssue --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs getIssue --help")} for usage.\n`));
           process.exit(1);
         }
         console.error(c.error("\n❌ getIssue not yet implemented in RPC server\n"));
@@ -631,7 +633,7 @@ async function main() {
       case "assignIssue": {
         if (!params.issueId) {
           console.error(c.error("\n❌ Missing required parameter: --issue-id\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs assignIssue --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs assignIssue --help")} for usage.\n`));
           process.exit(1);
         }
         method = "assignIssue";
@@ -650,7 +652,7 @@ async function main() {
         if (!params.issueId || !params.body) {
           console.error(c.error("\n❌ Missing required parameters\n"));
           console.log(c.dim("   Required: --issue-id and --body"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs createComment --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs createComment --help")} for usage.\n`));
           process.exit(1);
         }
         method = "createComment";
@@ -669,7 +671,7 @@ async function main() {
       case "startSession": {
         if (!params.issueId) {
           console.error(c.error("\n❌ Missing required parameter: --issue-id\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs startSession --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs startSession --help")} for usage.\n`));
           process.exit(1);
         }
         method = "startAgentSessionOnIssue";
@@ -680,7 +682,7 @@ async function main() {
       case "startSessionOnComment": {
         if (!params.commentId) {
           console.error(c.error("\n❌ Missing required parameter: --comment-id\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs startSessionOnComment --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs startSessionOnComment --help")} for usage.\n`));
           process.exit(1);
         }
         method = "startAgentSessionOnComment";
@@ -691,7 +693,7 @@ async function main() {
       case "viewSession": {
         if (!params.sessionId) {
           console.error(c.error("\n❌ Missing required parameter: --session-id\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs viewSession --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs viewSession --help")} for usage.\n`));
           process.exit(1);
         }
 
@@ -730,7 +732,7 @@ async function main() {
         if (!params.sessionId || !params.message) {
           console.error(c.error("\n❌ Missing required parameters\n"));
           console.log(c.dim("   Required: --session-id and --message"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs promptSession --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs promptSession --help")} for usage.\n`));
           process.exit(1);
         }
         method = "promptAgentSession";
@@ -744,7 +746,7 @@ async function main() {
       case "stopSession": {
         if (!params.sessionId) {
           console.error(c.error("\n❌ Missing required parameter: --session-id\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs stopSession --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs stopSession --help")} for usage.\n`));
           process.exit(1);
         }
         method = "stopAgentSession";
@@ -771,7 +773,7 @@ async function main() {
       case "createLabel": {
         if (!params.name) {
           console.error(c.error("\n❌ Missing required parameter: --name\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs createLabel --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs createLabel --help")} for usage.\n`));
           process.exit(1);
         }
         method = "createLabel";
@@ -785,7 +787,7 @@ async function main() {
       case "createMember": {
         if (!params.name) {
           console.error(c.error("\n❌ Missing required parameter: --name\n"));
-          console.log(c.dim(`   Run ${c.command("cli-tool.mjs createMember --help")} for usage.\n`));
+          console.log(c.dim(`   Run ${c.command("lambo.mjs createMember --help")} for usage.\n`));
           process.exit(1);
         }
         method = "createMember";
@@ -808,8 +810,8 @@ async function main() {
 
       default: {
         console.error(c.error(`\n❌ Unknown command: ${command}\n`));
-        console.log(c.dim(`   Run ${c.command("cli-tool.mjs help")} to see all commands.`));
-        console.log(c.dim(`   Run ${c.command(`cli-tool.mjs ${command} --help`)} for command-specific help.\n`));
+        console.log(c.dim(`   Run ${c.command("lambo.mjs help")} to see all commands.`));
+        console.log(c.dim(`   Run ${c.command(`lambo.mjs ${command} --help`)} for command-specific help.\n`));
         process.exit(1);
       }
     }
