@@ -1917,11 +1917,33 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Fetch issue labels for a given issue
+	 * Handles both Linear SDK Issue objects (with labels() method) and
+	 * platform-agnostic Issue objects (with labels property)
 	 */
 	private async fetchIssueLabels(issue: LinearIssue): Promise<string[]> {
 		try {
-			const labels = await issue.labels();
-			return labels.nodes.map((label) => label.name);
+			// Cast to any to access labels - it's either a method or a property
+			const issueAny = issue as any;
+
+			// Check if labels is a function (Linear SDK Issue) or a property (platform-agnostic Issue)
+			if (typeof issueAny.labels === "function") {
+				// Linear SDK path: call labels() method which returns Connection
+				const labelsConnection = await issueAny.labels();
+				return labelsConnection.nodes.map((label: any) => label.name);
+			}
+
+			// Platform-agnostic path: access labels property (Label[] | Promise<Label[]>)
+			const labelsOrPromise = issueAny.labels;
+
+			if (!labelsOrPromise) {
+				return [];
+			}
+
+			// Resolve if it's a Promise, otherwise use directly
+			const labels = await Promise.resolve(labelsOrPromise);
+
+			// Extract label names from Label[] array
+			return labels.map((label: any) => label.name);
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Failed to fetch labels for issue ${issue.id}:`,
