@@ -832,23 +832,6 @@ export class CLIIssueTrackerService
 	}
 
 	// ========================================================================
-	// RAW API ACCESS
-	// ========================================================================
-
-	async rawRESTRequest<T = unknown>(
-		_endpoint: string,
-		_options?: {
-			method?: string;
-			headers?: Record<string, string>;
-			body?: unknown;
-		},
-	): Promise<T> {
-		throw new Error(
-			"CLI issue tracker does not support REST requests. Use the high-level API methods instead.",
-		);
-	}
-
-	// ========================================================================
 	// PLATFORM METADATA
 	// ========================================================================
 

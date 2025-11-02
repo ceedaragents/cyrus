@@ -873,27 +873,6 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	}
 
 	// ========================================================================
-	// RAW API ACCESS
-	// ========================================================================
-
-	/**
-	 * Execute a raw REST API request.
-	 *
-	 * @remarks
-	 * Linear primarily uses GraphQL, so this method is not implemented.
-	 */
-	async rawRESTRequest<T = unknown>(
-		_endpoint: string,
-		_options?: {
-			method?: string;
-			headers?: Record<string, string>;
-			body?: unknown;
-		},
-	): Promise<T> {
-		throw new Error("Linear API does not support REST requests.");
-	}
-
-	// ========================================================================
 	// PLATFORM METADATA
 	// ========================================================================
 

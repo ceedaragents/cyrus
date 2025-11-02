@@ -767,12 +767,4 @@ describe("LinearIssueTrackerService", () => {
 			expect(result.assetUrl).toBe("https://assets.example.com/file.png");
 		});
 	});
-
-	describe("rawRESTRequest", () => {
-		it("should throw error for REST requests", async () => {
-			await expect(service.rawRESTRequest("/api/endpoint")).rejects.toThrow(
-				"Linear API does not support REST requests",
-			);
-		});
-	});
 });

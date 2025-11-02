@@ -610,11 +610,5 @@ describe("CLIIssueTrackerService", () => {
 				"Agent session not found",
 			);
 		});
-
-		it("should throw error for REST requests", async () => {
-			await expect(service.rawRESTRequest("/test")).rejects.toThrow(
-				"CLI issue tracker does not support REST",
-			);
-		});
 	});
 });

@@ -591,44 +591,6 @@ export interface IIssueTrackerService {
 	requestFileUpload(request: FileUploadRequest): Promise<FileUploadResponse>;
 
 	// ========================================================================
-	// RAW API ACCESS
-	// ========================================================================
-
-	/**
-	 * Execute a raw REST API request (for platform-specific operations).
-	 *
-	 * This method provides direct access to the platform's REST API
-	 * for operations not covered by standard interface methods.
-	 *
-	 * @param endpoint - API endpoint path
-	 * @param options - Request options (method, headers, body)
-	 * @returns Promise resolving to the response data
-	 * @throws Error if request fails
-	 *
-	 * @example
-	 * ```typescript
-	 * // Execute custom REST request
-	 * const result = await service.rawRESTRequest('/api/v1/custom', {
-	 *   method: 'POST',
-	 *   headers: { 'Content-Type': 'application/json' },
-	 *   body: JSON.stringify({ custom: 'data' })
-	 * });
-	 * ```
-	 *
-	 * @remarks
-	 * Use this method for platforms that don't support GraphQL.
-	 * Platform-specific REST calls may not work across different implementations.
-	 */
-	rawRESTRequest<T = unknown>(
-		endpoint: string,
-		options?: {
-			method?: string;
-			headers?: Record<string, string>;
-			body?: unknown;
-		},
-	): Promise<T>;
-
-	// ========================================================================
 	// PLATFORM METADATA
 	// ========================================================================
 
