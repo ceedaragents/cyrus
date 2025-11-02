@@ -1124,13 +1124,13 @@ export class EdgeWorker extends EventEmitter {
 				try {
 					// Fetch the issue to get labels
 					const issue = await linearClient.fetchIssue(issueId);
-					const labels = await this.fetchIssueLabels(issue as any);
+					const labelNames = issue.labels?.map((l) => l.name) || [];
 
 					// Check each repo with routing labels
 					for (const repo of reposWithRoutingLabels) {
 						if (
 							repo.routingLabels?.some((routingLabel) =>
-								labels.includes(routingLabel),
+								labelNames.includes(routingLabel),
 							)
 						) {
 							console.log(
@@ -1434,7 +1434,7 @@ export class EdgeWorker extends EventEmitter {
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
 		// Fetch labels early (needed for label override check)
-		const labels = await this.fetchIssueLabels(fullIssue);
+		const labelNames = fullIssue.labels?.map((l) => l.name) || [];
 
 		// Check for label overrides BEFORE AI routing
 		const debuggerConfig = repository.labelPrompts?.debugger;
@@ -1442,7 +1442,7 @@ export class EdgeWorker extends EventEmitter {
 			? debuggerConfig
 			: debuggerConfig?.labels;
 		const hasDebuggerLabel = debuggerLabels?.some((label) =>
-			labels.includes(label),
+			labelNames.includes(label),
 		);
 
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
@@ -1450,7 +1450,7 @@ export class EdgeWorker extends EventEmitter {
 			? orchestratorConfig
 			: orchestratorConfig?.labels;
 		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
-			labels.includes(label),
+			labelNames.includes(label),
 		);
 
 		let finalProcedure: ProcedureDefinition;
@@ -1521,7 +1521,7 @@ export class EdgeWorker extends EventEmitter {
 				attachmentManifest: attachmentResult.manifest,
 				guidance,
 				agentSession,
-				labels,
+				labels: labelNames,
 				isNewSession: true,
 				isStreaming: false, // Not yet streaming
 				isMentionTriggered: isMentionTriggered || false,
@@ -1542,7 +1542,7 @@ export class EdgeWorker extends EventEmitter {
 
 			if (!isMentionTriggered || isLabelBasedPromptRequested) {
 				const systemPromptResult = await this.determineSystemPromptFromLabels(
-					labels,
+					labelNames,
 					repository,
 				);
 				systemPromptVersion = systemPromptResult?.version;
@@ -1552,7 +1552,7 @@ export class EdgeWorker extends EventEmitter {
 				if (assembly.systemPrompt) {
 					await this.postSystemPromptSelectionThought(
 						linearAgentActivitySessionId,
-						labels,
+						labelNames,
 						repository.id,
 					);
 				}
@@ -1583,7 +1583,7 @@ export class EdgeWorker extends EventEmitter {
 				allowedDirectories,
 				disallowedTools,
 				undefined, // resumeSessionId
-				labels, // Pass labels for model override
+				labelNames, // Pass labels for model override
 			);
 			const runner = new ClaudeRunner(runnerConfig);
 
@@ -1913,44 +1913,6 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async handleClaudeError(error: Error): Promise<void> {
 		console.error("Unhandled claude error:", error);
-	}
-
-	/**
-	 * Fetch issue labels for a given issue
-	 * Handles both Linear SDK Issue objects (with labels() method) and
-	 * platform-agnostic Issue objects (with labels property)
-	 */
-	private async fetchIssueLabels(issue: LinearIssue): Promise<string[]> {
-		try {
-			// Cast to any to access labels - it's either a method or a property
-			const issueAny = issue as any;
-
-			// Check if labels is a function (Linear SDK Issue) or a property (platform-agnostic Issue)
-			if (typeof issueAny.labels === "function") {
-				// Linear SDK path: call labels() method which returns Connection
-				const labelsConnection = await issueAny.labels();
-				return labelsConnection.nodes.map((label: any) => label.name);
-			}
-
-			// Platform-agnostic path: access labels property (Label[] | Promise<Label[]>)
-			const labelsOrPromise = issueAny.labels;
-
-			if (!labelsOrPromise) {
-				return [];
-			}
-
-			// Resolve if it's a Promise, otherwise use directly
-			const labels = await Promise.resolve(labelsOrPromise);
-
-			// Extract label names from Label[] array
-			return labels.map((label: any) => label.name);
-		} catch (error) {
-			console.error(
-				`[EdgeWorker] Failed to fetch labels for issue ${issue.id}:`,
-				error,
-			);
-			return [];
-		}
 	}
 
 	/**
@@ -3721,7 +3683,24 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		commentTimestamp?: string,
 	): Promise<string> {
 		// Fetch labels for system prompt determination
-		const labels = await this.fetchIssueLabels(fullIssue);
+		let labelNames: string[] = [];
+		try {
+			const labelsData = (fullIssue as any).labels;
+			if (labelsData) {
+				// Handle both direct arrays and promises
+				const resolvedLabels = Array.isArray(labelsData)
+					? labelsData
+					: await labelsData;
+				if (Array.isArray(resolvedLabels)) {
+					labelNames = resolvedLabels.map((l: any) => l.name);
+				}
+			}
+		} catch (error) {
+			console.debug(
+				`[EdgeWorker] Could not fetch labels for issue ${fullIssue.identifier}:`,
+				error,
+			);
+		}
 
 		// Create input for unified prompt assembly
 		const input: PromptAssemblyInput = {
@@ -3734,7 +3713,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			attachmentManifest,
 			isNewSession,
 			isStreaming: false, // This path is only for non-streaming prompts
-			labels,
+			labels: labelNames,
 		};
 
 		// Use unified prompt assembly
@@ -4773,10 +4752,27 @@ ${input.userComment}
 		}
 
 		// Fetch issue labels and determine system prompt
-		const labels = await this.fetchIssueLabels(fullIssue);
+		let labelNames: string[] = [];
+		try {
+			const labelsData = (fullIssue as any).labels;
+			if (labelsData) {
+				// Handle both direct arrays and promises
+				const resolvedLabels = Array.isArray(labelsData)
+					? labelsData
+					: await labelsData;
+				if (Array.isArray(resolvedLabels)) {
+					labelNames = resolvedLabels.map((l: any) => l.name);
+				}
+			}
+		} catch (error) {
+			console.debug(
+				`[resumeClaudeSession] Could not fetch labels for issue ${fullIssue.identifier}:`,
+				error,
+			);
+		}
 
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
-			labels,
+			labelNames,
 			repository,
 		);
 		const systemPrompt = systemPromptResult?.prompt;
@@ -4814,7 +4810,7 @@ ${input.userComment}
 			allowedDirectories,
 			disallowedTools,
 			resumeSessionId,
-			labels, // Pass labels for model override
+			labelNames, // Pass labels for model override
 			maxTurns, // Pass maxTurns if specified
 		);
 
@@ -4903,7 +4899,9 @@ ${input.userComment}
 
 		try {
 			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`);
-			const fullIssue = await linearClient.fetchIssue(issueId);
+			const fullIssue = (await linearClient.fetchIssue(
+				issueId,
+			)) as any as LinearIssue;
 			console.log(
 				`[EdgeWorker] Successfully fetched issue details for ${issueId}`,
 			);
@@ -4918,7 +4916,7 @@ ${input.userComment}
 				// Parent field might not exist, ignore error
 			}
 
-			return fullIssue as any;
+			return fullIssue;
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Failed to fetch issue details for ${issueId}:`,

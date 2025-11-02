@@ -199,7 +199,7 @@ export interface Issue {
 	/** Assignee object (may require async access) */
 	assignee?: User | Promise<User>;
 	/** Issue labels */
-	labels?: Label[] | Promise<Label[]>;
+	labels?: Label[];
 	/** Issue priority */
 	priority?: IssuePriority;
 	/** Parent issue ID (for sub-issues) */
