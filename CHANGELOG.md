@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Orchestrator label now enforces orchestrator procedure consistently - issues with the Orchestrator label always use the orchestrator-full procedure, even when receiving results from child sub-agents or processing new messages
+- Suppressed unnecessary error logs when stopping Claude sessions
+
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.30 - see [@anthropic-ai/claude-agent-sdk v0.1.30 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0130)
+- Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 - see [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.67.0...sdk-v0.68.0)
+
 ## [0.2.0-rc.2] - 2025-10-30
 
 ### Fixed
@@ -128,6 +136,25 @@ All notable changes to this project will be documented in this file.
 
 #### cyrus-ai (CLI)
 - cyrus-ai@0.2.0-rc
+
+## [0.1.59] - 2025-10-31
+
+### Fixed
+- Skip loading 'primary' subroutine prompt to eliminate ENOENT error in logs - the "primary" promptPath is a placeholder with no corresponding file
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.20
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.40
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.3
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.59
 
 ## [0.1.58] - 2025-10-29
 
