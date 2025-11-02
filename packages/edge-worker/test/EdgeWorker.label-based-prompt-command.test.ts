@@ -88,9 +88,10 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 				branchName: "test-branch",
 				state: { name: "Todo" },
 				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [{ name: "bug" }], // This should trigger debugger prompt
-				}),
+				teamId: "team-123",
+				createdAt: "2025-01-01T00:00:00Z",
+				updatedAt: "2025-01-01T00:00:00Z",
+				labels: [{ id: "label-bug", name: "bug" }], // This should trigger debugger prompt
 			}),
 			fetchWorkflowStates: vi.fn().mockResolvedValue({
 				nodes: [

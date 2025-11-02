@@ -85,9 +85,10 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 				branchName: "test-branch",
 				state: Promise.resolve({ name: "Todo" }),
 				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [],
-				}),
+				teamId: "team-123",
+				createdAt: "2025-01-01T00:00:00Z",
+				updatedAt: "2025-01-01T00:00:00Z",
+				labels: [],
 				parent: Promise.resolve(null), // No parent by default
 			}),
 			fetchWorkflowStates: vi.fn().mockResolvedValue({
@@ -249,7 +250,10 @@ Base Branch: {{base_branch}}`;
 						branchName: "parent-feature-branch",
 						state: Promise.resolve({ name: "Todo" }),
 						team: { id: "team-123" },
-						labels: vi.fn().mockResolvedValue({ nodes: [] }),
+						teamId: "team-123",
+						createdAt: "2025-01-01T00:00:00Z",
+						updatedAt: "2025-01-01T00:00:00Z",
+						labels: [],
 						parentId: undefined,
 						parent: Promise.resolve(null),
 					};
@@ -264,9 +268,10 @@ Base Branch: {{base_branch}}`;
 					branchName: "test-branch",
 					state: Promise.resolve({ name: "Todo" }),
 					team: { id: "team-123" },
-					labels: vi.fn().mockResolvedValue({
-						nodes: [],
-					}),
+					teamId: "team-123",
+					createdAt: "2025-01-01T00:00:00Z",
+					updatedAt: "2025-01-01T00:00:00Z",
+					labels: [],
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",
@@ -325,7 +330,10 @@ Base Branch: {{base_branch}}`;
 						branchName: null,
 						state: Promise.resolve({ name: "Todo" }),
 						team: { id: "team-123" },
-						labels: vi.fn().mockResolvedValue({ nodes: [] }),
+						teamId: "team-123",
+						createdAt: "2025-01-01T00:00:00Z",
+						updatedAt: "2025-01-01T00:00:00Z",
+						labels: [],
 						parentId: undefined,
 						parent: Promise.resolve(null),
 					};
@@ -340,9 +348,10 @@ Base Branch: {{base_branch}}`;
 					branchName: "test-branch",
 					state: Promise.resolve({ name: "Todo" }),
 					team: { id: "team-123" },
-					labels: vi.fn().mockResolvedValue({
-						nodes: [],
-					}),
+					teamId: "team-123",
+					createdAt: "2025-01-01T00:00:00Z",
+					updatedAt: "2025-01-01T00:00:00Z",
+					labels: [],
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",
@@ -402,7 +411,10 @@ Base Branch: {{base_branch}}`;
 						branchName: "parent-branch-456",
 						state: Promise.resolve({ name: "Todo" }),
 						team: { id: "team-123" },
-						labels: vi.fn().mockResolvedValue({ nodes: [] }),
+						teamId: "team-123",
+						createdAt: "2025-01-01T00:00:00Z",
+						updatedAt: "2025-01-01T00:00:00Z",
+						labels: [],
 						parentId: "grandparent-issue-789",
 						parent: Promise.resolve({
 							id: "grandparent-issue-789",
@@ -421,9 +433,10 @@ Base Branch: {{base_branch}}`;
 					branchName: "test-branch",
 					state: Promise.resolve({ name: "Todo" }),
 					team: { id: "team-123" },
-					labels: vi.fn().mockResolvedValue({
-						nodes: [],
-					}),
+					teamId: "team-123",
+					createdAt: "2025-01-01T00:00:00Z",
+					updatedAt: "2025-01-01T00:00:00Z",
+					labels: [],
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",
