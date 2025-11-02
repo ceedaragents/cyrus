@@ -18,7 +18,7 @@ import type {
 	SerializedCyrusAgentSessionEntry,
 	Workspace,
 } from "cyrus-core";
-import { AgentActivityContentType } from "cyrus-core";
+import { AgentActivityContentType, AgentActivitySignal } from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
@@ -1243,34 +1243,18 @@ export class AgentSessionManager {
 		}
 
 		try {
-			// Note: This uses Linear-specific signal and signalMetadata features
-			// that aren't yet part of the IIssueTrackerService abstraction.
-			// We use rawGraphQLRequest to handle this platform-specific functionality.
-			await this.issueTracker.rawGraphQLRequest(
-				`
-				mutation CreateApprovalElicitation($sessionId: String!, $body: String!, $url: String!) {
-					agentActivityCreate(input: {
-						agentSessionId: $sessionId,
-						content: {
-							type: AgentActivityContentType.Elicitation,
-							body: $body
-						},
-						signal: Auth,
-						signalMetadata: {
-							url: $url
-						}
-					}) {
-						success
-						agentActivity {
-							id
-						}
-					}
-				}
-			`,
+			// Create approval elicitation using concrete typed method
+			await this.issueTracker.createAgentActivity(
+				session.linearAgentActivitySessionId,
 				{
-					sessionId: session.linearAgentActivitySessionId,
+					type: AgentActivityContentType.Elicitation,
 					body,
-					url: approvalUrl,
+				},
+				{
+					signal: AgentActivitySignal.Auth,
+					signalMetadata: {
+						url: approvalUrl,
+					},
 				},
 			);
 
@@ -1398,48 +1382,22 @@ export class AgentSessionManager {
 		linearAgentActivitySessionId: string,
 	): Promise<string | null> {
 		try {
-			// Note: This uses Linear-specific ephemeral feature that isn't yet part of the abstraction
-			const result = await this.issueTracker.rawGraphQLRequest<{
-				agentActivityCreate: {
-					success: boolean;
-					agentActivity?: { id: string };
-				};
-			}>(
-				`
-				mutation CreateRoutingThought($sessionId: String!) {
-					agentActivityCreate(input: {
-						agentSessionId: $sessionId,
-						content: {
-							type: AgentActivityContentType.Thought,
-							body: "Routing your request…"
-						},
-						ephemeral: true
-					}) {
-						success
-						agentActivity {
-							id
-						}
-					}
-				}
-			`,
-				{ sessionId: linearAgentActivitySessionId },
+			// Create ephemeral routing thought using concrete typed method
+			const activity = await this.issueTracker.createAgentActivity(
+				linearAgentActivitySessionId,
+				{
+					type: AgentActivityContentType.Thought,
+					body: "Routing your request…",
+				},
+				{
+					ephemeral: true,
+				},
 			);
 
-			if (
-				result.agentActivityCreate.success &&
-				result.agentActivityCreate.agentActivity
-			) {
-				console.log(
-					`[AgentSessionManager] Posted routing thought for session ${linearAgentActivitySessionId}`,
-				);
-				return result.agentActivityCreate.agentActivity.id;
-			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post routing thought:`,
-					result,
-				);
-				return null;
-			}
+			console.log(
+				`[AgentSessionManager] Posted routing thought for session ${linearAgentActivitySessionId}`,
+			);
+			return activity.id;
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error posting routing thought:`,

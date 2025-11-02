@@ -1761,36 +1761,15 @@ export class EdgeWorker extends EventEmitter {
 		let commentTimestamp: string | undefined;
 
 		try {
-			const result = await linearClient.rawGraphQLRequest(
-				`
-          query GetComment($id: String!) {
-            comment(id: $id) {
-              id
-              body
-              createdAt
-              updatedAt
-              user {
-                name
-                displayName
-                email
-                id
-              }
-            }
-          }
-        `,
-				{ id: commentId },
-			);
-
-			// Extract comment data
-			const comment = (result.data as any).comment;
+			// Fetch comment with user data using concrete typed method
+			const comment = await linearClient.fetchCommentWithAttachments(commentId);
 
 			// Extract comment metadata for multi-player context
-			if (comment) {
-				const user = comment.user;
-				commentAuthor =
-					(user as any)?.displayName || user?.name || user?.email || "Unknown";
-				commentTimestamp = comment.createdAt || new Date().toISOString();
+			const user = await comment.user;
+			if (user) {
+				commentAuthor = user.name || user.email || "Unknown";
 			}
+			commentTimestamp = comment.createdAt || new Date().toISOString();
 
 			// Count existing attachments
 			const existingFiles = await readdir(attachmentsDir).catch(() => []);

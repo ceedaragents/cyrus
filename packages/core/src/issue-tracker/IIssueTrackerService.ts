@@ -595,44 +595,10 @@ export interface IIssueTrackerService {
 	// ========================================================================
 
 	/**
-	 * Execute a raw GraphQL request (for platform-specific operations).
-	 *
-	 * This method provides direct access to the platform's GraphQL API
-	 * for operations not covered by the standard interface methods.
-	 *
-	 * @param query - GraphQL query or mutation string
-	 * @param variables - Query variables
-	 * @returns Promise resolving to the query result
-	 * @throws Error if request fails or GraphQL errors occur
-	 *
-	 * @example
-	 * ```typescript
-	 * // Execute custom GraphQL query
-	 * const result = await service.rawGraphQLRequest(`
-	 *   query FetchIssueWithCustomFields($id: String!) {
-	 *     issue(id: $id) {
-	 *       id
-	 *       title
-	 *       customField
-	 *     }
-	 *   }
-	 * `, { id: 'TEAM-123' });
-	 * ```
-	 *
-	 * @remarks
-	 * Use this method sparingly. Prefer standard interface methods where possible.
-	 * Platform-specific queries may not work across different implementations.
-	 */
-	rawGraphQLRequest<T = unknown>(
-		query: string,
-		variables?: Record<string, unknown>,
-	): Promise<T>;
-
-	/**
 	 * Execute a raw REST API request (for platform-specific operations).
 	 *
 	 * This method provides direct access to the platform's REST API
-	 * for operations not covered by GraphQL or standard interface methods.
+	 * for operations not covered by standard interface methods.
 	 *
 	 * @param endpoint - API endpoint path
 	 * @param options - Request options (method, headers, body)

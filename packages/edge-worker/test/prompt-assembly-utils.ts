@@ -22,8 +22,22 @@ export function createTestWorker(
 		const mockClient = {
 			fetchComments: () => Promise.resolve({ nodes: [] }),
 			fetchComment: () => Promise.resolve({ user: null }),
-			rawGraphQLRequest: () =>
-				Promise.resolve({ data: { comment: { body: "" } } }),
+			fetchCommentWithAttachments: () =>
+				Promise.resolve({
+					id: "mock-comment",
+					body: "",
+					userId: "mock-user",
+					issueId: "mock-issue",
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+					user: Promise.resolve({
+						id: "mock-user",
+						name: "Mock User",
+						email: "mock@example.com",
+						url: "https://example.com",
+					}),
+					attachments: [],
+				}),
 		};
 		issueTrackers.set(repo.id, mockClient as any);
 	}
@@ -133,8 +147,22 @@ export class PromptScenario {
 			const mockClient = {
 				fetchComments: () => Promise.resolve({ nodes: [] }),
 				fetchComment: () => Promise.resolve({ user: null }),
-				rawGraphQLRequest: () =>
-					Promise.resolve({ data: { comment: { body: "" } } }),
+				fetchCommentWithAttachments: () =>
+					Promise.resolve({
+						id: "mock-comment",
+						body: "",
+						userId: "mock-user",
+						issueId: "mock-issue",
+						createdAt: new Date().toISOString(),
+						updatedAt: new Date().toISOString(),
+						user: Promise.resolve({
+							id: "mock-user",
+							name: "Mock User",
+							email: "mock@example.com",
+							url: "https://example.com",
+						}),
+						attachments: [],
+					}),
 			};
 			(this.worker as any).issueTrackers.set(repo.id, mockClient);
 		}

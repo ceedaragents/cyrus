@@ -835,15 +835,6 @@ export class CLIIssueTrackerService
 	// RAW API ACCESS
 	// ========================================================================
 
-	async rawGraphQLRequest<T = unknown>(
-		_query: string,
-		_variables?: Record<string, unknown>,
-	): Promise<T> {
-		throw new Error(
-			"CLI issue tracker does not support GraphQL requests. Use the high-level API methods instead.",
-		);
-	}
-
 	async rawRESTRequest<T = unknown>(
 		_endpoint: string,
 		_options?: {

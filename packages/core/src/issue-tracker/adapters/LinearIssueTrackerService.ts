@@ -877,30 +877,10 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	// ========================================================================
 
 	/**
-	 * Execute a raw GraphQL request.
-	 */
-	async rawGraphQLRequest<T = unknown>(
-		query: string,
-		variables?: Record<string, unknown>,
-	): Promise<T> {
-		try {
-			const result = await (
-				this.linearClient as LinearClientWithRawRequest
-			).client.rawRequest<T>(query, variables);
-			return result.data;
-		} catch (error) {
-			throw new Error(
-				`Failed to execute raw GraphQL request: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		}
-	}
-
-	/**
 	 * Execute a raw REST API request.
 	 *
 	 * @remarks
 	 * Linear primarily uses GraphQL, so this method is not implemented.
-	 * Use rawGraphQLRequest instead.
 	 */
 	async rawRESTRequest<T = unknown>(
 		_endpoint: string,
@@ -910,9 +890,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			body?: unknown;
 		},
 	): Promise<T> {
-		throw new Error(
-			"Linear API does not support REST requests. Use rawGraphQLRequest instead.",
-		);
+		throw new Error("Linear API does not support REST requests.");
 	}
 
 	// ========================================================================

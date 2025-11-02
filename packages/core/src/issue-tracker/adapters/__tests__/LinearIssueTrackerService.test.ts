@@ -768,30 +768,6 @@ describe("LinearIssueTrackerService", () => {
 		});
 	});
 
-	describe("rawGraphQLRequest", () => {
-		it("should execute a raw GraphQL request", async () => {
-			const mockResponse = {
-				data: {
-					customQuery: {
-						id: "result-123",
-						value: "custom data",
-					},
-				},
-			};
-
-			vi.mocked((mockLinearClient as any).client.rawRequest).mockResolvedValue(
-				mockResponse,
-			);
-
-			const result = await service.rawGraphQLRequest(
-				"query { customQuery { id value } }",
-				{},
-			);
-
-			expect(result).toEqual(mockResponse.data);
-		});
-	});
-
 	describe("rawRESTRequest", () => {
 		it("should throw error for REST requests", async () => {
 			await expect(service.rawRESTRequest("/api/endpoint")).rejects.toThrow(

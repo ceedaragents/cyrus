@@ -611,12 +611,6 @@ describe("CLIIssueTrackerService", () => {
 			);
 		});
 
-		it("should throw error for GraphQL requests", async () => {
-			await expect(service.rawGraphQLRequest("query {}")).rejects.toThrow(
-				"CLI issue tracker does not support GraphQL",
-			);
-		});
-
 		it("should throw error for REST requests", async () => {
 			await expect(service.rawRESTRequest("/test")).rejects.toThrow(
 				"CLI issue tracker does not support REST",
