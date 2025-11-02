@@ -406,6 +406,21 @@ export class CLIIssueTrackerService
 		return issue;
 	}
 
+	/**
+	 * Fetch attachments for an issue.
+	 *
+	 * CLI mode has no native attachments, so this returns an empty array.
+	 */
+	async fetchIssueAttachments(
+		issueId: string,
+	): Promise<Array<{ title: string; url: string }>> {
+		// Ensure issue exists (throws if not found)
+		await this.fetchIssue(issueId);
+
+		// CLI has no native attachments
+		return [];
+	}
+
 	// ========================================================================
 	// COMMENT OPERATIONS
 	// ========================================================================

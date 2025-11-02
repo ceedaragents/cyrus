@@ -229,6 +229,37 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		}
 	}
 
+	/**
+	 * Fetch attachments for an issue.
+	 *
+	 * Uses the Linear SDK to fetch native attachments (typically external links
+	 * to Sentry errors, Datadog reports, etc.)
+	 */
+	async fetchIssueAttachments(
+		issueId: string,
+	): Promise<Array<{ title: string; url: string }>> {
+		try {
+			const issue = await this.linearClient.issue(issueId);
+
+			if (!issue) {
+				throw new Error(`Issue ${issueId} not found`);
+			}
+
+			// Call the Linear SDK's attachments() method which returns a Connection
+			const attachmentsConnection = await issue.attachments();
+
+			// Extract title and url from each attachment node
+			return attachmentsConnection.nodes.map((attachment) => ({
+				title: attachment.title || "Untitled attachment",
+				url: attachment.url,
+			}));
+		} catch (error) {
+			throw new Error(
+				`Failed to fetch attachments for issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+
 	// ========================================================================
 	// COMMENT OPERATIONS
 	// ========================================================================
