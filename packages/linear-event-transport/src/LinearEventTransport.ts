@@ -3,10 +3,7 @@ import {
 	LinearWebhookClient,
 	type LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
-import type {
-	AgentEventTransportConfig,
-	IAgentEventTransport,
-} from "cyrus-core";
+import type { IAgentEventTransport } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
 	LinearEventTransportConfig,
@@ -41,10 +38,10 @@ export class LinearEventTransport
 	extends EventEmitter
 	implements IAgentEventTransport
 {
-	private config: LinearEventTransportConfig | AgentEventTransportConfig;
+	private config: LinearEventTransportConfig;
 	private linearWebhookClient: LinearWebhookClient | null = null;
 
-	constructor(config: LinearEventTransportConfig | AgentEventTransportConfig) {
+	constructor(config: LinearEventTransportConfig) {
 		super();
 		this.config = config;
 

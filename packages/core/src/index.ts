@@ -22,17 +22,38 @@ export { resolvePath } from "./config-types.js";
 export { DEFAULT_PROXY_URL } from "./constants.js";
 // Issue Tracker Abstraction
 export type {
+	AgentActivity,
+	AgentActivityContent,
 	AgentEvent,
 	AgentEventTransportConfig,
 	AgentEventTransportEvents,
+	AgentSession,
+	AgentSessionCreateOnCommentInput,
+	AgentSessionCreateOnIssueInput,
+	AgentSessionCreateResponse,
 	Comment,
+	CommentCreateInput,
+	CommentWithAttachments,
+	Connection,
+	FetchChildrenOptions,
+	FileUploadRequest,
+	FileUploadResponse,
 	IAgentEventTransport,
 	IIssueTrackerService,
 	Issue,
+	IssueUpdateInput,
+	IssueWithChildren,
+	Label,
+	PaginationOptions,
+	Team,
+	User,
+	WorkflowState,
 } from "./issue-tracker/index.js";
 export {
 	AgentActivityContentType,
 	AgentActivitySignal,
+	AgentSessionStatus,
+	AgentSessionType,
 	CLIEventTransport,
 	CLIIssueTrackerService,
 	CLIRPCServer,
@@ -42,8 +63,10 @@ export {
 	isIssueAssignedEvent,
 	isIssueUnassignedEvent,
 	isNewCommentEvent,
-	LinearIssueTrackerService,
 } from "./issue-tracker/index.js";
+
+// Linear adapters have been moved to cyrus-linear-event-transport package
+// Import them directly from that package instead of from cyrus-core
 export type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,

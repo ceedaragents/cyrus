@@ -58,10 +58,10 @@ import {
 	isIssueAssignedEvent,
 	isIssueUnassignedEvent,
 	isNewCommentEvent,
-	LinearIssueTrackerService,
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
+import { LinearIssueTrackerService } from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import {
@@ -352,11 +352,30 @@ export class EdgeWorker extends EventEmitter {
 			throw new Error("No issue tracker available to create event transport");
 		}
 
-		this.agentEventTransport = issueTracker.createEventTransport({
-			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-			verificationMode,
-			secret,
-		});
+		// Create platform-specific event transport config
+		const platform = this.config.platform || "linear";
+		const eventTransportConfig =
+			platform === "linear"
+				? verificationMode === "direct"
+					? {
+							platform: "linear" as const,
+							fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+							verificationMode: "direct" as const,
+							secret,
+						}
+					: {
+							platform: "linear" as const,
+							fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+							verificationMode: "proxy" as const,
+							secret,
+						}
+				: {
+						platform: "cli" as const,
+						fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+					};
+
+		this.agentEventTransport =
+			issueTracker.createEventTransport(eventTransportConfig);
 
 		// Listen for agent events
 		this.agentEventTransport.on("event", (event: AgentEvent) => {

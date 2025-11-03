@@ -14,13 +14,10 @@ import type {
 	AgentActivity,
 	AgentActivityContent,
 	AgentActivityContentType,
+	AgentActivitySignal,
 	AgentSession,
-} from "../../types.js";
-import {
-	type AgentActivitySignal,
-	AgentSessionStatus,
-	AgentSessionType,
-} from "../../types.js";
+} from "cyrus-core";
+import { AgentSessionStatus, AgentSessionType } from "cyrus-core";
 
 /**
  * Convert Linear AgentSessionStatus to platform-agnostic AgentSessionStatus.

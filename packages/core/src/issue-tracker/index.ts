@@ -83,8 +83,9 @@ export {
 export { CLIEventTransport } from "./adapters/cli/CLIEventTransport.js";
 export { CLIIssueTrackerService } from "./adapters/cli/CLIIssueTrackerService.js";
 export { CLIRPCServer } from "./adapters/cli/CLIRPCServer.js";
-export { LinearIssueTrackerService } from "./adapters/linear/LinearIssueTrackerService.js";
-export * from "./adapters/linear/LinearTypeAdapters.js";
+
+// Linear adapters have been moved to cyrus-linear-event-transport package
+// Import them directly from that package instead of from cyrus-core
 
 // ============================================================================
 // MODULE METADATA

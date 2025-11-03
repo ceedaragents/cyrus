@@ -2,7 +2,7 @@
  * Types for Linear event transport
  */
 
-import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
+import type { AgentEvent } from "cyrus-core";
 import type { FastifyInstance } from "fastify";
 
 /**
@@ -28,8 +28,8 @@ export interface LinearEventTransportConfig {
  * Events emitted by LinearEventTransport
  */
 export interface LinearEventTransportEvents {
-	/** Emitted when a webhook is received and verified (platform-agnostic name) */
-	event: (payload: LinearWebhookPayload) => void;
+	/** Emitted when a webhook is received and verified */
+	event: (event: AgentEvent) => void;
 	/** Emitted when an error occurs */
 	error: (error: Error) => void;
 }

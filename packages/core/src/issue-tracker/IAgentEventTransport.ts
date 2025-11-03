@@ -13,28 +13,58 @@ import type { FastifyInstance } from "fastify";
 import type { AgentEvent } from "./AgentEvent.js";
 
 /**
- * Configuration for creating an agent event transport.
+ * Base configuration shared by all event transports.
  */
-export interface AgentEventTransportConfig {
+interface AgentEventTransportConfigBase {
 	/**
 	 * Fastify server instance to register webhook endpoints with.
 	 */
 	fastifyServer: FastifyInstance;
+}
 
+/**
+ * Configuration for Linear event transport in direct mode.
+ * Uses Linear's webhook signature verification.
+ */
+export interface LinearDirectEventTransportConfig
+	extends AgentEventTransportConfigBase {
+	platform: "linear";
+	verificationMode: "direct";
 	/**
-	 * Verification mode for incoming events.
-	 * - "direct": Verify using platform's signature mechanism (e.g., Linear webhook signature)
-	 * - "proxy": Verify using Bearer token authentication
-	 */
-	verificationMode: "direct" | "proxy";
-
-	/**
-	 * Secret key for verification.
-	 * - In "direct" mode: Platform's webhook secret (e.g., LINEAR_WEBHOOK_SECRET)
-	 * - In "proxy" mode: API key for Bearer token authentication (e.g., CYRUS_API_KEY)
+	 * Linear webhook secret (LINEAR_WEBHOOK_SECRET) for signature verification.
 	 */
 	secret: string;
 }
+
+/**
+ * Configuration for Linear event transport in proxy mode.
+ * Uses Bearer token authentication.
+ */
+export interface LinearProxyEventTransportConfig
+	extends AgentEventTransportConfigBase {
+	platform: "linear";
+	verificationMode: "proxy";
+	/**
+	 * API key (CYRUS_API_KEY) for Bearer token authentication.
+	 */
+	secret: string;
+}
+
+/**
+ * Configuration for CLI event transport (in-memory mode).
+ */
+export interface CLIEventTransportConfig extends AgentEventTransportConfigBase {
+	platform: "cli";
+}
+
+/**
+ * Discriminated union of all event transport configurations.
+ * Platform-specific config values are only required when using that platform.
+ */
+export type AgentEventTransportConfig =
+	| LinearDirectEventTransportConfig
+	| LinearProxyEventTransportConfig
+	| CLIEventTransportConfig;
 
 /**
  * Event handlers for agent event transport.

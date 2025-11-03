@@ -250,8 +250,8 @@ importers:
   packages/linear-event-transport:
     dependencies:
       '@linear/sdk':
-        specifier: ^58.0.0
-        version: 58.1.0
+        specifier: ^60.0.0
+        version: 60.0.0
       cyrus-core:
         specifier: workspace:*
         version: link:../core
@@ -646,10 +646,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@linear/sdk@58.1.0':
-    resolution: {integrity: sha512-sqzo1j+uZsxeJlMTV2mrBH3yukB/liev7IySmkZil0ka7ic6b4RE9Jk3x+ohw8YgYB52IRR3SPWzhWu96E6W9g==}
-    engines: {node: '>=12.x', yarn: 1.x}
 
   '@linear/sdk@60.0.0':
     resolution: {integrity: sha512-6mllj354yC4iJ3euXvijisCQdTIlr77gpUl9Oit8qJYGXegtHZv+RwySdiLfNS6bXQy/Z5e0IYXXNg2sv9UrUQ==}
@@ -2652,14 +2648,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@linear/sdk@58.1.0':
-    dependencies:
-      '@graphql-typed-document-node/core': 3.2.0(graphql@15.10.1)
-      graphql: 15.10.1
-      isomorphic-unfetch: 3.1.0
-    transitivePeerDependencies:
-      - encoding
 
   '@linear/sdk@60.0.0':
     dependencies:

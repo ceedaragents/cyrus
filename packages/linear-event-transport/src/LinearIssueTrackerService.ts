@@ -10,14 +10,10 @@
 
 import type { LinearClient } from "@linear/sdk";
 import type {
-	AgentEventTransportConfig,
-	IAgentEventTransport,
-} from "../../IAgentEventTransport.js";
-import type { IIssueTrackerService } from "../../IIssueTrackerService.js";
-import type {
 	AgentActivity,
 	AgentActivityContent,
 	AgentActivitySignal,
+	AgentEventTransportConfig,
 	AgentSession,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
@@ -29,6 +25,8 @@ import type {
 	FetchChildrenOptions,
 	FileUploadRequest,
 	FileUploadResponse,
+	IAgentEventTransport,
+	IIssueTrackerService,
 	Issue,
 	IssueUpdateInput,
 	IssueWithChildren,
@@ -37,7 +35,8 @@ import type {
 	Team,
 	User,
 	WorkflowState,
-} from "../../types.js";
+} from "cyrus-core";
+import { LinearEventTransport } from "./LinearEventTransport.js";
 import {
 	adaptLinearAgentSession,
 	type LinearAgentSessionData,
@@ -847,7 +846,14 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	createEventTransport(
 		config: AgentEventTransportConfig,
 	): IAgentEventTransport {
-		const { LinearEventTransport } = require("cyrus-linear-event-transport");
+		// Type narrow to Linear config
+		if (config.platform !== "linear") {
+			throw new Error(
+				`Invalid platform "${config.platform}" for LinearIssueTrackerService. Expected "linear".`,
+			);
+		}
+
+		// Import from same package - no require() needed
 		return new LinearEventTransport(config);
 	}
 }
