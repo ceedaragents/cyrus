@@ -44,10 +44,7 @@ export interface RepositoryConfig {
 	repositoryPath: string; // Local git repository path
 	baseBranch: string; // Branch to create worktrees from (main, master, etc.)
 
-	// Issue tracker platform configuration
-	platform?: "linear" | "cli"; // Issue tracker platform type (default: "linear")
-
-	// Linear configuration (used when platform === "linear" or not specified)
+	// Linear configuration
 	linearWorkspaceId: string; // Linear workspace/team ID
 	linearWorkspaceName?: string; // Linear workspace display name (optional, for UI)
 	linearToken: string; // OAuth token for this Linear workspace
@@ -109,6 +106,9 @@ export interface EdgeWorkerConfig {
 	serverPort?: number; // Unified server port for both webhooks and OAuth callbacks (default: 3456)
 	serverHost?: string; // Server host address ('localhost' or '0.0.0.0', default: 'localhost')
 	ngrokAuthToken?: string; // Ngrok auth token for tunnel creation
+
+	// Issue tracker platform configuration
+	platform?: "linear" | "cli"; // Issue tracker platform type (default: "linear")
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];

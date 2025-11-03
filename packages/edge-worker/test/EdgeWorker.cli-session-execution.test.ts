@@ -25,6 +25,7 @@ describe("EdgeWorker - CLI Platform Repository Routing", () => {
 			proxyUrl: "https://test-proxy.com",
 			cyrusHome: "/tmp/test-cyrus-home-cli",
 			serverPort: 3456,
+			platform: "cli" as const, // Use CLI platform (now at EdgeWorker level)
 			repositories: [
 				{
 					id: "test-cli-repo",
@@ -32,7 +33,6 @@ describe("EdgeWorker - CLI Platform Repository Routing", () => {
 					repositoryPath: "/tmp/test-repo",
 					baseBranch: "main",
 					workspaceBaseDir: "/tmp/workspaces",
-					platform: "cli" as const, // Use CLI platform
 					isActive: true,
 				},
 			],
@@ -67,13 +67,13 @@ describe("EdgeWorker - CLI Platform Repository Routing", () => {
 		// Verify the correct repository was returned
 		expect(result).toBeTruthy();
 		expect(result?.id).toBe("test-cli-repo");
-		expect(result?.platform).toBe("cli");
 	});
 
 	it("should route CLI events when multiple repositories exist", async () => {
 		// Add a Linear repository to the configuration
 		const multiRepoConfig: EdgeWorkerConfig = {
 			...mockConfig,
+			platform: "cli" as const, // CLI platform at EdgeWorker level
 			repositories: [
 				{
 					id: "linear-repo",
@@ -92,7 +92,6 @@ describe("EdgeWorker - CLI Platform Repository Routing", () => {
 					repositoryPath: "/tmp/test-repo",
 					baseBranch: "main",
 					workspaceBaseDir: "/tmp/workspaces",
-					platform: "cli" as const,
 					isActive: true,
 				},
 			],
@@ -117,10 +116,9 @@ describe("EdgeWorker - CLI Platform Repository Routing", () => {
 			multiRepoConfig.repositories,
 		);
 
-		// Verify it selected the CLI repository, not the Linear one
+		// Verify it selected the first repository (in CLI mode, platform is global)
 		expect(result).toBeTruthy();
-		expect(result?.id).toBe("test-cli-repo");
-		expect(result?.platform).toBe("cli");
+		expect(result?.id).toBe("linear-repo");
 	});
 
 	it("should fallback to first repo if no CLI repo exists but CLI event received", async () => {

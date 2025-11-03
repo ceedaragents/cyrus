@@ -169,7 +169,7 @@ export class EdgeWorker extends EventEmitter {
 
 				// Create issue tracker service based on platform configuration
 				let issueTracker: IIssueTrackerService;
-				if (repo.platform === "cli") {
+				if (config.platform === "cli") {
 					// CLI mode: create CLI issue tracker
 					const agentHandle = config.agentHandle || "@cyrus";
 					const agentUserId = config.agentUserId || "cli-agent-user";
@@ -379,31 +379,26 @@ export class EdgeWorker extends EventEmitter {
 			`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
 		);
 
-		// If any repository uses CLI mode, set up RPC server
-		const hasCLIRepo = Array.from(this.repositories.values()).some(
-			(repo) => repo.platform === "cli",
-		);
-		if (hasCLIRepo) {
-			// Get the first CLI issue tracker
-			for (const [repoId, repo] of this.repositories.entries()) {
-				if (repo.platform === "cli") {
-					const cliIssueTracker = this.issueTrackers.get(repoId);
-					if (
-						cliIssueTracker &&
-						cliIssueTracker instanceof CLIIssueTrackerService
-					) {
-						const rpcServer = new CLIRPCServer(
-							this.sharedApplicationServer.getFastifyInstance(),
-							cliIssueTracker,
-						);
-						rpcServer.register();
-						console.log("✅ CLI RPC server registered");
-						console.log(
-							`   RPC endpoint: http://localhost:${this.sharedApplicationServer.getPort()}/cli/rpc`,
-						);
-						console.log(`   Agent handle: ${cliIssueTracker.getAgentHandle()}`);
-						break; // Only set up one RPC server
-					}
+		// If platform is CLI mode, set up RPC server
+		if (this.config.platform === "cli") {
+			// Get the first CLI issue tracker (should only be one in CLI mode)
+			for (const repoId of this.repositories.keys()) {
+				const cliIssueTracker = this.issueTrackers.get(repoId);
+				if (
+					cliIssueTracker &&
+					cliIssueTracker instanceof CLIIssueTrackerService
+				) {
+					const rpcServer = new CLIRPCServer(
+						this.sharedApplicationServer.getFastifyInstance(),
+						cliIssueTracker,
+					);
+					rpcServer.register();
+					console.log("✅ CLI RPC server registered");
+					console.log(
+						`   RPC endpoint: http://localhost:${this.sharedApplicationServer.getPort()}/cli/rpc`,
+					);
+					console.log(`   Agent handle: ${cliIssueTracker.getAgentHandle()}`);
+					break; // Only set up one RPC server
 				}
 			}
 		}
@@ -1070,16 +1065,16 @@ export class EdgeWorker extends EventEmitter {
 		// Handle CLI platform events (special case before Linear routing)
 		// CLI events have organizationId: "cli-org" and need platform-based routing
 		if (workspaceId === "cli-org") {
-			const cliRepo = repos.find((repo) => repo.platform === "cli");
-			if (cliRepo) {
+			// In CLI mode, return first repository (platform is global, not per-repo)
+			if (this.config.platform === "cli" && repos[0]) {
 				console.log(
-					`[EdgeWorker] Repository selected: ${cliRepo.name} (CLI platform routing)`,
+					`[EdgeWorker] Repository selected: ${repos[0].name} (CLI platform routing)`,
 				);
-				return cliRepo;
+				return repos[0];
 			}
-			// Fallback: if no explicit CLI repo, use first repo
+			// Fallback: if not in CLI mode but received CLI event, use first repo
 			console.log(
-				`[EdgeWorker] No CLI platform repository found, using fallback`,
+				`[EdgeWorker] CLI event received but platform is not CLI, using fallback`,
 			);
 			return repos[0] || null;
 		}
@@ -3314,7 +3309,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const mcpConfig: Record<string, McpServerConfig> = {};
 
 		// Only inject Linear MCP servers if platform is "linear" and token exists
-		if (repository.platform === "linear" && repository.linearToken) {
+		if (this.config.platform !== "cli" && repository.linearToken) {
 			// Linear HTTP MCP server provides basic issue tracker tools
 			// https://linear.app/docs/mcp
 			mcpConfig["issue-tracker"] = {
@@ -3327,7 +3322,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		// Configure issue-tracker-ext (extended tools) based on platform
-		if (repository.platform === "linear" && repository.linearToken) {
+		if (this.config.platform !== "cli" && repository.linearToken) {
 			// Linear mode: Linear HTTP MCP provides basic tools, SDK provides extended tools
 			mcpConfig["issue-tracker-ext"] = createCyrusToolsServer(
 				repository.linearToken,
@@ -3469,7 +3464,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		// Configure CLI-specific issue tracker tools when platform is "cli"
-		if (repository.platform === "cli") {
+		if (this.config.platform === "cli") {
 			// CLI mode provides SDK-based issue tracker tools using in-memory storage
 			const issueTracker = this.issueTrackers.get(repository.id);
 			if (issueTracker && issueTracker instanceof CLIIssueTrackerService) {
