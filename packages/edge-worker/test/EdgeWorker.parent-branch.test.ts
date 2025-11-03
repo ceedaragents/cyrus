@@ -88,7 +88,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 				teamId: "team-123",
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
-				labels: [],
+				labels: () => Promise.resolve({ nodes: [] }),
 				parent: Promise.resolve(null), // No parent by default
 			}),
 			fetchWorkflowStates: vi.fn().mockResolvedValue({
@@ -253,7 +253,7 @@ Base Branch: {{base_branch}}`;
 						teamId: "team-123",
 						createdAt: "2025-01-01T00:00:00Z",
 						updatedAt: "2025-01-01T00:00:00Z",
-						labels: [],
+						labels: () => Promise.resolve({ nodes: [] }),
 						parentId: undefined,
 						parent: Promise.resolve(null),
 					};
@@ -271,7 +271,7 @@ Base Branch: {{base_branch}}`;
 					teamId: "team-123",
 					createdAt: "2025-01-01T00:00:00Z",
 					updatedAt: "2025-01-01T00:00:00Z",
-					labels: [],
+					labels: () => Promise.resolve({ nodes: [] }),
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",
@@ -333,7 +333,7 @@ Base Branch: {{base_branch}}`;
 						teamId: "team-123",
 						createdAt: "2025-01-01T00:00:00Z",
 						updatedAt: "2025-01-01T00:00:00Z",
-						labels: [],
+						labels: () => Promise.resolve({ nodes: [] }),
 						parentId: undefined,
 						parent: Promise.resolve(null),
 					};
@@ -351,7 +351,7 @@ Base Branch: {{base_branch}}`;
 					teamId: "team-123",
 					createdAt: "2025-01-01T00:00:00Z",
 					updatedAt: "2025-01-01T00:00:00Z",
-					labels: [],
+					labels: () => Promise.resolve({ nodes: [] }),
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",
@@ -414,7 +414,7 @@ Base Branch: {{base_branch}}`;
 						teamId: "team-123",
 						createdAt: "2025-01-01T00:00:00Z",
 						updatedAt: "2025-01-01T00:00:00Z",
-						labels: [],
+						labels: () => Promise.resolve({ nodes: [] }),
 						parentId: "grandparent-issue-789",
 						parent: Promise.resolve({
 							id: "grandparent-issue-789",
@@ -436,7 +436,7 @@ Base Branch: {{base_branch}}`;
 					teamId: "team-123",
 					createdAt: "2025-01-01T00:00:00Z",
 					updatedAt: "2025-01-01T00:00:00Z",
-					labels: [],
+					labels: () => Promise.resolve({ nodes: [] }),
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",
