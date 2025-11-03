@@ -46,19 +46,104 @@ import {
 } from "../types.js";
 import { CLIEventTransport } from "./CLIEventTransport.js";
 
+// ============================================================================
+// INTERNAL DATA INTERFACES
+// ============================================================================
+
+/**
+ * Internal plain data representation of an issue.
+ * This is what we store in memory - plain data, no methods.
+ */
+interface CLIIssueData {
+	id: string;
+	identifier: string;
+	title: string;
+	description?: string;
+	url: string;
+	teamId: string;
+	stateId?: string;
+	assigneeId?: string;
+	labelIds?: string[];
+	parentId?: string;
+	priority?: number;
+	createdAt: string;
+	updatedAt: string;
+	archivedAt?: string | null;
+}
+
+/**
+ * Internal plain data representation of a comment.
+ */
+interface CLICommentData {
+	id: string;
+	body: string;
+	userId: string;
+	issueId: string;
+	parentId?: string;
+	createdAt: string;
+	updatedAt: string;
+	archivedAt?: string | null;
+	metadata?: Record<string, any>;
+}
+
+/**
+ * Internal plain data representation of a user.
+ */
+interface CLIUserData {
+	id: string;
+	name: string;
+	email: string;
+	url: string;
+	displayName?: string;
+	avatarUrl?: string;
+}
+
+/**
+ * Internal plain data representation of a team.
+ */
+interface CLITeamData {
+	id: string;
+	key: string;
+	name: string;
+	description?: string;
+}
+
+/**
+ * Internal plain data representation of a workflow state.
+ */
+interface CLIWorkflowStateData {
+	id: string;
+	name: string;
+	type: WorkflowStateType;
+	color: string;
+	position: number;
+	description?: string;
+}
+
+/**
+ * Internal plain data representation of a label.
+ */
+interface CLILabelData {
+	id: string;
+	name: string;
+	color: string;
+	description?: string;
+}
+
 /**
  * In-memory state storage for the CLI issue tracker.
+ * Now stores plain data internally, converts to Linear SDK mocks when returning.
  */
 interface CLIState {
-	issues: Map<string, Issue>;
-	comments: Map<string, Comment>;
+	issues: Map<string, CLIIssueData>;
+	comments: Map<string, CLICommentData>;
 	agentSessions: Map<string, AgentSession>;
 	agentActivities: Map<string, AgentActivity[]>;
-	teams: Map<string, Team>;
-	labels: Map<string, Label>;
-	workflowStates: Map<string, WorkflowState>;
-	users: Map<string, User>;
-	currentUser: User;
+	teams: Map<string, CLITeamData>;
+	labels: Map<string, CLILabelData>;
+	workflowStates: Map<string, CLIWorkflowStateData>;
+	users: Map<string, CLIUserData>;
+	currentUser: CLIUserData;
 	agentHandle: string; // The name/handle the agent responds to (e.g., "@cyrus")
 }
 
@@ -99,31 +184,31 @@ export class CLIIssueTrackerService
 	constructor(config: { agentHandle: string; agentUserId: string }) {
 		super();
 
-		// Initialize default user
-		const currentUser: User = {
+		// Initialize default user (plain data)
+		const currentUserData: CLIUserData = {
 			id: "cli-user-1",
 			name: "CLI User",
 			email: "cli@example.com",
 			url: "https://example.com/cli-user",
 		};
 
-		// Initialize agent user
-		const agentUser: User = {
+		// Initialize agent user (plain data)
+		const agentUserData: CLIUserData = {
 			id: config.agentUserId,
 			name: config.agentHandle,
 			email: "agent@example.com",
 			url: "https://example.com/agent",
 		};
 
-		// Initialize default team
-		const defaultTeam: Team = {
+		// Initialize default team (plain data)
+		const defaultTeamData: CLITeamData = {
 			id: "team-1",
 			key: "CLI",
 			name: "CLI Team",
 		};
 
-		// Initialize default workflow states
-		const defaultStates: WorkflowState[] = [
+		// Initialize default workflow states (plain data)
+		const defaultStatesData: CLIWorkflowStateData[] = [
 			{
 				id: "state-triage",
 				name: "Triage",
@@ -173,14 +258,14 @@ export class CLIIssueTrackerService
 			comments: new Map(),
 			agentSessions: new Map(),
 			agentActivities: new Map(),
-			teams: new Map([[defaultTeam.id, defaultTeam]]),
+			teams: new Map([[defaultTeamData.id, defaultTeamData]]),
 			labels: new Map(),
-			workflowStates: new Map(defaultStates.map((s) => [s.id, s])),
+			workflowStates: new Map(defaultStatesData.map((s) => [s.id, s])),
 			users: new Map([
-				[currentUser.id, currentUser],
-				[agentUser.id, agentUser],
+				[currentUserData.id, currentUserData],
+				[agentUserData.id, agentUserData],
 			]),
-			currentUser,
+			currentUser: currentUserData,
 			agentHandle: config.agentHandle,
 		};
 	}
@@ -197,6 +282,250 @@ export class CLIIssueTrackerService
 	 */
 	private now(): string {
 		return new Date().toISOString();
+	}
+
+	// ========================================================================
+	// MOCK FACTORY FUNCTIONS - Convert plain data to Linear SDK compatible mocks
+	// ========================================================================
+
+	/**
+	 * Convert plain user data to Linear SDK compatible User mock.
+	 */
+	private toLinearUser(data: CLIUserData): User {
+		return {
+			id: data.id,
+			name: data.name,
+			displayName: data.displayName || data.name,
+			email: data.email,
+			url: data.url,
+			avatarUrl: data.avatarUrl,
+			// Stub out other required fields with sensible defaults
+			active: true,
+			admin: false,
+			guest: false,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			archivedAt: undefined,
+		} as User;
+	}
+
+	/**
+	 * Convert plain team data to Linear SDK compatible Team mock.
+	 */
+	private toLinearTeam(data: CLITeamData): Team {
+		return {
+			id: data.id,
+			name: data.name,
+			key: data.key,
+			description: data.description,
+			// Stub out other required fields
+			private: false,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			archivedAt: undefined,
+		} as Team;
+	}
+
+	/**
+	 * Convert plain workflow state data to Linear SDK compatible WorkflowState mock.
+	 */
+	private toLinearWorkflowState(data: CLIWorkflowStateData): WorkflowState {
+		return {
+			id: data.id,
+			name: data.name,
+			type: data.type,
+			color: data.color,
+			position: data.position,
+			description: data.description,
+			// Stub out other required fields
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			archivedAt: undefined,
+		} as WorkflowState;
+	}
+
+	/**
+	 * Convert plain label data to Linear SDK compatible Label mock.
+	 */
+	private toLinearLabel(data: CLILabelData): Label {
+		return {
+			id: data.id,
+			name: data.name,
+			color: data.color,
+			description: data.description,
+			// Stub out other required fields
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			archivedAt: undefined,
+		} as Label;
+	}
+
+	/**
+	 * Convert plain comment data to Linear SDK compatible Comment mock.
+	 */
+	private toLinearComment(data: CLICommentData): Comment {
+		const self = this;
+		const userData = this.state.users.get(data.userId);
+		const parentData = data.parentId
+			? this.state.comments.get(data.parentId)
+			: undefined;
+
+		return {
+			id: data.id,
+			body: data.body,
+			createdAt: new Date(data.createdAt),
+			updatedAt: new Date(data.updatedAt),
+			archivedAt: data.archivedAt ? new Date(data.archivedAt) : undefined,
+			editedAt: undefined,
+			// Store IDs and metadata for backward compatibility with tests
+			issueId: data.issueId,
+			userId: data.userId,
+			parentId: data.parentId,
+			metadata: data.metadata,
+			// Async getter for user
+			get user(): Promise<User | undefined> {
+				return Promise.resolve(
+					userData ? self.toLinearUser(userData) : undefined,
+				);
+			},
+			// Async getter for issue
+			get issue(): Promise<Issue> {
+				const issueData = self.state.issues.get(data.issueId);
+				if (!issueData) {
+					throw new Error(
+						`Issue ${data.issueId} not found for comment ${data.id}`,
+					);
+				}
+				return Promise.resolve(self.toLinearIssue(issueData));
+			},
+			// Async getter for parent comment
+			get parent(): Promise<Comment | undefined> {
+				return Promise.resolve(
+					parentData ? self.toLinearComment(parentData) : undefined,
+				);
+			},
+			// Stub out other fields
+			url: `https://example.com/comment/${data.id}`,
+		} as unknown as Comment;
+	}
+
+	/**
+	 * Convert plain issue data to Linear SDK compatible Issue mock.
+	 * This is the most complex mock as it needs to handle async properties and methods.
+	 */
+	private toLinearIssue(data: CLIIssueData): Issue {
+		const self = this;
+
+		return {
+			id: data.id,
+			identifier: data.identifier,
+			title: data.title,
+			description: data.description,
+			url: data.url,
+			priority: data.priority ?? 0,
+			number: Number.parseInt(data.identifier.split("-")[1] || "0", 10),
+			// Date objects (not strings!)
+			createdAt: new Date(data.createdAt),
+			updatedAt: new Date(data.updatedAt),
+			archivedAt: data.archivedAt ? new Date(data.archivedAt) : undefined,
+			// Store IDs as simple properties for backward compatibility with tests
+			assigneeId: data.assigneeId,
+			teamId: data.teamId,
+			stateId: data.stateId,
+			parentId: data.parentId,
+
+			// Async getter properties for related entities
+			get state(): Promise<WorkflowState | undefined> {
+				const stateData = data.stateId
+					? self.state.workflowStates.get(data.stateId)
+					: undefined;
+				return Promise.resolve(
+					stateData ? self.toLinearWorkflowState(stateData) : undefined,
+				);
+			},
+
+			get assignee(): Promise<User | undefined> {
+				const userData = data.assigneeId
+					? self.state.users.get(data.assigneeId)
+					: undefined;
+				return Promise.resolve(
+					userData ? self.toLinearUser(userData) : undefined,
+				);
+			},
+
+			get team(): Promise<Team> {
+				const teamData = self.state.teams.get(data.teamId);
+				if (!teamData) {
+					throw new Error(`Team ${data.teamId} not found for issue ${data.id}`);
+				}
+				return Promise.resolve(self.toLinearTeam(teamData));
+			},
+
+			get parent(): Promise<Issue | undefined> {
+				const parentData = data.parentId
+					? self.state.issues.get(data.parentId)
+					: undefined;
+				return Promise.resolve(
+					parentData ? self.toLinearIssue(parentData) : undefined,
+				);
+			},
+
+			// Async methods that return collections
+			labels: () => {
+				const labels = (data.labelIds || [])
+					.map((id) => self.state.labels.get(id))
+					.filter((l): l is CLILabelData => l !== undefined)
+					.map((l) => self.toLinearLabel(l));
+				return Promise.resolve({ nodes: labels });
+			},
+
+			children: (options?: {
+				first?: number;
+				filter?: Record<string, any>;
+			}) => {
+				let children = Array.from(self.state.issues.values())
+					.filter((i) => i.parentId === data.id)
+					.map((i) => self.toLinearIssue(i));
+
+				// Apply filters if provided
+				if (options?.filter) {
+					// Simple filter implementation for testing
+					if (options.filter.archivedAt?.null === true) {
+						children = children.filter((i) => !i.archivedAt);
+					}
+				}
+
+				// Apply limit
+				if (options?.first) {
+					children = children.slice(0, options.first);
+				}
+
+				return Promise.resolve({ nodes: children });
+			},
+
+			comments: (options?: { first?: number }) => {
+				const comments = Array.from(self.state.comments.values())
+					.filter((c) => c.issueId === data.id)
+					.map((c) => self.toLinearComment(c));
+
+				const first = options?.first ?? 50;
+				const nodes = comments.slice(0, first);
+
+				return Promise.resolve({ nodes });
+			},
+
+			attachments: () => {
+				// CLI has no attachments
+				return Promise.resolve({ nodes: [] });
+			},
+
+			// Stub out other required fields with sensible defaults
+			branchName: `cli/${data.identifier.toLowerCase()}`,
+			customerTicketCount: 0,
+			estimate: undefined,
+			sortOrder: 0,
+			subIssueSortOrder: 0,
+		} as unknown as Issue;
 	}
 
 	// ========================================================================
@@ -219,41 +548,36 @@ export class CLIIssueTrackerService
 		const stateId = input.stateId || "state-todo";
 		const now = this.now();
 
-		const issue: Issue = {
+		// Store plain data internally
+		const issueData: CLIIssueData = {
 			id: this.generateId("issue"),
 			identifier: `CLI-${this.idCounter}`,
 			title: input.title,
 			description: input.description,
 			url: `https://example.com/issue/CLI-${this.idCounter}`,
 			teamId,
-			team: this.state.teams.get(teamId),
-			state: this.state.workflowStates.get(stateId),
+			stateId,
 			assigneeId: input.assigneeId,
-			assignee: input.assigneeId
-				? this.state.users.get(input.assigneeId)
-				: undefined,
-			labels: input.labelIds
-				? input.labelIds
-						.map((id) => this.state.labels.get(id))
-						.filter((l): l is Label => l !== undefined)
-				: [],
+			labelIds: input.labelIds,
 			parentId: input.parentId,
 			createdAt: now,
 			updatedAt: now,
 			archivedAt: null,
 		};
 
-		this.state.issues.set(issue.id, issue);
+		this.state.issues.set(issueData.id, issueData);
 
 		// Emit issue created event if assigned to agent
 		if (input.assigneeId) {
 			const assignee = this.state.users.get(input.assigneeId);
 			if (assignee && assignee.name === this.state.agentHandle) {
-				this.emit("issueAssigned", issue);
+				// Convert to Linear mock for event emission
+				this.emit("issueAssigned", this.toLinearIssue(issueData));
 			}
 		}
 
-		return issue;
+		// Return Linear SDK compatible mock
+		return this.toLinearIssue(issueData);
 	}
 
 	/**
@@ -264,30 +588,30 @@ export class CLIIssueTrackerService
 		color?: string;
 		description?: string;
 	}): Promise<Label> {
-		const label: Label = {
+		const labelData: CLILabelData = {
 			id: this.generateId("label"),
 			name: input.name,
 			color: input.color || "#000000",
 			description: input.description,
 		};
 
-		this.state.labels.set(label.id, label);
-		return label;
+		this.state.labels.set(labelData.id, labelData);
+		return this.toLinearLabel(labelData);
 	}
 
 	/**
 	 * Create a member/user (CLI command: createMember).
 	 */
 	async createMember(input: { name: string; email?: string }): Promise<User> {
-		const user: User = {
+		const userData: CLIUserData = {
 			id: this.generateId("user"),
 			name: input.name,
 			email: input.email || `${input.name.toLowerCase()}@example.com`,
 			url: `https://example.com/user/${input.name}`,
 		};
 
-		this.state.users.set(user.id, user);
-		return user;
+		this.state.users.set(userData.id, userData);
+		return this.toLinearUser(userData);
 	}
 
 	/**
@@ -310,20 +634,20 @@ export class CLIIssueTrackerService
 
 	async fetchIssue(idOrIdentifier: string): Promise<Issue> {
 		// Try by ID first
-		let issue = this.state.issues.get(idOrIdentifier);
+		let issueData = this.state.issues.get(idOrIdentifier);
 
 		// Try by identifier if not found
-		if (!issue) {
-			issue = Array.from(this.state.issues.values()).find(
+		if (!issueData) {
+			issueData = Array.from(this.state.issues.values()).find(
 				(i) => i.identifier === idOrIdentifier,
 			);
 		}
 
-		if (!issue) {
+		if (!issueData) {
 			throw new Error(`Issue not found: ${idOrIdentifier}`);
 		}
 
-		return issue;
+		return this.toLinearIssue(issueData);
 	}
 
 	async fetchIssueChildren(
@@ -332,78 +656,80 @@ export class CLIIssueTrackerService
 	): Promise<IssueWithChildren> {
 		const parent = await this.fetchIssue(issueId);
 
-		// Find all children
-		let children = Array.from(this.state.issues.values()).filter(
+		// Find all children (work with plain data)
+		let childrenData = Array.from(this.state.issues.values()).filter(
 			(i) => i.parentId === issueId,
 		);
 
 		// Apply filters
 		if (options?.includeCompleted === false) {
-			children = children.filter((i) => {
-				const state = i.state as
-					| WorkflowState
-					| Promise<WorkflowState>
-					| undefined;
-				if (!state || state instanceof Promise) return true;
-				return state.type !== WorkflowStateType.Completed;
+			childrenData = childrenData.filter((i) => {
+				const stateData = i.stateId
+					? this.state.workflowStates.get(i.stateId)
+					: undefined;
+				if (!stateData) return true;
+				return stateData.type !== WorkflowStateType.Completed;
 			});
 		}
 
 		if (options?.includeArchived === false) {
-			children = children.filter((i) => !i.archivedAt);
+			childrenData = childrenData.filter((i) => !i.archivedAt);
 		}
 
 		// Apply limit
 		if (options?.limit) {
-			children = children.slice(0, options.limit);
+			childrenData = childrenData.slice(0, options.limit);
 		}
+
+		// Convert to Linear mocks
+		const children = childrenData.map((d) => this.toLinearIssue(d));
 
 		return {
 			...parent,
 			children,
 			childCount: children.length,
-		};
+		} as IssueWithChildren;
 	}
 
 	async updateIssue(
 		issueId: string,
 		updates: IssueUpdateInput,
 	): Promise<Issue> {
-		const issue = await this.fetchIssue(issueId);
+		// Fetch plain data
+		const issueData = this.state.issues.get(issueId);
+		if (!issueData) {
+			throw new Error(`Issue not found: ${issueId}`);
+		}
 
-		// Apply updates
-		if (updates.title !== undefined) issue.title = updates.title;
+		const oldAssigneeId = issueData.assigneeId;
+
+		// Apply updates to plain data
+		if (updates.title !== undefined) issueData.title = updates.title;
 		if (updates.description !== undefined)
-			issue.description = updates.description;
+			issueData.description = updates.description;
 		if (updates.stateId !== undefined) {
-			issue.state = this.state.workflowStates.get(updates.stateId);
+			issueData.stateId = updates.stateId;
 		}
 		if (updates.assigneeId !== undefined) {
-			const oldAssigneeId = issue.assigneeId;
-			issue.assigneeId = updates.assigneeId;
-			issue.assignee = updates.assigneeId
-				? this.state.users.get(updates.assigneeId)
-				: undefined;
+			issueData.assigneeId = updates.assigneeId;
 
 			// Emit assignment event if assigned to agent
 			if (updates.assigneeId && updates.assigneeId !== oldAssigneeId) {
 				const assignee = this.state.users.get(updates.assigneeId);
 				if (assignee && assignee.name === this.state.agentHandle) {
-					this.emit("issueAssigned", issue);
+					this.emit("issueAssigned", this.toLinearIssue(issueData));
 				}
 			}
 		}
-		if (updates.priority !== undefined) issue.priority = updates.priority;
-		if (updates.parentId !== undefined) issue.parentId = updates.parentId;
+		if (updates.priority !== undefined) issueData.priority = updates.priority;
+		if (updates.parentId !== undefined) issueData.parentId = updates.parentId;
 		if (updates.labelIds !== undefined) {
-			issue.labels = updates.labelIds
-				.map((id) => this.state.labels.get(id))
-				.filter((l): l is Label => l !== undefined);
+			issueData.labelIds = updates.labelIds;
 		}
 
-		issue.updatedAt = this.now();
+		issueData.updatedAt = this.now();
 
-		return issue;
+		return this.toLinearIssue(issueData);
 	}
 
 	/**
@@ -431,18 +757,19 @@ export class CLIIssueTrackerService
 	): Promise<Connection<Comment>> {
 		await this.fetchIssue(issueId); // Ensure issue exists
 
-		const comments = Array.from(this.state.comments.values()).filter(
+		const commentsData = Array.from(this.state.comments.values()).filter(
 			(c) => c.issueId === issueId,
 		);
 
 		// Apply pagination
 		const first = options?.first ?? 50;
-		const nodes = comments.slice(0, first);
+		const nodesData = commentsData.slice(0, first);
+		const nodes = nodesData.map((d) => this.toLinearComment(d));
 
 		return {
 			nodes,
 			pageInfo: {
-				hasNextPage: comments.length > first,
+				hasNextPage: commentsData.length > first,
 				hasPreviousPage: false,
 				endCursor: nodes.length > 0 ? nodes[nodes.length - 1]!.id : undefined,
 			},
@@ -450,11 +777,11 @@ export class CLIIssueTrackerService
 	}
 
 	async fetchComment(commentId: string): Promise<Comment> {
-		const comment = this.state.comments.get(commentId);
-		if (!comment) {
+		const commentData = this.state.comments.get(commentId);
+		if (!commentData) {
 			throw new Error(`Comment not found: ${commentId}`);
 		}
-		return comment;
+		return this.toLinearComment(commentData);
 	}
 
 	async fetchCommentWithAttachments(
@@ -464,7 +791,7 @@ export class CLIIssueTrackerService
 		return {
 			...comment,
 			attachments: [], // No attachments in CLI mode
-		};
+		} as unknown as CommentWithAttachments;
 	}
 
 	async createComment(
@@ -481,30 +808,29 @@ export class CLIIssueTrackerService
 			metadata.attachmentUrls = input.attachmentUrls;
 		}
 
-		const comment: Comment = {
+		const commentData: CLICommentData = {
 			id: this.generateId("comment"),
 			body: input.body,
 			userId: this.state.currentUser.id,
-			user: this.state.currentUser,
 			issueId,
 			parentId: input.parentId,
-			parent: input.parentId
-				? this.state.comments.get(input.parentId)
-				: undefined,
 			createdAt: now,
 			updatedAt: now,
 			archivedAt: null,
 			metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
 		};
 
-		this.state.comments.set(comment.id, comment);
+		this.state.comments.set(commentData.id, commentData);
 
 		// Check if comment mentions the agent
 		if (input.body.includes(this.state.agentHandle)) {
-			this.emit("commentMention", { comment, issue: issueId });
+			this.emit("commentMention", {
+				comment: this.toLinearComment(commentData),
+				issue: issueId,
+			});
 		}
 
-		return comment;
+		return this.toLinearComment(commentData);
 	}
 
 	// ========================================================================
@@ -512,33 +838,34 @@ export class CLIIssueTrackerService
 	// ========================================================================
 
 	async fetchTeams(options?: PaginationOptions): Promise<Connection<Team>> {
-		const teams = Array.from(this.state.teams.values());
+		const teamsData = Array.from(this.state.teams.values());
 		const first = options?.first ?? 50;
-		const nodes = teams.slice(0, first);
+		const nodesData = teamsData.slice(0, first);
+		const nodes = nodesData.map((d) => this.toLinearTeam(d));
 
 		return {
 			nodes,
 			pageInfo: {
-				hasNextPage: teams.length > first,
+				hasNextPage: teamsData.length > first,
 				hasPreviousPage: false,
 			},
 		};
 	}
 
 	async fetchTeam(idOrKey: string): Promise<Team> {
-		let team = this.state.teams.get(idOrKey);
+		let teamData = this.state.teams.get(idOrKey);
 
-		if (!team) {
-			team = Array.from(this.state.teams.values()).find(
+		if (!teamData) {
+			teamData = Array.from(this.state.teams.values()).find(
 				(t) => t.key === idOrKey,
 			);
 		}
 
-		if (!team) {
+		if (!teamData) {
 			throw new Error(`Team not found: ${idOrKey}`);
 		}
 
-		return team;
+		return this.toLinearTeam(teamData);
 	}
 
 	// ========================================================================
@@ -546,33 +873,34 @@ export class CLIIssueTrackerService
 	// ========================================================================
 
 	async fetchLabels(options?: PaginationOptions): Promise<Connection<Label>> {
-		const labels = Array.from(this.state.labels.values());
+		const labelsData = Array.from(this.state.labels.values());
 		const first = options?.first ?? 50;
-		const nodes = labels.slice(0, first);
+		const nodesData = labelsData.slice(0, first);
+		const nodes = nodesData.map((d) => this.toLinearLabel(d));
 
 		return {
 			nodes,
 			pageInfo: {
-				hasNextPage: labels.length > first,
+				hasNextPage: labelsData.length > first,
 				hasPreviousPage: false,
 			},
 		};
 	}
 
 	async fetchLabel(idOrName: string): Promise<Label> {
-		let label = this.state.labels.get(idOrName);
+		let labelData = this.state.labels.get(idOrName);
 
-		if (!label) {
-			label = Array.from(this.state.labels.values()).find(
+		if (!labelData) {
+			labelData = Array.from(this.state.labels.values()).find(
 				(l) => l.name === idOrName,
 			);
 		}
 
-		if (!label) {
+		if (!labelData) {
 			throw new Error(`Label not found: ${idOrName}`);
 		}
 
-		return label;
+		return this.toLinearLabel(labelData);
 	}
 
 	// ========================================================================
@@ -585,25 +913,26 @@ export class CLIIssueTrackerService
 	): Promise<Connection<WorkflowState>> {
 		await this.fetchTeam(teamId); // Ensure team exists
 
-		const states = Array.from(this.state.workflowStates.values());
+		const statesData = Array.from(this.state.workflowStates.values());
 		const first = options?.first ?? 50;
-		const nodes = states.slice(0, first);
+		const nodesData = statesData.slice(0, first);
+		const nodes = nodesData.map((d) => this.toLinearWorkflowState(d));
 
 		return {
 			nodes,
 			pageInfo: {
-				hasNextPage: states.length > first,
+				hasNextPage: statesData.length > first,
 				hasPreviousPage: false,
 			},
 		};
 	}
 
 	async fetchWorkflowState(stateId: string): Promise<WorkflowState> {
-		const state = this.state.workflowStates.get(stateId);
-		if (!state) {
+		const stateData = this.state.workflowStates.get(stateId);
+		if (!stateData) {
 			throw new Error(`Workflow state not found: ${stateId}`);
 		}
-		return state;
+		return this.toLinearWorkflowState(stateData);
 	}
 
 	// ========================================================================
@@ -611,15 +940,15 @@ export class CLIIssueTrackerService
 	// ========================================================================
 
 	async fetchUser(userId: string): Promise<User> {
-		const user = this.state.users.get(userId);
-		if (!user) {
+		const userData = this.state.users.get(userId);
+		if (!userData) {
 			throw new Error(`User not found: ${userId}`);
 		}
-		return user;
+		return this.toLinearUser(userData);
 	}
 
 	async fetchCurrentUser(): Promise<User> {
-		return this.state.currentUser;
+		return this.toLinearUser(this.state.currentUser);
 	}
 
 	// ========================================================================
@@ -638,7 +967,7 @@ export class CLIIssueTrackerService
 			status: "pending" as AgentSessionStatus,
 			type: "issue" as AgentSessionType,
 			creatorId: this.state.currentUser.id,
-			creator: this.state.currentUser,
+			creator: this.toLinearUser(this.state.currentUser),
 			appUserId: this.state.currentUser.id, // Use current user as app user in CLI mode
 			organizationId: "cli-org",
 			startedAt: now,
@@ -664,7 +993,11 @@ export class CLIIssueTrackerService
 		input: AgentSessionCreateOnCommentInput,
 	): Promise<AgentSessionCreateResponse> {
 		const comment = await this.fetchComment(input.commentId);
-		const issue = await this.fetchIssue(comment.issueId);
+		const commentIssue = await comment.issue;
+		if (!commentIssue) {
+			throw new Error(`Issue not found for comment ${input.commentId}`);
+		}
+		const issue = await this.fetchIssue(commentIssue.id);
 		const now = this.now();
 
 		const session: AgentSession = {
@@ -674,7 +1007,7 @@ export class CLIIssueTrackerService
 			status: "pending" as AgentSessionStatus,
 			type: "commentThread" as AgentSessionType,
 			creatorId: this.state.currentUser.id,
-			creator: this.state.currentUser,
+			creator: this.toLinearUser(this.state.currentUser),
 			appUserId: this.state.currentUser.id,
 			organizationId: "cli-org",
 			startedAt: now,

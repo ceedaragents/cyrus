@@ -400,31 +400,29 @@ export function createCLIToolsServer(
 					return labels[priority] || null;
 				};
 
-				// Format child issue data
-				const childrenData = children.map((child: Issue) => {
-					// Handle state - it could be a Promise or undefined in the type system,
-					// but in practice it should be resolved by the service
-					const state =
-						child.state instanceof Promise ? undefined : child.state;
-					const assignee =
-						child.assignee instanceof Promise ? undefined : child.assignee;
+				// Format child issue data - await Linear SDK lazy-loaded properties
+				const childrenData = await Promise.all(
+					children.map(async (child: Issue) => {
+						const state = await child.state;
+						const assignee = await child.assignee;
 
-					return {
-						id: child.id,
-						identifier: child.identifier,
-						title: child.title,
-						state: state?.name || "Unknown",
-						stateType: state?.type || null,
-						assignee: assignee?.name || null,
-						assigneeId: assignee?.id || null,
-						priority: child.priority || 0,
-						priorityLabel: getPriorityLabel(child.priority),
-						createdAt: child.createdAt,
-						updatedAt: child.updatedAt,
-						url: child.url,
-						archivedAt: child.archivedAt || null,
-					};
-				});
+						return {
+							id: child.id,
+							identifier: await child.identifier,
+							title: await child.title,
+							state: state?.name || "Unknown",
+							stateType: state?.type || null,
+							assignee: assignee?.name || null,
+							assigneeId: assignee?.id || null,
+							priority: child.priority || 0,
+							priorityLabel: getPriorityLabel(child.priority),
+							createdAt: child.createdAt,
+							updatedAt: child.updatedAt,
+							url: child.url,
+							archivedAt: child.archivedAt || null,
+						};
+					}),
+				);
 
 				console.log(
 					`[CLITools] Found ${childrenData.length} child issues for ${issueId}`,

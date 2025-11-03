@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Unified type system now uses Linear SDK types as the single source of truth, eliminating dual type system and improving type safety
+
 ## [0.2.0-rc.2] - 2025-10-30
 
 ### Fixed

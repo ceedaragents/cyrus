@@ -50,7 +50,12 @@ describe("CLIIssueTrackerService", () => {
 			});
 
 			const fetched = await service.fetchIssue(created.id);
-			expect(fetched).toEqual(created);
+			expect(fetched).toMatchObject({
+				id: created.id,
+				identifier: created.identifier,
+				title: created.title,
+				description: created.description,
+			});
 		});
 
 		it("should fetch an issue by identifier", async () => {
@@ -59,7 +64,12 @@ describe("CLIIssueTrackerService", () => {
 			});
 
 			const fetched = await service.fetchIssue(created.identifier);
-			expect(fetched).toEqual(created);
+			expect(fetched).toMatchObject({
+				id: created.id,
+				identifier: created.identifier,
+				title: created.title,
+				description: created.description,
+			});
 		});
 
 		it("should update an issue", async () => {

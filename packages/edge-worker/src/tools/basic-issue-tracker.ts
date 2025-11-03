@@ -145,10 +145,9 @@ export function createBasicIssueTrackerServer(
 					};
 				}
 
-				// Handle state - it could be a Promise in the type system
-				const state = issue.state instanceof Promise ? undefined : issue.state;
-				const assignee =
-					issue.assignee instanceof Promise ? undefined : issue.assignee;
+				// Await Linear SDK lazy-loaded properties
+				const state = await issue.state;
+				const assignee = await issue.assignee;
 
 				return {
 					content: [
@@ -158,9 +157,9 @@ export function createBasicIssueTrackerServer(
 								success: true,
 								issue: {
 									id: issue.id,
-									identifier: issue.identifier,
-									title: issue.title,
-									description: issue.description,
+									identifier: await issue.identifier,
+									title: await issue.title,
+									description: await issue.description,
 									state: state?.name || "Unknown",
 									stateType: state?.type || null,
 									assignee: assignee?.name || null,

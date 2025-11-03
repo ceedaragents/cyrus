@@ -2,7 +2,6 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Issue as LinearIssue } from "@linear/sdk";
 import { LinearClient } from "@linear/sdk";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
@@ -28,6 +27,7 @@ import type {
 	Comment,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
+	Issue,
 	IssueMinimal,
 	LinearAgentSessionCreatedWebhook,
 	LinearAgentSessionPromptedWebhook,
@@ -1124,7 +1124,8 @@ export class EdgeWorker extends EventEmitter {
 				try {
 					// Fetch the issue to get labels
 					const issue = await issueTracker.fetchIssue(issueId);
-					const labelNames = issue.labels?.map((l) => l.name) || [];
+					const labelsConnection = await issue.labels();
+					const labelNames = labelsConnection?.nodes.map((l) => l.name) || [];
 
 					// Check each repo with routing labels
 					for (const repo of reposWithRoutingLabels) {
@@ -1658,7 +1659,7 @@ export class EdgeWorker extends EventEmitter {
 
 		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
 		let isNewSession = false;
-		let fullIssue: LinearIssue | null = null;
+		let fullIssue: Issue | null = null;
 
 		if (!session) {
 			console.log(
@@ -1717,7 +1718,7 @@ export class EdgeWorker extends EventEmitter {
 			const issueTracker = this.issueTrackers.get(repository.id);
 			if (issueTracker) {
 				try {
-					fullIssue = (await issueTracker.fetchIssue(issue.id)) as any;
+					fullIssue = await issueTracker.fetchIssue(issue.id);
 				} catch (error) {
 					console.warn(
 						`[EdgeWorker] Failed to fetch full issue for routing: ${issue.id}`,
@@ -1774,7 +1775,9 @@ export class EdgeWorker extends EventEmitter {
 			if (user) {
 				commentAuthor = user.name || user.email || "Unknown";
 			}
-			commentTimestamp = comment.createdAt || new Date().toISOString();
+			commentTimestamp = comment.createdAt
+				? comment.createdAt.toISOString()
+				: new Date().toISOString();
 
 			// Count existing attachments
 			const existingFiles = await readdir(attachmentsDir).catch(() => []);
@@ -2002,7 +2005,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @returns Formatted prompt string
 	 */
 	private async buildLabelBasedPrompt(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 		attachmentManifest: string = "",
 		guidance?: LinearWebhookGuidanceRule[],
@@ -2077,8 +2080,8 @@ export class EdgeWorker extends EventEmitter {
 						id: team.id,
 						name: team.name,
 						key: team.key,
-						description: (team as any).description || "",
-						color: (team as any).color,
+						description: team.description || "",
+						color: team.color,
 					});
 				}
 				workspaceTeams = teamsArray
@@ -2163,7 +2166,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @returns The constructed prompt and optional version tag
 	 */
 	private async buildMentionPrompt(
-		issue: LinearIssue,
+		issue: Issue,
 		agentSession: LinearWebhookAgentSession,
 		attachmentManifest: string = "",
 		guidance?: LinearWebhookGuidanceRule[],
@@ -2292,7 +2295,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	 * Determine the base branch for an issue, considering parent issues
 	 */
 	private async determineBaseBranch(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 	): Promise<string> {
 		// Start with the repository's default base branch
@@ -2315,7 +2318,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 					return baseBranch; // Fall back to default
 				}
 				const parentRawBranchName =
-					(parent as any).branchName ||
+					parent.branchName ||
 					`${await parent.identifier}-${(await parent.title)
 						?.toLowerCase()
 						.replace(/\s+/g, "-")
@@ -2352,7 +2355,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	/**
 	 * Convert full Linear SDK issue to CoreIssue interface for Session creation
 	 */
-	private convertLinearIssueToCore(issue: LinearIssue): IssueMinimal {
+	private convertLinearIssueToCore(issue: Issue): IssueMinimal {
 		return {
 			id: issue.id,
 			identifier: issue.identifier,
@@ -2414,10 +2417,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			// Format root comment
 			const rootUser = await rootComment.user;
 			const rootAuthor =
-				(rootUser as any)?.displayName ||
-				rootUser?.name ||
-				rootUser?.email ||
-				"Unknown";
+				rootUser?.displayName || rootUser?.name || rootUser?.email || "Unknown";
 			const rootTime = new Date(rootComment.createdAt).toLocaleString();
 
 			let threadText = `<comment_thread>
@@ -2435,7 +2435,7 @@ ${rootComment.body}
 				for (const reply of thread.replies) {
 					const replyUser = await reply.user;
 					const replyAuthor =
-						(replyUser as any)?.displayName ||
+						replyUser?.displayName ||
 						replyUser?.name ||
 						replyUser?.email ||
 						"Unknown";
@@ -2470,7 +2470,7 @@ ${reply.body}
 	 * @returns Formatted prompt string
 	 */
 	private async buildIssueContextPrompt(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 		newComment?: LinearWebhookComment,
 		attachmentManifest: string = "",
@@ -2588,10 +2588,7 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 						const fullComment = await issueTracker.fetchComment(newComment.id);
 						const user = await fullComment.user;
 						authorName =
-							(user as any)?.displayName ||
-							user?.name ||
-							user?.email ||
-							"Unknown";
+							user?.displayName || user?.name || user?.email || "Unknown";
 					} catch (error) {
 						console.error("Failed to fetch comment author:", error);
 					}
@@ -2713,7 +2710,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 
 	private async moveIssueToStartedState(
-		issue: LinearIssue,
+		issue: Issue,
 		repositoryId: string,
 	): Promise<void> {
 		try {
@@ -2865,7 +2862,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * @param workspacePath Path to workspace directory
 	 */
 	private async downloadIssueAttachments(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
@@ -3678,7 +3675,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private async buildSessionPrompt(
 		isNewSession: boolean,
 		session: CyrusAgentSession,
-		fullIssue: LinearIssue,
+		fullIssue: Issue,
 		repository: RepositoryConfig,
 		promptBody: string,
 		attachmentManifest?: string,
@@ -3997,7 +3994,7 @@ ${input.userComment}
 	 * Adapter method for prompt assembly - routes to appropriate issue context builder
 	 */
 	private async buildIssueContextForPromptAssembly(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 		promptType: PromptType,
 		attachmentManifest?: string,
@@ -4863,7 +4860,7 @@ ${input.userComment}
 	public async fetchFullIssueDetails(
 		issueId: string,
 		repositoryId: string,
-	): Promise<LinearIssue | null> {
+	): Promise<Issue | null> {
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {
 			console.warn(
@@ -4874,9 +4871,7 @@ ${input.userComment}
 
 		try {
 			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`);
-			const fullIssue = (await issueTracker.fetchIssue(
-				issueId,
-			)) as unknown as LinearIssue;
+			const fullIssue: Issue = await issueTracker.fetchIssue(issueId);
 			console.log(
 				`[EdgeWorker] Successfully fetched issue details for ${issueId}`,
 			);

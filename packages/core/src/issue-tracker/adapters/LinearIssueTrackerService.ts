@@ -40,13 +40,6 @@ import type {
 } from "../types.js";
 import {
 	adaptLinearAgentSession,
-	adaptLinearComment,
-	adaptLinearIssue,
-	adaptLinearIssueWithChildren,
-	adaptLinearLabel,
-	adaptLinearTeam,
-	adaptLinearUser,
-	adaptLinearWorkflowState,
 	type LinearAgentSessionData,
 	toLinearActivityContent,
 } from "./LinearTypeAdapters.js";
@@ -68,30 +61,6 @@ interface LinearClientWithRawRequest {
 			variables?: Record<string, unknown>,
 		): Promise<LinearGraphQLResponse<T>>;
 	};
-}
-
-/**
- * Linear GraphQL comment data with user.
- */
-interface LinearCommentData {
-	id: string;
-	body: string;
-	createdAt: string;
-	updatedAt: string;
-	archivedAt?: string | null;
-	userId: string;
-	issueId: string;
-	user?: {
-		id: string;
-		name: string;
-		displayName?: string | null;
-		email: string;
-		url: string;
-		avatarUrl?: string | null;
-	} | null;
-	parent?: {
-		id: string;
-	} | null;
 }
 
 /**
@@ -147,8 +116,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 */
 	async fetchIssue(idOrIdentifier: string): Promise<Issue> {
 		try {
-			const linearIssue = await this.linearClient.issue(idOrIdentifier);
-			return await adaptLinearIssue(linearIssue);
+			return await this.linearClient.issue(idOrIdentifier);
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch issue ${idOrIdentifier}: ${error instanceof Error ? error.message : String(error)}`,
@@ -190,7 +158,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 			const children = childrenConnection.nodes ?? [];
 
-			return await adaptLinearIssueWithChildren(parentIssue, children);
+			// Return Linear SDK issue with children array directly
+			// Use type assertion since we're adding properties to Linear SDK Issue type
+			return {
+				...parentIssue,
+				children,
+				childCount: children.length,
+			} as IssueWithChildren;
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch children for issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -221,7 +195,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				throw new Error("Updated issue not returned from Linear API");
 			}
 
-			return await adaptLinearIssue(updatedIssue);
+			return updatedIssue;
 		} catch (error) {
 			throw new Error(
 				`Failed to update issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -279,12 +253,8 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				before: options?.before,
 			});
 
-			const nodes = await Promise.all(
-				(commentsConnection.nodes ?? []).map(adaptLinearComment),
-			);
-
 			return {
-				nodes,
+				nodes: commentsConnection.nodes ?? [],
 				pageInfo: commentsConnection.pageInfo
 					? {
 							hasNextPage: commentsConnection.pageInfo.hasNextPage,
@@ -306,8 +276,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 */
 	async fetchComment(commentId: string): Promise<Comment> {
 		try {
-			const linearComment = await this.linearClient.comment({ id: commentId });
-			return await adaptLinearComment(linearComment);
+			return await this.linearClient.comment({ id: commentId });
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch comment ${commentId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -316,73 +285,26 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	}
 
 	/**
-	 * Fetch a comment with attachments using raw GraphQL.
+	 * Fetch a comment with attachments.
+	 *
+	 * Returns the Linear SDK Comment with an attachments array added.
+	 * Linear doesn't currently expose attachments in their GraphQL API,
+	 * so this always returns an empty attachments array for now.
 	 */
 	async fetchCommentWithAttachments(
 		commentId: string,
 	): Promise<CommentWithAttachments> {
 		try {
-			const result = await (
-				this.linearClient as LinearClientWithRawRequest
-			).client.rawRequest<{ comment: LinearCommentData }>(
-				`
-          query GetComment($id: String!) {
-            comment(id: $id) {
-              id
-              body
-              createdAt
-              updatedAt
-              archivedAt
-              userId
-              issueId
-              user {
-                id
-                name
-                displayName
-                email
-                url
-                avatarUrl
-              }
-              parent {
-                id
-              }
-            }
-          }
-        `,
-				{ id: commentId },
-			);
+			// Fetch the comment using the Linear SDK
+			const comment = await this.fetchComment(commentId);
 
-			const commentData = result.data.comment;
-			if (!commentData) {
-				throw new Error("Comment not found");
-			}
+			// Add attachments property (currently empty as Linear doesn't expose this)
+			// Cast through unknown since CommentWithAttachments extends Comment
+			const commentWithAttachments =
+				comment as unknown as CommentWithAttachments;
+			commentWithAttachments.attachments = [];
 
-			// Convert to platform-agnostic format
-			const comment: CommentWithAttachments = {
-				id: commentData.id,
-				body: commentData.body,
-				userId: commentData.userId,
-				user: commentData.user
-					? {
-							id: commentData.user.id,
-							name: commentData.user.displayName || commentData.user.name,
-							email: commentData.user.email,
-							url: commentData.user.url,
-							avatarUrl: commentData.user.avatarUrl ?? undefined,
-						}
-					: undefined,
-				issueId: commentData.issueId,
-				parentId: commentData.parent?.id,
-				createdAt: commentData.createdAt,
-				updatedAt: commentData.updatedAt,
-				archivedAt: commentData.archivedAt ?? null,
-				attachments: [], // Linear doesn't expose attachments in GraphQL yet
-				metadata: {
-					linearId: commentData.id,
-				},
-			};
-
-			return comment;
+			return commentWithAttachments;
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch comment with attachments ${commentId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -437,7 +359,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				throw new Error("Created comment not returned from Linear API");
 			}
 
-			return await adaptLinearComment(createdComment);
+			return createdComment;
 		} catch (error) {
 			throw new Error(
 				`Failed to create comment on issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -460,10 +382,8 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				before: options?.before,
 			});
 
-			const nodes = (teamsConnection.nodes ?? []).map(adaptLinearTeam);
-
 			return {
-				nodes,
+				nodes: teamsConnection.nodes ?? [],
 				pageInfo: teamsConnection.pageInfo
 					? {
 							hasNextPage: teamsConnection.pageInfo.hasNextPage,
@@ -485,8 +405,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 */
 	async fetchTeam(idOrKey: string): Promise<Team> {
 		try {
-			const linearTeam = await this.linearClient.team(idOrKey);
-			return adaptLinearTeam(linearTeam);
+			return await this.linearClient.team(idOrKey);
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch team ${idOrKey}: ${error instanceof Error ? error.message : String(error)}`,
@@ -509,10 +428,8 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				before: options?.before,
 			});
 
-			const nodes = (labelsConnection.nodes ?? []).map(adaptLinearLabel);
-
 			return {
-				nodes,
+				nodes: labelsConnection.nodes ?? [],
 				pageInfo: labelsConnection.pageInfo
 					? {
 							hasNextPage: labelsConnection.pageInfo.hasNextPage,
@@ -534,8 +451,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 */
 	async fetchLabel(idOrName: string): Promise<Label> {
 		try {
-			const linearLabel = await this.linearClient.issueLabel(idOrName);
-			return adaptLinearLabel(linearLabel);
+			return await this.linearClient.issueLabel(idOrName);
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch label ${idOrName}: ${error instanceof Error ? error.message : String(error)}`,
@@ -562,12 +478,8 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				before: options?.before,
 			});
 
-			const nodes = (statesConnection.nodes ?? []).map(
-				adaptLinearWorkflowState,
-			);
-
 			return {
-				nodes,
+				nodes: statesConnection.nodes ?? [],
 				pageInfo: statesConnection.pageInfo
 					? {
 							hasNextPage: statesConnection.pageInfo.hasNextPage,
@@ -589,8 +501,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 */
 	async fetchWorkflowState(stateId: string): Promise<WorkflowState> {
 		try {
-			const linearState = await this.linearClient.workflowState(stateId);
-			return adaptLinearWorkflowState(linearState);
+			return await this.linearClient.workflowState(stateId);
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch workflow state ${stateId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -607,8 +518,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 */
 	async fetchUser(userId: string): Promise<User> {
 		try {
-			const linearUser = await this.linearClient.user(userId);
-			return adaptLinearUser(linearUser);
+			return await this.linearClient.user(userId);
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -621,8 +531,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 */
 	async fetchCurrentUser(): Promise<User> {
 		try {
-			const viewer = await this.linearClient.viewer;
-			return adaptLinearUser(viewer);
+			return await this.linearClient.viewer;
 		} catch (error) {
 			throw new Error(
 				`Failed to fetch current user: ${error instanceof Error ? error.message : String(error)}`,

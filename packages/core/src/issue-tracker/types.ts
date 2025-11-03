@@ -16,6 +16,57 @@
 
 import type * as LinearSDK from "@linear/sdk";
 
+// ============================================================================
+// TYPE ALIASES - Linear SDK is the source of truth
+// ============================================================================
+
+/**
+ * Issue type - Direct alias to Linear SDK's Issue type.
+ * Linear SDK is the source of truth for all issue tracking types.
+ *
+ * @see {@link LinearSDK.Issue} - Linear's complete Issue type
+ */
+export type Issue = LinearSDK.Issue;
+
+/**
+ * Comment type - Direct alias to Linear SDK's Comment type.
+ *
+ * @see {@link LinearSDK.Comment} - Linear's complete Comment type
+ */
+export type Comment = LinearSDK.Comment;
+
+/**
+ * Label type - Direct alias to Linear SDK's IssueLabel type.
+ *
+ * @see {@link LinearSDK.IssueLabel} - Linear's complete IssueLabel type
+ */
+export type Label = LinearSDK.IssueLabel;
+
+/**
+ * Team type - Direct alias to Linear SDK's Team type.
+ *
+ * @see {@link LinearSDK.Team} - Linear's complete Team type
+ */
+export type Team = LinearSDK.Team;
+
+/**
+ * User type - Direct alias to Linear SDK's User type.
+ *
+ * @see {@link LinearSDK.User} - Linear's complete User type
+ */
+export type User = LinearSDK.User;
+
+/**
+ * WorkflowState type - Direct alias to Linear SDK's WorkflowState type.
+ *
+ * @see {@link LinearSDK.WorkflowState} - Linear's complete WorkflowState type
+ */
+export type WorkflowState = LinearSDK.WorkflowState;
+
+// ============================================================================
+// FILTER AND PAGINATION OPTIONS
+// ============================================================================
+
 /**
  * Filter options for querying entities.
  */
@@ -52,50 +103,6 @@ export interface PaginationOptions {
 }
 
 /**
- * Platform-agnostic team representation.
- *
- * This interface is a simplified subset of Linear's Team GraphQL type,
- * containing only the core fields needed for issue tracking operations.
- * Linear SDK is the source of truth.
- *
- * @see {@link LinearSDK.LinearDocument.Team} - Linear's complete Team type
- */
-export interface Team {
-	/** Unique team identifier */
-	id: string;
-	/** Short team key (e.g., "CEA") */
-	key: string;
-	/** Human-readable team name */
-	name: string;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
-}
-
-/**
- * Platform-agnostic user/actor representation.
- *
- * This interface is a simplified subset of Linear's User GraphQL type,
- * containing only the core fields needed for issue tracking operations.
- * Linear SDK is the source of truth.
- *
- * @see {@link LinearSDK.LinearDocument.User} - Linear's complete User type
- */
-export interface User {
-	/** Unique user identifier */
-	id: string;
-	/** User's display name */
-	name: string;
-	/** User's email address */
-	email: string;
-	/** Profile URL */
-	url: string;
-	/** Avatar/profile picture URL */
-	avatarUrl?: string;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
-}
-
-/**
  * Standard workflow state types across platforms.
  */
 export enum WorkflowStateType {
@@ -108,56 +115,6 @@ export enum WorkflowStateType {
 }
 
 /**
- * Platform-agnostic workflow state/status representation.
- *
- * This interface is a simplified subset of Linear's WorkflowState GraphQL type,
- * containing only the core fields needed for issue tracking operations.
- * Linear SDK is the source of truth.
- *
- * @see {@link LinearSDK.LinearDocument.WorkflowState} - Linear's complete WorkflowState type
- */
-export interface WorkflowState {
-	/** Unique state identifier */
-	id: string;
-	/** Human-readable state name */
-	name: string;
-	/** Standardized state type */
-	type: WorkflowStateType | string;
-	/** State color (hex format) */
-	color?: string;
-	/** State position/order */
-	position?: number;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
-}
-
-/**
- * Platform-agnostic label representation.
- *
- * This interface is a simplified subset of Linear's IssueLabel GraphQL type,
- * containing only the core fields needed for issue tracking operations.
- * Linear SDK is the source of truth.
- *
- * @see {@link LinearSDK.LinearDocument.IssueLabel} - Linear's complete IssueLabel type
- */
-export interface Label {
-	/** Unique label identifier */
-	id: string;
-	/** Label name */
-	name: string;
-	/** Label color (hex format) */
-	color?: string;
-	/** Label description */
-	description?: string;
-	/** Parent label ID (for hierarchical labels) */
-	parentId?: string;
-	/** Whether this is a label group */
-	isGroup?: boolean;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
-}
-
-/**
  * Issue priority levels (0 = no priority, 1 = urgent, 2 = high, 3 = normal, 4 = low).
  */
 export enum IssuePriority {
@@ -166,52 +123,6 @@ export enum IssuePriority {
 	High = 2,
 	Normal = 3,
 	Low = 4,
-}
-
-/**
- * Platform-agnostic issue representation.
- *
- * This interface is a simplified subset of Linear's Issue GraphQL type,
- * containing only the core fields needed for issue tracking operations.
- * Linear SDK is the source of truth.
- *
- * @see {@link LinearSDK.LinearDocument.Issue} - Linear's complete Issue type
- */
-export interface Issue {
-	/** Unique issue identifier */
-	id: string;
-	/** Human-readable identifier (e.g., "CEA-123") */
-	identifier: string;
-	/** Issue title */
-	title: string;
-	/** Issue description/body */
-	description?: string;
-	/** Issue URL */
-	url: string;
-	/** Team ID */
-	teamId: string;
-	/** Team object (may require async access) */
-	team?: Team | Promise<Team>;
-	/** Current state/status */
-	state?: WorkflowState | Promise<WorkflowState>;
-	/** Assignee ID */
-	assigneeId?: string;
-	/** Assignee object (may require async access) */
-	assignee?: User | Promise<User>;
-	/** Issue labels */
-	labels?: Label[];
-	/** Issue priority */
-	priority?: IssuePriority;
-	/** Parent issue ID (for sub-issues) */
-	parentId?: string;
-	/** Creation timestamp (ISO 8601) */
-	createdAt: string;
-	/** Last update timestamp (ISO 8601) */
-	updatedAt: string;
-	/** Archive timestamp (ISO 8601), null if not archived */
-	archivedAt?: string | null;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -230,46 +141,13 @@ export interface IssueMinimal {
 
 /**
  * Issue with child issues included.
+ * Note: This extends Issue but overrides the children property from a method to an array.
  */
-export interface IssueWithChildren extends Issue {
+export interface IssueWithChildren extends Omit<Issue, "children"> {
 	/** Child/sub-issues */
 	children: Issue[];
 	/** Total count of children */
 	childCount: number;
-}
-
-/**
- * Platform-agnostic comment representation.
- *
- * This interface is a simplified subset of Linear's Comment GraphQL type,
- * containing only the core fields needed for issue tracking operations.
- * Linear SDK is the source of truth.
- *
- * @see {@link LinearSDK.LinearDocument.Comment} - Linear's complete Comment type
- */
-export interface Comment {
-	/** Unique comment identifier */
-	id: string;
-	/** Comment body/content */
-	body: string;
-	/** Author user ID */
-	userId: string;
-	/** Author user object (may require async access) */
-	user?: User | Promise<User>;
-	/** Issue ID this comment belongs to */
-	issueId: string;
-	/** Parent comment ID (for threaded comments) */
-	parentId?: string;
-	/** Parent comment object (may require async access) */
-	parent?: Comment | Promise<Comment>;
-	/** Creation timestamp (ISO 8601) */
-	createdAt: string;
-	/** Last update timestamp (ISO 8601) */
-	updatedAt: string;
-	/** Archive timestamp (ISO 8601), null if not archived */
-	archivedAt?: string | null;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
 }
 
 /**
