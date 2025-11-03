@@ -30,8 +30,6 @@ const { EdgeWorker } = await import(
 // ANSI color codes
 const c = {
 	reset: "\x1b[0m",
-	bold: "\x1b[1m",
-	dim: "\x1b[2m",
 	green: "\x1b[32m",
 	yellow: "\x1b[33m",
 	cyan: "\x1b[36m",
@@ -44,6 +42,7 @@ const c = {
 const DEFAULT_PORT = 3457;
 const port = parseInt(
 	process.env.CYRUS_PORT || process.argv[2] || DEFAULT_PORT,
+	10,
 );
 const repoPath =
 	process.env.CYRUS_REPO_PATH || process.argv[3] || process.cwd();

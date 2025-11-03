@@ -95,7 +95,9 @@ async function rpc(method, params = {}, options = {}) {
 			console.error(
 				c.dim(`   Start it with: ${c.command("node start-cli-server.mjs")}\n`),
 			);
-			if (DEFAULT_PORT !== parseInt(process.env.CYRUS_PORT || DEFAULT_PORT)) {
+			if (
+				DEFAULT_PORT !== parseInt(process.env.CYRUS_PORT || DEFAULT_PORT, 10)
+			) {
 				console.error(
 					c.dim(
 						`   Using custom port from CYRUS_PORT=${process.env.CYRUS_PORT}`,
@@ -159,12 +161,12 @@ function printJSON(obj, indent = 0) {
 		if (obj.length === 0) return "[]";
 		console.log("[");
 		obj.forEach((item, i) => {
-			process.stdout.write(spaces + "  ");
+			process.stdout.write(`${spaces}  `);
 			const value = printJSON(item, indent + 1);
 			if (typeof value === "string") process.stdout.write(value);
 			console.log(i < obj.length - 1 ? "," : "");
 		});
-		console.log(spaces + "]");
+		console.log(`${spaces}]`);
 		return;
 	}
 
@@ -173,12 +175,12 @@ function printJSON(obj, indent = 0) {
 		if (keys.length === 0) return "{}";
 		console.log("{");
 		keys.forEach((key, i) => {
-			process.stdout.write(spaces + `  ${c.info(key)}: `);
+			process.stdout.write(`${spaces}  ${c.info(key)}: `);
 			const value = printJSON(obj[key], indent + 1);
 			if (typeof value === "string") process.stdout.write(value);
 			console.log(i < keys.length - 1 ? "," : "");
 		});
-		console.log(spaces + "}");
+		console.log(`${spaces}}`);
 		return;
 	}
 
@@ -300,7 +302,7 @@ function displayActivities(activities, options = {}) {
 			if (parameter) {
 				if (typeof parameter === "string") {
 					const preview =
-						parameter.length > 50 ? parameter.slice(0, 50) + "..." : parameter;
+						parameter.length > 50 ? `${parameter.slice(0, 50)}...` : parameter;
 					actionSummary += c.dim(`: ${preview}`);
 				} else if (parameter.path) {
 					actionSummary += c.dim(`: ${parameter.path}`);
@@ -309,7 +311,7 @@ function displayActivities(activities, options = {}) {
 				} else if (parameter.command) {
 					const cmd =
 						parameter.command.length > 50
-							? parameter.command.slice(0, 50) + "..."
+							? `${parameter.command.slice(0, 50)}...`
 							: parameter.command;
 					actionSummary += c.dim(`: ${cmd}`);
 				}
@@ -320,7 +322,7 @@ function displayActivities(activities, options = {}) {
 			const displayBody = full
 				? body
 				: body.length > previewLength
-					? body.slice(0, previewLength) + "..."
+					? `${body.slice(0, previewLength)}...`
 					: body;
 			console.log(`   ${displayBody.split("\n").join("\n   ")}`);
 		}
@@ -895,6 +897,7 @@ async function main() {
 					c.dim(`   Use ${c.command("getState")} to see all issues.\n`),
 				);
 				process.exit(1);
+				return; // Unreachable but satisfies linter
 			}
 
 			case "assignIssue": {
