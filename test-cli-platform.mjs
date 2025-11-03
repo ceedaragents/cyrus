@@ -34,7 +34,7 @@ async function main() {
 	console.log("🧪 Testing CLI IssueTracker Platform\n");
 
 	// Create temporary directories
-	const cyrusHome = join(tmpdir(), "cyrus-cli-test-" + Date.now());
+	const cyrusHome = join(tmpdir(), `cyrus-cli-test-${Date.now()}`);
 	await mkdir(cyrusHome, { recursive: true });
 	await mkdir(join(cyrusHome, "worktrees"), { recursive: true });
 
@@ -81,7 +81,7 @@ async function main() {
 		console.log("   Result:", JSON.stringify(createIssueResult, null, 2));
 
 		if (!createIssueResult.success) {
-			throw new Error("Failed to create issue: " + createIssueResult.error);
+			throw new Error(`Failed to create issue: ${createIssueResult.error}`);
 		}
 
 		const issueId = createIssueResult.data.id;
@@ -97,7 +97,7 @@ async function main() {
 		console.log("   Result:", JSON.stringify(createCommentResult, null, 2));
 
 		if (!createCommentResult.success) {
-			throw new Error("Failed to create comment: " + createCommentResult.error);
+			throw new Error(`Failed to create comment: ${createCommentResult.error}`);
 		}
 		console.log("   ✅ Created comment\n");
 
@@ -110,7 +110,7 @@ async function main() {
 
 		if (!startSessionResult.success) {
 			throw new Error(
-				"Failed to start agent session: " + startSessionResult.error,
+				`Failed to start agent session: ${startSessionResult.error}`,
 			);
 		}
 
@@ -126,7 +126,7 @@ async function main() {
 
 		if (!viewSessionResult.success) {
 			throw new Error(
-				"Failed to view agent session: " + viewSessionResult.error,
+				`Failed to view agent session: ${viewSessionResult.error}`,
 			);
 		}
 		console.log("   ✅ Viewed agent session\n");
@@ -137,7 +137,7 @@ async function main() {
 		console.log("   Result:", JSON.stringify(labelsResult, null, 2));
 
 		if (!labelsResult.success) {
-			throw new Error("Failed to fetch labels: " + labelsResult.error);
+			throw new Error(`Failed to fetch labels: ${labelsResult.error}`);
 		}
 		console.log("   ✅ Fetched labels\n");
 
@@ -147,7 +147,7 @@ async function main() {
 		console.log("   Result:", JSON.stringify(membersResult, null, 2));
 
 		if (!membersResult.success) {
-			throw new Error("Failed to fetch members: " + membersResult.error);
+			throw new Error(`Failed to fetch members: ${membersResult.error}`);
 		}
 		console.log("   ✅ Fetched members\n");
 

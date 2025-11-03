@@ -16,7 +16,16 @@ import type {
 	AgentEventTransportEvents,
 	IAgentEventTransport,
 } from "../../IAgentEventTransport.js";
+import type { AgentActivity } from "../../types.js";
 import type { CLIIssueTrackerService } from "./CLIIssueTrackerService.js";
+
+/**
+ * Event payload when an agent session is prompted.
+ */
+interface AgentSessionPromptedEvent {
+	sessionId: string;
+	activity: AgentActivity;
+}
 
 /**
  * CLI event transport that connects CLIIssueTrackerService events to the application.
@@ -172,7 +181,7 @@ export class CLIEventTransport
 		// Listen for agent session prompted events
 		this.issueTrackerService.on(
 			"agentSessionPrompted",
-			async ({ sessionId, activity }: any) => {
+			async ({ sessionId, activity }: AgentSessionPromptedEvent) => {
 				// Fetch the complete session data
 				const session = this.issueTrackerService
 					.getState()
