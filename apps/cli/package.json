@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-ai",
-	"version": "0.1.59",
+	"version": "0.1.60",
 	"description": "AI-powered Linear issue automation using Claude",
 	"main": "dist/app.js",
 	"types": "dist/app.d.ts",
