@@ -80,12 +80,12 @@ export {
 // ADAPTERS
 // ============================================================================
 
-export { CLIEventTransport } from "./adapters/CLIEventTransport.js";
-export { CLIIssueTrackerService } from "./adapters/CLIIssueTrackerService.js";
-export { CLIRPCServer } from "./adapters/CLIRPCServer.js";
-export { LinearAgentEventTransport } from "./adapters/LinearAgentEventTransport.js";
-export { LinearIssueTrackerService } from "./adapters/LinearIssueTrackerService.js";
-export * from "./adapters/LinearTypeAdapters.js";
+export { CLIEventTransport } from "./adapters/cli/CLIEventTransport.js";
+export { CLIIssueTrackerService } from "./adapters/cli/CLIIssueTrackerService.js";
+export { CLIRPCServer } from "./adapters/cli/CLIRPCServer.js";
+export { LinearAgentEventTransport } from "./adapters/linear/LinearAgentEventTransport.js";
+export { LinearIssueTrackerService } from "./adapters/linear/LinearIssueTrackerService.js";
+export * from "./adapters/linear/LinearTypeAdapters.js";
 
 // ============================================================================
 // MODULE METADATA

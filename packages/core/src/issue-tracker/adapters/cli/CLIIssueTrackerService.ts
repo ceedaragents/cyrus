@@ -12,8 +12,8 @@ import { EventEmitter } from "node:events";
 import type {
 	AgentEventTransportConfig,
 	IAgentEventTransport,
-} from "../IAgentEventTransport.js";
-import type { IIssueTrackerService } from "../IIssueTrackerService.js";
+} from "../../IAgentEventTransport.js";
+import type { IIssueTrackerService } from "../../IIssueTrackerService.js";
 import type {
 	AgentActivity,
 	AgentActivityContent,
@@ -38,12 +38,12 @@ import type {
 	Team,
 	User,
 	WorkflowState,
-} from "../types.js";
+} from "../../types.js";
 import {
 	AgentActivityContentType,
 	AgentActivitySignal,
 	WorkflowStateType,
-} from "../types.js";
+} from "../../types.js";
 import { CLIEventTransport } from "./CLIEventTransport.js";
 
 // ============================================================================

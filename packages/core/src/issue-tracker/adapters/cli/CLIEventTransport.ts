@@ -10,12 +10,12 @@
 
 import { EventEmitter } from "node:events";
 import type { FastifyInstance } from "fastify";
-import type { AgentEvent } from "../AgentEvent.js";
+import type { AgentEvent } from "../../AgentEvent.js";
 import type {
 	AgentEventTransportConfig,
 	AgentEventTransportEvents,
 	IAgentEventTransport,
-} from "../IAgentEventTransport.js";
+} from "../../IAgentEventTransport.js";
 import type { CLIIssueTrackerService } from "./CLIIssueTrackerService.js";
 
 /**

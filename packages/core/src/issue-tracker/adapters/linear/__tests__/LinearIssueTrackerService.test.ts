@@ -7,7 +7,7 @@
 
 import type { LinearClient } from "@linear/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentActivityContentType, IssuePriority } from "../../types.js";
+import { AgentActivityContentType, IssuePriority } from "../../../types.js";
 import { LinearIssueTrackerService } from "../LinearIssueTrackerService.js";
 
 // Mock LinearClient

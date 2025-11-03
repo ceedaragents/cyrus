@@ -15,12 +15,12 @@ import type {
 	AgentActivityContent,
 	AgentActivityContentType,
 	AgentSession,
-} from "../types.js";
+} from "../../types.js";
 import {
 	type AgentActivitySignal,
 	AgentSessionStatus,
 	AgentSessionType,
-} from "../types.js";
+} from "../../types.js";
 
 /**
  * Convert Linear AgentSessionStatus to platform-agnostic AgentSessionStatus.

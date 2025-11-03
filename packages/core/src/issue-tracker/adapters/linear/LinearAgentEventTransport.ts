@@ -5,11 +5,11 @@
  * and implements IAgentEventTransport to provide a platform-agnostic interface.
  */
 
-import type { AgentEvent } from "../AgentEvent.js";
+import type { AgentEvent } from "../../AgentEvent.js";
 import type {
 	AgentEventTransportConfig,
 	IAgentEventTransport,
-} from "../IAgentEventTransport.js";
+} from "../../IAgentEventTransport.js";
 
 /**
  * Adapter that wraps LinearEventTransport and implements IAgentEventTransport

@@ -3,8 +3,8 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Comment, Issue } from "../../types.js";
-import { AgentActivityContentType, WorkflowStateType } from "../../types.js";
+import type { Comment, Issue } from "../../../types.js";
+import { AgentActivityContentType, WorkflowStateType } from "../../../types.js";
 import { CLIIssueTrackerService } from "../CLIIssueTrackerService.js";
 
 describe("CLIIssueTrackerService", () => {

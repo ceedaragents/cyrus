@@ -12,8 +12,8 @@ import type { LinearClient } from "@linear/sdk";
 import type {
 	AgentEventTransportConfig,
 	IAgentEventTransport,
-} from "../IAgentEventTransport.js";
-import type { IIssueTrackerService } from "../IIssueTrackerService.js";
+} from "../../IAgentEventTransport.js";
+import type { IIssueTrackerService } from "../../IIssueTrackerService.js";
 import type {
 	AgentActivity,
 	AgentActivityContent,
@@ -37,7 +37,7 @@ import type {
 	Team,
 	User,
 	WorkflowState,
-} from "../types.js";
+} from "../../types.js";
 import {
 	adaptLinearAgentSession,
 	type LinearAgentSessionData,
