@@ -1119,7 +1119,7 @@ export class EdgeWorker extends EventEmitter {
 					// Fetch the issue to get labels
 					const issue = await issueTracker.fetchIssue(issueId);
 					const labelsConnection = await issue.labels();
-					const labelNames = labelsConnection?.nodes.map((l) => l.name) || [];
+					const labelNames = labelsConnection?.nodes?.map((l) => l.name) || [];
 
 					// Check each repo with routing labels
 					for (const repo of reposWithRoutingLabels) {
@@ -1437,10 +1437,8 @@ export class EdgeWorker extends EventEmitter {
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
 		// Fetch labels early (needed for label override check)
-		const labelNames =
-			((fullIssue as unknown as { labels?: { name: string }[] }).labels?.map(
-				(l) => l.name,
-			) as string[]) || [];
+		const labelsConnection = await fullIssue.labels();
+		const labelNames = labelsConnection?.nodes?.map((l) => l.name) || [];
 
 		// Check for label overrides BEFORE AI routing
 		const debuggerConfig = repository.labelPrompts?.debugger;
@@ -3685,10 +3683,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		commentTimestamp?: string,
 	): Promise<string> {
 		// Fetch labels for system prompt determination
-		const labelNames =
-			((fullIssue as unknown as { labels?: { name: string }[] }).labels?.map(
-				(l) => l.name,
-			) as string[]) || [];
+		const labelsConnection = await fullIssue.labels();
+		const labelNames = labelsConnection?.nodes?.map((l) => l.name) || [];
 
 		// Create input for unified prompt assembly
 		const input: PromptAssemblyInput = {
@@ -4775,10 +4771,8 @@ ${input.userComment}
 		}
 
 		// Fetch issue labels and determine system prompt
-		const labelNames =
-			((fullIssue as unknown as { labels?: { name: string }[] }).labels?.map(
-				(l) => l.name,
-			) as string[]) || [];
+		const labelsConnection = await fullIssue.labels();
+		const labelNames = labelsConnection?.nodes?.map((l) => l.name) || [];
 
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labelNames,
