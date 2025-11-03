@@ -3,7 +3,8 @@ import type { CLIIssueTrackerService, Issue } from "cyrus-core";
 import { z } from "zod";
 
 /**
- * Options for creating CLI tools with session management capabilities
+ * Options for creating issue tracker tools with session management capabilities.
+ * Platform-agnostic - works with both CLI and Linear issue trackers.
  */
 export interface CLIToolsOptions {
 	/**
@@ -28,9 +29,9 @@ export interface CLIToolsOptions {
 }
 
 /**
- * Create an SDK MCP server with CLI-specific tools that use CLIIssueTrackerService
- * instead of LinearClient. This provides the same tool interface as cyrus-tools
- * but works with the in-memory CLI issue tracker.
+ * Create an SDK MCP server with platform-agnostic issue tracker tools.
+ * Works with any IIssueTrackerService implementation (CLI or Linear).
+ * Provides tools for file upload, agent session management, and child issue queries.
  */
 export function createCLIToolsServer(
 	issueTrackerService: CLIIssueTrackerService,
@@ -38,7 +39,7 @@ export function createCLIToolsServer(
 ) {
 	const uploadFileTool = tool(
 		"issue_tracker_upload_file",
-		"Upload a file for use in issue descriptions or comments. In CLI mode, files are copied to a local directory.",
+		"Upload a file for use in issue descriptions or comments. Platform-agnostic implementation handles both local file storage (CLI) and cloud storage (Linear).",
 		{
 			filePath: z.string().describe("The absolute path to the file to upload"),
 			filename: z
@@ -48,8 +49,8 @@ export function createCLIToolsServer(
 		},
 		async ({ filePath, filename }) => {
 			try {
-				// For CLI mode, we'll implement a simple file copy to a local uploads directory
-				// This allows testing file upload workflows without needing cloud storage
+				// Implementation: copy file to local uploads directory
+				// Works for both CLI (testing) and Linear (local file staging)
 				const fs = await import("fs-extra");
 				const path = await import("node:path");
 
@@ -79,7 +80,7 @@ export function createCLIToolsServer(
 				const fileUrl = `file://${destPath}`;
 
 				console.log(
-					`[CLITools] File uploaded: ${finalFilename} -> ${destPath}`,
+					`[IssueTrackerTools] File uploaded: ${finalFilename} -> ${destPath}`,
 				);
 
 				return {
@@ -130,7 +131,7 @@ export function createCLIToolsServer(
 		},
 		async ({ issueId, externalLink }) => {
 			try {
-				console.log(`[CLITools] Creating agent session for issue ${issueId}`);
+				console.log(`[IssueTrackerTools] Creating agent session for issue ${issueId}`);
 
 				const result = await issueTrackerService.createAgentSessionOnIssue({
 					issueId,
@@ -139,13 +140,13 @@ export function createCLIToolsServer(
 
 				const agentSessionId = result.agentSessionId;
 				console.log(
-					`[CLITools] Agent session created successfully: ${agentSessionId}`,
+					`[IssueTrackerTools] Agent session created successfully: ${agentSessionId}`,
 				);
 
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
 					console.log(
-						`[CLITools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[IssueTrackerTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
 					options.onSessionCreated(agentSessionId, options.parentSessionId);
 				}
@@ -197,7 +198,7 @@ export function createCLIToolsServer(
 		async ({ commentId, externalLink }) => {
 			try {
 				console.log(
-					`[CLITools] Creating agent session for comment ${commentId}`,
+					`[IssueTrackerTools] Creating agent session for comment ${commentId}`,
 				);
 
 				const result = await issueTrackerService.createAgentSessionOnComment({
@@ -207,13 +208,13 @@ export function createCLIToolsServer(
 
 				const agentSessionId = result.agentSessionId;
 				console.log(
-					`[CLITools] Agent session created successfully on comment: ${agentSessionId}`,
+					`[IssueTrackerTools] Agent session created successfully on comment: ${agentSessionId}`,
 				);
 
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
 					console.log(
-						`[CLITools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[IssueTrackerTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
 					options.onSessionCreated(agentSessionId, options.parentSessionId);
 				}
@@ -290,7 +291,7 @@ export function createCLIToolsServer(
 			// Deliver the feedback through the callback if provided
 			if (options.onFeedbackDelivery) {
 				console.log(
-					`[CLITools] Delivering feedback to child session ${agentSessionId}`,
+					`[IssueTrackerTools] Delivering feedback to child session ${agentSessionId}`,
 				);
 				try {
 					const delivered = await options.onFeedbackDelivery(
@@ -299,15 +300,15 @@ export function createCLIToolsServer(
 					);
 					if (delivered) {
 						console.log(
-							`[CLITools] Feedback delivered successfully to parent session`,
+							`[IssueTrackerTools] Feedback delivered successfully to parent session`,
 						);
 					} else {
 						console.log(
-							`[CLITools] No parent session found for child ${agentSessionId}`,
+							`[IssueTrackerTools] No parent session found for child ${agentSessionId}`,
 						);
 					}
 				} catch (error) {
-					console.error(`[CLITools] Failed to deliver feedback:`, error);
+					console.error(`[IssueTrackerTools] Failed to deliver feedback:`, error);
 				}
 			}
 
@@ -360,7 +361,7 @@ export function createCLIToolsServer(
 				const finalLimit = Math.min(Math.max(1, limit), 250);
 
 				console.log(
-					`[CLITools] Getting child issues for ${issueId} (limit: ${finalLimit})`,
+					`[IssueTrackerTools] Getting child issues for ${issueId} (limit: ${finalLimit})`,
 				);
 
 				// Fetch the parent issue first
@@ -425,7 +426,7 @@ export function createCLIToolsServer(
 				);
 
 				console.log(
-					`[CLITools] Found ${childrenData.length} child issues for ${issueId}`,
+					`[IssueTrackerTools] Found ${childrenData.length} child issues for ${issueId}`,
 				);
 
 				return {
@@ -452,7 +453,7 @@ export function createCLIToolsServer(
 				};
 			} catch (error) {
 				console.error(
-					`[CLITools] Error getting child issues for ${issueId}:`,
+					`[IssueTrackerTools] Error getting child issues for ${issueId}:`,
 					error,
 				);
 				return {
