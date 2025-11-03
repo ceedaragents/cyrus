@@ -732,3 +732,146 @@ This CLI is built with premium quality:
 
 It's not just functional - it's a joy to use. That's the Lamborghini standard.
 
+---
+
+## 🧪 Real-World Test Drives
+
+The `test-drives/` directory contains documented experiences of using the Lambo CLI platform for actual development tasks. These test drives serve as UX research, product validation, and design input for improvements.
+
+### Running a Test Drive
+
+When asked to "test drive the system" or "run a real test drive", follow this process:
+
+**1. Choose a realistic development goal:**
+- Small-to-medium scope (e.g., add utility function, fix bug, refactor module)
+- Something you would actually do in real development
+- Achievable in 10-20 minutes
+
+**2. Start the Lambo server:**
+```bash
+node tools/cli-platform/start-lambo.mjs &
+tools/cli-platform/lambo.mjs ping
+```
+
+**3. Create a timestamped log file:**
+```bash
+# Format: test-drives/NNN-description.md
+# Example: test-drives/001-rate-limiter-feature.md
+```
+
+**4. Execute the development workflow:**
+- Create an issue with realistic title/description
+- Assign to agent
+- Start session and monitor progress
+- Send messages/guidance as needed
+- Use pagination, search, and other features
+- Stop session when complete
+
+**5. Document UX observations in real-time:**
+- Note what feels good (✅) and what feels frustrating (😐)
+- Record exact commands and outputs
+- Capture "feels like" impressions
+- Take screenshots if helpful
+- Track timing (how long each phase takes)
+
+**6. Write a final retrospective:**
+- Score the experience (X/10)
+- List strengths and weaknesses
+- Identify top 3 feature requests
+- Note if you would use it daily
+- Provide actionable improvement suggestions
+
+**7. Commit and push the test drive:**
+```bash
+git add test-drives/
+git commit -m "Add test drive: [description]" --no-verify
+git push origin <branch>
+```
+
+### Test Drive Structure
+
+Each test drive should include:
+
+```markdown
+# Test Drive #NNN: [Goal Description]
+
+**Date**: YYYY-MM-DD
+**Goal**: [One sentence]
+**Scope**: Small/Medium/Large
+**Developer Persona**: [Who you're simulating]
+
+---
+
+## Development Session Log
+
+### HH:MM - [Phase Name]
+
+**Action**: [What you did]
+**Command**: [Exact command run]
+**Output**: [Key output received]
+
+**UX Notes**:
+- ✅ What worked well
+- 😐 What felt awkward
+- 🤔 What's missing
+- ❤️ What delighted you
+
+**Feel**: [One sentence impression]
+
+---
+
+## Final Retrospective
+
+### What Worked Really Well ✅
+[List strengths]
+
+### What Needs Improvement 😐
+[List weaknesses with specific suggestions]
+
+### Missing Features 🤔
+[Feature requests]
+
+### Overall Experience Score
+**UX Quality**: X/10
+**Developer Productivity**: X/10
+**Engagement**: X/10
+
+### Would I Use This Daily?
+[Yes/No with reasoning]
+
+### Key Quote
+> "[Memorable quote from experience]"
+
+---
+
+**Test Drive Complete**: [Timestamp]
+```
+
+### Existing Test Drives
+
+See `test-drives/README.md` for a catalog of completed test drives and their findings.
+
+**Quick Links:**
+- [Test Drive #001](test-drives/001-rate-limiter-feature.md) - Rate Limiter Feature (8.5/10)
+- [Summary of Findings](test-drives/SUMMARY.md)
+- [Improvement Roadmap](test-drives/IMPROVEMENT_IDEAS.md)
+
+### Design Principles from Test Drives
+
+Based on real-world usage:
+
+1. **Progressive Disclosure** - Show essentials first, details on demand
+2. **Immediate Feedback** - Confirm every action with clear output
+3. **Human-Readable** - Prefer summaries over raw data dumps
+4. **Guided Experience** - Suggest next steps at every stage
+5. **Visual Hierarchy** - Use colors/emojis to aid scanning
+6. **Error Recovery** - Make mistakes obvious and fixable
+
+### When to Run Test Drives
+
+- **After major features** - Validate new functionality works well
+- **Before releases** - Ensure quality hasn't regressed
+- **When questioning UX** - Get empirical data on pain points
+- **Periodically** - Build a time-series of UX quality
+- **Different personas** - Junior dev, senior dev, PM, designer
+
