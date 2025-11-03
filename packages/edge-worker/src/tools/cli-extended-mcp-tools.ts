@@ -1,12 +1,11 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { CLIIssueTrackerService, Issue } from "cyrus-core";
 import { z } from "zod";
-
 /**
- * Options for creating issue tracker tools with session management capabilities.
+ * Options for creating extended MCP tools with session management capabilities.
  * Platform-agnostic - works with both CLI and Linear issue trackers.
  */
-export interface CLIToolsOptions {
+export interface ExtendedMcpToolsOptions {
 	/**
 	 * Callback to register a child-to-parent session mapping
 	 * Called when a new agent session is created
@@ -29,13 +28,13 @@ export interface CLIToolsOptions {
 }
 
 /**
- * Create an SDK MCP server with platform-agnostic issue tracker tools.
- * Works with any IIssueTrackerService implementation (CLI or Linear).
+ * Create an SDK MCP server with platform-agnostic extended issue tracker tools.
+ * Works with CLIIssueTrackerService implementation.
  * Provides tools for file upload, agent session management, and child issue queries.
  */
-export function createIssueTrackerToolsServer(
+export function createExtendedMcpTools(
 	issueTrackerService: CLIIssueTrackerService,
-	options: CLIToolsOptions = {},
+	options: ExtendedMcpToolsOptions = {},
 ) {
 	const uploadFileTool = tool(
 		"issue_tracker_upload_file",
@@ -80,7 +79,7 @@ export function createIssueTrackerToolsServer(
 				const fileUrl = `file://${destPath}`;
 
 				console.log(
-					`[IssueTrackerTools] File uploaded: ${finalFilename} -> ${destPath}`,
+					`[ExtendedMcpTools] File uploaded: ${finalFilename} -> ${destPath}`,
 				);
 
 				return {
@@ -132,7 +131,7 @@ export function createIssueTrackerToolsServer(
 		async ({ issueId, externalLink }) => {
 			try {
 				console.log(
-					`[IssueTrackerTools] Creating agent session for issue ${issueId}`,
+					`[ExtendedMcpTools] Creating agent session for issue ${issueId}`,
 				);
 
 				const result = await issueTrackerService.createAgentSessionOnIssue({
@@ -142,13 +141,13 @@ export function createIssueTrackerToolsServer(
 
 				const agentSessionId = result.agentSessionId;
 				console.log(
-					`[IssueTrackerTools] Agent session created successfully: ${agentSessionId}`,
+					`[ExtendedMcpTools] Agent session created successfully: ${agentSessionId}`,
 				);
 
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
 					console.log(
-						`[IssueTrackerTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[ExtendedMcpTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
 					options.onSessionCreated(agentSessionId, options.parentSessionId);
 				}
@@ -197,10 +196,16 @@ export function createIssueTrackerToolsServer(
 					"Optional URL of an external agent-hosted page associated with this session",
 				),
 		},
-		async ({ commentId, externalLink }) => {
+		async ({
+			commentId,
+			externalLink,
+		}: {
+			commentId: string;
+			externalLink?: string;
+		}) => {
 			try {
 				console.log(
-					`[IssueTrackerTools] Creating agent session for comment ${commentId}`,
+					`[ExtendedMcpTools] Creating agent session for comment ${commentId}`,
 				);
 
 				const result = await issueTrackerService.createAgentSessionOnComment({
@@ -210,13 +215,13 @@ export function createIssueTrackerToolsServer(
 
 				const agentSessionId = result.agentSessionId;
 				console.log(
-					`[IssueTrackerTools] Agent session created successfully on comment: ${agentSessionId}`,
+					`[ExtendedMcpTools] Agent session created successfully on comment: ${agentSessionId}`,
 				);
 
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
 					console.log(
-						`[IssueTrackerTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[ExtendedMcpTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
 					options.onSessionCreated(agentSessionId, options.parentSessionId);
 				}
@@ -260,7 +265,13 @@ export function createIssueTrackerToolsServer(
 				.string()
 				.describe("The feedback message to send to the child agent session"),
 		},
-		async ({ agentSessionId, message }) => {
+		async ({
+			agentSessionId,
+			message,
+		}: {
+			agentSessionId: string;
+			message: string;
+		}) => {
 			// Validate parameters
 			if (!agentSessionId) {
 				return {
@@ -293,7 +304,7 @@ export function createIssueTrackerToolsServer(
 			// Deliver the feedback through the callback if provided
 			if (options.onFeedbackDelivery) {
 				console.log(
-					`[IssueTrackerTools] Delivering feedback to child session ${agentSessionId}`,
+					`[ExtendedMcpTools] Delivering feedback to child session ${agentSessionId}`,
 				);
 				try {
 					const delivered = await options.onFeedbackDelivery(
@@ -302,16 +313,16 @@ export function createIssueTrackerToolsServer(
 					);
 					if (delivered) {
 						console.log(
-							`[IssueTrackerTools] Feedback delivered successfully to parent session`,
+							`[ExtendedMcpTools] Feedback delivered successfully to parent session`,
 						);
 					} else {
 						console.log(
-							`[IssueTrackerTools] No parent session found for child ${agentSessionId}`,
+							`[ExtendedMcpTools] No parent session found for child ${agentSessionId}`,
 						);
 					}
 				} catch (error) {
 					console.error(
-						`[IssueTrackerTools] Failed to deliver feedback:`,
+						`[ExtendedMcpTools] Failed to deliver feedback:`,
 						error,
 					);
 				}
@@ -360,13 +371,18 @@ export function createIssueTrackerToolsServer(
 			limit = 50,
 			includeCompleted = true,
 			includeArchived = false,
+		}: {
+			issueId: string;
+			limit?: number;
+			includeCompleted?: boolean;
+			includeArchived?: boolean;
 		}) => {
 			try {
 				// Validate and clamp limit
 				const finalLimit = Math.min(Math.max(1, limit), 250);
 
 				console.log(
-					`[IssueTrackerTools] Getting child issues for ${issueId} (limit: ${finalLimit})`,
+					`[ExtendedMcpTools] Getting child issues for ${issueId} (limit: ${finalLimit})`,
 				);
 
 				// Fetch the parent issue first
@@ -431,7 +447,7 @@ export function createIssueTrackerToolsServer(
 				);
 
 				console.log(
-					`[IssueTrackerTools] Found ${childrenData.length} child issues for ${issueId}`,
+					`[ExtendedMcpTools] Found ${childrenData.length} child issues for ${issueId}`,
 				);
 
 				return {
@@ -458,7 +474,7 @@ export function createIssueTrackerToolsServer(
 				};
 			} catch (error) {
 				console.error(
-					`[IssueTrackerTools] Error getting child issues for ${issueId}:`,
+					`[ExtendedMcpTools] Error getting child issues for ${issueId}:`,
 					error,
 				);
 				return {

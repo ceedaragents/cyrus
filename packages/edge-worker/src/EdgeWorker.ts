@@ -14,7 +14,6 @@ import type {
 } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
-	createCyrusToolsServer,
 	createImageToolsServer,
 	createSoraToolsServer,
 	getAllTools,
@@ -79,7 +78,8 @@ import type {
 } from "./prompt-assembly/types.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { createBasicIssueTrackerServer } from "./tools/basic-issue-tracker.js";
-import { createIssueTrackerToolsServer } from "./tools/index.js";
+import { createExtendedMcpTools as createCLIExtendedMcpTools } from "./tools/cli-extended-mcp-tools.js";
+import { createExtendedMcpTools as createLinearExtendedMcpTools } from "./tools/linear-extended-mcp-tools.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
 export declare interface EdgeWorker {
@@ -3596,14 +3596,14 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 			// Use discriminated union to determine how to create the MCP server
 			if (extConfig.type === "sdk-factory") {
-				// CLI platform: Use createIssueTrackerToolsServer
-				mcpConfig["issue-tracker-ext"] = createIssueTrackerToolsServer(
+				// CLI platform: Use createCLIExtendedMcpTools
+				mcpConfig["issue-tracker-ext"] = createCLIExtendedMcpTools(
 					extConfig.service,
 					extConfig.options,
 				);
 			} else if (extConfig.type === "linear-factory") {
-				// Linear platform: Use createCyrusToolsServer
-				mcpConfig["issue-tracker-ext"] = createCyrusToolsServer(
+				// Linear platform: Use createLinearExtendedMcpTools
+				mcpConfig["issue-tracker-ext"] = createLinearExtendedMcpTools(
 					extConfig.linearToken,
 					extConfig.options,
 				);

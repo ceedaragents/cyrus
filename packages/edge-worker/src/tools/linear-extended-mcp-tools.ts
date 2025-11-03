@@ -68,9 +68,9 @@ function getMimeType(filename: string): string {
 }
 
 /**
- * Options for creating Cyrus tools with session management capabilities
+ * Options for creating extended MCP tools with session management capabilities
  */
-export interface CyrusToolsOptions {
+export interface ExtendedMcpToolsOptions {
 	/**
 	 * Callback to register a child-to-parent session mapping
 	 * Called when a new agent session is created
@@ -93,11 +93,11 @@ export interface CyrusToolsOptions {
 }
 
 /**
- * Create an SDK MCP server with the inline Cyrus tools
+ * Create an SDK MCP server with extended Linear issue tracker tools
  */
-export function createCyrusToolsServer(
+export function createExtendedMcpTools(
 	linearApiToken: string,
-	options: CyrusToolsOptions = {},
+	options: ExtendedMcpToolsOptions = {},
 ) {
 	const linearClient = new LinearClient({ apiKey: linearApiToken });
 
@@ -316,7 +316,7 @@ export function createCyrusToolsServer(
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
 					console.log(
-						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[ExtendedMcpTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
 					options.onSessionCreated(agentSessionId, options.parentSessionId);
 				}
@@ -418,7 +418,7 @@ export function createCyrusToolsServer(
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
 					console.log(
-						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[ExtendedMcpTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
 					options.onSessionCreated(agentSessionId, options.parentSessionId);
 				}
@@ -495,7 +495,7 @@ export function createCyrusToolsServer(
 			// Deliver the feedback through the callback if provided
 			if (options.onFeedbackDelivery) {
 				console.log(
-					`[CyrusTools] Delivering feedback to child session ${agentSessionId}`,
+					`[ExtendedMcpTools] Delivering feedback to child session ${agentSessionId}`,
 				);
 				try {
 					const delivered = await options.onFeedbackDelivery(
@@ -504,15 +504,18 @@ export function createCyrusToolsServer(
 					);
 					if (delivered) {
 						console.log(
-							`[CyrusTools] Feedback delivered successfully to parent session`,
+							`[ExtendedMcpTools] Feedback delivered successfully to parent session`,
 						);
 					} else {
 						console.log(
-							`[CyrusTools] No parent session found for child ${agentSessionId}`,
+							`[ExtendedMcpTools] No parent session found for child ${agentSessionId}`,
 						);
 					}
 				} catch (error) {
-					console.error(`[CyrusTools] Failed to deliver feedback:`, error);
+					console.error(
+						`[ExtendedMcpTools] Failed to deliver feedback:`,
+						error,
+					);
 				}
 			}
 
