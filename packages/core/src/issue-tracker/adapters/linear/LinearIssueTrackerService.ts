@@ -847,9 +847,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	createEventTransport(
 		config: AgentEventTransportConfig,
 	): IAgentEventTransport {
-		const {
-			LinearAgentEventTransport,
-		} = require("./LinearAgentEventTransport.js");
-		return new LinearAgentEventTransport(config);
+		const { LinearEventTransport } = require("cyrus-linear-event-transport");
+		return new LinearEventTransport(config);
 	}
 }

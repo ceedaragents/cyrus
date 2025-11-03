@@ -1922,6 +1922,67 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Replace MCP tool placeholders in prompt content with actual tool names.
+	 * This allows prompts to be platform-agnostic and work with different MCP servers.
+	 */
+	private replaceToolPlaceholders(
+		promptContent: string,
+		platform: "linear" | "cli",
+	): string {
+		// Define tool name mappings based on platform
+		// Note: The namespace prefix (mcp__<server-name>__) is controlled by the MCP server
+		// configuration in configureMcpServers(). We use:
+		// - "issue-tracker" for basic tools → mcp__issue-tracker__*
+		// - "issue-tracker-ext" for extended tools → mcp__issue-tracker-ext__*
+		const toolMappings =
+			platform === "linear"
+				? {
+						// Linear platform: Linear HTTP MCP server + Cyrus extension
+						// Basic issue tracker tools from Linear HTTP MCP
+						TOOL_CREATE_ISSUE: "mcp__issue-tracker__create_issue",
+						TOOL_GET_ISSUE: "mcp__issue-tracker__get_issue",
+						TOOL_UPDATE_ISSUE: "mcp__issue-tracker__update_issue",
+						TOOL_LIST_ISSUES: "mcp__issue-tracker__list_issues",
+						// Extended tools from Cyrus MCP extension
+						TOOL_AGENT_SESSION_CREATE:
+							"mcp__issue-tracker-ext__issue_tracker_agent_session_create",
+						TOOL_AGENT_SESSION_CREATE_ON_COMMENT:
+							"mcp__issue-tracker-ext__issue_tracker_agent_session_create_on_comment",
+						TOOL_AGENT_GIVE_FEEDBACK:
+							"mcp__issue-tracker-ext__issue_tracker_agent_give_feedback",
+						TOOL_GET_CHILD_ISSUES:
+							"mcp__issue-tracker-ext__issue_tracker_get_child_issues",
+						TOOL_UPLOAD_FILE:
+							"mcp__issue-tracker-ext__issue_tracker_upload_file",
+					}
+				: {
+						// CLI platform: Uses CLI-specific implementations
+						TOOL_CREATE_ISSUE: "mcp__issue-tracker__create_issue",
+						TOOL_GET_ISSUE: "mcp__issue-tracker__get_issue",
+						TOOL_UPDATE_ISSUE: "mcp__issue-tracker__update_issue",
+						TOOL_LIST_ISSUES: "mcp__issue-tracker__list_issues",
+						TOOL_AGENT_SESSION_CREATE:
+							"mcp__issue-tracker-ext__issue_tracker_agent_session_create",
+						TOOL_AGENT_SESSION_CREATE_ON_COMMENT:
+							"mcp__issue-tracker-ext__issue_tracker_agent_session_create_on_comment",
+						TOOL_AGENT_GIVE_FEEDBACK:
+							"mcp__issue-tracker-ext__issue_tracker_agent_give_feedback",
+						TOOL_GET_CHILD_ISSUES:
+							"mcp__issue-tracker-ext__issue_tracker_get_child_issues",
+						TOOL_UPLOAD_FILE:
+							"mcp__issue-tracker-ext__issue_tracker_upload_file",
+					};
+
+		// Replace all placeholders
+		let result = promptContent;
+		for (const [placeholder, toolName] of Object.entries(toolMappings)) {
+			result = result.replaceAll(`{{${placeholder}}}`, toolName);
+		}
+
+		return result;
+	}
+
+	/**
 	 * Determine system prompt based on issue labels and repository configuration
 	 */
 	private async determineSystemPromptFromLabels(
@@ -1965,7 +2026,14 @@ export class EdgeWorker extends EventEmitter {
 						"prompts",
 						`${promptType}.md`,
 					);
-					const promptContent = await readFile(promptPath, "utf-8");
+					let promptContent = await readFile(promptPath, "utf-8");
+
+					// Replace MCP tool placeholders with actual tool names
+					promptContent = this.replaceToolPlaceholders(
+						promptContent,
+						this.config.platform || "linear",
+					);
+
 					console.log(
 						`[EdgeWorker] Using ${promptType} system prompt for labels: ${labels.join(", ")}`,
 					);

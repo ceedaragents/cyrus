@@ -3,6 +3,10 @@ import {
 	LinearWebhookClient,
 	type LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
+import type {
+	AgentEventTransportConfig,
+	IAgentEventTransport,
+} from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
 	LinearEventTransportConfig,
@@ -23,22 +27,24 @@ export declare interface LinearEventTransport {
 /**
  * LinearEventTransport - Handles Linear webhook event delivery
  *
- * This class provides a platform-agnostic interface for handling Linear webhooks
- * while managing Linear-specific webhook verification.
+ * This class implements IAgentEventTransport to provide a platform-agnostic
+ * interface for handling Linear webhooks with Linear-specific verification.
  *
  * It registers a POST /webhook endpoint with a Fastify server
  * and verifies incoming webhooks using either:
- * 1. LINEAR_DIRECT_WEBHOOKS mode: Verifies Linear's webhook signature
- * 2. Proxy mode: Verifies Bearer token authentication
+ * 1. "direct" mode: Verifies Linear's webhook signature
+ * 2. "proxy" mode: Verifies Bearer token authentication
  *
- * The class emits both legacy "webhook" events and new "event" events for
- * backward compatibility during migration.
+ * The class emits "event" events with AgentEvent (LinearWebhookPayload) data.
  */
-export class LinearEventTransport extends EventEmitter {
-	private config: LinearEventTransportConfig;
+export class LinearEventTransport
+	extends EventEmitter
+	implements IAgentEventTransport
+{
+	private config: LinearEventTransportConfig | AgentEventTransportConfig;
 	private linearWebhookClient: LinearWebhookClient | null = null;
 
-	constructor(config: LinearEventTransportConfig) {
+	constructor(config: LinearEventTransportConfig | AgentEventTransportConfig) {
 		super();
 		this.config = config;
 
@@ -104,7 +110,8 @@ export class LinearEventTransport extends EventEmitter {
 				return;
 			}
 
-			this.emit("webhook", request.body as LinearWebhookPayload);
+			// Emit "event" for IAgentEventTransport compatibility
+			this.emit("event", request.body as LinearWebhookPayload);
 
 			// Send success response
 			reply.code(200).send({ success: true });
@@ -139,7 +146,8 @@ export class LinearEventTransport extends EventEmitter {
 		}
 
 		try {
-			this.emit("webhook", request.body as LinearWebhookPayload);
+			// Emit "event" for IAgentEventTransport compatibility
+			this.emit("event", request.body as LinearWebhookPayload);
 
 			// Send success response
 			reply.code(200).send({ success: true });

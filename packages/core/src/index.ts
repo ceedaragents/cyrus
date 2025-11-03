@@ -42,7 +42,6 @@ export {
 	isIssueAssignedEvent,
 	isIssueUnassignedEvent,
 	isNewCommentEvent,
-	LinearAgentEventTransport,
 	LinearIssueTrackerService,
 } from "./issue-tracker/index.js";
 export type {
