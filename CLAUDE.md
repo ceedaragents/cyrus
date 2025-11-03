@@ -317,6 +317,44 @@ The script will show:
 
 This integration is automatically available in all Cyrus sessions - the EdgeWorker automatically configures the official Linear MCP server for each repository using its Linear token.
 
+## MCP Server Architecture
+
+### Basic Issue Tracker Server (`packages/edge-worker/src/tools/basic-issue-tracker.ts`)
+
+**Purpose**: Provides a CLI-compatible MCP server that replicates the 5 core tools from Linear's official MCP server. This allows the CLI platform to offer the same essential issue tracking tools that Linear provides, creating a consistent interface for agents across both platforms.
+
+**Tools Provided**:
+- `create_comment` - Create comments on issues
+- `create_issue` - Create new issues with optional parent (sub-issue support)
+- `get_issue` - Fetch detailed issue information
+- `list_labels` - List available issue labels
+- `list_teams` - List workspace teams
+
+**Platform Usage**:
+- **CLI Platform**: Uses this server via `createBasicIssueTrackerServer()` with `CLIIssueTrackerService`
+- **Linear Platform**: Uses Linear's official HTTP MCP server directly (https://mcp.linear.app/mcp)
+
+**Design Goal**: Platform parity - agents should be able to use the same tool names (`create_issue`, `get_issue`, etc.) regardless of whether they're running in CLI mode or Linear mode.
+
+### Issue Tracker Tools Server (`packages/edge-worker/src/tools/index.ts`)
+
+**Purpose**: Provides platform-agnostic **extended** tools for advanced agent workflows, particularly orchestrator agents that manage child agent sessions.
+
+**Tools Provided**:
+- `issue_tracker_upload_file` - Upload files for use in issues/comments
+- `issue_tracker_agent_session_create` - Create agent session on an issue
+- `issue_tracker_agent_session_create_on_comment` - Create agent session on a comment thread
+- `issue_tracker_agent_give_feedback` - Provide feedback to child agent sessions
+- `issue_tracker_get_child_issues` - Fetch all child issues (sub-issues)
+
+**Platform Usage**:
+- **CLI Platform**: Uses `createIssueTrackerToolsServer()` with `CLIIssueTrackerService`
+- **Linear Platform**: Uses `createCyrusToolsServer()` (from Linear event transport package) with Linear API client
+
+**Design Goal**: Platform-agnostic orchestration - orchestrator agents need these advanced session management tools regardless of the underlying issue tracker platform.
+
+
+
 ## Publishing
 
 **Important: Always publish packages in the correct order to ensure proper dependency resolution.**

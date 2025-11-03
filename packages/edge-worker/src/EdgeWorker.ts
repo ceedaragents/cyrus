@@ -185,7 +185,10 @@ export class EdgeWorker extends EventEmitter {
 					const linearClient = new LinearClient({
 						accessToken: repo.linearToken,
 					});
-					issueTracker = new LinearIssueTrackerService(linearClient);
+					issueTracker = new LinearIssueTrackerService(
+						linearClient,
+						repo.linearToken,
+					);
 				}
 				this.issueTrackers.set(repo.id, issueTracker);
 
@@ -803,7 +806,10 @@ export class EdgeWorker extends EventEmitter {
 					accessToken: repo.linearToken,
 				});
 				// Create issue tracker service (Linear adapter)
-				const issueTracker = new LinearIssueTrackerService(linearClient);
+				const issueTracker = new LinearIssueTrackerService(
+					linearClient,
+					repo.linearToken,
+				);
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager with same pattern as constructor
@@ -880,7 +886,10 @@ export class EdgeWorker extends EventEmitter {
 						accessToken: repo.linearToken,
 					});
 					// Create issue tracker service (Linear adapter)
-					const issueTracker = new LinearIssueTrackerService(linearClient);
+					const issueTracker = new LinearIssueTrackerService(
+						linearClient,
+						repo.linearToken,
+					);
 					this.issueTrackers.set(repo.id, issueTracker);
 				}
 
@@ -3375,7 +3384,163 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Build MCP configuration with automatic Linear server injection and inline cyrus tools
+	 * Handle feedback delivery from parent orchestrator to child agent session.
+	 * This method is platform-agnostic and works with both Linear and CLI issue trackers.
+	 *
+	 * Flow:
+	 * 1. Locate the child session across all repositories
+	 * 2. Post a "feedback received" thought to the issue tracker
+	 * 3. Send feedback as a prompt to resume the child session
+	 * 4. Return immediately (session continues in background)
+	 */
+	private async handleFeedbackDelivery(
+		childSessionId: string,
+		message: string,
+	): Promise<boolean> {
+		console.log(
+			`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
+		);
+
+		// Find the parent session ID for context
+		const parentSessionId = this.childToParentAgentSession.get(childSessionId);
+
+		// Find the repository containing the child session
+		let childRepo: RepositoryConfig | undefined;
+		let childAgentSessionManager: AgentSessionManager | undefined;
+
+		for (const [repoId, manager] of this.agentSessionManagers) {
+			if (manager.hasClaudeRunner(childSessionId)) {
+				childRepo = this.repositories.get(repoId);
+				childAgentSessionManager = manager;
+				break;
+			}
+		}
+
+		if (!childRepo || !childAgentSessionManager) {
+			console.error(
+				`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
+			);
+			return false;
+		}
+
+		// Get the child session
+		const childSession = childAgentSessionManager.getSession(childSessionId);
+		if (!childSession) {
+			console.error(`[EdgeWorker] Child session ${childSessionId} not found`);
+			return false;
+		}
+
+		console.log(
+			`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
+		);
+
+		// Get parent session info for better context in the thought
+		let parentIssueId: string | undefined;
+		if (parentSessionId) {
+			// Find parent session across all repositories
+			for (const manager of this.agentSessionManagers.values()) {
+				const parentSession = manager.getSession(parentSessionId);
+				if (parentSession) {
+					parentIssueId =
+						parentSession.issue?.identifier || parentSession.issueId;
+					break;
+				}
+			}
+		}
+
+		// Post thought to issue tracker showing feedback receipt
+		const issueTracker = this.issueTrackers.get(childRepo.id);
+		if (issueTracker) {
+			const feedbackThought = parentIssueId
+				? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
+				: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
+
+			try {
+				await issueTracker.createAgentActivity(childSessionId, {
+					type: AgentActivityContentType.Thought,
+					body: feedbackThought,
+				});
+
+				console.log(
+					`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
+				);
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Error posting feedback receipt thought:`,
+					error,
+				);
+			}
+		}
+
+		// Format the feedback as a prompt for the child session
+		const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
+
+		// Resume child session with feedback (runs in background)
+		// We don't await to avoid timeouts - return success immediately
+		console.log(
+			`[EdgeWorker] Handling feedback delivery to child session ${childSessionId}`,
+		);
+
+		this.handlePromptWithStreamingCheck(
+			childSession,
+			childRepo,
+			childSessionId,
+			childAgentSessionManager,
+			feedbackPrompt,
+			"", // No attachment manifest for feedback
+			false, // Not a new session
+			[], // No additional allowed directories for feedback
+			"give feedback to child",
+		)
+			.then(() => {
+				console.log(
+					`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
+				);
+			})
+			.catch((error) => {
+				console.error(
+					`[EdgeWorker] Failed to process feedback in child session:`,
+					error,
+				);
+			});
+
+		console.log(
+			`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
+		);
+		return true;
+	}
+
+	/**
+	 * Register a child-to-parent agent session mapping.
+	 * Called when a child session is created from a parent session.
+	 */
+	private registerChildSession(
+		childSessionId: string,
+		parentSessionId: string,
+	): void {
+		console.log(
+			`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentSessionId}`,
+		);
+		this.childToParentAgentSession.set(childSessionId, parentSessionId);
+		console.log(
+			`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+		);
+	}
+
+	/**
+	 * Build MCP server configuration for a repository.
+	 *
+	 * Platform-agnostic: Works with both Linear and CLI platforms.
+	 *
+	 * Linear Mode:
+	 * - issue-tracker: Linear HTTP MCP server (basic tools)
+	 * - issue-tracker-ext: Cyrus SDK tools (extended features)
+	 * - sora-tools, image-tools: OpenAI MCP servers (if API key configured)
+	 *
+	 * CLI Mode:
+	 * - issue-tracker: Basic issue tracker SDK server (CLI-compatible)
+	 * - issue-tracker-ext: Platform-agnostic SDK tools
+	 * - sora-tools, image-tools: OpenAI MCP servers (if API key configured)
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
@@ -3383,10 +3548,27 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	): Record<string, McpServerConfig> {
 		const mcpConfig: Record<string, McpServerConfig> = {};
 
-		// Only inject Linear MCP servers if platform is "linear" and token exists
-		if (this.config.platform !== "cli" && repository.linearToken) {
-			// Linear HTTP MCP server provides basic issue tracker tools
-			// https://linear.app/docs/mcp
+		// Common callbacks for both platforms
+		const sessionCallbacks = {
+			parentSessionId,
+			onSessionCreated: (childSessionId: string, parentId: string) =>
+				this.registerChildSession(childSessionId, parentId),
+			onFeedbackDelivery: (childSessionId: string, message: string) =>
+				this.handleFeedbackDelivery(childSessionId, message),
+		};
+
+		// Get issue tracker service for this repository
+		const issueTracker = this.issueTrackers.get(repository.id);
+
+		// Configure basic issue tracker MCP server
+		if (this.config.platform === "cli") {
+			// CLI Platform: Use basic CLI issue tracker server
+			if (issueTracker && issueTracker instanceof CLIIssueTrackerService) {
+				mcpConfig["issue-tracker"] =
+					createBasicIssueTrackerServer(issueTracker);
+			}
+		} else if (repository.linearToken) {
+			// Linear Platform: Use Linear HTTP MCP server
 			mcpConfig["issue-tracker"] = {
 				type: "http",
 				url: "https://mcp.linear.app/mcp",
@@ -3396,309 +3578,48 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			};
 		}
 
-		// Configure issue-tracker-ext (extended tools) based on platform
-		if (this.config.platform !== "cli" && repository.linearToken) {
-			// Linear mode: Linear HTTP MCP provides basic tools, SDK provides extended tools
-			mcpConfig["issue-tracker-ext"] = createCyrusToolsServer(
-				repository.linearToken,
-				{
-					parentSessionId,
-					onSessionCreated: (childSessionId, parentId) => {
-						console.log(
-							`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
-						);
-						// Map child to parent session
-						this.childToParentAgentSession.set(childSessionId, parentId);
-						console.log(
-							`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
-						);
-					},
-					onFeedbackDelivery: async (childSessionId, message) => {
-						console.log(
-							`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
-						);
+		// Configure extended issue tracker MCP server (platform-agnostic)
+		if (issueTracker) {
+			const extConfig = issueTracker.createExtendedMcpServer(
+				sessionCallbacks,
+			) as
+				| {
+						type: "sdk-factory";
+						service: CLIIssueTrackerService;
+						options: typeof sessionCallbacks;
+				  }
+				| {
+						type: "linear-factory";
+						linearToken: string;
+						options: typeof sessionCallbacks;
+				  };
 
-						// Find the parent session ID for context
-						const parentSessionId =
-							this.childToParentAgentSession.get(childSessionId);
-
-						// Find the repository containing the child session
-						// We need to search all repositories for this child session
-						let childRepo: RepositoryConfig | undefined;
-						let childAgentSessionManager: AgentSessionManager | undefined;
-
-						for (const [repoId, manager] of this.agentSessionManagers) {
-							if (manager.hasClaudeRunner(childSessionId)) {
-								childRepo = this.repositories.get(repoId);
-								childAgentSessionManager = manager;
-								break;
-							}
-						}
-
-						if (!childRepo || !childAgentSessionManager) {
-							console.error(
-								`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
-							);
-							return false;
-						}
-
-						// Get the child session
-						const childSession =
-							childAgentSessionManager.getSession(childSessionId);
-						if (!childSession) {
-							console.error(
-								`[EdgeWorker] Child session ${childSessionId} not found`,
-							);
-							return false;
-						}
-
-						console.log(
-							`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
-						);
-
-						// Get parent session info for better context in the thought
-						let parentIssueId: string | undefined;
-						if (parentSessionId) {
-							// Find parent session across all repositories
-							for (const manager of this.agentSessionManagers.values()) {
-								const parentSession = manager.getSession(parentSessionId);
-								if (parentSession) {
-									parentIssueId =
-										parentSession.issue?.identifier || parentSession.issueId;
-									break;
-								}
-							}
-						}
-
-						// Post thought to Linear showing feedback receipt
-						const issueTracker = this.issueTrackers.get(childRepo.id);
-						if (issueTracker) {
-							const feedbackThought = parentIssueId
-								? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
-								: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
-
-							try {
-								await issueTracker.createAgentActivity(childSessionId, {
-									type: AgentActivityContentType.Thought,
-									body: feedbackThought,
-								});
-
-								console.log(
-									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
-								);
-							} catch (error) {
-								console.error(
-									`[EdgeWorker] Error posting feedback receipt thought:`,
-									error,
-								);
-							}
-						}
-
-						// Format the feedback as a prompt for the child session with enhanced markdown formatting
-						const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
-
-						// Use centralized streaming check and routing logic
-						// Important: We don't await the full session completion to avoid timeouts.
-						// The feedback is delivered immediately when the session starts, so we can
-						// return success right away while the session continues in the background.
-						console.log(
-							`[EdgeWorker] Handling feedback delivery to child session ${childSessionId}`,
-						);
-
-						this.handlePromptWithStreamingCheck(
-							childSession,
-							childRepo,
-							childSessionId,
-							childAgentSessionManager,
-							feedbackPrompt,
-							"", // No attachment manifest for feedback
-							false, // Not a new session
-							[], // No additional allowed directories for feedback
-							"give feedback to child",
-						)
-							.then(() => {
-								console.log(
-									`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
-								);
-							})
-							.catch((error) => {
-								console.error(
-									`[EdgeWorker] Failed to process feedback in child session:`,
-									error,
-								);
-							});
-
-						// Return success immediately after initiating the handling
-						console.log(
-							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
-						);
-						return true;
-					},
-				},
-			);
-		}
-
-		// Configure CLI-specific issue tracker tools when platform is "cli"
-		if (this.config.platform === "cli") {
-			// CLI mode provides SDK-based issue tracker tools using in-memory storage
-			const issueTracker = this.issueTrackers.get(repository.id);
-			if (issueTracker && issueTracker instanceof CLIIssueTrackerService) {
-				// Basic issue tracker tools (replicate Linear MCP's core tools)
-				mcpConfig["issue-tracker"] =
-					createBasicIssueTrackerServer(issueTracker);
-
-				// Extended issue tracker tools (platform-agnostic tools for session management)
-				mcpConfig["issue-tracker-ext"] = createIssueTrackerToolsServer(issueTracker, {
-					parentSessionId,
-					onSessionCreated: (childSessionId, parentId) => {
-						console.log(
-							`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
-						);
-						// Map child to parent session
-						this.childToParentAgentSession.set(childSessionId, parentId);
-						console.log(
-							`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
-						);
-					},
-					onFeedbackDelivery: async (childSessionId, message) => {
-						console.log(
-							`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
-						);
-
-						// Find the parent session ID for context
-						const parentSessionId =
-							this.childToParentAgentSession.get(childSessionId);
-
-						// Find the repository containing the child session
-						// We need to search all repositories for this child session
-						let childRepo: RepositoryConfig | undefined;
-						let childAgentSessionManager: AgentSessionManager | undefined;
-
-						for (const [repoId, manager] of this.agentSessionManagers) {
-							if (manager.hasClaudeRunner(childSessionId)) {
-								childRepo = this.repositories.get(repoId);
-								childAgentSessionManager = manager;
-								break;
-							}
-						}
-
-						if (!childRepo || !childAgentSessionManager) {
-							console.error(
-								`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
-							);
-							return false;
-						}
-
-						// Get the child session
-						const childSession =
-							childAgentSessionManager.getSession(childSessionId);
-						if (!childSession) {
-							console.error(
-								`[EdgeWorker] Child session ${childSessionId} not found`,
-							);
-							return false;
-						}
-
-						console.log(
-							`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
-						);
-
-						// Get parent session info for better context in the thought
-						let parentIssueId: string | undefined;
-						if (parentSessionId) {
-							// Find parent session across all repositories
-							for (const manager of this.agentSessionManagers.values()) {
-								const parentSession = manager.getSession(parentSessionId);
-								if (parentSession) {
-									parentIssueId =
-										parentSession.issue?.identifier || parentSession.issueId;
-									break;
-								}
-							}
-						}
-
-						// Post thought to CLI showing feedback receipt
-						const cliIssueTracker = this.issueTrackers.get(childRepo.id);
-						if (cliIssueTracker) {
-							const feedbackThought = parentIssueId
-								? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
-								: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
-
-							try {
-								await cliIssueTracker.createAgentActivity(childSessionId, {
-									type: AgentActivityContentType.Thought,
-									body: feedbackThought,
-								});
-
-								console.log(
-									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
-								);
-							} catch (error) {
-								console.error(
-									`[EdgeWorker] Error posting feedback receipt thought:`,
-									error,
-								);
-							}
-						}
-
-						// Format the feedback as a prompt for the child session with enhanced markdown formatting
-						const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
-
-						// Use centralized streaming check and routing logic
-						// Important: We don't await the full session completion to avoid timeouts.
-						// The feedback is delivered immediately when the session starts, so we can
-						// return success right away while the session continues in the background.
-						console.log(
-							`[EdgeWorker] Handling feedback delivery to child session ${childSessionId}`,
-						);
-
-						this.handlePromptWithStreamingCheck(
-							childSession,
-							childRepo,
-							childSessionId,
-							childAgentSessionManager,
-							feedbackPrompt,
-							"", // No attachment manifest for feedback
-							false, // Not a new session
-							[], // No additional allowed directories for feedback
-							"give feedback to child",
-						)
-							.then(() => {
-								console.log(
-									`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
-								);
-							})
-							.catch((error) => {
-								console.error(
-									`[EdgeWorker] Failed to process feedback in child session:`,
-									error,
-								);
-							});
-
-						// Return success immediately after initiating the handling
-						console.log(
-							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
-						);
-						return true;
-					},
-				});
+			// Use discriminated union to determine how to create the MCP server
+			if (extConfig.type === "sdk-factory") {
+				// CLI platform: Use createIssueTrackerToolsServer
+				mcpConfig["issue-tracker-ext"] = createIssueTrackerToolsServer(
+					extConfig.service,
+					extConfig.options,
+				);
+			} else if (extConfig.type === "linear-factory") {
+				// Linear platform: Use createCyrusToolsServer
+				mcpConfig["issue-tracker-ext"] = createCyrusToolsServer(
+					extConfig.linearToken,
+					extConfig.options,
+				);
 			}
 		}
 
-		// Add OpenAI-based MCP servers if API key is configured
+		// Add OpenAI-based MCP servers if API key is configured (both platforms)
 		if (repository.openaiApiKey) {
-			// Sora video generation tools
 			mcpConfig["sora-tools"] = createSoraToolsServer({
 				apiKey: repository.openaiApiKey,
 				outputDirectory: repository.openaiOutputDirectory,
 			});
-
-			// GPT Image generation tools
 			mcpConfig["image-tools"] = createImageToolsServer({
 				apiKey: repository.openaiApiKey,
 				outputDirectory: repository.openaiOutputDirectory,
 			});
-
 			console.log(
 				`[EdgeWorker] Configured OpenAI MCP servers (Sora + GPT Image) for repository: ${repository.name}`,
 			);

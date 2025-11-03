@@ -678,4 +678,69 @@ export interface IIssueTrackerService {
 	 * ```
 	 */
 	createEventTransport(config: AgentEventTransportConfig): IAgentEventTransport;
+
+	// ========================================================================
+	// MCP SERVER CREATION
+	// ========================================================================
+
+	/**
+	 * Create the extended issue tracker MCP server for this platform.
+	 *
+	 * This method allows each IIssueTrackerService implementation to provide
+	 * its own platform-specific MCP server with extended tools for:
+	 * - File uploads
+	 * - Agent session creation (on issues and comments)
+	 * - Feedback delivery to child agent sessions
+	 * - Fetching child issues
+	 *
+	 * @param options - Session management callbacks
+	 * @param options.parentSessionId - ID of parent session (for child-to-parent mapping)
+	 * @param options.onSessionCreated - Callback when child session is created
+	 * @param options.onFeedbackDelivery - Callback to deliver feedback to parent session
+	 * @returns MCP server configuration object
+	 *
+	 * @example
+	 * ```typescript
+	 * // CLI platform
+	 * const cliService = new CLIIssueTrackerService();
+	 * const mcpServer = cliService.createExtendedMcpServer({
+	 *   parentSessionId: 'parent-session-123',
+	 *   onSessionCreated: (childId, parentId) => {
+	 *     console.log(`Child ${childId} mapped to parent ${parentId}`);
+	 *   },
+	 *   onFeedbackDelivery: async (childId, message) => {
+	 *     // Deliver feedback to parent session
+	 *     return true;
+	 *   }
+	 * });
+	 *
+	 * // Linear platform
+	 * const linearService = new LinearIssueTrackerService(token);
+	 * const mcpServer = linearService.createExtendedMcpServer({
+	 *   parentSessionId: 'parent-session-456',
+	 *   onSessionCreated: (childId, parentId) => {
+	 *     console.log(`Child ${childId} mapped to parent ${parentId}`);
+	 *   }
+	 * });
+	 * ```
+	 *
+	 * @remarks
+	 * Each platform implementation provides its own MCP server:
+	 * - CLI platform: Uses local file handling and service-based operations
+	 * - Linear platform: Uses Linear SDK and GraphQL mutations
+	 *
+	 * The MCP server is named "issue-tracker-ext" to distinguish from the basic
+	 * "issue-tracker" server (which provides core CRUD operations only).
+	 */
+	createExtendedMcpServer(options?: {
+		parentSessionId?: string;
+		onSessionCreated?: (
+			childSessionId: string,
+			parentSessionId: string,
+		) => void;
+		onFeedbackDelivery?: (
+			childSessionId: string,
+			message: string,
+		) => Promise<boolean>;
+	}): unknown;
 }

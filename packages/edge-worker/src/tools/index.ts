@@ -131,7 +131,9 @@ export function createIssueTrackerToolsServer(
 		},
 		async ({ issueId, externalLink }) => {
 			try {
-				console.log(`[IssueTrackerTools] Creating agent session for issue ${issueId}`);
+				console.log(
+					`[IssueTrackerTools] Creating agent session for issue ${issueId}`,
+				);
 
 				const result = await issueTrackerService.createAgentSessionOnIssue({
 					issueId,
@@ -308,7 +310,10 @@ export function createIssueTrackerToolsServer(
 						);
 					}
 				} catch (error) {
-					console.error(`[IssueTrackerTools] Failed to deliver feedback:`, error);
+					console.error(
+						`[IssueTrackerTools] Failed to deliver feedback:`,
+						error,
+					);
 				}
 			}
 
@@ -472,7 +477,7 @@ export function createIssueTrackerToolsServer(
 	);
 
 	return createSdkMcpServer({
-		name: "issue-tracker",
+		name: "issue-tracker-ext",
 		version: "1.0.0",
 		tools: [
 			uploadFileTool,

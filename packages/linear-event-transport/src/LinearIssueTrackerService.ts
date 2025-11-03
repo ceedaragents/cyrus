@@ -96,14 +96,17 @@ interface LinearAgentSessionCreateData {
  */
 export class LinearIssueTrackerService implements IIssueTrackerService {
 	private readonly linearClient: LinearClient;
+	private readonly linearToken: string | undefined;
 
 	/**
 	 * Create a new LinearIssueTrackerService.
 	 *
 	 * @param linearClient - Configured LinearClient instance
+	 * @param linearToken - Optional Linear API token for MCP server creation
 	 */
-	constructor(linearClient: LinearClient) {
+	constructor(linearClient: LinearClient, linearToken?: string) {
 		this.linearClient = linearClient;
+		this.linearToken = linearToken;
 	}
 
 	// ========================================================================
@@ -855,5 +858,54 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 		// Import from same package - no require() needed
 		return new LinearEventTransport(config);
+	}
+
+	// ========================================================================
+	// MCP SERVER CREATION
+	// ========================================================================
+
+	/**
+	 * Create the extended issue tracker MCP server for the Linear platform.
+	 *
+	 * Returns configuration data needed by the edge-worker to create the MCP server.
+	 * The actual MCP server creation happens using createCyrusToolsServer() from claude-runner.
+	 *
+	 * @param options - Session management callbacks
+	 * @returns Configuration object for EdgeWorker to create MCP server
+	 *
+	 * @remarks
+	 * This method returns configuration that EdgeWorker.buildMcpConfig() uses:
+	 * ```typescript
+	 * const config = linearService.createExtendedMcpServer(options);
+	 * // EdgeWorker will call: createCyrusToolsServer(config.linearToken, config.options)
+	 * ```
+	 */
+	createExtendedMcpServer(options?: {
+		parentSessionId?: string;
+		onSessionCreated?: (
+			childSessionId: string,
+			parentSessionId: string,
+		) => void;
+		onFeedbackDelivery?: (
+			childSessionId: string,
+			message: string,
+		) => Promise<boolean>;
+	}): {
+		type: "linear-factory";
+		linearToken: string | undefined;
+		options: NonNullable<typeof options>;
+	} {
+		if (!this.linearToken) {
+			throw new Error(
+				"LinearIssueTrackerService was not initialized with a linearToken. " +
+					"Pass the token to the constructor to use createExtendedMcpServer().",
+			);
+		}
+
+		return {
+			type: "linear-factory",
+			linearToken: this.linearToken,
+			options: options || {},
+		};
 	}
 }

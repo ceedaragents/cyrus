@@ -1204,4 +1204,46 @@ export class CLIIssueTrackerService
 	): IAgentEventTransport {
 		return new CLIEventTransport(this, config);
 	}
+
+	// ========================================================================
+	// MCP SERVER CREATION
+	// ========================================================================
+
+	/**
+	 * Create the extended issue tracker MCP server for the CLI platform.
+	 *
+	 * Returns configuration data needed by the edge-worker to create the MCP server.
+	 * The actual MCP server creation happens in edge-worker using createIssueTrackerToolsServer().
+	 *
+	 * @param options - Session management callbacks
+	 * @returns Configuration object for EdgeWorker to create MCP server
+	 *
+	 * @remarks
+	 * This method returns configuration that EdgeWorker.buildMcpConfig() uses:
+	 * ```typescript
+	 * const config = cliService.createExtendedMcpServer(options);
+	 * // EdgeWorker will call: createIssueTrackerToolsServer(config.service, config.options)
+	 * ```
+	 */
+	createExtendedMcpServer(options?: {
+		parentSessionId?: string;
+		onSessionCreated?: (
+			childSessionId: string,
+			parentSessionId: string,
+		) => void;
+		onFeedbackDelivery?: (
+			childSessionId: string,
+			message: string,
+		) => Promise<boolean>;
+	}): {
+		type: "sdk-factory";
+		service: CLIIssueTrackerService;
+		options: NonNullable<typeof options>;
+	} {
+		return {
+			type: "sdk-factory",
+			service: this,
+			options: options || {},
+		};
+	}
 }
