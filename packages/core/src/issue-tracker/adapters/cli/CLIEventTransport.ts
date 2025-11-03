@@ -172,7 +172,34 @@ export class CLIEventTransport
 		// Listen for agent session prompted events
 		this.issueTrackerService.on(
 			"agentSessionPrompted",
-			({ sessionId, activity }: any) => {
+			async ({ sessionId, activity }: any) => {
+				// Fetch the complete session data
+				const session = this.issueTrackerService
+					.getState()
+					.agentSessions.get(sessionId);
+				if (!session) {
+					console.error(
+						`[CLIEventTransport] Agent session not found: ${sessionId}`,
+					);
+					return;
+				}
+
+				// Fetch the associated issue
+				const issue = this.issueTrackerService
+					.getState()
+					.issues.get(session.issueId);
+				if (!issue) {
+					console.error(
+						`[CLIEventTransport] Issue not found: ${session.issueId}`,
+					);
+					return;
+				}
+
+				// Fetch the team if available
+				const team = issue.teamId
+					? this.issueTrackerService.getState().teams.get(issue.teamId)
+					: undefined;
+
 				const event: AgentEvent = {
 					type: "AgentSessionEvent",
 					action: "prompted",
@@ -181,7 +208,45 @@ export class CLIEventTransport
 					oauthClientId: "cli-oauth-client",
 					appUserId: "cli-app-user",
 					agentSession: {
-						id: sessionId,
+						id: session.id,
+						createdAt: session.createdAt,
+						updatedAt: session.updatedAt,
+						archivedAt: session.archivedAt,
+						creatorId: session.creatorId,
+						appUserId: session.appUserId,
+						commentId: session.commentId,
+						issueId: session.issueId,
+						status: session.status,
+						startedAt: session.startedAt,
+						endedAt: null,
+						type: session.type,
+						summary: null,
+						sourceMetadata: null,
+						organizationId: "cli-org",
+						creator: {
+							id: session.creatorId,
+							name: "CLI User",
+						},
+						comment: session.commentId
+							? {
+									id: session.commentId,
+									body: "",
+								}
+							: ({} as any),
+						issue: {
+							id: issue.id,
+							identifier: issue.identifier,
+							title: issue.title,
+							description: issue.description || "",
+							url: issue.url,
+							team: team
+								? {
+										id: team.id,
+										key: team.key,
+										name: team.name,
+									}
+								: undefined,
+						},
 					},
 					agentActivity: {
 						id: activity.id,

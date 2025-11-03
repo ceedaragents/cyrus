@@ -65,6 +65,7 @@ async function main() {
 	const config = {
 		cyrusHome,
 		serverPort: port,
+		platform: "cli", // Platform is a global config setting
 		repositories: [
 			{
 				id: "cli-repo",
@@ -72,8 +73,8 @@ async function main() {
 				repositoryPath: repoPath,
 				baseBranch: "main",
 				workspaceBaseDir: join(cyrusHome, "worktrees"),
-				platform: "cli",
 				linearWorkspaceId: "cli-workspace",
+				linearToken: "dummy-token-cli-mode", // Required by type but not used in CLI mode
 				teamKeys: ["CLI"],
 			},
 		],
