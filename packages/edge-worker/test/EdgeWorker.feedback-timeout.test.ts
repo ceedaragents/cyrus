@@ -180,6 +180,16 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+
+		// Setup issue tracker with createExtendedMcpServer method
+		const mockIssueTracker = {
+			createExtendedMcpServer: vi.fn().mockImplementation((options) => ({
+				type: "linear-factory",
+				linearToken: "test-token",
+				options: options || {},
+			})),
+		};
+		(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
 	});
 
 	afterEach(() => {

@@ -149,6 +149,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 							name: "Test User",
 						}),
 					},
+					createExtendedMcpServer: vi.fn().mockReturnValue({
+						type: "linear-factory",
+						linearToken: "test-token",
+						options: {},
+					}),
 				}) as any,
 		);
 
@@ -183,6 +188,16 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+
+		// Setup issue tracker with createExtendedMcpServer method
+		const mockIssueTracker = {
+			createExtendedMcpServer: vi.fn().mockImplementation((options) => ({
+				type: "linear-factory",
+				linearToken: "test-token",
+				options: options || {},
+			})),
+		};
+		(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
 	});
 
 	afterEach(() => {

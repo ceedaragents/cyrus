@@ -79,6 +79,11 @@ describe("EdgeWorker - System Prompt Resume", () => {
 
 		// Mock IssueTrackerService
 		mockLinearClient = {
+			createExtendedMcpServer: vi.fn().mockReturnValue({
+				type: "linear-factory",
+				linearToken: "test-token",
+				options: {},
+			}),
 			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",

@@ -76,6 +76,11 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 
 		// Mock IssueTrackerService - default issue without parent
 		mockLinearClient = {
+			createExtendedMcpServer: vi.fn().mockReturnValue({
+				type: "linear-factory",
+				linearToken: "test-token",
+				options: {},
+			}),
 			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",
