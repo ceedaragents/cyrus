@@ -17,6 +17,7 @@ import type {
 	SDKMessage,
 } from "cyrus-claude-runner";
 import {
+	AbortError,
 	ClaudeRunner,
 	createCyrusToolsServer,
 	createImageToolsServer,
@@ -1864,9 +1865,13 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Handle Claude session error
-	 * TODO: improve this
+	 * Silently ignores AbortError (user-initiated stop), logs other errors
 	 */
 	private async handleClaudeError(error: Error): Promise<void> {
+		// AbortError is expected when user stops Claude process, don't log it
+		if (error instanceof AbortError) {
+			return;
+		}
 		console.error("Unhandled claude error:", error);
 	}
 
@@ -3754,6 +3759,11 @@ ${input.userComment}
 	private async loadSubroutinePrompt(
 		subroutine: SubroutineDefinition,
 	): Promise<string | null> {
+		// Skip loading for "primary" - it's a placeholder that doesn't have a file
+		if (subroutine.promptPath === "primary") {
+			return null;
+		}
+
 		const __filename = fileURLToPath(import.meta.url);
 		const __dirname = dirname(__filename);
 		const subroutinePromptPath = join(
@@ -4297,6 +4307,7 @@ ${input.userComment}
 		linearAgentActivitySessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
+		repository: RepositoryConfig,
 	): Promise<void> {
 		// Initialize procedure metadata using intelligent routing
 		if (!session.metadata) {
@@ -4306,11 +4317,62 @@ ${input.userComment}
 		// Post ephemeral "Routing..." thought
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
-		// Route based on the prompt content
-		const routingDecision = await this.procedureRouter.determineRoutine(
-			promptBody.trim(),
-		);
-		const selectedProcedure = routingDecision.procedure;
+		// Fetch full issue and labels to check for Orchestrator label override
+		const linearClient = this.linearClients.get(repository.id);
+		let hasOrchestratorLabel = false;
+
+		if (linearClient) {
+			try {
+				const fullIssue = await linearClient.issue(session.issueId);
+				const labels = await this.fetchIssueLabels(fullIssue);
+
+				// Check for Orchestrator label (same logic as initial routing)
+				const orchestratorConfig = repository.labelPrompts?.orchestrator;
+				const orchestratorLabels = Array.isArray(orchestratorConfig)
+					? orchestratorConfig
+					: orchestratorConfig?.labels;
+				hasOrchestratorLabel =
+					orchestratorLabels?.some((label) => labels.includes(label)) || false;
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Failed to fetch issue labels for routing:`,
+					error,
+				);
+				// Continue with AI routing if label fetch fails
+			}
+		}
+
+		let selectedProcedure: ProcedureDefinition;
+		let finalClassification: RequestClassification;
+
+		// If Orchestrator label is present, ALWAYS use orchestrator-full procedure
+		if (hasOrchestratorLabel) {
+			const orchestratorProcedure =
+				this.procedureRouter.getProcedure("orchestrator-full");
+			if (!orchestratorProcedure) {
+				throw new Error("orchestrator-full procedure not found in registry");
+			}
+			selectedProcedure = orchestratorProcedure;
+			finalClassification = "orchestrator";
+			console.log(
+				`[EdgeWorker] Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)`,
+			);
+		} else {
+			// No Orchestrator label - use AI routing based on prompt content
+			const routingDecision = await this.procedureRouter.determineRoutine(
+				promptBody.trim(),
+			);
+			selectedProcedure = routingDecision.procedure;
+			finalClassification = routingDecision.classification;
+
+			// Log AI routing decision
+			console.log(
+				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
+			);
+			console.log(`  Classification: ${routingDecision.classification}`);
+			console.log(`  Procedure: ${selectedProcedure.name}`);
+			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+		}
 
 		// Initialize procedure metadata in session (resets currentSubroutine)
 		this.procedureRouter.initializeProcedureMetadata(
@@ -4322,16 +4384,8 @@ ${input.userComment}
 		await agentSessionManager.postProcedureSelectionThought(
 			linearAgentActivitySessionId,
 			selectedProcedure.name,
-			routingDecision.classification,
+			finalClassification,
 		);
-
-		// Log routing decision
-		console.log(
-			`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId}:`,
-		);
-		console.log(`  Classification: ${routingDecision.classification}`);
-		console.log(`  Procedure: ${selectedProcedure.name}`);
-		console.log(`  Reasoning: ${routingDecision.reasoning}`);
 	}
 
 	/**
@@ -4377,6 +4431,7 @@ ${input.userComment}
 				linearAgentActivitySessionId,
 				agentSessionManager,
 				promptBody,
+				repository,
 			);
 			console.log(`[EdgeWorker] Routed procedure for ${logContext}`);
 		} else {
