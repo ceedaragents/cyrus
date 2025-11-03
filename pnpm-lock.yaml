@@ -100,9 +100,6 @@ importers:
       '@linear/sdk':
         specifier: ^60.0.0
         version: 60.0.0
-      cyrus-core:
-        specifier: workspace:*
-        version: link:../core
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
