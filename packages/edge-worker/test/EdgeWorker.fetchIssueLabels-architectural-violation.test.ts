@@ -92,7 +92,7 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-331 Architectural Violation", () 
 		// Read the current implementation
 		const edgeWorkerSource = await import("node:fs").then((fs) =>
 			fs.promises.readFile(
-				"/Users/agentops/code/cyrus-workspaces/CYPACK-331/packages/edge-worker/src/EdgeWorker.ts",
+				new URL("../src/EdgeWorker.ts", import.meta.url),
 				"utf-8",
 			),
 		);
@@ -120,27 +120,28 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-331 Architectural Violation", () 
 	});
 
 	/**
-	 * PASSING TEST: Issue.labels is Label[] not Label[] | Promise<Label[]>
+	 * PASSING TEST: Issue type uses Linear SDK directly
 	 *
-	 * After fix, Issue type only allows fully resolved labels.
-	 * LinearIssueTrackerService handles resolution.
+	 * After fix, Issue type is a direct alias to LinearSDK.Issue.
+	 * This is the correct architectural approach - Linear SDK is the source of truth.
 	 */
-	it("PASSING: Issue.labels is fully resolved Label[] type", async () => {
+	it("PASSING: Issue type uses Linear SDK directly", async () => {
 		// Read the Issue type definition
 		const issueTypeSource = await import("node:fs").then((fs) =>
 			fs.promises.readFile(
-				"/Users/agentops/code/cyrus-workspaces/CYPACK-331/packages/core/src/issue-tracker/types.ts",
+				new URL("../../core/src/issue-tracker/types.ts", import.meta.url),
 				"utf-8",
 			),
 		);
 
-		// Check if labels field has Promise in its type
-		const labelsTypeMatch = issueTypeSource.match(/labels\?\s*:\s*([^;]+);/);
-		const labelsType = labelsTypeMatch?.[1];
+		// Verify Issue is a direct alias to Linear SDK type
+		const issueTypeMatch = issueTypeSource.match(
+			/export type Issue = LinearSDK\.Issue;/,
+		);
 
-		// PASSES - no longer allows Promise<Label[]>
-		expect(labelsType).not.toContain("Promise");
-		expect(labelsType).toBe("Label[]");
+		// PASSES - Issue is now a direct alias to Linear SDK's Issue type
+		expect(issueTypeMatch).not.toBeNull();
+		expect(issueTypeMatch?.[0]).toBe("export type Issue = LinearSDK.Issue;");
 	});
 
 	/**
@@ -230,14 +231,14 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-331 Architectural Violation", () 
 
 		// The proper fix:
 		// 1. Ensure LinearIssueTrackerService.fetchIssue() returns Issue with resolved labels ✅ (already done)
-		// 2. Update Issue type to remove Promise<Label[]> option ✅ (FIXED)
+		// 2. Use Linear SDK's Issue type directly (LinearSDK.Issue) ✅ (FIXED)
 		// 3. Remove all platform checks from EdgeWorker ✅ (FIXED)
 		// 4. Remove EdgeWorker.fetchIssueLabels() method entirely ✅ (FIXED)
 
 		// Verification
 		const edgeWorkerSource = await import("node:fs").then((fs) =>
 			fs.promises.readFile(
-				"/Users/agentops/code/cyrus-workspaces/CYPACK-331/packages/edge-worker/src/EdgeWorker.ts",
+				new URL("../src/EdgeWorker.ts", import.meta.url),
 				"utf-8",
 			),
 		);
