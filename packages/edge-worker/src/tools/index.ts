@@ -33,7 +33,7 @@ export interface CLIToolsOptions {
  * Works with any IIssueTrackerService implementation (CLI or Linear).
  * Provides tools for file upload, agent session management, and child issue queries.
  */
-export function createCLIToolsServer(
+export function createIssueTrackerToolsServer(
 	issueTrackerService: CLIIssueTrackerService,
 	options: CLIToolsOptions = {},
 ) {

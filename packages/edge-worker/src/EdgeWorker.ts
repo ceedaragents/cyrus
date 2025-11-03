@@ -79,7 +79,7 @@ import type {
 } from "./prompt-assembly/types.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { createBasicIssueTrackerServer } from "./tools/basic-issue-tracker.js";
-import { createCLIToolsServer } from "./tools/index.js";
+import { createIssueTrackerToolsServer } from "./tools/index.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
 export declare interface EdgeWorker {
@@ -3564,8 +3564,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				mcpConfig["issue-tracker"] =
 					createBasicIssueTrackerServer(issueTracker);
 
-				// Extended issue tracker tools (CLI-specific tools)
-				mcpConfig["issue-tracker-ext"] = createCLIToolsServer(issueTracker, {
+				// Extended issue tracker tools (platform-agnostic tools for session management)
+				mcpConfig["issue-tracker-ext"] = createIssueTrackerToolsServer(issueTracker, {
 					parentSessionId,
 					onSessionCreated: (childSessionId, parentId) => {
 						console.log(
