@@ -19,6 +19,7 @@ import type {
 } from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { formatToolInput } from "./tool-formatters.js";
 
 /**
  * Manages Linear Agent Sessions integration with Claude Code SDK
@@ -766,11 +767,11 @@ export class AgentSessionManager {
 								return;
 							}
 
-							// Format input for display
+							// Format input for display using custom formatters
 							const formattedInput =
 								typeof toolInput === "string"
 									? toolInput
-									: JSON.stringify(toolInput, null, 2);
+									: formatToolInput(toolName, toolInput);
 
 							// Use tool output directly without collapsible wrapping
 							const wrappedResult = toolResult.content?.trim() || "";
@@ -826,7 +827,11 @@ export class AgentSessionManager {
 							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Special handling for Task tool - add start marker and track active task
-							const parameter = entry.content;
+							const toolInput = entry.metadata.toolInput || entry.content;
+							const parameter =
+								typeof toolInput === "string"
+									? toolInput
+									: formatToolInput(toolName, toolInput);
 							const displayName = toolName;
 
 							// Track this as the active Task for this session
@@ -847,7 +852,11 @@ export class AgentSessionManager {
 							ephemeral = false;
 						} else {
 							// Other tools - check if they're within an active Task
-							const parameter = entry.content;
+							const toolInput = entry.metadata.toolInput || entry.content;
+							const parameter =
+								typeof toolInput === "string"
+									? toolInput
+									: formatToolInput(toolName, toolInput);
 							let displayName = toolName;
 
 							if (entry.metadata?.parentToolUseId) {
