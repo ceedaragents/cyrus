@@ -52,6 +52,53 @@ import type {
  * - **File Operations**: Uploading files and getting asset URLs
  * - **Raw API Access**: Platform-specific GraphQL or REST API calls
  *
+ * ## IMPORTANT: Async Properties in Linear Platform
+ *
+ * When using the **Linear platform** implementation (`LinearIssueTrackerService`),
+ * many returned objects have **async properties** that must be awaited before use.
+ * This is a characteristic of the Linear SDK's lazy-loading design.
+ *
+ * **Common async properties**:
+ * - `issue.state`, `issue.assignee`, `issue.team`, `issue.labels()`, `issue.parent`
+ * - `comment.user`, `comment.parent`, `comment.issue`
+ * - `team.states()`, `team.members()`
+ *
+ * **Correct usage**:
+ * ```typescript
+ * const issue = await service.fetchIssue('TEAM-123');
+ *
+ * // ✅ Correct - await async properties
+ * const state = await issue.state;
+ * const assignee = await issue.assignee;
+ * const team = await issue.team;
+ * const labels = await issue.labels();
+ *
+ * console.log(`Issue ${issue.identifier} is ${state?.name}`);
+ * ```
+ *
+ * **Incorrect usage (common mistake)**:
+ * ```typescript
+ * const issue = await service.fetchIssue('TEAM-123');
+ *
+ * // ❌ Wrong - returns Promise, not the actual value
+ * const state = issue.state;  // This is a Promise!
+ * console.log(state.name);    // Error: Cannot read property 'name' of Promise
+ * ```
+ *
+ * **Platform differences**:
+ * - **Linear Platform**: Properties are async (Promises) - must await
+ * - **CLI Platform**: Properties are synchronous - no await needed
+ *
+ * **Defensive coding pattern**:
+ * ```typescript
+ * // Check if property is a Promise before awaiting
+ * const state = issue.state instanceof Promise
+ *   ? await issue.state
+ *   : issue.state;
+ * ```
+ *
+ * See individual method documentation for specific async property warnings.
+ *
  * @example
  * Basic usage:
  * ```typescript
@@ -76,7 +123,7 @@ import type {
  * ```typescript
  * const issue = await service.fetchIssue('TEAM-123');
  *
- * // Access async properties
+ * // Access async properties (Linear platform)
  * const state = await issue.state;
  * const assignee = await issue.assignee;
  * const team = await issue.team;
@@ -103,14 +150,20 @@ export interface IIssueTrackerService {
 	 *
 	 * // Fetch by UUID
 	 * const issue = await service.fetchIssue('550e8400-e29b-41d4-a716-446655440000');
+	 *
+	 * // Access async properties (Linear platform)
+	 * const state = await issue.state;
+	 * const assignee = await issue.assignee;
+	 * const team = await issue.team;
 	 * ```
 	 *
 	 * @remarks
-	 * The returned issue may have async properties (state, assignee, team).
-	 * Access these properties using `await`:
-	 * ```typescript
-	 * const state = await issue.state;
-	 * ```
+	 * **Linear Platform Warning**: The returned issue has async properties that must be awaited:
+	 * - `issue.state`, `issue.assignee`, `issue.team`, `issue.labels()`, `issue.parent`
+	 *
+	 * See the main interface documentation for detailed information about async properties.
+	 *
+	 * **CLI Platform**: All properties are synchronous (no await needed).
 	 */
 	fetchIssue(idOrIdentifier: string): Promise<Issue>;
 
@@ -133,11 +186,21 @@ export interface IIssueTrackerService {
 	 *   includeCompleted: false,
 	 *   limit: 50
 	 * });
+	 *
+	 * // Access async properties on parent and children (Linear platform)
+	 * const parentState = await parent.state;
+	 * for (const child of parent.children) {
+	 *   const childState = await child.state;
+	 *   console.log(`Child ${child.identifier}: ${childState?.name}`);
+	 * }
 	 * ```
 	 *
 	 * @remarks
 	 * Supports filtering by completion status and archive status.
 	 * Use `limit` to control the number of children returned.
+	 *
+	 * **Linear Platform Warning**: The returned parent issue and all child issues
+	 * have async properties that must be awaited. See `fetchIssue()` documentation for details.
 	 */
 	fetchIssueChildren(
 		issueId: string,
@@ -165,10 +228,16 @@ export interface IIssueTrackerService {
 	 *   assigneeId: 'user-id',
 	 *   priority: IssuePriority.High
 	 * });
+	 *
+	 * // Access async properties on returned issue (Linear platform)
+	 * const state = await updated.state;
 	 * ```
 	 *
 	 * @remarks
 	 * Only specified fields are updated. Omitted fields remain unchanged.
+	 *
+	 * **Linear Platform Warning**: The returned issue has async properties that must be awaited.
+	 * See `fetchIssue()` documentation for details.
 	 */
 	updateIssue(issueId: string, updates: IssueUpdateInput): Promise<Issue>;
 
@@ -240,14 +309,20 @@ export interface IIssueTrackerService {
 	 * ```typescript
 	 * const comment = await service.fetchComment('comment-id');
 	 * console.log('Comment body:', comment.body);
+	 *
+	 * // Access async properties (Linear platform)
+	 * const user = await comment.user;
+	 * const parent = await comment.parent;
+	 * const issue = await comment.issue;
 	 * ```
 	 *
 	 * @remarks
-	 * The returned comment may have async properties (user, parent).
-	 * Access these using `await`:
-	 * ```typescript
-	 * const user = await comment.user;
-	 * ```
+	 * **Linear Platform Warning**: The returned comment has async properties that must be awaited:
+	 * - `comment.user`, `comment.parent`, `comment.issue`
+	 *
+	 * See the main interface documentation for detailed information about async properties.
+	 *
+	 * **CLI Platform**: All properties are synchronous (no await needed).
 	 */
 	fetchComment(commentId: string): Promise<Comment>;
 
@@ -267,8 +342,20 @@ export interface IIssueTrackerService {
 	 * ```
 	 *
 	 * @remarks
-	 * This method uses raw GraphQL to fetch attachment metadata.
-	 * Not all platforms may support this operation.
+	 * **LIMITATION**: This method currently returns an empty `attachments` array
+	 * for comment attachments on the Linear platform because Linear's GraphQL API
+	 * does not expose comment attachment metadata through their SDK or documented
+	 * API endpoints.
+	 *
+	 * This is expected behavior, not a bug. Issue attachments (via `fetchIssueAttachments`)
+	 * work correctly - only comment attachments are unavailable from the Linear API.
+	 *
+	 * If you need comment attachments, consider:
+	 * - Using issue attachments instead
+	 * - Parsing attachment URLs from comment body markdown
+	 * - Waiting for Linear to expose this data in their API
+	 *
+	 * Other platform implementations may have different limitations.
 	 */
 	fetchCommentWithAttachments(
 		commentId: string,
@@ -336,7 +423,19 @@ export interface IIssueTrackerService {
 	 * ```typescript
 	 * const team = await service.fetchTeam('TEAM');
 	 * console.log('Team name:', team.name);
+	 *
+	 * // Access async properties (Linear platform)
+	 * const states = await team.states();
+	 * const members = await team.members();
 	 * ```
+	 *
+	 * @remarks
+	 * **Linear Platform Warning**: The returned team has async properties/methods that must be awaited:
+	 * - `team.states()`, `team.members()`
+	 *
+	 * See the main interface documentation for detailed information about async properties.
+	 *
+	 * **CLI Platform**: All properties are synchronous (no await needed).
 	 */
 	fetchTeam(idOrKey: string): Promise<Team>;
 

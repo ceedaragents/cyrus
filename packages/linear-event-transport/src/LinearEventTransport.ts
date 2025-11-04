@@ -66,8 +66,12 @@ export class LinearEventTransport
 						await this.handleProxyWebhook(request, reply);
 					}
 				} catch (error) {
-					console.error("[LinearEventTransport] Webhook error:", error);
-					this.emit("error", error as Error);
+					const err = new Error("[LinearEventTransport] Webhook error");
+					if (error instanceof Error) {
+						err.cause = error;
+					}
+					console.error(err);
+					this.emit("error", err);
 					reply.code(500).send({ error: "Internal server error" });
 				}
 			},
@@ -113,10 +117,13 @@ export class LinearEventTransport
 			// Send success response
 			reply.code(200).send({ success: true });
 		} catch (error) {
-			console.error(
-				"[LinearEventTransport] Direct webhook verification failed:",
-				error,
+			const err = new Error(
+				"[LinearEventTransport] Direct webhook verification failed",
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			console.error(err);
 			reply.code(401).send({ error: "Invalid webhook signature" });
 		}
 	}
@@ -149,10 +156,13 @@ export class LinearEventTransport
 			// Send success response
 			reply.code(200).send({ success: true });
 		} catch (error) {
-			console.error(
-				"[LinearEventTransport] Proxy webhook processing failed:",
-				error,
+			const err = new Error(
+				"[LinearEventTransport] Proxy webhook processing failed",
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			console.error(err);
 			reply.code(500).send({ error: "Failed to process webhook" });
 		}
 	}

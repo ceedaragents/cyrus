@@ -191,3 +191,52 @@ export function adaptLinearAgentActivity(
 		},
 	};
 }
+
+/**
+ * Adapt a Linear SDK Issue with children array to IssueWithChildren.
+ *
+ * This adapter creates a proper IssueWithChildren type by combining the parent issue
+ * with its children array. It makes the type transformation explicit and avoids
+ * unsafe type casts.
+ *
+ * @param issue - Parent issue from Linear SDK
+ * @param children - Array of child issues from Linear SDK
+ * @returns IssueWithChildren with children and childCount properties
+ */
+export function adaptIssueWithChildren<TIssue extends { id: string }>(
+	issue: TIssue,
+	children: TIssue[],
+): TIssue & { children: TIssue[]; childCount: number } {
+	return {
+		...issue,
+		children,
+		childCount: children.length,
+	};
+}
+
+/**
+ * Adapt a Comment to CommentWithAttachments.
+ *
+ * This adapter adds an attachments property to a Comment. Linear's GraphQL API
+ * doesn't currently expose attachments on comments, so this always returns an
+ * empty attachments array.
+ *
+ * @param comment - Comment from Linear SDK
+ * @returns CommentWithAttachments with attachments array
+ */
+export function adaptCommentWithAttachments<TComment extends { id: string }>(
+	comment: TComment,
+): TComment & {
+	attachments: Array<{
+		id: string;
+		url: string;
+		filename: string;
+		contentType?: string;
+		size?: number;
+	}>;
+} {
+	return {
+		...comment,
+		attachments: [],
+	};
+}

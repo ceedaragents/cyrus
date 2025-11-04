@@ -38,6 +38,8 @@ import type {
 } from "cyrus-core";
 import { LinearEventTransport } from "./LinearEventTransport.js";
 import {
+	adaptCommentWithAttachments,
+	adaptIssueWithChildren,
 	adaptLinearAgentSession,
 	type LinearAgentSessionData,
 	toLinearActivityContent,
@@ -107,6 +109,47 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	constructor(linearClient: LinearClient, linearToken?: string) {
 		this.linearClient = linearClient;
 		this.linearToken = linearToken;
+
+		// Warn if no token provided (needed for MCP server creation)
+		if (!linearToken) {
+			console.warn(
+				"[LinearIssueTrackerService] No linearToken provided. " +
+					"The createExtendedMcpServer() method will not be available. " +
+					"If you need MCP server support, pass the Linear API token to the constructor.",
+			);
+		}
+
+		// Validate that the LinearClient has rawRequest support
+		this.validateRawRequestSupport();
+	}
+
+	// ========================================================================
+	// VALIDATION METHODS
+	// ========================================================================
+
+	/**
+	 * Validate that the LinearClient has rawRequest support.
+	 *
+	 * @throws Error if rawRequest is not available
+	 * @private
+	 */
+	private validateRawRequestSupport(): void {
+		const client = this.linearClient as unknown;
+		if (
+			!client ||
+			typeof client !== "object" ||
+			!("client" in client) ||
+			typeof (client as { client?: unknown }).client !== "object" ||
+			!(client as { client?: { rawRequest?: unknown } }).client ||
+			typeof (client as { client: { rawRequest?: unknown } }).client
+				.rawRequest !== "function"
+		) {
+			throw new Error(
+				"LinearClient does not support rawRequest API. " +
+					"This may indicate an incompatible @linear/sdk version. " +
+					"Required: @linear/sdk >= 24.0.0",
+			);
+		}
 	}
 
 	// ========================================================================
@@ -120,9 +163,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		try {
 			return await this.linearClient.issue(idOrIdentifier);
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch issue ${idOrIdentifier}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -160,17 +207,16 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 			const children = childrenConnection.nodes ?? [];
 
-			// Return Linear SDK issue with children array directly
-			// Use type assertion since we're adding properties to Linear SDK Issue type
-			return {
-				...parentIssue,
-				children,
-				childCount: children.length,
-			} as IssueWithChildren;
+			// Use adapter to combine parent issue with children array
+			return adaptIssueWithChildren(parentIssue, children);
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch children for issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -199,9 +245,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 			return updatedIssue;
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to update issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -230,9 +280,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				url: attachment.url,
 			}));
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch attachments for issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -267,9 +321,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					: undefined,
 			};
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch comments for issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -280,18 +338,38 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		try {
 			return await this.linearClient.comment({ id: commentId });
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch comment ${commentId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
 	/**
 	 * Fetch a comment with attachments.
 	 *
-	 * Returns the Linear SDK Comment with an attachments array added.
-	 * Linear doesn't currently expose attachments in their GraphQL API,
-	 * so this always returns an empty attachments array for now.
+	 * @param commentId - Comment ID to fetch
+	 * @returns Promise resolving to comment with attachments
+	 * @throws Error if comment not found or request fails
+	 *
+	 * @remarks
+	 * **LIMITATION**: This method currently returns an empty `attachments` array
+	 * because Linear's GraphQL API does not expose comment attachment metadata
+	 * through their SDK or documented API endpoints.
+	 *
+	 * This is expected behavior, not a bug. Issue attachments (via `fetchIssueAttachments`)
+	 * work correctly - only comment attachments are unavailable from the Linear API.
+	 *
+	 * If you need comment attachments, consider:
+	 * - Using issue attachments instead (`fetchIssueAttachments`)
+	 * - Parsing attachment URLs from comment body markdown
+	 * - Waiting for Linear to expose this data in their API
+	 *
+	 * Implementation detail: The returned comment object is a Linear SDK Comment
+	 * with an empty `attachments` array property added via `adaptCommentWithAttachments()`.
 	 */
 	async fetchCommentWithAttachments(
 		commentId: string,
@@ -300,17 +378,16 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			// Fetch the comment using the Linear SDK
 			const comment = await this.fetchComment(commentId);
 
-			// Add attachments property (currently empty as Linear doesn't expose this)
-			// Cast through unknown since CommentWithAttachments extends Comment
-			const commentWithAttachments =
-				comment as unknown as CommentWithAttachments;
-			commentWithAttachments.attachments = [];
-
-			return commentWithAttachments;
+			// Use adapter to add attachments property to the comment
+			return adaptCommentWithAttachments(comment);
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch comment with attachments ${commentId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -330,7 +407,11 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				const attachmentMarkdown = input.attachmentUrls
 					.map((url) => {
 						// Detect if the URL is an image based on file extension
-						const isImage = /\.(png|jpg|jpeg|gif|svg|webp|bmp)$/i.test(url);
+						// Matches common image extensions followed by query params (?), fragments (#), or end of string ($)
+						// Examples: image.png, image.png?v=123, image.png#section, image.png?w=500&h=300
+						const isImage = /\.(png|jpg|jpeg|gif|svg|webp|bmp)(\?|#|$)/i.test(
+							url,
+						);
 						if (isImage) {
 							// Embed as markdown image
 							return `![attachment](${url})`;
@@ -363,9 +444,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 			return createdComment;
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to create comment on issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -396,9 +481,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					: undefined,
 			};
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch teams: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -409,9 +498,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		try {
 			return await this.linearClient.team(idOrKey);
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch team ${idOrKey}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -442,9 +535,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					: undefined,
 			};
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch labels: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -455,9 +552,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		try {
 			return await this.linearClient.issueLabel(idOrName);
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch label ${idOrName}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -492,9 +593,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					: undefined,
 			};
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch workflow states for team ${teamId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -505,9 +610,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		try {
 			return await this.linearClient.workflowState(stateId);
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch workflow state ${stateId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -522,9 +631,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		try {
 			return await this.linearClient.user(userId);
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -535,9 +648,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		try {
 			return await this.linearClient.viewer;
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch current user: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -552,6 +669,9 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		input: AgentSessionCreateOnIssueInput,
 	): Promise<AgentSessionCreateResponse> {
 		try {
+			// Validate rawRequest support before using it
+			this.validateRawRequestSupport();
+
 			const mutation = `
         mutation AgentSessionCreateOnIssue($input: AgentSessionCreateOnIssue!) {
           agentSessionCreateOnIssue(input: $input) {
@@ -587,9 +707,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				lastSyncId: data.lastSyncId,
 			};
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to create agent session on issue ${input.issueId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -600,6 +724,9 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		input: AgentSessionCreateOnCommentInput,
 	): Promise<AgentSessionCreateResponse> {
 		try {
+			// Validate rawRequest support before using it
+			this.validateRawRequestSupport();
+
 			const mutation = `
         mutation AgentSessionCreateOnComment($input: AgentSessionCreateOnComment!) {
           agentSessionCreateOnComment(input: $input) {
@@ -635,9 +762,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				lastSyncId: data.lastSyncId,
 			};
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to create agent session on comment ${input.commentId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -646,6 +777,9 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 */
 	async fetchAgentSession(sessionId: string): Promise<AgentSession> {
 		try {
+			// Validate rawRequest support before using it
+			this.validateRawRequestSupport();
+
 			const query = `
         query GetAgentSession($id: String!) {
           agentSession(id: $id) {
@@ -688,9 +822,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 			return adaptLinearAgentSession(sessionData);
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to fetch agent session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -756,9 +894,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				},
 			};
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to create agent activity on session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -808,9 +950,13 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				assetUrl: uploadFile.assetUrl ?? "",
 			};
 		} catch (error) {
-			throw new Error(
+			const err = new Error(
 				`Failed to request file upload for ${request.filename}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
 		}
 	}
 
@@ -897,8 +1043,9 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	} {
 		if (!this.linearToken) {
 			throw new Error(
-				"LinearIssueTrackerService was not initialized with a linearToken. " +
-					"Pass the token to the constructor to use createExtendedMcpServer().",
+				"LinearIssueTrackerService requires a linearToken to create MCP servers. " +
+					"Pass the token to the constructor: new LinearIssueTrackerService(client, token). " +
+					"The token is needed to configure the Linear MCP server for agent sessions.",
 			);
 		}
 
