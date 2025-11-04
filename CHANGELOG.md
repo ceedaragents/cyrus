@@ -7,11 +7,41 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Orchestrator label now enforces orchestrator procedure consistently - issues with the Orchestrator label always use the orchestrator-full procedure, even when receiving results from child sub-agents or processing new messages
 - Suppressed unnecessary error logs when stopping Claude sessions
-- Repository deletion now works correctly when triggered from the web UI
 
 ### Changed
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.30 - see [@anthropic-ai/claude-agent-sdk v0.1.30 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0130)
 - Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 - see [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.67.0...sdk-v0.68.0)
+
+## [0.2.0-rc.3] - 2025-11-04
+
+### Fixed
+- Repository deletion now works correctly when triggered from the web UI
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.0-rc.3
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.0-rc.3
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.0-rc.3
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.0-rc.3
+
+#### cyrus-core
+- cyrus-core@0.2.0-rc.3
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.0-rc.3
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.0-rc.3
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.0-rc.3
 
 ## [0.2.0-rc.2] - 2025-10-30
 
