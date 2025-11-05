@@ -177,9 +177,6 @@ export class Application {
 							`📦 Starting edge worker with ${repositories.length} repository(ies)...`,
 						);
 
-						// Remove CYRUS_SETUP_PENDING flag from .env
-						await this.removeSetupPendingFlag();
-
 						// Transition to normal operation mode
 						await this.transitionToNormalMode(repositories);
 					}
@@ -191,36 +188,6 @@ export class Application {
 			);
 		} catch (error) {
 			this.logger.error(`❌ Failed to watch config.json: ${error}`);
-		}
-	}
-
-	/**
-	 * Remove CYRUS_SETUP_PENDING flag from .env file
-	 */
-	private async removeSetupPendingFlag(): Promise<void> {
-		const { readFile, writeFile } = await import("node:fs/promises");
-		const envPath = join(this.cyrusHome, ".env");
-
-		if (!existsSync(envPath)) {
-			return;
-		}
-
-		try {
-			const envContent = await readFile(envPath, "utf-8");
-			const updatedContent = envContent
-				.split("\n")
-				.filter((line) => !line.startsWith("CYRUS_SETUP_PENDING="))
-				.join("\n");
-
-			await writeFile(envPath, updatedContent, "utf-8");
-			this.logger.info("✅ Removed CYRUS_SETUP_PENDING flag from .env");
-
-			// Reload environment variables
-			this.loadEnvFile();
-		} catch (error) {
-			this.logger.error(
-				`❌ Failed to remove CYRUS_SETUP_PENDING flag: ${error}`,
-			);
 		}
 	}
 
