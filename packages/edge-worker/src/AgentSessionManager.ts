@@ -212,6 +212,147 @@ export class AgentSessionManager {
 	}
 
 	/**
+	 * Format tool parameters into human-readable strings
+	 * Converts JSON objects into concise, readable descriptions
+	 */
+	private formatToolParameter(toolName: string, toolInput: any): string {
+		// If already a string, return as-is
+		if (typeof toolInput === "string") {
+			return toolInput;
+		}
+
+		// If not an object, stringify it
+		if (typeof toolInput !== "object" || toolInput === null) {
+			return String(toolInput);
+		}
+
+		try {
+			// Tool-specific formatting
+			switch (toolName) {
+				case "Bash":
+					if (toolInput.command) {
+						const desc = toolInput.description
+							? ` (${toolInput.description})`
+							: "";
+						return `${toolInput.command}${desc}`;
+					}
+					break;
+
+				case "Glob":
+					if (toolInput.pattern) {
+						const path = toolInput.path ? ` in ${toolInput.path}` : "";
+						return `${toolInput.pattern}${path}`;
+					}
+					break;
+
+				case "Grep":
+					if (toolInput.pattern) {
+						const opts: string[] = [];
+						if (toolInput.glob) opts.push(`glob: ${toolInput.glob}`);
+						if (toolInput.type) opts.push(`type: ${toolInput.type}`);
+						if (toolInput.path) opts.push(`path: ${toolInput.path}`);
+						const optsStr = opts.length > 0 ? ` (${opts.join(", ")})` : "";
+						return `${toolInput.pattern}${optsStr}`;
+					}
+					break;
+
+				case "Read":
+					if (toolInput.file_path) {
+						const range =
+							toolInput.offset || toolInput.limit
+								? ` (offset: ${toolInput.offset || 0}, limit: ${toolInput.limit || "all"})`
+								: "";
+						return `${toolInput.file_path}${range}`;
+					}
+					break;
+
+				case "Edit":
+					if (toolInput.file_path) {
+						return `${toolInput.file_path}`;
+					}
+					break;
+
+				case "Write":
+					if (toolInput.file_path) {
+						return `${toolInput.file_path}`;
+					}
+					break;
+
+				case "Task": {
+					const parts: string[] = [];
+					if (toolInput.description) parts.push(toolInput.description);
+					if (toolInput.subagent_type)
+						parts.push(`subagent: ${toolInput.subagent_type}`);
+					return parts.join(" - ");
+				}
+
+				case "WebFetch":
+					if (toolInput.url) {
+						return toolInput.url;
+					}
+					break;
+
+				case "WebSearch":
+					if (toolInput.query) {
+						return toolInput.query;
+					}
+					break;
+
+				// MCP tools
+				default:
+					// For MCP tools (prefixed with mcp__), try to extract meaningful info
+					if (toolName.startsWith("mcp__")) {
+						// Extract the most relevant fields (common patterns)
+						const relevantFields = [
+							"query",
+							"url",
+							"path",
+							"command",
+							"selector",
+							"id",
+							"issueId",
+							"title",
+							"name",
+							"description",
+						];
+
+						for (const field of relevantFields) {
+							if (toolInput[field]) {
+								// If it's a simple value, return it
+								if (typeof toolInput[field] === "string") {
+									return toolInput[field];
+								}
+							}
+						}
+
+						// If we have multiple fields, show the first few key-value pairs
+						const entries = Object.entries(toolInput);
+						if (entries.length > 0) {
+							return entries
+								.slice(0, 3)
+								.map(([k, v]) => {
+									if (typeof v === "string") {
+										return `${k}: ${v.length > 50 ? `${v.substring(0, 50)}...` : v}`;
+									}
+									return `${k}: ${JSON.stringify(v)}`;
+								})
+								.join(", ");
+						}
+					}
+			}
+
+			// Default: show JSON but more compact
+			return JSON.stringify(toolInput, null, 2);
+		} catch (error) {
+			console.error(
+				"[AgentSessionManager] Failed to format tool parameter:",
+				error,
+			);
+			return JSON.stringify(toolInput, null, 2);
+		}
+	}
+
+	/**
 	 * Complete a session from Claude result message
 	 */
 	async completeSession(
@@ -766,11 +907,12 @@ export class AgentSessionManager {
 								return;
 							}
 
-							// Format input for display
-							const formattedInput =
-								typeof toolInput === "string"
-									? toolInput
-									: JSON.stringify(toolInput, null, 2);
+							// Format input for display using the new formatter
+							const baseToolName = toolName.replace(/^↪ /, ""); // Remove arrow prefix for formatting
+							const formattedInput = this.formatToolParameter(
+								baseToolName,
+								toolInput,
+							);
 
 							// Use tool output directly without collapsible wrapping
 							const wrappedResult = toolResult.content?.trim() || "";
@@ -826,7 +968,10 @@ export class AgentSessionManager {
 							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Special handling for Task tool - add start marker and track active task
-							const parameter = entry.content;
+							const parameter = this.formatToolParameter(
+								toolName,
+								entry.metadata.toolInput || entry.content,
+							);
 							const displayName = toolName;
 
 							// Track this as the active Task for this session
@@ -847,7 +992,10 @@ export class AgentSessionManager {
 							ephemeral = false;
 						} else {
 							// Other tools - check if they're within an active Task
-							const parameter = entry.content;
+							const parameter = this.formatToolParameter(
+								toolName,
+								entry.metadata.toolInput || entry.content,
+							);
 							let displayName = toolName;
 
 							if (entry.metadata?.parentToolUseId) {
