@@ -10,8 +10,11 @@ export class StartCommand extends BaseCommand {
 			const edgeConfig = this.app.config.load();
 			const repositories = edgeConfig.repositories || [];
 
-			// Check if we need to start in setup waiting mode (no repositories configured)
-			if (repositories.length === 0) {
+			// Check if we need to start in setup waiting mode
+			// Only enter setup waiting mode if:
+			// 1. No repositories configured AND
+			// 2. This is the initial setup (awaiting first repository)
+			if (repositories.length === 0 && this.app.isAwaitingInitialConfig()) {
 				// Enable setup waiting mode and start config watcher
 				this.app.enableSetupWaitingMode();
 
@@ -22,6 +25,21 @@ export class StartCommand extends BaseCommand {
 				this.app.setupSignalHandlers();
 
 				// Keep process alive and wait for configuration
+				return;
+			}
+
+			// If no repositories but not awaiting initial config, just run normally
+			// (user removed all repos, but we don't show setup messages)
+			if (repositories.length === 0) {
+				this.logger.info("No repositories configured");
+				this.logger.info("Add repositories through the web UI");
+
+				// Start server infrastructure without EdgeWorker
+				await this.app.worker.startSetupWaitingMode();
+
+				// Setup signal handlers for graceful shutdown
+				this.app.setupSignalHandlers();
+
 				return;
 			}
 

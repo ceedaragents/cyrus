@@ -84,10 +84,10 @@ export class Application {
 
 	/**
 	 * Ensure required Cyrus directories exist
-	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs
+	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs, ~/.cyrus/state
 	 */
 	private ensureRequiredDirectories(): void {
-		const requiredDirs = ["repos", "worktrees", "mcp-configs"];
+		const requiredDirs = ["repos", "worktrees", "mcp-configs", "state"];
 
 		for (const dir of requiredDirs) {
 			const dirPath = join(this.cyrusHome, dir);
@@ -101,6 +101,39 @@ export class Application {
 					);
 					throw error;
 				}
+			}
+		}
+	}
+
+	/**
+	 * Check if this is the initial setup (awaiting first repository configuration)
+	 */
+	isAwaitingInitialConfig(): boolean {
+		const flagPath = join(this.cyrusHome, "state", "awaiting-initial-config");
+		return existsSync(flagPath);
+	}
+
+	/**
+	 * Set flag indicating we're awaiting initial repository configuration
+	 */
+	setAwaitingInitialConfig(): void {
+		const { writeFileSync } = require("node:fs");
+		const flagPath = join(this.cyrusHome, "state", "awaiting-initial-config");
+		writeFileSync(flagPath, new Date().toISOString(), "utf-8");
+	}
+
+	/**
+	 * Clear the awaiting initial configuration flag
+	 */
+	private clearAwaitingInitialConfig(): void {
+		const { unlinkSync } = require("node:fs");
+		const flagPath = join(this.cyrusHome, "state", "awaiting-initial-config");
+		if (existsSync(flagPath)) {
+			try {
+				unlinkSync(flagPath);
+				this.logger.info("✅ Cleared initial setup flag");
+			} catch (error) {
+				this.logger.error(`❌ Failed to clear initial setup flag: ${error}`);
 			}
 		}
 	}
@@ -199,6 +232,9 @@ export class Application {
 	): Promise<void> {
 		try {
 			this.isInSetupWaitingMode = false;
+
+			// Clear the initial setup flag since we now have repositories
+			this.clearAwaitingInitialConfig();
 
 			// Close config watcher
 			if (this.configWatcher) {

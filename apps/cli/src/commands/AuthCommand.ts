@@ -68,6 +68,9 @@ CYRUS_API_KEY=${configResponse.config!.apiKey}
 			const dotenv = await import("dotenv");
 			dotenv.config({ path: envPath, override: true });
 
+			// Set flag indicating we're awaiting initial repository configuration
+			this.app.setAwaitingInitialConfig();
+
 			console.log("\n✨ Setup complete! Starting Cyrus...");
 			this.logDivider();
 			console.log();
