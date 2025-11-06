@@ -96,6 +96,64 @@ export class WorkerService {
 	}
 
 	/**
+	 * Start waiting mode for when no repositories are configured (after user removed all repos)
+	 * Shows different messaging than initial setup waiting mode
+	 */
+	async startNoRepositoriesMode(): Promise<void> {
+		const { SharedApplicationServer } = await import("cyrus-edge-worker");
+		const { ConfigUpdater } = await import("cyrus-config-updater");
+
+		// Determine server configuration
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const serverPort = parsePort(
+			process.env.CYRUS_SERVER_PORT,
+			DEFAULT_SERVER_PORT,
+		);
+		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
+
+		// Create and start SharedApplicationServer
+		this.setupWaitingServer = new SharedApplicationServer(
+			serverPort,
+			serverHost,
+		);
+		this.setupWaitingServer.initializeFastify();
+
+		// Register ConfigUpdater routes
+		const configUpdater = new ConfigUpdater(
+			this.setupWaitingServer.getFastifyInstance(),
+			this.cyrusHome,
+			process.env.CYRUS_API_KEY || "",
+		);
+		configUpdater.register();
+
+		this.logger.info("✅ Config updater registered");
+		this.logger.info(
+			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
+		);
+		this.logger.info(
+			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
+
+		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
+		await this.setupWaitingServer.start();
+
+		this.logger.raw("");
+		this.logger.divider(70);
+		this.logger.info("No repositories configured");
+		this.logger.info(`🔗 Server running on port ${serverPort}`);
+
+		if (process.env.CLOUDFLARE_TOKEN) {
+			this.logger.info("🌩️  Cloudflare tunnel: Active");
+		}
+
+		this.logger.info("📡 Config updater: Ready");
+		this.logger.raw("");
+		this.logger.info("Add repositories at: https://app.atcyrus.com/repos");
+		this.logger.divider(70);
+	}
+
+	/**
 	 * Stop the setup waiting mode server
 	 * Must be called before starting EdgeWorker to avoid port conflicts
 	 */

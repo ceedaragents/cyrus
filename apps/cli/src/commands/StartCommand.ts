@@ -31,11 +31,8 @@ export class StartCommand extends BaseCommand {
 			// If no repositories but not awaiting initial config, just run normally
 			// (user removed all repos, but we don't show setup messages)
 			if (repositories.length === 0) {
-				this.logger.info("No repositories configured");
-				this.logger.info("Add repositories at https://app.atcyrus.com/repos");
-
-				// Start server infrastructure without EdgeWorker
-				await this.app.worker.startSetupWaitingMode();
+				// Start server infrastructure without EdgeWorker, showing "no repos" message
+				await this.app.worker.startNoRepositoriesMode();
 
 				// Setup signal handlers for graceful shutdown
 				this.app.setupSignalHandlers();
