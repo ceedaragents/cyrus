@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, watch } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	unlinkSync,
+	watch,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type { RepositoryConfig } from "cyrus-core";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
@@ -117,7 +123,6 @@ export class Application {
 	 * Set flag indicating we're awaiting initial repository configuration
 	 */
 	setAwaitingInitialConfig(): void {
-		const { writeFileSync } = require("node:fs");
 		const flagPath = join(this.cyrusHome, "state", "awaiting-initial-config");
 		writeFileSync(flagPath, new Date().toISOString(), "utf-8");
 	}
@@ -126,7 +131,6 @@ export class Application {
 	 * Clear the awaiting initial configuration flag
 	 */
 	private clearAwaitingInitialConfig(): void {
-		const { unlinkSync } = require("node:fs");
 		const flagPath = join(this.cyrusHome, "state", "awaiting-initial-config");
 		if (existsSync(flagPath)) {
 			try {
