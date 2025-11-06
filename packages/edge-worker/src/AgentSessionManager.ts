@@ -216,9 +216,21 @@ export class AgentSessionManager {
 	 * Converts JSON objects into concise, readable descriptions
 	 */
 	private formatToolParameter(toolName: string, toolInput: any): string {
-		// If already a string, return as-is
+		// If it's a string, try to parse it as JSON first
 		if (typeof toolInput === "string") {
-			return toolInput;
+			try {
+				const parsed = JSON.parse(toolInput);
+				if (typeof parsed === "object" && parsed !== null) {
+					// Successfully parsed, use the object
+					toolInput = parsed;
+				} else {
+					// Parsed but not an object, return as-is
+					return toolInput;
+				}
+			} catch {
+				// Not JSON, return as-is
+				return toolInput;
+			}
 		}
 
 		// If not an object, stringify it
