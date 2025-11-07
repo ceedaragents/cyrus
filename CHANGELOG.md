@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Cyrus client now stays running when all repositories are removed after onboarding, allowing it to receive new configuration from app.atcyrus.com
 - Orchestrator label now enforces orchestrator procedure consistently - issues with the Orchestrator label always use the orchestrator-full procedure, even when receiving results from child sub-agents or processing new messages
 - Suppressed unnecessary error logs when stopping Claude sessions
 
