@@ -170,15 +170,6 @@ export class WorkerService {
 	}
 
 	/**
-	 * @deprecated Use stopWaitingServer() instead
-	 * Stop the setup waiting mode server
-	 * Must be called before starting EdgeWorker to avoid port conflicts
-	 */
-	async stopSetupWaitingMode(): Promise<void> {
-		await this.stopWaitingServer();
-	}
-
-	/**
 	 * Start the EdgeWorker with given configuration
 	 */
 	async startEdgeWorker(params: {
