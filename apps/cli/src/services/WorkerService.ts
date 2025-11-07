@@ -152,7 +152,7 @@ export class WorkerService {
 		this.logger.info(
 			"Waiting for repository configuration from app.atcyrus.com",
 		);
-		this.logger.info("Add repositories at: https://app.atcyrus.com/");
+		this.logger.info("Add repositories at: https://app.atcyrus.com/repos");
 		this.logger.divider(70);
 	}
 
