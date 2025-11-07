@@ -9,8 +9,9 @@ All notable changes to this project will be documented in this file.
 - Suppressed unnecessary error logs when stopping Claude sessions
 
 ### Changed
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.30 - see [@anthropic-ai/claude-agent-sdk v0.1.30 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0130)
-- Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 - see [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.67.0...sdk-v0.68.0)
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.30 to v0.1.35 - see [@anthropic-ai/claude-agent-sdk v0.1.35 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0135)
+  - Note: Changelog entries for versions 0.1.31-0.1.35 are not yet documented in the repository
+- Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 (already on latest) - see [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.67.0...sdk-v0.68.0)
 
 ## [0.2.0-rc.3] - 2025-11-04
 
