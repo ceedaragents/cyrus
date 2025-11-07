@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0-rc.4] - 2025-11-07
+
 ### Fixed
 - Cyrus client now stays running when all repositories are removed after onboarding, allowing it to receive new configuration from app.atcyrus.com
 - Orchestrator label now enforces orchestrator procedure consistently - issues with the Orchestrator label always use the orchestrator-full procedure, even when receiving results from child sub-agents or processing new messages
@@ -12,6 +14,32 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.30 - see [@anthropic-ai/claude-agent-sdk v0.1.30 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0130)
 - Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 - see [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.67.0...sdk-v0.68.0)
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.0-rc.4
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.0-rc.4
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.0-rc.4
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.0-rc.4
+
+#### cyrus-core
+- cyrus-core@0.2.0-rc.4
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.0-rc.4
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.0-rc.4
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.0-rc.4
 
 ## [0.2.0-rc.3] - 2025-11-04
 

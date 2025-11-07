@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-claude-runner",
-	"version": "0.2.0-rc.3",
+	"version": "0.2.0-rc.4",
 	"description": "Claude process spawning and management for Cyrus",
 	"type": "module",
 	"main": "dist/index.js",
