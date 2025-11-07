@@ -52,26 +52,31 @@ After initial setup, Cyrus stores your configuration in `~/.cyrus/config.json`. 
 Each repository in the `repositories` array can have these optional properties:
 
 #### `allowedTools` (array of strings)
+
 Controls which tools Claude can use when processing issues. Default: all standard tools plus `Bash(git:*)` and `Bash(gh:*)`.
 
 Examples:
+
 - `["Read(**)", "Edit(**)", "Bash(git:*)", "Task"]` - Allow reading, editing, git commands, and task management
 - `["Read(**)", "Edit(**)", "Bash(npm:*)", "WebSearch"]` - Allow reading, editing, npm commands, and web search
 - `["Read(**)", "Edit(**)", "mcp__github"]` - Allow all tools from the GitHub MCP server
 - `["Read(**)", "Edit(**)", "mcp__github__search_repositories"]` - Allow only the search_repositories tool from GitHub MCP
 
-For security configuration details, see: https://docs.anthropic.com/en/docs/claude-code/settings#permissions
+For security configuration details, see: https://code.claude.com/docs/en/settings#permission-settings 
 
 #### `mcpConfigPath` (string or array of strings)
+
 Path(s) to MCP (Model Context Protocol) configuration files. MCP allows Claude to access external tools and data sources like databases or APIs.
 
 Can be specified as:
+
 - A single string: `"mcpConfigPath": "/home/user/myapp/mcp-config.json"`
 - An array of strings: `"mcpConfigPath": ["/home/user/myapp/mcp-base.json", "/home/user/myapp/mcp-local.json"]`
 
 When multiple files are provided, configurations are composed together. Later files override earlier ones for the same server names.
 
 Expected file format:
+
 ```json
 {
   "mcpServers": {
@@ -84,14 +89,16 @@ Expected file format:
 }
 ```
 
-Learn more about MCP: https://docs.anthropic.com/en/docs/claude-code/mcp
+Learn more about MCP: https://code.claude.com/docs/en/mcp
 
 #### `teamKeys` (array of strings)
+
 Routes Linear issues from specific teams to this repository. When specified, only issues from matching teams trigger Cyrus.
 
 Example: `["CEE", "FRONT", "BACK"]` - Only process issues from teams CEE, FRONT, and BACK
 
 #### `projectKeys` (array of strings)
+
 Routes Linear issues from specific projects to this repository. When specified, only issues belonging to the listed Linear projects will be processed by this repository.
 
 Example: `["Mobile App", "Web Platform", "API Service"]` - Only process issues that belong to these Linear projects
@@ -99,6 +106,7 @@ Example: `["Mobile App", "Web Platform", "API Service"]` - Only process issues t
 Note: This is useful when you want to separate work by project rather than by team, especially in organizations where multiple projects span across teams.
 
 #### `routingLabels` (array of strings)
+
 Routes Linear issues with specific labels to this repository. This is useful when you have multiple repositories handling issues from the same Linear team but want to route based on labels (e.g., "backend" vs "frontend" labels).
 
 Example: `["backend", "api"]` - Only process issues that have the "backend" or "api" label
@@ -108,15 +116,17 @@ Example: `["backend", "api"]` - Only process issues that have the "backend" or "
 When multiple routing configurations are present, Cyrus evaluates them in the following priority order:
 
 1. **`routingLabels`** (highest priority) - Label-based routing
-2. **`projectKeys`** (medium priority) - Project-based routing  
+2. **`projectKeys`** (medium priority) - Project-based routing
 3. **`teamKeys`** (lowest priority) - Team-based routing
 
 If an issue matches multiple routing configurations, the highest priority match will be used. For example, if an issue has a label that matches `routingLabels` and also belongs to a project in `projectKeys`, the label-based routing will take precedence.
 
 #### `labelPrompts` (object)
+
 Routes issues to different AI modes based on Linear labels and optionally configures allowed tools per mode.
 
 **Simple format (labels only):**
+
 ```json
 {
   "debugger": ["Bug"],
@@ -126,6 +136,7 @@ Routes issues to different AI modes based on Linear labels and optionally config
 ```
 
 **Advanced format (with dynamic tool configuration):**
+
 ```json
 {
   "debugger": {
@@ -144,17 +155,22 @@ Routes issues to different AI modes based on Linear labels and optionally config
 ```
 
 **Modes:**
+
 - **debugger**: Systematic problem investigation mode
 - **builder**: Feature implementation mode
 - **scoper**: Requirements analysis mode
 
 **Tool Presets:**
+
 - **`"readOnly"`**: Only tools that read/view content (7 tools)
-  - `Read(**)`, `WebFetch`, `WebSearch`, `TodoRead`, `NotebookRead`, `Task`, `Batch`
+   - `Read(**)`, `WebFetch`, `WebSearch`, `TodoRead`, `NotebookRead`, `Task`, `Batch`
+
 - **`"safe"`**: All tools except Bash (10 tools)
-  - All readOnly tools plus: `Edit(**)`, `TodoWrite`, `NotebookEdit`
+   - All readOnly tools plus: `Edit(**)`, `TodoWrite`, `NotebookEdit`
+
 - **`"all"`**: All available tools including Bash (11 tools)
-  - All safe tools plus: `Bash`
+   - All safe tools plus: `Bash`
+
 - **Custom array**: Specify exact tools needed, e.g., `["Read(**)", "Edit(**)", "Task"]`
 
 Note: Linear MCP tools (`mcp__linear`) are always included automatically.
@@ -164,6 +180,7 @@ Note: Linear MCP tools (`mcp__linear`) are always included automatically.
 In addition to repository-specific settings, you can configure global defaults:
 
 #### `promptDefaults` (object)
+
 Sets default allowed tools for each prompt type across all repositories. Repository-specific configurations override these defaults.
 
 ```json
@@ -224,6 +241,7 @@ Sets default allowed tools for each prompt type across all repositories. Reposit
 ### Tool Configuration Priority
 
 When determining allowed tools, Cyrus follows this priority order:
+
 1. Repository-specific prompt configuration (`labelPrompts.debugger.allowedTools`)
 2. Global prompt defaults (`promptDefaults.debugger.allowedTools`)
 3. Repository-level allowed tools (`allowedTools`)
@@ -233,7 +251,7 @@ When determining allowed tools, Cyrus follows this priority order:
 ## Setup on Remote Host
 
 <details>
-  
+
 If you want to host Cyrus on a remote machine for 24/7 availability, follow these steps on a newly created virtual machine to get started.
 
 1. Install `gh`, `npm`, and `git`
@@ -305,6 +323,7 @@ CYRUS_BASE_URL=<your publicly accessible URL>
 Cyrus needs to receive webhooks from Linear, so you need a publicly accessible URL. Choose one of these options:
 
 **Option 1: Using ngrok (for development/testing)**
+
 ```bash
 # In a separate tmux session
 tmux new -s ngrok-session
@@ -318,6 +337,7 @@ export CYRUS_SERVER_PORT=3456
 ```
 
 **Option 2: Direct server with domain/IP**
+
 ```bash
 # If your server has a public IP or domain
 export CYRUS_BASE_URL=https://your-domain.com
@@ -327,6 +347,7 @@ export CYRUS_SERVER_PORT=3456
 ```
 
 **Option 3: Behind reverse proxy (nginx, caddy, etc.)**
+
 ```bash
 # Configure your reverse proxy to forward /webhook and /callback to localhost:3456
 export CYRUS_BASE_URL=https://your-domain.com
@@ -345,8 +366,8 @@ tmux new -s cyrus-session # Can name whatever you'd like
 # To later 'attach' to it again
 tmux attach -t cyrus-session
 ```
-</details>
 
+</details>
 
 ## Repository Setup Script
 
@@ -397,6 +418,7 @@ Add `global_setup_script` to your `~/.cyrus/config.json`:
 ### Execution Order
 
 When creating a new worktree:
+
 1. **Global script** runs first (if configured)
 2. **Repository script** (`cyrus-setup.sh`) runs second (if exists)
 
@@ -436,8 +458,8 @@ Developed by [Ceedar](https://ceedar.ai/)
 This projects builds on the technologies built by the awesome teams at Linear, and Claude by Anthropic:
 
 - [Linear API](https://linear.app/developers)
-- [Anthropic Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
+- [Anthropic Claude Code](https://code.claude.com/docs/en/overview)
 
 ---
 
-_This README was last updated: June 11 2025_
+_This README was last updated: November 7 2025_
