@@ -28,16 +28,19 @@ export class StartCommand extends BaseCommand {
 				return;
 			}
 
-			// Validate we have repositories configured (normal operation mode)
+			// Check if we're in idle mode (no repositories, post-onboarding)
 			if (repositories.length === 0) {
-				this.logError("No repositories configured");
-				this.logger.info(
-					"\nRepositories must be configured in ~/.cyrus/config.json or via environment variables",
-				);
-				this.logger.info(
-					"See https://github.com/ceedaragents/cyrus#configuration for details",
-				);
-				process.exit(1);
+				// Enable idle mode and start config watcher
+				this.app.enableIdleMode();
+
+				// Start idle mode - server infrastructure only, no EdgeWorker
+				await this.app.worker.startIdleMode();
+
+				// Setup signal handlers for graceful shutdown
+				this.app.setupSignalHandlers();
+
+				// Keep process alive and wait for configuration
+				return;
 			}
 
 			// Start the edge worker (SharedApplicationServer will start Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
