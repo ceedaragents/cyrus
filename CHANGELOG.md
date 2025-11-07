@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0-rc.5] - 2025-11-07
+
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.30 to v0.1.31 - see [@anthropic-ai/claude-agent-sdk v0.1.31 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0131)
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.0-rc.5
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.0-rc.5
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.0-rc.5
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.0-rc.5
+
+#### cyrus-core
+- cyrus-core@0.2.0-rc.5
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.0-rc.5
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.0-rc.5
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.0-rc.5
+
 ## [0.2.0-rc.4] - 2025-11-07
 
 ### Fixed
