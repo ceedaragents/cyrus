@@ -76,7 +76,8 @@ No comments yet.
 		// Create repository with labelPrompts configuration
 		const repository = {
 			id: "repo-uuid-5678-9012-34ef-123456789012",
-			path: "/test/repo",
+			repositoryPath: "/test/repo",
+			workspaceBaseDir: "/test/workspace",
 			linearToken: "test-token-123", // Mock token for testing
 			labelPrompts: {
 				builder: ["feature", "enhancement"],

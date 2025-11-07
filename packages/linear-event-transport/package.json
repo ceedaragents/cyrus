@@ -1,0 +1,27 @@
+{
+	"name": "cyrus-linear-event-transport",
+	"version": "0.2.0",
+	"description": "Linear event transport for receiving and verifying Linear webhooks",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@linear/sdk": "^58.0.0",
+		"fastify": "^5.2.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}
