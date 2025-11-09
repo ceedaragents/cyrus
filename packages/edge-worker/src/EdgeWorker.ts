@@ -4626,8 +4626,10 @@ ${input.userComment}
 			return;
 		}
 
-		// Stop existing runner if it's not streaming
-		if (existingRunner) {
+		// Stop existing runner only if it's not running
+		// Fix for CYPACK-360: isStreaming() returns false after streamingPrompt.complete()
+		// but before the runner finishes, causing premature abort. Check isRunning() instead.
+		if (existingRunner && !existingRunner.isRunning()) {
 			existingRunner.stop();
 		}
 
