@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.31 to v0.1.37 - see [@anthropic-ai/claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for versions [0.1.37](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0137), [0.1.36](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0136), [0.1.35](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0135), [0.1.34](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0134), [0.1.33](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0133), and [0.1.32](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0132). These updates maintain parity with Claude Code versions 2.0.33 through 2.0.37.
+
 ## [0.2.0] - 2025-11-07
 
 ### Added
