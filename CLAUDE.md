@@ -13,7 +13,6 @@ Cyrus (Linear Claude Agent) is a monorepo JavaScript/TypeScript application that
 - Posts responses back to Linear as comments
 - Maintains conversation continuity using the `--continue` flag
 - Supports edge worker mode for distributed processing
-Here's a refined version of your message:
 
 ## Working with SDKs
 
@@ -32,6 +31,7 @@ When examining or working with a package SDK:
 
 The codebase follows a pnpm monorepo structure:
 
+```
 cyrus/
 ├── apps/
 │   ├── cli/          # Main CLI application
