@@ -154,6 +154,7 @@ export class ClaudeRunner extends EventEmitter {
 	private readableLogStream: WriteStream | null = null;
 	private messages: SDKMessage[] = [];
 	private streamingPrompt: StreamingPrompt | null = null;
+	private isCompleting = false;
 	private cyrusHome: string;
 
 	constructor(config: ClaudeRunnerConfig) {
@@ -462,11 +463,14 @@ export class ClaudeRunner extends EventEmitter {
 				this.processMessage(message);
 
 				// If we get a result message while streaming, complete the stream
-				if (message.type === "result" && this.streamingPrompt) {
+				if (message.type === "result") {
 					console.log(
 						"[ClaudeRunner] Got result message, completing streaming prompt",
 					);
-					this.streamingPrompt.complete();
+					this.isCompleting = true;
+					if (this.streamingPrompt) {
+						this.streamingPrompt.complete();
+					}
 				}
 			}
 
@@ -502,6 +506,7 @@ export class ClaudeRunner extends EventEmitter {
 			}
 		} finally {
 			// Clean up
+			this.isCompleting = false;
 			this.abortController = null;
 
 			// Complete and clean up streaming prompt if it exists
@@ -575,6 +580,14 @@ export class ClaudeRunner extends EventEmitter {
 	 * Stop the current Claude session
 	 */
 	stop(): void {
+		// Don't abort if we're in the final stages of completion
+		if (this.isCompleting) {
+			console.log(
+				"[ClaudeRunner] Session completing naturally, skipping abort",
+			);
+			return;
+		}
+
 		if (this.abortController) {
 			console.log("[ClaudeRunner] Stopping Claude session");
 			this.abortController.abort();
