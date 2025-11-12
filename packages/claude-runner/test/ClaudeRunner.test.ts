@@ -824,4 +824,122 @@ describe("ClaudeRunner", () => {
 			// (This tests the filtering logic in writeReadableLogEntry)
 		});
 	});
+
+	describe("Race Condition - Subroutine Transitions", () => {
+		it("should not throw AbortError when stop() is called during result message processing", async () => {
+			// This test reproduces CYPACK-364: Race condition during subroutine transitions
+			// The race occurs when:
+			// 1. Result message arrives and triggers onMessage callback
+			// 2. Callback calls stop() before query loop completes naturally
+			// 3. WITHOUT the fix, this causes abortController.abort() to be called
+			// 4. WITH the fix (isCompleting flag), abort() is skipped
+
+			let stopCalledDuringProcessing = false;
+			let abortedDuringProcessing = false;
+
+			const mockMessages: SDKMessage[] = [
+				{
+					type: "assistant",
+					message: { content: [{ type: "text", text: "Task complete" }] },
+					parent_tool_use_id: null,
+					session_id: "test-session",
+				} as any,
+				{
+					type: "result",
+					subtype: "success",
+					duration_ms: 1000,
+					total_cost_usd: 0.01,
+					session_id: "test-session",
+				} as any,
+			];
+
+			mockQuery.mockImplementation(async function* ({ options }) {
+				for (const message of mockMessages) {
+					yield message;
+
+					// Simulate the race: if this is the result message,
+					// yield for a moment to allow callbacks to run
+					if (message.type === "result") {
+						// Small delay to simulate async callback execution
+						await new Promise((resolve) => setTimeout(resolve, 5));
+
+						// Check if abortController was aborted by stop() call
+						// WITH the fix: should be false (stop() was skipped)
+						// WITHOUT the fix: would be true (stop() called abort())
+						if (options.abortController.signal.aborted) {
+							abortedDuringProcessing = true;
+							throw new AbortError("Claude Code process aborted by user");
+						}
+					}
+				}
+			});
+
+			// Set up onMessage callback that calls stop() when result arrives
+			// This simulates EdgeWorker.resumeClaudeSession() calling existingRunner.stop()
+			runner.on("message", (message) => {
+				if (message.type === "result") {
+					// This is what happens in production: callback calls stop()
+					// immediately upon receiving result message
+					runner.stop();
+					stopCalledDuringProcessing = true;
+				}
+			});
+
+			// Start the session
+			await runner.start("test");
+
+			// Verify stop was actually called during processing
+			expect(stopCalledDuringProcessing).toBe(true);
+
+			// WITH the fix: abortController.abort() should NOT have been called
+			// WITHOUT the fix: abortController.abort() would have been called
+			expect(abortedDuringProcessing).toBe(false);
+
+			// Verify session completed successfully (not running anymore)
+			expect(runner.isRunning()).toBe(false);
+		});
+
+		it("should allow stop() to be called multiple times during completion without error", async () => {
+			// Edge case: multiple stop() calls during the completion window
+
+			const errorHandler = vi.fn();
+
+			const mockMessages: SDKMessage[] = [
+				{
+					type: "result",
+					subtype: "success",
+					duration_ms: 1000,
+					session_id: "test-session",
+				} as any,
+			];
+
+			mockQuery.mockImplementation(async function* ({ options }) {
+				for (const message of mockMessages) {
+					yield message;
+					await new Promise((resolve) => setTimeout(resolve, 5));
+				}
+
+				if (options.abortController.signal.aborted) {
+					throw new AbortError("Aborted");
+				}
+			});
+
+			runner.on("message", (message) => {
+				if (message.type === "result") {
+					// Call stop() multiple times
+					runner.stop();
+					runner.stop();
+					runner.stop();
+				}
+			});
+
+			runner.on("error", errorHandler);
+
+			// Should complete without error despite multiple stop() calls
+			await runner.start("test");
+
+			// No errors should be emitted
+			expect(errorHandler).not.toHaveBeenCalled();
+		});
+	});
 });

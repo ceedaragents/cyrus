@@ -458,6 +458,13 @@ export class ClaudeRunner extends EventEmitter {
 					this.writeReadableLogEntry(message);
 				}
 
+				// Set isCompleting flag BEFORE emitting to prevent race condition
+				// This ensures callbacks that call stop() during result message processing
+				// will find isCompleting=true and skip the abort
+				if (message.type === "result") {
+					this.isCompleting = true;
+				}
+
 				// Emit appropriate events based on message type
 				this.emit("message", message);
 				this.processMessage(message);
@@ -467,7 +474,6 @@ export class ClaudeRunner extends EventEmitter {
 					console.log(
 						"[ClaudeRunner] Got result message, completing streaming prompt",
 					);
-					this.isCompleting = true;
 					if (this.streamingPrompt) {
 						this.streamingPrompt.complete();
 					}
