@@ -106,6 +106,8 @@ interface CLITeamData {
 	key: string;
 	name: string;
 	description?: string;
+	createdAt: Date;
+	updatedAt: Date;
 }
 
 /**
@@ -205,6 +207,8 @@ export class CLIIssueTrackerService
 			id: "team-1",
 			key: "CLI",
 			name: "CLI Team",
+			createdAt: new Date(),
+			updatedAt: new Date(),
 		};
 
 		// Initialize default workflow states (plain data)
@@ -320,8 +324,8 @@ export class CLIIssueTrackerService
 			description: data.description,
 			// Stub out other required fields
 			private: false,
-			createdAt: new Date(),
-			updatedAt: new Date(),
+			createdAt: data.createdAt,
+			updatedAt: data.updatedAt,
 			archivedAt: undefined,
 		} as Team;
 	}
