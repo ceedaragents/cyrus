@@ -1,8 +1,12 @@
 import { exec } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import type { ApiResponse, RepositoryPayload } from "../types.js";
+import type {
+	ApiResponse,
+	DeleteRepositoryPayload,
+	RepositoryPayload,
+} from "../types.js";
 
 const execAsync = promisify(exec);
 
@@ -131,6 +135,95 @@ export async function handleRepository(
 		return {
 			success: false,
 			error: "Repository operation failed",
+			details: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+/**
+ * Handle repository deletion
+ * - Removes repository directory from ~/.cyrus/repos/<repo-name>
+ * - Removes worktrees from ~/.cyrus/workspaces/<linear-team-key>/<repo-name>
+ */
+export async function handleRepositoryDelete(
+	payload: DeleteRepositoryPayload,
+	cyrusHome: string,
+): Promise<ApiResponse> {
+	try {
+		// Validate payload
+		if (
+			!payload.repository_name ||
+			typeof payload.repository_name !== "string"
+		) {
+			return {
+				success: false,
+				error: "Repository name is required",
+				details:
+					"Please provide a valid repository name to delete (e.g., 'my-repo')",
+			};
+		}
+
+		const repoName = payload.repository_name;
+		const reposDir = join(cyrusHome, "repos");
+		const repoPath = join(reposDir, repoName);
+
+		// Check if repository exists
+		if (!existsSync(repoPath)) {
+			return {
+				success: true,
+				message: "Repository does not exist (already deleted)",
+				data: {
+					name: repoName,
+					action: "skipped",
+				},
+			};
+		}
+
+		// Remove repository directory
+		try {
+			rmSync(repoPath, { recursive: true, force: true });
+		} catch (error) {
+			return {
+				success: false,
+				error: "Failed to delete repository directory",
+				details: `Could not remove directory at ${repoPath}: ${error instanceof Error ? error.message : String(error)}`,
+			};
+		}
+
+		// Remove worktrees if linear_team_key is provided
+		const deletedWorktrees: string[] = [];
+		if (payload.linear_team_key) {
+			const workspacesDir = join(cyrusHome, "workspaces");
+			const teamWorkspaceDir = join(workspacesDir, payload.linear_team_key);
+			const teamRepoWorkspaceDir = join(teamWorkspaceDir, repoName);
+
+			if (existsSync(teamRepoWorkspaceDir)) {
+				try {
+					rmSync(teamRepoWorkspaceDir, { recursive: true, force: true });
+					deletedWorktrees.push(teamRepoWorkspaceDir);
+				} catch (error) {
+					// Log warning but don't fail - repository was already deleted
+					console.warn(
+						`Failed to delete worktrees at ${teamRepoWorkspaceDir}: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}
+		}
+
+		return {
+			success: true,
+			message: "Repository deleted successfully",
+			data: {
+				name: repoName,
+				path: repoPath,
+				action: "deleted",
+				worktrees_deleted: deletedWorktrees,
+			},
+		};
+	} catch (error) {
+		return {
+			success: false,
+			error: "Repository deletion failed",
 			details: error instanceof Error ? error.message : String(error),
 		};
 	}

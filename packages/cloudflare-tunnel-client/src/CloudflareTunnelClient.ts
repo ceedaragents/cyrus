@@ -95,6 +95,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 			// Listen for exit event
 			tunnel.on("exit", (code: number | null) => {
 				this.connected = false;
+				this.connectionCount = 0; // Reset count on disconnect for fresh reconnection logs
 				this.emit("disconnect", `Tunnel process exited with code ${code}`);
 			});
 
@@ -145,6 +146,7 @@ export class CloudflareTunnelClient extends EventEmitter {
 		}
 
 		this.connected = false;
+		this.connectionCount = 0; // Reset count on disconnect for fresh reconnection logs
 		this.emit("disconnect", "Client disconnected");
 	}
 }

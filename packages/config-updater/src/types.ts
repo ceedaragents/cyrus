@@ -8,6 +8,15 @@ export interface RepositoryPayload {
 }
 
 /**
+ * Repository deletion payload
+ * Sent by cyrus-hosted when removing a repository
+ */
+export interface DeleteRepositoryPayload {
+	repository_name: string; // Repository name to delete
+	linear_team_key: string; // Linear team key (optional, for worktree cleanup)
+}
+
+/**
  * Cyrus config update payload
  */
 export interface CyrusConfigPayload {

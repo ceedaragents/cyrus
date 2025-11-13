@@ -3,7 +3,10 @@ import { handleCheckGh } from "./handlers/checkGh.js";
 import { handleConfigureMcp } from "./handlers/configureMcp.js";
 import { handleCyrusConfig } from "./handlers/cyrusConfig.js";
 import { handleCyrusEnv } from "./handlers/cyrusEnv.js";
-import { handleRepository } from "./handlers/repository.js";
+import {
+	handleRepository,
+	handleRepositoryDelete,
+} from "./handlers/repository.js";
 import { handleTestMcp } from "./handlers/testMcp.js";
 import type {
 	ApiResponse,
@@ -11,6 +14,7 @@ import type {
 	ConfigureMcpPayload,
 	CyrusConfigPayload,
 	CyrusEnvPayload,
+	DeleteRepositoryPayload,
 	RepositoryPayload,
 	TestMcpPayload,
 } from "./types.js";
@@ -38,6 +42,10 @@ export class ConfigUpdater {
 		this.registerRoute("/api/update/cyrus-config", this.handleCyrusConfigRoute);
 		this.registerRoute("/api/update/cyrus-env", this.handleCyrusEnvRoute);
 		this.registerRoute("/api/update/repository", this.handleRepositoryRoute);
+		this.registerDeleteRoute(
+			"/api/update/repository",
+			this.handleRepositoryDeleteRoute,
+		);
 		this.registerRoute("/api/test-mcp", this.handleTestMcpRoute);
 		this.registerRoute("/api/configure-mcp", this.handleConfigureMcpRoute);
 		this.registerRoute("/api/check-gh", this.handleCheckGhRoute);
@@ -51,6 +59,37 @@ export class ConfigUpdater {
 		handler: (payload: any) => Promise<ApiResponse>,
 	): void {
 		this.fastify.post(path, async (request, reply) => {
+			// Verify authentication
+			const authHeader = request.headers.authorization;
+			if (!this.verifyAuth(authHeader)) {
+				return reply.status(401).send({
+					success: false,
+					error: "Unauthorized",
+				});
+			}
+
+			try {
+				const response = await handler.call(this, request.body);
+				const statusCode = response.success ? 200 : 400;
+				return reply.status(statusCode).send(response);
+			} catch (error) {
+				return reply.status(500).send({
+					success: false,
+					error: "Internal server error",
+					details: error instanceof Error ? error.message : String(error),
+				});
+			}
+		});
+	}
+
+	/**
+	 * Register a DELETE route with authentication
+	 */
+	private registerDeleteRoute(
+		path: string,
+		handler: (payload: any) => Promise<ApiResponse>,
+	): void {
+		this.fastify.delete(path, async (request, reply) => {
 			// Verify authentication
 			const authHeader = request.headers.authorization;
 			if (!this.verifyAuth(authHeader)) {
@@ -152,5 +191,14 @@ export class ConfigUpdater {
 		payload: CheckGhPayload,
 	): Promise<ApiResponse> {
 		return handleCheckGh(payload, this.cyrusHome);
+	}
+
+	/**
+	 * Handle repository deletion
+	 */
+	private async handleRepositoryDeleteRoute(
+		payload: DeleteRepositoryPayload,
+	): Promise<ApiResponse> {
+		return handleRepositoryDelete(payload, this.cyrusHome);
 	}
 }

@@ -21,6 +21,7 @@ export class Application {
 	private envWatcher?: ReturnType<typeof watch>;
 	private configWatcher?: ReturnType<typeof watch>;
 	private isInSetupWaitingMode = false;
+	private isInIdleMode = false;
 
 	constructor(public readonly cyrusHome: string) {
 		// Initialize logger first
@@ -139,6 +140,14 @@ export class Application {
 	}
 
 	/**
+	 * Enable idle mode (post-onboarding, no repositories) and start watching config.json
+	 */
+	enableIdleMode(): void {
+		this.isInIdleMode = true;
+		this.startConfigWatcher();
+	}
+
+	/**
 	 * Setup file watcher for config.json to detect when repositories are added
 	 */
 	private startConfigWatcher(): void {
@@ -162,7 +171,10 @@ export class Application {
 
 		try {
 			this.configWatcher = watch(configPath, async (eventType) => {
-				if (eventType === "change" && this.isInSetupWaitingMode) {
+				if (
+					eventType === "change" &&
+					(this.isInSetupWaitingMode || this.isInIdleMode)
+				) {
 					this.logger.info(
 						"🔄 Configuration file changed, checking for repositories...",
 					);
@@ -177,8 +189,10 @@ export class Application {
 							`📦 Starting edge worker with ${repositories.length} repository(ies)...`,
 						);
 
-						// Remove CYRUS_SETUP_PENDING flag from .env
-						await this.removeSetupPendingFlag();
+						// Remove CYRUS_SETUP_PENDING flag from .env (only in setup waiting mode)
+						if (this.isInSetupWaitingMode) {
+							await this.removeSetupPendingFlag();
+						}
 
 						// Transition to normal operation mode
 						await this.transitionToNormalMode(repositories);
@@ -232,6 +246,7 @@ export class Application {
 	): Promise<void> {
 		try {
 			this.isInSetupWaitingMode = false;
+			this.isInIdleMode = false;
 
 			// Close config watcher
 			if (this.configWatcher) {
@@ -239,8 +254,8 @@ export class Application {
 				this.configWatcher = undefined;
 			}
 
-			// Stop the setup waiting mode server before starting EdgeWorker
-			await this.worker.stopSetupWaitingMode();
+			// Stop the setup waiting mode or idle mode server before starting EdgeWorker
+			await this.worker.stopWaitingServer();
 
 			// Start the EdgeWorker with the new configuration
 			await this.worker.startEdgeWorker({

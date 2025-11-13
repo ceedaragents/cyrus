@@ -96,15 +96,77 @@ export class WorkerService {
 	}
 
 	/**
-	 * Stop the setup waiting mode server
+	/**
+	 * Start idle mode - server infrastructure only, no EdgeWorker
+	 * Used after onboarding when no repositories are configured
+	 */
+	async startIdleMode(): Promise<void> {
+		const { SharedApplicationServer } = await import("cyrus-edge-worker");
+		const { ConfigUpdater } = await import("cyrus-config-updater");
+
+		// Determine server configuration
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const serverPort = parsePort(
+			process.env.CYRUS_SERVER_PORT,
+			DEFAULT_SERVER_PORT,
+		);
+		const serverHost = isExternalHost ? "0.0.0.0" : "localhost";
+
+		// Create and start SharedApplicationServer
+		this.setupWaitingServer = new SharedApplicationServer(
+			serverPort,
+			serverHost,
+		);
+		this.setupWaitingServer.initializeFastify();
+
+		// Register ConfigUpdater routes
+		const configUpdater = new ConfigUpdater(
+			this.setupWaitingServer.getFastifyInstance(),
+			this.cyrusHome,
+			process.env.CYRUS_API_KEY || "",
+		);
+		configUpdater.register();
+
+		this.logger.info("✅ Config updater registered");
+		this.logger.info(
+			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
+		);
+		this.logger.info(
+			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
+
+		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
+		await this.setupWaitingServer.start();
+
+		this.logger.raw("");
+		this.logger.divider(70);
+		this.logger.info("⏸️  No repositories configured");
+		this.logger.info(`🔗 Server running on port ${serverPort}`);
+
+		if (process.env.CLOUDFLARE_TOKEN) {
+			this.logger.info("🌩️  Cloudflare tunnel: Active");
+		}
+
+		this.logger.info("📡 Config updater: Ready");
+		this.logger.raw("");
+		this.logger.info(
+			"Waiting for repository configuration from app.atcyrus.com",
+		);
+		this.logger.info("Add repositories at: https://app.atcyrus.com/repos");
+		this.logger.divider(70);
+	}
+
+	/**
+	 * Stop the setup waiting mode or idle mode server
 	 * Must be called before starting EdgeWorker to avoid port conflicts
 	 */
-	async stopSetupWaitingMode(): Promise<void> {
+	async stopWaitingServer(): Promise<void> {
 		if (this.setupWaitingServer) {
-			this.logger.info("🛑 Stopping setup waiting mode server...");
+			this.logger.info("🛑 Stopping waiting server...");
 			await this.setupWaitingServer.stop();
 			this.setupWaitingServer = null;
-			this.logger.info("✅ Setup waiting mode server stopped");
+			this.logger.info("✅ Waiting server stopped");
 		}
 	}
 

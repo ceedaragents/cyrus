@@ -4,74 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Changed
-- Unified type system now uses Linear SDK types as the single source of truth, eliminating dual type system and improving type safety
-
-## [0.2.0-rc.2] - 2025-10-30
-
-### Fixed
-- Added missing `routingLabels` and `projectKeys` fields to `CyrusConfigPayload` type in config-updater package
-- Config handler now properly processes and saves label routing and project routing parameters when received from cyrus-hosted
-
-### Packages
-
-#### cyrus-cloudflare-tunnel-client
-- cyrus-cloudflare-tunnel-client@0.2.0-rc.2
-
-#### cyrus-config-updater
-- cyrus-config-updater@0.2.0-rc.2
-
-#### cyrus-linear-event-transport
-- cyrus-linear-event-transport@0.2.0-rc.2
-
-#### cyrus-claude-runner
-- cyrus-claude-runner@0.2.0-rc.2
-
-#### cyrus-core
-- cyrus-core@0.2.0-rc.2
-
-#### cyrus-simple-agent-runner
-- cyrus-simple-agent-runner@0.2.0-rc.2
-
-#### cyrus-edge-worker
-- cyrus-edge-worker@0.2.0-rc.2
-
-#### cyrus-ai (CLI)
-- cyrus-ai@0.2.0-rc.2
-
-## [0.2.0-rc.1] - 2025-10-30
-
-### Fixed
-- Fixed missing `dist/` directory in published packages by adding `"files": ["dist"]` to `cloudflare-tunnel-client` and `config-updater` package.json files
-- All packages now include their compiled TypeScript output when installed from npm
-
-### Packages
-
-#### cyrus-cloudflare-tunnel-client
-- cyrus-cloudflare-tunnel-client@0.2.0-rc.1
-
-#### cyrus-config-updater
-- cyrus-config-updater@0.2.0-rc.1
-
-#### cyrus-linear-event-transport
-- cyrus-linear-event-transport@0.2.0-rc.1
-
-#### cyrus-claude-runner
-- cyrus-claude-runner@0.2.0-rc.1
-
-#### cyrus-core
-- cyrus-core@0.2.0-rc.1
-
-#### cyrus-simple-agent-runner
-- cyrus-simple-agent-runner@0.2.0-rc.1
-
-#### cyrus-edge-worker
-- cyrus-edge-worker@0.2.0-rc.1
-
-#### cyrus-ai (CLI)
-- cyrus-ai@0.2.0-rc.1
-
-## [0.2.0-rc] - 2025-10-29
+## [0.2.0] - 2025-11-07
 
 ### Added
 - **Cloudflare Tunnel Transport Client**: New `cyrus-cloudflare-tunnel-client` package for receiving configuration updates and webhooks from cyrus-hosted
@@ -88,7 +21,18 @@ All notable changes to this project will be documented in this file.
   - Auto-transitions to normal operation when server pushes repository configuration
   - Watches config.json for changes and starts EdgeWorker when repositories are added
 
+### Fixed
+- Cyrus client now stays running when all repositories are removed after onboarding, allowing it to receive new configuration from app.atcyrus.com
+- Orchestrator label now enforces orchestrator procedure consistently - issues with the Orchestrator label always use the orchestrator-full procedure, even when receiving results from child sub-agents or processing new messages
+- Suppressed unnecessary error logs when stopping Claude sessions
+- Repository deletion now works correctly when triggered from the web UI
+- Added missing `routingLabels` and `projectKeys` fields to `CyrusConfigPayload` type in config-updater package
+- Config handler now properly processes and saves label routing and project routing parameters when received from cyrus-hosted
+- Fixed missing `dist/` directory in published packages by adding `"files": ["dist"]` to `cloudflare-tunnel-client` and `config-updater` package.json files
+- All packages now include their compiled TypeScript output when installed from npm
+
 ### Changed
+- Unified type system now uses Linear SDK types as the single source of truth, eliminating dual type system and improving type safety
 - **Linear Event Transport**: Refactored `cyrus-linear-webhook-client` to `cyrus-linear-event-transport` for simplified webhook handling
   - Package now directly registers /webhook endpoint with Fastify server
   - Supports dual verification modes: direct Linear webhooks (LINEAR_DIRECT_WEBHOOKS) and proxy authentication
@@ -100,6 +44,8 @@ All notable changes to this project will be documented in this file.
   - Removed `billing` and `set-customer-id` commands
   - Streamlined `auth` command to focus on authentication only
   - All tunnel management now handled by SharedApplicationServer
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.31 - see [@anthropic-ai/claude-agent-sdk v0.1.31 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0131)
+- Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 - see [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.67.0...sdk-v0.68.0)
 
 ### Removed
 - **Subscription service**: Removed customer validation and subscription checking code
@@ -109,28 +55,28 @@ All notable changes to this project will be documented in this file.
 ### Packages
 
 #### cyrus-cloudflare-tunnel-client
-- cyrus-cloudflare-tunnel-client@0.2.0-rc
+- cyrus-cloudflare-tunnel-client@0.2.0
 
 #### cyrus-config-updater
-- cyrus-config-updater@0.2.0-rc
+- cyrus-config-updater@0.2.0
 
 #### cyrus-linear-event-transport
-- cyrus-linear-event-transport@0.2.0-rc
+- cyrus-linear-event-transport@0.2.0
 
 #### cyrus-claude-runner
-- cyrus-claude-runner@0.2.0-rc
+- cyrus-claude-runner@0.2.0
 
 #### cyrus-core
-- cyrus-core@0.2.0-rc
+- cyrus-core@0.2.0
 
 #### cyrus-simple-agent-runner
-- cyrus-simple-agent-runner@0.2.0-rc
+- cyrus-simple-agent-runner@0.2.0
 
 #### cyrus-edge-worker
-- cyrus-edge-worker@0.2.0-rc
+- cyrus-edge-worker@0.2.0
 
 #### cyrus-ai (CLI)
-- cyrus-ai@0.2.0-rc
+- cyrus-ai@0.2.0
 
 ## [0.1.58] - 2025-10-29
 
