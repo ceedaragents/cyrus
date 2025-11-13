@@ -1241,8 +1241,20 @@ export class EdgeWorker extends EventEmitter {
 		if (!session.metadata) {
 			session.metadata = {};
 		}
-		if (fullIssue.url) {
-			session.metadata.workspaceSlug = this.extractWorkspaceSlug(fullIssue.url);
+		// Fetch organization urlKey from Linear API
+		try {
+			const linearClient = this.linearClients.get(repository.id);
+			if (linearClient) {
+				const organization = await linearClient.organization;
+				if (organization.urlKey) {
+					session.metadata.workspaceSlug = organization.urlKey;
+				}
+			}
+		} catch (error) {
+			console.warn(
+				`[EdgeWorker] Failed to fetch organization urlKey, will use default:`,
+				error,
+			);
 		}
 
 		// Download attachments before creating Claude runner
@@ -3649,10 +3661,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 		let subroutineName: string | undefined;
 		if (currentSubroutine) {
-			// Extract workspace slug from issue URL for proper @mention formatting
-			const workspaceSlug = input.fullIssue.url
-				? this.extractWorkspaceSlug(input.fullIssue.url)
-				: undefined;
+			// Get workspace slug from session metadata for proper @mention formatting
+			const workspaceSlug = input.session.metadata?.workspaceSlug;
 
 			const subroutinePrompt = await this.loadSubroutinePrompt(
 				currentSubroutine,
@@ -3759,24 +3769,6 @@ ${input.userComment}
 			return "label-based";
 		}
 		return "fallback";
-	}
-
-	/**
-	 * Extract the workspace slug from a Linear issue URL
-	 * URL format: https://linear.app/{workspace}/issue/{identifier}/...
-	 */
-	private extractWorkspaceSlug(issueUrl: string): string {
-		try {
-			const url = new URL(issueUrl);
-			const pathParts = url.pathname.split("/").filter((p) => p);
-			// First part after the domain is the workspace slug
-			return pathParts[0] || "linear";
-		} catch (_error) {
-			console.warn(
-				`[EdgeWorker] Failed to parse issue URL ${issueUrl}, using default workspace`,
-			);
-			return "linear";
-		}
 	}
 
 	/**

@@ -17,6 +17,7 @@ describe("Prompt Assembly - Subroutines", () => {
 			issueId: "f1a2b3c4-d5e6-7890-f1a2-b3c4d5e6f789",
 			workspace: { path: "/test" },
 			metadata: {
+				workspaceSlug: "ceedar",
 				procedure: {
 					procedureName: "full-development",
 					currentSubroutineIndex: 0, // coding-activity is first subroutine
@@ -105,6 +106,7 @@ Complete with: \`Implementation complete - [what was done].\``)
 			issueId: "a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
 			workspace: { path: "/test" },
 			metadata: {
+				workspaceSlug: "ceedar",
 				procedure: {
 					procedureName: "simple-question",
 					currentSubroutineIndex: 0, // question-investigation is first
@@ -191,6 +193,7 @@ Complete with: \`Investigation complete - gathered information from [sources].\`
 			issueId: "b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901",
 			workspace: { path: "/test" },
 			metadata: {
+				workspaceSlug: "ceedar",
 				procedure: {
 					procedureName: "simple-question",
 					currentSubroutineIndex: 1, // question-answer is second (index 1)
