@@ -1448,8 +1448,15 @@ export class EdgeWorker extends EventEmitter {
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
 		// Fetch labels early (needed for label override check)
-		const labelsConnection = await fullIssue.labels();
-		const labelNames = labelsConnection?.nodes?.map((l) => l.name) || [];
+		// Handle both Linear SDK (function) and CLI platform (array)
+		const labelNames =
+			typeof fullIssue.labels === "function"
+				? (await fullIssue.labels()).nodes.map((l) => l.name)
+				: (
+						fullIssue.labels as unknown as
+							| Array<{ id: string; name: string }>
+							| undefined
+					)?.map((l) => l.name) || [];
 
 		// Check for label overrides BEFORE AI routing
 		const debuggerConfig = repository.labelPrompts?.debugger;
@@ -3674,8 +3681,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		commentTimestamp?: string,
 	): Promise<string> {
 		// Fetch labels for system prompt determination
-		const labelsConnection = await fullIssue.labels();
-		const labelNames = labelsConnection?.nodes?.map((l) => l.name) || [];
+		// Handle both Linear SDK (function) and CLI platform (array)
+		const labelNames =
+			typeof fullIssue.labels === "function"
+				? (await fullIssue.labels()).nodes.map((l) => l.name)
+				: (
+						fullIssue.labels as unknown as
+							| Array<{ id: string; name: string }>
+							| undefined
+					)?.map((l) => l.name) || [];
 
 		// Create input for unified prompt assembly
 		const input: PromptAssemblyInput = {
@@ -4471,12 +4485,17 @@ ${input.userComment}
 	/**
 	 * Re-route procedure for a session (used when resuming from child or give feedback)
 	 * This ensures the currentSubroutine is reset to avoid suppression issues
+	 *
+	 * Checks for orchestrator/debugger labels and enforces label-based routing if found,
+	 * otherwise falls back to AI routing based on prompt content.
 	 */
 	private async rerouteProcedureForSession(
 		session: CyrusAgentSession,
 		linearAgentActivitySessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
+		repository: RepositoryConfig,
+		issue?: Issue,
 	): Promise<void> {
 		// Initialize procedure metadata using intelligent routing
 		if (!session.metadata) {
@@ -4486,32 +4505,89 @@ ${input.userComment}
 		// Post ephemeral "Routing..." thought
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
-		// Route based on the prompt content
-		const routingDecision = await this.procedureRouter.determineRoutine(
-			promptBody.trim(),
+		// Check for label-based procedure override (orchestrator/debugger)
+		let finalProcedure: ProcedureDefinition;
+		let finalClassification: RequestClassification;
+
+		// Extract label names from issue if provided
+		// Handle both Linear SDK (function) and CLI platform (array)
+		const labelNames = issue
+			? typeof issue.labels === "function"
+				? (await issue.labels()).nodes.map((l) => l.name)
+				: (
+						issue.labels as unknown as
+							| Array<{ id: string; name: string }>
+							| undefined
+					)?.map((l) => l.name) || []
+			: [];
+
+		// Check for orchestrator label
+		const orchestratorConfig = repository.labelPrompts?.orchestrator;
+		const orchestratorLabels = Array.isArray(orchestratorConfig)
+			? orchestratorConfig
+			: orchestratorConfig?.labels;
+		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
+			labelNames.includes(label),
 		);
-		const selectedProcedure = routingDecision.procedure;
+
+		// Check for debugger label
+		const debuggerConfig = repository.labelPrompts?.debugger;
+		const debuggerLabels = Array.isArray(debuggerConfig)
+			? debuggerConfig
+			: debuggerConfig?.labels;
+		const hasDebuggerLabel = debuggerLabels?.some((label) =>
+			labelNames.includes(label),
+		);
+
+		// Priority: debugger > orchestrator > AI routing
+		if (hasDebuggerLabel) {
+			const debuggerProcedure =
+				this.procedureRouter.getProcedure("debugger-full");
+			if (!debuggerProcedure) {
+				throw new Error("debugger-full procedure not found in registry");
+			}
+			finalProcedure = debuggerProcedure;
+			finalClassification = "debugger";
+			console.log(
+				`[EdgeWorker] Using debugger-full procedure due to debugger label (skipping AI routing)`,
+			);
+		} else if (hasOrchestratorLabel) {
+			const orchestratorProcedure =
+				this.procedureRouter.getProcedure("orchestrator-full");
+			if (!orchestratorProcedure) {
+				throw new Error("orchestrator-full procedure not found in registry");
+			}
+			finalProcedure = orchestratorProcedure;
+			finalClassification = "orchestrator";
+			console.log(
+				`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
+			);
+		} else {
+			// No label override - use AI routing
+			const routingDecision = await this.procedureRouter.determineRoutine(
+				promptBody.trim(),
+			);
+			finalProcedure = routingDecision.procedure;
+			finalClassification = routingDecision.classification;
+
+			// Log AI routing decision
+			console.log(
+				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
+			);
+			console.log(`  Classification: ${routingDecision.classification}`);
+			console.log(`  Procedure: ${finalProcedure.name}`);
+			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+		}
 
 		// Initialize procedure metadata in session (resets currentSubroutine)
-		this.procedureRouter.initializeProcedureMetadata(
-			session,
-			selectedProcedure,
-		);
+		this.procedureRouter.initializeProcedureMetadata(session, finalProcedure);
 
 		// Post procedure selection result (replaces ephemeral routing thought)
 		await agentSessionManager.postProcedureSelectionThought(
 			linearAgentActivitySessionId,
-			selectedProcedure.name,
-			routingDecision.classification,
+			finalProcedure.name,
+			finalClassification,
 		);
-
-		// Log routing decision
-		console.log(
-			`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId}:`,
-		);
-		console.log(`  Classification: ${routingDecision.classification}`);
-		console.log(`  Procedure: ${selectedProcedure.name}`);
-		console.log(`  Reasoning: ${routingDecision.reasoning}`);
 	}
 
 	/**
@@ -4552,11 +4628,28 @@ ${input.userComment}
 
 		// Always route procedure for new input, UNLESS actively streaming
 		if (!isStreaming) {
+			// Fetch current issue to check for label-based routing
+			let issue: Issue | undefined;
+			try {
+				const issueTracker = this.issueTrackers.get(repository.id);
+				if (issueTracker) {
+					issue = await issueTracker.fetchIssue(session.issueId);
+				}
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Failed to fetch issue ${session.issueId} for label routing:`,
+					error,
+				);
+				// Continue with AI routing if issue fetch fails
+			}
+
 			await this.rerouteProcedureForSession(
 				session,
 				linearAgentActivitySessionId,
 				agentSessionManager,
 				promptBody,
+				repository,
+				issue,
 			);
 			console.log(`[EdgeWorker] Routed procedure for ${logContext}`);
 		} else {
@@ -4762,8 +4855,15 @@ ${input.userComment}
 		}
 
 		// Fetch issue labels and determine system prompt
-		const labelsConnection = await fullIssue.labels();
-		const labelNames = labelsConnection?.nodes?.map((l) => l.name) || [];
+		// Handle both Linear SDK (function) and CLI platform (array)
+		const labelNames =
+			typeof fullIssue.labels === "function"
+				? (await fullIssue.labels()).nodes.map((l) => l.name)
+				: (
+						fullIssue.labels as unknown as
+							| Array<{ id: string; name: string }>
+							| undefined
+					)?.map((l) => l.name) || [];
 
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labelNames,

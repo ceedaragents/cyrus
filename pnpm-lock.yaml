@@ -218,6 +218,12 @@ importers:
       file-type:
         specifier: ^18.7.0
         version: 18.7.0
+      fs-extra:
+        specifier: ^11.3.0
+        version: 11.3.2
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
       '@types/fs-extra':
         specifier: ^11.0.4

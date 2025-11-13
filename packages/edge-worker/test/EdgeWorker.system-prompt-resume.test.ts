@@ -77,7 +77,7 @@ describe("EdgeWorker - System Prompt Resume", () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "warn").mockImplementation(() => {});
 
-		// Mock IssueTrackerService
+		// Mock IssueTrackerService (platform-agnostic)
 		mockLinearClient = {
 			createExtendedMcpServer: vi.fn().mockReturnValue({
 				type: "linear-factory",
@@ -91,15 +91,11 @@ describe("EdgeWorker - System Prompt Resume", () => {
 				description: "This is a bug that needs fixing",
 				url: "https://linear.app/test/issue/TEST-123",
 				branchName: "test-branch",
-				state: { name: "Todo" },
-				team: { id: "team-123" },
-				teamId: "team-123",
+				state: { id: "state-1", name: "Todo", type: "unstarted" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: [{ id: "label-bug", name: "bug", color: "#ff0000" }], // Platform-agnostic labels array (not a function)
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
-				labels: () =>
-					Promise.resolve({
-						nodes: [{ id: "label-bug", name: "bug" }],
-					}), // This should trigger debugger prompt
 			}),
 			fetchWorkflowStates: vi.fn().mockResolvedValue({
 				nodes: [

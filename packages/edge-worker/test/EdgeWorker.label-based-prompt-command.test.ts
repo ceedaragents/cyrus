@@ -91,15 +91,11 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 				description: "This is a bug that needs fixing",
 				url: "https://linear.app/test/issue/TEST-123",
 				branchName: "test-branch",
-				state: { name: "Todo" },
-				team: { id: "team-123" },
-				teamId: "team-123",
+				state: { id: "state-1", name: "Todo", type: "unstarted" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: [{ id: "label-bug", name: "bug", color: "#ff0000" }], // Platform-agnostic labels array
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
-				labels: () =>
-					Promise.resolve({
-						nodes: [{ id: "label-bug", name: "bug" }],
-					}), // This should trigger debugger prompt
 			}),
 			fetchWorkflowStates: vi.fn().mockResolvedValue({
 				nodes: [

@@ -34,7 +34,9 @@
 		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
 		"fastify": "^5.2.0",
-		"file-type": "^18.7.0"
+		"file-type": "^18.7.0",
+		"fs-extra": "^11.3.0",
+		"zod": "^3.23.0"
 	},
 	"devDependencies": {
 		"@types/fs-extra": "^11.0.4",
