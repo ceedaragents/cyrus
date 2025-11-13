@@ -1448,15 +1448,8 @@ export class EdgeWorker extends EventEmitter {
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
 		// Fetch labels early (needed for label override check)
-		// Handle both Linear SDK (function) and CLI platform (array)
-		const labelNames =
-			typeof fullIssue.labels === "function"
-				? (await fullIssue.labels()).nodes.map((l) => l.name)
-				: (
-						fullIssue.labels as unknown as
-							| Array<{ id: string; name: string }>
-							| undefined
-					)?.map((l) => l.name) || [];
+		const labelsConnection = await fullIssue.labels();
+		const labelNames = labelsConnection?.nodes.map((l) => l.name) || [];
 
 		// Check for label overrides BEFORE AI routing
 		const debuggerConfig = repository.labelPrompts?.debugger;
@@ -3681,15 +3674,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		commentTimestamp?: string,
 	): Promise<string> {
 		// Fetch labels for system prompt determination
-		// Handle both Linear SDK (function) and CLI platform (array)
-		const labelNames =
-			typeof fullIssue.labels === "function"
-				? (await fullIssue.labels()).nodes.map((l) => l.name)
-				: (
-						fullIssue.labels as unknown as
-							| Array<{ id: string; name: string }>
-							| undefined
-					)?.map((l) => l.name) || [];
+		const labelsConnection = await fullIssue.labels();
+		const labelNames = labelsConnection?.nodes.map((l) => l.name) || [];
 
 		// Create input for unified prompt assembly
 		const input: PromptAssemblyInput = {
@@ -4510,16 +4496,8 @@ ${input.userComment}
 		let finalClassification: RequestClassification;
 
 		// Extract label names from issue if provided
-		// Handle both Linear SDK (function) and CLI platform (array)
-		const labelNames = issue
-			? typeof issue.labels === "function"
-				? (await issue.labels()).nodes.map((l) => l.name)
-				: (
-						issue.labels as unknown as
-							| Array<{ id: string; name: string }>
-							| undefined
-					)?.map((l) => l.name) || []
-			: [];
+		const labelsConnection = issue ? await issue.labels() : null;
+		const labelNames = labelsConnection?.nodes.map((l) => l.name) || [];
 
 		// Check for orchestrator label
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
@@ -4855,15 +4833,8 @@ ${input.userComment}
 		}
 
 		// Fetch issue labels and determine system prompt
-		// Handle both Linear SDK (function) and CLI platform (array)
-		const labelNames =
-			typeof fullIssue.labels === "function"
-				? (await fullIssue.labels()).nodes.map((l) => l.name)
-				: (
-						fullIssue.labels as unknown as
-							| Array<{ id: string; name: string }>
-							| undefined
-					)?.map((l) => l.name) || [];
+		const labelsConnection = await fullIssue.labels();
+		const labelNames = labelsConnection?.nodes.map((l) => l.name) || [];
 
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labelNames,
