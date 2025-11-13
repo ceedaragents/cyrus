@@ -95,11 +95,22 @@ function process(data: unknown) {                     // ✅ YES
 - Use runtime type detection to distinguish platforms
 - Call Linear SDK methods directly
 - Have any awareness of which platform it's running on
+- **NEVER use dual-interface shimming** - Code like this is FORBIDDEN:
+  ```typescript
+  // ❌ NEVER DO THIS - Dual interface shimming is FORBIDDEN
+  const labelNames = typeof issue.labels === "function"
+    ? (await issue.labels()).nodes.map((l) => l.name)
+    : (issue.labels as Array<{name: string}>).map((l) => l.name);
+  ```
 
 **EdgeWorker must ONLY**:
 - Call methods on the `IIssueTrackerService` interface
 - Work with platform-agnostic types (`Issue`, `Comment`, `Label`, etc.)
 - Trust that the service implementations handle platform differences
+- **Use a SINGLE abstraction** - If you need label names, call `issueTrackerService.getIssueLabels(issueId)`
+
+**Why this matters**:
+Dual-interface shimming (checking types at runtime to handle different platforms) defeats the entire purpose of the abstraction layer. It creates hidden coupling, makes the code brittle, and violates the separation of concerns. If EdgeWorker needs data, the `IIssueTrackerService` interface should provide a method to get it in a platform-agnostic way.
 
 ## Testing Best Practices
 
