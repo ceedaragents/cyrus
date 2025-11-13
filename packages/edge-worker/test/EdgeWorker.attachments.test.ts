@@ -199,7 +199,7 @@ describe("EdgeWorker - Native Attachments", () => {
 					name: "Test User",
 					email: "test@example.com",
 				},
-				labels: [], // Platform-agnostic labels array
+				labels: async () => ({ nodes: [] }),
 				priority: 0,
 				parentId: null,
 				createdAt: new Date().toISOString(),
@@ -261,7 +261,7 @@ describe("EdgeWorker - Native Attachments", () => {
 					name: "Test User",
 					email: "test@example.com",
 				},
-				labels: [], // Platform-agnostic labels array
+				labels: async () => ({ nodes: [] }),
 				priority: 0,
 				parentId: null,
 				createdAt: new Date().toISOString(),

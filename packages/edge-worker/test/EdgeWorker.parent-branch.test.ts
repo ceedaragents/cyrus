@@ -93,7 +93,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 				teamId: "team-123",
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
-				labels: [], // Platform-agnostic labels array
+				labels: async () => ({ nodes: [] }),
 				parent: Promise.resolve(null), // No parent by default
 			}),
 			fetchWorkflowStates: vi.fn().mockResolvedValue({
@@ -258,7 +258,7 @@ Base Branch: {{base_branch}}`;
 						teamId: "team-123",
 						createdAt: "2025-01-01T00:00:00Z",
 						updatedAt: "2025-01-01T00:00:00Z",
-						labels: [], // Platform-agnostic labels array
+						labels: async () => ({ nodes: [] }),
 						parentId: undefined,
 						parent: Promise.resolve(null),
 					};
@@ -276,7 +276,7 @@ Base Branch: {{base_branch}}`;
 					teamId: "team-123",
 					createdAt: "2025-01-01T00:00:00Z",
 					updatedAt: "2025-01-01T00:00:00Z",
-					labels: [], // Platform-agnostic labels array
+					labels: async () => ({ nodes: [] }),
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",
@@ -338,7 +338,7 @@ Base Branch: {{base_branch}}`;
 						teamId: "team-123",
 						createdAt: "2025-01-01T00:00:00Z",
 						updatedAt: "2025-01-01T00:00:00Z",
-						labels: [], // Platform-agnostic labels array
+						labels: async () => ({ nodes: [] }),
 						parentId: undefined,
 						parent: Promise.resolve(null),
 					};
@@ -356,7 +356,7 @@ Base Branch: {{base_branch}}`;
 					teamId: "team-123",
 					createdAt: "2025-01-01T00:00:00Z",
 					updatedAt: "2025-01-01T00:00:00Z",
-					labels: [], // Platform-agnostic labels array
+					labels: async () => ({ nodes: [] }),
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",
@@ -419,7 +419,7 @@ Base Branch: {{base_branch}}`;
 						teamId: "team-123",
 						createdAt: "2025-01-01T00:00:00Z",
 						updatedAt: "2025-01-01T00:00:00Z",
-						labels: [], // Platform-agnostic labels array
+						labels: async () => ({ nodes: [] }),
 						parentId: "grandparent-issue-789",
 						parent: Promise.resolve({
 							id: "grandparent-issue-789",
@@ -441,7 +441,7 @@ Base Branch: {{base_branch}}`;
 					teamId: "team-123",
 					createdAt: "2025-01-01T00:00:00Z",
 					updatedAt: "2025-01-01T00:00:00Z",
-					labels: [], // Platform-agnostic labels array
+					labels: async () => ({ nodes: [] }),
 					parentId: "parent-issue-456",
 					parent: Promise.resolve({
 						id: "parent-issue-456",

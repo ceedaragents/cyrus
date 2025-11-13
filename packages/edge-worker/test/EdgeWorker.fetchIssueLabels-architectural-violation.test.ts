@@ -80,10 +80,12 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-331 Architectural Violation", () 
 			teamId: "team-123",
 			createdAt: "2025-01-01T00:00:00Z",
 			updatedAt: "2025-01-01T00:00:00Z",
-			labels: [
-				{ id: "label-1", name: "bug" },
-				{ id: "label-2", name: "feature" },
-			],
+			labels: async () => ({
+				nodes: [
+					{ id: "label-1", name: "bug" },
+					{ id: "label-2", name: "feature" },
+				],
+			}),
 		};
 
 		// Mock fetchIssue to return the fully hydrated issue
@@ -159,23 +161,25 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-331 Architectural Violation", () 
 			teamId: "team-123",
 			createdAt: "2025-01-01T00:00:00Z",
 			updatedAt: "2025-01-01T00:00:00Z",
-			labels: [
-				{ id: "label-1", name: "bug" },
-				{ id: "label-2", name: "feature" },
-			],
+			labels: async () => ({
+				nodes: [
+					{ id: "label-1", name: "bug" },
+					{ id: "label-2", name: "feature" },
+				],
+			}),
 		};
 
 		mockIssueTracker.fetchIssue.mockResolvedValue(issue);
 
-		// After fix, EdgeWorker call sites directly access issue.labels
-		const labelNames = issue.labels?.map((l) => l.name) || [];
+		// After fix, EdgeWorker call sites use issue.labels() async function
+		const labelsResult = await issue.labels();
+		const labelNames = labelsResult.nodes?.map((l) => l.name) || [];
 
 		// Verify labels are extracted correctly
 		expect(labelNames).toEqual(["bug", "feature"]);
 
-		// Verify no Promise handling needed
-		expect(Array.isArray(issue.labels)).toBe(true);
-		expect(issue.labels).not.toBeInstanceOf(Promise);
+		// Verify labels is a function (Linear SDK behavior)
+		expect(typeof issue.labels).toBe("function");
 	});
 
 	/**

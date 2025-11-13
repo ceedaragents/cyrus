@@ -71,19 +71,22 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-329 Bug Reproduction", () => {
 			teamId: "team-123",
 			createdAt: "2025-01-01T00:00:00Z",
 			updatedAt: "2025-01-01T00:00:00Z",
-			labels: [
-				{ id: "label-1", name: "bug" },
-				{ id: "label-2", name: "feature" },
-			],
+			labels: async () => ({
+				nodes: [
+					{ id: "label-1", name: "bug" },
+					{ id: "label-2", name: "feature" },
+				],
+			}),
 			// Note: No labels() method - this is a plain object
 		};
 
 		// Mock fetchIssue to return the plain issue
 		mockIssueTracker.fetchIssue.mockResolvedValue(plainIssue);
 
-		// Verify that labels property can be accessed directly (the fix)
-		// The fix: instead of calling issue.labels(), we access issue.labels property
-		const labelNames = plainIssue.labels?.map((l) => l.name) || [];
+		// Verify that labels can be accessed via async function (Linear SDK behavior)
+		// The fix: issue.labels is now an async function that returns { nodes: [...] }
+		const labelsResult = await plainIssue.labels();
+		const labelNames = labelsResult.nodes?.map((l) => l.name) || [];
 
 		// FIXED: Now returns actual labels instead of empty array
 		expect(labelNames).toEqual(["bug", "feature"]);
@@ -105,11 +108,13 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-329 Bug Reproduction", () => {
 			teamId: "team-123",
 			createdAt: "2025-01-01T00:00:00Z",
 			updatedAt: "2025-01-01T00:00:00Z",
-			// labels field can be Label[] or Promise<Label[]>
-			labels: [
-				{ id: "label-1", name: "bug" },
-				{ id: "label-2", name: "feature" },
-			],
+			// labels is an async function that returns { nodes: [...] }
+			labels: async () => ({
+				nodes: [
+					{ id: "label-1", name: "bug" },
+					{ id: "label-2", name: "feature" },
+				],
+			}),
 		};
 
 		// Mock fetchIssue to return the issue with labels
@@ -139,10 +144,10 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-329 Bug Reproduction", () => {
 		// For now, we just document the expected behavior
 		expect(plainIssue.labels).toBeDefined();
 
-		// If labels is a Promise, we should await it
-		const resolvedLabels = await Promise.resolve(plainIssue.labels);
-		expect(resolvedLabels).toHaveLength(2);
-		expect(resolvedLabels?.map((l) => l.name)).toEqual(expectedLabels);
+		// Labels is now an async function that returns { nodes: [...] }
+		const labelsResult = await plainIssue.labels();
+		expect(labelsResult.nodes).toHaveLength(2);
+		expect(labelsResult.nodes?.map((l) => l.name)).toEqual(expectedLabels);
 	});
 
 	/**
@@ -160,17 +165,15 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-329 Bug Reproduction", () => {
 				teamId: "team-123",
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
-				labels: [
-					{ id: "label-1", name: "bug" }, // Matches routingLabels
-				],
+				labels: async () => ({ nodes: [{ id: "label-1", name: "bug" }] }),
 			};
 
 			mockIssueTracker.fetchIssue.mockResolvedValue(plainIssue);
 
 			// After fix, label-based routing should work
-			// The fix should extract labels from plainIssue.labels directly
-			const resolvedLabels = await Promise.resolve(plainIssue.labels);
-			expect(resolvedLabels?.some((l) => l.name === "bug")).toBe(true);
+			// The fix should extract labels from plainIssue.labels() async function
+			const labelsResult = await plainIssue.labels();
+			expect(labelsResult.nodes?.some((l) => l.name === "bug")).toBe(true);
 		});
 
 		it("Call site 2 (line 1437): Label override checking before AI routing", async () => {
@@ -197,14 +200,14 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-329 Bug Reproduction", () => {
 				teamId: "team-123",
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
-				labels: [{ id: "label-1", name: "bug" }],
+				labels: async () => ({ nodes: [{ id: "label-1", name: "bug" }] }),
 			};
 
 			mockIssueTracker.fetchIssue.mockResolvedValue(plainIssue);
 
 			// After fix, should be able to check labels against debugger/orchestrator configs
-			const resolvedLabels = await Promise.resolve(plainIssue.labels);
-			const labelNames = resolvedLabels?.map((l) => l.name) || [];
+			const labelsResult = await plainIssue.labels();
+			const labelNames = labelsResult.nodes?.map((l) => l.name) || [];
 
 			const hasDebuggerLabel =
 				repoWithLabelPrompts.labelPrompts.debugger.labels.some((label) =>
@@ -223,17 +226,19 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-329 Bug Reproduction", () => {
 				teamId: "team-123",
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
-				labels: [
-					{ id: "label-1", name: "feature" },
-					{ id: "label-2", name: "enhancement" },
-				],
+				labels: async () => ({
+					nodes: [
+						{ id: "label-1", name: "feature" },
+						{ id: "label-2", name: "enhancement" },
+					],
+				}),
 			};
 
 			mockIssueTracker.fetchIssue.mockResolvedValue(plainIssue);
 
 			// After fix, prompt assembly should receive label names
-			const resolvedLabels = await Promise.resolve(plainIssue.labels);
-			const labelNames = resolvedLabels?.map((l) => l.name) || [];
+			const labelsResult = await plainIssue.labels();
+			const labelNames = labelsResult.nodes?.map((l) => l.name) || [];
 
 			expect(labelNames).toEqual(["feature", "enhancement"]);
 		});
@@ -247,14 +252,16 @@ describe("EdgeWorker.fetchIssueLabels - CYPACK-329 Bug Reproduction", () => {
 				teamId: "team-123",
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
-				labels: [{ id: "label-1", name: "orchestrator" }],
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "orchestrator" }],
+				}),
 			};
 
 			mockIssueTracker.fetchIssue.mockResolvedValue(plainIssue);
 
 			// After fix, runner config should receive correct labels for model override
-			const resolvedLabels = await Promise.resolve(plainIssue.labels);
-			const labelNames = resolvedLabels?.map((l) => l.name) || [];
+			const labelsResult = await plainIssue.labels();
+			const labelNames = labelsResult.nodes?.map((l) => l.name) || [];
 
 			expect(labelNames).toContain("orchestrator");
 		});

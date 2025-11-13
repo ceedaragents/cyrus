@@ -93,7 +93,9 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 				branchName: "test-branch",
 				state: { id: "state-1", name: "Todo", type: "unstarted" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [{ id: "label-bug", name: "bug", color: "#ff0000" }], // Platform-agnostic labels array
+				labels: async () => ({
+					nodes: [{ id: "label-bug", name: "bug", color: "#ff0000" }],
+				}),
 				createdAt: "2025-01-01T00:00:00Z",
 				updatedAt: "2025-01-01T00:00:00Z",
 			}),

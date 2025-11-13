@@ -97,7 +97,9 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -158,7 +160,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [], // No labels
+				labels: async () => ({ nodes: [] }),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -210,7 +212,9 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -266,7 +270,9 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [{ id: "label-1", name: "orchestrator", color: "#ff0000" }], // lowercase
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "orchestrator", color: "#ff0000" }],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -327,7 +333,9 @@ Work completed on subtask TEST-124.
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [{ id: "label-1", name: "Bug", color: "#ff0000" }], // Different label
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "Bug", color: "#ff0000" }],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -371,11 +379,13 @@ Work completed on subtask TEST-124.
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [
-					{ id: "label-1", name: "Bug", color: "#ff0000" },
-					{ id: "label-2", name: "orchestrator", color: "#00ff00" }, // lowercase variant
-					{ id: "label-3", name: "Feature", color: "#0000ff" },
-				],
+				labels: async () => ({
+					nodes: [
+						{ id: "label-1", name: "Bug", color: "#ff0000" },
+						{ id: "label-2", name: "orchestrator", color: "#00ff00" },
+						{ id: "label-3", name: "Feature", color: "#0000ff" },
+					],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -420,10 +430,12 @@ Work completed on subtask TEST-124.
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [
-					{ id: "label-1", name: "Orchestrator", color: "#ff0000" },
-					{ id: "label-2", name: "orchestrator", color: "#00ff00" },
-				],
+				labels: async () => ({
+					nodes: [
+						{ id: "label-1", name: "Orchestrator", color: "#ff0000" },
+						{ id: "label-2", name: "orchestrator", color: "#00ff00" },
+					],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -468,10 +480,12 @@ Work completed on subtask TEST-124.
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [
-					{ id: "label-1", name: "Bug", color: "#ff0000" },
-					{ id: "label-2", name: "Feature", color: "#00ff00" },
-				],
+				labels: async () => ({
+					nodes: [
+						{ id: "label-1", name: "Bug", color: "#ff0000" },
+						{ id: "label-2", name: "Feature", color: "#00ff00" },
+					],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -542,7 +556,9 @@ Work completed on subtask TEST-124.
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [{ id: "label-1", name: "orchestrator", color: "#ff0000" }], // lowercase
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "orchestrator", color: "#ff0000" }],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
@@ -589,7 +605,9 @@ Work completed on subtask TEST-124.
 				branchName: "test-branch",
 				state: { id: "state-1", name: "In Progress", type: "started" },
 				team: { id: "team-123", key: "TEST", name: "Test Team" },
-				labels: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
+				}),
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			};
