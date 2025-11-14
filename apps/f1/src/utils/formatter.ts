@@ -117,37 +117,86 @@ export function displayActivities(
 		const date = new Date(activity.createdAt).toLocaleString();
 		const type = activity.content?.type || "unknown";
 		const body = activity.content?.body || "";
-		const signal = activity.signal
-			? ` [${c.warning(activity.signal.toUpperCase())}]`
-			: "";
+
+		// Format signal badge with appropriate color
+		let signalBadge = "";
+		if (activity.signal) {
+			const signalUpper = activity.signal.toUpperCase();
+			switch (activity.signal.toLowerCase()) {
+				case "auth":
+					signalBadge = ` [${c.warning(signalUpper)}]`;
+					break;
+				case "select":
+					signalBadge = ` [${c.info(signalUpper)}]`;
+					break;
+				case "continue":
+					signalBadge = ` [${c.success(signalUpper)}]`;
+					break;
+				case "stop":
+					signalBadge = ` [${c.error(signalUpper)}]`;
+					break;
+				default:
+					signalBadge = ` [${c.dim(signalUpper)}]`;
+			}
+		}
 
 		// Color-code activity types with emojis
+		// Linear SDK defines 6 activity types: action, elicitation, error, prompt, response, thought
 		let typeDisplay: string;
 		switch (type) {
 			case "thought":
+				// Agent reasoning (model output)
 				typeDisplay = `💭 ${c.info(type)}`;
 				break;
 			case "action":
+				// Tool/action execution (model output)
 				typeDisplay = `⚡ ${c.warning(type)}`;
 				break;
-			case "tool_use":
-				typeDisplay = `🔧 ${c.success(type)}`;
-				break;
 			case "error":
+				// Error messages (model output)
 				typeDisplay = `❌ ${c.error(type)}`;
+				break;
+			case "prompt":
+				// User input messages (USER INPUT - visually distinct)
+				typeDisplay = `💬 ${c.success(type)}`;
+				break;
+			case "response":
+				// Agent final responses (model output)
+				typeDisplay = `✅ ${c.success(type)}`;
+				break;
+			case "elicitation":
+				// Agent asking for input/choice (model output with signals)
+				typeDisplay = `🤔 ${c.info(type)}`;
 				break;
 			default:
 				typeDisplay = c.dim(type);
 		}
 
-		console.log(c.bold(`${num}. ${activity.id}`) + signal);
+		console.log(c.bold(`${num}. ${activity.id}`) + signalBadge);
 		console.log(c.dim(`   ${date} • `) + typeDisplay);
 
-		// For action/tool_use activities, show action details if available
+		// Show signal metadata if present
 		if (
-			(type === "action" || type === "tool_use") &&
-			activity.content?.action
+			activity.signalMetadata &&
+			Object.keys(activity.signalMetadata).length > 0
 		) {
+			const metadata = activity.signalMetadata;
+
+			// Format common signal metadata types
+			if (activity.signal === "auth" && "url" in metadata) {
+				console.log(c.dim(`   Auth URL: ${c.info(String(metadata.url))}`));
+			} else if (activity.signal === "select" && "options" in metadata) {
+				console.log(
+					c.dim(`   Options: ${c.info(JSON.stringify(metadata.options))}`),
+				);
+			} else {
+				// Generic metadata display
+				console.log(c.dim(`   Metadata: ${JSON.stringify(metadata)}`));
+			}
+		}
+
+		// For action activities, show action details if available
+		if (type === "action" && activity.content?.action) {
 			const action = activity.content.action;
 			const parameter = activity.content.parameter;
 			let actionSummary = c.dim(`${action}`);

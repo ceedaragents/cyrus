@@ -33,6 +33,7 @@ export interface Activity {
 	createdAt: string;
 	content?: ActivityContent;
 	signal?: string;
+	signalMetadata?: Record<string, unknown>;
 }
 
 /**
