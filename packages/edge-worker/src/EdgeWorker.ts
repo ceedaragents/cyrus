@@ -1292,7 +1292,7 @@ export class EdgeWorker extends EventEmitter {
 
 		console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`);
 
-		const issueMinimal = await this.convertLinearIssueToCore(fullIssue);
+		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
 		agentSessionManager.createLinearAgentSession(
 			linearAgentActivitySessionId,
 			issue.id,
@@ -1496,9 +1496,8 @@ export class EdgeWorker extends EventEmitter {
 			);
 		} else {
 			// No label override - use AI routing
-			// NOTE: Await async properties to avoid [object Promise] in routing input
-			const issueTitle = await issue.title;
-			const fullIssueDescription = await fullIssue.description;
+			const issueTitle = issue.title;
+			const fullIssueDescription = fullIssue.description;
 			const issueDescription =
 				`${issueTitle}\n\n${fullIssueDescription || ""}`.trim();
 			const routingDecision =
@@ -1831,8 +1830,7 @@ export class EdgeWorker extends EventEmitter {
 					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
 				);
 			}
-			// NOTE: Await async property to avoid [object Promise] in stop confirmation
-			const issueTitle = (await issue.title) || "this issue";
+			const issueTitle = issue.title || "this issue";
 			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
 
 			await agentSessionManager.createResponseActivity(
@@ -2122,11 +2120,10 @@ export class EdgeWorker extends EventEmitter {
 			// Determine the base branch considering parent issues
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
-			// Pre-fetch all async issue properties before template replacement
-			// NOTE: Linear SDK returns Promises for these properties
-			const issueIdentifier = await issue.identifier;
-			const issueTitle = await issue.title;
-			const issueDescription = await issue.description;
+			// Get issue properties for template replacement
+			const issueIdentifier = issue.identifier;
+			const issueTitle = issue.title;
+			const issueDescription = issue.description;
 
 			// Fetch assignee information
 			let assigneeId = "";
@@ -2277,8 +2274,8 @@ export class EdgeWorker extends EventEmitter {
 
 <linear_issue>
   <id>${issue.id}</id>
-  <identifier>${await issue.identifier}</identifier>
-  <title>${await issue.title}</title>
+  <identifier>${issue.identifier}</identifier>
+  <title>${issue.title}</title>
   <url>${issue.url}</url>
 </linear_issue>
 
@@ -2396,7 +2393,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			const parentId = issue.parentId;
 			if (parentId) {
 				console.log(
-					`[EdgeWorker] Issue ${await issue.identifier} has parent: ${parentId}`,
+					`[EdgeWorker] Issue ${issue.identifier} has parent: ${parentId}`,
 				);
 
 				// Get parent's branch name - fetch the parent issue
@@ -2444,15 +2441,14 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 	/**
 	 * Convert full Linear SDK issue to CoreIssue interface for Session creation
-	 * NOTE: Must be async because Linear SDK properties are Promises
 	 */
-	private async convertLinearIssueToCore(issue: Issue): Promise<IssueMinimal> {
+	private convertLinearIssueToCore(issue: Issue): IssueMinimal {
 		return {
 			id: issue.id,
-			identifier: await issue.identifier,
-			title: (await issue.title) || "",
-			description: (await issue.description) || undefined,
-			branchName: await issue.branchName, // Use the real branchName property!
+			identifier: issue.identifier,
+			title: issue.title || "",
+			description: issue.description || undefined,
+			branchName: issue.branchName, // Use the real branchName property!
 		};
 	}
 
@@ -2631,11 +2627,11 @@ ${reply.body}
 				}
 			}
 
-			// Pre-fetch async issue properties to avoid [object Promise] in template
-			const issueIdentifier = await issue.identifier;
-			const issueTitle = await issue.title;
-			const issueDescription = await issue.description;
-			const issueBranchName = await issue.branchName;
+			// Get issue properties for template replacement
+			const issueIdentifier = issue.identifier;
+			const issueTitle = issue.title;
+			const issueDescription = issue.description;
+			const issueBranchName = issue.branchName;
 
 			// Build the prompt with all variables
 			let prompt = template
@@ -2735,12 +2731,12 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			const fallbackPrompt = `Please help me with the following Linear issue:
 
 Repository: ${repository.name}
-Issue: ${await issue.identifier}
-Title: ${await issue.title}
-Description: ${(await issue.description) || "No description provided"}
+Issue: ${issue.identifier}
+Title: ${issue.title}
+Description: ${issue.description || "No description provided"}
 State: ${stateName}
 Priority: ${issue.priority?.toString() || "None"}
-Branch: ${await issue.branchName}
+Branch: ${issue.branchName}
 
 Working directory: ${repository.repositoryPath}
 Base branch: ${baseBranch}

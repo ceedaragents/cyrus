@@ -87,9 +87,8 @@ export function createBasicIssueTrackerServer(
 					...(parentId && { parentId }),
 				});
 
-				// NOTE: Await async properties to avoid [object Promise] in JSON output
-				const issueIdentifier = await issue.identifier;
-				const issueTitle = await issue.title;
+				const issueIdentifier = issue.identifier;
+				const issueTitle = issue.title;
 
 				return {
 					content: [
