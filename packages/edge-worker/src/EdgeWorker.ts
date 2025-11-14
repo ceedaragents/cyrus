@@ -1292,7 +1292,7 @@ export class EdgeWorker extends EventEmitter {
 
 		console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`);
 
-		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
+		const issueMinimal = await this.convertLinearIssueToCore(fullIssue);
 		agentSessionManager.createLinearAgentSession(
 			linearAgentActivitySessionId,
 			issue.id,
@@ -1496,8 +1496,11 @@ export class EdgeWorker extends EventEmitter {
 			);
 		} else {
 			// No label override - use AI routing
+			// NOTE: Await async properties to avoid [object Promise] in routing input
+			const issueTitle = await issue.title;
+			const fullIssueDescription = await fullIssue.description;
 			const issueDescription =
-				`${issue.title}\n\n${fullIssue.description || ""}`.trim();
+				`${issueTitle}\n\n${fullIssueDescription || ""}`.trim();
 			const routingDecision =
 				await this.procedureRouter.determineRoutine(issueDescription);
 			finalProcedure = routingDecision.procedure;
@@ -1828,7 +1831,8 @@ export class EdgeWorker extends EventEmitter {
 					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
 				);
 			}
-			const issueTitle = issue.title || "this issue";
+			// NOTE: Await async property to avoid [object Promise] in stop confirmation
+			const issueTitle = (await issue.title) || "this issue";
 			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
 
 			await agentSessionManager.createResponseActivity(
@@ -2118,6 +2122,12 @@ export class EdgeWorker extends EventEmitter {
 			// Determine the base branch considering parent issues
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
+			// Pre-fetch all async issue properties before template replacement
+			// NOTE: Linear SDK returns Promises for these properties
+			const issueIdentifier = await issue.identifier;
+			const issueTitle = await issue.title;
+			const issueDescription = await issue.description;
+
 			// Fetch assignee information
 			let assigneeId = "";
 			let assigneeName = "";
@@ -2199,15 +2209,16 @@ export class EdgeWorker extends EventEmitter {
 			}
 
 			// Build the simplified prompt with only essential variables
+			// NOTE: Use pre-fetched values to avoid [object Promise] in templates
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
 				.replace(/{{base_branch}}/g, baseBranch)
 				.replace(/{{issue_id}}/g, issue.id || "")
-				.replace(/{{issue_identifier}}/g, issue.identifier || "")
-				.replace(/{{issue_title}}/g, issue.title || "")
+				.replace(/{{issue_identifier}}/g, issueIdentifier || "")
+				.replace(/{{issue_title}}/g, issueTitle || "")
 				.replace(
 					/{{issue_description}}/g,
-					issue.description || "No description provided",
+					issueDescription || "No description provided",
 				)
 				.replace(/{{issue_url}}/g, issue.url || "")
 				.replace(/{{assignee_id}}/g, assigneeId)
@@ -2266,8 +2277,8 @@ export class EdgeWorker extends EventEmitter {
 
 <linear_issue>
   <id>${issue.id}</id>
-  <identifier>${issue.identifier}</identifier>
-  <title>${issue.title}</title>
+  <identifier>${await issue.identifier}</identifier>
+  <title>${await issue.title}</title>
   <url>${issue.url}</url>
 </linear_issue>
 
@@ -2433,14 +2444,15 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 	/**
 	 * Convert full Linear SDK issue to CoreIssue interface for Session creation
+	 * NOTE: Must be async because Linear SDK properties are Promises
 	 */
-	private convertLinearIssueToCore(issue: Issue): IssueMinimal {
+	private async convertLinearIssueToCore(issue: Issue): Promise<IssueMinimal> {
 		return {
 			id: issue.id,
-			identifier: issue.identifier,
-			title: issue.title || "",
-			description: issue.description || undefined,
-			branchName: issue.branchName, // Use the real branchName property!
+			identifier: await issue.identifier,
+			title: (await issue.title) || "",
+			description: (await issue.description) || undefined,
+			branchName: await issue.branchName, // Use the real branchName property!
 		};
 	}
 
@@ -2467,8 +2479,9 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 		// First pass: identify root comments and create thread structure
 		for (const comment of comments) {
-			const parent = await comment.parentId;
-			if (!parent) {
+			// NOTE: parentId is a string property, not a Promise - no await needed
+			const parentId = comment.parentId;
+			if (!parentId) {
 				// This is a root comment
 				rootComments.push(comment);
 				threads.set(comment.id, { root: comment, replies: [] });
@@ -2618,15 +2631,21 @@ ${reply.body}
 				}
 			}
 
+			// Pre-fetch async issue properties to avoid [object Promise] in template
+			const issueIdentifier = await issue.identifier;
+			const issueTitle = await issue.title;
+			const issueDescription = await issue.description;
+			const issueBranchName = await issue.branchName;
+
 			// Build the prompt with all variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
 				.replace(/{{issue_id}}/g, issue.id || "")
-				.replace(/{{issue_identifier}}/g, issue.identifier || "")
-				.replace(/{{issue_title}}/g, issue.title || "")
+				.replace(/{{issue_identifier}}/g, issueIdentifier || "")
+				.replace(/{{issue_title}}/g, issueTitle || "")
 				.replace(
 					/{{issue_description}}/g,
-					issue.description || "No description provided",
+					issueDescription || "No description provided",
 				)
 				.replace(/{{issue_state}}/g, stateName)
 				.replace(/{{issue_priority}}/g, issue.priority?.toString() || "None")
@@ -2639,7 +2658,7 @@ ${reply.body}
 						: repository.repositoryPath,
 				)
 				.replace(/{{base_branch}}/g, baseBranch)
-				.replace(/{{branch_name}}/g, this.sanitizeBranchName(issue.branchName));
+				.replace(/{{branch_name}}/g, this.sanitizeBranchName(issueBranchName));
 
 			// Handle the optional new comment section
 			if (newComment) {
@@ -2716,12 +2735,12 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			const fallbackPrompt = `Please help me with the following Linear issue:
 
 Repository: ${repository.name}
-Issue: ${issue.identifier}
-Title: ${issue.title}
-Description: ${issue.description || "No description provided"}
+Issue: ${await issue.identifier}
+Title: ${await issue.title}
+Description: ${(await issue.description) || "No description provided"}
 State: ${stateName}
 Priority: ${issue.priority?.toString() || "None"}
-Branch: ${issue.branchName}
+Branch: ${await issue.branchName}
 
 Working directory: ${repository.repositoryPath}
 Base branch: ${baseBranch}
