@@ -107,6 +107,9 @@ export interface EdgeWorkerConfig {
 	serverHost?: string; // Server host address ('localhost' or '0.0.0.0', default: 'localhost')
 	ngrokAuthToken?: string; // Ngrok auth token for tunnel creation
 
+	// Issue tracker platform configuration
+	platform?: "linear" | "cli"; // Issue tracker platform type (default: "linear")
+
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
 	defaultDisallowedTools?: string[]; // Tools to explicitly disallow across all repositories (no defaults)
@@ -138,6 +141,10 @@ export interface EdgeWorkerConfig {
 
 	// Cyrus home directory
 	cyrusHome: string;
+
+	// Agent configuration (for CLI mode)
+	agentHandle?: string; // The name/handle the agent responds to (e.g., "@cyrus", "cyrus")
+	agentUserId?: string; // The user ID of the agent (for CLI mode)
 
 	// Optional handlers that apps can implement
 	handlers?: {

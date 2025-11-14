@@ -1,12 +1,10 @@
-import { LinearClient } from "@linear/sdk";
-import type { CyrusAgentSession } from "cyrus-core";
+import type { Issue } from "cyrus-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
 // Mock dependencies
-vi.mock("@linear/sdk");
 vi.mock("../src/AgentSessionManager.js");
 vi.mock("cyrus-core", async (importOriginal) => {
 	const actual = (await importOriginal()) as any;
@@ -22,8 +20,8 @@ vi.mock("cyrus-core", async (importOriginal) => {
 describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
-	let mockLinearClient: any;
 	let mockAgentSessionManager: any;
+	let _mockIssueTracker: any;
 
 	const mockRepository: RepositoryConfig = {
 		id: "test-repo",
@@ -31,40 +29,25 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
+		platform: "cli",
 		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
 		allowedTools: ["Read", "Edit"],
 		labelPrompts: {
-			orchestrator: ["Orchestrator", "orchestrator"],
+			orchestrator: {
+				labels: ["Orchestrator", "orchestrator"],
+			},
 		},
 	};
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
 
 		// Mock console methods
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "warn").mockImplementation(() => {});
-
-		// Mock LinearClient - default to issue WITHOUT Orchestrator label
-		mockLinearClient = {
-			issue: vi.fn().mockResolvedValue({
-				id: "issue-123",
-				identifier: "TEST-123",
-				title: "Test Issue",
-				description: "This is a test issue",
-				url: "https://linear.app/test/issue/TEST-123",
-				branchName: "test-branch",
-				state: { name: "In Progress", type: "started" },
-				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [], // No labels by default
-				}),
-			}),
-		};
-		vi.mocked(LinearClient).mockImplementation(() => mockLinearClient);
 
 		// Mock AgentSessionManager
 		mockAgentSessionManager = {
@@ -78,6 +61,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
 			cyrusHome: "/tmp/test-cyrus-home",
+			platform: "cli",
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
@@ -88,6 +72,13 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
+
+		// Wait for EdgeWorker to initialize
+		await new Promise((resolve) => setTimeout(resolve, 100));
+
+		// Get the mock issue tracker that was created
+		const issueTrackers = (edgeWorker as any).issueTrackers as Map<string, any>;
+		_mockIssueTracker = issueTrackers.get("test-repo");
 	});
 
 	afterEach(() => {
@@ -96,22 +87,24 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 
 	describe("rerouteProcedureForSession - Orchestrator label enforcement", () => {
 		it("should use orchestrator-full procedure when Orchestrator label is present", async () => {
-			// Arrange - Mock issue WITH Orchestrator label
-			mockLinearClient.issue.mockResolvedValue({
+			// Arrange - Create issue WITH Orchestrator label
+			const issueWithLabel: Issue = {
 				id: "issue-123",
 				identifier: "TEST-123",
 				title: "Test Issue with Orchestrator",
 				description: "This is an orchestrator issue",
 				url: "https://linear.app/test/issue/TEST-123",
 				branchName: "test-branch",
-				state: { name: "In Progress", type: "started" },
-				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [{ name: "Orchestrator" }], // Has Orchestrator label
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
 				}),
-			});
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
 
-			const session: CyrusAgentSession = {
+			const session: any = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -120,13 +113,14 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 
 			const promptBody = "Here are the results from the child agent";
 
-			// Act
+			// Act - Call the private method via type casting
 			await (edgeWorker as any).rerouteProcedureForSession(
 				session,
 				"agent-session-123",
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				issueWithLabel,
 			);
 
 			// Assert
@@ -144,7 +138,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 			// Verify the console log indicates Orchestrator label override
 			expect(console.log).toHaveBeenCalledWith(
 				expect.stringContaining(
-					"Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)",
+					"Using orchestrator-full procedure due to orchestrator label (skipping AI routing)",
 				),
 			);
 
@@ -156,8 +150,22 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 		});
 
 		it("should use AI routing when Orchestrator label is NOT present", async () => {
-			// Arrange - Mock issue WITHOUT Orchestrator label (default)
-			const session: CyrusAgentSession = {
+			// Arrange - Create issue WITHOUT Orchestrator label
+			const issueWithoutLabel: Issue = {
+				id: "issue-123",
+				identifier: "TEST-123",
+				title: "Test Issue",
+				description: "This is a test issue",
+				url: "https://linear.app/test/issue/TEST-123",
+				branchName: "test-branch",
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({ nodes: [] }),
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			const session: any = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -174,6 +182,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				issueWithoutLabel,
 			);
 
 			// Assert
@@ -193,22 +202,24 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 		});
 
 		it("should consistently use orchestrator-full even with builder-like prompts when Orchestrator label is present", async () => {
-			// Arrange - Mock issue WITH Orchestrator label
-			mockLinearClient.issue.mockResolvedValue({
+			// Arrange - Create issue WITH Orchestrator label
+			const issueWithLabel: Issue = {
 				id: "issue-123",
 				identifier: "TEST-123",
 				title: "Test Issue with Orchestrator",
 				description: "This is an orchestrator issue",
 				url: "https://linear.app/test/issue/TEST-123",
 				branchName: "test-branch",
-				state: { name: "In Progress", type: "started" },
-				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [{ name: "Orchestrator" }], // Has Orchestrator label
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
 				}),
-			});
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
 
-			const session: CyrusAgentSession = {
+			const session: any = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -226,6 +237,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				issueWithLabel,
 			);
 
 			// Assert
@@ -242,28 +254,30 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 			// Verify Orchestrator label override log
 			expect(console.log).toHaveBeenCalledWith(
 				expect.stringContaining(
-					"Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)",
+					"Using orchestrator-full procedure due to orchestrator label (skipping AI routing)",
 				),
 			);
 		});
 
 		it("should consistently use orchestrator-full when receiving child agent results", async () => {
-			// Arrange - Mock issue WITH Orchestrator label
-			mockLinearClient.issue.mockResolvedValue({
+			// Arrange - Create issue WITH lowercase orchestrator label
+			const issueWithLabel: Issue = {
 				id: "issue-123",
 				identifier: "TEST-123",
 				title: "Test Issue with Orchestrator",
 				description: "This is an orchestrator issue",
 				url: "https://linear.app/test/issue/TEST-123",
 				branchName: "test-branch",
-				state: { name: "In Progress", type: "started" },
-				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [{ name: "orchestrator" }], // Lowercase variant
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "orchestrator", color: "#ff0000" }],
 				}),
-			});
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
 
-			const session: CyrusAgentSession = {
+			const session: any = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -286,6 +300,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				issueWithLabel,
 			);
 
 			// Assert
@@ -302,62 +317,80 @@ Work completed on subtask TEST-124.
 			// Verify Orchestrator label override was used
 			expect(console.log).toHaveBeenCalledWith(
 				expect.stringContaining(
-					"Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)",
+					"Using orchestrator-full procedure due to orchestrator label (skipping AI routing)",
 				),
 			);
 		});
 
-		it("should handle label fetch errors gracefully and fall back to AI routing", async () => {
-			// Arrange - Mock Linear client to throw error
-			mockLinearClient.issue.mockRejectedValue(new Error("Linear API error"));
-
-			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "agent-session-123",
-				issueId: "issue-123",
-				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
-				metadata: {},
-			};
-
-			const promptBody = "Test comment";
-
-			// Act
-			await (edgeWorker as any).rerouteProcedureForSession(
-				session,
-				"agent-session-123",
-				mockAgentSessionManager,
-				promptBody,
-				mockRepository,
-			);
-
-			// Assert - Should not throw, should fall back to AI routing
-			expect(console.error).toHaveBeenCalledWith(
-				expect.stringContaining("Failed to fetch issue labels for routing"),
-				expect.any(Error),
-			);
-
-			// Should still have posted a procedure selection (via AI routing)
-			expect(
-				mockAgentSessionManager.postProcedureSelectionThought,
-			).toHaveBeenCalled();
-		});
-
-		it("should work with different Orchestrator label variants from config", async () => {
-			// Arrange - Mock issue with "orchestrator" (lowercase)
-			mockLinearClient.issue.mockResolvedValue({
+		it("should handle non-existent label gracefully", async () => {
+			// Arrange - Create issue with a non-matching label
+			const issueWithDifferentLabel: Issue = {
 				id: "issue-123",
 				identifier: "TEST-123",
 				title: "Test Issue",
 				description: "Test description",
 				url: "https://linear.app/test/issue/TEST-123",
 				branchName: "test-branch",
-				state: { name: "In Progress", type: "started" },
-				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [{ name: "orchestrator" }], // lowercase
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "Bug", color: "#ff0000" }],
 				}),
-			});
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
 
-			const session: CyrusAgentSession = {
+			const session: any = {
+				linearAgentActivitySessionId: "agent-session-123",
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				metadata: {},
+			};
+
+			const promptBody = "Test comment";
+
+			// Act - Should not throw
+			await (edgeWorker as any).rerouteProcedureForSession(
+				session,
+				"agent-session-123",
+				mockAgentSessionManager,
+				promptBody,
+				mockRepository,
+				issueWithDifferentLabel,
+			);
+
+			// Assert - Should fall back to AI routing without errors
+			expect(
+				mockAgentSessionManager.postProcedureSelectionThought,
+			).toHaveBeenCalled();
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining("AI routing decision"),
+			);
+		});
+
+		it("should prioritize first matching label from configured variants", async () => {
+			// Arrange - Create issue with multiple labels including orchestrator variant
+			const issueWithMultipleLabels: Issue = {
+				id: "issue-123",
+				identifier: "TEST-123",
+				title: "Test Issue",
+				description: "Test description",
+				url: "https://linear.app/test/issue/TEST-123",
+				branchName: "test-branch",
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [
+						{ id: "label-1", name: "Bug", color: "#ff0000" },
+						{ id: "label-2", name: "orchestrator", color: "#00ff00" },
+						{ id: "label-3", name: "Feature", color: "#0000ff" },
+					],
+				}),
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			const session: any = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -373,6 +406,180 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				issueWithMultipleLabels,
+			);
+
+			// Assert - Should recognize orchestrator variant
+			expect(
+				mockAgentSessionManager.postProcedureSelectionThought,
+			).toHaveBeenCalled();
+			const procedureCallArgs =
+				mockAgentSessionManager.postProcedureSelectionThought.mock.calls[0];
+			expect(procedureCallArgs[1]).toBe("orchestrator-full");
+			expect(procedureCallArgs[2]).toBe("orchestrator");
+		});
+
+		it("should handle multiple matching labels with precedence", async () => {
+			// Arrange - Issue with both Orchestrator variants
+			const issueWithBothVariants: Issue = {
+				id: "issue-123",
+				identifier: "TEST-123",
+				title: "Test Issue",
+				description: "Test description",
+				url: "https://linear.app/test/issue/TEST-123",
+				branchName: "test-branch",
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [
+						{ id: "label-1", name: "Orchestrator", color: "#ff0000" },
+						{ id: "label-2", name: "orchestrator", color: "#00ff00" },
+					],
+				}),
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			const session: any = {
+				linearAgentActivitySessionId: "agent-session-123",
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				metadata: {},
+			};
+
+			const promptBody = "Test comment";
+
+			// Act
+			await (edgeWorker as any).rerouteProcedureForSession(
+				session,
+				"agent-session-123",
+				mockAgentSessionManager,
+				promptBody,
+				mockRepository,
+				issueWithBothVariants,
+			);
+
+			// Assert - Should use orchestrator-full
+			expect(
+				mockAgentSessionManager.postProcedureSelectionThought,
+			).toHaveBeenCalled();
+			const procedureCallArgs =
+				mockAgentSessionManager.postProcedureSelectionThought.mock.calls[0];
+			expect(procedureCallArgs[1]).toBe("orchestrator-full");
+			expect(procedureCallArgs[2]).toBe("orchestrator");
+		});
+
+		it("should return original procedure when no matching labels found", async () => {
+			// Arrange - Issue with no matching labels
+			const issueWithNoMatchingLabels: Issue = {
+				id: "issue-123",
+				identifier: "TEST-123",
+				title: "Test Issue",
+				description: "Test description",
+				url: "https://linear.app/test/issue/TEST-123",
+				branchName: "test-branch",
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [
+						{ id: "label-1", name: "Bug", color: "#ff0000" },
+						{ id: "label-2", name: "Feature", color: "#00ff00" },
+					],
+				}),
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			const session: any = {
+				linearAgentActivitySessionId: "agent-session-123",
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				metadata: {},
+			};
+
+			const promptBody = "Test comment";
+
+			// Act
+			await (edgeWorker as any).rerouteProcedureForSession(
+				session,
+				"agent-session-123",
+				mockAgentSessionManager,
+				promptBody,
+				mockRepository,
+				issueWithNoMatchingLabels,
+			);
+
+			// Assert - Should use AI routing
+			expect(
+				mockAgentSessionManager.postProcedureSelectionThought,
+			).toHaveBeenCalled();
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining("AI routing decision"),
+			);
+		});
+
+		it("should handle label fetch errors gracefully and fall back to AI routing", async () => {
+			// Arrange - Pass undefined issue (simulating fetch error)
+			const session: any = {
+				linearAgentActivitySessionId: "agent-session-123",
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				metadata: {},
+			};
+
+			const promptBody = "Test comment";
+
+			// Act - Pass undefined as issue to simulate error
+			await (edgeWorker as any).rerouteProcedureForSession(
+				session,
+				"agent-session-123",
+				mockAgentSessionManager,
+				promptBody,
+				mockRepository,
+				undefined, // Simulate error scenario
+			);
+
+			// Assert - Should fall back to AI routing without crashing
+			expect(
+				mockAgentSessionManager.postProcedureSelectionThought,
+			).toHaveBeenCalled();
+		});
+
+		it("should work with different Orchestrator label variants from config", async () => {
+			// Arrange - Create issue with "orchestrator" (lowercase)
+			const issueWithLowercaseLabel: Issue = {
+				id: "issue-123",
+				identifier: "TEST-123",
+				title: "Test Issue",
+				description: "Test description",
+				url: "https://linear.app/test/issue/TEST-123",
+				branchName: "test-branch",
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "orchestrator", color: "#ff0000" }],
+				}),
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			const session: any = {
+				linearAgentActivitySessionId: "agent-session-123",
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				metadata: {},
+			};
+
+			const promptBody = "Test comment";
+
+			// Act
+			await (edgeWorker as any).rerouteProcedureForSession(
+				session,
+				"agent-session-123",
+				mockAgentSessionManager,
+				promptBody,
+				mockRepository,
+				issueWithLowercaseLabel,
 			);
 
 			// Assert
@@ -388,22 +595,24 @@ Work completed on subtask TEST-124.
 		});
 
 		it("should skip AI routing entirely when Orchestrator label is present", async () => {
-			// Arrange - Mock issue WITH Orchestrator label
-			mockLinearClient.issue.mockResolvedValue({
+			// Arrange - Create issue WITH Orchestrator label
+			const issueWithLabel: Issue = {
 				id: "issue-123",
 				identifier: "TEST-123",
 				title: "Test Issue",
 				description: "Test description",
 				url: "https://linear.app/test/issue/TEST-123",
 				branchName: "test-branch",
-				state: { name: "In Progress", type: "started" },
-				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [{ name: "Orchestrator" }],
+				state: { id: "state-1", name: "In Progress", type: "started" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [{ id: "label-1", name: "Orchestrator", color: "#ff0000" }],
 				}),
-			});
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
 
-			const session: CyrusAgentSession = {
+			const session: any = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -419,6 +628,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				issueWithLabel,
 			);
 
 			// Assert - Should NOT see AI routing decision logs
@@ -435,7 +645,7 @@ Work completed on subtask TEST-124.
 			// SHOULD have the Orchestrator label override log
 			const hasOrchestratorOverrideLog = allLogCalls.some((msg: string) =>
 				msg.includes(
-					"Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)",
+					"Using orchestrator-full procedure due to orchestrator label (skipping AI routing)",
 				),
 			);
 			expect(hasOrchestratorOverrideLog).toBe(true);

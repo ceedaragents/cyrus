@@ -29,6 +29,7 @@ describe("Prompt Assembly - Subroutines", () => {
 			identifier: "CEE-3000",
 			title: "Implement payment processing",
 			description: "Add Stripe integration for payments",
+			url: "https://linear.app/ceedar/issue/CEE-3000",
 		};
 
 		const repository = {
@@ -76,7 +77,7 @@ Add Stripe integration for payments
   </description>
   <state>Unknown</state>
   <priority>None</priority>
-  <url></url>
+  <url>https://linear.app/ceedar/issue/CEE-3000</url>
 </linear_issue>
 
 <linear_comments>
@@ -116,6 +117,7 @@ Complete with: \`Implementation complete - [what was done].\``)
 			identifier: "CEE-4000",
 			title: "How does authentication work?",
 			description: "Can you explain the authentication flow?",
+			url: "https://linear.app/ceedar/issue/CEE-4000",
 		};
 
 		const repository = {
@@ -163,7 +165,7 @@ Can you explain the authentication flow?
   </description>
   <state>Unknown</state>
   <priority>None</priority>
-  <url></url>
+  <url>https://linear.app/ceedar/issue/CEE-4000</url>
 </linear_issue>
 
 <linear_comments>
@@ -201,6 +203,7 @@ Complete with: \`Investigation complete - gathered information from [sources].\`
 			identifier: "CEE-5000",
 			title: "How does caching work?",
 			description: "Explain the caching implementation",
+			url: "https://linear.app/ceedar/issue/CEE-5000",
 		};
 
 		const repository = {
@@ -248,7 +251,7 @@ Explain the caching implementation
   </description>
   <state>Unknown</state>
   <priority>None</priority>
-  <url></url>
+  <url>https://linear.app/ceedar/issue/CEE-5000</url>
 </linear_issue>
 
 <linear_comments>
@@ -258,7 +261,7 @@ No comments yet.
 # Answer Question
 
 Provide a clear, direct answer using investigation findings:
-- Present in Linear-compatible markdown (supports \`+++collapsible+++\`, @mentions via \`https://linear.app/linear/profiles/username\`)
+- Present in Linear-compatible markdown (supports \`+++collapsible+++\`, @mentions via \`https://linear.app/ceedar/profiles/username\`)
 - Include code references with line numbers
 - Be complete but concise
 

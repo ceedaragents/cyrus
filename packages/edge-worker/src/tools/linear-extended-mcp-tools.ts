@@ -68,9 +68,9 @@ function getMimeType(filename: string): string {
 }
 
 /**
- * Options for creating Cyrus tools with session management capabilities
+ * Options for creating extended MCP tools with session management capabilities
  */
-export interface CyrusToolsOptions {
+export interface ExtendedMcpToolsOptions {
 	/**
 	 * Callback to register a child-to-parent session mapping
 	 * Called when a new agent session is created
@@ -93,18 +93,18 @@ export interface CyrusToolsOptions {
 }
 
 /**
- * Create an SDK MCP server with the inline Cyrus tools
+ * Create an SDK MCP server with extended Linear issue tracker tools
  */
-export function createCyrusToolsServer(
+export function createExtendedMcpTools(
 	linearApiToken: string,
-	options: CyrusToolsOptions = {},
+	options: ExtendedMcpToolsOptions = {},
 ) {
 	const linearClient = new LinearClient({ apiKey: linearApiToken });
 
 	// Create tools with bound linear client
 	const uploadTool = tool(
-		"linear_upload_file",
-		"Upload a file to Linear. Returns an asset URL that can be used in issue descriptions or comments.",
+		"issue_tracker_upload_file",
+		"Upload a file. Returns an asset URL that can be used in issue descriptions or comments.",
 		{
 			filePath: z.string().describe("The absolute path to the file to upload"),
 			filename: z
@@ -250,8 +250,8 @@ export function createCyrusToolsServer(
 	);
 
 	const agentSessionTool = tool(
-		"linear_agent_session_create",
-		"Create an agent session on a Linear issue to track AI/bot activity.",
+		"issue_tracker_agent_session_create",
+		"Create an agent session on an issue to track AI/bot activity.",
 		{
 			issueId: z
 				.string()
@@ -316,7 +316,7 @@ export function createCyrusToolsServer(
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
 					console.log(
-						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[ExtendedMcpTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
 					options.onSessionCreated(agentSessionId, options.parentSessionId);
 				}
@@ -350,8 +350,8 @@ export function createCyrusToolsServer(
 	);
 
 	const agentSessionOnCommentTool = tool(
-		"linear_agent_session_create_on_comment",
-		"Create an agent session on a Linear root comment (not a reply) to trigger a sub-agent for processing child issues or tasks. See Linear API docs: https://studio.apollographql.com/public/Linear-API/variant/current/schema/reference/inputs/AgentSessionCreateOnComment",
+		"issue_tracker_agent_session_create_on_comment",
+		"Create an agent session on a root comment (not a reply) to trigger a sub-agent for processing child issues or tasks.",
 		{
 			commentId: z
 				.string()
@@ -418,7 +418,7 @@ export function createCyrusToolsServer(
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
 					console.log(
-						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+						`[ExtendedMcpTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
 					);
 					options.onSessionCreated(agentSessionId, options.parentSessionId);
 				}
@@ -452,7 +452,7 @@ export function createCyrusToolsServer(
 	);
 
 	const giveFeedbackTool = tool(
-		"linear_agent_give_feedback",
+		"issue_tracker_agent_give_feedback",
 		"Provide feedback to a child agent session to continue its processing.",
 		{
 			agentSessionId: z
@@ -495,7 +495,7 @@ export function createCyrusToolsServer(
 			// Deliver the feedback through the callback if provided
 			if (options.onFeedbackDelivery) {
 				console.log(
-					`[CyrusTools] Delivering feedback to child session ${agentSessionId}`,
+					`[ExtendedMcpTools] Delivering feedback to child session ${agentSessionId}`,
 				);
 				try {
 					const delivered = await options.onFeedbackDelivery(
@@ -504,15 +504,18 @@ export function createCyrusToolsServer(
 					);
 					if (delivered) {
 						console.log(
-							`[CyrusTools] Feedback delivered successfully to parent session`,
+							`[ExtendedMcpTools] Feedback delivered successfully to parent session`,
 						);
 					} else {
 						console.log(
-							`[CyrusTools] No parent session found for child ${agentSessionId}`,
+							`[ExtendedMcpTools] No parent session found for child ${agentSessionId}`,
 						);
 					}
 				} catch (error) {
-					console.error(`[CyrusTools] Failed to deliver feedback:`, error);
+					console.error(
+						`[ExtendedMcpTools] Failed to deliver feedback:`,
+						error,
+					);
 				}
 			}
 
@@ -531,8 +534,8 @@ export function createCyrusToolsServer(
 	);
 
 	const getChildIssuesTool = tool(
-		"linear_get_child_issues",
-		"Get all child issues (sub-issues) for a given Linear issue. Takes an issue identifier like 'CYHOST-91' and returns a list of child issue ids and their titles.",
+		"issue_tracker_get_child_issues",
+		"Get all child issues (sub-issues) for a given issue. Takes an issue identifier and returns a list of child issue ids and their titles.",
 		{
 			issueId: z
 				.string()
@@ -673,7 +676,7 @@ export function createCyrusToolsServer(
 	);
 
 	return createSdkMcpServer({
-		name: "cyrus-tools",
+		name: "issue-tracker-ext",
 		version: "1.0.0",
 		tools: [
 			uploadTool,

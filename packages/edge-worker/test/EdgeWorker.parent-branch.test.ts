@@ -74,9 +74,14 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "warn").mockImplementation(() => {});
 
-		// Mock LinearClient - default issue without parent
+		// Mock IssueTrackerService - default issue without parent
 		mockLinearClient = {
-			issue: vi.fn().mockResolvedValue({
+			createExtendedMcpServer: vi.fn().mockReturnValue({
+				type: "linear-factory",
+				linearToken: "test-token",
+				options: {},
+			}),
+			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",
 				title: "Test Issue",
@@ -85,12 +90,13 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 				branchName: "test-branch",
 				state: Promise.resolve({ name: "Todo" }),
 				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [],
-				}),
+				teamId: "team-123",
+				createdAt: "2025-01-01T00:00:00Z",
+				updatedAt: "2025-01-01T00:00:00Z",
+				labels: async () => ({ nodes: [] }),
 				parent: Promise.resolve(null), // No parent by default
 			}),
-			workflowStates: vi.fn().mockResolvedValue({
+			fetchWorkflowStates: vi.fn().mockResolvedValue({
 				nodes: [
 					{ id: "state-1", name: "Todo", type: "unstarted", position: 0 },
 					{ id: "state-2", name: "In Progress", type: "started", position: 1 },
@@ -98,7 +104,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 			}),
 			updateIssue: vi.fn().mockResolvedValue({ success: true }),
 			createAgentActivity: vi.fn().mockResolvedValue({ success: true }),
-			comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
 		};
 		vi.mocked(LinearClient).mockImplementation(() => mockLinearClient);
 
@@ -188,6 +194,9 @@ Base Branch: {{base_branch}}`;
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
+		// Add mock IssueTrackerService to edgeWorker
+		(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
+
 		// Mock branchExists to always return true so parent branches are used
 		vi.spyOn(edgeWorker as any, "branchExists").mockResolvedValue(true);
 	});
@@ -231,25 +240,52 @@ Base Branch: {{base_branch}}`;
 	});
 
 	it("should use parent issue branch when issue has a parent", async () => {
-		// Arrange - Mock issue with parent
-		mockLinearClient.issue.mockResolvedValue({
-			id: "issue-123",
-			identifier: "TEST-123",
-			title: "Test Issue",
-			description: "This is a test issue",
-			url: "https://linear.app/test/issue/TEST-123",
-			branchName: "test-branch",
-			state: Promise.resolve({ name: "Todo" }),
-			team: { id: "team-123" },
-			labels: vi.fn().mockResolvedValue({
-				nodes: [],
-			}),
-			parent: Promise.resolve({
-				id: "parent-issue-456",
-				identifier: "TEST-456",
-				branchName: "parent-feature-branch",
-			}),
-		});
+		// Arrange - Mock issue with parent and parent issue
+		mockLinearClient.fetchIssue.mockImplementation(
+			async (idOrIdentifier: string) => {
+				if (
+					idOrIdentifier === "parent-issue-456" ||
+					idOrIdentifier === "TEST-456"
+				) {
+					// Return parent issue
+					return {
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						title: "Parent Issue",
+						branchName: "parent-feature-branch",
+						state: Promise.resolve({ name: "Todo" }),
+						team: { id: "team-123" },
+						teamId: "team-123",
+						createdAt: "2025-01-01T00:00:00Z",
+						updatedAt: "2025-01-01T00:00:00Z",
+						labels: async () => ({ nodes: [] }),
+						parentId: undefined,
+						parent: Promise.resolve(null),
+					};
+				}
+				// Return child issue
+				return {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					description: "This is a test issue",
+					url: "https://linear.app/test/issue/TEST-123",
+					branchName: "test-branch",
+					state: Promise.resolve({ name: "Todo" }),
+					team: { id: "team-123" },
+					teamId: "team-123",
+					createdAt: "2025-01-01T00:00:00Z",
+					updatedAt: "2025-01-01T00:00:00Z",
+					labels: async () => ({ nodes: [] }),
+					parentId: "parent-issue-456",
+					parent: Promise.resolve({
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						branchName: "parent-feature-branch",
+					}),
+				};
+			},
+		);
 
 		const createdWebhook: LinearAgentSessionCreatedWebhook = {
 			type: "Issue",
@@ -284,26 +320,53 @@ Base Branch: {{base_branch}}`;
 	});
 
 	it("should fall back to repository baseBranch when parent has no branch name", async () => {
-		// Arrange - Mock issue with parent but no branch name
-		mockLinearClient.issue.mockResolvedValue({
-			id: "issue-123",
-			identifier: "TEST-123",
-			title: "Test Issue",
-			description: "This is a test issue",
-			url: "https://linear.app/test/issue/TEST-123",
-			branchName: "test-branch",
-			state: Promise.resolve({ name: "Todo" }),
-			team: { id: "team-123" },
-			labels: vi.fn().mockResolvedValue({
-				nodes: [],
-			}),
-			parent: Promise.resolve({
-				id: "parent-issue-456",
-				identifier: "TEST-456",
-				branchName: null, // Parent has no branch name
-				title: "Parent Issue Title", // Add title so branch name can be generated
-			}),
-		});
+		// Arrange - Mock issue with parent but parent has no branch name
+		mockLinearClient.fetchIssue.mockImplementation(
+			async (idOrIdentifier: string) => {
+				if (
+					idOrIdentifier === "parent-issue-456" ||
+					idOrIdentifier === "TEST-456"
+				) {
+					// Return parent issue with no branch name
+					return {
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						title: "Parent Issue Title",
+						branchName: null,
+						state: Promise.resolve({ name: "Todo" }),
+						team: { id: "team-123" },
+						teamId: "team-123",
+						createdAt: "2025-01-01T00:00:00Z",
+						updatedAt: "2025-01-01T00:00:00Z",
+						labels: async () => ({ nodes: [] }),
+						parentId: undefined,
+						parent: Promise.resolve(null),
+					};
+				}
+				// Return child issue
+				return {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					description: "This is a test issue",
+					url: "https://linear.app/test/issue/TEST-123",
+					branchName: "test-branch",
+					state: Promise.resolve({ name: "Todo" }),
+					team: { id: "team-123" },
+					teamId: "team-123",
+					createdAt: "2025-01-01T00:00:00Z",
+					updatedAt: "2025-01-01T00:00:00Z",
+					labels: async () => ({ nodes: [] }),
+					parentId: "parent-issue-456",
+					parent: Promise.resolve({
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						branchName: null,
+						title: "Parent Issue Title",
+					}),
+				};
+			},
+		);
 
 		const createdWebhook: LinearAgentSessionCreatedWebhook = {
 			type: "Issue",
@@ -339,29 +402,60 @@ Base Branch: {{base_branch}}`;
 
 	it("should handle deeply nested parent issues", async () => {
 		// Arrange - Mock issue with nested parent structure
-		mockLinearClient.issue.mockResolvedValue({
-			id: "issue-123",
-			identifier: "TEST-123",
-			title: "Test Issue",
-			description: "This is a test issue",
-			url: "https://linear.app/test/issue/TEST-123",
-			branchName: "test-branch",
-			state: Promise.resolve({ name: "Todo" }),
-			team: { id: "team-123" },
-			labels: vi.fn().mockResolvedValue({
-				nodes: [],
-			}),
-			parent: Promise.resolve({
-				id: "parent-issue-456",
-				identifier: "TEST-456",
-				branchName: "parent-branch-456",
-				parent: {
-					id: "grandparent-issue-789",
-					identifier: "TEST-789",
-					branchName: "grandparent-branch-789",
-				},
-			}),
-		});
+		mockLinearClient.fetchIssue.mockImplementation(
+			async (idOrIdentifier: string) => {
+				if (
+					idOrIdentifier === "parent-issue-456" ||
+					idOrIdentifier === "TEST-456"
+				) {
+					// Return parent issue
+					return {
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						title: "Parent Issue",
+						branchName: "parent-branch-456",
+						state: Promise.resolve({ name: "Todo" }),
+						team: { id: "team-123" },
+						teamId: "team-123",
+						createdAt: "2025-01-01T00:00:00Z",
+						updatedAt: "2025-01-01T00:00:00Z",
+						labels: async () => ({ nodes: [] }),
+						parentId: "grandparent-issue-789",
+						parent: Promise.resolve({
+							id: "grandparent-issue-789",
+							identifier: "TEST-789",
+							branchName: "grandparent-branch-789",
+						}),
+					};
+				}
+				// Return child issue
+				return {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					description: "This is a test issue",
+					url: "https://linear.app/test/issue/TEST-123",
+					branchName: "test-branch",
+					state: Promise.resolve({ name: "Todo" }),
+					team: { id: "team-123" },
+					teamId: "team-123",
+					createdAt: "2025-01-01T00:00:00Z",
+					updatedAt: "2025-01-01T00:00:00Z",
+					labels: async () => ({ nodes: [] }),
+					parentId: "parent-issue-456",
+					parent: Promise.resolve({
+						id: "parent-issue-456",
+						identifier: "TEST-456",
+						branchName: "parent-branch-456",
+						parent: {
+							id: "grandparent-issue-789",
+							identifier: "TEST-789",
+							branchName: "grandparent-branch-789",
+						},
+					}),
+				};
+			},
+		);
 
 		const createdWebhook: LinearAgentSessionCreatedWebhook = {
 			type: "Issue",

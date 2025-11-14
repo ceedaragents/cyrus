@@ -3,6 +3,7 @@ import {
 	LinearWebhookClient,
 	type LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
+import type { IAgentEventTransport } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
 	LinearEventTransportConfig,
@@ -23,12 +24,20 @@ export declare interface LinearEventTransport {
 /**
  * LinearEventTransport - Handles Linear webhook event delivery
  *
- * This class registers a POST /webhook endpoint with a Fastify server
+ * This class implements IAgentEventTransport to provide a platform-agnostic
+ * interface for handling Linear webhooks with Linear-specific verification.
+ *
+ * It registers a POST /webhook endpoint with a Fastify server
  * and verifies incoming webhooks using either:
- * 1. LINEAR_DIRECT_WEBHOOKS mode: Verifies Linear's webhook signature
- * 2. Proxy mode: Verifies Bearer token authentication
+ * 1. "direct" mode: Verifies Linear's webhook signature
+ * 2. "proxy" mode: Verifies Bearer token authentication
+ *
+ * The class emits "event" events with AgentEvent (LinearWebhookPayload) data.
  */
-export class LinearEventTransport extends EventEmitter {
+export class LinearEventTransport
+	extends EventEmitter
+	implements IAgentEventTransport
+{
 	private config: LinearEventTransportConfig;
 	private linearWebhookClient: LinearWebhookClient | null = null;
 
@@ -57,8 +66,12 @@ export class LinearEventTransport extends EventEmitter {
 						await this.handleProxyWebhook(request, reply);
 					}
 				} catch (error) {
-					console.error("[LinearEventTransport] Webhook error:", error);
-					this.emit("error", error as Error);
+					const err = new Error("[LinearEventTransport] Webhook error");
+					if (error instanceof Error) {
+						err.cause = error;
+					}
+					console.error(err);
+					this.emit("error", err);
 					reply.code(500).send({ error: "Internal server error" });
 				}
 			},
@@ -98,16 +111,19 @@ export class LinearEventTransport extends EventEmitter {
 				return;
 			}
 
-			// Emit webhook event with the validated payload
-			this.emit("webhook", request.body as LinearWebhookPayload);
+			// Emit "event" for IAgentEventTransport compatibility
+			this.emit("event", request.body as LinearWebhookPayload);
 
 			// Send success response
 			reply.code(200).send({ success: true });
 		} catch (error) {
-			console.error(
-				"[LinearEventTransport] Direct webhook verification failed:",
-				error,
+			const err = new Error(
+				"[LinearEventTransport] Direct webhook verification failed",
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			console.error(err);
 			reply.code(401).send({ error: "Invalid webhook signature" });
 		}
 	}
@@ -134,16 +150,19 @@ export class LinearEventTransport extends EventEmitter {
 		}
 
 		try {
-			// Emit webhook event with the payload
-			this.emit("webhook", request.body as LinearWebhookPayload);
+			// Emit "event" for IAgentEventTransport compatibility
+			this.emit("event", request.body as LinearWebhookPayload);
 
 			// Send success response
 			reply.code(200).send({ success: true });
 		} catch (error) {
-			console.error(
-				"[LinearEventTransport] Proxy webhook processing failed:",
-				error,
+			const err = new Error(
+				"[LinearEventTransport] Proxy webhook processing failed",
 			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			console.error(err);
 			reply.code(500).send({ error: "Failed to process webhook" });
 		}
 	}
