@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * 🏎️  Start Cyrus CLI Platform Server
+ * 🏎️  Start Cyrus F1 CLI Platform Server
  *
- * A beautiful, portable server startup script for the Cyrus CLI platform.
+ * A beautiful, portable server startup script for the Cyrus F1 CLI platform.
  * No absolute paths required!
  *
  * Usage:
- *   node start-cli-server.mjs [port]
- *   CYRUS_PORT=8080 node start-cli-server.mjs
+ *   node start-f1.mjs [port]
+ *   CYRUS_PORT=8080 node start-f1.mjs
  *
  * Environment:
  *   CYRUS_PORT - Server port (default: 3457)
@@ -48,7 +48,7 @@ const repoPath =
 	process.env.CYRUS_REPO_PATH || process.argv[3] || process.cwd();
 
 async function main() {
-	console.log(c.bold("\n🏎️  Cyrus CLI Platform Server\n"));
+	console.log(c.bold("\n🏎️  Cyrus F1 CLI Platform Server\n"));
 	console.log(c.dim("   Starting up...\n"));
 
 	// Create temporary directories
@@ -89,18 +89,18 @@ async function main() {
 	console.log(c.info(`   http://localhost:${port}/cli/rpc\n`));
 	console.log(c.bold("   Quick Start:\n"));
 	console.log(c.dim(`   # Check server health`));
-	console.log(`   ${c.info("cli-tool.mjs ping")}\n`);
+	console.log(`   ${c.info("./apps/f1/f1 ping")}\n`);
 	console.log(c.dim(`   # Create an issue`));
 	console.log(
-		`   ${c.info(`cli-tool.mjs createIssue --title "Test Issue"`)}\n`,
+		`   ${c.info(`./apps/f1/f1 createIssue --title "Test Issue"`)}\n`,
 	);
 	console.log(c.dim(`   # View all commands`));
-	console.log(`   ${c.info("cli-tool.mjs help")}\n`);
+	console.log(`   ${c.info("./apps/f1/f1 --help")}\n`);
 
 	if (port !== DEFAULT_PORT) {
 		console.log(
 			c.dim(
-				`   Using custom port ${port}. Set CYRUS_PORT=${port} when using cli-tool.mjs\n`,
+				`   Using custom port ${port}. Set CYRUS_PORT=${port} when using F1 CLI\n`,
 			),
 		);
 	}

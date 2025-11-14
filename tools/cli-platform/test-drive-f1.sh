@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# 🏎️  Lambo Test Drive
+# 🏎️  F1 Test Drive
 #
 # This script demonstrates all the premium features of the Cyrus CLI platform.
 # Run this to verify everything works beautifully!
 #
 # Usage:
-#   ./test-drive-lamborghini-cli.sh
+#   ./test-drive-f1.sh
 #
 
 set -e  # Exit on error
@@ -23,7 +23,7 @@ DIM='\033[2m'
 NC='\033[0m' # No Color
 
 # CLI tool path (relative to repo root)
-CLI_TOOL="tools/cli-platform/lambo.mjs"
+CLI_TOOL="./apps/f1/f1"
 
 # Port for testing (use a different port from default to avoid conflicts)
 export CYRUS_PORT=3458
@@ -31,7 +31,7 @@ export CYRUS_PORT=3458
 echo -e "${BOLD}${CYAN}"
 echo "╔═══════════════════════════════════════════════════════════╗"
 echo "║                                                           ║"
-echo "║       🏎️  Lambo - Test Drive Script 🏎️          ║"
+echo "║       🏎️  F1 - Test Drive Script 🏎️          ║"
 echo "║                                                           ║"
 echo "║   Premium UX • Beautiful Output • Excellent Help         ║"
 echo "║                                                           ║"
@@ -85,7 +85,7 @@ echo -e "${DIM}Starting Cyrus CLI server on port $CYRUS_PORT...${NC}"
 echo -e "${DIM}(Server will run in background)${NC}\n"
 
 # Start server in background (from repo root)
-node tools/cli-platform/start-lambo.mjs $CYRUS_PORT > /tmp/cyrus-cli-server.log 2>&1 &
+node tools/cli-platform/start-../../apps/f1/f1 $CYRUS_PORT > /tmp/cyrus-cli-server.log 2>&1 &
 SERVER_PID=$!
 
 echo -e "${GREEN}✓ Server started (PID: $SERVER_PID)${NC}"
@@ -259,7 +259,7 @@ echo "╔═══════════════════════�
 echo "║                                                           ║"
 echo "║              ✅ TEST DRIVE COMPLETE ✅                     ║"
 echo "║                                                           ║"
-echo "║   All features of the Lambo are working!       ║"
+echo "║   All features of the F1 are working!       ║"
 echo "║                                                           ║"
 echo "╚═══════════════════════════════════════════════════════════╝"
 echo -e "${NC}\n"
@@ -281,7 +281,7 @@ echo -e "${BOLD}${CYAN}Next Steps:${NC}"
 echo -e "${DIM}   • Review test output above${NC}"
 echo -e "${DIM}   • Try running commands manually${NC}"
 echo -e "${DIM}   • Check CLI_TOOL_README.md for documentation${NC}"
-echo -e "${DIM}   • See CLAUDE.md for \"Driving the Lamborghini\" guide${NC}"
+echo -e "${DIM}   • See CLAUDE.md for \"Driving the F1rghini\" guide${NC}"
 echo ""
 
-echo -e "${BOLD}${YELLOW}🎉 The Lambo is ready to race! 🏎️${NC}\n"
+echo -e "${BOLD}${YELLOW}🎉 The F1 is ready to race! 🏎️${NC}\n"
