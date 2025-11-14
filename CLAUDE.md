@@ -462,7 +462,7 @@ pnpm build
 
 **2. Start the CLI server:**
 ```bash
-node tools/cli-platform/start-lambo.mjs
+node tools/cli-platform/start-f1.mjs
 ```
 
 The server will start on port 3457 (default) and display beautiful colored output with the RPC endpoint.
@@ -533,11 +533,11 @@ The server will start on port 3457 (default) and display beautiful colored outpu
 ./apps/f1/f1 stopSession --session-id session-1
 ```
 
-### Testing the Lambo
+### Testing F1
 
 **Run the comprehensive test drive:**
 ```bash
-./tools/cli-platform/test-drive-lambo.sh
+./tools/cli-platform/test-drive-f1.sh
 ```
 
 This automated script tests:
@@ -643,7 +643,7 @@ done
 **CYRUS_PORT**: Server port (default: 3457)
 ```bash
 # Start server on custom port
-CYRUS_PORT=8080 node tools/cli-platform/start-lambo.mjs
+CYRUS_PORT=8080 node tools/cli-platform/start-f1.mjs
 
 # Use CLI with custom port
 CYRUS_PORT=8080 ./apps/f1/f1 ping
@@ -658,7 +658,7 @@ DEBUG=1 ./apps/f1/f1 createIssue --title "Test"
 
 **Server won't start:**
 - Check if port 3457 is already in use
-- Try a different port: `CYRUS_PORT=8080 node tools/cli-platform/start-lambo.mjs`
+- Try a different port: `CYRUS_PORT=8080 node tools/cli-platform/start-f1.mjs`
 - Build packages first: `pnpm build`
 
 **CLI can't connect:**
@@ -678,10 +678,10 @@ DEBUG=1 ./apps/f1/f1 createIssue --title "Test"
 ### Documentation
 
 - **tools/cli-platform/CLI_TOOL_README.md** - Comprehensive CLI documentation
-- **tools/cli-platform/test-drive-lambo.sh** - Automated test script
+- **tools/cli-platform/test-drive-f1.sh** - Automated test script
 - **./apps/f1/f1** - CLI tool source
 - **packages/core/src/issue-tracker/adapters/CLIRPCServer.ts** - RPC server
-- **tools/cli-platform/start-lambo.mjs** - Server startup script
+- **tools/cli-platform/start-f1.mjs** - Server startup script
 
 ### Architecture
 
@@ -724,7 +724,7 @@ DEBUG=1 ./apps/f1/f1 createIssue --title "Test"
 
 4. **Update docs:**
    - Add to `tools/cli-platform/CLI_TOOL_README.md`
-   - Add to `tools/cli-platform/test-drive-lambo.sh`
+   - Add to `tools/cli-platform/test-drive-f1.sh`
    - Update this section of `CLAUDE.md`
 
 **Example: Adding `listSessions` command:**
@@ -767,11 +767,11 @@ case "listAgentSessions": {
 4. **Search before paginating**: `--search "term"` filters first, then paginates
 5. **Watch most recent**: Default sort shows newest first (perfect for monitoring)
 6. **Script it**: CLI is designed for bash scripts and automation
-7. **Test with test drive**: Run `./tools/cli-platform/test-drive-lambo.sh` after changes
+7. **Test with test drive**: Run `./tools/cli-platform/test-drive-f1.sh` after changes
 
-### Why "Lambo"?
+### Why "F1"?
 
-This CLI is built with premium quality:
+This CLI is built with premium quality (Formula 1 standard):
 - ✨ Beautiful, professional output (think Vercel CLI, Railway CLI)
 - 📄 Handles large datasets elegantly (pagination > scrolling)
 - 💡 Self-documenting (excellent help system)
@@ -779,13 +779,13 @@ This CLI is built with premium quality:
 - ❌ Guides users with errors (never leaves you stuck)
 - 🚀 Production-ready (portable, testable, maintainable)
 
-It's not just functional - it's a joy to use. That's the Lamborghini standard.
+It's not just functional - it's a joy to use. That's the F1 (Formula 1) standard.
 
 ---
 
 ## 🧪 Real-World Test Drives
 
-The `test-drives/` directory contains documented experiences of using the Lambo CLI platform for actual development tasks. These test drives serve as UX research, product validation, and design input for improvements.
+The `test-drives/` directory contains documented experiences of using the F1 CLI platform for actual development tasks. These test drives serve as UX research, product validation, and design input for improvements.
 
 ### Running a Test Drive
 
@@ -796,9 +796,9 @@ When asked to "test drive the system" or "run a real test drive", follow this pr
 - Something you would actually do in real development
 - Achievable in 10-20 minutes
 
-**2. Start the Lambo server:**
+**2. Start the F1 server:**
 ```bash
-node tools/cli-platform/start-lambo.mjs &
+node tools/cli-platform/start-f1.mjs &
 ./apps/f1/f1 ping
 ```
 
