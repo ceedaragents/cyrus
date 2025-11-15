@@ -1495,7 +1495,23 @@ export class EdgeWorker extends EventEmitter {
 
 			// Build allowed tools list with Linear MCP tools (now with prompt type context)
 			const allowedTools = this.buildAllowedTools(repository, promptType);
-			const disallowedTools = this.buildDisallowedTools(repository, promptType);
+			let disallowedTools = this.buildDisallowedTools(repository, promptType);
+
+			// Merge subroutine-level disallowedTools if applicable
+			const currentSubroutine =
+				this.procedureRouter.getCurrentSubroutine(session);
+			if (currentSubroutine?.disallowedTools) {
+				disallowedTools = [
+					...new Set([
+						...disallowedTools,
+						...currentSubroutine.disallowedTools,
+					]),
+				];
+				console.log(
+					`[EdgeWorker] Merged subroutine-level disallowedTools for ${currentSubroutine.name}:`,
+					currentSubroutine.disallowedTools,
+				);
+			}
 
 			console.log(
 				`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
@@ -4660,7 +4676,20 @@ ${input.userComment}
 
 		// Build allowed tools list
 		const allowedTools = this.buildAllowedTools(repository, promptType);
-		const disallowedTools = this.buildDisallowedTools(repository, promptType);
+		let disallowedTools = this.buildDisallowedTools(repository, promptType);
+
+		// Merge subroutine-level disallowedTools if applicable
+		const currentSubroutine =
+			this.procedureRouter.getCurrentSubroutine(session);
+		if (currentSubroutine?.disallowedTools) {
+			disallowedTools = [
+				...new Set([...disallowedTools, ...currentSubroutine.disallowedTools]),
+			];
+			console.log(
+				`[resumeClaudeSession] Merged subroutine-level disallowedTools for ${currentSubroutine.name}:`,
+				currentSubroutine.disallowedTools,
+			);
+		}
 
 		// Set up attachments directory
 		const workspaceFolderName = basename(session.workspace.path);
