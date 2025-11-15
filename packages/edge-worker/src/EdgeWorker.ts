@@ -1592,18 +1592,11 @@ export class EdgeWorker extends EventEmitter {
 	private async handleRepositorySelectionResponse(
 		webhook: LinearAgentSessionPromptedWebhook,
 	): Promise<void> {
-		const { agentSession, guidance } = webhook;
+		const { agentSession, agentActivity, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
 		const agentSessionId = agentSession.id;
 
-		// Extract user message from the webhook
-		const userMessage = agentSession.comment?.body;
-		if (!userMessage) {
-			console.warn(
-				`[EdgeWorker] No user message found in repository selection response for ${agentSessionId}`,
-			);
-			return;
-		}
+		const userMessage = agentActivity.content.body;
 
 		console.log(
 			`[EdgeWorker] Processing repository selection response: "${userMessage}"`,
