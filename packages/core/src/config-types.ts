@@ -43,6 +43,7 @@ export interface RepositoryConfig {
 	// Git configuration
 	repositoryPath: string; // Local git repository path
 	baseBranch: string; // Branch to create worktrees from (main, master, etc.)
+	githubUrl?: string; // GitHub repository URL (e.g., "https://github.com/org/repo") - used for Linear select signal
 
 	// Linear configuration
 	linearWorkspaceId: string; // Linear workspace/team ID

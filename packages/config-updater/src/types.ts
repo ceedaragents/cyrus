@@ -1,3 +1,5 @@
+import type { RepositoryConfig } from "cyrus-core";
+
 /**
  * Repository configuration payload
  * Matches the format sent by cyrus-hosted
@@ -5,6 +7,7 @@
 export interface RepositoryPayload {
 	repository_url: string; // Git clone URL
 	repository_name: string; // Repository name (required)
+	githubUrl?: string; // GitHub repository URL (e.g., "https://github.com/org/repo") - used for Linear select signal
 }
 
 /**
@@ -20,22 +23,7 @@ export interface DeleteRepositoryPayload {
  * Cyrus config update payload
  */
 export interface CyrusConfigPayload {
-	repositories: Array<{
-		id: string;
-		name: string;
-		repositoryPath: string;
-		baseBranch: string;
-		linearWorkspaceId?: string;
-		linearToken?: string;
-		workspaceBaseDir?: string;
-		isActive?: boolean;
-		allowedTools?: string[];
-		mcpConfigPath?: string[];
-		teamKeys?: string[];
-		routingLabels?: string[];
-		projectKeys?: string[];
-		labelPrompts?: Record<string, string[]>;
-	}>;
+	repositories: RepositoryConfig[];
 	disallowedTools?: string[];
 	ngrokAuthToken?: string;
 	stripeCustomerId?: string;

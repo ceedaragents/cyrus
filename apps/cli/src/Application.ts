@@ -22,15 +22,22 @@ export class Application {
 	private configWatcher?: ReturnType<typeof watch>;
 	private isInSetupWaitingMode = false;
 	private isInIdleMode = false;
+	private readonly envFilePath: string;
 
-	constructor(public readonly cyrusHome: string) {
+	constructor(
+		public readonly cyrusHome: string,
+		customEnvPath?: string,
+	) {
 		// Initialize logger first
 		this.logger = new Logger();
+
+		// Determine the env file path: use custom path if provided, otherwise default to ~/.cyrus/.env
+		this.envFilePath = customEnvPath || join(cyrusHome, ".env");
 
 		// Ensure required directories exist
 		this.ensureRequiredDirectories();
 
-		// Load environment variables from CYRUS_HOME/.env
+		// Load environment variables from the determined env file path
 		this.loadEnvFile();
 
 		// Watch .env file for changes and reload
@@ -48,13 +55,14 @@ export class Application {
 	}
 
 	/**
-	 * Load environment variables from ~/.cyrus/.env file
+	 * Load environment variables from the configured env file path
 	 */
 	private loadEnvFile(): void {
-		const cyrusEnvPath = join(this.cyrusHome, ".env");
-		if (existsSync(cyrusEnvPath)) {
-			dotenv.config({ path: cyrusEnvPath, override: true });
-			this.logger.info(`🔧 Loaded environment variables from ${cyrusEnvPath}`);
+		if (existsSync(this.envFilePath)) {
+			dotenv.config({ path: this.envFilePath, override: true });
+			this.logger.info(
+				`🔧 Loaded environment variables from ${this.envFilePath}`,
+			);
 		}
 	}
 
@@ -62,22 +70,22 @@ export class Application {
 	 * Setup file watcher for .env file to reload on changes
 	 */
 	private setupEnvFileWatcher(): void {
-		const cyrusEnvPath = join(this.cyrusHome, ".env");
-
 		// Only watch if file exists
-		if (!existsSync(cyrusEnvPath)) {
+		if (!existsSync(this.envFilePath)) {
 			return;
 		}
 
 		try {
-			this.envWatcher = watch(cyrusEnvPath, (eventType) => {
+			this.envWatcher = watch(this.envFilePath, (eventType) => {
 				if (eventType === "change") {
 					this.logger.info("🔄 .env file changed, reloading...");
 					this.loadEnvFile();
 				}
 			});
 
-			this.logger.info(`👀 Watching .env file for changes: ${cyrusEnvPath}`);
+			this.logger.info(
+				`👀 Watching .env file for changes: ${this.envFilePath}`,
+			);
 		} catch (error) {
 			this.logger.error(`❌ Failed to watch .env file: ${error}`);
 		}

@@ -22,6 +22,7 @@
 		"test:run": "vitest run --passWithNoTests"
 	},
 	"dependencies": {
+		"cyrus-core": "workspace:*",
 		"fastify": "^5.2.0"
 	},
 	"devDependencies": {
