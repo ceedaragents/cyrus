@@ -516,13 +516,13 @@ export class RepositoryRouter {
 	private isAgentSessionCreatedWebhook(
 		webhook: LinearWebhook,
 	): webhook is LinearAgentSessionCreatedWebhook {
-		return (webhook as any).action === "AgentSession.created";
+		return webhook.action === "created";
 	}
 
 	private isAgentSessionPromptedWebhook(
 		webhook: LinearWebhook,
 	): webhook is LinearAgentSessionPromptedWebhook {
-		return (webhook as any).action === "AgentSession.prompted";
+		return webhook.action === "prompted";
 	}
 
 	/**
