@@ -57,6 +57,7 @@ export type {
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
+	SDKStatusMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";

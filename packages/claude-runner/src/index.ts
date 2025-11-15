@@ -39,6 +39,7 @@ export type {
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
+	SDKStatusMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "./types.js";
