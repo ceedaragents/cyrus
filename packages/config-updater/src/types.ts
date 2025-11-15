@@ -30,6 +30,7 @@ export interface CyrusConfigPayload {
 	defaultModel?: string;
 	defaultFallbackModel?: string;
 	global_setup_script?: string;
+	linearWorkspaceSlug?: string; // Linear workspace slug (from linear_organization_url_key in teams table)
 	restartCyrus?: boolean;
 	backupConfig?: boolean;
 }

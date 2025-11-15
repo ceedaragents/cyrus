@@ -196,4 +196,5 @@ export interface EdgeConfig {
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
+	linearWorkspaceSlug?: string; // Linear workspace slug (from linear_organization_url_key in teams table)
 }

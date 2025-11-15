@@ -135,6 +135,10 @@ export async function handleCyrusConfig(
 			config.global_setup_script = payload.global_setup_script;
 		}
 
+		if (payload.linearWorkspaceSlug) {
+			config.linearWorkspaceSlug = payload.linearWorkspaceSlug;
+		}
+
 		// Backup existing config if requested
 		if (payload.backupConfig && existsSync(configPath)) {
 			try {
