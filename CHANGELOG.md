@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Repository selection now displays GitHub repository icons and formatted names when configured with a GitHub URL in the config file
+- When no routing option matches, it will prompt the user to select which repo they'd like to run Cyrus on for the Linear Issue. Repository selection now displays GitHub repository icons and formatted names when configured with a GitHub URL in the config file. The selected repository will be shown to the user, including what method was used to select it (label-based, team key based, project based, user-selected, etc)
 - Restored `--env-file` option to specify custom environment variables file location (uses Commander library for CLI parsing)
 
 ### Changed
@@ -13,8 +13,6 @@ All notable changes to this project will be documented in this file.
 - Updated @anthropic-ai/sdk from v0.68.0 to v0.69.0 - adds support for structured outputs beta - see [@anthropic-ai/sdk v0.69.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0690-2025-11-14)
 
 ### Fixed
-- Improved webhook routing to eliminate misleading log messages after repository selection - subsequent webhooks for an issue now correctly use the already-selected repository instead of re-running routing logic
-- Repository selection now works correctly when multiple repositories are available - fixed Linear client lookup to use workspace ID instead of repository ID
 - Fixed Linear profile URLs in summary subroutines to use correct workspace slug instead of hardcoded "linear" workspace
 
 ## [0.2.0] - 2025-11-07
