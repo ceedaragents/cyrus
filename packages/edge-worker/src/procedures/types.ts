@@ -26,6 +26,9 @@ export interface SubroutineDefinition {
 
 	/** Whether this subroutine requires user approval before advancing to next step */
 	requiresApproval?: boolean;
+
+	/** Tools that should be explicitly disallowed during this subroutine */
+	disallowedTools?: readonly string[];
 }
 
 /**
