@@ -10,7 +10,18 @@ import type {
  * Repository routing result types
  */
 export type RepositoryRoutingResult =
-	| { type: "selected"; repository: RepositoryConfig }
+	| {
+			type: "selected";
+			repository: RepositoryConfig;
+			routingMethod:
+				| "existing-session"
+				| "label-based"
+				| "project-based"
+				| "team-based"
+				| "team-prefix"
+				| "catch-all"
+				| "workspace-fallback";
+	  }
 	| { type: "needs_selection"; workspaceRepos: RepositoryConfig[] }
 	| { type: "none" };
 
@@ -108,7 +119,11 @@ export class RepositoryRouter {
 		const workspaceId = webhook.organizationId;
 		if (!workspaceId) {
 			return repos[0]
-				? { type: "selected", repository: repos[0] }
+				? {
+						type: "selected",
+						repository: repos[0],
+						routingMethod: "workspace-fallback",
+					}
 				: { type: "none" };
 		}
 
@@ -123,7 +138,11 @@ export class RepositoryRouter {
 					console.log(
 						`[RepositoryRouter] Repository selected: ${repo.name} (existing active session)`,
 					);
-					return { type: "selected", repository: repo };
+					return {
+						type: "selected",
+						repository: repo,
+						routingMethod: "existing-session",
+					};
 				}
 			}
 		}
@@ -144,7 +163,11 @@ export class RepositoryRouter {
 			console.log(
 				`[RepositoryRouter] Repository selected: ${labelMatchedRepo.name} (label-based routing)`,
 			);
-			return { type: "selected", repository: labelMatchedRepo };
+			return {
+				type: "selected",
+				repository: labelMatchedRepo,
+				routingMethod: "label-based",
+			};
 		}
 
 		// Priority 2: Check project-based routing
@@ -158,7 +181,11 @@ export class RepositoryRouter {
 				console.log(
 					`[RepositoryRouter] Repository selected: ${projectMatchedRepo.name} (project-based routing)`,
 				);
-				return { type: "selected", repository: projectMatchedRepo };
+				return {
+					type: "selected",
+					repository: projectMatchedRepo,
+					routingMethod: "project-based",
+				};
 			}
 		}
 
@@ -172,7 +199,11 @@ export class RepositoryRouter {
 				console.log(
 					`[RepositoryRouter] Repository selected: ${teamMatchedRepo.name} (team-based routing)`,
 				);
-				return { type: "selected", repository: teamMatchedRepo };
+				return {
+					type: "selected",
+					repository: teamMatchedRepo,
+					routingMethod: "team-based",
+				};
 			}
 		}
 
@@ -185,7 +216,11 @@ export class RepositoryRouter {
 					console.log(
 						`[RepositoryRouter] Repository selected: ${repo.name} (team prefix routing)`,
 					);
-					return { type: "selected", repository: repo };
+					return {
+						type: "selected",
+						repository: repo,
+						routingMethod: "team-prefix",
+					};
 				}
 			}
 		}
@@ -202,7 +237,11 @@ export class RepositoryRouter {
 			console.log(
 				`[RepositoryRouter] Repository selected: ${catchAllRepo.name} (workspace catch-all)`,
 			);
-			return { type: "selected", repository: catchAllRepo };
+			return {
+				type: "selected",
+				repository: catchAllRepo,
+				routingMethod: "catch-all",
+			};
 		}
 
 		// Multiple repositories with no routing match - request user selection
@@ -219,7 +258,11 @@ export class RepositoryRouter {
 			console.log(
 				`[RepositoryRouter] Repository selected: ${fallbackRepo.name} (workspace fallback)`,
 			);
-			return { type: "selected", repository: fallbackRepo };
+			return {
+				type: "selected",
+				repository: fallbackRepo,
+				routingMethod: "workspace-fallback",
+			};
 		}
 
 		return { type: "none" };

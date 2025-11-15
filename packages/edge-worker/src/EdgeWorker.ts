@@ -1206,7 +1206,9 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			}
 
+			// At this point, routingResult.type === "selected"
 			repository = routingResult.repository;
+			const routingMethod = routingResult.routingMethod;
 
 			// Cache the repository for this issue
 			if (issueId) {
@@ -1214,6 +1216,14 @@ export class EdgeWorker extends EventEmitter {
 					.getIssueRepositoryCache()
 					.set(issueId, repository.id);
 			}
+
+			// Post agent activity showing auto-matched routing
+			await this.postRepositorySelectionActivity(
+				webhook.agentSession.id,
+				repository.id,
+				repository.name,
+				routingMethod,
+			);
 		}
 
 		console.log(
@@ -1618,6 +1628,14 @@ export class EdgeWorker extends EventEmitter {
 		// Cache the selected repository for this issue
 		const issueId = agentSession.issue.id;
 		this.repositoryRouter.getIssueRepositoryCache().set(issueId, repository.id);
+
+		// Post agent activity showing user-selected repository
+		await this.postRepositorySelectionActivity(
+			agentSessionId,
+			repository.id,
+			repository.name,
+			"user-selected",
+		);
 
 		console.log(
 			`[EdgeWorker] Initializing Claude runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
@@ -4433,6 +4451,79 @@ ${input.userComment}
 		} catch (error) {
 			console.error(
 				`[EdgeWorker] Error posting parent resumption acknowledgment:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Post repository selection activity to Linear
+	 * Shows which method was used to select the repository (auto-routing or user selection)
+	 */
+	private async postRepositorySelectionActivity(
+		linearAgentActivitySessionId: string,
+		repositoryId: string,
+		repositoryName: string,
+		selectionMethod:
+			| "existing-session"
+			| "label-based"
+			| "project-based"
+			| "team-based"
+			| "team-prefix"
+			| "catch-all"
+			| "workspace-fallback"
+			| "user-selected",
+	): Promise<void> {
+		try {
+			const linearClient = this.linearClients.get(repositoryId);
+			if (!linearClient) {
+				console.warn(
+					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+				);
+				return;
+			}
+
+			let methodDisplay: string;
+			if (selectionMethod === "user-selected") {
+				methodDisplay = "selected by user";
+			} else if (selectionMethod === "existing-session") {
+				methodDisplay = "matched via existing active session";
+			} else if (selectionMethod === "label-based") {
+				methodDisplay = "matched via label-based routing";
+			} else if (selectionMethod === "project-based") {
+				methodDisplay = "matched via project-based routing";
+			} else if (selectionMethod === "team-based") {
+				methodDisplay = "matched via team-based routing";
+			} else if (selectionMethod === "team-prefix") {
+				methodDisplay = "matched via team prefix routing";
+			} else if (selectionMethod === "catch-all") {
+				methodDisplay = "matched via catch-all routing";
+			} else {
+				methodDisplay = "matched via workspace fallback";
+			}
+
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: `Repository "${repositoryName}" has been ${methodDisplay}.`,
+				},
+			};
+
+			const result = await linearClient.createAgentActivity(activityInput);
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted repository selection activity for session ${linearAgentActivitySessionId} (${selectionMethod})`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post repository selection activity:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Error posting repository selection activity:`,
 				error,
 			);
 		}
