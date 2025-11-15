@@ -14,6 +14,7 @@ import type { EdgeWorkerConfig } from "../src/types.js";
  */
 export function createTestWorker(
 	repositories: RepositoryConfig[] = [],
+	linearWorkspaceSlug?: string,
 ): EdgeWorker {
 	// Create mock LinearClients for each repository
 	const linearClients = new Map();
@@ -32,6 +33,7 @@ export function createTestWorker(
 	const config: EdgeWorkerConfig = {
 		cyrusHome: "/tmp/test-cyrus-home",
 		defaultModel: "sonnet",
+		linearWorkspaceSlug,
 		repositories,
 		linearClients,
 		mcpServers: {},

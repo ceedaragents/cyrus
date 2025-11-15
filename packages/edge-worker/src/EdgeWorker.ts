@@ -272,25 +272,20 @@ export class EdgeWorker extends EventEmitter {
 						console.log(
 							`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
 						);
-
 						// Load subroutine prompt
-						const __filename = fileURLToPath(import.meta.url);
-						const __dirname = dirname(__filename);
-						const subroutinePromptPath = join(
-							__dirname,
-							"prompts",
-							nextSubroutine.promptPath,
-						);
-
-						let subroutinePrompt: string;
+						let subroutinePrompt: string | null;
 						try {
-							subroutinePrompt = await readFile(subroutinePromptPath, "utf-8");
-							console.log(
-								`[Subroutine Transition] Loaded ${nextSubroutine.name} subroutine prompt (${subroutinePrompt.length} characters)`,
+							subroutinePrompt = await this.loadSubroutinePrompt(
+								nextSubroutine,
+								this.config.linearWorkspaceSlug,
 							);
+							if (!subroutinePrompt) {
+								// Fallback if loadSubroutinePrompt returns null
+								subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
+							}
 						} catch (error) {
 							console.error(
-								`[Subroutine Transition] Failed to load subroutine prompt from ${subroutinePromptPath}:`,
+								`[Subroutine Transition] Failed to load subroutine prompt:`,
 								error,
 							);
 							// Fallback to simple prompt
@@ -667,6 +662,8 @@ export class EdgeWorker extends EventEmitter {
 				repositories: parsedConfig.repositories || [],
 				ngrokAuthToken:
 					parsedConfig.ngrokAuthToken || this.config.ngrokAuthToken,
+				linearWorkspaceSlug:
+					parsedConfig.linearWorkspaceSlug || this.config.linearWorkspaceSlug,
 				defaultModel: parsedConfig.defaultModel || this.config.defaultModel,
 				defaultFallbackModel:
 					parsedConfig.defaultFallbackModel || this.config.defaultFallbackModel,
@@ -3760,8 +3757,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 		let subroutineName: string | undefined;
 		if (currentSubroutine) {
-			const subroutinePrompt =
-				await this.loadSubroutinePrompt(currentSubroutine);
+			const subroutinePrompt = await this.loadSubroutinePrompt(
+				currentSubroutine,
+				this.config.linearWorkspaceSlug,
+			);
 			if (subroutinePrompt) {
 				parts.push(subroutinePrompt);
 				components.push("subroutine-prompt");
@@ -3871,6 +3870,7 @@ ${input.userComment}
 	 */
 	private async loadSubroutinePrompt(
 		subroutine: SubroutineDefinition,
+		workspaceSlug?: string,
 	): Promise<string | null> {
 		// Skip loading for "primary" - it's a placeholder that doesn't have a file
 		if (subroutine.promptPath === "primary") {
@@ -3886,10 +3886,19 @@ ${input.userComment}
 		);
 
 		try {
-			const prompt = await readFile(subroutinePromptPath, "utf-8");
+			let prompt = await readFile(subroutinePromptPath, "utf-8");
 			console.log(
 				`[EdgeWorker] Loaded ${subroutine.name} subroutine prompt (${prompt.length} characters)`,
 			);
+
+			// Perform template substitution if workspace slug is provided
+			if (workspaceSlug) {
+				prompt = prompt.replace(
+					/https:\/\/linear\.app\/linear\/profiles\//g,
+					`https://linear.app/${workspaceSlug}/profiles/`,
+				);
+			}
+
 			return prompt;
 		} catch (error) {
 			console.warn(

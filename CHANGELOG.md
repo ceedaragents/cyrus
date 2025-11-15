@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Improved webhook routing to eliminate misleading log messages after repository selection - subsequent webhooks for an issue now correctly use the already-selected repository instead of re-running routing logic
 - Repository selection now works correctly when multiple repositories are available - fixed Linear client lookup to use workspace ID instead of repository ID
+- Fixed Linear profile URLs in summary subroutines to use correct workspace slug instead of hardcoded "linear" workspace
 
 ## [0.2.0] - 2025-11-07
 

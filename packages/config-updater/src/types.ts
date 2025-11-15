@@ -27,6 +27,7 @@ export interface CyrusConfigPayload {
 	disallowedTools?: string[];
 	ngrokAuthToken?: string;
 	stripeCustomerId?: string;
+	linearWorkspaceSlug?: string;
 	defaultModel?: string;
 	defaultFallbackModel?: string;
 	global_setup_script?: string;

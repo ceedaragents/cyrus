@@ -123,6 +123,10 @@ export async function handleCyrusConfig(
 			config.stripeCustomerId = payload.stripeCustomerId;
 		}
 
+		if (payload.linearWorkspaceSlug) {
+			config.linearWorkspaceSlug = payload.linearWorkspaceSlug;
+		}
+
 		if (payload.defaultModel) {
 			config.defaultModel = payload.defaultModel;
 		}

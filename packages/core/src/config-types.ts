@@ -108,6 +108,9 @@ export interface EdgeWorkerConfig {
 	serverHost?: string; // Server host address ('localhost' or '0.0.0.0', default: 'localhost')
 	ngrokAuthToken?: string; // Ngrok auth token for tunnel creation
 
+	// Linear configuration (global)
+	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
+
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
 	defaultDisallowedTools?: string[]; // Tools to explicitly disallow across all repositories (no defaults)
@@ -193,6 +196,7 @@ export interface EdgeConfig {
 	repositories: RepositoryConfig[];
 	ngrokAuthToken?: string;
 	stripeCustomerId?: string;
+	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
