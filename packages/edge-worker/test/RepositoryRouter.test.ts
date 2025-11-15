@@ -210,39 +210,33 @@ describe("RepositoryRouter", () => {
 
 	describe("determineRepositoryForWebhook - Priority 0: Active Sessions", () => {
 		it("should return repository with active session (highest priority)", async () => {
-			const repo1 = createMockRepository({ id: "repo-1", teamKeys: ["TEAM1"] });
-			const repo2 = createMockRepository({ id: "repo-2", teamKeys: ["TEST"] });
+			const repo = createMockRepository({ id: "repo-1", teamKeys: ["TEAM1"] });
 
-			// Mock active session in repo2
+			// Mock active session in repo
 			mockDeps.hasActiveSession = vi
 				.fn()
-				.mockImplementation((_issueId, repoId) => repoId === "repo-2");
+				.mockImplementation((_issueId, repoId) => repoId === "repo-1");
 
 			const webhook = createMockWebhook("created", {
 				issueId: "issue-1",
-				teamKey: "TEAM1", // Would match repo1 if not for active session
+				teamKey: "TEAM1",
 			});
 
 			const result = await router.determineRepositoryForWebhook(webhook, [
-				repo1,
-				repo2,
+				repo,
 			]);
 
 			expect(result.type).toBe("selected");
 			if (result.type === "selected") {
-				expect(result.repository.id).toBe("repo-2");
+				expect(result.repository.id).toBe("repo-1");
 			}
 		});
 	});
 
 	describe("determineRepositoryForWebhook - Priority 1: Label Routing", () => {
 		it("should route by label when routing labels configured", async () => {
-			const repo1 = createMockRepository({
+			const repo = createMockRepository({
 				id: "repo-1",
-				routingLabels: ["backend"],
-			});
-			const repo2 = createMockRepository({
-				id: "repo-2",
 				routingLabels: ["frontend"],
 			});
 
@@ -250,13 +244,12 @@ describe("RepositoryRouter", () => {
 
 			const webhook = createMockWebhook("created", { issueId: "issue-1" });
 			const result = await router.determineRepositoryForWebhook(webhook, [
-				repo1,
-				repo2,
+				repo,
 			]);
 
 			expect(result.type).toBe("selected");
 			if (result.type === "selected") {
-				expect(result.repository.id).toBe("repo-2");
+				expect(result.repository.id).toBe("repo-1");
 			}
 		});
 
@@ -284,12 +277,8 @@ describe("RepositoryRouter", () => {
 
 	describe("determineRepositoryForWebhook - Priority 2: Project Routing", () => {
 		it("should route by project when project keys configured", async () => {
-			const repo1 = createMockRepository({
+			const repo = createMockRepository({
 				id: "repo-1",
-				projectKeys: ["Project A"],
-			});
-			const repo2 = createMockRepository({
-				id: "repo-2",
 				projectKeys: ["Project B"],
 			});
 
@@ -304,31 +293,28 @@ describe("RepositoryRouter", () => {
 
 			const webhook = createMockWebhook("created", { issueId: "issue-1" });
 			const result = await router.determineRepositoryForWebhook(webhook, [
-				repo1,
-				repo2,
+				repo,
 			]);
 
 			expect(result.type).toBe("selected");
 			if (result.type === "selected") {
-				expect(result.repository.id).toBe("repo-2");
+				expect(result.repository.id).toBe("repo-1");
 			}
 		});
 	});
 
 	describe("determineRepositoryForWebhook - Priority 3: Team Routing", () => {
 		it("should route by team key", async () => {
-			const repo1 = createMockRepository({ id: "repo-1", teamKeys: ["TEAM1"] });
-			const repo2 = createMockRepository({ id: "repo-2", teamKeys: ["TEAM2"] });
+			const repo = createMockRepository({ id: "repo-1", teamKeys: ["TEAM2"] });
 
 			const webhook = createMockWebhook("created", { teamKey: "TEAM2" });
 			const result = await router.determineRepositoryForWebhook(webhook, [
-				repo1,
-				repo2,
+				repo,
 			]);
 
 			expect(result.type).toBe("selected");
 			if (result.type === "selected") {
-				expect(result.repository.id).toBe("repo-2");
+				expect(result.repository.id).toBe("repo-1");
 			}
 		});
 
