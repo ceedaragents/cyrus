@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-11-15
+
 ### Added
 - When no routing option matches, it will prompt the user to select which repo they'd like to run Cyrus on for the Linear Issue. Repository selection now displays GitHub repository icons and formatted names when configured with a GitHub URL in the config file. The selected repository will be shown to the user, including what method was used to select it (label-based, team key based, project based, user-selected, etc)
 - Restored `--env-file` option to specify custom environment variables file location (uses Commander library for CLI parsing)
@@ -14,6 +16,32 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed Linear profile URLs in summary subroutines to use correct workspace slug instead of hardcoded "linear" workspace
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.1
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.1
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.1
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.1
+
+#### cyrus-core
+- cyrus-core@0.2.1
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.1
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.1
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.1
 
 ## [0.2.0] - 2025-11-07
 
