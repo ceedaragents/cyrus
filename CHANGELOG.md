@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 - Repository selection now displays GitHub repository icons and formatted names when configured with a GitHub URL in the config file
 - Restored `--env-file` option to specify custom environment variables file location (uses Commander library for CLI parsing)
 
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.31 to v0.1.42 - see [@anthropic-ai/claude-agent-sdk v0.1.42 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0142)
+- Updated @anthropic-ai/sdk from v0.68.0 to v0.69.0 - adds support for structured outputs beta - see [@anthropic-ai/sdk v0.69.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0690-2025-11-14)
+
 ### Fixed
 - Improved webhook routing to eliminate misleading log messages after repository selection - subsequent webhooks for an issue now correctly use the already-selected repository instead of re-running routing logic
 - Repository selection now works correctly when multiple repositories are available - fixed Linear client lookup to use workspace ID instead of repository ID
