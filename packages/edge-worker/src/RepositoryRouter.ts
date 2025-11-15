@@ -10,7 +10,17 @@ import type {
  * Repository routing result types
  */
 export type RepositoryRoutingResult =
-	| { type: "selected"; repository: RepositoryConfig }
+	| {
+			type: "selected";
+			repository: RepositoryConfig;
+			routingMethod:
+				| "label-based"
+				| "project-based"
+				| "team-based"
+				| "team-prefix"
+				| "catch-all"
+				| "workspace-fallback";
+	  }
 	| { type: "needs_selection"; workspaceRepos: RepositoryConfig[] }
 	| { type: "none" };
 
@@ -108,7 +118,11 @@ export class RepositoryRouter {
 		const workspaceId = webhook.organizationId;
 		if (!workspaceId) {
 			return repos[0]
-				? { type: "selected", repository: repos[0] }
+				? {
+						type: "selected",
+						repository: repos[0],
+						routingMethod: "workspace-fallback",
+					}
 				: { type: "none" };
 		}
 
@@ -117,13 +131,18 @@ export class RepositoryRouter {
 			this.extractIssueInfo(webhook);
 
 		// Priority 0: Check for existing active sessions
+		// TODO: Remove this priority check - existing session detection should not be a routing method
 		if (issueId) {
 			for (const repo of repos) {
 				if (this.deps.hasActiveSession(issueId, repo.id)) {
 					console.log(
 						`[RepositoryRouter] Repository selected: ${repo.name} (existing active session)`,
 					);
-					return { type: "selected", repository: repo };
+					return {
+						type: "selected",
+						repository: repo,
+						routingMethod: "workspace-fallback",
+					};
 				}
 			}
 		}
@@ -144,7 +163,11 @@ export class RepositoryRouter {
 			console.log(
 				`[RepositoryRouter] Repository selected: ${labelMatchedRepo.name} (label-based routing)`,
 			);
-			return { type: "selected", repository: labelMatchedRepo };
+			return {
+				type: "selected",
+				repository: labelMatchedRepo,
+				routingMethod: "label-based",
+			};
 		}
 
 		// Priority 2: Check project-based routing
@@ -158,7 +181,11 @@ export class RepositoryRouter {
 				console.log(
 					`[RepositoryRouter] Repository selected: ${projectMatchedRepo.name} (project-based routing)`,
 				);
-				return { type: "selected", repository: projectMatchedRepo };
+				return {
+					type: "selected",
+					repository: projectMatchedRepo,
+					routingMethod: "project-based",
+				};
 			}
 		}
 
@@ -172,11 +199,16 @@ export class RepositoryRouter {
 				console.log(
 					`[RepositoryRouter] Repository selected: ${teamMatchedRepo.name} (team-based routing)`,
 				);
-				return { type: "selected", repository: teamMatchedRepo };
+				return {
+					type: "selected",
+					repository: teamMatchedRepo,
+					routingMethod: "team-based",
+				};
 			}
 		}
 
 		// Try parsing issue identifier as fallback for team routing
+		// TODO: Remove team prefix routing - should rely on explicit team-based routing only
 		if (issueIdentifier?.includes("-")) {
 			const prefix = issueIdentifier.split("-")[0];
 			if (prefix) {
@@ -185,12 +217,17 @@ export class RepositoryRouter {
 					console.log(
 						`[RepositoryRouter] Repository selected: ${repo.name} (team prefix routing)`,
 					);
-					return { type: "selected", repository: repo };
+					return {
+						type: "selected",
+						repository: repo,
+						routingMethod: "team-prefix",
+					};
 				}
 			}
 		}
 
 		// Priority 4: Find catch-all repository (no routing configuration)
+		// TODO: Remove catch-all routing - require explicit routing configuration for all repositories
 		const catchAllRepo = workspaceRepos.find(
 			(repo) =>
 				(!repo.teamKeys || repo.teamKeys.length === 0) &&
@@ -202,7 +239,11 @@ export class RepositoryRouter {
 			console.log(
 				`[RepositoryRouter] Repository selected: ${catchAllRepo.name} (workspace catch-all)`,
 			);
-			return { type: "selected", repository: catchAllRepo };
+			return {
+				type: "selected",
+				repository: catchAllRepo,
+				routingMethod: "catch-all",
+			};
 		}
 
 		// Multiple repositories with no routing match - request user selection
@@ -219,7 +260,11 @@ export class RepositoryRouter {
 			console.log(
 				`[RepositoryRouter] Repository selected: ${fallbackRepo.name} (workspace fallback)`,
 			);
-			return { type: "selected", repository: fallbackRepo };
+			return {
+				type: "selected",
+				repository: fallbackRepo,
+				routingMethod: "workspace-fallback",
+			};
 		}
 
 		return { type: "none" };
