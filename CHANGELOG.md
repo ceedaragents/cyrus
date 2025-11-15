@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Repository selection now displays GitHub repository icons and formatted names when configured with a GitHub URL in the config file
+- Restored `--env-file` option to specify custom environment variables file location (uses Commander library for CLI parsing)
+
+### Fixed
+- Improved webhook routing to eliminate misleading log messages after repository selection - subsequent webhooks for an issue now correctly use the already-selected repository instead of re-running routing logic
+- Repository selection now works correctly when multiple repositories are available - fixed Linear client lookup to use workspace ID instead of repository ID
+
 ## [0.2.0] - 2025-11-07
 
 ### Added

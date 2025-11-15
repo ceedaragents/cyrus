@@ -10,5 +10,6 @@ export type {
 } from "cyrus-core";
 export { AgentSessionManager } from "./AgentSessionManager.js";
 export { EdgeWorker } from "./EdgeWorker.js";
+export { RepositoryRouter } from "./RepositoryRouter.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
 export type { EdgeWorkerEvents } from "./types.js";

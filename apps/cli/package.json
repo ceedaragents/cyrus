@@ -41,6 +41,7 @@
 	"license": "MIT",
 	"dependencies": {
 		"@linear/sdk": "^60.0.0",
+		"commander": "^14.0.2",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-cloudflare-tunnel-client": "workspace:*",
 		"cyrus-config-updater": "workspace:*",
