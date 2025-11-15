@@ -131,6 +131,7 @@ export class RepositoryRouter {
 			this.extractIssueInfo(webhook);
 
 		// Priority 0: Check for existing active sessions
+		// TODO: Remove this priority check - existing session detection should not be a routing method
 		if (issueId) {
 			for (const repo of repos) {
 				if (this.deps.hasActiveSession(issueId, repo.id)) {
@@ -207,6 +208,7 @@ export class RepositoryRouter {
 		}
 
 		// Try parsing issue identifier as fallback for team routing
+		// TODO: Remove team prefix routing - should rely on explicit team-based routing only
 		if (issueIdentifier?.includes("-")) {
 			const prefix = issueIdentifier.split("-")[0];
 			if (prefix) {
@@ -225,6 +227,7 @@ export class RepositoryRouter {
 		}
 
 		// Priority 4: Find catch-all repository (no routing configuration)
+		// TODO: Remove catch-all routing - require explicit routing configuration for all repositories
 		const catchAllRepo = workspaceRepos.find(
 			(repo) =>
 				(!repo.teamKeys || repo.teamKeys.length === 0) &&
