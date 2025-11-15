@@ -4465,7 +4465,6 @@ ${input.userComment}
 		repositoryId: string,
 		repositoryName: string,
 		selectionMethod:
-			| "existing-session"
 			| "label-based"
 			| "project-based"
 			| "team-based"
@@ -4486,8 +4485,6 @@ ${input.userComment}
 			let methodDisplay: string;
 			if (selectionMethod === "user-selected") {
 				methodDisplay = "selected by user";
-			} else if (selectionMethod === "existing-session") {
-				methodDisplay = "matched via existing active session";
 			} else if (selectionMethod === "label-based") {
 				methodDisplay = "matched via label-based routing";
 			} else if (selectionMethod === "project-based") {

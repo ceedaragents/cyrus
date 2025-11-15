@@ -14,7 +14,6 @@ export type RepositoryRoutingResult =
 			type: "selected";
 			repository: RepositoryConfig;
 			routingMethod:
-				| "existing-session"
 				| "label-based"
 				| "project-based"
 				| "team-based"
@@ -141,7 +140,7 @@ export class RepositoryRouter {
 					return {
 						type: "selected",
 						repository: repo,
-						routingMethod: "existing-session",
+						routingMethod: "workspace-fallback",
 					};
 				}
 			}
