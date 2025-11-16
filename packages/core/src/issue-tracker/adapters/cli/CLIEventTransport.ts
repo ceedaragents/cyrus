@@ -77,7 +77,7 @@ export class CLIEventTransport
 				type: "AppUserNotification",
 				action: "issueAssignedToYou",
 				createdAt: new Date().toISOString(),
-				organizationId: "cli-org",
+				organizationId: "cli-workspace",
 				oauthClientId: "cli-oauth-client",
 				appUserId: "cli-app-user",
 				notification: {
@@ -101,7 +101,7 @@ export class CLIEventTransport
 				type: "AppUserNotification",
 				action: "issueCommentMention",
 				createdAt: new Date().toISOString(),
-				organizationId: "cli-org",
+				organizationId: "cli-workspace",
 				oauthClientId: "cli-oauth-client",
 				appUserId: "cli-app-user",
 				notification: {
@@ -126,7 +126,7 @@ export class CLIEventTransport
 					type: "AgentSessionEvent",
 					action: "created",
 					createdAt: new Date().toISOString(),
-					organizationId: "cli-org",
+					organizationId: "cli-workspace",
 					oauthClientId: "cli-oauth-client",
 					appUserId: "cli-app-user",
 					agentSession: {
@@ -144,7 +144,7 @@ export class CLIEventTransport
 						type: session.type,
 						summary: null,
 						sourceMetadata: null,
-						organizationId: "cli-org",
+						organizationId: "cli-workspace",
 						creator: {
 							id: session.creatorId,
 							name: "CLI User",
@@ -213,7 +213,7 @@ export class CLIEventTransport
 					type: "AgentSessionEvent",
 					action: "prompted",
 					createdAt: new Date().toISOString(),
-					organizationId: "cli-org",
+					organizationId: "cli-workspace",
 					oauthClientId: "cli-oauth-client",
 					appUserId: "cli-app-user",
 					agentSession: {
@@ -231,7 +231,7 @@ export class CLIEventTransport
 						type: session.type,
 						summary: null,
 						sourceMetadata: null,
-						organizationId: "cli-org",
+						organizationId: "cli-workspace",
 						creator: {
 							id: session.creatorId,
 							name: "CLI User",
