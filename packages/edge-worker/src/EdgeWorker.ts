@@ -77,6 +77,10 @@ import type {
 	PromptComponent,
 	PromptType,
 } from "./prompt-assembly/types.js";
+import {
+	RepositoryRouter,
+	type RepositoryRouterDeps,
+} from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { createBasicIssueTrackerServer } from "./tools/basic-issue-tracker.js";
 import { createExtendedMcpTools as createCLIExtendedMcpTools } from "./tools/cli-extended-mcp-tools.js";
@@ -112,6 +116,7 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureRouter: ProcedureRouter; // Intelligent workflow routing
+	private repositoryRouter: RepositoryRouter; // Repository routing and selection
 	private configWatcher?: FSWatcher; // File watcher for config.json
 	private configPath?: string; // Path to config.json file
 
@@ -129,6 +134,35 @@ export class EdgeWorker extends EventEmitter {
 			model: "haiku",
 			timeoutMs: 10000,
 		});
+
+		// Initialize repository router with platform-agnostic dependencies
+		const repositoryRouterDeps: RepositoryRouterDeps = {
+			fetchIssueLabels: async (issueId: string, workspaceId: string) => {
+				// Find repository for this workspace
+				const repo = Array.from(this.repositories.values()).find(
+					(r) => r.linearWorkspaceId === workspaceId,
+				);
+				if (!repo) return [];
+
+				// Get issue tracker for this repository
+				const issueTracker = this.issueTrackers.get(repo.id);
+				if (!issueTracker) return [];
+
+				// Use platform-agnostic getIssueLabels method
+				return await issueTracker.getIssueLabels(issueId);
+			},
+			hasActiveSession: (issueId: string, repositoryId: string) => {
+				const sessionManager = this.agentSessionManagers.get(repositoryId);
+				if (!sessionManager) return false;
+				const activeSessions =
+					sessionManager.getActiveSessionsByIssueId(issueId);
+				return activeSessions.length > 0;
+			},
+			getLinearClient: (workspaceId: string) => {
+				return this.getLinearClientForWorkspace(workspaceId);
+			},
+		};
+		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
 
 		console.log(
 			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
@@ -1007,29 +1041,10 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		// Find the appropriate repository for this webhook
-		const repository = await this.findRepositoryForWebhook(webhook, repos);
-		if (!repository) {
-			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-				console.log(
-					`[handleWebhook] No repository configured for webhook from workspace ${webhook.organizationId}`,
-				);
-				console.log(
-					`[handleWebhook] Available repositories:`,
-					repos.map((r) => ({
-						name: r.name,
-						workspaceId: r.linearWorkspaceId,
-						teamKeys: r.teamKeys,
-						routingLabels: r.routingLabels,
-					})),
-				);
-			}
-			return;
-		}
-
 		try {
 			// Route to specific webhook handlers based on webhook type
 			// NOTE: Traditional webhooks (assigned, comment) are disabled in favor of agent session events
+			// NOTE: Repository routing is now handled within individual handlers
 			if (isIssueAssignedWebhook(webhook)) {
 				return;
 			} else if (isIssueCommentMentionWebhook(webhook)) {
@@ -1038,11 +1053,11 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			} else if (isIssueUnassignedWebhook(webhook)) {
 				// Keep unassigned webhook active
-				await this.handleIssueUnassignedWebhook(webhook, repository);
+				await this.handleIssueUnassignedWebhook(webhook);
 			} else if (isAgentSessionCreatedWebhook(webhook)) {
-				await this.handleAgentSessionCreatedWebhook(webhook, repository);
+				await this.handleAgentSessionCreatedWebhook(webhook, repos);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
-				await this.handleUserPromptedAgentActivity(webhook, repository);
+				await this.handleUserPromptedAgentActivity(webhook);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					console.log(
@@ -1052,7 +1067,7 @@ export class EdgeWorker extends EventEmitter {
 			}
 		} catch (error) {
 			console.error(
-				`[handleWebhook] Failed to process webhook: ${(webhook as any).action} for repository ${repository.name}`,
+				`[handleWebhook] Failed to process webhook: ${(webhook as any).action}`,
 				error,
 			);
 			// Don't re-throw webhook processing errors to prevent application crashes
@@ -1065,11 +1080,20 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async handleIssueUnassignedWebhook(
 		webhook: LinearIssueUnassignedWebhook,
-		repository: RepositoryConfig,
 	): Promise<void> {
+		const issueId = webhook.notification.issue.id;
 		console.log(
 			`[EdgeWorker] Handling issue unassignment: ${webhook.notification.issue.identifier}`,
 		);
+
+		// Get cached repository for this issue
+		const repository = this.getCachedRepository(issueId);
+		if (!repository) {
+			console.log(
+				`[EdgeWorker] No cached repository found for issue ${issueId}`,
+			);
+			return;
+		}
 
 		// Log the complete webhook payload for TypeScript type definition
 		// console.log('=== ISSUE UNASSIGNMENT WEBHOOK PAYLOAD ===')
@@ -1080,184 +1104,82 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Find the repository configuration for a webhook
-	 * Now supports async operations for label-based and project-based routing
-	 * Priority: routingLabels > projectKeys > teamKeys
+	 * Get cached repository for an issue (used by agentSessionPrompted Branch 3)
 	 */
-	private async findRepositoryForWebhook(
-		webhook: LinearWebhook,
-		repos: RepositoryConfig[],
-	): Promise<RepositoryConfig | null> {
-		const workspaceId = webhook.organizationId;
-		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
-
-		// Get issue information from webhook
-		let issueId: string | undefined;
-		let teamKey: string | undefined;
-		let issueIdentifier: string | undefined;
-
-		// Handle agent session webhooks which have different structure
-		if (isAgentSessionCreatedWebhook(webhook)) {
-			issueId = (webhook as any).agentSession?.issue?.id;
-			teamKey = (webhook as any).agentSession?.issue?.team?.key;
-			issueIdentifier = (webhook as any).agentSession?.issue?.identifier;
-		} else if (isAgentSessionPromptedWebhook(webhook)) {
-			issueId = (webhook as any).agentSession?.issue?.id;
-			teamKey = (webhook as any).agentSession?.issue?.team?.key;
-			issueIdentifier = (webhook as any).agentSession?.issue?.identifier;
-		} else {
-			issueId = (webhook as any).notification?.issue?.id;
-			teamKey = (webhook as any).notification?.issue?.team?.key;
-			issueIdentifier = (webhook as any).notification?.issue?.identifier;
-		}
-
-		// Filter repos by workspace first
-		const workspaceRepos = repos.filter(
-			(repo) => repo.linearWorkspaceId === workspaceId,
+	private getCachedRepository(issueId: string): RepositoryConfig | null {
+		return this.repositoryRouter.getCachedRepository(
+			issueId,
+			this.repositories,
 		);
-		if (workspaceRepos.length === 0) return null;
-
-		// Priority 1: Check routing labels (highest priority)
-		const reposWithRoutingLabels = workspaceRepos.filter(
-			(repo) => repo.routingLabels && repo.routingLabels.length > 0,
-		);
-
-		if (reposWithRoutingLabels.length > 0 && issueId && workspaceRepos[0]) {
-			// We need an issue tracker to fetch labels
-			// Use the first workspace repo's issue tracker temporarily
-			const issueTracker = this.issueTrackers.get(workspaceRepos[0].id);
-
-			if (issueTracker) {
-				try {
-					// Fetch the issue to get labels
-					const issue = await issueTracker.fetchIssue(issueId);
-					const labelNames = await issueTracker.getIssueLabels(issue.id);
-
-					// Check each repo with routing labels
-					for (const repo of reposWithRoutingLabels) {
-						if (
-							repo.routingLabels?.some((routingLabel: string) =>
-								labelNames.includes(routingLabel),
-							)
-						) {
-							console.log(
-								`[EdgeWorker] Repository selected: ${repo.name} (label-based routing)`,
-							);
-							return repo;
-						}
-					}
-				} catch (error) {
-					console.error(
-						`[EdgeWorker] Failed to fetch labels for routing:`,
-						error,
-					);
-					// Continue to project-based routing
-				}
-			}
-		}
-
-		// Priority 2: Check project-based routing
-		if (issueId) {
-			const projectBasedRepo = await this.findRepositoryByProject(
-				issueId,
-				workspaceRepos,
-			);
-			if (projectBasedRepo) {
-				console.log(
-					`[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`,
-				);
-				return projectBasedRepo;
-			}
-		}
-
-		// Priority 3: Check team-based routing
-		if (teamKey) {
-			const repo = workspaceRepos.find((r) => r.teamKeys?.includes(teamKey));
-			if (repo) {
-				console.log(
-					`[EdgeWorker] Repository selected: ${repo.name} (team-based routing)`,
-				);
-				return repo;
-			}
-		}
-
-		// Try parsing issue identifier as fallback for team routing
-		if (issueIdentifier?.includes("-")) {
-			const prefix = issueIdentifier.split("-")[0];
-			if (prefix) {
-				const repo = workspaceRepos.find((r) => r.teamKeys?.includes(prefix));
-				if (repo) {
-					console.log(
-						`[EdgeWorker] Repository selected: ${repo.name} (team prefix routing)`,
-					);
-					return repo;
-				}
-			}
-		}
-
-		// Workspace fallback - find first repo without routing configuration
-		const catchAllRepo = workspaceRepos.find(
-			(repo) =>
-				(!repo.teamKeys || repo.teamKeys.length === 0) &&
-				(!repo.routingLabels || repo.routingLabels.length === 0) &&
-				(!repo.projectKeys || repo.projectKeys.length === 0),
-		);
-
-		if (catchAllRepo) {
-			console.log(
-				`[EdgeWorker] Repository selected: ${catchAllRepo.name} (workspace catch-all)`,
-			);
-			return catchAllRepo;
-		}
-
-		// Final fallback to first workspace repo
-		const fallbackRepo = workspaceRepos[0] || null;
-		if (fallbackRepo) {
-			console.log(
-				`[EdgeWorker] Repository selected: ${fallbackRepo.name} (workspace fallback)`,
-			);
-		}
-		return fallbackRepo;
 	}
 
 	/**
-	 * Helper method to find repository by project name
+	 * Get Linear client for a workspace
+	 *
+	 * Note: This is used by RepositoryRouter for project-based routing.
+	 * For platform-agnostic architecture, we return undefined for non-Linear platforms.
 	 */
-	private async findRepositoryByProject(
-		issueId: string,
-		repos: RepositoryConfig[],
-	): Promise<RepositoryConfig | null> {
-		// Try each repository that has projectKeys configured
-		for (const repo of repos) {
-			if (!repo.projectKeys || repo.projectKeys.length === 0) continue;
-
-			try {
-				const fullIssue = await this.fetchFullIssueDetails(issueId, repo.id);
-				const project = await fullIssue?.project;
-				if (!project || !project.name) {
-					console.warn(
-						`[EdgeWorker] No project name found for issue ${issueId} in repository ${repo.name}`,
-					);
-					continue;
+	private getLinearClientForWorkspace(
+		workspaceId: string,
+	): LinearClient | undefined {
+		// For Linear platform, get the client from LinearIssueTrackerService
+		for (const [_repoId, repo] of this.repositories) {
+			if (repo.linearWorkspaceId === workspaceId) {
+				const issueTracker = this.issueTrackers.get(repo.id);
+				// Only LinearIssueTrackerService has a Linear client
+				if (issueTracker instanceof LinearIssueTrackerService) {
+					// Access private field via type assertion - needed for RepositoryRouter
+					return (issueTracker as any).linearClient;
 				}
-
-				const projectName = project.name;
-				if (repo.projectKeys.includes(projectName)) {
-					console.log(
-						`[EdgeWorker] Matched issue ${issueId} to repository ${repo.name} via project: ${projectName}`,
-					);
-					return repo;
-				}
-			} catch (error) {
-				// Continue to next repository if this one fails
-				console.debug(
-					`[EdgeWorker] Failed to fetch project for issue ${issueId} from repository ${repo.name}:`,
-					error,
-				);
 			}
 		}
+		return undefined;
+	}
 
-		return null;
+	/**
+	 * Post activity to Linear indicating which repository was selected and how
+	 */
+	private async postRepositorySelectionActivity(
+		agentSessionId: string,
+		repositoryId: string,
+		repositoryName: string,
+		routingMethod: string,
+	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			console.warn(
+				`[EdgeWorker] Cannot post repository selection activity - no IssueTracker for repository ${repositoryId}`,
+			);
+			return;
+		}
+
+		const methodDescriptions: Record<string, string> = {
+			"label-based": "based on issue labels",
+			"project-based": "based on issue project",
+			"team-based": "based on issue team",
+			"team-prefix": "based on team identifier prefix",
+			"catch-all": "using catch-all configuration",
+			"workspace-fallback": "as workspace default",
+		};
+
+		const methodDescription =
+			methodDescriptions[routingMethod] || `using ${routingMethod}`;
+
+		try {
+			await issueTracker.createAgentActivity(agentSessionId, {
+				type: AgentActivityContentType.Thought,
+				body: `Selected repository: **${repositoryName}** (${methodDescription})`,
+			});
+			console.log(
+				`[EdgeWorker] Posted repository selection activity for ${repositoryName}`,
+			);
+		} catch (error) {
+			console.warn(
+				`[EdgeWorker] Failed to post repository selection activity:`,
+				error,
+			);
+			// Don't throw - this is a non-critical operation
+		}
 	}
 
 	/**
@@ -1363,18 +1285,69 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle agent session created webhook
 	 * . Can happen due to being 'delegated' or @ mentioned in a new thread
 	 * @param webhook
-	 * @param repository Repository configuration
+	 * @param repos All configured repositories
 	 */
 	private async handleAgentSessionCreatedWebhook(
 		webhook: LinearAgentSessionCreatedWebhook,
-		repository: RepositoryConfig,
+		repos: RepositoryConfig[],
 	): Promise<void> {
-		console.log(
-			`[EdgeWorker] Handling agent session created: ${webhook.agentSession.issue.identifier}`,
-		);
 		const { agentSession, guidance } = webhook;
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
+		const issueId = issue.id;
+
+		console.log(
+			`[EdgeWorker] Handling agent session created: ${issue.identifier}`,
+		);
+
+		// Check cache first
+		let repository: RepositoryConfig | null = null;
+		if (issueId) {
+			repository = this.getCachedRepository(issueId);
+		}
+
+		// If not cached, perform routing
+		if (!repository) {
+			const routingResult =
+				await this.repositoryRouter.determineRepositoryForWebhook(
+					webhook,
+					repos,
+				);
+
+			if (routingResult.type === "none") {
+				// No repository found
+				console.log(
+					`[EdgeWorker] No repository found for agent session ${linearAgentActivitySessionId}`,
+				);
+				return;
+			}
+
+			if (routingResult.type === "needs_selection") {
+				await this.repositoryRouter.elicitUserRepositorySelection(
+					webhook,
+					routingResult.workspaceRepos,
+				);
+				return;
+			}
+
+			// routingResult.type === "selected"
+			repository = routingResult.repository;
+
+			// Cache it
+			if (issueId) {
+				this.repositoryRouter
+					.getIssueRepositoryCache()
+					.set(issueId, repository.id);
+			}
+
+			// Post routing activity
+			await this.postRepositorySelectionActivity(
+				linearAgentActivitySessionId,
+				repository.id,
+				repository.name,
+				routingResult.routingMethod,
+			);
+		}
 
 		// Log guidance if present
 		if (guidance && guidance.length > 0) {
@@ -1646,20 +1619,27 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Handle new comment on issue (updated for comment-based sessions)
-	 * @param issue Linear issue object from webhook data
-	 * @param comment Linear comment object from webhook data
-	 * @param repository Repository configuration
+	 * @param webhook Agent session prompted webhook
 	 */
 	private async handleUserPromptedAgentActivity(
 		webhook: LinearAgentSessionPromptedWebhook,
-		repository: RepositoryConfig,
 	): Promise<void> {
 		// Look for existing session for this comment thread
 		const { agentSession } = webhook;
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
+		const issueId = issue.id;
 
 		const commentId = webhook.agentActivity.sourceCommentId;
+
+		// Get cached repository for this issue
+		const repository = this.getCachedRepository(issueId);
+		if (!repository) {
+			console.log(
+				`[EdgeWorker] No cached repository found for issue ${issueId}`,
+			);
+			return;
+		}
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
