@@ -80,7 +80,10 @@ export {
 // ADAPTERS
 // ============================================================================
 
-// CLI adapters will be added in part 2 of CYPACK-388
+export { CLIEventTransport } from "./adapters/cli/CLIEventTransport.js";
+export { CLIIssueTrackerService } from "./adapters/cli/CLIIssueTrackerService.js";
+export { CLIRPCServer } from "./adapters/cli/CLIRPCServer.js";
+
 // Linear adapters have been moved to cyrus-linear-event-transport package
 // Import them directly from that package instead of from cyrus-core
 
@@ -96,7 +99,7 @@ export const VERSION = "1.0.0";
 /**
  * Supported platform types.
  */
-export const SUPPORTED_PLATFORMS = ["linear"] as const;
+export const SUPPORTED_PLATFORMS = ["linear", "cli"] as const;
 
 /**
  * Type for supported platform identifiers.

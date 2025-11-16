@@ -4,16 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-- Introduced `IIssueTrackerService` interface for platform-agnostic issue tracking (#TODO CYPACK-388 part 1)
-- Added `LinearIssueTrackerService` implementation using Linear SDK (#TODO CYPACK-388 part 1)
-- New `cyrus-linear-event-transport` package replacing `cyrus-linear-webhook-client` (#TODO CYPACK-388 part 1)
-- Added `RepositoryRouter` for intelligent repository selection and routing (#TODO CYPACK-388 part 1)
-
-### Changed
-- Refactored EdgeWorker to use `IIssueTrackerService` interface instead of direct Linear client (#TODO CYPACK-388 part 1)
-- Replaced `cyrus-linear-webhook-client` with `cyrus-linear-event-transport` for cleaner Linear integration (#TODO CYPACK-388 part 1)
-
 ## [0.2.1] - 2025-11-15
 
 ### Added

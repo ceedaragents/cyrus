@@ -96,6 +96,7 @@ export class WorkerService {
 	}
 
 	/**
+	/**
 	 * Start idle mode - server infrastructure only, no EdgeWorker
 	 * Used after onboarding when no repositories are configured
 	 */
