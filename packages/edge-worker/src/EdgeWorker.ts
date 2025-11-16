@@ -2406,7 +2406,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				}
 				const parentRawBranchName =
 					parent.branchName ||
-					`${await parent.identifier}-${(await parent.title)
+					`${parent.identifier}-${parent.title
 						?.toLowerCase()
 						.replace(/\s+/g, "-")
 						.substring(0, 30)}`;

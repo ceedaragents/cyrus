@@ -478,6 +478,25 @@ export interface IIssueTrackerService {
 	 */
 	fetchLabel(idOrName: string): Promise<Label>;
 
+	/**
+	 * Fetch label names for a specific issue.
+	 *
+	 * @param issueId - Issue ID to fetch labels for
+	 * @returns Promise resolving to array of label names
+	 * @throws Error if issue not found or request fails
+	 *
+	 * @example
+	 * ```typescript
+	 * const labels = await service.getIssueLabels('TEAM-123');
+	 * console.log('Labels:', labels.join(', '));
+	 * ```
+	 *
+	 * @remarks
+	 * This is a convenience method for fetching just the label names
+	 * for an issue, commonly used for repository routing.
+	 */
+	getIssueLabels(issueId: string): Promise<string[]>;
+
 	// ========================================================================
 	// WORKFLOW STATE OPERATIONS
 	// ========================================================================

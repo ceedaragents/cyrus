@@ -565,6 +565,25 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		}
 	}
 
+	/**
+	 * Fetch label names for a specific issue.
+	 */
+	async getIssueLabels(issueId: string): Promise<string[]> {
+		try {
+			const issue = await this.linearClient.issue(issueId);
+			const labels = await issue.labels();
+			return labels.nodes.map((label) => label.name);
+		} catch (error) {
+			const err = new Error(
+				`Failed to fetch issue labels for ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			throw err;
+		}
+	}
+
 	// ========================================================================
 	// WORKFLOW STATE OPERATIONS
 	// ========================================================================

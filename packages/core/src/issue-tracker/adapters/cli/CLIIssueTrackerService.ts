@@ -907,6 +907,28 @@ export class CLIIssueTrackerService
 		return this.toLinearLabel(labelData);
 	}
 
+	async getIssueLabels(issueId: string): Promise<string[]> {
+		const issueData = this.state.issues.get(issueId);
+
+		if (!issueData) {
+			throw new Error(`Issue not found: ${issueId}`);
+		}
+
+		if (!issueData.labelIds || issueData.labelIds.length === 0) {
+			return [];
+		}
+
+		const labelNames: string[] = [];
+		for (const labelId of issueData.labelIds) {
+			const labelData = this.state.labels.get(labelId);
+			if (labelData) {
+				labelNames.push(labelData.name);
+			}
+		}
+
+		return labelNames;
+	}
+
 	// ========================================================================
 	// WORKFLOW STATE OPERATIONS
 	// ========================================================================
