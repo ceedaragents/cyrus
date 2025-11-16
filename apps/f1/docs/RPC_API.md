@@ -1,6 +1,12 @@
-# CLI IssueTracker Platform - Usage Guide
+# F1 RPC API Reference
 
-The CLI IssueTracker platform provides a command-line interface for testing and development of Cyrus agent workflows without requiring Linear integration.
+Low-level RPC API documentation for the F1 CLI platform. This guide is for developers who need direct HTTP/JSON-RPC access to the CLI issue tracker.
+
+**For end-users**: See [Commands Reference](./COMMANDS.md) for the user-friendly F1 CLI tool.
+
+## Overview
+
+The F1 platform provides a command-line interface for testing and development of Cyrus agent workflows without requiring Linear integration.
 
 ## Features
 

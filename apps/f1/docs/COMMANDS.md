@@ -1,6 +1,8 @@
-# 🏎️ Cyrus CLI Tool - Premium Command-Line Interface
+# 🏎️ F1 CLI Commands Reference
 
-The **F1 (Formula 1) of CLIs** - A beautiful, professional command-line interface for the Cyrus platform with premium UX, excellent help, activity pagination, and search.
+Complete command reference for the F1 CLI tool - a beautiful, professional command-line interface for the Cyrus platform with premium UX, excellent help, activity pagination, and search.
+
+**See also**: [RPC API Documentation](./RPC_API.md) for low-level API details.
 
 ## ✨ Premium Features
 

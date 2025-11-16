@@ -46,9 +46,18 @@ cd apps/f1
 ./f1 stopSession --session-id session-1
 ```
 
+## Documentation
+
+- **[Commands Reference](./docs/COMMANDS.md)** - Complete CLI command documentation
+- **[RPC API Reference](./docs/RPC_API.md)** - Low-level HTTP/JSON-RPC API
+- **[Test Drives](./test-drives/)** - Real-world usage examples and UX findings
+
 ## Development
 
 ```bash
+# Start server
+bun run apps/f1/server.ts
+
 # Type checking
 pnpm --filter cyrus-f1 typecheck
 
@@ -57,6 +66,9 @@ pnpm biome check apps/f1/src/
 
 # Build
 pnpm --filter cyrus-f1 build
+
+# Run test drive
+./apps/f1/test-drive-f1.sh
 ```
 
 ## License

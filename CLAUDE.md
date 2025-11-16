@@ -537,7 +537,7 @@ The server will start on port 3457 (default) and display beautiful colored outpu
 
 **Run the comprehensive test drive:**
 ```bash
-./tools/cli-platform/test-drive-f1.sh
+./apps/f1/test-drive-f1.sh
 ```
 
 This automated script tests:
@@ -677,13 +677,14 @@ DEBUG=1 ./apps/f1/f1 createIssue --title "Test"
 
 ### Documentation
 
-- **apps/f1/README.md** - F1 CLI platform overview and usage
-- **tools/cli-platform/CLI_TOOL_README.md** - Comprehensive CLI documentation
-- **tools/cli-platform/test-drive-f1.sh** - Automated test script
-- **apps/f1/f1** - CLI tool source
+- **apps/f1/README.md** - F1 CLI platform overview
+- **apps/f1/docs/COMMANDS.md** - Comprehensive CLI command reference
+- **apps/f1/docs/RPC_API.md** - Low-level RPC API documentation
+- **apps/f1/test-drive-f1.sh** - Automated test script
+- **apps/f1/f1** - CLI tool binary
 - **apps/f1/server.ts** - Server startup script (run with `bun run apps/f1/server.ts`)
 - **apps/f1/test-drives/** - Real-world usage test drives and UX findings
-- **packages/core/src/issue-tracker/adapters/CLIRPCServer.ts** - RPC server
+- **packages/core/src/issue-tracker/adapters/CLIRPCServer.ts** - RPC server implementation
 
 ### Architecture
 
@@ -725,8 +726,8 @@ DEBUG=1 ./apps/f1/f1 createIssue --title "Test"
    - Follow existing patterns
 
 4. **Update docs:**
-   - Add to `tools/cli-platform/CLI_TOOL_README.md`
-   - Add to `tools/cli-platform/test-drive-f1.sh`
+   - Add to `apps/f1/docs/COMMANDS.md`
+   - Add to `apps/f1/test-drive-f1.sh`
    - Update this section of `CLAUDE.md`
 
 **Example: Adding `listSessions` command:**
@@ -769,7 +770,7 @@ case "listAgentSessions": {
 4. **Search before paginating**: `--search "term"` filters first, then paginates
 5. **Watch most recent**: Default sort shows newest first (perfect for monitoring)
 6. **Script it**: CLI is designed for bash scripts and automation
-7. **Test with test drive**: Run `./tools/cli-platform/test-drive-f1.sh` after changes
+7. **Test with test drive**: Run `./apps/f1/test-drive-f1.sh` after changes
 
 ### Why "F1"?
 
