@@ -20,12 +20,12 @@ The **F1 (Formula 1) of CLIs** - A beautiful, professional command-line interfac
 
 ```bash
 # Default port (3457)
-node start-f1.mjs
+bun run apps/f1/server.ts
 
 # Custom port
-CYRUS_PORT=8080 node start-f1.mjs
+CYRUS_PORT=8080 bun run apps/f1/server.ts
 # or
-node start-f1.mjs 8080
+bun run apps/f1/server.ts 8080
 ```
 
 The server will display:

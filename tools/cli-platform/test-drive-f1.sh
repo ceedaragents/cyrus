@@ -85,7 +85,7 @@ echo -e "${DIM}Starting Cyrus CLI server on port $CYRUS_PORT...${NC}"
 echo -e "${DIM}(Server will run in background)${NC}\n"
 
 # Start server in background (from repo root)
-node tools/cli-platform/start-../../apps/f1/f1 $CYRUS_PORT > /tmp/cyrus-cli-server.log 2>&1 &
+bun run apps/f1/server.ts $CYRUS_PORT > /tmp/cyrus-cli-server.log 2>&1 &
 SERVER_PID=$!
 
 echo -e "${GREEN}✓ Server started (PID: $SERVER_PID)${NC}"

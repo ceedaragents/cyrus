@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * 🏎️  Start Cyrus F1 CLI Platform Server
  *
@@ -6,26 +6,18 @@
  * No absolute paths required!
  *
  * Usage:
- *   node start-f1.mjs [port]
- *   CYRUS_PORT=8080 node start-f1.mjs
+ *   bun run apps/f1/server.ts [port]
+ *   CYRUS_PORT=8080 bun run apps/f1/server.ts
  *
  * Environment:
  *   CYRUS_PORT - Server port (default: 3457)
+ *   CYRUS_REPO_PATH - Repository path (default: current directory)
  */
 
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// Get the directory where this script is located
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Import EdgeWorker using relative path from script location (go up to repo root first)
-const { EdgeWorker } = await import(
-	join(__dirname, "../../packages/edge-worker/dist/EdgeWorker.js")
-);
+import { join } from "node:path";
+import { EdgeWorker } from "../../packages/edge-worker/dist/EdgeWorker.js";
 
 // ANSI color codes
 const c = {
@@ -33,15 +25,15 @@ const c = {
 	green: "\x1b[32m",
 	yellow: "\x1b[33m",
 	cyan: "\x1b[36m",
-	success: (text) => `\x1b[32m${text}\x1b[0m`,
-	info: (text) => `\x1b[36m${text}\x1b[0m`,
-	bold: (text) => `\x1b[1m${text}\x1b[0m`,
-	dim: (text) => `\x1b[2m${text}\x1b[0m`,
+	success: (text: string) => `\x1b[32m${text}\x1b[0m`,
+	info: (text: string) => `\x1b[36m${text}\x1b[0m`,
+	bold: (text: string) => `\x1b[1m${text}\x1b[0m`,
+	dim: (text: string) => `\x1b[2m${text}\x1b[0m`,
 };
 
 const DEFAULT_PORT = 3457;
 const port = parseInt(
-	process.env.CYRUS_PORT || process.argv[2] || DEFAULT_PORT,
+	process.env.CYRUS_PORT || process.argv[2] || `${DEFAULT_PORT}`,
 	10,
 );
 const repoPath =
@@ -64,7 +56,7 @@ async function main() {
 	const config = {
 		cyrusHome,
 		serverPort: port,
-		platform: "cli", // Platform is a global config setting
+		platform: "cli" as const,
 		repositories: [
 			{
 				id: "cli-repo",

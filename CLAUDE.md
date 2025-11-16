@@ -462,7 +462,7 @@ pnpm build
 
 **2. Start the CLI server:**
 ```bash
-node tools/cli-platform/start-f1.mjs
+bun run apps/f1/server.ts
 ```
 
 The server will start on port 3457 (default) and display beautiful colored output with the RPC endpoint.
@@ -643,7 +643,7 @@ done
 **CYRUS_PORT**: Server port (default: 3457)
 ```bash
 # Start server on custom port
-CYRUS_PORT=8080 node tools/cli-platform/start-f1.mjs
+CYRUS_PORT=8080 bun run apps/f1/server.ts
 
 # Use CLI with custom port
 CYRUS_PORT=8080 ./apps/f1/f1 ping
@@ -658,7 +658,7 @@ DEBUG=1 ./apps/f1/f1 createIssue --title "Test"
 
 **Server won't start:**
 - Check if port 3457 is already in use
-- Try a different port: `CYRUS_PORT=8080 node tools/cli-platform/start-f1.mjs`
+- Try a different port: `CYRUS_PORT=8080 bun run apps/f1/server.ts`
 - Build packages first: `pnpm build`
 
 **CLI can't connect:**
@@ -677,11 +677,13 @@ DEBUG=1 ./apps/f1/f1 createIssue --title "Test"
 
 ### Documentation
 
+- **apps/f1/README.md** - F1 CLI platform overview and usage
 - **tools/cli-platform/CLI_TOOL_README.md** - Comprehensive CLI documentation
 - **tools/cli-platform/test-drive-f1.sh** - Automated test script
-- **./apps/f1/f1** - CLI tool source
+- **apps/f1/f1** - CLI tool source
+- **apps/f1/server.ts** - Server startup script (run with `bun run apps/f1/server.ts`)
+- **apps/f1/test-drives/** - Real-world usage test drives and UX findings
 - **packages/core/src/issue-tracker/adapters/CLIRPCServer.ts** - RPC server
-- **tools/cli-platform/start-f1.mjs** - Server startup script
 
 ### Architecture
 
@@ -798,14 +800,14 @@ When asked to "test drive the system" or "run a real test drive", follow this pr
 
 **2. Start the F1 server:**
 ```bash
-node tools/cli-platform/start-f1.mjs &
+bun run apps/f1/server.ts &
 ./apps/f1/f1 ping
 ```
 
 **3. Create a timestamped log file:**
 ```bash
-# Format: test-drives/NNN-description.md
-# Example: test-drives/001-rate-limiter-feature.md
+# Format: apps/f1/test-drives/NNN-description.md
+# Example: apps/f1/test-drives/001-rate-limiter-feature.md
 ```
 
 **4. Execute the development workflow:**
@@ -832,7 +834,7 @@ node tools/cli-platform/start-f1.mjs &
 
 **7. Commit and push the test drive:**
 ```bash
-git add test-drives/
+git add apps/f1/test-drives/
 git commit -m "Add test drive: [description]" --no-verify
 git push origin <branch>
 ```
@@ -898,12 +900,12 @@ Each test drive should include:
 
 ### Existing Test Drives
 
-See `test-drives/README.md` for a catalog of completed test drives and their findings.
+See `apps/f1/test-drives/README.md` for a catalog of completed test drives and their findings.
 
 **Quick Links:**
-- [Test Drive #001](test-drives/001-rate-limiter-feature.md) - Rate Limiter Feature (8.5/10)
-- [Summary of Findings](test-drives/SUMMARY.md)
-- [Improvement Roadmap](test-drives/IMPROVEMENT_IDEAS.md)
+- [Test Drive #001](apps/f1/test-drives/001-rate-limiter-feature.md) - Rate Limiter Feature (8.5/10)
+- [Summary of Findings](apps/f1/test-drives/SUMMARY.md)
+- [Improvement Roadmap](apps/f1/test-drives/IMPROVEMENT_IDEAS.md)
 
 ### Design Principles from Test Drives
 
