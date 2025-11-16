@@ -1,0 +1,1338 @@
+import { AgentActivitySignal } from "@linear/sdk";
+import type {
+	LinearAgentSessionCreatedWebhook,
+	RepositoryConfig,
+} from "cyrus-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	RepositoryRouter,
+	type RepositoryRouterDeps,
+	type RepositoryRoutingResult,
+} from "../src/RepositoryRouter.js";
+
+/**
+ * DSL-style Test Suite for RepositoryRouter
+ *
+ * This test suite uses a fluent, readable DSL to test all repository routing scenarios.
+ * Each test reads like a specification, making it easy to understand what is being tested.
+ */
+
+// ============================================================================
+// TEST DSL - Builders for readable test scenarios
+// ============================================================================
+
+/**
+ * Repository Builder - Fluent API for creating test repositories
+ */
+class RepositoryBuilder {
+	private config: Partial<RepositoryConfig> = {};
+
+	constructor(id: string, name: string) {
+		this.config = {
+			id,
+			name,
+			repositoryPath: `/path/to/${id}`,
+			baseBranch: "main",
+			linearWorkspaceId: "default-workspace",
+			linearToken: "test-token",
+			workspaceBaseDir: "/workspace",
+			isActive: true,
+		};
+	}
+
+	inWorkspace(workspaceId: string): this {
+		this.config.linearWorkspaceId = workspaceId;
+		return this;
+	}
+
+	withTeams(...teamKeys: string[]): this {
+		this.config.teamKeys = teamKeys;
+		return this;
+	}
+
+	withLabels(...labels: string[]): this {
+		this.config.routingLabels = labels;
+		return this;
+	}
+
+	withProjects(...projects: string[]): this {
+		this.config.projectKeys = projects;
+		return this;
+	}
+
+	withGithubUrl(url: string): this {
+		this.config.githubUrl = url;
+		return this;
+	}
+
+	asCatchAll(): this {
+		this.config.teamKeys = undefined;
+		this.config.routingLabels = undefined;
+		this.config.projectKeys = undefined;
+		return this;
+	}
+
+	build(): RepositoryConfig {
+		return this.config as RepositoryConfig;
+	}
+}
+
+/**
+ * Webhook Builder - Fluent API for creating test webhooks
+ */
+class WebhookBuilder {
+	private data: any = {
+		action: "created",
+		organizationId: "default-workspace",
+		agentSession: {
+			id: "session-1",
+			issue: {
+				id: "issue-1",
+				identifier: "TEST-1",
+				team: { key: "TEST" },
+			},
+			comment: null,
+		},
+		guidance: [],
+	};
+
+	inWorkspace(workspaceId: string): this {
+		this.data.organizationId = workspaceId;
+		return this;
+	}
+
+	forIssue(issueId: string, identifier: string): this {
+		this.data.agentSession.issue.id = issueId;
+		this.data.agentSession.issue.identifier = identifier;
+		return this;
+	}
+
+	inTeam(teamKey: string): this {
+		this.data.agentSession.issue.team.key = teamKey;
+		return this;
+	}
+
+	withSession(sessionId: string): this {
+		this.data.agentSession.id = sessionId;
+		return this;
+	}
+
+	build(): LinearAgentSessionCreatedWebhook {
+		return this.data;
+	}
+}
+
+/**
+ * Test Environment - Manages mocks and setup for routing scenarios
+ */
+class RoutingTestEnvironment {
+	public router: RepositoryRouter;
+	public mockLinearClient: any;
+	public mockDeps: RepositoryRouterDeps;
+	private issueLabels: Map<string, string[]> = new Map();
+	private issueProjects: Map<string, string> = new Map();
+	private activeSessions: Map<string, Set<string>> = new Map();
+
+	constructor() {
+		this.mockLinearClient = {
+			createAgentActivity: vi.fn().mockResolvedValue({}),
+			issue: vi.fn().mockImplementation(async (issueId: string) => ({
+				id: issueId,
+				identifier: "TEST-1",
+				project: this.issueProjects.has(issueId)
+					? { name: this.issueProjects.get(issueId) }
+					: null,
+			})),
+		};
+
+		this.mockDeps = {
+			fetchIssueLabels: vi.fn().mockImplementation(async (issueId: string) => {
+				return this.issueLabels.get(issueId) || [];
+			}),
+			hasActiveSession: vi
+				.fn()
+				.mockImplementation((issueId: string, repoId: string) => {
+					return this.activeSessions.get(issueId)?.has(repoId) || false;
+				}),
+			getLinearClient: vi.fn().mockReturnValue(this.mockLinearClient),
+		};
+
+		this.router = new RepositoryRouter(this.mockDeps);
+	}
+
+	/**
+	 * Configure issue to have specific labels
+	 */
+	issueHasLabels(issueId: string, ...labels: string[]): this {
+		this.issueLabels.set(issueId, labels);
+		return this;
+	}
+
+	/**
+	 * Configure issue to be in a specific project
+	 */
+	issueIsInProject(issueId: string, projectName: string): this {
+		this.issueProjects.set(issueId, projectName);
+		return this;
+	}
+
+	/**
+	 * Configure issue to have an active session in a repository
+	 */
+	issueHasActiveSessionIn(issueId: string, repoId: string): this {
+		if (!this.activeSessions.has(issueId)) {
+			this.activeSessions.set(issueId, new Set());
+		}
+		this.activeSessions.get(issueId)!.add(repoId);
+		return this;
+	}
+
+	/**
+	 * Simulate label fetching failure
+	 */
+	labelFetchingFails(): this {
+		this.mockDeps.fetchIssueLabels = vi
+			.fn()
+			.mockRejectedValue(new Error("Failed to fetch labels"));
+		return this;
+	}
+
+	/**
+	 * Create a repository builder
+	 */
+	repository(id: string, name: string): RepositoryBuilder {
+		return new RepositoryBuilder(id, name);
+	}
+
+	/**
+	 * Create a webhook builder
+	 */
+	webhook(): WebhookBuilder {
+		return new WebhookBuilder();
+	}
+}
+
+/**
+ * Routing Assertion Builder - Fluent API for asserting routing results
+ */
+class RoutingAssertion {
+	constructor(private result: RepositoryRoutingResult) {}
+
+	shouldSelectRepository(expectedRepo: RepositoryConfig): this {
+		expect(this.result.type).toBe("selected");
+		if (this.result.type === "selected") {
+			expect(this.result.repository.id).toBe(expectedRepo.id);
+			expect(this.result.repository.name).toBe(expectedRepo.name);
+		}
+		return this;
+	}
+
+	shouldSelectRepositoryVia(
+		expectedRepo: RepositoryConfig,
+		method: string,
+	): this {
+		expect(this.result.type).toBe("selected");
+		if (this.result.type === "selected") {
+			expect(this.result.repository.id).toBe(expectedRepo.id);
+			expect(this.result.routingMethod).toBe(method);
+		}
+		return this;
+	}
+
+	shouldNeedSelection(): this {
+		expect(this.result.type).toBe("needs_selection");
+		return this;
+	}
+
+	shouldNeedSelectionWithRepos(expectedCount: number): this {
+		expect(this.result.type).toBe("needs_selection");
+		if (this.result.type === "needs_selection") {
+			expect(this.result.workspaceRepos).toHaveLength(expectedCount);
+		}
+		return this;
+	}
+
+	shouldSelectNothing(): this {
+		expect(this.result.type).toBe("none");
+		return this;
+	}
+}
+
+/**
+ * Helper to create routing assertion from result
+ */
+function expectRouting(result: RepositoryRoutingResult): RoutingAssertion {
+	return new RoutingAssertion(result);
+}
+
+// ============================================================================
+// TEST SUITE
+// ============================================================================
+
+describe("RepositoryRouter", () => {
+	let env: RoutingTestEnvironment;
+
+	beforeEach(() => {
+		env = new RoutingTestEnvironment();
+	});
+
+	// ========================================================================
+	// Cache Management Tests
+	// ========================================================================
+
+	describe("Cache Management", () => {
+		describe("when retrieving cached repositories", () => {
+			it("should return the cached repository when it exists in both cache and repository map", () => {
+				// Given: A repository and a populated cache
+				const repo = env
+					.repository("repo-1", "Cached Repo")
+					.inWorkspace("workspace-1")
+					.build();
+				const reposMap = new Map([[repo.id, repo]]);
+				env.router.getIssueRepositoryCache().set("issue-1", repo.id);
+
+				// When: Retrieving cached repository
+				const result = env.router.getCachedRepository("issue-1", reposMap);
+
+				// Then: Should return the cached repository
+				expect(result).toBe(repo);
+			});
+
+			it("should return null when no cache entry exists for the issue", () => {
+				// Given: A repository but no cache entry
+				const repo = env.repository("repo-1", "Uncached Repo").build();
+				const reposMap = new Map([[repo.id, repo]]);
+
+				// When: Retrieving cached repository
+				const result = env.router.getCachedRepository("issue-1", reposMap);
+
+				// Then: Should return null
+				expect(result).toBeNull();
+			});
+
+			it("should remove invalid cache entries when cached repository no longer exists", () => {
+				// Given: Cache points to non-existent repository
+				const repo = env.repository("repo-1", "Valid Repo").build();
+				const reposMap = new Map([[repo.id, repo]]);
+				env.router
+					.getIssueRepositoryCache()
+					.set("issue-1", "non-existent-repo");
+
+				// When: Retrieving cached repository
+				const result = env.router.getCachedRepository("issue-1", reposMap);
+
+				// Then: Should return null and clean up cache
+				expect(result).toBeNull();
+				expect(env.router.getIssueRepositoryCache().has("issue-1")).toBe(false);
+			});
+		});
+
+		describe("when persisting cache", () => {
+			it("should restore cache from serialized data", () => {
+				// Given: A serialized cache
+				const cache = new Map<string, string>([
+					["issue-1", "repo-1"],
+					["issue-2", "repo-2"],
+				]);
+
+				// When: Restoring cache
+				env.router.restoreIssueRepositoryCache(cache);
+
+				// Then: Cache should be restored
+				expect(env.router.getIssueRepositoryCache()).toEqual(cache);
+			});
+
+			it("should allow exporting cache for serialization", () => {
+				// Given: A router with cache entries
+				const cache = env.router.getIssueRepositoryCache();
+				cache.set("issue-1", "repo-1");
+				cache.set("issue-2", "repo-2");
+
+				// When: Exporting cache
+				const exported = env.router.getIssueRepositoryCache();
+
+				// Then: Should export all entries
+				expect(exported.size).toBe(2);
+				expect(exported.get("issue-1")).toBe("repo-1");
+				expect(exported.get("issue-2")).toBe("repo-2");
+			});
+		});
+	});
+
+	// ========================================================================
+	// Priority 0: Active Session Routing
+	// ========================================================================
+
+	describe("Priority 0: Active Session Routing", () => {
+		describe("when an issue already has an active session in a repository", () => {
+			it("should route to that repository regardless of other routing rules", async () => {
+				// Given: An issue with an active session in repo-1
+				// Both repos in same workspace so they both get considered
+				const repo1 = env
+					.repository("repo-1", "Active Session Repo")
+					.inWorkspace("default-workspace")
+					.withTeams("TEAM1")
+					.build();
+				const repo2 = env
+					.repository("repo-2", "Other Repo")
+					.inWorkspace("default-workspace")
+					.withTeams("TEAM2")
+					.build();
+
+				env.issueHasActiveSessionIn("issue-1", "repo-1");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEAM2-123")
+					.inTeam("TEAM2")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo1,
+					repo2,
+				]);
+
+				// Then: Should select repo with active session (not team-matched repo)
+				expectRouting(result).shouldSelectRepository(repo1);
+			});
+
+			it("should skip active session check when issue has no active sessions", async () => {
+				// Given: An issue with no active sessions
+				const repo = env
+					.repository("repo-1", "Team Matched Repo")
+					.withTeams("TEAM1")
+					.build();
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "TEAM1-123")
+					.inTeam("TEAM1")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should proceed to team-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "team-based");
+			});
+		});
+	});
+
+	// ========================================================================
+	// Priority 1: Label-Based Routing
+	// ========================================================================
+
+	describe("Priority 1: Label-Based Routing", () => {
+		describe("when repositories have routing labels configured", () => {
+			it("should route to repository when issue has matching label", async () => {
+				// Given: A repository configured with routing label "frontend"
+				const frontendRepo = env
+					.repository("repo-1", "Frontend Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.build();
+
+				const backendRepo = env
+					.repository("repo-2", "Backend Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("backend")
+					.build();
+
+				env.issueHasLabels("issue-1", "frontend", "bug");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					frontendRepo,
+					backendRepo,
+				]);
+
+				// Then: Should select frontend repo via label-based routing
+				expectRouting(result).shouldSelectRepositoryVia(
+					frontendRepo,
+					"label-based",
+				);
+			});
+
+			it("should route to first matching repository when multiple labels match", async () => {
+				// Given: Multiple repositories with overlapping labels
+				const repo1 = env
+					.repository("repo-1", "First Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("shared-label")
+					.build();
+
+				const repo2 = env
+					.repository("repo-2", "Second Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("shared-label")
+					.build();
+
+				env.issueHasLabels("issue-1", "shared-label");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo1,
+					repo2,
+				]);
+
+				// Then: Should select first matching repository
+				expectRouting(result).shouldSelectRepositoryVia(repo1, "label-based");
+			});
+
+			it("should continue to next priority when issue has no matching labels", async () => {
+				// Given: Repository with routing labels but issue has different labels
+				const repo = env
+					.repository("repo-1", "Label Repo")
+					.withLabels("frontend")
+					.withTeams("TEST")
+					.build();
+
+				env.issueHasLabels("issue-1", "backend", "bug");
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should fallback to team-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "team-based");
+			});
+
+			it("should handle label fetching failures gracefully and continue to next priority", async () => {
+				// Given: Label fetching will fail
+				const repo = env
+					.repository("repo-1", "Repo")
+					.withLabels("frontend")
+					.withTeams("TEST")
+					.build();
+
+				env.labelFetchingFails();
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				// When: Determining repository (should not throw)
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should fallback to team-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "team-based");
+			});
+		});
+	});
+
+	// ========================================================================
+	// Priority 2: Project-Based Routing
+	// ========================================================================
+
+	describe("Priority 2: Project-Based Routing", () => {
+		describe("when repositories have project keys configured", () => {
+			it("should route to repository when issue is in matching project", async () => {
+				// Given: A repository configured for "Mobile App" project
+				const mobileRepo = env
+					.repository("repo-1", "Mobile Repo")
+					.inWorkspace("default-workspace")
+					.withProjects("Mobile App")
+					.build();
+
+				const webRepo = env
+					.repository("repo-2", "Web Repo")
+					.inWorkspace("default-workspace")
+					.withProjects("Web App")
+					.build();
+
+				env.issueIsInProject("issue-1", "Mobile App");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					mobileRepo,
+					webRepo,
+				]);
+
+				// Then: Should select mobile repo via project-based routing
+				expectRouting(result).shouldSelectRepositoryVia(
+					mobileRepo,
+					"project-based",
+				);
+			});
+
+			it("should continue to next priority when issue has no project", async () => {
+				// Given: Repository with project keys but issue has no project
+				const repo = env
+					.repository("repo-1", "Project Repo")
+					.withProjects("Mobile App")
+					.withTeams("TEST")
+					.build();
+
+				// Issue has no project (default in mock)
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should fallback to team-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "team-based");
+			});
+
+			it("should continue to next priority when project does not match", async () => {
+				// Given: Repository configured for different project
+				const repo = env
+					.repository("repo-1", "Project Repo")
+					.withProjects("Mobile App")
+					.withTeams("TEST")
+					.build();
+
+				env.issueIsInProject("issue-1", "Web App");
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should fallback to team-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "team-based");
+			});
+		});
+	});
+
+	// ========================================================================
+	// Priority 3: Team-Based Routing
+	// ========================================================================
+
+	describe("Priority 3: Team-Based Routing", () => {
+		describe("when repositories have team keys configured", () => {
+			it("should route to repository when webhook team matches repository team key", async () => {
+				// Given: Repositories configured for different teams
+				const engineeringRepo = env
+					.repository("repo-1", "Engineering Repo")
+					.inWorkspace("default-workspace")
+					.withTeams("ENG")
+					.build();
+
+				const designRepo = env
+					.repository("repo-2", "Design Repo")
+					.inWorkspace("default-workspace")
+					.withTeams("DESIGN")
+					.build();
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "ENG-123")
+					.inTeam("ENG")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					engineeringRepo,
+					designRepo,
+				]);
+
+				// Then: Should select engineering repo via team-based routing
+				expectRouting(result).shouldSelectRepositoryVia(
+					engineeringRepo,
+					"team-based",
+				);
+			});
+
+			it("should route by team prefix from issue identifier when team key not in webhook", async () => {
+				// Given: Repository configured for team ABC
+				const repo = env
+					.repository("repo-1", "ABC Team Repo")
+					.withTeams("ABC")
+					.build();
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "ABC-123")
+					.inTeam("") // Empty team key
+					.build();
+				webhook.agentSession.issue.team.key = undefined as any;
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should select repo via team prefix routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "team-prefix");
+			});
+
+			it("should continue to next priority when team does not match", async () => {
+				// Given: Repositories with specific team keys
+				const repo1 = env
+					.repository("repo-1", "Team A Repo")
+					.withTeams("TEAM_A")
+					.build();
+
+				const repo2 = env
+					.repository("repo-2", "Catch All Repo")
+					.asCatchAll()
+					.build();
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "OTHER-123")
+					.inTeam("OTHER")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo1,
+					repo2,
+				]);
+
+				// Then: Should fallback to catch-all routing
+				expectRouting(result).shouldSelectRepositoryVia(repo2, "catch-all");
+			});
+		});
+	});
+
+	// ========================================================================
+	// Priority 4: Catch-All Routing
+	// ========================================================================
+
+	describe("Priority 4: Catch-All Routing", () => {
+		describe("when no specific routing rules match", () => {
+			it("should route to catch-all repository with no routing configuration", async () => {
+				// Given: One repository with routing config, one without
+				const specificRepo = env
+					.repository("repo-1", "Specific Repo")
+					.withTeams("TEAM1")
+					.build();
+
+				const catchAllRepo = env
+					.repository("repo-2", "Catch All Repo")
+					.asCatchAll()
+					.build();
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "OTHER-123")
+					.inTeam("OTHER")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					specificRepo,
+					catchAllRepo,
+				]);
+
+				// Then: Should select catch-all repository
+				expectRouting(result).shouldSelectRepositoryVia(
+					catchAllRepo,
+					"catch-all",
+				);
+			});
+
+			it("should prefer first catch-all when multiple catch-all repositories exist", async () => {
+				// Given: Multiple catch-all repositories
+				const catchAll1 = env
+					.repository("repo-1", "First Catch All")
+					.asCatchAll()
+					.build();
+
+				const catchAll2 = env
+					.repository("repo-2", "Second Catch All")
+					.asCatchAll()
+					.build();
+
+				const webhook = env.webhook().forIssue("issue-1", "TEST-123").build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					catchAll1,
+					catchAll2,
+				]);
+
+				// Then: Should select first catch-all repository
+				expectRouting(result).shouldSelectRepositoryVia(catchAll1, "catch-all");
+			});
+		});
+	});
+
+	// ========================================================================
+	// Workspace Fallback & Edge Cases
+	// ========================================================================
+
+	describe("Workspace Fallback & Edge Cases", () => {
+		describe("when single repository exists", () => {
+			it("should select single repository as workspace fallback when no routing rules match", async () => {
+				// Given: Single repository with specific team configuration
+				const repo = env
+					.repository("repo-1", "Only Repo")
+					.withTeams("TEAM1")
+					.build();
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "OTHER-123")
+					.inTeam("OTHER")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should select single repo as fallback
+				expectRouting(result).shouldSelectRepositoryVia(
+					repo,
+					"workspace-fallback",
+				);
+			});
+		});
+
+		describe("when multiple repositories exist with no routing match", () => {
+			it("should request user selection when multiple configured repositories don't match", async () => {
+				// Given: Multiple repositories with specific configurations
+				const repo1 = env
+					.repository("repo-1", "Repo 1")
+					.withTeams("TEAM1")
+					.build();
+
+				const repo2 = env
+					.repository("repo-2", "Repo 2")
+					.withTeams("TEAM2")
+					.build();
+
+				const webhook = env
+					.webhook()
+					.forIssue("issue-1", "OTHER-123")
+					.inTeam("OTHER")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo1,
+					repo2,
+				]);
+
+				// Then: Should request user selection
+				expectRouting(result).shouldNeedSelectionWithRepos(2);
+			});
+		});
+
+		describe("when no repositories exist", () => {
+			it("should return none when no repositories configured", async () => {
+				// Given: No repositories
+				const webhook = env.webhook().build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(
+					webhook,
+					[],
+				);
+
+				// Then: Should return none
+				expectRouting(result).shouldSelectNothing();
+			});
+
+			it("should return workspace fallback when no workspace ID in webhook", async () => {
+				// Given: Repository but no workspace ID
+				const repo = env.repository("repo-1", "Repo").build();
+
+				const webhook = env.webhook().build();
+				webhook.organizationId = undefined as any;
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should fallback to first repo
+				expectRouting(result).shouldSelectRepositoryVia(
+					repo,
+					"workspace-fallback",
+				);
+			});
+
+			it("should return none when repositories exist but in different workspace", async () => {
+				// Given: Repository in different workspace
+				const repo = env
+					.repository("repo-1", "Repo")
+					.inWorkspace("workspace-1")
+					.build();
+
+				const webhook = env.webhook().inWorkspace("workspace-2").build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should return none
+				expectRouting(result).shouldSelectNothing();
+			});
+		});
+	});
+
+	// ========================================================================
+	// Repository Selection Elicitation
+	// ========================================================================
+
+	describe("Repository Selection Elicitation", () => {
+		describe("when posting repository selection to Linear", () => {
+			it("should create elicitation activity with repository options", async () => {
+				// Given: Multiple repositories to choose from
+				const repo1 = env
+					.repository("repo-1", "Frontend Repo")
+					.withGithubUrl("https://github.com/org/frontend")
+					.build();
+
+				const repo2 = env
+					.repository("repo-2", "Backend Repo")
+					.withGithubUrl("https://github.com/org/backend")
+					.build();
+
+				const webhook = env.webhook().withSession("session-123").build();
+
+				// When: Eliciting user selection
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				// Then: Should post elicitation with correct options
+				expect(env.mockLinearClient.createAgentActivity).toHaveBeenCalledWith({
+					agentSessionId: "session-123",
+					content: {
+						type: "elicitation",
+						body: "Which repository should I work in for this issue?",
+					},
+					signal: AgentActivitySignal.Select,
+					signalMetadata: {
+						options: [
+							{ value: "https://github.com/org/frontend" },
+							{ value: "https://github.com/org/backend" },
+						],
+					},
+				});
+			});
+
+			it("should use repository name as option value when GitHub URL not available", async () => {
+				// Given: Repository without GitHub URL
+				const repo = env.repository("repo-1", "Local Repo").build(); // No GitHub URL
+
+				const webhook = env.webhook().build();
+
+				// When: Eliciting user selection
+				await env.router.elicitUserRepositorySelection(webhook, [repo]);
+
+				// Then: Should use repository name
+				expect(env.mockLinearClient.createAgentActivity).toHaveBeenCalledWith(
+					expect.objectContaining({
+						signalMetadata: {
+							options: [{ value: "Local Repo" }],
+						},
+					}),
+				);
+			});
+
+			it("should store pending selection for later processing", async () => {
+				// Given: Repository selection scenario
+				const repo = env.repository("repo-1", "Repo").build();
+				const webhook = env.webhook().withSession("session-123").build();
+
+				// When: Eliciting user selection
+				await env.router.elicitUserRepositorySelection(webhook, [repo]);
+
+				// Then: Should have pending selection
+				expect(env.router.hasPendingSelection("session-123")).toBe(true);
+			});
+
+			it("should post error activity when elicitation fails", async () => {
+				// Given: Elicitation will fail
+				const repo = env.repository("repo-1", "Repo").build();
+				const webhook = env.webhook().build();
+
+				env.mockLinearClient.createAgentActivity = vi
+					.fn()
+					.mockRejectedValueOnce(new Error("API error"))
+					.mockResolvedValueOnce({}); // Error activity succeeds
+
+				// When: Eliciting user selection
+				await env.router.elicitUserRepositorySelection(webhook, [repo]);
+
+				// Then: Should post error activity
+				expect(env.mockLinearClient.createAgentActivity).toHaveBeenCalledTimes(
+					2,
+				);
+				expect(
+					env.mockLinearClient.createAgentActivity,
+				).toHaveBeenNthCalledWith(
+					2,
+					expect.objectContaining({
+						content: {
+							type: "error",
+							body: expect.stringContaining(
+								"Failed to display repository selection",
+							),
+						},
+					}),
+				);
+			});
+
+			it("should clean up pending selection when both elicitation and error posting fail", async () => {
+				// Given: Both elicitation and error posting will fail
+				const repo = env.repository("repo-1", "Repo").build();
+				const webhook = env.webhook().withSession("session-123").build();
+
+				env.mockLinearClient.createAgentActivity = vi
+					.fn()
+					.mockRejectedValue(new Error("API error"));
+
+				// When: Eliciting user selection (should not throw)
+				await env.router.elicitUserRepositorySelection(webhook, [repo]);
+
+				// Then: Should have cleaned up pending selection
+				expect(env.router.hasPendingSelection("session-123")).toBe(false);
+			});
+		});
+	});
+
+	// ========================================================================
+	// Repository Selection Response Handling
+	// ========================================================================
+
+	describe("Repository Selection Response Handling", () => {
+		describe("when processing user repository selection", () => {
+			it("should find and return repository matching GitHub URL selection", async () => {
+				// Given: User selecting repository by GitHub URL
+				const repo1 = env
+					.repository("repo-1", "Frontend")
+					.withGithubUrl("https://github.com/org/frontend")
+					.build();
+
+				const repo2 = env
+					.repository("repo-2", "Backend")
+					.withGithubUrl("https://github.com/org/backend")
+					.build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				// When: User selects backend repository
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"https://github.com/org/backend",
+				);
+
+				// Then: Should return backend repository
+				expect(result).toBe(repo2);
+			});
+
+			it("should find and return repository matching name selection", async () => {
+				// Given: User selecting repository by name
+				const repo1 = env.repository("repo-1", "Frontend Repo").build();
+				const repo2 = env.repository("repo-2", "Backend Repo").build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				// When: User selects backend repository by name
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"Backend Repo",
+				);
+
+				// Then: Should return backend repository
+				expect(result).toBe(repo2);
+			});
+
+			it("should fallback to first repository when selection not found", async () => {
+				// Given: User selecting non-existent repository
+				const repo1 = env.repository("repo-1", "Repo 1").build();
+				const repo2 = env.repository("repo-2", "Repo 2").build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				// When: User provides invalid selection
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"Non-existent Repo",
+				);
+
+				// Then: Should fallback to first repository
+				expect(result).toBe(repo1);
+			});
+
+			it("should return null when no pending selection exists for session", async () => {
+				// Given: No pending selection
+
+				// When: Attempting to process selection
+				const result = await env.router.selectRepositoryFromResponse(
+					"non-existent-session",
+					"Some Repo",
+				);
+
+				// Then: Should return null
+				expect(result).toBeNull();
+			});
+
+			it("should remove pending selection after processing", async () => {
+				// Given: Pending repository selection
+				const repo = env.repository("repo-1", "Repo").build();
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo]);
+
+				expect(env.router.hasPendingSelection("session-1")).toBe(true);
+
+				// When: Processing user selection
+				await env.router.selectRepositoryFromResponse("session-1", "Repo");
+
+				// Then: Should remove pending selection
+				expect(env.router.hasPendingSelection("session-1")).toBe(false);
+			});
+		});
+
+		describe("when managing pending selections", () => {
+			it("should correctly track pending selections", async () => {
+				// Given: Multiple pending selections
+				const repo1 = env.repository("repo-1", "Repo 1").build();
+				const repo2 = env.repository("repo-2", "Repo 2").build();
+
+				const webhook1 = env.webhook().withSession("session-1").build();
+				const webhook2 = env.webhook().withSession("session-2").build();
+
+				// When: Creating pending selections
+				await env.router.elicitUserRepositorySelection(webhook1, [repo1]);
+				await env.router.elicitUserRepositorySelection(webhook2, [repo2]);
+
+				// Then: Both should be tracked
+				expect(env.router.hasPendingSelection("session-1")).toBe(true);
+				expect(env.router.hasPendingSelection("session-2")).toBe(true);
+
+				// When: Processing one selection
+				await env.router.selectRepositoryFromResponse("session-1", "Repo 1");
+
+				// Then: Only processed one should be removed
+				expect(env.router.hasPendingSelection("session-1")).toBe(false);
+				expect(env.router.hasPendingSelection("session-2")).toBe(true);
+			});
+		});
+	});
+
+	// ========================================================================
+	// Complex Routing Priority Tests
+	// ========================================================================
+
+	describe("Complex Routing Scenarios", () => {
+		describe("when multiple routing methods could apply", () => {
+			it("should prioritize label routing over project routing", async () => {
+				// Given: Repository configured with both labels and projects
+				const repo = env
+					.repository("repo-1", "Full Config Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.withProjects("Mobile App")
+					.withTeams("TEST")
+					.build();
+
+				env.issueHasLabels("issue-1", "frontend");
+				env.issueIsInProject("issue-1", "Mobile App");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should use label-based routing (highest priority)
+				expectRouting(result).shouldSelectRepositoryVia(repo, "label-based");
+			});
+
+			it("should prioritize project routing over team routing", async () => {
+				// Given: Repository configured with projects and teams
+				const repo = env
+					.repository("repo-1", "Project & Team Repo")
+					.inWorkspace("default-workspace")
+					.withProjects("Mobile App")
+					.withTeams("TEST")
+					.build();
+
+				env.issueIsInProject("issue-1", "Mobile App");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should use project-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "project-based");
+			});
+
+			it("should prioritize team routing over catch-all", async () => {
+				// Given: Both team-specific and catch-all repositories
+				const teamRepo = env
+					.repository("repo-1", "Team Repo")
+					.inWorkspace("default-workspace")
+					.withTeams("TEST")
+					.build();
+
+				const catchAllRepo = env
+					.repository("repo-2", "Catch All")
+					.inWorkspace("default-workspace")
+					.asCatchAll()
+					.build();
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.inTeam("TEST")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					teamRepo,
+					catchAllRepo,
+				]);
+
+				// Then: Should use team-based routing
+				expectRouting(result).shouldSelectRepositoryVia(teamRepo, "team-based");
+			});
+		});
+
+		describe("when routing priority chain is fully tested", () => {
+			it("should traverse entire priority chain from label to catch-all", async () => {
+				// Given: Repository with all routing configs
+				const fullRepo = env
+					.repository("repo-full", "Full Config")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.withProjects("Mobile")
+					.withTeams("FULL")
+					.build();
+
+				const catchAllRepo = env
+					.repository("repo-catch", "Catch All")
+					.inWorkspace("default-workspace")
+					.asCatchAll()
+					.build();
+
+				// Test Priority 1: Label routing
+				env.issueHasLabels("issue-1", "frontend");
+				let webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-1")
+					.build();
+				let result = await env.router.determineRepositoryForWebhook(webhook, [
+					fullRepo,
+					catchAllRepo,
+				]);
+				expectRouting(result).shouldSelectRepositoryVia(
+					fullRepo,
+					"label-based",
+				);
+
+				// Test Priority 2: Project routing (no labels)
+				env.issueHasLabels("issue-2", "other-label");
+				env.issueIsInProject("issue-2", "Mobile");
+				webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-2", "TEST-2")
+					.build();
+				result = await env.router.determineRepositoryForWebhook(webhook, [
+					fullRepo,
+					catchAllRepo,
+				]);
+				expectRouting(result).shouldSelectRepositoryVia(
+					fullRepo,
+					"project-based",
+				);
+
+				// Test Priority 3: Team routing (no labels or project match)
+				env.issueHasLabels("issue-3", "other-label");
+				env.issueIsInProject("issue-3", "Other Project");
+				webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-3", "FULL-3")
+					.inTeam("FULL")
+					.build();
+				result = await env.router.determineRepositoryForWebhook(webhook, [
+					fullRepo,
+					catchAllRepo,
+				]);
+				expectRouting(result).shouldSelectRepositoryVia(fullRepo, "team-based");
+
+				// Test Priority 4: Catch-all (nothing matches)
+				env.issueHasLabels("issue-4", "other-label");
+				env.issueIsInProject("issue-4", "Other Project");
+				webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-4", "OTHER-4")
+					.inTeam("OTHER")
+					.build();
+				result = await env.router.determineRepositoryForWebhook(webhook, [
+					fullRepo,
+					catchAllRepo,
+				]);
+				expectRouting(result).shouldSelectRepositoryVia(
+					catchAllRepo,
+					"catch-all",
+				);
+			});
+		});
+	});
+});

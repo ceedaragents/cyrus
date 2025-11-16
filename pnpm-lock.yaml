@@ -36,6 +36,9 @@ importers:
       '@linear/sdk':
         specifier: ^60.0.0
         version: 60.0.0
+      commander:
+        specifier: ^14.0.2
+        version: 14.0.2
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../../packages/claude-runner
@@ -111,11 +114,11 @@ importers:
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.31
-        version: 0.1.31(zod@3.25.76)
+        specifier: ^0.1.42
+        version: 0.1.42(zod@3.25.76)
       '@anthropic-ai/sdk':
-        specifier: ^0.68.0
-        version: 0.68.0(zod@3.25.76)
+        specifier: ^0.69.0
+        version: 0.69.0(zod@3.25.76)
       '@linear/sdk':
         specifier: ^60.0.0
         version: 60.0.0
@@ -163,6 +166,9 @@ importers:
 
   packages/config-updater:
     dependencies:
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
       fastify:
         specifier: ^5.2.0
         version: 5.6.1
@@ -203,7 +209,7 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.28
-        version: 0.1.31(zod@3.25.76)
+        version: 0.1.42(zod@3.25.76)
       '@linear/sdk':
         specifier: ^60.0.0
         version: 60.0.0
@@ -288,8 +294,8 @@ importers:
   packages/simple-agent-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.31
-        version: 0.1.31(zod@3.25.76)
+        specifier: ^0.1.42
+        version: 0.1.42(zod@3.25.76)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -310,14 +316,14 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@anthropic-ai/claude-agent-sdk@0.1.31':
-    resolution: {integrity: sha512-cwzgM2ntyzfr0aaiDEVwrQJawRlGi/8sq4raWyNPQqfS3uEXhw+IDmPdPS+HhjO2e4LCf1y+SkJKeBjxleHOYA==}
+  '@anthropic-ai/claude-agent-sdk@0.1.42':
+    resolution: {integrity: sha512-snz2CTHKxkk4rqgvi2D4oMgITXpgmghWC4XvFXcuYjSxgLCBmvDW9TjBk6MTv0apC5fwW4kLE4ydamkBs+BdPg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       zod: ^3.24.1
 
-  '@anthropic-ai/sdk@0.68.0':
-    resolution: {integrity: sha512-SMYAmbbiprG8k1EjEPMTwaTqssDT7Ae+jxcR5kWXiqTlbwMR2AthXtscEVWOHkRfyAV5+y3PFYTJRNa3OJWIEw==}
+  '@anthropic-ai/sdk@0.69.0':
+    resolution: {integrity: sha512-L92d2q47BSq+7slUqHBL1d2DwloulZotYGCTDt9AYRtPmYF+iK6rnwq9JaZwPPJgk+LenbcbQ/nj6gfaDFsl9w==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -1196,6 +1202,10 @@ packages:
 
   commander@14.0.1:
     resolution: {integrity: sha512-2JkV3gUZUVrbNA+1sjBOYLsMZ5cEEl8GTFP2a4AVz5hvasAMCQ1D2l2le/cX+pV4N6ZU17zjUahLpIXRrnWL8A==}
+    engines: {node: '>=20'}
+
+  commander@14.0.2:
+    resolution: {integrity: sha512-TywoWNNRbhoD0BXs1P3ZEScW8W5iKrnbithIl0YH+uCmBd0QpPOA8yc82DS3BIE5Ma6FnBVUsJ7wVUDz4dvOWQ==}
     engines: {node: '>=20'}
 
   confbox@0.1.8:
@@ -2472,7 +2482,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@anthropic-ai/claude-agent-sdk@0.1.31(zod@3.25.76)':
+  '@anthropic-ai/claude-agent-sdk@0.1.42(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
     optionalDependencies:
@@ -2483,7 +2493,7 @@ snapshots:
       '@img/sharp-linux-x64': 0.33.5
       '@img/sharp-win32-x64': 0.33.5
 
-  '@anthropic-ai/sdk@0.68.0(zod@3.25.76)':
+  '@anthropic-ai/sdk@0.69.0(zod@3.25.76)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
@@ -3228,6 +3238,8 @@ snapshots:
   commander@12.1.0: {}
 
   commander@14.0.1: {}
+
+  commander@14.0.2: {}
 
   confbox@0.1.8: {}
 

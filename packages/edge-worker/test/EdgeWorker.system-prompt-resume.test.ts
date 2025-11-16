@@ -233,7 +233,7 @@ Issue: {{issue_identifier}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
@@ -271,11 +271,18 @@ Issue: {{issue_identifier}}`;
 			},
 		};
 
+		// IMPORTANT: Pre-cache the repository for this issue (simulating that a session was already created)
+		// This is required for prompted webhooks which use getCachedRepository
+		const repositoryRouter = (edgeWorker as any).repositoryRouter;
+		repositoryRouter
+			.getIssueRepositoryCache()
+			.set("issue-123", mockRepository.id);
+
 		// Act - call the private method directly
-		const handleUserPostedAgentActivity = (
+		const handleUserPromptedAgentActivity = (
 			edgeWorker as any
-		).handleUserPostedAgentActivity.bind(edgeWorker);
-		await handleUserPostedAgentActivity(promptedWebhook, mockRepository);
+		).handleUserPromptedAgentActivity.bind(edgeWorker);
+		await handleUserPromptedAgentActivity(promptedWebhook, [mockRepository]);
 
 		// Assert - Bug is now fixed: system prompt is included!
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();

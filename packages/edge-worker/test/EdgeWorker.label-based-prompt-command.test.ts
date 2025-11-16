@@ -245,7 +245,7 @@ Issue: {{issue_identifier}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
@@ -288,7 +288,7 @@ Issue: {{issue_identifier}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
@@ -329,7 +329,7 @@ Issue: {{issue_identifier}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
@@ -365,7 +365,7 @@ Issue: {{issue_identifier}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();

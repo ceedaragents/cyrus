@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-simple-agent-runner",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Simple agent runner for enumerated responses",
 	"type": "module",
 	"main": "dist/index.js",
@@ -16,7 +16,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@anthropic-ai/claude-agent-sdk": "^0.1.31",
+		"@anthropic-ai/claude-agent-sdk": "^0.1.42",
 		"cyrus-claude-runner": "workspace:*"
 	},
 	"devDependencies": {

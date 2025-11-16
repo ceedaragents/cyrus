@@ -10,7 +10,7 @@ import { createTestWorker, scenario } from "./prompt-assembly-utils.js";
 
 describe("Prompt Assembly - Subroutines", () => {
 	it("should include coding-activity subroutine prompt in full-development procedure", async () => {
-		const worker = createTestWorker();
+		const worker = createTestWorker([], "ceedar");
 
 		// Session with full-development procedure at coding-activity subroutine
 		const session = {
@@ -98,7 +98,7 @@ Complete with: \`Implementation complete - [what was done].\``)
 	});
 
 	it("should include question-investigation subroutine prompt in simple-question procedure", async () => {
-		const worker = createTestWorker();
+		const worker = createTestWorker([], "ceedar");
 
 		// Session with simple-question procedure at investigation phase
 		const session = {
@@ -184,7 +184,7 @@ Complete with: \`Investigation complete - gathered information from [sources].\`
 	});
 
 	it("should include question-answer subroutine prompt in simple-question procedure", async () => {
-		const worker = createTestWorker();
+		const worker = createTestWorker([], "ceedar");
 
 		// Session with simple-question procedure at answer phase
 		const session = {

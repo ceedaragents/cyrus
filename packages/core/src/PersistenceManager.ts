@@ -33,6 +33,8 @@ export interface SerializableEdgeWorkerState {
 	>;
 	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
+	// Issue to repository mapping (for caching user repository selections)
+	issueRepositoryCache?: Record<string, string>;
 }
 
 /**

@@ -46,6 +46,7 @@ export const SUBROUTINES = {
 		maxTurns: 1,
 		description: "Brief summary for simple requests",
 		suppressThoughtPosting: true,
+		disallowedTools: ["mcp__linear__create_comment"],
 	},
 	verboseSummary: {
 		name: "verbose-summary",
@@ -53,6 +54,7 @@ export const SUBROUTINES = {
 		maxTurns: 1,
 		description: "Detailed summary with implementation details",
 		suppressThoughtPosting: true,
+		disallowedTools: ["mcp__linear__create_comment"],
 	},
 	questionInvestigation: {
 		name: "question-investigation",
@@ -65,6 +67,7 @@ export const SUBROUTINES = {
 		maxTurns: 1,
 		description: "Format final answer to user question",
 		suppressThoughtPosting: true,
+		disallowedTools: ["mcp__linear__create_comment"],
 	},
 	codingActivity: {
 		name: "coding-activity",
@@ -83,6 +86,7 @@ export const SUBROUTINES = {
 		maxTurns: 1,
 		description: "Present clarifying questions or implementation plan",
 		suppressThoughtPosting: true,
+		disallowedTools: ["mcp__linear__create_comment"],
 	},
 } as const;
 

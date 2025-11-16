@@ -6,6 +6,7 @@ import type {
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
+	SDKStatusMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "cyrus-claude-runner";
@@ -36,6 +37,7 @@ export class AgentSessionManager {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private procedureRouter?: ProcedureRouter;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -508,6 +510,12 @@ export class AgentSessionManager {
 								systemMessage.model,
 							);
 						}
+					} else if (message.subtype === "status") {
+						// Handle status updates (compacting, etc.)
+						await this.handleStatusMessage(
+							linearAgentActivitySessionId,
+							message as SDKStatusMessage,
+						);
 					}
 					break;
 
@@ -1430,6 +1438,83 @@ export class AgentSessionManager {
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error posting procedure selection:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Handle status messages (compacting, etc.)
+	 */
+	private async handleStatusMessage(
+		linearAgentActivitySessionId: string,
+		message: SDKStatusMessage,
+	): Promise<void> {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session || !session.linearAgentActivitySessionId) {
+			console.warn(
+				`[AgentSessionManager] No Linear session ID for session ${linearAgentActivitySessionId}`,
+			);
+			return;
+		}
+
+		try {
+			if (message.status === "compacting") {
+				// Create an ephemeral thought for the compacting status
+				const result = await this.linearClient.createAgentActivity({
+					agentSessionId: session.linearAgentActivitySessionId,
+					content: {
+						type: "thought",
+						body: "Compacting conversation history…",
+					},
+					ephemeral: true,
+				});
+
+				if (result.success && result.agentActivity) {
+					const activity = await result.agentActivity;
+					// Store the activity ID so we can replace it later
+					this.activeStatusActivitiesBySession.set(
+						linearAgentActivitySessionId,
+						activity.id,
+					);
+					console.log(
+						`[AgentSessionManager] Posted ephemeral compacting status for session ${linearAgentActivitySessionId}`,
+					);
+				} else {
+					console.error(
+						`[AgentSessionManager] Failed to post compacting status:`,
+						result,
+					);
+				}
+			} else if (message.status === null) {
+				// Clear the status - post a non-ephemeral thought to replace the ephemeral one
+				const result = await this.linearClient.createAgentActivity({
+					agentSessionId: session.linearAgentActivitySessionId,
+					content: {
+						type: "thought",
+						body: "Conversation history compacted",
+					},
+					ephemeral: false,
+				});
+
+				if (result.success) {
+					// Clean up the stored activity ID
+					this.activeStatusActivitiesBySession.delete(
+						linearAgentActivitySessionId,
+					);
+					console.log(
+						`[AgentSessionManager] Posted non-ephemeral status clear for session ${linearAgentActivitySessionId}`,
+					);
+				} else {
+					console.error(
+						`[AgentSessionManager] Failed to post status clear:`,
+						result,
+					);
+				}
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error handling status message:`,
 				error,
 			);
 		}

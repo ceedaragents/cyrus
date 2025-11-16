@@ -55,6 +55,11 @@ export async function handleCyrusConfig(
 				baseBranch: repo.baseBranch,
 			};
 
+			// Add optional GitHub URL
+			if (repo.githubUrl) {
+				repoConfig.githubUrl = repo.githubUrl;
+			}
+
 			// Add optional Linear fields
 			if (repo.linearWorkspaceId) {
 				repoConfig.linearWorkspaceId = repo.linearWorkspaceId;
@@ -116,6 +121,10 @@ export async function handleCyrusConfig(
 
 		if (payload.stripeCustomerId) {
 			config.stripeCustomerId = payload.stripeCustomerId;
+		}
+
+		if (payload.linearWorkspaceSlug) {
+			config.linearWorkspaceSlug = payload.linearWorkspaceSlug;
 		}
 
 		if (payload.defaultModel) {

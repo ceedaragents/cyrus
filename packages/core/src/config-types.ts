@@ -43,6 +43,7 @@ export interface RepositoryConfig {
 	// Git configuration
 	repositoryPath: string; // Local git repository path
 	baseBranch: string; // Branch to create worktrees from (main, master, etc.)
+	githubUrl?: string; // GitHub repository URL (e.g., "https://github.com/org/repo") - used for Linear select signal
 
 	// Linear configuration
 	linearWorkspaceId: string; // Linear workspace/team ID
@@ -109,6 +110,9 @@ export interface EdgeWorkerConfig {
 
 	// Issue tracker platform configuration
 	platform?: "linear" | "cli"; // Issue tracker platform type (default: "linear")
+
+	// Linear configuration (global)
+	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
@@ -199,6 +203,7 @@ export interface EdgeConfig {
 	repositories: RepositoryConfig[];
 	ngrokAuthToken?: string;
 	stripeCustomerId?: string;
+	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 	global_setup_script?: string; // Optional path to global setup script that runs for all repositories

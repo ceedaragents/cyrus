@@ -227,7 +227,7 @@ Base Branch: {{base_branch}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
@@ -307,7 +307,7 @@ Base Branch: {{base_branch}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
@@ -388,7 +388,7 @@ Base Branch: {{base_branch}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();
@@ -477,7 +477,7 @@ Base Branch: {{base_branch}}`;
 		const handleAgentSessionCreatedWebhook = (
 			edgeWorker as any
 		).handleAgentSessionCreatedWebhook.bind(edgeWorker);
-		await handleAgentSessionCreatedWebhook(createdWebhook, mockRepository);
+		await handleAgentSessionCreatedWebhook(createdWebhook, [mockRepository]);
 
 		// Assert - should use immediate parent branch, not grandparent
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();

@@ -51,12 +51,12 @@ import {
 	DEFAULT_PROXY_URL,
 	type IAgentEventTransport,
 	type IIssueTrackerService,
-	isAgentSessionCreatedEvent,
-	isAgentSessionPromptedEvent,
-	isCommentMentionEvent,
-	isIssueAssignedEvent,
-	isIssueUnassignedEvent,
-	isNewCommentEvent,
+	isAgentSessionCreatedWebhook,
+	isAgentSessionPromptedWebhook,
+	isIssueAssignedWebhook,
+	isIssueCommentMentionWebhook,
+	isIssueNewCommentWebhook,
+	isIssueUnassignedWebhook,
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
@@ -384,7 +384,7 @@ export class EdgeWorker extends EventEmitter {
 		this.agentEventTransport.on("event", (event: AgentEvent) => {
 			// Get all active repositories for event handling
 			const repos = Array.from(this.repositories.values());
-			this.handleAgentEvent(event, repos);
+			this.handleWebhook(event, repos);
 		});
 
 		// Listen for errors
@@ -991,29 +991,29 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Handle agent events from event transport - platform-agnostic event handling
+	 * Handle webhook events from proxy - main router for all webhooks
 	 */
-	private async handleAgentEvent(
-		event: AgentEvent,
+	private async handleWebhook(
+		webhook: AgentEvent,
 		repos: RepositoryConfig[],
 	): Promise<void> {
-		// Log verbose event info if enabled
+		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			console.log(
-				`[handleAgentEvent] Full event payload:`,
-				JSON.stringify(event, null, 2),
+				`[handleWebhook] Full webhook payload:`,
+				JSON.stringify(webhook, null, 2),
 			);
 		}
 
-		// Find the appropriate repository for this event
-		const repository = await this.findRepositoryForEvent(event, repos);
+		// Find the appropriate repository for this webhook
+		const repository = await this.findRepositoryForWebhook(webhook, repos);
 		if (!repository) {
 			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 				console.log(
-					`[handleAgentEvent] No repository configured for event from workspace ${event.organizationId}`,
+					`[handleWebhook] No repository configured for webhook from workspace ${webhook.organizationId}`,
 				);
 				console.log(
-					`[handleAgentEvent] Available repositories:`,
+					`[handleWebhook] Available repositories:`,
 					repos.map((r) => ({
 						name: r.name,
 						workspaceId: r.linearWorkspaceId,
@@ -1026,35 +1026,35 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		try {
-			// Handle specific event types with proper typing
-			// NOTE: Traditional events (assigned, comment) are disabled in favor of agent session events
-			if (isIssueAssignedEvent(event)) {
+			// Route to specific webhook handlers based on webhook type
+			// NOTE: Traditional webhooks (assigned, comment) are disabled in favor of agent session events
+			if (isIssueAssignedWebhook(webhook)) {
 				return;
-			} else if (isCommentMentionEvent(event)) {
+			} else if (isIssueCommentMentionWebhook(webhook)) {
 				return;
-			} else if (isNewCommentEvent(event)) {
+			} else if (isIssueNewCommentWebhook(webhook)) {
 				return;
-			} else if (isIssueUnassignedEvent(event)) {
-				// Keep unassigned event active
-				await this.handleIssueUnassignedWebhook(event, repository);
-			} else if (isAgentSessionCreatedEvent(event)) {
-				await this.handleAgentSessionCreatedWebhook(event, repository);
-			} else if (isAgentSessionPromptedEvent(event)) {
-				await this.handleUserPostedAgentActivity(event, repository);
+			} else if (isIssueUnassignedWebhook(webhook)) {
+				// Keep unassigned webhook active
+				await this.handleIssueUnassignedWebhook(webhook, repository);
+			} else if (isAgentSessionCreatedWebhook(webhook)) {
+				await this.handleAgentSessionCreatedWebhook(webhook, repository);
+			} else if (isAgentSessionPromptedWebhook(webhook)) {
+				await this.handleUserPromptedAgentActivity(webhook, repository);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					console.log(
-						`[handleAgentEvent] Unhandled event type: ${(event as any).action} for repository ${repository.name}`,
+						`[handleWebhook] Unhandled webhook type: ${(webhook as any).action}`,
 					);
 				}
 			}
 		} catch (error) {
 			console.error(
-				`[handleAgentEvent] Failed to process event: ${(event as any).action} for repository ${repository.name}`,
+				`[handleWebhook] Failed to process webhook: ${(webhook as any).action} for repository ${repository.name}`,
 				error,
 			);
-			// Don't re-throw event processing errors to prevent application crashes
-			// The error has been logged and individual event failures shouldn't crash the entire system
+			// Don't re-throw webhook processing errors to prevent application crashes
+			// The error has been logged and individual webhook failures shouldn't crash the entire system
 		}
 	}
 
@@ -1082,11 +1082,11 @@ export class EdgeWorker extends EventEmitter {
 	 * Now supports async operations for label-based and project-based routing
 	 * Priority: routingLabels > projectKeys > teamKeys
 	 */
-	private async findRepositoryForEvent(
-		event: AgentEvent,
+	private async findRepositoryForWebhook(
+		webhook: AgentEvent,
 		repos: RepositoryConfig[],
 	): Promise<RepositoryConfig | null> {
-		const workspaceId = event.organizationId;
+		const workspaceId = webhook.organizationId;
 		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
 
 		// Get issue information from webhook
@@ -1095,18 +1095,18 @@ export class EdgeWorker extends EventEmitter {
 		let issueIdentifier: string | undefined;
 
 		// Handle agent session webhooks which have different structure
-		if (isAgentSessionCreatedEvent(event)) {
-			issueId = (event as any).agentSession?.issue?.id;
-			teamKey = (event as any).agentSession?.issue?.team?.key;
-			issueIdentifier = (event as any).agentSession?.issue?.identifier;
-		} else if (isAgentSessionPromptedEvent(event)) {
-			issueId = (event as any).agentSession?.issue?.id;
-			teamKey = (event as any).agentSession?.issue?.team?.key;
-			issueIdentifier = (event as any).agentSession?.issue?.identifier;
+		if (isAgentSessionCreatedWebhook(webhook)) {
+			issueId = (webhook as any).agentSession?.issue?.id;
+			teamKey = (webhook as any).agentSession?.issue?.team?.key;
+			issueIdentifier = (webhook as any).agentSession?.issue?.identifier;
+		} else if (isAgentSessionPromptedWebhook(webhook)) {
+			issueId = (webhook as any).agentSession?.issue?.id;
+			teamKey = (webhook as any).agentSession?.issue?.team?.key;
+			issueIdentifier = (webhook as any).agentSession?.issue?.identifier;
 		} else {
-			issueId = (event as any).notification?.issue?.id;
-			teamKey = (event as any).notification?.issue?.team?.key;
-			issueIdentifier = (event as any).notification?.issue?.identifier;
+			issueId = (webhook as any).notification?.issue?.id;
+			teamKey = (webhook as any).notification?.issue?.team?.key;
+			issueIdentifier = (webhook as any).notification?.issue?.identifier;
 		}
 
 		// Filter repos by workspace first
@@ -1129,13 +1129,12 @@ export class EdgeWorker extends EventEmitter {
 				try {
 					// Fetch the issue to get labels
 					const issue = await issueTracker.fetchIssue(issueId);
-					const labelsConnection = await issue.labels();
-					const labelNames = labelsConnection?.nodes?.map((l) => l.name) || [];
+					const labelNames = await issueTracker.getIssueLabels(issue.id);
 
 					// Check each repo with routing labels
 					for (const repo of reposWithRoutingLabels) {
 						if (
-							repo.routingLabels?.some((routingLabel) =>
+							repo.routingLabels?.some((routingLabel: string) =>
 								labelNames.includes(routingLabel),
 							)
 						) {
@@ -1649,7 +1648,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @param comment Linear comment object from webhook data
 	 * @param repository Repository configuration
 	 */
-	private async handleUserPostedAgentActivity(
+	private async handleUserPromptedAgentActivity(
 		webhook: LinearAgentSessionPromptedWebhook,
 		repository: RepositoryConfig,
 	): Promise<void> {
