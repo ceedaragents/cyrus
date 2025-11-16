@@ -1,0 +1,111 @@
+import type { RepositoryConfig } from "cyrus-core";
+
+/**
+ * Repository configuration payload
+ * Matches the format sent by cyrus-hosted
+ */
+export interface RepositoryPayload {
+	repository_url: string; // Git clone URL
+	repository_name: string; // Repository name (required)
+	githubUrl?: string; // GitHub repository URL (e.g., "https://github.com/org/repo") - used for Linear select signal
+}
+
+/**
+ * Repository deletion payload
+ * Sent by cyrus-hosted when removing a repository
+ */
+export interface DeleteRepositoryPayload {
+	repository_name: string; // Repository name to delete
+	linear_team_key: string; // Linear team key (optional, for worktree cleanup)
+}
+
+/**
+ * Cyrus config update payload
+ */
+export interface CyrusConfigPayload {
+	repositories: RepositoryConfig[];
+	disallowedTools?: string[];
+	ngrokAuthToken?: string;
+	stripeCustomerId?: string;
+	linearWorkspaceSlug?: string;
+	defaultModel?: string;
+	defaultFallbackModel?: string;
+	global_setup_script?: string;
+	restartCyrus?: boolean;
+	backupConfig?: boolean;
+}
+
+/**
+ * Cyrus environment variables payload (for Claude token)
+ */
+export interface CyrusEnvPayload {
+	variables?: Record<string, string>;
+	ANTHROPIC_API_KEY?: string;
+	restartCyrus?: boolean;
+	backupEnv?: boolean;
+	[key: string]: string | boolean | Record<string, string> | undefined;
+}
+
+/**
+ * MCP server configuration
+ */
+export interface McpServerConfig {
+	command?: string;
+	args?: string[];
+	env?: Record<string, string>;
+	url?: string;
+	transport?: "stdio" | "sse";
+	headers?: Record<string, string>;
+}
+
+/**
+ * Test MCP connection payload
+ */
+export interface TestMcpPayload {
+	transportType: "stdio" | "sse";
+	serverUrl?: string | null;
+	command?: string | null;
+	commandArgs?: Array<{ value: string; order: number }> | null;
+	headers?: Array<{ name: string; value: string }> | null;
+	envVars?: Array<{ key: string; value: string }> | null;
+}
+
+/**
+ * Configure MCP servers payload
+ */
+export interface ConfigureMcpPayload {
+	mcpServers: Record<string, McpServerConfig>;
+}
+
+/**
+ * Check GitHub CLI payload (empty - no parameters needed)
+ */
+export type CheckGhPayload = Record<string, never>;
+
+/**
+ * Check GitHub CLI response data
+ */
+export interface CheckGhData {
+	isInstalled: boolean;
+	isAuthenticated: boolean;
+}
+
+/**
+ * Error response to send back to cyrus-hosted
+ */
+export interface ErrorResponse {
+	success: false;
+	error: string;
+	details?: string;
+}
+
+/**
+ * Success response to send back to cyrus-hosted
+ */
+export interface SuccessResponse {
+	success: true;
+	message: string;
+	data?: any;
+}
+
+export type ApiResponse = SuccessResponse | ErrorResponse;

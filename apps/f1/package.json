@@ -1,0 +1,26 @@
+{
+	"name": "cyrus-f1",
+	"version": "1.0.0",
+	"description": "F1 - Fast CLI for Cyrus platform testing",
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"start": "bun run src/index.ts",
+		"test": "vitest run",
+		"test:run": "vitest run --passWithNoTests",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check src/",
+		"lint:fix": "biome check --write src/"
+	},
+	"dependencies": {
+		"commander": "^12.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@biomejs/biome": "^1.9.4",
+		"typescript": "^5.3.3",
+		"vitest": "^3.1.4"
+	}
+}

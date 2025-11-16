@@ -3,8 +3,9 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"module": "NodeNext",
-		"moduleResolution": "NodeNext"
+		"moduleResolution": "NodeNext",
+		"types": ["node"]
 	},
-	"include": ["*.ts", "src/**/*.ts"],
+	"include": ["src/**/*.ts"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

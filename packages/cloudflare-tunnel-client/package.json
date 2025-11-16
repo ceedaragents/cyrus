@@ -1,0 +1,41 @@
+{
+	"name": "cyrus-cloudflare-tunnel-client",
+	"version": "0.2.1",
+	"description": "Cloudflare tunnel client for receiving config updates and webhooks from cyrus-hosted",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"cloudflared": "^0.7.1"
+	},
+	"devDependencies": {
+		"@types/node": "^20.12.7",
+		"typescript": "^5.4.5",
+		"vitest": "^2.0.0"
+	},
+	"keywords": [
+		"cloudflare",
+		"tunnel",
+		"webhook",
+		"linear",
+		"cyrus"
+	],
+	"author": "Cyrus Team",
+	"license": "MIT"
+}

@@ -21,6 +21,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	Comment,
 	CyrusAgentSession,
@@ -45,6 +46,8 @@ import type {
 import {
 	AgentActivityContentType,
 	type AgentEvent,
+	CLIIssueTrackerService,
+	CLIRPCServer,
 	DEFAULT_PROXY_URL,
 	type IAgentEventTransport,
 	type IIssueTrackerService,
@@ -79,6 +82,8 @@ import {
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { createBasicIssueTrackerServer } from "./tools/basic-issue-tracker.js";
+import { createExtendedMcpTools as createCLIExtendedMcpTools } from "./tools/cli-extended-mcp-tools.js";
 import { createExtendedMcpTools as createLinearExtendedMcpTools } from "./tools/linear-extended-mcp-tools.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
@@ -105,6 +110,7 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private agentEventTransport: IAgentEventTransport | null = null; // Single event transport for webhook delivery
+	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
@@ -196,14 +202,29 @@ export class EdgeWorker extends EventEmitter {
 
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create Linear client and issue tracker
-				const linearClient = new LinearClient({
-					accessToken: repo.linearToken,
-				});
-				const issueTracker = new LinearIssueTrackerService(
-					linearClient,
-					repo.linearToken,
-				);
+				// Create issue tracker service based on platform configuration
+				let issueTracker: IIssueTrackerService;
+				if (config.platform === "cli") {
+					// CLI mode: create CLI issue tracker
+					const agentHandle = config.agentHandle || "@cyrus";
+					const agentUserId = config.agentUserId || "cli-agent-user";
+					issueTracker = new CLIIssueTrackerService({
+						agentHandle,
+						agentUserId,
+					});
+					console.log(
+						`[EdgeWorker] Created CLI issue tracker for ${repo.name} with agent handle: ${agentHandle}`,
+					);
+				} else {
+					// Linear mode (default): create Linear client and issue tracker
+					const linearClient = new LinearClient({
+						accessToken: repo.linearToken,
+					});
+					issueTracker = new LinearIssueTrackerService(
+						linearClient,
+						repo.linearToken,
+					);
+				}
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
@@ -414,6 +435,46 @@ export class EdgeWorker extends EventEmitter {
 		console.log(
 			`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
 		);
+
+		// If platform is CLI mode, set up RPC server
+		if (this.config.platform === "cli") {
+			// Get the first CLI issue tracker (should only be one in CLI mode)
+			for (const repoId of this.repositories.keys()) {
+				const cliIssueTracker = this.issueTrackers.get(repoId);
+				if (
+					cliIssueTracker &&
+					cliIssueTracker instanceof CLIIssueTrackerService
+				) {
+					const rpcServer = new CLIRPCServer(
+						this.sharedApplicationServer.getFastifyInstance(),
+						cliIssueTracker,
+					);
+					rpcServer.register();
+					console.log("✅ CLI RPC server registered");
+					console.log(
+						`   RPC endpoint: http://localhost:${this.sharedApplicationServer.getPort()}/cli/rpc`,
+					);
+					console.log(`   Agent handle: ${cliIssueTracker.getAgentHandle()}`);
+					break; // Only set up one RPC server
+				}
+			}
+		}
+
+		// 2. Create and register ConfigUpdater
+		this.configUpdater = new ConfigUpdater(
+			this.sharedApplicationServer.getFastifyInstance(),
+			this.cyrusHome,
+			process.env.CYRUS_API_KEY || "",
+		);
+
+		// Register config update routes
+		this.configUpdater.register();
+
+		console.log("✅ Config updater registered");
+		console.log("   Routes: /api/update/cyrus-config, /api/update/cyrus-env,");
+		console.log(
+			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
 	}
 
 	/**
@@ -456,6 +517,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Clear event transport (no explicit cleanup needed, routes are removed when server stops)
 		this.agentEventTransport = null;
+		this.configUpdater = null;
 
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
 		await this.sharedApplicationServer.stop();
@@ -3494,8 +3556,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Get issue tracker service for this repository
 		const issueTracker = this.issueTrackers.get(repository.id);
 
-		// Configure Linear HTTP MCP server
-		if (repository.linearToken) {
+		// Configure basic issue tracker MCP server
+		if (this.config.platform === "cli") {
+			// CLI Platform: Use basic CLI issue tracker server
+			if (issueTracker && issueTracker instanceof CLIIssueTrackerService) {
+				mcpConfig["issue-tracker"] =
+					createBasicIssueTrackerServer(issueTracker);
+			}
+		} else if (repository.linearToken) {
+			// Linear Platform: Use Linear HTTP MCP server
 			mcpConfig["issue-tracker"] = {
 				type: "http",
 				url: "https://mcp.linear.app/mcp",
@@ -3505,18 +3574,31 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			};
 		}
 
-		// Configure extended Linear MCP server
+		// Configure extended issue tracker MCP server (platform-agnostic)
 		if (issueTracker) {
 			const extConfig = issueTracker.createExtendedMcpServer(
 				sessionCallbacks,
-			) as {
-				type: "linear-factory";
-				linearToken: string;
-				options: typeof sessionCallbacks;
-			};
+			) as
+				| {
+						type: "sdk-factory";
+						service: CLIIssueTrackerService;
+						options: typeof sessionCallbacks;
+				  }
+				| {
+						type: "linear-factory";
+						linearToken: string;
+						options: typeof sessionCallbacks;
+				  };
 
-			// Use createLinearExtendedMcpTools
-			if (extConfig.type === "linear-factory") {
+			// Use discriminated union to determine how to create the MCP server
+			if (extConfig.type === "sdk-factory") {
+				// CLI platform: Use createCLIExtendedMcpTools
+				mcpConfig["issue-tracker-ext"] = createCLIExtendedMcpTools(
+					extConfig.service,
+					extConfig.options,
+				);
+			} else if (extConfig.type === "linear-factory") {
+				// Linear platform: Use createLinearExtendedMcpTools
 				mcpConfig["issue-tracker-ext"] = createLinearExtendedMcpTools(
 					extConfig.linearToken,
 					extConfig.options,
