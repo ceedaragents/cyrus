@@ -1461,56 +1461,41 @@ export class AgentSessionManager {
 		try {
 			if (message.status === "compacting") {
 				// Create an ephemeral thought for the compacting status
-				const result = await this.linearClient.createAgentActivity({
-					agentSessionId: session.linearAgentActivitySessionId,
-					content: {
-						type: "thought",
+				const activity = await this.issueTracker.createAgentActivity(
+					session.linearAgentActivitySessionId,
+					{
+						type: AgentActivityContentType.Thought,
 						body: "Compacting conversation history…",
 					},
-					ephemeral: true,
-				});
+					{ ephemeral: true },
+				);
 
-				if (result.success && result.agentActivity) {
-					const activity = await result.agentActivity;
-					// Store the activity ID so we can replace it later
-					this.activeStatusActivitiesBySession.set(
-						linearAgentActivitySessionId,
-						activity.id,
-					);
-					console.log(
-						`[AgentSessionManager] Posted ephemeral compacting status for session ${linearAgentActivitySessionId}`,
-					);
-				} else {
-					console.error(
-						`[AgentSessionManager] Failed to post compacting status:`,
-						result,
-					);
-				}
+				// Store the activity ID so we can replace it later
+				this.activeStatusActivitiesBySession.set(
+					linearAgentActivitySessionId,
+					activity.id,
+				);
+				console.log(
+					`[AgentSessionManager] Posted ephemeral compacting status for session ${linearAgentActivitySessionId}`,
+				);
 			} else if (message.status === null) {
 				// Clear the status - post a non-ephemeral thought to replace the ephemeral one
-				const result = await this.linearClient.createAgentActivity({
-					agentSessionId: session.linearAgentActivitySessionId,
-					content: {
-						type: "thought",
+				await this.issueTracker.createAgentActivity(
+					session.linearAgentActivitySessionId,
+					{
+						type: AgentActivityContentType.Thought,
 						body: "Conversation history compacted",
 					},
-					ephemeral: false,
-				});
+					{ ephemeral: false },
+				);
 
-				if (result.success) {
-					// Clean up the stored activity ID
-					this.activeStatusActivitiesBySession.delete(
-						linearAgentActivitySessionId,
-					);
-					console.log(
-						`[AgentSessionManager] Posted non-ephemeral status clear for session ${linearAgentActivitySessionId}`,
-					);
-				} else {
-					console.error(
-						`[AgentSessionManager] Failed to post status clear:`,
-						result,
-					);
-				}
+				// Clean up the stored activity ID
+				this.activeStatusActivitiesBySession.delete(
+					linearAgentActivitySessionId,
+				);
+				console.log(
+					`[AgentSessionManager] Posted non-ephemeral status clear for session ${linearAgentActivitySessionId}`,
+				);
 			}
 		} catch (error) {
 			console.error(

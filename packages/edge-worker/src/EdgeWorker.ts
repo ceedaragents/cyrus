@@ -57,6 +57,7 @@ import {
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
 	isIssueUnassignedWebhook,
+	type LinearWebhook,
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
@@ -384,7 +385,8 @@ export class EdgeWorker extends EventEmitter {
 		this.agentEventTransport.on("event", (event: AgentEvent) => {
 			// Get all active repositories for event handling
 			const repos = Array.from(this.repositories.values());
-			this.handleWebhook(event, repos);
+			// Cast through unknown since AgentEvent is LinearWebhookPayload which is broader than LinearWebhook
+			this.handleWebhook(event as unknown as LinearWebhook, repos);
 		});
 
 		// Listen for errors
@@ -994,7 +996,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle webhook events from proxy - main router for all webhooks
 	 */
 	private async handleWebhook(
-		webhook: AgentEvent,
+		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
 		// Log verbose webhook info if enabled
@@ -1083,7 +1085,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Priority: routingLabels > projectKeys > teamKeys
 	 */
 	private async findRepositoryForWebhook(
-		webhook: AgentEvent,
+		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
 	): Promise<RepositoryConfig | null> {
 		const workspaceId = webhook.organizationId;
