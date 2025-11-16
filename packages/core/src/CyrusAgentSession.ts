@@ -40,6 +40,7 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		workspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
 		procedure?: {
 			procedureName: string;
 			currentSubroutineIndex: number;

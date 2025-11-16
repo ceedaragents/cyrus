@@ -16,18 +16,31 @@ export function createTestWorker(
 	repositories: RepositoryConfig[] = [],
 	linearWorkspaceSlug?: string,
 ): EdgeWorker {
-	// Create mock LinearClients for each repository
-	const linearClients = new Map();
+	// Create mock IssueTrackers for each repository
+	const issueTrackers = new Map();
 	for (const repo of repositories) {
-		// Create a minimal mock LinearClient with required methods
+		// Create a minimal mock IIssueTrackerService with required methods
 		const mockClient = {
-			comments: () => Promise.resolve({ nodes: [] }),
-			comment: () => Promise.resolve({ user: null }),
-			client: {
-				rawRequest: () => Promise.resolve({ data: { comment: { body: "" } } }),
-			},
+			fetchComments: () => Promise.resolve({ nodes: [] }),
+			fetchComment: () => Promise.resolve({ user: null }),
+			fetchCommentWithAttachments: () =>
+				Promise.resolve({
+					id: "mock-comment",
+					body: "",
+					userId: "mock-user",
+					issueId: "mock-issue",
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+					user: Promise.resolve({
+						id: "mock-user",
+						name: "Mock User",
+						email: "mock@example.com",
+						url: "https://example.com",
+					}),
+					attachments: [],
+				}),
 		};
-		linearClients.set(repo.id, mockClient as any);
+		issueTrackers.set(repo.id, mockClient as any);
 	}
 
 	const config: EdgeWorkerConfig = {
@@ -35,7 +48,7 @@ export function createTestWorker(
 		defaultModel: "sonnet",
 		linearWorkspaceSlug,
 		repositories,
-		linearClients,
+		issueTrackers,
 		mcpServers: {},
 	};
 	return new EdgeWorker(config);
@@ -131,17 +144,29 @@ export class PromptScenario {
 
 	withRepository(repo: any) {
 		this.input.repository = repo;
-		// Also ensure the worker has a LinearClient for this repository
-		if (!(this.worker as any).linearClients.has(repo.id)) {
+		// Also ensure the worker has an IssueTracker for this repository
+		if (!(this.worker as any).issueTrackers.has(repo.id)) {
 			const mockClient = {
-				comments: () => Promise.resolve({ nodes: [] }),
-				comment: () => Promise.resolve({ user: null }),
-				client: {
-					rawRequest: () =>
-						Promise.resolve({ data: { comment: { body: "" } } }),
-				},
+				fetchComments: () => Promise.resolve({ nodes: [] }),
+				fetchComment: () => Promise.resolve({ user: null }),
+				fetchCommentWithAttachments: () =>
+					Promise.resolve({
+						id: "mock-comment",
+						body: "",
+						userId: "mock-user",
+						issueId: "mock-issue",
+						createdAt: new Date().toISOString(),
+						updatedAt: new Date().toISOString(),
+						user: Promise.resolve({
+							id: "mock-user",
+							name: "Mock User",
+							email: "mock@example.com",
+							url: "https://example.com",
+						}),
+						attachments: [],
+					}),
 			};
-			(this.worker as any).linearClients.set(repo.id, mockClient);
+			(this.worker as any).issueTrackers.set(repo.id, mockClient);
 		}
 		return this;
 	}

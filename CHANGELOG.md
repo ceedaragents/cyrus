@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Introduced `IIssueTrackerService` interface for platform-agnostic issue tracking (#TODO CYPACK-388 part 1)
+- Added `LinearIssueTrackerService` implementation using Linear SDK (#TODO CYPACK-388 part 1)
+- New `cyrus-linear-event-transport` package replacing `cyrus-linear-webhook-client` (#TODO CYPACK-388 part 1)
+- Added `RepositoryRouter` for intelligent repository selection and routing (#TODO CYPACK-388 part 1)
+
+### Changed
+- Refactored EdgeWorker to use `IIssueTrackerService` interface instead of direct Linear client (#TODO CYPACK-388 part 1)
+- Replaced `cyrus-linear-webhook-client` with `cyrus-linear-event-transport` for cleaner Linear integration (#TODO CYPACK-388 part 1)
+
 ## [0.2.1] - 2025-11-15
 
 ### Added
@@ -123,28 +133,8 @@ All notable changes to this project will be documented in this file.
 - Suppressed unnecessary error logs when stopping Claude sessions
 
 ### Changed
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.31
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.28 to v0.1.30 - see [@anthropic-ai/claude-agent-sdk v0.1.30 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0130)
 - Updated @anthropic-ai/sdk from v0.67.0 to v0.68.0 - see [@anthropic-ai/sdk v0.68.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.67.0...sdk-v0.68.0)
-
-### Packages
-
-#### cyrus-core
-- cyrus-core@0.0.21
-
-#### cyrus-claude-runner
-- cyrus-claude-runner@0.0.32
-
-#### cyrus-edge-worker
-- cyrus-edge-worker@0.0.41
-
-#### cyrus-ndjson-client
-- cyrus-ndjson-client@0.0.25
-
-#### cyrus-simple-agent-runner
-- cyrus-simple-agent-runner@0.0.4
-
-#### cyrus-ai (CLI)
-- cyrus-ai@0.1.60
 
 ## [0.1.59] - 2025-10-31
 
@@ -177,6 +167,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Debugger workflow now proceeds directly from bug reproduction to fix implementation without requiring manual approval
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.25 to v0.1.28 - includes parity updates with Claude Code v2.0.28 and fixes custom tools timing out after 30 seconds instead of respecting the MCP_TOOL_TIMEOUT environment variable. See [@anthropic-ai/claude-agent-sdk v0.1.28 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0128)
 - All workflows (full-development, debugger-full, orchestrator-full) now end with concise summary instead of verbose summary
 - Non-summary subroutines (debugger-fix, debugger-reproduction, verifications, git-gh) now explicitly avoid posting Linear comments and end with brief 1-sentence completion messages
 - Orchestrator agents are now strongly discouraged from posting Linear comments to current issues; comments only used when triggering sub-agent sessions on child issues

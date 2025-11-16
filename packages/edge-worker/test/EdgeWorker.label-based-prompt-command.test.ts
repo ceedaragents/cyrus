@@ -77,22 +77,29 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "warn").mockImplementation(() => {});
 
-		// Mock LinearClient
+		// Mock IssueTrackerService
 		mockLinearClient = {
-			issue: vi.fn().mockResolvedValue({
+			createExtendedMcpServer: vi.fn().mockReturnValue({
+				type: "linear-factory",
+				linearToken: "test-token",
+				options: {},
+			}),
+			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",
 				title: "Test Issue with Bug",
 				description: "This is a bug that needs fixing",
 				url: "https://linear.app/test/issue/TEST-123",
 				branchName: "test-branch",
-				state: { name: "Todo" },
-				team: { id: "team-123" },
-				labels: vi.fn().mockResolvedValue({
-					nodes: [{ name: "bug" }], // This should trigger debugger prompt
+				state: { id: "state-1", name: "Todo", type: "unstarted" },
+				team: { id: "team-123", key: "TEST", name: "Test Team" },
+				labels: async () => ({
+					nodes: [{ id: "label-bug", name: "bug", color: "#ff0000" }],
 				}),
+				createdAt: "2025-01-01T00:00:00Z",
+				updatedAt: "2025-01-01T00:00:00Z",
 			}),
-			workflowStates: vi.fn().mockResolvedValue({
+			fetchWorkflowStates: vi.fn().mockResolvedValue({
 				nodes: [
 					{ id: "state-1", name: "Todo", type: "unstarted", position: 0 },
 					{ id: "state-2", name: "In Progress", type: "started", position: 1 },
@@ -100,7 +107,7 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 			}),
 			updateIssue: vi.fn().mockResolvedValue({ success: true }),
 			createAgentActivity: vi.fn().mockResolvedValue({ success: true }),
-			comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			fetchComments: vi.fn().mockResolvedValue({ nodes: [] }),
 		};
 		vi.mocked(LinearClient).mockImplementation(() => mockLinearClient);
 
@@ -206,6 +213,9 @@ Issue: {{issue_identifier}}`;
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
+
+		// Add mock IssueTrackerService to edgeWorker
+		(edgeWorker as any).issueTrackers.set("test-repo", mockLinearClient);
 	});
 
 	afterEach(() => {
