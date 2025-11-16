@@ -1,7 +1,7 @@
 {
-	"name": "cyrus-simple-agent-runner",
+	"name": "cyrus-linear-event-transport",
 	"version": "0.2.1",
-	"description": "Simple agent runner for enumerated responses",
+	"description": "Linear event transport for receiving and verifying Linear webhooks",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -11,18 +11,16 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
-		"test": "vitest",
-		"test:run": "vitest run --passWithNoTests",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@anthropic-ai/claude-agent-sdk": "^0.1.42",
-		"cyrus-claude-runner": "workspace:*"
+		"@linear/sdk": "^60.0.0",
+		"cyrus-core": "workspace:*",
+		"fastify": "^5.2.0"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
-		"typescript": "^5.3.3",
-		"vitest": "^1.1.0"
+		"typescript": "^5.3.3"
 	},
 	"publishConfig": {
 		"access": "public"

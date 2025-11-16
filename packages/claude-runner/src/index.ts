@@ -18,10 +18,6 @@ export {
 	writeTools,
 } from "./config.js";
 export {
-	type CyrusToolsOptions,
-	createCyrusToolsServer,
-} from "./tools/cyrus-tools/index.js";
-export {
 	createImageToolsServer,
 	type ImageToolsOptions,
 } from "./tools/image-tools/index.js";
@@ -39,6 +35,7 @@ export type {
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
+	SDKStatusMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "./types.js";

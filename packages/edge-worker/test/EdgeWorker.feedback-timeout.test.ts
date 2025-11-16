@@ -1,17 +1,19 @@
 import { LinearClient } from "@linear/sdk";
-import { ClaudeRunner, createCyrusToolsServer } from "cyrus-claude-runner";
-import { NdjsonClient } from "cyrus-ndjson-client";
+import { ClaudeRunner } from "cyrus-claude-runner";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
+import { createExtendedMcpTools as createLinearExtendedMcpTools } from "../src/tools/linear-extended-mcp-tools.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
 // Mock all dependencies
 vi.mock("fs/promises");
-vi.mock("cyrus-ndjson-client");
 vi.mock("cyrus-claude-runner");
+vi.mock("../src/tools/linear-extended-mcp-tools.js");
 vi.mock("@linear/sdk");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("../src/SharedApplicationServer.js");
 vi.mock("../src/AgentSessionManager.js");
 vi.mock("cyrus-core", async (importOriginal) => {
@@ -41,6 +43,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
+		platform: "linear",
 		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
@@ -53,29 +56,31 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
 
-		// Setup callbacks to be captured
+		// Setup callbacks to be captured (will be overwritten by createLinearExtendedMcpTools mock)
 		mockOnFeedbackDelivery = vi.fn();
 		_mockOnSessionCreated = vi.fn();
 
-		// Mock createCyrusToolsServer to return a proper structure
-		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
-			// Capture the callbacks
-			if (options?.onFeedbackDelivery) {
-				mockOnFeedbackDelivery = options.onFeedbackDelivery;
-			}
-			if (options?.onSessionCreated) {
-				_mockOnSessionCreated = options.onSessionCreated;
-			}
+		// Mock createLinearExtendedMcpTools to return a proper structure
+		vi.mocked(createLinearExtendedMcpTools).mockImplementation(
+			(_token, options) => {
+				// Capture the callbacks
+				if (options?.onFeedbackDelivery) {
+					mockOnFeedbackDelivery = options.onFeedbackDelivery;
+				}
+				if (options?.onSessionCreated) {
+					_mockOnSessionCreated = options.onSessionCreated;
+				}
 
-			// Return a mock structure that matches what the real function returns
-			return {
-				type: "sdk" as const,
-				name: "cyrus-tools",
-				instance: {
-					_options: options,
-				},
-			} as any;
-		});
+				// Return a mock structure that matches what the real function returns
+				return {
+					type: "sdk" as const,
+					name: "cyrus-tools",
+					instance: {
+						_options: options,
+					},
+				} as any;
+			},
+		);
 
 		// Mock ClaudeRunner with a long-running session to simulate the timeout
 		mockClaudeRunner = {
@@ -124,17 +129,20 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
+					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getWebhookUrl: vi
+						.fn()
+						.mockReturnValue("http://localhost:3456/webhook"),
 					registerOAuthCallbackHandler: vi.fn(),
 				}) as any,
 		);
 
-		vi.mocked(NdjsonClient).mockImplementation(
+		vi.mocked(LinearEventTransport).mockImplementation(
 			() =>
 				({
-					connect: vi.fn().mockResolvedValue(undefined),
-					disconnect: vi.fn(),
+					register: vi.fn(),
 					on: vi.fn(),
-					isConnected: vi.fn().mockReturnValue(true),
+					removeAllListeners: vi.fn(),
 				}) as any,
 		);
 
@@ -176,6 +184,16 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+
+		// Setup issue tracker with createExtendedMcpServer method
+		const mockIssueTracker = {
+			createExtendedMcpServer: vi.fn().mockImplementation((options) => ({
+				type: "linear-factory",
+				linearToken: "test-token",
+				options: options || {},
+			})),
+		};
+		(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
 	});
 
 	afterEach(() => {
@@ -203,7 +221,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 					return undefined;
 				});
 
-			// Build MCP config which will trigger createCyrusToolsServer
+			// Build MCP config which will trigger createLinearExtendedMcpTools
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				"parent-session-123",

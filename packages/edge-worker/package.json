@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-edge-worker",
-	"version": "0.0.40",
+	"version": "0.2.1",
 	"description": "Unified edge worker for processing Linear issues with Claude",
 	"type": "module",
 	"main": "dist/index.js",
@@ -23,17 +23,23 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@anthropic-ai/claude-agent-sdk": "^0.1.28",
 		"@linear/sdk": "^60.0.0",
 		"@ngrok/ngrok": "^1.5.1",
 		"chokidar": "^4.0.3",
 		"cyrus-claude-runner": "workspace:*",
+		"cyrus-cloudflare-tunnel-client": "workspace:*",
+		"cyrus-config-updater": "workspace:*",
 		"cyrus-core": "workspace:*",
-		"cyrus-linear-webhook-client": "workspace:*",
-		"cyrus-ndjson-client": "workspace:*",
+		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
-		"file-type": "^18.7.0"
+		"fastify": "^5.2.0",
+		"file-type": "^18.7.0",
+		"fs-extra": "^11.3.0",
+		"zod": "^3.23.0"
 	},
 	"devDependencies": {
+		"@types/fs-extra": "^11.0.4",
 		"@types/node": "^20.0.0",
 		"@vitest/coverage-v8": "^1.6.1",
 		"axios": "^1.6.0",

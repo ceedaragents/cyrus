@@ -20,13 +20,12 @@
 		"noUncheckedIndexedAccess": true,
 		"baseUrl": ".",
 		"paths": {
-			"cyrus-core": ["packages/core/src"],
-			"cyrus-claude-parser": ["packages/claude-parser/src"],
-			"cyrus-linear-client": ["packages/linear-client/src"],
-			"cyrus-history-stream": ["packages/history-stream/src"],
-			"cyrus-edge-worker": ["packages/edge-worker/src"],
-			"cyrus-claude-runner": ["packages/claude-runner/src"],
-			"cyrus-ndjson-client": ["packages/ndjson-client/src"]
+			"cyrus-core": ["packages/core"],
+			"cyrus-claude-parser": ["packages/claude-parser"],
+			"cyrus-linear-client": ["packages/linear-client"],
+			"cyrus-history-stream": ["packages/history-stream"],
+			"cyrus-edge-worker": ["packages/edge-worker"],
+			"cyrus-claude-runner": ["packages/claude-runner"]
 		}
 	},
 	"exclude": ["node_modules", "dist", "build"]

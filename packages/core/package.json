@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-core",
-	"version": "0.0.20",
+	"version": "0.2.1",
 	"description": "Core business logic for Cyrus",
 	"type": "module",
 	"main": "dist/index.js",
@@ -21,6 +21,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
+		"fastify": "^5.6.1",
 		"typescript": "^5.3.3",
 		"vitest": "^1.1.0"
 	},

@@ -1,6 +1,27 @@
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import type { Issue as LinearIssue } from "@linear/sdk";
 import type { SDKMessage } from "cyrus-claude-runner";
 import type { Workspace } from "./CyrusAgentSession.js";
+
+/**
+ * Resolve path with tilde (~) expansion
+ * Expands ~ to the user's home directory and resolves to absolute path
+ *
+ * @param path - Path that may contain ~ prefix (e.g., "~/.cyrus/repos/myrepo")
+ * @returns Absolute path with ~ expanded
+ *
+ * @example
+ * resolvePath("~/projects/myapp") // "/home/user/projects/myapp"
+ * resolvePath("/absolute/path") // "/absolute/path"
+ * resolvePath("relative/path") // "/current/working/dir/relative/path"
+ */
+export function resolvePath(path: string): string {
+	if (path.startsWith("~/")) {
+		return resolve(homedir(), path.slice(2));
+	}
+	return resolve(path);
+}
 
 /**
  * OAuth callback handler type
@@ -22,6 +43,7 @@ export interface RepositoryConfig {
 	// Git configuration
 	repositoryPath: string; // Local git repository path
 	baseBranch: string; // Branch to create worktrees from (main, master, etc.)
+	githubUrl?: string; // GitHub repository URL (e.g., "https://github.com/org/repo") - used for Linear select signal
 
 	// Linear configuration
 	linearWorkspaceId: string; // Linear workspace/team ID
@@ -78,13 +100,19 @@ export interface RepositoryConfig {
  */
 export interface EdgeWorkerConfig {
 	// Proxy connection config
-	proxyUrl: string;
+	proxyUrl?: string; // Optional - defaults to DEFAULT_PROXY_URL for OAuth flows
 	baseUrl?: string;
 	webhookBaseUrl?: string; // Legacy support - use baseUrl instead
 	webhookPort?: number; // Legacy support - now uses serverPort
 	serverPort?: number; // Unified server port for both webhooks and OAuth callbacks (default: 3456)
 	serverHost?: string; // Server host address ('localhost' or '0.0.0.0', default: 'localhost')
 	ngrokAuthToken?: string; // Ngrok auth token for tunnel creation
+
+	// Issue tracker platform configuration
+	platform?: "linear" | "cli"; // Issue tracker platform type (default: "linear")
+
+	// Linear configuration (global)
+	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
@@ -117,6 +145,10 @@ export interface EdgeWorkerConfig {
 
 	// Cyrus home directory
 	cyrusHome: string;
+
+	// Agent configuration (for CLI mode)
+	agentHandle?: string; // The name/handle the agent responds to (e.g., "@cyrus", "cyrus")
+	agentUserId?: string; // The user ID of the agent (for CLI mode)
 
 	// Optional handlers that apps can implement
 	handlers?: {
@@ -171,6 +203,7 @@ export interface EdgeConfig {
 	repositories: RepositoryConfig[];
 	ngrokAuthToken?: string;
 	stripeCustomerId?: string;
+	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 	global_setup_script?: string; // Optional path to global setup script that runs for all repositories

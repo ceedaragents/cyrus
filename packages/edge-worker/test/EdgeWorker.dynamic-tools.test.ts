@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock dependencies BEFORE imports
-vi.mock("cyrus-ndjson-client");
 vi.mock("cyrus-claude-runner", () => ({
 	ClaudeRunner: vi.fn(),
 	getSafeTools: vi.fn(() => [
@@ -40,6 +39,7 @@ vi.mock("cyrus-claude-runner", () => ({
 	]),
 }));
 vi.mock("@linear/sdk");
+vi.mock("cyrus-linear-event-transport");
 vi.mock("../src/SharedApplicationServer.js");
 vi.mock("../src/AgentSessionManager.js");
 vi.mock("fs/promises", () => ({
@@ -56,7 +56,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
-import { NdjsonClient } from "cyrus-ndjson-client";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
@@ -99,6 +99,10 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
+					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getWebhookUrl: vi
+						.fn()
+						.mockReturnValue("http://localhost:3456/webhook"),
 					setWebhookHandler: vi.fn(),
 					setOAuthCallbackHandler: vi.fn(),
 				}) as any,
@@ -116,15 +120,13 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				}) as any,
 		);
 
-		// Mock NdjsonClient
-		vi.mocked(NdjsonClient).mockImplementation(
+		// Mock LinearEventTransport
+		vi.mocked(LinearEventTransport).mockImplementation(
 			() =>
 				({
-					connect: vi.fn().mockResolvedValue(undefined),
-					send: vi.fn().mockResolvedValue(undefined),
-					disconnect: vi.fn(),
+					register: vi.fn(),
 					on: vi.fn(),
-					reconnect: vi.fn().mockResolvedValue(undefined),
+					removeAllListeners: vi.fn(),
 				}) as any,
 		);
 
@@ -184,8 +186,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const debuggerTools = buildAllowedTools(repository, "debugger");
 			expect(debuggerTools).toEqual([
 				...getReadOnlyTools(),
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// Test builder prompt with custom array
@@ -194,16 +196,16 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Read",
 				"Edit",
 				"Task",
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// Test scoper prompt with safe preset
 			const scoperTools = buildAllowedTools(repository, "scoper");
 			expect(scoperTools).toEqual([
 				...getSafeTools(),
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -234,16 +236,16 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const debuggerTools = buildAllowedTools(repository, "debugger");
 			expect(debuggerTools).toEqual([
 				...getAllTools(),
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// Test builder prompt with global safe preset
 			const builderTools = buildAllowedTools(repository, "builder");
 			expect(builderTools).toEqual([
 				...getSafeTools(),
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// Test scoper prompt with global custom array
@@ -251,8 +253,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(scoperTools).toEqual([
 				"Read",
 				"WebFetch",
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -268,8 +270,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(tools).toEqual([
 				"Read",
 				"Write",
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -286,8 +288,8 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Read",
 				"Write",
 				"Edit",
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -307,23 +309,27 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const tools = buildAllowedTools(repository);
 			expect(tools).toEqual([
 				...getSafeTools(),
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
 		it("should always include Linear MCP tools", () => {
 			const repository: RepositoryConfig = {
 				...mockConfig.repositories[0],
-				allowedTools: ["Read", "mcp__linear"], // Already includes Linear MCP
+				allowedTools: ["Read", "mcp__issue-tracker"], // Already includes issue tracker MCP
 			};
 
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
 			const tools = buildAllowedTools(repository);
 
-			// Should deduplicate Linear MCP tools
-			expect(tools).toEqual(["Read", "mcp__linear", "mcp__cyrus-tools"]);
-			expect(tools.filter((t) => t === "mcp__linear")).toHaveLength(1);
+			// Should deduplicate issue tracker MCP tools
+			expect(tools).toEqual([
+				"Read",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
+			]);
+			expect(tools.filter((t) => t === "mcp__issue-tracker")).toHaveLength(1);
 		});
 
 		it("should handle backward compatibility with old array-based labelPrompts", () => {
@@ -346,16 +352,16 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				"Read",
 				"Write",
 				"Edit",
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 
 			// New format should work as expected
 			const builderTools = buildAllowedTools(repository, "builder");
 			expect(builderTools).toEqual([
 				...getSafeTools(),
-				"mcp__linear",
-				"mcp__cyrus-tools",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
 			]);
 		});
 
@@ -373,7 +379,11 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
 			const tools = buildAllowedTools(repository, "debugger");
 
-			expect(tools).toEqual(["CustomTool", "mcp__linear", "mcp__cyrus-tools"]);
+			expect(tools).toEqual([
+				"CustomTool",
+				"mcp__issue-tracker",
+				"mcp__issue-tracker-ext",
+			]);
 		});
 	});
 
