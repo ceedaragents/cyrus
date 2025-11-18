@@ -13,8 +13,8 @@ import type {
 	IAgentEventTransport,
 } from "./IAgentEventTransport.js";
 import type {
-	AgentActivity,
 	AgentActivityContent,
+	AgentActivitySDK,
 	AgentActivitySignal,
 	AgentSession,
 	AgentSessionCreateOnCommentInput,
@@ -686,7 +686,7 @@ export interface IIssueTrackerService {
 			signal?: AgentActivitySignal;
 			signalMetadata?: Record<string, any>;
 		},
-	): Promise<AgentActivity>;
+	): Promise<AgentActivitySDK>;
 
 	// ========================================================================
 	// FILE OPERATIONS

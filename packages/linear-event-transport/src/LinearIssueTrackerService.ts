@@ -10,8 +10,8 @@
 
 import type { LinearClient } from "@linear/sdk";
 import type {
-	AgentActivity,
 	AgentActivityContent,
+	AgentActivitySDK,
 	AgentActivitySignal,
 	AgentEventTransportConfig,
 	AgentSession,
@@ -849,7 +849,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			signal?: AgentActivitySignal;
 			signalMetadata?: Record<string, any>;
 		},
-	): Promise<AgentActivity> {
+	): Promise<AgentActivitySDK> {
 		try {
 			const createPayload = await this.linearClient.createAgentActivity({
 				agentSessionId: sessionId,
@@ -872,10 +872,8 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				throw new Error("Created activity not returned from Linear API");
 			}
 
-			// Cast SDK runtime type to webhook payload type
-			// SDK type has optional getters while webhook type has strict required fields
-			// Must use 'unknown' because SDK class and webhook payload are structurally different types
-			return createdActivity as unknown as AgentActivity;
+			// Return Linear SDK activity directly - no cast needed since return type matches
+			return createdActivity;
 		} catch (error) {
 			const err = new Error(
 				`Failed to create agent activity on session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
