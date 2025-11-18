@@ -28,8 +28,8 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			description: "List files in home directory",
 		});
 
-		// Should show command, not description
-		expect(result).toBe("ls -la /home/user");
+		// Should show command with description in brackets
+		expect(result).toBe("ls -la /home/user [List files in home directory]");
 	});
 
 	test("formatToolParameter - Bash tool without description", () => {
@@ -292,8 +292,8 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			description: "Get current directory",
 		});
 
-		// Should show command, not description
-		expect(result).toBe("pwd");
+		// Should show command with description in brackets
+		expect(result).toBe("pwd [Get current directory]");
 	});
 
 	test("formatToolResult - handles arrow prefix for subtasks", () => {

@@ -226,9 +226,14 @@ export class AgentSessionManager {
 		try {
 			switch (toolName) {
 				case "Bash":
-				case "↪ Bash":
-					// Always show the command, not the description
-					return toolInput.command || JSON.stringify(toolInput);
+				case "↪ Bash": {
+					// Show command, with optional description in brackets
+					const cmd = toolInput.command || JSON.stringify(toolInput);
+					if (toolInput.description) {
+						return `${cmd} [${toolInput.description}]`;
+					}
+					return cmd;
+				}
 
 				case "Read":
 				case "↪ Read":
