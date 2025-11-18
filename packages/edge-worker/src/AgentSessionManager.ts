@@ -227,9 +227,7 @@ export class AgentSessionManager {
 			switch (toolName) {
 				case "Bash":
 				case "↪ Bash":
-					if (toolInput.description) {
-						return toolInput.description;
-					}
+					// Always show the command, not the description
 					return toolInput.command || JSON.stringify(toolInput);
 
 				case "Read":
@@ -392,6 +390,21 @@ export class AgentSessionManager {
 				case "↪ Read":
 					// For Read, the result is file content - use code block
 					if (result?.trim()) {
+						// Clean up the result: remove line numbers and system-reminder tags
+						let cleanedResult = result;
+
+						// Remove line numbers (format: "  123→")
+						cleanedResult = cleanedResult.replace(/^\s*\d+→/gm, "");
+
+						// Remove system-reminder blocks
+						cleanedResult = cleanedResult.replace(
+							/<system-reminder>[\s\S]*?<\/system-reminder>/g,
+							"",
+						);
+
+						// Trim any extra whitespace
+						cleanedResult = cleanedResult.trim();
+
 						// Try to detect language from file extension
 						let lang = "";
 						if (toolInput.file_path) {
@@ -428,17 +441,36 @@ export class AgentSessionManager {
 							};
 							lang = langMap[ext || ""] || "";
 						}
-						return `\`\`\`${lang}\n${result}\n\`\`\``;
+						return `\`\`\`${lang}\n${cleanedResult}\n\`\`\``;
 					}
 					return "*Empty file*";
 
 				case "Edit":
-				case "↪ Edit":
-					// For Edit, show what was changed
+				case "↪ Edit": {
+					// For Edit, show deletions and additions like a diff
+					// Extract old_string and new_string from toolInput
+					if (toolInput.old_string && toolInput.new_string) {
+						let formatted = "";
+
+						// Show deletions
+						formatted += "**Removed:**\n```\n";
+						formatted += toolInput.old_string;
+						formatted += "\n```\n\n";
+
+						// Show additions
+						formatted += "**Added:**\n```\n";
+						formatted += toolInput.new_string;
+						formatted += "\n```";
+
+						return formatted;
+					}
+
+					// Fallback to result if old/new strings not available
 					if (result?.trim()) {
-						return result; // Edit results are already formatted
+						return result;
 					}
 					return "*Edit completed*";
+				}
 
 				case "Write":
 				case "↪ Write":

@@ -28,7 +28,8 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			description: "List files in home directory",
 		});
 
-		expect(result).toBe("List files in home directory");
+		// Should show command, not description
+		expect(result).toBe("ls -la /home/user");
 	});
 
 	test("formatToolParameter - Bash tool without description", () => {
@@ -179,6 +180,48 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		);
 	});
 
+	test("formatToolResult - Read tool removes line numbers and system-reminder", () => {
+		const manager = new AgentSessionManager(mockLinearClient);
+		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
+
+		const resultWithLineNumbers =
+			"  25→def foo():\n  26→    return 1\n\n<system-reminder>\nThis is a reminder\n</system-reminder>";
+
+		const result = formatToolResult(
+			"Read",
+			{ file_path: "/home/user/test.py" },
+			resultWithLineNumbers,
+			false,
+		);
+
+		// Should not contain line numbers or system-reminder
+		expect(result).not.toContain("25→");
+		expect(result).not.toContain("26→");
+		expect(result).not.toContain("<system-reminder>");
+		expect(result).toContain("```python\ndef foo():\n    return 1\n```");
+	});
+
+	test("formatToolResult - Edit tool shows diff format", () => {
+		const manager = new AgentSessionManager(mockLinearClient);
+		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
+
+		const result = formatToolResult(
+			"Edit",
+			{
+				file_path: "/home/user/test.ts",
+				old_string: "const x = 1;",
+				new_string: "const x = 2;",
+			},
+			"",
+			false,
+		);
+
+		expect(result).toContain("**Removed:**");
+		expect(result).toContain("const x = 1;");
+		expect(result).toContain("**Added:**");
+		expect(result).toContain("const x = 2;");
+	});
+
 	test("formatToolResult - Grep tool with file matches", () => {
 		const manager = new AgentSessionManager(mockLinearClient);
 		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
@@ -249,7 +292,8 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			description: "Get current directory",
 		});
 
-		expect(result).toBe("Get current directory");
+		// Should show command, not description
+		expect(result).toBe("pwd");
 	});
 
 	test("formatToolResult - handles arrow prefix for subtasks", () => {
