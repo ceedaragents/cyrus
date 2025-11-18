@@ -872,8 +872,9 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				throw new Error("Created activity not returned from Linear API");
 			}
 
-			// Cast SDK runtime type (AgentActivitySDK) to webhook payload type (AgentActivity)
-			// Necessary because SDK has optional getters while webhook type has strict required fields
+			// Cast SDK runtime type to webhook payload type
+			// SDK type has optional getters while webhook type has strict required fields
+			// Must use 'unknown' because SDK class and webhook payload are structurally different types
 			return createdActivity as unknown as AgentActivity;
 		} catch (error) {
 			const err = new Error(

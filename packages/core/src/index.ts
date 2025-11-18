@@ -24,6 +24,7 @@ export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {
 	AgentActivity,
 	AgentActivityContent,
+	AgentActivitySDK,
 	AgentEvent,
 	AgentEventTransportConfig,
 	AgentEventTransportEvents,
@@ -31,6 +32,7 @@ export type {
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
 	AgentSessionCreateResponse,
+	AgentSessionSDK,
 	Comment,
 	CommentCreateInput,
 	CommentWithAttachments,
