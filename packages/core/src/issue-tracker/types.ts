@@ -189,12 +189,20 @@ export { AgentSessionType };
 export type { AgentSessionType as AgentSessionTypeEnum } from "@linear/sdk";
 
 /**
- * Agent session type - Direct alias to Linear SDK's AgentSession type.
- * Linear SDK is the source of truth for all agent session tracking types.
+ * Agent session webhook payload type.
+ * Used for webhook events and type-safe data structures (strict, non-optional fields).
  *
- * @see {@link LinearSDK.LinearDocument.AgentSession} - Linear's complete AgentSession type
+ * @see {@link LinearSDK.LinearDocument.AgentSession}
  */
 export type AgentSession = LinearSDK.LinearDocument.AgentSession;
+
+/**
+ * Agent session SDK runtime type.
+ * Used when working with Linear SDK API responses (has optional getters).
+ *
+ * @see {@link LinearSDK.AgentSession}
+ */
+export type AgentSessionSDK = LinearSDK.AgentSession;
 
 /**
  * Agent activity type enumeration.
@@ -216,10 +224,10 @@ export const AgentActivityContentType = AgentActivityType;
 export type AgentActivityContentType = AgentActivityType;
 
 /**
- * Agent activity content type - Direct alias to Linear SDK's AgentActivityContent type.
- * Linear SDK is the source of truth.
+ * Agent activity content type.
+ * Used for both webhook events and SDK API responses (union type is the same for both).
  *
- * @see {@link LinearSDK.LinearDocument.AgentActivityContent} - Linear's complete AgentActivityContent type
+ * @see {@link LinearSDK.LinearDocument.AgentActivityContent}
  */
 export type AgentActivityContent =
 	LinearSDK.LinearDocument.AgentActivityContent;
@@ -236,12 +244,20 @@ export { AgentActivitySignal };
 export type { AgentActivitySignal as AgentActivitySignalEnum } from "@linear/sdk";
 
 /**
- * Agent activity type - Direct alias to Linear SDK's AgentActivity type.
- * Linear SDK is the source of truth for all agent activity tracking types.
+ * Agent activity webhook payload type.
+ * Used for webhook events and type-safe data structures (strict, non-optional fields).
  *
- * @see {@link LinearSDK.LinearDocument.AgentActivity} - Linear's complete AgentActivity type
+ * @see {@link LinearSDK.LinearDocument.AgentActivity}
  */
 export type AgentActivity = LinearSDK.LinearDocument.AgentActivity;
+
+/**
+ * Agent activity SDK runtime type.
+ * Used when working with Linear SDK API responses (has optional getters).
+ *
+ * @see {@link LinearSDK.AgentActivity}
+ */
+export type AgentActivitySDK = LinearSDK.AgentActivity;
 
 /**
  * File upload request parameters.
