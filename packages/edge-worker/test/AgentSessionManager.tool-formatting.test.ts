@@ -28,8 +28,8 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			description: "List files in home directory",
 		});
 
-		// Should show command with description in brackets
-		expect(result).toBe("ls -la /home/user [List files in home directory]");
+		// Should show command only - description goes in action field via formatToolActionName
+		expect(result).toBe("ls -la /home/user");
 	});
 
 	test("formatToolParameter - Bash tool without description", () => {
@@ -292,8 +292,8 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			description: "Get current directory",
 		});
 
-		// Should show command with description in brackets
-		expect(result).toBe("pwd [Get current directory]");
+		// Should show command only - description goes in action field via formatToolActionName
+		expect(result).toBe("pwd");
 	});
 
 	test("formatToolResult - handles arrow prefix for subtasks", () => {
@@ -308,5 +308,97 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		);
 
 		expect(result).toContain("```javascript\nconsole.log('test');\n```");
+	});
+
+	test("formatToolActionName - Bash tool with description", () => {
+		const manager = new AgentSessionManager(mockLinearClient);
+		const formatToolActionName = getPrivateMethod(
+			manager,
+			"formatToolActionName",
+		);
+
+		const result = formatToolActionName(
+			"Bash",
+			{
+				command: "ls -la",
+				description: "List all files",
+			},
+			false,
+		);
+
+		// Should show action name with description in round brackets
+		expect(result).toBe("Bash (List all files)");
+	});
+
+	test("formatToolActionName - Bash tool without description", () => {
+		const manager = new AgentSessionManager(mockLinearClient);
+		const formatToolActionName = getPrivateMethod(
+			manager,
+			"formatToolActionName",
+		);
+
+		const result = formatToolActionName(
+			"Bash",
+			{
+				command: "ls -la",
+			},
+			false,
+		);
+
+		// Should show action name without description
+		expect(result).toBe("Bash");
+	});
+
+	test("formatToolActionName - Bash tool with error and description", () => {
+		const manager = new AgentSessionManager(mockLinearClient);
+		const formatToolActionName = getPrivateMethod(
+			manager,
+			"formatToolActionName",
+		);
+
+		const result = formatToolActionName(
+			"Bash",
+			{
+				command: "invalid command",
+				description: "Test command",
+			},
+			true,
+		);
+
+		// Should show error with description
+		expect(result).toBe("Bash (Error) (Test command)");
+	});
+
+	test("formatToolActionName - subtask Bash tool with description", () => {
+		const manager = new AgentSessionManager(mockLinearClient);
+		const formatToolActionName = getPrivateMethod(
+			manager,
+			"formatToolActionName",
+		);
+
+		const result = formatToolActionName(
+			"↪ Bash",
+			{
+				command: "pwd",
+				description: "Get current directory",
+			},
+			false,
+		);
+
+		// Should show subtask action name with description
+		expect(result).toBe("↪ Bash (Get current directory)");
+	});
+
+	test("formatToolActionName - other tools without special formatting", () => {
+		const manager = new AgentSessionManager(mockLinearClient);
+		const formatToolActionName = getPrivateMethod(
+			manager,
+			"formatToolActionName",
+		);
+
+		const result = formatToolActionName("Read", { file_path: "/test" }, false);
+
+		// Should show action name without modification for non-Bash tools
+		expect(result).toBe("Read");
 	});
 });

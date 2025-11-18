@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Bash tool actions in Linear now display their description in parentheses after the tool name for better readability (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)
+
 ## [0.2.1] - 2025-11-15
 
 ### Added

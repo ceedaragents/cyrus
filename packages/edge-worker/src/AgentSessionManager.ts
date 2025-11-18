@@ -227,12 +227,8 @@ export class AgentSessionManager {
 			switch (toolName) {
 				case "Bash":
 				case "↪ Bash": {
-					// Show command, with optional description in brackets
-					const cmd = toolInput.command || JSON.stringify(toolInput);
-					if (toolInput.description) {
-						return `${cmd} [${toolInput.description}]`;
-					}
-					return cmd;
+					// Show command only - description goes in action field via formatToolActionName
+					return toolInput.command || JSON.stringify(toolInput);
 				}
 
 				case "Read":
@@ -356,6 +352,33 @@ export class AgentSessionManager {
 			);
 			return JSON.stringify(toolInput);
 		}
+	}
+
+	/**
+	 * Format tool action name with description for Bash tool
+	 * Puts the description in round brackets after the tool name in the action field
+	 */
+	private formatToolActionName(
+		toolName: string,
+		toolInput: any,
+		isError: boolean,
+	): string {
+		// Handle Bash tool with description
+		if (toolName === "Bash" || toolName === "↪ Bash") {
+			// Check if toolInput has a description field
+			if (
+				toolInput &&
+				typeof toolInput === "object" &&
+				"description" in toolInput &&
+				toolInput.description
+			) {
+				const baseName = isError ? `${toolName} (Error)` : toolName;
+				return `${baseName} (${toolInput.description})`;
+			}
+		}
+
+		// Default formatting for other tools or Bash without description
+		return isError ? `${toolName} (Error)` : toolName;
 	}
 
 	/**
@@ -1124,9 +1147,16 @@ export class AgentSessionManager {
 								toolResult.isError,
 							);
 
+							// Format the action name (with description for Bash tool)
+							const formattedAction = this.formatToolActionName(
+								toolName,
+								toolInput,
+								toolResult.isError,
+							);
+
 							content = {
 								type: "action",
-								action: toolResult.isError ? `${toolName} (Error)` : toolName,
+								action: formattedAction,
 								parameter: formattedParameter,
 								result: formattedResult,
 							};
