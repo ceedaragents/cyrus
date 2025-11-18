@@ -257,9 +257,7 @@ export interface IIssueTrackerService {
 	 * ```
 	 *
 	 * @remarks
-	 * - Linear platform: Returns attachments from Linear SDK
-	 * - CLI platform: Returns empty array (no native attachments)
-	 * - Attachments are typically external links (Sentry, Datadog, etc.)
+	 * Attachments are typically external links (Sentry, Datadog, etc.)
 	 */
 	fetchIssueAttachments(
 		issueId: string,

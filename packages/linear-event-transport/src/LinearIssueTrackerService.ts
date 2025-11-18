@@ -37,43 +37,6 @@ import type {
 	WorkflowState,
 } from "cyrus-core";
 import { LinearEventTransport } from "./LinearEventTransport.js";
-import {
-	adaptCommentWithAttachments,
-	adaptIssueWithChildren,
-	adaptLinearAgentSession,
-	type LinearAgentSessionData,
-	toLinearActivityContent,
-} from "./LinearTypeAdapters.js";
-
-/**
- * Linear GraphQL response structure for rawRequest.
- */
-interface LinearGraphQLResponse<T> {
-	data: T;
-}
-
-/**
- * Linear client with raw request capability.
- */
-interface LinearClientWithRawRequest {
-	client: {
-		rawRequest<T>(
-			query: string,
-			variables?: Record<string, unknown>,
-		): Promise<LinearGraphQLResponse<T>>;
-	};
-}
-
-/**
- * Linear GraphQL agent session create response.
- */
-interface LinearAgentSessionCreateData {
-	success: boolean;
-	lastSyncId: number;
-	agentSession: {
-		id: string;
-	};
-}
 
 /**
  * Linear implementation of IIssueTrackerService.
@@ -210,8 +173,12 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 			const children = childrenConnection.nodes ?? [];
 
-			// Use adapter to combine parent issue with children array
-			return adaptIssueWithChildren(parentIssue, children);
+			// Return issue with children array directly from Linear SDK
+			// Cast to IssueWithChildren since Linear SDK types are compatible
+			return Object.assign(parentIssue, {
+				children,
+				childCount: children.length,
+			}) as IssueWithChildren;
 		} catch (error) {
 			const err = new Error(
 				`Failed to fetch children for issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -372,7 +339,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * - Waiting for Linear to expose this data in their API
 	 *
 	 * Implementation detail: The returned comment object is a Linear SDK Comment
-	 * with an empty `attachments` array property added via `adaptCommentWithAttachments()`.
+	 * with an empty `attachments` array property added.
 	 */
 	async fetchCommentWithAttachments(
 		commentId: string,
@@ -381,8 +348,11 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			// Fetch the comment using the Linear SDK
 			const comment = await this.fetchComment(commentId);
 
-			// Use adapter to add attachments property to the comment
-			return adaptCommentWithAttachments(comment);
+			// Return comment with empty attachments array (Linear API doesn't expose comment attachments)
+			// Cast to CommentWithAttachments since Linear SDK types are compatible
+			return Object.assign(comment, {
+				attachments: [],
+			}) as CommentWithAttachments;
 		} catch (error) {
 			const err = new Error(
 				`Failed to fetch comment with attachments ${commentId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -706,11 +676,15 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
         }
       `;
 
-			const result = await (
-				this.linearClient as LinearClientWithRawRequest
-			).client.rawRequest<{
-				agentSessionCreateOnIssue: LinearAgentSessionCreateData;
-			}>(mutation, {
+			const result: {
+				data: {
+					agentSessionCreateOnIssue: {
+						success: boolean;
+						lastSyncId: number;
+						agentSession: { id: string };
+					};
+				};
+			} = await (this.linearClient as any).client.rawRequest(mutation, {
 				input: {
 					issueId: input.issueId,
 					externalLink: input.externalLink,
@@ -761,11 +735,15 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
         }
       `;
 
-			const result = await (
-				this.linearClient as LinearClientWithRawRequest
-			).client.rawRequest<{
-				agentSessionCreateOnComment: LinearAgentSessionCreateData;
-			}>(mutation, {
+			const result: {
+				data: {
+					agentSessionCreateOnComment: {
+						success: boolean;
+						lastSyncId: number;
+						agentSession: { id: string };
+					};
+				};
+			} = await (this.linearClient as any).client.rawRequest(mutation, {
 				input: {
 					commentId: input.commentId,
 					externalLink: input.externalLink,
@@ -831,9 +809,11 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
         }
       `;
 
-			const result = await (
-				this.linearClient as LinearClientWithRawRequest
-			).client.rawRequest<{ agentSession: LinearAgentSessionData }>(query, {
+			const result: {
+				data: {
+					agentSession: AgentSession;
+				};
+			} = await (this.linearClient as any).client.rawRequest(query, {
 				id: sessionId,
 			});
 
@@ -842,7 +822,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				throw new Error("Agent session not found");
 			}
 
-			return adaptLinearAgentSession(sessionData);
+			return sessionData;
 		} catch (error) {
 			const err = new Error(
 				`Failed to fetch agent session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -871,10 +851,9 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		},
 	): Promise<AgentActivity> {
 		try {
-			const activityContent = toLinearActivityContent(content);
 			const createPayload = await this.linearClient.createAgentActivity({
 				agentSessionId: sessionId,
-				content: activityContent,
+				content,
 				...(options?.ephemeral !== undefined && {
 					ephemeral: options.ephemeral,
 				}),

@@ -189,50 +189,12 @@ export { AgentSessionType };
 export type { AgentSessionType as AgentSessionTypeEnum } from "@linear/sdk";
 
 /**
- * Platform-agnostic agent session representation.
- *
- * This interface is a simplified subset of Linear's AgentSession GraphQL type,
- * containing only the core fields needed for agent session operations.
- * Linear SDK is the source of truth.
+ * Agent session type - Direct alias to Linear SDK's AgentSession type.
+ * Linear SDK is the source of truth for all agent session tracking types.
  *
  * @see {@link LinearSDK.LinearDocument.AgentSession} - Linear's complete AgentSession type
  */
-export interface AgentSession {
-	/** Unique agent session identifier */
-	id: string;
-	/** Issue ID this session belongs to */
-	issueId: string;
-	/** Comment ID this session is associated with */
-	commentId?: string;
-	/** Session status */
-	status: AgentSessionStatus;
-	/** Session type/context */
-	type: AgentSessionType;
-	/** Creator user ID */
-	creatorId: string;
-	/** Creator user object (may require async access) */
-	creator?: User | Promise<User>;
-	/** App/bot user ID */
-	appUserId: string;
-	/** Organization ID */
-	organizationId: string;
-	/** Session summary */
-	summary?: string | null;
-	/** Session start timestamp (ISO 8601) */
-	startedAt?: string | null;
-	/** Session end timestamp (ISO 8601) */
-	endedAt?: string | null;
-	/** Creation timestamp (ISO 8601) */
-	createdAt: string;
-	/** Last update timestamp (ISO 8601) */
-	updatedAt: string;
-	/** Archive timestamp (ISO 8601), null if not archived */
-	archivedAt?: string | null;
-	/** Source metadata (platform-specific) */
-	sourceMetadata?: Record<string, unknown>;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
-}
+export type AgentSession = LinearSDK.LinearDocument.AgentSession;
 
 /**
  * Agent activity type enumeration.
@@ -254,25 +216,13 @@ export const AgentActivityContentType = AgentActivityType;
 export type AgentActivityContentType = AgentActivityType;
 
 /**
- * Agent activity content structure.
- *
- * This is a simplified structure matching Linear SDK's agentActivity.content.
+ * Agent activity content type - Direct alias to Linear SDK's AgentActivityContent type.
  * Linear SDK is the source of truth.
  *
  * @see {@link LinearSDK.LinearDocument.AgentActivityContent} - Linear's complete AgentActivityContent type
  */
-export interface AgentActivityContent {
-	/** Content type */
-	type: AgentActivityContentType;
-	/** Content body */
-	body: string;
-	/** Action name (for Action type activities) */
-	action?: string;
-	/** Action parameter (for Action type activities) */
-	parameter?: any;
-	/** Action result (for Action type activities) */
-	result?: any;
-}
+export type AgentActivityContent =
+	LinearSDK.LinearDocument.AgentActivityContent;
 
 /**
  * Agent activity signal enumeration.
@@ -286,40 +236,12 @@ export { AgentActivitySignal };
 export type { AgentActivitySignal as AgentActivitySignalEnum } from "@linear/sdk";
 
 /**
- * Platform-agnostic agent activity representation.
- *
- * This interface is a simplified subset of Linear's AgentActivity GraphQL type,
- * containing only the core fields needed for agent activity operations.
- * Linear SDK is the source of truth.
+ * Agent activity type - Direct alias to Linear SDK's AgentActivity type.
+ * Linear SDK is the source of truth for all agent activity tracking types.
  *
  * @see {@link LinearSDK.LinearDocument.AgentActivity} - Linear's complete AgentActivity type
  */
-export interface AgentActivity {
-	/** Unique activity identifier */
-	id: string;
-	/** Agent session ID this activity belongs to */
-	agentSessionId: string;
-	/** Agent context ID (if applicable) */
-	agentContextId?: string | null;
-	/** Source comment ID (if applicable) */
-	sourceCommentId?: string;
-	/** Activity content */
-	content: AgentActivityContent;
-	/** Optional signal modifier (auth, continue, select, stop) */
-	signal?: AgentActivitySignal;
-	/** Signal metadata (additional context for the signal) */
-	signalMetadata?: Record<string, any>;
-	/** Whether this activity is ephemeral and should disappear after the next activity */
-	ephemeral?: boolean;
-	/** Creation timestamp (ISO 8601) */
-	createdAt: string;
-	/** Last update timestamp (ISO 8601) */
-	updatedAt: string;
-	/** Archive timestamp (ISO 8601), null if not archived */
-	archivedAt?: string | null;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
-}
+export type AgentActivity = LinearSDK.LinearDocument.AgentActivity;
 
 /**
  * File upload request parameters.
@@ -492,32 +414,25 @@ export interface WebhookConfig {
 }
 
 /**
- * Guidance rule for agent behavior.
+ * Guidance rule type - Direct alias to Linear SDK's GuidanceRuleWebhookPayload type.
+ * Linear SDK is the source of truth for guidance/agent behavior rules.
+ *
+ * @see {@link LinearSDK.LinearDocument.GuidanceRuleWebhookPayload} - Linear's complete GuidanceRuleWebhookPayload type
  */
-export interface GuidanceRule {
-	/** Rule identifier */
-	id: string;
-	/** Rule content */
-	content: string;
-	/** Rule scope (organization, team, etc.) */
-	scope: "organization" | "team" | string;
-	/** Additional platform-specific metadata */
-	metadata?: Record<string, unknown>;
-}
+export type GuidanceRule = LinearSDK.LinearDocument.GuidanceRuleWebhookPayload;
 
 /**
  * Pagination connection for list results.
+ * Based on Linear SDK's Connection pattern with PageInfo.
+ * Linear SDK is the source of truth for pagination patterns.
+ *
+ * @see {@link LinearSDK.LinearDocument.PageInfo} - Linear's PageInfo type
  */
 export interface Connection<T> {
 	/** Array of items */
 	nodes: T[];
-	/** Page info for cursor-based pagination */
-	pageInfo?: {
-		hasNextPage: boolean;
-		hasPreviousPage: boolean;
-		startCursor?: string;
-		endCursor?: string;
-	};
+	/** Page info for cursor-based pagination (from Linear SDK) */
+	pageInfo?: LinearSDK.LinearDocument.PageInfo;
 	/** Total count (if available) */
 	totalCount?: number;
 }
