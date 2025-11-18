@@ -872,28 +872,8 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				throw new Error("Created activity not returned from Linear API");
 			}
 
-			// Convert to platform-agnostic format
-			return {
-				id: createdActivity.id,
-				agentSessionId: sessionId,
-				agentContextId: null,
-				sourceCommentId: undefined,
-				content: {
-					type: content.type,
-					body: content.body,
-				},
-				signal: createdActivity.signal as AgentActivitySignal | undefined,
-				signalMetadata: createdActivity.signalMetadata as
-					| Record<string, any>
-					| undefined,
-				ephemeral: createdActivity.ephemeral,
-				createdAt: createdActivity.createdAt.toISOString(),
-				updatedAt: createdActivity.updatedAt.toISOString(),
-				archivedAt: createdActivity.archivedAt?.toISOString() ?? null,
-				metadata: {
-					linearActivityId: createdActivity.id,
-				},
-			};
+			// Return Linear SDK activity directly (cast through unknown due to Date vs string incompatibility)
+			return createdActivity as unknown as AgentActivity;
 		} catch (error) {
 			const err = new Error(
 				`Failed to create agent activity on session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
