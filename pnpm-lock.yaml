@@ -95,8 +95,8 @@ importers:
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.42
-        version: 0.1.42(zod@3.25.76)
+        specifier: ^0.1.44
+        version: 0.1.44(zod@3.25.76)
       '@anthropic-ai/sdk':
         specifier: ^0.69.0
         version: 0.69.0(zod@3.25.76)
@@ -257,8 +257,8 @@ importers:
   packages/simple-agent-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.42
-        version: 0.1.42(zod@3.25.76)
+        specifier: ^0.1.44
+        version: 0.1.44(zod@3.25.76)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -279,8 +279,8 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@anthropic-ai/claude-agent-sdk@0.1.42':
-    resolution: {integrity: sha512-snz2CTHKxkk4rqgvi2D4oMgITXpgmghWC4XvFXcuYjSxgLCBmvDW9TjBk6MTv0apC5fwW4kLE4ydamkBs+BdPg==}
+  '@anthropic-ai/claude-agent-sdk@0.1.44':
+    resolution: {integrity: sha512-+hyNZZbN6nmruVueCYim+qBDYzhopj8aUXp5mCWhfSmsP80w7QoXwxVQbWqwUvD447qep4xSLMBGALAlb7uYSg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       zod: ^3.24.1
@@ -2392,7 +2392,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@anthropic-ai/claude-agent-sdk@0.1.42(zod@3.25.76)':
+  '@anthropic-ai/claude-agent-sdk@0.1.44(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
     optionalDependencies:
