@@ -201,6 +201,34 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		expect(result).toContain("```python\ndef foo():\n    return 1\n```");
 	});
 
+	test("formatToolResult - Read tool preserves first line indentation", () => {
+		const manager = new AgentSessionManager(mockLinearClient);
+		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
+
+		// Simulate Read output where the first line has indentation
+		// This reproduces the bug from CYPACK-401 where first line indentation is stripped
+		const resultWithLineNumbers =
+			'  16→            coordinate["x"] -= 1\n  17→            elif direction == "up":\n  18→                coordinate["y"] += 1';
+
+		const result = formatToolResult(
+			"Read",
+			{ file_path: "/home/user/test.py" },
+			resultWithLineNumbers,
+			false,
+		);
+
+		// Should not contain line numbers
+		expect(result).not.toContain("16→");
+		expect(result).not.toContain("17→");
+		expect(result).not.toContain("18→");
+
+		// CRITICAL: First line should preserve its 12 spaces of indentation
+		// All three lines should have the same indentation level
+		expect(result).toContain(
+			'```python\n            coordinate["x"] -= 1\n            elif direction == "up":\n                coordinate["y"] += 1\n```',
+		);
+	});
+
 	test("formatToolResult - Edit tool shows diff format", () => {
 		const manager = new AgentSessionManager(mockLinearClient);
 		const formatToolResult = getPrivateMethod(manager, "formatToolResult");

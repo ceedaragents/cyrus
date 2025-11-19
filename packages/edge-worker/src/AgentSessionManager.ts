@@ -430,8 +430,10 @@ export class AgentSessionManager {
 							"",
 						);
 
-						// Trim any extra whitespace
-						cleanedResult = cleanedResult.trim();
+						// Trim only blank lines (not horizontal whitespace) to preserve indentation
+						cleanedResult = cleanedResult
+							.replace(/^\n+/, "")
+							.replace(/\n+$/, "");
 
 						// Try to detect language from file extension
 						let lang = "";
