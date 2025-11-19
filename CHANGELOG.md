@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Conversation history compacting status is now displayed in agent activity. When Claude compacts the conversation history, you'll see an ephemeral "Compacting conversation history…" message that updates to "Conversation history compacted" when complete.
+
 ## [0.2.1] - 2025-11-15
 
 ### Added
