@@ -404,16 +404,6 @@ export interface RoutingConfig {
 }
 
 /**
- * Webhook verification mode.
- */
-export enum WebhookVerificationMode {
-	/** Verify using HMAC signature */
-	Signature = "signature",
-	/** Verify using Bearer token */
-	BearerToken = "bearer-token",
-}
-
-/**
  * Webhook configuration with signature verification.
  */
 export interface WebhookConfigWithSignature {
