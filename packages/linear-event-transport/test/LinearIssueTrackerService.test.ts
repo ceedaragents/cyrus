@@ -718,9 +718,12 @@ describe("LinearIssueTrackerService", () => {
 				agentActivity: Promise.resolve(mockActivity as any),
 			} as any);
 
-			const result = await service.createAgentActivity("session-123", {
-				type: AgentActivityContentType.Response,
-				body: "This is a response",
+			const result = await service.createAgentActivity({
+				agentSessionId: "session-123",
+				content: {
+					type: AgentActivityContentType.Response,
+					body: "This is a response",
+				},
 			});
 
 			expect(mockLinearClient.createAgentActivity).toHaveBeenCalledWith({
@@ -730,8 +733,9 @@ describe("LinearIssueTrackerService", () => {
 					body: "This is a response",
 				},
 			});
-			expect(result.id).toBe("activity-new");
-			expect(result.content.type).toBe(AgentActivityContentType.Response);
+			expect(result.success).toBe(true);
+			const activity = await result.agentActivity;
+			expect(activity.id).toBe("activity-new");
 		});
 	});
 

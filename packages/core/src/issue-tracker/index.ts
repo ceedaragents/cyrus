@@ -59,6 +59,11 @@ export type {
 // CORE TYPES
 // ============================================================================
 
+// Explicitly re-export key types for documentation
+export type {
+	AgentActivityCreateInput,
+	AgentActivityPayload,
+} from "./types.js";
 // Export all types and enums from types.ts
 export * from "./types.js";
 

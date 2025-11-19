@@ -10,9 +10,8 @@
 
 import type { LinearClient } from "@linear/sdk";
 import type {
-	AgentActivityContent,
-	AgentActivitySDK,
-	AgentActivitySignal,
+	AgentActivityCreateInput,
+	AgentActivityPayload,
 	AgentEventTransportConfig,
 	AgentSession,
 	AgentSessionCreateOnCommentInput,
@@ -770,49 +769,12 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 	/**
 	 * Post an agent activity to an agent session.
+	 * Signature matches Linear SDK's createAgentActivity exactly.
 	 */
 	async createAgentActivity(
-		sessionId: string,
-		content: AgentActivityContent,
-		options?: {
-			ephemeral?: boolean;
-			signal?: AgentActivitySignal;
-			signalMetadata?: Record<string, any>;
-		},
-	): Promise<AgentActivitySDK> {
-		try {
-			const createPayload = await this.linearClient.createAgentActivity({
-				agentSessionId: sessionId,
-				content,
-				...(options?.ephemeral !== undefined && {
-					ephemeral: options.ephemeral,
-				}),
-				...(options?.signal !== undefined && { signal: options.signal }),
-				...(options?.signalMetadata !== undefined && {
-					signalMetadata: options.signalMetadata,
-				}),
-			});
-
-			if (!createPayload.success) {
-				throw new Error("Linear API returned success=false");
-			}
-
-			const createdActivity = await createPayload.agentActivity;
-			if (!createdActivity) {
-				throw new Error("Created activity not returned from Linear API");
-			}
-
-			// Return Linear SDK activity directly - no cast needed since return type matches
-			return createdActivity;
-		} catch (error) {
-			const err = new Error(
-				`Failed to create agent activity on session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+		input: AgentActivityCreateInput,
+	): Promise<AgentActivityPayload> {
+		return await this.linearClient.createAgentActivity(input);
 	}
 
 	// ========================================================================

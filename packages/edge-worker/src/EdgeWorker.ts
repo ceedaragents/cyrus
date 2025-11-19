@@ -518,9 +518,12 @@ export class EdgeWorker extends EventEmitter {
 			const resultThought = `Received result from sub-issue ${childIssueIdentifier}:\n\n---\n\n${prompt}\n\n---`;
 
 			try {
-				await issueTracker.createAgentActivity(parentSessionId, {
-					type: AgentActivityContentType.Thought,
-					body: resultThought,
+				await issueTracker.createAgentActivity({
+					agentSessionId: parentSessionId,
+					content: {
+						type: AgentActivityContentType.Thought,
+						body: resultThought,
+					},
 				});
 
 				console.log(
@@ -918,13 +921,13 @@ export class EdgeWorker extends EventEmitter {
 							// Post cancellation message to Linear
 							const issueTracker = this.issueTrackers.get(repo.id);
 							if (issueTracker) {
-								await issueTracker.createAgentActivity(
-									session.linearAgentActivitySessionId,
-									{
+								await issueTracker.createAgentActivity({
+									agentSessionId: session.linearAgentActivitySessionId,
+									content: {
 										type: AgentActivityContentType.Response,
 										body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
 									},
-								);
+								});
 								console.log(
 									`  📤 Posted cancellation message to Linear for issue ${session.issueId}`,
 								);
@@ -1098,9 +1101,12 @@ export class EdgeWorker extends EventEmitter {
 			methodDescriptions[routingMethod] || `using ${routingMethod}`;
 
 		try {
-			await issueTracker.createAgentActivity(agentSessionId, {
-				type: AgentActivityContentType.Thought,
-				body: `Selected repository: **${repositoryName}** (${methodDescription})`,
+			await issueTracker.createAgentActivity({
+				agentSessionId,
+				content: {
+					type: AgentActivityContentType.Thought,
+					body: `Selected repository: **${repositoryName}** (${methodDescription})`,
+				},
 			});
 			console.log(
 				`[EdgeWorker] Posted repository selection activity for ${repositoryName}`,
@@ -3376,9 +3382,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
 
 			try {
-				await issueTracker.createAgentActivity(childSessionId, {
-					type: AgentActivityContentType.Thought,
-					body: feedbackThought,
+				await issueTracker.createAgentActivity({
+					agentSessionId: childSessionId,
+					content: {
+						type: AgentActivityContentType.Thought,
+						body: feedbackThought,
+					},
 				});
 
 				console.log(
@@ -4303,9 +4312,12 @@ ${input.userComment}
 				return;
 			}
 
-			await issueTracker.createAgentActivity(linearAgentActivitySessionId, {
-				type: AgentActivityContentType.Thought,
-				body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
+			await issueTracker.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: AgentActivityContentType.Thought,
+					body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
+				},
 			});
 			console.log(
 				`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
@@ -4334,9 +4346,12 @@ ${input.userComment}
 				return;
 			}
 
-			await issueTracker.createAgentActivity(linearAgentActivitySessionId, {
-				type: AgentActivityContentType.Thought,
-				body: "Resuming from child session",
+			await issueTracker.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: AgentActivityContentType.Thought,
+					body: "Resuming from child session",
+				},
 			});
 			console.log(
 				`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
@@ -4638,9 +4653,12 @@ ${input.userComment}
 				return;
 			}
 
-			await issueTracker.createAgentActivity(linearAgentActivitySessionId, {
-				type: AgentActivityContentType.Thought,
-				body: `Entering '${selectedPromptType}' mode because of the '${triggerLabel}' label. I'll follow the ${selectedPromptType} process...`,
+			await issueTracker.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: AgentActivityContentType.Thought,
+					body: `Entering '${selectedPromptType}' mode because of the '${triggerLabel}' label. I'll follow the ${selectedPromptType} process...`,
+				},
 			});
 			console.log(
 				`[EdgeWorker] Posted system prompt selection thought for session ${linearAgentActivitySessionId} (${selectedPromptType} mode)`,
@@ -4813,9 +4831,12 @@ ${input.userComment}
 				? "I've queued up your message as guidance"
 				: "Getting started on that...";
 
-			await issueTracker.createAgentActivity(linearAgentActivitySessionId, {
-				type: AgentActivityContentType.Thought,
-				body: message,
+			await issueTracker.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: AgentActivityContentType.Thought,
+					body: message,
+				},
 			});
 			console.log(
 				`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`,

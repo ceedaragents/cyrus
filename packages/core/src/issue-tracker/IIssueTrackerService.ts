@@ -13,9 +13,8 @@ import type {
 	IAgentEventTransport,
 } from "./IAgentEventTransport.js";
 import type {
-	AgentActivityContent,
-	AgentActivitySDK,
-	AgentActivitySignal,
+	AgentActivityCreateInput,
+	AgentActivityPayload,
 	AgentSession,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
@@ -646,31 +645,42 @@ export interface IIssueTrackerService {
 	 * Agent activities represent thoughts, observations, actions, responses,
 	 * elicitations, and errors during agent execution.
 	 *
-	 * @param sessionId - Agent session ID to post activity to
-	 * @param content - Activity content and type
-	 * @param options - Optional activity options (ephemeral, signal, signalMetadata)
-	 * @returns Promise resolving to the created activity
+	 * Signature matches Linear SDK's createAgentActivity exactly.
+	 *
+	 * @param input - Activity creation input (agentSessionId, content, ephemeral, signal, signalMetadata)
+	 * @returns Promise resolving to the activity payload (success, agentActivity)
 	 * @throws Error if session not found or creation fails
 	 *
 	 * @example
 	 * ```typescript
 	 * // Post a thought activity
-	 * await service.createAgentActivity(sessionId, {
-	 *   type: AgentActivityContentType.Thought,
-	 *   body: 'I need to analyze the issue requirements'
+	 * await service.createAgentActivity({
+	 *   agentSessionId: sessionId,
+	 *   content: {
+	 *     type: AgentActivityContentType.Thought,
+	 *     body: 'I need to analyze the issue requirements'
+	 *   }
 	 * });
 	 *
 	 * // Post an ephemeral action activity (will be replaced by next activity)
-	 * await service.createAgentActivity(sessionId, {
-	 *   type: AgentActivityContentType.Action,
-	 *   body: 'Running tests to verify the fix'
-	 * }, { ephemeral: true });
+	 * await service.createAgentActivity({
+	 *   agentSessionId: sessionId,
+	 *   content: {
+	 *     type: AgentActivityContentType.Action,
+	 *     body: 'Running tests to verify the fix'
+	 *   },
+	 *   ephemeral: true
+	 * });
 	 *
 	 * // Post a response activity with signal
-	 * await service.createAgentActivity(sessionId, {
-	 *   type: AgentActivityContentType.Response,
-	 *   body: 'I have completed the requested changes'
-	 * }, { signal: AgentActivitySignal.Stop });
+	 * await service.createAgentActivity({
+	 *   agentSessionId: sessionId,
+	 *   content: {
+	 *     type: AgentActivityContentType.Response,
+	 *     body: 'I have completed the requested changes'
+	 *   },
+	 *   signal: AgentActivitySignal.Stop
+	 * });
 	 * ```
 	 *
 	 * @remarks
@@ -679,14 +689,8 @@ export interface IIssueTrackerService {
 	 * Ephemeral activities disappear when replaced by the next activity.
 	 */
 	createAgentActivity(
-		sessionId: string,
-		content: AgentActivityContent,
-		options?: {
-			ephemeral?: boolean;
-			signal?: AgentActivitySignal;
-			signalMetadata?: Record<string, any>;
-		},
-	): Promise<AgentActivitySDK>;
+		input: AgentActivityCreateInput,
+	): Promise<AgentActivityPayload>;
 
 	// ========================================================================
 	// FILE OPERATIONS

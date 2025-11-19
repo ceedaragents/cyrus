@@ -12,9 +12,12 @@ describe("AgentSessionManager - Model Notification", () => {
 
 	beforeEach(() => {
 		createAgentActivitySpy = vi.fn().mockResolvedValue({
-			id: "activity-123",
-			sessionId: sessionId,
-			createdAt: new Date().toISOString(),
+			success: true,
+			agentActivity: Promise.resolve({
+				id: "activity-123",
+				sessionId: sessionId,
+				createdAt: new Date().toISOString(),
+			}),
 		});
 
 		mockIssueTracker = {
@@ -57,17 +60,20 @@ describe("AgentSessionManager - Model Notification", () => {
 		await manager.handleClaudeMessage(sessionId, systemMessage);
 
 		// Verify that createAgentActivity was called with model notification
-		// New signature: createAgentActivity(sessionId, content)
+		// New signature: createAgentActivity({agentSessionId, content})
 		const modelNotificationCall = createAgentActivitySpy.mock.calls.find(
 			(call: any) =>
-				call[1]?.type === "thought" && call[1]?.body?.includes("Using model:"),
+				call[0]?.content?.type === "thought" &&
+				call[0]?.content?.body?.includes("Using model:"),
 		);
 
 		expect(modelNotificationCall).toBeTruthy();
-		expect(modelNotificationCall[0]).toEqual(sessionId);
-		expect(modelNotificationCall[1]).toEqual({
-			type: "thought",
-			body: "Using model: claude-3-opus-20240229",
+		expect(modelNotificationCall[0]).toEqual({
+			agentSessionId: sessionId,
+			content: {
+				type: "thought",
+				body: "Using model: claude-3-opus-20240229",
+			},
 		});
 	});
 
@@ -89,7 +95,8 @@ describe("AgentSessionManager - Model Notification", () => {
 		// Verify that no model notification was posted
 		const modelNotificationCall = createAgentActivitySpy.mock.calls.find(
 			(call: any) =>
-				call[1]?.type === "thought" && call[1]?.body?.includes("Using model:"),
+				call[0]?.content?.type === "thought" &&
+				call[0]?.content?.body?.includes("Using model:"),
 		);
 
 		expect(modelNotificationCall).toBeFalsy();

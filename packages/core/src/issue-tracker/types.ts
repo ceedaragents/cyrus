@@ -260,6 +260,23 @@ export type AgentActivity = LinearSDK.LinearDocument.AgentActivity;
 export type AgentActivitySDK = LinearSDK.AgentActivity;
 
 /**
+ * Agent activity create input type.
+ * Used for creating agent activities - matches Linear SDK's input structure exactly.
+ *
+ * @see {@link LinearSDK.LinearDocument.AgentActivityCreateInput}
+ */
+export type AgentActivityCreateInput =
+	LinearSDK.LinearDocument.AgentActivityCreateInput;
+
+/**
+ * Agent activity payload type.
+ * Returned from createAgentActivity mutation - contains success status and created activity.
+ *
+ * @see {@link LinearSDK.AgentActivityPayload}
+ */
+export type AgentActivityPayload = LinearSDK.AgentActivityPayload;
+
+/**
  * File upload request parameters.
  */
 export interface FileUploadRequest {

@@ -24,6 +24,8 @@ export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {
 	AgentActivity,
 	AgentActivityContent,
+	AgentActivityCreateInput,
+	AgentActivityPayload,
 	AgentActivitySDK,
 	AgentEvent,
 	AgentEventTransportConfig,

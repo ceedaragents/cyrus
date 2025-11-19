@@ -929,10 +929,15 @@ export class AgentSessionManager {
 				}
 			}
 
-			const agentActivity = await this.issueTracker.createAgentActivity(
-				session.linearAgentActivitySessionId, // Use the Linear session ID
+			const payload = await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
 				content,
-			);
+			});
+
+			const agentActivity = await payload.agentActivity;
+			if (!agentActivity) {
+				throw new Error("Agent activity not returned from create operation");
+			}
 
 			entry.linearAgentActivityId = agentActivity.id;
 			console.log(
@@ -1072,13 +1077,13 @@ export class AgentSessionManager {
 		}
 
 		try {
-			await this.issueTracker.createAgentActivity(
-				session.linearAgentActivitySessionId,
-				{
+			await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
 					type: AgentActivityContentType.Thought,
 					body,
 				},
-			);
+			});
 
 			console.log(
 				`[AgentSessionManager] Created thought activity for session ${sessionId}`,
@@ -1119,10 +1124,10 @@ export class AgentSessionManager {
 				content.result = result;
 			}
 
-			await this.issueTracker.createAgentActivity(
-				session.linearAgentActivitySessionId,
+			await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
 				content,
-			);
+			});
 
 			console.log(
 				`[AgentSessionManager] Created action activity for session ${sessionId}`,
@@ -1148,13 +1153,13 @@ export class AgentSessionManager {
 		}
 
 		try {
-			await this.issueTracker.createAgentActivity(
-				session.linearAgentActivitySessionId,
-				{
+			await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
 					type: AgentActivityContentType.Response,
 					body,
 				},
-			);
+			});
 
 			console.log(
 				`[AgentSessionManager] Created response activity for session ${sessionId}`,
@@ -1180,13 +1185,13 @@ export class AgentSessionManager {
 		}
 
 		try {
-			await this.issueTracker.createAgentActivity(
-				session.linearAgentActivitySessionId,
-				{
+			await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
 					type: AgentActivityContentType.Error,
 					body,
 				},
-			);
+			});
 
 			console.log(
 				`[AgentSessionManager] Created error activity for session ${sessionId}`,
@@ -1215,13 +1220,13 @@ export class AgentSessionManager {
 		}
 
 		try {
-			await this.issueTracker.createAgentActivity(
-				session.linearAgentActivitySessionId,
-				{
+			await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
 					type: AgentActivityContentType.Elicitation,
 					body,
 				},
-			);
+			});
 
 			console.log(
 				`[AgentSessionManager] Created elicitation activity for session ${sessionId}`,
@@ -1252,19 +1257,17 @@ export class AgentSessionManager {
 
 		try {
 			// Create approval elicitation using concrete typed method
-			await this.issueTracker.createAgentActivity(
-				session.linearAgentActivitySessionId,
-				{
+			await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
 					type: AgentActivityContentType.Elicitation,
 					body,
 				},
-				{
-					signal: AgentActivitySignal.Auth,
-					signalMetadata: {
-						url: approvalUrl,
-					},
+				signal: AgentActivitySignal.Auth,
+				signalMetadata: {
+					url: approvalUrl,
 				},
-			);
+			});
 
 			console.log(
 				`[AgentSessionManager] Created approval elicitation for session ${sessionId} with URL: ${approvalUrl}`,
@@ -1364,13 +1367,13 @@ export class AgentSessionManager {
 		model: string,
 	): Promise<void> {
 		try {
-			await this.issueTracker.createAgentActivity(
-				linearAgentActivitySessionId,
-				{
+			await this.issueTracker.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
 					type: AgentActivityContentType.Thought,
 					body: `Using model: ${model}`,
 				},
-			);
+			});
 
 			console.log(
 				`[AgentSessionManager] Posted model notification for session ${linearAgentActivitySessionId} (model: ${model})`,
@@ -1391,16 +1394,19 @@ export class AgentSessionManager {
 	): Promise<string | null> {
 		try {
 			// Create ephemeral routing thought using concrete typed method
-			const activity = await this.issueTracker.createAgentActivity(
-				linearAgentActivitySessionId,
-				{
+			const payload = await this.issueTracker.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
 					type: AgentActivityContentType.Thought,
 					body: "Routing your request…",
 				},
-				{
-					ephemeral: true,
-				},
-			);
+				ephemeral: true,
+			});
+
+			const activity = await payload.agentActivity;
+			if (!activity) {
+				throw new Error("Agent activity not returned from create operation");
+			}
 
 			console.log(
 				`[AgentSessionManager] Posted routing thought for session ${linearAgentActivitySessionId}`,
@@ -1424,13 +1430,13 @@ export class AgentSessionManager {
 		classification: string,
 	): Promise<void> {
 		try {
-			await this.issueTracker.createAgentActivity(
-				linearAgentActivitySessionId,
-				{
+			await this.issueTracker.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
 					type: AgentActivityContentType.Thought,
 					body: `Selected procedure: **${procedureName}** (classified as: ${classification})`,
 				},
-			);
+			});
 
 			console.log(
 				`[AgentSessionManager] Posted procedure selection for session ${linearAgentActivitySessionId}: ${procedureName}`,
@@ -1461,14 +1467,19 @@ export class AgentSessionManager {
 		try {
 			if (message.status === "compacting") {
 				// Create an ephemeral thought for the compacting status
-				const activity = await this.issueTracker.createAgentActivity(
-					session.linearAgentActivitySessionId,
-					{
+				const payload = await this.issueTracker.createAgentActivity({
+					agentSessionId: session.linearAgentActivitySessionId,
+					content: {
 						type: AgentActivityContentType.Thought,
 						body: "Compacting conversation history…",
 					},
-					{ ephemeral: true },
-				);
+					ephemeral: true,
+				});
+
+				const activity = await payload.agentActivity;
+				if (!activity) {
+					throw new Error("Agent activity not returned from create operation");
+				}
 
 				// Store the activity ID so we can replace it later
 				this.activeStatusActivitiesBySession.set(
@@ -1480,14 +1491,14 @@ export class AgentSessionManager {
 				);
 			} else if (message.status === null) {
 				// Clear the status - post a non-ephemeral thought to replace the ephemeral one
-				await this.issueTracker.createAgentActivity(
-					session.linearAgentActivitySessionId,
-					{
+				await this.issueTracker.createAgentActivity({
+					agentSessionId: session.linearAgentActivitySessionId,
+					content: {
 						type: AgentActivityContentType.Thought,
 						body: "Conversation history compacted",
 					},
-					{ ephemeral: false },
-				);
+					ephemeral: false,
+				});
 
 				// Clean up the stored activity ID
 				this.activeStatusActivitiesBySession.delete(
