@@ -1016,9 +1016,17 @@ export class EdgeWorker extends EventEmitter {
 	private async handleIssueUnassignedWebhook(
 		webhook: IssueUnassignedWebhook,
 	): Promise<void> {
-		const issueId = webhook.notification.issue.id;
+		const issue = webhook.notification.issue;
+		if (!issue) {
+			console.warn(
+				`[EdgeWorker] Issue unassignment webhook missing issue data`,
+			);
+			return;
+		}
+
+		const issueId = issue.id;
 		console.log(
-			`[EdgeWorker] Handling issue unassignment: ${webhook.notification.issue.identifier}`,
+			`[EdgeWorker] Handling issue unassignment: ${issue.identifier}`,
 		);
 
 		// Get cached repository for this issue
@@ -1035,7 +1043,7 @@ export class EdgeWorker extends EventEmitter {
 		// console.log(JSON.stringify(webhook, null, 2))
 		// console.log('=== END WEBHOOK PAYLOAD ===')
 
-		await this.handleIssueUnassigned(webhook.notification.issue, repository);
+		await this.handleIssueUnassigned(issue, repository);
 	}
 
 	/**
@@ -1224,6 +1232,13 @@ export class EdgeWorker extends EventEmitter {
 		const { agentSession, guidance } = webhook;
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
+		if (!issue) {
+			console.warn(
+				`[EdgeWorker] Agent session created webhook missing issue data`,
+			);
+			return;
+		}
+
 		const issueId = issue.id;
 
 		console.log(
@@ -1326,9 +1341,10 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Create the session using the shared method
+		// issue is guaranteed to be non-null due to early return above
 		const sessionData = await this.createLinearAgentSession(
 			linearAgentActivitySessionId,
-			issue,
+			issue!,
 			repository,
 			agentSessionManager,
 		);
@@ -1440,7 +1456,7 @@ export class EdgeWorker extends EventEmitter {
 				repository,
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
-				guidance,
+				guidance: guidance || undefined, // Convert Maybe<T> to T | undefined
 				agentSession,
 				labels: labelNames,
 				isNewSession: true,
@@ -1558,8 +1574,20 @@ export class EdgeWorker extends EventEmitter {
 		const { agentSession } = webhook;
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
+		if (!issue) {
+			console.warn(
+				`[EdgeWorker] Agent session prompted webhook missing issue data`,
+			);
+			return;
+		}
 		const issueId = issue.id;
 
+		if (!webhook.agentActivity) {
+			console.warn(
+				`[EdgeWorker] Agent session prompted webhook missing agent activity data`,
+			);
+			return;
+		}
 		const commentId = webhook.agentActivity.sourceCommentId;
 
 		// Get cached repository for this issue
@@ -1599,9 +1627,10 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Create the session using the shared method
+			// Note: issue is guaranteed non-null by early return check above
 			const sessionData = await this.createLinearAgentSession(
 				linearAgentActivitySessionId,
-				issue,
+				issue!,
 				repository,
 				agentSessionManager,
 			);
@@ -1642,10 +1671,11 @@ export class EdgeWorker extends EventEmitter {
 			const issueTracker = this.issueTrackers.get(repository.id);
 			if (issueTracker) {
 				try {
-					fullIssue = await issueTracker.fetchIssue(issue.id);
+					// Note: issue is guaranteed non-null by early return check above
+					fullIssue = await issueTracker.fetchIssue(issue!.id);
 				} catch (error) {
 					console.warn(
-						`[EdgeWorker] Failed to fetch full issue for routing: ${issue.id}`,
+						`[EdgeWorker] Failed to fetch full issue for routing: ${issue!.id}`,
 						error,
 					);
 					// Continue with degraded routing context
@@ -1692,7 +1722,10 @@ export class EdgeWorker extends EventEmitter {
 
 		try {
 			// Fetch comment with user data using concrete typed method
-			const comment = await issueTracker.fetchCommentWithAttachments(commentId);
+			// Note: commentId is guaranteed non-null by webhook.agentActivity check above
+			const comment = await issueTracker.fetchCommentWithAttachments(
+				commentId!,
+			);
 
 			// Extract comment metadata for multi-player context
 			const user = await comment.user;
@@ -1724,8 +1757,9 @@ export class EdgeWorker extends EventEmitter {
 			console.error("Failed to fetch comments for attachments:", error);
 		}
 
-		const promptBody = webhook.agentActivity.content.body;
-		const stopSignal = webhook.agentActivity.signal === "stop";
+		// Note: webhook.agentActivity is guaranteed non-null by early check above
+		const promptBody = webhook.agentActivity!.content.body;
+		const stopSignal = webhook.agentActivity!.signal === "stop";
 
 		// Handle stop signal
 		if (stopSignal) {
@@ -1741,7 +1775,8 @@ export class EdgeWorker extends EventEmitter {
 					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
 				);
 			}
-			const issueTitle = issue.title || "this issue";
+			// Note: issue is guaranteed non-null by early return check above
+			const issueTitle = issue!.title || "this issue";
 			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
 
 			await agentSessionManager.createResponseActivity(

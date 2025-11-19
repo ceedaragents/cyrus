@@ -378,6 +378,13 @@ export class RepositoryRouter {
 		const agentSessionId = agentSession.id;
 		const { issue } = agentSession;
 
+		if (!issue) {
+			console.warn(
+				`[RepositoryRouter] Agent session webhook missing issue data`,
+			);
+			return;
+		}
+
 		console.log(
 			`[RepositoryRouter] Posting repository selection elicitation for issue ${issue.identifier}`,
 		);

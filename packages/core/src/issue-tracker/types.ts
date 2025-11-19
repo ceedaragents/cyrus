@@ -459,12 +459,132 @@ export type WebhookConfig =
 // WEBHOOK PAYLOAD TYPES
 // ============================================================================
 //
-// Webhook payload types (WebhookIssue, WebhookComment, Webhook, etc.) are
-// exported from webhook-types.ts as platform-agnostic aliases.
+// Platform-agnostic webhook type aliases that map to Linear SDK webhook types.
 // This maintains the abstraction boundary - EdgeWorker uses the generic names,
-// while platform-specific implementations provide the actual types.
-//
-// See: webhook-types.ts for the platform-agnostic type aliases
+// while the Linear SDK provides the actual webhook payload structures.
+
+/**
+ * Platform-agnostic webhook issue data type.
+ * Maps to Linear SDK's IssueWebhookPayload or IssueWithDescriptionChildWebhookPayload.
+ * The Linear SDK uses different payload types in different contexts.
+ */
+export type WebhookIssue =
+	| LinearSDK.LinearDocument.IssueWebhookPayload
+	| LinearSDK.LinearDocument.IssueWithDescriptionChildWebhookPayload;
+
+/**
+ * Platform-agnostic webhook comment data type.
+ * Maps to Linear SDK's CommentWebhookPayload structure.
+ */
+export type WebhookComment = LinearSDK.LinearDocument.CommentWebhookPayload;
+
+/**
+ * Platform-agnostic webhook agent session data type.
+ * Maps to Linear SDK's AgentSessionWebhookPayload structure.
+ */
+export type WebhookAgentSession =
+	LinearSDK.LinearDocument.AgentSessionWebhookPayload;
+
+/**
+ * Platform-agnostic agent session created webhook payload.
+ * Maps to Linear SDK's AgentSessionEventWebhookPayload.
+ */
+export type AgentSessionCreatedWebhook =
+	LinearSDK.LinearDocument.AgentSessionEventWebhookPayload;
+
+/**
+ * Platform-agnostic agent session prompted webhook payload.
+ * Maps to Linear SDK's AgentSessionEventWebhookPayload.
+ */
+export type AgentSessionPromptedWebhook =
+	LinearSDK.LinearDocument.AgentSessionEventWebhookPayload;
+
+/**
+ * Platform-agnostic issue unassigned webhook payload.
+ * Maps to Linear SDK's AppUserNotificationWebhookPayload.
+ */
+export type IssueUnassignedWebhook =
+	LinearSDK.LinearDocument.AppUserNotificationWebhookPayload;
+
+/**
+ * Platform-agnostic union of all webhook types.
+ * Maps to Linear SDK's webhook payload union types.
+ */
+export type Webhook =
+	| LinearSDK.LinearDocument.AgentSessionEventWebhookPayload
+	| LinearSDK.LinearDocument.AppUserNotificationWebhookPayload;
+
+/**
+ * Platform-agnostic guidance rule type.
+ * Maps to Linear SDK's GuidanceRuleWebhookPayload.
+ */
+export type GuidanceRule = LinearSDK.LinearDocument.GuidanceRuleWebhookPayload;
+
+/**
+ * Type guard to check if webhook is an agent session created event.
+ */
+export function isAgentSessionCreatedWebhook(
+	webhook: Webhook,
+): webhook is AgentSessionCreatedWebhook {
+	return webhook.type === "AgentSessionEvent" && webhook.action === "created";
+}
+
+/**
+ * Type guard to check if webhook is an agent session prompted event.
+ */
+export function isAgentSessionPromptedWebhook(
+	webhook: Webhook,
+): webhook is AgentSessionPromptedWebhook {
+	return webhook.type === "AgentSessionEvent" && webhook.action === "prompted";
+}
+
+/**
+ * Type guard to check if webhook is an issue assigned notification.
+ */
+export function isIssueAssignedWebhook(
+	webhook: Webhook,
+): webhook is LinearSDK.LinearDocument.AppUserNotificationWebhookPayload {
+	return (
+		webhook.type === "AppUserNotification" &&
+		webhook.action === "issueAssignedToYou"
+	);
+}
+
+/**
+ * Type guard to check if webhook is an issue comment mention notification.
+ */
+export function isIssueCommentMentionWebhook(
+	webhook: Webhook,
+): webhook is LinearSDK.LinearDocument.AppUserNotificationWebhookPayload {
+	return (
+		webhook.type === "AppUserNotification" &&
+		webhook.action === "issueCommentMention"
+	);
+}
+
+/**
+ * Type guard to check if webhook is an issue new comment notification.
+ */
+export function isIssueNewCommentWebhook(
+	webhook: Webhook,
+): webhook is LinearSDK.LinearDocument.AppUserNotificationWebhookPayload {
+	return (
+		webhook.type === "AppUserNotification" &&
+		webhook.action === "issueNewComment"
+	);
+}
+
+/**
+ * Type guard to check if webhook is an issue unassigned notification.
+ */
+export function isIssueUnassignedWebhook(
+	webhook: Webhook,
+): webhook is IssueUnassignedWebhook {
+	return (
+		webhook.type === "AppUserNotification" &&
+		webhook.action === "issueUnassignedFromYou"
+	);
+}
 
 /**
  * Pagination connection for list results.

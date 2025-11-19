@@ -31,9 +31,11 @@ export type {
 	AgentEventTransportConfig,
 	AgentEventTransportEvents,
 	AgentSession,
+	AgentSessionCreatedWebhook,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
 	AgentSessionCreateResponse,
+	AgentSessionPromptedWebhook,
 	AgentSessionSDK,
 	Comment,
 	CommentCreateInput,
@@ -42,15 +44,21 @@ export type {
 	FetchChildrenOptions,
 	FileUploadRequest,
 	FileUploadResponse,
+	GuidanceRule,
 	IAgentEventTransport,
 	IIssueTrackerService,
 	Issue,
+	IssueUnassignedWebhook,
 	IssueUpdateInput,
 	IssueWithChildren,
 	Label,
 	PaginationOptions,
 	Team,
 	User,
+	Webhook,
+	WebhookAgentSession,
+	WebhookComment,
+	WebhookIssue,
 	WorkflowState,
 } from "./issue-tracker/index.js";
 export {
@@ -59,10 +67,16 @@ export {
 	AgentSessionStatus,
 	AgentSessionType,
 	isAgentSessionCreatedEvent,
+	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedEvent,
+	isAgentSessionPromptedWebhook,
 	isCommentMentionEvent,
 	isIssueAssignedEvent,
+	isIssueAssignedWebhook,
+	isIssueCommentMentionWebhook,
+	isIssueNewCommentWebhook,
 	isIssueUnassignedEvent,
+	isIssueUnassignedWebhook,
 	isNewCommentEvent,
 } from "./issue-tracker/index.js";
 
@@ -74,49 +88,6 @@ export type {
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
-// Webhook types - Linear-specific types for platform-specific code
-// Platform-agnostic webhook type aliases - for EdgeWorker and other high-level code
-// These are exported from both webhook-types.ts and issue-tracker/index.ts
-// to provide two ways to access them (backwards compat + new abstraction layer)
-export type {
-	AgentSessionCreatedWebhook,
-	AgentSessionPromptedWebhook,
-	GuidanceRule,
-	IssueUnassignedWebhook,
-	LinearAgentSessionCreatedWebhook,
-	LinearAgentSessionPromptedWebhook,
-	LinearIssueAssignedNotification,
-	LinearIssueAssignedWebhook,
-	LinearIssueCommentMentionNotification,
-	LinearIssueCommentMentionWebhook,
-	LinearIssueNewCommentNotification,
-	LinearIssueNewCommentWebhook,
-	LinearIssueUnassignedNotification,
-	LinearIssueUnassignedWebhook,
-	LinearWebhook,
-	LinearWebhookActor,
-	LinearWebhookAgentActivity,
-	LinearWebhookAgentActivityContent,
-	LinearWebhookAgentSession,
-	LinearWebhookComment,
-	LinearWebhookCreator,
-	LinearWebhookGuidanceRule,
-	LinearWebhookIssue,
-	LinearWebhookNotification,
-	LinearWebhookOrganizationOrigin,
-	LinearWebhookTeam,
-	LinearWebhookTeamOrigin,
-	LinearWebhookTeamWithParent,
-	Webhook,
-	WebhookAgentSession,
-	WebhookComment,
-	WebhookIssue,
-} from "./webhook-types.js";
-export {
-	isAgentSessionCreatedWebhook,
-	isAgentSessionPromptedWebhook,
-	isIssueAssignedWebhook,
-	isIssueCommentMentionWebhook,
-	isIssueNewCommentWebhook,
-	isIssueUnassignedWebhook,
-} from "./webhook-types.js";
+// Platform-agnostic webhook type aliases - exported from issue-tracker
+// These are now defined in issue-tracker/types.ts as aliases to Linear SDK webhook types
+// EdgeWorker and other high-level code should use these generic names via issue-tracker exports
