@@ -4,8 +4,36 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.2] - 2025-11-19
+
 ### Changed
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.2
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.2
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.2
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.2
+
+#### cyrus-core
+- cyrus-core@0.2.2
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.2
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.2
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.2
 
 ## [0.2.1] - 2025-11-15
 
