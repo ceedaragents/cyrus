@@ -1,8 +1,5 @@
 import { AgentActivitySignal } from "@linear/sdk";
-import type {
-	LinearAgentSessionCreatedWebhook,
-	RepositoryConfig,
-} from "cyrus-core";
+import type { AgentSessionCreatedWebhook, RepositoryConfig } from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	RepositoryRouter,
@@ -82,6 +79,7 @@ class RepositoryBuilder {
  */
 class WebhookBuilder {
 	private data: any = {
+		type: "AgentSessionEvent",
 		action: "created",
 		organizationId: "default-workspace",
 		agentSession: {
@@ -117,7 +115,7 @@ class WebhookBuilder {
 		return this;
 	}
 
-	build(): LinearAgentSessionCreatedWebhook {
+	build(): AgentSessionCreatedWebhook {
 		return this.data;
 	}
 }
