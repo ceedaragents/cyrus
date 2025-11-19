@@ -78,7 +78,7 @@ class RepositoryBuilder {
  * Webhook Builder - Fluent API for creating test webhooks
  */
 class WebhookBuilder {
-	private data: any = {
+	private data: AgentSessionCreatedWebhook = {
 		type: "AgentSessionEvent",
 		action: "created",
 		organizationId: "default-workspace",
@@ -92,7 +92,7 @@ class WebhookBuilder {
 			comment: null,
 		},
 		guidance: [],
-	};
+	} as AgentSessionCreatedWebhook;
 
 	inWorkspace(workspaceId: string): this {
 		this.data.organizationId = workspaceId;
