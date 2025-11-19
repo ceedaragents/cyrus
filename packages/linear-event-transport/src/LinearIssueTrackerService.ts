@@ -126,17 +126,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Fetch a single issue by ID or identifier.
 	 */
 	async fetchIssue(idOrIdentifier: string): Promise<Issue> {
-		try {
-			return await this.linearClient.issue(idOrIdentifier);
-		} catch (error) {
-			const err = new Error(
-				`Failed to fetch issue ${idOrIdentifier}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+		return await this.linearClient.issue(idOrIdentifier);
 	}
 
 	/**
@@ -305,17 +295,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Fetch a single comment by ID.
 	 */
 	async fetchComment(commentId: string): Promise<Comment> {
-		try {
-			return await this.linearClient.comment({ id: commentId });
-		} catch (error) {
-			const err = new Error(
-				`Failed to fetch comment ${commentId}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+		return await this.linearClient.comment({ id: commentId });
 	}
 
 	/**
@@ -468,17 +448,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Fetch a single team by ID or key.
 	 */
 	async fetchTeam(idOrKey: string): Promise<Team> {
-		try {
-			return await this.linearClient.team(idOrKey);
-		} catch (error) {
-			const err = new Error(
-				`Failed to fetch team ${idOrKey}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+		return await this.linearClient.team(idOrKey);
 	}
 
 	// ========================================================================
@@ -522,17 +492,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Fetch a single label by ID or name.
 	 */
 	async fetchLabel(idOrName: string): Promise<Label> {
-		try {
-			return await this.linearClient.issueLabel(idOrName);
-		} catch (error) {
-			const err = new Error(
-				`Failed to fetch label ${idOrName}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+		return await this.linearClient.issueLabel(idOrName);
 	}
 
 	/**
@@ -599,17 +559,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Fetch a single workflow state by ID.
 	 */
 	async fetchWorkflowState(stateId: string): Promise<WorkflowState> {
-		try {
-			return await this.linearClient.workflowState(stateId);
-		} catch (error) {
-			const err = new Error(
-				`Failed to fetch workflow state ${stateId}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+		return await this.linearClient.workflowState(stateId);
 	}
 
 	// ========================================================================
@@ -620,34 +570,14 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Fetch a user by ID.
 	 */
 	async fetchUser(userId: string): Promise<User> {
-		try {
-			return await this.linearClient.user(userId);
-		} catch (error) {
-			const err = new Error(
-				`Failed to fetch user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+		return await this.linearClient.user(userId);
 	}
 
 	/**
 	 * Fetch the current authenticated user.
 	 */
 	async fetchCurrentUser(): Promise<User> {
-		try {
-			return await this.linearClient.viewer;
-		} catch (error) {
-			const err = new Error(
-				`Failed to fetch current user: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+		return await this.linearClient.viewer;
 	}
 
 	// ========================================================================
