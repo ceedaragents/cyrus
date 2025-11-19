@@ -1,4 +1,4 @@
-import type { Issue } from "cyrus-core";
+import type { CyrusAgentSession, Issue } from "cyrus-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -104,7 +104,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -165,7 +165,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -219,7 +219,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -277,7 +277,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -340,7 +340,7 @@ Work completed on subtask TEST-124.
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -390,7 +390,7 @@ Work completed on subtask TEST-124.
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -440,7 +440,7 @@ Work completed on subtask TEST-124.
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -490,7 +490,7 @@ Work completed on subtask TEST-124.
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -520,7 +520,7 @@ Work completed on subtask TEST-124.
 
 		it("should handle label fetch errors gracefully and fall back to AI routing", async () => {
 			// Arrange - Pass undefined issue (simulating fetch error)
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -563,7 +563,7 @@ Work completed on subtask TEST-124.
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
@@ -612,7 +612,7 @@ Work completed on subtask TEST-124.
 				updatedAt: new Date().toISOString(),
 			};
 
-			const session: any = {
+			const session: CyrusAgentSession = {
 				linearAgentActivitySessionId: "agent-session-123",
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },

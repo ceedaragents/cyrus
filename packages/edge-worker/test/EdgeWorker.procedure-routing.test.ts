@@ -1,3 +1,4 @@
+import type { CyrusAgentSession } from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProcedureRouter } from "../src/procedures/ProcedureRouter";
 import { PROCEDURES, SUBROUTINES } from "../src/procedures/registry";
@@ -17,9 +18,9 @@ describe("EdgeWorker - Procedure Routing", () => {
 	describe("Subroutine Execution Flow", () => {
 		it("should execute all subroutines in sequence for full-development procedure", async () => {
 			const fullDevProcedure = PROCEDURES["full-development"];
-			const session: any = {
+			const session: CyrusAgentSession = {
 				metadata: {},
-			};
+			} as CyrusAgentSession;
 
 			// Initialize procedure metadata
 			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
