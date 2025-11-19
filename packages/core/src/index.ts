@@ -72,38 +72,3 @@ export type {
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
-// Webhook types
-export type {
-	LinearAgentSessionCreatedWebhook,
-	LinearAgentSessionPromptedWebhook,
-	LinearIssueAssignedNotification,
-	LinearIssueAssignedWebhook,
-	LinearIssueCommentMentionNotification,
-	LinearIssueCommentMentionWebhook,
-	LinearIssueNewCommentNotification,
-	LinearIssueNewCommentWebhook,
-	LinearIssueUnassignedNotification,
-	LinearIssueUnassignedWebhook,
-	LinearWebhook,
-	LinearWebhookActor,
-	LinearWebhookAgentActivity,
-	LinearWebhookAgentActivityContent,
-	LinearWebhookAgentSession,
-	LinearWebhookComment,
-	LinearWebhookCreator,
-	LinearWebhookGuidanceRule,
-	LinearWebhookIssue,
-	LinearWebhookNotification,
-	LinearWebhookOrganizationOrigin,
-	LinearWebhookTeam,
-	LinearWebhookTeamOrigin,
-	LinearWebhookTeamWithParent,
-} from "./webhook-types.js";
-export {
-	isAgentSessionCreatedWebhook,
-	isAgentSessionPromptedWebhook,
-	isIssueAssignedWebhook,
-	isIssueCommentMentionWebhook,
-	isIssueNewCommentWebhook,
-	isIssueUnassignedWebhook,
-} from "./webhook-types.js";
