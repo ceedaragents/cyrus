@@ -3,8 +3,11 @@
  * These types represent the core data structures for tracking Claude Code sessions in Linear
  */
 
-import type { LinearDocument } from "@linear/sdk";
 import type { ClaudeRunner } from "cyrus-claude-runner";
+import type {
+	AgentSessionStatus,
+	AgentSessionType,
+} from "./issue-tracker/types.js";
 
 export interface IssueMinimal {
 	id: string;
@@ -22,9 +25,9 @@ export interface Workspace {
 
 export interface CyrusAgentSession {
 	linearAgentActivitySessionId: string;
-	type: LinearDocument.AgentSessionType.CommentThread;
-	status: LinearDocument.AgentSessionStatus;
-	context: LinearDocument.AgentSessionType.CommentThread;
+	type: AgentSessionType.CommentThread;
+	status: AgentSessionStatus;
+	context: AgentSessionType.CommentThread;
 	createdAt: number; // e.g. Date.now()
 	updatedAt: number; // e.g. Date.now()
 	issueId: string;

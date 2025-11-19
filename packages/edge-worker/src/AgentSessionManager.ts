@@ -1,4 +1,3 @@
-import { LinearDocument } from "@linear/sdk";
 import type {
 	APIAssistantMessage,
 	APIUserMessage,
@@ -19,7 +18,12 @@ import type {
 	SerializedCyrusAgentSessionEntry,
 	Workspace,
 } from "cyrus-core";
-import { AgentActivityContentType, AgentActivitySignal } from "cyrus-core";
+import {
+	AgentActivityContentType,
+	AgentActivitySignal,
+	AgentSessionStatus,
+	AgentSessionType,
+} from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
@@ -88,9 +92,9 @@ export class AgentSessionManager {
 
 		const agentSession: CyrusAgentSession = {
 			linearAgentActivitySessionId,
-			type: LinearDocument.AgentSessionType.CommentThread,
-			status: LinearDocument.AgentSessionStatus.Active,
-			context: LinearDocument.AgentSessionType.CommentThread,
+			type: AgentSessionType.CommentThread,
+			status: AgentSessionStatus.Active,
+			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
 			issueId,
@@ -239,8 +243,8 @@ export class AgentSessionManager {
 
 		const status =
 			resultMessage.subtype === "success"
-				? LinearDocument.AgentSessionStatus.Complete
-				: LinearDocument.AgentSessionStatus.Error;
+				? AgentSessionStatus.Complete
+				: AgentSessionStatus.Error;
 
 		// Update session status and metadata
 		await this.updateSessionStatus(linearAgentActivitySessionId, status, {
@@ -557,7 +561,7 @@ export class AgentSessionManager {
 			// Mark session as error state
 			await this.updateSessionStatus(
 				linearAgentActivitySessionId,
-				LinearDocument.AgentSessionStatus.Error,
+				AgentSessionStatus.Error,
 			);
 		}
 	}
@@ -567,7 +571,7 @@ export class AgentSessionManager {
 	 */
 	private async updateSessionStatus(
 		linearAgentActivitySessionId: string,
-		status: LinearDocument.AgentSessionStatus,
+		status: AgentSessionStatus,
 		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
 	): Promise<void> {
 		const session = this.sessions.get(linearAgentActivitySessionId);
@@ -974,7 +978,7 @@ export class AgentSessionManager {
 	 */
 	getActiveSessions(): CyrusAgentSession[] {
 		return Array.from(this.sessions.values()).filter(
-			(session) => session.status === LinearDocument.AgentSessionStatus.Active,
+			(session) => session.status === AgentSessionStatus.Active,
 		);
 	}
 
@@ -1035,7 +1039,7 @@ export class AgentSessionManager {
 		return Array.from(this.sessions.values()).filter(
 			(session) =>
 				session.issueId === issueId &&
-				session.status === LinearDocument.AgentSessionStatus.Active,
+				session.status === AgentSessionStatus.Active,
 		);
 	}
 
