@@ -220,6 +220,373 @@ export class AgentSessionManager {
 	}
 
 	/**
+	 * Format tool input for display in Linear agent activities
+	 * Converts raw tool inputs into user-friendly parameter strings
+	 */
+	private formatToolParameter(toolName: string, toolInput: any): string {
+		// If input is already a string, return it
+		if (typeof toolInput === "string") {
+			return toolInput;
+		}
+
+		try {
+			switch (toolName) {
+				case "Bash":
+				case "↪ Bash": {
+					// Show command only - description goes in action field via formatToolActionName
+					return toolInput.command || JSON.stringify(toolInput);
+				}
+
+				case "Read":
+				case "↪ Read":
+					if (toolInput.file_path) {
+						let param = toolInput.file_path;
+						if (
+							toolInput.offset !== undefined ||
+							toolInput.limit !== undefined
+						) {
+							const start = toolInput.offset || 0;
+							const end = toolInput.limit ? start + toolInput.limit : "end";
+							param += ` (lines ${start + 1}-${end})`;
+						}
+						return param;
+					}
+					break;
+
+				case "Edit":
+				case "↪ Edit":
+					if (toolInput.file_path) {
+						return toolInput.file_path;
+					}
+					break;
+
+				case "Write":
+				case "↪ Write":
+					if (toolInput.file_path) {
+						return toolInput.file_path;
+					}
+					break;
+
+				case "Grep":
+				case "↪ Grep":
+					if (toolInput.pattern) {
+						let param = `Pattern: \`${toolInput.pattern}\``;
+						if (toolInput.path) {
+							param += ` in ${toolInput.path}`;
+						}
+						if (toolInput.glob) {
+							param += ` (${toolInput.glob})`;
+						}
+						if (toolInput.type) {
+							param += ` [${toolInput.type} files]`;
+						}
+						return param;
+					}
+					break;
+
+				case "Glob":
+				case "↪ Glob":
+					if (toolInput.pattern) {
+						let param = `Pattern: \`${toolInput.pattern}\``;
+						if (toolInput.path) {
+							param += ` in ${toolInput.path}`;
+						}
+						return param;
+					}
+					break;
+
+				case "Task":
+				case "↪ Task":
+					if (toolInput.description) {
+						return toolInput.description;
+					}
+					break;
+
+				case "WebFetch":
+				case "↪ WebFetch":
+					if (toolInput.url) {
+						return toolInput.url;
+					}
+					break;
+
+				case "WebSearch":
+				case "↪ WebSearch":
+					if (toolInput.query) {
+						return `Query: ${toolInput.query}`;
+					}
+					break;
+
+				case "NotebookEdit":
+				case "↪ NotebookEdit":
+					if (toolInput.notebook_path) {
+						let param = toolInput.notebook_path;
+						if (toolInput.cell_id) {
+							param += ` (cell ${toolInput.cell_id})`;
+						}
+						return param;
+					}
+					break;
+
+				default:
+					// For MCP tools or other unknown tools, try to extract meaningful info
+					if (toolName.startsWith("mcp__")) {
+						// Extract key fields that are commonly meaningful
+						const meaningfulFields = [
+							"query",
+							"id",
+							"issueId",
+							"title",
+							"name",
+							"path",
+							"file",
+						];
+						for (const field of meaningfulFields) {
+							if (toolInput[field]) {
+								return `${field}: ${toolInput[field]}`;
+							}
+						}
+					}
+					break;
+			}
+
+			// Fallback to JSON but make it compact
+			return JSON.stringify(toolInput);
+		} catch (error) {
+			console.error(
+				"[AgentSessionManager] Failed to format tool parameter:",
+				error,
+			);
+			return JSON.stringify(toolInput);
+		}
+	}
+
+	/**
+	 * Format tool action name with description for Bash tool
+	 * Puts the description in round brackets after the tool name in the action field
+	 */
+	private formatToolActionName(
+		toolName: string,
+		toolInput: any,
+		isError: boolean,
+	): string {
+		// Handle Bash tool with description
+		if (toolName === "Bash" || toolName === "↪ Bash") {
+			// Check if toolInput has a description field
+			if (
+				toolInput &&
+				typeof toolInput === "object" &&
+				"description" in toolInput &&
+				toolInput.description
+			) {
+				const baseName = isError ? `${toolName} (Error)` : toolName;
+				return `${baseName} (${toolInput.description})`;
+			}
+		}
+
+		// Default formatting for other tools or Bash without description
+		return isError ? `${toolName} (Error)` : toolName;
+	}
+
+	/**
+	 * Format tool result for display in Linear agent activities
+	 * Converts raw tool results into formatted Markdown
+	 */
+	private formatToolResult(
+		toolName: string,
+		toolInput: any,
+		result: string,
+		isError: boolean,
+	): string {
+		// If there's an error, wrap in error formatting
+		if (isError) {
+			return `\`\`\`\n${result}\n\`\`\``;
+		}
+
+		try {
+			switch (toolName) {
+				case "Bash":
+				case "↪ Bash": {
+					// Show command first if not already in parameter
+					let formatted = "";
+					if (toolInput.command && !toolInput.description) {
+						formatted += `\`\`\`bash\n${toolInput.command}\n\`\`\`\n\n`;
+					}
+					// Then show output
+					if (result?.trim()) {
+						formatted += `\`\`\`\n${result}\n\`\`\``;
+					} else {
+						formatted += "*No output*";
+					}
+					return formatted;
+				}
+
+				case "Read":
+				case "↪ Read":
+					// For Read, the result is file content - use code block
+					if (result?.trim()) {
+						// Clean up the result: remove line numbers and system-reminder tags
+						let cleanedResult = result;
+
+						// Remove line numbers (format: "  123→")
+						cleanedResult = cleanedResult.replace(/^\s*\d+→/gm, "");
+
+						// Remove system-reminder blocks
+						cleanedResult = cleanedResult.replace(
+							/<system-reminder>[\s\S]*?<\/system-reminder>/g,
+							"",
+						);
+
+						// Trim any extra whitespace
+						cleanedResult = cleanedResult.trim();
+
+						// Try to detect language from file extension
+						let lang = "";
+						if (toolInput.file_path) {
+							const ext = toolInput.file_path.split(".").pop()?.toLowerCase();
+							const langMap: Record<string, string> = {
+								ts: "typescript",
+								tsx: "typescript",
+								js: "javascript",
+								jsx: "javascript",
+								py: "python",
+								rb: "ruby",
+								go: "go",
+								rs: "rust",
+								java: "java",
+								c: "c",
+								cpp: "cpp",
+								cs: "csharp",
+								php: "php",
+								swift: "swift",
+								kt: "kotlin",
+								scala: "scala",
+								sh: "bash",
+								bash: "bash",
+								zsh: "bash",
+								yml: "yaml",
+								yaml: "yaml",
+								json: "json",
+								xml: "xml",
+								html: "html",
+								css: "css",
+								scss: "scss",
+								md: "markdown",
+								sql: "sql",
+							};
+							lang = langMap[ext || ""] || "";
+						}
+						return `\`\`\`${lang}\n${cleanedResult}\n\`\`\``;
+					}
+					return "*Empty file*";
+
+				case "Edit":
+				case "↪ Edit": {
+					// For Edit, show changes as a diff
+					// Extract old_string and new_string from toolInput
+					if (toolInput.old_string && toolInput.new_string) {
+						// Format as a unified diff
+						const oldLines = toolInput.old_string.split("\n");
+						const newLines = toolInput.new_string.split("\n");
+
+						let diff = "```diff\n";
+
+						// Add context lines before changes (show all old lines with - prefix)
+						for (const line of oldLines) {
+							diff += `-${line}\n`;
+						}
+
+						// Add new lines with + prefix
+						for (const line of newLines) {
+							diff += `+${line}\n`;
+						}
+
+						diff += "```";
+
+						return diff;
+					}
+
+					// Fallback to result if old/new strings not available
+					if (result?.trim()) {
+						return result;
+					}
+					return "*Edit completed*";
+				}
+
+				case "Write":
+				case "↪ Write":
+					// For Write, just confirm
+					if (result?.trim()) {
+						return result; // In case there's an error or message
+					}
+					return "*File written successfully*";
+
+				case "Grep":
+				case "↪ Grep": {
+					// Format grep results
+					if (result?.trim()) {
+						const lines = result.split("\n");
+						// If it looks like file paths (files_with_matches mode)
+						if (
+							lines.length > 0 &&
+							lines[0] &&
+							!lines[0].includes(":") &&
+							lines[0].trim().length > 0
+						) {
+							return `Found ${lines.filter((l) => l.trim()).length} matching files:\n\`\`\`\n${result}\n\`\`\``;
+						}
+						// Otherwise it's content matches
+						return `\`\`\`\n${result}\n\`\`\``;
+					}
+					return "*No matches found*";
+				}
+
+				case "Glob":
+				case "↪ Glob": {
+					if (result?.trim()) {
+						const lines = result.split("\n").filter((l) => l.trim());
+						return `Found ${lines.length} matching files:\n\`\`\`\n${result}\n\`\`\``;
+					}
+					return "*No files found*";
+				}
+
+				case "Task":
+				case "↪ Task":
+					// Task results can be complex - keep as is but in code block if multiline
+					if (result?.trim()) {
+						if (result.includes("\n")) {
+							return `\`\`\`\n${result}\n\`\`\``;
+						}
+						return result;
+					}
+					return "*Task completed*";
+
+				case "WebFetch":
+				case "↪ WebFetch":
+				case "WebSearch":
+				case "↪ WebSearch":
+					// Web results are usually formatted, keep as is
+					return result || "*No results*";
+
+				default:
+					// For unknown tools, use code block if result has multiple lines
+					if (result?.trim()) {
+						if (result.includes("\n") && result.length > 100) {
+							return `\`\`\`\n${result}\n\`\`\``;
+						}
+						return result;
+					}
+					return "*Completed*";
+			}
+		} catch (error) {
+			console.error(
+				"[AgentSessionManager] Failed to format tool result:",
+				error,
+			);
+			return result || "";
+		}
+	}
+
+	/**
 	 * Complete a session from Claude result message
 	 */
 	async completeSession(
@@ -779,20 +1146,30 @@ export class AgentSessionManager {
 								return;
 							}
 
-							// Format input for display
-							const formattedInput =
-								typeof toolInput === "string"
-									? toolInput
-									: JSON.stringify(toolInput, null, 2);
+							// Format parameter and result using our formatters
+							const formattedParameter = this.formatToolParameter(
+								toolName,
+								toolInput,
+							);
+							const formattedResult = this.formatToolResult(
+								toolName,
+								toolInput,
+								toolResult.content?.trim() || "",
+								toolResult.isError,
+							);
 
-							// Use tool output directly without collapsible wrapping
-							const wrappedResult = toolResult.content?.trim() || "";
+							// Format the action name (with description for Bash tool)
+							const formattedAction = this.formatToolActionName(
+								toolName,
+								toolInput,
+								toolResult.isError,
+							);
 
 							content = {
 								type: AgentActivityContentType.Action,
-								action: toolResult.isError ? `${toolName} (Error)` : toolName,
-								parameter: formattedInput,
-								result: wrappedResult,
+								action: formattedAction,
+								parameter: formattedParameter,
+								result: formattedResult,
 							};
 						} else {
 							return;
@@ -838,7 +1215,11 @@ export class AgentSessionManager {
 							// TodoWrite is not ephemeral
 						} else if (toolName === "Task") {
 							// Special handling for Task tool - add start marker and track active task
-							const parameter = entry.content;
+							const toolInput = entry.metadata.toolInput || entry.content;
+							const formattedParameter = this.formatToolParameter(
+								toolName,
+								toolInput,
+							);
 							const displayName = toolName;
 
 							// Track this as the active Task for this session
@@ -852,13 +1233,13 @@ export class AgentSessionManager {
 							content = {
 								type: AgentActivityContentType.Action,
 								action: displayName,
-								parameter: parameter,
+								parameter: formattedParameter,
 								// result will be added later when we get tool result
 							};
 							// Task is not ephemeral
 						} else {
 							// Other tools - check if they're within an active Task
-							const parameter = entry.content;
+							const toolInput = entry.metadata.toolInput || entry.content;
 							let displayName = toolName;
 
 							if (entry.metadata?.parentToolUseId) {
@@ -870,10 +1251,15 @@ export class AgentSessionManager {
 								}
 							}
 
+							const formattedParameter = this.formatToolParameter(
+								displayName,
+								toolInput,
+							);
+
 							content = {
 								type: AgentActivityContentType.Action,
 								action: displayName,
-								parameter: parameter,
+								parameter: formattedParameter,
 								// result will be added later when we get tool result
 							};
 							// Standard tool calls are ephemeral
