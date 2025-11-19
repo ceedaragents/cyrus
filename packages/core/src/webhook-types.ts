@@ -332,3 +332,59 @@ export function isAgentSessionPromptedWebhook(
 ): webhook is LinearAgentSessionPromptedWebhook {
 	return webhook.type === "AgentSessionEvent" && webhook.action === "prompted";
 }
+
+// ============================================================================
+// PLATFORM-AGNOSTIC ALIASES
+// ============================================================================
+//
+// These aliases provide platform-agnostic names for webhook types.
+// They map to the Linear-specific types above but allow EdgeWorker and other
+// high-level components to use generic names without Linear-specific references.
+
+/**
+ * Platform-agnostic webhook issue data type.
+ * Maps to Linear's webhook issue structure.
+ */
+export type WebhookIssue = LinearWebhookIssue;
+
+/**
+ * Platform-agnostic webhook comment data type.
+ * Maps to Linear's webhook comment structure.
+ */
+export type WebhookComment = LinearWebhookComment;
+
+/**
+ * Platform-agnostic webhook agent session data type.
+ * Maps to Linear's webhook agent session structure.
+ */
+export type WebhookAgentSession = LinearWebhookAgentSession;
+
+/**
+ * Platform-agnostic agent session created webhook payload.
+ * Maps to Linear's agent session created webhook.
+ */
+export type AgentSessionCreatedWebhook = LinearAgentSessionCreatedWebhook;
+
+/**
+ * Platform-agnostic agent session prompted webhook payload.
+ * Maps to Linear's agent session prompted webhook.
+ */
+export type AgentSessionPromptedWebhook = LinearAgentSessionPromptedWebhook;
+
+/**
+ * Platform-agnostic issue unassigned webhook payload.
+ * Maps to Linear's issue unassigned webhook.
+ */
+export type IssueUnassignedWebhook = LinearIssueUnassignedWebhook;
+
+/**
+ * Platform-agnostic union of all webhook types.
+ * Maps to Linear's webhook union type.
+ */
+export type Webhook = LinearWebhook;
+
+/**
+ * Platform-agnostic guidance rule type.
+ * Maps to Linear's guidance rule type from @linear/sdk.
+ */
+export type GuidanceRule = LinearWebhookGuidanceRule;

@@ -72,8 +72,15 @@ export type {
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
-// Webhook types
+// Webhook types - Linear-specific types for platform-specific code
+// Platform-agnostic webhook type aliases - for EdgeWorker and other high-level code
+// These are exported from both webhook-types.ts and issue-tracker/index.ts
+// to provide two ways to access them (backwards compat + new abstraction layer)
 export type {
+	AgentSessionCreatedWebhook,
+	AgentSessionPromptedWebhook,
+	GuidanceRule,
+	IssueUnassignedWebhook,
 	LinearAgentSessionCreatedWebhook,
 	LinearAgentSessionPromptedWebhook,
 	LinearIssueAssignedNotification,
@@ -98,6 +105,10 @@ export type {
 	LinearWebhookTeam,
 	LinearWebhookTeamOrigin,
 	LinearWebhookTeamWithParent,
+	Webhook,
+	WebhookAgentSession,
+	WebhookComment,
+	WebhookIssue,
 } from "./webhook-types.js";
 export {
 	isAgentSessionCreatedWebhook,

@@ -438,13 +438,16 @@ export type WebhookConfig =
 	| WebhookConfigWithSignature
 	| WebhookConfigWithBearerToken;
 
-/**
- * Guidance rule type - Direct alias to Linear SDK's GuidanceRuleWebhookPayload type.
- * Linear SDK is the source of truth for guidance/agent behavior rules.
- *
- * @see {@link LinearSDK.LinearDocument.GuidanceRuleWebhookPayload} - Linear's complete GuidanceRuleWebhookPayload type
- */
-export type GuidanceRule = LinearSDK.LinearDocument.GuidanceRuleWebhookPayload;
+// ============================================================================
+// WEBHOOK PAYLOAD TYPES
+// ============================================================================
+//
+// Webhook payload types (WebhookIssue, WebhookComment, Webhook, etc.) are
+// exported from webhook-types.ts as platform-agnostic aliases.
+// This maintains the abstraction boundary - EdgeWorker uses the generic names,
+// while platform-specific implementations provide the actual types.
+//
+// See: webhook-types.ts for the platform-agnostic type aliases
 
 /**
  * Pagination connection for list results.

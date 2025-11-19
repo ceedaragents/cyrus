@@ -22,25 +22,22 @@ import {
 	getSafeTools,
 } from "cyrus-claude-runner";
 import type {
+	AgentSessionCreatedWebhook,
+	AgentSessionPromptedWebhook,
 	Comment,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
+	GuidanceRule,
 	Issue,
 	IssueMinimal,
-	LinearAgentSessionCreatedWebhook,
-	LinearAgentSessionPromptedWebhook,
-	// LinearIssueAssignedWebhook,
-	// LinearIssueCommentMentionWebhook,
-	// LinearIssueNewCommentWebhook,
-	LinearIssueUnassignedWebhook,
-	LinearWebhookAgentSession,
-	LinearWebhookComment,
-	LinearWebhookGuidanceRule,
-	LinearWebhookIssue,
+	IssueUnassignedWebhook,
 	RepositoryConfig,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	WebhookAgentSession,
+	WebhookComment,
+	WebhookIssue,
 } from "cyrus-core";
 import {
 	AgentActivityContentType,
@@ -54,9 +51,9 @@ import {
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
 	isIssueUnassignedWebhook,
-	type LinearWebhook,
 	PersistenceManager,
 	resolvePath,
+	type Webhook,
 } from "cyrus-core";
 import { LinearIssueTrackerService } from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
@@ -395,8 +392,8 @@ export class EdgeWorker extends EventEmitter {
 		this.agentEventTransport.on("event", (event: AgentEvent) => {
 			// Get all active repositories for event handling
 			const repos = Array.from(this.repositories.values());
-			// Cast through unknown since AgentEvent is LinearWebhookPayload which is broader than LinearWebhook
-			this.handleWebhook(event as unknown as LinearWebhook, repos);
+			// Cast through unknown since AgentEvent is webhook payload which is broader than Webhook
+			this.handleWebhook(event as unknown as Webhook, repos);
 		});
 
 		// Listen for errors
@@ -965,7 +962,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle webhook events from proxy - main router for all webhooks
 	 */
 	private async handleWebhook(
-		webhook: LinearWebhook,
+		webhook: Webhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
 		// Log verbose webhook info if enabled
@@ -1014,7 +1011,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle issue unassignment webhook
 	 */
 	private async handleIssueUnassignedWebhook(
-		webhook: LinearIssueUnassignedWebhook,
+		webhook: IssueUnassignedWebhook,
 	): Promise<void> {
 		const issueId = webhook.notification.issue.id;
 		console.log(
@@ -1215,7 +1212,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @param repos All configured repositories
 	 */
 	private async handleAgentSessionCreatedWebhook(
-		webhook: LinearAgentSessionCreatedWebhook,
+		webhook: AgentSessionCreatedWebhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
 		const { agentSession, guidance } = webhook;
@@ -1549,7 +1546,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @param webhook Agent session prompted webhook
 	 */
 	private async handleUserPromptedAgentActivity(
-		webhook: LinearAgentSessionPromptedWebhook,
+		webhook: AgentSessionPromptedWebhook,
 	): Promise<void> {
 		// Look for existing session for this comment thread
 		const { agentSession } = webhook;
@@ -1775,7 +1772,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @param repository Repository configuration
 	 */
 	private async handleIssueUnassigned(
-		issue: LinearWebhookIssue,
+		issue: WebhookIssue,
 		repository: RepositoryConfig,
 	): Promise<void> {
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -1997,7 +1994,7 @@ export class EdgeWorker extends EventEmitter {
 		issue: Issue,
 		repository: RepositoryConfig,
 		attachmentManifest: string = "",
-		guidance?: LinearWebhookGuidanceRule[],
+		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		console.log(
 			`[EdgeWorker] buildLabelBasedPrompt called for issue ${issue.identifier}`,
@@ -2162,9 +2159,9 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async buildMentionPrompt(
 		issue: Issue,
-		agentSession: LinearWebhookAgentSession,
+		agentSession: WebhookAgentSession,
 		attachmentManifest: string = "",
-		guidance?: LinearWebhookGuidanceRule[],
+		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		try {
 			console.log(
@@ -2232,7 +2229,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	 * @param guidance Array of guidance rules from Linear
 	 * @returns Formatted markdown string with guidance, or empty string if no guidance
 	 */
-	private formatAgentGuidance(guidance?: LinearWebhookGuidanceRule[]): string {
+	private formatAgentGuidance(guidance?: GuidanceRule[]): string {
 		if (!guidance || guidance.length === 0) {
 			return "";
 		}
@@ -2468,9 +2465,9 @@ ${reply.body}
 	private async buildIssueContextPrompt(
 		issue: Issue,
 		repository: RepositoryConfig,
-		newComment?: LinearWebhookComment,
+		newComment?: WebhookComment,
 		attachmentManifest: string = "",
-		guidance?: LinearWebhookGuidanceRule[],
+		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		console.log(
 			`[EdgeWorker] buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
@@ -3906,8 +3903,8 @@ ${input.userComment}
 		repository: RepositoryConfig,
 		promptType: PromptType,
 		attachmentManifest?: string,
-		guidance?: LinearWebhookGuidanceRule[],
-		agentSession?: LinearWebhookAgentSession,
+		guidance?: GuidanceRule[],
+		agentSession?: WebhookAgentSession,
 	): Promise<IssueContextResult> {
 		// Delegate to appropriate builder based on promptType
 		if (promptType === "mention") {

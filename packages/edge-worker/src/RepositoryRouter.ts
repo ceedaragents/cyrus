@@ -1,9 +1,9 @@
 import { AgentActivitySignal, type LinearClient } from "@linear/sdk";
 import type {
-	LinearAgentSessionCreatedWebhook,
-	LinearAgentSessionPromptedWebhook,
-	LinearWebhook,
+	AgentSessionCreatedWebhook,
+	AgentSessionPromptedWebhook,
 	RepositoryConfig,
+	Webhook,
 } from "cyrus-core";
 
 /**
@@ -112,7 +112,7 @@ export class RepositoryRouter {
 	 * Priority 4: Catch-all repositories
 	 */
 	async determineRepositoryForWebhook(
-		webhook: LinearAgentSessionCreatedWebhook,
+		webhook: AgentSessionCreatedWebhook,
 		repos: RepositoryConfig[],
 	): Promise<RepositoryRoutingResult> {
 		const workspaceId = webhook.organizationId;
@@ -371,7 +371,7 @@ export class RepositoryRouter {
 	 * Elicit user repository selection - post elicitation to Linear
 	 */
 	async elicitUserRepositorySelection(
-		webhook: LinearAgentSessionCreatedWebhook,
+		webhook: AgentSessionCreatedWebhook,
 		workspaceRepos: RepositoryConfig[],
 	): Promise<void> {
 		const { agentSession } = webhook;
@@ -530,7 +530,7 @@ export class RepositoryRouter {
 	/**
 	 * Extract issue information from webhook
 	 */
-	private extractIssueInfo(webhook: LinearWebhook): {
+	private extractIssueInfo(webhook: Webhook): {
 		issueId?: string;
 		teamKey?: string;
 		issueIdentifier?: string;
@@ -559,15 +559,17 @@ export class RepositoryRouter {
 	 * Type guards
 	 */
 	private isAgentSessionCreatedWebhook(
-		webhook: LinearWebhook,
-	): webhook is LinearAgentSessionCreatedWebhook {
-		return webhook.action === "created";
+		webhook: Webhook,
+	): webhook is AgentSessionCreatedWebhook {
+		return webhook.type === "AgentSessionEvent" && webhook.action === "created";
 	}
 
 	private isAgentSessionPromptedWebhook(
-		webhook: LinearWebhook,
-	): webhook is LinearAgentSessionPromptedWebhook {
-		return webhook.action === "prompted";
+		webhook: Webhook,
+	): webhook is AgentSessionPromptedWebhook {
+		return (
+			webhook.type === "AgentSessionEvent" && webhook.action === "prompted"
+		);
 	}
 
 	/**
