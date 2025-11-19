@@ -268,8 +268,11 @@ export class EdgeWorker extends EventEmitter {
 							`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
 						);
 
-						// Get workspace slug from session metadata for proper @mention formatting
-						const workspaceSlug = session.metadata?.workspaceSlug;
+						// Fetch full issue to extract workspace slug for proper @mention formatting
+						const fullIssue = await issueTracker.fetchIssue(session.issueId);
+						const workspaceSlug = fullIssue?.url
+							? this.extractWorkspaceSlug(fullIssue.url)
+							: undefined;
 
 						// Load subroutine prompt
 						let subroutinePrompt: string | null;
@@ -1169,14 +1172,6 @@ export class EdgeWorker extends EventEmitter {
 			throw new Error(
 				`Failed to create session for agent activity session ${linearAgentActivitySessionId}`,
 			);
-		}
-
-		// Store workspace slug in session metadata for use in subroutine prompts
-		if (!session.metadata) {
-			session.metadata = {};
-		}
-		if (fullIssue.url) {
-			session.metadata.workspaceSlug = this.extractWorkspaceSlug(fullIssue.url);
 		}
 
 		// Download attachments before creating Claude runner
