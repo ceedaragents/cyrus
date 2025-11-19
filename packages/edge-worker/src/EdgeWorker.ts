@@ -268,18 +268,12 @@ export class EdgeWorker extends EventEmitter {
 							`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
 						);
 
-						// Fetch full issue to extract workspace slug for proper @mention formatting
-						const fullIssue = await issueTracker.fetchIssue(session.issueId);
-						const workspaceSlug = fullIssue?.url
-							? this.extractWorkspaceSlug(fullIssue.url)
-							: undefined;
-
 						// Load subroutine prompt
 						let subroutinePrompt: string | null;
 						try {
 							subroutinePrompt = await this.loadSubroutinePrompt(
 								nextSubroutine,
-								workspaceSlug,
+								this.config.linearWorkspaceSlug,
 							);
 							if (!subroutinePrompt) {
 								// Fallback if loadSubroutinePrompt returns null
@@ -3714,14 +3708,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 		let subroutineName: string | undefined;
 		if (currentSubroutine) {
-			// Extract workspace slug from issue URL for proper @mention formatting
-			const workspaceSlug = input.fullIssue.url
-				? this.extractWorkspaceSlug(input.fullIssue.url)
-				: undefined;
-
 			const subroutinePrompt = await this.loadSubroutinePrompt(
 				currentSubroutine,
-				workspaceSlug,
+				this.config.linearWorkspaceSlug,
 			);
 			if (subroutinePrompt) {
 				parts.push(subroutinePrompt);
@@ -3830,20 +3819,6 @@ ${input.userComment}
 	 * Extract the workspace slug from a Linear issue URL
 	 * URL format: https://linear.app/{workspace}/issue/{identifier}/...
 	 */
-	private extractWorkspaceSlug(issueUrl: string): string {
-		try {
-			const url = new URL(issueUrl);
-			const pathParts = url.pathname.split("/").filter((p) => p);
-			// First part after the domain is the workspace slug
-			return pathParts[0] || "linear";
-		} catch (_error) {
-			console.warn(
-				`[EdgeWorker] Failed to parse issue URL ${issueUrl}, using default workspace`,
-			);
-			return "linear";
-		}
-	}
-
 	/**
 	 * Load a subroutine prompt file
 	 * Extracted helper to make prompt assembly more readable

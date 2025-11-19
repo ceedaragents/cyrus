@@ -147,7 +147,7 @@ export interface EdgeWorkerConfig {
 	cyrusHome: string;
 
 	// Agent configuration (for CLI mode)
-	agentHandle?: string; // The name/handle the agent responds to (e.g., "@cyrus", "cyrus")
+	agentHandle?: string; // The name/handle the agent responds to (e.g., "john", "cyrus")
 	agentUserId?: string; // The user ID of the agent (for CLI mode)
 
 	// Optional handlers that apps can implement

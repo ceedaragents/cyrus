@@ -414,20 +414,39 @@ export enum WebhookVerificationMode {
 }
 
 /**
- * Webhook configuration.
+ * Webhook configuration with signature verification.
  */
-export interface WebhookConfig {
+export interface WebhookConfigWithSignature {
 	/** Verification mode */
-	verificationMode: WebhookVerificationMode;
+	verificationMode: "signature";
 	/** Webhook secret (for signature verification) */
-	secret?: string;
-	/** API key (for bearer token verification) */
-	apiKey?: string;
+	secret: string;
 	/** Webhook endpoint URL */
 	endpointUrl?: string;
 	/** Additional platform-specific config */
 	metadata?: Record<string, unknown>;
 }
+
+/**
+ * Webhook configuration with bearer token verification.
+ */
+export interface WebhookConfigWithBearerToken {
+	/** Verification mode */
+	verificationMode: "bearerToken";
+	/** API key (for bearer token verification) */
+	apiKey: string;
+	/** Webhook endpoint URL */
+	endpointUrl?: string;
+	/** Additional platform-specific config */
+	metadata?: Record<string, unknown>;
+}
+
+/**
+ * Webhook configuration - discriminated union based on verification mode.
+ */
+export type WebhookConfig =
+	| WebhookConfigWithSignature
+	| WebhookConfigWithBearerToken;
 
 /**
  * Guidance rule type - Direct alias to Linear SDK's GuidanceRuleWebhookPayload type.
