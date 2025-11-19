@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.42 to v0.1.46 - adds Azure AI Foundry support and structured outputs - see [@anthropic-ai/claude-agent-sdk v0.1.46 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0146) ([CYPACK-399](https://linear.app/ceedar/issue/CYPACK-399))
+- Updated @anthropic-ai/sdk from v0.69.0 to v0.70.0 - adds Foundry SDK integration - see [@anthropic-ai/sdk v0.70.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0700-2025-11-18) ([CYPACK-399](https://linear.app/ceedar/issue/CYPACK-399))
+
 ## [0.2.1] - 2025-11-15
 
 ### Added
