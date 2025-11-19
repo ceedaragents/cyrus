@@ -475,22 +475,28 @@ export class AgentSessionManager {
 
 				case "Edit":
 				case "↪ Edit": {
-					// For Edit, show deletions and additions like a diff
+					// For Edit, show changes as a diff
 					// Extract old_string and new_string from toolInput
 					if (toolInput.old_string && toolInput.new_string) {
-						let formatted = "";
+						// Format as a unified diff
+						const oldLines = toolInput.old_string.split("\n");
+						const newLines = toolInput.new_string.split("\n");
 
-						// Show deletions
-						formatted += "**Removed:**\n```\n";
-						formatted += toolInput.old_string;
-						formatted += "\n```\n\n";
+						let diff = "```diff\n";
 
-						// Show additions
-						formatted += "**Added:**\n```\n";
-						formatted += toolInput.new_string;
-						formatted += "\n```";
+						// Add context lines before changes (show all old lines with - prefix)
+						for (const line of oldLines) {
+							diff += `-${line}\n`;
+						}
 
-						return formatted;
+						// Add new lines with + prefix
+						for (const line of newLines) {
+							diff += `+${line}\n`;
+						}
+
+						diff += "```";
+
+						return diff;
 					}
 
 					// Fallback to result if old/new strings not available

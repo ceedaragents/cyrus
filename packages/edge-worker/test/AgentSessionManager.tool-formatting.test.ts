@@ -216,10 +216,10 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			false,
 		);
 
-		expect(result).toContain("**Removed:**");
-		expect(result).toContain("const x = 1;");
-		expect(result).toContain("**Added:**");
-		expect(result).toContain("const x = 2;");
+		// Should be formatted as a diff
+		expect(result).toContain("```diff");
+		expect(result).toContain("-const x = 1;");
+		expect(result).toContain("+const x = 2;");
 	});
 
 	test("formatToolResult - Grep tool with file matches", () => {
