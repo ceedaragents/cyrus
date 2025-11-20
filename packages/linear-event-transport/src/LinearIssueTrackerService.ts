@@ -80,41 +80,6 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					"If you need MCP server support, pass the Linear API token to the constructor.",
 			);
 		}
-
-		// Validate that the LinearClient has rawRequest support
-		this.validateRawRequestSupport();
-	}
-
-	// ========================================================================
-	// VALIDATION METHODS
-	// ========================================================================
-
-	/**
-	 * Validate that the LinearClient has rawRequest support.
-	 *
-	 * Logs a warning if rawRequest is not available but does not throw.
-	 * This allows tests with mocked clients to pass while still warning
-	 * in production environments.
-	 *
-	 * @private
-	 */
-	private validateRawRequestSupport(): void {
-		const client = this.linearClient as unknown;
-		if (
-			!client ||
-			typeof client !== "object" ||
-			!("client" in client) ||
-			typeof (client as { client?: unknown }).client !== "object" ||
-			!(client as { client?: { rawRequest?: unknown } }).client ||
-			typeof (client as { client: { rawRequest?: unknown } }).client
-				.rawRequest !== "function"
-		) {
-			console.warn(
-				"[LinearIssueTrackerService] Warning: LinearClient does not support rawRequest API. " +
-					"This may indicate an incompatible @linear/sdk version or a mocked client. " +
-					"Required: @linear/sdk >= 24.0.0",
-			);
-		}
 	}
 
 	// ========================================================================
@@ -585,51 +550,31 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 	/**
 	 * Create an agent session on an issue.
+	 * Uses native SDK method instead of raw GraphQL.
 	 */
 	async createAgentSessionOnIssue(
 		input: AgentSessionCreateOnIssueInput,
 	): Promise<AgentSessionCreateResponse> {
 		try {
-			// Validate rawRequest support before using it
-			this.validateRawRequestSupport();
-
-			const mutation = `
-        mutation AgentSessionCreateOnIssue($input: AgentSessionCreateOnIssue!) {
-          agentSessionCreateOnIssue(input: $input) {
-            success
-            lastSyncId
-            agentSession {
-              id
-            }
-          }
-        }
-      `;
-
-			const result: {
-				data: {
-					agentSessionCreateOnIssue: {
-						success: boolean;
-						lastSyncId: number;
-						agentSession: { id: string };
-					};
-				};
-			} = await (this.linearClient as any).client.rawRequest(mutation, {
-				input: {
-					issueId: input.issueId,
-					externalLink: input.externalLink,
-				},
+			// Use native SDK method
+			const result = await this.linearClient.agentSessionCreateOnIssue({
+				issueId: input.issueId,
+				externalLink: input.externalLink,
 			});
 
-			const data = result.data.agentSessionCreateOnIssue;
-
-			if (!data.success) {
+			if (!result.success) {
 				throw new Error("Linear API returned success=false");
 			}
 
+			const agentSession = await result.agentSession;
+			if (!agentSession) {
+				throw new Error("Linear API did not return an agent session");
+			}
+
 			return {
-				success: data.success,
-				agentSessionId: data.agentSession.id,
-				lastSyncId: data.lastSyncId,
+				success: result.success,
+				agentSessionId: agentSession.id,
+				lastSyncId: result.lastSyncId,
 			};
 		} catch (error) {
 			const err = new Error(
@@ -644,51 +589,31 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 	/**
 	 * Create an agent session on a comment thread.
+	 * Uses native SDK method instead of raw GraphQL.
 	 */
 	async createAgentSessionOnComment(
 		input: AgentSessionCreateOnCommentInput,
 	): Promise<AgentSessionCreateResponse> {
 		try {
-			// Validate rawRequest support before using it
-			this.validateRawRequestSupport();
-
-			const mutation = `
-        mutation AgentSessionCreateOnComment($input: AgentSessionCreateOnComment!) {
-          agentSessionCreateOnComment(input: $input) {
-            success
-            lastSyncId
-            agentSession {
-              id
-            }
-          }
-        }
-      `;
-
-			const result: {
-				data: {
-					agentSessionCreateOnComment: {
-						success: boolean;
-						lastSyncId: number;
-						agentSession: { id: string };
-					};
-				};
-			} = await (this.linearClient as any).client.rawRequest(mutation, {
-				input: {
-					commentId: input.commentId,
-					externalLink: input.externalLink,
-				},
+			// Use native SDK method
+			const result = await this.linearClient.agentSessionCreateOnComment({
+				commentId: input.commentId,
+				externalLink: input.externalLink,
 			});
 
-			const data = result.data.agentSessionCreateOnComment;
-
-			if (!data.success) {
+			if (!result.success) {
 				throw new Error("Linear API returned success=false");
 			}
 
+			const agentSession = await result.agentSession;
+			if (!agentSession) {
+				throw new Error("Linear API did not return an agent session");
+			}
+
 			return {
-				success: data.success,
-				agentSessionId: data.agentSession.id,
-				lastSyncId: data.lastSyncId,
+				success: result.success,
+				agentSessionId: agentSession.id,
+				lastSyncId: result.lastSyncId,
 			};
 		} catch (error) {
 			const err = new Error(
@@ -703,55 +628,20 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 	/**
 	 * Fetch an agent session by ID.
+	 * Uses native SDK method instead of raw GraphQL.
 	 */
 	async fetchAgentSession(sessionId: string): Promise<AgentSession> {
 		try {
-			// Validate rawRequest support before using it
-			this.validateRawRequestSupport();
+			// Use native SDK method - returns LinearFetch which needs to be awaited
+			const agentSessionFetch = this.linearClient.agentSession(sessionId);
+			const agentSession = await agentSessionFetch;
 
-			const query = `
-        query GetAgentSession($id: String!) {
-          agentSession(id: $id) {
-            id
-            issueId
-            commentId
-            status
-            type
-            creatorId
-            appUserId
-            organizationId
-            summary
-            startedAt
-            endedAt
-            createdAt
-            updatedAt
-            archivedAt
-            sourceMetadata
-            creator {
-              id
-              name
-              email
-              url
-              avatarUrl
-            }
-          }
-        }
-      `;
-
-			const result: {
-				data: {
-					agentSession: AgentSession;
-				};
-			} = await (this.linearClient as any).client.rawRequest(query, {
-				id: sessionId,
-			});
-
-			const sessionData = result.data.agentSession;
-			if (!sessionData) {
+			if (!agentSession) {
 				throw new Error("Agent session not found");
 			}
 
-			return sessionData;
+			// Cast to the expected AgentSession type from documents
+			return agentSession as unknown as AgentSession;
 		} catch (error) {
 			const err = new Error(
 				`Failed to fetch agent session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,

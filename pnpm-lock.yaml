@@ -34,8 +34,8 @@ importers:
   apps/cli:
     dependencies:
       '@linear/sdk':
-        specifier: ^60.0.0
-        version: 60.0.0
+        specifier: ^64.0.0
+        version: 64.0.0
       commander:
         specifier: ^14.0.2
         version: 14.0.2
@@ -101,8 +101,8 @@ importers:
         specifier: ^0.69.0
         version: 0.69.0(zod@3.25.76)
       '@linear/sdk':
-        specifier: ^60.0.0
-        version: 60.0.0
+        specifier: ^64.0.0
+        version: 64.0.0
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
@@ -167,8 +167,8 @@ importers:
   packages/core:
     dependencies:
       '@linear/sdk':
-        specifier: ^60.0.0
-        version: 60.0.0
+        specifier: ^64.0.0
+        version: 64.0.0
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -189,8 +189,8 @@ importers:
   packages/edge-worker:
     dependencies:
       '@linear/sdk':
-        specifier: ^60.0.0
-        version: 60.0.0
+        specifier: ^64.0.0
+        version: 64.0.0
       '@ngrok/ngrok':
         specifier: ^1.5.1
         version: 1.5.2
@@ -244,8 +244,8 @@ importers:
   packages/linear-event-transport:
     dependencies:
       '@linear/sdk':
-        specifier: ^60.0.0
-        version: 60.0.0
+        specifier: ^64.0.0
+        version: 64.0.0
       cyrus-core:
         specifier: workspace:*
         version: link:../core
@@ -643,6 +643,10 @@ packages:
 
   '@linear/sdk@60.0.0':
     resolution: {integrity: sha512-6mllj354yC4iJ3euXvijisCQdTIlr77gpUl9Oit8qJYGXegtHZv+RwySdiLfNS6bXQy/Z5e0IYXXNg2sv9UrUQ==}
+    engines: {node: '>=12.x', yarn: 1.x}
+
+  '@linear/sdk@64.0.0':
+    resolution: {integrity: sha512-+h5Nu+GC/eOVzzqXUA/ou/sEn7DUbpD0MgWiHldMYR9zutLWLsgdNWz4a6md88ltnJqVJXnpCu27XzIrIEC8Lg==}
     engines: {node: '>=12.x', yarn: 1.x}
 
   '@ngrok/ngrok-android-arm64@1.5.2':
@@ -2634,6 +2638,14 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@linear/sdk@60.0.0':
+    dependencies:
+      '@graphql-typed-document-node/core': 3.2.0(graphql@15.10.1)
+      graphql: 15.10.1
+      isomorphic-unfetch: 3.1.0
+    transitivePeerDependencies:
+      - encoding
+
+  '@linear/sdk@64.0.0':
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@15.10.1)
       graphql: 15.10.1
