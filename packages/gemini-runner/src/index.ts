@@ -34,6 +34,8 @@ export {
 } from "./adapters.js";
 // Main runner class
 export { GeminiRunner } from "./GeminiRunner.js";
+// Simple agent runner
+export { SimpleGeminiRunner } from "./SimpleGeminiRunner.js";
 // Types
 export type {
 	GeminiErrorEvent,
