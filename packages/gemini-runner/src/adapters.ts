@@ -46,9 +46,9 @@ function createBetaMessage(
 }
 
 /**
- * Convert a Gemini stream event to Claude SDK message format
+ * Convert a Gemini stream event to cyrus-core SDKMessage format
  *
- * This adapter maps Gemini CLI's streaming events to the Claude SDK's SDKMessage
+ * This adapter maps Gemini CLI's streaming events to the cyrus-core SDKMessage
  * format, allowing GeminiRunner to implement the IAgentRunner interface.
  *
  * NOTE: This adapter is stateless and creates a separate SDK message for each event.
@@ -175,7 +175,7 @@ export function geminiEventToSDKMessage(
 }
 
 /**
- * Create a Claude SDK user message from a plain string prompt
+ * Create a Cyrus Core SDK UserMessage from a plain string prompt
  *
  * Helper function to create properly formatted SDKUserMessage objects
  * for the Gemini CLI input.

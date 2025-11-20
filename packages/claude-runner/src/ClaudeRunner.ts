@@ -13,7 +13,10 @@ import {
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { IAgentRunner } from "cyrus-core";
+import {
+	type IAgentRunner,
+	StreamingPrompt,
+} from "cyrus-core";
 import dotenv from "dotenv";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
@@ -29,109 +32,6 @@ import type {
 	ClaudeRunnerEvents,
 	ClaudeSessionInfo,
 } from "./types.js";
-
-/**
- * Streaming prompt controller that implements AsyncIterable<SDKUserMessage>
- */
-export class StreamingPrompt {
-	private messageQueue: SDKUserMessage[] = [];
-	private resolvers: Array<(value: IteratorResult<SDKUserMessage>) => void> =
-		[];
-	private isComplete = false;
-	private sessionId: string | null;
-
-	constructor(sessionId: string | null, initialPrompt?: string) {
-		this.sessionId = sessionId;
-
-		// Add initial prompt if provided
-		if (initialPrompt) {
-			this.addMessage(initialPrompt);
-		}
-	}
-
-	/**
-	 * Update the session ID (used when session ID is received from Claude)
-	 */
-	updateSessionId(sessionId: string): void {
-		this.sessionId = sessionId;
-	}
-
-	/**
-	 * Add a new message to the stream
-	 */
-	addMessage(content: string): void {
-		if (this.isComplete) {
-			throw new Error("Cannot add message to completed stream");
-		}
-
-		const message: SDKUserMessage = {
-			type: "user",
-			message: {
-				role: "user",
-				content: content,
-			},
-			parent_tool_use_id: null,
-			session_id: this.sessionId || "pending", // Use placeholder until assigned by Claude
-		};
-
-		this.messageQueue.push(message);
-		this.processQueue();
-	}
-
-	/**
-	 * Mark the stream as complete (no more messages will be added)
-	 */
-	complete(): void {
-		this.isComplete = true;
-		this.processQueue();
-	}
-
-	/**
-	 * Check if the stream is complete
-	 */
-	get completed(): boolean {
-		return this.isComplete;
-	}
-
-	/**
-	 * Process pending resolvers with queued messages
-	 */
-	private processQueue(): void {
-		while (
-			this.resolvers.length > 0 &&
-			(this.messageQueue.length > 0 || this.isComplete)
-		) {
-			const resolver = this.resolvers.shift()!;
-
-			if (this.messageQueue.length > 0) {
-				const message = this.messageQueue.shift()!;
-				resolver({ value: message, done: false });
-			} else if (this.isComplete) {
-				resolver({ value: undefined, done: true });
-			}
-		}
-	}
-
-	/**
-	 * AsyncIterable implementation
-	 */
-	[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
-		return {
-			next: (): Promise<IteratorResult<SDKUserMessage>> => {
-				return new Promise((resolve) => {
-					if (this.messageQueue.length > 0) {
-						const message = this.messageQueue.shift()!;
-						resolve({ value: message, done: false });
-					} else if (this.isComplete) {
-						resolve({ value: undefined, done: true });
-					} else {
-						this.resolvers.push(resolve);
-					}
-				});
-			},
-		};
-	}
-}
 
 export declare interface ClaudeRunner {
 	on<K extends keyof ClaudeRunnerEvents>(

@@ -26,18 +26,6 @@
  * ```
  */
 
-// Re-export core types for convenience
-export type {
-	AgentMessage,
-	AgentRunnerConfig,
-	AgentSessionInfo,
-	AgentUserMessage,
-	IAgentRunner,
-	SDKAssistantMessage,
-	SDKMessage,
-	SDKResultMessage,
-	SDKUserMessage,
-} from "cyrus-core";
 // Adapter functions
 export {
 	createUserMessage,

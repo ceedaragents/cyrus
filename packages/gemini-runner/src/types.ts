@@ -1,11 +1,7 @@
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
-	HookCallbackMatcher,
-	HookEvent,
-	McpServerConfig,
 	SDKMessage,
-	SDKUserMessage,
 } from "cyrus-core";
 
 /**
@@ -143,15 +139,5 @@ export interface GeminiRunnerEvents {
 	message: (message: SDKMessage) => void;
 	error: (error: Error) => void;
 	complete: (messages: SDKMessage[]) => void;
-	streamEvent: (event: GeminiStreamEvent) => void;
+	streamEvent: (event: GeminiStreamEvent) => void; // Raw event emitting
 }
-
-// Re-export types from core for convenience
-export type {
-	AgentRunnerConfig,
-	HookCallbackMatcher,
-	HookEvent,
-	McpServerConfig,
-	SDKMessage,
-	SDKUserMessage,
-};

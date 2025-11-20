@@ -17,6 +17,7 @@ export type {
 	SDKResultMessage,
 	SDKUserMessage,
 } from "./agent-runner-types.js";
+export { StreamingPrompt } from "./StreamingPrompt.js";
 export type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
