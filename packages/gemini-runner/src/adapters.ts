@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type {
 	SDKAssistantMessage,
 	SDKMessage,
+	SDKResultMessage,
 	SDKUserMessage,
 } from "cyrus-core";
 import type { GeminiMessageEvent, GeminiStreamEvent } from "./types.js";
@@ -159,20 +160,111 @@ export function geminiEventToSDKMessage(
 			return toolResultMessage;
 		}
 
-		case "result":
-			// Final result event - contains stats but no message content
-			// Real output: {"type":"result","timestamp":"...","status":"success","stats":{...}}
-			if (event.status === "error" && event.error) {
-				// Error result - log but return null since SDK doesn't have a direct error message type
-				console.error(`[GeminiAdapter] Error result: ${event.error.message}`);
-			}
-			// Result events don't map to SDK messages, just track stats
-			return null;
+		case "result": {
+			// Final result event - map to SDKResultMessage
+			// Contains stats and final status (success or error)
+			const stats = event.stats || {};
+			const durationMs = stats.duration_ms || 0;
 
-		case "error":
-			// Non-fatal error event
-			// Could be logged but doesn't necessarily create a message
-			return null;
+			if (event.status === "success") {
+				const resultMessage: SDKResultMessage = {
+					type: "result",
+					subtype: "success",
+					duration_ms: durationMs,
+					duration_api_ms: 0, // Gemini doesn't separate API time
+					is_error: false,
+					num_turns: stats.tool_calls || 0, // Use tool calls as proxy for turns
+					result: "Session completed successfully",
+					total_cost_usd: 0, // Gemini doesn't provide cost info
+					usage: {
+						input_tokens: stats.input_tokens || 0,
+						output_tokens: stats.output_tokens || 0,
+						cache_creation_input_tokens: 0,
+						cache_read_input_tokens: 0,
+						cache_creation: {
+							ephemeral_1h_input_tokens: 0,
+							ephemeral_5m_input_tokens: 0,
+						},
+						server_tool_use: {
+							web_fetch_requests: 0,
+							web_search_requests: 0,
+						},
+						service_tier: "standard" as const,
+					},
+					modelUsage: {},
+					permission_denials: [],
+					uuid: crypto.randomUUID(),
+					session_id: sessionId || "pending",
+				};
+				return resultMessage;
+			} else {
+				// Error case
+				const errorMessage: SDKResultMessage = {
+					type: "result",
+					subtype: "error_during_execution",
+					duration_ms: durationMs,
+					duration_api_ms: 0,
+					is_error: true,
+					num_turns: stats.tool_calls || 0,
+					errors: [event.error?.message || "Unknown error"],
+					total_cost_usd: 0,
+					usage: {
+						input_tokens: stats.input_tokens || 0,
+						output_tokens: stats.output_tokens || 0,
+						cache_creation_input_tokens: 0,
+						cache_read_input_tokens: 0,
+						cache_creation: {
+							ephemeral_1h_input_tokens: 0,
+							ephemeral_5m_input_tokens: 0,
+						},
+						server_tool_use: {
+							web_fetch_requests: 0,
+							web_search_requests: 0,
+						},
+						service_tier: "standard" as const,
+					},
+					modelUsage: {},
+					permission_denials: [],
+					uuid: crypto.randomUUID(),
+					session_id: sessionId || "pending",
+				};
+				return errorMessage;
+			}
+		}
+
+		case "error": {
+			// Non-fatal error event - map to error result message
+			const errorMessage: SDKResultMessage = {
+				type: "result",
+				subtype: "error_during_execution",
+				duration_ms: 0,
+				duration_api_ms: 0,
+				is_error: true,
+				num_turns: 0,
+				errors: [event.message],
+				total_cost_usd: 0,
+				usage: {
+					input_tokens: 0,
+					output_tokens: 0,
+					cache_creation_input_tokens: 0,
+					cache_read_input_tokens: 0,
+					cache_creation: {
+						ephemeral_1h_input_tokens: 0,
+						ephemeral_5m_input_tokens: 0,
+					},
+					server_tool_use: {
+						web_fetch_requests: 0,
+						web_search_requests: 0,
+					},
+					service_tier: "standard" as const,
+				},
+				modelUsage: {},
+				permission_denials: [],
+				uuid: crypto.randomUUID(),
+				session_id: sessionId || "pending",
+			};
+			return errorMessage;
+		}
 
 		default:
 			return null;
