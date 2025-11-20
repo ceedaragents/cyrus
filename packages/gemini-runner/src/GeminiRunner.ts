@@ -189,6 +189,17 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				args.push("--debug");
 			}
 
+			// Add include-directories flag if specified
+			if (
+				this.config.includeDirectories &&
+				this.config.includeDirectories.length > 0
+			) {
+				args.push(
+					"--include-directories",
+					this.config.includeDirectories.join(","),
+				);
+			}
+
 			// Handle prompt mode
 			let useStdin = false;
 			if (stringPrompt !== null && stringPrompt !== undefined) {

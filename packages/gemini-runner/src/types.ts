@@ -122,6 +122,8 @@ export interface GeminiRunnerConfig extends AgentRunnerConfig {
 	approvalMode?: "auto_edit" | "auto" | "manual";
 	/** Enable debug output */
 	debug?: boolean;
+	/** Additional directories to include in workspace context (--include-directories flag) */
+	includeDirectories?: string[];
 }
 
 /**
