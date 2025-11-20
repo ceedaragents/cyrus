@@ -101,6 +101,7 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 			updateIssue: vi.fn().mockResolvedValue({ success: true }),
 			createAgentActivity: vi.fn().mockResolvedValue({ success: true }),
 			comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			rawRequest: vi.fn(), // Add rawRequest to avoid validation warnings
 		};
 		vi.mocked(LinearClient).mockImplementation(() => mockLinearClient);
 
@@ -206,6 +207,15 @@ Issue: {{issue_identifier}}`;
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
+
+		// Inject mock issue tracker for the test repository
+		const mockIssueTracker = {
+			fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
+				return mockLinearClient.issue(issueId);
+			}),
+			getIssueLabels: vi.fn().mockResolvedValue([{ name: "bug" }]),
+		};
+		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
 	});
 
 	afterEach(() => {

@@ -2,11 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	type Comment,
-	LinearClient,
-	type Issue as LinearIssue,
-} from "@linear/sdk";
+import { LinearClient, type Issue as LinearIssue } from "@linear/sdk";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
 	ClaudeRunnerConfig,
@@ -29,24 +25,23 @@ import {
 } from "cyrus-claude-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
+	AgentSessionCreatedWebhook,
+	AgentSessionPromptedWebhook,
+	Comment,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
+	GuidanceRule,
+	IIssueTrackerService,
 	IssueMinimal,
-	LinearAgentSessionCreatedWebhook,
-	LinearAgentSessionPromptedWebhook,
-	// LinearIssueAssignedWebhook,
-	// LinearIssueCommentMentionWebhook,
-	// LinearIssueNewCommentWebhook,
-	LinearIssueUnassignedWebhook,
-	LinearWebhook,
-	LinearWebhookAgentSession,
-	LinearWebhookComment,
-	LinearWebhookGuidanceRule,
-	LinearWebhookIssue,
+	IssueUnassignedWebhook,
 	RepositoryConfig,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	Webhook,
+	WebhookAgentSession,
+	WebhookComment,
+	WebhookIssue,
 } from "cyrus-core";
 import {
 	DEFAULT_PROXY_URL,
@@ -59,7 +54,10 @@ import {
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
-import { LinearEventTransport } from "cyrus-linear-event-transport";
+import {
+	LinearEventTransport,
+	LinearIssueTrackerService,
+} from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import {
@@ -80,7 +78,7 @@ import {
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
-import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
+import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(
@@ -103,7 +101,7 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages ClaudeRunners for a repo
-	private linearClients: Map<string, LinearClient> = new Map(); // one linear client per 'repository'
+	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
@@ -134,25 +132,18 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize repository router with dependencies
 		const repositoryRouterDeps: RepositoryRouterDeps = {
 			fetchIssueLabels: async (issueId: string, workspaceId: string) => {
-				// Get Linear client for this workspace
-				const linearClient = this.getLinearClientForWorkspace(workspaceId);
-				if (!linearClient) {
-					console.warn(
-						`[EdgeWorker] No Linear client found for workspace ${workspaceId}`,
-					);
-					return [];
-				}
+				// Find repository for this workspace
+				const repo = Array.from(this.repositories.values()).find(
+					(r) => r.linearWorkspaceId === workspaceId,
+				);
+				if (!repo) return [];
 
-				try {
-					const issue = await linearClient.issue(issueId);
-					return await this.fetchIssueLabels(issue);
-				} catch (error) {
-					console.error(
-						`[EdgeWorker] Failed to fetch issue labels for ${issueId}:`,
-						error,
-					);
-					return [];
-				}
+				// Get issue tracker for this repository
+				const issueTracker = this.issueTrackers.get(repo.id);
+				if (!issueTracker) return [];
+
+				// Use platform-agnostic getIssueLabels method
+				return await issueTracker.getIssueLabels(issueId);
 			},
 			hasActiveSession: (issueId: string, repositoryId: string) => {
 				const sessionManager = this.agentSessionManagers.get(repositoryId);
@@ -161,8 +152,8 @@ export class EdgeWorker extends EventEmitter {
 					sessionManager.getActiveSessionsByIssueId(issueId);
 				return activeSessions.length > 0;
 			},
-			getLinearClient: (workspaceId: string) => {
-				return this.getLinearClientForWorkspace(workspaceId);
+			getIssueTracker: (workspaceId: string) => {
+				return this.getIssueTrackerForWorkspace(workspaceId);
 			},
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
@@ -205,11 +196,15 @@ export class EdgeWorker extends EventEmitter {
 
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create Linear client for this repository's workspace
+				// Create issue tracker for this repository's workspace
 				const linearClient = new LinearClient({
 					accessToken: repo.linearToken,
 				});
-				this.linearClients.set(repo.id, linearClient);
+				const issueTracker = new LinearIssueTrackerService(
+					linearClient,
+					repo.linearToken,
+				);
+				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
 				//
@@ -222,7 +217,7 @@ export class EdgeWorker extends EventEmitter {
 				// This allows the AgentSessionManager to call back into itself to access its own sessions,
 				// enabling child sessions to trigger parent session resumption using the same manager instance.
 				const agentSessionManager = new AgentSessionManager(
-					linearClient,
+					issueTracker,
 					(childSessionId: string) => {
 						console.log(
 							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
@@ -371,10 +366,10 @@ export class EdgeWorker extends EventEmitter {
 		});
 
 		// Listen for webhook events
-		this.linearEventTransport.on("webhook", (payload: any) => {
+		this.linearEventTransport.on("event", (payload: any) => {
 			// Get all active repositories for webhook handling
 			const repos = Array.from(this.repositories.values());
-			this.handleWebhook(payload as unknown as LinearWebhook, repos);
+			this.handleWebhook(payload as unknown as Webhook, repos);
 		});
 
 		// Listen for errors
@@ -511,14 +506,14 @@ export class EdgeWorker extends EventEmitter {
 		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
 		// Post thought to Linear showing child result receipt
-		const linearClient = this.linearClients.get(repo.id);
-		if (linearClient && childSession) {
+		const issueTracker = this.issueTrackers.get(repo.id);
+		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
 			const resultThought = `Received result from sub-issue ${childIssueIdentifier}:\n\n---\n\n${prompt}\n\n---`;
 
 			try {
-				const result = await linearClient.createAgentActivity({
+				const result = await issueTracker.createAgentActivity({
 					agentSessionId: parentSessionId,
 					content: {
 						type: "thought",
@@ -781,15 +776,19 @@ export class EdgeWorker extends EventEmitter {
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create Linear client
+				// Create issue tracker
 				const linearClient = new LinearClient({
 					accessToken: repo.linearToken,
 				});
-				this.linearClients.set(repo.id, linearClient);
+				const issueTracker = new LinearIssueTrackerService(
+					linearClient,
+					repo.linearToken,
+				);
+				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager with same pattern as constructor
 				const agentSessionManager = new AgentSessionManager(
-					linearClient,
+					issueTracker,
 					(childSessionId: string) => {
 						return this.childToParentAgentSession.get(childSessionId);
 					},
@@ -854,13 +853,17 @@ export class EdgeWorker extends EventEmitter {
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// If token changed, recreate Linear client
+				// If token changed, recreate issue tracker
 				if (oldRepo.linearToken !== repo.linearToken) {
-					console.log(`  🔑 Token changed, recreating Linear client`);
+					console.log(`  🔑 Token changed, recreating issue tracker`);
 					const linearClient = new LinearClient({
 						accessToken: repo.linearToken,
 					});
-					this.linearClients.set(repo.id, linearClient);
+					const issueTracker = new LinearIssueTrackerService(
+						linearClient,
+						repo.linearToken,
+					);
+					this.issueTrackers.set(repo.id, issueTracker);
 				}
 
 				// If active status changed
@@ -918,9 +921,9 @@ export class EdgeWorker extends EventEmitter {
 							}
 
 							// Post cancellation message to Linear
-							const linearClient = this.linearClients.get(repo.id);
-							if (linearClient) {
-								await linearClient.createAgentActivity({
+							const issueTracker = this.issueTrackers.get(repo.id);
+							if (issueTracker) {
+								await issueTracker.createAgentActivity({
 									agentSessionId: session.linearAgentActivitySessionId,
 									content: {
 										type: "response",
@@ -942,7 +945,7 @@ export class EdgeWorker extends EventEmitter {
 
 				// Remove repository from all maps
 				this.repositories.delete(repo.id);
-				this.linearClients.delete(repo.id);
+				this.issueTrackers.delete(repo.id);
 				this.agentSessionManagers.delete(repo.id);
 
 				console.log(`✅ Repository removed successfully: ${repo.name}`);
@@ -974,7 +977,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle webhook events from proxy - main router for all webhooks
 	 */
 	private async handleWebhook(
-		webhook: LinearWebhook,
+		webhook: Webhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
 		// Log verbose webhook info if enabled
@@ -1022,8 +1025,15 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle issue unassignment webhook
 	 */
 	private async handleIssueUnassignedWebhook(
-		webhook: LinearIssueUnassignedWebhook,
+		webhook: IssueUnassignedWebhook,
 	): Promise<void> {
+		if (!webhook.notification.issue) {
+			console.warn(
+				"[EdgeWorker] Received issue unassignment webhook without issue",
+			);
+			return;
+		}
+
 		const issueId = webhook.notification.issue.id;
 
 		// Get cached repository (unassignment should only happen on issues with active sessions)
@@ -1048,14 +1058,14 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Get Linear client for a workspace by finding first repository with that workspace ID
+	 * Get issue tracker for a workspace by finding first repository with that workspace ID
 	 */
-	private getLinearClientForWorkspace(
+	private getIssueTrackerForWorkspace(
 		workspaceId: string,
-	): LinearClient | undefined {
+	): IIssueTrackerService | undefined {
 		for (const [repoId, repo] of this.repositories) {
 			if (repo.linearWorkspaceId === workspaceId) {
-				return this.linearClients.get(repoId);
+				return this.issueTrackers.get(repoId);
 			}
 		}
 		return undefined;
@@ -1074,7 +1084,7 @@ export class EdgeWorker extends EventEmitter {
 		issue: { id: string; identifier: string },
 		repository: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
-	): Promise<LinearAgentSessionData> {
+	): Promise<AgentSessionData> {
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
 		if (!fullIssue) {
@@ -1159,7 +1169,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @param repos All available repositories for routing
 	 */
 	private async handleAgentSessionCreatedWebhook(
-		webhook: LinearAgentSessionCreatedWebhook,
+		webhook: AgentSessionCreatedWebhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
 		const issueId = webhook.agentSession?.issue?.id;
@@ -1223,6 +1233,11 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
+		if (!webhook.agentSession.issue) {
+			console.warn("[EdgeWorker] Agent session created webhook missing issue");
+			return;
+		}
+
 		console.log(
 			`[EdgeWorker] Handling agent session created: ${webhook.agentSession.issue.identifier}`,
 		);
@@ -1251,13 +1266,20 @@ export class EdgeWorker extends EventEmitter {
 	 * @param commentBody Optional comment body (for mentions)
 	 */
 	private async initializeClaudeRunner(
-		agentSession: LinearAgentSessionCreatedWebhook["agentSession"],
+		agentSession: AgentSessionCreatedWebhook["agentSession"],
 		repository: RepositoryConfig,
-		guidance?: LinearAgentSessionCreatedWebhook["guidance"],
+		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 	): Promise<void> {
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
+
+		if (!issue) {
+			console.warn(
+				"[EdgeWorker] Cannot initialize Claude runner without issue",
+			);
+			return;
+		}
 
 		// Log guidance if present
 		if (guidance && guidance.length > 0) {
@@ -1416,7 +1438,7 @@ export class EdgeWorker extends EventEmitter {
 				repository,
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
-				guidance,
+				guidance: guidance || undefined,
 				agentSession,
 				labels,
 				isNewSession: true,
@@ -1542,7 +1564,7 @@ export class EdgeWorker extends EventEmitter {
 	 * all agent session managers to find it.
 	 */
 	private async handleStopSignal(
-		webhook: LinearAgentSessionPromptedWebhook,
+		webhook: AgentSessionPromptedWebhook,
 	): Promise<void> {
 		const agentSessionId = webhook.agentSession.id;
 		const { issue } = webhook.agentSession;
@@ -1582,7 +1604,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Post confirmation
-		const issueTitle = issue.title || "this issue";
+		const issueTitle = issue?.title || "this issue";
 		const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
 
 		await foundManager.createResponseActivity(agentSessionId, stopConfirmation);
@@ -1597,11 +1619,25 @@ export class EdgeWorker extends EventEmitter {
 	 * In both cases, the selected repository is cached for future use.
 	 */
 	private async handleRepositorySelectionResponse(
-		webhook: LinearAgentSessionPromptedWebhook,
+		webhook: AgentSessionPromptedWebhook,
 	): Promise<void> {
 		const { agentSession, agentActivity, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
 		const agentSessionId = agentSession.id;
+
+		if (!agentActivity) {
+			console.warn(
+				"[EdgeWorker] Cannot handle repository selection without agentActivity",
+			);
+			return;
+		}
+
+		if (!agentSession.issue) {
+			console.warn(
+				"[EdgeWorker] Cannot handle repository selection without issue",
+			);
+			return;
+		}
 
 		const userMessage = agentActivity.content.body;
 
@@ -1652,12 +1688,27 @@ export class EdgeWorker extends EventEmitter {
 	 * Branch 3 of agentSessionPrompted (see packages/CLAUDE.md)
 	 */
 	private async handleNormalPromptedActivity(
-		webhook: LinearAgentSessionPromptedWebhook,
+		webhook: AgentSessionPromptedWebhook,
 		repository: RepositoryConfig,
 	): Promise<void> {
 		const { agentSession } = webhook;
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
+
+		if (!issue) {
+			console.warn(
+				"[EdgeWorker] Cannot handle prompted activity without issue",
+			);
+			return;
+		}
+
+		if (!webhook.agentActivity) {
+			console.warn(
+				"[EdgeWorker] Cannot handle prompted activity without agentActivity",
+			);
+			return;
+		}
+
 		const commentId = webhook.agentActivity.sourceCommentId;
 
 		// Initialize the agent session in AgentSessionManager
@@ -1728,10 +1779,10 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Need to fetch full issue for routing context
-			const linearClient = this.linearClients.get(repository.id);
-			if (linearClient) {
+			const issueTracker = this.issueTrackers.get(repository.id);
+			if (issueTracker) {
 				try {
-					fullIssue = await linearClient.issue(issue.id);
+					fullIssue = await issueTracker.fetchIssue(issue.id);
 				} catch (error) {
 					console.warn(
 						`[EdgeWorker] Failed to fetch full issue for routing: ${issue.id}`,
@@ -1755,11 +1806,11 @@ export class EdgeWorker extends EventEmitter {
 		// Acknowledgment already posted above for both new and existing sessions
 		// (before any async routing work to ensure instant user feedback)
 
-		// Get Linear client for this repository
-		const linearClient = this.linearClients.get(repository.id);
-		if (!linearClient) {
+		// Get issue tracker for this repository
+		const issueTracker = this.issueTrackers.get(repository.id);
+		if (!issueTracker) {
 			console.error(
-				"Unexpected: There was no LinearClient for the repository with id",
+				"Unexpected: There was no IssueTrackerService for the repository with id",
 				repository.id,
 			);
 			return;
@@ -1779,36 +1830,25 @@ export class EdgeWorker extends EventEmitter {
 		let commentAuthor: string | undefined;
 		let commentTimestamp: string | undefined;
 
-		try {
-			const result = await linearClient.client.rawRequest(
-				`
-          query GetComment($id: String!) {
-            comment(id: $id) {
-              id
-              body
-              createdAt
-              updatedAt
-              user {
-                name
-                displayName
-                email
-                id
-              }
-            }
-          }
-        `,
-				{ id: commentId },
+		if (!commentId) {
+			console.warn(
+				"[EdgeWorker] No comment ID provided for attachment handling",
 			);
+		}
 
-			// Extract comment data
-			const comment = (result.data as any).comment;
+		try {
+			const comment = commentId
+				? await issueTracker.fetchComment(commentId)
+				: null;
 
 			// Extract comment metadata for multi-player context
 			if (comment) {
-				const user = comment.user;
+				const user = await comment.user;
 				commentAuthor =
 					user?.displayName || user?.name || user?.email || "Unknown";
-				commentTimestamp = comment.createdAt || new Date().toISOString();
+				commentTimestamp = comment.createdAt
+					? comment.createdAt.toISOString()
+					: new Date().toISOString();
 			}
 
 			// Count existing attachments
@@ -1818,12 +1858,19 @@ export class EdgeWorker extends EventEmitter {
 			).length;
 
 			// Download new attachments from the comment
-			const downloadResult = await this.downloadCommentAttachments(
-				comment.body,
-				attachmentsDir,
-				repository.linearToken,
-				existingAttachmentCount,
-			);
+			const downloadResult = comment
+				? await this.downloadCommentAttachments(
+						comment.body,
+						attachmentsDir,
+						repository.linearToken,
+						existingAttachmentCount,
+					)
+				: {
+						totalNewAttachments: 0,
+						newAttachmentMap: {},
+						newImageMap: {},
+						failedCount: 0,
+					};
 
 			if (downloadResult.totalNewAttachments > 0) {
 				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
@@ -1864,14 +1911,14 @@ export class EdgeWorker extends EventEmitter {
 	 * @param webhook The prompted webhook containing user's message
 	 */
 	private async handleUserPromptedAgentActivity(
-		webhook: LinearAgentSessionPromptedWebhook,
+		webhook: AgentSessionPromptedWebhook,
 	): Promise<void> {
 		const agentSessionId = webhook.agentSession.id;
 
 		// Branch 1: Handle stop signal (checked FIRST, before any routing work)
 		// Per CLAUDE.md: "an agentSession MUST already exist" for stop signals
 		// IMPORTANT: Stop signals do NOT require repository lookup
-		if (webhook.agentActivity.signal === "stop") {
+		if (webhook.agentActivity?.signal === "stop") {
 			await this.handleStopSignal(webhook);
 			return;
 		}
@@ -1914,7 +1961,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @param repository Repository configuration
 	 */
 	private async handleIssueUnassigned(
-		issue: LinearWebhookIssue,
+		issue: WebhookIssue,
 		repository: RepositoryConfig,
 	): Promise<void> {
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -2088,7 +2135,7 @@ export class EdgeWorker extends EventEmitter {
 		issue: LinearIssue,
 		repository: RepositoryConfig,
 		attachmentManifest: string = "",
-		guidance?: LinearWebhookGuidanceRule[],
+		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		console.log(
 			`[EdgeWorker] buildLabelBasedPrompt called for issue ${issue.identifier}`,
@@ -2136,11 +2183,13 @@ export class EdgeWorker extends EventEmitter {
 			}
 
 			// Get LinearClient for this repository
-			const linearClient = this.linearClients.get(repository.id);
-			if (!linearClient) {
-				console.error(`No LinearClient found for repository ${repository.id}`);
+			const issueTracker = this.issueTrackers.get(repository.id);
+			if (!issueTracker) {
+				console.error(
+					`No IssueTrackerService found for repository ${repository.id}`,
+				);
 				throw new Error(
-					`No LinearClient found for repository ${repository.id}`,
+					`No IssueTrackerService found for repository ${repository.id}`,
 				);
 			}
 
@@ -2153,7 +2202,7 @@ export class EdgeWorker extends EventEmitter {
 				);
 
 				// Fetch teams
-				const teamsConnection = await linearClient.teams();
+				const teamsConnection = await issueTracker.fetchTeams();
 				const teamsArray = [];
 				for (const team of teamsConnection.nodes) {
 					teamsArray.push({
@@ -2172,7 +2221,7 @@ export class EdgeWorker extends EventEmitter {
 					.join("\n");
 
 				// Fetch labels
-				const labelsConnection = await linearClient.issueLabels();
+				const labelsConnection = await issueTracker.fetchLabels();
 				const labelsArray = [];
 				for (const label of labelsConnection.nodes) {
 					labelsArray.push({
@@ -2247,9 +2296,9 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async buildMentionPrompt(
 		issue: LinearIssue,
-		agentSession: LinearWebhookAgentSession,
+		agentSession: WebhookAgentSession,
 		attachmentManifest: string = "",
-		guidance?: LinearWebhookGuidanceRule[],
+		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		try {
 			console.log(
@@ -2317,7 +2366,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	 * @param guidance Array of guidance rules from Linear
 	 * @returns Formatted markdown string with guidance, or empty string if no guidance
 	 */
-	private formatAgentGuidance(guidance?: LinearWebhookGuidanceRule[]): string {
+	private formatAgentGuidance(guidance?: GuidanceRule[]): string {
 		if (!guidance || guidance.length === 0) {
 			return "";
 		}
@@ -2545,9 +2594,9 @@ ${reply.body}
 	private async buildIssueContextPrompt(
 		issue: LinearIssue,
 		repository: RepositoryConfig,
-		newComment?: LinearWebhookComment,
+		newComment?: WebhookComment,
 		attachmentManifest: string = "",
-		guidance?: LinearWebhookGuidanceRule[],
+		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		console.log(
 			`[EdgeWorker] buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
@@ -2590,17 +2639,15 @@ ${reply.body}
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
-			const linearClient = this.linearClients.get(repository.id);
+			const issueTracker = this.issueTrackers.get(repository.id);
 			let commentThreads = "No comments yet.";
 
-			if (linearClient && issue.id) {
+			if (issueTracker && issue.id) {
 				try {
 					console.log(
 						`[EdgeWorker] Fetching comments for issue ${issue.identifier}`,
 					);
-					const comments = await linearClient.comments({
-						filter: { issue: { id: { eq: issue.id } } },
-					});
+					const comments = await issueTracker.fetchComments(issue.id);
 
 					const commentNodes = comments.nodes;
 					if (commentNodes.length > 0) {
@@ -2658,11 +2705,9 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				// Now replace the new comment variables
 				// We'll need to fetch the comment author
 				let authorName = "Unknown";
-				if (linearClient) {
+				if (issueTracker) {
 					try {
-						const fullComment = await linearClient.comment({
-							id: newComment.id,
-						});
+						const fullComment = await issueTracker.fetchComment(newComment.id);
 						const user = await fullComment.user;
 						authorName =
 							user?.displayName || user?.name || user?.email || "Unknown";
@@ -2783,7 +2828,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	/**
 	 * Move issue to started state when assigned
 	 * @param issue Full Linear issue object from Linear SDK
-	 * @param repositoryId Repository ID for Linear client lookup
+	 * @param repositoryId Repository ID for issue tracker lookup
 	 */
 
 	private async moveIssueToStartedState(
@@ -2791,10 +2836,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const issueTracker = this.issueTrackers.get(repositoryId);
+			if (!issueTracker) {
 				console.warn(
-					`No Linear client found for repository ${repositoryId}, skipping state update`,
+					`No issue tracker found for repository ${repositoryId}, skipping state update`,
 				);
 				return;
 			}
@@ -2818,9 +2863,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}
 
 			// Get available workflow states for the issue's team
-			const teamStates = await linearClient.workflowStates({
-				filter: { team: { id: { eq: team.id } } },
-			});
+			const teamStates = await issueTracker.fetchWorkflowStates(team.id);
 
 			const states = teamStates;
 
@@ -2851,7 +2894,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return;
 			}
 
-			await linearClient.updateIssue(issue.id, {
+			await issueTracker.updateIssue(issue.id, {
 				stateId: startedState.id,
 			});
 
@@ -2872,16 +2915,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	// private async postInitialComment(issueId: string, repositoryId: string): Promise<void> {
 	//   const body = "I'm getting started right away."
-	//   // Get the Linear client for this repository
-	//   const linearClient = this.linearClients.get(repositoryId)
-	//   if (!linearClient) {
-	//     throw new Error(`No Linear client found for repository ${repositoryId}`)
+	//   // Get the issue tracker for this repository
+	//   const issueTracker = this.issueTrackers.get(repositoryId)
+	//   if (!issueTracker) {
+	//     throw new Error(`No issue tracker found for repository ${repositoryId}`)
 	//   }
 	//   const commentData = {
-	//     issueId,
+
 	//     body
 	//   }
-	//   await linearClient.createComment(commentData)
+	//   await issueTracker.createComment(commentData)
 	// }
 
 	/**
@@ -2893,20 +2936,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repositoryId: string,
 		parentId?: string,
 	): Promise<void> {
-		// Get the Linear client for this repository
-		const linearClient = this.linearClients.get(repositoryId);
-		if (!linearClient) {
-			throw new Error(`No Linear client found for repository ${repositoryId}`);
+		// Get the issue tracker for this repository
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			throw new Error(`No issue tracker found for repository ${repositoryId}`);
 		}
-		const commentData: { issueId: string; body: string; parentId?: string } = {
-			issueId,
+		const commentInput: { body: string; parentId?: string } = {
 			body,
 		};
 		// Add parent ID if provided (for reply)
 		if (parentId) {
-			commentData.parentId = parentId;
+			commentInput.parentId = parentId;
 		}
-		await linearClient.createComment(commentData);
+		await issueTracker.createComment(issueId, commentInput);
 	}
 
 	/**
@@ -2973,11 +3015,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 			// Extract URLs from comments if available
 			const commentUrls: string[] = [];
-			const linearClient = this.linearClients.get(repository.id);
+			const issueTracker = this.issueTrackers.get(repository.id);
 
 			// Fetch native Linear attachments (e.g., Sentry links)
 			const nativeAttachments: Array<{ title: string; url: string }> = [];
-			if (linearClient && issue.id) {
+			if (issueTracker && issue.id) {
 				try {
 					// Fetch native attachments using Linear SDK
 					console.log(
@@ -3000,9 +3042,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				}
 
 				try {
-					const comments = await linearClient.comments({
-						filter: { issue: { id: { eq: issue.id } } },
-					});
+					const comments = await issueTracker.fetchComments(issue.id);
 					const commentNodes = comments.nodes;
 					for (const comment of commentNodes) {
 						const urls = this.extractAttachmentUrls(comment.body);
@@ -3483,14 +3523,14 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					}
 
 					// Post thought to Linear showing feedback receipt
-					const linearClient = this.linearClients.get(childRepo.id);
-					if (linearClient) {
+					const issueTracker = this.issueTrackers.get(childRepo.id);
+					if (issueTracker) {
 						const feedbackThought = parentIssueId
 							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
 							: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
 
 						try {
-							const result = await linearClient.createAgentActivity({
+							const result = await issueTracker.createAgentActivity({
 								agentSessionId: childSessionId,
 								content: {
 									type: "thought",
@@ -3956,8 +3996,8 @@ ${input.userComment}
 		repository: RepositoryConfig,
 		promptType: PromptType,
 		attachmentManifest?: string,
-		guidance?: LinearWebhookGuidanceRule[],
-		agentSession?: LinearWebhookAgentSession,
+		guidance?: GuidanceRule[],
+		agentSession?: WebhookAgentSession,
 	): Promise<IssueContextResult> {
 		// Delegate to appropriate builder based on promptType
 		if (promptType === "mention") {
@@ -4387,10 +4427,10 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const issueTracker = this.issueTrackers.get(repositoryId);
+			if (!issueTracker) {
 				console.warn(
-					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
 				);
 				return;
 			}
@@ -4403,7 +4443,7 @@ ${input.userComment}
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
 					`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
@@ -4430,10 +4470,10 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const issueTracker = this.issueTrackers.get(repositoryId);
+			if (!issueTracker) {
 				console.warn(
-					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
 				);
 				return;
 			}
@@ -4446,7 +4486,7 @@ ${input.userComment}
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
 					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
@@ -4483,10 +4523,10 @@ ${input.userComment}
 			| "user-selected",
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const issueTracker = this.issueTrackers.get(repositoryId);
+			if (!issueTracker) {
 				console.warn(
-					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
 				);
 				return;
 			}
@@ -4516,7 +4556,7 @@ ${input.userComment}
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
 					`[EdgeWorker] Posted repository selection activity for session ${linearAgentActivitySessionId} (${selectionMethod})`,
@@ -4555,12 +4595,12 @@ ${input.userComment}
 		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
 
 		// Fetch full issue and labels to check for Orchestrator label override
-		const linearClient = this.linearClients.get(repository.id);
+		const issueTracker = this.issueTrackers.get(repository.id);
 		let hasOrchestratorLabel = false;
 
-		if (linearClient) {
+		if (issueTracker) {
 			try {
-				const fullIssue = await linearClient.issue(session.issueId);
+				const fullIssue = await issueTracker.fetchIssue(session.issueId);
 				const labels = await this.fetchIssueLabels(fullIssue);
 
 				// Check for Orchestrator label (same logic as initial routing)
@@ -4724,10 +4764,10 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const issueTracker = this.issueTrackers.get(repositoryId);
+			if (!issueTracker) {
 				console.warn(
-					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
 				);
 				return;
 			}
@@ -4806,7 +4846,7 @@ ${input.userComment}
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
 					`[EdgeWorker] Posted system prompt selection thought for session ${linearAgentActivitySessionId} (${selectedPromptType} mode)`,
@@ -4982,10 +5022,10 @@ ${input.userComment}
 		isStreaming: boolean,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const issueTracker = this.issueTrackers.get(repositoryId);
+			if (!issueTracker) {
 				console.warn(
-					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
 				);
 				return;
 			}
@@ -5002,7 +5042,7 @@ ${input.userComment}
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
 					`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`,
@@ -5028,17 +5068,17 @@ ${input.userComment}
 		issueId: string,
 		repositoryId: string,
 	): Promise<LinearIssue | null> {
-		const linearClient = this.linearClients.get(repositoryId);
-		if (!linearClient) {
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
 			console.warn(
-				`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+				`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
 			);
 			return null;
 		}
 
 		try {
 			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`);
-			const fullIssue = await linearClient.issue(issueId);
+			const fullIssue = await issueTracker.fetchIssue(issueId);
 			console.log(
 				`[EdgeWorker] Successfully fetched issue details for ${issueId}`,
 			);

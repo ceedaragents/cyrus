@@ -16,18 +16,19 @@ export function createTestWorker(
 	repositories: RepositoryConfig[] = [],
 	linearWorkspaceSlug?: string,
 ): EdgeWorker {
-	// Create mock LinearClients for each repository
-	const linearClients = new Map();
+	// Create mock IssueTrackerServices for each repository
+	const issueTrackers = new Map();
 	for (const repo of repositories) {
-		// Create a minimal mock LinearClient with required methods
-		const mockClient = {
-			comments: () => Promise.resolve({ nodes: [] }),
-			comment: () => Promise.resolve({ user: null }),
+		// Create a minimal mock IssueTrackerService with required methods
+		const mockIssueTracker = {
+			getComments: () => Promise.resolve([]),
+			getComment: () => Promise.resolve(null),
+			getIssueLabels: () => Promise.resolve([]),
 			client: {
 				rawRequest: () => Promise.resolve({ data: { comment: { body: "" } } }),
 			},
 		};
-		linearClients.set(repo.id, mockClient as any);
+		issueTrackers.set(repo.id, mockIssueTracker as any);
 	}
 
 	const config: EdgeWorkerConfig = {
@@ -35,7 +36,7 @@ export function createTestWorker(
 		defaultModel: "sonnet",
 		linearWorkspaceSlug,
 		repositories,
-		linearClients,
+		issueTrackers,
 		mcpServers: {},
 	};
 	return new EdgeWorker(config);
@@ -131,17 +132,18 @@ export class PromptScenario {
 
 	withRepository(repo: any) {
 		this.input.repository = repo;
-		// Also ensure the worker has a LinearClient for this repository
-		if (!(this.worker as any).linearClients.has(repo.id)) {
-			const mockClient = {
-				comments: () => Promise.resolve({ nodes: [] }),
-				comment: () => Promise.resolve({ user: null }),
+		// Also ensure the worker has an IssueTrackerService for this repository
+		if (!(this.worker as any).issueTrackers.has(repo.id)) {
+			const mockIssueTracker = {
+				getComments: () => Promise.resolve([]),
+				getComment: () => Promise.resolve(null),
+				getIssueLabels: () => Promise.resolve([]),
 				client: {
 					rawRequest: () =>
 						Promise.resolve({ data: { comment: { body: "" } } }),
 				},
 			};
-			(this.worker as any).linearClients.set(repo.id, mockClient);
+			(this.worker as any).issueTrackers.set(repo.id, mockIssueTracker);
 		}
 		return this;
 	}

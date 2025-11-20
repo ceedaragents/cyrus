@@ -1,9 +1,10 @@
-import { AgentActivitySignal, type LinearClient } from "@linear/sdk";
-import type {
-	LinearAgentSessionCreatedWebhook,
-	LinearAgentSessionPromptedWebhook,
-	LinearWebhook,
-	RepositoryConfig,
+import {
+	AgentActivitySignal,
+	type AgentSessionCreatedWebhook,
+	type AgentSessionPromptedWebhook,
+	type IIssueTrackerService,
+	type RepositoryConfig,
+	type Webhook,
 } from "cyrus-core";
 
 /**
@@ -42,8 +43,8 @@ export interface RepositoryRouterDeps {
 	/** Check if an issue has active sessions in a repository */
 	hasActiveSession: (issueId: string, repositoryId: string) => boolean;
 
-	/** Get Linear client for a workspace */
-	getLinearClient: (workspaceId: string) => LinearClient | undefined;
+	/** Get issue tracker service for a workspace */
+	getIssueTracker: (workspaceId: string) => IIssueTrackerService | undefined;
 }
 
 /**
@@ -112,7 +113,7 @@ export class RepositoryRouter {
 	 * Priority 4: Catch-all repositories
 	 */
 	async determineRepositoryForWebhook(
-		webhook: LinearAgentSessionCreatedWebhook,
+		webhook: AgentSessionCreatedWebhook,
 		repos: RepositoryConfig[],
 	): Promise<RepositoryRoutingResult> {
 		const workspaceId = webhook.organizationId;
@@ -331,15 +332,15 @@ export class RepositoryRouter {
 			if (!repo.projectKeys || repo.projectKeys.length === 0) continue;
 
 			try {
-				const linearClient = this.deps.getLinearClient(workspaceId);
-				if (!linearClient) {
+				const issueTracker = this.deps.getIssueTracker(workspaceId);
+				if (!issueTracker) {
 					console.warn(
-						`[RepositoryRouter] No Linear client found for workspace ${workspaceId}`,
+						`[RepositoryRouter] No issue tracker found for workspace ${workspaceId}`,
 					);
 					continue;
 				}
 
-				const fullIssue = await linearClient.issue(issueId);
+				const fullIssue = await issueTracker.fetchIssue(issueId);
 				const project = await fullIssue?.project;
 				if (!project || !project.name) {
 					console.warn(
@@ -371,12 +372,19 @@ export class RepositoryRouter {
 	 * Elicit user repository selection - post elicitation to Linear
 	 */
 	async elicitUserRepositorySelection(
-		webhook: LinearAgentSessionCreatedWebhook,
+		webhook: AgentSessionCreatedWebhook,
 		workspaceRepos: RepositoryConfig[],
 	): Promise<void> {
 		const { agentSession } = webhook;
 		const agentSessionId = agentSession.id;
 		const { issue } = agentSession;
+
+		if (!issue) {
+			console.error(
+				"[RepositoryRouter] Cannot elicit repository selection without issue",
+			);
+			return;
+		}
 
 		console.log(
 			`[RepositoryRouter] Posting repository selection elicitation for issue ${issue.identifier}`,
@@ -397,11 +405,11 @@ export class RepositoryRouter {
 			return;
 		}
 
-		// Get Linear client for the workspace
-		const linearClient = this.deps.getLinearClient(webhook.organizationId);
-		if (!linearClient) {
+		// Get issue tracker for the workspace
+		const issueTracker = this.deps.getIssueTracker(webhook.organizationId);
+		if (!issueTracker) {
 			console.error(
-				`[RepositoryRouter] No Linear client found for workspace ${webhook.organizationId}`,
+				`[RepositoryRouter] No issue tracker found for workspace ${webhook.organizationId}`,
 			);
 			return;
 		}
@@ -413,7 +421,7 @@ export class RepositoryRouter {
 
 		// Post elicitation activity
 		try {
-			await linearClient.createAgentActivity({
+			await issueTracker.createAgentActivity({
 				agentSessionId,
 				content: {
 					type: "elicitation",
@@ -434,7 +442,7 @@ export class RepositoryRouter {
 
 			await this.postRepositorySelectionError(
 				agentSessionId,
-				linearClient,
+				issueTracker,
 				error,
 			);
 
@@ -447,14 +455,14 @@ export class RepositoryRouter {
 	 */
 	private async postRepositorySelectionError(
 		agentSessionId: string,
-		linearClient: LinearClient,
+		issueTracker: IIssueTrackerService,
 		error: unknown,
 	): Promise<void> {
 		const errorObj = error as Error;
 		const errorMessage = errorObj?.message || String(error);
 
 		try {
-			await linearClient.createAgentActivity({
+			await issueTracker.createAgentActivity({
 				agentSessionId,
 				content: {
 					type: "error",
@@ -530,7 +538,7 @@ export class RepositoryRouter {
 	/**
 	 * Extract issue information from webhook
 	 */
-	private extractIssueInfo(webhook: LinearWebhook): {
+	private extractIssueInfo(webhook: Webhook): {
 		issueId?: string;
 		teamKey?: string;
 		issueIdentifier?: string;
@@ -559,14 +567,14 @@ export class RepositoryRouter {
 	 * Type guards
 	 */
 	private isAgentSessionCreatedWebhook(
-		webhook: LinearWebhook,
-	): webhook is LinearAgentSessionCreatedWebhook {
+		webhook: Webhook,
+	): webhook is AgentSessionCreatedWebhook {
 		return webhook.action === "created";
 	}
 
 	private isAgentSessionPromptedWebhook(
-		webhook: LinearWebhook,
-	): webhook is LinearAgentSessionPromptedWebhook {
+		webhook: Webhook,
+	): webhook is AgentSessionPromptedWebhook {
 		return webhook.action === "prompted";
 	}
 

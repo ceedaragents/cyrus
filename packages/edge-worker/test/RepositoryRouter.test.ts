@@ -154,7 +154,7 @@ class RoutingTestEnvironment {
 				.mockImplementation((issueId: string, repoId: string) => {
 					return this.activeSessions.get(issueId)?.has(repoId) || false;
 				}),
-			getLinearClient: vi.fn().mockReturnValue(this.mockLinearClient),
+			getIssueTracker: vi.fn().mockReturnValue(this.mockLinearClient),
 		};
 
 		this.router = new RepositoryRouter(this.mockDeps);

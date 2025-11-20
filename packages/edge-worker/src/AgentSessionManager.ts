@@ -1,4 +1,3 @@
-import { type LinearClient, LinearDocument } from "@linear/sdk";
 import type {
 	APIAssistantMessage,
 	APIUserMessage,
@@ -10,26 +9,31 @@ import type {
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "cyrus-claude-runner";
-import type {
-	CyrusAgentSession,
-	CyrusAgentSessionEntry,
-	IssueMinimal,
-	SerializedCyrusAgentSession,
-	SerializedCyrusAgentSessionEntry,
-	Workspace,
+import {
+	type AgentActivityCreateInput,
+	AgentActivitySignal,
+	AgentSessionStatus,
+	AgentSessionType,
+	type CyrusAgentSession,
+	type CyrusAgentSessionEntry,
+	type IIssueTrackerService,
+	type IssueMinimal,
+	type SerializedCyrusAgentSession,
+	type SerializedCyrusAgentSessionEntry,
+	type Workspace,
 } from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
 /**
- * Manages Linear Agent Sessions integration with Claude Code SDK
+ * Manages Agent Sessions integration with Claude Code SDK
  * Transforms Claude streaming messages into Agent Session format
  * Handles session lifecycle: create → active → complete/error
  *
  * CURRENTLY BEING HANDLED 'per repository'
  */
 export class AgentSessionManager {
-	private linearClient: LinearClient;
+	private issueTracker: IIssueTrackerService;
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
@@ -49,7 +53,7 @@ export class AgentSessionManager {
 	) => Promise<void>;
 
 	constructor(
-		linearClient: LinearClient,
+		issueTracker: IIssueTrackerService,
 		getParentSessionId?: (childSessionId: string) => string | undefined,
 		resumeParentSession?: (
 			parentSessionId: string,
@@ -62,7 +66,7 @@ export class AgentSessionManager {
 		procedureRouter?: ProcedureRouter,
 		sharedApplicationServer?: SharedApplicationServer,
 	) {
-		this.linearClient = linearClient;
+		this.issueTracker = issueTracker;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.resumeNextSubroutine = resumeNextSubroutine;
@@ -86,9 +90,9 @@ export class AgentSessionManager {
 
 		const agentSession: CyrusAgentSession = {
 			linearAgentActivitySessionId,
-			type: LinearDocument.AgentSessionType.CommentThread,
-			status: LinearDocument.AgentSessionStatus.Active,
-			context: LinearDocument.AgentSessionType.CommentThread,
+			type: AgentSessionType.CommentThread,
+			status: AgentSessionStatus.Active,
+			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
 			issueId,
@@ -606,8 +610,8 @@ export class AgentSessionManager {
 
 		const status =
 			resultMessage.subtype === "success"
-				? LinearDocument.AgentSessionStatus.Complete
-				: LinearDocument.AgentSessionStatus.Error;
+				? AgentSessionStatus.Complete
+				: AgentSessionStatus.Error;
 
 		// Update session status and metadata
 		await this.updateSessionStatus(linearAgentActivitySessionId, status, {
@@ -924,7 +928,7 @@ export class AgentSessionManager {
 			// Mark session as error state
 			await this.updateSessionStatus(
 				linearAgentActivitySessionId,
-				LinearDocument.AgentSessionStatus.Error,
+				AgentSessionStatus.Error,
 			);
 		}
 	}
@@ -934,7 +938,7 @@ export class AgentSessionManager {
 	 */
 	private async updateSessionStatus(
 		linearAgentActivitySessionId: string,
-		status: LinearDocument.AgentSessionStatus,
+		status: AgentSessionStatus,
 		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
 	): Promise<void> {
 		const session = this.sessions.get(linearAgentActivitySessionId);
@@ -1319,13 +1323,13 @@ export class AgentSessionManager {
 				}
 			}
 
-			const activityInput: LinearDocument.AgentActivityCreateInput = {
+			const activityInput: AgentActivityCreateInput = {
 				agentSessionId: session.linearAgentActivitySessionId, // Use the Linear session ID
 				content,
 				...(ephemeral && { ephemeral: true }),
 			};
 
-			const result = await this.linearClient.createAgentActivity(activityInput);
+			const result = await this.issueTracker.createAgentActivity(activityInput);
 
 			if (result.success && result.agentActivity) {
 				const agentActivity = await result.agentActivity;
@@ -1370,7 +1374,7 @@ export class AgentSessionManager {
 	 */
 	getActiveSessions(): CyrusAgentSession[] {
 		return Array.from(this.sessions.values()).filter(
-			(session) => session.status === LinearDocument.AgentSessionStatus.Active,
+			(session) => session.status === AgentSessionStatus.Active,
 		);
 	}
 
@@ -1431,7 +1435,7 @@ export class AgentSessionManager {
 		return Array.from(this.sessions.values()).filter(
 			(session) =>
 				session.issueId === issueId &&
-				session.status === LinearDocument.AgentSessionStatus.Active,
+				session.status === AgentSessionStatus.Active,
 		);
 	}
 
@@ -1473,7 +1477,7 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
+			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: session.linearAgentActivitySessionId,
 				content: {
 					type: "thought",
@@ -1527,7 +1531,7 @@ export class AgentSessionManager {
 				content.result = result;
 			}
 
-			const response = await this.linearClient.createAgentActivity({
+			const response = await this.issueTracker.createAgentActivity({
 				agentSessionId: session.linearAgentActivitySessionId,
 				content,
 			});
@@ -1563,7 +1567,7 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
+			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: session.linearAgentActivitySessionId,
 				content: {
 					type: "response",
@@ -1602,7 +1606,7 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
+			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: session.linearAgentActivitySessionId,
 				content: {
 					type: "error",
@@ -1644,7 +1648,7 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
+			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: session.linearAgentActivitySessionId,
 				content: {
 					type: "elicitation",
@@ -1687,13 +1691,13 @@ export class AgentSessionManager {
 		}
 
 		try {
-			const result = await this.linearClient.createAgentActivity({
+			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: session.linearAgentActivitySessionId,
 				content: {
 					type: "elicitation",
 					body,
 				},
-				signal: LinearDocument.AgentActivitySignal.Auth,
+				signal: AgentActivitySignal.Auth,
 				signalMetadata: {
 					url: approvalUrl,
 				},
@@ -1804,7 +1808,7 @@ export class AgentSessionManager {
 		model: string,
 	): Promise<void> {
 		try {
-			const result = await this.linearClient.createAgentActivity({
+			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: linearAgentActivitySessionId,
 				content: {
 					type: "thought",
@@ -1837,7 +1841,7 @@ export class AgentSessionManager {
 		linearAgentActivitySessionId: string,
 	): Promise<string | null> {
 		try {
-			const result = await this.linearClient.createAgentActivity({
+			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: linearAgentActivitySessionId,
 				content: {
 					type: "thought",
@@ -1877,7 +1881,7 @@ export class AgentSessionManager {
 		classification: string,
 	): Promise<void> {
 		try {
-			const result = await this.linearClient.createAgentActivity({
+			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: linearAgentActivitySessionId,
 				content: {
 					type: "thought",
@@ -1922,7 +1926,7 @@ export class AgentSessionManager {
 		try {
 			if (message.status === "compacting") {
 				// Create an ephemeral thought for the compacting status
-				const result = await this.linearClient.createAgentActivity({
+				const result = await this.issueTracker.createAgentActivity({
 					agentSessionId: session.linearAgentActivitySessionId,
 					content: {
 						type: "thought",
@@ -1949,7 +1953,7 @@ export class AgentSessionManager {
 				}
 			} else if (message.status === null) {
 				// Clear the status - post a non-ephemeral thought to replace the ephemeral one
-				const result = await this.linearClient.createAgentActivity({
+				const result = await this.issueTracker.createAgentActivity({
 					agentSessionId: session.linearAgentActivitySessionId,
 					content: {
 						type: "thought",

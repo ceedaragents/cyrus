@@ -81,11 +81,11 @@ describe("EdgeWorker - Native Attachments", () => {
 				} as AttachmentConnection),
 			} as unknown as LinearIssue;
 
-			// Mock LinearClient
-			const mockLinearClient = {
-				comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			// Mock IssueTrackerService
+			const mockIssueTracker = {
+				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).linearClients.set("test-repo", mockLinearClient);
+			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
 
 			// Call the method
 			const result = await (edgeWorker as any).downloadIssueAttachments(
@@ -120,10 +120,10 @@ describe("EdgeWorker - Native Attachments", () => {
 				} as AttachmentConnection),
 			} as unknown as LinearIssue;
 
-			const mockLinearClient = {
-				comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			const mockIssueTracker = {
+				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).linearClients.set("test-repo", mockLinearClient);
+			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
 
 			const result = await (edgeWorker as any).downloadIssueAttachments(
 				mockIssue,
@@ -147,10 +147,10 @@ describe("EdgeWorker - Native Attachments", () => {
 				attachments: vi.fn().mockRejectedValue(new Error("API Error")),
 			} as unknown as LinearIssue;
 
-			const mockLinearClient = {
-				comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			const mockIssueTracker = {
+				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).linearClients.set("test-repo", mockLinearClient);
+			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
 
 			// Should not throw, but handle gracefully
 			const result = await (edgeWorker as any).downloadIssueAttachments(

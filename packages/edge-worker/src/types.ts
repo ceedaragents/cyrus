@@ -1,6 +1,5 @@
-import type { Issue as LinearIssue } from "@linear/sdk";
 import type { SDKMessage } from "cyrus-claude-runner";
-import type { CyrusAgentSession, Workspace } from "cyrus-core";
+import type { CyrusAgentSession, Issue, Workspace } from "cyrus-core";
 
 /**
  * Events emitted by EdgeWorker
@@ -13,7 +12,7 @@ export interface EdgeWorkerEvents {
 	// Session events (now includes repository ID)
 	"session:started": (
 		issueId: string,
-		issue: LinearIssue,
+		issue: Issue,
 		repositoryId: string,
 	) => void;
 	"session:ended": (
@@ -45,11 +44,11 @@ export interface EdgeWorkerEvents {
 }
 
 /**
- * Data returned from createLinearAgentSession
+ * Data returned from createAgentSession
  */
-export interface LinearAgentSessionData {
+export interface AgentSessionData {
 	session: CyrusAgentSession;
-	fullIssue: LinearIssue;
+	fullIssue: Issue;
 	workspace: Workspace;
 	attachmentResult: { manifest: string; attachmentsDir: string | null };
 	attachmentsDir: string;

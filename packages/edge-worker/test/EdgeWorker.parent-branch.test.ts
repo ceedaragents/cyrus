@@ -99,6 +99,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 			updateIssue: vi.fn().mockResolvedValue({ success: true }),
 			createAgentActivity: vi.fn().mockResolvedValue({ success: true }),
 			comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			rawRequest: vi.fn(), // Add rawRequest to avoid validation warnings
 		};
 		vi.mocked(LinearClient).mockImplementation(() => mockLinearClient);
 
@@ -187,6 +188,18 @@ Base Branch: {{base_branch}}`;
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
+
+		// Inject mock issue tracker for the test repository
+		// The EdgeWorker constructor creates real LinearIssueTrackerService instances,
+		// but we need to replace them with mocks for testing
+		const mockIssueTracker = {
+			fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
+				// Return the same mock data as mockLinearClient.issue()
+				return mockLinearClient.issue(issueId);
+			}),
+			getIssueLabels: vi.fn().mockResolvedValue([]),
+		};
+		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
 
 		// Mock branchExists to always return true so parent branches are used
 		vi.spyOn(edgeWorker as any, "branchExists").mockResolvedValue(true);

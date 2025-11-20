@@ -1,41 +1,29 @@
-import { LinearClient } from "@linear/sdk";
 import type { SDKStatusMessage } from "cyrus-claude-runner";
+import type { IIssueTrackerService } from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
 
-// Mock LinearClient
-vi.mock("@linear/sdk", () => ({
-	LinearClient: vi.fn().mockImplementation(() => ({
-		createAgentActivity: vi.fn(),
-	})),
-	LinearDocument: {
-		AgentSessionType: {
-			CommentThread: "comment_thread",
-		},
-		AgentSessionStatus: {
-			Active: "active",
-			Complete: "complete",
-			Error: "error",
-		},
-	},
-}));
-
 describe("AgentSessionManager - Status Messages", () => {
 	let manager: AgentSessionManager;
-	let mockLinearClient: any;
+	let mockIssueTracker: IIssueTrackerService;
 	let createAgentActivitySpy: any;
 	const sessionId = "test-session-123";
 	const issueId = "issue-123";
 
 	beforeEach(() => {
-		mockLinearClient = new LinearClient({ apiKey: "test" });
-		createAgentActivitySpy = vi.spyOn(mockLinearClient, "createAgentActivity");
-		createAgentActivitySpy.mockResolvedValue({
-			success: true,
-			agentActivity: Promise.resolve({ id: "activity-123" }),
-		});
+		// Create mock IIssueTrackerService
+		mockIssueTracker = {
+			createAgentActivity: vi.fn().mockResolvedValue({
+				success: true,
+				agentActivity: Promise.resolve({ id: "activity-123" }),
+			}),
+			fetchIssue: vi.fn(),
+			getIssueLabels: vi.fn().mockResolvedValue([]),
+		} as any;
 
-		manager = new AgentSessionManager(mockLinearClient);
+		createAgentActivitySpy = vi.spyOn(mockIssueTracker, "createAgentActivity");
+
+		manager = new AgentSessionManager(mockIssueTracker);
 
 		// Create a test session
 		manager.createLinearAgentSession(

@@ -5,12 +5,12 @@
  * with well-defined inputs and outputs.
  */
 
-import type { Issue as LinearIssue } from "@linear/sdk";
 import type {
 	CyrusAgentSession,
-	LinearWebhookAgentSession,
-	LinearWebhookGuidanceRule,
+	GuidanceRule,
+	Issue,
 	RepositoryConfig,
+	WebhookAgentSession,
 } from "cyrus-core";
 
 /**
@@ -70,8 +70,8 @@ export interface PromptAssemblyInput {
 	/** The Cyrus agent session */
 	session: CyrusAgentSession;
 
-	/** Full Linear issue details */
-	fullIssue: LinearIssue;
+	/** Full issue details */
+	fullIssue: Issue;
 
 	/** Repository configuration */
 	repository: RepositoryConfig;
@@ -90,7 +90,7 @@ export interface PromptAssemblyInput {
 	attachmentManifest?: string;
 
 	/** Linear agent guidance rules */
-	guidance?: LinearWebhookGuidanceRule[];
+	guidance?: GuidanceRule[];
 
 	// ===== Control Flags =====
 	/** Whether this is a new session (vs continuation) */
@@ -106,7 +106,7 @@ export interface PromptAssemblyInput {
 	isLabelBasedPromptRequested?: boolean;
 
 	/** Agent session data (for mention-triggered prompts) */
-	agentSession?: LinearWebhookAgentSession;
+	agentSession?: WebhookAgentSession;
 
 	/** Labels on the issue (for system prompt determination) */
 	labels?: string[];
