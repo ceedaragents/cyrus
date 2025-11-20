@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)
-- MCP server tools renamed: `cyrus-tools` is now `issue-tracker-ext`, and `linear` namespace is now `issue-tracker`
+- Linear MCP namespace renamed from `linear` to `issue-tracker` for platform-agnostic terminology (CYPACK-388)
 
 ## [0.2.1] - 2025-11-15
 

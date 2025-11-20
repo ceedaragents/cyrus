@@ -14,6 +14,7 @@ import type {
 } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
+	createCyrusToolsServer,
 	createImageToolsServer,
 	createSoraToolsServer,
 	getAllTools,
@@ -76,7 +77,6 @@ import {
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
-import { createExtendedMcpTools as createLinearExtendedMcpTools } from "./tools/linear-extended-mcp-tools.js";
 import type { EdgeWorkerEvents, LinearAgentSessionData } from "./types.js";
 
 export declare interface EdgeWorker {
@@ -3512,18 +3512,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	): Record<string, McpServerConfig> {
 		const mcpConfig: Record<string, McpServerConfig> = {};
 
-		// Common callbacks for both platforms
-		const sessionCallbacks = {
-			parentSessionId,
-			onSessionCreated: (childSessionId: string, parentId: string) =>
-				this.registerChildSession(childSessionId, parentId),
-			onFeedbackDelivery: (childSessionId: string, message: string) =>
-				this.handleFeedbackDelivery(childSessionId, message),
-		};
-
-		// Get issue tracker service for this repository
-		const issueTracker = this.issueTrackers.get(repository.id);
-
 		// Configure Linear HTTP MCP server
 		if (repository.linearToken) {
 			mcpConfig["issue-tracker"] = {
@@ -3535,23 +3523,20 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			};
 		}
 
-		// Configure extended Linear MCP server
-		if (issueTracker) {
-			const extConfig = issueTracker.createExtendedMcpServer(
-				sessionCallbacks,
-			) as {
-				type: "linear-factory";
-				linearToken: string;
-				options: typeof sessionCallbacks;
-			};
-
-			// Use createLinearExtendedMcpTools
-			if (extConfig.type === "linear-factory") {
-				mcpConfig["issue-tracker-ext"] = createLinearExtendedMcpTools(
-					extConfig.linearToken,
-					extConfig.options,
-				);
-			}
+		// Configure Cyrus tools MCP server (extended Linear features)
+		if (repository.linearToken) {
+			mcpConfig["cyrus-tools"] = createCyrusToolsServer(
+				repository.linearToken,
+				{
+					parentSessionId,
+					onSessionCreated: (childSessionId, parentId) => {
+						this.registerChildSession(childSessionId, parentId);
+					},
+					onFeedbackDelivery: async (childSessionId, message) => {
+						return this.handleFeedbackDelivery(childSessionId, message);
+					},
+				},
+			);
 		}
 
 		// Add OpenAI-based MCP servers if API key is configured (both platforms)
