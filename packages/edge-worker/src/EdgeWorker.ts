@@ -332,6 +332,10 @@ export class EdgeWorker extends EventEmitter {
 		// Load persisted state for each repository
 		await this.loadPersistedState();
 
+		// Clear active work status on startup (ensures clean state after restart)
+		await this.persistenceManager.clearActiveWork();
+		console.log("[EdgeWorker] Active work status cleared on startup");
+
 		// Start config file watcher if configPath is provided
 		if (this.configPath) {
 			this.startConfigWatcher();
@@ -1525,6 +1529,19 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`,
 			);
+
+			// Mark that Cyrus is actively working on this issue
+			await this.persistenceManager.setActiveWork({
+				issueId: fullIssue.id,
+				issueIdentifier: fullIssue.identifier,
+				repositoryId: repository.id,
+				sessionId: linearAgentActivitySessionId,
+				startedAt: Date.now(),
+			});
+			console.log(
+				`[EdgeWorker] Active work status set for ${fullIssue.identifier}`,
+			);
+
 			// Note: AgentSessionManager will be initialized automatically when the first system message
 			// is received via handleClaudeMessage() callback
 		} catch (error) {
@@ -1580,6 +1597,10 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Stopped Claude session for agent activity session ${agentSessionId}`,
 			);
 		}
+
+		// Clear active work status
+		await this.persistenceManager.clearActiveWork();
+		console.log(`[EdgeWorker] Active work status cleared (stop signal)`);
 
 		// Post confirmation
 		const issueTitle = issue.title || "this issue";
@@ -1946,6 +1967,14 @@ export class EdgeWorker extends EventEmitter {
 				"I've been unassigned and am stopping work now.",
 				repository.id,
 				// No parentId - post as a new comment on the issue
+			);
+		}
+
+		// Clear active work status
+		if (activeThreadCount > 0) {
+			await this.persistenceManager.clearActiveWork();
+			console.log(
+				`[EdgeWorker] Active work status cleared for ${issue.identifier}`,
 			);
 		}
 

@@ -36,6 +36,10 @@ vi.mock("cyrus-core", async (importOriginal) => {
 		PersistenceManager: vi.fn().mockImplementation(() => ({
 			loadEdgeWorkerState: vi.fn().mockResolvedValue(null),
 			saveEdgeWorkerState: vi.fn().mockResolvedValue(undefined),
+			setActiveWork: vi.fn().mockResolvedValue(undefined),
+			clearActiveWork: vi.fn().mockResolvedValue(undefined),
+			getActiveWorkStatus: vi.fn().mockResolvedValue(null),
+			isCurrentlyWorking: vi.fn().mockResolvedValue(false),
 		})),
 	};
 });
