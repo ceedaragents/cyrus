@@ -109,7 +109,7 @@ export interface EdgeWorkerConfig {
 	ngrokAuthToken?: string; // Ngrok auth token for tunnel creation
 
 	// Issue tracker platform configuration
-	platform?: "linear" | "cli"; // Issue tracker platform type (default: "linear")
+	platform?: "linear"; // Issue tracker platform type (default: "linear")
 
 	// Linear configuration (global)
 	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
