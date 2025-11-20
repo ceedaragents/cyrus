@@ -1,5 +1,49 @@
-import type { SDKMessage, SDKUserMessage } from "cyrus-core";
+import crypto from "node:crypto";
+import type {
+	SDKAssistantMessage,
+	SDKMessage,
+	SDKUserMessage,
+} from "cyrus-core";
 import type { GeminiMessageEvent, GeminiStreamEvent } from "./types.js";
+
+/**
+ * Create a minimal BetaMessage for assistant responses
+ *
+ * Since we're adapting from Gemini CLI to Claude SDK format, we create
+ * a minimal valid BetaMessage structure with placeholder values for fields
+ * that Gemini doesn't provide (model, usage, etc.).
+ */
+function createBetaMessage(
+	content: string | Array<Record<string, unknown>>,
+	messageId: string = crypto.randomUUID(),
+): SDKAssistantMessage["message"] {
+	// Type assertion needed because we're constructing content blocks from Gemini format
+	// which has the same structure but TypeScript can't verify the runtime types
+	const contentBlocks = (typeof content === "string"
+		? [{ type: "text", text: content }]
+		: content) as unknown as SDKAssistantMessage["message"]["content"];
+
+	return {
+		id: messageId,
+		type: "message" as const,
+		role: "assistant" as const,
+		content: contentBlocks,
+		model: "gemini-3" as const,
+		stop_reason: null,
+		stop_sequence: null,
+		usage: {
+			input_tokens: 0,
+			output_tokens: 0,
+			cache_creation_input_tokens: 0,
+			cache_read_input_tokens: 0,
+			cache_creation: null,
+			server_tool_use: null,
+			service_tier: null,
+		},
+		container: null,
+		context_management: null,
+	};
+}
 
 /**
  * Convert a Gemini stream event to Claude SDK message format
@@ -33,15 +77,14 @@ export function geminiEventToSDKMessage(
 					session_id: sessionId || "pending",
 				} satisfies SDKUserMessage;
 			} else {
-				// Assistant message
+				// Assistant message - create full BetaMessage structure
 				return {
 					type: "assistant",
-					message: {
-						role: "assistant",
-						content: messageEvent.content,
-					},
+					message: createBetaMessage(messageEvent.content),
+					parent_tool_use_id: null,
+					uuid: crypto.randomUUID(),
 					session_id: sessionId || "pending",
-				} as unknown as SDKMessage;
+				} satisfies SDKAssistantMessage;
 			}
 		}
 
@@ -55,19 +98,18 @@ export function geminiEventToSDKMessage(
 			// NOTE: Use tool_id from Gemini CLI, not generated client-side
 			return {
 				type: "assistant",
-				message: {
-					role: "assistant",
-					content: [
-						{
-							type: "tool_use",
-							id: event.tool_id, // Use tool_id from Gemini CLI
-							name: event.tool_name,
-							input: event.parameters,
-						},
-					],
-				},
+				message: createBetaMessage([
+					{
+						type: "tool_use",
+						id: event.tool_id, // Use tool_id from Gemini CLI
+						name: event.tool_name,
+						input: event.parameters,
+					},
+				]),
+				parent_tool_use_id: null,
+				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
-			} as unknown as SDKMessage;
+			} satisfies SDKAssistantMessage;
 
 		case "tool_result": {
 			// Map to Claude's tool_result format
@@ -109,7 +151,7 @@ export function geminiEventToSDKMessage(
 				},
 				parent_tool_use_id: null,
 				session_id: sessionId || "pending",
-			} as unknown as SDKMessage;
+			} satisfies SDKUserMessage;
 		}
 
 		case "result":
