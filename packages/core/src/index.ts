@@ -17,7 +17,6 @@ export type {
 	SDKResultMessage,
 	SDKUserMessage,
 } from "./agent-runner-types.js";
-export { StreamingPrompt } from "./StreamingPrompt.js";
 export type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
@@ -40,6 +39,7 @@ export type {
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
+export { StreamingPrompt } from "./StreamingPrompt.js";
 // Simple Agent Runner types
 export type {
 	AgentProgressEvent,
