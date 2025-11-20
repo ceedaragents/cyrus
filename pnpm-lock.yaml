@@ -166,6 +166,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.1.42
+        version: 0.1.42(zod@3.25.76)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
