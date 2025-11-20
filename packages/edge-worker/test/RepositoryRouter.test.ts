@@ -136,7 +136,7 @@ class RoutingTestEnvironment {
 	constructor() {
 		this.mockLinearClient = {
 			createAgentActivity: vi.fn().mockResolvedValue({}),
-			issue: vi.fn().mockImplementation(async (issueId: string) => ({
+			fetchIssue: vi.fn().mockImplementation(async (issueId: string) => ({
 				id: issueId,
 				identifier: "TEST-1",
 				project: this.issueProjects.has(issueId)
