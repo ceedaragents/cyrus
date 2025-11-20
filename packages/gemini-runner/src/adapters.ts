@@ -67,7 +67,7 @@ export function geminiEventToSDKMessage(
 		case "message": {
 			const messageEvent = event as GeminiMessageEvent;
 			if (messageEvent.role === "user") {
-				return {
+				const userMessage: SDKUserMessage = {
 					type: "user",
 					message: {
 						role: "user",
@@ -75,16 +75,18 @@ export function geminiEventToSDKMessage(
 					},
 					parent_tool_use_id: null,
 					session_id: sessionId || "pending",
-				} satisfies SDKUserMessage;
+				};
+				return userMessage;
 			} else {
 				// Assistant message - create full BetaMessage structure
-				return {
+				const assistantMessage: SDKAssistantMessage = {
 					type: "assistant",
 					message: createBetaMessage(messageEvent.content),
 					parent_tool_use_id: null,
 					uuid: crypto.randomUUID(),
 					session_id: sessionId || "pending",
-				} satisfies SDKAssistantMessage;
+				};
+				return assistantMessage;
 			}
 		}
 
@@ -93,10 +95,10 @@ export function geminiEventToSDKMessage(
 			// Session ID is extracted separately
 			return null;
 
-		case "tool_use":
+		case "tool_use": {
 			// Map to Claude's tool_use format
 			// NOTE: Use tool_id from Gemini CLI, not generated client-side
-			return {
+			const toolUseMessage: SDKAssistantMessage = {
 				type: "assistant",
 				message: createBetaMessage([
 					{
@@ -109,7 +111,9 @@ export function geminiEventToSDKMessage(
 				parent_tool_use_id: null,
 				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
-			} satisfies SDKAssistantMessage;
+			};
+			return toolUseMessage;
+		}
 
 		case "tool_result": {
 			// Map to Claude's tool_result format
@@ -136,7 +140,7 @@ export function geminiEventToSDKMessage(
 				content = "Success";
 			}
 
-			return {
+			const toolResultMessage: SDKUserMessage = {
 				type: "user",
 				message: {
 					role: "user",
@@ -151,7 +155,8 @@ export function geminiEventToSDKMessage(
 				},
 				parent_tool_use_id: null,
 				session_id: sessionId || "pending",
-			} satisfies SDKUserMessage;
+			};
+			return toolResultMessage;
 		}
 
 		case "result":
