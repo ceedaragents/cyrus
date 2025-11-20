@@ -21,7 +21,6 @@ export type {
 	IssueMinimal,
 	Workspace,
 } from "./CyrusAgentSession.js";
-
 // Configuration types
 export type {
 	EdgeConfig,
@@ -30,7 +29,6 @@ export type {
 	RepositoryConfig,
 } from "./config-types.js";
 export { resolvePath } from "./config-types.js";
-
 // Constants
 export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {
@@ -39,6 +37,18 @@ export type {
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
+// Simple Agent Runner types
+export type {
+	AgentProgressEvent,
+	IAgentProgressEvent,
+	ISimpleAgentQueryOptions,
+	ISimpleAgentResult,
+	ISimpleAgentRunner,
+	ISimpleAgentRunnerConfig,
+	SimpleAgentQueryOptions,
+	SimpleAgentResult,
+	SimpleAgentRunnerConfig,
+} from "./simple-agent-runner-types.js";
 // Webhook types
 export type {
 	LinearAgentSessionCreatedWebhook,
