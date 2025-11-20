@@ -295,6 +295,8 @@ export type {
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
+	SDKAssistantMessage,
 	SDKMessage,
+	SDKResultMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
