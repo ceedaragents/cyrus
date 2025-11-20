@@ -7,7 +7,8 @@
 		"baseUrl": "../../",
 		"paths": {
 			"cyrus-core": ["packages/core/src"],
-			"cyrus-gemini-runner": ["packages/gemini-runner/src"]
+			"cyrus-gemini-runner": ["packages/gemini-runner/src"],
+			"cyrus-simple-agent-runner": ["packages/simple-agent-runner/src"]
 		}
 	},
 	"include": ["src/**/*"],
