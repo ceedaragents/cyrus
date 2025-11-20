@@ -1,4 +1,5 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { ISimpleAgentRunner } from "cyrus-core";
 import {
 	InvalidResponseError,
 	SimpleAgentError,
@@ -17,7 +18,9 @@ import type {
  * This class provides the core validation and flow control logic, while
  * concrete implementations provide the actual agent execution.
  */
-export abstract class SimpleAgentRunner<T extends string> {
+export abstract class SimpleAgentRunner<T extends string>
+	implements ISimpleAgentRunner<T>
+{
 	protected readonly config: SimpleAgentRunnerConfig<T>;
 	protected readonly validResponseSet: Set<T>;
 
