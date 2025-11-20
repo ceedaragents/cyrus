@@ -3,15 +3,113 @@ import { EventEmitter } from "node:events";
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { StreamingPrompt } from "cyrus-claude-runner";
-import type { IAgentRunner, SDKMessage } from "cyrus-core";
-import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
+import type { IAgentRunner, SDKMessage, SDKUserMessage } from "cyrus-core";
+import {
+	createUserMessage,
+	extractSessionId,
+	geminiEventToSDKMessage,
+} from "./adapters.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
 	GeminiSessionInfo,
 	GeminiStreamEvent,
 } from "./types.js";
+
+/**
+ * Streaming prompt controller that implements AsyncIterable<SDKUserMessage>
+ * for Gemini CLI
+ */
+export class StreamingPrompt {
+	private messageQueue: SDKUserMessage[] = [];
+	private resolvers: Array<(value: IteratorResult<SDKUserMessage>) => void> =
+		[];
+	private isComplete = false;
+	private sessionId: string | null;
+
+	constructor(sessionId: string | null, initialPrompt?: string) {
+		this.sessionId = sessionId;
+
+		// Add initial prompt if provided
+		if (initialPrompt) {
+			this.addMessage(initialPrompt);
+		}
+	}
+
+	/**
+	 * Update the session ID (used when session ID is received from Gemini)
+	 */
+	updateSessionId(sessionId: string): void {
+		this.sessionId = sessionId;
+	}
+
+	/**
+	 * Add a new message to the stream
+	 */
+	addMessage(content: string): void {
+		if (this.isComplete) {
+			throw new Error("Cannot add message to completed stream");
+		}
+
+		const message = createUserMessage(content, this.sessionId);
+		this.messageQueue.push(message);
+		this.processQueue();
+	}
+
+	/**
+	 * Mark the stream as complete (no more messages will be added)
+	 */
+	complete(): void {
+		this.isComplete = true;
+		this.processQueue();
+	}
+
+	/**
+	 * Check if the stream is complete
+	 */
+	get completed(): boolean {
+		return this.isComplete;
+	}
+
+	/**
+	 * Process pending resolvers with queued messages
+	 */
+	private processQueue(): void {
+		while (
+			this.resolvers.length > 0 &&
+			(this.messageQueue.length > 0 || this.isComplete)
+		) {
+			const resolver = this.resolvers.shift()!;
+
+			if (this.messageQueue.length > 0) {
+				const message = this.messageQueue.shift()!;
+				resolver({ value: message, done: false });
+			} else if (this.isComplete) {
+				resolver({ value: undefined, done: true });
+			}
+		}
+	}
+
+	/**
+	 * AsyncIterable implementation
+	 */
+	[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+		return {
+			next: (): Promise<IteratorResult<SDKUserMessage>> => {
+				return new Promise((resolve) => {
+					if (this.messageQueue.length > 0) {
+						const message = this.messageQueue.shift()!;
+						resolve({ value: message, done: false });
+					} else if (this.isComplete) {
+						resolve({ value: undefined, done: true });
+					} else {
+						this.resolvers.push(resolve);
+					}
+				});
+			},
+		};
+	}
+}
 
 export declare interface GeminiRunner {
 	on<K extends keyof GeminiRunnerEvents>(
@@ -58,6 +156,9 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	private messages: SDKMessage[] = [];
 	private streamingPrompt: StreamingPrompt | null = null;
 	private cyrusHome: string;
+	// Delta message accumulation
+	private accumulatingMessage: SDKMessage | null = null;
+	private accumulatingRole: "user" | "assistant" | null = null;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
@@ -261,6 +362,9 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				});
 			});
 
+			// Flush any remaining accumulated message
+			this.flushAccumulatedMessage();
+
 			// Session completed successfully
 			console.log(
 				`[GeminiRunner] Session completed with ${this.messages.length} messages`,
@@ -326,6 +430,24 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			this.setupLogging();
 		}
 
+		// Handle delta message accumulation
+		if (event.type === "message") {
+			const messageEvent = event;
+
+			// Check if this is a delta message
+			if (messageEvent.delta === true) {
+				// Accumulate delta message
+				this.accumulateDeltaMessage(messageEvent);
+				return; // Don't process further, just accumulate
+			} else {
+				// Not a delta message - flush any accumulated message first
+				this.flushAccumulatedMessage();
+			}
+		} else {
+			// Non-message event - flush any accumulated message
+			this.flushAccumulatedMessage();
+		}
+
 		// Convert to SDK message format
 		const message = geminiEventToSDKMessage(
 			event,
@@ -333,32 +455,109 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		);
 
 		if (message) {
-			this.messages.push(message);
-
-			// Log to detailed JSON log
-			if (this.logStream) {
-				const logEntry = {
-					type: "sdk-message",
-					message,
-					timestamp: new Date().toISOString(),
-				};
-				this.logStream.write(`${JSON.stringify(logEntry)}\n`);
-			}
-
-			// Log to human-readable log
-			if (this.readableLogStream) {
-				this.writeReadableLogEntry(message);
-			}
-
-			// Emit message event
-			this.emit("message", message);
+			this.emitMessage(message);
 		}
+	}
+
+	/**
+	 * Accumulate a delta message (message with delta: true)
+	 */
+	private accumulateDeltaMessage(
+		event: GeminiStreamEvent & { type: "message" },
+	): void {
+		console.log(
+			`[GeminiRunner] Accumulating delta message (role: ${event.role})`,
+		);
+
+		// If role changed or no accumulating message exists, start new accumulation
+		if (!this.accumulatingMessage || this.accumulatingRole !== event.role) {
+			// Flush previous accumulation if exists
+			this.flushAccumulatedMessage();
+
+			// Start new accumulation
+			if (event.role === "user") {
+				this.accumulatingMessage = {
+					type: "user",
+					message: {
+						role: "user",
+						content: event.content,
+					},
+					parent_tool_use_id: null,
+					session_id: this.sessionInfo?.sessionId || "pending",
+				} as SDKUserMessage;
+			} else {
+				// assistant role
+				this.accumulatingMessage = {
+					type: "assistant",
+					message: {
+						role: "assistant",
+						content: event.content,
+					},
+					session_id: this.sessionInfo?.sessionId || "pending",
+				} as unknown as SDKMessage;
+			}
+			this.accumulatingRole = event.role;
+		} else {
+			// Same role - append content
+			if (
+				this.accumulatingMessage.type === "user" ||
+				this.accumulatingMessage.type === "assistant"
+			) {
+				const currentContent = this.accumulatingMessage.message.content;
+				if (typeof currentContent === "string") {
+					this.accumulatingMessage.message.content =
+						currentContent + event.content;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Flush the accumulated delta message
+	 */
+	private flushAccumulatedMessage(): void {
+		if (this.accumulatingMessage) {
+			console.log(
+				`[GeminiRunner] Flushing accumulated message (role: ${this.accumulatingRole})`,
+			);
+			this.emitMessage(this.accumulatingMessage);
+			this.accumulatingMessage = null;
+			this.accumulatingRole = null;
+		}
+	}
+
+	/**
+	 * Emit a message (add to messages array, log, and emit event)
+	 */
+	private emitMessage(message: SDKMessage): void {
+		this.messages.push(message);
+
+		// Log to detailed JSON log
+		if (this.logStream) {
+			const logEntry = {
+				type: "sdk-message",
+				message,
+				timestamp: new Date().toISOString(),
+			};
+			this.logStream.write(`${JSON.stringify(logEntry)}\n`);
+		}
+
+		// Log to human-readable log
+		if (this.readableLogStream) {
+			this.writeReadableLogEntry(message);
+		}
+
+		// Emit message event
+		this.emit("message", message);
 	}
 
 	/**
 	 * Stop the current Gemini session
 	 */
 	stop(): void {
+		// Flush any accumulated message before stopping
+		this.flushAccumulatedMessage();
+
 		if (this.process) {
 			console.log("[GeminiRunner] Stopping Gemini process");
 			this.process.kill("SIGTERM");

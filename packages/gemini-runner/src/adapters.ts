@@ -2,10 +2,14 @@ import type { SDKMessage, SDKUserMessage } from "cyrus-core";
 import type { GeminiMessageEvent, GeminiStreamEvent } from "./types.js";
 
 /**
- * Convert a Gemini stream event to cyrus-core SDKMessage format
+ * Convert a Gemini stream event to Claude SDK message format
  *
- * This adapter maps Gemini CLI's streaming events to the cyrus-core SDKMessage
+ * This adapter maps Gemini CLI's streaming events to the Claude SDK's SDKMessage
  * format, allowing GeminiRunner to implement the IAgentRunner interface.
+ *
+ * NOTE: This adapter is stateless and creates a separate SDK message for each event.
+ * For delta messages (message events with delta: true), the caller (GeminiRunner)
+ * should accumulate multiple delta events into a single message before emitting.
  *
  * @param event - Gemini CLI stream event
  * @param sessionId - Current session ID (may be null initially)
@@ -19,7 +23,7 @@ export function geminiEventToSDKMessage(
 		case "message": {
 			const messageEvent = event as GeminiMessageEvent;
 			if (messageEvent.role === "user") {
-				const userMessage: SDKUserMessage = {
+				return {
 					type: "user",
 					message: {
 						role: "user",
@@ -27,19 +31,17 @@ export function geminiEventToSDKMessage(
 					},
 					parent_tool_use_id: null,
 					session_id: sessionId || "pending",
-				};
-				return userMessage;
+				} satisfies SDKUserMessage;
 			} else {
 				// Assistant message
-				const assistantMessage = {
+				return {
 					type: "assistant",
 					message: {
 						role: "assistant",
 						content: messageEvent.content,
 					},
 					session_id: sessionId || "pending",
-				};
-				return assistantMessage as unknown as SDKMessage;
+				} as unknown as SDKMessage;
 			}
 		}
 
@@ -48,68 +50,77 @@ export function geminiEventToSDKMessage(
 			// Session ID is extracted separately
 			return null;
 
-		case "tool_use": {
+		case "tool_use":
 			// Map to Claude's tool_use format
-			// Generate unique tool_id based on tool name and timestamp (matches Gemini CLI format)
-			const tool_id = `${event.tool_name}_${Date.now()}`;
-			const toolUseMessage = {
+			// NOTE: Use tool_id from Gemini CLI, not generated client-side
+			return {
 				type: "assistant",
 				message: {
 					role: "assistant",
 					content: [
 						{
 							type: "tool_use",
-							id: tool_id,
+							id: event.tool_id, // Use tool_id from Gemini CLI
 							name: event.tool_name,
 							input: event.parameters,
 						},
 					],
 				},
 				session_id: sessionId || "pending",
-			};
-			return toolUseMessage as unknown as SDKMessage;
-		}
+			} as unknown as SDKMessage;
 
 		case "tool_result": {
 			// Map to Claude's tool_result format
-			// Generate matching tool_id (should ideally be tracked from tool_use event)
-			const tool_use_id = `${event.tool_name}_${Date.now()}`;
-			const toolResultMessage = {
+			// NOTE: Use tool_id from Gemini (matches tool_use event)
+			// Handle both success (output) and error cases
+			let content: string;
+			let isError = false;
+
+			if (event.status === "error" && event.error) {
+				// Format error message
+				content = `Error: ${event.error.message}`;
+				if (event.error.code) {
+					content += ` (code: ${event.error.code})`;
+				}
+				if (event.error.type) {
+					content += ` [${event.error.type}]`;
+				}
+				isError = true;
+			} else if (event.output !== undefined) {
+				// Success case with output
+				content = event.output;
+			} else {
+				// Fallback for empty success
+				content = "Success";
+			}
+
+			return {
 				type: "user",
 				message: {
 					role: "user",
 					content: [
 						{
 							type: "tool_result",
-							tool_use_id: tool_use_id,
-							content: JSON.stringify(event.result),
+							tool_use_id: event.tool_id, // Use tool_id from Gemini CLI
+							content: content,
+							is_error: isError,
 						},
 					],
 				},
 				parent_tool_use_id: null,
 				session_id: sessionId || "pending",
-			};
-			return toolResultMessage as unknown as SDKMessage;
+			} as unknown as SDKMessage;
 		}
 
 		case "result":
-			// Final result - map to assistant message with the response
-			if (event.error) {
+			// Final result event - contains stats but no message content
+			// Real output: {"type":"result","timestamp":"...","status":"success","stats":{...}}
+			if (event.status === "error" && event.error) {
 				// Error result - log but return null since SDK doesn't have a direct error message type
 				console.error(`[GeminiAdapter] Error result: ${event.error.message}`);
-				return null;
-			} else {
-				// Success result with final response
-				const resultMessage = {
-					type: "assistant",
-					message: {
-						role: "assistant",
-						content: event.response,
-					},
-					session_id: sessionId || "pending",
-				};
-				return resultMessage as unknown as SDKMessage;
 			}
+			// Result events don't map to SDK messages, just track stats
+			return null;
 
 		case "error":
 			// Non-fatal error event
@@ -122,7 +133,7 @@ export function geminiEventToSDKMessage(
 }
 
 /**
- * Create a Cyrus Core SDK UserMessage from a plain string prompt
+ * Create a Claude SDK user message from a plain string prompt
  *
  * Helper function to create properly formatted SDKUserMessage objects
  * for the Gemini CLI input.

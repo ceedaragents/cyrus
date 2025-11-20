@@ -1,7 +1,11 @@
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
+	HookCallbackMatcher,
+	HookEvent,
+	McpServerConfig,
 	SDKMessage,
+	SDKUserMessage,
 } from "cyrus-core";
 
 /**
@@ -23,63 +27,54 @@ export interface GeminiInitEvent {
 	type: "init";
 	session_id: string;
 	model: string;
+	timestamp: string;
 }
 
 /**
  * User or assistant message event
+ *
+ * NOTE: When delta is true, this message should be accumulated with previous delta messages
+ * of the same role. The caller (GeminiRunner) is responsible for accumulating delta messages.
+ * Each delta message event will create a separate SDK message if not handled by the caller.
  */
 export interface GeminiMessageEvent {
 	type: "message";
 	role: "user" | "assistant";
 	content: string;
+	timestamp: string;
+	delta?: boolean;
 }
 
 /**
  * Tool use event (similar to Claude's tool_use)
  *
- * @example Output from Gemini CLI
- * ```json
- * {
- *   "type": "tool_use",
- *   "tool_name": "read_file",
- *   "parameters": {
- *     "path": "/path/to/file.txt"
- *   }
- * }
- * ```
- *
- * @example Converted to SDKMessage format (uses tool_id variable naming)
- * ```json
- * {
- *   "type": "assistant",
- *   "message": {
- *     "role": "assistant",
- *     "content": [
- *       {
- *         "type": "tool_use",
- *         "id": "read_file_1234567890",
- *         "name": "read_file",
- *         "input": { "path": "/path/to/file.txt" }
- *       }
- *     ]
- *   },
- *   "session_id": "session-123"
- * }
- * ```
+ * NOTE: tool_id is assigned by Gemini CLI, not generated client-side
  */
 export interface GeminiToolUseEvent {
 	type: "tool_use";
 	tool_name: string;
+	tool_id: string;
 	parameters: Record<string, unknown>;
+	timestamp: string;
 }
 
 /**
  * Tool result event
+ *
+ * NOTE: Uses tool_id (not tool_name) to match the tool_use event
+ * Contains either output (success) or error (failure)
  */
 export interface GeminiToolResultEvent {
 	type: "tool_result";
-	tool_name: string;
-	result: unknown;
+	tool_id: string;
+	status: "success" | "error";
+	output?: string;
+	error?: {
+		code?: string;
+		message: string;
+		type?: string;
+	};
+	timestamp: string;
 }
 
 /**
@@ -89,23 +84,27 @@ export interface GeminiErrorEvent {
 	type: "error";
 	message: string;
 	code?: number;
+	timestamp: string;
 }
 
 /**
  * Final result event with stats
+ *
+ * Real output example:
+ * {"type":"result","timestamp":"2025-11-20T20:51:52.121Z","status":"success",
+ *  "stats":{"total_tokens":2284560,"input_tokens":2271866,"output_tokens":5267,
+ *           "duration_ms":195413,"tool_calls":36}}
  */
 export interface GeminiResultEvent {
 	type: "result";
-	response: string;
+	timestamp: string;
+	status: "success" | "error";
 	stats?: {
-		model?: string;
-		tokens?: {
-			input?: number;
-			output?: number;
-			total?: number;
-		};
-		tools?: Record<string, number>;
-		files_modified?: string[];
+		total_tokens?: number;
+		input_tokens?: number;
+		output_tokens?: number;
+		duration_ms?: number;
+		tool_calls?: number;
 	};
 	error?: {
 		type: string;
@@ -139,12 +138,20 @@ export interface GeminiSessionInfo extends AgentSessionInfo {
 
 /**
  * Event emitter interface for GeminiRunner
- * Provides typed event handlers for GeminiRunner events
  */
 export interface GeminiRunnerEvents {
 	message: (message: SDKMessage) => void;
 	error: (error: Error) => void;
 	complete: (messages: SDKMessage[]) => void;
-	/** Raw event emitting - emits unprocessed Gemini CLI events */
 	streamEvent: (event: GeminiStreamEvent) => void;
 }
+
+// Re-export types from core for convenience
+export type {
+	AgentRunnerConfig,
+	HookCallbackMatcher,
+	HookEvent,
+	McpServerConfig,
+	SDKMessage,
+	SDKUserMessage,
+};
