@@ -36,7 +36,8 @@ vi.mock("cyrus-core", async (importOriginal) => {
 		PersistenceManager: vi.fn().mockImplementation(() => ({
 			loadEdgeWorkerState: vi.fn().mockResolvedValue(null),
 			saveEdgeWorkerState: vi.fn().mockResolvedValue(undefined),
-			setActiveWork: vi.fn().mockResolvedValue(undefined),
+			addActiveSession: vi.fn().mockResolvedValue(undefined),
+			removeActiveSession: vi.fn().mockResolvedValue(undefined),
 			clearActiveWork: vi.fn().mockResolvedValue(undefined),
 			getActiveWorkStatus: vi.fn().mockResolvedValue(null),
 			isCurrentlyWorking: vi.fn().mockResolvedValue(false),
@@ -72,7 +73,7 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 	};
 
 	beforeEach(() => {
-		vi.clearAllMocks();
+		// vi.clearAllMocks() - disabled to preserve PersistenceManager mock;
 		capturedPrompt = null;
 		capturedClaudeRunnerConfig = null;
 

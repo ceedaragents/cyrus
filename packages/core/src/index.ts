@@ -21,6 +21,7 @@ export { resolvePath } from "./config-types.js";
 // Constants
 export { DEFAULT_PROXY_URL } from "./constants.js";
 export type {
+	ActiveWorkSession,
 	ActiveWorkStatus,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,

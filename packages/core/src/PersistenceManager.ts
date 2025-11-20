@@ -22,23 +22,31 @@ export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry;
 // }
 
 /**
+ * Information about an active work session
+ */
+export interface ActiveWorkSession {
+	/** Linear issue ID being worked on */
+	issueId: string;
+	/** Linear issue identifier (e.g., TEAM-123) */
+	issueIdentifier: string;
+	/** Repository ID handling this work */
+	repositoryId: string;
+	/** Linear agent session ID */
+	sessionId: string;
+	/** Timestamp when work started (milliseconds since epoch) */
+	startedAt: number;
+}
+
+/**
  * Represents the current active work status
  */
 export interface ActiveWorkStatus {
-	/** Indicates if Cyrus is currently working on an issue */
+	/** Indicates if Cyrus is currently working on any issues */
 	isWorking: boolean;
-	/** Linear issue ID being worked on */
-	issueId?: string;
-	/** Linear issue identifier (e.g., TEAM-123) */
-	issueIdentifier?: string;
-	/** Repository ID handling this work */
-	repositoryId?: string;
-	/** Linear agent session ID */
-	sessionId?: string;
-	/** Timestamp when work started (milliseconds since epoch) */
-	startedAt?: number;
+	/** Map of session IDs to active work sessions */
+	activeSessions: Record<string, ActiveWorkSession>;
 	/** Timestamp of last update (milliseconds since epoch) */
-	lastUpdated?: number;
+	lastUpdated: number;
 }
 
 /**
@@ -183,32 +191,70 @@ export class PersistenceManager {
 	}
 
 	/**
-	 * Mark that Cyrus is actively working on an issue
+	 * Add an active work session
 	 */
-	async setActiveWork(
-		status: Omit<ActiveWorkStatus, "isWorking">,
-	): Promise<void> {
+	async addActiveSession(session: ActiveWorkSession): Promise<void> {
 		try {
 			await this.ensurePersistenceDirectory();
 			const activeWorkFile = this.getActiveWorkStatusFilePath();
-			const workStatus: ActiveWorkStatus = {
-				isWorking: true,
-				...status,
+
+			// Load current status or create new one
+			const currentStatus = (await this.getActiveWorkStatus()) || {
+				isWorking: false,
+				activeSessions: {},
 				lastUpdated: Date.now(),
 			};
+
+			// Add the new session
+			currentStatus.activeSessions[session.sessionId] = session;
+			currentStatus.isWorking =
+				Object.keys(currentStatus.activeSessions).length > 0;
+			currentStatus.lastUpdated = Date.now();
+
 			await writeFile(
 				activeWorkFile,
-				JSON.stringify(workStatus, null, 2),
+				JSON.stringify(currentStatus, null, 2),
 				"utf8",
 			);
 		} catch (error) {
-			console.error("Failed to set active work status:", error);
+			console.error("Failed to add active session:", error);
 			throw error;
 		}
 	}
 
 	/**
-	 * Clear the active work status (Cyrus is not working on anything)
+	 * Remove an active work session
+	 */
+	async removeActiveSession(sessionId: string): Promise<void> {
+		try {
+			await this.ensurePersistenceDirectory();
+			const activeWorkFile = this.getActiveWorkStatusFilePath();
+
+			// Load current status
+			const currentStatus = await this.getActiveWorkStatus();
+			if (!currentStatus) {
+				return; // Nothing to remove
+			}
+
+			// Remove the session
+			delete currentStatus.activeSessions[sessionId];
+			currentStatus.isWorking =
+				Object.keys(currentStatus.activeSessions).length > 0;
+			currentStatus.lastUpdated = Date.now();
+
+			await writeFile(
+				activeWorkFile,
+				JSON.stringify(currentStatus, null, 2),
+				"utf8",
+			);
+		} catch (error) {
+			console.error("Failed to remove active session:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Clear all active work sessions (Cyrus is not working on anything)
 	 */
 	async clearActiveWork(): Promise<void> {
 		try {
@@ -216,6 +262,7 @@ export class PersistenceManager {
 			const activeWorkFile = this.getActiveWorkStatusFilePath();
 			const workStatus: ActiveWorkStatus = {
 				isWorking: false,
+				activeSessions: {},
 				lastUpdated: Date.now(),
 			};
 			await writeFile(

@@ -3,7 +3,10 @@ import { mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ActiveWorkStatus } from "../src/PersistenceManager.js";
+import type {
+	ActiveWorkSession,
+	ActiveWorkStatus,
+} from "../src/PersistenceManager.js";
 import { PersistenceManager } from "../src/PersistenceManager.js";
 
 describe("PersistenceManager - Active Work Status", () => {
@@ -24,9 +27,9 @@ describe("PersistenceManager - Active Work Status", () => {
 		}
 	});
 
-	describe("setActiveWork", () => {
-		it("should create active-work.json file with work status", async () => {
-			const workStatus = {
+	describe("addActiveSession", () => {
+		it("should create active-work.json file with session", async () => {
+			const session: ActiveWorkSession = {
 				issueId: "issue-123",
 				issueIdentifier: "TEAM-123",
 				repositoryId: "repo-456",
@@ -34,7 +37,7 @@ describe("PersistenceManager - Active Work Status", () => {
 				startedAt: Date.now(),
 			};
 
-			await persistenceManager.setActiveWork(workStatus);
+			await persistenceManager.addActiveSession(session);
 
 			const filePath = join(testDir, "active-work.json");
 			expect(existsSync(filePath)).toBe(true);
@@ -43,17 +46,40 @@ describe("PersistenceManager - Active Work Status", () => {
 			const savedStatus: ActiveWorkStatus = JSON.parse(fileContent);
 
 			expect(savedStatus.isWorking).toBe(true);
-			expect(savedStatus.issueId).toBe(workStatus.issueId);
-			expect(savedStatus.issueIdentifier).toBe(workStatus.issueIdentifier);
-			expect(savedStatus.repositoryId).toBe(workStatus.repositoryId);
-			expect(savedStatus.sessionId).toBe(workStatus.sessionId);
-			expect(savedStatus.startedAt).toBe(workStatus.startedAt);
+			expect(savedStatus.activeSessions[session.sessionId]).toEqual(session);
 			expect(savedStatus.lastUpdated).toBeDefined();
 			expect(typeof savedStatus.lastUpdated).toBe("number");
 		});
 
-		it("should update lastUpdated timestamp when setting active work", async () => {
-			const workStatus = {
+		it("should handle multiple parallel sessions", async () => {
+			const session1: ActiveWorkSession = {
+				issueId: "issue-123",
+				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-1",
+				startedAt: Date.now(),
+			};
+
+			const session2: ActiveWorkSession = {
+				issueId: "issue-456",
+				issueIdentifier: "TEAM-456",
+				repositoryId: "repo-789",
+				sessionId: "session-2",
+				startedAt: Date.now(),
+			};
+
+			await persistenceManager.addActiveSession(session1);
+			await persistenceManager.addActiveSession(session2);
+
+			const status = await persistenceManager.getActiveWorkStatus();
+			expect(status?.isWorking).toBe(true);
+			expect(Object.keys(status!.activeSessions)).toHaveLength(2);
+			expect(status!.activeSessions["session-1"]).toEqual(session1);
+			expect(status!.activeSessions["session-2"]).toEqual(session2);
+		});
+
+		it("should update lastUpdated timestamp when adding sessions", async () => {
+			const session: ActiveWorkSession = {
 				issueId: "issue-123",
 				issueIdentifier: "TEAM-123",
 				repositoryId: "repo-456",
@@ -61,56 +87,103 @@ describe("PersistenceManager - Active Work Status", () => {
 				startedAt: Date.now(),
 			};
 
-			await persistenceManager.setActiveWork(workStatus);
+			await persistenceManager.addActiveSession(session);
 			const status1 = await persistenceManager.getActiveWorkStatus();
 
 			// Wait a bit to ensure timestamp changes
 			await new Promise((resolve) => setTimeout(resolve, 10));
 
-			await persistenceManager.setActiveWork(workStatus);
+			const session2: ActiveWorkSession = {
+				...session,
+				sessionId: "session-890",
+			};
+			await persistenceManager.addActiveSession(session2);
 			const status2 = await persistenceManager.getActiveWorkStatus();
 
-			expect(status2?.lastUpdated).toBeGreaterThan(status1!.lastUpdated!);
+			expect(status2?.lastUpdated).toBeGreaterThan(status1!.lastUpdated);
 		});
+	});
 
-		it("should handle minimal work status", async () => {
-			const workStatus = {
+	describe("removeActiveSession", () => {
+		it("should remove a session and set isWorking to false when no sessions remain", async () => {
+			const session: ActiveWorkSession = {
 				issueId: "issue-123",
+				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-789",
+				startedAt: Date.now(),
 			};
 
-			await persistenceManager.setActiveWork(workStatus);
+			// Add then remove
+			await persistenceManager.addActiveSession(session);
+			let status = await persistenceManager.getActiveWorkStatus();
+			expect(status?.isWorking).toBe(true);
+
+			await persistenceManager.removeActiveSession("session-789");
+			status = await persistenceManager.getActiveWorkStatus();
+			expect(status?.isWorking).toBe(false);
+			expect(Object.keys(status!.activeSessions)).toHaveLength(0);
+		});
+
+		it("should keep isWorking true when other sessions remain", async () => {
+			const session1: ActiveWorkSession = {
+				issueId: "issue-123",
+				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-1",
+				startedAt: Date.now(),
+			};
+
+			const session2: ActiveWorkSession = {
+				issueId: "issue-456",
+				issueIdentifier: "TEAM-456",
+				repositoryId: "repo-789",
+				sessionId: "session-2",
+				startedAt: Date.now(),
+			};
+
+			await persistenceManager.addActiveSession(session1);
+			await persistenceManager.addActiveSession(session2);
+
+			// Remove one session
+			await persistenceManager.removeActiveSession("session-1");
 
 			const status = await persistenceManager.getActiveWorkStatus();
 			expect(status?.isWorking).toBe(true);
-			expect(status?.issueId).toBe("issue-123");
-			expect(status?.issueIdentifier).toBeUndefined();
-			expect(status?.repositoryId).toBeUndefined();
+			expect(Object.keys(status!.activeSessions)).toHaveLength(1);
+			expect(status!.activeSessions["session-2"]).toEqual(session2);
+		});
+
+		it("should handle removing non-existent session gracefully", async () => {
+			await persistenceManager.removeActiveSession("non-existent");
+			// Should not throw
 		});
 	});
 
 	describe("clearActiveWork", () => {
-		it("should set isWorking to false", async () => {
-			// First set active work
-			await persistenceManager.setActiveWork({
+		it("should clear all sessions and set isWorking to false", async () => {
+			// Add multiple sessions
+			await persistenceManager.addActiveSession({
 				issueId: "issue-123",
 				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-1",
+				startedAt: Date.now(),
+			});
+			await persistenceManager.addActiveSession({
+				issueId: "issue-456",
+				issueIdentifier: "TEAM-456",
+				repositoryId: "repo-789",
+				sessionId: "session-2",
+				startedAt: Date.now(),
 			});
 
-			// Verify it's set
-			let status = await persistenceManager.getActiveWorkStatus();
-			expect(status?.isWorking).toBe(true);
-
-			// Clear it
+			// Clear all
 			await persistenceManager.clearActiveWork();
 
-			// Verify it's cleared
-			status = await persistenceManager.getActiveWorkStatus();
+			const status = await persistenceManager.getActiveWorkStatus();
 			expect(status?.isWorking).toBe(false);
-			expect(status?.issueId).toBeUndefined();
-			expect(status?.issueIdentifier).toBeUndefined();
-			expect(status?.repositoryId).toBeUndefined();
-			expect(status?.sessionId).toBeUndefined();
-			expect(status?.startedAt).toBeUndefined();
+			expect(Object.keys(status!.activeSessions)).toHaveLength(0);
 			expect(status?.lastUpdated).toBeDefined();
 		});
 
@@ -119,6 +192,7 @@ describe("PersistenceManager - Active Work Status", () => {
 
 			const status = await persistenceManager.getActiveWorkStatus();
 			expect(status?.isWorking).toBe(false);
+			expect(status?.activeSessions).toEqual({});
 		});
 	});
 
@@ -128,30 +202,37 @@ describe("PersistenceManager - Active Work Status", () => {
 			expect(status).toBeNull();
 		});
 
-		it("should return active work status when file exists", async () => {
-			const workStatus = {
+		it("should return active work status with sessions when file exists", async () => {
+			const session: ActiveWorkSession = {
 				issueId: "issue-123",
 				issueIdentifier: "TEAM-123",
 				repositoryId: "repo-456",
+				sessionId: "session-789",
+				startedAt: Date.now(),
 			};
 
-			await persistenceManager.setActiveWork(workStatus);
+			await persistenceManager.addActiveSession(session);
 			const status = await persistenceManager.getActiveWorkStatus();
 
 			expect(status).not.toBeNull();
 			expect(status?.isWorking).toBe(true);
-			expect(status?.issueId).toBe(workStatus.issueId);
+			expect(status?.activeSessions["session-789"]).toEqual(session);
 		});
 
 		it("should return cleared status after clearing", async () => {
-			await persistenceManager.setActiveWork({
+			await persistenceManager.addActiveSession({
 				issueId: "issue-123",
+				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-789",
+				startedAt: Date.now(),
 			});
 			await persistenceManager.clearActiveWork();
 
 			const status = await persistenceManager.getActiveWorkStatus();
 			expect(status).not.toBeNull();
 			expect(status?.isWorking).toBe(false);
+			expect(Object.keys(status!.activeSessions)).toHaveLength(0);
 		});
 	});
 
@@ -161,18 +242,40 @@ describe("PersistenceManager - Active Work Status", () => {
 			expect(isWorking).toBe(false);
 		});
 
-		it("should return true when active work is set", async () => {
-			await persistenceManager.setActiveWork({
+		it("should return true when active sessions exist", async () => {
+			await persistenceManager.addActiveSession({
 				issueId: "issue-123",
+				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-789",
+				startedAt: Date.now(),
 			});
 
 			const isWorking = await persistenceManager.isCurrentlyWorking();
 			expect(isWorking).toBe(true);
 		});
 
-		it("should return false when active work is cleared", async () => {
-			await persistenceManager.setActiveWork({
+		it("should return false when all sessions are removed", async () => {
+			await persistenceManager.addActiveSession({
 				issueId: "issue-123",
+				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-789",
+				startedAt: Date.now(),
+			});
+			await persistenceManager.removeActiveSession("session-789");
+
+			const isWorking = await persistenceManager.isCurrentlyWorking();
+			expect(isWorking).toBe(false);
+		});
+
+		it("should return false when active work is cleared", async () => {
+			await persistenceManager.addActiveSession({
+				issueId: "issue-123",
+				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-789",
+				startedAt: Date.now(),
 			});
 			await persistenceManager.clearActiveWork();
 
@@ -183,9 +286,12 @@ describe("PersistenceManager - Active Work Status", () => {
 
 	describe("file format", () => {
 		it("should write JSON in a readable format", async () => {
-			await persistenceManager.setActiveWork({
+			await persistenceManager.addActiveSession({
 				issueId: "issue-123",
 				issueIdentifier: "TEAM-123",
+				repositoryId: "repo-456",
+				sessionId: "session-789",
+				startedAt: Date.now(),
 			});
 
 			const filePath = join(testDir, "active-work.json");
@@ -200,13 +306,20 @@ describe("PersistenceManager - Active Work Status", () => {
 
 		it("should be parseable after multiple updates", async () => {
 			for (let i = 0; i < 5; i++) {
-				await persistenceManager.setActiveWork({
+				await persistenceManager.addActiveSession({
 					issueId: `issue-${i}`,
+					issueIdentifier: `TEAM-${i}`,
+					repositoryId: `repo-${i}`,
+					sessionId: `session-${i}`,
+					startedAt: Date.now(),
 				});
 
 				const status = await persistenceManager.getActiveWorkStatus();
-				expect(status?.issueId).toBe(`issue-${i}`);
+				expect(status?.activeSessions[`session-${i}`]).toBeDefined();
 			}
+
+			const status = await persistenceManager.getActiveWorkStatus();
+			expect(Object.keys(status!.activeSessions)).toHaveLength(5);
 		});
 	});
 });
