@@ -282,6 +282,9 @@ importers:
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
