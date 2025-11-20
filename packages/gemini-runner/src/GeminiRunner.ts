@@ -175,6 +175,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				args.push("--model", this.config.model);
 			}
 
+			// Add resume session flag if provided
+			if (this.config.resumeSessionId) {
+				args.push("-r", this.config.resumeSessionId);
+				console.log(
+					`[GeminiRunner] Resuming session: ${this.config.resumeSessionId}`,
+				);
+			}
+
 			// Add auto-approve flags
 			if (this.config.autoApprove) {
 				args.push("--yolo");
