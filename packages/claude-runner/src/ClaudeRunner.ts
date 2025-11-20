@@ -13,6 +13,7 @@ import {
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import type { IAgentRunner } from "cyrus-core";
 import dotenv from "dotenv";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
@@ -146,7 +147,7 @@ export declare interface ClaudeRunner {
 /**
  * Manages Claude SDK sessions and communication
  */
-export class ClaudeRunner extends EventEmitter {
+export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private config: ClaudeRunnerConfig;
 	private abortController: AbortController | null = null;
 	private sessionInfo: ClaudeSessionInfo | null = null;
