@@ -1,0 +1,15 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"baseUrl": "../../",
+		"paths": {
+			"cyrus-core": ["packages/core/src"],
+			"cyrus-gemini-runner": ["packages/gemini-runner/src"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
