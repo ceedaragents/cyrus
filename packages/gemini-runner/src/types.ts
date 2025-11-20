@@ -1,11 +1,7 @@
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
-	HookCallbackMatcher,
-	HookEvent,
-	McpServerConfig,
 	SDKMessage,
-	SDKUserMessage,
 } from "cyrus-core";
 
 /**
@@ -40,6 +36,36 @@ export interface GeminiMessageEvent {
 
 /**
  * Tool use event (similar to Claude's tool_use)
+ *
+ * @example Output from Gemini CLI
+ * ```json
+ * {
+ *   "type": "tool_use",
+ *   "tool_name": "read_file",
+ *   "parameters": {
+ *     "path": "/path/to/file.txt"
+ *   }
+ * }
+ * ```
+ *
+ * @example Converted to SDKMessage format (uses tool_id variable naming)
+ * ```json
+ * {
+ *   "type": "assistant",
+ *   "message": {
+ *     "role": "assistant",
+ *     "content": [
+ *       {
+ *         "type": "tool_use",
+ *         "id": "read_file_1234567890",
+ *         "name": "read_file",
+ *         "input": { "path": "/path/to/file.txt" }
+ *       }
+ *     ]
+ *   },
+ *   "session_id": "session-123"
+ * }
+ * ```
  */
 export interface GeminiToolUseEvent {
 	type: "tool_use";
@@ -113,20 +139,12 @@ export interface GeminiSessionInfo extends AgentSessionInfo {
 
 /**
  * Event emitter interface for GeminiRunner
+ * Provides typed event handlers for GeminiRunner events
  */
 export interface GeminiRunnerEvents {
 	message: (message: SDKMessage) => void;
 	error: (error: Error) => void;
 	complete: (messages: SDKMessage[]) => void;
+	/** Raw event emitting - emits unprocessed Gemini CLI events */
 	streamEvent: (event: GeminiStreamEvent) => void;
 }
-
-// Re-export types from core for convenience
-export type {
-	AgentRunnerConfig,
-	HookCallbackMatcher,
-	HookEvent,
-	McpServerConfig,
-	SDKMessage,
-	SDKUserMessage,
-};

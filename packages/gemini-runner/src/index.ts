@@ -26,16 +26,6 @@
  * ```
  */
 
-// Re-export core types for convenience
-export type {
-	AgentMessage,
-	AgentRunnerConfig,
-	AgentSessionInfo,
-	AgentUserMessage,
-	IAgentRunner,
-	SDKMessage,
-	SDKUserMessage,
-} from "cyrus-core";
 // Adapter functions
 export {
 	createUserMessage,
@@ -43,7 +33,7 @@ export {
 	geminiEventToSDKMessage,
 } from "./adapters.js";
 // Main runner class
-export { GeminiRunner, StreamingPrompt } from "./GeminiRunner.js";
+export { GeminiRunner } from "./GeminiRunner.js";
 // Types
 export type {
 	GeminiErrorEvent,

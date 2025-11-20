@@ -2,9 +2,9 @@ import type { SDKMessage, SDKUserMessage } from "cyrus-core";
 import type { GeminiMessageEvent, GeminiStreamEvent } from "./types.js";
 
 /**
- * Convert a Gemini stream event to Claude SDK message format
+ * Convert a Gemini stream event to cyrus-core SDKMessage format
  *
- * This adapter maps Gemini CLI's streaming events to the Claude SDK's SDKMessage
+ * This adapter maps Gemini CLI's streaming events to the cyrus-core SDKMessage
  * format, allowing GeminiRunner to implement the IAgentRunner interface.
  *
  * @param event - Gemini CLI stream event
@@ -19,7 +19,7 @@ export function geminiEventToSDKMessage(
 		case "message": {
 			const messageEvent = event as GeminiMessageEvent;
 			if (messageEvent.role === "user") {
-				return {
+				const userMessage: SDKUserMessage = {
 					type: "user",
 					message: {
 						role: "user",
@@ -27,17 +27,19 @@ export function geminiEventToSDKMessage(
 					},
 					parent_tool_use_id: null,
 					session_id: sessionId || "pending",
-				} satisfies SDKUserMessage;
+				};
+				return userMessage;
 			} else {
 				// Assistant message
-				return {
+				const assistantMessage = {
 					type: "assistant",
 					message: {
 						role: "assistant",
 						content: messageEvent.content,
 					},
 					session_id: sessionId || "pending",
-				} as unknown as SDKMessage;
+				};
+				return assistantMessage as unknown as SDKMessage;
 			}
 		}
 
@@ -46,41 +48,49 @@ export function geminiEventToSDKMessage(
 			// Session ID is extracted separately
 			return null;
 
-		case "tool_use":
+		case "tool_use": {
 			// Map to Claude's tool_use format
-			return {
+			// Generate unique tool_id based on tool name and timestamp (matches Gemini CLI format)
+			const tool_id = `${event.tool_name}_${Date.now()}`;
+			const toolUseMessage = {
 				type: "assistant",
 				message: {
 					role: "assistant",
 					content: [
 						{
 							type: "tool_use",
-							id: `${event.tool_name}_${Date.now()}`, // Generate unique ID
+							id: tool_id,
 							name: event.tool_name,
 							input: event.parameters,
 						},
 					],
 				},
 				session_id: sessionId || "pending",
-			} as unknown as SDKMessage;
+			};
+			return toolUseMessage as unknown as SDKMessage;
+		}
 
-		case "tool_result":
+		case "tool_result": {
 			// Map to Claude's tool_result format
-			return {
+			// Generate matching tool_id (should ideally be tracked from tool_use event)
+			const tool_use_id = `${event.tool_name}_${Date.now()}`;
+			const toolResultMessage = {
 				type: "user",
 				message: {
 					role: "user",
 					content: [
 						{
 							type: "tool_result",
-							tool_use_id: `${event.tool_name}_${Date.now()}`,
+							tool_use_id: tool_use_id,
 							content: JSON.stringify(event.result),
 						},
 					],
 				},
 				parent_tool_use_id: null,
 				session_id: sessionId || "pending",
-			} as unknown as SDKMessage;
+			};
+			return toolResultMessage as unknown as SDKMessage;
+		}
 
 		case "result":
 			// Final result - map to assistant message with the response
@@ -90,14 +100,15 @@ export function geminiEventToSDKMessage(
 				return null;
 			} else {
 				// Success result with final response
-				return {
+				const resultMessage = {
 					type: "assistant",
 					message: {
 						role: "assistant",
 						content: event.response,
 					},
 					session_id: sessionId || "pending",
-				} as unknown as SDKMessage;
+				};
+				return resultMessage as unknown as SDKMessage;
 			}
 
 		case "error":
@@ -111,7 +122,7 @@ export function geminiEventToSDKMessage(
 }
 
 /**
- * Create a Claude SDK user message from a plain string prompt
+ * Create a Cyrus Core SDK UserMessage from a plain string prompt
  *
  * Helper function to create properly formatted SDKUserMessage objects
  * for the Gemini CLI input.
