@@ -255,6 +255,9 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+      cyrus-simple-agent-runner:
+        specifier: workspace:*
+        version: link:../simple-agent-runner
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
