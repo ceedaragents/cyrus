@@ -2,6 +2,19 @@
 // export type { SessionOptions, , NarrativeItem } from './Session.js'
 // export { ClaudeSessionManager as SessionManager } from './ClaudeSessionManager.js'
 
+// Agent Runner types
+export type {
+	AgentMessage,
+	AgentRunnerConfig,
+	AgentSessionInfo,
+	AgentUserMessage,
+	HookCallbackMatcher,
+	HookEvent,
+	IAgentRunner,
+	McpServerConfig,
+	SDKMessage,
+	SDKUserMessage,
+} from "./agent-runner-types.js";
 export type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
