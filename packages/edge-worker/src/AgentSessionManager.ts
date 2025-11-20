@@ -1,7 +1,6 @@
 import type {
 	APIAssistantMessage,
 	APIUserMessage,
-	ClaudeRunner,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
@@ -16,6 +15,7 @@ import {
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
+	type IAgentRunner,
 	type IIssueTrackerService,
 	type IssueMinimal,
 	type SerializedCyrusAgentSession,
@@ -1379,11 +1379,11 @@ export class AgentSessionManager {
 	}
 
 	/**
-	 * Add or update ClaudeRunner for a session
+	 * Add or update agent runner for a session
 	 */
-	addClaudeRunner(
+	addAgentRunner(
 		linearAgentActivitySessionId: string,
-		claudeRunner: ClaudeRunner,
+		agentRunner: IAgentRunner,
 	): void {
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		if (!session) {
@@ -1393,30 +1393,30 @@ export class AgentSessionManager {
 			return;
 		}
 
-		session.claudeRunner = claudeRunner;
+		session.agentRunner = agentRunner;
 		session.updatedAt = Date.now();
 		console.log(
-			`[AgentSessionManager] Added ClaudeRunner to session ${linearAgentActivitySessionId}`,
+			`[AgentSessionManager] Added agent runner to session ${linearAgentActivitySessionId}`,
 		);
 	}
 
 	/**
-	 *  Get all ClaudeRunners
+	 *  Get all agent runners
 	 */
-	getAllClaudeRunners(): ClaudeRunner[] {
+	getAllAgentRunners(): IAgentRunner[] {
 		return Array.from(this.sessions.values())
-			.map((session) => session.claudeRunner)
-			.filter((runner): runner is ClaudeRunner => runner !== undefined);
+			.map((session) => session.agentRunner)
+			.filter((runner): runner is IAgentRunner => runner !== undefined);
 	}
 
 	/**
-	 * Get all ClaudeRunners for a specific issue
+	 * Get all agent runners for a specific issue
 	 */
-	getClaudeRunnersForIssue(issueId: string): ClaudeRunner[] {
+	getAgentRunnersForIssue(issueId: string): IAgentRunner[] {
 		return Array.from(this.sessions.values())
 			.filter((session) => session.issueId === issueId)
-			.map((session) => session.claudeRunner)
-			.filter((runner): runner is ClaudeRunner => runner !== undefined);
+			.map((session) => session.agentRunner)
+			.filter((runner): runner is IAgentRunner => runner !== undefined);
 	}
 
 	/**
@@ -1447,21 +1447,21 @@ export class AgentSessionManager {
 	}
 
 	/**
-	 * Get ClaudeRunner for a specific session
+	 * Get agent runner for a specific session
 	 */
-	getClaudeRunner(
+	getAgentRunner(
 		linearAgentActivitySessionId: string,
-	): ClaudeRunner | undefined {
+	): IAgentRunner | undefined {
 		const session = this.sessions.get(linearAgentActivitySessionId);
-		return session?.claudeRunner;
+		return session?.agentRunner;
 	}
 
 	/**
-	 * Check if a ClaudeRunner exists for a session
+	 * Check if an agent runner exists for a session
 	 */
-	hasClaudeRunner(linearAgentActivitySessionId: string): boolean {
+	hasAgentRunner(linearAgentActivitySessionId: string): boolean {
 		const session = this.sessions.get(linearAgentActivitySessionId);
-		return session?.claudeRunner !== undefined;
+		return session?.agentRunner !== undefined;
 	}
 
 	/**
@@ -1751,8 +1751,8 @@ export class AgentSessionManager {
 
 		// Serialize sessions
 		for (const [sessionId, session] of this.sessions.entries()) {
-			// Exclude claudeRunner from serialization as it's not serializable
-			const { claudeRunner: _claudeRunner, ...serializableSession } = session;
+			// Exclude agentRunner from serialization as it's not serializable
+			const { agentRunner: _agentRunner, ...serializableSession } = session;
 			sessions[sessionId] = serializableSession;
 		}
 
