@@ -22,6 +22,34 @@ export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry;
 // }
 
 /**
+ * Information about an active work session
+ */
+export interface ActiveWorkSession {
+	/** Linear issue ID being worked on */
+	issueId: string;
+	/** Linear issue identifier (e.g., TEAM-123) */
+	issueIdentifier: string;
+	/** Repository ID handling this work */
+	repositoryId: string;
+	/** Linear agent session ID */
+	sessionId: string;
+	/** Timestamp when work started (milliseconds since epoch) */
+	startedAt: number;
+}
+
+/**
+ * Represents the current active work status
+ */
+export interface ActiveWorkStatus {
+	/** Indicates if Cyrus is currently working on any issues */
+	isWorking: boolean;
+	/** Map of session IDs to active work sessions */
+	activeSessions: Record<string, ActiveWorkSession>;
+	/** Timestamp of last update (milliseconds since epoch) */
+	lastUpdated: number;
+}
+
+/**
  * Serializable EdgeWorker state for persistence
  */
 export interface SerializableEdgeWorkerState {
@@ -53,6 +81,13 @@ export class PersistenceManager {
 	 */
 	private getEdgeWorkerStateFilePath(): string {
 		return join(this.persistencePath, "edge-worker-state.json");
+	}
+
+	/**
+	 * Get the full path to the active work status file
+	 */
+	private getActiveWorkStatusFilePath(): string {
+		return join(this.persistencePath, "active-work.json");
 	}
 
 	/**
@@ -153,5 +188,117 @@ export class PersistenceManager {
 	 */
 	static arrayToSet<T>(array: T[]): Set<T> {
 		return new Set(array);
+	}
+
+	/**
+	 * Add an active work session
+	 */
+	async addActiveSession(session: ActiveWorkSession): Promise<void> {
+		try {
+			await this.ensurePersistenceDirectory();
+			const activeWorkFile = this.getActiveWorkStatusFilePath();
+
+			// Load current status or create new one
+			const currentStatus = (await this.getActiveWorkStatus()) || {
+				isWorking: false,
+				activeSessions: {},
+				lastUpdated: Date.now(),
+			};
+
+			// Add the new session
+			currentStatus.activeSessions[session.sessionId] = session;
+			currentStatus.isWorking =
+				Object.keys(currentStatus.activeSessions).length > 0;
+			currentStatus.lastUpdated = Date.now();
+
+			await writeFile(
+				activeWorkFile,
+				JSON.stringify(currentStatus, null, 2),
+				"utf8",
+			);
+		} catch (error) {
+			console.error("Failed to add active session:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Remove an active work session
+	 */
+	async removeActiveSession(sessionId: string): Promise<void> {
+		try {
+			await this.ensurePersistenceDirectory();
+			const activeWorkFile = this.getActiveWorkStatusFilePath();
+
+			// Load current status
+			const currentStatus = await this.getActiveWorkStatus();
+			if (!currentStatus) {
+				return; // Nothing to remove
+			}
+
+			// Remove the session
+			delete currentStatus.activeSessions[sessionId];
+			currentStatus.isWorking =
+				Object.keys(currentStatus.activeSessions).length > 0;
+			currentStatus.lastUpdated = Date.now();
+
+			await writeFile(
+				activeWorkFile,
+				JSON.stringify(currentStatus, null, 2),
+				"utf8",
+			);
+		} catch (error) {
+			console.error("Failed to remove active session:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Clear all active work sessions (Cyrus is not working on anything)
+	 */
+	async clearActiveWork(): Promise<void> {
+		try {
+			await this.ensurePersistenceDirectory();
+			const activeWorkFile = this.getActiveWorkStatusFilePath();
+			const workStatus: ActiveWorkStatus = {
+				isWorking: false,
+				activeSessions: {},
+				lastUpdated: Date.now(),
+			};
+			await writeFile(
+				activeWorkFile,
+				JSON.stringify(workStatus, null, 2),
+				"utf8",
+			);
+		} catch (error) {
+			console.error("Failed to clear active work status:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Get the current active work status
+	 */
+	async getActiveWorkStatus(): Promise<ActiveWorkStatus | null> {
+		try {
+			const activeWorkFile = this.getActiveWorkStatusFilePath();
+			if (!existsSync(activeWorkFile)) {
+				return null;
+			}
+
+			const statusData = JSON.parse(await readFile(activeWorkFile, "utf8"));
+			return statusData as ActiveWorkStatus;
+		} catch (error) {
+			console.error("Failed to get active work status:", error);
+			return null;
+		}
+	}
+
+	/**
+	 * Check if Cyrus is currently working on an issue
+	 */
+	async isCurrentlyWorking(): Promise<boolean> {
+		const status = await this.getActiveWorkStatus();
+		return status?.isWorking ?? false;
 	}
 }

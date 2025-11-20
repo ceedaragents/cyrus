@@ -36,6 +36,11 @@ vi.mock("cyrus-core", async (importOriginal) => {
 		PersistenceManager: vi.fn().mockImplementation(() => ({
 			loadEdgeWorkerState: vi.fn().mockResolvedValue(null),
 			saveEdgeWorkerState: vi.fn().mockResolvedValue(undefined),
+			addActiveSession: vi.fn().mockResolvedValue(undefined),
+			removeActiveSession: vi.fn().mockResolvedValue(undefined),
+			clearActiveWork: vi.fn().mockResolvedValue(undefined),
+			getActiveWorkStatus: vi.fn().mockResolvedValue(null),
+			isCurrentlyWorking: vi.fn().mockResolvedValue(false),
 		})),
 	};
 });
@@ -67,7 +72,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 	};
 
 	beforeEach(() => {
-		vi.clearAllMocks();
+		// vi.clearAllMocks() - disabled to preserve PersistenceManager mock;
 
 		// Mock console methods
 		vi.spyOn(console, "log").mockImplementation(() => {});

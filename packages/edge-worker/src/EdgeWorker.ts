@@ -325,6 +325,10 @@ export class EdgeWorker extends EventEmitter {
 		// Load persisted state for each repository
 		await this.loadPersistedState();
 
+		// Clear active work status on startup (ensures clean state after restart)
+		await this.persistenceManager.clearActiveWork();
+		console.log("[EdgeWorker] Active work status cleared on startup");
+
 		// Start config file watcher if configPath is provided
 		if (this.configPath) {
 			this.startConfigWatcher();
@@ -1539,6 +1543,19 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`,
 			);
+
+			// Mark that Cyrus is actively working on this issue
+			await this.persistenceManager.addActiveSession({
+				issueId: fullIssue.id,
+				issueIdentifier: fullIssue.identifier,
+				repositoryId: repository.id,
+				sessionId: linearAgentActivitySessionId,
+				startedAt: Date.now(),
+			});
+			console.log(
+				`[EdgeWorker] Added active session for ${fullIssue.identifier}`,
+			);
+
 			// Note: AgentSessionManager will be initialized automatically when the first system message
 			// is received via handleClaudeMessage() callback
 		} catch (error) {
@@ -1594,6 +1611,10 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Stopped Claude session for agent activity session ${agentSessionId}`,
 			);
 		}
+
+		// Remove this session from active work
+		await this.persistenceManager.removeActiveSession(agentSessionId);
+		console.log(`[EdgeWorker] Removed active session (stop signal)`);
 
 		// Post confirmation
 		const issueTitle = issue?.title || "this issue";
@@ -1964,18 +1985,22 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Get all Claude runners for this specific issue
-		const claudeRunners = agentSessionManager.getClaudeRunnersForIssue(
-			issue.id,
-		);
+		// Get all sessions for this issue
+		const sessions = agentSessionManager.getSessionsByIssueId(issue.id);
 
-		// Stop all Claude runners for this issue
-		const activeThreadCount = claudeRunners.length;
-		for (const runner of claudeRunners) {
+		// Stop all Claude runners for this issue and remove from active work
+		const activeThreadCount = sessions.length;
+		for (const session of sessions) {
 			console.log(
-				`[EdgeWorker] Stopping Claude runner for issue ${issue.identifier}`,
+				`[EdgeWorker] Stopping session ${session.linearAgentActivitySessionId} for issue ${issue.identifier}`,
 			);
-			runner.stop();
+			if (session.claudeRunner) {
+				session.claudeRunner.stop();
+			}
+			// Remove this session from active work
+			await this.persistenceManager.removeActiveSession(
+				session.linearAgentActivitySessionId,
+			);
 		}
 
 		// Post ONE farewell comment on the issue (not in any thread) if there were active sessions
@@ -1985,6 +2010,9 @@ export class EdgeWorker extends EventEmitter {
 				"I've been unassigned and am stopping work now.",
 				repository.id,
 				// No parentId - post as a new comment on the issue
+			);
+			console.log(
+				`[EdgeWorker] Removed ${activeThreadCount} active session(s) for ${issue.identifier}`,
 			);
 		}
 
@@ -4996,6 +5024,18 @@ ${input.userComment}
 		// Start streaming session
 		try {
 			await runner.startStreaming(fullPrompt);
+
+			// Mark that Cyrus is actively working on this issue
+			await this.persistenceManager.addActiveSession({
+				issueId: fullIssue.id,
+				issueIdentifier: fullIssue.identifier,
+				repositoryId: repository.id,
+				sessionId: linearAgentActivitySessionId,
+				startedAt: Date.now(),
+			});
+			console.log(
+				`[EdgeWorker] Added active session for ${fullIssue.identifier} (resumed)`,
+			);
 		} catch (error) {
 			console.error(
 				`[resumeClaudeSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
