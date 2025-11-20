@@ -101,6 +101,18 @@ export type {
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
+// Simple Agent Runner types
+export type {
+	AgentProgressEvent,
+	IAgentProgressEvent,
+	ISimpleAgentQueryOptions,
+	ISimpleAgentResult,
+	ISimpleAgentRunner,
+	ISimpleAgentRunnerConfig,
+	SimpleAgentQueryOptions,
+	SimpleAgentResult,
+	SimpleAgentRunnerConfig,
+} from "./simple-agent-runner-types.js";
 // Platform-agnostic webhook type aliases - exported from issue-tracker
 // These are now defined in issue-tracker/types.ts as aliases to Linear SDK webhook types
 // EdgeWorker and other high-level code should use these generic names via issue-tracker exports
