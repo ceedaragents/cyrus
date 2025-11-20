@@ -4992,6 +4992,18 @@ ${input.userComment}
 		// Start streaming session
 		try {
 			await runner.startStreaming(fullPrompt);
+
+			// Mark that Cyrus is actively working on this issue
+			await this.persistenceManager.addActiveSession({
+				issueId: fullIssue.id,
+				issueIdentifier: fullIssue.identifier,
+				repositoryId: repository.id,
+				sessionId: linearAgentActivitySessionId,
+				startedAt: Date.now(),
+			});
+			console.log(
+				`[EdgeWorker] Added active session for ${fullIssue.identifier} (resumed)`,
+			);
 		} catch (error) {
 			console.error(
 				`[resumeClaudeSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
