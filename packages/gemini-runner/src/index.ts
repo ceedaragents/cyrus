@@ -33,7 +33,9 @@ export type {
 	AgentSessionInfo,
 	AgentUserMessage,
 	IAgentRunner,
+	SDKAssistantMessage,
 	SDKMessage,
+	SDKResultMessage,
 	SDKUserMessage,
 } from "cyrus-core";
 // Adapter functions
@@ -43,7 +45,7 @@ export {
 	geminiEventToSDKMessage,
 } from "./adapters.js";
 // Main runner class
-export { GeminiRunner, StreamingPrompt } from "./GeminiRunner.js";
+export { GeminiRunner } from "./GeminiRunner.js";
 // Types
 export type {
 	GeminiErrorEvent,

@@ -12,7 +12,9 @@ export type {
 	HookEvent,
 	IAgentRunner,
 	McpServerConfig,
+	SDKAssistantMessage,
 	SDKMessage,
+	SDKResultMessage,
 	SDKUserMessage,
 } from "./agent-runner-types.js";
 export type {
@@ -21,7 +23,6 @@ export type {
 	IssueMinimal,
 	Workspace,
 } from "./CyrusAgentSession.js";
-
 // Configuration types
 export type {
 	EdgeConfig,
@@ -30,71 +31,8 @@ export type {
 	RepositoryConfig,
 } from "./config-types.js";
 export { resolvePath } from "./config-types.js";
-
 // Constants
 export { DEFAULT_PROXY_URL } from "./constants.js";
-// Issue Tracker Abstraction
-export type {
-	AgentActivity,
-	AgentActivityContent,
-	AgentActivityCreateInput,
-	AgentActivityPayload,
-	AgentActivitySDK,
-	AgentEvent,
-	AgentEventTransportConfig,
-	AgentEventTransportEvents,
-	AgentSession,
-	AgentSessionCreatedWebhook,
-	AgentSessionCreateOnCommentInput,
-	AgentSessionCreateOnIssueInput,
-	AgentSessionCreateResponse,
-	AgentSessionPromptedWebhook,
-	AgentSessionSDK,
-	Comment,
-	CommentCreateInput,
-	CommentWithAttachments,
-	Connection,
-	FetchChildrenOptions,
-	FileUploadRequest,
-	FileUploadResponse,
-	GuidanceRule,
-	IAgentEventTransport,
-	IIssueTrackerService,
-	Issue,
-	IssueUnassignedWebhook,
-	IssueUpdateInput,
-	IssueWithChildren,
-	Label,
-	PaginationOptions,
-	Team,
-	User,
-	Webhook,
-	WebhookAgentSession,
-	WebhookComment,
-	WebhookIssue,
-	WorkflowState,
-} from "./issue-tracker/index.js";
-export {
-	AgentActivityContentType,
-	AgentActivitySignal,
-	AgentSessionStatus,
-	AgentSessionType,
-	isAgentSessionCreatedEvent,
-	isAgentSessionCreatedWebhook,
-	isAgentSessionPromptedEvent,
-	isAgentSessionPromptedWebhook,
-	isCommentMentionEvent,
-	isIssueAssignedEvent,
-	isIssueAssignedWebhook,
-	isIssueCommentMentionWebhook,
-	isIssueNewCommentWebhook,
-	isIssueUnassignedEvent,
-	isIssueUnassignedWebhook,
-	isNewCommentEvent,
-} from "./issue-tracker/index.js";
-
-// Linear adapters have been moved to cyrus-linear-event-transport package
-// Import them directly from that package instead of from cyrus-core
 export type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
@@ -113,6 +51,38 @@ export type {
 	SimpleAgentResult,
 	SimpleAgentRunnerConfig,
 } from "./simple-agent-runner-types.js";
-// Platform-agnostic webhook type aliases - exported from issue-tracker
-// These are now defined in issue-tracker/types.ts as aliases to Linear SDK webhook types
-// EdgeWorker and other high-level code should use these generic names via issue-tracker exports
+// Webhook types
+export type {
+	LinearAgentSessionCreatedWebhook,
+	LinearAgentSessionPromptedWebhook,
+	LinearIssueAssignedNotification,
+	LinearIssueAssignedWebhook,
+	LinearIssueCommentMentionNotification,
+	LinearIssueCommentMentionWebhook,
+	LinearIssueNewCommentNotification,
+	LinearIssueNewCommentWebhook,
+	LinearIssueUnassignedNotification,
+	LinearIssueUnassignedWebhook,
+	LinearWebhook,
+	LinearWebhookActor,
+	LinearWebhookAgentActivity,
+	LinearWebhookAgentActivityContent,
+	LinearWebhookAgentSession,
+	LinearWebhookComment,
+	LinearWebhookCreator,
+	LinearWebhookGuidanceRule,
+	LinearWebhookIssue,
+	LinearWebhookNotification,
+	LinearWebhookOrganizationOrigin,
+	LinearWebhookTeam,
+	LinearWebhookTeamOrigin,
+	LinearWebhookTeamWithParent,
+} from "./webhook-types.js";
+export {
+	isAgentSessionCreatedWebhook,
+	isAgentSessionPromptedWebhook,
+	isIssueAssignedWebhook,
+	isIssueCommentMentionWebhook,
+	isIssueNewCommentWebhook,
+	isIssueUnassignedWebhook,
+} from "./webhook-types.js";
