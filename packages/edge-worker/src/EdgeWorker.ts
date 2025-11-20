@@ -25,6 +25,7 @@ import {
 } from "cyrus-claude-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
+	AgentEvent,
 	AgentSessionCreatedWebhook,
 	AgentSessionPromptedWebhook,
 	Comment,
@@ -200,10 +201,7 @@ export class EdgeWorker extends EventEmitter {
 				const linearClient = new LinearClient({
 					accessToken: repo.linearToken,
 				});
-				const issueTracker = new LinearIssueTrackerService(
-					linearClient,
-					repo.linearToken,
-				);
+				const issueTracker = new LinearIssueTrackerService(linearClient);
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
@@ -366,10 +364,10 @@ export class EdgeWorker extends EventEmitter {
 		});
 
 		// Listen for webhook events
-		this.linearEventTransport.on("event", (payload: any) => {
+		this.linearEventTransport.on("event", (event: AgentEvent) => {
 			// Get all active repositories for webhook handling
 			const repos = Array.from(this.repositories.values());
-			this.handleWebhook(payload as unknown as Webhook, repos);
+			this.handleWebhook(event as unknown as Webhook, repos);
 		});
 
 		// Listen for errors
@@ -780,10 +778,7 @@ export class EdgeWorker extends EventEmitter {
 				const linearClient = new LinearClient({
 					accessToken: repo.linearToken,
 				});
-				const issueTracker = new LinearIssueTrackerService(
-					linearClient,
-					repo.linearToken,
-				);
+				const issueTracker = new LinearIssueTrackerService(linearClient);
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager with same pattern as constructor
@@ -859,10 +854,7 @@ export class EdgeWorker extends EventEmitter {
 					const linearClient = new LinearClient({
 						accessToken: repo.linearToken,
 					});
-					const issueTracker = new LinearIssueTrackerService(
-						linearClient,
-						repo.linearToken,
-					);
+					const issueTracker = new LinearIssueTrackerService(linearClient);
 					this.issueTrackers.set(repo.id, issueTracker);
 				}
 

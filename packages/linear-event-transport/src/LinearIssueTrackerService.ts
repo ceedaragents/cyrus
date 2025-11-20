@@ -13,10 +13,8 @@ import type {
 	AgentActivityCreateInput,
 	AgentActivityPayload,
 	AgentEventTransportConfig,
-	AgentSession,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
-	AgentSessionCreateResponse,
 	Comment,
 	CommentCreateInput,
 	CommentWithAttachments,
@@ -60,26 +58,14 @@ import { LinearEventTransport } from "./LinearEventTransport.js";
  */
 export class LinearIssueTrackerService implements IIssueTrackerService {
 	private readonly linearClient: LinearClient;
-	private readonly linearToken: string | undefined;
 
 	/**
 	 * Create a new LinearIssueTrackerService.
 	 *
 	 * @param linearClient - Configured LinearClient instance
-	 * @param linearToken - Optional Linear API token for MCP server creation
 	 */
-	constructor(linearClient: LinearClient, linearToken?: string) {
+	constructor(linearClient: LinearClient) {
 		this.linearClient = linearClient;
-		this.linearToken = linearToken;
-
-		// Warn if no token provided (needed for MCP server creation)
-		if (!linearToken) {
-			console.warn(
-				"[LinearIssueTrackerService] No linearToken provided. " +
-					"The createExtendedMcpServer() method will not be available. " +
-					"If you need MCP server support, pass the Linear API token to the constructor.",
-			);
-		}
 	}
 
 	// ========================================================================
@@ -550,107 +536,26 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 	/**
 	 * Create an agent session on an issue.
-	 * Uses native SDK method instead of raw GraphQL.
+	 * Uses native SDK method - direct passthrough to Linear SDK.
 	 */
-	async createAgentSessionOnIssue(
-		input: AgentSessionCreateOnIssueInput,
-	): Promise<AgentSessionCreateResponse> {
-		try {
-			// Use native SDK method
-			const result = await this.linearClient.agentSessionCreateOnIssue({
-				issueId: input.issueId,
-				externalLink: input.externalLink,
-			});
-
-			if (!result.success) {
-				throw new Error("Linear API returned success=false");
-			}
-
-			const agentSession = await result.agentSession;
-			if (!agentSession) {
-				throw new Error("Linear API did not return an agent session");
-			}
-
-			return {
-				success: result.success,
-				agentSessionId: agentSession.id,
-				lastSyncId: result.lastSyncId,
-			};
-		} catch (error) {
-			const err = new Error(
-				`Failed to create agent session on issue ${input.issueId}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+	createAgentSessionOnIssue(input: AgentSessionCreateOnIssueInput) {
+		return this.linearClient.agentSessionCreateOnIssue(input);
 	}
 
 	/**
 	 * Create an agent session on a comment thread.
-	 * Uses native SDK method instead of raw GraphQL.
+	 * Uses native SDK method - direct passthrough to Linear SDK.
 	 */
-	async createAgentSessionOnComment(
-		input: AgentSessionCreateOnCommentInput,
-	): Promise<AgentSessionCreateResponse> {
-		try {
-			// Use native SDK method
-			const result = await this.linearClient.agentSessionCreateOnComment({
-				commentId: input.commentId,
-				externalLink: input.externalLink,
-			});
-
-			if (!result.success) {
-				throw new Error("Linear API returned success=false");
-			}
-
-			const agentSession = await result.agentSession;
-			if (!agentSession) {
-				throw new Error("Linear API did not return an agent session");
-			}
-
-			return {
-				success: result.success,
-				agentSessionId: agentSession.id,
-				lastSyncId: result.lastSyncId,
-			};
-		} catch (error) {
-			const err = new Error(
-				`Failed to create agent session on comment ${input.commentId}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+	createAgentSessionOnComment(input: AgentSessionCreateOnCommentInput) {
+		return this.linearClient.agentSessionCreateOnComment(input);
 	}
 
 	/**
 	 * Fetch an agent session by ID.
-	 * Uses native SDK method instead of raw GraphQL.
+	 * Uses native SDK method - direct passthrough to Linear SDK.
 	 */
-	async fetchAgentSession(sessionId: string): Promise<AgentSession> {
-		try {
-			// Use native SDK method - returns LinearFetch which needs to be awaited
-			const agentSessionFetch = this.linearClient.agentSession(sessionId);
-			const agentSession = await agentSessionFetch;
-
-			if (!agentSession) {
-				throw new Error("Agent session not found");
-			}
-
-			// Cast to the expected AgentSession type from documents
-			return agentSession as unknown as AgentSession;
-		} catch (error) {
-			const err = new Error(
-				`Failed to fetch agent session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			if (error instanceof Error) {
-				err.cause = error;
-			}
-			throw err;
-		}
+	fetchAgentSession(sessionId: string) {
+		return this.linearClient.agentSession(sessionId);
 	}
 
 	// ========================================================================
@@ -767,55 +672,5 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 
 		// Import from same package - no require() needed
 		return new LinearEventTransport(config);
-	}
-
-	// ========================================================================
-	// MCP SERVER CREATION
-	// ========================================================================
-
-	/**
-	 * Create the extended issue tracker MCP server for the Linear platform.
-	 *
-	 * Returns configuration data needed by the edge-worker to create the MCP server.
-	 * The actual MCP server creation happens using createCyrusToolsServer() from claude-runner.
-	 *
-	 * @param options - Session management callbacks
-	 * @returns Configuration object for EdgeWorker to create MCP server
-	 *
-	 * @remarks
-	 * This method returns configuration that EdgeWorker.buildMcpConfig() uses:
-	 * ```typescript
-	 * const config = linearService.createExtendedMcpServer(options);
-	 * // EdgeWorker will call: createCyrusToolsServer(config.linearToken, config.options)
-	 * ```
-	 */
-	createExtendedMcpServer(options?: {
-		parentSessionId?: string;
-		onSessionCreated?: (
-			childSessionId: string,
-			parentSessionId: string,
-		) => void;
-		onFeedbackDelivery?: (
-			childSessionId: string,
-			message: string,
-		) => Promise<boolean>;
-	}): {
-		type: "linear-factory";
-		linearToken: string | undefined;
-		options: NonNullable<typeof options>;
-	} {
-		if (!this.linearToken) {
-			throw new Error(
-				"LinearIssueTrackerService requires a linearToken to create MCP servers. " +
-					"Pass the token to the constructor: new LinearIssueTrackerService(client, token). " +
-					"The token is needed to configure the Linear MCP server for agent sessions.",
-			);
-		}
-
-		return {
-			type: "linear-factory",
-			linearToken: this.linearToken,
-			options: options || {},
-		};
 	}
 }
