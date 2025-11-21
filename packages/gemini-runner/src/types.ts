@@ -124,6 +124,8 @@ export interface GeminiRunnerConfig extends AgentRunnerConfig {
 	debug?: boolean;
 	/** Additional directories to include in workspace context (--include-directories flag) */
 	includeDirectories?: string[];
+	/** Enable single-turn mode (sets maxSessionTurns=1 in settings.json) */
+	singleTurn?: boolean;
 }
 
 /**

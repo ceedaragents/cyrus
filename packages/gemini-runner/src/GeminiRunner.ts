@@ -12,7 +12,7 @@ import {
 	StreamingPrompt,
 } from "cyrus-core";
 import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
-import { ensureGeminiSettings } from "./settingsGenerator.js";
+import { setupGeminiSettings } from "./settingsGenerator.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
@@ -70,6 +70,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	private accumulatingRole: "user" | "assistant" | null = null;
 	// Track last assistant message for result coercion
 	private lastAssistantMessage: SDKAssistantMessage | null = null;
+	// Settings cleanup function
+	private settingsCleanup: (() => void) | null = null;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
@@ -177,6 +179,9 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Reset messages array
 		this.messages = [];
 
+		// Setup Gemini settings with appropriate maxSessionTurns
+		this.settingsCleanup = setupGeminiSettings(this.config.singleTurn || false);
+
 		try {
 			// Build Gemini CLI command
 			const geminiPath = this.config.geminiPath || "gemini";
@@ -237,9 +242,6 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				);
 				useStdin = true;
 			}
-
-			// Ensure ~/.gemini/settings.json exists with -shortone aliases
-			ensureGeminiSettings();
 
 			// Spawn Gemini CLI process
 			console.log(`[GeminiRunner] Spawning: ${geminiPath} ${args.join(" ")}`);
@@ -381,6 +383,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			if (this.readableLogStream) {
 				this.readableLogStream.end();
 				this.readableLogStream = null;
+			}
+
+			// Restore Gemini settings
+			if (this.settingsCleanup) {
+				this.settingsCleanup();
+				this.settingsCleanup = null;
 			}
 		}
 
@@ -565,6 +573,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Complete streaming prompt if active
 		if (this.streamingPrompt) {
 			this.streamingPrompt.complete();
+		}
+
+		// Restore Gemini settings
+		if (this.settingsCleanup) {
+			this.settingsCleanup();
+			this.settingsCleanup = null;
 		}
 	}
 

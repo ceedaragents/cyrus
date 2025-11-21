@@ -1,66 +1,112 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-/**
- * Gemini models that need -shortone aliases
- * Based on Connor's specification - only the 4 main models
- */
-const GEMINI_MODELS = [
-	"gemini-3-pro-preview",
-	"gemini-2.5-pro",
-	"gemini-2.5-flash",
-	"gemini-2.5-flash-lite",
-] as const;
+const GEMINI_DIR = join(homedir(), ".gemini");
+const SETTINGS_PATH = join(GEMINI_DIR, "settings.json");
+const BACKUP_PATH = join(GEMINI_DIR, "settings.json.backup");
 
 /**
- * Generates settings.json structure with -shortone aliases for all models
+ * Generates settings.json structure with maxSessionTurns
  * Reference: https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
+ *
+ * Based on investigation of Gemini CLI source code, maxSessionTurns is a top-level
+ * setting under "model", not a per-alias configuration. Aliases can only configure
+ * generateContentConfig parameters (temperature, topP, etc).
  */
-function generateSettings() {
-	const aliases: Record<
-		string,
-		{ modelConfig: { model: string; maxSessionTurns: number } }
-	> = {};
-
-	for (const model of GEMINI_MODELS) {
-		aliases[`${model}-shortone`] = {
-			modelConfig: {
-				model: model,
-				maxSessionTurns: 1,
-			},
-		};
-	}
-
+function generateSettings(maxSessionTurns: number): object {
 	return {
 		general: {
 			previewFeatures: true,
 		},
-		modelConfigs: {
-			aliases,
+		model: {
+			maxSessionTurns,
 		},
 	};
 }
 
 /**
- * Ensures ~/.gemini/settings.json exists with -shortone aliases
- * If file already exists, leaves it untouched
+ * Backup existing settings.json if it exists
+ * Returns true if backup was created, false if no file to backup
  */
-export function ensureGeminiSettings(): void {
-	const geminiDir = join(homedir(), ".gemini");
-	const settingsPath = join(geminiDir, "settings.json");
-
-	// If settings.json already exists, don't touch it
-	if (existsSync(settingsPath)) {
-		return;
+export function backupGeminiSettings(): boolean {
+	if (!existsSync(SETTINGS_PATH)) {
+		return false;
 	}
 
+	// Create backup
+	copyFileSync(SETTINGS_PATH, BACKUP_PATH);
+	console.log(`[GeminiRunner] Backed up settings.json to ${BACKUP_PATH}`);
+	return true;
+}
+
+/**
+ * Restore settings.json from backup
+ * Returns true if restored, false if no backup exists
+ */
+export function restoreGeminiSettings(): boolean {
+	if (!existsSync(BACKUP_PATH)) {
+		return false;
+	}
+
+	// Restore from backup
+	copyFileSync(BACKUP_PATH, SETTINGS_PATH);
+	unlinkSync(BACKUP_PATH);
+	console.log(`[GeminiRunner] Restored settings.json from backup`);
+	return true;
+}
+
+/**
+ * Delete settings.json (used when no backup existed)
+ */
+export function deleteGeminiSettings(): void {
+	if (existsSync(SETTINGS_PATH)) {
+		unlinkSync(SETTINGS_PATH);
+		console.log(`[GeminiRunner] Deleted temporary settings.json`);
+	}
+}
+
+/**
+ * Write settings.json with specified maxSessionTurns
+ * Creates ~/.gemini directory if it doesn't exist
+ */
+export function writeGeminiSettings(maxSessionTurns: number): void {
 	// Create ~/.gemini directory if it doesn't exist
-	if (!existsSync(geminiDir)) {
-		mkdirSync(geminiDir, { recursive: true });
+	if (!existsSync(GEMINI_DIR)) {
+		mkdirSync(GEMINI_DIR, { recursive: true });
 	}
 
-	// Write settings.json with -shortone aliases
-	const settings = generateSettings();
-	writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+	// Generate and write settings
+	const settings = generateSettings(maxSessionTurns);
+	writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
+	console.log(
+		`[GeminiRunner] Wrote settings.json with maxSessionTurns=${maxSessionTurns}`,
+	);
+}
+
+/**
+ * Setup Gemini settings for a session based on singleTurn mode
+ * Returns cleanup function to call when session ends
+ */
+export function setupGeminiSettings(singleTurn: boolean): () => void {
+	const hadBackup = backupGeminiSettings();
+	const maxSessionTurns = singleTurn ? 1 : -1;
+
+	// Write settings with appropriate maxSessionTurns
+	writeGeminiSettings(maxSessionTurns);
+
+	// Return cleanup function
+	return () => {
+		if (hadBackup) {
+			restoreGeminiSettings();
+		} else {
+			deleteGeminiSettings();
+		}
+	};
 }
