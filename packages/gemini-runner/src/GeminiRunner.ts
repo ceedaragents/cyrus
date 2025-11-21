@@ -424,13 +424,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// Flush previous accumulation if exists
 			this.flushAccumulatedMessage();
 
-			// Start new accumulation
+			// Start new accumulation using Claude SDK format (array of content blocks)
 			if (event.role === "user") {
 				this.accumulatingMessage = {
 					type: "user",
 					message: {
 						role: "user",
-						content: event.content,
+						content: [{ type: "text", text: event.content }],
 					},
 					parent_tool_use_id: null,
 					session_id: this.sessionInfo?.sessionId || "pending",
@@ -441,22 +441,24 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 					type: "assistant",
 					message: {
 						role: "assistant",
-						content: event.content,
+						content: [{ type: "text", text: event.content }],
 					},
 					session_id: this.sessionInfo?.sessionId || "pending",
 				} as unknown as SDKMessage;
 			}
 			this.accumulatingRole = event.role;
 		} else {
-			// Same role - append content
+			// Same role - append content to existing text block
 			if (
 				this.accumulatingMessage.type === "user" ||
 				this.accumulatingMessage.type === "assistant"
 			) {
 				const currentContent = this.accumulatingMessage.message.content;
-				if (typeof currentContent === "string") {
-					this.accumulatingMessage.message.content =
-						currentContent + event.content;
+				if (Array.isArray(currentContent) && currentContent.length > 0) {
+					const lastBlock = currentContent[currentContent.length - 1];
+					if (lastBlock && lastBlock.type === "text" && "text" in lastBlock) {
+						lastBlock.text += event.content;
+					}
 				}
 			}
 		}
@@ -470,6 +472,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			console.log(
 				`[GeminiRunner] Flushing accumulated message (role: ${this.accumulatingRole})`,
 			);
+
+			// Track last assistant message for result coercion BEFORE emitting
+			if (this.accumulatingMessage.type === "assistant") {
+				this.lastAssistantMessage = this.accumulatingMessage;
+			}
+
 			this.emitMessage(this.accumulatingMessage);
 			this.accumulatingMessage = null;
 			this.accumulatingRole = null;

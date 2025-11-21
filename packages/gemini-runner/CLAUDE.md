@@ -79,74 +79,92 @@ runner.completeStream(); // Closes stdin to trigger processing
 
 ## Testing
 
-### Integration Tests
+### Comprehensive Integration Test
 
-The package includes comprehensive integration tests in `test-scripts/`:
+The package includes one comprehensive end-to-end integration test in `test-scripts/test-gemini-runner.ts` that verifies all GeminiRunner features:
 
-#### test-stdin-direct.ts
-**Purpose:** Proves stdin streaming works with real gemini CLI
-
-**What it tests:**
-- Multiple stdin writes accepted by gemini process
-- Gemini processes all input after stdin closes
-- Response includes content from all 3 prompts
-
-**Usage:**
-```bash
-cd packages/gemini-runner
-export GEMINI_API_KEY='your-key-here'
-bun test-scripts/test-stdin-direct.ts
-```
-
-**Expected output:**
-```
-✅ Gemini process spawned successfully
-✅ All 3 prompts written to stdin
-✅ Stdin closed
-✅ SUCCESS - Multiple stdin writes worked!
-```
-
-#### test-result-and-singleturn.ts
-**Purpose:** Verifies result coercion and single-turn mode
+#### test-gemini-runner.ts
+**Purpose:** Complete end-to-end verification of all GeminiRunner functionality
 
 **What it tests:**
-1. **Result Message Coercion**
-   - Result message contains actual assistant response
-   - NOT generic "Session completed successfully"
-   - Content matches last assistant message
 
-2. **Single-Turn Mode**
-   - `-shortone` model aliases work
-   - Session completes in 0-1 turns
-   - maxSessionTurns constraint enforced
-
-3. **Settings Auto-Generation**
+1. **Settings.json Auto-Generation**
    - `~/.gemini/settings.json` created if missing
-   - All 4 `-shortone` aliases present
+   - All 4 `-shortone` model aliases present
    - Each alias has `maxSessionTurns: 1`
 
+2. **Stdin Streaming (Multiple Writes)**
+   - Multiple messages written to stdin
+   - Process accepts all messages before stdin closes
+   - Gemini processes all input correctly
+
+3. **Result Message Coercion**
+   - Result message contains actual assistant response
+   - NOT generic "Session completed successfully"
+   - Content matches last assistant message exactly
+
+4. **Single-Turn Mode (All 4 Models)**
+   - Tests all 4 main Gemini models with `-shortone` aliases:
+     - `gemini-3-pro-preview-shortone`
+     - `gemini-2.5-pro-shortone`
+     - `gemini-2.5-flash-shortone`
+     - `gemini-2.5-flash-lite-shortone`
+   - Each completes in ≤1 turns
+   - maxSessionTurns constraint enforced
+
+5. **getLastAssistantMessage() Public API**
+   - Returns null before session starts
+   - Captures last assistant message after session
+   - Content accessible via public method
+
 **Usage:**
 ```bash
 cd packages/gemini-runner
 export GEMINI_API_KEY='your-key-here'
-bun test-scripts/test-result-and-singleturn.ts
+pnpm build
+bun test-scripts/test-gemini-runner.ts
 ```
 
 **Expected output:**
 ```
-📝 Test 1: Result Message Content Coercion
-   ✅ Result message contains actual assistant response
-   ✅ Result coercion working correctly
+============================================================
+🧪 GeminiRunner End-to-End Integration Tests
+============================================================
 
-🔄 Test 2: Single-Turn Mode
-   ✅ Completed in 1 turn(s)
-   ✅ Single-turn mode working correctly
+Prerequisites:
+   ✅ GEMINI_API_KEY environment variable set
+   ✅ Test directory: /Users/user/.cyrus-test-gemini
 
-⚙️  Test 3: Settings.json Auto-Generation
-   ✅ All -shortone aliases present
-   ✅ All aliases have maxSessionTurns: 1
+📁 Test 1: Settings.json Auto-Generation
+   ✅ settings.json has modelConfigs.aliases
+   ✅ Alias 'gemini-3-pro-preview-shortone' exists
+   ... (8 assertions)
+
+🔄 Test 2: Stdin Streaming (Multiple Writes)
+   ✅ Received 3 messages from GeminiRunner
+   ... (3 assertions)
+
+📝 Test 3: Result Message Coercion
+   ✅ Result is NOT generic 'Session completed successfully'
+   ... (3 assertions)
+
+🎯 Test 4: Single-Turn Mode (All 4 Models)
+   ✅ gemini-2.5-flash-shortone: Completed in ≤1 turns
+   ... (12 assertions)
+
+🔍 Test 5: getLastAssistantMessage() Public API
+   ✅ Returns message after session
+   ... (2 assertions)
+
+============================================================
+📊 Test Summary
+============================================================
+   Total Tests:  28
+   Passed:       28
+   Duration:     XX.XXs
 
 ✅ All Tests Passed!
+============================================================
 ```
 
 ### Prerequisites
@@ -172,11 +190,8 @@ export GEMINI_API_KEY='your-gemini-api-key'
 cd packages/gemini-runner
 pnpm build
 
-# Run stdin streaming test
-bun test-scripts/test-stdin-direct.ts
-
-# Run comprehensive integration test
-bun test-scripts/test-result-and-singleturn.ts
+# Run comprehensive integration test (covers all features)
+bun test-scripts/test-gemini-runner.ts
 ```
 
 ## Architecture
@@ -240,6 +255,39 @@ EdgeWorker → AgentSessionManager → Linear
 **Solution:** Only close stdin in `completeStream()`, not after initial write
 **Verify:** Run `test-stdin-direct.ts` to confirm streaming works
 
+## TypeScript Coding Principles
+
+When writing TypeScript code in this package:
+
+1. **Avoid type assertions (`as`) - use explicit type declarations instead:**
+
+   ❌ **Bad:** Type assertions bypass type safety
+   ```typescript
+   this.message = {
+     type: "user",
+     message: { role: "user", content: text }
+   } as SDKUserMessage;
+   ```
+
+   ✅ **Good:** Explicit type declarations provide compile-time safety
+   ```typescript
+   const message: SDKUserMessage = {
+     type: "user",
+     message: { role: "user", content: text }
+   };
+   this.message = message;
+   ```
+
+2. **Why this matters:**
+   - Type assertions tell TypeScript "trust me", which defeats type checking
+   - Explicit types catch errors at compile time, not runtime
+   - Makes refactoring safer when changing types
+   - Improves IDE autocomplete and error detection
+
+3. **Exceptions:**
+   - Type assertions may be acceptable for third-party library types
+   - Unknown/any casting should be avoided entirely
+
 ## Contributing
 
 When modifying GeminiRunner:
@@ -247,19 +295,20 @@ When modifying GeminiRunner:
 1. **Run tests** before committing:
    ```bash
    pnpm build
-   bun test-scripts/test-stdin-direct.ts
-   bun test-scripts/test-result-and-singleturn.ts
+   bun test-scripts/test-gemini-runner.ts
    ```
 
 2. **Preserve critical behaviors:**
-   - Stdin written immediately (line 253)
+   - Stdin written immediately after spawn
    - Stdin kept open for streaming
-   - Last assistant message tracked
+   - Last assistant message tracked before result events
    - Settings.json auto-generation
+   - Delta message accumulation using Claude SDK format (array of content blocks)
 
 3. **Update tests** if changing:
    - Result message structure
    - Single-turn mode behavior
    - Stdin handling logic
+   - Message accumulation format
 
 4. **Document** any new edge cases or Gemini CLI quirks discovered
