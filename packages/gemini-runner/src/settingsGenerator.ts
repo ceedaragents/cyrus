@@ -18,12 +18,17 @@ const GEMINI_MODELS = [
  * Reference: https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
  */
 function generateSettings() {
-	const aliases: Record<string, { name: string; maxSessionTurns: number }> = {};
+	const aliases: Record<
+		string,
+		{ modelConfig: { model: string; maxSessionTurns: number } }
+	> = {};
 
 	for (const model of GEMINI_MODELS) {
 		aliases[`${model}-shortone`] = {
-			name: model,
-			maxSessionTurns: 1,
+			modelConfig: {
+				model: model,
+				maxSessionTurns: 1,
+			},
 		};
 	}
 

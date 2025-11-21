@@ -113,7 +113,7 @@ async function testSettingsGeneration(): Promise<void> {
 		assert(!!alias, `Alias '${aliasName}' exists`, "testSettingsGeneration");
 
 		assert(
-			alias.maxSessionTurns === 1,
+			alias.modelConfig?.maxSessionTurns === 1,
 			`Alias '${aliasName}' has maxSessionTurns: 1`,
 			"testSettingsGeneration",
 		);
