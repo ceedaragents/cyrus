@@ -230,7 +230,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	 */
 	advanceToNextSubroutine(
 		session: CyrusAgentSession,
-		claudeSessionId: string | null,
+		sessionId: string | null,
 	): void {
 		const procedureMetadata = session.metadata?.procedure as
 			| ProcedureMetadata
@@ -243,11 +243,15 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 		const currentSubroutine = this.getCurrentSubroutine(session);
 
 		if (currentSubroutine) {
-			// Record completion
+			// Determine which type of session ID this is
+			const isGeminiSession = session.geminiSessionId !== undefined;
+
+			// Record completion with the appropriate session ID
 			procedureMetadata.subroutineHistory.push({
 				subroutine: currentSubroutine.name,
 				completedAt: Date.now(),
-				claudeSessionId,
+				claudeSessionId: isGeminiSession ? null : sessionId,
+				geminiSessionId: isGeminiSession ? sessionId : null,
 			});
 		}
 

@@ -13,7 +13,7 @@ import type {
 } from "cyrus-claude-runner";
 import {
 	AbortError,
-	type ClaudeRunner,
+	ClaudeRunner,
 	createCyrusToolsServer,
 	createImageToolsServer,
 	createSoraToolsServer,
@@ -4931,8 +4931,14 @@ ${input.userComment}
 			existingRunner.stop();
 		}
 
-		// Determine if we need a new Claude session
-		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
+		// Determine which runner to use based on existing session IDs
+		// If we have a claudeSessionId, use Claude; if geminiSessionId, use Gemini
+		// For new sessions, default to Gemini (current default)
+		const hasClaudeSession = !isNewSession && session.claudeSessionId;
+		const hasGeminiSession = !isNewSession && session.geminiSessionId;
+		const useClaudeRunner = hasClaudeSession && !hasGeminiSession;
+		const needsNewSession =
+			isNewSession || (!hasClaudeSession && !hasGeminiSession);
 
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
@@ -4991,9 +4997,12 @@ ${input.userComment}
 			this.procedureRouter.getCurrentSubroutine(session);
 
 		// Create runner configuration
-		const resumeSessionId = needsNewClaudeSession
+		// Use the appropriate session ID based on which runner we're using
+		const resumeSessionId = needsNewSession
 			? undefined
-			: session.claudeSessionId;
+			: useClaudeRunner
+				? session.claudeSessionId
+				: session.geminiSessionId;
 
 		const runnerConfig = this.buildAgentRunnerConfig(
 			session,
@@ -5009,7 +5018,10 @@ ${input.userComment}
 			currentSubroutine?.singleTurn, // singleTurn flag
 		);
 
-		const runner = new GeminiRunner(runnerConfig);
+		// Create the appropriate runner based on session state
+		const runner = useClaudeRunner
+			? new ClaudeRunner(runnerConfig)
+			: new GeminiRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
