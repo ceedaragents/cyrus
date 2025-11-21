@@ -235,11 +235,11 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// Handle prompt mode
 			let useStdin = false;
 			if (stringPrompt !== null && stringPrompt !== undefined) {
-				// String mode - pass prompt via --prompt flag
+				// String mode - pass prompt as positional argument (not --prompt flag which is deprecated)
 				console.log(
 					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters`,
 				);
-				args.push("--prompt", stringPrompt);
+				args.push(stringPrompt);
 			} else {
 				// Streaming mode - use stdin
 				console.log(`[GeminiRunner] Starting with streaming prompt`);

@@ -34,6 +34,12 @@ export class ProcedureRouter {
 		// Determine which runner to use
 		const runnerType = config.runnerType || "gemini";
 
+		// Use runner-specific default models if not provided
+		const defaultModel =
+			runnerType === "claude" ? "haiku" : "gemini-2.5-flash-lite";
+		const defaultFallbackModel =
+			runnerType === "claude" ? "sonnet" : "gemini-2.0-flash-exp";
+
 		// Create runner configuration
 		const runnerConfig = {
 			validResponses: [
@@ -46,8 +52,8 @@ export class ProcedureRouter {
 				"orchestrator",
 			] as const,
 			cyrusHome: config.cyrusHome,
-			model: config.model || "haiku",
-			fallbackModel: "sonnet",
+			model: config.model || defaultModel,
+			fallbackModel: defaultFallbackModel,
 			systemPrompt: this.buildRoutingSystemPrompt(),
 			maxTurns: 1,
 			timeoutMs: config.timeoutMs || 10000,
