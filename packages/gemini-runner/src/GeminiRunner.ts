@@ -100,8 +100,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		}
 		this.streamingPrompt.addMessage(content);
 
-		// For Gemini CLI, we need to write to stdin if process is running
-		if (this.process?.stdin) {
+		// Write to stdin if process is running
+		if (this.process?.stdin && !this.process.stdin.destroyed) {
 			this.process.stdin.write(`${content}\n`);
 		}
 	}
@@ -114,7 +114,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			this.streamingPrompt.complete();
 
 			// Close stdin to signal completion to Gemini CLI
-			if (this.process?.stdin) {
+			if (this.process?.stdin && !this.process.stdin.destroyed) {
 				this.process.stdin.end();
 			}
 		}
@@ -224,11 +224,6 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 					streamingInitialPrompt,
 				);
 				useStdin = true;
-
-				// Send initial prompt to stdin if provided
-				if (streamingInitialPrompt) {
-					// Will be written after process spawns
-				}
 			}
 
 			// Spawn Gemini CLI process
@@ -238,9 +233,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				stdio: useStdin ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
 			});
 
-			// Write initial streaming prompt to stdin if provided
+			// IMPORTANT: Write initial streaming prompt to stdin immediately after spawn
+			// This prevents gemini from hanging waiting for input
 			if (useStdin && streamingInitialPrompt && this.process.stdin) {
 				this.process.stdin.write(`${streamingInitialPrompt}\n`);
+				// End stdin immediately - gemini will process the prompt and complete
+				this.process.stdin.end();
 			}
 
 			// Set up stdout line reader for JSON events
