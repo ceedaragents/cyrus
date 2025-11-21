@@ -298,10 +298,10 @@ export class EdgeWorker extends EventEmitter {
 								"", // No attachment manifest
 								false, // Not a new session
 								[], // No additional allowed directories
-								nextSubroutine.maxTurns, // Use subroutine-specific maxTurns
+								nextSubroutine?.singleTurn ? 1 : undefined, // Convert singleTurn to maxTurns: 1
 							);
 							console.log(
-								`[Subroutine Transition] Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.maxTurns ? ` (maxTurns=${nextSubroutine.maxTurns})` : ""}`,
+								`[Subroutine Transition] Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.singleTurn ? " (singleTurn)" : ""}`,
 							);
 						} catch (error) {
 							console.error(
@@ -1496,6 +1496,10 @@ export class EdgeWorker extends EventEmitter {
 				);
 			}
 
+			// Get current subroutine to check for singleTurn mode
+			const currentSubroutine =
+				this.procedureRouter.getCurrentSubroutine(session);
+
 			// Create agent runner with system prompt from assembly
 			const runnerConfig = this.buildAgentRunnerConfig(
 				session,
@@ -1507,6 +1511,8 @@ export class EdgeWorker extends EventEmitter {
 				disallowedTools,
 				undefined, // resumeSessionId
 				labels, // Pass labels for model override
+				undefined, // maxTurns
+				currentSubroutine?.singleTurn, // singleTurn flag
 			);
 			const runner = new GeminiRunner(runnerConfig);
 
@@ -4045,6 +4051,7 @@ ${input.userComment}
 		resumeSessionId?: string,
 		labels?: string[],
 		maxTurns?: number,
+		singleTurn?: boolean,
 	): AgentRunnerConfig {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -4107,6 +4114,19 @@ ${input.userComment}
 			}
 		}
 
+		// Convert singleTurn flag to effective maxTurns value
+		const effectiveMaxTurns = singleTurn ? 1 : maxTurns;
+
+		// Determine final model name with singleTurn suffix for Gemini
+		let finalModel =
+			modelOverride || repository.model || this.config.defaultModel;
+		if (singleTurn && finalModel?.includes("gemini")) {
+			finalModel = `${finalModel}-shortone`;
+			console.log(
+				`[EdgeWorker] Applied singleTurn model suffix: ${finalModel} (for session ${linearAgentActivitySessionId})`,
+			);
+		}
+
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -4118,7 +4138,7 @@ ${input.userComment}
 			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
 			appendSystemPrompt: systemPrompt || "",
 			// Priority order: label override > repository config > global default
-			model: modelOverride || repository.model || this.config.defaultModel,
+			model: finalModel,
 			fallbackModel:
 				fallbackModelOverride ||
 				repository.fallbackModel ||
@@ -4138,8 +4158,13 @@ ${input.userComment}
 			(config as any).resumeSessionId = resumeSessionId;
 		}
 
-		if (maxTurns !== undefined) {
-			(config as any).maxTurns = maxTurns;
+		if (effectiveMaxTurns !== undefined) {
+			(config as any).maxTurns = effectiveMaxTurns;
+			if (singleTurn) {
+				console.log(
+					`[EdgeWorker] Applied singleTurn maxTurns=1 (for session ${linearAgentActivitySessionId})`,
+				);
+			}
 		}
 
 		return config;
@@ -4961,6 +4986,10 @@ ${input.userComment}
 			...additionalAllowedDirectories,
 		];
 
+		// Get current subroutine to check for singleTurn mode
+		const currentSubroutine =
+			this.procedureRouter.getCurrentSubroutine(session);
+
 		// Create runner configuration
 		const resumeSessionId = needsNewClaudeSession
 			? undefined
@@ -4977,6 +5006,7 @@ ${input.userComment}
 			resumeSessionId,
 			labels, // Pass labels for model override
 			maxTurns, // Pass maxTurns if specified
+			currentSubroutine?.singleTurn, // singleTurn flag
 		);
 
 		const runner = new GeminiRunner(runnerConfig);

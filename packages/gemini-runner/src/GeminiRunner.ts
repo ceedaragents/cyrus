@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import {
 	type IAgentRunner,
+	type SDKAssistantMessage,
 	type SDKMessage,
 	type SDKUserMessage,
 	StreamingPrompt,
 } from "cyrus-core";
 import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
+import { ensureGeminiSettings } from "./settingsGenerator.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
@@ -65,6 +67,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	// Delta message accumulation
 	private accumulatingMessage: SDKMessage | null = null;
 	private accumulatingRole: "user" | "assistant" | null = null;
+	// Track last assistant message for result coercion
+	private lastAssistantMessage: SDKAssistantMessage | null = null;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
@@ -118,6 +122,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				this.process.stdin.end();
 			}
 		}
+	}
+
+	/**
+	 * Get the last assistant message (used for result coercion)
+	 */
+	getLastAssistantMessage(): SDKAssistantMessage | null {
+		return this.lastAssistantMessage;
 	}
 
 	/**
@@ -225,6 +236,9 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				);
 				useStdin = true;
 			}
+
+			// Ensure ~/.gemini/settings.json exists with -shortone aliases
+			ensureGeminiSettings();
 
 			// Spawn Gemini CLI process
 			console.log(`[GeminiRunner] Spawning: ${geminiPath} ${args.join(" ")}`);
@@ -383,9 +397,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		const message = geminiEventToSDKMessage(
 			event,
 			this.sessionInfo?.sessionId || null,
+			this.lastAssistantMessage,
 		);
 
 		if (message) {
+			// Track last assistant message for result coercion
+			if (message.type === "assistant") {
+				this.lastAssistantMessage = message;
+			}
 			this.emitMessage(message);
 		}
 	}
