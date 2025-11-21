@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { Issue as LinearIssue } from "@linear/sdk";
-import type { SDKMessage } from "cyrus-claude-runner";
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Workspace } from "./CyrusAgentSession.js";
 
 /**
