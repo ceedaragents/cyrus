@@ -8,15 +8,19 @@ import { join } from "node:path";
  *
  * Unlike Claude runner which can accept system prompts directly,
  * Gemini CLI requires system prompts to be in a file on disk.
+ *
+ * Supports parallel execution by using unique file paths per workspace.
  */
 export class SystemPromptManager {
 	private cyrusHome: string;
 	private systemPromptPath: string;
 
-	constructor(cyrusHome: string) {
+	constructor(cyrusHome: string, workspaceName: string) {
 		this.cyrusHome = cyrusHome;
-		// Use a dedicated path in ~/.cyrus/ for Gemini system prompts
-		this.systemPromptPath = join(this.cyrusHome, "gemini-system-prompt.md");
+		// Use workspace-specific path to support parallel execution
+		// Format: ~/.cyrus/gemini-system-prompts/<workspace-name>.md
+		const promptsDir = join(this.cyrusHome, "gemini-system-prompts");
+		this.systemPromptPath = join(promptsDir, `${workspaceName}.md`);
 	}
 
 	/**
@@ -24,10 +28,11 @@ export class SystemPromptManager {
 	 */
 	async prepareSystemPrompt(systemPrompt: string): Promise<string> {
 		try {
-			// Ensure cyrus home directory exists
-			await mkdir(this.cyrusHome, { recursive: true });
+			// Ensure prompts directory exists
+			const promptsDir = join(this.cyrusHome, "gemini-system-prompts");
+			await mkdir(promptsDir, { recursive: true });
 
-			// Write system prompt to file
+			// Write system prompt to workspace-specific file
 			await writeFile(this.systemPromptPath, systemPrompt, "utf8");
 
 			console.log(
@@ -45,7 +50,7 @@ export class SystemPromptManager {
 	}
 
 	/**
-	 * Get the path where system prompts are stored
+	 * Get the path where system prompts are stored for this workspace
 	 */
 	getSystemPromptPath(): string {
 		return this.systemPromptPath;

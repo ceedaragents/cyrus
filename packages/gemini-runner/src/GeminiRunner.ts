@@ -80,7 +80,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
-		this.systemPromptManager = new SystemPromptManager(config.cyrusHome);
+		// Use workspaceName for unique system prompt file paths (supports parallel execution)
+		const workspaceName = config.workspaceName || "default";
+		this.systemPromptManager = new SystemPromptManager(
+			config.cyrusHome,
+			workspaceName,
+		);
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
