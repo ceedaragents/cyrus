@@ -198,41 +198,6 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Setup Gemini settings with appropriate maxSessionTurns
 		this.settingsCleanup = setupGeminiSettings(this.config.singleTurn || false);
 
-		// Handle system prompt via GEMINI_SYSTEM_MD environment variable
-		// Combine systemPrompt and appendSystemPrompt if both are provided
-		let systemPromptPath: string | undefined;
-		const hasSystemPrompt =
-			this.config.systemPrompt || this.config.appendSystemPrompt;
-
-		if (hasSystemPrompt) {
-			try {
-				// Build combined system prompt
-				let combinedSystemPrompt = "";
-				if (this.config.systemPrompt) {
-					combinedSystemPrompt = this.config.systemPrompt;
-				}
-				if (this.config.appendSystemPrompt) {
-					if (combinedSystemPrompt) {
-						combinedSystemPrompt += "\n\n";
-					}
-					combinedSystemPrompt += this.config.appendSystemPrompt;
-				}
-
-				systemPromptPath =
-					await this.systemPromptManager.prepareSystemPrompt(
-						combinedSystemPrompt,
-					);
-				console.log(
-					`[GeminiRunner] Prepared system prompt at: ${systemPromptPath}`,
-				);
-			} catch (error) {
-				console.error(
-					"[GeminiRunner] Failed to prepare system prompt, continuing without it:",
-					error,
-				);
-			}
-		}
-
 		try {
 			// Build Gemini CLI command
 			const geminiPath = this.config.geminiPath || "gemini";
@@ -276,6 +241,10 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
+			// Check if we have a system prompt to prepare
+			const hasSystemPrompt =
+				this.config.systemPrompt || this.config.appendSystemPrompt;
+
 			// Handle prompt mode
 			let useStdin = false;
 			let fullStreamingPrompt: string | undefined;
@@ -299,9 +268,38 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 			// Prepare environment variables for Gemini CLI
 			const geminiEnv = { ...process.env };
-			if (systemPromptPath) {
-				geminiEnv.GEMINI_SYSTEM_MD = systemPromptPath;
-				console.log(`[GeminiRunner] Set GEMINI_SYSTEM_MD=${systemPromptPath}`);
+
+			// Write system prompt to disk at the last possible moment before spawning
+			// Combine systemPrompt and appendSystemPrompt if both are provided
+
+			if (hasSystemPrompt) {
+				try {
+					// Build combined system prompt
+					let combinedSystemPrompt = "";
+					if (this.config.systemPrompt) {
+						combinedSystemPrompt = this.config.systemPrompt;
+					}
+					if (this.config.appendSystemPrompt) {
+						if (combinedSystemPrompt) {
+							combinedSystemPrompt += "\n\n";
+						}
+						combinedSystemPrompt += this.config.appendSystemPrompt;
+					}
+
+					const systemPromptPath =
+						await this.systemPromptManager.prepareSystemPrompt(
+							combinedSystemPrompt,
+						);
+					geminiEnv.GEMINI_SYSTEM_MD = systemPromptPath;
+					console.log(
+						`[GeminiRunner] Prepared system prompt at: ${systemPromptPath}`,
+					);
+				} catch (error) {
+					console.error(
+						"[GeminiRunner] Failed to prepare system prompt, continuing without it:",
+						error,
+					);
+				}
 			}
 
 			// Spawn Gemini CLI process
