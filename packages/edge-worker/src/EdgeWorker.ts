@@ -1525,7 +1525,12 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Update runner with version information (if available)
-			if (systemPromptVersion) {
+			// Note: updatePromptVersions is specific to ClaudeRunner
+			if (
+				systemPromptVersion &&
+				"updatePromptVersions" in runner &&
+				typeof runner.updatePromptVersions === "function"
+			) {
 				runner.updatePromptVersions({
 					systemPromptVersion,
 				});

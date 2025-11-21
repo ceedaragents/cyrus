@@ -96,10 +96,10 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.42
-        version: 0.1.42(zod@3.25.76)
+        version: 0.1.42(zod@4.1.12)
       '@anthropic-ai/sdk':
         specifier: ^0.69.0
-        version: 0.69.0(zod@3.25.76)
+        version: 0.69.0(zod@4.1.12)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
@@ -109,7 +109,19 @@ importers:
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
+      fs-extra:
+        specifier: ^11.3.2
+        version: 11.3.2
+      openai:
+        specifier: ^6.9.1
+        version: 6.9.1(zod@4.1.12)
+      zod:
+        specifier: ^4.1.12
+        version: 4.1.12
     devDependencies:
+      '@types/fs-extra':
+        specifier: ^11.0.4
+        version: 11.0.4
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.21
@@ -162,16 +174,10 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.42
-        version: 0.1.42(zod@3.25.76)
+        version: 0.1.42(zod@4.1.12)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
-      cyrus-claude-runner:
-        specifier: workspace:*
-        version: link:../claude-runner
-      cyrus-simple-agent-runner:
-        specifier: workspace:*
-        version: link:../simple-agent-runner
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -304,7 +310,7 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.42
-        version: 0.1.42(zod@3.25.76)
+        version: 0.1.42(zod@4.1.12)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -1757,6 +1763,18 @@ packages:
     resolution: {integrity: sha512-YgBpdJHPyQ2UE5x+hlSXcnejzAvD0b22U2OuAP+8OnlJT+PjWPxtgmGqKKc+RgTM63U9gN0YzrYc71R2WT/hTA==}
     engines: {node: '>=18'}
 
+  openai@6.9.1:
+    resolution: {integrity: sha512-vQ5Rlt0ZgB3/BNmTa7bIijYFhz3YBceAA3Z4JuoMSBftBF9YqFHIEhZakSs+O/Ad7EaoEimZvHxD5ylRjN11Lg==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
+
   p-limit@5.0.0:
     resolution: {integrity: sha512-/Eaoq+QyLSiXQ4lyYV23f14mZRQcXnxfHrN0vCai+ak9G0pp9iEQukIIZq5NccEvwRB8PUnZT0KsOoDCINS1qQ==}
     engines: {node: '>=18'}
@@ -2421,6 +2439,9 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
+  zod@4.1.12:
+    resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
+
 snapshots:
 
   '@ampproject/remapping@2.3.0':
@@ -2428,9 +2449,9 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@anthropic-ai/claude-agent-sdk@0.1.42(zod@3.25.76)':
+  '@anthropic-ai/claude-agent-sdk@0.1.42(zod@4.1.12)':
     dependencies:
-      zod: 3.25.76
+      zod: 4.1.12
     optionalDependencies:
       '@img/sharp-darwin-arm64': 0.33.5
       '@img/sharp-darwin-x64': 0.33.5
@@ -2439,11 +2460,11 @@ snapshots:
       '@img/sharp-linux-x64': 0.33.5
       '@img/sharp-win32-x64': 0.33.5
 
-  '@anthropic-ai/sdk@0.69.0(zod@3.25.76)':
+  '@anthropic-ai/sdk@0.69.0(zod@4.1.12)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 3.25.76
+      zod: 4.1.12
 
   '@babel/helper-string-parser@7.27.1': {}
 
@@ -3780,6 +3801,10 @@ snapshots:
       is-inside-container: 1.0.0
       wsl-utils: 0.1.0
 
+  openai@6.9.1(zod@4.1.12):
+    optionalDependencies:
+      zod: 4.1.12
+
   p-limit@5.0.0:
     dependencies:
       yocto-queue: 1.2.1
@@ -4446,3 +4471,5 @@ snapshots:
   yocto-queue@1.2.1: {}
 
   zod@3.25.76: {}
+
+  zod@4.1.12: {}
