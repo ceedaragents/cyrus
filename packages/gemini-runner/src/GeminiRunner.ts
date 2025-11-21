@@ -241,26 +241,19 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
-			// Check if we have a system prompt to prepare
-			const hasSystemPrompt =
-				this.config.systemPrompt || this.config.appendSystemPrompt;
-
 			// Handle prompt mode
 			let useStdin = false;
 			let fullStreamingPrompt: string | undefined;
 			if (stringPrompt !== null && stringPrompt !== undefined) {
-				// String mode - pass prompt as positional argument
-				// System prompt is handled via GEMINI_SYSTEM_MD environment variable
 				console.log(
-					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters (systemPrompt: ${!!hasSystemPrompt})`,
+					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters`,
 				);
 				args.push(stringPrompt);
 			} else {
 				// Streaming mode - use stdin
-				// System prompt is handled via GEMINI_SYSTEM_MD environment variable
 				fullStreamingPrompt = streamingInitialPrompt || undefined;
 				console.log(
-					`[GeminiRunner] Starting with streaming prompt (systemPrompt: ${!!hasSystemPrompt})`,
+					`[GeminiRunner] Starting with streaming prompt`,
 				);
 				this.streamingPrompt = new StreamingPrompt(null, fullStreamingPrompt);
 				useStdin = true;
@@ -269,26 +262,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// Prepare environment variables for Gemini CLI
 			const geminiEnv = { ...process.env };
 
-			// Write system prompt to disk at the last possible moment before spawning
-			// Combine systemPrompt and appendSystemPrompt if both are provided
-
-			if (hasSystemPrompt) {
+			
+			if (this.config.appendSystemPrompt) {
 				try {
-					// Build combined system prompt
-					let combinedSystemPrompt = "";
-					if (this.config.systemPrompt) {
-						combinedSystemPrompt = this.config.systemPrompt;
-					}
-					if (this.config.appendSystemPrompt) {
-						if (combinedSystemPrompt) {
-							combinedSystemPrompt += "\n\n";
-						}
-						combinedSystemPrompt += this.config.appendSystemPrompt;
-					}
-
 					const systemPromptPath =
 						await this.systemPromptManager.prepareSystemPrompt(
-							combinedSystemPrompt,
+							this.config.appendSystemPrompt,
 						);
 					geminiEnv.GEMINI_SYSTEM_MD = systemPromptPath;
 					console.log(

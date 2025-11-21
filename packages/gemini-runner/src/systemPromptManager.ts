@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Manages system prompts for Gemini CLI by writing them to disk
@@ -19,6 +20,7 @@ export class SystemPromptManager {
 		this.cyrusHome = cyrusHome;
 		// Use workspace-specific path to support parallel execution
 		// Format: ~/.cyrus/gemini-system-prompts/<workspace-name>.md
+		// NOTE: Workspace-name is the Linear issue identifier
 		const promptsDir = join(this.cyrusHome, "gemini-system-prompts");
 		this.systemPromptPath = join(promptsDir, `${workspaceName}.md`);
 	}
@@ -26,14 +28,26 @@ export class SystemPromptManager {
 	/**
 	 * Write system prompt to disk and return the path to be used with GEMINI_SYSTEM_MD
 	 */
-	async prepareSystemPrompt(systemPrompt: string): Promise<string> {
+	async prepareSystemPrompt(dynamicSystemPrompt: string): Promise<string> {
 		try {
 			// Ensure prompts directory exists
 			const promptsDir = join(this.cyrusHome, "gemini-system-prompts");
 			await mkdir(promptsDir, { recursive: true });
 
+			// Get Gemini system prompt, which we will append
+			const __filename = fileURLToPath(import.meta.url);
+			const __dirname = dirname(__filename);
+			const subroutinePromptPath = join(
+				__dirname,
+				"prompts",
+				"system.md",
+			);
+		
+			const geminiSystemPrompt = await readFile(subroutinePromptPath, "utf-8");
+			const completeSystemPrompt = geminiSystemPrompt + dynamicSystemPrompt;
+			
 			// Write system prompt to workspace-specific file
-			await writeFile(this.systemPromptPath, systemPrompt, "utf8");
+			await writeFile(this.systemPromptPath, completeSystemPrompt, "utf8");
 
 			console.log(
 				`[SystemPromptManager] Wrote system prompt to: ${this.systemPromptPath}`,
