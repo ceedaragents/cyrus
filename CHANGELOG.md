@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- Fixed GeminiRunner hanging during startup by writing prompt to stdin immediately after spawn and closing stdin (CYPACK-415, https://github.com/ceedaragents/cyrus/pull/546)
+- Fixed GeminiRunner hanging by writing initial prompt to stdin immediately while keeping stdin open for additional messages (CYPACK-415, https://github.com/ceedaragents/cyrus/pull/546)
 
 ### Changed
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)

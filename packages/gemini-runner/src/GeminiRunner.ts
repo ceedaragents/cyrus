@@ -234,11 +234,19 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			});
 
 			// IMPORTANT: Write initial streaming prompt to stdin immediately after spawn
-			// This prevents gemini from hanging waiting for input
+			// This prevents gemini from hanging waiting for input.
+			//
+			// How gemini-cli stdin works (from packages/cli/src/utils/readStdin.ts):
+			// 1. Has a 500ms timeout - if NO data arrives, assumes nothing is piped and returns empty
+			// 2. Once data arrives, timeout is canceled and it waits for stdin to close ('end' event)
+			// 3. Continues reading chunks as they arrive until stdin closes
+			//
+			// Therefore:
+			// - We MUST write initial prompt immediately to cancel the 500ms timeout
+			// - We MUST NOT close stdin here - keep it open for addStreamMessage() calls
+			// - stdin.end() is called later in completeStream() when all messages are sent
 			if (useStdin && streamingInitialPrompt && this.process.stdin) {
 				this.process.stdin.write(`${streamingInitialPrompt}\n`);
-				// End stdin immediately - gemini will process the prompt and complete
-				this.process.stdin.end();
 			}
 
 			// Set up stdout line reader for JSON events
