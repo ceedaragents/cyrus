@@ -1,11 +1,12 @@
 /**
  * ProcedureRouter - Intelligent routing of agent sessions through procedures
  *
- * Uses SimpleClaudeRunner to analyze requests and determine which procedure
- * (sequence of subroutines) should be executed.
+ * Uses a SimpleAgentRunner (Claude or Gemini) to analyze requests and determine
+ * which procedure (sequence of subroutines) should be executed.
  */
 
-import type { CyrusAgentSession } from "cyrus-core";
+import type { CyrusAgentSession, ISimpleAgentRunner } from "cyrus-core";
+import { SimpleGeminiRunner } from "cyrus-gemini-runner";
 import { SimpleClaudeRunner } from "cyrus-simple-agent-runner";
 import { getProcedureForClassification, PROCEDURES } from "./registry.js";
 import type {
@@ -16,19 +17,25 @@ import type {
 	SubroutineDefinition,
 } from "./types.js";
 
+export type SimpleRunnerType = "claude" | "gemini";
+
 export interface ProcedureRouterConfig {
 	cyrusHome: string;
 	model?: string;
 	timeoutMs?: number;
+	runnerType?: SimpleRunnerType; // Default: "gemini"
 }
 
 export class ProcedureRouter {
-	private routingRunner: SimpleClaudeRunner<RequestClassification>;
+	private routingRunner: ISimpleAgentRunner<RequestClassification>;
 	private procedures: Map<string, ProcedureDefinition> = new Map();
 
 	constructor(config: ProcedureRouterConfig) {
-		// Initialize SimpleClaudeRunner for routing decisions
-		this.routingRunner = new SimpleClaudeRunner({
+		// Determine which runner to use
+		const runnerType = config.runnerType || "gemini";
+
+		// Create runner configuration
+		const runnerConfig = {
 			validResponses: [
 				"question",
 				"documentation",
@@ -37,14 +44,20 @@ export class ProcedureRouter {
 				"code",
 				"debugger",
 				"orchestrator",
-			],
+			] as const,
 			cyrusHome: config.cyrusHome,
 			model: config.model || "haiku",
 			fallbackModel: "sonnet",
 			systemPrompt: this.buildRoutingSystemPrompt(),
 			maxTurns: 1,
 			timeoutMs: config.timeoutMs || 10000,
-		});
+		};
+
+		// Initialize the appropriate runner based on type
+		this.routingRunner =
+			runnerType === "claude"
+				? new SimpleClaudeRunner(runnerConfig)
+				: new SimpleGeminiRunner(runnerConfig);
 
 		// Load all predefined procedures from registry
 		this.loadPredefinedProcedures();

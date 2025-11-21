@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 - Gemini result messages now include the actual final assistant response content instead of generic "Session completed successfully" message
 
 ### Fixed
+- Fixed runner type consistency between request routing and main issue processing - both now default to Gemini (CYPACK-418)
+- Made ProcedureRouter runner-agnostic by supporting both Claude and Gemini simple runners via configuration
+- Fixed GeminiRunner compatibility error by replacing Claude-specific `isStreaming()` calls with common `isRunning()` method (CYPACK-418)
+- Session resumption now correctly selects runner type based on existing session IDs (Claude vs Gemini)
 - Fixed GeminiRunner hanging by writing initial prompt to stdin immediately while keeping stdin open for additional messages (CYPACK-415, https://github.com/ceedaragents/cyrus/pull/546)
 - Gemini single-turn mode now works correctly by temporarily configuring `~/.gemini/settings.json` with `maxSessionTurns=1` during sessions, then restoring original settings afterward
 
