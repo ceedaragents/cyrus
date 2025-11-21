@@ -13,7 +13,7 @@ import type {
 } from "cyrus-claude-runner";
 import {
 	AbortError,
-	ClaudeRunner,
+	type ClaudeRunner,
 	createCyrusToolsServer,
 	createImageToolsServer,
 	createSoraToolsServer,
@@ -22,7 +22,6 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
-import { GeminiRunner } from "cyrus-gemini-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	AgentEvent,
@@ -57,6 +56,7 @@ import {
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
+import { GeminiRunner } from "cyrus-gemini-runner";
 import {
 	LinearEventTransport,
 	LinearIssueTrackerService,
