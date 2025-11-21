@@ -13,6 +13,7 @@ import {
 } from "cyrus-core";
 import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
 import { setupGeminiSettings } from "./settingsGenerator.js";
+import { SystemPromptManager } from "./systemPromptManager.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
@@ -72,11 +73,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	private lastAssistantMessage: SDKAssistantMessage | null = null;
 	// Settings cleanup function
 	private settingsCleanup: (() => void) | null = null;
+	// System prompt manager
+	private systemPromptManager: SystemPromptManager;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
+		this.systemPromptManager = new SystemPromptManager(config.cyrusHome);
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -189,6 +193,41 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Setup Gemini settings with appropriate maxSessionTurns
 		this.settingsCleanup = setupGeminiSettings(this.config.singleTurn || false);
 
+		// Handle system prompt via GEMINI_SYSTEM_MD environment variable
+		// Combine systemPrompt and appendSystemPrompt if both are provided
+		let systemPromptPath: string | undefined;
+		const hasSystemPrompt =
+			this.config.systemPrompt || this.config.appendSystemPrompt;
+
+		if (hasSystemPrompt) {
+			try {
+				// Build combined system prompt
+				let combinedSystemPrompt = "";
+				if (this.config.systemPrompt) {
+					combinedSystemPrompt = this.config.systemPrompt;
+				}
+				if (this.config.appendSystemPrompt) {
+					if (combinedSystemPrompt) {
+						combinedSystemPrompt += "\n\n";
+					}
+					combinedSystemPrompt += this.config.appendSystemPrompt;
+				}
+
+				systemPromptPath =
+					await this.systemPromptManager.prepareSystemPrompt(
+						combinedSystemPrompt,
+					);
+				console.log(
+					`[GeminiRunner] Prepared system prompt at: ${systemPromptPath}`,
+				);
+			} catch (error) {
+				console.error(
+					"[GeminiRunner] Failed to prepare system prompt, continuing without it:",
+					error,
+				);
+			}
+		}
+
 		try {
 			// Build Gemini CLI command
 			const geminiPath = this.config.geminiPath || "gemini";
@@ -236,26 +275,28 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			let useStdin = false;
 			let fullStreamingPrompt: string | undefined;
 			if (stringPrompt !== null && stringPrompt !== undefined) {
-				// String mode - pass prompt as positional argument (not --prompt flag which is deprecated)
-				// Prepend system prompt if provided (Gemini CLI doesn't have --system-prompt flag)
-				const fullPrompt = this.config.systemPrompt
-					? `${this.config.systemPrompt}\n\n${stringPrompt}`
-					: stringPrompt;
+				// String mode - pass prompt as positional argument
+				// System prompt is handled via GEMINI_SYSTEM_MD environment variable
 				console.log(
-					`[GeminiRunner] Starting with string prompt length: ${fullPrompt.length} characters (systemPrompt: ${!!this.config.systemPrompt})`,
+					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters (systemPrompt: ${!!hasSystemPrompt})`,
 				);
-				args.push(fullPrompt);
+				args.push(stringPrompt);
 			} else {
 				// Streaming mode - use stdin
-				// Prepend system prompt if provided (Gemini CLI doesn't have --system-prompt flag)
-				fullStreamingPrompt = this.config.systemPrompt
-					? `${this.config.systemPrompt}\n\n${streamingInitialPrompt || ""}`
-					: streamingInitialPrompt || undefined;
+				// System prompt is handled via GEMINI_SYSTEM_MD environment variable
+				fullStreamingPrompt = streamingInitialPrompt || undefined;
 				console.log(
-					`[GeminiRunner] Starting with streaming prompt (systemPrompt: ${!!this.config.systemPrompt})`,
+					`[GeminiRunner] Starting with streaming prompt (systemPrompt: ${!!hasSystemPrompt})`,
 				);
 				this.streamingPrompt = new StreamingPrompt(null, fullStreamingPrompt);
 				useStdin = true;
+			}
+
+			// Prepare environment variables for Gemini CLI
+			const geminiEnv = { ...process.env };
+			if (systemPromptPath) {
+				geminiEnv.GEMINI_SYSTEM_MD = systemPromptPath;
+				console.log(`[GeminiRunner] Set GEMINI_SYSTEM_MD=${systemPromptPath}`);
 			}
 
 			// Spawn Gemini CLI process
@@ -263,6 +304,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			this.process = spawn(geminiPath, args, {
 				cwd: this.config.workingDirectory,
 				stdio: useStdin ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
+				env: geminiEnv,
 			});
 
 			// IMPORTANT: Write initial streaming prompt to stdin immediately after spawn
