@@ -234,19 +234,27 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 			// Handle prompt mode
 			let useStdin = false;
+			let fullStreamingPrompt: string | undefined;
 			if (stringPrompt !== null && stringPrompt !== undefined) {
 				// String mode - pass prompt as positional argument (not --prompt flag which is deprecated)
+				// Prepend system prompt if provided (Gemini CLI doesn't have --system-prompt flag)
+				const fullPrompt = this.config.systemPrompt
+					? `${this.config.systemPrompt}\n\n${stringPrompt}`
+					: stringPrompt;
 				console.log(
-					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters`,
+					`[GeminiRunner] Starting with string prompt length: ${fullPrompt.length} characters (systemPrompt: ${!!this.config.systemPrompt})`,
 				);
-				args.push(stringPrompt);
+				args.push(fullPrompt);
 			} else {
 				// Streaming mode - use stdin
-				console.log(`[GeminiRunner] Starting with streaming prompt`);
-				this.streamingPrompt = new StreamingPrompt(
-					null,
-					streamingInitialPrompt,
+				// Prepend system prompt if provided (Gemini CLI doesn't have --system-prompt flag)
+				fullStreamingPrompt = this.config.systemPrompt
+					? `${this.config.systemPrompt}\n\n${streamingInitialPrompt || ""}`
+					: streamingInitialPrompt || undefined;
+				console.log(
+					`[GeminiRunner] Starting with streaming prompt (systemPrompt: ${!!this.config.systemPrompt})`,
 				);
+				this.streamingPrompt = new StreamingPrompt(null, fullStreamingPrompt);
 				useStdin = true;
 			}
 
@@ -269,14 +277,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// - We MUST write initial prompt immediately to cancel the 500ms timeout
 			// - We MUST NOT close stdin here - keep it open for addStreamMessage() calls
 			// - stdin.end() is called later in completeStream() when all messages are sent
-			if (useStdin && streamingInitialPrompt && this.process.stdin) {
+			if (useStdin && fullStreamingPrompt && this.process.stdin) {
 				console.log(
-					`[GeminiRunner] Writing initial streaming prompt to stdin (${streamingInitialPrompt.length} chars): ${streamingInitialPrompt.substring(0, 150)}...`,
+					`[GeminiRunner] Writing initial streaming prompt to stdin (${fullStreamingPrompt.length} chars): ${fullStreamingPrompt.substring(0, 150)}...`,
 				);
-				this.process.stdin.write(`${streamingInitialPrompt}\n`);
+				this.process.stdin.write(`${fullStreamingPrompt}\n`);
 			} else if (useStdin) {
 				console.log(
-					`[GeminiRunner] Cannot write initial prompt - streamingInitialPrompt=${!!streamingInitialPrompt}, stdin=${!!this.process.stdin}`,
+					`[GeminiRunner] Cannot write initial prompt - fullStreamingPrompt=${!!fullStreamingPrompt}, stdin=${!!this.process.stdin}`,
 				);
 			}
 
