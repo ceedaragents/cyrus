@@ -7,6 +7,7 @@ import {
 	type IAgentRunner,
 	type SDKAssistantMessage,
 	type SDKMessage,
+	type SDKResultMessage,
 	type SDKUserMessage,
 	StreamingPrompt,
 } from "cyrus-core";
@@ -322,6 +323,41 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			if (this.sessionInfo) {
 				this.sessionInfo.isRunning = false;
 			}
+
+			// Emit error result message to maintain consistent message flow
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			const errorResult: SDKResultMessage = {
+				type: "result",
+				subtype: "error_during_execution",
+				duration_ms: Date.now() - this.sessionInfo!.startedAt.getTime(),
+				duration_api_ms: 0,
+				is_error: true,
+				num_turns: 0,
+				errors: [errorMessage],
+				total_cost_usd: 0,
+				usage: {
+					input_tokens: 0,
+					output_tokens: 0,
+					cache_creation_input_tokens: 0,
+					cache_read_input_tokens: 0,
+					cache_creation: {
+						ephemeral_1h_input_tokens: 0,
+						ephemeral_5m_input_tokens: 0,
+					},
+					server_tool_use: {
+						web_fetch_requests: 0,
+						web_search_requests: 0,
+					},
+					service_tier: "standard",
+				},
+				modelUsage: {},
+				permission_denials: [],
+				uuid: crypto.randomUUID(),
+				session_id: this.sessionInfo?.sessionId || "pending",
+			};
+
+			this.emitMessage(errorResult);
 
 			this.emit(
 				"error",
