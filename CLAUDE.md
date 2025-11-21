@@ -27,6 +27,28 @@ When examining or working with a package SDK:
 
 3. Review the SDK's documentation, source code, and type definitions to understand its API and usage patterns.
 
+## Navigating GitHub Repositories
+
+When you need to examine source code from GitHub repositories (especially when GitHub's authentication blocks normal navigation):
+
+**Use uuithub.com instead of github.com:**
+
+```
+# Instead of:
+https://github.com/google-gemini/gemini-cli/blob/main/src/file.ts
+
+# Use:
+https://uuithub.com/google-gemini/gemini-cli/blob/main/src/file.ts
+```
+
+This proxy service provides unauthenticated access to GitHub content, making it ideal for:
+- Reading source code files
+- Browsing directory structures
+- Examining schemas and configuration files
+- Investigating third-party library implementations
+
+Simply replace `github.com` with `uuithub.com` in any GitHub URL.
+
 ## Architecture Overview
 
 The codebase follows a pnpm monorepo structure:
@@ -345,3 +367,20 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
 - Build all packages once at the start, then publish without rebuilding
 - This ensures `workspace:*` references resolve to published versions
 
+
+## Gemini CLI for Testing
+
+The project uses Google's Gemini CLI for testing the GeminiRunner implementation. Install the specific version:
+
+```bash
+npm install -g @google/gemini-cli@0.17.0
+```
+
+This ensures consistency when running integration tests that interact with the Gemini API.
+
+### Gemini Configuration Reference
+
+For detailed information about Gemini CLI configuration options (settings.json structure, model aliases, previewFeatures, etc.), refer to:
+- **Official Documentation**: https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
+
+The GeminiRunner automatically generates a `~/.gemini/settings.json` file with single-turn model aliases and preview features enabled if one doesn't already exist.

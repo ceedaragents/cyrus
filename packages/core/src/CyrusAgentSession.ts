@@ -1,9 +1,9 @@
 /**
  * Agent Session types for Linear Agent Sessions integration
- * These types represent the core data structures for tracking Claude Code sessions in Linear
+ * These types represent the core data structures for tracking agent sessions in Linear
  */
 
-import type { ClaudeRunner } from "cyrus-claude-runner";
+import type { IAgentRunner } from "./agent-runner-types.js";
 import type {
 	AgentSessionStatus,
 	AgentSessionType,
@@ -33,8 +33,8 @@ export interface CyrusAgentSession {
 	issueId: string;
 	issue: IssueMinimal;
 	workspace: Workspace;
-	claudeSessionId?: string; // this gets assigned once it initializes
-	claudeRunner?: ClaudeRunner;
+	claudeSessionId?: string; // this gets assigned once it initializes (may be provider-specific)
+	agentRunner?: IAgentRunner;
 	metadata?: {
 		model?: string;
 		tools?: string[];

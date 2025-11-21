@@ -1,9 +1,4 @@
-import type {
-	AgentProgressEvent as SimpleAgentProgressEvent,
-	SimpleAgentQueryOptions as SimpleAgentQueryOptionsBase,
-	SimpleAgentResult as SimpleAgentResultBase,
-	SimpleAgentRunnerConfig as SimpleAgentRunnerConfigBase,
-} from "cyrus-simple-agent-runner";
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 /**
  * Simple Agent Runner Interface
@@ -83,6 +78,26 @@ export interface ISimpleAgentRunner<T extends string> {
 }
 
 /**
+ * Progress events emitted during agent execution
+ *
+ * These events allow monitoring the agent's progress as it works toward
+ * producing a valid response. Useful for logging, UI updates, or debugging.
+ *
+ * Event types:
+ * - `started`: Session has begun (includes sessionId)
+ * - `thinking`: Agent is processing (includes reasoning text)
+ * - `tool-use`: Agent is using a tool (includes tool name and input)
+ * - `response-detected`: Agent produced a candidate response (may be invalid)
+ * - `validating`: Checking if response is valid
+ */
+export type IAgentProgressEvent =
+	| { type: "started"; sessionId: string | null }
+	| { type: "thinking"; text: string }
+	| { type: "tool-use"; toolName: string; input: unknown }
+	| { type: "response-detected"; candidateResponse: string }
+	| { type: "validating"; response: string };
+
+/**
  * Configuration for Simple Agent Runner
  *
  * Defines how the simple agent runner should behave, including valid responses,
@@ -107,8 +122,34 @@ export interface ISimpleAgentRunner<T extends string> {
  * };
  * ```
  */
-export type ISimpleAgentRunnerConfig<T extends string> =
-	SimpleAgentRunnerConfigBase<T>;
+export interface ISimpleAgentRunnerConfig<T extends string> {
+	/** Valid response options that the agent must choose from */
+	validResponses: readonly T[];
+
+	/** System prompt to guide the agent's behavior */
+	systemPrompt?: string;
+
+	/** Maximum number of turns before timeout */
+	maxTurns?: number;
+
+	/** Timeout in milliseconds for the entire operation */
+	timeoutMs?: number;
+
+	/** Model to use (e.g., "sonnet", "haiku") */
+	model?: string;
+
+	/** Fallback model if primary is unavailable */
+	fallbackModel?: string;
+
+	/** Working directory for agent execution */
+	workingDirectory?: string;
+
+	/** Cyrus home directory */
+	cyrusHome: string;
+
+	/** Optional callback for progress events */
+	onProgress?: (event: IAgentProgressEvent) => void;
+}
 
 /**
  * Result from a Simple Agent Runner query
@@ -129,49 +170,22 @@ export type ISimpleAgentRunnerConfig<T extends string> =
  * };
  * ```
  */
-export type ISimpleAgentResult<T extends string> = SimpleAgentResultBase<T>;
+export interface ISimpleAgentResult<T extends string> {
+	/** The validated response from the agent */
+	response: T;
 
-/**
- * Progress events emitted during agent execution
- *
- * These events allow monitoring the agent's progress as it works toward
- * producing a valid response. Useful for logging, UI updates, or debugging.
- *
- * Event types:
- * - `started`: Session has begun (includes sessionId)
- * - `thinking`: Agent is processing (includes reasoning text)
- * - `tool-use`: Agent is using a tool (includes tool name and input)
- * - `response-detected`: Agent produced a candidate response (may be invalid)
- * - `validating`: Checking if response is valid
- *
- * @example
- * ```typescript
- * const config: ISimpleAgentRunnerConfig<"yes" | "no"> = {
- *   validResponses: ["yes", "no"] as const,
- *   cyrusHome: "/home/user/.cyrus",
- *   onProgress: (event: IAgentProgressEvent) => {
- *     switch (event.type) {
- *       case "started":
- *         console.log(`Session started: ${event.sessionId}`);
- *         break;
- *       case "thinking":
- *         console.log(`Agent thinking: ${event.text}`);
- *         break;
- *       case "tool-use":
- *         console.log(`Using tool: ${event.toolName}`);
- *         break;
- *       case "response-detected":
- *         console.log(`Candidate response: ${event.candidateResponse}`);
- *         break;
- *       case "validating":
- *         console.log(`Validating: ${event.response}`);
- *         break;
- *     }
- *   }
- * };
- * ```
- */
-export type IAgentProgressEvent = SimpleAgentProgressEvent;
+	/** All SDK messages from the session */
+	messages: SDKMessage[];
+
+	/** Session ID for debugging/logging */
+	sessionId: string | null;
+
+	/** Duration of execution in milliseconds */
+	durationMs: number;
+
+	/** Cost in USD (if available) */
+	costUSD?: number;
+}
 
 /**
  * Options for a Simple Agent Runner query
@@ -190,18 +204,13 @@ export type IAgentProgressEvent = SimpleAgentProgressEvent;
  * const result = await runner.query("Should we send a reminder email?", options);
  * ```
  */
-export type ISimpleAgentQueryOptions = SimpleAgentQueryOptionsBase;
+export interface ISimpleAgentQueryOptions {
+	/** Additional context to provide to the agent */
+	context?: string;
 
-/**
- * Re-export simple-agent-runner types for convenience
- *
- * These re-exports allow consumers to import all necessary types
- * from a single location (packages/core) without knowing the
- * underlying provider SDK.
- */
-export type {
-	AgentProgressEvent,
-	SimpleAgentQueryOptions,
-	SimpleAgentResult,
-	SimpleAgentRunnerConfig,
-} from "cyrus-simple-agent-runner";
+	/** Allow the agent to use file reading tools */
+	allowFileReading?: boolean;
+
+	/** Allowed directories for file operations */
+	allowedDirectories?: string[];
+}

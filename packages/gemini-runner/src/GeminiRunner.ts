@@ -5,11 +5,14 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import {
 	type IAgentRunner,
+	type SDKAssistantMessage,
 	type SDKMessage,
+	type SDKResultMessage,
 	type SDKUserMessage,
 	StreamingPrompt,
 } from "cyrus-core";
 import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
+import { setupGeminiSettings } from "./settingsGenerator.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
@@ -65,6 +68,10 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	// Delta message accumulation
 	private accumulatingMessage: SDKMessage | null = null;
 	private accumulatingRole: "user" | "assistant" | null = null;
+	// Track last assistant message for result coercion
+	private lastAssistantMessage: SDKAssistantMessage | null = null;
+	// Settings cleanup function
+	private settingsCleanup: (() => void) | null = null;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
@@ -100,8 +107,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		}
 		this.streamingPrompt.addMessage(content);
 
-		// For Gemini CLI, we need to write to stdin if process is running
-		if (this.process?.stdin) {
+		// Write to stdin if process is running
+		if (this.process?.stdin && !this.process.stdin.destroyed) {
 			this.process.stdin.write(`${content}\n`);
 		}
 	}
@@ -114,10 +121,17 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			this.streamingPrompt.complete();
 
 			// Close stdin to signal completion to Gemini CLI
-			if (this.process?.stdin) {
+			if (this.process?.stdin && !this.process.stdin.destroyed) {
 				this.process.stdin.end();
 			}
 		}
+	}
+
+	/**
+	 * Get the last assistant message (used for result coercion)
+	 */
+	getLastAssistantMessage(): SDKAssistantMessage | null {
+		return this.lastAssistantMessage;
 	}
 
 	/**
@@ -164,6 +178,9 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 		// Reset messages array
 		this.messages = [];
+
+		// Setup Gemini settings with appropriate maxSessionTurns
+		this.settingsCleanup = setupGeminiSettings(this.config.singleTurn || false);
 
 		try {
 			// Build Gemini CLI command
@@ -224,11 +241,6 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 					streamingInitialPrompt,
 				);
 				useStdin = true;
-
-				// Send initial prompt to stdin if provided
-				if (streamingInitialPrompt) {
-					// Will be written after process spawns
-				}
 			}
 
 			// Spawn Gemini CLI process
@@ -238,7 +250,18 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				stdio: useStdin ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
 			});
 
-			// Write initial streaming prompt to stdin if provided
+			// IMPORTANT: Write initial streaming prompt to stdin immediately after spawn
+			// This prevents gemini from hanging waiting for input.
+			//
+			// How gemini-cli stdin works (from packages/cli/src/utils/readStdin.ts):
+			// 1. Has a 500ms timeout - if NO data arrives, assumes nothing is piped and returns empty
+			// 2. Once data arrives, timeout is canceled and it waits for stdin to close ('end' event)
+			// 3. Continues reading chunks as they arrive until stdin closes
+			//
+			// Therefore:
+			// - We MUST write initial prompt immediately to cancel the 500ms timeout
+			// - We MUST NOT close stdin here - keep it open for addStreamMessage() calls
+			// - stdin.end() is called later in completeStream() when all messages are sent
 			if (useStdin && streamingInitialPrompt && this.process.stdin) {
 				this.process.stdin.write(`${streamingInitialPrompt}\n`);
 			}
@@ -303,6 +326,41 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				this.sessionInfo.isRunning = false;
 			}
 
+			// Emit error result message to maintain consistent message flow
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			const errorResult: SDKResultMessage = {
+				type: "result",
+				subtype: "error_during_execution",
+				duration_ms: Date.now() - this.sessionInfo!.startedAt.getTime(),
+				duration_api_ms: 0,
+				is_error: true,
+				num_turns: 0,
+				errors: [errorMessage],
+				total_cost_usd: 0,
+				usage: {
+					input_tokens: 0,
+					output_tokens: 0,
+					cache_creation_input_tokens: 0,
+					cache_read_input_tokens: 0,
+					cache_creation: {
+						ephemeral_1h_input_tokens: 0,
+						ephemeral_5m_input_tokens: 0,
+					},
+					server_tool_use: {
+						web_fetch_requests: 0,
+						web_search_requests: 0,
+					},
+					service_tier: "standard",
+				},
+				modelUsage: {},
+				permission_denials: [],
+				uuid: crypto.randomUUID(),
+				session_id: this.sessionInfo?.sessionId || "pending",
+			};
+
+			this.emitMessage(errorResult);
+
 			this.emit(
 				"error",
 				error instanceof Error ? error : new Error(String(error)),
@@ -325,6 +383,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			if (this.readableLogStream) {
 				this.readableLogStream.end();
 				this.readableLogStream = null;
+			}
+
+			// Restore Gemini settings
+			if (this.settingsCleanup) {
+				this.settingsCleanup();
+				this.settingsCleanup = null;
 			}
 		}
 
@@ -377,9 +441,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		const message = geminiEventToSDKMessage(
 			event,
 			this.sessionInfo?.sessionId || null,
+			this.lastAssistantMessage,
 		);
 
 		if (message) {
+			// Track last assistant message for result coercion
+			if (message.type === "assistant") {
+				this.lastAssistantMessage = message;
+			}
 			this.emitMessage(message);
 		}
 	}
@@ -399,13 +468,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// Flush previous accumulation if exists
 			this.flushAccumulatedMessage();
 
-			// Start new accumulation
+			// Start new accumulation using Claude SDK format (array of content blocks)
 			if (event.role === "user") {
 				this.accumulatingMessage = {
 					type: "user",
 					message: {
 						role: "user",
-						content: event.content,
+						content: [{ type: "text", text: event.content }],
 					},
 					parent_tool_use_id: null,
 					session_id: this.sessionInfo?.sessionId || "pending",
@@ -416,22 +485,24 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 					type: "assistant",
 					message: {
 						role: "assistant",
-						content: event.content,
+						content: [{ type: "text", text: event.content }],
 					},
 					session_id: this.sessionInfo?.sessionId || "pending",
 				} as unknown as SDKMessage;
 			}
 			this.accumulatingRole = event.role;
 		} else {
-			// Same role - append content
+			// Same role - append content to existing text block
 			if (
 				this.accumulatingMessage.type === "user" ||
 				this.accumulatingMessage.type === "assistant"
 			) {
 				const currentContent = this.accumulatingMessage.message.content;
-				if (typeof currentContent === "string") {
-					this.accumulatingMessage.message.content =
-						currentContent + event.content;
+				if (Array.isArray(currentContent) && currentContent.length > 0) {
+					const lastBlock = currentContent[currentContent.length - 1];
+					if (lastBlock && lastBlock.type === "text" && "text" in lastBlock) {
+						lastBlock.text += event.content;
+					}
 				}
 			}
 		}
@@ -445,6 +516,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			console.log(
 				`[GeminiRunner] Flushing accumulated message (role: ${this.accumulatingRole})`,
 			);
+
+			// Track last assistant message for result coercion BEFORE emitting
+			if (this.accumulatingMessage.type === "assistant") {
+				this.lastAssistantMessage = this.accumulatingMessage;
+			}
+
 			this.emitMessage(this.accumulatingMessage);
 			this.accumulatingMessage = null;
 			this.accumulatingRole = null;
@@ -496,6 +573,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Complete streaming prompt if active
 		if (this.streamingPrompt) {
 			this.streamingPrompt.complete();
+		}
+
+		// Restore Gemini settings
+		if (this.settingsCleanup) {
+			this.settingsCleanup();
+			this.settingsCleanup = null;
 		}
 	}
 

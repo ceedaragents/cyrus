@@ -90,16 +90,16 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.1.4
-        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(yaml@2.8.1)
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
 
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.42
-        version: 0.1.42(zod@3.25.76)
+        version: 0.1.42(zod@4.1.12)
       '@anthropic-ai/sdk':
         specifier: ^0.69.0
-        version: 0.69.0(zod@3.25.76)
+        version: 0.69.0(zod@4.1.12)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
@@ -107,17 +107,17 @@ importers:
         specifier: workspace:*
         version: link:../core
       dotenv:
-        specifier: ^16.6.1
+        specifier: ^16.4.5
         version: 16.6.1
       fs-extra:
-        specifier: ^11.3.0
+        specifier: ^11.3.2
         version: 11.3.2
       openai:
-        specifier: ^6.3.0
-        version: 6.3.0(ws@8.18.0)(zod@3.25.76)
+        specifier: ^6.9.1
+        version: 6.9.1(zod@4.1.12)
       zod:
-        specifier: ^3.23.0
-        version: 3.25.76
+        specifier: ^4.1.12
+        version: 4.1.12
     devDependencies:
       '@types/fs-extra':
         specifier: ^11.0.4
@@ -125,6 +125,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.21
+      tsx:
+        specifier: ^4.19.2
+        version: 4.20.6
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
@@ -171,16 +174,10 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.42
-        version: 0.1.42(zod@3.25.76)
+        version: 0.1.42(zod@4.1.12)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
-      cyrus-claude-runner:
-        specifier: workspace:*
-        version: link:../claude-runner
-      cyrus-simple-agent-runner:
-        specifier: workspace:*
-        version: link:../simple-agent-runner
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -218,6 +215,9 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+      cyrus-gemini-runner:
+        specifier: workspace:*
+        version: link:../gemini-runner
       cyrus-linear-event-transport:
         specifier: workspace:*
         version: link:../linear-event-transport
@@ -255,6 +255,9 @@ importers:
       '@linear/sdk':
         specifier: ^60.0.0
         version: 60.0.0
+      cyrus-claude-runner:
+        specifier: workspace:*
+        version: link:../claude-runner
       cyrus-core:
         specifier: workspace:*
         version: link:../core
@@ -307,7 +310,7 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.1.42
-        version: 0.1.42(zod@3.25.76)
+        version: 0.1.42(zod@4.1.12)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -1440,6 +1443,9 @@ packages:
     resolution: {integrity: sha512-VaUJspBffn/LMCJVoMvSAdmscJyS1auj5Zulnn5UoYcY531UWmdwhRWkcGKnGU93m5HSXP9LP2usOryrBtQowA==}
     engines: {node: '>=16'}
 
+  get-tsconfig@4.13.0:
+    resolution: {integrity: sha512-1VKTZJCwBrvbd+Wn3AOgQP/2Av+TfTCOlE4AcRJE72W1ksZXbAx8PPBR9RzgTeSPzlPMHrbANMH3LbltH73wxQ==}
+
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
@@ -1757,8 +1763,8 @@ packages:
     resolution: {integrity: sha512-YgBpdJHPyQ2UE5x+hlSXcnejzAvD0b22U2OuAP+8OnlJT+PjWPxtgmGqKKc+RgTM63U9gN0YzrYc71R2WT/hTA==}
     engines: {node: '>=18'}
 
-  openai@6.3.0:
-    resolution: {integrity: sha512-E6vOGtZvdcb4yXQ5jXvDlUG599OhIkb/GjBLZXS+qk0HF+PJReIldEc9hM8Ft81vn+N6dRdFRb7BZNK8bbvXrw==}
+  openai@6.9.1:
+    resolution: {integrity: sha512-vQ5Rlt0ZgB3/BNmTa7bIijYFhz3YBceAA3Z4JuoMSBftBF9YqFHIEhZakSs+O/Ad7EaoEimZvHxD5ylRjN11Lg==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
@@ -1907,6 +1913,9 @@ packages:
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
+
+  resolve-pkg-maps@1.0.0:
+    resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
 
   restore-cursor@5.1.0:
     resolution: {integrity: sha512-oMA2dcrw6u0YfxJQXm342bFKX/E4sG9rbTzO9ptUcR/e8A33cHuvStiYOwH7fszkZlZ1z/ta9AAoPk2F4qIOHA==}
@@ -2175,6 +2184,11 @@ packages:
       typescript:
         optional: true
 
+  tsx@4.20.6:
+    resolution: {integrity: sha512-ytQKuwgmrrkDTFP4LjR0ToE2nqgy886GpvRSpU0JAnrdBYppuY5rLkRUYPU1yCryb24SsKBTL/hlDQAEFVwtZg==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
   type-detect@4.1.0:
     resolution: {integrity: sha512-Acylog8/luQ8L7il+geoSxhEkazvkslg7PSNKOX59mbB9cOveP5aq9h74Y7YU8yDpJwetzQQrfIwtf4Wp4LKcw==}
     engines: {node: '>=4'}
@@ -2409,18 +2423,6 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.18.0:
-    resolution: {integrity: sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   wsl-utils@0.1.0:
     resolution: {integrity: sha512-h3Fbisa2nKGPxCpm89Hk33lBLsnaGBvctQopaBSOW/uIs6FTe1ATyAnKFJrzVs9vpGdsTe73WF3V4lIsk4Gacw==}
     engines: {node: '>=18'}
@@ -2437,6 +2439,9 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
+  zod@4.1.12:
+    resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
+
 snapshots:
 
   '@ampproject/remapping@2.3.0':
@@ -2444,9 +2449,9 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@anthropic-ai/claude-agent-sdk@0.1.42(zod@3.25.76)':
+  '@anthropic-ai/claude-agent-sdk@0.1.42(zod@4.1.12)':
     dependencies:
-      zod: 3.25.76
+      zod: 4.1.12
     optionalDependencies:
       '@img/sharp-darwin-arm64': 0.33.5
       '@img/sharp-darwin-x64': 0.33.5
@@ -2455,11 +2460,11 @@ snapshots:
       '@img/sharp-linux-x64': 0.33.5
       '@img/sharp-win32-x64': 0.33.5
 
-  '@anthropic-ai/sdk@0.69.0(zod@3.25.76)':
+  '@anthropic-ai/sdk@0.69.0(zod@4.1.12)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 3.25.76
+      zod: 4.1.12
 
   '@babel/helper-string-parser@7.27.1': {}
 
@@ -2905,13 +2910,13 @@ snapshots:
     optionalDependencies:
       vite: 5.4.20(@types/node@20.19.21)
 
-  '@vitest/mocker@3.2.4(vite@7.1.9(@types/node@20.19.21)(yaml@2.8.1))':
+  '@vitest/mocker@3.2.4(vite@7.1.9(@types/node@20.19.21)(tsx@4.20.6)(yaml@2.8.1))':
     dependencies:
       '@vitest/spy': 3.2.4
       estree-walker: 3.0.3
       magic-string: 0.30.19
     optionalDependencies:
-      vite: 7.1.9(@types/node@20.19.21)(yaml@2.8.1)
+      vite: 7.1.9(@types/node@20.19.21)(tsx@4.20.6)(yaml@2.8.1)
 
   '@vitest/pretty-format@2.1.9':
     dependencies:
@@ -2977,7 +2982,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(yaml@2.8.1)
+      vitest: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
 
   '@vitest/utils@1.6.1':
     dependencies:
@@ -3485,6 +3490,10 @@ snapshots:
 
   get-stream@8.0.1: {}
 
+  get-tsconfig@4.13.0:
+    dependencies:
+      resolve-pkg-maps: 1.0.0
+
   glob-parent@5.1.2:
     dependencies:
       is-glob: 4.0.3
@@ -3792,10 +3801,9 @@ snapshots:
       is-inside-container: 1.0.0
       wsl-utils: 0.1.0
 
-  openai@6.3.0(ws@8.18.0)(zod@3.25.76):
+  openai@6.9.1(zod@4.1.12):
     optionalDependencies:
-      ws: 8.18.0
-      zod: 3.25.76
+      zod: 4.1.12
 
   p-limit@5.0.0:
     dependencies:
@@ -3920,6 +3928,8 @@ snapshots:
   real-require@0.2.0: {}
 
   require-from-string@2.0.2: {}
+
+  resolve-pkg-maps@1.0.0: {}
 
   restore-cursor@5.1.0:
     dependencies:
@@ -4198,6 +4208,13 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
 
+  tsx@4.20.6:
+    dependencies:
+      esbuild: 0.25.10
+      get-tsconfig: 4.13.0
+    optionalDependencies:
+      fsevents: 2.3.3
+
   type-detect@4.1.0: {}
 
   type-is@2.0.1:
@@ -4260,13 +4277,13 @@ snapshots:
       - supports-color
       - terser
 
-  vite-node@3.2.4(@types/node@20.19.21)(yaml@2.8.1):
+  vite-node@3.2.4(@types/node@20.19.21)(tsx@4.20.6)(yaml@2.8.1):
     dependencies:
       cac: 6.7.14
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 7.1.9(@types/node@20.19.21)(yaml@2.8.1)
+      vite: 7.1.9(@types/node@20.19.21)(tsx@4.20.6)(yaml@2.8.1)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -4290,7 +4307,7 @@ snapshots:
       '@types/node': 20.19.21
       fsevents: 2.3.3
 
-  vite@7.1.9(@types/node@20.19.21)(yaml@2.8.1):
+  vite@7.1.9(@types/node@20.19.21)(tsx@4.20.6)(yaml@2.8.1):
     dependencies:
       esbuild: 0.25.10
       fdir: 6.5.0(picomatch@4.0.3)
@@ -4301,6 +4318,7 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.19.21
       fsevents: 2.3.3
+      tsx: 4.20.6
       yaml: 2.8.1
 
   vitest-mock-extended@3.1.0(typescript@5.9.3)(vitest@1.6.1(@types/node@20.19.21)):
@@ -4378,11 +4396,11 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(yaml@2.8.1):
+  vitest@3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1):
     dependencies:
       '@types/chai': 5.2.2
       '@vitest/expect': 3.2.4
-      '@vitest/mocker': 3.2.4(vite@7.1.9(@types/node@20.19.21)(yaml@2.8.1))
+      '@vitest/mocker': 3.2.4(vite@7.1.9(@types/node@20.19.21)(tsx@4.20.6)(yaml@2.8.1))
       '@vitest/pretty-format': 3.2.4
       '@vitest/runner': 3.2.4
       '@vitest/snapshot': 3.2.4
@@ -4400,8 +4418,8 @@ snapshots:
       tinyglobby: 0.2.15
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
-      vite: 7.1.9(@types/node@20.19.21)(yaml@2.8.1)
-      vite-node: 3.2.4(@types/node@20.19.21)(yaml@2.8.1)
+      vite: 7.1.9(@types/node@20.19.21)(tsx@4.20.6)(yaml@2.8.1)
+      vite-node: 3.2.4(@types/node@20.19.21)(tsx@4.20.6)(yaml@2.8.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 20.19.21
@@ -4444,9 +4462,6 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  ws@8.18.0:
-    optional: true
-
   wsl-utils@0.1.0:
     dependencies:
       is-wsl: 3.1.0
@@ -4456,3 +4471,5 @@ snapshots:
   yocto-queue@1.2.1: {}
 
   zod@3.25.76: {}
+
+  zod@4.1.12: {}

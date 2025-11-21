@@ -30,6 +30,7 @@
 		"cyrus-cloudflare-tunnel-client": "workspace:*",
 		"cyrus-config-updater": "workspace:*",
 		"cyrus-core": "workspace:*",
+		"cyrus-gemini-runner": "workspace:*",
 		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
 		"fastify": "^5.2.0",

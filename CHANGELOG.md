@@ -4,8 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Gemini result messages now include the actual final assistant response content instead of generic "Session completed successfully" message
+
+### Fixed
+- Fixed GeminiRunner hanging by writing initial prompt to stdin immediately while keeping stdin open for additional messages (CYPACK-415, https://github.com/ceedaragents/cyrus/pull/546)
+- Gemini single-turn mode now works correctly by temporarily configuring `~/.gemini/settings.json` with `maxSessionTurns=1` during sessions, then restoring original settings afterward
+
 ### Changed
+- Replaced `maxTurns` with `singleTurn` boolean flag in subroutine definitions for clearer semantics
+- Summary subroutines now use `singleTurn` mode with proper Gemini CLI configuration for consistent single-turn behavior
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)
+- GeminiRunner now emits error result messages instead of only throwing exceptions, maintaining consistent message flow for failed sessions
 
 ## [0.2.1] - 2025-11-15
 

@@ -42,12 +42,12 @@ export class SimpleClaudeRunner<T extends string> extends SimpleAgentRunner<T> {
 		});
 
 		// Set up event handlers
-		runner.on("message", (message) => {
+		runner.on("message", (message: SDKMessage) => {
 			messages.push(message);
 			this.handleMessage(message);
 		});
 
-		runner.on("error", (error) => {
+		runner.on("error", (error: Error) => {
 			sessionError = error;
 		});
 

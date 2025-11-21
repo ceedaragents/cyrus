@@ -58,11 +58,13 @@ function createBetaMessage(
  *
  * @param event - Gemini CLI stream event
  * @param sessionId - Current session ID (may be null initially)
+ * @param lastAssistantMessage - Last assistant message for result coercion (optional)
  * @returns SDKMessage or null if event type doesn't map to a message
  */
 export function geminiEventToSDKMessage(
 	event: GeminiStreamEvent,
 	sessionId: string | null,
+	lastAssistantMessage?: SDKAssistantMessage | null,
 ): SDKMessage | null {
 	switch (event.type) {
 		case "message": {
@@ -167,6 +169,19 @@ export function geminiEventToSDKMessage(
 			const durationMs = stats.duration_ms || 0;
 
 			if (event.status === "success") {
+				// Extract result content from last assistant message if available
+				// This ensures the result contains the actual final output, not just metadata
+				let resultContent = "Session completed successfully";
+				if (lastAssistantMessage?.message?.content) {
+					const content = lastAssistantMessage.message.content;
+					if (Array.isArray(content) && content.length > 0) {
+						const textBlock = content.find((block) => block.type === "text");
+						if (textBlock && "text" in textBlock) {
+							resultContent = textBlock.text;
+						}
+					}
+				}
+
 				const resultMessage: SDKResultMessage = {
 					type: "result",
 					subtype: "success",
@@ -174,7 +189,7 @@ export function geminiEventToSDKMessage(
 					duration_api_ms: 0, // Gemini doesn't separate API time
 					is_error: false,
 					num_turns: stats.tool_calls || 0, // Use tool calls as proxy for turns
-					result: "Session completed successfully",
+					result: resultContent,
 					total_cost_usd: 0, // Gemini doesn't provide cost info
 					usage: {
 						input_tokens: stats.input_tokens || 0,

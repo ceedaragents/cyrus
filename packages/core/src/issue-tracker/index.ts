@@ -43,7 +43,7 @@
 // MAIN INTERFACE
 // ============================================================================
 
-export { IIssueTrackerService } from "./IIssueTrackerService.js";
+export type { IIssueTrackerService } from "./IIssueTrackerService.js";
 
 // ============================================================================
 // EVENT TRANSPORT
