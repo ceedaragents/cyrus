@@ -209,6 +209,9 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+      cyrus-gemini-runner:
+        specifier: workspace:*
+        version: link:../gemini-runner
       cyrus-linear-event-transport:
         specifier: workspace:*
         version: link:../linear-event-transport

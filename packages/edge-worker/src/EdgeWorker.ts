@@ -22,6 +22,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { GeminiRunner } from "cyrus-gemini-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	AgentEvent,
@@ -1507,7 +1508,7 @@ export class EdgeWorker extends EventEmitter {
 				undefined, // resumeSessionId
 				labels, // Pass labels for model override
 			);
-			const runner = new ClaudeRunner(runnerConfig);
+			const runner = new GeminiRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -4973,7 +4974,7 @@ ${input.userComment}
 			maxTurns, // Pass maxTurns if specified
 		);
 
-		const runner = new ClaudeRunner(runnerConfig);
+		const runner = new GeminiRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
