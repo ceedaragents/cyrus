@@ -109,7 +109,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 		// Write to stdin if process is running
 		if (this.process?.stdin && !this.process.stdin.destroyed) {
+			console.log(
+				`[GeminiRunner] Writing to stdin (${content.length} chars): ${content.substring(0, 100)}...`,
+			);
 			this.process.stdin.write(`${content}\n`);
+		} else {
+			console.log(
+				`[GeminiRunner] Cannot write to stdin - process stdin is ${this.process?.stdin ? "destroyed" : "null"}`,
+			);
 		}
 	}
 
@@ -263,7 +270,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// - We MUST NOT close stdin here - keep it open for addStreamMessage() calls
 			// - stdin.end() is called later in completeStream() when all messages are sent
 			if (useStdin && streamingInitialPrompt && this.process.stdin) {
+				console.log(
+					`[GeminiRunner] Writing initial streaming prompt to stdin (${streamingInitialPrompt.length} chars): ${streamingInitialPrompt.substring(0, 150)}...`,
+				);
 				this.process.stdin.write(`${streamingInitialPrompt}\n`);
+			} else if (useStdin) {
+				console.log(
+					`[GeminiRunner] Cannot write initial prompt - streamingInitialPrompt=${!!streamingInitialPrompt}, stdin=${!!this.process.stdin}`,
+				);
 			}
 
 			// Set up stdout line reader for JSON events
@@ -399,7 +413,10 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	 * Process a Gemini stream event and convert to SDK message
 	 */
 	private processStreamEvent(event: GeminiStreamEvent): void {
-		console.log(`[GeminiRunner] Stream event:`, event.type);
+		console.log(
+			`[GeminiRunner] Stream event: ${event.type}`,
+			JSON.stringify(event).substring(0, 200),
+		);
 
 		// Emit raw stream event
 		this.emit("streamEvent", event);
