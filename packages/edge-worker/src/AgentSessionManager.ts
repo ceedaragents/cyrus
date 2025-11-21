@@ -108,7 +108,8 @@ export class AgentSessionManager {
 	}
 
 	/**
-	 * Create a new Agent Session from Claude system initialization
+	 * Update Agent Session with session ID from system initialization
+	 * Automatically detects whether it's Claude or Gemini based on the runner
 	 */
 	updateAgentSessionWithClaudeSessionId(
 		linearAgentActivitySessionId: string,
@@ -121,7 +122,18 @@ export class AgentSessionManager {
 			);
 			return;
 		}
-		linearSession.claudeSessionId = claudeSystemMessage.session_id;
+
+		// Determine which runner is being used
+		const runner = linearSession.agentRunner;
+		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+
+		// Update the appropriate session ID based on runner type
+		if (isGeminiRunner) {
+			linearSession.geminiSessionId = claudeSystemMessage.session_id;
+		} else {
+			linearSession.claudeSessionId = claudeSystemMessage.session_id;
+		}
+
 		linearSession.updatedAt = Date.now();
 		linearSession.metadata = {
 			...linearSession.metadata, // Preserve existing metadata
@@ -133,10 +145,10 @@ export class AgentSessionManager {
 	}
 
 	/**
-	 * Create a session entry from Claude user/assistant message (without syncing to Linear)
+	 * Create a session entry from user/assistant message (without syncing to Linear)
 	 */
 	private async createSessionEntry(
-		_linearAgentActivitySessionId: string,
+		linearAgentActivitySessionId: string,
 		sdkMessage: SDKUserMessage | SDKAssistantMessage,
 	): Promise<CyrusAgentSessionEntry> {
 		// Extract tool info if this is an assistant message
@@ -148,8 +160,16 @@ export class AgentSessionManager {
 				? this.extractToolResultInfo(sdkMessage)
 				: null;
 
+		// Determine which runner is being used
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		const runner = session?.agentRunner;
+		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+
 		const sessionEntry: CyrusAgentSessionEntry = {
-			claudeSessionId: sdkMessage.session_id,
+			// Set the appropriate session ID based on runner type
+			...(isGeminiRunner
+				? { geminiSessionId: sdkMessage.session_id }
+				: { claudeSessionId: sdkMessage.session_id }),
 			type: sdkMessage.type,
 			content: this.extractContent(sdkMessage),
 			metadata: {
@@ -649,10 +669,11 @@ export class AgentSessionManager {
 			return;
 		}
 
-		const claudeSessionId = session.claudeSessionId;
-		if (!claudeSessionId) {
+		// Get the session ID (either Claude or Gemini)
+		const sessionId = session.claudeSessionId || session.geminiSessionId;
+		if (!sessionId) {
 			console.error(
-				`[AgentSessionManager] No Claude session ID found for procedure session`,
+				`[AgentSessionManager] No session ID found for procedure session`,
 			);
 			return;
 		}
@@ -774,7 +795,7 @@ export class AgentSessionManager {
 			console.log(
 				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
-			this.procedureRouter.advanceToNextSubroutine(session, claudeSessionId);
+			this.procedureRouter.advanceToNextSubroutine(session, sessionId);
 
 			// Trigger next subroutine
 			if (this.resumeNextSubroutine) {
@@ -955,14 +976,22 @@ export class AgentSessionManager {
 	}
 
 	/**
-	 * Add result entry from Claude result message
+	 * Add result entry from result message
 	 */
 	private async addResultEntry(
 		linearAgentActivitySessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
+		// Determine which runner is being used
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		const runner = session?.agentRunner;
+		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+
 		const resultEntry: CyrusAgentSessionEntry = {
-			claudeSessionId: resultMessage.session_id,
+			// Set the appropriate session ID based on runner type
+			...(isGeminiRunner
+				? { geminiSessionId: resultMessage.session_id }
+				: { claudeSessionId: resultMessage.session_id }),
 			type: "result",
 			content: "result" in resultMessage ? resultMessage.result : "",
 			metadata: {

@@ -13,7 +13,7 @@ import type {
 } from "cyrus-claude-runner";
 import {
 	AbortError,
-	type ClaudeRunner,
+	ClaudeRunner,
 	createCyrusToolsServer,
 	createImageToolsServer,
 	createSoraToolsServer,
@@ -125,11 +125,13 @@ export class EdgeWorker extends EventEmitter {
 			join(this.cyrusHome, "state"),
 		);
 
-		// Initialize procedure router with haiku model for fast classification
+		// Initialize procedure router with gemini-2.5-flash-lite for fast classification
+		// Default to gemini runner for testing
 		this.procedureRouter = new ProcedureRouter({
 			cyrusHome: this.cyrusHome,
-			model: "haiku",
+			model: "gemini-2.5-flash-lite",
 			timeoutMs: 10000,
+			runnerType: "gemini", // Use Gemini by default
 		});
 
 		// Initialize repository router with dependencies
@@ -1773,9 +1775,8 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Post instant acknowledgment for existing session BEFORE any async work
-			// Check streaming status first to determine the message
-			const isCurrentlyStreaming =
-				(session?.agentRunner as ClaudeRunner)?.isStreaming() || false;
+			// Check if runner is currently running (streaming is Claude-specific, use isRunning for both)
+			const isCurrentlyStreaming = session?.agentRunner?.isRunning() || false;
 
 			await this.postInstantPromptedAcknowledgment(
 				linearAgentActivitySessionId,
@@ -4719,13 +4720,12 @@ ${input.userComment}
 		commentAuthor?: string,
 		commentTimestamp?: string,
 	): Promise<boolean> {
-		// Check if runner is actively streaming before routing
+		// Check if runner is actively running before routing
 		const existingRunner = session.agentRunner;
-		const isStreaming =
-			(existingRunner as ClaudeRunner)?.isStreaming() || false;
+		const isRunning = existingRunner?.isRunning() || false;
 
-		// Always route procedure for new input, UNLESS actively streaming
-		if (!isStreaming) {
+		// Always route procedure for new input, UNLESS actively running
+		if (!isRunning) {
 			await this.rerouteProcedureForSession(
 				session,
 				linearAgentActivitySessionId,
@@ -4736,12 +4736,12 @@ ${input.userComment}
 			console.log(`[EdgeWorker] Routed procedure for ${logContext}`);
 		} else {
 			console.log(
-				`[EdgeWorker] Skipping routing for ${linearAgentActivitySessionId} (${logContext}) - runner is actively streaming`,
+				`[EdgeWorker] Skipping routing for ${linearAgentActivitySessionId} (${logContext}) - runner is actively running`,
 			);
 		}
 
-		// Handle streaming case - add message to existing stream
-		if ((existingRunner as ClaudeRunner)?.isStreaming()) {
+		// Handle running case - add message to existing stream (if supported)
+		if (existingRunner?.isRunning()) {
 			console.log(
 				`[EdgeWorker] Adding prompt to existing stream for ${linearAgentActivitySessionId} (${logContext})`,
 			);
@@ -4915,24 +4915,30 @@ ${input.userComment}
 		// Check for existing runner
 		const existingRunner = session.agentRunner;
 
-		// If there's an existing streaming runner, add to it
-		if ((existingRunner as ClaudeRunner)?.isStreaming()) {
+		// If there's an existing running runner that supports streaming, add to it
+		if (existingRunner?.isRunning()) {
 			let fullPrompt = promptBody;
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
 
-			existingRunner!.addStreamMessage(fullPrompt);
+			existingRunner.addStreamMessage(fullPrompt);
 			return;
 		}
 
-		// Stop existing runner if it's not streaming
+		// Stop existing runner if it's not running
 		if (existingRunner) {
 			existingRunner.stop();
 		}
 
-		// Determine if we need a new Claude session
-		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
+		// Determine which runner to use based on existing session IDs
+		// If we have a claudeSessionId, use Claude; if geminiSessionId, use Gemini
+		// For new sessions, default to Gemini (current default)
+		const hasClaudeSession = !isNewSession && session.claudeSessionId;
+		const hasGeminiSession = !isNewSession && session.geminiSessionId;
+		const useClaudeRunner = hasClaudeSession && !hasGeminiSession;
+		const needsNewSession =
+			isNewSession || (!hasClaudeSession && !hasGeminiSession);
 
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
@@ -4991,9 +4997,12 @@ ${input.userComment}
 			this.procedureRouter.getCurrentSubroutine(session);
 
 		// Create runner configuration
-		const resumeSessionId = needsNewClaudeSession
+		// Use the appropriate session ID based on which runner we're using
+		const resumeSessionId = needsNewSession
 			? undefined
-			: session.claudeSessionId;
+			: useClaudeRunner
+				? session.claudeSessionId
+				: session.geminiSessionId;
 
 		const runnerConfig = this.buildAgentRunnerConfig(
 			session,
@@ -5009,7 +5018,10 @@ ${input.userComment}
 			currentSubroutine?.singleTurn, // singleTurn flag
 		);
 
-		const runner = new GeminiRunner(runnerConfig);
+		// Create the appropriate runner based on session state
+		const runner = useClaudeRunner
+			? new ClaudeRunner(runnerConfig)
+			: new GeminiRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);

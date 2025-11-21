@@ -109,7 +109,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 		// Write to stdin if process is running
 		if (this.process?.stdin && !this.process.stdin.destroyed) {
+			console.log(
+				`[GeminiRunner] Writing to stdin (${content.length} chars): ${content.substring(0, 100)}...`,
+			);
 			this.process.stdin.write(`${content}\n`);
+		} else {
+			console.log(
+				`[GeminiRunner] Cannot write to stdin - process stdin is ${this.process?.stdin ? "destroyed" : "null"}`,
+			);
 		}
 	}
 
@@ -227,19 +234,27 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 			// Handle prompt mode
 			let useStdin = false;
+			let fullStreamingPrompt: string | undefined;
 			if (stringPrompt !== null && stringPrompt !== undefined) {
-				// String mode - pass prompt via --prompt flag
+				// String mode - pass prompt as positional argument (not --prompt flag which is deprecated)
+				// Prepend system prompt if provided (Gemini CLI doesn't have --system-prompt flag)
+				const fullPrompt = this.config.systemPrompt
+					? `${this.config.systemPrompt}\n\n${stringPrompt}`
+					: stringPrompt;
 				console.log(
-					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters`,
+					`[GeminiRunner] Starting with string prompt length: ${fullPrompt.length} characters (systemPrompt: ${!!this.config.systemPrompt})`,
 				);
-				args.push("--prompt", stringPrompt);
+				args.push(fullPrompt);
 			} else {
 				// Streaming mode - use stdin
-				console.log(`[GeminiRunner] Starting with streaming prompt`);
-				this.streamingPrompt = new StreamingPrompt(
-					null,
-					streamingInitialPrompt,
+				// Prepend system prompt if provided (Gemini CLI doesn't have --system-prompt flag)
+				fullStreamingPrompt = this.config.systemPrompt
+					? `${this.config.systemPrompt}\n\n${streamingInitialPrompt || ""}`
+					: streamingInitialPrompt || undefined;
+				console.log(
+					`[GeminiRunner] Starting with streaming prompt (systemPrompt: ${!!this.config.systemPrompt})`,
 				);
+				this.streamingPrompt = new StreamingPrompt(null, fullStreamingPrompt);
 				useStdin = true;
 			}
 
@@ -262,8 +277,15 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// - We MUST write initial prompt immediately to cancel the 500ms timeout
 			// - We MUST NOT close stdin here - keep it open for addStreamMessage() calls
 			// - stdin.end() is called later in completeStream() when all messages are sent
-			if (useStdin && streamingInitialPrompt && this.process.stdin) {
-				this.process.stdin.write(`${streamingInitialPrompt}\n`);
+			if (useStdin && fullStreamingPrompt && this.process.stdin) {
+				console.log(
+					`[GeminiRunner] Writing initial streaming prompt to stdin (${fullStreamingPrompt.length} chars): ${fullStreamingPrompt.substring(0, 150)}...`,
+				);
+				this.process.stdin.write(`${fullStreamingPrompt}\n`);
+			} else if (useStdin) {
+				console.log(
+					`[GeminiRunner] Cannot write initial prompt - fullStreamingPrompt=${!!fullStreamingPrompt}, stdin=${!!this.process.stdin}`,
+				);
 			}
 
 			// Set up stdout line reader for JSON events
@@ -399,7 +421,10 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	 * Process a Gemini stream event and convert to SDK message
 	 */
 	private processStreamEvent(event: GeminiStreamEvent): void {
-		console.log(`[GeminiRunner] Stream event:`, event.type);
+		console.log(
+			`[GeminiRunner] Stream event: ${event.type}`,
+			JSON.stringify(event).substring(0, 200),
+		);
 
 		// Emit raw stream event
 		this.emit("streamEvent", event);
