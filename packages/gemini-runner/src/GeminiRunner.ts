@@ -206,10 +206,11 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			const args: string[] = ["--output-format", "stream-json"];
 
 			// Add model if specified
-			if (this.config.model) {
-				args.push("--model", this.config.model);
-			}
+			// if (this.config.model) {
+			// 	args.push("--model", this.config.model);
+			// }
 
+			args.push("--model", "gemini-3-pro-preview");
 			// Add resume session flag if provided
 			if (this.config.resumeSessionId) {
 				args.push("-r", this.config.resumeSessionId);
@@ -219,9 +220,10 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			}
 
 			// Add auto-approve flags
-			if (this.config.autoApprove) {
-				args.push("--yolo");
-			}
+			// if (this.config.autoApprove) {
+			// 	args.push("--yolo");
+			// }
+			args.push("--yolo");
 
 			if (this.config.approvalMode) {
 				args.push("--approval-mode", this.config.approvalMode);
@@ -250,6 +252,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				console.log(
 					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters`,
 				);
+				args.push("-p");
 				args.push(stringPrompt);
 			} else {
 				// Streaming mode - use stdin
@@ -613,7 +616,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 		if (this.process) {
 			console.log("[GeminiRunner] Stopping Gemini process");
-			this.process.kill("SIGTERM");
+			// HACK: This is needed otherwise the session gets corrupted
+			// this.process.kill("SIGTERM");
 			this.process = null;
 		}
 

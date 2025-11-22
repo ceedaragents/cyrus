@@ -239,6 +239,7 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
+					// resumeNextSubroutine
 					async (linearAgentActivitySessionId: string) => {
 						console.log(
 							`[Subroutine Transition] Advancing to next subroutine for session ${linearAgentActivitySessionId}`,
@@ -4916,12 +4917,11 @@ ${input.userComment}
 		const existingRunner = session.agentRunner;
 
 		// If there's an existing running runner that supports streaming, add to it
-		if (existingRunner?.isRunning()) {
+		if (existingRunner?.isRunning() && session.claudeSessionId) {
 			let fullPrompt = promptBody;
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-
 			existingRunner.addStreamMessage(fullPrompt);
 			return;
 		}
