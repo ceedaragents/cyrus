@@ -207,8 +207,6 @@ export interface AgentRunnerConfig {
 	resumeSessionId?: string;
 	/** Workspace name for logging and organization */
 	workspaceName?: string;
-	/** Custom system prompt (overrides default) */
-	systemPrompt?: string;
 	/** Additional text to append to default system prompt */
 	appendSystemPrompt?: string;
 	/** Path(s) to MCP configuration file(s) */

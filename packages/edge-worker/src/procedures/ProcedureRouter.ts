@@ -149,7 +149,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 			};
 		} catch (error) {
 			// Fallback to full-development on error
-			console.error("[ProcedureRouter] Error during routing decision:", error);
+			console.log("[ProcedureRouter] Error during routing decision:", error);
 			const fallbackProcedure = this.procedures.get("full-development");
 
 			if (!fallbackProcedure) {

@@ -196,7 +196,9 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		this.messages = [];
 
 		// Setup Gemini settings with appropriate maxSessionTurns
-		this.settingsCleanup = setupGeminiSettings(this.config.singleTurn || false);
+		if (this.config.maxTurns) {
+			this.settingsCleanup = setupGeminiSettings(this.config.maxTurns);
+		}
 
 		try {
 			// Build Gemini CLI command

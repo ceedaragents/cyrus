@@ -36,7 +36,7 @@ export class SimpleGeminiRunner<T extends string> extends SimpleAgentRunner<T> {
 			model: this.config.model,
 			fallbackModel: this.config.fallbackModel,
 			maxTurns: this.config.maxTurns,
-			systemPrompt: this.buildSystemPrompt(),
+			appendSystemPrompt: this.buildSystemPrompt(),
 			// Limit tools for simple queries
 			disallowedTools: options?.allowFileReading
 				? []
