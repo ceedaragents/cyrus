@@ -9,7 +9,7 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc && cp -r src/prompts dist/prompts",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run",

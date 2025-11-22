@@ -130,7 +130,7 @@ export class EdgeWorker extends EventEmitter {
 		this.procedureRouter = new ProcedureRouter({
 			cyrusHome: this.cyrusHome,
 			model: "gemini-2.5-flash-lite",
-			timeoutMs: 10000,
+			timeoutMs: 100000,
 			runnerType: "gemini", // Use Gemini by default
 		});
 
@@ -239,6 +239,7 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
+					// resumeNextSubroutine
 					async (linearAgentActivitySessionId: string) => {
 						console.log(
 							`[Subroutine Transition] Advancing to next subroutine for session ${linearAgentActivitySessionId}`,
@@ -291,7 +292,7 @@ export class EdgeWorker extends EventEmitter {
 
 						// Resume Claude session with subroutine prompt
 						try {
-							await this.resumeClaudeSession(
+							await this.resumeAgentSession(
 								session,
 								repo,
 								linearAgentActivitySessionId,
@@ -1550,7 +1551,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			console.log(`[EdgeWorker] Starting Claude streaming session`);
-			const sessionInfo = await runner.startStreaming(assembly.userPrompt);
+			const sessionInfo = await runner.start(assembly.userPrompt);
 			console.log(
 				`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`,
 			);
@@ -4761,7 +4762,7 @@ ${input.userComment}
 			`[EdgeWorker] Resuming Claude session for ${linearAgentActivitySessionId} (${logContext})`,
 		);
 
-		await this.resumeClaudeSession(
+		await this.resumeAgentSession(
 			session,
 			repository,
 			linearAgentActivitySessionId,
@@ -4889,7 +4890,7 @@ ${input.userComment}
 	}
 
 	/**
-	 * Resume or create a Claude session with the given prompt
+	 * Resume or create an Agent session with the given prompt
 	 * This is the core logic for handling prompted agent activities
 	 * @param session The Cyrus agent session
 	 * @param repository The repository configuration
@@ -4899,7 +4900,7 @@ ${input.userComment}
 	 * @param attachmentManifest Optional attachment manifest
 	 * @param isNewSession Whether this is a new session
 	 */
-	async resumeClaudeSession(
+	async resumeAgentSession(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
 		linearAgentActivitySessionId: string,
@@ -4916,12 +4917,11 @@ ${input.userComment}
 		const existingRunner = session.agentRunner;
 
 		// If there's an existing running runner that supports streaming, add to it
-		if (existingRunner?.isRunning()) {
+		if (existingRunner?.isRunning() && session.claudeSessionId) {
 			let fullPrompt = promptBody;
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-
 			existingRunner.addStreamMessage(fullPrompt);
 			return;
 		}
@@ -4947,7 +4947,7 @@ ${input.userComment}
 		);
 		if (!fullIssue) {
 			console.error(
-				`[resumeClaudeSession] Failed to fetch full issue details for ${session.issueId}`,
+				`[resumeAgentSession] Failed to fetch full issue details for ${session.issueId}`,
 			);
 			throw new Error(
 				`Failed to fetch full issue details for ${session.issueId}`,
@@ -5043,10 +5043,10 @@ ${input.userComment}
 
 		// Start streaming session
 		try {
-			await runner.startStreaming(fullPrompt);
+			await runner.start(fullPrompt);
 		} catch (error) {
 			console.error(
-				`[resumeClaudeSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
+				`[resumeAgentSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
 				error,
 			);
 			throw error;

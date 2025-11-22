@@ -36,6 +36,8 @@ export {
 export { GeminiRunner } from "./GeminiRunner.js";
 // Simple agent runner
 export { SimpleGeminiRunner } from "./SimpleGeminiRunner.js";
+// System prompt manager
+export { SystemPromptManager } from "./systemPromptManager.js";
 // Types
 export type {
 	GeminiErrorEvent,

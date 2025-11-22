@@ -13,6 +13,7 @@ import {
 } from "cyrus-core";
 import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
 import { setupGeminiSettings } from "./settingsGenerator.js";
+import { SystemPromptManager } from "./systemPromptManager.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
@@ -72,11 +73,19 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	private lastAssistantMessage: SDKAssistantMessage | null = null;
 	// Settings cleanup function
 	private settingsCleanup: (() => void) | null = null;
+	// System prompt manager
+	private systemPromptManager: SystemPromptManager;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
+		// Use workspaceName for unique system prompt file paths (supports parallel execution)
+		const workspaceName = config.workspaceName || "default";
+		this.systemPromptManager = new SystemPromptManager(
+			config.cyrusHome,
+			workspaceName,
+		);
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -187,7 +196,9 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		this.messages = [];
 
 		// Setup Gemini settings with appropriate maxSessionTurns
-		this.settingsCleanup = setupGeminiSettings(this.config.singleTurn || false);
+		if (this.config.maxTurns) {
+			this.settingsCleanup = setupGeminiSettings(this.config.maxTurns);
+		}
 
 		try {
 			// Build Gemini CLI command
@@ -195,10 +206,11 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			const args: string[] = ["--output-format", "stream-json"];
 
 			// Add model if specified
-			if (this.config.model) {
-				args.push("--model", this.config.model);
-			}
+			// if (this.config.model) {
+			// 	args.push("--model", this.config.model);
+			// }
 
+			args.push("--model", "gemini-3-pro-preview");
 			// Add resume session flag if provided
 			if (this.config.resumeSessionId) {
 				args.push("-r", this.config.resumeSessionId);
@@ -208,9 +220,10 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			}
 
 			// Add auto-approve flags
-			if (this.config.autoApprove) {
-				args.push("--yolo");
-			}
+			// if (this.config.autoApprove) {
+			// 	args.push("--yolo");
+			// }
+			args.push("--yolo");
 
 			if (this.config.approvalMode) {
 				args.push("--approval-mode", this.config.approvalMode);
@@ -236,26 +249,41 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			let useStdin = false;
 			let fullStreamingPrompt: string | undefined;
 			if (stringPrompt !== null && stringPrompt !== undefined) {
-				// String mode - pass prompt as positional argument (not --prompt flag which is deprecated)
-				// Prepend system prompt if provided (Gemini CLI doesn't have --system-prompt flag)
-				const fullPrompt = this.config.systemPrompt
-					? `${this.config.systemPrompt}\n\n${stringPrompt}`
-					: stringPrompt;
 				console.log(
-					`[GeminiRunner] Starting with string prompt length: ${fullPrompt.length} characters (systemPrompt: ${!!this.config.systemPrompt})`,
+					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters`,
 				);
-				args.push(fullPrompt);
+				args.push("-p");
+				args.push(stringPrompt);
 			} else {
 				// Streaming mode - use stdin
-				// Prepend system prompt if provided (Gemini CLI doesn't have --system-prompt flag)
-				fullStreamingPrompt = this.config.systemPrompt
-					? `${this.config.systemPrompt}\n\n${streamingInitialPrompt || ""}`
-					: streamingInitialPrompt || undefined;
+				fullStreamingPrompt = streamingInitialPrompt || undefined;
 				console.log(
-					`[GeminiRunner] Starting with streaming prompt (systemPrompt: ${!!this.config.systemPrompt})`,
+					`[GeminiRunner] Starting with streaming prompt`,
 				);
 				this.streamingPrompt = new StreamingPrompt(null, fullStreamingPrompt);
 				useStdin = true;
+			}
+
+			// Prepare environment variables for Gemini CLI
+			const geminiEnv = { ...process.env };
+
+			
+			if (this.config.appendSystemPrompt) {
+				try {
+					const systemPromptPath =
+						await this.systemPromptManager.prepareSystemPrompt(
+							this.config.appendSystemPrompt,
+						);
+					geminiEnv.GEMINI_SYSTEM_MD = systemPromptPath;
+					console.log(
+						`[GeminiRunner] Prepared system prompt at: ${systemPromptPath}`,
+					);
+				} catch (error) {
+					console.error(
+						"[GeminiRunner] Failed to prepare system prompt, continuing without it:",
+						error,
+					);
+				}
 			}
 
 			// Spawn Gemini CLI process
@@ -263,6 +291,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			this.process = spawn(geminiPath, args, {
 				cwd: this.config.workingDirectory,
 				stdio: useStdin ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
+				env: geminiEnv,
 			});
 
 			// IMPORTANT: Write initial streaming prompt to stdin immediately after spawn
@@ -587,7 +616,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 		if (this.process) {
 			console.log("[GeminiRunner] Stopping Gemini process");
-			this.process.kill("SIGTERM");
+			// HACK: This is needed otherwise the session gets corrupted
+			// this.process.kill("SIGTERM");
 			this.process = null;
 		}
 

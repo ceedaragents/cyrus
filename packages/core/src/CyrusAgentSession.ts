@@ -33,6 +33,7 @@ export interface CyrusAgentSession {
 	issueId: string;
 	issue: IssueMinimal;
 	workspace: Workspace;
+	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)
 	geminiSessionId?: string; // Gemini-specific session ID (assigned once it initializes)
 	agentRunner?: IAgentRunner;
