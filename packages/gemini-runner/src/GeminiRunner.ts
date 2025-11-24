@@ -206,11 +206,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			const args: string[] = ["--output-format", "stream-json"];
 
 			// Add model if specified
-			// if (this.config.model) {
-			// 	args.push("--model", this.config.model);
-			// }
+			if (this.config.model) {
+				args.push("--model", this.config.model);
+			} else {
+				// Default to gemini-2.5-pro
+				args.push("--model", "gemini-2.5-pro");
+			}
 
-			args.push("--model", "gemini-3-pro-preview");
 			// Add resume session flag if provided
 			if (this.config.resumeSessionId) {
 				args.push("-r", this.config.resumeSessionId);
@@ -219,24 +221,17 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
+			// This will be added in the future
 			// Add auto-approve flags
 			// if (this.config.autoApprove) {
 			// 	args.push("--yolo");
 			// }
 			args.push("--yolo");
-			args.push("--sandbox");
-
-			if (this.config.allowedDirectories) {
-				args.push("--include-directories", this.config.allowedDirectories.toString());
-				console.log(
-					`[GeminiRunner] Adding the following include directories: ${this.config.allowedDirectories}`,
-				);
-			}
 
 			if (this.config.approvalMode) {
 				args.push("--approval-mode", this.config.approvalMode);
 			}
-
+			
 			// Add debug flag
 			if (this.config.debug) {
 				args.push("--debug");
@@ -244,12 +239,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 			// Add include-directories flag if specified
 			if (
-				this.config.includeDirectories &&
-				this.config.includeDirectories.length > 0
+				this.config.allowedDirectories &&
+				this.config.allowedDirectories.length > 0
 			) {
 				args.push(
 					"--include-directories",
-					this.config.includeDirectories.join(","),
+					this.config.allowedDirectories.join(","),
 				);
 			}
 
@@ -274,7 +269,6 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 			// Prepare environment variables for Gemini CLI
 			const geminiEnv = { ...process.env };
-
 			
 			if (this.config.appendSystemPrompt) {
 				try {
