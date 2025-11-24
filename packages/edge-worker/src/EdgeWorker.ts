@@ -172,6 +172,7 @@ export class EdgeWorker extends EventEmitter {
 		this.sharedApplicationServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
+			this.saveOAuthTokens.bind(this),
 		);
 
 		// Initialize repositories with path resolution
@@ -201,7 +202,8 @@ export class EdgeWorker extends EventEmitter {
 				const linearClient = new LinearClient({
 					accessToken: repo.linearToken,
 				});
-				const issueTracker = new LinearIssueTrackerService(linearClient);
+				const wrappedClient = this.wrapLinearClient(linearClient, repo.id);
+				const issueTracker = new LinearIssueTrackerService(wrappedClient);
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
@@ -778,7 +780,8 @@ export class EdgeWorker extends EventEmitter {
 				const linearClient = new LinearClient({
 					accessToken: repo.linearToken,
 				});
-				const issueTracker = new LinearIssueTrackerService(linearClient);
+				const wrappedClient = this.wrapLinearClient(linearClient, repo.id);
+				const issueTracker = new LinearIssueTrackerService(wrappedClient);
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager with same pattern as constructor
@@ -854,7 +857,8 @@ export class EdgeWorker extends EventEmitter {
 					const linearClient = new LinearClient({
 						accessToken: repo.linearToken,
 					});
-					const issueTracker = new LinearIssueTrackerService(linearClient);
+					const wrappedClient = this.wrapLinearClient(linearClient, repo.id);
+					const issueTracker = new LinearIssueTrackerService(wrappedClient);
 					this.issueTrackers.set(repo.id, issueTracker);
 				}
 
@@ -971,6 +975,7 @@ export class EdgeWorker extends EventEmitter {
 	private async handleWebhook(
 		webhook: Webhook,
 		repos: RepositoryConfig[],
+		retryCount: number = 0,
 	): Promise<void> {
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
@@ -1004,10 +1009,23 @@ export class EdgeWorker extends EventEmitter {
 				}
 			}
 		} catch (error) {
+			// Check if token expired and we haven't retried yet
+			if (this.isTokenExpiredError(error) && retryCount === 0) {
+				console.log("[EdgeWorker] Token expired, refreshing and retrying...");
+
+				// Get the first repository from the list - they all share the same workspace
+				const firstRepo = repos[0];
+				if (firstRepo) {
+					await this.refreshLinearToken(firstRepo.id);
+					return await this.handleWebhook(webhook, repos, 1);
+				}
+			}
+
 			console.error(
 				`[handleWebhook] Failed to process webhook: ${(webhook as any).action}`,
 				error,
 			);
+
 			// Don't re-throw webhook processing errors to prevent application crashes
 			// The error has been logged and individual webhook failures shouldn't crash the entire system
 		}
@@ -1061,6 +1079,207 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 		return undefined;
+	}
+
+	/**
+	 * Wrap LinearClient with Proxy that auto-retries on 401
+	 */
+	private wrapLinearClient(
+		client: LinearClient,
+		repositoryId: string,
+	): LinearClient {
+		const maxRetries = 3;
+		let retryCount = 0;
+
+		return new Proxy(client, {
+			get: (target, prop) => {
+				const value = target[prop as keyof LinearClient];
+				if (typeof value !== "function") return value;
+
+				return async (...args: any[]) => {
+					try {
+						return await (value as any).apply(target, args);
+					} catch (error) {
+						// Only retry on 401 errors and if we haven't hit the limit
+						if (!this.isTokenExpiredError(error) || retryCount >= maxRetries) {
+							throw error;
+						}
+
+						retryCount++;
+						console.log(
+							`[EdgeWorker] 401 error, attempting token refresh (${retryCount}/${maxRetries})...`,
+						);
+
+						// Try to refresh the token
+						const refreshResult = await this.refreshLinearToken(repositoryId);
+						if (!refreshResult.success) {
+							console.error(`[EdgeWorker] Token refresh failed`);
+							throw error;
+						}
+
+						// Wait before retrying
+						await new Promise((resolve) => setTimeout(resolve, 1000));
+
+						// Get the refreshed client and retry
+						// This call will go through the Proxy again, providing natural recursion
+						const freshTracker = this.issueTrackers.get(repositoryId);
+						if (freshTracker && "linearClient" in freshTracker) {
+							const freshClient = (freshTracker as any).linearClient;
+							return await (
+								freshClient[prop as keyof LinearClient] as any
+							).apply(freshClient, args);
+						}
+
+						throw error;
+					}
+				};
+			},
+		});
+	}
+
+	/**
+	 * Check if an error is a 401 token expiration error
+	 */
+	private isTokenExpiredError(error: any): boolean {
+		return error?.status === 401 || error?.response?.status === 401;
+	}
+
+	/**
+	 * Save OAuth tokens to config.json for all repositories with matching workspace
+	 */
+	private async saveOAuthTokens(tokens: {
+		linearToken: string;
+		linearRefreshToken?: string;
+		linearWorkspaceId: string;
+		linearWorkspaceName: string;
+	}): Promise<void> {
+		if (!this.configPath) {
+			console.error("❌ Cannot save OAuth tokens: config path not set");
+			return;
+		}
+
+		try {
+			// Read current config
+			const configContent = await readFile(this.configPath, "utf-8");
+			const config = JSON.parse(configContent);
+
+			// Update tokens for all repositories with matching workspace
+			let updatedCount = 0;
+			for (const repo of config.repositories) {
+				if (repo.linearWorkspaceId === tokens.linearWorkspaceId) {
+					repo.linearToken = tokens.linearToken;
+					if (tokens.linearRefreshToken) {
+						repo.linearRefreshToken = tokens.linearRefreshToken;
+					}
+					repo.linearWorkspaceName = tokens.linearWorkspaceName;
+					updatedCount++;
+				}
+			}
+
+			// Write updated config back to file
+			await writeFile(
+				this.configPath,
+				JSON.stringify(config, null, 2),
+				"utf-8",
+			);
+
+			console.log(
+				`✅ OAuth tokens saved to config.json (${updatedCount} repositories updated)`,
+			);
+		} catch (error) {
+			console.error("❌ Failed to save OAuth tokens to config.json:", error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Refresh Linear OAuth token using refresh token
+	 * Updates all repositories with the same workspace ID
+	 */
+	async refreshLinearToken(
+		repositoryId: string,
+	): Promise<{ success: boolean; newToken?: string }> {
+		const repo = this.repositories.get(repositoryId);
+		if (!repo || !repo.linearRefreshToken) {
+			console.error(
+				`[EdgeWorker] No refresh token available for repo ${repositoryId}`,
+			);
+			return { success: false };
+		}
+
+		const clientId = process.env.LINEAR_CLIENT_ID;
+		const clientSecret = process.env.LINEAR_CLIENT_SECRET;
+
+		if (!clientId || !clientSecret) {
+			console.error(
+				"[EdgeWorker] LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET required for token refresh",
+			);
+			return { success: false };
+		}
+
+		try {
+			console.log(
+				`[EdgeWorker] Refreshing token for workspace ${repo.linearWorkspaceId}...`,
+			);
+
+			const params = new URLSearchParams({
+				grant_type: "refresh_token",
+				client_id: clientId,
+				client_secret: clientSecret,
+				refresh_token: repo.linearRefreshToken,
+			});
+
+			const response = await fetch("https://api.linear.app/oauth/token", {
+				method: "POST",
+				headers: { "Content-Type": "application/x-www-form-urlencoded" },
+				body: params.toString(),
+			});
+
+			if (!response.ok) {
+				console.error(`[EdgeWorker] Token refresh failed: ${response.status}`);
+				return { success: false };
+			}
+
+			const data = (await response.json()) as {
+				access_token: string;
+				refresh_token: string;
+				expires_in: number;
+			};
+
+			// Update all repositories with this workspace ID
+			const workspaceId = repo.linearWorkspaceId;
+			for (const [repoId, repository] of this.repositories) {
+				if (repository.linearWorkspaceId === workspaceId) {
+					repository.linearToken = data.access_token;
+					repository.linearRefreshToken = data.refresh_token;
+
+					// Update IssueTracker with new LinearClient
+					const newClient = new LinearClient({
+						accessToken: data.access_token,
+					});
+					const wrappedClient = this.wrapLinearClient(newClient, repoId);
+					const newIssueTracker = new LinearIssueTrackerService(wrappedClient);
+					this.issueTrackers.set(repoId, newIssueTracker);
+				}
+			}
+
+			// Save tokens to config.json
+			const workspaceName = repo.linearWorkspaceName || repo.linearWorkspaceId;
+			await this.saveOAuthTokens({
+				linearToken: data.access_token,
+				linearRefreshToken: data.refresh_token,
+				linearWorkspaceId: workspaceId,
+				linearWorkspaceName: workspaceName,
+			});
+
+			console.log(
+				`[EdgeWorker] ✅ Token refreshed successfully for workspace ${workspaceId}`,
+			);
+			return { success: true, newToken: data.access_token };
+		} catch (error) {
+			console.error("[EdgeWorker] Token refresh error:", error);
+			return { success: false };
+		}
 	}
 
 	/**
