@@ -2086,7 +2086,7 @@ export class EdgeWorker extends EventEmitter {
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
 		// Check for Gemini labels first
-		if (lowercaseLabels.includes("gemini-2.5-pro")) {
+		if (lowercaseLabels.includes("gemini-2.5-pro") || lowercaseLabels.includes("gemini-2.5")) {
 			return { runnerType: "gemini", modelOverride: "gemini-2.5-pro" };
 		}
 		if (lowercaseLabels.includes("gemini-2.5-flash")) {
@@ -2099,6 +2099,7 @@ export class EdgeWorker extends EventEmitter {
 			};
 		}
 		if (
+			lowercaseLabels.includes("gemini-3") ||
 			lowercaseLabels.includes("gemini-3-pro") ||
 			lowercaseLabels.includes("gemini-3-pro-preview")
 		) {
