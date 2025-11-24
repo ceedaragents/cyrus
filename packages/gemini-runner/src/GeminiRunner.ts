@@ -3,8 +3,10 @@ import { EventEmitter } from "node:events";
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { ClaudeMessageFormatter } from "cyrus-claude-runner";
 import {
 	type IAgentRunner,
+	type IMessageFormatter,
 	type SDKAssistantMessage,
 	type SDKMessage,
 	type SDKResultMessage,
@@ -75,6 +77,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	private settingsCleanup: (() => void) | null = null;
 	// System prompt manager
 	private systemPromptManager: SystemPromptManager;
+	// Message formatter
+	private formatter: IMessageFormatter;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
@@ -86,6 +90,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			config.cyrusHome,
 			workspaceName,
 		);
+		// Use ClaudeMessageFormatter for now (Gemini uses similar tool format)
+		this.formatter = new ClaudeMessageFormatter();
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -231,7 +237,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			if (this.config.approvalMode) {
 				args.push("--approval-mode", this.config.approvalMode);
 			}
-			
+
 			// Add debug flag
 			if (this.config.debug) {
 				args.push("--debug");
@@ -260,16 +266,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			} else {
 				// Streaming mode - use stdin
 				fullStreamingPrompt = streamingInitialPrompt || undefined;
-				console.log(
-					`[GeminiRunner] Starting with streaming prompt`,
-				);
+				console.log(`[GeminiRunner] Starting with streaming prompt`);
 				this.streamingPrompt = new StreamingPrompt(null, fullStreamingPrompt);
 				useStdin = true;
 			}
 
 			// Prepare environment variables for Gemini CLI
 			const geminiEnv = { ...process.env };
-			
+
 			if (this.config.appendSystemPrompt) {
 				try {
 					const systemPromptPath =
@@ -651,6 +655,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	 */
 	getMessages(): SDKMessage[] {
 		return [...this.messages];
+	}
+
+	/**
+	 * Get the message formatter for this runner
+	 */
+	getFormatter(): IMessageFormatter {
+		return this.formatter;
 	}
 
 	/**

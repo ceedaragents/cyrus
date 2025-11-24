@@ -11,6 +11,7 @@ export type {
 	HookCallbackMatcher,
 	HookEvent,
 	IAgentRunner,
+	IMessageFormatter,
 	McpServerConfig,
 	SDKAssistantMessage,
 	SDKMessage,

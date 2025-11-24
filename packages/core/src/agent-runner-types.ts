@@ -7,6 +7,27 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 
 /**
+ * Message Formatter Interface
+ *
+ * Forward declaration - implemented by each runner (e.g., ClaudeMessageFormatter, GeminiMessageFormatter)
+ */
+export interface IMessageFormatter {
+	formatTodoWriteParameter(jsonContent: string): string;
+	formatToolParameter(toolName: string, toolInput: any): string;
+	formatToolActionName(
+		toolName: string,
+		toolInput: any,
+		isError: boolean,
+	): string;
+	formatToolResult(
+		toolName: string,
+		toolInput: any,
+		result: string,
+		isError: boolean,
+	): string;
+}
+
+/**
  * Agent Runner Interface
  *
  * This interface provides a provider-agnostic abstraction for AI agent runners.
@@ -173,6 +194,24 @@ export interface IAgentRunner {
 	 * ```
 	 */
 	getMessages(): AgentMessage[];
+
+	/**
+	 * Get the message formatter for this runner
+	 *
+	 * Returns a formatter that can convert tool messages into human-readable
+	 * format suitable for display in Linear or other issue trackers.
+	 * Each runner provides its own formatter that understands its specific message format.
+	 *
+	 * @returns The message formatter instance for this runner
+	 *
+	 * @example
+	 * ```typescript
+	 * const formatter = runner.getFormatter();
+	 * const formatted = formatter.formatToolParameter("Read", { file_path: "/test.ts" });
+	 * console.log(formatted); // "/test.ts"
+	 * ```
+	 */
+	getFormatter(): IMessageFormatter;
 }
 
 /**
