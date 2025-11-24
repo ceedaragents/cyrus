@@ -51,6 +51,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 	let mockGeminiRunner: any;
 	let mockAgentSessionManager: any;
 	let capturedRunnerType: "claude" | "gemini" | null = null;
+	let capturedRunnerConfig: any = null;
 
 	const mockRepository: RepositoryConfig = {
 		id: "test-repo",
@@ -83,6 +84,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		capturedRunnerType = null;
+		capturedRunnerConfig = null;
 
 		// Mock console methods
 		vi.spyOn(console, "log").mockImplementation(() => {});
@@ -116,8 +118,9 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			addStreamMessage: vi.fn(),
 			updatePromptVersions: vi.fn(),
 		};
-		vi.mocked(ClaudeRunner).mockImplementation(() => {
+		vi.mocked(ClaudeRunner).mockImplementation((config: any) => {
 			capturedRunnerType = "claude";
+			capturedRunnerConfig = config;
 			return mockClaudeRunner;
 		});
 
@@ -132,8 +135,9 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			addStreamMessage: vi.fn(),
 			updatePromptVersions: vi.fn(),
 		};
-		vi.mocked(GeminiRunner).mockImplementation(() => {
+		vi.mocked(GeminiRunner).mockImplementation((config: any) => {
 			capturedRunnerType = "gemini";
+			capturedRunnerConfig = config;
 			return mockGeminiRunner;
 		});
 
@@ -281,6 +285,7 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("gemini");
 			expect(GeminiRunner).toHaveBeenCalled();
 			expect(ClaudeRunner).not.toHaveBeenCalled();
+			expect(capturedRunnerConfig.model).toBe("gemini-2.5-pro");
 		});
 
 		it("should select Gemini runner when 'gemini-2.5-flash' label is present", async () => {
@@ -341,6 +346,7 @@ Issue: {{issue_identifier}}`;
 			// Assert
 			expect(capturedRunnerType).toBe("gemini");
 			expect(GeminiRunner).toHaveBeenCalled();
+			expect(capturedRunnerConfig.model).toBe("gemini-3-pro-preview");
 		});
 	});
 
@@ -436,6 +442,7 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("claude");
 			expect(ClaudeRunner).toHaveBeenCalled();
 			expect(GeminiRunner).not.toHaveBeenCalled();
+			expect(capturedRunnerConfig.model).toBe("opus");
 		});
 	});
 
