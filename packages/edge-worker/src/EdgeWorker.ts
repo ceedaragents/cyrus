@@ -2067,7 +2067,7 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Determine runner type and model from issue labels.
-	 * Returns the runner type ("claude" or "gemini") and optional model override.
+	 * Returns the runner type ("claude" or "gemini"), optional model override, and fallback model.
 	 *
 	 * Label priority (case-insensitive):
 	 * - Gemini labels: gemini, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-pro, gemini-3-pro-preview
@@ -2078,6 +2078,7 @@ export class EdgeWorker extends EventEmitter {
 	private determineRunnerFromLabels(labels: string[]): {
 		runnerType: "claude" | "gemini";
 		modelOverride?: string;
+		fallbackModelOverride?: string;
 	} {
 		if (!labels || labels.length === 0) {
 			return { runnerType: "claude" };
@@ -2086,16 +2087,28 @@ export class EdgeWorker extends EventEmitter {
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
 		// Check for Gemini labels first
-		if (lowercaseLabels.includes("gemini-2.5-pro") || lowercaseLabels.includes("gemini-2.5")) {
-			return { runnerType: "gemini", modelOverride: "gemini-2.5-pro" };
+		if (
+			lowercaseLabels.includes("gemini-2.5-pro") ||
+			lowercaseLabels.includes("gemini-2.5")
+		) {
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-2.5-pro",
+				fallbackModelOverride: "gemini-2.5-flash",
+			};
 		}
 		if (lowercaseLabels.includes("gemini-2.5-flash")) {
-			return { runnerType: "gemini", modelOverride: "gemini-2.5-flash" };
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-2.5-flash",
+				fallbackModelOverride: "gemini-2.5-flash-lite",
+			};
 		}
 		if (lowercaseLabels.includes("gemini-2.5-flash-lite")) {
 			return {
 				runnerType: "gemini",
 				modelOverride: "gemini-2.5-flash-lite",
+				fallbackModelOverride: "gemini-2.5-flash-lite",
 			};
 		}
 		if (
@@ -2103,21 +2116,41 @@ export class EdgeWorker extends EventEmitter {
 			lowercaseLabels.includes("gemini-3-pro") ||
 			lowercaseLabels.includes("gemini-3-pro-preview")
 		) {
-			return { runnerType: "gemini", modelOverride: "gemini-3-pro-preview" };
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-3-pro-preview",
+				fallbackModelOverride: "gemini-2.5-pro",
+			};
 		}
 		if (lowercaseLabels.includes("gemini")) {
-			return { runnerType: "gemini", modelOverride: "gemini-2.5-pro" };
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-2.5-pro",
+				fallbackModelOverride: "gemini-2.5-flash",
+			};
 		}
 
 		// Check for Claude labels
 		if (lowercaseLabels.includes("opus")) {
-			return { runnerType: "claude", modelOverride: "opus" };
+			return {
+				runnerType: "claude",
+				modelOverride: "opus",
+				fallbackModelOverride: "sonnet",
+			};
 		}
 		if (lowercaseLabels.includes("sonnet")) {
-			return { runnerType: "claude", modelOverride: "sonnet" };
+			return {
+				runnerType: "claude",
+				modelOverride: "sonnet",
+				fallbackModelOverride: "haiku",
+			};
 		}
 		if (lowercaseLabels.includes("claude")) {
-			return { runnerType: "claude", modelOverride: "sonnet-4.5" };
+			return {
+				runnerType: "claude",
+				modelOverride: "sonnet-4.5",
+				fallbackModelOverride: "haiku",
+			};
 		}
 
 		// Default to claude if no runner labels found
@@ -4155,37 +4188,13 @@ ${input.userComment}
 		const runnerSelection = this.determineRunnerFromLabels(labels || []);
 		const modelOverride = runnerSelection.modelOverride;
 		const runnerType = runnerSelection.runnerType;
-		let fallbackModelOverride: string | undefined;
+		const fallbackModelOverride = runnerSelection.fallbackModelOverride;
 
-		// If a model override is found, set appropriate fallback
+		// Log model override if found
 		if (modelOverride) {
 			console.log(
 				`[EdgeWorker] Model override via label: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
 			);
-
-			// Set fallback based on model type
-			if (modelOverride.includes("gemini")) {
-				// Gemini fallback: use a lighter model
-				if (modelOverride === "gemini-2.5-pro") {
-					fallbackModelOverride = "gemini-2.5-flash";
-				} else if (modelOverride === "gemini-3-pro-preview") {
-					fallbackModelOverride = "gemini-2.5-pro";
-				} else {
-					fallbackModelOverride = "gemini-2.5-flash-lite";
-				}
-			} else {
-				// Claude fallback: opus->sonnet, sonnet->haiku
-				if (modelOverride === "opus") {
-					fallbackModelOverride = "sonnet";
-				} else if (
-					modelOverride === "sonnet" ||
-					modelOverride === "sonnet-4.5"
-				) {
-					fallbackModelOverride = "haiku";
-				} else {
-					fallbackModelOverride = "sonnet";
-				}
-			}
 		}
 
 		// Convert singleTurn flag to effective maxTurns value
