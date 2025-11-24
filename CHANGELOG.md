@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.42 to v0.1.50 - see [@anthropic-ai/claude-agent-sdk v0.1.50 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0150) (CYPACK-422)
+- Updated @anthropic-ai/sdk from v0.69.0 to v0.70.1 - see [@anthropic-ai/sdk v0.70.1 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0701-2025-11-20) (CYPACK-422)
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)
 
 ## [0.2.1] - 2025-11-15
