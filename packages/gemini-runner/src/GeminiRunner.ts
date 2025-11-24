@@ -226,6 +226,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			args.push("--yolo");
 			args.push("--sandbox");
 
+			if (this.config.allowedDirectories) {
+				args.push("--include-directories", this.config.allowedDirectories.toString());
+				console.log(
+					`[GeminiRunner] Adding the following include directories: ${this.config.allowedDirectories}`,
+				);
+			}
+
 			if (this.config.approvalMode) {
 				args.push("--approval-mode", this.config.approvalMode);
 			}
