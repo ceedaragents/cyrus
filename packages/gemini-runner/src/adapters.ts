@@ -1,13 +1,17 @@
 import crypto from "node:crypto";
+import { cwd } from "node:process";
+import type { SDKSystemMessage } from "cyrus-claude-runner";
 import type {
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
 	SDKUserMessage,
 } from "cyrus-core";
-import type { GeminiInitEvent, GeminiMessageEvent, GeminiStreamEvent } from "./types.js";
-import type { SDKSystemMessage } from "cyrus-claude-runner";
-import { cwd } from "node:process";
+import type {
+	GeminiInitEvent,
+	GeminiMessageEvent,
+	GeminiStreamEvent,
+} from "./types.js";
 
 /**
  * Create a minimal BetaMessage for assistant responses
@@ -98,18 +102,18 @@ export function geminiEventToSDKMessage(
 		case "init": {
 			const initEvent = event as GeminiInitEvent;
 			const systemMessage: SDKSystemMessage = {
-				type: 'system',
-				subtype: 'init',
+				type: "system",
+				subtype: "init",
 				agents: undefined,
-				apiKeySource: 'user',
-				claude_code_version: 'gemini-adapter',
+				apiKeySource: "user",
+				claude_code_version: "gemini-adapter",
 				cwd: cwd(),
 				tools: [],
 				mcp_servers: [],
 				model: initEvent.model,
-				permissionMode: 'default',
+				permissionMode: "default",
 				slash_commands: [],
-				output_style: 'default',
+				output_style: "default",
 				skills: [],
 				plugins: [],
 				uuid: crypto.randomUUID(),

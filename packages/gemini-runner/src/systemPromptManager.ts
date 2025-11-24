@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,15 +37,11 @@ export class SystemPromptManager {
 			// Get Gemini system prompt, which we will append
 			const __filename = fileURLToPath(import.meta.url);
 			const __dirname = dirname(__filename);
-			const subroutinePromptPath = join(
-				__dirname,
-				"prompts",
-				"system.md",
-			);
-		
+			const subroutinePromptPath = join(__dirname, "prompts", "system.md");
+
 			const geminiSystemPrompt = await readFile(subroutinePromptPath, "utf-8");
 			const completeSystemPrompt = geminiSystemPrompt + dynamicSystemPrompt;
-			
+
 			// Write system prompt to workspace-specific file
 			await writeFile(this.systemPromptPath, completeSystemPrompt, "utf8");
 

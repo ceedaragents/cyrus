@@ -27,7 +27,7 @@ function generateSettings(maxSessionTurns: number): object {
 		},
 		model: {
 			maxSessionTurns: maxSessionTurns,
-		}
+		},
 	};
 }
 
@@ -96,7 +96,7 @@ export function writeGeminiSettings(maxSessionTurns: number): void {
  */
 export function setupGeminiSettings(maxSessionTurns: number): () => void {
 	const hadBackup = backupGeminiSettings();
-	
+
 	// Write settings with appropriate maxSessionTurns
 	writeGeminiSettings(maxSessionTurns);
 
