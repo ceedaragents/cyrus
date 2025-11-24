@@ -1136,7 +1136,10 @@ export class EdgeWorker extends EventEmitter {
 		await mkdir(attachmentsDir, { recursive: true });
 
 		// Build allowed directories list - always include attachments directory
-		const allowedDirectories: string[] = [attachmentsDir];
+		const allowedDirectories: string[] = [
+			attachmentsDir,
+			repository.repositoryPath,
+		];
 
 		console.log(
 			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
@@ -4989,6 +4992,7 @@ ${input.userComment}
 
 		const allowedDirectories = [
 			attachmentsDir,
+			repository.repositoryPath,
 			...additionalAllowedDirectories,
 		];
 
