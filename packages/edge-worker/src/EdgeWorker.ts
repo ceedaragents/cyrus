@@ -1506,14 +1506,9 @@ export class EdgeWorker extends EventEmitter {
 			const currentSubroutine =
 				this.procedureRouter.getCurrentSubroutine(session);
 
-			// Determine which runner to use based on labels
-			const runnerSelection = this.determineRunnerFromLabels(labels);
-			console.log(
-				`[EdgeWorker] Label-based runner selection for new session: ${runnerSelection.runnerType} (session ${linearAgentActivitySessionId})`,
-			);
-
 			// Create agent runner with system prompt from assembly
-			const runnerConfig = this.buildAgentRunnerConfig(
+			// buildAgentRunnerConfig now determines runner type from labels internally
+			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 				session,
 				repository,
 				linearAgentActivitySessionId,
@@ -1522,12 +1517,17 @@ export class EdgeWorker extends EventEmitter {
 				allowedDirectories,
 				disallowedTools,
 				undefined, // resumeSessionId
-				labels, // Pass labels for model override
+				labels, // Pass labels for runner selection and model override
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 			);
+
+			console.log(
+				`[EdgeWorker] Label-based runner selection for new session: ${runnerType} (session ${linearAgentActivitySessionId})`,
+			);
+
 			const runner =
-				runnerSelection.runnerType === "claude"
+				runnerType === "claude"
 					? new ClaudeRunner(runnerConfig)
 					: new GeminiRunner(runnerConfig);
 
@@ -4111,7 +4111,9 @@ ${input.userComment}
 	}
 
 	/**
-	 * Build agent runner configuration with common settings
+	 * Build agent runner configuration with common settings.
+	 * Also determines which runner type to use based on labels.
+	 * @returns Object containing the runner config and runner type to use
 	 */
 	private buildAgentRunnerConfig(
 		session: CyrusAgentSession,
@@ -4125,7 +4127,7 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
-	): AgentRunnerConfig {
+	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
@@ -4149,42 +4151,39 @@ ${input.userComment}
 			],
 		};
 
-		// Check for model override labels using the unified determineRunnerFromLabels method
-		let modelOverride: string | undefined;
+		// Determine runner type and model override from labels
+		const runnerSelection = this.determineRunnerFromLabels(labels || []);
+		const modelOverride = runnerSelection.modelOverride;
+		const runnerType = runnerSelection.runnerType;
 		let fallbackModelOverride: string | undefined;
 
-		if (labels && labels.length > 0) {
-			const runnerSelection = this.determineRunnerFromLabels(labels);
-			modelOverride = runnerSelection.modelOverride;
+		// If a model override is found, set appropriate fallback
+		if (modelOverride) {
+			console.log(
+				`[EdgeWorker] Model override via label: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
+			);
 
-			// If a model override is found, set appropriate fallback
-			if (modelOverride) {
-				console.log(
-					`[EdgeWorker] Model override via label: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
-				);
-
-				// Set fallback based on model type
-				if (modelOverride.includes("gemini")) {
-					// Gemini fallback: use a lighter model
-					if (modelOverride === "gemini-2.5-pro") {
-						fallbackModelOverride = "gemini-2.5-flash";
-					} else if (modelOverride === "gemini-3-pro-preview") {
-						fallbackModelOverride = "gemini-2.5-pro";
-					} else {
-						fallbackModelOverride = "gemini-2.5-flash-lite";
-					}
+			// Set fallback based on model type
+			if (modelOverride.includes("gemini")) {
+				// Gemini fallback: use a lighter model
+				if (modelOverride === "gemini-2.5-pro") {
+					fallbackModelOverride = "gemini-2.5-flash";
+				} else if (modelOverride === "gemini-3-pro-preview") {
+					fallbackModelOverride = "gemini-2.5-pro";
 				} else {
-					// Claude fallback: opus->sonnet, sonnet->haiku
-					if (modelOverride === "opus") {
-						fallbackModelOverride = "sonnet";
-					} else if (
-						modelOverride === "sonnet" ||
-						modelOverride === "sonnet-4.5"
-					) {
-						fallbackModelOverride = "haiku";
-					} else {
-						fallbackModelOverride = "sonnet";
-					}
+					fallbackModelOverride = "gemini-2.5-flash-lite";
+				}
+			} else {
+				// Claude fallback: opus->sonnet, sonnet->haiku
+				if (modelOverride === "opus") {
+					fallbackModelOverride = "sonnet";
+				} else if (
+					modelOverride === "sonnet" ||
+					modelOverride === "sonnet-4.5"
+				) {
+					fallbackModelOverride = "haiku";
+				} else {
+					fallbackModelOverride = "sonnet";
 				}
 			}
 		}
@@ -4242,7 +4241,7 @@ ${input.userComment}
 			}
 		}
 
-		return config;
+		return { config, runnerType };
 	}
 
 	/**
@@ -5021,28 +5020,11 @@ ${input.userComment}
 		// Fetch issue labels early to determine runner type
 		const labels = await this.fetchIssueLabels(fullIssue);
 
-		// Determine which runner to use based on labels and existing session IDs
+		// Determine which runner to use based on existing session IDs
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
 		const needsNewSession =
 			isNewSession || (!hasClaudeSession && !hasGeminiSession);
-
-		// For new sessions or sessions without existing runner context, use label-based selection
-		// For existing sessions, continue with the same runner type
-		let useClaudeRunner: boolean;
-		if (needsNewSession) {
-			const runnerSelection = this.determineRunnerFromLabels(labels);
-			useClaudeRunner = runnerSelection.runnerType === "claude";
-			console.log(
-				`[EdgeWorker] Label-based runner selection: ${runnerSelection.runnerType} (session ${linearAgentActivitySessionId})`,
-			);
-		} else {
-			// Continue with existing runner based on session IDs
-			useClaudeRunner = hasClaudeSession && !hasGeminiSession;
-			console.log(
-				`[EdgeWorker] Continuing existing ${useClaudeRunner ? "claude" : "gemini"} session (session ${linearAgentActivitySessionId})`,
-			);
-		}
 
 		// Fetch system prompt based on labels
 
@@ -5087,14 +5069,18 @@ ${input.userComment}
 			this.procedureRouter.getCurrentSubroutine(session);
 
 		// Create runner configuration
-		// Use the appropriate session ID based on which runner we're using
-		const resumeSessionId = needsNewSession
-			? undefined
-			: useClaudeRunner
-				? session.claudeSessionId
-				: session.geminiSessionId;
+		// buildAgentRunnerConfig determines runner type from labels for new sessions
+		// For existing sessions, we need to determine which session ID to use first
+		let labelsForSelection: string[] | undefined;
+		if (needsNewSession) {
+			// For new sessions, pass labels to let buildAgentRunnerConfig determine runner type
+			labelsForSelection = labels;
+		} else {
+			// For existing sessions, don't pass labels (will default to claude, but we override below)
+			labelsForSelection = undefined;
+		}
 
-		const runnerConfig = this.buildAgentRunnerConfig(
+		const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 			session,
 			repository,
 			linearAgentActivitySessionId,
@@ -5102,11 +5088,38 @@ ${input.userComment}
 			allowedTools,
 			allowedDirectories,
 			disallowedTools,
-			resumeSessionId,
-			labels, // Pass labels for model override
+			undefined, // We'll set resumeSessionId below based on runner type
+			labelsForSelection,
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 		);
+
+		// Determine which runner to use
+		let useClaudeRunner: boolean;
+		if (needsNewSession) {
+			// For new sessions, use the runner type determined from labels
+			useClaudeRunner = runnerType === "claude";
+			console.log(
+				`[EdgeWorker] Label-based runner selection: ${runnerType} (session ${linearAgentActivitySessionId})`,
+			);
+		} else {
+			// For existing sessions, continue with the same runner based on session IDs
+			useClaudeRunner = hasClaudeSession && !hasGeminiSession;
+			console.log(
+				`[EdgeWorker] Continuing existing ${useClaudeRunner ? "claude" : "gemini"} session (session ${linearAgentActivitySessionId})`,
+			);
+		}
+
+		// Set the resume session ID based on which runner we're using
+		const resumeSessionId = needsNewSession
+			? undefined
+			: useClaudeRunner
+				? session.claudeSessionId
+				: session.geminiSessionId;
+
+		if (resumeSessionId) {
+			(runnerConfig as any).resumeSessionId = resumeSessionId;
+		}
 
 		// Create the appropriate runner based on session state
 		const runner = useClaudeRunner
