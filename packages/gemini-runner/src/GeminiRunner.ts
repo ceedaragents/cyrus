@@ -224,6 +224,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// 	args.push("--yolo");
 			// }
 			args.push("--yolo");
+			args.push("--sandbox");
 
 			if (this.config.approvalMode) {
 				args.push("--approval-mode", this.config.approvalMode);
