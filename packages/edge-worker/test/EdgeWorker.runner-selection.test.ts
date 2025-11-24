@@ -1,0 +1,567 @@
+import { readFile } from "node:fs/promises";
+import { LinearClient } from "@linear/sdk";
+import { ClaudeRunner } from "cyrus-claude-runner";
+import type { LinearAgentSessionCreatedWebhook } from "cyrus-core";
+import {
+	isAgentSessionCreatedWebhook,
+	isAgentSessionPromptedWebhook,
+} from "cyrus-core";
+import { GeminiRunner } from "cyrus-gemini-runner";
+import { LinearEventTransport } from "cyrus-linear-event-transport";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentSessionManager } from "../src/AgentSessionManager.js";
+import { EdgeWorker } from "../src/EdgeWorker.js";
+import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
+import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
+
+// Mock fs/promises
+vi.mock("fs/promises", () => ({
+	readFile: vi.fn(),
+	writeFile: vi.fn(),
+	mkdir: vi.fn(),
+	rename: vi.fn(),
+}));
+
+// Mock dependencies
+vi.mock("cyrus-claude-runner");
+vi.mock("cyrus-gemini-runner");
+vi.mock("cyrus-linear-event-transport");
+vi.mock("@linear/sdk");
+vi.mock("../src/SharedApplicationServer.js");
+vi.mock("../src/AgentSessionManager.js");
+vi.mock("cyrus-core", async (importOriginal) => {
+	const actual = (await importOriginal()) as any;
+	return {
+		...actual,
+		isAgentSessionCreatedWebhook: vi.fn(),
+		isAgentSessionPromptedWebhook: vi.fn(),
+		PersistenceManager: vi.fn().mockImplementation(() => ({
+			loadEdgeWorkerState: vi.fn().mockResolvedValue(null),
+			saveEdgeWorkerState: vi.fn().mockResolvedValue(undefined),
+		})),
+	};
+});
+vi.mock("file-type");
+
+describe("EdgeWorker - Runner Selection Based on Labels", () => {
+	let edgeWorker: EdgeWorker;
+	let mockConfig: EdgeWorkerConfig;
+	let mockLinearClient: any;
+	let mockClaudeRunner: any;
+	let mockGeminiRunner: any;
+	let mockAgentSessionManager: any;
+	let capturedRunnerType: "claude" | "gemini" | null = null;
+
+	const mockRepository: RepositoryConfig = {
+		id: "test-repo",
+		name: "Test Repo",
+		repositoryPath: "/test/repo",
+		workspaceBaseDir: "/test/workspaces",
+		baseBranch: "main",
+		linearToken: "test-token",
+		linearWorkspaceId: "test-workspace",
+		isActive: true,
+		allowedTools: ["Read", "Edit"],
+	};
+
+	function createMockIssueWithLabels(labels: string[]) {
+		return {
+			id: "issue-123",
+			identifier: "TEST-123",
+			title: "Test Issue",
+			description: "Test description",
+			url: "https://linear.app/test/issue/TEST-123",
+			branchName: "test-branch",
+			state: { name: "Todo" },
+			team: { id: "team-123" },
+			labels: vi.fn().mockResolvedValue({
+				nodes: labels.map((name) => ({ name })),
+			}),
+		};
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		capturedRunnerType = null;
+
+		// Mock console methods
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		// Mock LinearClient
+		mockLinearClient = {
+			issue: vi.fn(),
+			workflowStates: vi.fn().mockResolvedValue({
+				nodes: [
+					{ id: "state-1", name: "Todo", type: "unstarted", position: 0 },
+					{ id: "state-2", name: "In Progress", type: "started", position: 1 },
+				],
+			}),
+			updateIssue: vi.fn().mockResolvedValue({ success: true }),
+			createAgentActivity: vi.fn().mockResolvedValue({ success: true }),
+			comments: vi.fn().mockResolvedValue({ nodes: [] }),
+			rawRequest: vi.fn(),
+		};
+		vi.mocked(LinearClient).mockImplementation(() => mockLinearClient);
+
+		// Mock ClaudeRunner
+		mockClaudeRunner = {
+			start: vi.fn().mockResolvedValue({ sessionId: "claude-session-123" }),
+			startStreaming: vi
+				.fn()
+				.mockResolvedValue({ sessionId: "claude-session-123" }),
+			stop: vi.fn(),
+			isStreaming: vi.fn().mockReturnValue(false),
+			addStreamMessage: vi.fn(),
+			updatePromptVersions: vi.fn(),
+		};
+		vi.mocked(ClaudeRunner).mockImplementation(() => {
+			capturedRunnerType = "claude";
+			return mockClaudeRunner;
+		});
+
+		// Mock GeminiRunner
+		mockGeminiRunner = {
+			start: vi.fn().mockResolvedValue({ sessionId: "gemini-session-123" }),
+			startStreaming: vi
+				.fn()
+				.mockResolvedValue({ sessionId: "gemini-session-123" }),
+			stop: vi.fn(),
+			isStreaming: vi.fn().mockReturnValue(false),
+			addStreamMessage: vi.fn(),
+			updatePromptVersions: vi.fn(),
+		};
+		vi.mocked(GeminiRunner).mockImplementation(() => {
+			capturedRunnerType = "gemini";
+			return mockGeminiRunner;
+		});
+
+		// Mock AgentSessionManager
+		mockAgentSessionManager = {
+			createLinearAgentSession: vi.fn(),
+			getSession: vi.fn().mockReturnValue({
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123" },
+			}),
+			addAgentRunner: vi.fn(),
+			getAllAgentRunners: vi.fn().mockReturnValue([]),
+			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
+			restoreState: vi.fn(),
+			postRoutingThought: vi.fn().mockResolvedValue(null),
+			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+		};
+		vi.mocked(AgentSessionManager).mockImplementation(
+			() => mockAgentSessionManager,
+		);
+
+		// Mock SharedApplicationServer
+		vi.mocked(SharedApplicationServer).mockImplementation(
+			() =>
+				({
+					start: vi.fn().mockResolvedValue(undefined),
+					stop: vi.fn().mockResolvedValue(undefined),
+					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getWebhookUrl: vi
+						.fn()
+						.mockReturnValue("http://localhost:3456/webhook"),
+					registerOAuthCallbackHandler: vi.fn(),
+				}) as any,
+		);
+
+		// Mock LinearEventTransport
+		vi.mocked(LinearEventTransport).mockImplementation(
+			() =>
+				({
+					register: vi.fn(),
+					on: vi.fn(),
+					removeAllListeners: vi.fn(),
+				}) as any,
+		);
+
+		// Mock type guards
+		vi.mocked(isAgentSessionCreatedWebhook).mockReturnValue(true);
+		vi.mocked(isAgentSessionPromptedWebhook).mockReturnValue(false);
+
+		// Mock readFile
+		vi.mocked(readFile).mockImplementation(async () => {
+			return `<version-tag value="default-v1.0.0" />
+# Default Template
+
+Repository: {{repository_name}}
+Issue: {{issue_identifier}}`;
+		});
+
+		mockConfig = {
+			proxyUrl: "http://localhost:3000",
+			cyrusHome: "/tmp/test-cyrus-home",
+			repositories: [mockRepository],
+			handlers: {
+				createWorkspace: vi.fn().mockResolvedValue({
+					path: "/test/workspaces/TEST-123",
+					isGitWorktree: false,
+				}),
+			},
+		};
+
+		edgeWorker = new EdgeWorker(mockConfig);
+
+		// Inject mock issue tracker
+		const mockIssueTracker = {
+			fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
+				return mockLinearClient.issue(issueId);
+			}),
+			getIssueLabels: vi.fn(),
+		};
+		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	describe("Gemini Runner Selection", () => {
+		it("should select Gemini runner when 'gemini' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["gemini"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("gemini");
+			expect(GeminiRunner).toHaveBeenCalled();
+			expect(ClaudeRunner).not.toHaveBeenCalled();
+		});
+
+		it("should select Gemini runner with gemini-2.5-pro model when 'gemini-2.5-pro' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["gemini-2.5-pro"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("gemini");
+			expect(GeminiRunner).toHaveBeenCalled();
+			expect(ClaudeRunner).not.toHaveBeenCalled();
+		});
+
+		it("should select Gemini runner when 'gemini-2.5-flash' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["gemini-2.5-flash"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("gemini");
+			expect(GeminiRunner).toHaveBeenCalled();
+		});
+
+		it("should select Gemini runner when 'gemini-3-pro' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["gemini-3-pro"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("gemini");
+			expect(GeminiRunner).toHaveBeenCalled();
+		});
+	});
+
+	describe("Claude Runner Selection", () => {
+		it("should select Claude runner when 'claude' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["claude"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("claude");
+			expect(ClaudeRunner).toHaveBeenCalled();
+			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+
+		it("should select Claude runner when 'sonnet' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["sonnet"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("claude");
+			expect(ClaudeRunner).toHaveBeenCalled();
+			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+
+		it("should select Claude runner when 'opus' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["opus"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("claude");
+			expect(ClaudeRunner).toHaveBeenCalled();
+			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("Default Runner Selection", () => {
+		it("should default to Claude runner when no runner-related labels are present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["bug", "feature"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("claude");
+			expect(ClaudeRunner).toHaveBeenCalled();
+			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+
+		it("should default to Claude runner when issue has no labels", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels([]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("claude");
+			expect(ClaudeRunner).toHaveBeenCalled();
+			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("Case Insensitivity", () => {
+		it("should select Gemini runner with mixed-case 'Gemini' label", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["Gemini"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("gemini");
+			expect(GeminiRunner).toHaveBeenCalled();
+		});
+
+		it("should select Claude runner with uppercase 'CLAUDE' label", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["CLAUDE"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("claude");
+			expect(ClaudeRunner).toHaveBeenCalled();
+		});
+	});
+});

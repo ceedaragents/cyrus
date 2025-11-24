@@ -1506,6 +1506,12 @@ export class EdgeWorker extends EventEmitter {
 			const currentSubroutine =
 				this.procedureRouter.getCurrentSubroutine(session);
 
+			// Determine which runner to use based on labels
+			const runnerSelection = this.determineRunnerFromLabels(labels);
+			console.log(
+				`[EdgeWorker] Label-based runner selection for new session: ${runnerSelection.runnerType} (session ${linearAgentActivitySessionId})`,
+			);
+
 			// Create agent runner with system prompt from assembly
 			const runnerConfig = this.buildAgentRunnerConfig(
 				session,
@@ -1520,7 +1526,10 @@ export class EdgeWorker extends EventEmitter {
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 			);
-			const runner = new GeminiRunner(runnerConfig);
+			const runner =
+				runnerSelection.runnerType === "claude"
+					? new ClaudeRunner(runnerConfig)
+					: new GeminiRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -2054,6 +2063,64 @@ export class EdgeWorker extends EventEmitter {
 			);
 			return [];
 		}
+	}
+
+	/**
+	 * Determine runner type and model from issue labels.
+	 * Returns the runner type ("claude" or "gemini") and optional model override.
+	 *
+	 * Label priority (case-insensitive):
+	 * - Gemini labels: gemini, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-pro, gemini-3-pro-preview
+	 * - Claude labels: claude, sonnet, opus
+	 *
+	 * If no runner label is found, defaults to claude.
+	 */
+	private determineRunnerFromLabels(labels: string[]): {
+		runnerType: "claude" | "gemini";
+		modelOverride?: string;
+	} {
+		if (!labels || labels.length === 0) {
+			return { runnerType: "claude" };
+		}
+
+		const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
+		// Check for Gemini labels first
+		if (lowercaseLabels.includes("gemini-2.5-pro")) {
+			return { runnerType: "gemini", modelOverride: "gemini-2.5-pro" };
+		}
+		if (lowercaseLabels.includes("gemini-2.5-flash")) {
+			return { runnerType: "gemini", modelOverride: "gemini-2.5-flash" };
+		}
+		if (lowercaseLabels.includes("gemini-2.5-flash-lite")) {
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-2.5-flash-lite",
+			};
+		}
+		if (
+			lowercaseLabels.includes("gemini-3-pro") ||
+			lowercaseLabels.includes("gemini-3-pro-preview")
+		) {
+			return { runnerType: "gemini", modelOverride: "gemini-3-pro-preview" };
+		}
+		if (lowercaseLabels.includes("gemini")) {
+			return { runnerType: "gemini", modelOverride: "gemini-2.5-pro" };
+		}
+
+		// Check for Claude labels
+		if (lowercaseLabels.includes("opus")) {
+			return { runnerType: "claude", modelOverride: "opus" };
+		}
+		if (lowercaseLabels.includes("sonnet")) {
+			return { runnerType: "claude", modelOverride: "sonnet" };
+		}
+		if (lowercaseLabels.includes("claude")) {
+			return { runnerType: "claude", modelOverride: "sonnet-4.5" };
+		}
+
+		// Default to claude if no runner labels found
+		return { runnerType: "claude" };
 	}
 
 	/**
@@ -4081,40 +4148,42 @@ ${input.userComment}
 			],
 		};
 
-		// Check for model override labels (case-insensitive)
+		// Check for model override labels using the unified determineRunnerFromLabels method
 		let modelOverride: string | undefined;
 		let fallbackModelOverride: string | undefined;
 
 		if (labels && labels.length > 0) {
-			const lowercaseLabels = labels.map((label) => label.toLowerCase());
+			const runnerSelection = this.determineRunnerFromLabels(labels);
+			modelOverride = runnerSelection.modelOverride;
 
-			// Check for model override labels: opus, sonnet, haiku
-			if (lowercaseLabels.includes("opus")) {
-				modelOverride = "opus";
-				console.log(
-					`[EdgeWorker] Model override via label: opus (for session ${linearAgentActivitySessionId})`,
-				);
-			} else if (lowercaseLabels.includes("sonnet")) {
-				modelOverride = "sonnet";
-				console.log(
-					`[EdgeWorker] Model override via label: sonnet (for session ${linearAgentActivitySessionId})`,
-				);
-			} else if (lowercaseLabels.includes("haiku")) {
-				modelOverride = "haiku";
-				console.log(
-					`[EdgeWorker] Model override via label: haiku (for session ${linearAgentActivitySessionId})`,
-				);
-			}
-
-			// If a model override is found, also set a reasonable fallback
+			// If a model override is found, set appropriate fallback
 			if (modelOverride) {
-				// Set fallback to the next lower tier: opus->sonnet, sonnet->haiku, haiku->sonnet
-				if (modelOverride === "opus") {
-					fallbackModelOverride = "sonnet";
-				} else if (modelOverride === "sonnet") {
-					fallbackModelOverride = "haiku";
+				console.log(
+					`[EdgeWorker] Model override via label: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
+				);
+
+				// Set fallback based on model type
+				if (modelOverride.includes("gemini")) {
+					// Gemini fallback: use a lighter model
+					if (modelOverride === "gemini-2.5-pro") {
+						fallbackModelOverride = "gemini-2.5-flash";
+					} else if (modelOverride === "gemini-3-pro-preview") {
+						fallbackModelOverride = "gemini-2.5-pro";
+					} else {
+						fallbackModelOverride = "gemini-2.5-flash-lite";
+					}
 				} else {
-					fallbackModelOverride = "sonnet"; // haiku falls back to sonnet since same model retry doesn't help
+					// Claude fallback: opus->sonnet, sonnet->haiku
+					if (modelOverride === "opus") {
+						fallbackModelOverride = "sonnet";
+					} else if (
+						modelOverride === "sonnet" ||
+						modelOverride === "sonnet-4.5"
+					) {
+						fallbackModelOverride = "haiku";
+					} else {
+						fallbackModelOverride = "sonnet";
+					}
 				}
 			}
 		}
@@ -4934,15 +5003,6 @@ ${input.userComment}
 			existingRunner.stop();
 		}
 
-		// Determine which runner to use based on existing session IDs
-		// If we have a claudeSessionId, use Claude; if geminiSessionId, use Gemini
-		// For new sessions, default to Gemini (current default)
-		const hasClaudeSession = !isNewSession && session.claudeSessionId;
-		const hasGeminiSession = !isNewSession && session.geminiSessionId;
-		const useClaudeRunner = hasClaudeSession && !hasGeminiSession;
-		const needsNewSession =
-			isNewSession || (!hasClaudeSession && !hasGeminiSession);
-
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
 			session.issueId,
@@ -4957,8 +5017,33 @@ ${input.userComment}
 			);
 		}
 
-		// Fetch issue labels and determine system prompt
+		// Fetch issue labels early to determine runner type
 		const labels = await this.fetchIssueLabels(fullIssue);
+
+		// Determine which runner to use based on labels and existing session IDs
+		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
+		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
+		const needsNewSession =
+			isNewSession || (!hasClaudeSession && !hasGeminiSession);
+
+		// For new sessions or sessions without existing runner context, use label-based selection
+		// For existing sessions, continue with the same runner type
+		let useClaudeRunner: boolean;
+		if (needsNewSession) {
+			const runnerSelection = this.determineRunnerFromLabels(labels);
+			useClaudeRunner = runnerSelection.runnerType === "claude";
+			console.log(
+				`[EdgeWorker] Label-based runner selection: ${runnerSelection.runnerType} (session ${linearAgentActivitySessionId})`,
+			);
+		} else {
+			// Continue with existing runner based on session IDs
+			useClaudeRunner = hasClaudeSession && !hasGeminiSession;
+			console.log(
+				`[EdgeWorker] Continuing existing ${useClaudeRunner ? "claude" : "gemini"} session (session ${linearAgentActivitySessionId})`,
+			);
+		}
+
+		// Fetch system prompt based on labels
 
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labels,
