@@ -5079,16 +5079,7 @@ ${input.userComment}
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
-		// For existing sessions, we need to determine which session ID to use first
-		let labelsForSelection: string[] | undefined;
-		if (needsNewSession) {
-			// For new sessions, pass labels to let buildAgentRunnerConfig determine runner type
-			labelsForSelection = labels;
-		} else {
-			// For existing sessions, don't pass labels (will default to claude, but we override below)
-			labelsForSelection = undefined;
-		}
-
+		// For existing sessions, we still need labels for model override but ignore runner type
 		const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 			session,
 			repository,
@@ -5098,7 +5089,7 @@ ${input.userComment}
 			allowedDirectories,
 			disallowedTools,
 			undefined, // We'll set resumeSessionId below based on runner type
-			labelsForSelection,
+			labels, // Always pass labels to preserve model override
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 		);
