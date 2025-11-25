@@ -55,6 +55,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private streamingPrompt: StreamingPrompt | null = null;
 	private cyrusHome: string;
 	private formatter: IMessageFormatter;
+	private pendingResultMessage: SDKMessage | null = null;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
@@ -359,16 +360,30 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				}
 
 				// Emit appropriate events based on message type
-				this.emit("message", message);
-				this.processMessage(message);
-
-				// If we get a result message while streaming, complete the stream
-				if (message.type === "result" && this.streamingPrompt) {
-					console.log(
-						"[ClaudeRunner] Got result message, completing streaming prompt",
-					);
-					this.streamingPrompt.complete();
+				// Defer result message emission until after loop completes to avoid race conditions
+				// where subroutine transitions start before the runner has fully cleaned up
+				if (message.type === "result") {
+					this.pendingResultMessage = message;
+					// Complete streaming prompt immediately so it stops accepting input
+					if (this.streamingPrompt) {
+						console.log(
+							"[ClaudeRunner] Got result message, completing streaming prompt",
+						);
+						this.streamingPrompt.complete();
+					}
+				} else {
+					this.emit("message", message);
+					this.processMessage(message);
 				}
+			}
+
+			// Emit deferred result message after loop completes (before marking isRunning = false)
+			// This ensures the runner is still technically "running" when result is processed,
+			// but the streaming loop has fully exited
+			if (this.pendingResultMessage) {
+				this.emit("message", this.pendingResultMessage);
+				this.processMessage(this.pendingResultMessage);
+				this.pendingResultMessage = null;
 			}
 
 			// Session completed successfully
@@ -404,6 +419,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		} finally {
 			// Clean up
 			this.abortController = null;
+			this.pendingResultMessage = null;
 
 			// Complete and clean up streaming prompt if it exists
 			if (this.streamingPrompt) {

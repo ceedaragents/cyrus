@@ -84,6 +84,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	private formatter: IMessageFormatter;
 	// Readline interface for stdout processing
 	private readlineInterface: ReturnType<typeof createInterface> | null = null;
+	// Deferred result message to emit after loop completes
+	private pendingResultMessage: SDKMessage | null = null;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
@@ -377,6 +379,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// Flush any remaining accumulated message
 			this.flushAccumulatedMessage();
 
+			// Emit deferred result message after loop completes (before marking isRunning = false)
+			// This ensures the runner is still technically "running" when result is processed,
+			// but the streaming loop has fully exited
+			if (this.pendingResultMessage) {
+				this.emitMessage(this.pendingResultMessage);
+				this.pendingResultMessage = null;
+			}
+
 			// Session completed successfully
 			console.log(
 				`[GeminiRunner] Session completed with ${this.messages.length} messages`,
@@ -432,6 +442,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		} finally {
 			// Clean up
 			this.process = null;
+			this.pendingResultMessage = null;
 
 			// Complete and clean up streaming prompt if it exists
 			if (this.streamingPrompt) {
@@ -516,7 +527,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			if (message.type === "assistant") {
 				this.lastAssistantMessage = message;
 			}
-			this.emitMessage(message);
+			// Defer result message emission until after loop completes to avoid race conditions
+			// where subroutine transitions start before the runner has fully cleaned up
+			if (message.type === "result") {
+				this.pendingResultMessage = message;
+			} else {
+				this.emitMessage(message);
+			}
 		}
 	}
 

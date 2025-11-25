@@ -9,7 +9,10 @@ All notable changes to this project will be documented in this file.
 - Runner selection is now based on issue labels - attach labels like `gemini`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-3-pro`, `claude`, `sonnet`, or `opus` to control which AI model processes your issue (defaults to Claude if no runner label is present) (CYPACK-425, https://github.com/ceedaragents/cyrus/pull/555)
 
 ### Fixed
+- Fixed race condition in subroutine transitions where new subroutines could start before the previous runner fully cleaned up - result messages are now deferred until the streaming loop completes (CYPACK-435)
 - Merged CYPACK-419 (Gemini system prompt refactoring) into CYPACK-425 and updated all test mocks to use new AgentRunner interface methods
+
+### Changed
 - Fixed runner type consistency between request routing and main issue processing - both now default to Gemini (CYPACK-418)
 - Made ProcedureRouter runner-agnostic by supporting both Claude and Gemini simple runners via configuration
 - Fixed GeminiRunner compatibility error by replacing Claude-specific `isStreaming()` calls with common `isRunning()` method (CYPACK-418)
@@ -21,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - Gemini single-turn mode now works correctly by temporarily configuring `~/.gemini/settings.json` with `maxSessionTurns=1` during sessions, then restoring original settings afterward
 
 ### Changed
+- Replaced anonymous callback pattern for subroutine transitions with an event-based architecture - AgentSessionManager now emits `subroutineComplete` events that EdgeWorker subscribes to (CYPACK-435)
 - Replaced `maxTurns` with `singleTurn` boolean flag in subroutine definitions for clearer semantics
 - Summary subroutines now use `singleTurn` mode with proper Gemini CLI configuration for consistent single-turn behavior
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)

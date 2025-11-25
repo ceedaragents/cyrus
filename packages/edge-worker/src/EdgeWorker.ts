@@ -239,83 +239,23 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
-					// resumeNextSubroutine
-					async (linearAgentActivitySessionId: string) => {
-						console.log(
-							`[Subroutine Transition] Advancing to next subroutine for session ${linearAgentActivitySessionId}`,
-						);
-
-						// Get the session
-						const session = agentSessionManager.getSession(
-							linearAgentActivitySessionId,
-						);
-						if (!session) {
-							console.error(
-								`[Subroutine Transition] Session ${linearAgentActivitySessionId} not found`,
-							);
-							return;
-						}
-
-						// Get next subroutine (advancement already handled by AgentSessionManager)
-						const nextSubroutine =
-							this.procedureRouter.getCurrentSubroutine(session);
-
-						if (!nextSubroutine) {
-							console.log(
-								`[Subroutine Transition] Procedure complete for session ${linearAgentActivitySessionId}`,
-							);
-							return;
-						}
-
-						console.log(
-							`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
-						);
-						// Load subroutine prompt
-						let subroutinePrompt: string | null;
-						try {
-							subroutinePrompt = await this.loadSubroutinePrompt(
-								nextSubroutine,
-								this.config.linearWorkspaceSlug,
-							);
-							if (!subroutinePrompt) {
-								// Fallback if loadSubroutinePrompt returns null
-								subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
-							}
-						} catch (error) {
-							console.error(
-								`[Subroutine Transition] Failed to load subroutine prompt:`,
-								error,
-							);
-							// Fallback to simple prompt
-							subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
-						}
-
-						// Resume Claude session with subroutine prompt
-						try {
-							await this.resumeAgentSession(
-								session,
-								repo,
-								linearAgentActivitySessionId,
-								agentSessionManager,
-								subroutinePrompt,
-								"", // No attachment manifest
-								false, // Not a new session
-								[], // No additional allowed directories
-								nextSubroutine?.singleTurn ? 1 : undefined, // Convert singleTurn to maxTurns: 1
-							);
-							console.log(
-								`[Subroutine Transition] Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.singleTurn ? " (singleTurn)" : ""}`,
-							);
-						} catch (error) {
-							console.error(
-								`[Subroutine Transition] Failed to resume session for ${nextSubroutine.name} subroutine:`,
-								error,
-							);
-						}
-					},
 					this.procedureRouter,
 					this.sharedApplicationServer,
 				);
+
+				// Subscribe to subroutine completion events
+				agentSessionManager.on(
+					"subroutineComplete",
+					async ({ linearAgentActivitySessionId, session }) => {
+						await this.handleSubroutineTransition(
+							linearAgentActivitySessionId,
+							session,
+							repo,
+							agentSessionManager,
+						);
+					},
+				);
+
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
 		}
@@ -573,6 +513,78 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Handle subroutine transition when a subroutine completes
+	 * This is triggered by the AgentSessionManager's 'subroutineComplete' event
+	 */
+	private async handleSubroutineTransition(
+		linearAgentActivitySessionId: string,
+		session: CyrusAgentSession,
+		repo: RepositoryConfig,
+		agentSessionManager: AgentSessionManager,
+	): Promise<void> {
+		console.log(
+			`[Subroutine Transition] Handling subroutine completion for session ${linearAgentActivitySessionId}`,
+		);
+
+		// Get next subroutine (advancement already handled by AgentSessionManager)
+		const nextSubroutine = this.procedureRouter.getCurrentSubroutine(session);
+
+		if (!nextSubroutine) {
+			console.log(
+				`[Subroutine Transition] Procedure complete for session ${linearAgentActivitySessionId}`,
+			);
+			return;
+		}
+
+		console.log(
+			`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
+		);
+
+		// Load subroutine prompt
+		let subroutinePrompt: string | null;
+		try {
+			subroutinePrompt = await this.loadSubroutinePrompt(
+				nextSubroutine,
+				this.config.linearWorkspaceSlug,
+			);
+			if (!subroutinePrompt) {
+				// Fallback if loadSubroutinePrompt returns null
+				subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
+			}
+		} catch (error) {
+			console.error(
+				`[Subroutine Transition] Failed to load subroutine prompt:`,
+				error,
+			);
+			// Fallback to simple prompt
+			subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
+		}
+
+		// Resume Claude session with subroutine prompt
+		try {
+			await this.resumeAgentSession(
+				session,
+				repo,
+				linearAgentActivitySessionId,
+				agentSessionManager,
+				subroutinePrompt,
+				"", // No attachment manifest
+				false, // Not a new session
+				[], // No additional allowed directories
+				nextSubroutine?.singleTurn ? 1 : undefined, // Convert singleTurn to maxTurns: 1
+			);
+			console.log(
+				`[Subroutine Transition] Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.singleTurn ? " (singleTurn)" : ""}`,
+			);
+		} catch (error) {
+			console.error(
+				`[Subroutine Transition] Failed to resume session for ${nextSubroutine.name} subroutine:`,
+				error,
+			);
+		}
+	}
+
+	/**
 	 * Start watching config file for changes
 	 */
 	private startConfigWatcher(): void {
@@ -801,10 +813,23 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
-					undefined, // No resumeNextSubroutine callback for dynamically added repos
 					this.procedureRouter,
 					this.sharedApplicationServer,
 				);
+
+				// Subscribe to subroutine completion events
+				agentSessionManager.on(
+					"subroutineComplete",
+					async ({ linearAgentActivitySessionId, session }) => {
+						await this.handleSubroutineTransition(
+							linearAgentActivitySessionId,
+							session,
+							repo,
+							agentSessionManager,
+						);
+					},
+				);
+
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 
 				console.log(`✅ Repository added successfully: ${repo.name}`);

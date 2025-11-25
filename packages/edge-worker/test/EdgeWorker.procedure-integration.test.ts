@@ -33,7 +33,6 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			mockLinearClient,
 			undefined, // getParentSessionId
 			undefined, // resumeParentSession
-			undefined, // resumeNextSubroutine
 			procedureRouter,
 		);
 	});
