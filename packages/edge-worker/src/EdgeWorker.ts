@@ -5118,9 +5118,14 @@ ${input.userComment}
 					console.warn(
 						`[EdgeWorker] Label changed to ${runnerType} runner but continuing ${actualRunnerType} session. Ignoring model override "${labelRunnerSelection.modelOverride}" to prevent cross-runner model application (session ${linearAgentActivitySessionId})`,
 					);
-					// Clear the model override from runnerConfig to prevent cross-runner application
-					(runnerConfig as any).model =
-						repository.model || this.config.defaultModel;
+					// Fallback to runner-specific default instead of cross-runner model
+					const runnerDefaultModel = useClaudeRunner
+						? "sonnet-4.5"
+						: "gemini-2.5-pro";
+					(runnerConfig as any).model = runnerDefaultModel;
+					console.log(
+						`[EdgeWorker] Using ${actualRunnerType} default model: ${runnerDefaultModel} (session ${linearAgentActivitySessionId})`,
+					);
 				}
 			}
 		}
