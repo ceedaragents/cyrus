@@ -27,7 +27,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			expect(subroutine.disallowedTools).toContain(
 				"mcp__linear__create_comment",
 			);
-			expect(subroutine.maxTurns).toBe(1);
+			expect(subroutine.singleTurn).toBe(true);
 			expect(subroutine.suppressThoughtPosting).toBe(true);
 		});
 
@@ -37,7 +37,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			expect(subroutine.disallowedTools).toContain(
 				"mcp__linear__create_comment",
 			);
-			expect(subroutine.maxTurns).toBe(1);
+			expect(subroutine.singleTurn).toBe(true);
 			expect(subroutine.suppressThoughtPosting).toBe(true);
 		});
 
@@ -47,7 +47,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			expect(subroutine.disallowedTools).toContain(
 				"mcp__linear__create_comment",
 			);
-			expect(subroutine.maxTurns).toBe(1);
+			expect(subroutine.singleTurn).toBe(true);
 			expect(subroutine.suppressThoughtPosting).toBe(true);
 		});
 
@@ -57,7 +57,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			expect(subroutine.disallowedTools).toContain(
 				"mcp__linear__create_comment",
 			);
-			expect(subroutine.maxTurns).toBe(1);
+			expect(subroutine.singleTurn).toBe(true);
 			expect(subroutine.suppressThoughtPosting).toBe(true);
 		});
 
@@ -263,7 +263,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			const testSubroutine: typeof SUBROUTINES.conciseSummary = {
 				name: "test-subroutine",
 				promptPath: "test/path.md",
-				maxTurns: 1,
+				singleTurn: true,
 				description: "Test subroutine",
 				suppressThoughtPosting: true,
 				disallowedTools: ["mcp__linear__create_comment", "some_other_tool"],

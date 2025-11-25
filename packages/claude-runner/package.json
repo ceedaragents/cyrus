@@ -20,9 +20,13 @@
 		"@anthropic-ai/sdk": "^0.69.0",
 		"@linear/sdk": "^64.0.0",
 		"cyrus-core": "workspace:*",
-		"dotenv": "^16.4.5"
+		"dotenv": "^16.4.5",
+		"fs-extra": "^11.3.2",
+		"openai": "^6.9.1",
+		"zod": "^4.1.12"
 	},
 	"devDependencies": {
+		"@types/fs-extra": "^11.0.4",
 		"@types/node": "^20.0.0",
 		"tsx": "^4.19.2",
 		"typescript": "^5.3.3",
