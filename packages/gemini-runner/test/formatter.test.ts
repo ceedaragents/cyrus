@@ -259,14 +259,15 @@ describe("GeminiMessageFormatter", () => {
 				expect(result).toContain("def hello():");
 			});
 
-			it("should format empty read_file result", () => {
+			it("should format empty read_file result as success (Gemini returns empty output)", () => {
+				// Gemini CLI returns empty output on success - file content goes into model context
 				const result = formatter.formatToolResult(
 					"read_file",
 					{ file_path: "/path/to/file.ts" },
 					"",
 					false,
 				);
-				expect(result).toBe("*Empty file*");
+				expect(result).toBe("*File read successfully*");
 			});
 
 			it("should format write_file success", () => {

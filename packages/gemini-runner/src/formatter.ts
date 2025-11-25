@@ -276,12 +276,14 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 				}
 
 				case "read_file": {
+					// Gemini CLI returns empty output on success - file content goes into model context
+					// Only show content if Gemini actually returns something (which it typically doesn't)
 					if (result?.trim()) {
 						// Clean up the result: remove line numbers and system-reminder tags
 						let cleanedResult = result;
 
-						// Remove line numbers (format: "  123\u2192")
-						cleanedResult = cleanedResult.replace(/^\s*\d+\u2192/gm, "");
+						// Remove line numbers (format: "  123→")
+						cleanedResult = cleanedResult.replace(/^\s*\d+→/gm, "");
 
 						// Remove system-reminder blocks
 						cleanedResult = cleanedResult.replace(
@@ -333,7 +335,8 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 						}
 						return `\`\`\`${lang}\n${cleanedResult}\n\`\`\``;
 					}
-					return "*Empty file*";
+					// Gemini returns empty output on success - this is normal, not an empty file
+					return "*File read successfully*";
 				}
 
 				case "write_file":
