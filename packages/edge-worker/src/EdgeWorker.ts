@@ -2152,7 +2152,7 @@ export class EdgeWorker extends EventEmitter {
 		// Default to claude if no runner labels found
 		return {
 				runnerType: "claude",
-				modelOverride: "sonne",
+				modelOverride: "sonnet",
 				fallbackModelOverride: "haiku",
 		};
 	}
