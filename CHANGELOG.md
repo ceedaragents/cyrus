@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.52 to v0.1.53 - includes latest agent capabilities and improvements. See [@anthropic-ai/claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) ([CYPACK-433](https://linear.app/ceedar/issue/CYPACK-433))
+
 ## [0.2.3] - 2025-11-24
 
 ### Added
