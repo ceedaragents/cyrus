@@ -6,9 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ## [0.2.3] - 2025-11-24
 
+### Added
+- **Claude Opus 4.5 support** - Cyrus now has access to [Claude Opus 4.5](https://www.anthropic.com/claude/opus), Anthropic's most intelligent model with breakthrough capabilities in complex reasoning, advanced coding, and nuanced content creation. Experience significantly improved code generation, deeper analysis, and more sophisticated problem-solving across all Cyrus workflows.
+
 ### Changed
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.42 to v0.1.52 - see [@anthropic-ai/claude-agent-sdk v0.1.52 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0152) ([CYPACK-427](https://linear.app/ceedar/issue/CYPACK-427), [#558](https://github.com/ceedaragents/cyrus/pull/558))
-- Updated @anthropic-ai/sdk from v0.69.0 to v0.71.0 - see [@anthropic-ai/sdk v0.71.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0710-2025-11-22) ([CYPACK-427](https://linear.app/ceedar/issue/CYPACK-427), [#558](https://github.com/ceedaragents/cyrus/pull/558))
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.42 to v0.1.52 - includes support for Claude Opus 4.5 and latest agent capabilities. See [@anthropic-ai/claude-agent-sdk v0.1.52 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0152) ([CYPACK-427](https://linear.app/ceedar/issue/CYPACK-427), [#558](https://github.com/ceedaragents/cyrus/pull/558))
+- Updated @anthropic-ai/sdk from v0.69.0 to v0.71.0 - adds Claude Opus 4.5 model support with enhanced performance and capabilities. See [@anthropic-ai/sdk v0.71.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0710-2025-11-22) ([CYPACK-427](https://linear.app/ceedar/issue/CYPACK-427), [#558](https://github.com/ceedaragents/cyrus/pull/558))
 
 ### Packages
 
