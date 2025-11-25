@@ -627,8 +627,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 		if (this.process) {
 			console.log("[GeminiRunner] Stopping Gemini process");
-			// HACK: This is needed otherwise the session gets corrupted
-			// this.process.kill("SIGTERM");
+			this.process.kill("SIGTERM");
 			this.process = null;
 		}
 
