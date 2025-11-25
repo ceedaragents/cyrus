@@ -25,6 +25,7 @@
 		"zod": "^3.23.0"
 	},
 	"devDependencies": {
+		"@google/gemini-cli-core": "0.17.0",
 		"@types/fs-extra": "^11.0.4",
 		"@types/node": "^20.0.0",
 		"typescript": "^5.3.3",

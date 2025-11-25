@@ -4,7 +4,21 @@
  * These schemas provide runtime validation for Gemini CLI's stream-json output format.
  * TypeScript types are derived from these schemas using z.infer<> for type safety.
  *
- * Reference: https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/headless.md
+ * Note: The official `@google/gemini-cli-core` package (v0.17.1) exports TypeScript
+ * interfaces for these event types. However, we use custom Zod schemas because:
+ * 1. Runtime validation - official types are TypeScript-only, no runtime checks
+ * 2. Detailed tool typing - official uses `Record<string, unknown>` for tool params
+ * 3. Type guards and parsers - utility functions for narrowing event/tool types
+ * 4. Tool result typing - result schemas typed by tool_id prefix
+ *
+ * Our schemas are structurally compatible with the official types.
+ *
+ * Official type definitions (pinned to v0.17.0):
+ * @see https://github.com/google-gemini/gemini-cli/blob/v0.17.0/packages/core/src/output/types.ts
+ * @see https://www.npmjs.com/package/@google/gemini-cli-core/v/0.17.0
+ *
+ * Documentation:
+ * @see https://github.com/google-gemini/gemini-cli/blob/v0.17.0/docs/cli/headless.md
  */
 
 import { z } from "zod";
