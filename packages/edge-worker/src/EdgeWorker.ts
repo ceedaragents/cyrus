@@ -4193,7 +4193,7 @@ ${input.userComment}
 		// If the labels have changed, and we are resuming a session. Use the existing runner for the session.
 		if (session.claudeSessionId && runnerType !== "claude") {
 			runnerType = "claude";
-			modelOverride = "sonne";
+			modelOverride = "sonnet";
 			fallbackModelOverride = "haiku";
 		} else if (session.geminiSessionId && runnerType !== "gemini") {
 			runnerType = "gemini";
