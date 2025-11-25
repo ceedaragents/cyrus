@@ -43,8 +43,13 @@ export interface GeminiSettingsOptions {
 /**
  * Convert McpServerConfig (cyrus-core format) to GeminiMcpServerConfig (Gemini CLI format)
  *
- * Claude SDK McpServerConfig supports both stdio (command-based) and HTTP types.
- * Gemini CLI only supports stdio (command-based) MCP servers.
+ * Gemini CLI supports three transport types:
+ * - stdio: command-based (spawns subprocess)
+ * - sse: Server-Sent Events (url-based)
+ * - http: Streamable HTTP (httpUrl-based)
+ *
+ * Claude SDK's McpServerConfig uses `type: "http"` with `url` for HTTP servers.
+ * This function maps to Gemini CLI's format which uses `httpUrl` for HTTP transport.
  *
  * @param serverName - Name of the MCP server (for logging)
  * @param config - McpServerConfig from cyrus-core
@@ -54,43 +59,61 @@ export function convertToGeminiMcpConfig(
 	serverName: string,
 	config: McpServerConfig,
 ): GeminiMcpServerConfig | null {
-	// Check if this is an HTTP-based MCP server (not supported by Gemini CLI)
 	const configAny = config as Record<string, unknown>;
-	if (configAny.type === "http" || configAny.url) {
+	const geminiConfig: GeminiMcpServerConfig = {};
+
+	// Determine transport type and configure accordingly
+	if (configAny.type === "http" && configAny.url) {
+		// Claude SDK HTTP transport -> Gemini HTTP transport (httpUrl)
+		geminiConfig.httpUrl = configAny.url as string;
+		console.log(
+			`[GeminiRunner] MCP server "${serverName}" configured with HTTP transport: ${geminiConfig.httpUrl}`,
+		);
+	} else if (configAny.url && !configAny.command) {
+		// URL without command and not explicitly HTTP -> treat as SSE
+		geminiConfig.url = configAny.url as string;
+		console.log(
+			`[GeminiRunner] MCP server "${serverName}" configured with SSE transport: ${geminiConfig.url}`,
+		);
+	} else if (configAny.command) {
+		// Command-based -> stdio transport
+		geminiConfig.command = configAny.command as string;
+		console.log(
+			`[GeminiRunner] MCP server "${serverName}" configured with stdio transport: ${geminiConfig.command}`,
+		);
+	} else {
+		// No valid transport configuration
 		console.warn(
-			`[GeminiRunner] MCP server "${serverName}" uses HTTP transport which is not supported by Gemini CLI. Skipping.`,
+			`[GeminiRunner] MCP server "${serverName}" has no valid transport configuration (need command, url, or httpUrl). Skipping.`,
 		);
 		return null;
 	}
 
-	// Must have a command for Gemini CLI
-	if (!configAny.command) {
-		console.warn(
-			`[GeminiRunner] MCP server "${serverName}" has no command specified. Skipping.`,
-		);
-		return null;
-	}
-
-	const geminiConfig: GeminiMcpServerConfig = {
-		command: configAny.command as string,
-	};
-
-	// Map optional fields
+	// Map stdio-specific fields
 	if (configAny.args && Array.isArray(configAny.args)) {
 		geminiConfig.args = configAny.args as string[];
 	}
 
+	if (configAny.cwd && typeof configAny.cwd === "string") {
+		geminiConfig.cwd = configAny.cwd;
+	}
+
+	// Map HTTP headers (for SSE and HTTP transports)
+	if (
+		configAny.headers &&
+		typeof configAny.headers === "object" &&
+		!Array.isArray(configAny.headers)
+	) {
+		geminiConfig.headers = configAny.headers as Record<string, string>;
+	}
+
+	// Map common fields
 	if (
 		configAny.env &&
 		typeof configAny.env === "object" &&
 		!Array.isArray(configAny.env)
 	) {
 		geminiConfig.env = configAny.env as Record<string, string>;
-	}
-
-	// Gemini-specific fields that might be passed through
-	if (configAny.cwd && typeof configAny.cwd === "string") {
-		geminiConfig.cwd = configAny.cwd;
 	}
 
 	if (configAny.timeout && typeof configAny.timeout === "number") {

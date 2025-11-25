@@ -15,21 +15,36 @@ import type {
 /**
  * Gemini CLI MCP server configuration
  *
- * Gemini CLI uses a different format for MCP servers than Claude.
- * This type represents the Gemini-specific MCP server configuration.
+ * Gemini CLI supports three transport types:
+ * - stdio: Spawns a subprocess and communicates via stdin/stdout (command-based)
+ * - sse: Connects to Server-Sent Events endpoints (url-based)
+ * - http: Uses HTTP streaming for communication (httpUrl-based)
  *
  * Reference: https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
  */
 export interface GeminiMcpServerConfig {
-	/** The command to execute to start the MCP server */
-	command: string;
-	/** Arguments to pass to the command */
+	// Transport: stdio (command-based)
+	/** The command to execute to start the MCP server (stdio transport) */
+	command?: string;
+	/** Arguments to pass to the command (stdio transport) */
 	args?: string[];
-	/** Environment variables to set for the server process */
-	env?: Record<string, string>;
-	/** The working directory in which to start the server */
+	/** The working directory in which to start the server (stdio transport) */
 	cwd?: string;
-	/** Timeout in milliseconds for requests to this MCP server */
+
+	// Transport: SSE (Server-Sent Events)
+	/** SSE endpoint URL (sse transport) */
+	url?: string;
+
+	// Transport: HTTP (Streamable HTTP)
+	/** HTTP streaming endpoint URL (http transport) */
+	httpUrl?: string;
+
+	// Common options
+	/** Custom HTTP headers when using url or httpUrl */
+	headers?: Record<string, string>;
+	/** Environment variables for the server process */
+	env?: Record<string, string>;
+	/** Timeout in milliseconds for requests to this MCP server (default: 600000ms) */
 	timeout?: number;
 	/** Trust this server and bypass all tool call confirmations */
 	trust?: boolean;
