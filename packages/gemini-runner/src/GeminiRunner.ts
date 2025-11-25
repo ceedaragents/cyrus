@@ -82,6 +82,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	private systemPromptManager: SystemPromptManager;
 	// Message formatter
 	private formatter: IMessageFormatter;
+	// Readline interface for stdout processing
+	private readlineInterface: ReturnType<typeof createInterface> | null = null;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
@@ -327,13 +329,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			}
 
 			// Set up stdout line reader for JSON events
-			const rl = createInterface({
+			this.readlineInterface = createInterface({
 				input: this.process.stdout!,
 				crlfDelay: Infinity,
 			});
 
 			// Process each line as a JSON event with Zod validation
-			rl.on("line", (line: string) => {
+			this.readlineInterface.on("line", (line: string) => {
 				const event = safeParseGeminiStreamEvent(line);
 				if (event) {
 					this.processStreamEvent(event);
@@ -624,6 +626,17 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	stop(): void {
 		// Flush any accumulated message before stopping
 		this.flushAccumulatedMessage();
+
+		// Close readline interface first to stop processing stdout
+		if (this.readlineInterface) {
+			// Close() method stops the readline interface from emitting further events
+			// and allows cleanup of underlying streams
+			if (typeof this.readlineInterface.close === "function") {
+				this.readlineInterface.close();
+			}
+			this.readlineInterface.removeAllListeners();
+			this.readlineInterface = null;
+		}
 
 		if (this.process) {
 			console.log("[GeminiRunner] Stopping Gemini process");

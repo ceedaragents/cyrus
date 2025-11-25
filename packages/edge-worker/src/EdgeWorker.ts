@@ -5106,9 +5106,10 @@ ${input.userComment}
 		);
 
 		// Create the appropriate runner based on session state
-		const runner = runnerType === "claude"
-			? new ClaudeRunner(runnerConfig)
-			: new GeminiRunner(runnerConfig);
+		const runner =
+			runnerType === "claude"
+				? new ClaudeRunner(runnerConfig)
+				: new GeminiRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
