@@ -5108,6 +5108,21 @@ ${input.userComment}
 			console.log(
 				`[EdgeWorker] Continuing existing ${useClaudeRunner ? "claude" : "gemini"} session (session ${linearAgentActivitySessionId})`,
 			);
+
+			// Validate that model override matches the runner type
+			const actualRunnerType = useClaudeRunner ? "claude" : "gemini";
+			if (runnerType !== actualRunnerType) {
+				// Check if there's a model override from labels
+				const labelRunnerSelection = this.determineRunnerFromLabels(labels);
+				if (labelRunnerSelection.modelOverride) {
+					console.warn(
+						`[EdgeWorker] Label changed to ${runnerType} runner but continuing ${actualRunnerType} session. Ignoring model override "${labelRunnerSelection.modelOverride}" to prevent cross-runner model application (session ${linearAgentActivitySessionId})`,
+					);
+					// Clear the model override from runnerConfig to prevent cross-runner application
+					(runnerConfig as any).model =
+						repository.model || this.config.defaultModel;
+				}
+			}
 		}
 
 		// Set the resume session ID based on which runner we're using

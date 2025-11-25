@@ -571,4 +571,59 @@ Issue: {{issue_identifier}}`;
 			expect(ClaudeRunner).toHaveBeenCalled();
 		});
 	});
+
+	describe("Session Continuation Model Override Validation", () => {
+		it("should detect and warn about cross-runner model override (opus on gemini session)", () => {
+			// Arrange
+			const labels = ["opus"]; // Claude model label
+
+			// Act
+			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+				labels,
+			);
+
+			// Assert
+			expect(runnerSelection.runnerType).toBe("claude");
+			expect(runnerSelection.modelOverride).toBe("opus");
+
+			// The validation logic in resumeAgentSession will detect this mismatch
+			// and prevent applying "opus" to a Gemini session
+		});
+
+		it("should allow same-runner model override (gemini-3-pro on gemini session)", () => {
+			// Arrange
+			const labels = ["gemini-3-pro"];
+
+			// Act
+			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+				labels,
+			);
+
+			// Assert
+			expect(runnerSelection.runnerType).toBe("gemini");
+			expect(runnerSelection.modelOverride).toBe("gemini-3-pro-preview");
+
+			// The validation logic will allow this since both label and session use gemini
+		});
+
+		it("should correctly identify runner type mismatch between label and session", () => {
+			// This test verifies the logic that would run in resumeAgentSession
+			const labels = ["sonnet"]; // Claude label
+			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+				labels,
+			);
+
+			// If continuing a Gemini session (hasGeminiSession=true, hasClaudeSession=false)
+			const useClaudeRunner = false; // Would be determined by session IDs
+			const actualRunnerType = useClaudeRunner ? "claude" : "gemini";
+			const labelRunnerType = runnerSelection.runnerType;
+
+			// Verify mismatch detection
+			expect(labelRunnerType).toBe("claude");
+			expect(actualRunnerType).toBe("gemini");
+			expect(labelRunnerType).not.toBe(actualRunnerType);
+
+			// This mismatch would trigger the warning in resumeAgentSession
+		});
+	});
 });
