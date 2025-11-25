@@ -5,16 +5,25 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import {
 	type IAgentRunner,
+	type IMessageFormatter,
+	type SDKAssistantMessage,
 	type SDKMessage,
+	type SDKResultMessage,
 	type SDKUserMessage,
 	StreamingPrompt,
 } from "cyrus-core";
 import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
+import { GeminiMessageFormatter } from "./formatter.js";
+import {
+	type GeminiStreamEvent,
+	safeParseGeminiStreamEvent,
+} from "./schemas.js";
+import { setupGeminiSettings } from "./settingsGenerator.js";
+import { SystemPromptManager } from "./systemPromptManager.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
 	GeminiSessionInfo,
-	GeminiStreamEvent,
 } from "./types.js";
 
 export declare interface GeminiRunner {
@@ -65,11 +74,29 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	// Delta message accumulation
 	private accumulatingMessage: SDKMessage | null = null;
 	private accumulatingRole: "user" | "assistant" | null = null;
+	// Track last assistant message for result coercion
+	private lastAssistantMessage: SDKAssistantMessage | null = null;
+	// Settings cleanup function
+	private settingsCleanup: (() => void) | null = null;
+	// System prompt manager
+	private systemPromptManager: SystemPromptManager;
+	// Message formatter
+	private formatter: IMessageFormatter;
+	// Readline interface for stdout processing
+	private readlineInterface: ReturnType<typeof createInterface> | null = null;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
+		// Use workspaceName for unique system prompt file paths (supports parallel execution)
+		const workspaceName = config.workspaceName || "default";
+		this.systemPromptManager = new SystemPromptManager(
+			config.cyrusHome,
+			workspaceName,
+		);
+		// Use GeminiMessageFormatter for Gemini-specific tool names
+		this.formatter = new GeminiMessageFormatter();
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -100,9 +127,16 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		}
 		this.streamingPrompt.addMessage(content);
 
-		// For Gemini CLI, we need to write to stdin if process is running
-		if (this.process?.stdin) {
+		// Write to stdin if process is running
+		if (this.process?.stdin && !this.process.stdin.destroyed) {
+			console.log(
+				`[GeminiRunner] Writing to stdin (${content.length} chars): ${content.substring(0, 100)}...`,
+			);
 			this.process.stdin.write(`${content}\n`);
+		} else {
+			console.log(
+				`[GeminiRunner] Cannot write to stdin - process stdin is ${this.process?.stdin ? "destroyed" : "null"}`,
+			);
 		}
 	}
 
@@ -114,10 +148,17 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			this.streamingPrompt.complete();
 
 			// Close stdin to signal completion to Gemini CLI
-			if (this.process?.stdin) {
+			if (this.process?.stdin && !this.process.stdin.destroyed) {
 				this.process.stdin.end();
 			}
 		}
+	}
+
+	/**
+	 * Get the last assistant message (used for result coercion)
+	 */
+	getLastAssistantMessage(): SDKAssistantMessage | null {
+		return this.lastAssistantMessage;
 	}
 
 	/**
@@ -165,6 +206,11 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Reset messages array
 		this.messages = [];
 
+		// Setup Gemini settings with appropriate maxSessionTurns
+		if (this.config.maxTurns) {
+			this.settingsCleanup = setupGeminiSettings(this.config.maxTurns);
+		}
+
 		try {
 			// Build Gemini CLI command
 			const geminiPath = this.config.geminiPath || "gemini";
@@ -173,6 +219,9 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// Add model if specified
 			if (this.config.model) {
 				args.push("--model", this.config.model);
+			} else {
+				// Default to gemini-2.5-pro
+				args.push("--model", "gemini-2.5-pro");
 			}
 
 			// Add resume session flag if provided
@@ -183,10 +232,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
+			// This will be added in the future
 			// Add auto-approve flags
-			if (this.config.autoApprove) {
-				args.push("--yolo");
-			}
+			// if (this.config.autoApprove) {
+			// 	args.push("--yolo");
+			// }
+			args.push("--yolo");
 
 			if (this.config.approvalMode) {
 				args.push("--approval-mode", this.config.approvalMode);
@@ -199,35 +250,50 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 			// Add include-directories flag if specified
 			if (
-				this.config.includeDirectories &&
-				this.config.includeDirectories.length > 0
+				this.config.allowedDirectories &&
+				this.config.allowedDirectories.length > 0
 			) {
 				args.push(
 					"--include-directories",
-					this.config.includeDirectories.join(","),
+					this.config.allowedDirectories.join(","),
 				);
 			}
 
 			// Handle prompt mode
 			let useStdin = false;
+			let fullStreamingPrompt: string | undefined;
 			if (stringPrompt !== null && stringPrompt !== undefined) {
-				// String mode - pass prompt via --prompt flag
 				console.log(
 					`[GeminiRunner] Starting with string prompt length: ${stringPrompt.length} characters`,
 				);
-				args.push("--prompt", stringPrompt);
+				args.push("-p");
+				args.push(stringPrompt);
 			} else {
 				// Streaming mode - use stdin
+				fullStreamingPrompt = streamingInitialPrompt || undefined;
 				console.log(`[GeminiRunner] Starting with streaming prompt`);
-				this.streamingPrompt = new StreamingPrompt(
-					null,
-					streamingInitialPrompt,
-				);
+				this.streamingPrompt = new StreamingPrompt(null, fullStreamingPrompt);
 				useStdin = true;
+			}
 
-				// Send initial prompt to stdin if provided
-				if (streamingInitialPrompt) {
-					// Will be written after process spawns
+			// Prepare environment variables for Gemini CLI
+			const geminiEnv = { ...process.env };
+
+			if (this.config.appendSystemPrompt) {
+				try {
+					const systemPromptPath =
+						await this.systemPromptManager.prepareSystemPrompt(
+							this.config.appendSystemPrompt,
+						);
+					geminiEnv.GEMINI_SYSTEM_MD = systemPromptPath;
+					console.log(
+						`[GeminiRunner] Prepared system prompt at: ${systemPromptPath}`,
+					);
+				} catch (error) {
+					console.error(
+						"[GeminiRunner] Failed to prepare system prompt, continuing without it:",
+						error,
+					);
 				}
 			}
 
@@ -236,27 +302,48 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			this.process = spawn(geminiPath, args, {
 				cwd: this.config.workingDirectory,
 				stdio: useStdin ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
+				env: geminiEnv,
 			});
 
-			// Write initial streaming prompt to stdin if provided
-			if (useStdin && streamingInitialPrompt && this.process.stdin) {
-				this.process.stdin.write(`${streamingInitialPrompt}\n`);
+			// IMPORTANT: Write initial streaming prompt to stdin immediately after spawn
+			// This prevents gemini from hanging waiting for input.
+			//
+			// How gemini-cli stdin works (from packages/cli/src/utils/readStdin.ts):
+			// 1. Has a 500ms timeout - if NO data arrives, assumes nothing is piped and returns empty
+			// 2. Once data arrives, timeout is canceled and it waits for stdin to close ('end' event)
+			// 3. Continues reading chunks as they arrive until stdin closes
+			//
+			// Therefore:
+			// - We MUST write initial prompt immediately to cancel the 500ms timeout
+			// - We MUST NOT close stdin here - keep it open for addStreamMessage() calls
+			// - stdin.end() is called later in completeStream() when all messages are sent
+			if (useStdin && fullStreamingPrompt && this.process.stdin) {
+				console.log(
+					`[GeminiRunner] Writing initial streaming prompt to stdin (${fullStreamingPrompt.length} chars): ${fullStreamingPrompt.substring(0, 150)}...`,
+				);
+				this.process.stdin.write(`${fullStreamingPrompt}\n`);
+			} else if (useStdin) {
+				console.log(
+					`[GeminiRunner] Cannot write initial prompt - fullStreamingPrompt=${!!fullStreamingPrompt}, stdin=${!!this.process.stdin}`,
+				);
 			}
 
 			// Set up stdout line reader for JSON events
-			const rl = createInterface({
+			this.readlineInterface = createInterface({
 				input: this.process.stdout!,
 				crlfDelay: Infinity,
 			});
 
-			// Process each line as a JSON event
-			rl.on("line", (line: string) => {
-				try {
-					const event = JSON.parse(line) as GeminiStreamEvent;
+			// Process each line as a JSON event with Zod validation
+			this.readlineInterface.on("line", (line: string) => {
+				const event = safeParseGeminiStreamEvent(line);
+				if (event) {
 					this.processStreamEvent(event);
-				} catch (err) {
-					console.error("[GeminiRunner] Failed to parse JSON event:", err);
-					console.error("[GeminiRunner] Line:", line);
+				} else {
+					console.error(
+						"[GeminiRunner] Failed to parse/validate JSON event:",
+						line,
+					);
 				}
 			});
 
@@ -303,6 +390,41 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				this.sessionInfo.isRunning = false;
 			}
 
+			// Emit error result message to maintain consistent message flow
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			const errorResult: SDKResultMessage = {
+				type: "result",
+				subtype: "error_during_execution",
+				duration_ms: Date.now() - this.sessionInfo!.startedAt.getTime(),
+				duration_api_ms: 0,
+				is_error: true,
+				num_turns: 0,
+				errors: [errorMessage],
+				total_cost_usd: 0,
+				usage: {
+					input_tokens: 0,
+					output_tokens: 0,
+					cache_creation_input_tokens: 0,
+					cache_read_input_tokens: 0,
+					cache_creation: {
+						ephemeral_1h_input_tokens: 0,
+						ephemeral_5m_input_tokens: 0,
+					},
+					server_tool_use: {
+						web_fetch_requests: 0,
+						web_search_requests: 0,
+					},
+					service_tier: "standard",
+				},
+				modelUsage: {},
+				permission_denials: [],
+				uuid: crypto.randomUUID(),
+				session_id: this.sessionInfo?.sessionId || "pending",
+			};
+
+			this.emitMessage(errorResult);
+
 			this.emit(
 				"error",
 				error instanceof Error ? error : new Error(String(error)),
@@ -326,6 +448,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				this.readableLogStream.end();
 				this.readableLogStream = null;
 			}
+
+			// Restore Gemini settings
+			if (this.settingsCleanup) {
+				this.settingsCleanup();
+				this.settingsCleanup = null;
+			}
 		}
 
 		return this.sessionInfo;
@@ -335,7 +463,10 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	 * Process a Gemini stream event and convert to SDK message
 	 */
 	private processStreamEvent(event: GeminiStreamEvent): void {
-		console.log(`[GeminiRunner] Stream event:`, event.type);
+		console.log(
+			`[GeminiRunner] Stream event: ${event.type}`,
+			JSON.stringify(event).substring(0, 200),
+		);
 
 		// Emit raw stream event
 		this.emit("streamEvent", event);
@@ -377,9 +508,14 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		const message = geminiEventToSDKMessage(
 			event,
 			this.sessionInfo?.sessionId || null,
+			this.lastAssistantMessage,
 		);
 
 		if (message) {
+			// Track last assistant message for result coercion
+			if (message.type === "assistant") {
+				this.lastAssistantMessage = message;
+			}
 			this.emitMessage(message);
 		}
 	}
@@ -399,13 +535,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// Flush previous accumulation if exists
 			this.flushAccumulatedMessage();
 
-			// Start new accumulation
+			// Start new accumulation using Claude SDK format (array of content blocks)
 			if (event.role === "user") {
 				this.accumulatingMessage = {
 					type: "user",
 					message: {
 						role: "user",
-						content: event.content,
+						content: [{ type: "text", text: event.content }],
 					},
 					parent_tool_use_id: null,
 					session_id: this.sessionInfo?.sessionId || "pending",
@@ -416,22 +552,24 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 					type: "assistant",
 					message: {
 						role: "assistant",
-						content: event.content,
+						content: [{ type: "text", text: event.content }],
 					},
 					session_id: this.sessionInfo?.sessionId || "pending",
 				} as unknown as SDKMessage;
 			}
 			this.accumulatingRole = event.role;
 		} else {
-			// Same role - append content
+			// Same role - append content to existing text block
 			if (
 				this.accumulatingMessage.type === "user" ||
 				this.accumulatingMessage.type === "assistant"
 			) {
 				const currentContent = this.accumulatingMessage.message.content;
-				if (typeof currentContent === "string") {
-					this.accumulatingMessage.message.content =
-						currentContent + event.content;
+				if (Array.isArray(currentContent) && currentContent.length > 0) {
+					const lastBlock = currentContent[currentContent.length - 1];
+					if (lastBlock && lastBlock.type === "text" && "text" in lastBlock) {
+						lastBlock.text += event.content;
+					}
 				}
 			}
 		}
@@ -445,6 +583,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			console.log(
 				`[GeminiRunner] Flushing accumulated message (role: ${this.accumulatingRole})`,
 			);
+
+			// Track last assistant message for result coercion BEFORE emitting
+			if (this.accumulatingMessage.type === "assistant") {
+				this.lastAssistantMessage = this.accumulatingMessage;
+			}
+
 			this.emitMessage(this.accumulatingMessage);
 			this.accumulatingMessage = null;
 			this.accumulatingRole = null;
@@ -483,6 +627,17 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Flush any accumulated message before stopping
 		this.flushAccumulatedMessage();
 
+		// Close readline interface first to stop processing stdout
+		if (this.readlineInterface) {
+			// Close() method stops the readline interface from emitting further events
+			// and allows cleanup of underlying streams
+			if (typeof this.readlineInterface.close === "function") {
+				this.readlineInterface.close();
+			}
+			this.readlineInterface.removeAllListeners();
+			this.readlineInterface = null;
+		}
+
 		if (this.process) {
 			console.log("[GeminiRunner] Stopping Gemini process");
 			this.process.kill("SIGTERM");
@@ -496,6 +651,12 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Complete streaming prompt if active
 		if (this.streamingPrompt) {
 			this.streamingPrompt.complete();
+		}
+
+		// Restore Gemini settings
+		if (this.settingsCleanup) {
+			this.settingsCleanup();
+			this.settingsCleanup = null;
 		}
 	}
 
@@ -511,6 +672,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	 */
 	getMessages(): SDKMessage[] {
 		return [...this.messages];
+	}
+
+	/**
+	 * Get the message formatter for this runner
+	 */
+	getFormatter(): IMessageFormatter {
+		return this.formatter;
 	}
 
 	/**

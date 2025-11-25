@@ -1,7 +1,8 @@
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { StreamingPrompt } from "cyrus-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GeminiRunner, StreamingPrompt } from "../src/GeminiRunner.js";
+import { GeminiRunner } from "../src/GeminiRunner.js";
 import type {
 	GeminiInitEvent,
 	GeminiMessageEvent,
@@ -89,10 +90,11 @@ class ProcessEmulator extends EventEmitter {
 
 // Helper functions to create Gemini events
 function createInitEvent(
-	sessionId: string = "test-session-123",
+	sessionId: string = "c25acda3-b51f-41f9-9bc5-954c70c17bf4",
 ): GeminiInitEvent {
 	return {
 		type: "init",
+		timestamp: new Date().toISOString(),
 		session_id: sessionId,
 		model: "gemini-2.5-flash",
 	};
@@ -104,6 +106,7 @@ function createMessageEvent(
 ): GeminiMessageEvent {
 	return {
 		type: "message",
+		timestamp: new Date().toISOString(),
 		role,
 		content,
 	};
@@ -115,18 +118,21 @@ function createToolUseEvent(
 ): GeminiToolUseEvent {
 	return {
 		type: "tool_use",
+		timestamp: new Date().toISOString(),
 		tool_name: toolName,
+		tool_id: `${toolName}_${Date.now()}`,
 		parameters,
 	};
 }
 
 function createResultEvent(
-	response: string,
+	status: "success" | "error" = "success",
 	error?: { type: string; message: string },
 ): GeminiResultEvent {
 	return {
 		type: "result",
-		response,
+		timestamp: new Date().toISOString(),
+		status,
 		error,
 	};
 }
@@ -196,14 +202,14 @@ describe("GeminiRunner", () => {
 			expect(runner.isRunning()).toBe(true);
 
 			// Simulate Gemini CLI response
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitEvent(createMessageEvent("user", "Hello Gemini"));
 			processEmulator.emitEvent(
 				createMessageEvent("assistant", "Hello! How can I help you?"),
 			);
-			processEmulator.emitEvent(
-				createResultEvent("Hello! How can I help you?"),
-			);
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -218,12 +224,13 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("extracted-session-id"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			const testSessionId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+			processEmulator.emitEvent(createInitEvent(testSessionId));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			const sessionInfo = await promise;
-			expect(sessionInfo.sessionId).toBe("extracted-session-id");
+			expect(sessionInfo.sessionId).toBe(testSessionId);
 		});
 
 		it("should accept custom system prompt in config", async () => {
@@ -273,7 +280,7 @@ describe("GeminiRunner", () => {
 				prompt.complete();
 			}, 10);
 
-			processEmulator.emitEvent(createResultEvent("Complete"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -287,12 +294,13 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("new-session-id"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			const newSessionId = "c3d4e5f6-a7b8-4c9d-0e1f-333333333333";
+			processEmulator.emitEvent(createInitEvent(newSessionId));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			const sessionInfo = await promise;
-			expect(sessionInfo.sessionId).toBe("new-session-id");
+			expect(sessionInfo.sessionId).toBe(newSessionId);
 		});
 	});
 
@@ -302,11 +310,13 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitEvent(
 				createMessageEvent("user", "User message content"),
 			);
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -314,7 +324,9 @@ describe("GeminiRunner", () => {
 			const messages = runner.getMessages();
 			const userMessage = messages.find((m) => m.type === "user");
 			expect(userMessage).toBeDefined();
-			expect(userMessage?.session_id).toBe("session-123");
+			expect(userMessage?.session_id).toBe(
+				"a1b2c3d4-e5f6-4a7b-8c9d-111111111111",
+			);
 		});
 
 		it("should convert assistant message events to SDK messages", async () => {
@@ -322,11 +334,13 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitEvent(
 				createMessageEvent("assistant", "Assistant response"),
 			);
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -334,7 +348,9 @@ describe("GeminiRunner", () => {
 			const messages = runner.getMessages();
 			const assistantMessage = messages.find((m) => m.type === "assistant");
 			expect(assistantMessage).toBeDefined();
-			expect(assistantMessage?.session_id).toBe("session-123");
+			expect(assistantMessage?.session_id).toBe(
+				"a1b2c3d4-e5f6-4a7b-8c9d-111111111111",
+			);
 		});
 
 		it("should convert tool use events to SDK tool_use messages", async () => {
@@ -342,11 +358,13 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitEvent(
 				createToolUseEvent("Read", { file_path: "/test.txt" }),
 			);
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -368,8 +386,10 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
-			processEmulator.emitEvent(createResultEvent("Final response text"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -386,9 +406,11 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
 			processEmulator.emitEvent(
-				createResultEvent("", {
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
+			processEmulator.emitEvent(
+				createResultEvent("error", {
 					type: "APIError",
 					message: "API request failed",
 				}),
@@ -417,12 +439,14 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitEvent(createMessageEvent("user", "User message"));
 			processEmulator.emitEvent(
 				createMessageEvent("assistant", "Assistant message"),
 			);
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -439,8 +463,10 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -454,7 +480,8 @@ describe("GeminiRunner", () => {
 
 			const promise = runner.start("Test");
 
-			await new Promise((resolve) => setImmediate(resolve));
+			// Wait longer to ensure process error handler is fully set up
+			await new Promise((resolve) => setTimeout(resolve, 50));
 
 			const testError = new Error("Process error");
 			processEmulator.emitError(testError);
@@ -478,11 +505,13 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitEvent(
 				createMessageEvent("assistant", "Text content"),
 			);
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -512,7 +541,9 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitClose(1);
 
 			await expect(promise).rejects.toThrow();
@@ -527,8 +558,10 @@ describe("GeminiRunner", () => {
 			processEmulator.emitLine("{ invalid json }");
 
 			// Should not crash, continue processing
-			processEmulator.emitEvent(createInitEvent("session-123"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -560,8 +593,10 @@ describe("GeminiRunner", () => {
 
 			expect(runner.isRunning()).toBe(true);
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -574,10 +609,12 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitEvent(createMessageEvent("user", "Message 1"));
 			processEmulator.emitEvent(createMessageEvent("assistant", "Message 2"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
@@ -591,21 +628,28 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-info-123"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(
+				createInitEvent("b2c3d4e5-f6a7-4b8c-9d0e-222222222222"),
+			);
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			const sessionInfo = await promise;
-			expect(sessionInfo.sessionId).toBe("session-info-123");
+			expect(sessionInfo.sessionId).toBe(
+				"b2c3d4e5-f6a7-4b8c-9d0e-222222222222",
+			);
 		});
 
 		it("should clear messages between sessions", async () => {
+			const session1Id = "d4e5f6a7-b8c9-4d0e-1f2a-444444444444";
+			const session2Id = "e5f6a7b8-c9d0-4e1f-2a3b-555555555555";
+
 			// First session
 			let promise = runner.start("First");
 			await new Promise((resolve) => setImmediate(resolve));
-			processEmulator.emitEvent(createInitEvent("session-1"));
+			processEmulator.emitEvent(createInitEvent(session1Id));
 			processEmulator.emitEvent(createMessageEvent("user", "First message"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 			await promise;
 
@@ -619,15 +663,15 @@ describe("GeminiRunner", () => {
 			// Second session
 			promise = runner.start("Second");
 			await new Promise((resolve) => setImmediate(resolve));
-			processEmulator.emitEvent(createInitEvent("session-2"));
+			processEmulator.emitEvent(createInitEvent(session2Id));
 			processEmulator.emitEvent(createMessageEvent("user", "Second message"));
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 			await promise;
 
 			const secondMessages = runner.getMessages();
 			// Should only have messages from second session
-			expect(secondMessages.every((m) => m.session_id === "session-2")).toBe(
+			expect(secondMessages.every((m) => m.session_id === session2Id)).toBe(
 				true,
 			);
 		});
@@ -675,11 +719,13 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			processEmulator.emitEvent(createInitEvent("session-123"));
+			processEmulator.emitEvent(
+				createInitEvent("a1b2c3d4-e5f6-4a7b-8c9d-111111111111"),
+			);
 			processEmulator.emitEvent(
 				createMessageEvent("assistant", "Test response"),
 			);
-			processEmulator.emitEvent(createResultEvent("Done"));
+			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
 
 			await promise;
