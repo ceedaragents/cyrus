@@ -32,14 +32,88 @@ export {
 	extractSessionId,
 	geminiEventToSDKMessage,
 } from "./adapters.js";
+// Formatter
+export { GeminiMessageFormatter } from "./formatter.js";
 // Main runner class
 export { GeminiRunner } from "./GeminiRunner.js";
 // Simple agent runner
 export { SimpleGeminiRunner } from "./SimpleGeminiRunner.js";
+// Zod schemas and validation utilities
+export {
+	// Parsing utilities
+	extractToolNameFromId,
+	// Event schemas
+	GeminiErrorEventSchema,
+	GeminiInitEventSchema,
+	GeminiMessageEventSchema,
+	GeminiResultEventSchema,
+	GeminiStreamEventSchema,
+	// Tool parameter schemas
+	GeminiToolParametersSchema,
+	GeminiToolResultEventSchema,
+	GeminiToolUseEventSchema,
+	// Event type guards
+	isGeminiErrorEvent,
+	isGeminiInitEvent,
+	isGeminiMessageEvent,
+	isGeminiResultEvent,
+	isGeminiToolResultEvent,
+	isGeminiToolUseEvent,
+	// Tool use type guards
+	isListDirectoryTool,
+	// Tool result type guards
+	isListDirectoryToolResult,
+	isReadFileTool,
+	isReadFileToolResult,
+	isReplaceTool,
+	isReplaceToolResult,
+	isRunShellCommandTool,
+	isRunShellCommandToolResult,
+	isSearchFileContentTool,
+	isSearchFileContentToolResult,
+	isWriteFileTool,
+	isWriteFileToolResult,
+	isWriteTodosTool,
+	isWriteTodosToolResult,
+	ListDirectoryParametersSchema,
+	// Tool result schemas
+	ListDirectoryToolResultSchema,
+	ListDirectoryToolUseEventSchema,
+	parseAsListDirectoryTool,
+	parseAsReadFileTool,
+	parseAsReplaceTool,
+	parseAsRunShellCommandTool,
+	parseAsSearchFileContentTool,
+	parseAsWriteFileTool,
+	parseAsWriteTodosTool,
+	parseGeminiStreamEvent,
+	ReadFileParametersSchema,
+	ReadFileToolResultSchema,
+	ReadFileToolUseEventSchema,
+	ReplaceParametersSchema,
+	ReplaceToolResultSchema,
+	ReplaceToolUseEventSchema,
+	RunShellCommandParametersSchema,
+	RunShellCommandToolResultSchema,
+	RunShellCommandToolUseEventSchema,
+	SearchFileContentParametersSchema,
+	SearchFileContentToolResultSchema,
+	SearchFileContentToolUseEventSchema,
+	safeParseGeminiStreamEvent,
+	TodoItemSchema,
+	UnknownToolUseEventSchema,
+	WriteFileParametersSchema,
+	WriteFileToolResultSchema,
+	WriteFileToolUseEventSchema,
+	WriteTodosParametersSchema,
+	WriteTodosToolResultSchema,
+	WriteTodosToolUseEventSchema,
+} from "./schemas.js";
 // System prompt manager
 export { SystemPromptManager } from "./systemPromptManager.js";
 // Types
 export type {
+	// Event types
 	GeminiErrorEvent,
 	GeminiInitEvent,
 	GeminiMessageEvent,
@@ -48,6 +122,32 @@ export type {
 	GeminiRunnerEvents,
 	GeminiSessionInfo,
 	GeminiStreamEvent,
+	// Tool parameter types
+	GeminiToolParameters,
 	GeminiToolResultEvent,
 	GeminiToolUseEvent,
+	ListDirectoryParameters,
+	// Tool result types
+	ListDirectoryToolResult,
+	ListDirectoryToolUseEvent,
+	ReadFileParameters,
+	ReadFileToolResult,
+	ReadFileToolUseEvent,
+	ReplaceParameters,
+	ReplaceToolResult,
+	ReplaceToolUseEvent,
+	RunShellCommandParameters,
+	RunShellCommandToolResult,
+	RunShellCommandToolUseEvent,
+	SearchFileContentParameters,
+	SearchFileContentToolResult,
+	SearchFileContentToolUseEvent,
+	TodoItem,
+	UnknownToolUseEvent,
+	WriteFileParameters,
+	WriteFileToolResult,
+	WriteFileToolUseEvent,
+	WriteTodosParameters,
+	WriteTodosToolResult,
+	WriteTodosToolUseEvent,
 } from "./types.js";

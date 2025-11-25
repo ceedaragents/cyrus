@@ -3,7 +3,6 @@ import { EventEmitter } from "node:events";
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { ClaudeMessageFormatter } from "cyrus-claude-runner";
 import {
 	type IAgentRunner,
 	type IMessageFormatter,
@@ -14,13 +13,17 @@ import {
 	StreamingPrompt,
 } from "cyrus-core";
 import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
+import { GeminiMessageFormatter } from "./formatter.js";
+import {
+	type GeminiStreamEvent,
+	safeParseGeminiStreamEvent,
+} from "./schemas.js";
 import { setupGeminiSettings } from "./settingsGenerator.js";
 import { SystemPromptManager } from "./systemPromptManager.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
 	GeminiSessionInfo,
-	GeminiStreamEvent,
 } from "./types.js";
 
 export declare interface GeminiRunner {
@@ -90,8 +93,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			config.cyrusHome,
 			workspaceName,
 		);
-		// Use ClaudeMessageFormatter for now (Gemini uses similar tool format)
-		this.formatter = new ClaudeMessageFormatter();
+		// Use GeminiMessageFormatter for Gemini-specific tool names
+		this.formatter = new GeminiMessageFormatter();
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -329,14 +332,16 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				crlfDelay: Infinity,
 			});
 
-			// Process each line as a JSON event
+			// Process each line as a JSON event with Zod validation
 			rl.on("line", (line: string) => {
-				try {
-					const event = JSON.parse(line) as GeminiStreamEvent;
+				const event = safeParseGeminiStreamEvent(line);
+				if (event) {
 					this.processStreamEvent(event);
-				} catch (err) {
-					console.error("[GeminiRunner] Failed to parse JSON event:", err);
-					console.error("[GeminiRunner] Line:", line);
+				} else {
+					console.error(
+						"[GeminiRunner] Failed to parse/validate JSON event:",
+						line,
+					);
 				}
 			});
 
