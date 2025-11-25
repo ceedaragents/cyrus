@@ -120,6 +120,28 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 	}
 
 	/**
+	 * Map Gemini tool names to human-readable Claude-style names
+	 */
+	private normalizeToolName(toolName: string): string {
+		// Remove ↪ prefix first
+		const withoutPrefix = toolName.replace(/^↪ /, "");
+		const prefix = toolName.startsWith("↪ ") ? "↪ " : "";
+
+		// Map Gemini tool names to Claude-style names
+		const mapping: Record<string, string> = {
+			run_shell_command: "Bash",
+			read_file: "Read",
+			write_file: "Write",
+			replace: "Edit",
+			search_file_content: "Grep",
+			list_directory: "Glob",
+			write_todos: "TodoWrite",
+		};
+
+		return prefix + (mapping[withoutPrefix] || withoutPrefix);
+	}
+
+	/**
 	 * Format tool input for display in Linear agent activities
 	 * Converts raw tool inputs into user-friendly parameter strings
 	 */
@@ -130,10 +152,10 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 		}
 
 		try {
-			// Normalize tool name by removing ↪ prefix for matching
-			const normalizedToolName = toolName.replace(/^↪ /, "");
+			// Get the original tool name without prefix for matching
+			const originalToolName = toolName.replace(/^↪ /, "");
 
-			switch (normalizedToolName) {
+			switch (originalToolName) {
 				case "run_shell_command": {
 					// Show command only - description goes in action field via formatToolActionName
 					return toolInput.command || JSON.stringify(toolInput);
@@ -201,7 +223,7 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 
 				default:
 					// For MCP tools or other unknown tools, try to extract meaningful info
-					if (normalizedToolName.startsWith("mcp__")) {
+					if (originalToolName.startsWith("mcp__")) {
 						// Extract key fields that are commonly meaningful
 						const meaningfulFields = [
 							"query",
@@ -241,19 +263,11 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 		_toolInput: any,
 		isError: boolean,
 	): string {
-		// Normalize tool name
-		const normalizedToolName = toolName.replace(/^↪ /, "");
+		// Use normalized human-readable name
+		const humanReadableName = this.normalizeToolName(toolName);
 
-		// Handle run_shell_command with description
-		if (normalizedToolName === "run_shell_command") {
-			// Gemini run_shell_command doesn't have a description field like Claude's Bash
-			// But we can infer a description from the command if needed
-			const baseName = isError ? `${toolName} (Error)` : toolName;
-			return baseName;
-		}
-
-		// Default formatting for other tools
-		return isError ? `${toolName} (Error)` : toolName;
+		// Default formatting
+		return isError ? `${humanReadableName} (Error)` : humanReadableName;
 	}
 
 	/**
@@ -272,10 +286,10 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 		}
 
 		try {
-			// Normalize tool name
-			const normalizedToolName = toolName.replace(/^↪ /, "");
+			// Get the original tool name without prefix for matching
+			const originalToolName = toolName.replace(/^↪ /, "");
 
-			switch (normalizedToolName) {
+			switch (originalToolName) {
 				case "run_shell_command": {
 					// Show command first if not already in parameter
 					let formatted = "";
@@ -332,7 +346,8 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 						}
 						return `\`\`\`${lang}\n${result}\n\`\`\``;
 					}
-					return "*Empty file*";
+					// Return empty string for empty files (don't show "*Empty file*")
+					return "";
 
 				case "replace": {
 					// For replace, show changes as a diff

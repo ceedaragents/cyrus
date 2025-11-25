@@ -57,13 +57,13 @@ describe("GeminiMessageFormatter", () => {
 	});
 
 	describe("formatToolActionName", () => {
-		it("should format action name without error", () => {
+		it("should normalize Gemini tool names to Claude-style names", () => {
 			const result = formatter.formatToolActionName(
 				"run_shell_command",
 				{ command: "ls" },
 				false,
 			);
-			expect(result).toBe("run_shell_command");
+			expect(result).toBe("Bash");
 		});
 
 		it("should format action name with error", () => {
@@ -72,16 +72,37 @@ describe("GeminiMessageFormatter", () => {
 				{ command: "ls" },
 				true,
 			);
-			expect(result).toBe("run_shell_command (Error)");
+			expect(result).toBe("Bash (Error)");
 		});
 
-		it("should handle ↪ prefix", () => {
+		it("should handle ↪ prefix with normalized names", () => {
 			const result = formatter.formatToolActionName(
 				"↪ read_file",
 				{ file_path: "/test" },
 				false,
 			);
-			expect(result).toBe("↪ read_file");
+			expect(result).toBe("↪ Read");
+		});
+
+		it("should normalize all Gemini tool names", () => {
+			expect(
+				formatter.formatToolActionName("read_file", {}, false),
+			).toBe("Read");
+			expect(
+				formatter.formatToolActionName("write_file", {}, false),
+			).toBe("Write");
+			expect(formatter.formatToolActionName("replace", {}, false)).toBe(
+				"Edit",
+			);
+			expect(
+				formatter.formatToolActionName("search_file_content", {}, false),
+			).toBe("Grep");
+			expect(
+				formatter.formatToolActionName("list_directory", {}, false),
+			).toBe("Glob");
+			expect(
+				formatter.formatToolActionName("write_todos", {}, false),
+			).toBe("TodoWrite");
 		});
 	});
 
@@ -130,7 +151,7 @@ describe("GeminiMessageFormatter", () => {
 			expect(result).toContain("file1");
 		});
 
-		it("should format empty results", () => {
+		it("should format empty list_directory results", () => {
 			const result = formatter.formatToolResult(
 				"list_directory",
 				{ dir_path: "/empty" },
@@ -138,6 +159,16 @@ describe("GeminiMessageFormatter", () => {
 				false,
 			);
 			expect(result).toBe("*No items found*");
+		});
+
+		it("should return empty string for empty read_file results", () => {
+			const result = formatter.formatToolResult(
+				"read_file",
+				{ file_path: "empty.txt" },
+				"",
+				false,
+			);
+			expect(result).toBe("");
 		});
 	});
 
