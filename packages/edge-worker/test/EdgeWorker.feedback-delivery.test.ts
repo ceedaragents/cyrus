@@ -31,7 +31,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 	let mockAgentSessionManager: any;
 	let mockChildAgentSessionManager: any;
 	let mockClaudeRunner: any;
-	let resumeClaudeSessionSpy: any;
+	let resumeAgentSessionSpy: any;
 	let mockOnFeedbackDelivery: any;
 	let mockOnSessionCreated: any;
 
@@ -89,21 +89,21 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		// Mock child session manager
 		mockChildAgentSessionManager = {
-			hasClaudeRunner: vi.fn().mockReturnValue(true),
+			hasAgentRunner: vi.fn().mockReturnValue(true),
 			getSession: vi.fn().mockReturnValue({
 				issueId: "CHILD-456",
 				claudeSessionId: "child-claude-session-456",
 				workspace: { path: "/test/workspaces/CHILD-456" },
 				claudeRunner: mockClaudeRunner,
 			}),
-			getClaudeRunner: vi.fn().mockReturnValue(mockClaudeRunner),
+			getAgentRunner: vi.fn().mockReturnValue(mockClaudeRunner),
 			postRoutingThought: vi.fn().mockResolvedValue(undefined),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 
 		// Mock parent session manager (for different repository)
 		mockAgentSessionManager = {
-			hasClaudeRunner: vi.fn().mockReturnValue(false),
+			hasAgentRunner: vi.fn().mockReturnValue(false),
 			getSession: vi.fn().mockReturnValue(null),
 		};
 
@@ -165,9 +165,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
-		// Spy on resumeClaudeSession method
-		resumeClaudeSessionSpy = vi
-			.spyOn(edgeWorker as any, "resumeClaudeSession")
+		// Spy on resumeAgentSession method
+		resumeAgentSessionSpy = vi
+			.spyOn(edgeWorker as any, "resumeAgentSession")
 			.mockResolvedValue(undefined);
 
 		// Setup parent-child mapping
@@ -214,9 +214,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
+			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
-			const resumeArgs = resumeClaudeSessionSpy.mock.calls[0];
+			const resumeArgs = resumeAgentSessionSpy.mock.calls[0];
 			const [
 				childSession,
 				repo,
@@ -276,9 +276,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
+			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
-			const prompt = resumeClaudeSessionSpy.mock.calls[0][4];
+			const prompt = resumeAgentSessionSpy.mock.calls[0][4];
 			expect(prompt).toBe(
 				`## Received feedback from orchestrator\n\n---\n\n${feedbackMessage}\n\n---`,
 			);
@@ -286,7 +286,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		it("should return false when child session is not found in any repository", async () => {
 			// Arrange
-			mockChildAgentSessionManager.hasClaudeRunner.mockReturnValue(false);
+			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(false);
 
 			const childSessionId = "nonexistent-child-session";
 			const feedbackMessage = "This should fail";
@@ -305,7 +305,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert
 			expect(result).toBe(false);
-			expect(resumeClaudeSessionSpy).not.toHaveBeenCalled();
+			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
 				`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
 			);
@@ -332,15 +332,15 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert
 			expect(result).toBe(false);
-			expect(resumeClaudeSessionSpy).not.toHaveBeenCalled();
+			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
 				`[EdgeWorker] Child session ${childSessionId} not found`,
 			);
 		});
 
-		it("should handle resumeClaudeSession errors gracefully", async () => {
+		it("should handle resumeAgentSession errors gracefully", async () => {
 			// Arrange
-			resumeClaudeSessionSpy.mockRejectedValue(new Error("Resume failed"));
+			resumeAgentSessionSpy.mockRejectedValue(new Error("Resume failed"));
 
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "This will cause resume to fail";
@@ -363,7 +363,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
+			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
 			// Wait a bit for the async error handling to occur
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -384,7 +384,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			};
 
 			const mockRepo2Manager = {
-				hasClaudeRunner: vi.fn().mockReturnValue(false),
+				hasAgentRunner: vi.fn().mockReturnValue(false),
 				getSession: vi.fn().mockReturnValue(null),
 			};
 
@@ -396,8 +396,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			(edgeWorker as any).repositories.set("test-repo-2", repo2);
 
 			// Adjust mock to make first repo not have it, second repo has it
-			mockRepo2Manager.hasClaudeRunner.mockReturnValue(false);
-			mockChildAgentSessionManager.hasClaudeRunner.mockReturnValue(true);
+			mockRepo2Manager.hasAgentRunner.mockReturnValue(false);
+			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(true);
 
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback across repositories";
@@ -420,13 +420,13 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
+			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
 			// Verify the child was found in one of the repositories
-			const hasClaudeRunnerCalls =
-				mockRepo2Manager.hasClaudeRunner.mock.calls.length +
-				mockChildAgentSessionManager.hasClaudeRunner.mock.calls.length;
-			expect(hasClaudeRunnerCalls).toBeGreaterThan(0);
+			const hasAgentRunnerCalls =
+				mockRepo2Manager.hasAgentRunner.mock.calls.length +
+				mockChildAgentSessionManager.hasAgentRunner.mock.calls.length;
+			expect(hasAgentRunnerCalls).toBeGreaterThan(0);
 		});
 	});
 

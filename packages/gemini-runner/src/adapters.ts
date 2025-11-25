@@ -1,11 +1,17 @@
 import crypto from "node:crypto";
+import { cwd } from "node:process";
+import type { SDKSystemMessage } from "cyrus-claude-runner";
 import type {
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
 	SDKUserMessage,
 } from "cyrus-core";
-import type { GeminiMessageEvent, GeminiStreamEvent } from "./types.js";
+import type {
+	GeminiInitEvent,
+	GeminiMessageEvent,
+	GeminiStreamEvent,
+} from "./types.js";
 
 /**
  * Create a minimal BetaMessage for assistant responses
@@ -58,11 +64,13 @@ function createBetaMessage(
  *
  * @param event - Gemini CLI stream event
  * @param sessionId - Current session ID (may be null initially)
+ * @param lastAssistantMessage - Last assistant message for result coercion (optional)
  * @returns SDKMessage or null if event type doesn't map to a message
  */
 export function geminiEventToSDKMessage(
 	event: GeminiStreamEvent,
 	sessionId: string | null,
+	lastAssistantMessage?: SDKAssistantMessage | null,
 ): SDKMessage | null {
 	switch (event.type) {
 		case "message": {
@@ -91,10 +99,28 @@ export function geminiEventToSDKMessage(
 			}
 		}
 
-		case "init":
-			// Init events don't map directly to messages
-			// Session ID is extracted separately
-			return null;
+		case "init": {
+			const initEvent = event as GeminiInitEvent;
+			const systemMessage: SDKSystemMessage = {
+				type: "system",
+				subtype: "init",
+				agents: undefined,
+				apiKeySource: "user",
+				claude_code_version: "gemini-adapter",
+				cwd: cwd(),
+				tools: [],
+				mcp_servers: [],
+				model: initEvent.model,
+				permissionMode: "default",
+				slash_commands: [],
+				output_style: "default",
+				skills: [],
+				plugins: [],
+				uuid: crypto.randomUUID(),
+				session_id: initEvent.session_id,
+			};
+			return systemMessage;
+		}
 
 		case "tool_use": {
 			// Map to Claude's tool_use format
@@ -167,6 +193,19 @@ export function geminiEventToSDKMessage(
 			const durationMs = stats.duration_ms || 0;
 
 			if (event.status === "success") {
+				// Extract result content from last assistant message if available
+				// This ensures the result contains the actual final output, not just metadata
+				let resultContent = "Session completed successfully";
+				if (lastAssistantMessage?.message?.content) {
+					const content = lastAssistantMessage.message.content;
+					if (Array.isArray(content) && content.length > 0) {
+						const textBlock = content.find((block) => block.type === "text");
+						if (textBlock && "text" in textBlock) {
+							resultContent = textBlock.text;
+						}
+					}
+				}
+
 				const resultMessage: SDKResultMessage = {
 					type: "result",
 					subtype: "success",
@@ -174,7 +213,7 @@ export function geminiEventToSDKMessage(
 					duration_api_ms: 0, // Gemini doesn't separate API time
 					is_error: false,
 					num_turns: stats.tool_calls || 0, // Use tool calls as proxy for turns
-					result: "Session completed successfully",
+					result: resultContent,
 					total_cost_usd: 0, // Gemini doesn't provide cost info
 					usage: {
 						input_tokens: stats.input_tokens || 0,
