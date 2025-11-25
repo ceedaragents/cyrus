@@ -1587,11 +1587,20 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Initial prompt built successfully - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}, length: ${assembly.userPrompt.length} characters`,
 			);
 
-			console.log(`[EdgeWorker] Starting Claude streaming session`);
-			const sessionInfo = await runner.start(assembly.userPrompt);
-			console.log(
-				`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`,
-			);
+			// Start session - use streaming mode if supported for ability to add messages later
+			if (runner.supportsStreamingInput && runner.startStreaming) {
+				console.log(`[EdgeWorker] Starting streaming session`);
+				const sessionInfo = await runner.startStreaming(assembly.userPrompt);
+				console.log(
+					`[EdgeWorker] Streaming session started: ${sessionInfo.sessionId}`,
+				);
+			} else {
+				console.log(`[EdgeWorker] Starting non-streaming session`);
+				const sessionInfo = await runner.start(assembly.userPrompt);
+				console.log(
+					`[EdgeWorker] Non-streaming session started: ${sessionInfo.sessionId}`,
+				);
+			}
 			// Note: AgentSessionManager will be initialized automatically when the first system message
 			// is received via handleClaudeMessage() callback
 		} catch (error) {
@@ -5034,7 +5043,6 @@ ${input.userComment}
 		// If there's an existing running runner that supports streaming, add to it
 		if (
 			existingRunner?.isRunning() &&
-			session.claudeSessionId &&
 			existingRunner.supportsStreamingInput &&
 			existingRunner.addStreamMessage
 		) {
@@ -5163,9 +5171,13 @@ ${input.userComment}
 			commentTimestamp,
 		);
 
-		// Start streaming session
+		// Start session - use streaming mode if supported for ability to add messages later
 		try {
-			await runner.start(fullPrompt);
+			if (runner.supportsStreamingInput && runner.startStreaming) {
+				await runner.startStreaming(fullPrompt);
+			} else {
+				await runner.start(fullPrompt);
+			}
 		} catch (error) {
 			console.error(
 				`[resumeAgentSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,

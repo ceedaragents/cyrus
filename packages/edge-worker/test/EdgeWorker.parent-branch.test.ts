@@ -241,8 +241,8 @@ Base Branch: {{base_branch}}`;
 		expect(capturedClaudeRunnerConfig).toBeDefined();
 
 		// Check that startStreaming was called with a prompt containing the correct base branch
-		expect(mockClaudeRunner.start).toHaveBeenCalled();
-		const promptArg = mockClaudeRunner.start.mock.calls[0][0];
+		expect(mockClaudeRunner.startStreaming).toHaveBeenCalled();
+		const promptArg = mockClaudeRunner.startStreaming.mock.calls[0][0];
 		expect(promptArg).toContain("Base Branch: main"); // Should contain the repository's base branch
 	});
 
@@ -294,8 +294,8 @@ Base Branch: {{base_branch}}`;
 		expect(capturedClaudeRunnerConfig).toBeDefined();
 
 		// Check that startStreaming was called with a prompt containing the parent branch
-		expect(mockClaudeRunner.start).toHaveBeenCalled();
-		const promptArg = mockClaudeRunner.start.mock.calls[0][0];
+		expect(mockClaudeRunner.startStreaming).toHaveBeenCalled();
+		const promptArg = mockClaudeRunner.startStreaming.mock.calls[0][0];
 		expect(promptArg).toContain("Base Branch: parent-feature-branch"); // Should contain the parent's branch
 	});
 
@@ -348,8 +348,8 @@ Base Branch: {{base_branch}}`;
 		expect(capturedClaudeRunnerConfig).toBeDefined();
 
 		// Check that startStreaming was called with a prompt containing the generated parent branch name
-		expect(mockClaudeRunner.start).toHaveBeenCalled();
-		const promptArg = mockClaudeRunner.start.mock.calls[0][0];
+		expect(mockClaudeRunner.startStreaming).toHaveBeenCalled();
+		const promptArg = mockClaudeRunner.startStreaming.mock.calls[0][0];
 		expect(promptArg).toContain("Base Branch: TEST-456-parent-issue-title"); // Should use generated branch name
 	});
 
@@ -406,8 +406,8 @@ Base Branch: {{base_branch}}`;
 		expect(capturedClaudeRunnerConfig).toBeDefined();
 
 		// Check that startStreaming was called with a prompt containing the immediate parent branch
-		expect(mockClaudeRunner.start).toHaveBeenCalled();
-		const promptArg = mockClaudeRunner.start.mock.calls[0][0];
+		expect(mockClaudeRunner.startStreaming).toHaveBeenCalled();
+		const promptArg = mockClaudeRunner.startStreaming.mock.calls[0][0];
 		expect(promptArg).toContain("Base Branch: parent-branch-456"); // Should use immediate parent
 		expect(promptArg).not.toContain("grandparent-branch-789"); // Should not contain grandparent
 	});
