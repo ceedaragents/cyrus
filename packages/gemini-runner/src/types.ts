@@ -8,8 +8,39 @@
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
+	McpServerConfig,
 	SDKMessage,
 } from "cyrus-core";
+
+/**
+ * Gemini CLI MCP server configuration
+ *
+ * Gemini CLI uses a different format for MCP servers than Claude.
+ * This type represents the Gemini-specific MCP server configuration.
+ *
+ * Reference: https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
+ */
+export interface GeminiMcpServerConfig {
+	/** The command to execute to start the MCP server */
+	command: string;
+	/** Arguments to pass to the command */
+	args?: string[];
+	/** Environment variables to set for the server process */
+	env?: Record<string, string>;
+	/** The working directory in which to start the server */
+	cwd?: string;
+	/** Timeout in milliseconds for requests to this MCP server */
+	timeout?: number;
+	/** Trust this server and bypass all tool call confirmations */
+	trust?: boolean;
+	/** List of tool names to include from this MCP server (whitelist) */
+	includeTools?: string[];
+	/** List of tool names to exclude from this MCP server (blacklist) */
+	excludeTools?: string[];
+}
+
+// Re-export McpServerConfig from cyrus-core for convenience
+export type { McpServerConfig };
 
 // Re-export event types from schemas (derived from Zod schemas)
 export type {
@@ -123,6 +154,28 @@ export {
 /**
  * Configuration for GeminiRunner
  * Extends the base AgentRunnerConfig with Gemini-specific options
+ *
+ * MCP Configuration:
+ * - mcpConfig: Inline MCP server configurations (inherited from AgentRunnerConfig)
+ * - mcpConfigPath: Path(s) to MCP configuration file(s) (inherited from AgentRunnerConfig)
+ * - allowMCPServers: Gemini-specific whitelist of MCP server names
+ * - excludeMCPServers: Gemini-specific blacklist of MCP server names
+ *
+ * @example
+ * ```typescript
+ * const config: GeminiRunnerConfig = {
+ *   cyrusHome: '/home/user/.cyrus',
+ *   workingDirectory: '/path/to/repo',
+ *   mcpConfig: {
+ *     linear: {
+ *       command: 'npx',
+ *       args: ['-y', '@anthropic/mcp-linear'],
+ *       env: { LINEAR_API_TOKEN: 'token' }
+ *     }
+ *   },
+ *   allowMCPServers: ['linear'], // Only enable Linear MCP
+ * };
+ * ```
  */
 export interface GeminiRunnerConfig extends AgentRunnerConfig {
 	/** Path to gemini CLI binary (defaults to 'gemini' in PATH) */
@@ -137,6 +190,18 @@ export interface GeminiRunnerConfig extends AgentRunnerConfig {
 	includeDirectories?: string[];
 	/** Enable single-turn mode (sets maxSessionTurns=1 in settings.json) */
 	singleTurn?: boolean;
+	/**
+	 * Whitelist of MCP server names to make available to the model.
+	 * If specified, only listed servers will be available.
+	 * Matches Gemini CLI's allowMCPServers setting.
+	 */
+	allowMCPServers?: string[];
+	/**
+	 * Blacklist of MCP server names to exclude from the model.
+	 * Takes precedence over allowMCPServers.
+	 * Matches Gemini CLI's excludeMCPServers setting.
+	 */
+	excludeMCPServers?: string[];
 }
 
 /**
