@@ -6,7 +6,7 @@ export type {
 	HookJSONOutput,
 	PostToolUseHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
-export { AbortError, ClaudeRunner, StreamingPrompt } from "./ClaudeRunner.js";
+export { AbortError, ClaudeRunner } from "./ClaudeRunner.js";
 export {
 	availableTools,
 	getAllTools,
@@ -17,6 +17,10 @@ export {
 	type ToolName,
 	writeTools,
 } from "./config.js";
+export {
+	ClaudeMessageFormatter,
+	type IMessageFormatter,
+} from "./formatter.js";
 export {
 	type CyrusToolsOptions,
 	createCyrusToolsServer,
