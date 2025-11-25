@@ -480,7 +480,8 @@ describe("GeminiRunner", () => {
 
 			const promise = runner.start("Test");
 
-			await new Promise((resolve) => setImmediate(resolve));
+			// Wait longer to ensure process error handler is fully set up
+			await new Promise((resolve) => setTimeout(resolve, 50));
 
 			const testError = new Error("Process error");
 			processEmulator.emitError(testError);
