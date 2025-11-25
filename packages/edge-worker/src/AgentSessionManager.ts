@@ -770,8 +770,12 @@ export class AgentSessionManager extends EventEmitter {
 								this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
 							}
 
-							// Skip creating activity for TodoWrite results since TodoWrite already created a non-ephemeral thought
-							if (toolName === "TodoWrite" || toolName === "↪ TodoWrite") {
+							// Skip creating activity for TodoWrite/write_todos results since they already created a non-ephemeral thought
+							if (
+								toolName === "TodoWrite" ||
+								toolName === "↪ TodoWrite" ||
+								toolName === "write_todos"
+							) {
 								return;
 							}
 
@@ -841,8 +845,8 @@ export class AgentSessionManager extends EventEmitter {
 							});
 						}
 
-						// Special handling for TodoWrite tool - treat as thought instead of action
-						if (toolName === "TodoWrite") {
+						// Special handling for TodoWrite tool (Claude) and write_todos (Gemini) - treat as thought instead of action
+						if (toolName === "TodoWrite" || toolName === "write_todos") {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
@@ -859,7 +863,7 @@ export class AgentSessionManager extends EventEmitter {
 								type: "thought",
 								body: formattedTodos,
 							};
-							// TodoWrite is not ephemeral
+							// TodoWrite/write_todos is not ephemeral
 							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Get formatter from runner
