@@ -2081,7 +2081,11 @@ export class EdgeWorker extends EventEmitter {
 		fallbackModelOverride?: string;
 	} {
 		if (!labels || labels.length === 0) {
-			return { runnerType: "claude" };
+			return {
+					runnerType: "claude",
+					modelOverride: "sonnet-4.5",
+					fallbackModelOverride: "haiku",
+			};
 		}
 
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
@@ -4182,9 +4186,20 @@ ${input.userComment}
 
 		// Determine runner type and model override from labels
 		const runnerSelection = this.determineRunnerFromLabels(labels || []);
-		const modelOverride = runnerSelection.modelOverride;
-		const runnerType = runnerSelection.runnerType;
-		const fallbackModelOverride = runnerSelection.fallbackModelOverride;
+		let runnerType = runnerSelection.runnerType;
+		let modelOverride = runnerSelection.modelOverride;
+		let fallbackModelOverride = runnerSelection.fallbackModelOverride;
+
+		// If the labels have changed, and we are resuming a session. Use the existing runner for the session.
+		if (session.claudeSessionId && runnerType !== "claude") {
+			runnerType = "claude";
+			modelOverride = "sonnet-4.5";
+			fallbackModelOverride = "haiku";
+		} else if (session.geminiSessionId && runnerType !== "gemini") {
+			runnerType = "gemini";
+			modelOverride = "gemini-2.5-pro";
+			fallbackModelOverride = "gemini-2.5-flash";
+		}
 
 		// Log model override if found
 		if (modelOverride) {
@@ -4199,12 +4214,6 @@ ${input.userComment}
 		// Determine final model name with singleTurn suffix for Gemini
 		let finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
-		if (singleTurn && finalModel?.includes("gemini")) {
-			finalModel = `${finalModel}-shortone`;
-			console.log(
-				`[EdgeWorker] Applied singleTurn model suffix: ${finalModel} (for session ${linearAgentActivitySessionId})`,
-			);
-		}
 
 		const config = {
 			workingDirectory: session.workspace.path,
@@ -5091,40 +5100,7 @@ ${input.userComment}
 		);
 
 		// Determine which runner to use
-		let useClaudeRunner: boolean;
-		if (needsNewSession) {
-			// For new sessions, use the runner type determined from labels
-			useClaudeRunner = runnerType === "claude";
-			console.log(
-				`[EdgeWorker] Label-based runner selection: ${runnerType} (session ${linearAgentActivitySessionId})`,
-			);
-		} else {
-			// For existing sessions, continue with the same runner based on session IDs
-			useClaudeRunner = hasClaudeSession && !hasGeminiSession;
-			console.log(
-				`[EdgeWorker] Continuing existing ${useClaudeRunner ? "claude" : "gemini"} session (session ${linearAgentActivitySessionId})`,
-			);
-
-			// Validate that model override matches the runner type
-			const actualRunnerType = useClaudeRunner ? "claude" : "gemini";
-			if (runnerType !== actualRunnerType) {
-				// Check if there's a model override from labels
-				const labelRunnerSelection = this.determineRunnerFromLabels(labels);
-				if (labelRunnerSelection.modelOverride) {
-					console.warn(
-						`[EdgeWorker] Label changed to ${runnerType} runner but continuing ${actualRunnerType} session. Ignoring model override "${labelRunnerSelection.modelOverride}" to prevent cross-runner model application (session ${linearAgentActivitySessionId})`,
-					);
-					// Fallback to runner-specific default instead of cross-runner model
-					const runnerDefaultModel = useClaudeRunner
-						? "sonnet-4.5"
-						: "gemini-2.5-pro";
-					(runnerConfig as any).model = runnerDefaultModel;
-					console.log(
-						`[EdgeWorker] Using ${actualRunnerType} default model: ${runnerDefaultModel} (session ${linearAgentActivitySessionId})`,
-					);
-				}
-			}
-		}
+		const useClaudeRunner = runnerType === "claude";
 
 		// Set the resume session ID based on which runner we're using
 		const resumeSessionId = needsNewSession
