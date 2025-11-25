@@ -62,6 +62,247 @@ export const GeminiMessageEventSchema = z.object({
 });
 
 // ============================================================================
+// Tool Parameter Schemas
+// ============================================================================
+
+/**
+ * Parameters for the read_file tool
+ *
+ * Example:
+ * ```json
+ * {"file_path":"package.json"}
+ * {"file_path":"app/mcts.py"}
+ * ```
+ */
+export const ReadFileParametersSchema = z.object({
+	file_path: z.string(),
+});
+
+/**
+ * Parameters for the write_file tool
+ *
+ * Example:
+ * ```json
+ * {"file_path":"tests/test_snake.py","content":"import unittest\n..."}
+ * ```
+ */
+export const WriteFileParametersSchema = z.object({
+	file_path: z.string(),
+	content: z.string(),
+});
+
+/**
+ * Parameters for the list_directory tool
+ *
+ * Example:
+ * ```json
+ * {"dir_path":"."}
+ * {"dir_path":"./src"}
+ * ```
+ */
+export const ListDirectoryParametersSchema = z.object({
+	dir_path: z.string(),
+});
+
+/**
+ * Parameters for the search_file_content tool
+ *
+ * Example:
+ * ```json
+ * {"pattern":"(TODO|FIXME)"}
+ * {"pattern":"function.*export"}
+ * ```
+ */
+export const SearchFileContentParametersSchema = z.object({
+	pattern: z.string(),
+});
+
+/**
+ * Parameters for the run_shell_command tool
+ *
+ * Example:
+ * ```json
+ * {"command":"/usr/bin/python3 -m pytest tests/"}
+ * {"command":"git status"}
+ * {"command":"flake8 --version"}
+ * ```
+ */
+export const RunShellCommandParametersSchema = z.object({
+	command: z.string(),
+});
+
+/**
+ * Todo item for the write_todos tool
+ */
+export const TodoItemSchema = z.object({
+	description: z.string(),
+	status: z.enum(["pending", "in_progress", "completed"]).optional(),
+});
+
+/**
+ * Parameters for the write_todos tool
+ *
+ * Example:
+ * ```json
+ * {"todos":[{"description":"Explore codebase to identify bugs","status":"in_progress"},{"description":"Fix coordinate system","status":"pending"}]}
+ * ```
+ */
+export const WriteTodosParametersSchema = z.object({
+	todos: z.array(TodoItemSchema),
+});
+
+/**
+ * Parameters for the replace tool (AI-powered code editing)
+ *
+ * Can use either instruction-based or literal string replacement:
+ * - instruction: Natural language description of the change
+ * - old_string/new_string: Literal string replacement
+ *
+ * Examples:
+ * Instruction-based:
+ * ```json
+ * {"instruction":"Modify get_other_snake_heads to return a list instead of dict","file_path":"app/mcts.py"}
+ * {"instruction":"Clean up comments in is_terminal.","file_path":"app/mcts.py"}
+ * ```
+ *
+ * Literal replacement:
+ * ```json
+ * {"file_path":"app/mcts.py","old_string":"    # Simulate other snakes' moves\\n    othe","new_string":"    # Track enemy positions\\n    enemy"}
+ * ```
+ */
+export const ReplaceParametersSchema = z.object({
+	instruction: z.string().optional(),
+	file_path: z.string().optional(),
+	old_string: z.string().optional(),
+	new_string: z.string().optional(),
+});
+
+/**
+ * Union of all known tool parameter schemas
+ */
+export const GeminiToolParametersSchema = z.union([
+	ReadFileParametersSchema,
+	WriteFileParametersSchema,
+	ListDirectoryParametersSchema,
+	SearchFileContentParametersSchema,
+	RunShellCommandParametersSchema,
+	WriteTodosParametersSchema,
+	ReplaceParametersSchema,
+]);
+
+// Type exports for tool parameters
+export type ReadFileParameters = z.infer<typeof ReadFileParametersSchema>;
+export type WriteFileParameters = z.infer<typeof WriteFileParametersSchema>;
+export type ListDirectoryParameters = z.infer<
+	typeof ListDirectoryParametersSchema
+>;
+export type SearchFileContentParameters = z.infer<
+	typeof SearchFileContentParametersSchema
+>;
+export type RunShellCommandParameters = z.infer<
+	typeof RunShellCommandParametersSchema
+>;
+export type TodoItem = z.infer<typeof TodoItemSchema>;
+export type WriteTodosParameters = z.infer<typeof WriteTodosParametersSchema>;
+export type ReplaceParameters = z.infer<typeof ReplaceParametersSchema>;
+export type GeminiToolParameters = z.infer<typeof GeminiToolParametersSchema>;
+
+// ============================================================================
+// Typed Tool Use Event Schemas (for specific tools)
+// ============================================================================
+
+/**
+ * Base schema for tool use events with timestamp and tool_id
+ */
+const ToolUseBaseSchema = z.object({
+	type: z.literal("tool_use"),
+	timestamp: TimestampSchema,
+	tool_id: z.string(),
+});
+
+/**
+ * Typed read_file tool use event
+ */
+export const ReadFileToolUseEventSchema = ToolUseBaseSchema.extend({
+	tool_name: z.literal("read_file"),
+	parameters: ReadFileParametersSchema,
+});
+
+/**
+ * Typed write_file tool use event
+ */
+export const WriteFileToolUseEventSchema = ToolUseBaseSchema.extend({
+	tool_name: z.literal("write_file"),
+	parameters: WriteFileParametersSchema,
+});
+
+/**
+ * Typed list_directory tool use event
+ */
+export const ListDirectoryToolUseEventSchema = ToolUseBaseSchema.extend({
+	tool_name: z.literal("list_directory"),
+	parameters: ListDirectoryParametersSchema,
+});
+
+/**
+ * Typed search_file_content tool use event
+ */
+export const SearchFileContentToolUseEventSchema = ToolUseBaseSchema.extend({
+	tool_name: z.literal("search_file_content"),
+	parameters: SearchFileContentParametersSchema,
+});
+
+/**
+ * Typed run_shell_command tool use event
+ */
+export const RunShellCommandToolUseEventSchema = ToolUseBaseSchema.extend({
+	tool_name: z.literal("run_shell_command"),
+	parameters: RunShellCommandParametersSchema,
+});
+
+/**
+ * Typed write_todos tool use event
+ */
+export const WriteTodosToolUseEventSchema = ToolUseBaseSchema.extend({
+	tool_name: z.literal("write_todos"),
+	parameters: WriteTodosParametersSchema,
+});
+
+/**
+ * Typed replace tool use event
+ */
+export const ReplaceToolUseEventSchema = ToolUseBaseSchema.extend({
+	tool_name: z.literal("replace"),
+	parameters: ReplaceParametersSchema,
+});
+
+/**
+ * Unknown tool use event (for tools not explicitly typed)
+ */
+export const UnknownToolUseEventSchema = ToolUseBaseSchema.extend({
+	tool_name: z.string(),
+	parameters: z.record(z.unknown()),
+});
+
+// Type exports for typed tool use events
+export type ReadFileToolUseEvent = z.infer<typeof ReadFileToolUseEventSchema>;
+export type WriteFileToolUseEvent = z.infer<typeof WriteFileToolUseEventSchema>;
+export type ListDirectoryToolUseEvent = z.infer<
+	typeof ListDirectoryToolUseEventSchema
+>;
+export type SearchFileContentToolUseEvent = z.infer<
+	typeof SearchFileContentToolUseEventSchema
+>;
+export type RunShellCommandToolUseEvent = z.infer<
+	typeof RunShellCommandToolUseEventSchema
+>;
+export type WriteTodosToolUseEvent = z.infer<
+	typeof WriteTodosToolUseEventSchema
+>;
+export type ReplaceToolUseEvent = z.infer<typeof ReplaceToolUseEventSchema>;
+export type UnknownToolUseEvent = z.infer<typeof UnknownToolUseEventSchema>;
+
+// ============================================================================
 // Tool Use Event Schema
 // ============================================================================
 
@@ -123,6 +364,222 @@ export const GeminiToolResultEventSchema = z.object({
 	output: z.string().optional(),
 	error: ToolResultErrorSchema.optional(),
 });
+
+// ============================================================================
+// Typed Tool Result Schemas
+// ============================================================================
+
+/**
+ * Tool result output types based on the originating tool
+ *
+ * These describe the expected output format for each tool type.
+ * The tool_id prefix indicates which tool generated the result.
+ */
+
+/**
+ * read_file tool result - returns empty string on success (file content is in context)
+ *
+ * Example:
+ * ```json
+ * {"type":"tool_result","timestamp":"2025-11-24T20:12:40.148Z","tool_id":"read_file-1764015160012-767cb93e436f3","status":"success","output":""}
+ * ```
+ */
+export const ReadFileToolResultSchema = z.object({
+	type: z.literal("tool_result"),
+	timestamp: TimestampSchema,
+	tool_id: z.string().startsWith("read_file-"),
+	status: z.enum(["success", "error"]),
+	output: z.string().optional(),
+	error: ToolResultErrorSchema.optional(),
+});
+
+/**
+ * write_file tool result - returns empty output on success
+ *
+ * Example:
+ * ```json
+ * {"type":"tool_result","timestamp":"2025-11-24T20:13:55.193Z","tool_id":"write_file-1764015234674-0581b9629931a","status":"success"}
+ * ```
+ */
+export const WriteFileToolResultSchema = z.object({
+	type: z.literal("tool_result"),
+	timestamp: TimestampSchema,
+	tool_id: z.string().startsWith("write_file-"),
+	status: z.enum(["success", "error"]),
+	output: z.string().optional(),
+	error: ToolResultErrorSchema.optional(),
+});
+
+/**
+ * list_directory tool result - returns summary of items found
+ *
+ * Example:
+ * ```json
+ * {"type":"tool_result","timestamp":"2025-11-24T20:12:53.273Z","tool_id":"list_directory-1764015173255-396a90dd79fa6","status":"success","output":"Listed 4 item(s). (1 ignored)"}
+ * ```
+ */
+export const ListDirectoryToolResultSchema = z.object({
+	type: z.literal("tool_result"),
+	timestamp: TimestampSchema,
+	tool_id: z.string().startsWith("list_directory-"),
+	status: z.enum(["success", "error"]),
+	output: z.string().optional(),
+	error: ToolResultErrorSchema.optional(),
+});
+
+/**
+ * search_file_content tool result - returns match info or "No matches found"
+ *
+ * Example:
+ * ```json
+ * {"type":"tool_result","timestamp":"2025-11-24T20:12:40.196Z","tool_id":"search_file_content-1764015160072-c1e0f530591f6","status":"success","output":"No matches found"}
+ * ```
+ */
+export const SearchFileContentToolResultSchema = z.object({
+	type: z.literal("tool_result"),
+	timestamp: TimestampSchema,
+	tool_id: z.string().startsWith("search_file_content-"),
+	status: z.enum(["success", "error"]),
+	output: z.string().optional(),
+	error: ToolResultErrorSchema.optional(),
+});
+
+/**
+ * run_shell_command tool result - returns command output
+ *
+ * Examples:
+ * ```json
+ * {"type":"tool_result","timestamp":"2025-11-24T20:13:15.060Z","tool_id":"run_shell_command-1764015194969-e79bcda1d6e9","status":"success","output":"/usr/bin/python3: No module named pytest"}
+ * {"type":"tool_result","timestamp":"2025-11-24T20:19:49.805Z","tool_id":"run_shell_command-1764015589776-b029531d6e71e","status":"success","output":"node"}
+ * ```
+ */
+export const RunShellCommandToolResultSchema = z.object({
+	type: z.literal("tool_result"),
+	timestamp: TimestampSchema,
+	tool_id: z.string().startsWith("run_shell_command-"),
+	status: z.enum(["success", "error"]),
+	output: z.string().optional(),
+	error: ToolResultErrorSchema.optional(),
+});
+
+/**
+ * write_todos tool result - returns empty output on success, or error if invalid
+ *
+ * Examples:
+ * Success:
+ * ```json
+ * {"type":"tool_result","timestamp":"2025-11-24T19:29:56.539Z","tool_id":"write_todos-1764012596037-37082c9903ce7","status":"success"}
+ * ```
+ *
+ * Error (multiple in_progress):
+ * ```json
+ * {"type":"tool_result","timestamp":"2025-11-24T19:37:13.465Z","tool_id":"write_todos-1764013031965-70bbdf7c35856","status":"error","output":"Invalid parameters: Only one task can be \"in_progress\" at a time."}
+ * ```
+ */
+export const WriteTodosToolResultSchema = z.object({
+	type: z.literal("tool_result"),
+	timestamp: TimestampSchema,
+	tool_id: z.string().startsWith("write_todos-"),
+	status: z.enum(["success", "error"]),
+	output: z.string().optional(),
+	error: ToolResultErrorSchema.optional(),
+});
+
+/**
+ * replace tool result - returns empty output on success
+ *
+ * Example:
+ * ```json
+ * {"type":"tool_result","timestamp":"2025-11-24T19:31:12.165Z","tool_id":"replace-1764012672140-c56f46960e14a","status":"success"}
+ * ```
+ */
+export const ReplaceToolResultSchema = z.object({
+	type: z.literal("tool_result"),
+	timestamp: TimestampSchema,
+	tool_id: z.string().startsWith("replace-"),
+	status: z.enum(["success", "error"]),
+	output: z.string().optional(),
+	error: ToolResultErrorSchema.optional(),
+});
+
+// Type exports for tool results
+export type ReadFileToolResult = z.infer<typeof ReadFileToolResultSchema>;
+export type WriteFileToolResult = z.infer<typeof WriteFileToolResultSchema>;
+export type ListDirectoryToolResult = z.infer<
+	typeof ListDirectoryToolResultSchema
+>;
+export type SearchFileContentToolResult = z.infer<
+	typeof SearchFileContentToolResultSchema
+>;
+export type RunShellCommandToolResult = z.infer<
+	typeof RunShellCommandToolResultSchema
+>;
+export type WriteTodosToolResult = z.infer<typeof WriteTodosToolResultSchema>;
+export type ReplaceToolResult = z.infer<typeof ReplaceToolResultSchema>;
+
+/**
+ * Type guards for tool results based on tool_id prefix
+ */
+export function isReadFileToolResult(
+	event: GeminiToolResultEvent,
+): event is ReadFileToolResult {
+	return event.tool_id.startsWith("read_file-");
+}
+
+export function isWriteFileToolResult(
+	event: GeminiToolResultEvent,
+): event is WriteFileToolResult {
+	return event.tool_id.startsWith("write_file-");
+}
+
+export function isListDirectoryToolResult(
+	event: GeminiToolResultEvent,
+): event is ListDirectoryToolResult {
+	return event.tool_id.startsWith("list_directory-");
+}
+
+export function isSearchFileContentToolResult(
+	event: GeminiToolResultEvent,
+): event is SearchFileContentToolResult {
+	return event.tool_id.startsWith("search_file_content-");
+}
+
+export function isRunShellCommandToolResult(
+	event: GeminiToolResultEvent,
+): event is RunShellCommandToolResult {
+	return event.tool_id.startsWith("run_shell_command-");
+}
+
+export function isWriteTodosToolResult(
+	event: GeminiToolResultEvent,
+): event is WriteTodosToolResult {
+	return event.tool_id.startsWith("write_todos-");
+}
+
+export function isReplaceToolResult(
+	event: GeminiToolResultEvent,
+): event is ReplaceToolResult {
+	return event.tool_id.startsWith("replace-");
+}
+
+/**
+ * Extract tool name from tool_id
+ *
+ * Tool IDs follow the format: `{tool_name}-{timestamp_ms}-{random_hex}`
+ *
+ * @param toolId - The tool_id from a tool_use or tool_result event
+ * @returns The tool name, or null if format is invalid
+ */
+export function extractToolNameFromId(toolId: string): string | null {
+	// Tool ID format: {tool_name}-{timestamp_ms}-{random_hex}
+	// Split on hyphen and rejoin all but last two parts
+	const parts = toolId.split("-");
+	if (parts.length < 3) {
+		return null;
+	}
+	// Remove the timestamp and random hex (last 2 parts)
+	return parts.slice(0, -2).join("-");
+}
 
 // ============================================================================
 // Error Event Schema
@@ -290,4 +747,129 @@ export function isGeminiResultEvent(
 	event: GeminiStreamEvent,
 ): event is GeminiResultEvent {
 	return event.type === "result";
+}
+
+// ============================================================================
+// Typed Tool Use Parsing Utilities
+// ============================================================================
+
+/**
+ * Parse a tool use event as a specific typed tool
+ *
+ * @param event - A GeminiToolUseEvent to parse
+ * @returns The typed tool use event, or null if the tool name doesn't match or validation fails
+ */
+export function parseAsReadFileTool(
+	event: GeminiToolUseEvent,
+): ReadFileToolUseEvent | null {
+	const result = ReadFileToolUseEventSchema.safeParse(event);
+	return result.success ? result.data : null;
+}
+
+export function parseAsWriteFileTool(
+	event: GeminiToolUseEvent,
+): WriteFileToolUseEvent | null {
+	const result = WriteFileToolUseEventSchema.safeParse(event);
+	return result.success ? result.data : null;
+}
+
+export function parseAsListDirectoryTool(
+	event: GeminiToolUseEvent,
+): ListDirectoryToolUseEvent | null {
+	const result = ListDirectoryToolUseEventSchema.safeParse(event);
+	return result.success ? result.data : null;
+}
+
+export function parseAsSearchFileContentTool(
+	event: GeminiToolUseEvent,
+): SearchFileContentToolUseEvent | null {
+	const result = SearchFileContentToolUseEventSchema.safeParse(event);
+	return result.success ? result.data : null;
+}
+
+export function parseAsRunShellCommandTool(
+	event: GeminiToolUseEvent,
+): RunShellCommandToolUseEvent | null {
+	const result = RunShellCommandToolUseEventSchema.safeParse(event);
+	return result.success ? result.data : null;
+}
+
+export function parseAsWriteTodosTool(
+	event: GeminiToolUseEvent,
+): WriteTodosToolUseEvent | null {
+	const result = WriteTodosToolUseEventSchema.safeParse(event);
+	return result.success ? result.data : null;
+}
+
+export function parseAsReplaceTool(
+	event: GeminiToolUseEvent,
+): ReplaceToolUseEvent | null {
+	const result = ReplaceToolUseEventSchema.safeParse(event);
+	return result.success ? result.data : null;
+}
+
+/**
+ * Type guard for specific tool types based on tool_name
+ */
+export function isReadFileTool(
+	event: GeminiToolUseEvent,
+): event is ReadFileToolUseEvent {
+	return (
+		event.tool_name === "read_file" &&
+		ReadFileParametersSchema.safeParse(event.parameters).success
+	);
+}
+
+export function isWriteFileTool(
+	event: GeminiToolUseEvent,
+): event is WriteFileToolUseEvent {
+	return (
+		event.tool_name === "write_file" &&
+		WriteFileParametersSchema.safeParse(event.parameters).success
+	);
+}
+
+export function isListDirectoryTool(
+	event: GeminiToolUseEvent,
+): event is ListDirectoryToolUseEvent {
+	return (
+		event.tool_name === "list_directory" &&
+		ListDirectoryParametersSchema.safeParse(event.parameters).success
+	);
+}
+
+export function isSearchFileContentTool(
+	event: GeminiToolUseEvent,
+): event is SearchFileContentToolUseEvent {
+	return (
+		event.tool_name === "search_file_content" &&
+		SearchFileContentParametersSchema.safeParse(event.parameters).success
+	);
+}
+
+export function isRunShellCommandTool(
+	event: GeminiToolUseEvent,
+): event is RunShellCommandToolUseEvent {
+	return (
+		event.tool_name === "run_shell_command" &&
+		RunShellCommandParametersSchema.safeParse(event.parameters).success
+	);
+}
+
+export function isWriteTodosTool(
+	event: GeminiToolUseEvent,
+): event is WriteTodosToolUseEvent {
+	return (
+		event.tool_name === "write_todos" &&
+		WriteTodosParametersSchema.safeParse(event.parameters).success
+	);
+}
+
+export function isReplaceTool(
+	event: GeminiToolUseEvent,
+): event is ReplaceToolUseEvent {
+	return (
+		event.tool_name === "replace" &&
+		ReplaceParametersSchema.safeParse(event.parameters).success
+	);
 }

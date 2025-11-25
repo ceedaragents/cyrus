@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import {
+	// Parsing utilities
+	extractToolNameFromId,
+	// Event schemas
 	GeminiErrorEventSchema,
 	GeminiInitEventSchema,
 	GeminiMessageEventSchema,
@@ -8,14 +11,40 @@ import {
 	GeminiStreamEventSchema,
 	GeminiToolResultEventSchema,
 	GeminiToolUseEventSchema,
+	// Event type guards
 	isGeminiErrorEvent,
 	isGeminiInitEvent,
 	isGeminiMessageEvent,
 	isGeminiResultEvent,
 	isGeminiToolResultEvent,
 	isGeminiToolUseEvent,
+	// Tool result type guards
+	isListDirectoryToolResult,
+	// Tool use type guards
+	isReadFileTool,
+	isReadFileToolResult,
+	isWriteFileTool,
+	isWriteFileToolResult,
+	// Tool parameter schemas
+	ListDirectoryParametersSchema,
+	// Typed tool use event schemas
+	ListDirectoryToolUseEventSchema,
+	parseAsReadFileTool,
+	parseAsWriteFileTool,
 	parseGeminiStreamEvent,
+	ReadFileParametersSchema,
+	ReadFileToolUseEventSchema,
+	ReplaceParametersSchema,
+	ReplaceToolUseEventSchema,
+	RunShellCommandParametersSchema,
+	RunShellCommandToolUseEventSchema,
+	SearchFileContentParametersSchema,
+	SearchFileContentToolUseEventSchema,
 	safeParseGeminiStreamEvent,
+	WriteFileParametersSchema,
+	WriteFileToolUseEventSchema,
+	WriteTodosParametersSchema,
+	WriteTodosToolUseEventSchema,
 } from "../src/schemas.js";
 
 describe("Gemini Stream Event Schemas", () => {
@@ -574,6 +603,366 @@ describe("Gemini Stream Event Schemas", () => {
 		it("isGeminiResultEvent", () => {
 			expect(isGeminiResultEvent(resultEvent)).toBe(true);
 			expect(isGeminiResultEvent(errorEvent)).toBe(false);
+		});
+	});
+
+	describe("Tool Parameter Schemas", () => {
+		describe("ReadFileParametersSchema", () => {
+			it("should validate read_file parameters", () => {
+				const params = { file_path: "test.ts" };
+				const result = ReadFileParametersSchema.parse(params);
+				expect(result.file_path).toBe("test.ts");
+			});
+
+			it("should reject missing file_path", () => {
+				expect(() => ReadFileParametersSchema.parse({})).toThrow(ZodError);
+			});
+		});
+
+		describe("WriteFileParametersSchema", () => {
+			it("should validate write_file parameters", () => {
+				const params = {
+					file_path: "test.ts",
+					content: "console.log('hello');",
+				};
+				const result = WriteFileParametersSchema.parse(params);
+				expect(result.file_path).toBe("test.ts");
+				expect(result.content).toBe("console.log('hello');");
+			});
+
+			it("should reject missing content", () => {
+				expect(() =>
+					WriteFileParametersSchema.parse({ file_path: "test.ts" }),
+				).toThrow(ZodError);
+			});
+		});
+
+		describe("ListDirectoryParametersSchema", () => {
+			it("should validate list_directory parameters", () => {
+				const params = { dir_path: "." };
+				const result = ListDirectoryParametersSchema.parse(params);
+				expect(result.dir_path).toBe(".");
+			});
+		});
+
+		describe("SearchFileContentParametersSchema", () => {
+			it("should validate search_file_content parameters", () => {
+				const params = { pattern: "(TODO|FIXME)" };
+				const result = SearchFileContentParametersSchema.parse(params);
+				expect(result.pattern).toBe("(TODO|FIXME)");
+			});
+		});
+
+		describe("RunShellCommandParametersSchema", () => {
+			it("should validate run_shell_command parameters", () => {
+				const params = { command: "git status" };
+				const result = RunShellCommandParametersSchema.parse(params);
+				expect(result.command).toBe("git status");
+			});
+		});
+
+		describe("WriteTodosParametersSchema", () => {
+			it("should validate write_todos parameters with status", () => {
+				const params = {
+					todos: [
+						{ description: "Task 1", status: "in_progress" },
+						{ description: "Task 2", status: "pending" },
+					],
+				};
+				const result = WriteTodosParametersSchema.parse(params);
+				expect(result.todos).toHaveLength(2);
+				expect(result.todos[0].status).toBe("in_progress");
+			});
+
+			it("should validate write_todos parameters without status", () => {
+				const params = { todos: [{ description: "Task 1" }] };
+				const result = WriteTodosParametersSchema.parse(params);
+				expect(result.todos[0].status).toBeUndefined();
+			});
+
+			it("should reject invalid status", () => {
+				expect(() =>
+					WriteTodosParametersSchema.parse({
+						todos: [{ description: "Task", status: "invalid" }],
+					}),
+				).toThrow(ZodError);
+			});
+		});
+
+		describe("ReplaceParametersSchema", () => {
+			it("should validate instruction-based replace parameters", () => {
+				const params = {
+					instruction: "Add a comment",
+					file_path: "test.ts",
+				};
+				const result = ReplaceParametersSchema.parse(params);
+				expect(result.instruction).toBe("Add a comment");
+			});
+
+			it("should validate literal replace parameters", () => {
+				const params = {
+					file_path: "test.ts",
+					old_string: "foo",
+					new_string: "bar",
+				};
+				const result = ReplaceParametersSchema.parse(params);
+				expect(result.old_string).toBe("foo");
+				expect(result.new_string).toBe("bar");
+			});
+		});
+	});
+
+	describe("Typed Tool Use Events", () => {
+		it("should parse read_file tool use event", () => {
+			const event = {
+				type: "tool_use",
+				timestamp: "2025-11-24T20:12:40.012Z",
+				tool_name: "read_file",
+				tool_id: "read_file-1764015160012-767cb93e436f3",
+				parameters: { file_path: "package.json" },
+			};
+			const result = ReadFileToolUseEventSchema.parse(event);
+			expect(result.tool_name).toBe("read_file");
+			expect(result.parameters.file_path).toBe("package.json");
+		});
+
+		it("should parse write_file tool use event", () => {
+			const event = {
+				type: "tool_use",
+				timestamp: "2025-11-24T20:13:54.674Z",
+				tool_name: "write_file",
+				tool_id: "write_file-1764015234674-0581b9629931a",
+				parameters: {
+					file_path: "tests/test_snake.py",
+					content: "import unittest",
+				},
+			};
+			const result = WriteFileToolUseEventSchema.parse(event);
+			expect(result.tool_name).toBe("write_file");
+			expect(result.parameters.content).toBe("import unittest");
+		});
+
+		it("should parse list_directory tool use event", () => {
+			const event = {
+				type: "tool_use",
+				timestamp: "2025-11-24T20:12:53.255Z",
+				tool_name: "list_directory",
+				tool_id: "list_directory-1764015173255-396a90dd79fa6",
+				parameters: { dir_path: "." },
+			};
+			const result = ListDirectoryToolUseEventSchema.parse(event);
+			expect(result.tool_name).toBe("list_directory");
+		});
+
+		it("should parse search_file_content tool use event", () => {
+			const event = {
+				type: "tool_use",
+				timestamp: "2025-11-24T20:12:40.072Z",
+				tool_name: "search_file_content",
+				tool_id: "search_file_content-1764015160072-c1e0f530591f6",
+				parameters: { pattern: "(TODO|FIXME)" },
+			};
+			const result = SearchFileContentToolUseEventSchema.parse(event);
+			expect(result.tool_name).toBe("search_file_content");
+		});
+
+		it("should parse run_shell_command tool use event", () => {
+			const event = {
+				type: "tool_use",
+				timestamp: "2025-11-24T20:13:14.969Z",
+				tool_name: "run_shell_command",
+				tool_id: "run_shell_command-1764015194969-e79bcda1d6e9",
+				parameters: { command: "/usr/bin/python3 -m pytest" },
+			};
+			const result = RunShellCommandToolUseEventSchema.parse(event);
+			expect(result.tool_name).toBe("run_shell_command");
+		});
+
+		it("should parse write_todos tool use event", () => {
+			const event = {
+				type: "tool_use",
+				timestamp: "2025-11-24T19:29:56.037Z",
+				tool_name: "write_todos",
+				tool_id: "write_todos-1764012596037-37082c9903ce7",
+				parameters: {
+					todos: [{ description: "Explore codebase", status: "in_progress" }],
+				},
+			};
+			const result = WriteTodosToolUseEventSchema.parse(event);
+			expect(result.tool_name).toBe("write_todos");
+		});
+
+		it("should parse replace tool use event", () => {
+			const event = {
+				type: "tool_use",
+				timestamp: "2025-11-24T19:31:12.140Z",
+				tool_name: "replace",
+				tool_id: "replace-1764012672140-c56f46960e14a",
+				parameters: {
+					instruction: "Modify get_other_snake_heads to return a list",
+					file_path: "app/mcts.py",
+				},
+			};
+			const result = ReplaceToolUseEventSchema.parse(event);
+			expect(result.tool_name).toBe("replace");
+		});
+	});
+
+	describe("Tool Use Type Guards", () => {
+		const readFileEvent = {
+			type: "tool_use" as const,
+			timestamp: "2025-11-24T20:12:40.012Z",
+			tool_name: "read_file",
+			tool_id: "read_file-1764015160012-767cb93e436f3",
+			parameters: { file_path: "package.json" },
+		};
+
+		const writeFileEvent = {
+			type: "tool_use" as const,
+			timestamp: "2025-11-24T20:13:54.674Z",
+			tool_name: "write_file",
+			tool_id: "write_file-1764015234674-0581b9629931a",
+			parameters: { file_path: "test.ts", content: "content" },
+		};
+
+		it("isReadFileTool", () => {
+			expect(isReadFileTool(readFileEvent)).toBe(true);
+			expect(isReadFileTool(writeFileEvent)).toBe(false);
+		});
+
+		it("isWriteFileTool", () => {
+			expect(isWriteFileTool(writeFileEvent)).toBe(true);
+			expect(isWriteFileTool(readFileEvent)).toBe(false);
+		});
+
+		it("should reject invalid parameters", () => {
+			const invalidReadFile = {
+				type: "tool_use" as const,
+				timestamp: "2025-11-24T20:12:40.012Z",
+				tool_name: "read_file",
+				tool_id: "read_file-123-abc",
+				parameters: { wrong_field: "test" },
+			};
+			expect(isReadFileTool(invalidReadFile)).toBe(false);
+		});
+	});
+
+	describe("Tool Result Type Guards", () => {
+		const readFileResult = {
+			type: "tool_result" as const,
+			timestamp: "2025-11-24T20:12:40.148Z",
+			tool_id: "read_file-1764015160012-767cb93e436f3",
+			status: "success" as const,
+			output: "",
+		};
+
+		const writeFileResult = {
+			type: "tool_result" as const,
+			timestamp: "2025-11-24T20:13:55.193Z",
+			tool_id: "write_file-1764015234674-0581b9629931a",
+			status: "success" as const,
+		};
+
+		const listDirResult = {
+			type: "tool_result" as const,
+			timestamp: "2025-11-24T20:12:53.273Z",
+			tool_id: "list_directory-1764015173255-396a90dd79fa6",
+			status: "success" as const,
+			output: "Listed 4 item(s). (1 ignored)",
+		};
+
+		it("isReadFileToolResult", () => {
+			expect(isReadFileToolResult(readFileResult)).toBe(true);
+			expect(isReadFileToolResult(writeFileResult)).toBe(false);
+		});
+
+		it("isWriteFileToolResult", () => {
+			expect(isWriteFileToolResult(writeFileResult)).toBe(true);
+			expect(isWriteFileToolResult(readFileResult)).toBe(false);
+		});
+
+		it("isListDirectoryToolResult", () => {
+			expect(isListDirectoryToolResult(listDirResult)).toBe(true);
+			expect(isListDirectoryToolResult(readFileResult)).toBe(false);
+		});
+	});
+
+	describe("extractToolNameFromId", () => {
+		it("should extract read_file from tool_id", () => {
+			expect(
+				extractToolNameFromId("read_file-1764015160012-767cb93e436f3"),
+			).toBe("read_file");
+		});
+
+		it("should extract write_file from tool_id", () => {
+			expect(
+				extractToolNameFromId("write_file-1764015234674-0581b9629931a"),
+			).toBe("write_file");
+		});
+
+		it("should extract list_directory from tool_id", () => {
+			expect(
+				extractToolNameFromId("list_directory-1764015173255-396a90dd79fa6"),
+			).toBe("list_directory");
+		});
+
+		it("should extract search_file_content from tool_id", () => {
+			expect(
+				extractToolNameFromId(
+					"search_file_content-1764015160072-c1e0f530591f6",
+				),
+			).toBe("search_file_content");
+		});
+
+		it("should extract run_shell_command from tool_id", () => {
+			expect(
+				extractToolNameFromId("run_shell_command-1764015194969-e79bcda1d6e9"),
+			).toBe("run_shell_command");
+		});
+
+		it("should return null for invalid format", () => {
+			expect(extractToolNameFromId("invalid")).toBeNull();
+			expect(extractToolNameFromId("only-one")).toBeNull();
+		});
+	});
+
+	describe("parseAs* functions", () => {
+		it("parseAsReadFileTool should parse valid event", () => {
+			const event = {
+				type: "tool_use" as const,
+				timestamp: "2025-11-24T20:12:40.012Z",
+				tool_name: "read_file",
+				tool_id: "read_file-123-abc",
+				parameters: { file_path: "test.ts" },
+			};
+			const result = parseAsReadFileTool(event);
+			expect(result).not.toBeNull();
+			expect(result?.parameters.file_path).toBe("test.ts");
+		});
+
+		it("parseAsReadFileTool should return null for wrong tool", () => {
+			const event = {
+				type: "tool_use" as const,
+				timestamp: "2025-11-24T20:12:40.012Z",
+				tool_name: "write_file",
+				tool_id: "write_file-123-abc",
+				parameters: { file_path: "test.ts", content: "x" },
+			};
+			const result = parseAsReadFileTool(event);
+			expect(result).toBeNull();
+		});
+
+		it("parseAsWriteFileTool should parse valid event", () => {
+			const event = {
+				type: "tool_use" as const,
+				timestamp: "2025-11-24T20:13:54.674Z",
+				tool_name: "write_file",
+				tool_id: "write_file-123-abc",
+				parameters: { file_path: "test.ts", content: "console.log('hello');" },
+			};
+			const result = parseAsWriteFileTool(event);
+			expect(result).not.toBeNull();
+			expect(result?.parameters.content).toBe("console.log('hello');");
 		});
 	});
 
