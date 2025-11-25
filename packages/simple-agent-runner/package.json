@@ -17,7 +17,8 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.1.42",
-		"cyrus-claude-runner": "workspace:*"
+		"cyrus-claude-runner": "workspace:*",
+		"cyrus-core": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
