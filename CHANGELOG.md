@@ -4,9 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.3] - 2025-11-24
+
 ### Changed
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.42 to v0.1.52 - see [@anthropic-ai/claude-agent-sdk v0.1.52 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0152) (CYPACK-427)
-- Updated @anthropic-ai/sdk from v0.69.0 to v0.71.0 - see [@anthropic-ai/sdk v0.71.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0710-2025-11-22) (CYPACK-427)
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.42 to v0.1.52 - see [@anthropic-ai/claude-agent-sdk v0.1.52 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0152) ([CYPACK-427](https://linear.app/ceedar/issue/CYPACK-427), [#558](https://github.com/ceedaragents/cyrus/pull/558))
+- Updated @anthropic-ai/sdk from v0.69.0 to v0.71.0 - see [@anthropic-ai/sdk v0.71.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0710-2025-11-22) ([CYPACK-427](https://linear.app/ceedar/issue/CYPACK-427), [#558](https://github.com/ceedaragents/cyrus/pull/558))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.3
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.3
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.3
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.3
+
+#### cyrus-core
+- cyrus-core@0.2.3
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.3
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.3
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.3
 
 ## [0.2.2] - 2025-11-19
 
