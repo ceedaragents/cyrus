@@ -2134,27 +2134,23 @@ export class EdgeWorker extends EventEmitter {
 		if (lowercaseLabels.includes("opus")) {
 			return {
 				runnerType: "claude",
-				modelOverride: "opus",
-				fallbackModelOverride: "sonnet",
+				modelOverride: "opus-4.5",
+				fallbackModelOverride: "sonnet-4.5",
 			};
 		}
 		if (lowercaseLabels.includes("sonnet")) {
-			return {
-				runnerType: "claude",
-				modelOverride: "sonnet",
-				fallbackModelOverride: "haiku",
-			};
-		}
-		if (lowercaseLabels.includes("claude")) {
 			return {
 				runnerType: "claude",
 				modelOverride: "sonnet-4.5",
 				fallbackModelOverride: "haiku",
 			};
 		}
-
 		// Default to claude if no runner labels found
-		return { runnerType: "claude" };
+		return {
+				runnerType: "claude",
+				modelOverride: "sonnet-4.5",
+				fallbackModelOverride: "haiku",
+		};
 	}
 
 	/**
