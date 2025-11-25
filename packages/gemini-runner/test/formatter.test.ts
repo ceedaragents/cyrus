@@ -146,74 +146,6 @@ describe("GeminiMessageFormatter", () => {
 			});
 		});
 
-		describe("Claude-style tool names (backward compatibility)", () => {
-			it("should format Bash with command", () => {
-				const result = formatter.formatToolParameter("Bash", {
-					command: "npm install",
-				});
-				expect(result).toBe("npm install");
-			});
-
-			it("should format Read with file_path", () => {
-				const result = formatter.formatToolParameter("Read", {
-					file_path: "/path/to/file.ts",
-				});
-				expect(result).toBe("/path/to/file.ts");
-			});
-
-			it("should format Edit with file_path", () => {
-				const result = formatter.formatToolParameter("Edit", {
-					file_path: "/path/to/file.ts",
-				});
-				expect(result).toBe("/path/to/file.ts");
-			});
-
-			it("should format Write with file_path", () => {
-				const result = formatter.formatToolParameter("Write", {
-					file_path: "/path/to/file.ts",
-				});
-				expect(result).toBe("/path/to/file.ts");
-			});
-
-			it("should format Grep with pattern", () => {
-				const result = formatter.formatToolParameter("Grep", {
-					pattern: "function",
-					path: "/src",
-					type: "ts",
-				});
-				expect(result).toBe("Pattern: `function` in /src [ts files]");
-			});
-
-			it("should format Glob with pattern", () => {
-				const result = formatter.formatToolParameter("Glob", {
-					pattern: "**/*.ts",
-					path: "/src",
-				});
-				expect(result).toBe("Pattern: `**/*.ts` in /src");
-			});
-
-			it("should format Task with description", () => {
-				const result = formatter.formatToolParameter("Task", {
-					description: "Search for errors",
-				});
-				expect(result).toBe("Search for errors");
-			});
-
-			it("should format WebFetch with url", () => {
-				const result = formatter.formatToolParameter("WebFetch", {
-					url: "https://example.com",
-				});
-				expect(result).toBe("https://example.com");
-			});
-
-			it("should format WebSearch with query", () => {
-				const result = formatter.formatToolParameter("WebSearch", {
-					query: "typescript best practices",
-				});
-				expect(result).toBe("Query: typescript best practices");
-			});
-		});
-
 		describe("MCP tools", () => {
 			it("should extract meaningful fields from MCP tools", () => {
 				const result = formatter.formatToolParameter("mcp__linear__get_issue", {
@@ -260,15 +192,6 @@ describe("GeminiMessageFormatter", () => {
 				true,
 			);
 			expect(result).toBe("run_shell_command (Error) (List files)");
-		});
-
-		it("should format Bash with description", () => {
-			const result = formatter.formatToolActionName(
-				"Bash",
-				{ command: "npm test", description: "Run tests" },
-				false,
-			);
-			expect(result).toBe("Bash (Run tests)");
 		});
 
 		it("should return tool name without description", () => {
@@ -433,96 +356,6 @@ describe("GeminiMessageFormatter", () => {
 					false,
 				);
 				expect(result).toBe("*Todos updated*");
-			});
-		});
-
-		describe("Claude-style tool names (backward compatibility)", () => {
-			it("should format Bash result", () => {
-				const result = formatter.formatToolResult(
-					"Bash",
-					{ command: "echo hello" },
-					"hello",
-					false,
-				);
-				expect(result).toContain("```bash");
-				expect(result).toContain("echo hello");
-				expect(result).toContain("hello");
-			});
-
-			it("should format Read result", () => {
-				const result = formatter.formatToolResult(
-					"Read",
-					{ file_path: "/path/to/file.js" },
-					"const x = 1;",
-					false,
-				);
-				expect(result).toContain("```javascript");
-			});
-
-			it("should format Edit result with diff", () => {
-				const result = formatter.formatToolResult(
-					"Edit",
-					{
-						file_path: "/path/to/file.ts",
-						old_string: "old code",
-						new_string: "new code",
-					},
-					"",
-					false,
-				);
-				expect(result).toContain("```diff");
-				expect(result).toContain("-old code");
-				expect(result).toContain("+new code");
-			});
-
-			it("should format Write result", () => {
-				const result = formatter.formatToolResult(
-					"Write",
-					{ file_path: "/path/to/file.ts" },
-					"",
-					false,
-				);
-				expect(result).toBe("*File written successfully*");
-			});
-
-			it("should format Grep result", () => {
-				const result = formatter.formatToolResult(
-					"Grep",
-					{ pattern: "TODO" },
-					"file1.ts\nfile2.ts",
-					false,
-				);
-				expect(result).toContain("Found 2 matching files");
-			});
-
-			it("should format Glob result", () => {
-				const result = formatter.formatToolResult(
-					"Glob",
-					{ pattern: "**/*.ts" },
-					"file1.ts\nfile2.ts\nfile3.ts",
-					false,
-				);
-				expect(result).toContain("Found 3 matching files");
-			});
-
-			it("should format Task result", () => {
-				const result = formatter.formatToolResult(
-					"Task",
-					{ description: "Search task" },
-					"Task output",
-					false,
-				);
-				expect(result).toBe("Task output");
-			});
-
-			it("should format multiline Task result", () => {
-				const result = formatter.formatToolResult(
-					"Task",
-					{ description: "Search task" },
-					"Line 1\nLine 2\nLine 3",
-					false,
-				);
-				expect(result).toContain("```");
 			});
 		});
 

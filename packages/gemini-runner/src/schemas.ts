@@ -221,6 +221,33 @@ export type WriteTodosParameters = z.infer<typeof WriteTodosParametersSchema>;
 export type ReplaceParameters = z.infer<typeof ReplaceParametersSchema>;
 export type GeminiToolParameters = z.infer<typeof GeminiToolParametersSchema>;
 
+/**
+ * Type for tool input parameters used by GeminiMessageFormatter
+ *
+ * This is a permissive type that allows accessing any property while still
+ * being more explicit than `any`. It represents the union of:
+ * - Known Gemini CLI tool parameters (read_file, write_file, etc.)
+ * - Unknown tool parameters from MCP or future tools
+ *
+ * We use Record<string, unknown> instead of a discriminated union because:
+ * 1. The formatter uses switch on toolName (string), not on input structure
+ * 2. Properties are accessed dynamically based on the tool type
+ * 3. TypeScript can't narrow Record types based on external string values
+ *
+ * Known properties that may exist (based on Gemini tools):
+ * - file_path: string (read_file, write_file, replace)
+ * - content: string (write_file)
+ * - dir_path: string (list_directory)
+ * - pattern: string (search_file_content)
+ * - command: string (run_shell_command)
+ * - description: string (run_shell_command, todos)
+ * - todos: Array<{description, status}> (write_todos)
+ * - instruction: string (replace)
+ * - old_string: string (replace)
+ * - new_string: string (replace)
+ */
+export type FormatterToolInput = Record<string, unknown>;
+
 // ============================================================================
 // Typed Tool Use Event Schemas (for specific tools)
 // ============================================================================

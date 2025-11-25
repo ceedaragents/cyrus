@@ -5,17 +5,41 @@
  * This formatter understands Gemini's specific tool format and converts
  * tool use/result messages into human-readable content for Linear.
  *
- * Gemini CLI tool names differ from Claude's:
- * - read_file (Claude: Read)
- * - write_file (Claude: Write)
- * - list_directory (Claude: Glob/ls)
- * - search_file_content (Claude: Grep)
- * - run_shell_command (Claude: Bash)
- * - write_todos (Claude: TodoWrite)
- * - replace (Claude: Edit)
+ * Gemini CLI tool names:
+ * - read_file: Read file contents
+ * - write_file: Write content to a file
+ * - list_directory: List directory contents
+ * - search_file_content: Search for patterns in files
+ * - run_shell_command: Execute shell commands
+ * - write_todos: Update task list
+ * - replace: Edit/replace content in files
  */
 
 import type { IMessageFormatter } from "cyrus-core";
+import type { FormatterToolInput } from "./schemas.js";
+
+/**
+ * Helper to safely get a string property from tool input
+ */
+function getString(input: FormatterToolInput, key: string): string | undefined {
+	const value = input[key];
+	return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Helper to safely get a number property from tool input
+ */
+function getNumber(input: FormatterToolInput, key: string): number | undefined {
+	const value = input[key];
+	return typeof value === "number" ? value : undefined;
+}
+
+/**
+ * Helper to check if a property exists and is truthy
+ */
+function hasProperty(input: FormatterToolInput, key: string): boolean {
+	return key in input && input[key] !== undefined && input[key] !== null;
+}
 
 export class GeminiMessageFormatter implements IMessageFormatter {
 	/**
@@ -71,7 +95,7 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 	 * Format tool input for display in Linear agent activities
 	 * Converts raw tool inputs into user-friendly parameter strings
 	 */
-	formatToolParameter(toolName: string, toolInput: any): string {
+	formatToolParameter(toolName: string, toolInput: FormatterToolInput): string {
 		// If input is already a string, return it
 		if (typeof toolInput === "string") {
 			return toolInput;
@@ -82,162 +106,83 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 				// Gemini tool names
 				case "run_shell_command": {
 					// Show command only
-					return toolInput.command || JSON.stringify(toolInput);
+					const command = getString(toolInput, "command");
+					return command || JSON.stringify(toolInput);
 				}
 
-				case "read_file":
-					if (toolInput.file_path) {
-						let param = toolInput.file_path;
-						if (
-							toolInput.offset !== undefined ||
-							toolInput.limit !== undefined
-						) {
-							const start = toolInput.offset || 0;
-							const end = toolInput.limit ? start + toolInput.limit : "end";
+				case "read_file": {
+					const filePath = getString(toolInput, "file_path");
+					if (filePath) {
+						let param = filePath;
+						const offset = getNumber(toolInput, "offset");
+						const limit = getNumber(toolInput, "limit");
+						if (offset !== undefined || limit !== undefined) {
+							const start = offset || 0;
+							const end = limit ? start + limit : "end";
 							param += ` (lines ${start + 1}-${end})`;
 						}
 						return param;
 					}
 					break;
+				}
 
-				case "write_file":
-					if (toolInput.file_path) {
-						return toolInput.file_path;
+				case "write_file": {
+					const filePath = getString(toolInput, "file_path");
+					if (filePath) {
+						return filePath;
 					}
 					break;
+				}
 
-				case "replace":
+				case "replace": {
 					// Gemini's replace tool has instruction and file_path
-					if (toolInput.file_path) {
-						let param = toolInput.file_path;
-						if (toolInput.instruction) {
-							param += ` - ${toolInput.instruction.substring(0, 50)}${toolInput.instruction.length > 50 ? "..." : ""}`;
+					const filePath = getString(toolInput, "file_path");
+					if (filePath) {
+						let param = filePath;
+						const instruction = getString(toolInput, "instruction");
+						if (instruction) {
+							param += ` - ${instruction.substring(0, 50)}${instruction.length > 50 ? "..." : ""}`;
 						}
 						return param;
 					}
 					break;
+				}
 
-				case "search_file_content":
-					if (toolInput.pattern) {
-						let param = `Pattern: \`${toolInput.pattern}\``;
-						if (toolInput.path) {
-							param += ` in ${toolInput.path}`;
+				case "search_file_content": {
+					const pattern = getString(toolInput, "pattern");
+					if (pattern) {
+						let param = `Pattern: \`${pattern}\``;
+						const path = getString(toolInput, "path");
+						if (path) {
+							param += ` in ${path}`;
 						}
-						if (toolInput.glob) {
-							param += ` (${toolInput.glob})`;
+						const glob = getString(toolInput, "glob");
+						if (glob) {
+							param += ` (${glob})`;
 						}
 						return param;
 					}
 					break;
+				}
 
-				case "list_directory":
-					if (toolInput.dir_path) {
-						return toolInput.dir_path;
+				case "list_directory": {
+					const dirPath = getString(toolInput, "dir_path");
+					if (dirPath) {
+						return dirPath;
 					}
-					if (toolInput.path) {
-						return toolInput.path;
+					const path = getString(toolInput, "path");
+					if (path) {
+						return path;
 					}
 					return ".";
-
-				case "write_todos":
-					if (toolInput.todos && Array.isArray(toolInput.todos)) {
-						return this.formatTodoWriteParameter(JSON.stringify(toolInput));
-					}
-					break;
-
-				// Claude-style tool names (for backward compatibility)
-				case "Bash":
-				case "\u21AA Bash": {
-					return toolInput.command || JSON.stringify(toolInput);
 				}
 
-				case "Read":
-				case "\u21AA Read":
-					if (toolInput.file_path) {
-						let param = toolInput.file_path;
-						if (
-							toolInput.offset !== undefined ||
-							toolInput.limit !== undefined
-						) {
-							const start = toolInput.offset || 0;
-							const end = toolInput.limit ? start + toolInput.limit : "end";
-							param += ` (lines ${start + 1}-${end})`;
-						}
-						return param;
-					}
-					break;
-
-				case "Edit":
-				case "\u21AA Edit":
-					if (toolInput.file_path) {
-						return toolInput.file_path;
-					}
-					break;
-
-				case "Write":
-				case "\u21AA Write":
-					if (toolInput.file_path) {
-						return toolInput.file_path;
-					}
-					break;
-
-				case "Grep":
-				case "\u21AA Grep":
-					if (toolInput.pattern) {
-						let param = `Pattern: \`${toolInput.pattern}\``;
-						if (toolInput.path) {
-							param += ` in ${toolInput.path}`;
-						}
-						if (toolInput.glob) {
-							param += ` (${toolInput.glob})`;
-						}
-						if (toolInput.type) {
-							param += ` [${toolInput.type} files]`;
-						}
-						return param;
-					}
-					break;
-
-				case "Glob":
-				case "\u21AA Glob":
-					if (toolInput.pattern) {
-						let param = `Pattern: \`${toolInput.pattern}\``;
-						if (toolInput.path) {
-							param += ` in ${toolInput.path}`;
-						}
-						return param;
-					}
-					break;
-
-				case "Task":
-				case "\u21AA Task":
-					if (toolInput.description) {
-						return toolInput.description;
-					}
-					break;
-
-				case "WebFetch":
-				case "\u21AA WebFetch":
-					if (toolInput.url) {
-						return toolInput.url;
-					}
-					break;
-
-				case "WebSearch":
-				case "\u21AA WebSearch":
-					if (toolInput.query) {
-						return `Query: ${toolInput.query}`;
-					}
-					break;
-
-				case "NotebookEdit":
-				case "\u21AA NotebookEdit":
-					if (toolInput.notebook_path) {
-						let param = toolInput.notebook_path;
-						if (toolInput.cell_id) {
-							param += ` (cell ${toolInput.cell_id})`;
-						}
-						return param;
+				case "write_todos":
+					if (
+						hasProperty(toolInput, "todos") &&
+						Array.isArray(toolInput.todos)
+					) {
+						return this.formatTodoWriteParameter(JSON.stringify(toolInput));
 					}
 					break;
 
@@ -255,8 +200,9 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 							"file",
 						];
 						for (const field of meaningfulFields) {
-							if (toolInput[field]) {
-								return `${field}: ${toolInput[field]}`;
+							const value = getString(toolInput, field);
+							if (value) {
+								return `${field}: ${value}`;
 							}
 						}
 					}
@@ -280,33 +226,15 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 	 */
 	formatToolActionName(
 		toolName: string,
-		toolInput: any,
+		toolInput: FormatterToolInput,
 		isError: boolean,
 	): string {
 		// Handle run_shell_command tool with description
 		if (toolName === "run_shell_command") {
-			// Check if toolInput has a description field
-			if (
-				toolInput &&
-				typeof toolInput === "object" &&
-				"description" in toolInput &&
-				toolInput.description
-			) {
+			const description = getString(toolInput, "description");
+			if (description) {
 				const baseName = isError ? `${toolName} (Error)` : toolName;
-				return `${baseName} (${toolInput.description})`;
-			}
-		}
-
-		// Handle Bash tool (Claude-style) with description
-		if (toolName === "Bash" || toolName === "\u21AA Bash") {
-			if (
-				toolInput &&
-				typeof toolInput === "object" &&
-				"description" in toolInput &&
-				toolInput.description
-			) {
-				const baseName = isError ? `${toolName} (Error)` : toolName;
-				return `${baseName} (${toolInput.description})`;
+				return `${baseName} (${description})`;
 			}
 		}
 
@@ -320,7 +248,7 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 	 */
 	formatToolResult(
 		toolName: string,
-		toolInput: any,
+		toolInput: FormatterToolInput,
 		result: string,
 		isError: boolean,
 	): string {
@@ -334,8 +262,10 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 				// Gemini tool names
 				case "run_shell_command": {
 					let formatted = "";
-					if (toolInput.command && !toolInput.description) {
-						formatted += `\`\`\`bash\n${toolInput.command}\n\`\`\`\n\n`;
+					const command = getString(toolInput, "command");
+					const description = getString(toolInput, "description");
+					if (command && !description) {
+						formatted += `\`\`\`bash\n${command}\n\`\`\`\n\n`;
 					}
 					if (result?.trim()) {
 						formatted += `\`\`\`\n${result}\n\`\`\``;
@@ -345,7 +275,7 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 					return formatted;
 				}
 
-				case "read_file":
+				case "read_file": {
 					if (result?.trim()) {
 						// Clean up the result: remove line numbers and system-reminder tags
 						let cleanedResult = result;
@@ -366,8 +296,9 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 
 						// Try to detect language from file extension
 						let lang = "";
-						if (toolInput.file_path) {
-							const ext = toolInput.file_path.split(".").pop()?.toLowerCase();
+						const filePath = getString(toolInput, "file_path");
+						if (filePath) {
+							const ext = filePath.split(".").pop()?.toLowerCase();
 							const langMap: Record<string, string> = {
 								ts: "typescript",
 								tsx: "typescript",
@@ -403,6 +334,7 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 						return `\`\`\`${lang}\n${cleanedResult}\n\`\`\``;
 					}
 					return "*Empty file*";
+				}
 
 				case "write_file":
 					if (result?.trim()) {
@@ -412,10 +344,12 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 
 				case "replace": {
 					// For replace/edit, show the instruction if available
-					if (toolInput.old_string && toolInput.new_string) {
+					const oldString = getString(toolInput, "old_string");
+					const newString = getString(toolInput, "new_string");
+					if (oldString && newString) {
 						// Format as a unified diff
-						const oldLines = toolInput.old_string.split("\n");
-						const newLines = toolInput.new_string.split("\n");
+						const oldLines = oldString.split("\n");
+						const newLines = newString.split("\n");
 
 						let diff = "```diff\n";
 
@@ -430,8 +364,9 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 						return diff;
 					}
 
-					if (toolInput.instruction) {
-						return `*${toolInput.instruction}*\n\n${result || "Edit completed"}`;
+					const instruction = getString(toolInput, "instruction");
+					if (instruction) {
+						return `*${instruction}*\n\n${result || "Edit completed"}`;
 					}
 
 					if (result?.trim()) {
@@ -469,147 +404,6 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 						return result;
 					}
 					return "*Todos updated*";
-
-				// Claude-style tool names (for backward compatibility)
-				case "Bash":
-				case "\u21AA Bash": {
-					let formatted = "";
-					if (toolInput.command && !toolInput.description) {
-						formatted += `\`\`\`bash\n${toolInput.command}\n\`\`\`\n\n`;
-					}
-					if (result?.trim()) {
-						formatted += `\`\`\`\n${result}\n\`\`\``;
-					} else {
-						formatted += "*No output*";
-					}
-					return formatted;
-				}
-
-				case "Read":
-				case "\u21AA Read":
-					if (result?.trim()) {
-						let cleanedResult = result;
-						cleanedResult = cleanedResult.replace(/^\s*\d+\u2192/gm, "");
-						cleanedResult = cleanedResult.replace(
-							/<system-reminder>[\s\S]*?<\/system-reminder>/g,
-							"",
-						);
-						cleanedResult = cleanedResult
-							.replace(/^\n+/, "")
-							.replace(/\n+$/, "");
-
-						let lang = "";
-						if (toolInput.file_path) {
-							const ext = toolInput.file_path.split(".").pop()?.toLowerCase();
-							const langMap: Record<string, string> = {
-								ts: "typescript",
-								tsx: "typescript",
-								js: "javascript",
-								jsx: "javascript",
-								py: "python",
-								rb: "ruby",
-								go: "go",
-								rs: "rust",
-								java: "java",
-								c: "c",
-								cpp: "cpp",
-								cs: "csharp",
-								php: "php",
-								swift: "swift",
-								kt: "kotlin",
-								scala: "scala",
-								sh: "bash",
-								bash: "bash",
-								zsh: "bash",
-								yml: "yaml",
-								yaml: "yaml",
-								json: "json",
-								xml: "xml",
-								html: "html",
-								css: "css",
-								scss: "scss",
-								md: "markdown",
-								sql: "sql",
-							};
-							lang = langMap[ext || ""] || "";
-						}
-						return `\`\`\`${lang}\n${cleanedResult}\n\`\`\``;
-					}
-					return "*Empty file*";
-
-				case "Edit":
-				case "\u21AA Edit": {
-					if (toolInput.old_string && toolInput.new_string) {
-						const oldLines = toolInput.old_string.split("\n");
-						const newLines = toolInput.new_string.split("\n");
-
-						let diff = "```diff\n";
-
-						for (const line of oldLines) {
-							diff += `-${line}\n`;
-						}
-						for (const line of newLines) {
-							diff += `+${line}\n`;
-						}
-
-						diff += "```";
-						return diff;
-					}
-
-					if (result?.trim()) {
-						return result;
-					}
-					return "*Edit completed*";
-				}
-
-				case "Write":
-				case "\u21AA Write":
-					if (result?.trim()) {
-						return result;
-					}
-					return "*File written successfully*";
-
-				case "Grep":
-				case "\u21AA Grep": {
-					if (result?.trim()) {
-						const lines = result.split("\n");
-						if (
-							lines.length > 0 &&
-							lines[0] &&
-							!lines[0].includes(":") &&
-							lines[0].trim().length > 0
-						) {
-							return `Found ${lines.filter((l) => l.trim()).length} matching files:\n\`\`\`\n${result}\n\`\`\``;
-						}
-						return `\`\`\`\n${result}\n\`\`\``;
-					}
-					return "*No matches found*";
-				}
-
-				case "Glob":
-				case "\u21AA Glob": {
-					if (result?.trim()) {
-						const lines = result.split("\n").filter((l) => l.trim());
-						return `Found ${lines.length} matching files:\n\`\`\`\n${result}\n\`\`\``;
-					}
-					return "*No files found*";
-				}
-
-				case "Task":
-				case "\u21AA Task":
-					if (result?.trim()) {
-						if (result.includes("\n")) {
-							return `\`\`\`\n${result}\n\`\`\``;
-						}
-						return result;
-					}
-					return "*Task completed*";
-
-				case "WebFetch":
-				case "\u21AA WebFetch":
-				case "WebSearch":
-				case "\u21AA WebSearch":
-					return result || "*No results*";
 
 				default:
 					// For unknown tools, use code block if result has multiple lines
