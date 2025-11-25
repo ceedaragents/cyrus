@@ -129,9 +129,9 @@ export class EdgeWorker extends EventEmitter {
 		// Default to gemini runner for testing
 		this.procedureRouter = new ProcedureRouter({
 			cyrusHome: this.cyrusHome,
-			model: "gemini-2.5-flash-lite",
+			model: "haiku",
 			timeoutMs: 100000,
-			runnerType: "gemini", // Use Gemini by default
+			runnerType: "claude", // Use Gemini by default
 		});
 
 		// Initialize repository router with dependencies
@@ -2083,7 +2083,7 @@ export class EdgeWorker extends EventEmitter {
 		if (!labels || labels.length === 0) {
 			return {
 					runnerType: "claude",
-					modelOverride: "sonnet-4.5",
+					modelOverride: "sonnet",
 					fallbackModelOverride: "haiku",
 			};
 		}
@@ -2138,21 +2138,21 @@ export class EdgeWorker extends EventEmitter {
 		if (lowercaseLabels.includes("opus")) {
 			return {
 				runnerType: "claude",
-				modelOverride: "opus-4.5",
-				fallbackModelOverride: "sonnet-4.5",
+				modelOverride: "opus",
+				fallbackModelOverride: "sonnet",
 			};
 		}
 		if (lowercaseLabels.includes("sonnet")) {
 			return {
 				runnerType: "claude",
-				modelOverride: "sonnet-4.5",
+				modelOverride: "sonnet",
 				fallbackModelOverride: "haiku",
 			};
 		}
 		// Default to claude if no runner labels found
 		return {
 				runnerType: "claude",
-				modelOverride: "sonnet-4.5",
+				modelOverride: "sonne",
 				fallbackModelOverride: "haiku",
 		};
 	}
@@ -4193,7 +4193,7 @@ ${input.userComment}
 		// If the labels have changed, and we are resuming a session. Use the existing runner for the session.
 		if (session.claudeSessionId && runnerType !== "claude") {
 			runnerType = "claude";
-			modelOverride = "sonnet-4.5";
+			modelOverride = "sonne";
 			fallbackModelOverride = "haiku";
 		} else if (session.geminiSessionId && runnerType !== "gemini") {
 			runnerType = "gemini";
