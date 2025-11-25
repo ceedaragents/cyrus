@@ -91,21 +91,21 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 		// Mock child session manager
 		mockChildAgentSessionManager = {
-			hasClaudeRunner: vi.fn().mockReturnValue(true),
+			hasAgentRunner: vi.fn().mockReturnValue(true),
 			getSession: vi.fn().mockReturnValue({
 				issueId: "CHILD-456",
 				claudeSessionId: "child-claude-session-456",
 				workspace: { path: "/test/workspaces/CHILD-456" },
 				claudeRunner: mockClaudeRunner,
 			}),
-			getClaudeRunner: vi.fn().mockReturnValue(mockClaudeRunner),
+			getAgentRunner: vi.fn().mockReturnValue(mockClaudeRunner),
 			postRoutingThought: vi.fn().mockResolvedValue(undefined),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 		};
 
 		// Mock parent session manager (for different repository)
 		mockAgentSessionManager = {
-			hasClaudeRunner: vi.fn().mockReturnValue(false),
+			hasAgentRunner: vi.fn().mockReturnValue(false),
 			getSession: vi.fn().mockReturnValue(null),
 		};
 
@@ -196,10 +196,10 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			const feedbackMessage =
 				"Please revise your approach and focus on the error handling";
 
-			// Use the real implementation without mocking resumeClaudeSession
+			// Use the real implementation without mocking resumeAgentSession
 			// to test the actual fire-and-forget behavior
 			resumeClaudeSessionSpy = vi
-				.spyOn(edgeWorker as any, "resumeClaudeSession")
+				.spyOn(edgeWorker as any, "resumeAgentSession")
 				.mockImplementation(async () => {
 					// Simulate a long-running session
 					await mockClaudeRunner.startStreaming();
@@ -244,9 +244,9 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			const feedbackMessage = "Test feedback";
 			let sessionCompleted = false;
 
-			// Mock resumeClaudeSession to track when it completes
+			// Mock resumeAgentSession to track when it completes
 			resumeClaudeSessionSpy = vi
-				.spyOn(edgeWorker as any, "resumeClaudeSession")
+				.spyOn(edgeWorker as any, "resumeAgentSession")
 				.mockImplementation(async () => {
 					// Start a 2-second operation
 					await new Promise((resolve) => setTimeout(resolve, 2000));

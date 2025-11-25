@@ -125,13 +125,13 @@ export class EdgeWorker extends EventEmitter {
 			join(this.cyrusHome, "state"),
 		);
 
-		// Initialize procedure router with gemini-2.5-flash-lite for fast classification
-		// Default to gemini runner for testing
+		// Initialize procedure router with haiku for fast classification
+		// Default to claude runner
 		this.procedureRouter = new ProcedureRouter({
 			cyrusHome: this.cyrusHome,
-			model: "gemini-2.5-flash-lite",
-			timeoutMs: 10000,
-			runnerType: "gemini", // Use Gemini by default
+			model: "haiku",
+			timeoutMs: 100000,
+			runnerType: "claude", // Use Claude by default
 		});
 
 		// Initialize repository router with dependencies
@@ -239,6 +239,7 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
+					// resumeNextSubroutine
 					async (linearAgentActivitySessionId: string) => {
 						console.log(
 							`[Subroutine Transition] Advancing to next subroutine for session ${linearAgentActivitySessionId}`,
@@ -291,7 +292,7 @@ export class EdgeWorker extends EventEmitter {
 
 						// Resume Claude session with subroutine prompt
 						try {
-							await this.resumeClaudeSession(
+							await this.resumeAgentSession(
 								session,
 								repo,
 								linearAgentActivitySessionId,
@@ -1135,7 +1136,10 @@ export class EdgeWorker extends EventEmitter {
 		await mkdir(attachmentsDir, { recursive: true });
 
 		// Build allowed directories list - always include attachments directory
-		const allowedDirectories: string[] = [attachmentsDir];
+		const allowedDirectories: string[] = [
+			attachmentsDir,
+			repository.repositoryPath,
+		];
 
 		console.log(
 			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
@@ -1503,7 +1507,8 @@ export class EdgeWorker extends EventEmitter {
 				this.procedureRouter.getCurrentSubroutine(session);
 
 			// Create agent runner with system prompt from assembly
-			const runnerConfig = this.buildAgentRunnerConfig(
+			// buildAgentRunnerConfig now determines runner type from labels internally
+			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 				session,
 				repository,
 				linearAgentActivitySessionId,
@@ -1512,11 +1517,19 @@ export class EdgeWorker extends EventEmitter {
 				allowedDirectories,
 				disallowedTools,
 				undefined, // resumeSessionId
-				labels, // Pass labels for model override
+				labels, // Pass labels for runner selection and model override
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 			);
-			const runner = new GeminiRunner(runnerConfig);
+
+			console.log(
+				`[EdgeWorker] Label-based runner selection for new session: ${runnerType} (session ${linearAgentActivitySessionId})`,
+			);
+
+			const runner =
+				runnerType === "claude"
+					? new ClaudeRunner(runnerConfig)
+					: new GeminiRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -1550,7 +1563,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			console.log(`[EdgeWorker] Starting Claude streaming session`);
-			const sessionInfo = await runner.startStreaming(assembly.userPrompt);
+			const sessionInfo = await runner.start(assembly.userPrompt);
 			console.log(
 				`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`,
 			);
@@ -2050,6 +2063,98 @@ export class EdgeWorker extends EventEmitter {
 			);
 			return [];
 		}
+	}
+
+	/**
+	 * Determine runner type and model from issue labels.
+	 * Returns the runner type ("claude" or "gemini"), optional model override, and fallback model.
+	 *
+	 * Label priority (case-insensitive):
+	 * - Gemini labels: gemini, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-pro, gemini-3-pro-preview
+	 * - Claude labels: claude, sonnet, opus
+	 *
+	 * If no runner label is found, defaults to claude.
+	 */
+	private determineRunnerFromLabels(labels: string[]): {
+		runnerType: "claude" | "gemini";
+		modelOverride?: string;
+		fallbackModelOverride?: string;
+	} {
+		if (!labels || labels.length === 0) {
+			return {
+				runnerType: "claude",
+				modelOverride: "sonnet",
+				fallbackModelOverride: "haiku",
+			};
+		}
+
+		const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
+		// Check for Gemini labels first
+		if (
+			lowercaseLabels.includes("gemini-2.5-pro") ||
+			lowercaseLabels.includes("gemini-2.5")
+		) {
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-2.5-pro",
+				fallbackModelOverride: "gemini-2.5-flash",
+			};
+		}
+		if (lowercaseLabels.includes("gemini-2.5-flash")) {
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-2.5-flash",
+				fallbackModelOverride: "gemini-2.5-flash-lite",
+			};
+		}
+		if (lowercaseLabels.includes("gemini-2.5-flash-lite")) {
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-2.5-flash-lite",
+				fallbackModelOverride: "gemini-2.5-flash-lite",
+			};
+		}
+		if (
+			lowercaseLabels.includes("gemini-3") ||
+			lowercaseLabels.includes("gemini-3-pro") ||
+			lowercaseLabels.includes("gemini-3-pro-preview")
+		) {
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-3-pro-preview",
+				fallbackModelOverride: "gemini-2.5-pro",
+			};
+		}
+		if (lowercaseLabels.includes("gemini")) {
+			return {
+				runnerType: "gemini",
+				modelOverride: "gemini-2.5-pro",
+				fallbackModelOverride: "gemini-2.5-flash",
+			};
+		}
+
+		// Check for Claude labels
+		if (lowercaseLabels.includes("opus")) {
+			return {
+				runnerType: "claude",
+				modelOverride: "opus",
+				fallbackModelOverride: "sonnet",
+			};
+		}
+		if (lowercaseLabels.includes("sonnet")) {
+			return {
+				runnerType: "claude",
+				modelOverride: "sonnet",
+				fallbackModelOverride: "haiku",
+			};
+		}
+		// Default to claude if no runner labels found
+		return {
+			runnerType: "claude",
+			modelOverride: "sonnet",
+			fallbackModelOverride: "haiku",
+		};
 	}
 
 	/**
@@ -4039,7 +4144,9 @@ ${input.userComment}
 	}
 
 	/**
-	 * Build agent runner configuration with common settings
+	 * Build agent runner configuration with common settings.
+	 * Also determines which runner type to use based on labels.
+	 * @returns Object containing the runner config and runner type to use
 	 */
 	private buildAgentRunnerConfig(
 		session: CyrusAgentSession,
@@ -4053,7 +4160,7 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
-	): AgentRunnerConfig {
+	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
@@ -4077,56 +4184,36 @@ ${input.userComment}
 			],
 		};
 
-		// Check for model override labels (case-insensitive)
-		let modelOverride: string | undefined;
-		let fallbackModelOverride: string | undefined;
+		// Determine runner type and model override from labels
+		const runnerSelection = this.determineRunnerFromLabels(labels || []);
+		let runnerType = runnerSelection.runnerType;
+		let modelOverride = runnerSelection.modelOverride;
+		let fallbackModelOverride = runnerSelection.fallbackModelOverride;
 
-		if (labels && labels.length > 0) {
-			const lowercaseLabels = labels.map((label) => label.toLowerCase());
+		// If the labels have changed, and we are resuming a session. Use the existing runner for the session.
+		if (session.claudeSessionId && runnerType !== "claude") {
+			runnerType = "claude";
+			modelOverride = "sonnet";
+			fallbackModelOverride = "haiku";
+		} else if (session.geminiSessionId && runnerType !== "gemini") {
+			runnerType = "gemini";
+			modelOverride = "gemini-2.5-pro";
+			fallbackModelOverride = "gemini-2.5-flash";
+		}
 
-			// Check for model override labels: opus, sonnet, haiku
-			if (lowercaseLabels.includes("opus")) {
-				modelOverride = "opus";
-				console.log(
-					`[EdgeWorker] Model override via label: opus (for session ${linearAgentActivitySessionId})`,
-				);
-			} else if (lowercaseLabels.includes("sonnet")) {
-				modelOverride = "sonnet";
-				console.log(
-					`[EdgeWorker] Model override via label: sonnet (for session ${linearAgentActivitySessionId})`,
-				);
-			} else if (lowercaseLabels.includes("haiku")) {
-				modelOverride = "haiku";
-				console.log(
-					`[EdgeWorker] Model override via label: haiku (for session ${linearAgentActivitySessionId})`,
-				);
-			}
-
-			// If a model override is found, also set a reasonable fallback
-			if (modelOverride) {
-				// Set fallback to the next lower tier: opus->sonnet, sonnet->haiku, haiku->sonnet
-				if (modelOverride === "opus") {
-					fallbackModelOverride = "sonnet";
-				} else if (modelOverride === "sonnet") {
-					fallbackModelOverride = "haiku";
-				} else {
-					fallbackModelOverride = "sonnet"; // haiku falls back to sonnet since same model retry doesn't help
-				}
-			}
+		// Log model override if found
+		if (modelOverride) {
+			console.log(
+				`[EdgeWorker] Model override via label: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
+			);
 		}
 
 		// Convert singleTurn flag to effective maxTurns value
 		const effectiveMaxTurns = singleTurn ? 1 : maxTurns;
 
 		// Determine final model name with singleTurn suffix for Gemini
-		let finalModel =
+		const finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
-		if (singleTurn && finalModel?.includes("gemini")) {
-			finalModel = `${finalModel}-shortone`;
-			console.log(
-				`[EdgeWorker] Applied singleTurn model suffix: ${finalModel} (for session ${linearAgentActivitySessionId})`,
-			);
-		}
 
 		const config = {
 			workingDirectory: session.workspace.path,
@@ -4168,7 +4255,7 @@ ${input.userComment}
 			}
 		}
 
-		return config;
+		return { config, runnerType };
 	}
 
 	/**
@@ -4761,7 +4848,7 @@ ${input.userComment}
 			`[EdgeWorker] Resuming Claude session for ${linearAgentActivitySessionId} (${logContext})`,
 		);
 
-		await this.resumeClaudeSession(
+		await this.resumeAgentSession(
 			session,
 			repository,
 			linearAgentActivitySessionId,
@@ -4889,7 +4976,7 @@ ${input.userComment}
 	}
 
 	/**
-	 * Resume or create a Claude session with the given prompt
+	 * Resume or create an Agent session with the given prompt
 	 * This is the core logic for handling prompted agent activities
 	 * @param session The Cyrus agent session
 	 * @param repository The repository configuration
@@ -4899,7 +4986,7 @@ ${input.userComment}
 	 * @param attachmentManifest Optional attachment manifest
 	 * @param isNewSession Whether this is a new session
 	 */
-	async resumeClaudeSession(
+	async resumeAgentSession(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
 		linearAgentActivitySessionId: string,
@@ -4916,12 +5003,11 @@ ${input.userComment}
 		const existingRunner = session.agentRunner;
 
 		// If there's an existing running runner that supports streaming, add to it
-		if (existingRunner?.isRunning()) {
+		if (existingRunner?.isRunning() && session.claudeSessionId) {
 			let fullPrompt = promptBody;
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-
 			existingRunner.addStreamMessage(fullPrompt);
 			return;
 		}
@@ -4931,15 +5017,6 @@ ${input.userComment}
 			existingRunner.stop();
 		}
 
-		// Determine which runner to use based on existing session IDs
-		// If we have a claudeSessionId, use Claude; if geminiSessionId, use Gemini
-		// For new sessions, default to Gemini (current default)
-		const hasClaudeSession = !isNewSession && session.claudeSessionId;
-		const hasGeminiSession = !isNewSession && session.geminiSessionId;
-		const useClaudeRunner = hasClaudeSession && !hasGeminiSession;
-		const needsNewSession =
-			isNewSession || (!hasClaudeSession && !hasGeminiSession);
-
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
 			session.issueId,
@@ -4947,15 +5024,23 @@ ${input.userComment}
 		);
 		if (!fullIssue) {
 			console.error(
-				`[resumeClaudeSession] Failed to fetch full issue details for ${session.issueId}`,
+				`[resumeAgentSession] Failed to fetch full issue details for ${session.issueId}`,
 			);
 			throw new Error(
 				`Failed to fetch full issue details for ${session.issueId}`,
 			);
 		}
 
-		// Fetch issue labels and determine system prompt
+		// Fetch issue labels early to determine runner type
 		const labels = await this.fetchIssueLabels(fullIssue);
+
+		// Determine which runner to use based on existing session IDs
+		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
+		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
+		const needsNewSession =
+			isNewSession || (!hasClaudeSession && !hasGeminiSession);
+
+		// Fetch system prompt based on labels
 
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labels,
@@ -4989,6 +5074,7 @@ ${input.userComment}
 
 		const allowedDirectories = [
 			attachmentsDir,
+			repository.repositoryPath,
 			...additionalAllowedDirectories,
 		];
 
@@ -4996,15 +5082,16 @@ ${input.userComment}
 		const currentSubroutine =
 			this.procedureRouter.getCurrentSubroutine(session);
 
-		// Create runner configuration
-		// Use the appropriate session ID based on which runner we're using
 		const resumeSessionId = needsNewSession
 			? undefined
-			: useClaudeRunner
+			: session.claudeSessionId
 				? session.claudeSessionId
 				: session.geminiSessionId;
 
-		const runnerConfig = this.buildAgentRunnerConfig(
+		// Create runner configuration
+		// buildAgentRunnerConfig determines runner type from labels for new sessions
+		// For existing sessions, we still need labels for model override but ignore runner type
+		const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 			session,
 			repository,
 			linearAgentActivitySessionId,
@@ -5013,15 +5100,16 @@ ${input.userComment}
 			allowedDirectories,
 			disallowedTools,
 			resumeSessionId,
-			labels, // Pass labels for model override
+			labels, // Always pass labels to preserve model override
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 		);
 
 		// Create the appropriate runner based on session state
-		const runner = useClaudeRunner
-			? new ClaudeRunner(runnerConfig)
-			: new GeminiRunner(runnerConfig);
+		const runner =
+			runnerType === "claude"
+				? new ClaudeRunner(runnerConfig)
+				: new GeminiRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -5043,10 +5131,10 @@ ${input.userComment}
 
 		// Start streaming session
 		try {
-			await runner.startStreaming(fullPrompt);
+			await runner.start(fullPrompt);
 		} catch (error) {
 			console.error(
-				`[resumeClaudeSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
+				`[resumeAgentSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
 				error,
 			);
 			throw error;

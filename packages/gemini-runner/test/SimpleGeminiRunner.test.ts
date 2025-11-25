@@ -163,10 +163,7 @@ describe("SimpleGeminiRunner", () => {
 					type: "assistant",
 					message: {
 						role: "assistant",
-						content: [
-							{ type: "text", text: "Analyzing..." },
-							{ type: "text", text: "approve" },
-						],
+						content: [{ type: "text", text: "Analyzing...\napprove" }],
 					},
 					session_id: "test",
 				} as SDKAssistantMessage,
@@ -180,7 +177,11 @@ describe("SimpleGeminiRunner", () => {
 		});
 
 		it("should clean markdown code blocks from response", async () => {
-			mockRunner._messages = [createAssistantMessage("```\napprove\n```")];
+			mockRunner._messages = [
+				createAssistantMessage(
+					"Here is my response:\n```\nsome code\n```\napprove",
+				),
+			];
 
 			const result = await runner.query("Test");
 
@@ -238,7 +239,9 @@ describe("SimpleGeminiRunner", () => {
 		it("should throw InvalidResponseError for invalid response", async () => {
 			mockRunner._messages = [createAssistantMessage("invalid")];
 
-			await expect(runner.query("Test")).rejects.toThrow("Invalid response");
+			await expect(runner.query("Test")).rejects.toThrow(
+				"Agent returned invalid response",
+			);
 		});
 
 		it("should throw InvalidResponseError for empty response", async () => {
@@ -251,7 +254,9 @@ describe("SimpleGeminiRunner", () => {
 			mockRunner._messages = [createAssistantMessage("APPROVE")];
 
 			// Should throw because "APPROVE" !== "approve"
-			await expect(runner.query("Test")).rejects.toThrow("Invalid response");
+			await expect(runner.query("Test")).rejects.toThrow(
+				"Agent returned invalid response",
+			);
 		});
 	});
 
@@ -278,12 +283,12 @@ describe("SimpleGeminiRunner", () => {
 
 			await runner.query("Test");
 
-			// Verify GeminiRunner was constructed with correct config including system prompt
+			// Verify GeminiRunner was constructed with correct config including appended system prompt
 			const constructorCall = MockedGeminiRunner.mock.calls[0];
 			const config = constructorCall[0];
 
-			expect(config.systemPrompt).toContain("approve");
-			expect(config.systemPrompt).toContain("reject");
+			expect(config.appendSystemPrompt).toContain("approve");
+			expect(config.appendSystemPrompt).toContain("reject");
 		});
 
 		it("should include custom system prompt in final prompt", async () => {
@@ -301,9 +306,11 @@ describe("SimpleGeminiRunner", () => {
 				MockedGeminiRunner.mock.calls[MockedGeminiRunner.mock.calls.length - 1];
 			const config = constructorCall[0];
 
-			expect(config.systemPrompt).toContain("You are a review assistant.");
-			expect(config.systemPrompt).toContain("approve");
-			expect(config.systemPrompt).toContain("reject");
+			expect(config.appendSystemPrompt).toContain(
+				"You are a review assistant.",
+			);
+			expect(config.appendSystemPrompt).toContain("approve");
+			expect(config.appendSystemPrompt).toContain("reject");
 		});
 	});
 
@@ -344,9 +351,7 @@ describe("SimpleGeminiRunner", () => {
 				createAssistantMessage("approve"),
 				{
 					type: "result",
-					result: {
-						total_cost_usd: 0.0042,
-					},
+					total_cost_usd: 0.0042,
 					session_id: "test",
 				} as any,
 			];
@@ -355,7 +360,7 @@ describe("SimpleGeminiRunner", () => {
 
 			const result = await runner.query("Test");
 
-			expect(result.costUsd).toBe(0.0042);
+			expect(result.costUSD).toBe(0.0042);
 		});
 
 		it("should return undefined cost when no result message", async () => {
@@ -363,7 +368,7 @@ describe("SimpleGeminiRunner", () => {
 
 			const result = await runner.query("Test");
 
-			expect(result.costUsd).toBeUndefined();
+			expect(result.costUSD).toBeUndefined();
 		});
 
 		it("should return undefined cost when result has no cost", async () => {
@@ -371,7 +376,6 @@ describe("SimpleGeminiRunner", () => {
 				createAssistantMessage("approve"),
 				{
 					type: "result",
-					result: {},
 					session_id: "test",
 				} as any,
 			];
@@ -380,7 +384,7 @@ describe("SimpleGeminiRunner", () => {
 
 			const result = await runner.query("Test");
 
-			expect(result.costUsd).toBeUndefined();
+			expect(result.costUSD).toBeUndefined();
 		});
 	});
 
@@ -476,7 +480,7 @@ describe("SimpleGeminiRunner", () => {
 				expect.fail("Should have thrown");
 			} catch (error: any) {
 				expect(error.name).toBe("InvalidResponseError");
-				expect(error.message).toContain("Invalid response");
+				expect(error.message).toContain("Agent returned invalid response");
 			}
 		});
 

@@ -6,8 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Gemini result messages now include the actual final assistant response content instead of generic "Session completed successfully" message
+- Runner selection is now based on issue labels - attach labels like `gemini`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-3-pro`, `claude`, `sonnet`, or `opus` to control which AI model processes your issue (defaults to Claude if no runner label is present) (CYPACK-425, https://github.com/ceedaragents/cyrus/pull/555)
 
 ### Fixed
+- Merged CYPACK-419 (Gemini system prompt refactoring) into CYPACK-425 and updated all test mocks to use new AgentRunner interface methods
 - Fixed runner type consistency between request routing and main issue processing - both now default to Gemini (CYPACK-418)
 - Made ProcedureRouter runner-agnostic by supporting both Claude and Gemini simple runners via configuration
 - Fixed GeminiRunner compatibility error by replacing Claude-specific `isStreaming()` calls with common `isRunning()` method (CYPACK-418)

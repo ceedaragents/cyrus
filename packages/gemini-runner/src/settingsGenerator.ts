@@ -26,7 +26,7 @@ function generateSettings(maxSessionTurns: number): object {
 			previewFeatures: true,
 		},
 		model: {
-			maxSessionTurns,
+			maxSessionTurns: maxSessionTurns,
 		},
 	};
 }
@@ -94,9 +94,8 @@ export function writeGeminiSettings(maxSessionTurns: number): void {
  * Setup Gemini settings for a session based on singleTurn mode
  * Returns cleanup function to call when session ends
  */
-export function setupGeminiSettings(singleTurn: boolean): () => void {
+export function setupGeminiSettings(maxSessionTurns: number): () => void {
 	const hadBackup = backupGeminiSettings();
-	const maxSessionTurns = singleTurn ? 1 : -1;
 
 	// Write settings with appropriate maxSessionTurns
 	writeGeminiSettings(maxSessionTurns);
