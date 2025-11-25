@@ -107,6 +107,10 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 
 		// Mock ClaudeRunner to capture prompt
 		mockClaudeRunner = {
+			start: vi.fn().mockImplementation((prompt: string) => {
+				capturedPrompt = prompt;
+				return Promise.resolve({ sessionId: "claude-session-123" });
+			}),
 			startStreaming: vi.fn().mockImplementation((prompt: string) => {
 				capturedPrompt = prompt;
 				return Promise.resolve({ sessionId: "claude-session-123" });
@@ -129,8 +133,8 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 				workspace: { path: "/test/workspaces/TEST-123" },
 				claudeRunner: mockClaudeRunner,
 			}),
-			addClaudeRunner: vi.fn(),
-			getAllClaudeRunners: vi.fn().mockReturnValue([]),
+			addAgentRunner: vi.fn(),
+			getAllAgentRunners: vi.fn().mockReturnValue([]),
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
 			postRoutingThought: vi.fn().mockResolvedValue(null),

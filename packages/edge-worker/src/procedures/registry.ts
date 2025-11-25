@@ -22,7 +22,7 @@ export const SUBROUTINES = {
 		name: "get-approval",
 		promptPath: "subroutines/get-approval.md",
 		description: "Request user approval before proceeding",
-		maxTurns: 1,
+		singleTurn: true,
 		requiresApproval: true, // Flag to trigger approval workflow
 	},
 	debuggerFix: {
@@ -43,7 +43,7 @@ export const SUBROUTINES = {
 	conciseSummary: {
 		name: "concise-summary",
 		promptPath: "subroutines/concise-summary.md",
-		maxTurns: 1,
+		singleTurn: true,
 		description: "Brief summary for simple requests",
 		suppressThoughtPosting: true,
 		disallowedTools: ["mcp__linear__create_comment"],
@@ -51,7 +51,7 @@ export const SUBROUTINES = {
 	verboseSummary: {
 		name: "verbose-summary",
 		promptPath: "subroutines/verbose-summary.md",
-		maxTurns: 1,
+		singleTurn: true,
 		description: "Detailed summary with implementation details",
 		suppressThoughtPosting: true,
 		disallowedTools: ["mcp__linear__create_comment"],
@@ -64,7 +64,7 @@ export const SUBROUTINES = {
 	questionAnswer: {
 		name: "question-answer",
 		promptPath: "subroutines/question-answer.md",
-		maxTurns: 1,
+		singleTurn: true,
 		description: "Format final answer to user question",
 		suppressThoughtPosting: true,
 		disallowedTools: ["mcp__linear__create_comment"],
@@ -83,7 +83,7 @@ export const SUBROUTINES = {
 	planSummary: {
 		name: "plan-summary",
 		promptPath: "subroutines/plan-summary.md",
-		maxTurns: 1,
+		singleTurn: true,
 		description: "Present clarifying questions or implementation plan",
 		suppressThoughtPosting: true,
 		disallowedTools: ["mcp__linear__create_comment"],
