@@ -5082,6 +5082,12 @@ ${input.userComment}
 		const currentSubroutine =
 			this.procedureRouter.getCurrentSubroutine(session);
 
+		const resumeSessionId = needsNewSession
+			? undefined
+			: session.claudeSessionId
+				? session.claudeSessionId
+				: session.geminiSessionId;
+
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
 		// For existing sessions, we still need labels for model override but ignore runner type
@@ -5093,28 +5099,14 @@ ${input.userComment}
 			allowedTools,
 			allowedDirectories,
 			disallowedTools,
-			undefined, // We'll set resumeSessionId below based on runner type
+			resumeSessionId,
 			labels, // Always pass labels to preserve model override
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 		);
 
-		// Determine which runner to use
-		const useClaudeRunner = runnerType === "claude";
-
-		// Set the resume session ID based on which runner we're using
-		const resumeSessionId = needsNewSession
-			? undefined
-			: useClaudeRunner
-				? session.claudeSessionId
-				: session.geminiSessionId;
-
-		if (resumeSessionId) {
-			(runnerConfig as any).resumeSessionId = resumeSessionId;
-		}
-
 		// Create the appropriate runner based on session state
-		const runner = useClaudeRunner
+		const runner = runnerType === "claude"
 			? new ClaudeRunner(runnerConfig)
 			: new GeminiRunner(runnerConfig);
 
