@@ -1,18 +1,21 @@
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { ClaudeRunner } from "cyrus-claude-runner";
-import { NoResponseError, SessionError } from "./errors.js";
-import { SimpleAgentRunner } from "./SimpleAgentRunner.js";
-import type { SimpleAgentQueryOptions } from "./types.js";
+import type { SDKMessage } from "cyrus-core";
+import {
+	NoResponseError,
+	SessionError,
+	type SimpleAgentQueryOptions,
+	SimpleAgentRunner,
+} from "cyrus-simple-agent-runner";
+import { GeminiRunner } from "./GeminiRunner.js";
 
 /**
- * Concrete implementation using ClaudeRunner from cyrus-claude-runner package.
+ * Concrete implementation using GeminiRunner from cyrus-gemini-runner package.
  *
- * This implementation uses the Claude Agent SDK to execute queries and
+ * This implementation uses the Gemini CLI to execute queries and
  * constrains the responses to an enumerated set.
  */
-export class SimpleClaudeRunner<T extends string> extends SimpleAgentRunner<T> {
+export class SimpleGeminiRunner<T extends string> extends SimpleAgentRunner<T> {
 	/**
-	 * Execute the agent using ClaudeRunner
+	 * Execute the agent using GeminiRunner
 	 */
 	protected async executeAgent(
 		prompt: string,
@@ -26,14 +29,14 @@ export class SimpleClaudeRunner<T extends string> extends SimpleAgentRunner<T> {
 			? `${options.context}\n\n${prompt}`
 			: prompt;
 
-		// Create ClaudeRunner with configuration
-		const runner = new ClaudeRunner({
+		// Create GeminiRunner with configuration
+		const runner = new GeminiRunner({
 			workingDirectory: this.config.workingDirectory,
 			cyrusHome: this.config.cyrusHome,
 			model: this.config.model,
 			fallbackModel: this.config.fallbackModel,
 			maxTurns: this.config.maxTurns,
-			systemPrompt: this.buildSystemPrompt(),
+			appendSystemPrompt: this.buildSystemPrompt(),
 			// Limit tools for simple queries
 			disallowedTools: options?.allowFileReading
 				? []
@@ -42,12 +45,12 @@ export class SimpleClaudeRunner<T extends string> extends SimpleAgentRunner<T> {
 		});
 
 		// Set up event handlers
-		runner.on("message", (message: SDKMessage) => {
+		runner.on("message", (message) => {
 			messages.push(message);
 			this.handleMessage(message);
 		});
 
-		runner.on("error", (error: Error) => {
+		runner.on("error", (error) => {
 			sessionError = error;
 		});
 

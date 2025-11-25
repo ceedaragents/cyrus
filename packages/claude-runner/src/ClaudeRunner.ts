@@ -24,6 +24,7 @@ export class AbortError extends Error {
 	}
 }
 
+import { ClaudeMessageFormatter, type IMessageFormatter } from "./formatter.js";
 import type {
 	ClaudeRunnerConfig,
 	ClaudeRunnerEvents,
@@ -53,11 +54,13 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private messages: SDKMessage[] = [];
 	private streamingPrompt: StreamingPrompt | null = null;
 	private cyrusHome: string;
+	private formatter: IMessageFormatter;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
+		this.formatter = new ClaudeMessageFormatter();
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -520,6 +523,13 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 */
 	getMessages(): SDKMessage[] {
 		return [...this.messages];
+	}
+
+	/**
+	 * Get the message formatter for this runner
+	 */
+	getFormatter(): IMessageFormatter {
+		return this.formatter;
 	}
 
 	/**
