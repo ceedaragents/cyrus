@@ -79,6 +79,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 		// Mock ClaudeRunner with a long-running session to simulate the timeout
 		mockClaudeRunner = {
+			supportsStreamingInput: true,
 			startStreaming: vi.fn().mockImplementation(async () => {
 				// Simulate a long-running Claude session (10 seconds)
 				await new Promise((resolve) => setTimeout(resolve, 10000));

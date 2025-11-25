@@ -46,6 +46,11 @@ export declare interface ClaudeRunner {
  * Manages Claude SDK sessions and communication
  */
 export class ClaudeRunner extends EventEmitter implements IAgentRunner {
+	/**
+	 * ClaudeRunner supports streaming input via startStreaming(), addStreamMessage(), and completeStream()
+	 */
+	readonly supportsStreamingInput = true;
+
 	private config: ClaudeRunnerConfig;
 	private abortController: AbortController | null = null;
 	private sessionInfo: ClaudeSessionInfo | null = null;

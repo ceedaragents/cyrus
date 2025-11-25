@@ -105,6 +105,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 
 		// Mock ClaudeRunner to capture config
 		mockClaudeRunner = {
+			supportsStreamingInput: true,
 			start: vi.fn().mockResolvedValue({ sessionId: "claude-session-123" }),
 			startStreaming: vi
 				.fn()

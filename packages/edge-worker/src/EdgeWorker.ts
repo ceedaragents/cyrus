@@ -4853,7 +4853,11 @@ ${input.userComment}
 		}
 
 		// Handle running case - add message to existing stream (if supported)
-		if (existingRunner?.isRunning()) {
+		if (
+			existingRunner?.isRunning() &&
+			existingRunner.supportsStreamingInput &&
+			existingRunner.addStreamMessage
+		) {
 			console.log(
 				`[EdgeWorker] Adding prompt to existing stream for ${linearAgentActivitySessionId} (${logContext})`,
 			);
@@ -4864,7 +4868,7 @@ ${input.userComment}
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
 
-			existingRunner!.addStreamMessage(fullPrompt);
+			existingRunner.addStreamMessage(fullPrompt);
 			return true; // Message added to stream
 		}
 
@@ -5028,7 +5032,12 @@ ${input.userComment}
 		const existingRunner = session.agentRunner;
 
 		// If there's an existing running runner that supports streaming, add to it
-		if (existingRunner?.isRunning() && session.claudeSessionId) {
+		if (
+			existingRunner?.isRunning() &&
+			session.claudeSessionId &&
+			existingRunner.supportsStreamingInput &&
+			existingRunner.addStreamMessage
+		) {
 			let fullPrompt = promptBody;
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;

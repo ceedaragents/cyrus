@@ -63,6 +63,13 @@ export declare interface GeminiRunner {
  * ```
  */
 export class GeminiRunner extends EventEmitter implements IAgentRunner {
+	/**
+	 * GeminiRunner does not support true streaming input.
+	 * While startStreaming() exists, it only accepts an initial prompt and does not support
+	 * addStreamMessage() for adding messages after the session starts.
+	 */
+	readonly supportsStreamingInput = false;
+
 	private config: GeminiRunnerConfig;
 	private process: ChildProcess | null = null;
 	private sessionInfo: GeminiSessionInfo | null = null;

@@ -107,6 +107,7 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 
 		// Mock ClaudeRunner to capture prompt
 		mockClaudeRunner = {
+			supportsStreamingInput: true,
 			start: vi.fn().mockImplementation((prompt: string) => {
 				capturedPrompt = prompt;
 				return Promise.resolve({ sessionId: "claude-session-123" });

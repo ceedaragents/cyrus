@@ -79,6 +79,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		// Mock ClaudeRunner
 		mockClaudeRunner = {
+			supportsStreamingInput: true,
 			startStreaming: vi
 				.fn()
 				.mockResolvedValue({ sessionId: "claude-session-123" }),
