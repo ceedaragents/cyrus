@@ -32,6 +32,8 @@ export {
 	extractSessionId,
 	geminiEventToSDKMessage,
 } from "./adapters.js";
+// Formatter
+export { GeminiMessageFormatter } from "./formatter.js";
 // Main runner class
 export { GeminiRunner } from "./GeminiRunner.js";
 // Simple agent runner
