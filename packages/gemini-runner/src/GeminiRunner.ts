@@ -14,13 +14,16 @@ import {
 } from "cyrus-core";
 import { extractSessionId, geminiEventToSDKMessage } from "./adapters.js";
 import { GeminiMessageFormatter } from "./formatter.js";
+import {
+	type GeminiStreamEvent,
+	safeParseGeminiStreamEvent,
+} from "./schemas.js";
 import { setupGeminiSettings } from "./settingsGenerator.js";
 import { SystemPromptManager } from "./systemPromptManager.js";
 import type {
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
 	GeminiSessionInfo,
-	GeminiStreamEvent,
 } from "./types.js";
 
 export declare interface GeminiRunner {
@@ -329,14 +332,16 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				crlfDelay: Infinity,
 			});
 
-			// Process each line as a JSON event
+			// Process each line as a JSON event with Zod validation
 			rl.on("line", (line: string) => {
-				try {
-					const event = JSON.parse(line) as GeminiStreamEvent;
+				const event = safeParseGeminiStreamEvent(line);
+				if (event) {
 					this.processStreamEvent(event);
-				} catch (err) {
-					console.error("[GeminiRunner] Failed to parse JSON event:", err);
-					console.error("[GeminiRunner] Line:", line);
+				} else {
+					console.error(
+						"[GeminiRunner] Failed to parse/validate JSON event:",
+						line,
+					);
 				}
 			});
 

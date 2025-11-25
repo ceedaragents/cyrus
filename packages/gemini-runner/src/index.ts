@@ -38,6 +38,24 @@ export { GeminiMessageFormatter } from "./formatter.js";
 export { GeminiRunner } from "./GeminiRunner.js";
 // Simple agent runner
 export { SimpleGeminiRunner } from "./SimpleGeminiRunner.js";
+// Zod schemas and validation utilities
+export {
+	GeminiErrorEventSchema,
+	GeminiInitEventSchema,
+	GeminiMessageEventSchema,
+	GeminiResultEventSchema,
+	GeminiStreamEventSchema,
+	GeminiToolResultEventSchema,
+	GeminiToolUseEventSchema,
+	isGeminiErrorEvent,
+	isGeminiInitEvent,
+	isGeminiMessageEvent,
+	isGeminiResultEvent,
+	isGeminiToolResultEvent,
+	isGeminiToolUseEvent,
+	parseGeminiStreamEvent,
+	safeParseGeminiStreamEvent,
+} from "./schemas.js";
 // System prompt manager
 export { SystemPromptManager } from "./systemPromptManager.js";
 // Types
