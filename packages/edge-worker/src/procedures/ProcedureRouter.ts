@@ -1,11 +1,12 @@
 /**
  * ProcedureRouter - Intelligent routing of agent sessions through procedures
  *
- * Uses SimpleClaudeRunner to analyze requests and determine which procedure
- * (sequence of subroutines) should be executed.
+ * Uses a SimpleAgentRunner (Claude or Gemini) to analyze requests and determine
+ * which procedure (sequence of subroutines) should be executed.
  */
 
-import type { CyrusAgentSession } from "cyrus-core";
+import type { CyrusAgentSession, ISimpleAgentRunner } from "cyrus-core";
+import { SimpleGeminiRunner } from "cyrus-gemini-runner";
 import { SimpleClaudeRunner } from "cyrus-simple-agent-runner";
 import { getProcedureForClassification, PROCEDURES } from "./registry.js";
 import type {
@@ -16,19 +17,31 @@ import type {
 	SubroutineDefinition,
 } from "./types.js";
 
+export type SimpleRunnerType = "claude" | "gemini";
+
 export interface ProcedureRouterConfig {
 	cyrusHome: string;
 	model?: string;
 	timeoutMs?: number;
+	runnerType?: SimpleRunnerType; // Default: "gemini"
 }
 
 export class ProcedureRouter {
-	private routingRunner: SimpleClaudeRunner<RequestClassification>;
+	private routingRunner: ISimpleAgentRunner<RequestClassification>;
 	private procedures: Map<string, ProcedureDefinition> = new Map();
 
 	constructor(config: ProcedureRouterConfig) {
-		// Initialize SimpleClaudeRunner for routing decisions
-		this.routingRunner = new SimpleClaudeRunner({
+		// Determine which runner to use
+		const runnerType = config.runnerType || "gemini";
+
+		// Use runner-specific default models if not provided
+		const defaultModel =
+			runnerType === "claude" ? "haiku" : "gemini-2.5-flash-lite";
+		const defaultFallbackModel =
+			runnerType === "claude" ? "sonnet" : "gemini-2.0-flash-exp";
+
+		// Create runner configuration
+		const runnerConfig = {
 			validResponses: [
 				"question",
 				"documentation",
@@ -37,14 +50,20 @@ export class ProcedureRouter {
 				"code",
 				"debugger",
 				"orchestrator",
-			],
+			] as const,
 			cyrusHome: config.cyrusHome,
-			model: config.model || "haiku",
-			fallbackModel: "sonnet",
+			model: config.model || defaultModel,
+			fallbackModel: defaultFallbackModel,
 			systemPrompt: this.buildRoutingSystemPrompt(),
 			maxTurns: 1,
 			timeoutMs: config.timeoutMs || 10000,
-		});
+		};
+
+		// Initialize the appropriate runner based on type
+		this.routingRunner =
+			runnerType === "claude"
+				? new SimpleClaudeRunner(runnerConfig)
+				: new SimpleGeminiRunner(runnerConfig);
 
 		// Load all predefined procedures from registry
 		this.loadPredefinedProcedures();
@@ -130,7 +149,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 			};
 		} catch (error) {
 			// Fallback to full-development on error
-			console.error("[ProcedureRouter] Error during routing decision:", error);
+			console.log("[ProcedureRouter] Error during routing decision:", error);
 			const fallbackProcedure = this.procedures.get("full-development");
 
 			if (!fallbackProcedure) {
@@ -230,7 +249,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	 */
 	advanceToNextSubroutine(
 		session: CyrusAgentSession,
-		claudeSessionId: string | null,
+		sessionId: string | null,
 	): void {
 		const procedureMetadata = session.metadata?.procedure as
 			| ProcedureMetadata
@@ -243,11 +262,15 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 		const currentSubroutine = this.getCurrentSubroutine(session);
 
 		if (currentSubroutine) {
-			// Record completion
+			// Determine which type of session ID this is
+			const isGeminiSession = session.geminiSessionId !== undefined;
+
+			// Record completion with the appropriate session ID
 			procedureMetadata.subroutineHistory.push({
 				subroutine: currentSubroutine.name,
 				completedAt: Date.now(),
-				claudeSessionId,
+				claudeSessionId: isGeminiSession ? null : sessionId,
+				geminiSessionId: isGeminiSession ? sessionId : null,
 			});
 		}
 

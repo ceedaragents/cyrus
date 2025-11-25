@@ -1,113 +1,124 @@
+/**
+ * Type definitions for Gemini Runner
+ *
+ * Event types are derived from Zod schemas in schemas.ts for runtime validation.
+ * Configuration and session types remain as interfaces.
+ */
+
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
 	SDKMessage,
 } from "cyrus-core";
 
-/**
- * Gemini CLI streaming event types based on --output-format stream-json
- * Reference: https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/headless.md
- */
-export type GeminiStreamEvent =
-	| GeminiInitEvent
-	| GeminiMessageEvent
-	| GeminiToolUseEvent
-	| GeminiToolResultEvent
-	| GeminiErrorEvent
-	| GeminiResultEvent;
+// Re-export event types from schemas (derived from Zod schemas)
+export type {
+	GeminiErrorEvent,
+	GeminiInitEvent,
+	GeminiMessageEvent,
+	GeminiResultEvent,
+	GeminiStreamEvent,
+	// Tool parameter types
+	GeminiToolParameters,
+	GeminiToolResultEvent,
+	GeminiToolUseEvent,
+	ListDirectoryParameters,
+	// Tool result types
+	ListDirectoryToolResult,
+	ListDirectoryToolUseEvent,
+	ReadFileParameters,
+	ReadFileToolResult,
+	ReadFileToolUseEvent,
+	ReplaceParameters,
+	ReplaceToolResult,
+	ReplaceToolUseEvent,
+	RunShellCommandParameters,
+	RunShellCommandToolResult,
+	RunShellCommandToolUseEvent,
+	SearchFileContentParameters,
+	SearchFileContentToolResult,
+	SearchFileContentToolUseEvent,
+	TodoItem,
+	UnknownToolUseEvent,
+	WriteFileParameters,
+	WriteFileToolResult,
+	WriteFileToolUseEvent,
+	WriteTodosParameters,
+	WriteTodosToolResult,
+	WriteTodosToolUseEvent,
+} from "./schemas.js";
 
-/**
- * Session initialization event
- */
-export interface GeminiInitEvent {
-	type: "init";
-	session_id: string;
-	model: string;
-	timestamp: string;
-}
-
-/**
- * User or assistant message event
- *
- * NOTE: When delta is true, this message should be accumulated with previous delta messages
- * of the same role. The caller (GeminiRunner) is responsible for accumulating delta messages.
- * Each delta message event will create a separate SDK message if not handled by the caller.
- */
-export interface GeminiMessageEvent {
-	type: "message";
-	role: "user" | "assistant";
-	content: string;
-	timestamp: string;
-	delta?: boolean;
-}
-
-/**
- * Tool use event (similar to Claude's tool_use)
- *
- * NOTE: tool_id is assigned by Gemini CLI, not generated client-side
- */
-export interface GeminiToolUseEvent {
-	type: "tool_use";
-	tool_name: string;
-	tool_id: string;
-	parameters: Record<string, unknown>;
-	timestamp: string;
-}
-
-/**
- * Tool result event
- *
- * NOTE: Uses tool_id (not tool_name) to match the tool_use event
- * Contains either output (success) or error (failure)
- */
-export interface GeminiToolResultEvent {
-	type: "tool_result";
-	tool_id: string;
-	status: "success" | "error";
-	output?: string;
-	error?: {
-		code?: string;
-		message: string;
-		type?: string;
-	};
-	timestamp: string;
-}
-
-/**
- * Error event (non-fatal)
- */
-export interface GeminiErrorEvent {
-	type: "error";
-	message: string;
-	code?: number;
-	timestamp: string;
-}
-
-/**
- * Final result event with stats
- *
- * Real output example:
- * {"type":"result","timestamp":"2025-11-20T20:51:52.121Z","status":"success",
- *  "stats":{"total_tokens":2284560,"input_tokens":2271866,"output_tokens":5267,
- *           "duration_ms":195413,"tool_calls":36}}
- */
-export interface GeminiResultEvent {
-	type: "result";
-	timestamp: string;
-	status: "success" | "error";
-	stats?: {
-		total_tokens?: number;
-		input_tokens?: number;
-		output_tokens?: number;
-		duration_ms?: number;
-		tool_calls?: number;
-	};
-	error?: {
-		type: string;
-		message: string;
-		code?: number;
-	};
-}
+// Re-export schemas for runtime validation
+export {
+	// Parsing utilities
+	extractToolNameFromId,
+	// Event schemas
+	GeminiErrorEventSchema,
+	GeminiInitEventSchema,
+	GeminiMessageEventSchema,
+	GeminiResultEventSchema,
+	GeminiStreamEventSchema,
+	// Tool parameter schemas
+	GeminiToolParametersSchema,
+	GeminiToolResultEventSchema,
+	GeminiToolUseEventSchema,
+	// Event type guards
+	isGeminiErrorEvent,
+	isGeminiInitEvent,
+	isGeminiMessageEvent,
+	isGeminiResultEvent,
+	isGeminiToolResultEvent,
+	isGeminiToolUseEvent,
+	// Tool use type guards
+	isListDirectoryTool,
+	// Tool result type guards
+	isListDirectoryToolResult,
+	isReadFileTool,
+	isReadFileToolResult,
+	isReplaceTool,
+	isReplaceToolResult,
+	isRunShellCommandTool,
+	isRunShellCommandToolResult,
+	isSearchFileContentTool,
+	isSearchFileContentToolResult,
+	isWriteFileTool,
+	isWriteFileToolResult,
+	isWriteTodosTool,
+	isWriteTodosToolResult,
+	ListDirectoryParametersSchema,
+	// Tool result schemas
+	ListDirectoryToolResultSchema,
+	ListDirectoryToolUseEventSchema,
+	parseAsListDirectoryTool,
+	parseAsReadFileTool,
+	parseAsReplaceTool,
+	parseAsRunShellCommandTool,
+	parseAsSearchFileContentTool,
+	parseAsWriteFileTool,
+	parseAsWriteTodosTool,
+	parseGeminiStreamEvent,
+	ReadFileParametersSchema,
+	ReadFileToolResultSchema,
+	ReadFileToolUseEventSchema,
+	ReplaceParametersSchema,
+	ReplaceToolResultSchema,
+	ReplaceToolUseEventSchema,
+	RunShellCommandParametersSchema,
+	RunShellCommandToolResultSchema,
+	RunShellCommandToolUseEventSchema,
+	SearchFileContentParametersSchema,
+	SearchFileContentToolResultSchema,
+	SearchFileContentToolUseEventSchema,
+	safeParseGeminiStreamEvent,
+	TodoItemSchema,
+	UnknownToolUseEventSchema,
+	WriteFileParametersSchema,
+	WriteFileToolResultSchema,
+	WriteFileToolUseEventSchema,
+	WriteTodosParametersSchema,
+	WriteTodosToolResultSchema,
+	WriteTodosToolUseEventSchema,
+} from "./schemas.js";
 
 /**
  * Configuration for GeminiRunner
@@ -124,6 +135,8 @@ export interface GeminiRunnerConfig extends AgentRunnerConfig {
 	debug?: boolean;
 	/** Additional directories to include in workspace context (--include-directories flag) */
 	includeDirectories?: string[];
+	/** Enable single-turn mode (sets maxSessionTurns=1 in settings.json) */
+	singleTurn?: boolean;
 }
 
 /**
@@ -141,5 +154,5 @@ export interface GeminiRunnerEvents {
 	message: (message: SDKMessage) => void;
 	error: (error: Error) => void;
 	complete: (messages: SDKMessage[]) => void;
-	streamEvent: (event: GeminiStreamEvent) => void; // Raw event emitting
+	streamEvent: (event: import("./schemas.js").GeminiStreamEvent) => void;
 }
