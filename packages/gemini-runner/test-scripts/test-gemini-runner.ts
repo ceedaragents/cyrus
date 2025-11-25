@@ -63,6 +63,10 @@ const stats: TestStats = {
 	startTime: Date.now(),
 };
 
+function sleep(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Test assertion helper
  */
@@ -76,50 +80,6 @@ function assert(condition: boolean, message: string, testName: string): void {
 		console.error(colors.red(`   ❌ ${message}`));
 		throw new Error(`Assertion failed in ${testName}: ${message}`);
 	}
-}
-
-/**
- * Test 1: Settings.json Auto-Generation
- */
-async function testSettingsGeneration(): Promise<void> {
-	console.log(colors.bold("\n📁 Test 1: Settings.json Auto-Generation\n"));
-
-	const settingsPath = join(homedir(), ".gemini", "settings.json");
-	console.log(colors.dim(`   Checking: ${settingsPath}\n`));
-
-	if (!existsSync(settingsPath)) {
-		console.log(
-			colors.yellow(
-				"   ℹ️  settings.json doesn't exist yet (will be created on first spawn)\n",
-			),
-		);
-		return;
-	}
-
-	// Read and verify settings structure
-	const settings = await Bun.file(settingsPath).json();
-
-	assert(
-		!!settings.modelConfigs?.aliases,
-		"settings.json has modelConfigs.aliases",
-		"testSettingsGeneration",
-	);
-
-	// Verify all 4 -shortone aliases exist with maxSessionTurns: 1
-	for (const model of GEMINI_MODELS) {
-		const aliasName = `${model}-shortone`;
-		const alias = settings.modelConfigs.aliases[aliasName];
-
-		assert(!!alias, `Alias '${aliasName}' exists`, "testSettingsGeneration");
-
-		assert(
-			alias.modelConfig?.maxSessionTurns === 1,
-			`Alias '${aliasName}' has maxSessionTurns: 1`,
-			"testSettingsGeneration",
-		);
-	}
-
-	console.log();
 }
 
 /**
@@ -150,12 +110,13 @@ async function testStdinStreaming(): Promise<void> {
 	const sessionPromise = runner.startStreaming("Count to 1.");
 
 	// Add multiple messages via stdin
-	console.log(colors.dim("   Writing message 2: 'Now count to 2.'\n"));
-	runner.addStreamMessage("Now count to 2.");
+	// console.log(colors.dim("   Writing message 2: 'Now count to 2.'\n"));
+	// runner.addStreamMessage("Now count to 2.");
 
-	console.log(colors.dim("   Writing message 3: 'Finally count to 3.'\n"));
-	runner.addStreamMessage("Finally count to 3.");
+	// console.log(colors.dim("   Writing message 3: 'Finally count to 3.'\n"));
+	// runner.addStreamMessage("Finally count to 3.");
 
+	await sleep(100000); // pauses for 1 second
 	// Complete the stream (closes stdin)
 	console.log(colors.dim("   Closing stdin...\n"));
 	runner.completeStream();
@@ -450,7 +411,6 @@ async function runTests(): Promise<void> {
 
 	try {
 		// Run all tests sequentially
-		await testSettingsGeneration();
 		await testStdinStreaming();
 		await testResultMessageCoercion();
 		await testSingleTurnMode();

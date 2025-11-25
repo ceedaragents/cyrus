@@ -33,7 +33,9 @@ export interface CyrusAgentSession {
 	issueId: string;
 	issue: IssueMinimal;
 	workspace: Workspace;
-	claudeSessionId?: string; // this gets assigned once it initializes (may be provider-specific)
+	// NOTE: Only one of these will be populated
+	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)
+	geminiSessionId?: string; // Gemini-specific session ID (assigned once it initializes)
 	agentRunner?: IAgentRunner;
 	metadata?: {
 		model?: string;
@@ -50,13 +52,15 @@ export interface CyrusAgentSession {
 				subroutine: string;
 				completedAt: number;
 				claudeSessionId: string | null;
+				geminiSessionId: string | null;
 			}>;
 		};
 	};
 }
 
 export interface CyrusAgentSessionEntry {
-	claudeSessionId: string; // originated in this claude sessions
+	claudeSessionId?: string; // originated in this Claude session (if using Claude)
+	geminiSessionId?: string; // originated in this Gemini session (if using Gemini)
 	linearAgentActivityId?: string; // got assigned this ID in linear, after creation, for this 'agent activity'
 	type: "user" | "assistant" | "system" | "result";
 	content: string;

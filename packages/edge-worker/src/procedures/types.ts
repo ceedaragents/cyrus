@@ -60,6 +60,7 @@ export interface ProcedureMetadata {
 		subroutine: string;
 		completedAt: number;
 		claudeSessionId: string | null;
+		geminiSessionId: string | null;
 	}>;
 }
 

@@ -1,29 +1,12 @@
-import type { LinearClient } from "@linear/sdk";
-import { describe, expect, test, vi } from "vitest";
-import { AgentSessionManager } from "../src/AgentSessionManager.js";
+import { ClaudeMessageFormatter } from "cyrus-claude-runner";
+import { describe, expect, test } from "vitest";
 
 describe("AgentSessionManager - Tool Formatting", () => {
-	// Create a mock LinearClient
-	const mockLinearClient = {
-		createAgentActivity: vi.fn().mockResolvedValue({
-			success: true,
-			agentActivity: Promise.resolve({ id: "test-activity-id" }),
-		}),
-	} as unknown as LinearClient;
-
-	// Helper to access private methods for testing
-	function getPrivateMethod(obj: any, methodName: string) {
-		return obj[methodName].bind(obj);
-	}
+	// Create formatter instance to test
+	const formatter = new ClaudeMessageFormatter();
 
 	test("formatToolParameter - Bash tool with description", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("Bash", {
+		const result = formatter.formatToolParameter("Bash", {
 			command: "ls -la /home/user",
 			description: "List files in home directory",
 		});
@@ -33,13 +16,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolParameter - Bash tool without description", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("Bash", {
+		const result = formatter.formatToolParameter("Bash", {
 			command: "ls -la /home/user",
 		});
 
@@ -47,13 +24,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolParameter - Read tool with file path", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("Read", {
+		const result = formatter.formatToolParameter("Read", {
 			file_path: "/home/user/test.ts",
 		});
 
@@ -61,13 +32,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolParameter - Read tool with line range", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("Read", {
+		const result = formatter.formatToolParameter("Read", {
 			file_path: "/home/user/test.ts",
 			offset: 10,
 			limit: 20,
@@ -77,13 +42,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolParameter - Grep tool with pattern", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("Grep", {
+		const result = formatter.formatToolParameter("Grep", {
 			pattern: "TODO",
 			path: "/home/user",
 			glob: "*.ts",
@@ -93,13 +52,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolParameter - Glob tool with pattern", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("Glob", {
+		const result = formatter.formatToolParameter("Glob", {
 			pattern: "**/*.ts",
 			path: "/home/user",
 		});
@@ -108,13 +61,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolParameter - WebSearch tool with query", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("WebSearch", {
+		const result = formatter.formatToolParameter("WebSearch", {
 			query: "Linear API documentation",
 		});
 
@@ -122,13 +69,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolParameter - MCP tool extracts meaningful field", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("mcp__linear__get_issue", {
+		const result = formatter.formatToolParameter("mcp__linear__get_issue", {
 			id: "CYPACK-395",
 			someOtherField: "value",
 		});
@@ -137,10 +78,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Bash tool with output", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Bash",
 			{ command: "echo hello", description: "Test command" },
 			"hello\nworld",
@@ -151,10 +89,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Bash tool without output", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Bash",
 			{ command: "touch file.txt", description: "Create file" },
 			"",
@@ -165,10 +100,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Read tool with TypeScript file", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Read",
 			{ file_path: "/home/user/test.ts" },
 			"const x = 1;\nconsole.log(x);",
@@ -181,13 +113,10 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Read tool removes line numbers and system-reminder", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
 		const resultWithLineNumbers =
 			"  25→def foo():\n  26→    return 1\n\n<system-reminder>\nThis is a reminder\n</system-reminder>";
 
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Read",
 			{ file_path: "/home/user/test.py" },
 			resultWithLineNumbers,
@@ -202,15 +131,12 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Read tool preserves first line indentation", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
 		// Simulate Read output where the first line has indentation
 		// This reproduces the bug from CYPACK-401 where first line indentation is stripped
 		const resultWithLineNumbers =
 			'  16→            coordinate["x"] -= 1\n  17→            elif direction == "up":\n  18→                coordinate["y"] += 1';
 
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Read",
 			{ file_path: "/home/user/test.py" },
 			resultWithLineNumbers,
@@ -230,10 +156,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Edit tool shows diff format", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Edit",
 			{
 				file_path: "/home/user/test.ts",
@@ -251,10 +174,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Grep tool with file matches", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Grep",
 			{ pattern: "TODO" },
 			"file1.ts\nfile2.ts\nfile3.ts",
@@ -266,10 +186,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Glob tool with results", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Glob",
 			{ pattern: "*.ts" },
 			"file1.ts\nfile2.ts",
@@ -281,10 +198,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Error result", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Bash",
 			{ command: "invalid command" },
 			"Error: command not found",
@@ -295,10 +209,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - Write tool success", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"Write",
 			{ file_path: "/home/user/test.ts" },
 			"",
@@ -309,13 +220,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolParameter - handles arrow prefix for subtasks", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolParameter = getPrivateMethod(
-			manager,
-			"formatToolParameter",
-		);
-
-		const result = formatToolParameter("↪ Bash", {
+		const result = formatter.formatToolParameter("↪ Bash", {
 			command: "pwd",
 			description: "Get current directory",
 		});
@@ -325,10 +230,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolResult - handles arrow prefix for subtasks", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolResult = getPrivateMethod(manager, "formatToolResult");
-
-		const result = formatToolResult(
+		const result = formatter.formatToolResult(
 			"↪ Read",
 			{ file_path: "/home/user/test.js" },
 			"console.log('test');",
@@ -339,13 +241,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolActionName - Bash tool with description", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolActionName = getPrivateMethod(
-			manager,
-			"formatToolActionName",
-		);
-
-		const result = formatToolActionName(
+		const result = formatter.formatToolActionName(
 			"Bash",
 			{
 				command: "ls -la",
@@ -359,13 +255,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolActionName - Bash tool without description", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolActionName = getPrivateMethod(
-			manager,
-			"formatToolActionName",
-		);
-
-		const result = formatToolActionName(
+		const result = formatter.formatToolActionName(
 			"Bash",
 			{
 				command: "ls -la",
@@ -378,13 +268,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolActionName - Bash tool with error and description", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolActionName = getPrivateMethod(
-			manager,
-			"formatToolActionName",
-		);
-
-		const result = formatToolActionName(
+		const result = formatter.formatToolActionName(
 			"Bash",
 			{
 				command: "invalid command",
@@ -398,13 +282,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolActionName - subtask Bash tool with description", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolActionName = getPrivateMethod(
-			manager,
-			"formatToolActionName",
-		);
-
-		const result = formatToolActionName(
+		const result = formatter.formatToolActionName(
 			"↪ Bash",
 			{
 				command: "pwd",
@@ -418,13 +296,11 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	test("formatToolActionName - other tools without special formatting", () => {
-		const manager = new AgentSessionManager(mockLinearClient);
-		const formatToolActionName = getPrivateMethod(
-			manager,
-			"formatToolActionName",
+		const result = formatter.formatToolActionName(
+			"Read",
+			{ file_path: "/test" },
+			false,
 		);
-
-		const result = formatToolActionName("Read", { file_path: "/test" }, false);
 
 		// Should show action name without modification for non-Bash tools
 		expect(result).toBe("Read");
