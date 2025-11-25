@@ -125,13 +125,13 @@ export class EdgeWorker extends EventEmitter {
 			join(this.cyrusHome, "state"),
 		);
 
-		// Initialize procedure router with gemini-2.5-flash-lite for fast classification
-		// Default to gemini runner for testing
+		// Initialize procedure router with haiku for fast classification
+		// Default to claude runner
 		this.procedureRouter = new ProcedureRouter({
 			cyrusHome: this.cyrusHome,
 			model: "haiku",
 			timeoutMs: 100000,
-			runnerType: "claude", // Use Gemini by default
+			runnerType: "claude", // Use Claude by default
 		});
 
 		// Initialize repository router with dependencies
@@ -2082,9 +2082,9 @@ export class EdgeWorker extends EventEmitter {
 	} {
 		if (!labels || labels.length === 0) {
 			return {
-					runnerType: "claude",
-					modelOverride: "sonnet",
-					fallbackModelOverride: "haiku",
+				runnerType: "claude",
+				modelOverride: "sonnet",
+				fallbackModelOverride: "haiku",
 			};
 		}
 
@@ -2151,9 +2151,9 @@ export class EdgeWorker extends EventEmitter {
 		}
 		// Default to claude if no runner labels found
 		return {
-				runnerType: "claude",
-				modelOverride: "sonnet",
-				fallbackModelOverride: "haiku",
+			runnerType: "claude",
+			modelOverride: "sonnet",
+			fallbackModelOverride: "haiku",
 		};
 	}
 
@@ -4212,7 +4212,7 @@ ${input.userComment}
 		const effectiveMaxTurns = singleTurn ? 1 : maxTurns;
 
 		// Determine final model name with singleTurn suffix for Gemini
-		let finalModel =
+		const finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
 
 		const config = {

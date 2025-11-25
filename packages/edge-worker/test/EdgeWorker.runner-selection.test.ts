@@ -253,7 +253,8 @@ Issue: {{issue_identifier}}`;
 			// Assert
 			expect(capturedRunnerType).toBe("gemini");
 			expect(GeminiRunner).toHaveBeenCalled();
-			expect(ClaudeRunner).not.toHaveBeenCalled();
+			// ClaudeRunner is called once for the classifier (ProcedureRouter uses Claude by default)
+			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
 		});
 
 		it("should select Gemini runner with gemini-2.5-pro model when 'gemini-2.5-pro' label is present", async () => {
@@ -284,7 +285,8 @@ Issue: {{issue_identifier}}`;
 			// Assert
 			expect(capturedRunnerType).toBe("gemini");
 			expect(GeminiRunner).toHaveBeenCalled();
-			expect(ClaudeRunner).not.toHaveBeenCalled();
+			// ClaudeRunner is called once for the classifier (ProcedureRouter uses Claude by default)
+			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
 			expect(capturedRunnerConfig.model).toBe("gemini-2.5-pro");
 		});
 
