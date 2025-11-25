@@ -377,20 +377,20 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				}
 			}
 
-			// Emit deferred result message after loop completes (before marking isRunning = false)
-			// This ensures the runner is still technically "running" when result is processed,
-			// but the streaming loop has fully exited
+			// Session completed successfully - mark as not running BEFORE emitting result
+			// This ensures any code checking isRunning() during result processing sees the correct state
+			console.log(
+				`[ClaudeRunner] Session completed with ${this.messages.length} messages`,
+			);
+			this.sessionInfo.isRunning = false;
+
+			// Emit deferred result message after marking isRunning = false
 			if (this.pendingResultMessage) {
 				this.emit("message", this.pendingResultMessage);
 				this.processMessage(this.pendingResultMessage);
 				this.pendingResultMessage = null;
 			}
 
-			// Session completed successfully
-			console.log(
-				`[ClaudeRunner] Session completed with ${this.messages.length} messages`,
-			);
-			this.sessionInfo.isRunning = false;
 			this.emit("complete", this.messages);
 		} catch (error) {
 			console.error("[ClaudeRunner] Session error:", error);
