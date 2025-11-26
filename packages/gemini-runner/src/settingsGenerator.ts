@@ -42,6 +42,7 @@ export interface GeminiSettingsOptions {
 
 /**
  * Convert McpServerConfig (cyrus-core format) to GeminiMcpServerConfig (Gemini CLI format)
+ * https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/configuration.md
  *
  * Gemini CLI supports three transport types:
  * - stdio: command-based (spawns subprocess)
