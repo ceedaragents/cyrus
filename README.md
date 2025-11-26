@@ -462,4 +462,19 @@ This projects builds on the technologies built by the awesome teams at Linear, a
 
 ---
 
+## A Cyrus Ode
+
+In Linear's realm where issues dwell,
+A watchful agent casts its spell,
+Through worktrees branching, code unfolds,
+As Claude's intelligence takes hold.
+From comment threads to PRs made bright,
+It toils through darkness into light,
+With MCP tools and labels wise,
+It builds and debugs, analyzes.
+A local guardian, safe and sound,
+Where automation's grace is found.
+
+---
+
 _This README was last updated: November 7 2025_
