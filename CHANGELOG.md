@@ -24,11 +24,9 @@ All notable changes to this project will be documented in this file.
 - Gemini single-turn mode now works correctly by temporarily configuring `~/.gemini/settings.json` with `maxSessionTurns=1` during sessions, then restoring original settings afterward
 
 ### Changed
-- Replaced anonymous callback pattern for subroutine transitions with an event-based architecture - AgentSessionManager now emits `subroutineComplete` events that EdgeWorker subscribes to (CYPACK-435)
 - Replaced `maxTurns` with `singleTurn` boolean flag in subroutine definitions for clearer semantics
 - Summary subroutines now use `singleTurn` mode with proper Gemini CLI configuration for consistent single-turn behavior
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)
-- GeminiRunner now emits error result messages instead of only throwing exceptions, maintaining consistent message flow for failed sessions
 
 ## [0.2.1] - 2025-11-15
 
