@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Gemini result messages now include the actual final assistant response content instead of generic "Session completed successfully" message
+- Runner selection is now based on issue labels - attach labels like `gemini`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-3-pro`, `claude`, `sonnet`, or `opus` to control which AI model processes your issue (defaults to Claude if no runner label is present) (CYPACK-425, https://github.com/ceedaragents/cyrus/pull/555)
+
+### Fixed
+- Fixed race condition in subroutine transitions where new subroutines could start before the previous runner fully cleaned up - result messages are now deferred until the streaming loop completes (CYPACK-435)
+- Merged CYPACK-419 (Gemini system prompt refactoring) into CYPACK-425 and updated all test mocks to use new AgentRunner interface methods
+
 ## [0.2.3] - 2025-11-24
 
 ### Added
@@ -42,6 +50,19 @@ All notable changes to this project will be documented in this file.
 ## [0.2.2] - 2025-11-19
 
 ### Changed
+- Fixed runner type consistency between request routing and main issue processing - both now default to Gemini (CYPACK-418)
+- Made ProcedureRouter runner-agnostic by supporting both Claude and Gemini simple runners via configuration
+- Fixed GeminiRunner compatibility error by replacing Claude-specific `isStreaming()` calls with common `isRunning()` method (CYPACK-418)
+- Fixed GeminiRunner to properly include system prompts by prepending them to user prompts (Gemini CLI doesn't have a --system-prompt flag)
+- Fixed deprecated --prompt flag in GeminiRunner by using positional arguments instead
+- Updated ProcedureRouter to use runner-specific model defaults (haiku/sonnet for Claude, gemini-2.5-flash-lite/gemini-2.0-flash-exp for Gemini)
+- Session resumption now correctly selects runner type based on existing session IDs (Claude vs Gemini)
+- Fixed GeminiRunner hanging by writing initial prompt to stdin immediately while keeping stdin open for additional messages (CYPACK-415, https://github.com/ceedaragents/cyrus/pull/546)
+- Gemini single-turn mode now works correctly by temporarily configuring `~/.gemini/settings.json` with `maxSessionTurns=1` during sessions, then restoring original settings afterward
+
+### Changed
+- Replaced `maxTurns` with `singleTurn` boolean flag in subroutine definitions for clearer semantics
+- Summary subroutines now use `singleTurn` mode with proper Gemini CLI configuration for consistent single-turn behavior
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)
 
 ### Packages

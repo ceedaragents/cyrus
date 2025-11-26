@@ -12,8 +12,8 @@ export interface SubroutineDefinition {
 	/** Path to the prompt file (relative to edge-worker/src/prompts/) */
 	promptPath: string;
 
-	/** Optional maximum number of turns (undefined = unlimited) */
-	maxTurns?: number;
+	/** Whether this subroutine should run in single-turn mode (maxTurns: 1) */
+	singleTurn?: boolean;
 
 	/** Human-readable description of what this subroutine does */
 	description: string;
@@ -60,6 +60,7 @@ export interface ProcedureMetadata {
 		subroutine: string;
 		completedAt: number;
 		claudeSessionId: string | null;
+		geminiSessionId: string | null;
 	}>;
 }
 

@@ -13,6 +13,7 @@ import {
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import { type IAgentRunner, StreamingPrompt } from "cyrus-core";
 import dotenv from "dotenv";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
@@ -23,114 +24,12 @@ export class AbortError extends Error {
 	}
 }
 
+import { ClaudeMessageFormatter, type IMessageFormatter } from "./formatter.js";
 import type {
 	ClaudeRunnerConfig,
 	ClaudeRunnerEvents,
 	ClaudeSessionInfo,
 } from "./types.js";
-
-/**
- * Streaming prompt controller that implements AsyncIterable<SDKUserMessage>
- */
-export class StreamingPrompt {
-	private messageQueue: SDKUserMessage[] = [];
-	private resolvers: Array<(value: IteratorResult<SDKUserMessage>) => void> =
-		[];
-	private isComplete = false;
-	private sessionId: string | null;
-
-	constructor(sessionId: string | null, initialPrompt?: string) {
-		this.sessionId = sessionId;
-
-		// Add initial prompt if provided
-		if (initialPrompt) {
-			this.addMessage(initialPrompt);
-		}
-	}
-
-	/**
-	 * Update the session ID (used when session ID is received from Claude)
-	 */
-	updateSessionId(sessionId: string): void {
-		this.sessionId = sessionId;
-	}
-
-	/**
-	 * Add a new message to the stream
-	 */
-	addMessage(content: string): void {
-		if (this.isComplete) {
-			throw new Error("Cannot add message to completed stream");
-		}
-
-		const message: SDKUserMessage = {
-			type: "user",
-			message: {
-				role: "user",
-				content: content,
-			},
-			parent_tool_use_id: null,
-			session_id: this.sessionId || "pending", // Use placeholder until assigned by Claude
-		};
-
-		this.messageQueue.push(message);
-		this.processQueue();
-	}
-
-	/**
-	 * Mark the stream as complete (no more messages will be added)
-	 */
-	complete(): void {
-		this.isComplete = true;
-		this.processQueue();
-	}
-
-	/**
-	 * Check if the stream is complete
-	 */
-	get completed(): boolean {
-		return this.isComplete;
-	}
-
-	/**
-	 * Process pending resolvers with queued messages
-	 */
-	private processQueue(): void {
-		while (
-			this.resolvers.length > 0 &&
-			(this.messageQueue.length > 0 || this.isComplete)
-		) {
-			const resolver = this.resolvers.shift()!;
-
-			if (this.messageQueue.length > 0) {
-				const message = this.messageQueue.shift()!;
-				resolver({ value: message, done: false });
-			} else if (this.isComplete) {
-				resolver({ value: undefined, done: true });
-			}
-		}
-	}
-
-	/**
-	 * AsyncIterable implementation
-	 */
-	[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
-		return {
-			next: (): Promise<IteratorResult<SDKUserMessage>> => {
-				return new Promise((resolve) => {
-					if (this.messageQueue.length > 0) {
-						const message = this.messageQueue.shift()!;
-						resolve({ value: message, done: false });
-					} else if (this.isComplete) {
-						resolve({ value: undefined, done: true });
-					} else {
-						this.resolvers.push(resolve);
-					}
-				});
-			},
-		};
-	}
-}
 
 export declare interface ClaudeRunner {
 	on<K extends keyof ClaudeRunnerEvents>(
@@ -146,7 +45,12 @@ export declare interface ClaudeRunner {
 /**
  * Manages Claude SDK sessions and communication
  */
-export class ClaudeRunner extends EventEmitter {
+export class ClaudeRunner extends EventEmitter implements IAgentRunner {
+	/**
+	 * ClaudeRunner supports streaming input via startStreaming(), addStreamMessage(), and completeStream()
+	 */
+	readonly supportsStreamingInput = true;
+
 	private config: ClaudeRunnerConfig;
 	private abortController: AbortController | null = null;
 	private sessionInfo: ClaudeSessionInfo | null = null;
@@ -155,11 +59,14 @@ export class ClaudeRunner extends EventEmitter {
 	private messages: SDKMessage[] = [];
 	private streamingPrompt: StreamingPrompt | null = null;
 	private cyrusHome: string;
+	private formatter: IMessageFormatter;
+	private pendingResultMessage: SDKMessage | null = null;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
+		this.formatter = new ClaudeMessageFormatter();
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -458,23 +365,37 @@ export class ClaudeRunner extends EventEmitter {
 				}
 
 				// Emit appropriate events based on message type
-				this.emit("message", message);
-				this.processMessage(message);
-
-				// If we get a result message while streaming, complete the stream
-				if (message.type === "result" && this.streamingPrompt) {
-					console.log(
-						"[ClaudeRunner] Got result message, completing streaming prompt",
-					);
-					this.streamingPrompt.complete();
+				// Defer result message emission until after loop completes to avoid race conditions
+				// where subroutine transitions start before the runner has fully cleaned up
+				if (message.type === "result") {
+					this.pendingResultMessage = message;
+					// Complete streaming prompt immediately so it stops accepting input
+					if (this.streamingPrompt) {
+						console.log(
+							"[ClaudeRunner] Got result message, completing streaming prompt",
+						);
+						this.streamingPrompt.complete();
+					}
+				} else {
+					this.emit("message", message);
+					this.processMessage(message);
 				}
 			}
 
-			// Session completed successfully
+			// Session completed successfully - mark as not running BEFORE emitting result
+			// This ensures any code checking isRunning() during result processing sees the correct state
 			console.log(
 				`[ClaudeRunner] Session completed with ${this.messages.length} messages`,
 			);
 			this.sessionInfo.isRunning = false;
+
+			// Emit deferred result message after marking isRunning = false
+			if (this.pendingResultMessage) {
+				this.emit("message", this.pendingResultMessage);
+				this.processMessage(this.pendingResultMessage);
+				this.pendingResultMessage = null;
+			}
+
 			this.emit("complete", this.messages);
 		} catch (error) {
 			console.error("[ClaudeRunner] Session error:", error);
@@ -503,6 +424,7 @@ export class ClaudeRunner extends EventEmitter {
 		} finally {
 			// Clean up
 			this.abortController = null;
+			this.pendingResultMessage = null;
 
 			// Complete and clean up streaming prompt if it exists
 			if (this.streamingPrompt) {
@@ -622,6 +544,13 @@ export class ClaudeRunner extends EventEmitter {
 	 */
 	getMessages(): SDKMessage[] {
 		return [...this.messages];
+	}
+
+	/**
+	 * Get the message formatter for this runner
+	 */
+	getFormatter(): IMessageFormatter {
+		return this.formatter;
 	}
 
 	/**
