@@ -18,9 +18,16 @@ import {
 	type GeminiStreamEvent,
 	safeParseGeminiStreamEvent,
 } from "./schemas.js";
-import { setupGeminiSettings } from "./settingsGenerator.js";
+import {
+	autoDetectMcpConfig,
+	convertToGeminiMcpConfig,
+	type GeminiSettingsOptions,
+	loadMcpConfigFromPaths,
+	setupGeminiSettings,
+} from "./settingsGenerator.js";
 import { SystemPromptManager } from "./systemPromptManager.js";
 import type {
+	GeminiMcpServerConfig,
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
 	GeminiSessionInfo,
@@ -63,6 +70,13 @@ export declare interface GeminiRunner {
  * ```
  */
 export class GeminiRunner extends EventEmitter implements IAgentRunner {
+	/**
+	 * GeminiRunner does not support true streaming input.
+	 * While startStreaming() exists, it only accepts an initial prompt and does not support
+	 * addStreamMessage() for adding messages after the session starts.
+	 */
+	readonly supportsStreamingInput = false;
+
 	private config: GeminiRunnerConfig;
 	private process: ChildProcess | null = null;
 	private sessionInfo: GeminiSessionInfo | null = null;
@@ -84,6 +98,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	private formatter: IMessageFormatter;
 	// Readline interface for stdout processing
 	private readlineInterface: ReturnType<typeof createInterface> | null = null;
+	// Deferred result message to emit after loop completes
+	private pendingResultMessage: SDKMessage | null = null;
 
 	constructor(config: GeminiRunnerConfig) {
 		super();
@@ -206,9 +222,31 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Reset messages array
 		this.messages = [];
 
-		// Setup Gemini settings with appropriate maxSessionTurns
+		// Build MCP servers configuration
+		const mcpServers = this.buildMcpServers();
+
+		// Setup Gemini settings with MCP servers and maxTurns
+		const settingsOptions: GeminiSettingsOptions = {};
+
 		if (this.config.maxTurns) {
-			this.settingsCleanup = setupGeminiSettings(this.config.maxTurns);
+			settingsOptions.maxSessionTurns = this.config.maxTurns;
+		}
+
+		if (Object.keys(mcpServers).length > 0) {
+			settingsOptions.mcpServers = mcpServers;
+		}
+
+		if (this.config.allowMCPServers) {
+			settingsOptions.allowMCPServers = this.config.allowMCPServers;
+		}
+
+		if (this.config.excludeMCPServers) {
+			settingsOptions.excludeMCPServers = this.config.excludeMCPServers;
+		}
+
+		// Only setup settings if we have something to configure
+		if (Object.keys(settingsOptions).length > 0) {
+			this.settingsCleanup = setupGeminiSettings(settingsOptions);
 		}
 
 		try {
@@ -377,11 +415,19 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			// Flush any remaining accumulated message
 			this.flushAccumulatedMessage();
 
-			// Session completed successfully
+			// Session completed successfully - mark as not running BEFORE emitting result
+			// This ensures any code checking isRunning() during result processing sees the correct state
 			console.log(
 				`[GeminiRunner] Session completed with ${this.messages.length} messages`,
 			);
 			this.sessionInfo.isRunning = false;
+
+			// Emit deferred result message after marking isRunning = false
+			if (this.pendingResultMessage) {
+				this.emitMessage(this.pendingResultMessage);
+				this.pendingResultMessage = null;
+			}
+
 			this.emit("complete", this.messages);
 		} catch (error) {
 			console.error("[GeminiRunner] Session error:", error);
@@ -432,6 +478,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		} finally {
 			// Clean up
 			this.process = null;
+			this.pendingResultMessage = null;
 
 			// Complete and clean up streaming prompt if it exists
 			if (this.streamingPrompt) {
@@ -516,7 +563,13 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 			if (message.type === "assistant") {
 				this.lastAssistantMessage = message;
 			}
-			this.emitMessage(message);
+			// Defer result message emission until after loop completes to avoid race conditions
+			// where subroutine transitions start before the runner has fully cleaned up
+			if (message.type === "result") {
+				this.pendingResultMessage = message;
+			} else {
+				this.emitMessage(message);
+			}
 		}
 	}
 
@@ -679,6 +732,66 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	 */
 	getFormatter(): IMessageFormatter {
 		return this.formatter;
+	}
+
+	/**
+	 * Build MCP servers configuration from config paths and inline config
+	 *
+	 * MCP configuration loading follows a layered approach:
+	 * 1. Auto-detect .mcp.json in working directory (base config)
+	 * 2. Load from explicitly configured paths via mcpConfigPath (extends/overrides)
+	 * 3. Merge inline mcpConfig (highest priority, overrides file configs)
+	 *
+	 * HTTP-based MCP servers (like Linear's https://mcp.linear.app/mcp) are filtered out
+	 * since Gemini CLI only supports stdio (command-based) MCP servers.
+	 *
+	 * @returns Record of MCP server name to GeminiMcpServerConfig
+	 */
+	private buildMcpServers(): Record<string, GeminiMcpServerConfig> {
+		const geminiMcpServers: Record<string, GeminiMcpServerConfig> = {};
+
+		// Build config paths list, starting with auto-detected .mcp.json
+		const configPaths: string[] = [];
+
+		// 1. Auto-detect .mcp.json in working directory
+		const autoDetectedPath = autoDetectMcpConfig(this.config.workingDirectory);
+		if (autoDetectedPath) {
+			configPaths.push(autoDetectedPath);
+		}
+
+		// 2. Add explicitly configured paths
+		if (this.config.mcpConfigPath) {
+			const explicitPaths = Array.isArray(this.config.mcpConfigPath)
+				? this.config.mcpConfigPath
+				: [this.config.mcpConfigPath];
+			configPaths.push(...explicitPaths);
+		}
+
+		// Load from all config paths
+		const fileBasedServers = loadMcpConfigFromPaths(
+			configPaths.length > 0 ? configPaths : undefined,
+		);
+
+		// 3. Merge inline config (overrides file-based config)
+		const allServers = this.config.mcpConfig
+			? { ...fileBasedServers, ...this.config.mcpConfig }
+			: fileBasedServers;
+
+		// Convert each server to Gemini format
+		for (const [serverName, serverConfig] of Object.entries(allServers)) {
+			const geminiConfig = convertToGeminiMcpConfig(serverName, serverConfig);
+			if (geminiConfig) {
+				geminiMcpServers[serverName] = geminiConfig;
+			}
+		}
+
+		if (Object.keys(geminiMcpServers).length > 0) {
+			console.log(
+				`[GeminiRunner] Configured ${Object.keys(geminiMcpServers).length} MCP server(s): ${Object.keys(geminiMcpServers).join(", ")}`,
+			);
+		}
+
+		return geminiMcpServers;
 	}
 
 	/**

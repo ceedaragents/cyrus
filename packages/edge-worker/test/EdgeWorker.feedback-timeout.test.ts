@@ -79,6 +79,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 		// Mock ClaudeRunner with a long-running session to simulate the timeout
 		mockClaudeRunner = {
+			supportsStreamingInput: true,
 			startStreaming: vi.fn().mockImplementation(async () => {
 				// Simulate a long-running Claude session (10 seconds)
 				await new Promise((resolve) => setTimeout(resolve, 10000));
@@ -101,12 +102,14 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			getAgentRunner: vi.fn().mockReturnValue(mockClaudeRunner),
 			postRoutingThought: vi.fn().mockResolvedValue(undefined),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+			on: vi.fn(), // EventEmitter method
 		};
 
 		// Mock parent session manager (for different repository)
 		mockAgentSessionManager = {
 			hasAgentRunner: vi.fn().mockReturnValue(false),
 			getSession: vi.fn().mockReturnValue(null),
+			on: vi.fn(), // EventEmitter method
 		};
 
 		// Mock AgentSessionManager constructor

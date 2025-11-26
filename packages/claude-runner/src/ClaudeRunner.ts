@@ -46,6 +46,11 @@ export declare interface ClaudeRunner {
  * Manages Claude SDK sessions and communication
  */
 export class ClaudeRunner extends EventEmitter implements IAgentRunner {
+	/**
+	 * ClaudeRunner supports streaming input via startStreaming(), addStreamMessage(), and completeStream()
+	 */
+	readonly supportsStreamingInput = true;
+
 	private config: ClaudeRunnerConfig;
 	private abortController: AbortController | null = null;
 	private sessionInfo: ClaudeSessionInfo | null = null;
@@ -55,6 +60,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private streamingPrompt: StreamingPrompt | null = null;
 	private cyrusHome: string;
 	private formatter: IMessageFormatter;
+	private pendingResultMessage: SDKMessage | null = null;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
@@ -359,23 +365,37 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				}
 
 				// Emit appropriate events based on message type
-				this.emit("message", message);
-				this.processMessage(message);
-
-				// If we get a result message while streaming, complete the stream
-				if (message.type === "result" && this.streamingPrompt) {
-					console.log(
-						"[ClaudeRunner] Got result message, completing streaming prompt",
-					);
-					this.streamingPrompt.complete();
+				// Defer result message emission until after loop completes to avoid race conditions
+				// where subroutine transitions start before the runner has fully cleaned up
+				if (message.type === "result") {
+					this.pendingResultMessage = message;
+					// Complete streaming prompt immediately so it stops accepting input
+					if (this.streamingPrompt) {
+						console.log(
+							"[ClaudeRunner] Got result message, completing streaming prompt",
+						);
+						this.streamingPrompt.complete();
+					}
+				} else {
+					this.emit("message", message);
+					this.processMessage(message);
 				}
 			}
 
-			// Session completed successfully
+			// Session completed successfully - mark as not running BEFORE emitting result
+			// This ensures any code checking isRunning() during result processing sees the correct state
 			console.log(
 				`[ClaudeRunner] Session completed with ${this.messages.length} messages`,
 			);
 			this.sessionInfo.isRunning = false;
+
+			// Emit deferred result message after marking isRunning = false
+			if (this.pendingResultMessage) {
+				this.emit("message", this.pendingResultMessage);
+				this.processMessage(this.pendingResultMessage);
+				this.pendingResultMessage = null;
+			}
+
 			this.emit("complete", this.messages);
 		} catch (error) {
 			console.error("[ClaudeRunner] Session error:", error);
@@ -404,6 +424,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		} finally {
 			// Clean up
 			this.abortController = null;
+			this.pendingResultMessage = null;
 
 			// Complete and clean up streaming prompt if it exists
 			if (this.streamingPrompt) {

@@ -107,6 +107,7 @@ describe("EdgeWorker - System Prompt Resume", () => {
 
 		// Mock ClaudeRunner to capture config
 		mockClaudeRunner = {
+			supportsStreamingInput: true,
 			start: vi.fn().mockResolvedValue({ sessionId: "claude-session-123" }),
 			startStreaming: vi
 				.fn()
@@ -135,6 +136,7 @@ describe("EdgeWorker - System Prompt Resume", () => {
 			restoreState: vi.fn(),
 			postRoutingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+			on: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
 			() => mockAgentSessionManager,

@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import type {
 	APIAssistantMessage,
 	APIUserMessage,
@@ -26,13 +27,37 @@ import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
 /**
+ * Events emitted by AgentSessionManager
+ */
+export interface AgentSessionManagerEvents {
+	subroutineComplete: (data: {
+		linearAgentActivitySessionId: string;
+		session: CyrusAgentSession;
+	}) => void;
+}
+
+/**
+ * Type-safe event emitter interface for AgentSessionManager
+ */
+export declare interface AgentSessionManager {
+	on<K extends keyof AgentSessionManagerEvents>(
+		event: K,
+		listener: AgentSessionManagerEvents[K],
+	): this;
+	emit<K extends keyof AgentSessionManagerEvents>(
+		event: K,
+		...args: Parameters<AgentSessionManagerEvents[K]>
+	): boolean;
+}
+
+/**
  * Manages Agent Sessions integration with Claude Code SDK
  * Transforms Claude streaming messages into Agent Session format
  * Handles session lifecycle: create → active → complete/error
  *
  * CURRENTLY BEING HANDLED 'per repository'
  */
-export class AgentSessionManager {
+export class AgentSessionManager extends EventEmitter {
 	private issueTracker: IIssueTrackerService;
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
@@ -48,9 +73,6 @@ export class AgentSessionManager {
 		prompt: string,
 		childSessionId: string,
 	) => Promise<void>;
-	private resumeNextSubroutine?: (
-		linearAgentActivitySessionId: string,
-	) => Promise<void>;
 
 	constructor(
 		issueTracker: IIssueTrackerService,
@@ -60,16 +82,13 @@ export class AgentSessionManager {
 			prompt: string,
 			childSessionId: string,
 		) => Promise<void>,
-		resumeNextSubroutine?: (
-			linearAgentActivitySessionId: string,
-		) => Promise<void>,
 		procedureRouter?: ProcedureRouter,
 		sharedApplicationServer?: SharedApplicationServer,
 	) {
+		super();
 		this.issueTracker = issueTracker;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
-		this.resumeNextSubroutine = resumeNextSubroutine;
 		this.procedureRouter = procedureRouter;
 		this.sharedApplicationServer = sharedApplicationServer;
 	}
@@ -382,17 +401,12 @@ export class AgentSessionManager {
 			);
 			this.procedureRouter.advanceToNextSubroutine(session, sessionId);
 
-			// Trigger next subroutine
-			if (this.resumeNextSubroutine) {
-				try {
-					await this.resumeNextSubroutine(linearAgentActivitySessionId);
-				} catch (error) {
-					console.error(
-						`[AgentSessionManager] Failed to trigger next subroutine:`,
-						error,
-					);
-				}
-			}
+			// Emit event for EdgeWorker to handle subroutine transition
+			// This replaces the callback pattern and allows EdgeWorker to subscribe
+			this.emit("subroutineComplete", {
+				linearAgentActivitySessionId,
+				session,
+			});
 		} else {
 			// Procedure complete - post final result
 			console.log(
@@ -756,8 +770,12 @@ export class AgentSessionManager {
 								this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
 							}
 
-							// Skip creating activity for TodoWrite results since TodoWrite already created a non-ephemeral thought
-							if (toolName === "TodoWrite" || toolName === "↪ TodoWrite") {
+							// Skip creating activity for TodoWrite/write_todos results since they already created a non-ephemeral thought
+							if (
+								toolName === "TodoWrite" ||
+								toolName === "↪ TodoWrite" ||
+								toolName === "write_todos"
+							) {
 								return;
 							}
 
@@ -827,8 +845,8 @@ export class AgentSessionManager {
 							});
 						}
 
-						// Special handling for TodoWrite tool - treat as thought instead of action
-						if (toolName === "TodoWrite") {
+						// Special handling for TodoWrite tool (Claude) and write_todos (Gemini) - treat as thought instead of action
+						if (toolName === "TodoWrite" || toolName === "write_todos") {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
@@ -845,7 +863,7 @@ export class AgentSessionManager {
 								type: "thought",
 								body: formattedTodos,
 							};
-							// TodoWrite is not ephemeral
+							// TodoWrite/write_todos is not ephemeral
 							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Get formatter from runner

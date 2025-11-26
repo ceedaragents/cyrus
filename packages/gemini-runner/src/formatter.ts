@@ -66,11 +66,11 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 			todos.forEach((todo, index) => {
 				let statusEmoji = "";
 				if (todo.status === "completed") {
-					statusEmoji = "\u2705 "; // ✅
+					statusEmoji = "✅ ";
 				} else if (todo.status === "in_progress") {
-					statusEmoji = "\uD83D\uDD04 "; // 🔄
+					statusEmoji = "🔄 ";
 				} else if (todo.status === "pending") {
-					statusEmoji = "\u23F3 "; // ⏳
+					statusEmoji = "⏳ ";
 				}
 
 				// Gemini uses 'description' instead of 'content' for todo items

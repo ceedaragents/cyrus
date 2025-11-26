@@ -75,6 +75,24 @@ export interface IMessageFormatter {
  */
 export interface IAgentRunner {
 	/**
+	 * Indicates whether this runner supports streaming input
+	 *
+	 * When true, the runner supports `startStreaming()`, `addStreamMessage()`, and `completeStream()`.
+	 * When false, only `start()` should be used - streaming methods may throw or be unavailable.
+	 *
+	 * @example
+	 * ```typescript
+	 * if (runner.supportsStreamingInput) {
+	 *   await runner.startStreaming(initialPrompt);
+	 *   runner.addStreamMessage("Additional context");
+	 * } else {
+	 *   await runner.start(fullPrompt);
+	 * }
+	 * ```
+	 */
+	readonly supportsStreamingInput: boolean;
+
+	/**
 	 * Start a new agent session with a string prompt (legacy/simple mode)
 	 *
 	 * This method initiates a complete agent session with a single prompt string.
@@ -98,27 +116,29 @@ export interface IAgentRunner {
 	 * This method enables adding messages to the session dynamically after it has started.
 	 * Use this for interactive sessions where prompts arrive over time (e.g., from webhooks).
 	 *
+	 * Only available when `supportsStreamingInput` is true.
+	 *
 	 * @param initialPrompt - Optional initial prompt to send immediately
 	 * @returns Session information including session ID and status
 	 *
 	 * @example
 	 * ```typescript
-	 * const runner = new ClaudeRunnerAdapter(config);
-	 * const session = await runner.startStreaming("Initial task");
-	 *
-	 * // Later, add more messages
-	 * runner.addStreamMessage("Additional context");
-	 * runner.addStreamMessage("Final instruction");
-	 * runner.completeStream();
+	 * if (runner.supportsStreamingInput) {
+	 *   const session = await runner.startStreaming("Initial task");
+	 *   runner.addStreamMessage("Additional context");
+	 *   runner.completeStream();
+	 * }
 	 * ```
 	 */
-	startStreaming(initialPrompt?: string): Promise<AgentSessionInfo>;
+	startStreaming?(initialPrompt?: string): Promise<AgentSessionInfo>;
 
 	/**
 	 * Add a message to the streaming prompt
 	 *
 	 * Only works when the session was started with `startStreaming()`.
 	 * Messages are queued and sent to the agent as it processes them.
+	 *
+	 * Only available when `supportsStreamingInput` is true.
 	 *
 	 * @param content - The message content to add to the stream
 	 * @throws Error if not in streaming mode or if stream is already completed
@@ -128,7 +148,7 @@ export interface IAgentRunner {
 	 * runner.addStreamMessage("New comment from user: Fix the bug in auth.ts");
 	 * ```
 	 */
-	addStreamMessage(content: string): void;
+	addStreamMessage?(content: string): void;
 
 	/**
 	 * Complete the streaming prompt (no more messages will be added)
@@ -136,13 +156,15 @@ export interface IAgentRunner {
 	 * This signals to the agent that no more messages will be added to the stream.
 	 * The agent will complete processing and finish the session.
 	 *
+	 * Only available when `supportsStreamingInput` is true.
+	 *
 	 * @example
 	 * ```typescript
 	 * runner.addStreamMessage("Final message");
 	 * runner.completeStream(); // Agent will finish processing
 	 * ```
 	 */
-	completeStream(): void;
+	completeStream?(): void;
 
 	/**
 	 * Stop the current agent session

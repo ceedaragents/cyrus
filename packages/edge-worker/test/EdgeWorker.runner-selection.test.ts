@@ -109,6 +109,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 
 		// Mock ClaudeRunner
 		mockClaudeRunner = {
+			supportsStreamingInput: true,
 			start: vi.fn().mockResolvedValue({ sessionId: "claude-session-123" }),
 			startStreaming: vi
 				.fn()
@@ -126,6 +127,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 
 		// Mock GeminiRunner
 		mockGeminiRunner = {
+			supportsStreamingInput: false,
 			start: vi.fn().mockResolvedValue({ sessionId: "gemini-session-123" }),
 			startStreaming: vi
 				.fn()
@@ -154,6 +156,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			restoreState: vi.fn(),
 			postRoutingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+			on: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
 			() => mockAgentSessionManager,
