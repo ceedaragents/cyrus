@@ -4,11 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.4] - 2025-11-25
+
 ### Added
 - **Google Gemini AI support** - Cyrus now supports Google's Gemini models alongside Claude. Choose which AI processes your issues by adding labels to Linear issues: use `gemini`, `gemini-2.5-pro`, `gemini-2.5-flash`, or `gemini-3-pro` for Gemini models, or `claude`, `sonnet`, or `opus` for Claude models. If no AI label is present, Cyrus defaults to Claude. This gives you flexibility to select the best AI for each task.
 
 ### Fixed
 - Fixed race condition in subroutine transitions where new subroutines could start before the previous runner fully cleaned up, which could cause issues with session state management
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.4
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.4
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.4
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.4
+
+#### cyrus-core
+- cyrus-core@0.2.4
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.4
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.4
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.4
 
 ## [0.2.3] - 2025-11-24
 
