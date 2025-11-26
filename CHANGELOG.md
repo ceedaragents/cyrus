@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- New standalone `cyrus-tools` MCP package - Linear-specific tools (file uploads, agent session management, child issue enumeration) are now available as a standalone package, enabling other AI runners like Gemini to use these capabilities ([CYPACK-438](https://linear.app/ceedar/issue/CYPACK-438))
+
 ## [0.2.3] - 2025-11-24
 
 ### Added

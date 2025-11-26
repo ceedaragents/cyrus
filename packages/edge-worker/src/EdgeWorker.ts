@@ -15,7 +15,6 @@ import type {
 import {
 	AbortError,
 	ClaudeRunner,
-	createCyrusToolsServer,
 	createImageToolsServer,
 	createSoraToolsServer,
 	getAllTools,
@@ -59,6 +58,7 @@ import {
 	LinearEventTransport,
 	LinearIssueTrackerService,
 } from "cyrus-linear-event-transport";
+import { createCyrusToolsServer } from "cyrus-tools";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import {
