@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Claude Opus 4.5 model support via the "opus" label on Linear issues - [CYPACK-460](https://linear.app/ceedar/issue/CYPACK-460)
+
 ### Changed
 - Updated @anthropic-ai/claude-agent-sdk to v0.1.54 (from v0.1.31) - [CYPACK-460](https://linear.app/ceedar/issue/CYPACK-460)
 - Updated @anthropic-ai/sdk to v0.71.0 (from v0.68.0) - [CYPACK-460](https://linear.app/ceedar/issue/CYPACK-460)

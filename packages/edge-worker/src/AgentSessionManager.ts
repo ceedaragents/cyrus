@@ -793,10 +793,9 @@ export class AgentSessionManager {
 							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Special handling for Task tool - add start marker and track active task
-							const toolInput = entry.metadata.toolInput || entry.content;
 							const formattedParameter = this.formatter.formatToolParameter(
 								toolName,
-								toolInput,
+								entry.metadata.toolInput,
 							);
 							const displayName = toolName;
 
@@ -818,7 +817,6 @@ export class AgentSessionManager {
 							ephemeral = false;
 						} else {
 							// Other tools - check if they're within an active Task
-							const toolInput = entry.metadata.toolInput || entry.content;
 							let displayName = toolName;
 
 							if (entry.metadata?.parentToolUseId) {
@@ -832,7 +830,7 @@ export class AgentSessionManager {
 
 							const formattedParameter = this.formatter.formatToolParameter(
 								displayName,
-								toolInput,
+								entry.metadata.toolInput,
 							);
 
 							content = {
