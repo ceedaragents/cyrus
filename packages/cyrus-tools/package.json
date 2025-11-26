@@ -1,7 +1,7 @@
 {
-	"name": "cyrus-claude-runner",
+	"name": "cyrus-tools",
 	"version": "0.2.3",
-	"description": "Claude process spawning and management for Cyrus",
+	"description": "Cyrus tools MCP server for Linear integration - standalone package usable by various AI runners",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -17,11 +17,8 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.1.52",
-		"@anthropic-ai/sdk": "^0.71.0",
-		"cyrus-tools": "workspace:*",
-		"dotenv": "^16.6.1",
+		"@linear/sdk": "^64.0.0",
 		"fs-extra": "^11.3.0",
-		"openai": "^6.3.0",
 		"zod": "^3.23.0"
 	},
 	"devDependencies": {
@@ -32,5 +29,14 @@
 	},
 	"publishConfig": {
 		"access": "public"
-	}
+	},
+	"keywords": [
+		"mcp",
+		"linear",
+		"cyrus",
+		"ai",
+		"agent",
+		"claude",
+		"gemini"
+	]
 }

@@ -6,6 +6,11 @@ export type {
 	HookJSONOutput,
 	PostToolUseHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
+// Re-export cyrus-tools from the standalone package for backwards compatibility
+export {
+	type CyrusToolsOptions,
+	createCyrusToolsServer,
+} from "cyrus-tools";
 export { AbortError, ClaudeRunner, StreamingPrompt } from "./ClaudeRunner.js";
 export {
 	availableTools,
@@ -17,10 +22,6 @@ export {
 	type ToolName,
 	writeTools,
 } from "./config.js";
-export {
-	type CyrusToolsOptions,
-	createCyrusToolsServer,
-} from "./tools/cyrus-tools/index.js";
 export {
 	createImageToolsServer,
 	type ImageToolsOptions,

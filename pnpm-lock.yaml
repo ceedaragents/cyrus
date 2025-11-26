@@ -100,9 +100,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.71.0
         version: 0.71.0(zod@3.25.76)
-      '@linear/sdk':
-        specifier: ^64.0.0
-        version: 64.0.0
+      cyrus-tools:
+        specifier: workspace:*
+        version: link:../cyrus-tools
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
@@ -186,6 +186,34 @@ importers:
         specifier: ^1.1.0
         version: 1.6.1(@types/node@20.19.21)
 
+  packages/cyrus-tools:
+    dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.1.52
+        version: 0.1.52(zod@3.25.76)
+      '@linear/sdk':
+        specifier: ^64.0.0
+        version: 64.0.0
+      fs-extra:
+        specifier: ^11.3.0
+        version: 11.3.2
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/fs-extra':
+        specifier: ^11.0.4
+        version: 11.0.4
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.1.0
+        version: 1.6.1(@types/node@20.19.21)
+
   packages/edge-worker:
     dependencies:
       '@linear/sdk':
@@ -215,6 +243,9 @@ importers:
       cyrus-simple-agent-runner:
         specifier: workspace:*
         version: link:../simple-agent-runner
+      cyrus-tools:
+        specifier: workspace:*
+        version: link:../cyrus-tools
       fastify:
         specifier: ^5.2.0
         version: 5.6.1

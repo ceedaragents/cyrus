@@ -94,6 +94,16 @@ export interface CyrusToolsOptions {
 
 /**
  * Create an SDK MCP server with the inline Cyrus tools
+ *
+ * This MCP server provides Linear-specific tools for:
+ * - File uploads to Linear
+ * - Agent session management (create sessions on issues/comments)
+ * - Feedback delivery between parent and child agent sessions
+ * - Child issue enumeration
+ *
+ * @param linearApiToken - The Linear API token for authentication
+ * @param options - Optional configuration for session management callbacks
+ * @returns An SDK MCP server object compatible with claude-agent-sdk
  */
 export function createCyrusToolsServer(
 	linearApiToken: string,

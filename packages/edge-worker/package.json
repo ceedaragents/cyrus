@@ -32,6 +32,7 @@
 		"cyrus-core": "workspace:*",
 		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
+		"cyrus-tools": "workspace:*",
 		"fastify": "^5.2.0",
 		"file-type": "^18.7.0"
 	},

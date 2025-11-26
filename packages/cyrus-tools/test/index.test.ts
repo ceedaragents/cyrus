@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createCyrusToolsServer } from "../../../src/tools/cyrus-tools/index.js";
+import { createCyrusToolsServer } from "../src/index.js";
 
-describe("linear_get_child_issues tool integration", () => {
+describe("cyrus-tools MCP server", () => {
 	it("should create cyrus tools server with expected structure", () => {
 		const server = createCyrusToolsServer("test-token");
 
