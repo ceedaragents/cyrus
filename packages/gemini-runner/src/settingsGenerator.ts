@@ -60,6 +60,22 @@ export function convertToGeminiMcpConfig(
 	config: McpServerConfig,
 ): GeminiMcpServerConfig | null {
 	const configAny = config as Record<string, unknown>;
+
+	// Detect SDK MCP server instances (in-process servers)
+	// These have methods like listTools, callTool, etc. and are not convertible
+	// to Gemini CLI's transport-based configuration format
+	if (
+		typeof configAny.listTools === "function" ||
+		typeof configAny.callTool === "function" ||
+		typeof configAny.name === "string"
+	) {
+		console.warn(
+			`[GeminiRunner] MCP server "${serverName}" is an SDK server instance (in-process). ` +
+				`Gemini CLI only supports external MCP servers with transport configurations. Skipping.`,
+		);
+		return null;
+	}
+
 	const geminiConfig: GeminiMcpServerConfig = {};
 
 	// Determine transport type and configure accordingly
