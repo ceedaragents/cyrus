@@ -109,6 +109,18 @@ export {
 	WriteTodosToolResultSchema,
 	WriteTodosToolUseEventSchema,
 } from "./schemas.js";
+// Settings generator utilities (for MCP configuration)
+export {
+	autoDetectMcpConfig,
+	backupGeminiSettings,
+	convertToGeminiMcpConfig,
+	deleteGeminiSettings,
+	type GeminiSettingsOptions,
+	loadMcpConfigFromPaths,
+	restoreGeminiSettings,
+	setupGeminiSettings,
+	writeGeminiSettings,
+} from "./settingsGenerator.js";
 // System prompt manager
 export { SystemPromptManager } from "./systemPromptManager.js";
 // Types
@@ -116,6 +128,8 @@ export type {
 	// Event types
 	GeminiErrorEvent,
 	GeminiInitEvent,
+	// MCP types
+	GeminiMcpServerConfig,
 	GeminiMessageEvent,
 	GeminiResultEvent,
 	GeminiRunnerConfig,
@@ -130,6 +144,8 @@ export type {
 	// Tool result types
 	ListDirectoryToolResult,
 	ListDirectoryToolUseEvent,
+	// Re-export McpServerConfig from cyrus-core for convenience
+	McpServerConfig,
 	ReadFileParameters,
 	ReadFileToolResult,
 	ReadFileToolUseEvent,

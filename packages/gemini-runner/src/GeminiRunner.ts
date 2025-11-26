@@ -18,9 +18,16 @@ import {
 	type GeminiStreamEvent,
 	safeParseGeminiStreamEvent,
 } from "./schemas.js";
-import { setupGeminiSettings } from "./settingsGenerator.js";
+import {
+	autoDetectMcpConfig,
+	convertToGeminiMcpConfig,
+	type GeminiSettingsOptions,
+	loadMcpConfigFromPaths,
+	setupGeminiSettings,
+} from "./settingsGenerator.js";
 import { SystemPromptManager } from "./systemPromptManager.js";
 import type {
+	GeminiMcpServerConfig,
 	GeminiRunnerConfig,
 	GeminiRunnerEvents,
 	GeminiSessionInfo,
@@ -215,9 +222,31 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 		// Reset messages array
 		this.messages = [];
 
-		// Setup Gemini settings with appropriate maxSessionTurns
+		// Build MCP servers configuration
+		const mcpServers = this.buildMcpServers();
+
+		// Setup Gemini settings with MCP servers and maxTurns
+		const settingsOptions: GeminiSettingsOptions = {};
+
 		if (this.config.maxTurns) {
-			this.settingsCleanup = setupGeminiSettings(this.config.maxTurns);
+			settingsOptions.maxSessionTurns = this.config.maxTurns;
+		}
+
+		if (Object.keys(mcpServers).length > 0) {
+			settingsOptions.mcpServers = mcpServers;
+		}
+
+		if (this.config.allowMCPServers) {
+			settingsOptions.allowMCPServers = this.config.allowMCPServers;
+		}
+
+		if (this.config.excludeMCPServers) {
+			settingsOptions.excludeMCPServers = this.config.excludeMCPServers;
+		}
+
+		// Only setup settings if we have something to configure
+		if (Object.keys(settingsOptions).length > 0) {
+			this.settingsCleanup = setupGeminiSettings(settingsOptions);
 		}
 
 		try {
@@ -703,6 +732,66 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 	 */
 	getFormatter(): IMessageFormatter {
 		return this.formatter;
+	}
+
+	/**
+	 * Build MCP servers configuration from config paths and inline config
+	 *
+	 * MCP configuration loading follows a layered approach:
+	 * 1. Auto-detect .mcp.json in working directory (base config)
+	 * 2. Load from explicitly configured paths via mcpConfigPath (extends/overrides)
+	 * 3. Merge inline mcpConfig (highest priority, overrides file configs)
+	 *
+	 * HTTP-based MCP servers (like Linear's https://mcp.linear.app/mcp) are filtered out
+	 * since Gemini CLI only supports stdio (command-based) MCP servers.
+	 *
+	 * @returns Record of MCP server name to GeminiMcpServerConfig
+	 */
+	private buildMcpServers(): Record<string, GeminiMcpServerConfig> {
+		const geminiMcpServers: Record<string, GeminiMcpServerConfig> = {};
+
+		// Build config paths list, starting with auto-detected .mcp.json
+		const configPaths: string[] = [];
+
+		// 1. Auto-detect .mcp.json in working directory
+		const autoDetectedPath = autoDetectMcpConfig(this.config.workingDirectory);
+		if (autoDetectedPath) {
+			configPaths.push(autoDetectedPath);
+		}
+
+		// 2. Add explicitly configured paths
+		if (this.config.mcpConfigPath) {
+			const explicitPaths = Array.isArray(this.config.mcpConfigPath)
+				? this.config.mcpConfigPath
+				: [this.config.mcpConfigPath];
+			configPaths.push(...explicitPaths);
+		}
+
+		// Load from all config paths
+		const fileBasedServers = loadMcpConfigFromPaths(
+			configPaths.length > 0 ? configPaths : undefined,
+		);
+
+		// 3. Merge inline config (overrides file-based config)
+		const allServers = this.config.mcpConfig
+			? { ...fileBasedServers, ...this.config.mcpConfig }
+			: fileBasedServers;
+
+		// Convert each server to Gemini format
+		for (const [serverName, serverConfig] of Object.entries(allServers)) {
+			const geminiConfig = convertToGeminiMcpConfig(serverName, serverConfig);
+			if (geminiConfig) {
+				geminiMcpServers[serverName] = geminiConfig;
+			}
+		}
+
+		if (Object.keys(geminiMcpServers).length > 0) {
+			console.log(
+				`[GeminiRunner] Configured ${Object.keys(geminiMcpServers).length} MCP server(s): ${Object.keys(geminiMcpServers).join(", ")}`,
+			);
+		}
+
+		return geminiMcpServers;
 	}
 
 	/**
