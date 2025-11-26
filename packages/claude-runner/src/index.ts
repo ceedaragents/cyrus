@@ -18,6 +18,10 @@ export {
 	writeTools,
 } from "./config.js";
 export {
+	ClaudeMessageFormatter,
+	type IMessageFormatter,
+} from "./formatter.js";
+export {
 	type CyrusToolsOptions,
 	createCyrusToolsServer,
 } from "./tools/cyrus-tools/index.js";

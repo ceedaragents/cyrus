@@ -9,6 +9,10 @@ import type {
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "cyrus-claude-runner";
+import {
+	ClaudeMessageFormatter,
+	type IMessageFormatter,
+} from "cyrus-claude-runner";
 import type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
@@ -34,6 +38,7 @@ export class AgentSessionManager {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private formatter: IMessageFormatter = new ClaudeMessageFormatter();
 	private procedureRouter?: ProcedureRouter;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -163,52 +168,6 @@ export class AgentSessionManager {
 
 		// DON'T store locally yet - wait until we actually post to Linear
 		return sessionEntry;
-	}
-
-	/**
-	 * Format TodoWrite tool parameter as a nice checklist
-	 */
-	private formatTodoWriteParameter(jsonContent: string): string {
-		try {
-			const data = JSON.parse(jsonContent);
-			if (!data.todos || !Array.isArray(data.todos)) {
-				return jsonContent;
-			}
-
-			const todos = data.todos as Array<{
-				id: string;
-				content: string;
-				status: string;
-				priority: string;
-			}>;
-
-			// Keep original order but add status indicators
-			let formatted = "\n";
-
-			todos.forEach((todo, index) => {
-				let statusEmoji = "";
-				if (todo.status === "completed") {
-					statusEmoji = "✅ ";
-				} else if (todo.status === "in_progress") {
-					statusEmoji = "🔄 ";
-				} else if (todo.status === "pending") {
-					statusEmoji = "⏳ ";
-				}
-
-				formatted += `${statusEmoji}${todo.content}`;
-				if (index < todos.length - 1) {
-					formatted += "\n";
-				}
-			});
-
-			return formatted;
-		} catch (error) {
-			console.error(
-				"[AgentSessionManager] Failed to format TodoWrite parameter:",
-				error,
-			);
-			return jsonContent;
-		}
 	}
 
 	/**
@@ -766,20 +725,28 @@ export class AgentSessionManager {
 								return;
 							}
 
-							// Format input for display
-							const formattedInput =
-								typeof toolInput === "string"
-									? toolInput
-									: JSON.stringify(toolInput, null, 2);
-
-							// Use tool output directly without collapsible wrapping
-							const wrappedResult = toolResult.content?.trim() || "";
+							// Format input, action name, and result using the formatter
+							const formattedParameter = this.formatter.formatToolParameter(
+								toolName,
+								toolInput,
+							);
+							const formattedAction = this.formatter.formatToolActionName(
+								toolName,
+								toolInput,
+								toolResult.isError,
+							);
+							const formattedResult = this.formatter.formatToolResult(
+								toolName,
+								toolInput,
+								toolResult.content || "",
+								toolResult.isError,
+							);
 
 							content = {
 								type: "action",
-								action: toolResult.isError ? `${toolName} (Error)` : toolName,
-								parameter: formattedInput,
-								result: wrappedResult,
+								action: formattedAction,
+								parameter: formattedParameter,
+								result: formattedResult,
 							};
 						} else {
 							return;
@@ -815,7 +782,7 @@ export class AgentSessionManager {
 
 						// Special handling for TodoWrite tool - treat as thought instead of action
 						if (toolName === "TodoWrite") {
-							const formattedTodos = this.formatTodoWriteParameter(
+							const formattedTodos = this.formatter.formatTodoWriteParameter(
 								entry.content,
 							);
 							content = {
@@ -826,7 +793,11 @@ export class AgentSessionManager {
 							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Special handling for Task tool - add start marker and track active task
-							const parameter = entry.content;
+							const toolInput = entry.metadata.toolInput || entry.content;
+							const formattedParameter = this.formatter.formatToolParameter(
+								toolName,
+								toolInput,
+							);
 							const displayName = toolName;
 
 							// Track this as the active Task for this session
@@ -840,14 +811,14 @@ export class AgentSessionManager {
 							content = {
 								type: "action",
 								action: displayName,
-								parameter: parameter,
+								parameter: formattedParameter,
 								// result will be added later when we get tool result
 							};
 							// Task is not ephemeral
 							ephemeral = false;
 						} else {
 							// Other tools - check if they're within an active Task
-							const parameter = entry.content;
+							const toolInput = entry.metadata.toolInput || entry.content;
 							let displayName = toolName;
 
 							if (entry.metadata?.parentToolUseId) {
@@ -859,10 +830,15 @@ export class AgentSessionManager {
 								}
 							}
 
+							const formattedParameter = this.formatter.formatToolParameter(
+								displayName,
+								toolInput,
+							);
+
 							content = {
 								type: "action",
 								action: displayName,
-								parameter: parameter,
+								parameter: formattedParameter,
 								// result will be added later when we get tool result
 							};
 							// Standard tool calls are ephemeral
