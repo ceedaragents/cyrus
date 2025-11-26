@@ -4,8 +4,71 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.3] - 2025-11-24
+
+### Added
+- **Claude Opus 4.5 support** - Cyrus now has access to [Claude Opus 4.5](https://www.anthropic.com/claude/opus), Anthropic's most intelligent model with breakthrough capabilities in complex reasoning, advanced coding, and nuanced content creation. Experience significantly improved code generation, deeper analysis, and more sophisticated problem-solving across all Cyrus workflows.
+
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.42 to v0.1.52 - includes support for Claude Opus 4.5 and latest agent capabilities. See [@anthropic-ai/claude-agent-sdk v0.1.52 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0152) ([CYPACK-427](https://linear.app/ceedar/issue/CYPACK-427), [#558](https://github.com/ceedaragents/cyrus/pull/558))
+- Updated @anthropic-ai/sdk from v0.69.0 to v0.71.0 - adds Claude Opus 4.5 model support with enhanced performance and capabilities. See [@anthropic-ai/sdk v0.71.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md#0710-2025-11-22) ([CYPACK-427](https://linear.app/ceedar/issue/CYPACK-427), [#558](https://github.com/ceedaragents/cyrus/pull/558))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.3
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.3
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.3
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.3
+
+#### cyrus-core
+- cyrus-core@0.2.3
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.3
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.3
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.3
+
+## [0.2.2] - 2025-11-19
+
 ### Changed
 - Improved Linear agent-session tool formatting with custom formatters for better readability: Bash tool descriptions now appear in the action field with round brackets, Edit tool results display as unified diffs, and specialized parameter/result formatters for common tools (Read, Write, Grep, Glob, etc.) extract meaningful information instead of showing raw JSON (CYPACK-395, https://github.com/ceedaragents/cyrus/pull/512)
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.2
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.2
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.2
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.2
+
+#### cyrus-core
+- cyrus-core@0.2.2
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.2
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.2
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.2
 
 ## [0.2.1] - 2025-11-15
 
