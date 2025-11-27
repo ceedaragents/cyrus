@@ -14,6 +14,32 @@ vi.mock("../src/SharedApplicationServer.js", () => ({
 	})),
 }));
 
+// Mock fs/promises for file operations
+vi.mock("node:fs/promises", () => ({
+	readFile: vi.fn().mockResolvedValue(
+		JSON.stringify({
+			repositories: [
+				{
+					id: "repo-1",
+					linearWorkspaceId: "workspace-123",
+					linearToken: "old_token",
+					linearRefreshToken: "old_refresh_token",
+				},
+				{
+					id: "repo-2",
+					linearWorkspaceId: "workspace-123",
+					linearToken: "old_token",
+					linearRefreshToken: "old_refresh_token",
+				},
+			],
+		}),
+	),
+	writeFile: vi.fn().mockResolvedValue(undefined),
+	mkdir: vi.fn().mockResolvedValue(undefined),
+	readdir: vi.fn().mockResolvedValue([]),
+	rename: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock global fetch
 global.fetch = vi.fn();
 
@@ -127,6 +153,189 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 					method: "POST",
 				}),
 			);
+		});
+	});
+
+	describe("Token refresh promise coalescing", () => {
+		it("should coalesce concurrent token refresh requests into a single HTTP call", async () => {
+			edgeWorker = new EdgeWorker(mockConfig);
+			edgeWorker.setConfigPath("/test/.cyrus/config.json");
+
+			// Mock successful token refresh with a delay to ensure concurrency
+			vi.mocked(fetch).mockImplementation(
+				() =>
+					new Promise((resolve) => {
+						setTimeout(() => {
+							resolve({
+								ok: true,
+								json: () =>
+									Promise.resolve({
+										access_token: "new_access_token",
+										refresh_token: "new_refresh_token",
+										expires_in: 86400,
+									}),
+							} as Response);
+						}, 100); // 100ms delay to simulate network latency
+					}),
+			);
+
+			// Fire 3 concurrent refresh requests for the same repository
+			const promise1 = edgeWorker.refreshLinearToken("repo-1");
+			const promise2 = edgeWorker.refreshLinearToken("repo-1");
+			const promise3 = edgeWorker.refreshLinearToken("repo-1");
+
+			// Wait for all to complete
+			const [result1, result2, result3] = await Promise.all([
+				promise1,
+				promise2,
+				promise3,
+			]);
+
+			// All should succeed
+			expect(result1.success).toBe(true);
+			expect(result2.success).toBe(true);
+			expect(result3.success).toBe(true);
+
+			// All should have the same new token
+			expect(result1.newToken).toBe("new_access_token");
+			expect(result2.newToken).toBe("new_access_token");
+			expect(result3.newToken).toBe("new_access_token");
+
+			// Only ONE HTTP request should have been made
+			expect(fetch).toHaveBeenCalledTimes(1);
+		});
+
+		it("should coalesce requests from different repos with the same workspace", async () => {
+			// Add a second repository with the same workspace ID
+			mockConfig.repositories.push({
+				id: "repo-2",
+				name: "test-repo-2",
+				repositoryPath: "/test/repo2",
+				workspaceBaseDir: "/test/workspaces",
+				baseBranch: "main",
+				linearWorkspaceId: "workspace-123", // Same workspace
+				linearWorkspaceName: "Test Workspace",
+				linearToken: "test_token",
+				linearRefreshToken: "refresh_token_2",
+			});
+
+			edgeWorker = new EdgeWorker(mockConfig);
+			edgeWorker.setConfigPath("/test/.cyrus/config.json");
+
+			// Mock successful token refresh with a delay
+			vi.mocked(fetch).mockImplementation(
+				() =>
+					new Promise((resolve) => {
+						setTimeout(() => {
+							resolve({
+								ok: true,
+								json: () =>
+									Promise.resolve({
+										access_token: "new_access_token",
+										refresh_token: "new_refresh_token",
+										expires_in: 86400,
+									}),
+							} as Response);
+						}, 100);
+					}),
+			);
+
+			// Fire concurrent refresh requests from different repos (same workspace)
+			const promise1 = edgeWorker.refreshLinearToken("repo-1");
+			const promise2 = edgeWorker.refreshLinearToken("repo-2");
+
+			const [result1, result2] = await Promise.all([promise1, promise2]);
+
+			// Both should succeed with the same token
+			expect(result1.success).toBe(true);
+			expect(result2.success).toBe(true);
+			expect(result1.newToken).toBe("new_access_token");
+			expect(result2.newToken).toBe("new_access_token");
+
+			// Only ONE HTTP request should have been made
+			expect(fetch).toHaveBeenCalledTimes(1);
+		});
+
+		it("should NOT coalesce requests from different workspaces", async () => {
+			// Add a second repository with a DIFFERENT workspace ID
+			mockConfig.repositories.push({
+				id: "repo-2",
+				name: "test-repo-2",
+				repositoryPath: "/test/repo2",
+				workspaceBaseDir: "/test/workspaces",
+				baseBranch: "main",
+				linearWorkspaceId: "workspace-456", // Different workspace
+				linearWorkspaceName: "Other Workspace",
+				linearToken: "test_token_2",
+				linearRefreshToken: "refresh_token_2",
+			});
+
+			edgeWorker = new EdgeWorker(mockConfig);
+			edgeWorker.setConfigPath("/test/.cyrus/config.json");
+
+			// Mock successful token refresh
+			vi.mocked(fetch).mockImplementation(
+				() =>
+					new Promise((resolve) => {
+						setTimeout(() => {
+							resolve({
+								ok: true,
+								json: () =>
+									Promise.resolve({
+										access_token: "new_access_token",
+										refresh_token: "new_refresh_token",
+										expires_in: 86400,
+									}),
+							} as Response);
+						}, 50);
+					}),
+			);
+
+			// Fire concurrent refresh requests from different workspaces
+			const promise1 = edgeWorker.refreshLinearToken("repo-1");
+			const promise2 = edgeWorker.refreshLinearToken("repo-2");
+
+			const [result1, result2] = await Promise.all([promise1, promise2]);
+
+			// Both should succeed
+			expect(result1.success).toBe(true);
+			expect(result2.success).toBe(true);
+
+			// TWO HTTP requests should have been made (one per workspace)
+			expect(fetch).toHaveBeenCalledTimes(2);
+		});
+
+		it("should allow a new refresh after the previous one completes", async () => {
+			edgeWorker = new EdgeWorker(mockConfig);
+			edgeWorker.setConfigPath("/test/.cyrus/config.json");
+
+			let callCount = 0;
+			vi.mocked(fetch).mockImplementation(() => {
+				callCount++;
+				const currentCall = callCount;
+				return Promise.resolve({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							access_token: `new_access_token_${currentCall}`,
+							refresh_token: `new_refresh_token_${currentCall}`,
+							expires_in: 86400,
+						}),
+				} as Response);
+			});
+
+			// First refresh
+			const result1 = await edgeWorker.refreshLinearToken("repo-1");
+			expect(result1.success).toBe(true);
+			expect(result1.newToken).toBe("new_access_token_1");
+
+			// Second refresh (after first completes)
+			const result2 = await edgeWorker.refreshLinearToken("repo-1");
+			expect(result2.success).toBe(true);
+			expect(result2.newToken).toBe("new_access_token_2");
+
+			// Two separate HTTP requests (sequential, not coalesced)
+			expect(fetch).toHaveBeenCalledTimes(2);
 		});
 	});
 });
