@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.61-og] - 2025-11-27
+
 ### Added
 - Claude Opus 4.5 model support via the "opus" label on Linear issues - [CYPACK-460](https://linear.app/ceedar/issue/CYPACK-460)
 
@@ -11,6 +13,26 @@ All notable changes to this project will be documented in this file.
 - Updated @anthropic-ai/claude-agent-sdk to v0.1.54 (from v0.1.31) - [CYPACK-460](https://linear.app/ceedar/issue/CYPACK-460)
 - Updated @anthropic-ai/sdk to v0.71.0 (from v0.68.0) - [CYPACK-460](https://linear.app/ceedar/issue/CYPACK-460)
 - Improved Linear activity formatting with smart tool parameter, action name, and result formatting - tool inputs and outputs now display with proper markdown, syntax highlighting, and human-readable summaries - [CYPACK-460](https://linear.app/ceedar/issue/CYPACK-460)
+
+### Packages
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.26-og
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.33-og
+
+#### cyrus-core
+- cyrus-core@0.0.22-og
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.0.5-og
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.42-og
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.61-og
 
 ## [0.1.60] - 2025-11-03
 
