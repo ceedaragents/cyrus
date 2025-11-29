@@ -92,6 +92,15 @@ export interface RepositoryConfig {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for orchestrator mode
 			disallowedTools?: string[]; // Tools to explicitly disallow in orchestrator mode
 		};
+		"graphite-orchestrator"?: {
+			labels: string[]; // Labels that trigger graphite-orchestrator mode (requires both "graphite" AND "orchestrator" labels)
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for graphite-orchestrator mode
+			disallowedTools?: string[]; // Tools to explicitly disallow in graphite-orchestrator mode
+		};
+		/** Label that indicates an issue should use Graphite stacked branches */
+		graphite?: {
+			labels: string[]; // Labels that indicate Graphite stacking (e.g., ["graphite"])
+		};
 	};
 }
 
@@ -140,6 +149,10 @@ export interface EdgeWorkerConfig {
 			disallowedTools?: string[];
 		};
 		orchestrator?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
+		};
+		"graphite-orchestrator"?: {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
 			disallowedTools?: string[];
 		};
