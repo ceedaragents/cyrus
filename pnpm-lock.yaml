@@ -151,6 +151,34 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.21)
 
+  packages/codex-runner:
+    dependencies:
+      '@iarna/toml':
+        specifier: ^3.0.0
+        version: 3.0.0
+      cyrus-claude-runner:
+        specifier: workspace:*
+        version: link:../claude-runner
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.1.0
+        version: 1.6.1(@types/node@20.19.21)
+
   packages/config-updater:
     dependencies:
       cyrus-core:
@@ -693,6 +721,9 @@ packages:
 
   '@iarna/toml@2.2.5':
     resolution: {integrity: sha512-trnsAYxU3xnS1gPHPyU961coFyLkh4gAD/0zQ5mymY4yOZ+CYvsPqUbOFSw0aDM4y0tV7tiFxL/1XfXPNC6IPg==}
+
+  '@iarna/toml@3.0.0':
+    resolution: {integrity: sha512-td6ZUkz2oS3VeleBcN+m//Q6HlCFCPrnI0FZhrt/h4XqLEdOyYp2u21nd8MdsR+WJy5r9PTDaHTDDfhf4H4l6Q==}
 
   '@img/sharp-darwin-arm64@0.33.5':
     resolution: {integrity: sha512-UT4p+iz/2H4twwAoLCqfA9UH5pI6DggwKEGuaPy7nCVQ8ZsiY5PIcrRvD1DzuY3qYL07NtIQcWnBSY/heikIFQ==}
@@ -3952,6 +3983,8 @@ snapshots:
       yargs: 17.7.2
 
   '@iarna/toml@2.2.5': {}
+
+  '@iarna/toml@3.0.0': {}
 
   '@img/sharp-darwin-arm64@0.33.5':
     optionalDependencies:
