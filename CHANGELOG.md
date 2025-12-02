@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.52 to v0.1.56 - includes experimental v2 session APIs for streamlined multi-turn conversation handling, bug fixes, and alignment with Claude Code v2.0.56. See [@anthropic-ai/claude-agent-sdk v0.1.56 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0156) ([CYPACK-470](https://linear.app/ceedar/issue/CYPACK-470))
+
 ## [0.2.4] - 2025-11-25
 
 ### Added
