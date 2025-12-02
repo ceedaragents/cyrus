@@ -22,6 +22,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	AgentEvent,
@@ -1551,10 +1552,14 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Label-based runner selection for new session: ${runnerType} (session ${linearAgentActivitySessionId})`,
 			);
 
-			const runner =
-				runnerType === "claude"
-					? new ClaudeRunner(runnerConfig)
-					: new GeminiRunner(runnerConfig);
+			let runner: IAgentRunner;
+			if (runnerType === "claude") {
+				runner = new ClaudeRunner(runnerConfig);
+			} else if (runnerType === "codex") {
+				runner = new CodexRunner(runnerConfig);
+			} else {
+				runner = new GeminiRunner(runnerConfig);
+			}
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -2110,7 +2115,7 @@ export class EdgeWorker extends EventEmitter {
 	 * If no runner label is found, defaults to claude.
 	 */
 	private determineRunnerFromLabels(labels: string[]): {
-		runnerType: "claude" | "gemini";
+		runnerType: "claude" | "gemini" | "codex";
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
@@ -2165,6 +2170,18 @@ export class EdgeWorker extends EventEmitter {
 				runnerType: "gemini",
 				modelOverride: "gemini-2.5-pro",
 				fallbackModelOverride: "gemini-2.5-flash",
+			};
+		}
+
+		// Check for Codex labels
+		if (
+			lowercaseLabels.includes("codex") ||
+			lowercaseLabels.includes("o4-mini")
+		) {
+			return {
+				runnerType: "codex",
+				modelOverride: "o4-mini",
+				fallbackModelOverride: "o4-mini",
 			};
 		}
 
@@ -4194,7 +4211,7 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
-	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" | "codex" } {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
@@ -5148,10 +5165,14 @@ ${input.userComment}
 		);
 
 		// Create the appropriate runner based on session state
-		const runner =
-			runnerType === "claude"
-				? new ClaudeRunner(runnerConfig)
-				: new GeminiRunner(runnerConfig);
+		let runner: IAgentRunner;
+		if (runnerType === "claude") {
+			runner = new ClaudeRunner(runnerConfig);
+		} else if (runnerType === "codex") {
+			runner = new CodexRunner(runnerConfig);
+		} else {
+			runner = new GeminiRunner(runnerConfig);
+		}
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);

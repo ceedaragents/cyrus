@@ -1,0 +1,16 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"baseUrl": "../../",
+		"paths": {
+			"cyrus-core": ["packages/core/src"],
+			"cyrus-codex-runner": ["packages/codex-runner/src"],
+			"cyrus-claude-runner": ["packages/claude-runner/src"]
+		}
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
