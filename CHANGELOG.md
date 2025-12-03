@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **OpenAI Codex CLI support** - New `cyrus-codex-runner` package enables Cyrus to use OpenAI's Codex CLI for processing issues. This runner uses Codex's `exec --json` mode with JSONL event parsing and supports MCP server configuration via config.toml.
+
 ## [0.2.4] - 2025-11-25
 
 ### Added
