@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LinearClient } from "@linear/sdk";
+import { LinearClient, type Issue as LinearIssue } from "@linear/sdk";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
 	HookCallbackMatcher,
@@ -2718,11 +2718,17 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		let baseBranch = repository.baseBranch;
 
 		// Check if this issue has the graphite label - if so, blocked-by relationship takes priority
-		const isGraphiteIssue = await this.hasGraphiteLabel(issue, repository);
+		// Cast to LinearIssue since we need the full SDK type for relations queries
+		const isGraphiteIssue = await this.hasGraphiteLabel(
+			issue as LinearIssue,
+			repository,
+		);
 
 		if (isGraphiteIssue) {
 			// For Graphite stacking: use the blocking issue's branch as base
-			const blockingIssues = await this.fetchBlockingIssues(issue);
+			const blockingIssues = await this.fetchBlockingIssues(
+				issue as LinearIssue,
+			);
 
 			if (blockingIssues.length > 0) {
 				// Use the first blocking issue's branch (typically there's only one in a stack)

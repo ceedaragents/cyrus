@@ -537,12 +537,12 @@ export function createCyrusToolsServer(
 			issueId: z
 				.string()
 				.describe(
-					"The ID or identifier of the issue to add the relation to (e.g., 'PROJ-123' or UUID)",
+					"The BLOCKING issue (the one that must complete first). For 'blocks' type: this issue blocks relatedIssueId. Example: 'PROJ-123' or UUID",
 				),
 			relatedIssueId: z
 				.string()
 				.describe(
-					"The ID or identifier of the related issue (e.g., 'PROJ-122' or UUID)",
+					"The BLOCKED issue (the one that depends on issueId). For 'blocks' type: this issue is blocked by issueId. Example: 'PROJ-124' or UUID",
 				),
 			type: z
 				.enum(["blocks", "related", "duplicate"])
@@ -553,7 +553,7 @@ export function createCyrusToolsServer(
 		async ({ issueId, relatedIssueId, type }) => {
 			try {
 				console.log(
-					`Creating ${type} relation: ${issueId} <- ${relatedIssueId}`,
+					`Creating ${type} relation: ${issueId} -> ${relatedIssueId} (${issueId} blocks ${relatedIssueId})`,
 				);
 
 				// Resolve issue identifiers to UUIDs if needed
@@ -609,7 +609,7 @@ export function createCyrusToolsServer(
 				const relation = await result.issueRelation;
 
 				console.log(
-					`Created ${type} relation between ${issue.identifier} and ${relatedIssue.identifier}`,
+					`Created ${type} relation: ${issue.identifier} ${type} ${relatedIssue.identifier}`,
 				);
 
 				return {
@@ -621,16 +621,16 @@ export function createCyrusToolsServer(
 								relation: {
 									id: relation?.id,
 									type: type,
-									issue: {
+									blocker: {
 										id: issue.id,
 										identifier: issue.identifier,
 									},
-									relatedIssue: {
+									blocked: {
 										id: relatedIssue.id,
 										identifier: relatedIssue.identifier,
 									},
 								},
-								message: `Successfully created '${type}' relation: ${relatedIssue.identifier} ${type} ${issue.identifier}`,
+								message: `Successfully created '${type}' relation: ${issue.identifier} ${type} ${relatedIssue.identifier}`,
 							}),
 						},
 					],
