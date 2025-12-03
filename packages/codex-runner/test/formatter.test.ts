@@ -43,8 +43,22 @@ describe("CodexMessageFormatter", () => {
 			expect(result).toBe(invalidJson);
 		});
 
-		it("should handle missing todos array", () => {
-			const input = JSON.stringify({ items: [] });
+		it("should handle SDK format with items array and text field", () => {
+			const input = JSON.stringify({
+				items: [
+					{ text: "Task 1", completed: true },
+					{ text: "Task 2", completed: false },
+				],
+			});
+
+			const result = formatter.formatTodoWriteParameter(input);
+
+			expect(result).toContain("✅ Task 1");
+			expect(result).toContain("⏳ Task 2");
+		});
+
+		it("should return original input when neither todos nor items exists", () => {
+			const input = JSON.stringify({ somethingElse: [] });
 
 			const result = formatter.formatTodoWriteParameter(input);
 
@@ -61,8 +75,8 @@ describe("CodexMessageFormatter", () => {
 			expect(result).toBe("npm install");
 		});
 
-		it("should format command-execution (Codex format)", () => {
-			const result = formatter.formatToolParameter("command-execution", {
+		it("should format command_execution (SDK format)", () => {
+			const result = formatter.formatToolParameter("command_execution", {
 				command: "git status",
 			});
 
@@ -103,9 +117,9 @@ describe("CodexMessageFormatter", () => {
 			expect(result).toBe("/src/index.ts");
 		});
 
-		it("should format file-change with patches", () => {
-			const result = formatter.formatToolParameter("file-change", {
-				patches: [{ file: "src/a.ts" }, { file: "src/b.ts" }],
+		it("should format file_change with changes (SDK format)", () => {
+			const result = formatter.formatToolParameter("file_change", {
+				changes: [{ path: "src/a.ts" }, { path: "src/b.ts" }],
 			});
 
 			expect(result).toBe("src/a.ts, src/b.ts");
@@ -280,19 +294,21 @@ describe("CodexMessageFormatter", () => {
 			expect(result).toBe("*File written successfully*");
 		});
 
-		it("should format Edit with patches as diff", () => {
+		it("should format Edit with changes (SDK format)", () => {
 			const result = formatter.formatToolResult(
 				"Edit",
 				{
-					patches: [{ file: "index.ts", patch: "-old\n+new" }],
+					changes: [
+						{ path: "index.ts", kind: "update" },
+						{ path: "new-file.ts", kind: "add" },
+					],
 				},
 				"",
 				false,
 			);
 
-			expect(result).toContain("```diff");
-			expect(result).toContain("--- index.ts");
-			expect(result).toContain("-old\n+new");
+			expect(result).toContain("Modified: index.ts");
+			expect(result).toContain("Created: new-file.ts");
 		});
 
 		it("should format Grep results with match count", () => {

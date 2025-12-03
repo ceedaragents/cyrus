@@ -16,8 +16,9 @@ vi.mock("@openai/codex-sdk", () => {
 						yield {
 							type: "item.completed",
 							item: {
-								type: "agent-message",
-								content: "Hello, I'm the mock assistant!",
+								id: "msg-1",
+								type: "agent_message",
+								text: "Hello, I'm the mock assistant!",
 							},
 						};
 						yield {

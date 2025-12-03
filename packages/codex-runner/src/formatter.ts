@@ -49,12 +49,15 @@ export class CodexMessageFormatter implements IMessageFormatter {
 	formatTodoWriteParameter(jsonContent: string): string {
 		try {
 			const data = JSON.parse(jsonContent);
-			if (!data.todos || !Array.isArray(data.todos)) {
+			// SDK uses 'items' array, cyrus uses 'todos' array
+			const todoList = data.items || data.todos;
+			if (!todoList || !Array.isArray(todoList)) {
 				return jsonContent;
 			}
 
-			const todos = data.todos as Array<{
+			const todos = todoList as Array<{
 				id?: string;
+				text?: string; // SDK field
 				description?: string;
 				content?: string;
 				status?: string;
@@ -65,7 +68,7 @@ export class CodexMessageFormatter implements IMessageFormatter {
 
 			todos.forEach((todo, index) => {
 				let statusEmoji = "";
-				// Handle both Codex format (completed boolean) and cyrus format (status string)
+				// Handle both SDK format (completed boolean) and cyrus format (status string)
 				const isCompleted =
 					todo.completed === true || todo.status === "completed";
 				const isInProgress = todo.status === "in_progress";
@@ -79,7 +82,8 @@ export class CodexMessageFormatter implements IMessageFormatter {
 					statusEmoji = "⏳ ";
 				}
 
-				const todoText = todo.description || todo.content || "";
+				// SDK uses 'text', cyrus uses 'description' or 'content'
+				const todoText = todo.text || todo.description || todo.content || "";
 				formatted += `${statusEmoji}${todoText}`;
 				if (index < todos.length - 1) {
 					formatted += "\n";
@@ -108,9 +112,9 @@ export class CodexMessageFormatter implements IMessageFormatter {
 
 		try {
 			switch (toolName) {
-				// Codex tool names (from ThreadItem types)
+				// Codex tool names (from ThreadItem types - use underscores to match SDK)
 				case "Bash":
-				case "command-execution": {
+				case "command_execution": {
 					// Show command only
 					const command = getString(toolInput, "command");
 					return command || JSON.stringify(toolInput);
@@ -145,20 +149,20 @@ export class CodexMessageFormatter implements IMessageFormatter {
 				}
 
 				case "Edit":
-				case "file-change": {
-					// Handle file patches from Codex
+				case "file_change": {
+					// Handle file changes from Codex SDK
 					const filePath =
-						getString(toolInput, "file_path") || getString(toolInput, "file");
+						getString(toolInput, "file_path") || getString(toolInput, "path");
 					if (filePath) {
 						return filePath;
 					}
-					// Check for patches array
-					if (hasProperty(toolInput, "patches")) {
-						const patches = (toolInput as Record<string, unknown>)
-							.patches as Array<{ file?: string }>;
-						if (Array.isArray(patches) && patches.length > 0) {
-							const files = patches
-								.map((p) => p.file)
+					// Check for changes array (SDK format with {path, kind})
+					if (hasProperty(toolInput, "changes")) {
+						const changes = (toolInput as Record<string, unknown>)
+							.changes as Array<{ path?: string }>;
+						if (Array.isArray(changes) && changes.length > 0) {
+							const files = changes
+								.map((c) => c.path)
 								.filter(Boolean)
 								.join(", ");
 							return files || JSON.stringify(toolInput);
@@ -200,15 +204,19 @@ export class CodexMessageFormatter implements IMessageFormatter {
 				}
 
 				case "TodoWrite":
-				case "todo-list": {
-					if (hasProperty(toolInput, "todos")) {
+				case "todo_list": {
+					// SDK uses 'items' array, but we also support 'todos' for cyrus format
+					if (
+						hasProperty(toolInput, "items") ||
+						hasProperty(toolInput, "todos")
+					) {
 						return this.formatTodoWriteParameter(JSON.stringify(toolInput));
 					}
 					break;
 				}
 
 				case "WebSearch":
-				case "web-search": {
+				case "web_search": {
 					const query = getString(toolInput, "query");
 					if (query) {
 						return `Query: "${query}"`;
@@ -258,8 +266,8 @@ export class CodexMessageFormatter implements IMessageFormatter {
 		toolInput: FormatterToolInput,
 		isError: boolean,
 	): string {
-		// Handle Bash/command-execution with description
-		if (toolName === "Bash" || toolName === "command-execution") {
+		// Handle Bash/command_execution with description
+		if (toolName === "Bash" || toolName === "command_execution") {
 			const description = getString(toolInput, "description");
 			if (description) {
 				const baseName = isError ? `${toolName} (Error)` : toolName;
@@ -289,7 +297,7 @@ export class CodexMessageFormatter implements IMessageFormatter {
 		try {
 			switch (toolName) {
 				case "Bash":
-				case "command-execution": {
+				case "command_execution": {
 					let formatted = "";
 					const command = getString(toolInput, "command");
 					const description = getString(toolInput, "description");
@@ -358,23 +366,25 @@ export class CodexMessageFormatter implements IMessageFormatter {
 					return "*File written successfully*";
 
 				case "Edit":
-				case "file-change": {
-					// Check for patches in input
-					if (hasProperty(toolInput, "patches")) {
-						const patches = (toolInput as Record<string, unknown>)
-							.patches as Array<{ file?: string; patch?: string }>;
-						if (Array.isArray(patches) && patches.length > 0) {
-							let diff = "```diff\n";
-							for (const p of patches) {
-								if (p.file) {
-									diff += `--- ${p.file}\n+++ ${p.file}\n`;
-								}
-								if (p.patch) {
-									diff += `${p.patch}\n`;
+				case "file_change": {
+					// Check for changes in input (SDK format with {path, kind})
+					if (hasProperty(toolInput, "changes")) {
+						const changes = (toolInput as Record<string, unknown>)
+							.changes as Array<{ path?: string; kind?: string }>;
+						if (Array.isArray(changes) && changes.length > 0) {
+							let formatted = "";
+							for (const c of changes) {
+								if (c.path) {
+									const kindLabel =
+										c.kind === "add"
+											? "Created"
+											: c.kind === "delete"
+												? "Deleted"
+												: "Modified";
+									formatted += `${kindLabel}: ${c.path}\n`;
 								}
 							}
-							diff += "```";
-							return diff;
+							return formatted.trim() || "*Files changed*";
 						}
 					}
 
@@ -411,14 +421,14 @@ export class CodexMessageFormatter implements IMessageFormatter {
 				}
 
 				case "TodoWrite":
-				case "todo-list":
+				case "todo_list":
 					if (result?.trim()) {
 						return result;
 					}
 					return "*Todos updated*";
 
 				case "WebSearch":
-				case "web-search":
+				case "web_search":
 					if (result?.trim()) {
 						return `\`\`\`\n${result}\n\`\`\``;
 					}

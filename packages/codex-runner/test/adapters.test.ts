@@ -23,11 +23,12 @@ import type {
 describe("codexItemToSDKMessage", () => {
 	const sessionId = "test-session-123";
 
-	describe("agent-message items", () => {
+	describe("agent_message items", () => {
 		it("should convert agent message to assistant SDK message", () => {
 			const item: CodexAgentMessageItem = {
-				type: "agent-message",
-				content: "Hello, I'm here to help!",
+				id: "msg-1",
+				type: "agent_message",
+				text: "Hello, I'm here to help!",
 			};
 
 			const result = codexItemToSDKMessage(item, sessionId);
@@ -49,13 +50,14 @@ describe("codexItemToSDKMessage", () => {
 		});
 	});
 
-	describe("command-execution items", () => {
-		it("should convert running command to tool use message", () => {
+	describe("command_execution items", () => {
+		it("should convert in_progress command to tool use message", () => {
 			const item: CodexCommandExecutionItem = {
-				type: "command-execution",
-				status: "running",
+				id: "cmd-1",
+				type: "command_execution",
+				status: "in_progress",
 				command: "npm install",
-				output: "",
+				aggregated_output: "",
 			};
 
 			const result = codexItemToSDKMessage(item, sessionId);
@@ -77,11 +79,12 @@ describe("codexItemToSDKMessage", () => {
 
 		it("should convert completed command to tool use message", () => {
 			const item: CodexCommandExecutionItem = {
-				type: "command-execution",
+				id: "cmd-2",
+				type: "command_execution",
 				status: "completed",
 				command: "ls -la",
-				output: "file1.txt\nfile2.txt",
-				exitCode: 0,
+				aggregated_output: "file1.txt\nfile2.txt",
+				exit_code: 0,
 			};
 
 			const result = codexItemToSDKMessage(item, sessionId);
@@ -92,11 +95,12 @@ describe("codexItemToSDKMessage", () => {
 
 		it("should convert failed command to tool use message", () => {
 			const item: CodexCommandExecutionItem = {
-				type: "command-execution",
+				id: "cmd-3",
+				type: "command_execution",
 				status: "failed",
 				command: "invalid-command",
-				output: "command not found",
-				exitCode: 127,
+				aggregated_output: "command not found",
+				exit_code: 127,
 			};
 
 			const result = codexItemToSDKMessage(item, sessionId);
@@ -106,12 +110,13 @@ describe("codexItemToSDKMessage", () => {
 		});
 	});
 
-	describe("file-change items", () => {
+	describe("file_change items", () => {
 		it("should convert file change to Edit tool use", () => {
 			const item: CodexFileChangeItem = {
-				type: "file-change",
+				id: "file-1",
+				type: "file_change",
 				status: "completed",
-				patches: [{ file: "src/index.ts", patch: "+console.log('hello')" }],
+				changes: [{ path: "src/index.ts", kind: "update" }],
 			};
 
 			const result = codexItemToSDKMessage(item, sessionId);
@@ -132,14 +137,15 @@ describe("codexItemToSDKMessage", () => {
 		});
 	});
 
-	describe("mcp-tool-call items", () => {
+	describe("mcp_tool_call items", () => {
 		it("should convert MCP tool call to proper format", () => {
 			const item: CodexMcpToolCallItem = {
-				type: "mcp-tool-call",
-				serverName: "linear",
-				toolName: "get_issue",
+				id: "mcp-1",
+				type: "mcp_tool_call",
+				server: "linear",
+				tool: "get_issue",
 				arguments: { issueId: "ABC-123" },
-				result: "Issue found",
+				status: "completed",
 			};
 
 			const result = codexItemToSDKMessage(item, sessionId);
@@ -160,13 +166,14 @@ describe("codexItemToSDKMessage", () => {
 		});
 	});
 
-	describe("todo-list items", () => {
+	describe("todo_list items", () => {
 		it("should convert todo list to TodoWrite tool use", () => {
 			const item: CodexTodoListItem = {
-				type: "todo-list",
-				todos: [
-					{ id: "1", description: "Fix bug", completed: false },
-					{ id: "2", description: "Write tests", completed: true },
+				id: "todo-1",
+				type: "todo_list",
+				items: [
+					{ text: "Fix bug", completed: false },
+					{ text: "Write tests", completed: true },
 				],
 			};
 
@@ -191,6 +198,7 @@ describe("codexItemToSDKMessage", () => {
 	describe("error items", () => {
 		it("should convert error item to error result message", () => {
 			const item = {
+				id: "err-1",
 				type: "error" as const,
 				message: "Something went wrong",
 			};
@@ -278,8 +286,9 @@ describe("codexEventToSDKMessage", () => {
 			const event: CodexItemCompletedEvent = {
 				type: "item.completed",
 				item: {
-					type: "agent-message",
-					content: "Hello!",
+					id: "msg-1",
+					type: "agent_message",
+					text: "Hello!",
 				},
 			};
 

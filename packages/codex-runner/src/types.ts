@@ -186,79 +186,149 @@ export type CodexThreadEvent =
 
 /**
  * Agent message item - contains the agent's response text
+ * Uses underscore naming convention to match SDK
  */
 export interface CodexAgentMessageItem {
-	type: "agent-message";
-	content: string;
+	id: string;
+	type: "agent_message";
+	/** Either natural-language text or JSON when structured output is requested */
+	text: string;
 }
 
 /**
  * Reasoning item - captures the agent's internal reasoning summary
  */
 export interface CodexReasoningItem {
+	id: string;
 	type: "reasoning";
-	content: string;
+	text: string;
 }
+
+/**
+ * Command execution status type
+ */
+export type CodexCommandExecutionStatus =
+	| "in_progress"
+	| "completed"
+	| "failed";
 
 /**
  * Command execution item - tracks shell command execution
  */
 export interface CodexCommandExecutionItem {
-	type: "command-execution";
-	status: "running" | "completed" | "failed";
+	id: string;
+	type: "command_execution";
+	/** The command line executed by the agent */
 	command: string;
-	output: string;
-	exitCode?: number;
+	/** Aggregated stdout and stderr captured while the command was running */
+	aggregated_output: string;
+	/** Set when the command exits; omitted while still running */
+	exit_code?: number;
+	/** Current status of the command execution */
+	status: CodexCommandExecutionStatus;
 }
+
+/**
+ * Indicates the type of the file change
+ */
+export type CodexPatchChangeKind = "add" | "delete" | "update";
+
+/**
+ * A file update change
+ */
+export interface CodexFileUpdateChange {
+	path: string;
+	kind: CodexPatchChangeKind;
+}
+
+/**
+ * File change status type
+ */
+export type CodexPatchApplyStatus = "completed" | "failed";
 
 /**
  * File change item - documents patch operations
  */
 export interface CodexFileChangeItem {
-	type: "file-change";
-	status: "completed" | "failed";
-	patches: Array<{
-		file: string;
-		patch: string;
-	}>;
+	id: string;
+	type: "file_change";
+	/** Individual file changes that comprise the patch */
+	changes: CodexFileUpdateChange[];
+	/** Whether the patch ultimately succeeded or failed */
+	status: CodexPatchApplyStatus;
+}
+
+/**
+ * MCP tool call status type
+ */
+export type CodexMcpToolCallStatus = "in_progress" | "completed" | "failed";
+
+/**
+ * MCP tool call result
+ */
+export interface CodexMcpToolCallResult {
+	content: unknown[];
+	structured_content: unknown;
+}
+
+/**
+ * MCP tool call error
+ */
+export interface CodexMcpToolCallError {
+	message: string;
 }
 
 /**
  * MCP tool call item - represents Model Context Protocol tool invocations
  */
 export interface CodexMcpToolCallItem {
-	type: "mcp-tool-call";
-	serverName: string;
-	toolName: string;
-	arguments: Record<string, unknown>;
-	result?: string;
-	error?: string;
+	id: string;
+	type: "mcp_tool_call";
+	/** Name of the MCP server handling the request */
+	server: string;
+	/** The tool invoked on the MCP server */
+	tool: string;
+	/** Arguments forwarded to the tool invocation */
+	arguments: unknown;
+	/** Result payload returned by the MCP server for successful calls */
+	result?: CodexMcpToolCallResult;
+	/** Error message reported for failed calls */
+	error?: CodexMcpToolCallError;
+	/** Current status of the tool invocation */
+	status: CodexMcpToolCallStatus;
 }
 
 /**
  * Web search item - captures search queries
  */
 export interface CodexWebSearchItem {
-	type: "web-search";
+	id: string;
+	type: "web_search";
 	query: string;
+}
+
+/**
+ * A single todo item in the agent's to-do list
+ */
+export interface CodexTodoItem {
+	text: string;
+	completed: boolean;
 }
 
 /**
  * Todo list item - maintains a running to-do list
  */
 export interface CodexTodoListItem {
-	type: "todo-list";
-	todos: Array<{
-		id: string;
-		description: string;
-		completed: boolean;
-	}>;
+	id: string;
+	type: "todo_list";
+	items: CodexTodoItem[];
 }
 
 /**
  * Error item - represents non-fatal errors surfaced as items
  */
 export interface CodexErrorItem {
+	id: string;
 	type: "error";
 	message: string;
 }
@@ -282,7 +352,7 @@ export type CodexThreadItem =
 export function isCodexAgentMessageItem(
 	item: CodexThreadItem,
 ): item is CodexAgentMessageItem {
-	return item.type === "agent-message";
+	return item.type === "agent_message";
 }
 
 /**
@@ -291,7 +361,7 @@ export function isCodexAgentMessageItem(
 export function isCodexCommandExecutionItem(
 	item: CodexThreadItem,
 ): item is CodexCommandExecutionItem {
-	return item.type === "command-execution";
+	return item.type === "command_execution";
 }
 
 /**
@@ -300,7 +370,7 @@ export function isCodexCommandExecutionItem(
 export function isCodexFileChangeItem(
 	item: CodexThreadItem,
 ): item is CodexFileChangeItem {
-	return item.type === "file-change";
+	return item.type === "file_change";
 }
 
 /**
@@ -309,7 +379,7 @@ export function isCodexFileChangeItem(
 export function isCodexMcpToolCallItem(
 	item: CodexThreadItem,
 ): item is CodexMcpToolCallItem {
-	return item.type === "mcp-tool-call";
+	return item.type === "mcp_tool_call";
 }
 
 /**
@@ -318,7 +388,7 @@ export function isCodexMcpToolCallItem(
 export function isCodexTodoListItem(
 	item: CodexThreadItem,
 ): item is CodexTodoListItem {
-	return item.type === "todo-list";
+	return item.type === "todo_list";
 }
 
 /**
@@ -336,7 +406,7 @@ export function isCodexReasoningItem(
 export function isCodexWebSearchItem(
 	item: CodexThreadItem,
 ): item is CodexWebSearchItem {
-	return item.type === "web-search";
+	return item.type === "web_search";
 }
 
 /**

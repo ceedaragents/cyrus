@@ -16,6 +16,7 @@ import type {
 	SDKUserMessage,
 } from "cyrus-core";
 import type {
+	CodexAgentMessageItem,
 	CodexCommandExecutionItem,
 	CodexFileChangeItem,
 	CodexMcpToolCallItem,
@@ -23,6 +24,7 @@ import type {
 	CodexThreadItem,
 	CodexTodoListItem,
 	CodexUsage,
+	CodexWebSearchItem,
 } from "./types.js";
 
 /**
@@ -74,11 +76,12 @@ export function codexItemToSDKMessage(
 	sessionId: string | null,
 ): SDKMessage | null {
 	switch (item.type) {
-		case "agent-message": {
-			// Agent's text response
+		case "agent_message": {
+			// Agent's text response - SDK uses 'text' field
+			const agentItem = item as CodexAgentMessageItem;
 			const assistantMessage: SDKAssistantMessage = {
 				type: "assistant",
-				message: createBetaMessage(item.content),
+				message: createBetaMessage(agentItem.text),
 				parent_tool_use_id: null,
 				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
@@ -86,24 +89,30 @@ export function codexItemToSDKMessage(
 			return assistantMessage;
 		}
 
-		case "command-execution": {
+		case "command_execution": {
 			// Shell command execution - map to tool_use and tool_result
-			return codexCommandToSDKMessage(item, sessionId);
+			return codexCommandToSDKMessage(
+				item as CodexCommandExecutionItem,
+				sessionId,
+			);
 		}
 
-		case "file-change": {
+		case "file_change": {
 			// File changes - map to tool_use for Edit operations
-			return codexFileChangeToSDKMessage(item, sessionId);
+			return codexFileChangeToSDKMessage(
+				item as CodexFileChangeItem,
+				sessionId,
+			);
 		}
 
-		case "mcp-tool-call": {
+		case "mcp_tool_call": {
 			// MCP tool calls - map to tool_use and tool_result
-			return codexMcpToolToSDKMessage(item, sessionId);
+			return codexMcpToolToSDKMessage(item as CodexMcpToolCallItem, sessionId);
 		}
 
-		case "todo-list": {
+		case "todo_list": {
 			// Todo list updates - map to tool_use for TodoWrite
-			return codexTodoListToSDKMessage(item, sessionId);
+			return codexTodoListToSDKMessage(item as CodexTodoListItem, sessionId);
 		}
 
 		case "reasoning": {
@@ -112,8 +121,9 @@ export function codexItemToSDKMessage(
 			return null;
 		}
 
-		case "web-search": {
+		case "web_search": {
 			// Web search - could map to WebSearch tool use
+			const webSearchItem = item as CodexWebSearchItem;
 			const toolId = crypto.randomUUID();
 			const toolUseMessage: SDKAssistantMessage = {
 				type: "assistant",
@@ -122,7 +132,7 @@ export function codexItemToSDKMessage(
 						type: "tool_use",
 						id: toolId,
 						name: "WebSearch",
-						input: { query: item.query },
+						input: { query: webSearchItem.query },
 					},
 				]),
 				parent_tool_use_id: null,
@@ -166,7 +176,7 @@ function codexCommandToSDKMessage(
 ): SDKMessage {
 	const toolId = crypto.randomUUID();
 
-	// For all command states (running/completed/failed), emit as tool_use
+	// For all command states (in_progress/completed/failed), emit as tool_use
 	// The status is part of the item metadata, not the message structure
 	const toolUseMessage: SDKAssistantMessage = {
 		type: "assistant",
@@ -178,9 +188,10 @@ function codexCommandToSDKMessage(
 				input: {
 					command: item.command,
 					// Include status and output for completed/failed commands
-					...(item.status !== "running" && {
-						output: item.output,
-						exitCode: item.exitCode,
+					// SDK uses aggregated_output and exit_code (with underscore)
+					...(item.status !== "in_progress" && {
+						output: item.aggregated_output,
+						exitCode: item.exit_code,
 					}),
 				},
 			},
@@ -202,9 +213,9 @@ function codexFileChangeToSDKMessage(
 ): SDKMessage {
 	const toolId = crypto.randomUUID();
 
-	// Get the first patch for the tool input
-	const firstPatch = item.patches[0];
-	const filePath = firstPatch?.file || "unknown";
+	// SDK uses 'changes' array with {path, kind} structure
+	const firstChange = item.changes[0];
+	const filePath = firstChange?.path || "unknown";
 
 	const toolUseMessage: SDKAssistantMessage = {
 		type: "assistant",
@@ -215,8 +226,8 @@ function codexFileChangeToSDKMessage(
 				name: "Edit",
 				input: {
 					file_path: filePath,
-					// Codex provides patches, which we can include in the input
-					patches: item.patches,
+					// Include all file changes with their paths and kinds
+					changes: item.changes,
 				},
 			},
 		]),
@@ -238,7 +249,8 @@ function codexMcpToolToSDKMessage(
 	const toolId = crypto.randomUUID();
 
 	// Format tool name as mcp__server__tool (matching Claude's format)
-	const toolName = `mcp__${item.serverName}__${item.toolName}`;
+	// SDK uses 'server' and 'tool' fields (not serverName/toolName)
+	const toolName = `mcp__${item.server}__${item.tool}`;
 
 	const toolUseMessage: SDKAssistantMessage = {
 		type: "assistant",
@@ -268,10 +280,11 @@ function codexTodoListToSDKMessage(
 	const toolId = crypto.randomUUID();
 
 	// Convert Codex todo format to cyrus TodoWrite format
-	const todos = item.todos.map((todo) => ({
-		content: todo.description,
+	// SDK uses 'items' array with {text, completed} structure
+	const todos = item.items.map((todo) => ({
+		content: todo.text,
 		status: todo.completed ? "completed" : "pending",
-		activeForm: todo.description,
+		activeForm: todo.text,
 	}));
 
 	const toolUseMessage: SDKAssistantMessage = {
