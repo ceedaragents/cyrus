@@ -22,6 +22,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	AgentEvent,
@@ -1554,7 +1555,9 @@ export class EdgeWorker extends EventEmitter {
 			const runner =
 				runnerType === "claude"
 					? new ClaudeRunner(runnerConfig)
-					: new GeminiRunner(runnerConfig);
+					: runnerType === "gemini"
+						? new GeminiRunner(runnerConfig)
+						: new CodexRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -2110,7 +2113,7 @@ export class EdgeWorker extends EventEmitter {
 	 * If no runner label is found, defaults to claude.
 	 */
 	private determineRunnerFromLabels(labels: string[]): {
-		runnerType: "claude" | "gemini";
+		runnerType: "claude" | "gemini" | "codex";
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
@@ -2124,7 +2127,24 @@ export class EdgeWorker extends EventEmitter {
 
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
-		// Check for Gemini labels first
+		// Check for Codex labels first
+		// Note: "codex" and "codex-mini" are label names, but actual OpenAI models are o3 and o4-mini
+		if (lowercaseLabels.includes("codex-mini")) {
+			return {
+				runnerType: "codex",
+				modelOverride: "o4-mini",
+				fallbackModelOverride: "o4-mini",
+			};
+		}
+		if (lowercaseLabels.includes("codex")) {
+			return {
+				runnerType: "codex",
+				modelOverride: "o3",
+				fallbackModelOverride: "o4-mini",
+			};
+		}
+
+		// Check for Gemini labels
 		if (
 			lowercaseLabels.includes("gemini-2.5-pro") ||
 			lowercaseLabels.includes("gemini-2.5")
@@ -4194,7 +4214,7 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
-	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" | "codex" } {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
@@ -4233,6 +4253,10 @@ ${input.userComment}
 			runnerType = "gemini";
 			modelOverride = "gemini-2.5-pro";
 			fallbackModelOverride = "gemini-2.5-flash";
+		} else if (session.codexSessionId && runnerType !== "codex") {
+			runnerType = "codex";
+			modelOverride = "codex";
+			fallbackModelOverride = "codex-mini";
 		}
 
 		// Log model override if found
@@ -5079,8 +5103,10 @@ ${input.userComment}
 		// Determine which runner to use based on existing session IDs
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
+		const hasCodexSession = !isNewSession && Boolean(session.codexSessionId);
 		const needsNewSession =
-			isNewSession || (!hasClaudeSession && !hasGeminiSession);
+			isNewSession ||
+			(!hasClaudeSession && !hasGeminiSession && !hasCodexSession);
 
 		// Fetch system prompt based on labels
 
@@ -5128,7 +5154,9 @@ ${input.userComment}
 			? undefined
 			: session.claudeSessionId
 				? session.claudeSessionId
-				: session.geminiSessionId;
+				: session.geminiSessionId
+					? session.geminiSessionId
+					: session.codexSessionId;
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
@@ -5151,7 +5179,9 @@ ${input.userComment}
 		const runner =
 			runnerType === "claude"
 				? new ClaudeRunner(runnerConfig)
-				: new GeminiRunner(runnerConfig);
+				: runnerType === "gemini"
+					? new GeminiRunner(runnerConfig)
+					: new CodexRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);

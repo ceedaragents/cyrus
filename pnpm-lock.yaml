@@ -237,6 +237,9 @@ importers:
       cyrus-cloudflare-tunnel-client:
         specifier: workspace:*
         version: link:../cloudflare-tunnel-client
+      cyrus-codex-runner:
+        specifier: workspace:*
+        version: link:../codex-runner
       cyrus-config-updater:
         specifier: workspace:*
         version: link:../config-updater

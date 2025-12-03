@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner } from "cyrus-claude-runner";
+import { CodexRunner } from "cyrus-codex-runner";
 import type { LinearAgentSessionCreatedWebhook } from "cyrus-core";
 import {
 	isAgentSessionCreatedWebhook,
@@ -24,6 +25,7 @@ vi.mock("fs/promises", () => ({
 
 // Mock dependencies
 vi.mock("cyrus-claude-runner");
+vi.mock("cyrus-codex-runner");
 vi.mock("cyrus-gemini-runner");
 vi.mock("cyrus-linear-event-transport");
 vi.mock("@linear/sdk");
@@ -48,9 +50,10 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 	let mockConfig: EdgeWorkerConfig;
 	let mockLinearClient: any;
 	let mockClaudeRunner: any;
+	let mockCodexRunner: any;
 	let mockGeminiRunner: any;
 	let mockAgentSessionManager: any;
-	let capturedRunnerType: "claude" | "gemini" | null = null;
+	let capturedRunnerType: "claude" | "codex" | "gemini" | null = null;
 	let capturedRunnerConfig: any = null;
 
 	const mockRepository: RepositoryConfig = {
@@ -141,6 +144,24 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			capturedRunnerType = "gemini";
 			capturedRunnerConfig = config;
 			return mockGeminiRunner;
+		});
+
+		// Mock CodexRunner
+		mockCodexRunner = {
+			supportsStreamingInput: false,
+			start: vi.fn().mockResolvedValue({ sessionId: "codex-session-123" }),
+			startStreaming: vi
+				.fn()
+				.mockResolvedValue({ sessionId: "codex-session-123" }),
+			stop: vi.fn(),
+			isStreaming: vi.fn().mockReturnValue(false),
+			addStreamMessage: vi.fn(),
+			updatePromptVersions: vi.fn(),
+		};
+		vi.mocked(CodexRunner).mockImplementation((config: any) => {
+			capturedRunnerType = "codex";
+			capturedRunnerConfig = config;
+			return mockCodexRunner;
 		});
 
 		// Mock AgentSessionManager
@@ -355,6 +376,75 @@ Issue: {{issue_identifier}}`;
 		});
 	});
 
+	describe("Codex Runner Selection", () => {
+		it("should select Codex runner when 'codex' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["codex"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("codex");
+			expect(CodexRunner).toHaveBeenCalled();
+			// ClaudeRunner is called once for the classifier (ProcedureRouter uses Claude by default)
+			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
+			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+
+		it("should select Codex runner with codex-mini model when 'codex-mini' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["codex-mini"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("codex");
+			expect(CodexRunner).toHaveBeenCalled();
+			// ClaudeRunner is called once for the classifier (ProcedureRouter uses Claude by default)
+			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
+			expect(GeminiRunner).not.toHaveBeenCalled();
+			expect(capturedRunnerConfig.model).toBe("o4-mini");
+		});
+	});
+
 	describe("Claude Runner Selection", () => {
 		it("should select Claude runner when 'claude' label is present", async () => {
 			// Arrange
@@ -385,6 +475,7 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("claude");
 			expect(ClaudeRunner).toHaveBeenCalled();
 			expect(GeminiRunner).not.toHaveBeenCalled();
+			expect(CodexRunner).not.toHaveBeenCalled();
 		});
 
 		it("should select Claude runner when 'sonnet' label is present", async () => {
@@ -416,6 +507,7 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("claude");
 			expect(ClaudeRunner).toHaveBeenCalled();
 			expect(GeminiRunner).not.toHaveBeenCalled();
+			expect(CodexRunner).not.toHaveBeenCalled();
 		});
 
 		it("should select Claude runner when 'opus' label is present", async () => {
@@ -447,6 +539,7 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("claude");
 			expect(ClaudeRunner).toHaveBeenCalled();
 			expect(GeminiRunner).not.toHaveBeenCalled();
+			expect(CodexRunner).not.toHaveBeenCalled();
 			expect(capturedRunnerConfig.model).toBe("opus");
 		});
 	});
@@ -481,6 +574,7 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("claude");
 			expect(ClaudeRunner).toHaveBeenCalled();
 			expect(GeminiRunner).not.toHaveBeenCalled();
+			expect(CodexRunner).not.toHaveBeenCalled();
 		});
 
 		it("should default to Claude runner when issue has no labels", async () => {
@@ -512,10 +606,72 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("claude");
 			expect(ClaudeRunner).toHaveBeenCalled();
 			expect(GeminiRunner).not.toHaveBeenCalled();
+			expect(CodexRunner).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("Case Insensitivity", () => {
+		it("should select Codex runner with uppercase 'CODEX' label", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["CODEX"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("codex");
+			expect(CodexRunner).toHaveBeenCalled();
+		});
+
+		it("should select Codex runner with mixed-case 'Codex-Mini' label", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["Codex-Mini"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("codex");
+			expect(CodexRunner).toHaveBeenCalled();
+			expect(capturedRunnerConfig.model).toBe("o4-mini");
+		});
+
 		it("should select Gemini runner with mixed-case 'Gemini' label", async () => {
 			// Arrange
 			const mockIssue = createMockIssueWithLabels(["Gemini"]);
@@ -629,6 +785,36 @@ Issue: {{issue_identifier}}`;
 			expect(labelRunnerType).not.toBe(actualRunnerType);
 
 			// This mismatch would trigger the warning in resumeAgentSession
+		});
+
+		it("should select Codex runner when 'codex' label is present", () => {
+			// Arrange
+			const labels = ["codex"];
+
+			// Act
+			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+				labels,
+			);
+
+			// Assert
+			expect(runnerSelection.runnerType).toBe("codex");
+			expect(runnerSelection.modelOverride).toBe("o3");
+			expect(runnerSelection.fallbackModelOverride).toBe("o4-mini");
+		});
+
+		it("should select Codex runner with o4-mini model override when 'codex-mini' label is present", () => {
+			// Arrange
+			const labels = ["codex-mini"];
+
+			// Act
+			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+				labels,
+			);
+
+			// Assert
+			expect(runnerSelection.runnerType).toBe("codex");
+			expect(runnerSelection.modelOverride).toBe("o4-mini");
+			expect(runnerSelection.fallbackModelOverride).toBe("o4-mini");
 		});
 	});
 });
