@@ -1,0 +1,23 @@
+{
+	"name": "@cyrus/f1-rate-limiter-test",
+	"version": "1.0.0",
+	"description": "F1 Test Drive: Rate Limiter Implementation Challenge",
+	"type": "module",
+	"scripts": {
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [
+		"rate-limiter",
+		"f1-test",
+		"cyrus"
+	],
+	"author": "Cyrus Team",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"typescript": "^5.7.2",
+		"vitest": "^2.1.8"
+	}
+}
