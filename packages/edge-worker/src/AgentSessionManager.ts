@@ -144,11 +144,15 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Determine which runner is being used
 		const runner = linearSession.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerName = runner?.constructor.name;
+		const isGeminiRunner = runnerName === "GeminiRunner";
+		const isCodexRunner = runnerName === "CodexRunner";
 
 		// Update the appropriate session ID based on runner type
 		if (isGeminiRunner) {
 			linearSession.geminiSessionId = claudeSystemMessage.session_id;
+		} else if (isCodexRunner) {
+			linearSession.codexSessionId = claudeSystemMessage.session_id;
 		} else {
 			linearSession.claudeSessionId = claudeSystemMessage.session_id;
 		}
@@ -182,13 +186,17 @@ export class AgentSessionManager extends EventEmitter {
 		// Determine which runner is being used
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		const runner = session?.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerName = runner?.constructor.name;
+		const isGeminiRunner = runnerName === "GeminiRunner";
+		const isCodexRunner = runnerName === "CodexRunner";
 
 		const sessionEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
 			...(isGeminiRunner
 				? { geminiSessionId: sdkMessage.session_id }
-				: { claudeSessionId: sdkMessage.session_id }),
+				: isCodexRunner
+					? { codexSessionId: sdkMessage.session_id }
+					: { claudeSessionId: sdkMessage.session_id }),
 			type: sdkMessage.type,
 			content: this.extractContent(sdkMessage),
 			metadata: {
@@ -273,8 +281,11 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
-		// Get the session ID (either Claude or Gemini)
-		const sessionId = session.claudeSessionId || session.geminiSessionId;
+		// Get the session ID (Claude, Gemini, or Codex)
+		const sessionId =
+			session.claudeSessionId ||
+			session.geminiSessionId ||
+			session.codexSessionId;
 		if (!sessionId) {
 			console.error(
 				`[AgentSessionManager] No session ID found for procedure session`,
@@ -584,13 +595,17 @@ export class AgentSessionManager extends EventEmitter {
 		// Determine which runner is being used
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		const runner = session?.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerName = runner?.constructor.name;
+		const isGeminiRunner = runnerName === "GeminiRunner";
+		const isCodexRunner = runnerName === "CodexRunner";
 
 		const resultEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
 			...(isGeminiRunner
 				? { geminiSessionId: resultMessage.session_id }
-				: { claudeSessionId: resultMessage.session_id }),
+				: isCodexRunner
+					? { codexSessionId: resultMessage.session_id }
+					: { claudeSessionId: resultMessage.session_id }),
 			type: "result",
 			content: "result" in resultMessage ? resultMessage.result : "",
 			metadata: {

@@ -4251,6 +4251,10 @@ ${input.userComment}
 			runnerType = "gemini";
 			modelOverride = "gemini-2.5-pro";
 			fallbackModelOverride = "gemini-2.5-flash";
+		} else if (session.codexSessionId && runnerType !== "codex") {
+			runnerType = "codex";
+			modelOverride = "o4-mini";
+			fallbackModelOverride = undefined;
 		}
 
 		// Log model override if found
@@ -5097,8 +5101,10 @@ ${input.userComment}
 		// Determine which runner to use based on existing session IDs
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
+		const hasCodexSession = !isNewSession && Boolean(session.codexSessionId);
 		const needsNewSession =
-			isNewSession || (!hasClaudeSession && !hasGeminiSession);
+			isNewSession ||
+			(!hasClaudeSession && !hasGeminiSession && !hasCodexSession);
 
 		// Fetch system prompt based on labels
 
@@ -5144,9 +5150,9 @@ ${input.userComment}
 
 		const resumeSessionId = needsNewSession
 			? undefined
-			: session.claudeSessionId
-				? session.claudeSessionId
-				: session.geminiSessionId;
+			: session.claudeSessionId ||
+				session.geminiSessionId ||
+				session.codexSessionId;
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
