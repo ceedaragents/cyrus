@@ -85,7 +85,42 @@ export {
 // ADAPTERS
 // ============================================================================
 
-// CLI adapters will be added in part 2 of CYPACK-388
+// CLI Types for F1 Testing Framework
+export type {
+	CLIAgentActivity,
+	CLIAgentSession,
+	CLIComment,
+	CLIIssue,
+	CLILabel,
+	CLIState,
+	CLITeam,
+	CLIUser,
+	CLIWorkflowState,
+} from "./adapters/cli-types.js";
+
+export {
+	CLI_ID_PREFIXES,
+	createCLIAgentActivity,
+	createCLIAgentSession,
+	createCLIComment,
+	createCLIIssue,
+	createCLILabel,
+	createCLIState,
+	createCLITeam,
+	createCLIUser,
+	createCLIWorkflowState,
+	generateActivityId,
+	generateCommentId,
+	generateId,
+	generateIssueId,
+	generateLabelId,
+	generateSessionId,
+	generateStateId,
+	generateTeamId,
+	generateUserId,
+	resetIdCounter,
+} from "./adapters/cli-types.js";
+
 // Linear adapters have been moved to cyrus-linear-event-transport package
 // Import them directly from that package instead of from cyrus-core
 
