@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added `/status` endpoint to check if the Cyrus process is busy or idle, useful for determining when it's safe to restart for updates ([CYPACK-515](https://linear.app/ceedar/issue/CYPACK-515))
+
 ## [0.2.5] - 2025-12-03
 
 ### Fixed
