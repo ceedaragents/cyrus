@@ -532,7 +532,7 @@ export function createCyrusToolsServer(
 
 	const setIssueRelationTool = tool(
 		"linear_set_issue_relation",
-		"Create a relationship between two Linear issues. Use this to set 'blocked by', 'blocks', 'related', or 'duplicate' relationships. For Graphite stacking workflows, use 'blocks' type where the blocking issue is the one that must be completed first.",
+		"Create a relationship between two Linear issues. Use this to set 'blocks', 'related', or 'duplicate' relationships. For Graphite stacking workflows, use 'blocks' type where the blocking issue is the one that must be completed first.",
 		{
 			issueId: z
 				.string()
@@ -547,7 +547,7 @@ export function createCyrusToolsServer(
 			type: z
 				.enum(["blocks", "related", "duplicate"])
 				.describe(
-					"The type of relation: 'blocks' (relatedIssue blocks issueId - use for Graphite stacking), 'related' (issues are related), 'duplicate' (issueId is a duplicate of relatedIssue)",
+					"The type of relation: 'blocks' (issueId blocks relatedIssueId - use for Graphite stacking), 'related' (issues are related), 'duplicate' (issueId is a duplicate of relatedIssue)",
 				),
 		},
 		async ({ issueId, relatedIssueId, type }) => {
