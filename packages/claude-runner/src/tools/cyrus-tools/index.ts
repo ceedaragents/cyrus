@@ -1,6 +1,6 @@
 import { basename, extname } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
-import { LinearClient } from "@linear/sdk";
+import { IssueRelationType, LinearClient } from "@linear/sdk";
 import fs from "fs-extra";
 import { z } from "zod";
 
@@ -530,6 +530,128 @@ export function createCyrusToolsServer(
 		},
 	);
 
+	const setIssueRelationTool = tool(
+		"linear_set_issue_relation",
+		"Create a relationship between two Linear issues. Use this to set 'blocked by', 'blocks', 'related', or 'duplicate' relationships. For Graphite stacking workflows, use 'blocks' type where the blocking issue is the one that must be completed first.",
+		{
+			issueId: z
+				.string()
+				.describe(
+					"The ID or identifier of the issue to add the relation to (e.g., 'PROJ-123' or UUID)",
+				),
+			relatedIssueId: z
+				.string()
+				.describe(
+					"The ID or identifier of the related issue (e.g., 'PROJ-122' or UUID)",
+				),
+			type: z
+				.enum(["blocks", "related", "duplicate"])
+				.describe(
+					"The type of relation: 'blocks' (relatedIssue blocks issueId - use for Graphite stacking), 'related' (issues are related), 'duplicate' (issueId is a duplicate of relatedIssue)",
+				),
+		},
+		async ({ issueId, relatedIssueId, type }) => {
+			try {
+				console.log(
+					`Creating ${type} relation: ${issueId} <- ${relatedIssueId}`,
+				);
+
+				// Resolve issue identifiers to UUIDs if needed
+				const issue = await linearClient.issue(issueId);
+				const relatedIssue = await linearClient.issue(relatedIssueId);
+
+				if (!issue) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `Issue ${issueId} not found`,
+								}),
+							},
+						],
+					};
+				}
+
+				if (!relatedIssue) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `Related issue ${relatedIssueId} not found`,
+								}),
+							},
+						],
+					};
+				}
+
+				// Map string type to IssueRelationType enum
+				const relationTypeMap: Record<
+					"blocks" | "related" | "duplicate",
+					IssueRelationType
+				> = {
+					blocks: IssueRelationType.Blocks,
+					related: IssueRelationType.Related,
+					duplicate: IssueRelationType.Duplicate,
+				};
+				const relationType = relationTypeMap[type];
+
+				// Create the issue relation
+				const result = await linearClient.createIssueRelation({
+					issueId: issue.id,
+					relatedIssueId: relatedIssue.id,
+					type: relationType,
+				});
+
+				const relation = await result.issueRelation;
+
+				console.log(
+					`Created ${type} relation between ${issue.identifier} and ${relatedIssue.identifier}`,
+				);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: true,
+								relation: {
+									id: relation?.id,
+									type: type,
+									issue: {
+										id: issue.id,
+										identifier: issue.identifier,
+									},
+									relatedIssue: {
+										id: relatedIssue.id,
+										identifier: relatedIssue.identifier,
+									},
+								},
+								message: `Successfully created '${type}' relation: ${relatedIssue.identifier} ${type} ${issue.identifier}`,
+							}),
+						},
+					],
+				};
+			} catch (error) {
+				console.error(`Error creating issue relation for ${issueId}:`, error);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
 	const getChildIssuesTool = tool(
 		"linear_get_child_issues",
 		"Get all child issues (sub-issues) for a given Linear issue. Takes an issue identifier like 'CYHOST-91' and returns a list of child issue ids and their titles.",
@@ -680,6 +802,7 @@ export function createCyrusToolsServer(
 			agentSessionTool,
 			agentSessionOnCommentTool,
 			giveFeedbackTool,
+			setIssueRelationTool,
 			getChildIssuesTool,
 		],
 	});
