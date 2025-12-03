@@ -36,8 +36,9 @@ The F1 framework consists of three main components:
 
 ## Sub-Issue Decomposition
 
-### Sub-Issue 1: CLI Type System Foundation
+### CYPACK-502: CLI Type System Foundation
 **Stack Position**: 1 of 5 (First in stack)
+**Linear URL**: https://linear.app/ceedar/issue/CYPACK-502
 **Scope**: Define TypeScript types for CLI platform
 
 Creates the foundational type definitions that mirror Linear SDK types but for in-memory CLI usage:
@@ -46,8 +47,9 @@ Creates the foundational type definitions that mirror Linear SDK types but for i
 - Type factories and ID generators
 - Platform configuration types
 
-### Sub-Issue 2: CLIIssueTrackerService Implementation
-**Stack Position**: 2 of 5 (Blocked by: Sub-Issue 1)
+### CYPACK-503: CLIIssueTrackerService Implementation
+**Stack Position**: 2 of 5 (Blocked by: CYPACK-502)
+**Linear URL**: https://linear.app/ceedar/issue/CYPACK-503
 **Scope**: Implement IIssueTrackerService for CLI platform
 
 Full implementation of `IIssueTrackerService` interface:
@@ -56,8 +58,9 @@ Full implementation of `IIssueTrackerService` interface:
 - Event emission for state changes
 - Synchronous property access (no Promises for simple gets)
 
-### Sub-Issue 3: CLIRPCServer and Event Transport
-**Stack Position**: 3 of 5 (Blocked by: Sub-Issue 2)
+### CYPACK-504: CLIRPCServer and Event Transport
+**Stack Position**: 3 of 5 (Blocked by: CYPACK-503)
+**Linear URL**: https://linear.app/ceedar/issue/CYPACK-504
 **Scope**: JSON-RPC server and event transport
 
 Implements the communication layer:
@@ -66,8 +69,9 @@ Implements the communication layer:
 - CLIEventTransport for in-process event delivery
 - Error handling and response formatting
 
-### Sub-Issue 4: EdgeWorker CLI Platform Mode
-**Stack Position**: 4 of 5 (Blocked by: Sub-Issue 3)
+### CYPACK-505: EdgeWorker CLI Platform Mode
+**Stack Position**: 4 of 5 (Blocked by: CYPACK-504)
+**Linear URL**: https://linear.app/ceedar/issue/CYPACK-505
 **Scope**: Add CLI platform support to EdgeWorker
 
 Modifies EdgeWorker to support `platform: "cli"`:
@@ -76,8 +80,9 @@ Modifies EdgeWorker to support `platform: "cli"`:
 - Integration with CLIIssueTrackerService and CLIRPCServer
 - Worktree creation for CLI sessions
 
-### Sub-Issue 5: F1 CLI Application
-**Stack Position**: 5 of 5 (Blocked by: Sub-Issue 4)
+### CYPACK-506: F1 CLI Application
+**Stack Position**: 5 of 5 (Blocked by: CYPACK-505)
+**Linear URL**: https://linear.app/ceedar/issue/CYPACK-506
 **Scope**: Commander.js CLI and server startup
 
 The user-facing F1 CLI:
