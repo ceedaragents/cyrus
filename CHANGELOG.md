@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **OpenAI Codex support** - Cyrus now supports OpenAI's Codex models via the official `@openai/codex-sdk`. Use labels `codex` or `o4-mini` on Linear issues to process them with OpenAI's o4-mini model. The Codex runner provides sandboxed command execution, file editing, and full integration with Linear activity tracking.
+
 ## [0.2.4] - 2025-11-25
 
 ### Added

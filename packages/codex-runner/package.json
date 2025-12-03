@@ -1,0 +1,31 @@
+{
+	"name": "cyrus-codex-runner",
+	"version": "0.1.0",
+	"description": "Codex TypeScript SDK integration for Cyrus agent framework",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@openai/codex-sdk": "^0.64.0",
+		"cyrus-core": "workspace:*",
+		"cyrus-claude-runner": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^1.1.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}
