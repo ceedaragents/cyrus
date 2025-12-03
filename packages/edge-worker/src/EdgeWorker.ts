@@ -2821,7 +2821,16 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 	/**
 	 * Fetch issues that block this issue (i.e., issues this one is "blocked by")
-	 * Uses the Linear SDK's relations field with type "blocks"
+	 * Uses the Linear SDK's inverseRelations field with type "blocks"
+	 *
+	 * Linear relations work like this:
+	 * - When Issue A "blocks" Issue B, a relation is created with:
+	 *   - issue = A (the blocker)
+	 *   - relatedIssue = B (the blocked one)
+	 *   - type = "blocks"
+	 *
+	 * So to find "who blocks Issue B", we need inverseRelations (where B is the relatedIssue)
+	 * and look for type === "blocks", then get the `issue` field (the blocker).
 	 *
 	 * @param issue The Linear issue to fetch blocking issues for
 	 * @returns Array of issues that block this one, or empty array if none
@@ -2830,22 +2839,20 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		issue: LinearIssue,
 	): Promise<LinearIssue[]> {
 		try {
-			// The "relations" field contains issues where THIS issue is related to another
-			// When type is "blocks", it means the relatedIssue blocks THIS issue
-			// (i.e., the relation says "this issue is blocked by relatedIssue")
-			const relations = await issue.relations();
-			if (!relations?.nodes) {
+			// inverseRelations contains relations where THIS issue is the relatedIssue
+			// When type is "blocks", it means the `issue` field blocks THIS issue
+			const inverseRelations = await issue.inverseRelations();
+			if (!inverseRelations?.nodes) {
 				return [];
 			}
 
 			const blockingIssues: LinearIssue[] = [];
 
-			for (const relation of relations.nodes) {
-				// "blocks" type means the related issue blocks this one
-				// The relation.type tells us the relationship from this issue's perspective
+			for (const relation of inverseRelations.nodes) {
+				// "blocks" type in inverseRelations means the `issue` blocks this one
 				if (relation.type === "blocks") {
-					// relatedIssue is the one that blocks THIS issue
-					const blockingIssue = await relation.relatedIssue;
+					// The `issue` field is the one that blocks THIS issue
+					const blockingIssue = await relation.issue;
 					if (blockingIssue) {
 						blockingIssues.push(blockingIssue);
 					}
