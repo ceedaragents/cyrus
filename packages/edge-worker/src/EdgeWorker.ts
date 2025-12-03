@@ -2106,10 +2106,11 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Determine runner type and model from issue labels.
-	 * Returns the runner type ("claude" or "gemini"), optional model override, and fallback model.
+	 * Returns the runner type ("claude", "gemini", or "codex"), optional model override, and fallback model.
 	 *
 	 * Label priority (case-insensitive):
 	 * - Gemini labels: gemini, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-pro, gemini-3-pro-preview
+	 * - Codex labels: codex, o4-mini
 	 * - Claude labels: claude, sonnet, opus
 	 *
 	 * If no runner label is found, defaults to claude.
