@@ -312,25 +312,27 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			this.setupLogging();
 		}
 
-		// Convert to SDK message format
-		const message = codexEventToSDKMessage(
+		// Convert to SDK message format (may return multiple messages)
+		const messages = codexEventToSDKMessage(
 			event,
 			this.sessionInfo?.sessionId || null,
 			this.lastAssistantMessage,
 			this.config.model,
 		);
 
-		if (message) {
-			// Track last assistant message for result coercion
-			if (message.type === "assistant") {
-				this.lastAssistantMessage = message;
-			}
+		if (messages) {
+			for (const message of messages) {
+				// Track last assistant message for result coercion
+				if (message.type === "assistant") {
+					this.lastAssistantMessage = message;
+				}
 
-			// Defer result message emission
-			if (message.type === "result") {
-				this.pendingResultMessage = message;
-			} else {
-				this.emitMessage(message);
+				// Defer result message emission
+				if (message.type === "result") {
+					this.pendingResultMessage = message;
+				} else {
+					this.emitMessage(message);
+				}
 			}
 		}
 	}

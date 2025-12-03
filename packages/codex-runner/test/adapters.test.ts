@@ -31,9 +31,11 @@ describe("codexItemToSDKMessage", () => {
 				text: "Hello, I'm here to help!",
 			};
 
-			const result = codexItemToSDKMessage(item, sessionId);
+			const results = codexItemToSDKMessage(item, sessionId);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(1);
+			const result = results![0];
 			expect(result?.type).toBe("assistant");
 			if (result?.type === "assistant") {
 				expect(result.session_id).toBe(sessionId);
@@ -60,9 +62,11 @@ describe("codexItemToSDKMessage", () => {
 				aggregated_output: "",
 			};
 
-			const result = codexItemToSDKMessage(item, sessionId);
+			const results = codexItemToSDKMessage(item, sessionId);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results!.length).toBeGreaterThanOrEqual(1);
+			const result = results![0];
 			expect(result?.type).toBe("assistant");
 			if (result?.type === "assistant") {
 				const content = result.message.content;
@@ -77,7 +81,7 @@ describe("codexItemToSDKMessage", () => {
 			}
 		});
 
-		it("should convert completed command to tool use message", () => {
+		it("should convert completed command to tool use and tool result messages", () => {
 			const item: CodexCommandExecutionItem = {
 				id: "cmd-2",
 				type: "command_execution",
@@ -87,13 +91,17 @@ describe("codexItemToSDKMessage", () => {
 				exit_code: 0,
 			};
 
-			const result = codexItemToSDKMessage(item, sessionId);
+			const results = codexItemToSDKMessage(item, sessionId);
 
-			expect(result).not.toBeNull();
-			expect(result?.type).toBe("assistant");
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(2);
+			// First message is tool_use (assistant)
+			expect(results![0]?.type).toBe("assistant");
+			// Second message is tool_result (user)
+			expect(results![1]?.type).toBe("user");
 		});
 
-		it("should convert failed command to tool use message", () => {
+		it("should convert failed command to tool use and tool result messages", () => {
 			const item: CodexCommandExecutionItem = {
 				id: "cmd-3",
 				type: "command_execution",
@@ -103,15 +111,17 @@ describe("codexItemToSDKMessage", () => {
 				exit_code: 127,
 			};
 
-			const result = codexItemToSDKMessage(item, sessionId);
+			const results = codexItemToSDKMessage(item, sessionId);
 
-			expect(result).not.toBeNull();
-			expect(result?.type).toBe("assistant");
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(2);
+			expect(results![0]?.type).toBe("assistant");
+			expect(results![1]?.type).toBe("user");
 		});
 	});
 
 	describe("file_change items", () => {
-		it("should convert file change to Edit tool use", () => {
+		it("should convert file change to Edit tool use and result", () => {
 			const item: CodexFileChangeItem = {
 				id: "file-1",
 				type: "file_change",
@@ -119,9 +129,11 @@ describe("codexItemToSDKMessage", () => {
 				changes: [{ path: "src/index.ts", kind: "update" }],
 			};
 
-			const result = codexItemToSDKMessage(item, sessionId);
+			const results = codexItemToSDKMessage(item, sessionId);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(2);
+			const result = results![0];
 			expect(result?.type).toBe("assistant");
 			if (result?.type === "assistant") {
 				const content = result.message.content;
@@ -134,11 +146,13 @@ describe("codexItemToSDKMessage", () => {
 					}
 				}
 			}
+			// Second message is tool_result
+			expect(results![1]?.type).toBe("user");
 		});
 	});
 
 	describe("mcp_tool_call items", () => {
-		it("should convert MCP tool call to proper format", () => {
+		it("should convert MCP tool call to proper format with result", () => {
 			const item: CodexMcpToolCallItem = {
 				id: "mcp-1",
 				type: "mcp_tool_call",
@@ -148,9 +162,11 @@ describe("codexItemToSDKMessage", () => {
 				status: "completed",
 			};
 
-			const result = codexItemToSDKMessage(item, sessionId);
+			const results = codexItemToSDKMessage(item, sessionId);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(2);
+			const result = results![0];
 			expect(result?.type).toBe("assistant");
 			if (result?.type === "assistant") {
 				const content = result.message.content;
@@ -163,11 +179,13 @@ describe("codexItemToSDKMessage", () => {
 					}
 				}
 			}
+			// Second message is tool_result
+			expect(results![1]?.type).toBe("user");
 		});
 	});
 
 	describe("todo_list items", () => {
-		it("should convert todo list to TodoWrite tool use", () => {
+		it("should convert todo list to TodoWrite tool use and result", () => {
 			const item: CodexTodoListItem = {
 				id: "todo-1",
 				type: "todo_list",
@@ -177,9 +195,11 @@ describe("codexItemToSDKMessage", () => {
 				],
 			};
 
-			const result = codexItemToSDKMessage(item, sessionId);
+			const results = codexItemToSDKMessage(item, sessionId);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(2);
+			const result = results![0];
 			expect(result?.type).toBe("assistant");
 			if (result?.type === "assistant") {
 				const content = result.message.content;
@@ -192,6 +212,8 @@ describe("codexItemToSDKMessage", () => {
 					}
 				}
 			}
+			// Second message is tool_result
+			expect(results![1]?.type).toBe("user");
 		});
 	});
 
@@ -203,9 +225,11 @@ describe("codexItemToSDKMessage", () => {
 				message: "Something went wrong",
 			};
 
-			const result = codexItemToSDKMessage(item, sessionId);
+			const results = codexItemToSDKMessage(item, sessionId);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(1);
+			const result = results![0];
 			expect(result?.type).toBe("result");
 			if (result?.type === "result") {
 				expect(result.is_error).toBe(true);
@@ -225,9 +249,11 @@ describe("codexEventToSDKMessage", () => {
 				thread_id: "thread-abc",
 			};
 
-			const result = codexEventToSDKMessage(event, null, null);
+			const results = codexEventToSDKMessage(event, null, null);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(1);
+			const result = results![0];
 			expect(result?.type).toBe("system");
 			if (result?.type === "system") {
 				expect(result.session_id).toBe("thread-abc");
@@ -246,9 +272,11 @@ describe("codexEventToSDKMessage", () => {
 				},
 			};
 
-			const result = codexEventToSDKMessage(event, sessionId, null);
+			const results = codexEventToSDKMessage(event, sessionId, null);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(1);
+			const result = results![0];
 			expect(result?.type).toBe("result");
 			if (result?.type === "result") {
 				expect(result.is_error).toBe(false);
@@ -270,9 +298,11 @@ describe("codexEventToSDKMessage", () => {
 				},
 			};
 
-			const result = codexEventToSDKMessage(event, sessionId, null);
+			const results = codexEventToSDKMessage(event, sessionId, null);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(1);
+			const result = results![0];
 			expect(result?.type).toBe("result");
 			if (result?.type === "result") {
 				expect(result.is_error).toBe(true);
@@ -292,9 +322,11 @@ describe("codexEventToSDKMessage", () => {
 				},
 			};
 
-			const result = codexEventToSDKMessage(event, sessionId, null);
+			const results = codexEventToSDKMessage(event, sessionId, null);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results!.length).toBeGreaterThan(0);
+			const result = results![0];
 			expect(result?.type).toBe("assistant");
 		});
 	});
@@ -306,9 +338,11 @@ describe("codexEventToSDKMessage", () => {
 				message: "Stream error",
 			};
 
-			const result = codexEventToSDKMessage(event, sessionId, null);
+			const results = codexEventToSDKMessage(event, sessionId, null);
 
-			expect(result).not.toBeNull();
+			expect(results).not.toBeNull();
+			expect(results).toHaveLength(1);
+			const result = results![0];
 			expect(result?.type).toBe("result");
 			if (result?.type === "result") {
 				expect(result.is_error).toBe(true);

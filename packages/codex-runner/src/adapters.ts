@@ -70,11 +70,13 @@ function createBetaMessage(
  *
  * This handles the "item.completed" events that contain the actual
  * agent outputs like messages, tool calls, and file changes.
+ *
+ * Returns an array of messages since tool calls need both tool_use and tool_result.
  */
 export function codexItemToSDKMessage(
 	item: CodexThreadItem,
 	sessionId: string | null,
-): SDKMessage | null {
+): SDKMessage[] | null {
 	switch (item.type) {
 		case "agent_message": {
 			// Agent's text response - SDK uses 'text' field
@@ -86,7 +88,7 @@ export function codexItemToSDKMessage(
 				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
 			};
-			return assistantMessage;
+			return [assistantMessage];
 		}
 
 		case "command_execution": {
@@ -122,7 +124,7 @@ export function codexItemToSDKMessage(
 		}
 
 		case "web_search": {
-			// Web search - could map to WebSearch tool use
+			// Web search - map to WebSearch tool use with result
 			const webSearchItem = item as CodexWebSearchItem;
 			const toolId = crypto.randomUUID();
 			const toolUseMessage: SDKAssistantMessage = {
@@ -139,7 +141,26 @@ export function codexItemToSDKMessage(
 				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
 			};
-			return toolUseMessage;
+
+			// Web search result
+			const toolResultMessage: SDKUserMessage = {
+				type: "user",
+				message: {
+					role: "user",
+					content: [
+						{
+							type: "tool_result",
+							tool_use_id: toolId,
+							content: "Web search completed",
+							is_error: false,
+						},
+					],
+				},
+				parent_tool_use_id: toolId,
+				session_id: sessionId || "pending",
+			};
+
+			return [toolUseMessage, toolResultMessage];
 		}
 
 		case "error": {
@@ -159,7 +180,7 @@ export function codexItemToSDKMessage(
 				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
 			};
-			return errorResult;
+			return [errorResult];
 		}
 
 		default:
@@ -169,15 +190,15 @@ export function codexItemToSDKMessage(
 
 /**
  * Convert a Codex command execution item to SDK messages
+ * Returns both tool_use (assistant) and tool_result (user) messages
  */
 function codexCommandToSDKMessage(
 	item: CodexCommandExecutionItem,
 	sessionId: string | null,
-): SDKMessage {
+): SDKMessage[] {
 	const toolId = crypto.randomUUID();
 
-	// For all command states (in_progress/completed/failed), emit as tool_use
-	// The status is part of the item metadata, not the message structure
+	// Create tool_use message (assistant asking to run command)
 	const toolUseMessage: SDKAssistantMessage = {
 		type: "assistant",
 		message: createBetaMessage([
@@ -187,12 +208,6 @@ function codexCommandToSDKMessage(
 				name: "Bash",
 				input: {
 					command: item.command,
-					// Include status and output for completed/failed commands
-					// SDK uses aggregated_output and exit_code (with underscore)
-					...(item.status !== "in_progress" && {
-						output: item.aggregated_output,
-						exitCode: item.exit_code,
-					}),
 				},
 			},
 		]),
@@ -201,16 +216,42 @@ function codexCommandToSDKMessage(
 		session_id: sessionId || "pending",
 	};
 
-	return toolUseMessage;
+	// For completed/failed commands, also emit the tool_result
+	if (item.status !== "in_progress") {
+		const isError = item.exit_code !== 0;
+		const output = item.aggregated_output || "";
+
+		const toolResultMessage: SDKUserMessage = {
+			type: "user",
+			message: {
+				role: "user",
+				content: [
+					{
+						type: "tool_result",
+						tool_use_id: toolId,
+						content: output,
+						is_error: isError,
+					},
+				],
+			},
+			parent_tool_use_id: toolId,
+			session_id: sessionId || "pending",
+		};
+
+		return [toolUseMessage, toolResultMessage];
+	}
+
+	return [toolUseMessage];
 }
 
 /**
- * Convert a Codex file change item to SDK message
+ * Convert a Codex file change item to SDK messages
+ * Returns both tool_use (assistant) and tool_result (user) messages
  */
 function codexFileChangeToSDKMessage(
 	item: CodexFileChangeItem,
 	sessionId: string | null,
-): SDKMessage {
+): SDKMessage[] {
 	const toolId = crypto.randomUUID();
 
 	// SDK uses 'changes' array with {path, kind} structure
@@ -236,16 +277,48 @@ function codexFileChangeToSDKMessage(
 		session_id: sessionId || "pending",
 	};
 
-	return toolUseMessage;
+	// File changes are always "completed" when we receive item.completed
+	// Format the result based on the changes
+	const changeDescriptions = item.changes
+		.map((c) => {
+			const kindLabel =
+				c.kind === "add"
+					? "Created"
+					: c.kind === "delete"
+						? "Deleted"
+						: "Modified";
+			return `${kindLabel}: ${c.path}`;
+		})
+		.join("\n");
+
+	const toolResultMessage: SDKUserMessage = {
+		type: "user",
+		message: {
+			role: "user",
+			content: [
+				{
+					type: "tool_result",
+					tool_use_id: toolId,
+					content: changeDescriptions || "File changed",
+					is_error: false,
+				},
+			],
+		},
+		parent_tool_use_id: toolId,
+		session_id: sessionId || "pending",
+	};
+
+	return [toolUseMessage, toolResultMessage];
 }
 
 /**
- * Convert a Codex MCP tool call item to SDK message
+ * Convert a Codex MCP tool call item to SDK messages
+ * Returns both tool_use (assistant) and tool_result (user) messages
  */
 function codexMcpToolToSDKMessage(
 	item: CodexMcpToolCallItem,
 	sessionId: string | null,
-): SDKMessage {
+): SDKMessage[] {
 	const toolId = crypto.randomUUID();
 
 	// Format tool name as mcp__server__tool (matching Claude's format)
@@ -267,16 +340,44 @@ function codexMcpToolToSDKMessage(
 		session_id: sessionId || "pending",
 	};
 
-	return toolUseMessage;
+	// MCP tools can have result or error
+	const hasError = item.error !== null && item.error !== undefined;
+	const resultContent = hasError
+		? item.error?.message || "MCP tool error"
+		: item.result !== null && item.result !== undefined
+			? typeof item.result === "string"
+				? item.result
+				: JSON.stringify(item.result)
+			: "MCP tool completed";
+
+	const toolResultMessage: SDKUserMessage = {
+		type: "user",
+		message: {
+			role: "user",
+			content: [
+				{
+					type: "tool_result",
+					tool_use_id: toolId,
+					content: resultContent,
+					is_error: hasError,
+				},
+			],
+		},
+		parent_tool_use_id: toolId,
+		session_id: sessionId || "pending",
+	};
+
+	return [toolUseMessage, toolResultMessage];
 }
 
 /**
- * Convert a Codex todo list item to SDK message
+ * Convert a Codex todo list item to SDK messages
+ * Returns both tool_use (assistant) and tool_result (user) messages
  */
 function codexTodoListToSDKMessage(
 	item: CodexTodoListItem,
 	sessionId: string | null,
-): SDKMessage {
+): SDKMessage[] {
 	const toolId = crypto.randomUUID();
 
 	// Convert Codex todo format to cyrus TodoWrite format
@@ -302,7 +403,25 @@ function codexTodoListToSDKMessage(
 		session_id: sessionId || "pending",
 	};
 
-	return toolUseMessage;
+	// TodoWrite always succeeds
+	const toolResultMessage: SDKUserMessage = {
+		type: "user",
+		message: {
+			role: "user",
+			content: [
+				{
+					type: "tool_result",
+					tool_use_id: toolId,
+					content: "Todos updated",
+					is_error: false,
+				},
+			],
+		},
+		parent_tool_use_id: toolId,
+		session_id: sessionId || "pending",
+	};
+
+	return [toolUseMessage, toolResultMessage];
 }
 
 /**
@@ -314,14 +433,14 @@ function codexTodoListToSDKMessage(
  * @param sessionId - Current session ID (may be null initially)
  * @param lastAssistantMessage - Last assistant message for result content
  * @param model - Optional model name to use in system init message
- * @returns SDKMessage or null if event type doesn't map to a message
+ * @returns Array of SDKMessages or null if event type doesn't map to messages
  */
 export function codexEventToSDKMessage(
 	event: CodexThreadEvent,
 	sessionId: string | null,
 	lastAssistantMessage?: SDKAssistantMessage | null,
 	model?: string,
-): SDKMessage | null {
+): SDKMessage[] | null {
 	switch (event.type) {
 		case "thread.started": {
 			// Thread started - create system init message
@@ -343,7 +462,7 @@ export function codexEventToSDKMessage(
 				uuid: crypto.randomUUID(),
 				session_id: event.thread_id,
 			};
-			return systemMessage;
+			return [systemMessage];
 		}
 
 		case "turn.started": {
@@ -370,7 +489,7 @@ export function codexEventToSDKMessage(
 				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
 			};
-			return resultMessage;
+			return [resultMessage];
 		}
 
 		case "turn.failed": {
@@ -390,7 +509,7 @@ export function codexEventToSDKMessage(
 				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
 			};
-			return errorMessage;
+			return [errorMessage];
 		}
 
 		case "item.started":
@@ -400,7 +519,7 @@ export function codexEventToSDKMessage(
 		}
 
 		case "item.completed": {
-			// Item completed - convert the item to SDK message
+			// Item completed - convert the item to SDK messages (may be multiple)
 			return codexItemToSDKMessage(event.item, sessionId);
 		}
 
@@ -421,7 +540,7 @@ export function codexEventToSDKMessage(
 				uuid: crypto.randomUUID(),
 				session_id: sessionId || "pending",
 			};
-			return errorMessage;
+			return [errorMessage];
 		}
 
 		default:
