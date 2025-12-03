@@ -313,12 +313,14 @@ function codexTodoListToSDKMessage(
  * @param event - Codex SDK thread event
  * @param sessionId - Current session ID (may be null initially)
  * @param lastAssistantMessage - Last assistant message for result content
+ * @param model - Optional model name to use in system init message
  * @returns SDKMessage or null if event type doesn't map to a message
  */
 export function codexEventToSDKMessage(
 	event: CodexThreadEvent,
 	sessionId: string | null,
 	lastAssistantMessage?: SDKAssistantMessage | null,
+	model?: string,
 ): SDKMessage | null {
 	switch (event.type) {
 		case "thread.started": {
@@ -332,7 +334,7 @@ export function codexEventToSDKMessage(
 				cwd: cwd(),
 				tools: [],
 				mcp_servers: [],
-				model: "codex",
+				model: model || "o4-mini",
 				permissionMode: "default",
 				slash_commands: [],
 				output_style: "default",

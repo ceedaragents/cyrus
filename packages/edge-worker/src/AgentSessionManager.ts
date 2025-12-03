@@ -948,8 +948,12 @@ export class AgentSessionManager extends EventEmitter {
 								parameter: formattedParameter,
 								// result will be added later when we get tool result
 							};
-							// Standard tool calls are ephemeral
-							ephemeral = true;
+							// Standard tool calls are ephemeral for Claude, but not for Codex/Gemini
+							// Codex and Gemini emit complete tool calls with results in single messages
+							const runnerName = session.agentRunner?.constructor.name;
+							const isCodexRunner = runnerName === "CodexRunner";
+							const isGeminiRunner = runnerName === "GeminiRunner";
+							ephemeral = !isCodexRunner && !isGeminiRunner;
 						}
 					} else {
 						// Regular assistant message - create a thought

@@ -317,6 +317,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			event,
 			this.sessionInfo?.sessionId || null,
 			this.lastAssistantMessage,
+			this.config.model,
 		);
 
 		if (message) {
