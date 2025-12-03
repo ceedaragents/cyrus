@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.5] - 2025-12-03
+
+### Fixed
+- Fixed Zod peer dependency mismatch in claude-runner that caused `mcp__cyrus-tools__linear_agent_session_create` MCP tools to fail with `keyValidator._parse is not a function` error. Downgraded claude-runner's Zod dependency from v4.1.12 to v3.24.1 to match the Claude Agent SDK's peer dependency requirement ([CYPACK-478](https://linear.app/ceedar/issue/CYPACK-478), [#581](https://github.com/ceedaragents/cyrus/pull/581))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.5
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.5
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.5
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.5
+
+#### cyrus-core
+- cyrus-core@0.2.5
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.5
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.5
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.5
+
 ## [0.2.4] - 2025-11-25
 
 ### Added
