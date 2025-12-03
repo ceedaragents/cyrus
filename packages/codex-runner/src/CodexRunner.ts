@@ -350,29 +350,36 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			options.model = this.config.model;
 		}
 
+		// Default to full access (equivalent to --dangerously-bypass-approvals-and-sandbox)
+		// This matches the automated agent use case where we need full system access
 		if (this.config.sandboxMode) {
 			options.sandboxMode = this.config.sandboxMode;
 		} else {
-			// Default to workspace-write for safe file access
-			options.sandboxMode = "workspace-write";
+			options.sandboxMode = "danger-full-access";
 		}
 
 		if (this.config.modelReasoningEffort) {
 			options.modelReasoningEffort = this.config.modelReasoningEffort;
 		}
 
+		// Enable network access by default for full capability
 		if (this.config.networkAccessEnabled !== undefined) {
 			options.networkAccessEnabled = this.config.networkAccessEnabled;
+		} else {
+			options.networkAccessEnabled = true;
 		}
 
+		// Enable web search by default for full capability
 		if (this.config.webSearchEnabled !== undefined) {
 			options.webSearchEnabled = this.config.webSearchEnabled;
+		} else {
+			options.webSearchEnabled = true;
 		}
 
+		// Default to never requiring approval for automated sessions
 		if (this.config.approvalPolicy) {
 			options.approvalPolicy = this.config.approvalPolicy;
 		} else {
-			// Default to never requiring approval for automated sessions
 			options.approvalPolicy = "never";
 		}
 
