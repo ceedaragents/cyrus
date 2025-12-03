@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.52 to v0.1.57 - includes latest agent capabilities and experimental v2 session APIs for streamlined multi-turn conversations. See [@anthropic-ai/claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for versions [0.1.53](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0153), [0.1.54](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0154), [0.1.55](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0155), [0.1.56](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0156), and [0.1.57](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0157) ([CYPACK-481](https://linear.app/ceedar/issue/CYPACK-481))
+
+### Fixed
+- Fixed peer dependency warnings by adding zod ^3.24.1 to cyrus-core and cyrus-simple-agent-runner packages to satisfy @anthropic-ai/claude-agent-sdk requirements ([CYPACK-481](https://linear.app/ceedar/issue/CYPACK-481))
+
 ## [0.2.4] - 2025-11-25
 
 ### Added
