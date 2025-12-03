@@ -49,10 +49,16 @@ export class SharedApplicationServer {
 	private host: string;
 	private isListening = false;
 	private tunnelClient: CloudflareTunnelClient | null = null;
+	private skipTunnel: boolean;
 
-	constructor(port: number = 3456, host: string = "localhost") {
+	constructor(
+		port: number = 3456,
+		host: string = "localhost",
+		skipTunnel: boolean = false,
+	) {
 		this.port = port;
 		this.host = host;
+		this.skipTunnel = skipTunnel;
 	}
 
 	/**
@@ -90,8 +96,8 @@ export class SharedApplicationServer {
 				`🔗 Shared application server listening on http://${this.host}:${this.port}`,
 			);
 
-			// Start Cloudflare tunnel if CLOUDFLARE_TOKEN is set
-			if (process.env.CLOUDFLARE_TOKEN) {
+			// Start Cloudflare tunnel if CLOUDFLARE_TOKEN is set and tunnel is not skipped
+			if (!this.skipTunnel && process.env.CLOUDFLARE_TOKEN) {
 				await this.startCloudflareTunnel(process.env.CLOUDFLARE_TOKEN);
 			}
 		} catch (error) {

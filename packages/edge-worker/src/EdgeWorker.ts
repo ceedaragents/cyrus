@@ -47,6 +47,8 @@ import type {
 	WebhookIssue,
 } from "cyrus-core";
 import {
+	CLIIssueTrackerService,
+	CLIRPCServer,
 	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
@@ -107,6 +109,7 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
+	private cliRPCServer: CLIRPCServer | null = null; // CLI RPC server for CLI platform mode
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
@@ -174,9 +177,11 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
 		const serverHost = config.serverHost || "localhost";
+		const skipTunnel = config.platform === "cli"; // Skip Cloudflare tunnel in CLI mode
 		this.sharedApplicationServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
+			skipTunnel,
 		);
 
 		// Initialize repositories with path resolution
@@ -203,10 +208,14 @@ export class EdgeWorker extends EventEmitter {
 				this.repositories.set(repo.id, resolvedRepo);
 
 				// Create issue tracker for this repository's workspace
-				const linearClient = new LinearClient({
-					accessToken: repo.linearToken,
-				});
-				const issueTracker = new LinearIssueTrackerService(linearClient);
+				const issueTracker =
+					this.config.platform === "cli"
+						? new CLIIssueTrackerService()
+						: new LinearIssueTrackerService(
+								new LinearClient({
+									accessToken: repo.linearToken,
+								}),
+							);
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
@@ -293,45 +302,73 @@ export class EdgeWorker extends EventEmitter {
 			throw new Error("No active repositories configured");
 		}
 
-		// 1. Create and register LinearEventTransport
-		const useDirectWebhooks =
-			process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
-		const verificationMode = useDirectWebhooks ? "direct" : "proxy";
+		// Platform-specific initialization
+		if (this.config.platform === "cli") {
+			// CLI mode: Create and register CLIRPCServer
+			const firstIssueTracker = this.issueTrackers.get(firstRepo.id);
+			if (!firstIssueTracker) {
+				throw new Error("Issue tracker not found for first repository");
+			}
 
-		// Get appropriate secret based on mode
-		const secret = useDirectWebhooks
-			? process.env.LINEAR_WEBHOOK_SECRET || ""
-			: process.env.CYRUS_API_KEY || "";
+			// Type guard to ensure it's a CLIIssueTrackerService
+			if (!(firstIssueTracker instanceof CLIIssueTrackerService)) {
+				throw new Error(
+					"CLI platform requires CLIIssueTrackerService but found different implementation",
+				);
+			}
 
-		this.linearEventTransport = new LinearEventTransport({
-			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-			verificationMode,
-			secret,
-		});
+			this.cliRPCServer = new CLIRPCServer({
+				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+				issueTracker: firstIssueTracker,
+				version: "1.0.0",
+			});
 
-		// Listen for webhook events
-		this.linearEventTransport.on("event", (event: AgentEvent) => {
-			// Get all active repositories for webhook handling
-			const repos = Array.from(this.repositories.values());
-			this.handleWebhook(event as unknown as Webhook, repos);
-		});
+			// Register the /cli/rpc endpoint
+			this.cliRPCServer.register();
 
-		// Listen for errors
-		this.linearEventTransport.on("error", (error: Error) => {
-			this.handleError(error);
-		});
+			console.log("✅ CLI RPC server registered");
+			console.log("   RPC endpoint: /cli/rpc");
+		} else {
+			// Linear mode: Create and register LinearEventTransport
+			const useDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
+			const verificationMode = useDirectWebhooks ? "direct" : "proxy";
 
-		// Register the /webhook endpoint
-		this.linearEventTransport.register();
+			// Get appropriate secret based on mode
+			const secret = useDirectWebhooks
+				? process.env.LINEAR_WEBHOOK_SECRET || ""
+				: process.env.CYRUS_API_KEY || "";
 
-		console.log(
-			`✅ Linear event transport registered (${verificationMode} mode)`,
-		);
-		console.log(
-			`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
-		);
+			this.linearEventTransport = new LinearEventTransport({
+				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+				verificationMode,
+				secret,
+			});
 
-		// 2. Create and register ConfigUpdater
+			// Listen for webhook events
+			this.linearEventTransport.on("event", (event: AgentEvent) => {
+				// Get all active repositories for webhook handling
+				const repos = Array.from(this.repositories.values());
+				this.handleWebhook(event as unknown as Webhook, repos);
+			});
+
+			// Listen for errors
+			this.linearEventTransport.on("error", (error: Error) => {
+				this.handleError(error);
+			});
+
+			// Register the /webhook endpoint
+			this.linearEventTransport.register();
+
+			console.log(
+				`✅ Linear event transport registered (${verificationMode} mode)`,
+			);
+			console.log(
+				`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
+			);
+		}
+
+		// 2. Create and register ConfigUpdater (both platforms)
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
@@ -793,10 +830,14 @@ export class EdgeWorker extends EventEmitter {
 				this.repositories.set(repo.id, resolvedRepo);
 
 				// Create issue tracker
-				const linearClient = new LinearClient({
-					accessToken: repo.linearToken,
-				});
-				const issueTracker = new LinearIssueTrackerService(linearClient);
+				const issueTracker =
+					this.config.platform === "cli"
+						? new CLIIssueTrackerService()
+						: new LinearIssueTrackerService(
+								new LinearClient({
+									accessToken: repo.linearToken,
+								}),
+							);
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager with same pattern as constructor
@@ -882,10 +923,14 @@ export class EdgeWorker extends EventEmitter {
 				// If token changed, recreate issue tracker
 				if (oldRepo.linearToken !== repo.linearToken) {
 					console.log(`  🔑 Token changed, recreating issue tracker`);
-					const linearClient = new LinearClient({
-						accessToken: repo.linearToken,
-					});
-					const issueTracker = new LinearIssueTrackerService(linearClient);
+					const issueTracker =
+						this.config.platform === "cli"
+							? new CLIIssueTrackerService()
+							: new LinearIssueTrackerService(
+									new LinearClient({
+										accessToken: repo.linearToken,
+									}),
+								);
 					this.issueTrackers.set(repo.id, issueTracker);
 				}
 
