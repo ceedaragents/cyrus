@@ -1163,9 +1163,11 @@ export class CLIIssueTrackerService
 			agentSessionId: input.agentSessionId,
 			type: input.content.type,
 			content:
-				typeof input.content.body === "string"
-					? input.content.body
-					: JSON.stringify(input.content.body),
+				"body" in input.content
+					? typeof input.content.body === "string"
+						? input.content.body
+						: JSON.stringify(input.content.body)
+					: JSON.stringify(input.content),
 			createdAt: new Date(),
 			ephemeral: input.ephemeral ?? undefined,
 			signal: input.signal ?? undefined,
