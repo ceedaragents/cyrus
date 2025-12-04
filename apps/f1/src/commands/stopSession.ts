@@ -4,14 +4,11 @@
 
 import { Command } from "commander";
 import { error, success } from "../utils/colors.js";
-import { formatKeyValue } from "../utils/output.js";
 import { printRpcUrl, rpcCall } from "../utils/rpc.js";
 
 interface StopSessionResult {
-	sessionId: string;
-	status: string;
-	stoppedAt: string;
-	duration: number;
+	success: boolean;
+	message: string;
 }
 
 interface StopSessionParams {
@@ -35,12 +32,7 @@ export function createStopSessionCommand(): Command {
 				const result = await rpcCall<StopSessionResult>("stopSession", params);
 
 				console.log(success("Session stopped successfully"));
-				console.log(`  ${formatKeyValue("Session ID", result.sessionId)}`);
-				console.log(`  ${formatKeyValue("Status", result.status)}`);
-				console.log(`  ${formatKeyValue("Stopped At", result.stoppedAt)}`);
-				console.log(
-					`  ${formatKeyValue("Duration", `${Math.floor(result.duration)}s`)}`,
-				);
+				console.log(`  ${result.message}`);
 			} catch (err) {
 				if (err instanceof Error) {
 					console.error(error(`Failed to stop session: ${err.message}`));

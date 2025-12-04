@@ -123,7 +123,7 @@ export class CLIIssueTrackerService
 			users: initialState?.users ?? new Map(),
 			agentSessions: initialState?.agentSessions ?? new Map(),
 			agentActivities: initialState?.agentActivities ?? new Map(),
-			currentUserId: initialState?.currentUserId ?? "user-1",
+			currentUserId: initialState?.currentUserId ?? "user-default",
 			issueCounter: initialState?.issueCounter ?? 1,
 			commentCounter: initialState?.commentCounter ?? 1,
 			sessionCounter: initialState?.sessionCounter ?? 1,
@@ -1125,6 +1125,28 @@ export class CLIIssueTrackerService
 	 * Creates a "default" team with standard workflow states.
 	 */
 	seedDefaultData(): void {
+		// Create default user
+		const defaultUser: CLIUserData = {
+			id: "user-default",
+			name: "Test User",
+			displayName: "Test User",
+			email: "test@example.com",
+			url: "https://linear.app/test/user/test-user",
+			active: true,
+			admin: false,
+			app: false,
+			guest: false,
+			isMe: true,
+			isAssignable: true,
+			isMentionable: true,
+			avatarBackgroundColor: "#3b82f6",
+			initials: "TU",
+			createdIssueCount: 0,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		};
+		this.state.users.set(defaultUser.id, defaultUser);
+
 		// Create default team
 		const defaultTeam: CLITeamData = {
 			id: "team-default",
