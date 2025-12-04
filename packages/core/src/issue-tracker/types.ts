@@ -72,12 +72,31 @@ export type Issue = Pick<
 	| "project"
 > & {
 	// Collection methods with simplified Connection<T> return types
-	labels(variables?: unknown): Promise<Connection<Label>>;
-	comments(variables?: unknown): Promise<Connection<Comment>>;
-	attachments(variables?: unknown): Promise<Connection<LinearSDK.Attachment>>;
-	children(variables?: unknown): Promise<Connection<Issue>>;
+	labels(
+		variables?: Omit<LinearSDK.LinearDocument.Issue_LabelsQueryVariables, "id">,
+	): Promise<Connection<Label>>;
+	comments(
+		variables?: Omit<
+			LinearSDK.LinearDocument.Issue_CommentsQueryVariables,
+			"id"
+		>,
+	): Promise<Connection<Comment>>;
+	attachments(
+		variables?: Omit<
+			LinearSDK.LinearDocument.Issue_AttachmentsQueryVariables,
+			"id"
+		>,
+	): Promise<Connection<LinearSDK.Attachment>>;
+	children(
+		variables?: Omit<
+			LinearSDK.LinearDocument.Issue_ChildrenQueryVariables,
+			"id"
+		>,
+	): Promise<Connection<Issue>>;
 	// Update method with simplified IssuePayload return type
-	update(input?: unknown): Promise<IssuePayload>;
+	update(
+		input?: LinearSDK.LinearDocument.IssueUpdateInput,
+	): Promise<IssuePayload>;
 };
 
 /**
@@ -99,7 +118,9 @@ export type Comment = Pick<
 	| "issue"
 > & {
 	// Collection methods with simplified Connection<T> return types
-	children(variables?: unknown): Promise<Connection<Comment>>;
+	children(
+		variables?: LinearSDK.LinearDocument.Comment_ChildrenQueryVariables,
+	): Promise<Connection<Comment>>;
 };
 
 /**
@@ -124,8 +145,12 @@ export type Team = Pick<
 	"id" | "name" | "key" | "description" | "color" | "displayName"
 > & {
 	// Collection methods with simplified Connection<T> return types
-	states(variables?: unknown): Promise<Connection<WorkflowState>>;
-	members(variables?: unknown): Promise<Connection<User>>;
+	states(
+		variables?: Omit<LinearSDK.LinearDocument.Team_StatesQueryVariables, "id">,
+	): Promise<Connection<WorkflowState>>;
+	members(
+		variables?: Omit<LinearSDK.LinearDocument.Team_MembersQueryVariables, "id">,
+	): Promise<Connection<User>>;
 };
 
 /**
@@ -290,7 +315,12 @@ export type AgentSessionSDKType = Pick<
 	readonly issue: Promise<Issue> | undefined;
 	readonly comment: Promise<Comment> | undefined;
 	// Collection method with simplified Connection
-	activities(variables?: unknown): Promise<Connection<LinearSDK.AgentActivity>>;
+	activities(
+		variables?: Omit<
+			LinearSDK.LinearDocument.AgentSession_ActivitiesQueryVariables,
+			"id"
+		>,
+	): Promise<Connection<LinearSDK.AgentActivity>>;
 };
 
 /**
@@ -339,7 +369,12 @@ export type IssueTrackerAgentSession = Pick<
 	readonly issue: Promise<Issue> | undefined;
 	readonly comment: Promise<Comment> | undefined;
 	// Collection method with simplified Connection
-	activities(variables?: unknown): Promise<Connection<LinearSDK.AgentActivity>>;
+	activities(
+		variables?: Omit<
+			LinearSDK.LinearDocument.AgentSession_ActivitiesQueryVariables,
+			"id"
+		>,
+	): Promise<Connection<LinearSDK.AgentActivity>>;
 };
 
 /**

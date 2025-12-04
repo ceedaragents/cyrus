@@ -322,21 +322,41 @@ export function createCLIIssue(data: CLIIssueData): Issue {
 		},
 
 		// Collection methods - now use simplified Connection<T> (no casts needed!)
-		children(_variables?: unknown): Promise<Connection<Issue>> {
+		children(
+			_variables?: Omit<
+				LinearSDK.LinearDocument.Issue_ChildrenQueryVariables,
+				"id"
+			>,
+		): Promise<Connection<Issue>> {
 			return Promise.resolve({ nodes: [] });
 		},
-		comments(_variables?: unknown): Promise<Connection<Comment>> {
+		comments(
+			_variables?: Omit<
+				LinearSDK.LinearDocument.Issue_CommentsQueryVariables,
+				"id"
+			>,
+		): Promise<Connection<Comment>> {
 			return Promise.resolve({ nodes: [] });
 		},
-		labels(_variables?: unknown): Promise<Connection<Label>> {
+		labels(
+			_variables?: Omit<
+				LinearSDK.LinearDocument.Issue_LabelsQueryVariables,
+				"id"
+			>,
+		): Promise<Connection<Label>> {
 			return Promise.resolve({ nodes: [] });
 		},
 		attachments(
-			_variables?: unknown,
+			_variables?: Omit<
+				LinearSDK.LinearDocument.Issue_AttachmentsQueryVariables,
+				"id"
+			>,
 		): Promise<Connection<LinearSDK.Attachment>> {
 			return Promise.resolve({ nodes: [] });
 		},
-		update(_input?: unknown): Promise<IssuePayload> {
+		update(
+			_input?: LinearSDK.LinearDocument.IssueUpdateInput,
+		): Promise<IssuePayload> {
 			return Promise.resolve({
 				success: true,
 				issue: undefined,
@@ -395,7 +415,9 @@ export function createCLIComment(data: CLICommentData): Comment {
 		},
 
 		// Collection methods - now use simplified Connection<T> (no casts needed!)
-		children(_variables?: unknown): Promise<Connection<Comment>> {
+		children(
+			_variables?: LinearSDK.LinearDocument.Comment_ChildrenQueryVariables,
+		): Promise<Connection<Comment>> {
 			return Promise.resolve({ nodes: [] });
 		},
 	};
@@ -451,10 +473,20 @@ export function createCLITeam(data: CLITeamData): Team {
 		},
 
 		// Collection methods - now use simplified Connection<T> (no casts needed!)
-		states(_variables?: unknown): Promise<Connection<WorkflowState>> {
+		states(
+			_variables?: Omit<
+				LinearSDK.LinearDocument.Team_StatesQueryVariables,
+				"id"
+			>,
+		): Promise<Connection<WorkflowState>> {
 			return Promise.resolve({ nodes: [] });
 		},
-		members(_variables?: unknown): Promise<Connection<User>> {
+		members(
+			_variables?: Omit<
+				LinearSDK.LinearDocument.Team_MembersQueryVariables,
+				"id"
+			>,
+		): Promise<Connection<User>> {
 			return Promise.resolve({ nodes: [] });
 		},
 	};
@@ -619,7 +651,12 @@ export function createCLIAgentSession(
 		},
 
 		// Collection method - return Promise wrapping Connection
-		activities(_variables?: unknown) {
+		activities(
+			_variables?: Omit<
+				LinearSDK.LinearDocument.AgentSession_ActivitiesQueryVariables,
+				"id"
+			>,
+		) {
 			return Promise.resolve({ nodes: [] });
 		},
 	};
