@@ -298,7 +298,7 @@ export function createCLIIssue(data: CLIIssueData): Issue {
 			return data.parentId;
 		},
 
-		// Relationship getters (return LinearFetch<Type> | undefined)
+		// Relationship getters (return Promise<Type> | undefined)
 		get assignee() {
 			return undefined;
 		},
@@ -380,7 +380,7 @@ export function createCLIComment(data: CLICommentData): Comment {
 			return data.agentSessionId;
 		},
 
-		// Relationship getters (return LinearFetch<Type> | undefined)
+		// Relationship getters (return Promise<Type> | undefined)
 		get user() {
 			return undefined;
 		},
@@ -604,7 +604,7 @@ export function createCLIAgentSession(
 		issueId: data.issueId,
 		commentId: data.commentId,
 
-		// Relationship async getters - return undefined to match LinearFetch<T> | undefined type
+		// Relationship async getters - return undefined to match Promise<T> | undefined type
 		get appUser() {
 			return undefined;
 		},

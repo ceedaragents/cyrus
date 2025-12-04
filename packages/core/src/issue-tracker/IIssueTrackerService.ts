@@ -8,7 +8,6 @@
  * @module issue-tracker/IIssueTrackerService
  */
 
-import type { LinearFetch } from "@linear/sdk";
 import type {
 	AgentEventTransportConfig,
 	IAgentEventTransport,
@@ -595,7 +594,7 @@ export interface IIssueTrackerService {
 	 */
 	createAgentSessionOnIssue(
 		input: AgentSessionCreateOnIssueInput,
-	): LinearFetch<IssueTrackerAgentSessionPayload>;
+	): Promise<IssueTrackerAgentSessionPayload>;
 
 	/**
 	 * Create an agent session on a comment thread.
@@ -619,7 +618,7 @@ export interface IIssueTrackerService {
 	 */
 	createAgentSessionOnComment(
 		input: AgentSessionCreateOnCommentInput,
-	): LinearFetch<IssueTrackerAgentSessionPayload>;
+	): Promise<IssueTrackerAgentSessionPayload>;
 
 	/**
 	 * Fetch an agent session by ID.
@@ -634,7 +633,7 @@ export interface IIssueTrackerService {
 	 * console.log('Session status:', session.status);
 	 * ```
 	 */
-	fetchAgentSession(sessionId: string): LinearFetch<IssueTrackerAgentSession>;
+	fetchAgentSession(sessionId: string): Promise<IssueTrackerAgentSession>;
 
 	// ========================================================================
 	// AGENT ACTIVITY OPERATIONS

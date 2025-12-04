@@ -12,11 +12,7 @@
  */
 
 import { EventEmitter } from "node:events";
-import {
-	AgentSessionStatus,
-	AgentSessionType,
-	type LinearFetch,
-} from "@linear/sdk";
+import { AgentSessionStatus, AgentSessionType } from "@linear/sdk";
 import type {
 	AgentEventTransportConfig,
 	IAgentEventTransport,
@@ -636,7 +632,7 @@ export class CLIIssueTrackerService
 	 */
 	createAgentSessionOnIssue(
 		input: AgentSessionCreateOnIssueInput,
-	): LinearFetch<IssueTrackerAgentSessionPayload> {
+	): Promise<IssueTrackerAgentSessionPayload> {
 		return this.createAgentSessionInternal(input.issueId, undefined, input);
 	}
 
@@ -645,7 +641,7 @@ export class CLIIssueTrackerService
 	 */
 	createAgentSessionOnComment(
 		input: AgentSessionCreateOnCommentInput,
-	): LinearFetch<IssueTrackerAgentSessionPayload> {
+	): Promise<IssueTrackerAgentSessionPayload> {
 		return this.createAgentSessionInternal(undefined, input.commentId, input);
 	}
 
@@ -690,7 +686,7 @@ export class CLIIssueTrackerService
 		// Emit state change event
 		this.emit("agentSession:created", { agentSession });
 
-		// Return payload with session wrapped in Promise to match LinearFetch
+		// Return payload with session wrapped in Promise
 		const payload: IssueTrackerAgentSessionPayload = {
 			success: true,
 			lastSyncId,
@@ -703,7 +699,7 @@ export class CLIIssueTrackerService
 	/**
 	 * Fetch an agent session by ID.
 	 */
-	fetchAgentSession(sessionId: string): LinearFetch<IssueTrackerAgentSession> {
+	fetchAgentSession(sessionId: string): Promise<IssueTrackerAgentSession> {
 		return (async () => {
 			const sessionData = this.state.agentSessions.get(sessionId);
 			if (!sessionData) {
