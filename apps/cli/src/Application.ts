@@ -1,6 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, watch } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, mkdirSync, watch } from "node:fs";
+import { dirname, join } from "node:path";
 import type { RepositoryConfig } from "cyrus-core";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import { SharedApplicationServer } from "cyrus-edge-worker";
@@ -27,14 +26,15 @@ export class Application {
 	private readonly envFilePath: string;
 
 	constructor(
+		version: string,
 		public readonly cyrusHome: string,
 		customEnvPath?: string,
 	) {
 		// Initialize logger first
 		this.logger = new Logger();
 
-		// Read package version
-		this.version = this.readPackageVersion();
+		// Set version from parameter
+		this.version = version;
 
 		// Determine the env file path: use custom path if provided, otherwise default to ~/.cyrus/.env
 		this.envFilePath = customEnvPath || join(cyrusHome, ".env");
@@ -57,22 +57,6 @@ export class Application {
 			cyrusHome,
 			this.logger,
 		);
-	}
-
-	/**
-	 * Read the package version from package.json
-	 */
-	private readPackageVersion(): string {
-		try {
-			const __filename = fileURLToPath(import.meta.url);
-			const __dirname = dirname(__filename);
-			// When compiled, this is in dist/src/, so we need to go up two levels
-			const packageJsonPath = resolve(__dirname, "..", "..", "package.json");
-			const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
-			return packageJson.version || "unknown";
-		} catch {
-			return "unknown";
-		}
 	}
 
 	/**
