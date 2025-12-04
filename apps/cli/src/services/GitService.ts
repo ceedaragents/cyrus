@@ -2,8 +2,7 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import type { Issue } from "@linear/sdk";
-import type { RepositoryConfig } from "cyrus-core";
+import type { Issue, RepositoryConfig } from "cyrus-core";
 import type { Workspace } from "../config/types.js";
 import type { Logger } from "./Logger.js";
 

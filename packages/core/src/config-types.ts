@@ -1,8 +1,8 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { Issue as LinearIssue } from "@linear/sdk";
 import type { Workspace } from "./CyrusAgentSession.js";
+import type { Issue } from "./issue-tracker/types.js";
 
 /**
  * Resolve path with tilde (~) expansion
@@ -160,7 +160,7 @@ export interface EdgeWorkerConfig {
 		// Called when workspace needs to be created
 		// Now includes repository context
 		createWorkspace?: (
-			issue: LinearIssue,
+			issue: Issue,
 			repository: RepositoryConfig,
 		) => Promise<Workspace>;
 
@@ -176,7 +176,7 @@ export interface EdgeWorkerConfig {
 		// Now includes repository ID
 		onSessionStart?: (
 			issueId: string,
-			issue: LinearIssue,
+			issue: Issue,
 			repositoryId: string,
 		) => void;
 		onSessionEnd?: (

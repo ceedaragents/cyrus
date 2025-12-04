@@ -12,10 +12,12 @@
  */
 
 import { EventEmitter } from "node:events";
-import type {
-	AgentSession,
-	AgentSessionPayload,
-	LinearFetch,
+import {
+	type AgentSession,
+	type AgentSessionPayload,
+	AgentSessionStatus,
+	AgentSessionType,
+	type LinearFetch,
 } from "@linear/sdk";
 import type {
 	AgentEventTransportConfig,
@@ -44,18 +46,34 @@ import type {
 	WorkflowState,
 } from "../types.js";
 import { CLIEventTransport } from "./CLIEventTransport.js";
+import {
+	type CLIAgentSessionData,
+	type CLICommentData,
+	type CLIIssueData,
+	type CLILabelData,
+	type CLITeamData,
+	type CLIUserData,
+	type CLIWorkflowStateData,
+	createCLIAgentSession,
+	createCLIComment,
+	createCLIIssue,
+	createCLILabel,
+	createCLITeam,
+	createCLIUser,
+	createCLIWorkflowState,
+} from "./CLITypes.js";
 
 /**
  * In-memory state for the CLI issue tracker.
  */
 export interface CLIIssueTrackerState {
-	issues: Map<string, Issue>;
-	comments: Map<string, Comment>;
-	teams: Map<string, Team>;
-	labels: Map<string, Label>;
-	workflowStates: Map<string, WorkflowState>;
-	users: Map<string, User>;
-	agentSessions: Map<string, AgentSession>;
+	issues: Map<string, CLIIssueData>;
+	comments: Map<string, CLICommentData>;
+	teams: Map<string, CLITeamData>;
+	labels: Map<string, CLILabelData>;
+	workflowStates: Map<string, CLIWorkflowStateData>;
+	users: Map<string, CLIUserData>;
+	agentSessions: Map<string, CLIAgentSessionData>;
 	currentUserId: string;
 	issueCounter: number;
 	commentCounter: number;
@@ -118,23 +136,23 @@ export class CLIIssueTrackerService
 	 */
 	async fetchIssue(idOrIdentifier: string): Promise<Issue> {
 		// Try to find by ID first
-		let issue = this.state.issues.get(idOrIdentifier);
+		let issueData = this.state.issues.get(idOrIdentifier);
 
 		// If not found, try to find by identifier
-		if (!issue) {
+		if (!issueData) {
 			for (const [, candidateIssue] of this.state.issues) {
 				if (candidateIssue.identifier === idOrIdentifier) {
-					issue = candidateIssue;
+					issueData = candidateIssue;
 					break;
 				}
 			}
 		}
 
-		if (!issue) {
+		if (!issueData) {
 			throw new Error(`Issue ${idOrIdentifier} not found`);
 		}
 
-		return issue;
+		return createCLIIssue(issueData);
 	}
 
 	/**
@@ -148,11 +166,9 @@ export class CLIIssueTrackerService
 
 		// Find all child issues
 		const allChildren: Issue[] = [];
-		for (const [, issue] of this.state.issues) {
-			// Check if this issue has the parent we're looking for
-			const parent = issue.parent as Issue | undefined;
-			if (parent?.id === parentIssue.id) {
-				allChildren.push(issue);
+		for (const [, issueData] of this.state.issues) {
+			if (issueData.parentId === parentIssue.id) {
+				allChildren.push(createCLIIssue(issueData));
 			}
 		}
 
@@ -161,7 +177,9 @@ export class CLIIssueTrackerService
 
 		if (options?.includeCompleted === false) {
 			filteredChildren = filteredChildren.filter((child) => {
-				const state = child.state as WorkflowState | undefined;
+				const childStateId = child.stateId;
+				if (!childStateId) return true;
+				const state = this.state.workflowStates.get(childStateId);
 				return state?.type !== "completed";
 			});
 		}
@@ -170,16 +188,22 @@ export class CLIIssueTrackerService
 			filteredChildren = filteredChildren.filter((child) => !child.archivedAt);
 		}
 
-		// Apply limit
-		if (options?.limit) {
+		// Apply limit (must be positive)
+		if (options?.limit && options.limit > 0) {
 			filteredChildren = filteredChildren.slice(0, options.limit);
 		}
 
-		// Return issue with children array
-		return Object.assign({}, parentIssue, {
-			children: filteredChildren,
-			childCount: filteredChildren.length,
-		}) as IssueWithChildren;
+		// Create IssueWithChildren by extending the parent issue
+		const issueWithChildren: IssueWithChildren = Object.assign(
+			Object.create(Object.getPrototypeOf(parentIssue)),
+			parentIssue,
+			{
+				children: filteredChildren,
+				childCount: filteredChildren.length,
+			},
+		);
+
+		return issueWithChildren;
 	}
 
 	/**
@@ -189,68 +213,86 @@ export class CLIIssueTrackerService
 		issueId: string,
 		updates: IssueUpdateInput,
 	): Promise<Issue> {
-		const issue = await this.fetchIssue(issueId);
+		const issueData = this.state.issues.get(issueId);
+		if (!issueData) {
+			throw new Error(`Issue ${issueId} not found`);
+		}
 
-		// Create updated issue by spreading original
-		const updatedIssue = { ...issue } as unknown as Record<string, unknown>;
-
+		// Update the issue data directly
 		if (updates.stateId !== undefined) {
 			const state = this.state.workflowStates.get(updates.stateId);
 			if (!state) {
 				throw new Error(`Workflow state ${updates.stateId} not found`);
 			}
-			updatedIssue.state = state;
+			// Validate state belongs to issue's team
+			if (state.teamId !== issueData.teamId) {
+				throw new Error(
+					`Workflow state ${updates.stateId} does not belong to team ${issueData.teamId}`,
+				);
+			}
+			issueData.stateId = updates.stateId;
 		}
 
 		if (updates.assigneeId !== undefined) {
-			const assignee = this.state.users.get(updates.assigneeId);
-			if (!assignee) {
-				throw new Error(`User ${updates.assigneeId} not found`);
+			if (updates.assigneeId !== null && updates.assigneeId !== "") {
+				const assignee = this.state.users.get(updates.assigneeId);
+				if (!assignee) {
+					throw new Error(`User ${updates.assigneeId} not found`);
+				}
+				issueData.assigneeId = updates.assigneeId;
+			} else {
+				// Clear assignee
+				issueData.assigneeId = undefined;
 			}
-			updatedIssue.assignee = assignee;
 		}
 
 		if (updates.title !== undefined) {
-			updatedIssue.title = updates.title;
+			issueData.title = updates.title;
 		}
 
 		if (updates.description !== undefined) {
-			updatedIssue.description = updates.description;
+			issueData.description = updates.description;
 		}
 
 		if (updates.priority !== undefined) {
-			updatedIssue.priority = updates.priority;
+			issueData.priority = updates.priority;
 		}
 
 		if (updates.parentId !== undefined) {
-			const parent = await this.fetchIssue(updates.parentId);
-			updatedIssue.parent = parent;
+			if (updates.parentId !== null && updates.parentId !== "") {
+				await this.fetchIssue(updates.parentId); // Validate parent exists
+				// Check for circular reference
+				if (updates.parentId === issueId) {
+					throw new Error("Issue cannot be its own parent");
+				}
+				issueData.parentId = updates.parentId;
+			} else {
+				// Clear parent
+				issueData.parentId = undefined;
+			}
 		}
 
 		if (updates.labelIds !== undefined) {
-			const labels: Label[] = [];
-			for (const labelId of updates.labelIds) {
-				const label = this.state.labels.get(labelId);
-				if (!label) {
-					throw new Error(`Label ${labelId} not found`);
+			// Validate all labels exist (if any provided)
+			if (updates.labelIds.length > 0) {
+				for (const labelId of updates.labelIds) {
+					const label = this.state.labels.get(labelId);
+					if (!label) {
+						throw new Error(`Label ${labelId} not found`);
+					}
 				}
-				labels.push(label);
 			}
-			// Store labels as a getter function that returns a promise
-			updatedIssue.labels = () => Promise.resolve({ nodes: labels });
+			issueData.labelIds = updates.labelIds;
 		}
 
 		// Update timestamp
-		updatedIssue.updatedAt = new Date();
-
-		// Cast back to Issue and save to state
-		const finalIssue = updatedIssue as unknown as Issue;
-		this.state.issues.set(issue.id, finalIssue);
+		issueData.updatedAt = new Date();
 
 		// Emit state change event
-		this.emit("issue:updated", { issue: finalIssue });
+		const issue = createCLIIssue(issueData);
+		this.emit("issue:updated", { issue });
 
-		return finalIssue;
+		return issue;
 	}
 
 	/**
@@ -263,12 +305,10 @@ export class CLIIssueTrackerService
 
 		// Get attachments from the issue
 		const attachmentsConnection = await issue.attachments();
-		return attachmentsConnection.nodes.map(
-			(attachment: { title?: string; url: string }) => ({
-				title: attachment.title || "Untitled attachment",
-				url: attachment.url,
-			}),
-		);
+		return attachmentsConnection.nodes.map(() => ({
+			title: "Untitled attachment",
+			url: "",
+		}));
 	}
 
 	// ========================================================================
@@ -286,10 +326,9 @@ export class CLIIssueTrackerService
 
 		// Find all comments for this issue
 		const allComments: Comment[] = [];
-		for (const [, comment] of this.state.comments) {
-			const commentIssue = comment.issue as Issue | undefined;
-			if (commentIssue?.id === issue.id) {
-				allComments.push(comment);
+		for (const [, commentData] of this.state.comments) {
+			if (commentData.issueId === issue.id) {
+				allComments.push(createCLIComment(commentData));
 			}
 		}
 
@@ -315,11 +354,11 @@ export class CLIIssueTrackerService
 	 * Fetch a single comment by ID.
 	 */
 	async fetchComment(commentId: string): Promise<Comment> {
-		const comment = this.state.comments.get(commentId);
-		if (!comment) {
+		const commentData = this.state.comments.get(commentId);
+		if (!commentData) {
 			throw new Error(`Comment ${commentId} not found`);
 		}
-		return comment;
+		return createCLIComment(commentData);
 	}
 
 	/**
@@ -330,10 +369,16 @@ export class CLIIssueTrackerService
 	): Promise<CommentWithAttachments> {
 		const comment = await this.fetchComment(commentId);
 
-		// Return comment with empty attachments array (matching Linear's behavior)
-		return Object.assign({}, comment, {
-			attachments: [],
-		}) as CommentWithAttachments;
+		// Create comment with attachments
+		const commentWithAttachments: CommentWithAttachments = Object.assign(
+			Object.create(Object.getPrototypeOf(comment)),
+			comment,
+			{
+				attachments: [],
+			},
+		);
+
+		return commentWithAttachments;
 	}
 
 	/**
@@ -369,48 +414,23 @@ export class CLIIssueTrackerService
 		// Generate comment ID
 		const commentId = `comment-${this.state.commentCounter++}`;
 
-		// Create the comment object
-		const comment = {
+		// Create the comment data
+		const commentData: CLICommentData = {
 			id: commentId,
 			body: finalBody,
+			url: `https://linear.app/test/issue/${issue.identifier}#comment-${commentId}`,
 			createdAt: new Date(),
 			updatedAt: new Date(),
-			user: currentUser,
-			issue,
-			parent: input.parentId
-				? this.state.comments.get(input.parentId)
-				: undefined,
-			archivedAt: undefined,
-			editedAt: undefined,
-			botActor: undefined,
-			children: () =>
-				Promise.resolve({
-					nodes: [],
-					pageInfo: {
-						hasNextPage: false,
-						hasPreviousPage: false,
-						startCursor: undefined,
-						endCursor: undefined,
-					},
-				}),
-			reactions: () =>
-				Promise.resolve({
-					nodes: [],
-					pageInfo: {
-						hasNextPage: false,
-						hasPreviousPage: false,
-						startCursor: undefined,
-						endCursor: undefined,
-					},
-				}),
-			resolvingUser: undefined,
-			resolvedAt: undefined,
-			reactionData: [],
-			url: `https://linear.app/test/issue/${issue.identifier}#comment-${commentId}`,
-		} as unknown as Comment;
+			userId: currentUser.id,
+			issueId: issue.id,
+			parentId: input.parentId,
+		};
 
 		// Save to state
-		this.state.comments.set(commentId, comment);
+		this.state.comments.set(commentId, commentData);
+
+		// Create and return the comment
+		const comment = createCLIComment(commentData);
 
 		// Emit state change event
 		this.emit("comment:created", { comment });
@@ -426,7 +446,9 @@ export class CLIIssueTrackerService
 	 * Fetch all teams in the workspace/organization.
 	 */
 	async fetchTeams(options?: PaginationOptions): Promise<Connection<Team>> {
-		const allTeams = Array.from(this.state.teams.values());
+		const allTeams = Array.from(this.state.teams.values()).map((data) =>
+			createCLITeam(data),
+		);
 
 		// Apply pagination
 		const first = options?.first ?? 50;
@@ -448,23 +470,23 @@ export class CLIIssueTrackerService
 	 */
 	async fetchTeam(idOrKey: string): Promise<Team> {
 		// Try to find by ID first
-		let team = this.state.teams.get(idOrKey);
+		let teamData = this.state.teams.get(idOrKey);
 
 		// If not found, try to find by key
-		if (!team) {
+		if (!teamData) {
 			for (const [, candidateTeam] of this.state.teams) {
 				if (candidateTeam.key === idOrKey) {
-					team = candidateTeam;
+					teamData = candidateTeam;
 					break;
 				}
 			}
 		}
 
-		if (!team) {
+		if (!teamData) {
 			throw new Error(`Team ${idOrKey} not found`);
 		}
 
-		return team;
+		return createCLITeam(teamData);
 	}
 
 	// ========================================================================
@@ -475,7 +497,9 @@ export class CLIIssueTrackerService
 	 * Fetch all issue labels in the workspace/organization.
 	 */
 	async fetchLabels(options?: PaginationOptions): Promise<Connection<Label>> {
-		const allLabels = Array.from(this.state.labels.values());
+		const allLabels = Array.from(this.state.labels.values()).map((data) =>
+			createCLILabel(data),
+		);
 
 		// Apply pagination
 		const first = options?.first ?? 50;
@@ -497,23 +521,23 @@ export class CLIIssueTrackerService
 	 */
 	async fetchLabel(idOrName: string): Promise<Label> {
 		// Try to find by ID first
-		let label = this.state.labels.get(idOrName);
+		let labelData = this.state.labels.get(idOrName);
 
 		// If not found, try to find by name
-		if (!label) {
+		if (!labelData) {
 			for (const [, candidateLabel] of this.state.labels) {
 				if (candidateLabel.name === idOrName) {
-					label = candidateLabel;
+					labelData = candidateLabel;
 					break;
 				}
 			}
 		}
 
-		if (!label) {
+		if (!labelData) {
 			throw new Error(`Label ${idOrName} not found`);
 		}
 
-		return label;
+		return createCLILabel(labelData);
 	}
 
 	/**
@@ -521,8 +545,17 @@ export class CLIIssueTrackerService
 	 */
 	async getIssueLabels(issueId: string): Promise<string[]> {
 		const issue = await this.fetchIssue(issueId);
-		const labelsConnection = await issue.labels();
-		return labelsConnection.nodes.map((label: { name: string }) => label.name);
+
+		// Get label names from the issue's labelIds
+		const labelNames: string[] = [];
+		for (const labelId of issue.labelIds) {
+			const labelData = this.state.labels.get(labelId);
+			if (labelData) {
+				labelNames.push(labelData.name);
+			}
+		}
+
+		return labelNames;
 	}
 
 	// ========================================================================
@@ -540,10 +573,9 @@ export class CLIIssueTrackerService
 
 		// Find all workflow states for this team
 		const allStates: WorkflowState[] = [];
-		for (const [, state] of this.state.workflowStates) {
-			const stateTeam = state.team as Team | undefined;
-			if (stateTeam?.id === team.id) {
-				allStates.push(state);
+		for (const [, stateData] of this.state.workflowStates) {
+			if (stateData.teamId === team.id) {
+				allStates.push(createCLIWorkflowState(stateData));
 			}
 		}
 
@@ -566,11 +598,11 @@ export class CLIIssueTrackerService
 	 * Fetch a single workflow state by ID.
 	 */
 	async fetchWorkflowState(stateId: string): Promise<WorkflowState> {
-		const state = this.state.workflowStates.get(stateId);
-		if (!state) {
+		const stateData = this.state.workflowStates.get(stateId);
+		if (!stateData) {
 			throw new Error(`Workflow state ${stateId} not found`);
 		}
-		return state;
+		return createCLIWorkflowState(stateData);
 	}
 
 	// ========================================================================
@@ -581,11 +613,11 @@ export class CLIIssueTrackerService
 	 * Fetch a user by ID.
 	 */
 	async fetchUser(userId: string): Promise<User> {
-		const user = this.state.users.get(userId);
-		if (!user) {
+		const userData = this.state.users.get(userId);
+		if (!userData) {
 			throw new Error(`User ${userId} not found`);
 		}
-		return user;
+		return createCLIUser(userData);
 	}
 
 	/**
@@ -637,25 +669,29 @@ export class CLIIssueTrackerService
 		const sessionId = `session-${this.state.sessionCounter++}`;
 		const lastSyncId = Date.now();
 
-		// Create minimal agent session object
-		const agentSession = {
+		// Create agent session data
+		const sessionData: CLIAgentSessionData = {
 			id: sessionId,
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString(),
-			archivedAt: undefined,
-			status: "active",
-			type: issueId ? "issueDescription" : "commentThread",
 			externalLink: input.externalLink,
-		} as unknown as AgentSession;
+			status: AgentSessionStatus.Active,
+			type: AgentSessionType.CommentThread,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			issueId,
+			commentId,
+		};
 
 		// Save to state
-		this.state.agentSessions.set(sessionId, agentSession);
+		this.state.agentSessions.set(sessionId, sessionData);
+
+		// Create the session object
+		const agentSession = createCLIAgentSession(sessionData);
 
 		// Emit state change event
 		this.emit("agentSession:created", { agentSession });
 
-		// Return payload matching Linear SDK structure
-		return {
+		// Return payload - AgentSessionPayload is a Linear SDK class, we must cast
+		const payload = {
 			success: true,
 			lastSyncId,
 			agentSessionId: sessionId,
@@ -663,6 +699,8 @@ export class CLIIssueTrackerService
 				id: sessionId,
 			},
 		} as unknown as AgentSessionPayload;
+
+		return payload;
 	}
 
 	/**
@@ -670,12 +708,13 @@ export class CLIIssueTrackerService
 	 */
 	fetchAgentSession(sessionId: string): LinearFetch<AgentSession> {
 		return (async () => {
-			const session = this.state.agentSessions.get(sessionId);
-			if (!session) {
+			const sessionData = this.state.agentSessions.get(sessionId);
+			if (!sessionData) {
 				throw new Error(`Agent session ${sessionId} not found`);
 			}
-			return session;
-		})();
+			// Cast to AgentSession (SDK class type)
+			return createCLIAgentSession(sessionData) as unknown as AgentSession;
+		})() as LinearFetch<AgentSession>;
 	}
 
 	// ========================================================================
@@ -698,7 +737,7 @@ export class CLIIssueTrackerService
 		return {
 			success: true,
 			lastSyncId: Date.now(),
-		} as unknown as AgentActivityPayload;
+		} as AgentActivityPayload;
 	}
 
 	// ========================================================================

@@ -34,6 +34,7 @@ import type {
 	GuidanceRule,
 	IAgentRunner,
 	IIssueTrackerService,
+	Issue,
 	IssueMinimal,
 	IssueUnassignedWebhook,
 	RepositoryConfig,
@@ -1563,10 +1564,16 @@ export class EdgeWorker extends EventEmitter {
 			await this.savePersistedState();
 
 			// Emit events using full Linear issue
-			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			// Cast to LinearIssue for event compatibility (handlers don't use private members)
+			this.emit(
+				"session:started",
+				fullIssue.id,
+				fullIssue as unknown as LinearIssue,
+				repository.id,
+			);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
-				fullIssue,
+				fullIssue as unknown as LinearIssue,
 				repository.id,
 			);
 
@@ -1777,7 +1784,7 @@ export class EdgeWorker extends EventEmitter {
 
 		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
 		let isNewSession = false;
-		let fullIssue: LinearIssue | null = null;
+		let fullIssue: Issue | null = null;
 
 		if (!session) {
 			console.log(
@@ -1810,10 +1817,16 @@ export class EdgeWorker extends EventEmitter {
 
 			// Save state and emit events for new session
 			await this.savePersistedState();
-			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			// Cast to LinearIssue for event compatibility (handlers don't use private members)
+			this.emit(
+				"session:started",
+				fullIssue.id,
+				fullIssue as unknown as LinearIssue,
+				repository.id,
+			);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
-				fullIssue,
+				fullIssue as unknown as LinearIssue,
 				repository.id,
 			);
 		} else {
@@ -2086,7 +2099,7 @@ export class EdgeWorker extends EventEmitter {
 	/**
 	 * Fetch issue labels for a given issue
 	 */
-	private async fetchIssueLabels(issue: LinearIssue): Promise<string[]> {
+	private async fetchIssueLabels(issue: Issue): Promise<string[]> {
 		try {
 			const labels = await issue.labels();
 			return labels.nodes.map((label) => label.name);
@@ -2275,7 +2288,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @returns Formatted prompt string
 	 */
 	private async buildLabelBasedPrompt(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
@@ -2438,7 +2451,7 @@ export class EdgeWorker extends EventEmitter {
 	 * @returns The constructed prompt and optional version tag
 	 */
 	private async buildMentionPrompt(
-		issue: LinearIssue,
+		issue: Issue,
 		agentSession: WebhookAgentSession,
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
@@ -2567,7 +2580,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	 * Determine the base branch for an issue, considering parent issues
 	 */
 	private async determineBaseBranch(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 	): Promise<string> {
 		// Start with the repository's default base branch
@@ -2620,7 +2633,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	/**
 	 * Convert full Linear SDK issue to CoreIssue interface for Session creation
 	 */
-	private convertLinearIssueToCore(issue: LinearIssue): IssueMinimal {
+	private convertLinearIssueToCore(issue: Issue): IssueMinimal {
 		return {
 			id: issue.id,
 			identifier: issue.identifier,
@@ -2735,7 +2748,7 @@ ${reply.body}
 	 * @returns Formatted prompt string
 	 */
 	private async buildIssueContextPrompt(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 		newComment?: WebhookComment,
 		attachmentManifest: string = "",
@@ -2975,7 +2988,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 
 	private async moveIssueToStartedState(
-		issue: LinearIssue,
+		issue: Issue,
 		repositoryId: string,
 	): Promise<void> {
 		try {
@@ -3127,7 +3140,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * @param workspacePath Path to workspace directory
 	 */
 	private async downloadIssueAttachments(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
@@ -3802,7 +3815,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private async buildSessionPrompt(
 		isNewSession: boolean,
 		session: CyrusAgentSession,
-		fullIssue: LinearIssue,
+		fullIssue: Issue,
 		repository: RepositoryConfig,
 		promptBody: string,
 		attachmentManifest?: string,
@@ -4135,7 +4148,7 @@ ${input.userComment}
 	 * Adapter method for prompt assembly - routes to appropriate issue context builder
 	 */
 	private async buildIssueContextForPromptAssembly(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 		promptType: PromptType,
 		attachmentManifest?: string,
@@ -5241,7 +5254,7 @@ ${input.userComment}
 	public async fetchFullIssueDetails(
 		issueId: string,
 		repositoryId: string,
-	): Promise<LinearIssue | null> {
+	): Promise<Issue | null> {
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {
 			console.warn(

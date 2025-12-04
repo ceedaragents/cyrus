@@ -1,5 +1,4 @@
-import type { Issue } from "@linear/sdk";
-import type { EdgeWorkerConfig, RepositoryConfig } from "cyrus-core";
+import type { EdgeWorkerConfig, Issue, RepositoryConfig } from "cyrus-core";
 import { EdgeWorker } from "cyrus-edge-worker";
 import { DEFAULT_SERVER_PORT, parsePort } from "../config/constants.js";
 import type { Workspace } from "../config/types.js";

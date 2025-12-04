@@ -17,51 +17,116 @@
 import type * as LinearSDK from "@linear/sdk";
 
 // ============================================================================
-// TYPE ALIASES - Linear SDK is the source of truth
+// TYPE ALIASES - Pick-based selections from Linear SDK
 // ============================================================================
 
 /**
- * Issue type - Direct alias to Linear SDK's Issue type.
- * Linear SDK is the source of truth for all issue tracking types.
+ * Issue type - Selects only the properties and methods actually used in the codebase.
+ * Linear SDK is the source of truth - we use Pick to create a structurally compatible
+ * subset that includes all properties, async getters, and methods actually accessed.
+ *
+ * This approach eliminates the need for `as unknown as` casts while maintaining
+ * full type safety and compatibility with Linear SDK.
  *
  * @see {@link LinearSDK.Issue} - Linear's complete Issue type
  */
-export type Issue = LinearSDK.Issue;
+export type Issue = Pick<
+	LinearSDK.Issue,
+	// Properties (14)
+	| "id"
+	| "identifier"
+	| "title"
+	| "description"
+	| "url"
+	| "branchName"
+	| "assigneeId"
+	| "stateId"
+	| "teamId"
+	| "labelIds"
+	| "priority"
+	| "createdAt"
+	| "updatedAt"
+	| "archivedAt"
+	// Async getters (5)
+	| "state"
+	| "assignee"
+	| "team"
+	| "parent"
+	| "project"
+	// Methods (5)
+	| "labels"
+	| "comments"
+	| "attachments"
+	| "children"
+	| "update"
+>;
 
 /**
- * Comment type - Direct alias to Linear SDK's Comment type.
+ * Comment type - Selects properties and methods used in the codebase.
  *
  * @see {@link LinearSDK.Comment} - Linear's complete Comment type
  */
-export type Comment = LinearSDK.Comment;
+export type Comment = Pick<
+	LinearSDK.Comment,
+	// Properties (4)
+	| "id"
+	| "body"
+	| "createdAt"
+	| "updatedAt"
+	// Async getters (3)
+	| "user"
+	| "parent"
+	| "issue"
+>;
 
 /**
- * Label type - Direct alias to Linear SDK's IssueLabel type.
+ * Label type - Selects properties used in the codebase.
  *
  * @see {@link LinearSDK.IssueLabel} - Linear's complete IssueLabel type
  */
-export type Label = LinearSDK.IssueLabel;
+export type Label = Pick<
+	LinearSDK.IssueLabel,
+	"id" | "name" | "description" | "color"
+>;
 
 /**
- * Team type - Direct alias to Linear SDK's Team type.
+ * Team type - Selects properties and methods used in the codebase.
  *
  * @see {@link LinearSDK.Team} - Linear's complete Team type
  */
-export type Team = LinearSDK.Team;
+export type Team = Pick<
+	LinearSDK.Team,
+	// Properties (6)
+	| "id"
+	| "name"
+	| "key"
+	| "description"
+	| "color"
+	| "displayName"
+	// Methods (2)
+	| "states"
+	| "members"
+>;
 
 /**
- * User type - Direct alias to Linear SDK's User type.
+ * User type - Selects properties used in the codebase.
  *
  * @see {@link LinearSDK.User} - Linear's complete User type
  */
-export type User = LinearSDK.User;
+export type User = Pick<
+	LinearSDK.User,
+	"id" | "name" | "displayName" | "email"
+>;
 
 /**
- * WorkflowState type - Direct alias to Linear SDK's WorkflowState type.
+ * WorkflowState type - Selects properties used in the codebase.
  *
  * @see {@link LinearSDK.WorkflowState} - Linear's complete WorkflowState type
  */
-export type WorkflowState = LinearSDK.WorkflowState;
+export type WorkflowState = Pick<
+	LinearSDK.WorkflowState,
+	"id" | "name" | "type" | "description" | "color" | "position"
+>;
 
 // ============================================================================
 // FILTER AND PAGINATION OPTIONS
