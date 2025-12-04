@@ -12,34 +12,35 @@
  */
 
 import { EventEmitter } from "node:events";
-import { AgentSessionStatus, AgentSessionType } from "@linear/sdk";
 import type {
 	AgentEventTransportConfig,
 	IAgentEventTransport,
 } from "../IAgentEventTransport.js";
 import type { IIssueTrackerService } from "../IIssueTrackerService.js";
-import type {
-	AgentActivityCreateInput,
-	AgentActivityPayload,
-	AgentSessionCreateOnCommentInput,
-	AgentSessionCreateOnIssueInput,
-	Comment,
-	CommentCreateInput,
-	CommentWithAttachments,
-	Connection,
-	FetchChildrenOptions,
-	FileUploadRequest,
-	FileUploadResponse,
-	Issue,
-	IssueTrackerAgentSession,
-	IssueTrackerAgentSessionPayload,
-	IssueUpdateInput,
-	IssueWithChildren,
-	Label,
-	PaginationOptions,
-	Team,
-	User,
-	WorkflowState,
+import {
+	type AgentActivityCreateInput,
+	type AgentActivityPayload,
+	type AgentSessionCreateOnCommentInput,
+	type AgentSessionCreateOnIssueInput,
+	AgentSessionStatus,
+	AgentSessionType,
+	type Comment,
+	type CommentCreateInput,
+	type CommentWithAttachments,
+	type Connection,
+	type FetchChildrenOptions,
+	type FileUploadRequest,
+	type FileUploadResponse,
+	type Issue,
+	type IssueTrackerAgentSession,
+	type IssueTrackerAgentSessionPayload,
+	type IssueUpdateInput,
+	type IssueWithChildren,
+	type Label,
+	type PaginationOptions,
+	type Team,
+	type User,
+	type WorkflowState,
 } from "../types.js";
 import { CLIEventTransport } from "./CLIEventTransport.js";
 import {
