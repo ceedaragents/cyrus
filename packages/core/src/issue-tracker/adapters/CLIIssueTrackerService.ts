@@ -20,6 +20,7 @@ import type { IIssueTrackerService } from "../IIssueTrackerService.js";
 import {
 	type AgentActivityCreateInput,
 	type AgentActivityPayload,
+	AgentActivityType,
 	type AgentSessionCreateOnCommentInput,
 	type AgentSessionCreateOnIssueInput,
 	AgentSessionStatus,
@@ -959,6 +960,11 @@ export class CLIIssueTrackerService
 			);
 		}
 
+		// Check if the session is stopped/completed
+		if (sessionData.status === AgentSessionStatus.Complete) {
+			throw new Error(`Cannot prompt completed session ${sessionId}`);
+		}
+
 		// Create a comment on the issue
 		const comment = await this.createComment(sessionData.issueId, {
 			body: message,
@@ -966,6 +972,15 @@ export class CLIIssueTrackerService
 
 		// Update session status to awaiting processing
 		sessionData.updatedAt = new Date();
+
+		// Create an activity record for the prompt
+		await this.createAgentActivity({
+			agentSessionId: sessionId,
+			content: {
+				type: AgentActivityType.Prompt,
+				body: message,
+			},
+		});
 
 		// Emit prompted event
 		this.emit("agentSession:prompted", {
