@@ -25,7 +25,7 @@ import { bold, cyan } from "./utils/colors.js";
 
 // Get package.json for version info
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const packageJsonPath = resolve(__dirname, "..", "package.json");
+const packageJsonPath = resolve(__dirname, "..", "..", "package.json");
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 
 // Create main program
