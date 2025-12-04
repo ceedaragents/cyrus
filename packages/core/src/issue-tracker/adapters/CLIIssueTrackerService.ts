@@ -13,8 +13,6 @@
 
 import { EventEmitter } from "node:events";
 import {
-	type AgentSession,
-	type AgentSessionPayload,
 	AgentSessionStatus,
 	AgentSessionType,
 	type LinearFetch,
@@ -29,6 +27,8 @@ import type {
 	AgentActivityPayload,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
+	AgentSessionPayload,
+	AgentSessionSDKType,
 	Comment,
 	CommentCreateInput,
 	CommentWithAttachments,
@@ -690,15 +690,12 @@ export class CLIIssueTrackerService
 		// Emit state change event
 		this.emit("agentSession:created", { agentSession });
 
-		// Return payload - AgentSessionPayload is a Linear SDK class, we must cast
-		const payload = {
+		// Return payload - now uses our simplified AgentSessionPayload type
+		const payload: AgentSessionPayload = {
 			success: true,
 			lastSyncId,
-			agentSessionId: sessionId,
-			agentSession: {
-				id: sessionId,
-			},
-		} as unknown as AgentSessionPayload;
+			agentSession,
+		};
 
 		return payload;
 	}
@@ -706,15 +703,15 @@ export class CLIIssueTrackerService
 	/**
 	 * Fetch an agent session by ID.
 	 */
-	fetchAgentSession(sessionId: string): LinearFetch<AgentSession> {
+	fetchAgentSession(sessionId: string): LinearFetch<AgentSessionSDKType> {
 		return (async () => {
 			const sessionData = this.state.agentSessions.get(sessionId);
 			if (!sessionData) {
 				throw new Error(`Agent session ${sessionId} not found`);
 			}
-			// Cast to AgentSession (SDK class type)
-			return createCLIAgentSession(sessionData) as unknown as AgentSession;
-		})() as LinearFetch<AgentSession>;
+			// Return our simplified AgentSessionSDKType - no cast needed!
+			return createCLIAgentSession(sessionData);
+		})() as LinearFetch<AgentSessionSDKType>;
 	}
 
 	// ========================================================================

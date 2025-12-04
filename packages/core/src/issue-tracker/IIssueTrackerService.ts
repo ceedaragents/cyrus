@@ -8,11 +8,7 @@
  * @module issue-tracker/IIssueTrackerService
  */
 
-import type {
-	AgentSession,
-	AgentSessionPayload,
-	LinearFetch,
-} from "@linear/sdk";
+import type { LinearFetch } from "@linear/sdk";
 import type {
 	AgentEventTransportConfig,
 	IAgentEventTransport,
@@ -22,6 +18,8 @@ import type {
 	AgentActivityPayload,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
+	AgentSessionPayload,
+	AgentSessionSDKType,
 	Comment,
 	CommentCreateInput,
 	CommentWithAttachments,
@@ -636,7 +634,7 @@ export interface IIssueTrackerService {
 	 * console.log('Session status:', session.status);
 	 * ```
 	 */
-	fetchAgentSession(sessionId: string): LinearFetch<AgentSession>;
+	fetchAgentSession(sessionId: string): LinearFetch<AgentSessionSDKType>;
 
 	// ========================================================================
 	// AGENT ACTIVITY OPERATIONS

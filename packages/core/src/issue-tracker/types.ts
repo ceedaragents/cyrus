@@ -294,6 +294,20 @@ export type AgentSessionSDKType = Pick<
 };
 
 /**
+ * Simplified AgentSessionPayload type for session creation operations.
+ * Uses Pick to select only the essential properties.
+ *
+ * @see {@link LinearSDK.AgentSessionPayload} - Linear's complete AgentSessionPayload type
+ */
+export type AgentSessionPayload = Pick<
+	LinearSDK.AgentSessionPayload,
+	"success" | "lastSyncId"
+> & {
+	// AgentSession property with our simplified type
+	agentSession?: AgentSessionSDKType;
+};
+
+/**
  * Agent session status enumeration.
  *
  * Re-exported from Linear SDK. Linear SDK is the source of truth.
