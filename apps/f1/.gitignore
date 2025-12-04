@@ -1,0 +1,4 @@
+**/.env.*
+dist
+.cp-edge-config.json
+node_modules

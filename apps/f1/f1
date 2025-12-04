@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# F1 CLI - Testing Framework for Cyrus
+# This script invokes the F1 CLI using bun runtime
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Path to the compiled CLI entry point
+CLI_ENTRY="$SCRIPT_DIR/dist/src/cli.js"
+
+# Check if the CLI has been built
+if [ ! -f "$CLI_ENTRY" ]; then
+  echo "Error: F1 CLI has not been built yet."
+  echo "Please run: cd $SCRIPT_DIR && pnpm build"
+  exit 1
+fi
+
+# Check if bun is installed
+if ! command -v bun &> /dev/null; then
+  echo "Error: bun is not installed."
+  echo "Please install bun from https://bun.sh"
+  exit 1
+fi
+
+# Execute the CLI with bun, passing all arguments
+exec bun run "$CLI_ENTRY" "$@"
