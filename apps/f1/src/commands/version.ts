@@ -25,14 +25,8 @@ export function createVersionCommand(): Command {
 		.description("Display version information for CLI and server")
 		.action(async () => {
 			// Get CLI version from package.json
-			// From dist/src/commands/, need to go up 3 levels to reach package.json
-			const packageJsonPath = resolve(
-				__dirname,
-				"..",
-				"..",
-				"..",
-				"package.json",
-			);
+			// From src/commands/, need to go up 2 levels to reach package.json
+			const packageJsonPath = resolve(__dirname, "..", "..", "package.json");
 			const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 			const cliVersion = packageJson.version as string;
 

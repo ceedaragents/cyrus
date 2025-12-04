@@ -4,14 +4,11 @@
 
 import { Command } from "commander";
 import { error, success } from "../utils/colors.js";
-import { formatKeyValue } from "../utils/output.js";
 import { printRpcUrl, rpcCall } from "../utils/rpc.js";
 
 interface PromptSessionResult {
-	sessionId: string;
-	messageId: string;
-	status: string;
-	timestamp: string;
+	success: boolean;
+	message: string;
 }
 
 interface PromptSessionParams {
@@ -41,10 +38,7 @@ export function createPromptSessionCommand(): Command {
 				);
 
 				console.log(success("Message sent successfully"));
-				console.log(`  ${formatKeyValue("Session ID", result.sessionId)}`);
-				console.log(`  ${formatKeyValue("Message ID", result.messageId)}`);
-				console.log(`  ${formatKeyValue("Status", result.status)}`);
-				console.log(`  ${formatKeyValue("Timestamp", result.timestamp)}`);
+				console.log(`  ${result.message}`);
 			} catch (err) {
 				if (err instanceof Error) {
 					console.error(error(`Failed to send message: ${err.message}`));
