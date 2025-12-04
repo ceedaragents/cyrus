@@ -1028,8 +1028,10 @@ export class CLIIssueTrackerService
 		// Emit state change event
 		this.emit("agentActivity:created", { input, activityId });
 
-		// Return success payload
+		// Return success payload with agentActivity that can be awaited
+		// AgentSessionManager expects result.agentActivity to be promise-like
 		return {
+			agentActivity: Promise.resolve({ id: activityId }),
 			success: true,
 			lastSyncId: Date.now(),
 		} as AgentActivityPayload;

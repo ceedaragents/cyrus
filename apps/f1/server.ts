@@ -84,7 +84,7 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		name: "F1 Test Repository",
 		repositoryPath: CYRUS_REPO_PATH,
 		baseBranch: "main",
-		linearWorkspaceId: "f1-test-workspace",
+		linearWorkspaceId: "cli-workspace",
 		linearWorkspaceName: "F1 Testing",
 		linearToken: "f1-test-token", // Dummy token for CLI mode
 		workspaceBaseDir: join(CYRUS_HOME, "worktrees"),
