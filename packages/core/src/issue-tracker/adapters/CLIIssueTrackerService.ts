@@ -952,23 +952,16 @@ export class CLIIssueTrackerService
 		const agentSession = createCLIAgentSession(sessionData);
 		this.emit("agentSession:updated", { agentSession });
 
-		// Emit stop signal webhook event if stopping
-		if (isStopping) {
-			await this.emitStopSignalEvent(sessionId, sessionData);
-		}
-
 		return agentSession;
 	}
 
 	/**
 	 * Emit a stop signal webhook event for the EdgeWorker to handle.
-	 * This is called when a session is stopped (status changes to Complete or Error).
+	 * Should be called by the caller after stopping a session (e.g., CLIRPCServer.handleStopSession).
 	 */
-	private async emitStopSignalEvent(
-		sessionId: string,
-		sessionData: CLIAgentSessionData,
-	): Promise<void> {
-		if (!this.eventTransport || !sessionData.issueId) {
+	async emitStopSignalEvent(sessionId: string): Promise<void> {
+		const sessionData = this.state.agentSessions.get(sessionId);
+		if (!this.eventTransport || !sessionData?.issueId) {
 			return;
 		}
 

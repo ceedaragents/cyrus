@@ -558,6 +558,14 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		return this.linearClient.agentSession(sessionId);
 	}
 
+	/**
+	 * Emit a stop signal webhook event.
+	 * No-op for Linear - stop signals come from Linear webhooks, not from us.
+	 */
+	async emitStopSignalEvent(_sessionId: string): Promise<void> {
+		// No-op for Linear implementation - stop signals are handled via Linear webhooks
+	}
+
 	// ========================================================================
 	// AGENT ACTIVITY OPERATIONS
 	// ========================================================================

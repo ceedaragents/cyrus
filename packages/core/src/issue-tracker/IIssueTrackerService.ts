@@ -635,6 +635,21 @@ export interface IIssueTrackerService {
 	 */
 	fetchAgentSession(sessionId: string): Promise<IssueTrackerAgentSession>;
 
+	/**
+	 * Emit a stop signal webhook event for the EdgeWorker to handle.
+	 * Should be called after stopping a session to trigger EdgeWorker stop handling.
+	 *
+	 * @param sessionId - The session ID to emit stop signal for
+	 *
+	 * @example
+	 * ```typescript
+	 * // Stop the session and emit the stop signal
+	 * await service.updateAgentSessionStatus(sessionId, AgentSessionStatus.Complete);
+	 * await service.emitStopSignalEvent(sessionId);
+	 * ```
+	 */
+	emitStopSignalEvent(sessionId: string): Promise<void>;
+
 	// ========================================================================
 	// AGENT ACTIVITY OPERATIONS
 	// ========================================================================

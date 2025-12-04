@@ -855,6 +855,9 @@ export class CLIRPCServer {
 				AgentSessionStatus.Complete,
 			);
 
+			// Emit stop signal event for EdgeWorker to handle
+			await this.config.issueTracker.emitStopSignalEvent(sessionId);
+
 			return {
 				jsonrpc: "2.0",
 				result: {
