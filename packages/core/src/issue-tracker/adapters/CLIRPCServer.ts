@@ -421,10 +421,7 @@ export class CLIRPCServer {
 	private async handleCreateIssue(
 		params: CreateIssueParams,
 	): Promise<RPCResponse<CreateIssueData>> {
-		const { teamId, title } = params;
-
-		// Unused params will be used when CLIIssueTrackerService.createIssue is implemented
-		// const { description, priority, stateId } = params;
+		const { teamId, title, description, priority, stateId } = params;
 
 		if (!teamId || !title) {
 			return {
@@ -434,14 +431,20 @@ export class CLIRPCServer {
 		}
 
 		try {
-			// CLIIssueTrackerService should have a createIssue method
-			// For now, we'll call updateIssue after creating a minimal issue
-			// This is a placeholder - the actual implementation depends on
-			// CLIIssueTrackerService having a createIssue method
+			const issue = await this.config.issueTracker.createIssue({
+				teamId,
+				title,
+				description,
+				priority,
+				stateId,
+			});
 
-			throw new Error(
-				"createIssue not yet implemented in CLIIssueTrackerService",
-			);
+			return {
+				success: true,
+				data: {
+					issue,
+				},
+			};
 		} catch (error) {
 			return {
 				success: false,
@@ -592,10 +595,7 @@ export class CLIRPCServer {
 	private async handleViewSession(
 		params: ViewSessionParams,
 	): Promise<RPCResponse<ViewSessionData>> {
-		const { sessionId, limit = 50, offset = 0 } = params;
-
-		// Search param will be used when activity fetching is implemented
-		// const { search } = params;
+		const { sessionId, limit = 50, offset = 0, search } = params;
 
 		if (!sessionId) {
 			return {
@@ -606,30 +606,60 @@ export class CLIRPCServer {
 
 		try {
 			// Fetch session
-			const session =
+			const agentSession =
 				await this.config.issueTracker.fetchAgentSession(sessionId);
-			const agentSession = await session;
 
-			// Fetch activities (this method doesn't exist yet in IIssueTrackerService)
-			// This is a placeholder showing the expected interface
-			const activities: AgentActivityData[] = [];
-			const totalCount = 0;
+			// Fetch activities from the issue tracker
+			const activityDataList = this.config.issueTracker.listAgentActivities(
+				sessionId,
+				{ limit: limit + 1, offset }, // Fetch one extra to check hasMore
+			);
 
-			// Apply pagination
-			const paginatedActivities = activities.slice(offset, offset + limit);
-			const hasMore = offset + limit < totalCount;
+			// Filter by search if provided
+			let filteredActivities = activityDataList;
+			if (search) {
+				const searchLower = search.toLowerCase();
+				filteredActivities = activityDataList.filter((a) =>
+					a.content.toLowerCase().includes(searchLower),
+				);
+			}
+
+			// Check if there are more activities
+			const hasMore = filteredActivities.length > limit;
+			const paginatedActivityData = hasMore
+				? filteredActivities.slice(0, limit)
+				: filteredActivities;
+
+			// Transform to AgentActivityData format
+			const activities: AgentActivityData[] = paginatedActivityData.map(
+				(activityData) => ({
+					id: activityData.id,
+					type: activityData.type,
+					content: activityData.content,
+					createdAt: activityData.createdAt.getTime(),
+				}),
+			);
+
+			// Get total count
+			const allActivities =
+				this.config.issueTracker.listAgentActivities(sessionId);
+			const totalCount = search
+				? allActivities.filter((a) =>
+						a.content.toLowerCase().includes(search.toLowerCase()),
+					).length
+				: allActivities.length;
 
 			return {
 				success: true,
 				data: {
 					session: {
 						sessionId: agentSession.id,
-						issueId: "unknown", // Would need to be tracked in session
+						issueId: agentSession.issueId ?? "unknown",
 						status: agentSession.status ?? "unknown",
-						createdAt: Date.now(), // Would need to be tracked in session
-						updatedAt: Date.now(), // Would need to be tracked in session
+						createdAt: agentSession.createdAt.getTime(),
+						updatedAt: agentSession.updatedAt.getTime(),
 					},
-					activities: paginatedActivities,
+					activities,
 					totalCount,
 					hasMore,
 				},
@@ -660,11 +690,16 @@ export class CLIRPCServer {
 		}
 
 		try {
-			// This would need to trigger EdgeWorker's agentSessionPrompted handler
-			// For now, this is a placeholder
-			throw new Error(
-				"promptSession not yet implemented - requires EdgeWorker integration",
-			);
+			// Prompt the session - this creates a comment and emits a prompted event
+			await this.config.issueTracker.promptAgentSession(sessionId, message);
+
+			return {
+				success: true,
+				data: {
+					success: true,
+					message: "Session prompted successfully",
+				},
+			};
 		} catch (error) {
 			return {
 				success: false,
@@ -690,11 +725,22 @@ export class CLIRPCServer {
 		}
 
 		try {
-			// This would need to trigger EdgeWorker's stop signal handler
-			// For now, this is a placeholder
-			throw new Error(
-				"stopSession not yet implemented - requires EdgeWorker integration",
+			// Import AgentSessionStatus for the update
+			const { AgentSessionStatus } = await import("../types.js");
+
+			// Update the session status to complete
+			await this.config.issueTracker.updateAgentSessionStatus(
+				sessionId,
+				AgentSessionStatus.Complete,
 			);
+
+			return {
+				success: true,
+				data: {
+					success: true,
+					message: "Session stopped successfully",
+				},
+			};
 		} catch (error) {
 			return {
 				success: false,
@@ -710,25 +756,43 @@ export class CLIRPCServer {
 	private async handleListAgentSessions(
 		params: ListAgentSessionsParams,
 	): Promise<RPCResponse<ListAgentSessionsData>> {
-		const { limit = 50, offset = 0 } = params;
-
-		// IssueId param will be used when session listing is implemented
-		// const { issueId } = params;
+		const { issueId, limit = 50, offset = 0 } = params;
 
 		try {
-			// This would need access to all sessions
-			// For now, this is a placeholder
-			const sessions: AgentSessionData[] = [];
-			const totalCount = 0;
+			// Get sessions from the issue tracker
+			const sessionDataList = this.config.issueTracker.listAgentSessions({
+				issueId,
+				limit: limit + 1, // Fetch one extra to check hasMore
+				offset,
+			});
 
-			// Apply pagination
-			const paginatedSessions = sessions.slice(offset, offset + limit);
-			const hasMore = offset + limit < totalCount;
+			// Check if there are more sessions
+			const hasMore = sessionDataList.length > limit;
+			const paginatedSessionData = hasMore
+				? sessionDataList.slice(0, limit)
+				: sessionDataList;
+
+			// Transform to AgentSessionData format
+			const sessions: AgentSessionData[] = paginatedSessionData.map(
+				(sessionData) => ({
+					sessionId: sessionData.id,
+					issueId: sessionData.issueId ?? "unknown",
+					status: sessionData.status ?? "unknown",
+					createdAt: sessionData.createdAt.getTime(),
+					updatedAt: sessionData.updatedAt.getTime(),
+				}),
+			);
+
+			// Get total count (approximate - would need separate count query for accuracy)
+			const allSessions = this.config.issueTracker.listAgentSessions({
+				issueId,
+			});
+			const totalCount = allSessions.length;
 
 			return {
 				success: true,
 				data: {
-					sessions: paginatedSessions,
+					sessions,
 					totalCount,
 					hasMore,
 				},

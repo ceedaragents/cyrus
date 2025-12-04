@@ -565,6 +565,30 @@ export interface AgentSessionCreateResponse {
 }
 
 /**
+ * Issue creation parameters.
+ */
+export interface IssueCreateInput {
+	/** Team ID or key */
+	teamId: string;
+	/** Issue title */
+	title: string;
+	/** Issue description */
+	description?: string;
+	/** Issue priority (0-4) */
+	priority?: IssuePriority;
+	/** Initial state ID */
+	stateId?: string;
+	/** Assignee user ID */
+	assigneeId?: string;
+	/** Parent issue ID (for sub-issues) */
+	parentId?: string;
+	/** Label IDs to apply */
+	labelIds?: string[];
+	/** Additional platform-specific fields */
+	[key: string]: unknown;
+}
+
+/**
  * Issue update parameters.
  */
 export interface IssueUpdateInput {

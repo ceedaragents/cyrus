@@ -232,6 +232,19 @@ export interface CLIAgentSessionData {
 }
 
 /**
+ * Internal storage for a CLI AgentActivity.
+ */
+export interface CLIAgentActivityData {
+	id: string;
+	agentSessionId: string;
+	type: string;
+	content: string;
+	createdAt: Date;
+	ephemeral?: boolean;
+	signal?: string;
+}
+
+/**
  * Create a CLI Issue object compatible with our Pick-based Issue type.
  */
 export function createCLIIssue(data: CLIIssueData): Issue {

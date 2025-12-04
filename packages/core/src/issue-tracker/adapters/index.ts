@@ -51,3 +51,4 @@ export type {
 	ViewSessionParams,
 } from "./CLIRPCServer.js";
 export { CLIRPCServer } from "./CLIRPCServer.js";
+export type { CLIAgentActivityData } from "./CLITypes.js";
