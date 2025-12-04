@@ -32,6 +32,7 @@ import {
 	type FileUploadRequest,
 	type FileUploadResponse,
 	type Issue,
+	type IssueCreateInput,
 	type IssueTrackerAgentSession,
 	type IssueTrackerAgentSessionPayload,
 	type IssueUpdateInput,
@@ -44,6 +45,7 @@ import {
 } from "../types.js";
 import { CLIEventTransport } from "./CLIEventTransport.js";
 import {
+	type CLIAgentActivityData,
 	type CLIAgentSessionData,
 	type CLICommentData,
 	type CLIIssueData,
@@ -71,10 +73,12 @@ export interface CLIIssueTrackerState {
 	workflowStates: Map<string, CLIWorkflowStateData>;
 	users: Map<string, CLIUserData>;
 	agentSessions: Map<string, CLIAgentSessionData>;
+	agentActivities: Map<string, CLIAgentActivityData>;
 	currentUserId: string;
 	issueCounter: number;
 	commentCounter: number;
 	sessionCounter: number;
+	activityCounter: number;
 }
 
 /**
@@ -117,10 +121,12 @@ export class CLIIssueTrackerService
 			workflowStates: initialState?.workflowStates ?? new Map(),
 			users: initialState?.users ?? new Map(),
 			agentSessions: initialState?.agentSessions ?? new Map(),
+			agentActivities: initialState?.agentActivities ?? new Map(),
 			currentUserId: initialState?.currentUserId ?? "user-1",
 			issueCounter: initialState?.issueCounter ?? 1,
 			commentCounter: initialState?.commentCounter ?? 1,
 			sessionCounter: initialState?.sessionCounter ?? 1,
+			activityCounter: initialState?.activityCounter ?? 1,
 		};
 	}
 
@@ -150,6 +156,112 @@ export class CLIIssueTrackerService
 		}
 
 		return createCLIIssue(issueData);
+	}
+
+	/**
+	 * Create a new issue in a team.
+	 *
+	 * @param input - Issue creation parameters
+	 * @returns Promise resolving to the created issue
+	 */
+	async createIssue(input: IssueCreateInput): Promise<Issue> {
+		// Validate team exists
+		const team = await this.fetchTeam(input.teamId);
+
+		// Validate state if provided
+		if (input.stateId) {
+			const state = this.state.workflowStates.get(input.stateId);
+			if (!state) {
+				throw new Error(`Workflow state ${input.stateId} not found`);
+			}
+			if (state.teamId !== team.id) {
+				throw new Error(
+					`Workflow state ${input.stateId} does not belong to team ${team.id}`,
+				);
+			}
+		}
+
+		// Validate assignee if provided
+		if (input.assigneeId) {
+			const assignee = this.state.users.get(input.assigneeId);
+			if (!assignee) {
+				throw new Error(`User ${input.assigneeId} not found`);
+			}
+		}
+
+		// Validate parent if provided
+		if (input.parentId) {
+			await this.fetchIssue(input.parentId);
+		}
+
+		// Validate labels if provided
+		if (input.labelIds && input.labelIds.length > 0) {
+			for (const labelId of input.labelIds) {
+				const label = this.state.labels.get(labelId);
+				if (!label) {
+					throw new Error(`Label ${labelId} not found`);
+				}
+			}
+		}
+
+		// Generate issue number and ID
+		const issueNumber = this.state.issueCounter++;
+		const issueId = `issue-${issueNumber}`;
+		const identifier = `${team.key}-${issueNumber}`;
+
+		// Create the issue data
+		const issueData: CLIIssueData = {
+			id: issueId,
+			identifier,
+			title: input.title,
+			description: input.description,
+			number: issueNumber,
+			url: `https://linear.app/test/issue/${identifier}`,
+			branchName: `${team.key.toLowerCase()}-${issueNumber}-${input.title.toLowerCase().replace(/\s+/g, "-").slice(0, 30)}`,
+			priority: input.priority ?? 0,
+			priorityLabel: this.getPriorityLabel(input.priority ?? 0),
+			boardOrder: 0,
+			sortOrder: 0,
+			prioritySortOrder: 0,
+			labelIds: input.labelIds ?? [],
+			previousIdentifiers: [],
+			customerTicketCount: 0,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			teamId: team.id,
+			stateId: input.stateId,
+			assigneeId: input.assigneeId,
+			parentId: input.parentId,
+		};
+
+		// Save to state
+		this.state.issues.set(issueId, issueData);
+
+		// Create and return the issue
+		const issue = createCLIIssue(issueData);
+
+		// Emit state change event
+		this.emit("issue:created", { issue });
+
+		return issue;
+	}
+
+	/**
+	 * Get priority label from priority number.
+	 */
+	private getPriorityLabel(priority: number): string {
+		switch (priority) {
+			case 1:
+				return "Urgent";
+			case 2:
+				return "High";
+			case 3:
+				return "Normal";
+			case 4:
+				return "Low";
+			default:
+				return "No priority";
+		}
 	}
 
 	/**
@@ -710,6 +822,110 @@ export class CLIIssueTrackerService
 		})();
 	}
 
+	/**
+	 * List agent sessions with optional filtering.
+	 *
+	 * @param options - Filtering options (issueId, limit, offset)
+	 * @returns Array of agent session data
+	 */
+	listAgentSessions(options?: {
+		issueId?: string;
+		limit?: number;
+		offset?: number;
+	}): CLIAgentSessionData[] {
+		const { issueId, limit = 50, offset = 0 } = options ?? {};
+
+		let sessions = Array.from(this.state.agentSessions.values());
+
+		// Filter by issueId if provided
+		if (issueId) {
+			sessions = sessions.filter((s) => s.issueId === issueId);
+		}
+
+		// Sort by creation date descending (most recent first)
+		sessions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+		// Apply pagination
+		return sessions.slice(offset, offset + limit);
+	}
+
+	/**
+	 * Update an agent session's status.
+	 *
+	 * @param sessionId - The session ID to update
+	 * @param status - The new status
+	 * @returns The updated session
+	 */
+	async updateAgentSessionStatus(
+		sessionId: string,
+		status: AgentSessionStatus,
+	): Promise<IssueTrackerAgentSession> {
+		const sessionData = this.state.agentSessions.get(sessionId);
+		if (!sessionData) {
+			throw new Error(`Agent session ${sessionId} not found`);
+		}
+
+		// Update the status
+		sessionData.status = status;
+		sessionData.updatedAt = new Date();
+
+		// Set endedAt if session is being stopped
+		if (
+			status === AgentSessionStatus.Complete ||
+			status === AgentSessionStatus.Error
+		) {
+			sessionData.endedAt = new Date();
+		}
+
+		// Emit state change event
+		const agentSession = createCLIAgentSession(sessionData);
+		this.emit("agentSession:updated", { agentSession });
+
+		return agentSession;
+	}
+
+	/**
+	 * Prompt an agent session with a user message.
+	 * This creates a comment on the associated issue and emits a prompted event.
+	 *
+	 * @param sessionId - The session ID to prompt
+	 * @param message - The user's prompt message
+	 * @returns The created comment
+	 */
+	async promptAgentSession(
+		sessionId: string,
+		message: string,
+	): Promise<Comment> {
+		const sessionData = this.state.agentSessions.get(sessionId);
+		if (!sessionData) {
+			throw new Error(`Agent session ${sessionId} not found`);
+		}
+
+		if (!sessionData.issueId) {
+			throw new Error(
+				`Agent session ${sessionId} is not associated with an issue`,
+			);
+		}
+
+		// Create a comment on the issue
+		const comment = await this.createComment(sessionData.issueId, {
+			body: message,
+		});
+
+		// Update session status to awaiting processing
+		sessionData.updatedAt = new Date();
+
+		// Emit prompted event
+		this.emit("agentSession:prompted", {
+			sessionId,
+			message,
+			comment,
+			issueId: sessionData.issueId,
+		});
+
+		return comment;
+	}
+
 	// ========================================================================
 	// AGENT ACTIVITY OPERATIONS
 	// ========================================================================
@@ -723,14 +939,58 @@ export class CLIIssueTrackerService
 		// Validate session exists
 		await this.fetchAgentSession(input.agentSessionId);
 
+		// Generate activity ID
+		const activityId = `activity-${this.state.activityCounter++}`;
+
+		// Store the activity
+		const activityData: CLIAgentActivityData = {
+			id: activityId,
+			agentSessionId: input.agentSessionId,
+			type: input.content.type,
+			content:
+				typeof input.content.body === "string"
+					? input.content.body
+					: JSON.stringify(input.content.body),
+			createdAt: new Date(),
+			ephemeral: input.ephemeral ?? undefined,
+			signal: input.signal ?? undefined,
+		};
+
+		this.state.agentActivities.set(activityId, activityData);
+
 		// Emit state change event
-		this.emit("agentActivity:created", { input });
+		this.emit("agentActivity:created", { input, activityId });
 
 		// Return success payload
 		return {
 			success: true,
 			lastSyncId: Date.now(),
 		} as AgentActivityPayload;
+	}
+
+	/**
+	 * List agent activities for a session.
+	 *
+	 * @param sessionId - The session ID to get activities for
+	 * @param options - Pagination options
+	 * @returns Array of agent activity data
+	 */
+	listAgentActivities(
+		sessionId: string,
+		options?: { limit?: number; offset?: number },
+	): CLIAgentActivityData[] {
+		const { limit = 50, offset = 0 } = options ?? {};
+
+		// Get all activities for this session
+		const activities = Array.from(this.state.agentActivities.values()).filter(
+			(a) => a.agentSessionId === sessionId,
+		);
+
+		// Sort by creation date ascending
+		activities.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+		// Apply pagination
+		return activities.slice(offset, offset + limit);
 	}
 
 	// ========================================================================
