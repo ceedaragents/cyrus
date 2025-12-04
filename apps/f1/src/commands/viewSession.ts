@@ -14,19 +14,23 @@ import { printRpcUrl, rpcCall } from "../utils/rpc.js";
 interface Activity {
 	id: string;
 	type: string;
-	message: string;
-	timestamp: string;
-	metadata?: Record<string, unknown>;
+	content: string;
+	createdAt: number;
 }
 
-interface ViewSessionResult {
+interface Session {
 	sessionId: string;
 	issueId: string;
 	status: string;
-	startedAt: string;
-	endedAt?: string;
+	createdAt: number;
+	updatedAt: number;
+}
+
+interface ViewSessionResult {
+	session: Session;
 	activities: Activity[];
-	totalActivities: number;
+	totalCount: number;
+	hasMore: boolean;
 }
 
 interface ViewSessionParams {
@@ -75,34 +79,36 @@ export function createViewSessionCommand(): Command {
 					);
 
 					console.log(success("Session Details"));
-					console.log(`  ${formatKeyValue("Session ID", result.sessionId)}`);
-					console.log(`  ${formatKeyValue("Issue ID", result.issueId)}`);
-					console.log(`  ${formatKeyValue("Status", result.status)}`);
 					console.log(
-						`  ${formatKeyValue("Started", formatTimestamp(result.startedAt))}`,
+						`  ${formatKeyValue("Session ID", result.session.sessionId)}`,
 					);
-					if (result.endedAt) {
-						console.log(
-							`  ${formatKeyValue("Ended", formatTimestamp(result.endedAt))}`,
-						);
-					}
 					console.log(
-						`  ${formatKeyValue("Total Activities", result.totalActivities)}`,
+						`  ${formatKeyValue("Issue ID", result.session.issueId)}`,
+					);
+					console.log(`  ${formatKeyValue("Status", result.session.status)}`);
+					console.log(
+						`  ${formatKeyValue("Created", formatTimestamp(new Date(result.session.createdAt).toISOString()))}`,
+					);
+					console.log(
+						`  ${formatKeyValue("Updated", formatTimestamp(new Date(result.session.updatedAt).toISOString()))}`,
+					);
+					console.log(
+						`  ${formatKeyValue("Total Activities", result.totalCount)}`,
 					);
 
 					if (result.activities.length > 0) {
 						console.log("\n  Activities:");
 						const rows = result.activities.map((activity) => [
-							formatTimestamp(activity.timestamp),
+							formatTimestamp(new Date(activity.createdAt).toISOString()),
 							activity.type,
-							activity.message.slice(0, 60) +
-								(activity.message.length > 60 ? "..." : ""),
+							activity.content.slice(0, 60) +
+								(activity.content.length > 60 ? "..." : ""),
 						]);
 						printTable(["Timestamp", "Type", "Message"], rows);
 
-						if (result.totalActivities > result.activities.length) {
+						if (result.totalCount > result.activities.length) {
 							console.log(
-								`\n  Showing ${result.activities.length} of ${result.totalActivities} activities`,
+								`\n  Showing ${result.activities.length} of ${result.totalCount} activities`,
 							);
 							console.log(`  Use --limit and --offset to view more`);
 						}

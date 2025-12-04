@@ -7,11 +7,15 @@ import { error, success } from "../utils/colors.js";
 import { formatKeyValue } from "../utils/output.js";
 import { printRpcUrl, rpcCall } from "../utils/rpc.js";
 
-interface CreateIssueResult {
+interface Issue {
 	id: string;
-	title: string;
 	identifier: string;
+	title: string;
 	url: string;
+}
+
+interface CreateIssueResult {
+	issue: Issue;
 }
 
 interface CreateIssueParams {
@@ -27,7 +31,7 @@ export function createCreateIssueCommand(): Command {
 		.description("Create a new issue")
 		.requiredOption("-t, --title <title>", "Issue title")
 		.option("-d, --description <description>", "Issue description")
-		.option("-T, --team-id <teamId>", "Team ID (required)", "default")
+		.option("-T, --team-id <teamId>", "Team ID (required)", "team-default")
 		.action(
 			async (options: {
 				title: string;
@@ -52,10 +56,12 @@ export function createCreateIssueCommand(): Command {
 					);
 
 					console.log(success("Issue created successfully"));
-					console.log(`  ${formatKeyValue("ID", result.id)}`);
-					console.log(`  ${formatKeyValue("Identifier", result.identifier)}`);
-					console.log(`  ${formatKeyValue("Title", result.title)}`);
-					console.log(`  ${formatKeyValue("URL", result.url)}`);
+					console.log(`  ${formatKeyValue("ID", result.issue.id)}`);
+					console.log(
+						`  ${formatKeyValue("Identifier", result.issue.identifier)}`,
+					);
+					console.log(`  ${formatKeyValue("Title", result.issue.title)}`);
+					console.log(`  ${formatKeyValue("URL", result.issue.url)}`);
 				} catch (err) {
 					if (err instanceof Error) {
 						console.error(error(`Failed to create issue: ${err.message}`));

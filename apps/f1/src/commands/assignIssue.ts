@@ -7,16 +7,21 @@ import { error, success } from "../utils/colors.js";
 import { formatKeyValue } from "../utils/output.js";
 import { printRpcUrl, rpcCall } from "../utils/rpc.js";
 
-interface AssignIssueResult {
+interface Issue {
 	id: string;
 	identifier: string;
-	assigneeId: string;
-	assigneeName: string;
+	title: string;
+	assigneeId?: string;
+	url: string;
+}
+
+interface AssignIssueResult {
+	issue: Issue;
 }
 
 interface AssignIssueParams {
 	issueId: string;
-	assigneeId: string;
+	userId: string;
 }
 
 export function createAssignIssueCommand(): Command {
@@ -25,23 +30,30 @@ export function createAssignIssueCommand(): Command {
 	cmd
 		.description("Assign an issue to a user")
 		.requiredOption("-i, --issue-id <id>", "Issue ID to assign")
-		.requiredOption("-a, --assignee-id <id>", "User ID to assign to")
+		.requiredOption(
+			"-a, --assignee-id <id>",
+			"User ID to assign to (use 'userId' not 'assigneeId' in params)",
+		)
 		.action(async (options: { issueId: string; assigneeId: string }) => {
 			printRpcUrl();
 
 			const params: AssignIssueParams = {
 				issueId: options.issueId,
-				assigneeId: options.assigneeId,
+				userId: options.assigneeId,
 			};
 
 			try {
 				const result = await rpcCall<AssignIssueResult>("assignIssue", params);
 
 				console.log(success("Issue assigned successfully"));
-				console.log(`  ${formatKeyValue("Issue ID", result.id)}`);
-				console.log(`  ${formatKeyValue("Identifier", result.identifier)}`);
-				console.log(`  ${formatKeyValue("Assigned To", result.assigneeName)}`);
-				console.log(`  ${formatKeyValue("Assignee ID", result.assigneeId)}`);
+				console.log(`  ${formatKeyValue("Issue ID", result.issue.id)}`);
+				console.log(
+					`  ${formatKeyValue("Identifier", result.issue.identifier)}`,
+				);
+				console.log(`  ${formatKeyValue("Title", result.issue.title)}`);
+				console.log(
+					`  ${formatKeyValue("Assignee ID", result.issue.assigneeId ?? "none")}`,
+				);
 			} catch (err) {
 				if (err instanceof Error) {
 					console.error(error(`Failed to assign issue: ${err.message}`));

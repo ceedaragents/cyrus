@@ -7,11 +7,16 @@ import { error, success } from "../utils/colors.js";
 import { formatKeyValue } from "../utils/output.js";
 import { printRpcUrl, rpcCall } from "../utils/rpc.js";
 
-interface StartSessionResult {
+interface Session {
 	sessionId: string;
 	issueId: string;
 	status: string;
-	startedAt: string;
+	createdAt: number;
+	updatedAt: number;
+}
+
+interface StartSessionResult {
+	session: Session;
 }
 
 interface StartSessionParams {
@@ -38,10 +43,14 @@ export function createStartSessionCommand(): Command {
 				);
 
 				console.log(success("Session started successfully"));
-				console.log(`  ${formatKeyValue("Session ID", result.sessionId)}`);
-				console.log(`  ${formatKeyValue("Issue ID", result.issueId)}`);
-				console.log(`  ${formatKeyValue("Status", result.status)}`);
-				console.log(`  ${formatKeyValue("Started At", result.startedAt)}`);
+				console.log(
+					`  ${formatKeyValue("Session ID", result.session.sessionId)}`,
+				);
+				console.log(`  ${formatKeyValue("Issue ID", result.session.issueId)}`);
+				console.log(`  ${formatKeyValue("Status", result.session.status)}`);
+				console.log(
+					`  ${formatKeyValue("Created At", new Date(result.session.createdAt).toISOString())}`,
+				);
 			} catch (err) {
 				if (err instanceof Error) {
 					console.error(error(`Failed to start session: ${err.message}`));

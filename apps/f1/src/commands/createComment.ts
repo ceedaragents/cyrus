@@ -7,11 +7,15 @@ import { error, success } from "../utils/colors.js";
 import { formatKeyValue } from "../utils/output.js";
 import { printRpcUrl, rpcCall } from "../utils/rpc.js";
 
-interface CreateCommentResult {
+interface Comment {
 	id: string;
-	issueId: string;
 	body: string;
-	createdAt: string;
+	createdAt: Date;
+	updatedAt: Date;
+}
+
+interface CreateCommentResult {
+	comment: Comment;
 }
 
 interface CreateCommentParams {
@@ -49,9 +53,13 @@ export function createCreateCommentCommand(): Command {
 					);
 
 					console.log(success("Comment created successfully"));
-					console.log(`  ${formatKeyValue("Comment ID", result.id)}`);
-					console.log(`  ${formatKeyValue("Issue ID", result.issueId)}`);
-					console.log(`  ${formatKeyValue("Created", result.createdAt)}`);
+					console.log(`  ${formatKeyValue("Comment ID", result.comment.id)}`);
+					console.log(
+						`  ${formatKeyValue("Body", result.comment.body.slice(0, 60) + (result.comment.body.length > 60 ? "..." : ""))}`,
+					);
+					console.log(
+						`  ${formatKeyValue("Created", new Date(result.comment.createdAt).toISOString())}`,
+					);
 					if (options.mentionAgent) {
 						console.log("  Agent was mentioned in the comment");
 					}
