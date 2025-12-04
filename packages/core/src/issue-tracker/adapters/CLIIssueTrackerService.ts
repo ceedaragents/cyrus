@@ -12,6 +12,7 @@
  */
 
 import { EventEmitter } from "node:events";
+import type { AgentEvent } from "../AgentEvent.js";
 import type {
 	AgentEventTransportConfig,
 	IAgentEventTransport,
@@ -820,23 +821,40 @@ export class CLIIssueTrackerService
 				: undefined;
 
 			// Construct a webhook-like event that matches Linear's structure
-			const webhookEvent: any = {
+			const now = new Date();
+			const nowIso = now.toISOString();
+			const webhookEvent: AgentEvent = {
 				type: "AgentSessionEvent",
 				action: "created",
 				organizationId: "cli-workspace",
+				oauthClientId: "cli-oauth-client",
+				appUserId: "cli-app-user",
+				createdAt: now,
 				agentSession: {
 					id: sessionId,
+					appUserId: "cli-app-user",
+					organizationId: "cli-workspace",
+					createdAt: nowIso,
+					updatedAt: nowIso,
+					status: "active",
+					type: "issue",
 					issue: {
 						id: issue.id,
 						identifier: issue.identifier,
 						title: issue.title,
+						url: `cli://issues/${issue.identifier}`,
+						teamId: team?.id ?? "default-team",
 						team: team
 							? {
 									id: team.id,
 									key: team.key,
 									name: team.name,
 								}
-							: undefined,
+							: {
+									id: "default-team",
+									key: "DEF",
+									name: "Default Team",
+								},
 					},
 					comment: comment
 						? {
