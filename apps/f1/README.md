@@ -1,6 +1,6 @@
-# F1 CLI - Testing Framework for Cyrus
+# F1 Testing Framework for Cyrus
 
-A beautiful command-line interface for testing and interacting with the Cyrus agent system. The F1 CLI provides a comprehensive set of commands for managing issues, sessions, and agent activities without external dependencies.
+A complete end-to-end testing framework for the Cyrus agent system. F1 provides both a server (EdgeWorker in CLI mode) and a beautiful command-line interface for managing issues, sessions, and agent activities without external dependencies.
 
 ## Features
 
@@ -15,14 +15,65 @@ A beautiful command-line interface for testing and interacting with the Cyrus ag
 ## Installation
 
 ```bash
-# Install dependencies
+# Install dependencies (from monorepo root)
 pnpm install
 
-# Build the CLI
+# Build all packages
 pnpm build
 ```
 
-## Usage
+## Quick Start
+
+### 1. Start the F1 Server
+
+The F1 server runs an EdgeWorker in CLI platform mode, providing an in-memory issue tracker and agent session management.
+
+```bash
+# Start server with default settings
+cd apps/f1
+pnpm run server
+
+# Or with custom configuration
+CYRUS_PORT=3457 CYRUS_REPO_PATH=/path/to/your/repo pnpm run server
+
+# Development mode with auto-reload
+pnpm run server:dev
+```
+
+**Server Features:**
+- 🏎️ **Fast startup** using Bun runtime
+- 🎨 **Beautiful connection info** with ANSI colors
+- 🔧 **Environment-based config** (CYRUS_PORT, CYRUS_REPO_PATH)
+- 🛑 **Graceful shutdown** on SIGINT/SIGTERM
+- 📁 **Automatic directory setup** for worktrees and state
+- 🚫 **No external dependencies** (no Cloudflare tunnel, no Linear API)
+
+**Environment Variables:**
+- `CYRUS_PORT` - Server port (default: 3457)
+- `CYRUS_REPO_PATH` - Path to repository to test (default: current directory)
+
+Once started, the server displays:
+```
+────────────────────────────────────────────────────────────
+  🏎️  F1 Testing Framework Server
+────────────────────────────────────────────────────────────
+✓ Server started successfully
+
+  Server:    http://localhost:3457
+  RPC:       http://localhost:3457/cli/rpc
+  Platform:  cli
+  Cyrus Home: /tmp/cyrus-f1-1234567890
+  Repository: /path/to/your/repo
+
+  Press Ctrl+C to stop the server
+────────────────────────────────────────────────────────────
+```
+
+### 2. Use the CLI
+
+With the server running, open a new terminal and use the F1 CLI:
+
+## CLI Usage
 
 The F1 CLI provides the following commands:
 
@@ -77,9 +128,27 @@ The F1 CLI provides the following commands:
 ./f1 stop-session --session-id "session-456"
 ```
 
-## Environment Variables
+## Server Architecture
 
-- `CYRUS_PORT` - Port for F1 server (default: 3457)
+The F1 server provides a complete testing environment:
+
+```
+F1 Server (server.ts)
+         ↓
+    EdgeWorker (platform: "cli")
+         ↓
+    CLIIssueTrackerService (in-memory)
+         ↓
+    CLIRPCServer (Fastify /cli/rpc)
+         ↓
+    F1 CLI Commands
+```
+
+**Key Components:**
+- **EdgeWorker** - Orchestrates agent sessions and worktree management
+- **CLIIssueTrackerService** - In-memory issue tracker (simulates Linear)
+- **CLIRPCServer** - JSON-RPC endpoint for CLI communication
+- **SharedApplicationServer** - Fastify-based HTTP server
 
 ## Configuration
 
@@ -90,6 +159,12 @@ http://localhost:${CYRUS_PORT}/cli/rpc
 ```
 
 The RPC endpoint URL is displayed at the start of every command for easy debugging.
+
+**Server Configuration:**
+- Platform: `"cli"` (disables Cloudflare tunnel, uses in-memory issue tracker)
+- Default model: Sonnet
+- Fallback model: Haiku
+- Temporary directories: `/tmp/cyrus-f1-*`
 
 ## Development
 
@@ -123,7 +198,8 @@ The F1 CLI is built with:
 
 ```
 apps/f1/
-├── f1                      # Bash script entry point
+├── f1                      # CLI bash script entry point
+├── server.ts               # Server startup script
 ├── src/
 │   ├── cli.ts             # Main CLI entry point
 │   ├── commands/          # Command implementations
@@ -141,6 +217,9 @@ apps/f1/
 │       ├── colors.ts      # ANSI color helpers
 │       ├── rpc.ts         # JSON-RPC client
 │       └── output.ts      # Output formatting
+├── test-drives/           # Test drive logs and findings
+├── CLAUDE.md              # Developer documentation
+├── README.md              # This file
 ├── package.json
 ├── tsconfig.json
 └── vitest.config.ts
@@ -170,6 +249,41 @@ The CLI uses ANSI escape codes for beautiful colored output:
 - 🟡 Yellow - Warning messages
 - 🔵 Cyan - Informational messages
 - ⚪ Gray - Debug/metadata
+
+## End-to-End Testing Example
+
+```bash
+# Terminal 1: Start the server
+cd apps/f1
+pnpm run server
+
+# Terminal 2: Run test commands
+cd apps/f1
+
+# 1. Health check
+./f1 ping
+
+# 2. Create an issue
+./f1 create-issue --title "Implement feature X" --description "Add feature X to the system"
+
+# 3. Start agent session (note the issue ID from step 2)
+./f1 start-session --issue-id <issue-id>
+
+# 4. View session activities (note the session ID from step 3)
+./f1 view-session --session-id <session-id>
+
+# 5. Send additional prompts
+./f1 prompt-session --session-id <session-id> --message "Continue working on this"
+
+# 6. Stop session when done
+./f1 stop-session --session-id <session-id>
+```
+
+## Documentation
+
+- **CLAUDE.md** - Developer documentation for working with F1
+- **spec/f1/ARCHITECTURE.md** - Complete architecture documentation
+- **packages/core/src/issue-tracker/adapters/** - CLIIssueTrackerService and CLIRPCServer implementations
 
 ## License
 

@@ -4,8 +4,13 @@
 		"outDir": "./dist",
 		"rootDir": ".",
 		"module": "NodeNext",
-		"moduleResolution": "NodeNext"
+		"moduleResolution": "NodeNext",
+		"baseUrl": "../../",
+		"paths": {
+			"cyrus-core": ["packages/core/src"],
+			"cyrus-edge-worker": ["packages/edge-worker/src"]
+		}
 	},
-	"include": ["src/**/*.ts"],
+	"include": ["src/**/*.ts", "server.ts"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

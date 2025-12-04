@@ -11,6 +11,8 @@
 	"scripts": {
 		"build": "tsc",
 		"start": "bun run dist/src/cli.js",
+		"server": "bun run server.ts",
+		"server:dev": "bun --watch server.ts",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run --passWithNoTests",
@@ -21,13 +23,17 @@
 	"files": [
 		"dist",
 		"f1",
-		"README.md"
+		"server.ts",
+		"README.md",
+		"CLAUDE.md"
 	],
 	"publishConfig": {
 		"access": "public"
 	},
 	"dependencies": {
-		"commander": "^14.0.2"
+		"commander": "^14.0.2",
+		"cyrus-core": "workspace:*",
+		"cyrus-edge-worker": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",

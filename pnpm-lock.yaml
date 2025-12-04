@@ -97,6 +97,12 @@ importers:
       commander:
         specifier: ^14.0.2
         version: 14.0.2
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../../packages/core
+      cyrus-edge-worker:
+        specifier: workspace:*
+        version: link:../../packages/edge-worker
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
