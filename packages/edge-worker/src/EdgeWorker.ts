@@ -345,6 +345,42 @@ export class EdgeWorker extends EventEmitter {
 		console.log(
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
+
+		// 3. Register /status endpoint for process monitoring
+		this.registerStatusEndpoint();
+		console.log("✅ Status endpoint registered: /status");
+	}
+
+	/**
+	 * Register the /status endpoint for checking if the process is busy or idle
+	 * This endpoint is unauthenticated as it's used for process monitoring
+	 */
+	private registerStatusEndpoint(): void {
+		const fastify = this.sharedApplicationServer.getFastifyInstance();
+
+		fastify.get("/status", async (_request, reply) => {
+			const activeTasks = this.getActiveSessionCount();
+			const status = activeTasks > 0 ? "busy" : "idle";
+
+			return reply.status(200).send({
+				status,
+				active_tasks: activeTasks,
+			});
+		});
+	}
+
+	/**
+	 * Get the total count of running sessions across all repositories.
+	 * This counts sessions that have an actual agent runner process attached,
+	 * not just sessions with "Active" status (which includes restored sessions
+	 * that aren't actually running).
+	 */
+	getActiveSessionCount(): number {
+		let count = 0;
+		for (const manager of this.agentSessionManagers.values()) {
+			count += manager.getAllAgentRunners().length;
+		}
+		return count;
 	}
 
 	/**

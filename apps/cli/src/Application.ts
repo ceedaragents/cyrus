@@ -18,6 +18,7 @@ export class Application {
 	public readonly git: GitService;
 	public readonly worker: WorkerService;
 	public readonly logger: Logger;
+	public readonly version: string;
 	private envWatcher?: ReturnType<typeof watch>;
 	private configWatcher?: ReturnType<typeof watch>;
 	private isInSetupWaitingMode = false;
@@ -25,11 +26,15 @@ export class Application {
 	private readonly envFilePath: string;
 
 	constructor(
+		version: string,
 		public readonly cyrusHome: string,
 		customEnvPath?: string,
 	) {
 		// Initialize logger first
 		this.logger = new Logger();
+
+		// Set version from parameter
+		this.version = version;
 
 		// Determine the env file path: use custom path if provided, otherwise default to ~/.cyrus/.env
 		this.envFilePath = customEnvPath || join(cyrusHome, ".env");
@@ -276,6 +281,7 @@ export class Application {
 			this.logger.raw("");
 			this.logger.divider(70);
 			this.logger.success("Edge worker started successfully");
+			this.logger.info(`📌 Version: ${this.version}`);
 			this.logger.info(`🔗 Server running on port ${serverPort}`);
 
 			if (process.env.CLOUDFLARE_TOKEN) {
