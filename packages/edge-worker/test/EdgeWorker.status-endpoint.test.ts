@@ -125,19 +125,19 @@ describe("EdgeWorker - Status Endpoint", () => {
 	});
 
 	describe("getActiveSessionCount", () => {
-		it("should return 0 when there are no active sessions", () => {
-			mockAgentSessionManager.getActiveSessions.mockReturnValue([]);
+		it("should return 0 when there are no running agent runners", () => {
+			mockAgentSessionManager.getAllAgentRunners.mockReturnValue([]);
 
 			const count = edgeWorker.getActiveSessionCount();
 
 			expect(count).toBe(0);
 		});
 
-		it("should return correct count when there are active sessions", () => {
-			// Mock 2 active sessions
-			mockAgentSessionManager.getActiveSessions.mockReturnValue([
-				{ linearAgentActivitySessionId: "session-1", status: "active" },
-				{ linearAgentActivitySessionId: "session-2", status: "active" },
+		it("should return correct count when there are running agent runners", () => {
+			// Mock 2 running agent runners
+			mockAgentSessionManager.getAllAgentRunners.mockReturnValue([
+				{ id: "runner-1" },
+				{ id: "runner-2" },
 			]);
 
 			const count = edgeWorker.getActiveSessionCount();
@@ -158,8 +158,8 @@ describe("EdgeWorker - Status Endpoint", () => {
 	});
 
 	describe("/status endpoint response", () => {
-		it('should return status "idle" and active_tasks 0 when no sessions are active', async () => {
-			mockAgentSessionManager.getActiveSessions.mockReturnValue([]);
+		it('should return status "idle" and active_tasks 0 when no agent runners are running', async () => {
+			mockAgentSessionManager.getAllAgentRunners.mockReturnValue([]);
 			await edgeWorker.start();
 
 			// Get the registered handler
@@ -184,12 +184,12 @@ describe("EdgeWorker - Status Endpoint", () => {
 			});
 		});
 
-		it('should return status "busy" and correct active_tasks when sessions are active', async () => {
-			// Mock 3 active sessions
-			mockAgentSessionManager.getActiveSessions.mockReturnValue([
-				{ linearAgentActivitySessionId: "session-1", status: "active" },
-				{ linearAgentActivitySessionId: "session-2", status: "active" },
-				{ linearAgentActivitySessionId: "session-3", status: "active" },
+		it('should return status "busy" and correct active_tasks when agent runners are running', async () => {
+			// Mock 3 running agent runners
+			mockAgentSessionManager.getAllAgentRunners.mockReturnValue([
+				{ id: "runner-1" },
+				{ id: "runner-2" },
+				{ id: "runner-3" },
 			]);
 
 			await edgeWorker.start();
@@ -215,10 +215,10 @@ describe("EdgeWorker - Status Endpoint", () => {
 			});
 		});
 
-		it('should return status "busy" when even one session is active', async () => {
-			// Mock 1 active session
-			mockAgentSessionManager.getActiveSessions.mockReturnValue([
-				{ linearAgentActivitySessionId: "session-1", status: "active" },
+		it('should return status "busy" when even one agent runner is running', async () => {
+			// Mock 1 running agent runner
+			mockAgentSessionManager.getAllAgentRunners.mockReturnValue([
+				{ id: "runner-1" },
 			]);
 
 			await edgeWorker.start();

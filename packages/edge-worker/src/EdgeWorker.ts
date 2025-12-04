@@ -370,12 +370,15 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Get the total count of active sessions across all repositories
+	 * Get the total count of running sessions across all repositories.
+	 * This counts sessions that have an actual agent runner process attached,
+	 * not just sessions with "Active" status (which includes restored sessions
+	 * that aren't actually running).
 	 */
 	getActiveSessionCount(): number {
 		let count = 0;
 		for (const manager of this.agentSessionManagers.values()) {
-			count += manager.getActiveSessions().length;
+			count += manager.getAllAgentRunners().length;
 		}
 		return count;
 	}
