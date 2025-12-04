@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { LinearClient } from "@linear/sdk";
 import { CloudflareTunnelClient } from "cyrus-cloudflare-tunnel-client";
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -8,6 +9,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 export interface OAuthCallback {
 	resolve: (credentials: {
 		linearToken: string;
+		linearRefreshToken?: string;
 		linearWorkspaceId: string;
 		linearWorkspaceName: string;
 	}) => void;
@@ -24,6 +26,16 @@ export interface ApprovalCallback {
 	sessionId: string;
 	createdAt: number;
 }
+
+/**
+ * Configuration save callback for OAuth token persistence
+ */
+export type ConfigSaveCallback = (credentials: {
+	linearToken: string;
+	linearRefreshToken?: string;
+	linearWorkspaceId: string;
+	linearWorkspaceName: string;
+}) => Promise<void>;
 
 /**
  * Shared application server that handles both webhooks and OAuth callbacks on a single port
@@ -49,10 +61,16 @@ export class SharedApplicationServer {
 	private host: string;
 	private isListening = false;
 	private tunnelClient: CloudflareTunnelClient | null = null;
+	private configSaveCallback?: ConfigSaveCallback;
 
-	constructor(port: number = 3456, host: string = "localhost") {
+	constructor(
+		port: number = 3456,
+		host: string = "localhost",
+		configSaveCallback?: ConfigSaveCallback,
+	) {
 		this.port = port;
 		this.host = host;
+		this.configSaveCallback = configSaveCallback;
 	}
 
 	/**
@@ -66,6 +84,214 @@ export class SharedApplicationServer {
 		this.app = Fastify({
 			logger: false,
 		});
+
+		// Register OAuth callback route
+		this.registerOAuthCallbackRoute();
+	}
+
+	/**
+	 * Register the OAuth callback route handler
+	 */
+	private registerOAuthCallbackRoute(): void {
+		if (!this.app) {
+			throw new Error("Fastify instance not initialized");
+		}
+
+		this.app.get("/callback", async (request, reply) => {
+			try {
+				// Extract authorization code from query parameters
+				const { code } = request.query as { code?: string };
+
+				if (!code) {
+					console.error("❌ OAuth callback missing authorization code");
+					return reply
+						.type("text/html; charset=utf-8")
+						.code(400)
+						.send(`
+						<html>
+							<head><meta charset="UTF-8"></head>
+							<body style="font-family: system-ui; padding: 40px; text-align: center;">
+								<h2>❌ Authorization failed</h2>
+								<p>Missing authorization code</p>
+							</body>
+						</html>
+					`);
+				}
+
+				// Validate required environment variables
+				const clientId = process.env.LINEAR_CLIENT_ID;
+				const clientSecret = process.env.LINEAR_CLIENT_SECRET;
+				const baseUrl = process.env.CYRUS_BASE_URL;
+
+				if (!clientId || !clientSecret || !baseUrl) {
+					console.error(
+						"❌ OAuth callback missing required environment variables",
+					);
+					return reply
+						.type("text/html; charset=utf-8")
+						.code(500)
+						.send(`
+						<html>
+							<head><meta charset="UTF-8"></head>
+							<body style="font-family: system-ui; padding: 40px; text-align: center;">
+								<h2>❌ Configuration error</h2>
+								<p>Server is missing required OAuth configuration</p>
+							</body>
+						</html>
+					`);
+				}
+
+				// Exchange authorization code for tokens
+				const redirectUri = `${baseUrl}/callback`;
+				const tokenResponse = await fetch(
+					"https://api.linear.app/oauth/token",
+					{
+						method: "POST",
+						headers: {
+							"Content-Type": "application/x-www-form-urlencoded",
+						},
+						body: new URLSearchParams({
+							code,
+							redirect_uri: redirectUri,
+							client_id: clientId,
+							client_secret: clientSecret,
+							grant_type: "authorization_code",
+						}).toString(),
+					},
+				);
+
+				if (!tokenResponse.ok) {
+					const errorText = await tokenResponse.text();
+					console.error(`❌ Token exchange failed: ${errorText}`);
+					return reply
+						.type("text/html; charset=utf-8")
+						.code(500)
+						.send(`
+						<html>
+							<head><meta charset="UTF-8"></head>
+							<body style="font-family: system-ui; padding: 40px; text-align: center;">
+								<h2>❌ Authorization failed</h2>
+								<p>Failed to exchange authorization code for tokens</p>
+							</body>
+						</html>
+					`);
+				}
+
+				const tokenData = (await tokenResponse.json()) as {
+					access_token: string;
+					refresh_token?: string;
+					expires_in: number;
+					token_type: string;
+				};
+
+				const accessToken = tokenData.access_token;
+				const refreshToken = tokenData.refresh_token;
+
+				if (!accessToken || !accessToken.startsWith("lin_oauth_")) {
+					console.error("❌ Invalid access token received");
+					return reply
+						.type("text/html; charset=utf-8")
+						.code(500)
+						.send(`
+						<html>
+							<head><meta charset="UTF-8"></head>
+							<body style="font-family: system-ui; padding: 40px; text-align: center;">
+								<h2>❌ Authorization failed</h2>
+								<p>Invalid token received from Linear</p>
+							</body>
+						</html>
+					`);
+				}
+
+				// Fetch workspace information using Linear SDK
+				const linearClient = new LinearClient({ accessToken });
+				const viewer = await linearClient.viewer;
+				const organization = await viewer.organization;
+				const workspaceId = organization?.id;
+				const workspaceName = organization?.name;
+
+				if (!workspaceId) {
+					console.error("❌ Failed to fetch workspace information");
+					return reply
+						.type("text/html; charset=utf-8")
+						.code(500)
+						.send(`
+						<html>
+							<head><meta charset="UTF-8"></head>
+							<body style="font-family: system-ui; padding: 40px; text-align: center;">
+								<h2>❌ Authorization failed</h2>
+								<p>Failed to fetch workspace information</p>
+							</body>
+						</html>
+					`);
+				}
+
+				console.log(
+					`✅ OAuth successful for workspace: ${workspaceName || workspaceId}`,
+				);
+
+				// Save configuration if callback is provided
+				if (this.configSaveCallback) {
+					try {
+						await this.configSaveCallback({
+							linearToken: accessToken,
+							linearRefreshToken: refreshToken,
+							linearWorkspaceId: workspaceId,
+							linearWorkspaceName: workspaceName || workspaceId,
+						});
+						console.log("✅ Tokens saved to configuration");
+					} catch (saveError) {
+						console.error(
+							"❌ Failed to save tokens to configuration:",
+							saveError,
+						);
+						// Continue anyway - the in-memory callback resolution will still work
+					}
+				}
+
+				// Resolve any pending OAuth callbacks
+				for (const [flowId, callback] of this.oauthCallbacks) {
+					callback.resolve({
+						linearToken: accessToken,
+						linearRefreshToken: refreshToken,
+						linearWorkspaceId: workspaceId,
+						linearWorkspaceName: workspaceName || workspaceId,
+					});
+					this.oauthCallbacks.delete(flowId);
+				}
+
+				// Return success HTML
+				return reply
+					.type("text/html; charset=utf-8")
+					.code(200)
+					.send(`
+					<html>
+						<head><meta charset="UTF-8"></head>
+						<body style="font-family: system-ui; padding: 40px; text-align: center;">
+							<h2>✅ Authorization successful!</h2>
+							<p>You can close this window and return to your terminal.</p>
+							<script>setTimeout(() => window.close(), 2000);</script>
+						</body>
+					</html>
+				`);
+			} catch (error) {
+				console.error("❌ OAuth callback error:", error);
+				return reply
+					.type("text/html; charset=utf-8")
+					.code(500)
+					.send(`
+					<html>
+						<head><meta charset="UTF-8"></head>
+						<body style="font-family: system-ui; padding: 40px; text-align: center;">
+							<h2>❌ Authorization failed</h2>
+							<p>${error instanceof Error ? error.message : "Unknown error"}</p>
+						</body>
+					</html>
+				`);
+			}
+		});
+
+		console.log("🔗 Registered OAuth callback route: GET /callback");
 	}
 
 	/**
@@ -251,11 +477,13 @@ export class SharedApplicationServer {
 	 */
 	async startOAuthFlow(proxyUrl: string): Promise<{
 		linearToken: string;
+		linearRefreshToken?: string;
 		linearWorkspaceId: string;
 		linearWorkspaceName: string;
 	}> {
 		return new Promise<{
 			linearToken: string;
+			linearRefreshToken?: string;
 			linearWorkspaceId: string;
 			linearWorkspaceName: string;
 		}>((resolve, reject) => {
