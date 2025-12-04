@@ -35,21 +35,50 @@ export type RPCCommand =
 	| "listAgentSessions";
 
 /**
- * Generic RPC request structure
+ * JSON-RPC 2.0 request ID type
+ */
+export type RPCRequestId = number | string | null;
+
+/**
+ * Generic RPC request structure (JSON-RPC 2.0 compliant)
  */
 export interface RPCRequest<TParams = unknown> {
+	jsonrpc: "2.0";
 	method: RPCCommand;
-	params: TParams;
+	params?: TParams;
+	id: RPCRequestId;
 }
 
 /**
- * Generic RPC response structure
+ * JSON-RPC 2.0 error object
  */
-export interface RPCResponse<TData = unknown> {
-	success: boolean;
-	data?: TData;
-	error?: string;
+export interface RPCError {
+	code: number;
+	message: string;
+	data?: unknown;
 }
+
+/**
+ * Generic RPC response structure (JSON-RPC 2.0 compliant)
+ */
+export interface RPCResponse<TResult = unknown> {
+	jsonrpc: "2.0";
+	result?: TResult;
+	error?: RPCError;
+	id: RPCRequestId;
+}
+
+/**
+ * Standard JSON-RPC 2.0 error codes
+ */
+export const RPCErrorCodes = {
+	PARSE_ERROR: -32700,
+	INVALID_REQUEST: -32600,
+	METHOD_NOT_FOUND: -32601,
+	INVALID_PARAMS: -32602,
+	INTERNAL_ERROR: -32603,
+	SERVER_ERROR: -32000, // Generic server error
+} as const;
 
 /**
  * Ping command parameters (no params needed)
@@ -300,11 +329,13 @@ export class CLIRPCServer {
 				request: FastifyRequest<{ Body: RPCRequest }>,
 				reply: FastifyReply,
 			) => {
+				const requestId = request.body?.id ?? null;
+
 				try {
 					const { method, params } = request.body;
 
 					// Route to appropriate handler
-					const response = await this.handleCommand(method, params);
+					const response = await this.handleCommand(method, params, requestId);
 
 					reply.send(response);
 				} catch (error) {
@@ -312,9 +343,13 @@ export class CLIRPCServer {
 						error instanceof Error ? error.message : "Unknown error";
 
 					reply.send({
-						success: false,
-						error: errorMessage,
-					});
+						jsonrpc: "2.0",
+						error: {
+							code: RPCErrorCodes.INTERNAL_ERROR,
+							message: errorMessage,
+						},
+						id: requestId,
+					} satisfies RPCResponse);
 				}
 			},
 		);
@@ -326,45 +361,59 @@ export class CLIRPCServer {
 	private async handleCommand(
 		method: RPCCommand,
 		params: unknown,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse> {
 		switch (method) {
 			case "ping":
-				return this.handlePing(params as PingParams);
+				return this.handlePing(params as PingParams, requestId);
 
 			case "status":
-				return this.handleStatus(params as StatusParams);
+				return this.handleStatus(params as StatusParams, requestId);
 
 			case "version":
-				return this.handleVersion(params as VersionParams);
+				return this.handleVersion(params as VersionParams, requestId);
 
 			case "createIssue":
-				return this.handleCreateIssue(params as CreateIssueParams);
+				return this.handleCreateIssue(params as CreateIssueParams, requestId);
 
 			case "assignIssue":
-				return this.handleAssignIssue(params as AssignIssueParams);
+				return this.handleAssignIssue(params as AssignIssueParams, requestId);
 
 			case "createComment":
-				return this.handleCreateComment(params as CreateCommentParams);
+				return this.handleCreateComment(
+					params as CreateCommentParams,
+					requestId,
+				);
 
 			case "startSession":
-				return this.handleStartSession(params as StartSessionParams);
+				return this.handleStartSession(params as StartSessionParams, requestId);
 
 			case "viewSession":
-				return this.handleViewSession(params as ViewSessionParams);
+				return this.handleViewSession(params as ViewSessionParams, requestId);
 
 			case "promptSession":
-				return this.handlePromptSession(params as PromptSessionParams);
+				return this.handlePromptSession(
+					params as PromptSessionParams,
+					requestId,
+				);
 
 			case "stopSession":
-				return this.handleStopSession(params as StopSessionParams);
+				return this.handleStopSession(params as StopSessionParams, requestId);
 
 			case "listAgentSessions":
-				return this.handleListAgentSessions(params as ListAgentSessionsParams);
+				return this.handleListAgentSessions(
+					params as ListAgentSessionsParams,
+					requestId,
+				);
 
 			default:
 				return {
-					success: false,
-					error: `Unknown command: ${method}`,
+					jsonrpc: "2.0",
+					error: {
+						code: RPCErrorCodes.METHOD_NOT_FOUND,
+						message: `Unknown command: ${method}`,
+					},
+					id: requestId,
 				};
 		}
 	}
@@ -374,13 +423,15 @@ export class CLIRPCServer {
 	 */
 	private async handlePing(
 		_params: PingParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<PingData>> {
 		return {
-			success: true,
-			data: {
+			jsonrpc: "2.0",
+			result: {
 				message: "pong",
 				timestamp: Date.now(),
 			},
+			id: requestId,
 		};
 	}
 
@@ -389,14 +440,16 @@ export class CLIRPCServer {
 	 */
 	private async handleStatus(
 		_params: StatusParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<StatusData>> {
 		return {
-			success: true,
-			data: {
+			jsonrpc: "2.0",
+			result: {
 				uptime: Date.now() - this.startTime,
 				status: "ready",
 				server: "CLIRPCServer",
 			},
+			id: requestId,
 		};
 	}
 
@@ -405,13 +458,15 @@ export class CLIRPCServer {
 	 */
 	private async handleVersion(
 		_params: VersionParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<VersionData>> {
 		return {
-			success: true,
-			data: {
+			jsonrpc: "2.0",
+			result: {
 				version: this.config.version ?? "unknown",
 				platform: "cli",
 			},
+			id: requestId,
 		};
 	}
 
@@ -420,13 +475,18 @@ export class CLIRPCServer {
 	 */
 	private async handleCreateIssue(
 		params: CreateIssueParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<CreateIssueData>> {
 		const { teamId, title, description, priority, stateId } = params;
 
 		if (!teamId || !title) {
 			return {
-				success: false,
-				error: "Missing required parameters: teamId and title are required",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.INVALID_PARAMS,
+					message: "Missing required parameters: teamId and title are required",
+				},
+				id: requestId,
 			};
 		}
 
@@ -440,16 +500,21 @@ export class CLIRPCServer {
 			});
 
 			return {
-				success: true,
-				data: {
+				jsonrpc: "2.0",
+				result: {
 					issue,
 				},
+				id: requestId,
 			};
 		} catch (error) {
 			return {
-				success: false,
-				error:
-					error instanceof Error ? error.message : "Failed to create issue",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.SERVER_ERROR,
+					message:
+						error instanceof Error ? error.message : "Failed to create issue",
+				},
+				id: requestId,
 			};
 		}
 	}
@@ -459,13 +524,19 @@ export class CLIRPCServer {
 	 */
 	private async handleAssignIssue(
 		params: AssignIssueParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<AssignIssueData>> {
 		const { issueId, userId } = params;
 
 		if (!issueId || !userId) {
 			return {
-				success: false,
-				error: "Missing required parameters: issueId and userId are required",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.INVALID_PARAMS,
+					message:
+						"Missing required parameters: issueId and userId are required",
+				},
+				id: requestId,
 			};
 		}
 
@@ -480,16 +551,21 @@ export class CLIRPCServer {
 			);
 
 			return {
-				success: true,
-				data: {
+				jsonrpc: "2.0",
+				result: {
 					issue,
 				},
+				id: requestId,
 			};
 		} catch (error) {
 			return {
-				success: false,
-				error:
-					error instanceof Error ? error.message : "Failed to assign issue",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.SERVER_ERROR,
+					message:
+						error instanceof Error ? error.message : "Failed to assign issue",
+				},
+				id: requestId,
 			};
 		}
 	}
@@ -499,13 +575,18 @@ export class CLIRPCServer {
 	 */
 	private async handleCreateComment(
 		params: CreateCommentParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<CreateCommentData>> {
 		const { issueId, body } = params;
 
 		if (!issueId || !body) {
 			return {
-				success: false,
-				error: "Missing required parameters: issueId and body are required",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.INVALID_PARAMS,
+					message: "Missing required parameters: issueId and body are required",
+				},
+				id: requestId,
 			};
 		}
 
@@ -520,16 +601,21 @@ export class CLIRPCServer {
 			);
 
 			return {
-				success: true,
-				data: {
+				jsonrpc: "2.0",
+				result: {
 					comment,
 				},
+				id: requestId,
 			};
 		} catch (error) {
 			return {
-				success: false,
-				error:
-					error instanceof Error ? error.message : "Failed to create comment",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.SERVER_ERROR,
+					message:
+						error instanceof Error ? error.message : "Failed to create comment",
+				},
+				id: requestId,
 			};
 		}
 	}
@@ -539,13 +625,18 @@ export class CLIRPCServer {
 	 */
 	private async handleStartSession(
 		params: StartSessionParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<StartSessionData>> {
 		const { issueId, externalLink } = params;
 
 		if (!issueId) {
 			return {
-				success: false,
-				error: "Missing required parameter: issueId is required",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.INVALID_PARAMS,
+					message: "Missing required parameter: issueId is required",
+				},
+				id: requestId,
 			};
 		}
 
@@ -569,8 +660,8 @@ export class CLIRPCServer {
 			}
 
 			return {
-				success: true,
-				data: {
+				jsonrpc: "2.0",
+				result: {
 					session: {
 						sessionId: agentSession.id,
 						issueId,
@@ -579,12 +670,17 @@ export class CLIRPCServer {
 						updatedAt: Date.now(),
 					},
 				},
+				id: requestId,
 			};
 		} catch (error) {
 			return {
-				success: false,
-				error:
-					error instanceof Error ? error.message : "Failed to start session",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.SERVER_ERROR,
+					message:
+						error instanceof Error ? error.message : "Failed to start session",
+				},
+				id: requestId,
 			};
 		}
 	}
@@ -594,13 +690,18 @@ export class CLIRPCServer {
 	 */
 	private async handleViewSession(
 		params: ViewSessionParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<ViewSessionData>> {
 		const { sessionId, limit = 50, offset = 0, search } = params;
 
 		if (!sessionId) {
 			return {
-				success: false,
-				error: "Missing required parameter: sessionId is required",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.INVALID_PARAMS,
+					message: "Missing required parameter: sessionId is required",
+				},
+				id: requestId,
 			};
 		}
 
@@ -650,8 +751,8 @@ export class CLIRPCServer {
 				: allActivities.length;
 
 			return {
-				success: true,
-				data: {
+				jsonrpc: "2.0",
+				result: {
 					session: {
 						sessionId: agentSession.id,
 						issueId: agentSession.issueId ?? "unknown",
@@ -663,12 +764,17 @@ export class CLIRPCServer {
 					totalCount,
 					hasMore,
 				},
+				id: requestId,
 			};
 		} catch (error) {
 			return {
-				success: false,
-				error:
-					error instanceof Error ? error.message : "Failed to view session",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.SERVER_ERROR,
+					message:
+						error instanceof Error ? error.message : "Failed to view session",
+				},
+				id: requestId,
 			};
 		}
 	}
@@ -678,14 +784,19 @@ export class CLIRPCServer {
 	 */
 	private async handlePromptSession(
 		params: PromptSessionParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<PromptSessionData>> {
 		const { sessionId, message } = params;
 
 		if (!sessionId || !message) {
 			return {
-				success: false,
-				error:
-					"Missing required parameters: sessionId and message are required",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.INVALID_PARAMS,
+					message:
+						"Missing required parameters: sessionId and message are required",
+				},
+				id: requestId,
 			};
 		}
 
@@ -694,17 +805,22 @@ export class CLIRPCServer {
 			await this.config.issueTracker.promptAgentSession(sessionId, message);
 
 			return {
-				success: true,
-				data: {
+				jsonrpc: "2.0",
+				result: {
 					success: true,
 					message: "Session prompted successfully",
 				},
+				id: requestId,
 			};
 		} catch (error) {
 			return {
-				success: false,
-				error:
-					error instanceof Error ? error.message : "Failed to prompt session",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.SERVER_ERROR,
+					message:
+						error instanceof Error ? error.message : "Failed to prompt session",
+				},
+				id: requestId,
 			};
 		}
 	}
@@ -714,13 +830,18 @@ export class CLIRPCServer {
 	 */
 	private async handleStopSession(
 		params: StopSessionParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<StopSessionData>> {
 		const { sessionId } = params;
 
 		if (!sessionId) {
 			return {
-				success: false,
-				error: "Missing required parameter: sessionId is required",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.INVALID_PARAMS,
+					message: "Missing required parameter: sessionId is required",
+				},
+				id: requestId,
 			};
 		}
 
@@ -735,17 +856,22 @@ export class CLIRPCServer {
 			);
 
 			return {
-				success: true,
-				data: {
+				jsonrpc: "2.0",
+				result: {
 					success: true,
 					message: "Session stopped successfully",
 				},
+				id: requestId,
 			};
 		} catch (error) {
 			return {
-				success: false,
-				error:
-					error instanceof Error ? error.message : "Failed to stop session",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.SERVER_ERROR,
+					message:
+						error instanceof Error ? error.message : "Failed to stop session",
+				},
+				id: requestId,
 			};
 		}
 	}
@@ -755,6 +881,7 @@ export class CLIRPCServer {
 	 */
 	private async handleListAgentSessions(
 		params: ListAgentSessionsParams,
+		requestId: RPCRequestId,
 	): Promise<RPCResponse<ListAgentSessionsData>> {
 		const { issueId, limit = 50, offset = 0 } = params;
 
@@ -790,20 +917,25 @@ export class CLIRPCServer {
 			const totalCount = allSessions.length;
 
 			return {
-				success: true,
-				data: {
+				jsonrpc: "2.0",
+				result: {
 					sessions,
 					totalCount,
 					hasMore,
 				},
+				id: requestId,
 			};
 		} catch (error) {
 			return {
-				success: false,
-				error:
-					error instanceof Error
-						? error.message
-						: "Failed to list agent sessions",
+				jsonrpc: "2.0",
+				error: {
+					code: RPCErrorCodes.SERVER_ERROR,
+					message:
+						error instanceof Error
+							? error.message
+							: "Failed to list agent sessions",
+				},
+				id: requestId,
 			};
 		}
 	}
