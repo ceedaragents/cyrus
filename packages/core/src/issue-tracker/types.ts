@@ -284,13 +284,15 @@ export type AgentSessionSDKType = Pick<
 	| "issueId"
 	| "commentId"
 > & {
-	// Relationship async getters - allow undefined for CLI
-	readonly appUser: Promise<User | undefined>;
-	readonly creator: Promise<User | undefined>;
-	readonly issue: Promise<Issue | undefined>;
-	readonly comment: Promise<Comment | undefined>;
+	// Relationship async getters - allow undefined for CLI (matches Linear SDK pattern)
+	readonly appUser: LinearSDK.LinearFetch<User> | undefined;
+	readonly creator: LinearSDK.LinearFetch<User> | undefined;
+	readonly issue: LinearSDK.LinearFetch<Issue> | undefined;
+	readonly comment: LinearSDK.LinearFetch<Comment> | undefined;
 	// Collection method with simplified Connection
-	activities(variables?: unknown): Promise<Connection<LinearSDK.AgentActivity>>;
+	activities(
+		variables?: unknown,
+	): LinearSDK.LinearFetch<Connection<LinearSDK.AgentActivity>>;
 };
 
 /**
@@ -305,6 +307,60 @@ export type AgentSessionPayload = Pick<
 > & {
 	// AgentSession property with our simplified type
 	agentSession?: AgentSessionSDKType;
+};
+
+/**
+ * Type alias for AgentSession used in IIssueTrackerService interface.
+ * Uses Pick to avoid private member issues while matching the SDK type structure.
+ * Named differently to avoid nominal typing collision with AgentSessionSDKType.
+ *
+ * Uses LinearFetch for async properties to match Linear SDK's return types.
+ *
+ * @see {@link LinearSDK.AgentSession} - Linear's AgentSession type
+ */
+export type IssueTrackerAgentSession = Pick<
+	LinearSDK.AgentSession,
+	| "id"
+	| "externalLink"
+	| "summary"
+	| "status"
+	| "type"
+	| "createdAt"
+	| "updatedAt"
+	| "archivedAt"
+	| "startedAt"
+	| "endedAt"
+	| "appUserId"
+	| "creatorId"
+	| "issueId"
+	| "commentId"
+> & {
+	// Relationship async getters - use LinearFetch to match SDK
+	readonly appUser: LinearSDK.LinearFetch<User> | undefined;
+	readonly creator: LinearSDK.LinearFetch<User> | undefined;
+	readonly issue: LinearSDK.LinearFetch<Issue> | undefined;
+	readonly comment: LinearSDK.LinearFetch<Comment> | undefined;
+	// Collection method with simplified Connection
+	activities(
+		variables?: unknown,
+	): LinearSDK.LinearFetch<Connection<LinearSDK.AgentActivity>>;
+};
+
+/**
+ * Type alias for AgentSessionPayload used in IIssueTrackerService interface.
+ * Uses Pick to avoid private member issues while matching the SDK type structure.
+ * Named differently to avoid nominal typing collision with AgentSessionPayload.
+ *
+ * Uses LinearFetch for agentSession to match Linear SDK's return type.
+ *
+ * @see {@link LinearSDK.AgentSessionPayload} - Linear's AgentSessionPayload type
+ */
+export type IssueTrackerAgentSessionPayload = Pick<
+	LinearSDK.AgentSessionPayload,
+	"success" | "lastSyncId"
+> & {
+	// AgentSession property - use LinearFetch to match SDK
+	agentSession?: LinearSDK.LinearFetch<IssueTrackerAgentSession>;
 };
 
 /**

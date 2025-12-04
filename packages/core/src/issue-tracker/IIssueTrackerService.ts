@@ -18,8 +18,6 @@ import type {
 	AgentActivityPayload,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
-	AgentSessionPayload,
-	AgentSessionSDKType,
 	Comment,
 	CommentCreateInput,
 	CommentWithAttachments,
@@ -28,6 +26,8 @@ import type {
 	FileUploadRequest,
 	FileUploadResponse,
 	Issue,
+	IssueTrackerAgentSession,
+	IssueTrackerAgentSessionPayload,
 	IssueUpdateInput,
 	IssueWithChildren,
 	Label,
@@ -595,7 +595,7 @@ export interface IIssueTrackerService {
 	 */
 	createAgentSessionOnIssue(
 		input: AgentSessionCreateOnIssueInput,
-	): LinearFetch<AgentSessionPayload>;
+	): LinearFetch<IssueTrackerAgentSessionPayload>;
 
 	/**
 	 * Create an agent session on a comment thread.
@@ -619,7 +619,7 @@ export interface IIssueTrackerService {
 	 */
 	createAgentSessionOnComment(
 		input: AgentSessionCreateOnCommentInput,
-	): LinearFetch<AgentSessionPayload>;
+	): LinearFetch<IssueTrackerAgentSessionPayload>;
 
 	/**
 	 * Fetch an agent session by ID.
@@ -634,7 +634,7 @@ export interface IIssueTrackerService {
 	 * console.log('Session status:', session.status);
 	 * ```
 	 */
-	fetchAgentSession(sessionId: string): LinearFetch<AgentSessionSDKType>;
+	fetchAgentSession(sessionId: string): LinearFetch<IssueTrackerAgentSession>;
 
 	// ========================================================================
 	// AGENT ACTIVITY OPERATIONS

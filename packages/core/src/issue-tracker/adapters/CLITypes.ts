@@ -604,24 +604,22 @@ export function createCLIAgentSession(
 		issueId: data.issueId,
 		commentId: data.commentId,
 
-		// Relationship async getters - allow undefined
-		get appUser(): Promise<User | undefined> {
-			return Promise.resolve(undefined);
+		// Relationship async getters - return undefined to match LinearFetch<T> | undefined type
+		get appUser() {
+			return undefined;
 		},
-		get creator(): Promise<User | undefined> {
-			return Promise.resolve(undefined);
+		get creator() {
+			return undefined;
 		},
-		get issue(): Promise<Issue | undefined> {
-			return Promise.resolve(undefined);
+		get issue() {
+			return undefined;
 		},
-		get comment(): Promise<Comment | undefined> {
-			return Promise.resolve(undefined);
+		get comment() {
+			return undefined;
 		},
 
-		// Collection method - no cast needed!
-		activities(
-			_variables?: unknown,
-		): Promise<Connection<LinearSDK.AgentActivity>> {
+		// Collection method - return Promise wrapping Connection
+		activities(_variables?: unknown) {
 			return Promise.resolve({ nodes: [] });
 		},
 	};

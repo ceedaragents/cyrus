@@ -27,8 +27,6 @@ import type {
 	AgentActivityPayload,
 	AgentSessionCreateOnCommentInput,
 	AgentSessionCreateOnIssueInput,
-	AgentSessionPayload,
-	AgentSessionSDKType,
 	Comment,
 	CommentCreateInput,
 	CommentWithAttachments,
@@ -37,6 +35,8 @@ import type {
 	FileUploadRequest,
 	FileUploadResponse,
 	Issue,
+	IssueTrackerAgentSession,
+	IssueTrackerAgentSessionPayload,
 	IssueUpdateInput,
 	IssueWithChildren,
 	Label,
@@ -636,7 +636,7 @@ export class CLIIssueTrackerService
 	 */
 	createAgentSessionOnIssue(
 		input: AgentSessionCreateOnIssueInput,
-	): LinearFetch<AgentSessionPayload> {
+	): LinearFetch<IssueTrackerAgentSessionPayload> {
 		return this.createAgentSessionInternal(input.issueId, undefined, input);
 	}
 
@@ -645,7 +645,7 @@ export class CLIIssueTrackerService
 	 */
 	createAgentSessionOnComment(
 		input: AgentSessionCreateOnCommentInput,
-	): LinearFetch<AgentSessionPayload> {
+	): LinearFetch<IssueTrackerAgentSessionPayload> {
 		return this.createAgentSessionInternal(undefined, input.commentId, input);
 	}
 
@@ -656,7 +656,7 @@ export class CLIIssueTrackerService
 		issueId: string | undefined,
 		commentId: string | undefined,
 		input: AgentSessionCreateOnIssueInput | AgentSessionCreateOnCommentInput,
-	): Promise<AgentSessionPayload> {
+	): Promise<IssueTrackerAgentSessionPayload> {
 		// Validate input
 		if (issueId) {
 			await this.fetchIssue(issueId);
@@ -690,11 +690,11 @@ export class CLIIssueTrackerService
 		// Emit state change event
 		this.emit("agentSession:created", { agentSession });
 
-		// Return payload - now uses our simplified AgentSessionPayload type
-		const payload: AgentSessionPayload = {
+		// Return payload with session wrapped in Promise to match LinearFetch
+		const payload: IssueTrackerAgentSessionPayload = {
 			success: true,
 			lastSyncId,
-			agentSession,
+			agentSession: Promise.resolve(agentSession),
 		};
 
 		return payload;
@@ -703,15 +703,14 @@ export class CLIIssueTrackerService
 	/**
 	 * Fetch an agent session by ID.
 	 */
-	fetchAgentSession(sessionId: string): LinearFetch<AgentSessionSDKType> {
+	fetchAgentSession(sessionId: string): LinearFetch<IssueTrackerAgentSession> {
 		return (async () => {
 			const sessionData = this.state.agentSessions.get(sessionId);
 			if (!sessionData) {
 				throw new Error(`Agent session ${sessionId} not found`);
 			}
-			// Return our simplified AgentSessionSDKType - no cast needed!
 			return createCLIAgentSession(sessionData);
-		})() as LinearFetch<AgentSessionSDKType>;
+		})();
 	}
 
 	// ========================================================================
