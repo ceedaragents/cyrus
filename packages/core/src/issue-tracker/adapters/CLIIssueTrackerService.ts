@@ -105,6 +105,7 @@ export class CLIIssueTrackerService
 	implements IIssueTrackerService
 {
 	private state: CLIIssueTrackerState;
+	private eventTransport: CLIEventTransport | null = null;
 
 	/**
 	 * Create a new CLIIssueTrackerService.
@@ -766,12 +767,22 @@ export class CLIIssueTrackerService
 		commentId: string | undefined,
 		input: AgentSessionCreateOnIssueInput | AgentSessionCreateOnCommentInput,
 	): Promise<IssueTrackerAgentSessionPayload> {
-		// Validate input
+		// Validate input and fetch issue/comment
+		let issue: Issue | undefined;
+		let comment: Comment | undefined;
+
 		if (issueId) {
-			await this.fetchIssue(issueId);
+			issue = await this.fetchIssue(issueId);
 		}
 		if (commentId) {
-			await this.fetchComment(commentId);
+			comment = await this.fetchComment(commentId);
+			// If comment provided but no issue, get issue from comment
+			if (!issue && comment) {
+				const commentData = this.state.comments.get(commentId);
+				if (commentData?.issueId) {
+					issue = await this.fetchIssue(commentData.issueId);
+				}
+			}
 		}
 
 		// Generate session ID
@@ -786,7 +797,7 @@ export class CLIIssueTrackerService
 			type: AgentSessionType.CommentThread,
 			createdAt: new Date(),
 			updatedAt: new Date(),
-			issueId,
+			issueId: issue?.id,
 			commentId,
 		};
 
@@ -798,6 +809,47 @@ export class CLIIssueTrackerService
 
 		// Emit state change event
 		this.emit("agentSession:created", { agentSession });
+
+		// Emit AgentSessionCreated webhook event if transport is available
+		if (this.eventTransport && issue) {
+			// Get team and state info for the issue
+			const issueData = this.state.issues.get(issue.id);
+			const team = issueData?.teamId
+				? await this.fetchTeam(issueData.teamId)
+				: undefined;
+
+			// Construct a webhook-like event that matches Linear's structure
+			const webhookEvent: any = {
+				type: "AgentSessionEvent",
+				action: "created",
+				organizationId: "cli-workspace",
+				agentSession: {
+					id: sessionId,
+					issue: {
+						id: issue.id,
+						identifier: issue.identifier,
+						title: issue.title,
+						team: team
+							? {
+									id: team.id,
+									key: team.key,
+									name: team.name,
+								}
+							: undefined,
+					},
+					comment: comment
+						? {
+								id: comment.id,
+								body: comment.body,
+							}
+						: undefined,
+				},
+				guidance: [], // Empty array for CLI mode
+			};
+
+			// Emit the event through the transport
+			this.eventTransport.emitEvent(webhookEvent);
+		}
 
 		// Return payload with session wrapped in Promise
 		const payload: IssueTrackerAgentSessionPayload = {
@@ -1059,7 +1111,9 @@ export class CLIIssueTrackerService
 			);
 		}
 
-		return new CLIEventTransport(config);
+		// Store the event transport so we can emit events
+		this.eventTransport = new CLIEventTransport(config);
+		return this.eventTransport;
 	}
 
 	// ========================================================================
