@@ -952,67 +952,84 @@ export class CLIIssueTrackerService
 		const agentSession = createCLIAgentSession(sessionData);
 		this.emit("agentSession:updated", { agentSession });
 
-		// Emit AgentSessionEvent webhook for stop signal if transport is available
-		if (isStopping && this.eventTransport && sessionData.issueId) {
-			const issue = await this.fetchIssue(sessionData.issueId);
-			if (issue) {
-				const issueData = this.state.issues.get(issue.id);
-				const team = issueData?.teamId
-					? await this.fetchTeam(issueData.teamId)
-					: undefined;
-
-				const now = new Date();
-				const nowIso = now.toISOString();
-				const webhookEvent: AgentEvent = {
-					type: "AgentSessionEvent",
-					action: "prompted",
-					organizationId: "cli-workspace",
-					oauthClientId: "cli-oauth-client",
-					appUserId: "cli-app-user",
-					createdAt: now,
-					agentSession: {
-						id: sessionId,
-						appUserId: "cli-app-user",
-						organizationId: "cli-workspace",
-						createdAt: sessionData.createdAt.toISOString(),
-						updatedAt: nowIso,
-						status: sessionData.status,
-						type: "issue",
-						issue: {
-							id: issue.id,
-							identifier: issue.identifier,
-							title: issue.title,
-							url: `cli://issues/${issue.identifier}`,
-							teamId: team?.id ?? "default-team",
-							team: team
-								? {
-										id: team.id,
-										key: team.key,
-										name: team.name,
-									}
-								: {
-										id: "default-team",
-										key: "DEF",
-										name: "Default Team",
-									},
-						},
-					},
-					agentActivity: {
-						id: `activity-stop-${Date.now()}`,
-						agentSessionId: sessionId,
-						content: { type: "prompt", body: "Stop session" },
-						createdAt: nowIso,
-						updatedAt: nowIso,
-						signal: "stop",
-					},
-					guidance: [],
-				};
-
-				this.eventTransport.emitEvent(webhookEvent);
-			}
+		// Emit stop signal webhook event if stopping
+		if (isStopping) {
+			await this.emitStopSignalEvent(sessionId, sessionData);
 		}
 
 		return agentSession;
+	}
+
+	/**
+	 * Emit a stop signal webhook event for the EdgeWorker to handle.
+	 * This is called when a session is stopped (status changes to Complete or Error).
+	 */
+	private async emitStopSignalEvent(
+		sessionId: string,
+		sessionData: CLIAgentSessionData,
+	): Promise<void> {
+		if (!this.eventTransport || !sessionData.issueId) {
+			return;
+		}
+
+		const issue = await this.fetchIssue(sessionData.issueId);
+		if (!issue) {
+			return;
+		}
+
+		const issueData = this.state.issues.get(issue.id);
+		const team = issueData?.teamId
+			? await this.fetchTeam(issueData.teamId)
+			: undefined;
+
+		const now = new Date();
+		const nowIso = now.toISOString();
+		const webhookEvent: AgentEvent = {
+			type: "AgentSessionEvent",
+			action: "prompted",
+			organizationId: "cli-workspace",
+			oauthClientId: "cli-oauth-client",
+			appUserId: "cli-app-user",
+			createdAt: now,
+			agentSession: {
+				id: sessionId,
+				appUserId: "cli-app-user",
+				organizationId: "cli-workspace",
+				createdAt: sessionData.createdAt.toISOString(),
+				updatedAt: nowIso,
+				status: sessionData.status,
+				type: "issue",
+				issue: {
+					id: issue.id,
+					identifier: issue.identifier,
+					title: issue.title,
+					url: `cli://issues/${issue.identifier}`,
+					teamId: team?.id ?? "default-team",
+					team: team
+						? {
+								id: team.id,
+								key: team.key,
+								name: team.name,
+							}
+						: {
+								id: "default-team",
+								key: "DEF",
+								name: "Default Team",
+							},
+				},
+			},
+			agentActivity: {
+				id: `activity-stop-${Date.now()}`,
+				agentSessionId: sessionId,
+				content: { type: "prompt", body: "Stop session" },
+				createdAt: nowIso,
+				updatedAt: nowIso,
+				signal: "stop",
+			},
+			guidance: [],
+		};
+
+		this.eventTransport.emitEvent(webhookEvent);
 	}
 
 	/**
