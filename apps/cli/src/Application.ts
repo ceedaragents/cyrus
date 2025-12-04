@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, watch } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, watch } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { RepositoryConfig } from "cyrus-core";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import { SharedApplicationServer } from "cyrus-edge-worker";
@@ -18,6 +19,7 @@ export class Application {
 	public readonly git: GitService;
 	public readonly worker: WorkerService;
 	public readonly logger: Logger;
+	public readonly version: string;
 	private envWatcher?: ReturnType<typeof watch>;
 	private configWatcher?: ReturnType<typeof watch>;
 	private isInSetupWaitingMode = false;
@@ -30,6 +32,9 @@ export class Application {
 	) {
 		// Initialize logger first
 		this.logger = new Logger();
+
+		// Read package version
+		this.version = this.readPackageVersion();
 
 		// Determine the env file path: use custom path if provided, otherwise default to ~/.cyrus/.env
 		this.envFilePath = customEnvPath || join(cyrusHome, ".env");
@@ -52,6 +57,22 @@ export class Application {
 			cyrusHome,
 			this.logger,
 		);
+	}
+
+	/**
+	 * Read the package version from package.json
+	 */
+	private readPackageVersion(): string {
+		try {
+			const __filename = fileURLToPath(import.meta.url);
+			const __dirname = dirname(__filename);
+			// When compiled, this is in dist/src/, so we need to go up two levels
+			const packageJsonPath = resolve(__dirname, "..", "..", "package.json");
+			const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+			return packageJson.version || "unknown";
+		} catch {
+			return "unknown";
+		}
 	}
 
 	/**
@@ -276,6 +297,7 @@ export class Application {
 			this.logger.raw("");
 			this.logger.divider(70);
 			this.logger.success("Edge worker started successfully");
+			this.logger.info(`📌 Version: ${this.version}`);
 			this.logger.info(`🔗 Server running on port ${serverPort}`);
 
 			if (process.env.CLOUDFLARE_TOKEN) {

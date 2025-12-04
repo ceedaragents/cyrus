@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Added `/status` endpoint to check if the Cyrus process is busy or idle, useful for determining when it's safe to restart for updates ([CYPACK-515](https://linear.app/ceedar/issue/CYPACK-515))
+- Added version logging during startup to show the running version of cyrus-ai ([CYPACK-515](https://linear.app/ceedar/issue/CYPACK-515))
 
 ## [0.2.5] - 2025-12-03
 
