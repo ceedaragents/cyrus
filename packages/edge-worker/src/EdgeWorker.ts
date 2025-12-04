@@ -328,6 +328,32 @@ export class EdgeWorker extends EventEmitter {
 
 			console.log("✅ CLI RPC server registered");
 			console.log("   RPC endpoint: /cli/rpc");
+
+			// Create CLI event transport and register listener
+			const cliEventTransport = firstIssueTracker.createEventTransport({
+				platform: "cli",
+				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+			});
+
+			// Listen for webhook events (same pattern as Linear mode)
+			cliEventTransport.on("event", (event: AgentEvent) => {
+				// Get all active repositories for webhook handling
+				const repos = Array.from(this.repositories.values());
+				this.handleWebhook(event as unknown as Webhook, repos);
+			});
+
+			// Listen for errors
+			cliEventTransport.on("error", (error: Error) => {
+				this.handleError(error);
+			});
+
+			// Register the CLI event transport endpoints
+			cliEventTransport.register();
+
+			console.log("✅ CLI event transport registered");
+			console.log(
+				"   Event listener: listening for AgentSessionCreated events",
+			);
 		} else {
 			// Linear mode: Create and register LinearEventTransport
 			const useDirectWebhooks =
