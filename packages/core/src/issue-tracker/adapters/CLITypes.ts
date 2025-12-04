@@ -15,8 +15,11 @@
 import type * as LinearSDK from "@linear/sdk";
 import type { AgentSessionStatus, AgentSessionType } from "@linear/sdk";
 import type {
+	AgentSessionSDKType,
 	Comment,
+	Connection,
 	Issue,
+	IssuePayload,
 	Label,
 	Team,
 	User,
@@ -318,40 +321,27 @@ export function createCLIIssue(data: CLIIssueData): Issue {
 			return undefined;
 		},
 
-		// Collection methods with proper signatures
-		// Note: Connection classes have private members, requiring `as unknown as` cast
-		children(
-			_variables?: unknown,
-		): LinearSDK.LinearFetch<LinearSDK.IssueConnection> {
-			return Promise.resolve({
-				nodes: [],
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.IssueConnection>;
+		// Collection methods - now use simplified Connection<T> (no casts needed!)
+		children(_variables?: unknown): Promise<Connection<Issue>> {
+			return Promise.resolve({ nodes: [] });
 		},
-		comments(
-			_variables?: unknown,
-		): LinearSDK.LinearFetch<LinearSDK.CommentConnection> {
-			return Promise.resolve({
-				nodes: [],
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.CommentConnection>;
+		comments(_variables?: unknown): Promise<Connection<Comment>> {
+			return Promise.resolve({ nodes: [] });
 		},
-		labels(
-			_variables?: unknown,
-		): LinearSDK.LinearFetch<LinearSDK.IssueLabelConnection> {
-			return Promise.resolve({
-				nodes: [],
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.IssueLabelConnection>;
+		labels(_variables?: unknown): Promise<Connection<Label>> {
+			return Promise.resolve({ nodes: [] });
 		},
 		attachments(
 			_variables?: unknown,
-		): LinearSDK.LinearFetch<LinearSDK.AttachmentConnection> {
-			return Promise.resolve({
-				nodes: [],
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.AttachmentConnection>;
+		): Promise<Connection<LinearSDK.Attachment>> {
+			return Promise.resolve({ nodes: [] });
 		},
-		update(_input?: unknown): LinearSDK.LinearFetch<LinearSDK.IssuePayload> {
+		update(_input?: unknown): Promise<IssuePayload> {
 			return Promise.resolve({
 				success: true,
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.IssuePayload>;
+				issue: undefined,
+				lastSyncId: 0,
+			});
 		},
 	};
 
@@ -404,13 +394,9 @@ export function createCLIComment(data: CLICommentData): Comment {
 			return undefined;
 		},
 
-		// Collection methods
-		children(
-			_variables?: unknown,
-		): LinearSDK.LinearFetch<LinearSDK.CommentConnection> {
-			return Promise.resolve({
-				nodes: [],
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.CommentConnection>;
+		// Collection methods - now use simplified Connection<T> (no casts needed!)
+		children(_variables?: unknown): Promise<Connection<Comment>> {
+			return Promise.resolve({ nodes: [] });
 		},
 	};
 
@@ -464,27 +450,12 @@ export function createCLITeam(data: CLITeamData): Team {
 			return Promise.resolve(undefined);
 		},
 
-		// Collection methods
-		states(
-			_variables?: unknown,
-		): LinearSDK.LinearFetch<LinearSDK.WorkflowStateConnection> {
-			return Promise.resolve({
-				nodes: [],
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.WorkflowStateConnection>;
+		// Collection methods - now use simplified Connection<T> (no casts needed!)
+		states(_variables?: unknown): Promise<Connection<WorkflowState>> {
+			return Promise.resolve({ nodes: [] });
 		},
-		labels(
-			_variables?: unknown,
-		): LinearSDK.LinearFetch<LinearSDK.IssueLabelConnection> {
-			return Promise.resolve({
-				nodes: [],
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.IssueLabelConnection>;
-		},
-		members(
-			_variables?: unknown,
-		): LinearSDK.LinearFetch<LinearSDK.UserConnection> {
-			return Promise.resolve({
-				nodes: [],
-			}) as unknown as LinearSDK.LinearFetch<LinearSDK.UserConnection>;
+		members(_variables?: unknown): Promise<Connection<User>> {
+			return Promise.resolve({ nodes: [] });
 		},
 	};
 
@@ -608,16 +579,14 @@ export function createCLILabel(data: CLILabelData): Label {
 }
 
 /**
- * Create a CLI AgentSession object that matches Linear SDK AgentSession type.
- *
- * Note: This still uses LinearSDK.AgentSession directly (not a Pick-based type)
- * because AgentSession is primarily used internally by IIssueTrackerService.
- * The cast is necessary because Linear SDK AgentSession is a class with private members.
+ * Create a CLI AgentSession object using our simplified AgentSessionSDKType.
+ * No casts needed - uses Pick-based type with simplified Connection!
  */
 export function createCLIAgentSession(
 	data: CLIAgentSessionData,
-): LinearSDK.AgentSession {
-	const session = {
+): AgentSessionSDKType {
+	return {
+		// Direct properties
 		id: data.id,
 		externalLink: data.externalLink,
 		summary: data.summary,
@@ -629,38 +598,31 @@ export function createCLIAgentSession(
 		startedAt: data.startedAt,
 		endedAt: data.endedAt,
 
-		// Relationship ID getters
-		get appUserId() {
-			return data.appUserId;
-		},
-		get creatorId() {
-			return data.creatorId;
-		},
-		get issueId() {
-			return data.issueId;
-		},
-		get commentId() {
-			return data.commentId;
-		},
+		// Relationship IDs - direct properties from Pick
+		appUserId: data.appUserId,
+		creatorId: data.creatorId,
+		issueId: data.issueId,
+		commentId: data.commentId,
 
-		// Relationship getters
-		get appUser() {
+		// Relationship async getters - allow undefined
+		get appUser(): Promise<User | undefined> {
 			return Promise.resolve(undefined);
 		},
-		get creator() {
+		get creator(): Promise<User | undefined> {
 			return Promise.resolve(undefined);
 		},
-		get issue() {
+		get issue(): Promise<Issue | undefined> {
 			return Promise.resolve(undefined);
 		},
-		get comment() {
+		get comment(): Promise<Comment | undefined> {
 			return Promise.resolve(undefined);
 		},
 
-		// Collection methods
-		activities: () => Promise.resolve({ nodes: [] }),
+		// Collection method - no cast needed!
+		activities(
+			_variables?: unknown,
+		): Promise<Connection<LinearSDK.AgentActivity>> {
+			return Promise.resolve({ nodes: [] });
+		},
 	};
-
-	// Cast required - AgentSession is a class with private members
-	return session as unknown as LinearSDK.AgentSession;
 }

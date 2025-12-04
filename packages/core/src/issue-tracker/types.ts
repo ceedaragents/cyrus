@@ -21,11 +21,28 @@ import type * as LinearSDK from "@linear/sdk";
 // ============================================================================
 
 /**
- * Issue type - Selects only the properties and methods actually used in the codebase.
- * Linear SDK is the source of truth - we use Pick to create a structurally compatible
- * subset that includes all properties, async getters, and methods actually accessed.
+ * Pagination connection for list results.
+ * Based on Linear SDK's Connection pattern with PageInfo.
+ * Linear SDK is the source of truth for pagination patterns.
  *
- * This approach eliminates the need for `as unknown as` casts while maintaining
+ * @see {@link LinearSDK.LinearDocument.PageInfo} - Linear's PageInfo type
+ */
+export interface Connection<T> {
+	/** Array of items */
+	nodes: T[];
+	/** Page info for cursor-based pagination (from Linear SDK) */
+	pageInfo?: LinearSDK.LinearDocument.PageInfo;
+	/** Total count (if available) */
+	totalCount?: number;
+}
+
+/**
+ * Issue type - Combines Pick selections with custom method signatures.
+ * Linear SDK is the source of truth - we use Pick for properties and async getters,
+ * but override collection methods to use our simplified Connection<T> type instead
+ * of Linear SDK's Connection classes (which have private members).
+ *
+ * This approach eliminates ALL `as unknown as` casts while maintaining
  * full type safety and compatibility with Linear SDK.
  *
  * @see {@link LinearSDK.Issue} - Linear's complete Issue type
@@ -53,16 +70,19 @@ export type Issue = Pick<
 	| "team"
 	| "parent"
 	| "project"
-	// Methods (5)
-	| "labels"
-	| "comments"
-	| "attachments"
-	| "children"
-	| "update"
->;
+> & {
+	// Collection methods with simplified Connection<T> return types
+	labels(variables?: unknown): Promise<Connection<Label>>;
+	comments(variables?: unknown): Promise<Connection<Comment>>;
+	attachments(variables?: unknown): Promise<Connection<LinearSDK.Attachment>>;
+	children(variables?: unknown): Promise<Connection<Issue>>;
+	// Update method with simplified IssuePayload return type
+	update(input?: unknown): Promise<IssuePayload>;
+};
 
 /**
- * Comment type - Selects properties and methods used in the codebase.
+ * Comment type - Combines Pick selections with custom method signatures.
+ * Uses simplified Connection<T> for collection methods.
  *
  * @see {@link LinearSDK.Comment} - Linear's complete Comment type
  */
@@ -77,7 +97,10 @@ export type Comment = Pick<
 	| "user"
 	| "parent"
 	| "issue"
->;
+> & {
+	// Collection methods with simplified Connection<T> return types
+	children(variables?: unknown): Promise<Connection<Comment>>;
+};
 
 /**
  * Label type - Selects properties used in the codebase.
@@ -90,23 +113,20 @@ export type Label = Pick<
 >;
 
 /**
- * Team type - Selects properties and methods used in the codebase.
+ * Team type - Combines Pick selections with custom method signatures.
+ * Uses simplified Connection<T> for collection methods.
  *
  * @see {@link LinearSDK.Team} - Linear's complete Team type
  */
 export type Team = Pick<
 	LinearSDK.Team,
 	// Properties (6)
-	| "id"
-	| "name"
-	| "key"
-	| "description"
-	| "color"
-	| "displayName"
-	// Methods (2)
-	| "states"
-	| "members"
->;
+	"id" | "name" | "key" | "description" | "color" | "displayName"
+> & {
+	// Collection methods with simplified Connection<T> return types
+	states(variables?: unknown): Promise<Connection<WorkflowState>>;
+	members(variables?: unknown): Promise<Connection<User>>;
+};
 
 /**
  * User type - Selects properties used in the codebase.
@@ -228,6 +248,50 @@ export interface CommentWithAttachments extends Comment {
 		size?: number;
 	}>;
 }
+
+/**
+ * Simplified IssuePayload type for update operations.
+ * Uses Pick to select only the essential properties.
+ *
+ * @see {@link LinearSDK.IssuePayload} - Linear's complete IssuePayload type
+ */
+export type IssuePayload = Pick<
+	LinearSDK.IssuePayload,
+	"success" | "issue" | "lastSyncId"
+>;
+
+/**
+ * Simplified AgentSession type.
+ * Uses Pick to select only the properties we actually use.
+ * Relationship getters can return undefined for CLI implementation.
+ *
+ * @see {@link LinearSDK.AgentSession} - Linear's complete AgentSession type
+ */
+export type AgentSessionSDKType = Pick<
+	LinearSDK.AgentSession,
+	| "id"
+	| "externalLink"
+	| "summary"
+	| "status"
+	| "type"
+	| "createdAt"
+	| "updatedAt"
+	| "archivedAt"
+	| "startedAt"
+	| "endedAt"
+	| "appUserId"
+	| "creatorId"
+	| "issueId"
+	| "commentId"
+> & {
+	// Relationship async getters - allow undefined for CLI
+	readonly appUser: Promise<User | undefined>;
+	readonly creator: Promise<User | undefined>;
+	readonly issue: Promise<Issue | undefined>;
+	readonly comment: Promise<Comment | undefined>;
+	// Collection method with simplified Connection
+	activities(variables?: unknown): Promise<Connection<LinearSDK.AgentActivity>>;
+};
 
 /**
  * Agent session status enumeration.
@@ -649,22 +713,6 @@ export function isIssueUnassignedWebhook(
 		webhook.type === "AppUserNotification" &&
 		webhook.action === "issueUnassignedFromYou"
 	);
-}
-
-/**
- * Pagination connection for list results.
- * Based on Linear SDK's Connection pattern with PageInfo.
- * Linear SDK is the source of truth for pagination patterns.
- *
- * @see {@link LinearSDK.LinearDocument.PageInfo} - Linear's PageInfo type
- */
-export interface Connection<T> {
-	/** Array of items */
-	nodes: T[];
-	/** Page info for cursor-based pagination (from Linear SDK) */
-	pageInfo?: LinearSDK.LinearDocument.PageInfo;
-	/** Total count (if available) */
-	totalCount?: number;
 }
 
 /**
