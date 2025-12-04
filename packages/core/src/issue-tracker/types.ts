@@ -285,14 +285,12 @@ export type AgentSessionSDKType = Pick<
 	| "commentId"
 > & {
 	// Relationship async getters - allow undefined for CLI (matches Linear SDK pattern)
-	readonly appUser: LinearSDK.LinearFetch<User> | undefined;
-	readonly creator: LinearSDK.LinearFetch<User> | undefined;
-	readonly issue: LinearSDK.LinearFetch<Issue> | undefined;
-	readonly comment: LinearSDK.LinearFetch<Comment> | undefined;
+	readonly appUser: Promise<User> | undefined;
+	readonly creator: Promise<User> | undefined;
+	readonly issue: Promise<Issue> | undefined;
+	readonly comment: Promise<Comment> | undefined;
 	// Collection method with simplified Connection
-	activities(
-		variables?: unknown,
-	): LinearSDK.LinearFetch<Connection<LinearSDK.AgentActivity>>;
+	activities(variables?: unknown): Promise<Connection<LinearSDK.AgentActivity>>;
 };
 
 /**
@@ -314,7 +312,7 @@ export type AgentSessionPayload = Pick<
  * Uses Pick to avoid private member issues while matching the SDK type structure.
  * Named differently to avoid nominal typing collision with AgentSessionSDKType.
  *
- * Uses LinearFetch for async properties to match Linear SDK's return types.
+ * Uses Promise for async properties instead of LinearSDK.LinearFetch.
  *
  * @see {@link LinearSDK.AgentSession} - Linear's AgentSession type
  */
@@ -335,15 +333,13 @@ export type IssueTrackerAgentSession = Pick<
 	| "issueId"
 	| "commentId"
 > & {
-	// Relationship async getters - use LinearFetch to match SDK
-	readonly appUser: LinearSDK.LinearFetch<User> | undefined;
-	readonly creator: LinearSDK.LinearFetch<User> | undefined;
-	readonly issue: LinearSDK.LinearFetch<Issue> | undefined;
-	readonly comment: LinearSDK.LinearFetch<Comment> | undefined;
+	// Relationship async getters - use Promise instead of LinearFetch
+	readonly appUser: Promise<User> | undefined;
+	readonly creator: Promise<User> | undefined;
+	readonly issue: Promise<Issue> | undefined;
+	readonly comment: Promise<Comment> | undefined;
 	// Collection method with simplified Connection
-	activities(
-		variables?: unknown,
-	): LinearSDK.LinearFetch<Connection<LinearSDK.AgentActivity>>;
+	activities(variables?: unknown): Promise<Connection<LinearSDK.AgentActivity>>;
 };
 
 /**
@@ -351,7 +347,7 @@ export type IssueTrackerAgentSession = Pick<
  * Uses Pick to avoid private member issues while matching the SDK type structure.
  * Named differently to avoid nominal typing collision with AgentSessionPayload.
  *
- * Uses LinearFetch for agentSession to match Linear SDK's return type.
+ * Uses Promise for agentSession instead of LinearSDK.LinearFetch.
  *
  * @see {@link LinearSDK.AgentSessionPayload} - Linear's AgentSessionPayload type
  */
@@ -359,8 +355,8 @@ export type IssueTrackerAgentSessionPayload = Pick<
 	LinearSDK.AgentSessionPayload,
 	"success" | "lastSyncId"
 > & {
-	// AgentSession property - use LinearFetch to match SDK
-	agentSession?: LinearSDK.LinearFetch<IssueTrackerAgentSession>;
+	// AgentSession property - use Promise instead of LinearFetch
+	agentSession?: Promise<IssueTrackerAgentSession>;
 };
 
 /**

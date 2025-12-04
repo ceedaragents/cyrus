@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LinearClient, type Issue as LinearIssue } from "@linear/sdk";
+import { LinearClient } from "@linear/sdk";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
 	HookCallbackMatcher,
@@ -1563,17 +1563,11 @@ export class EdgeWorker extends EventEmitter {
 			// Save state after mapping changes
 			await this.savePersistedState();
 
-			// Emit events using full Linear issue
-			// Cast to LinearIssue for event compatibility (handlers don't use private members)
-			this.emit(
-				"session:started",
-				fullIssue.id,
-				fullIssue as unknown as LinearIssue,
-				repository.id,
-			);
+			// Emit events using full issue (core Issue type)
+			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
-				fullIssue as unknown as LinearIssue,
+				fullIssue,
 				repository.id,
 			);
 
@@ -1817,16 +1811,11 @@ export class EdgeWorker extends EventEmitter {
 
 			// Save state and emit events for new session
 			await this.savePersistedState();
-			// Cast to LinearIssue for event compatibility (handlers don't use private members)
-			this.emit(
-				"session:started",
-				fullIssue.id,
-				fullIssue as unknown as LinearIssue,
-				repository.id,
-			);
+			// Emit events using full issue (core Issue type)
+			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
-				fullIssue as unknown as LinearIssue,
+				fullIssue,
 				repository.id,
 			);
 		} else {
