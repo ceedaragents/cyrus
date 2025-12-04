@@ -1121,6 +1121,80 @@ export class CLIIssueTrackerService
 	// ========================================================================
 
 	/**
+	 * Seed default teams and workflow states for testing.
+	 * Creates a "default" team with standard workflow states.
+	 */
+	seedDefaultData(): void {
+		// Create default team
+		const defaultTeam: CLITeamData = {
+			id: "team-default",
+			key: "DEF",
+			name: "Default Team",
+			displayName: "Default Team",
+			description: "Default team for F1 CLI testing",
+			private: false,
+			issueCount: 0,
+			inviteHash: "default-invite",
+			cyclesEnabled: false,
+			cycleDuration: 1,
+			cycleCooldownTime: 0,
+			cycleStartDay: 0,
+			cycleLockToActive: false,
+			cycleIssueAutoAssignStarted: false,
+			cycleIssueAutoAssignCompleted: false,
+			defaultIssueEstimate: 0,
+			issueEstimationType: "notUsed",
+			issueEstimationAllowZero: true,
+			issueEstimationExtended: false,
+			autoArchivePeriod: 0,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		};
+		this.state.teams.set(defaultTeam.id, defaultTeam);
+
+		// Create workflow states for the default team
+		const workflowStates: CLIWorkflowStateData[] = [
+			{
+				id: "state-todo",
+				name: "Todo",
+				description: "Work that has not been started",
+				color: "#e2e2e2",
+				type: "unstarted",
+				position: 0,
+				teamId: defaultTeam.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "state-in-progress",
+				name: "In Progress",
+				description: "Work that is actively being worked on",
+				color: "#f2c94c",
+				type: "started",
+				position: 1,
+				teamId: defaultTeam.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "state-done",
+				name: "Done",
+				description: "Work that has been completed",
+				color: "#5e6ad2",
+				type: "completed",
+				position: 2,
+				teamId: defaultTeam.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		];
+
+		for (const state of workflowStates) {
+			this.state.workflowStates.set(state.id, state);
+		}
+	}
+
+	/**
 	 * Get the current in-memory state (for testing/debugging).
 	 */
 	getState(): CLIIssueTrackerState {

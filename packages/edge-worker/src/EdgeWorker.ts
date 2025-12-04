@@ -210,7 +210,11 @@ export class EdgeWorker extends EventEmitter {
 				// Create issue tracker for this repository's workspace
 				const issueTracker =
 					this.config.platform === "cli"
-						? new CLIIssueTrackerService()
+						? (() => {
+								const service = new CLIIssueTrackerService();
+								service.seedDefaultData();
+								return service;
+							})()
 						: new LinearIssueTrackerService(
 								new LinearClient({
 									accessToken: repo.linearToken,
@@ -858,7 +862,11 @@ export class EdgeWorker extends EventEmitter {
 				// Create issue tracker
 				const issueTracker =
 					this.config.platform === "cli"
-						? new CLIIssueTrackerService()
+						? (() => {
+								const service = new CLIIssueTrackerService();
+								service.seedDefaultData();
+								return service;
+							})()
 						: new LinearIssueTrackerService(
 								new LinearClient({
 									accessToken: repo.linearToken,
@@ -951,7 +959,11 @@ export class EdgeWorker extends EventEmitter {
 					console.log(`  🔑 Token changed, recreating issue tracker`);
 					const issueTracker =
 						this.config.platform === "cli"
-							? new CLIIssueTrackerService()
+							? (() => {
+									const service = new CLIIssueTrackerService();
+									service.seedDefaultData();
+									return service;
+								})()
 							: new LinearIssueTrackerService(
 									new LinearClient({
 										accessToken: repo.linearToken,

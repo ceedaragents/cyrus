@@ -9,10 +9,8 @@ import { printRpcUrl, rpcCall } from "../utils/rpc.js";
 
 interface StatusResult {
 	uptime: number;
-	activeConnections: number;
-	totalRequests: number;
-	version: string;
-	platform: string;
+	status: string;
+	server: string;
 }
 
 export function createStatusCommand(): Command {
@@ -27,16 +25,10 @@ export function createStatusCommand(): Command {
 				const result = await rpcCall<StatusResult>("status");
 
 				console.log(success("Server Status"));
-				console.log(`  ${formatKeyValue("Version", result.version)}`);
-				console.log(`  ${formatKeyValue("Platform", result.platform)}`);
+				console.log(`  ${formatKeyValue("Status", result.status)}`);
+				console.log(`  ${formatKeyValue("Server", result.server)}`);
 				console.log(
-					`  ${formatKeyValue("Uptime", `${Math.floor(result.uptime)}s`)}`,
-				);
-				console.log(
-					`  ${formatKeyValue("Active Connections", result.activeConnections)}`,
-				);
-				console.log(
-					`  ${formatKeyValue("Total Requests", result.totalRequests)}`,
+					`  ${formatKeyValue("Uptime", `${Math.floor(result.uptime / 1000)}s`)}`,
 				);
 			} catch (err) {
 				if (err instanceof Error) {
