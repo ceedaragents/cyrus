@@ -43,7 +43,7 @@ the Cyrus agent system. Manage issues, sessions, and agent activities
 without external dependencies.
 
 Environment Variables:
-  ${cyan("CYRUS_PORT")}  Port for F1 server (default: 3457)
+  ${cyan("CYRUS_PORT")}  Port for F1 server (default: 3600)
 
 Examples:
   ${cyan("f1 ping")}                           Health check
