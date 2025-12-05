@@ -1078,6 +1078,24 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Get the count of actively running sessions.
+	 * A session is considered "running" if it:
+	 * 1. Has an agentRunner attached (meaning a process was started)
+	 * 2. Has status === Active (meaning the process hasn't completed yet)
+	 *
+	 * This excludes:
+	 * - Restored sessions (no agentRunner)
+	 * - Completed/Error sessions (status !== Active)
+	 */
+	getRunningSessionsCount(): number {
+		return Array.from(this.sessions.values()).filter(
+			(session) =>
+				session.agentRunner !== undefined &&
+				session.status === AgentSessionStatus.Active,
+		).length;
+	}
+
+	/**
 	 * Get all agent runners for a specific issue
 	 */
 	getAgentRunnersForIssue(issueId: string): IAgentRunner[] {
