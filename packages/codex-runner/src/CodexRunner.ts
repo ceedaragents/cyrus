@@ -150,13 +150,24 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 
 			// Process each line as a JSONL event with Zod validation
 			this.readlineInterface.on("line", (line: string) => {
-				const result = safeParseCodexEvent(line);
-				if (result.success) {
-					this.processEvent(result.data);
-				} else {
+				try {
+					// Parse JSON first, then validate with Zod schema
+					const parsed = JSON.parse(line);
+					const result = safeParseCodexEvent(parsed);
+					if (result.success) {
+						this.processEvent(result.data);
+					} else {
+						console.error(
+							"[CodexRunner] Failed to validate JSONL event:",
+							line,
+							result.error.message,
+						);
+					}
+				} catch (error) {
 					console.error(
-						"[CodexRunner] Failed to parse/validate JSONL event:",
+						"[CodexRunner] Failed to parse JSONL:",
 						line,
+						error instanceof Error ? error.message : String(error),
 					);
 				}
 			});
