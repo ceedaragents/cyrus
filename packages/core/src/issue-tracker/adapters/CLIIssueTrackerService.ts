@@ -158,7 +158,12 @@ export class CLIIssueTrackerService
 			throw new Error(`Issue ${idOrIdentifier} not found`);
 		}
 
-		return createCLIIssue(issueData);
+		// Resolve label data from labelIds
+		const resolvedLabels = issueData.labelIds
+			.map((id) => this.state.labels.get(id))
+			.filter((l): l is CLILabelData => l !== undefined);
+
+		return createCLIIssue(issueData, resolvedLabels);
 	}
 
 	/**
@@ -240,8 +245,13 @@ export class CLIIssueTrackerService
 		// Save to state
 		this.state.issues.set(issueId, issueData);
 
+		// Resolve label data from labelIds
+		const resolvedLabels = issueData.labelIds
+			.map((id) => this.state.labels.get(id))
+			.filter((l): l is CLILabelData => l !== undefined);
+
 		// Create and return the issue
-		const issue = createCLIIssue(issueData);
+		const issue = createCLIIssue(issueData, resolvedLabels);
 
 		// Emit state change event
 		this.emit("issue:created", { issue });
@@ -280,7 +290,11 @@ export class CLIIssueTrackerService
 		const allChildren: Issue[] = [];
 		for (const [, issueData] of this.state.issues) {
 			if (issueData.parentId === parentIssue.id) {
-				allChildren.push(createCLIIssue(issueData));
+				// Resolve label data for child issue
+				const resolvedLabels = issueData.labelIds
+					.map((id) => this.state.labels.get(id))
+					.filter((l): l is CLILabelData => l !== undefined);
+				allChildren.push(createCLIIssue(issueData, resolvedLabels));
 			}
 		}
 
@@ -400,8 +414,13 @@ export class CLIIssueTrackerService
 		// Update timestamp
 		issueData.updatedAt = new Date();
 
+		// Resolve label data from labelIds
+		const resolvedLabels = issueData.labelIds
+			.map((id) => this.state.labels.get(id))
+			.filter((l): l is CLILabelData => l !== undefined);
+
 		// Emit state change event
-		const issue = createCLIIssue(issueData);
+		const issue = createCLIIssue(issueData, resolvedLabels);
 		this.emit("issue:updated", { issue });
 
 		return issue;

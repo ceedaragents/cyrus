@@ -247,7 +247,10 @@ export interface CLIAgentActivityData {
 /**
  * Create a CLI Issue object compatible with our Pick-based Issue type.
  */
-export function createCLIIssue(data: CLIIssueData): Issue {
+export function createCLIIssue(
+	data: CLIIssueData,
+	resolvedLabels?: CLILabelData[],
+): Issue {
 	// Create a partial object with all the required properties
 	const issue = {
 		// Direct properties
@@ -357,7 +360,13 @@ export function createCLIIssue(data: CLIIssueData): Issue {
 				"id"
 			>,
 		): Promise<Connection<Label>> {
-			return Promise.resolve({ nodes: [] });
+			// Return resolved labels if provided, otherwise empty array
+			if (!resolvedLabels || resolvedLabels.length === 0) {
+				return Promise.resolve({ nodes: [] });
+			}
+			return Promise.resolve({
+				nodes: resolvedLabels.map((label) => createCLILabel(label)),
+			});
 		},
 		attachments(
 			_variables?: Omit<
