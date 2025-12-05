@@ -22,6 +22,7 @@ interface CreateIssueParams {
 	teamId: string;
 	title: string;
 	description?: string;
+	labelIds?: string[];
 }
 
 export function createCreateIssueCommand(): Command {
@@ -32,11 +33,16 @@ export function createCreateIssueCommand(): Command {
 		.requiredOption("-t, --title <title>", "Issue title")
 		.option("-d, --description <description>", "Issue description")
 		.option("-T, --team-id <teamId>", "Team ID (required)", "team-default")
+		.option(
+			"-l, --labels <labels>",
+			"Comma-separated label IDs or names (e.g., 'label-codex,label-gemini' or 'codex,gemini')",
+		)
 		.action(
 			async (options: {
 				title: string;
 				description?: string;
 				teamId: string;
+				labels?: string;
 			}) => {
 				printRpcUrl();
 
@@ -47,6 +53,14 @@ export function createCreateIssueCommand(): Command {
 
 				if (options.description) {
 					params.description = options.description;
+				}
+
+				if (options.labels) {
+					// Split comma-separated labels and trim whitespace
+					params.labelIds = options.labels
+						.split(",")
+						.map((label) => label.trim())
+						.filter((label) => label.length > 0);
 				}
 
 				try {

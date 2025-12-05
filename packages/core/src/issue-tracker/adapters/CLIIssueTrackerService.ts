@@ -1381,6 +1381,41 @@ export class CLIIssueTrackerService
 		for (const state of workflowStates) {
 			this.state.workflowStates.set(state.id, state);
 		}
+
+		// Seed default runner labels for testing different AI runners
+		const defaultLabels: CLILabelData[] = [
+			{
+				id: "label-codex",
+				name: "codex",
+				description: "Use OpenAI Codex CLI runner",
+				color: "#10a37f",
+				isGroup: false,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "label-gemini",
+				name: "gemini",
+				description: "Use Google Gemini CLI runner",
+				color: "#4285f4",
+				isGroup: false,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "label-claude",
+				name: "claude",
+				description: "Use Claude runner (default)",
+				color: "#d97706",
+				isGroup: false,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		];
+
+		for (const label of defaultLabels) {
+			this.state.labels.set(label.id, label);
+		}
 	}
 
 	/**
