@@ -15,7 +15,7 @@
  * - Zero `any` types
  *
  * Usage:
- *   CYRUS_PORT=3457 CYRUS_REPO_PATH=/path/to/repo bun run server.ts
+ *   CYRUS_PORT=3600 CYRUS_REPO_PATH=/path/to/repo bun run server.ts
  */
 
 import { existsSync, mkdirSync } from "node:fs";
@@ -29,7 +29,7 @@ import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
 // CONFIGURATION
 // ============================================================================
 
-const CYRUS_PORT = Number.parseInt(process.env.CYRUS_PORT || "3457", 10);
+const CYRUS_PORT = Number.parseInt(process.env.CYRUS_PORT || "3600", 10);
 const CYRUS_REPO_PATH = process.env.CYRUS_REPO_PATH || process.cwd();
 const CYRUS_HOME = join(tmpdir(), `cyrus-f1-${Date.now()}`);
 

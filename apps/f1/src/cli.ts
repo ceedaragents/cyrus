@@ -14,6 +14,7 @@ import { Command } from "commander";
 import { createAssignIssueCommand } from "./commands/assignIssue.js";
 import { createCreateCommentCommand } from "./commands/createComment.js";
 import { createCreateIssueCommand } from "./commands/createIssue.js";
+import { createInitTestRepoCommand } from "./commands/initTestRepo.js";
 import { createPingCommand } from "./commands/ping.js";
 import { createPromptSessionCommand } from "./commands/promptSession.js";
 import { createStartSessionCommand } from "./commands/startSession.js";
@@ -47,8 +48,9 @@ Environment Variables:
 Examples:
   ${cyan("f1 ping")}                           Health check
   ${cyan('f1 create-issue -t "Fix bug"')}      Create issue
-  ${cyan("f1 start-session -i issue-123")}      Start session
-  ${cyan("f1 view-session -s session-456")}     View session`,
+  ${cyan("f1 start-session -i issue-123")}     Start session
+  ${cyan("f1 view-session -s session-456")}    View session
+  ${cyan("f1 init-test-repo -p /tmp/test")}    Create test repo`,
 	);
 
 // Register all commands
@@ -62,6 +64,7 @@ program.addCommand(createStartSessionCommand());
 program.addCommand(createViewSessionCommand());
 program.addCommand(createPromptSessionCommand());
 program.addCommand(createStopSessionCommand());
+program.addCommand(createInitTestRepoCommand());
 
 // Parse arguments
 program.parse();

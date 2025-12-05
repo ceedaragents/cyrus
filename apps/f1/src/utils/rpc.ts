@@ -32,7 +32,7 @@ interface JsonRpcResponse<T = unknown> {
  * Get the RPC endpoint URL
  */
 export function getRpcUrl(): string {
-	const port = process.env.CYRUS_PORT || "3457";
+	const port = process.env.CYRUS_PORT || "3600";
 	return `http://localhost:${port}/cli/rpc`;
 }
 

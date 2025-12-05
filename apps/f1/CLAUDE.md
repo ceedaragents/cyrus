@@ -46,6 +46,7 @@ apps/f1/
 │   │   ├── assignIssue.ts
 │   │   ├── createComment.ts
 │   │   ├── createIssue.ts
+│   │   ├── initTestRepo.ts  # Scaffold test repository
 │   │   ├── ping.ts
 │   │   ├── promptSession.ts
 │   │   ├── startSession.ts
@@ -53,6 +54,8 @@ apps/f1/
 │   │   ├── stopSession.ts
 │   │   ├── version.ts
 │   │   └── viewSession.ts
+│   ├── templates/        # Test repository templates
+│   │   └── index.ts      # Rate limiter library templates
 │   └── utils/
 │       ├── colors.ts     # ANSI color utilities (zero dependencies)
 │       ├── output.ts     # Formatted output helpers
@@ -60,6 +63,99 @@ apps/f1/
 ├── test-drives/          # Test drive logs and findings
 ├── CLAUDE.md             # This file
 └── README.md             # User-facing documentation
+```
+
+## Quick Start: Running a Test Drive
+
+The F1 framework includes a test repository scaffold command that creates a realistic, partially-complete rate limiter library for agents to work on.
+
+### Step 1: Create a Test Repository
+
+```bash
+cd apps/f1
+
+# Scaffold the test repo at any location
+./f1 init-test-repo --path /tmp/rate-limiter-test
+
+# The generated repo contains:
+# ✓ Token bucket algorithm (implemented)
+# ✗ Sliding window algorithm (TODO)
+# ✗ Fixed window algorithm (TODO)  
+# ✗ Redis storage adapter (TODO)
+# ✗ Unit tests (TODO)
+```
+
+### Step 2: Start the F1 Server
+
+```bash
+# Start server pointing to the test repo
+CYRUS_PORT=3458 CYRUS_REPO_PATH=/tmp/rate-limiter-test bun run server.ts
+```
+
+### Step 3: Create a Test Issue
+
+```bash
+# In another terminal
+cd apps/f1
+
+# Create an issue based on the rate limiter TODOs
+CYRUS_PORT=3458 ./f1 create-issue \
+  --title "Implement sliding window rate limiter algorithm" \
+  --description "The rate limiter library currently only supports the token bucket algorithm. 
+
+## Task
+Implement the sliding window rate limiting algorithm in src/rate-limiter.ts.
+
+## Acceptance Criteria
+- [ ] Implement the SlidingWindowRateLimiter class
+- [ ] Support configurable window size and max requests
+- [ ] Add proper TypeScript types (no 'any' types)
+- [ ] Ensure the implementation passes type checking
+
+## Context
+See src/types.ts for the RateLimiterConfig interface and src/rate-limiter.ts for the existing TokenBucketRateLimiter implementation to follow as a pattern."
+```
+
+### Step 4: Start an Agent Session
+
+```bash
+# Start a session on the issue (use the issue-id from create-issue output)
+CYRUS_PORT=3458 ./f1 start-session --issue-id issue-1
+
+# Monitor the session
+CYRUS_PORT=3458 ./f1 view-session --session-id session-1
+
+# Stop when done
+CYRUS_PORT=3458 ./f1 stop-session --session-id session-1
+```
+
+### Alternative Test Issues
+
+Here are other realistic issues you can create based on the test repo:
+
+**Implement Fixed Window Algorithm:**
+```bash
+CYRUS_PORT=3458 ./f1 create-issue \
+  --title "Implement fixed window rate limiter algorithm" \
+  --description "Add a FixedWindowRateLimiter class that resets the counter at fixed time intervals. Should implement the RateLimiter interface from src/types.ts."
+```
+
+**Add Redis Storage Adapter:**
+```bash
+CYRUS_PORT=3458 ./f1 create-issue \
+  --title "Add Redis storage adapter for distributed rate limiting" \
+  --description "Create a RedisStorageAdapter that implements a storage interface for the rate limiter, enabling distributed rate limiting across multiple instances. Define the storage interface and implement the Redis adapter."
+```
+
+**Add Unit Tests:**
+```bash
+CYRUS_PORT=3458 ./f1 create-issue \
+  --title "Add comprehensive unit tests for rate limiter" \
+  --description "Add Vitest unit tests for the TokenBucketRateLimiter class. Test edge cases like:
+- Requests within limit
+- Requests exceeding limit  
+- Token refill behavior
+- Configuration validation"
 ```
 
 ## Running the F1 Server
@@ -74,14 +170,14 @@ bun run server.ts
 pnpm run server
 
 # Custom configuration
-CYRUS_PORT=3457 CYRUS_REPO_PATH=/path/to/repo bun run server.ts
+CYRUS_PORT=3600 CYRUS_REPO_PATH=/path/to/repo bun run server.ts
 
 # Development mode with auto-reload
 pnpm run server:dev
 ```
 
 **Environment Variables:**
-- `CYRUS_PORT` - Server port (default: 3457)
+- `CYRUS_PORT` - Server port (default: 3600)
 - `CYRUS_REPO_PATH` - Repository path (default: current working directory)
 
 The server automatically:
@@ -101,6 +197,9 @@ Once the server is running, use the CLI to interact with it:
 
 # Server status
 ./f1 status
+
+# Create a test repository
+./f1 init-test-repo --path /path/to/test-repo
 
 # Create an issue
 ./f1 create-issue --title "Test Issue" --description "Test description"
@@ -244,7 +343,7 @@ console.log(`${cyan('Status:')} ${bold('ready')}`);
 ### CLI can't connect to server
 - Verify server is running (`./f1 ping`)
 - Check RPC_URL environment variable
-- Default is `http://localhost:3457/cli/rpc`
+- Default is `http://localhost:3600/cli/rpc`
 
 ### TypeScript errors
 - Run `pnpm build` from root to build all packages
