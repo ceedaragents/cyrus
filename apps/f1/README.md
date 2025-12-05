@@ -34,7 +34,7 @@ cd apps/f1
 pnpm run server
 
 # Or with custom configuration
-CYRUS_PORT=3457 CYRUS_REPO_PATH=/path/to/your/repo pnpm run server
+CYRUS_PORT=3600 CYRUS_REPO_PATH=/path/to/your/repo pnpm run server
 
 # Development mode with auto-reload
 pnpm run server:dev
@@ -49,7 +49,7 @@ pnpm run server:dev
 - 🚫 **No external dependencies** (no Cloudflare tunnel, no Linear API)
 
 **Environment Variables:**
-- `CYRUS_PORT` - Server port (default: 3457)
+- `CYRUS_PORT` - Server port (default: 3600)
 - `CYRUS_REPO_PATH` - Path to repository to test (default: current directory)
 
 Once started, the server displays:
@@ -59,8 +59,8 @@ Once started, the server displays:
 ────────────────────────────────────────────────────────────
 ✓ Server started successfully
 
-  Server:    http://localhost:3457
-  RPC:       http://localhost:3457/cli/rpc
+  Server:    http://localhost:3600
+  RPC:       http://localhost:3600/cli/rpc
   Platform:  cli
   Cyrus Home: /tmp/cyrus-f1-1234567890
   Repository: /path/to/your/repo
