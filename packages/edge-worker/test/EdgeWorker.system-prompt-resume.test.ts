@@ -136,6 +136,7 @@ describe("EdgeWorker - System Prompt Resume", () => {
 			restoreState: vi.fn(),
 			postRoutingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+			transitionSessionState: vi.fn().mockReturnValue(true), // State machine transition
 			on: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(

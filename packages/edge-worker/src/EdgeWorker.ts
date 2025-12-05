@@ -59,6 +59,7 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 	resolvePath,
+	SessionEvent,
 } from "cyrus-core";
 import { GeminiRunner } from "cyrus-gemini-runner";
 import {
@@ -1650,6 +1651,12 @@ export class EdgeWorker extends EventEmitter {
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
 
+			// Transition to Starting state (runner is being initialized)
+			agentSessionManager.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.InitializeRunner,
+			);
+
 			// Save state after mapping changes
 			await this.savePersistedState();
 
@@ -1692,6 +1699,12 @@ export class EdgeWorker extends EventEmitter {
 					`[EdgeWorker] Non-streaming session started: ${sessionInfo.sessionId}`,
 				);
 			}
+
+			// Transition to Running state (runner is now active)
+			agentSessionManager.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.RunnerInitialized,
+			);
 			// Note: AgentSessionManager will be initialized automatically when the first system message
 			// is received via handleClaudeMessage() callback
 		} catch (error) {
@@ -1739,6 +1752,12 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Transition to Stopping state before stopping the runner
+		foundManager.transitionSessionState(
+			agentSessionId,
+			SessionEvent.StopSignal,
+		);
+
 		// Stop the existing runner if it's active
 		const existingRunner = foundSession.agentRunner;
 		if (existingRunner) {
@@ -1747,6 +1766,12 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Stopped agent session for agent activity session ${agentSessionId}`,
 			);
 		}
+
+		// Transition to Stopped state after runner has stopped
+		foundManager.transitionSessionState(
+			agentSessionId,
+			SessionEvent.RunnerStopped,
+		);
 
 		// Update session status to Complete (session was stopped, not errored)
 		// This ensures the session is no longer considered "active" or "busy"

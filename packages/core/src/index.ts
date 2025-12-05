@@ -108,6 +108,18 @@ export type {
 } from "./PersistenceManager.js";
 export { PersistenceManager } from "./PersistenceManager.js";
 export { StreamingPrompt } from "./StreamingPrompt.js";
+// Session state management
+export {
+	CyrusSessionStatus,
+	canResume,
+	InvalidTransitionError,
+	isActiveStatus,
+	isTerminalStatus,
+	SessionEvent,
+	SessionStateMachine,
+	type TransitionResult,
+	toLinearStatus,
+} from "./session/index.js";
 // Simple Agent Runner types
 export type {
 	IAgentProgressEvent,
@@ -116,6 +128,7 @@ export type {
 	ISimpleAgentRunner,
 	ISimpleAgentRunnerConfig,
 } from "./simple-agent-runner-types.js";
+
 // Platform-agnostic webhook type aliases - exported from issue-tracker
 // These are now defined in issue-tracker/types.ts as aliases to Linear SDK webhook types
 // EdgeWorker and other high-level code should use these generic names via issue-tracker exports

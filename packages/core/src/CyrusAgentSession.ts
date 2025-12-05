@@ -8,6 +8,8 @@ import type {
 	AgentSessionStatus,
 	AgentSessionType,
 } from "./issue-tracker/types.js";
+import type { CyrusSessionStatus } from "./session/CyrusSessionStatus.js";
+import type { SessionStateMachine } from "./session/SessionStateMachine.js";
 
 export interface IssueMinimal {
 	id: string;
@@ -26,7 +28,21 @@ export interface Workspace {
 export interface CyrusAgentSession {
 	linearAgentActivitySessionId: string;
 	type: AgentSessionType.CommentThread;
+	/**
+	 * Linear's AgentSessionStatus - used for API interactions
+	 * @deprecated Use cyrusStatus for internal state management
+	 */
 	status: AgentSessionStatus;
+	/**
+	 * Internal Cyrus session status - provides finer-grained state tracking
+	 * Optional for backwards compatibility during migration
+	 */
+	cyrusStatus?: CyrusSessionStatus;
+	/**
+	 * State machine for managing session lifecycle transitions
+	 * Optional - will be populated when using the new state machine API
+	 */
+	stateMachine?: SessionStateMachine;
 	context: AgentSessionType.CommentThread;
 	createdAt: number; // e.g. Date.now()
 	updatedAt: number; // e.g. Date.now()

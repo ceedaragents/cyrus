@@ -332,6 +332,7 @@ export class SharedApplicationServer {
 				issueId: string;
 				issueIdentifier: string;
 				status: string;
+				cyrusStatus?: string; // Fine-grained internal status
 				isRunning: boolean;
 				startedAt: number;
 				repositoryId?: string;

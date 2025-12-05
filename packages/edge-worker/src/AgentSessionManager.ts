@@ -16,11 +16,15 @@ import {
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
+	CyrusSessionStatus,
 	type IAgentRunner,
 	type IIssueTrackerService,
 	type IssueMinimal,
 	type SerializedCyrusAgentSession,
 	type SerializedCyrusAgentSessionEntry,
+	SessionEvent,
+	SessionStateMachine,
+	toLinearStatus,
 	type Workspace,
 } from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
@@ -107,10 +111,15 @@ export class AgentSessionManager extends EventEmitter {
 			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
 		);
 
+		// Create state machine for managing session lifecycle
+		const stateMachine = new SessionStateMachine(linearAgentActivitySessionId);
+
 		const agentSession: CyrusAgentSession = {
 			linearAgentActivitySessionId,
 			type: AgentSessionType.CommentThread,
-			status: AgentSessionStatus.Active,
+			status: AgentSessionStatus.Active, // Keep for backwards compatibility
+			cyrusStatus: CyrusSessionStatus.Created, // New fine-grained status
+			stateMachine, // Attach state machine for transition validation
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
@@ -556,6 +565,7 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Update session status and metadata
 	 * Public to allow EdgeWorker to update status on stop signals
+	 * @deprecated Use transitionSessionState for state machine based transitions
 	 */
 	async updateSessionStatus(
 		linearAgentActivitySessionId: string,
@@ -569,6 +579,17 @@ export class AgentSessionManager extends EventEmitter {
 		session.status = status;
 		session.updatedAt = Date.now();
 
+		// Also update cyrusStatus if we have a state machine
+		// This maintains consistency between old and new status systems
+		if (session.stateMachine) {
+			// Map Linear status to the appropriate event
+			const event = this.linearStatusToEvent(status, previousStatus);
+			if (event) {
+				session.stateMachine.transition(event);
+				session.cyrusStatus = session.stateMachine.getStatus();
+			}
+		}
+
 		if (additionalMetadata) {
 			session.metadata = { ...session.metadata, ...additionalMetadata };
 		}
@@ -581,6 +602,85 @@ export class AgentSessionManager extends EventEmitter {
 				`[AgentSessionManager] Session ${linearAgentActivitySessionId} status: ${previousStatus} -> ${status}`,
 			);
 		}
+	}
+
+	/**
+	 * Transition session state using the state machine
+	 * This is the preferred method for state transitions
+	 */
+	transitionSessionState(
+		linearAgentActivitySessionId: string,
+		event: SessionEvent,
+		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
+	): boolean {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) {
+			console.warn(
+				`[AgentSessionManager] No session found for ${linearAgentActivitySessionId}`,
+			);
+			return false;
+		}
+
+		if (!session.stateMachine) {
+			// Fallback: create state machine if it doesn't exist (for backwards compatibility)
+			session.stateMachine = new SessionStateMachine(
+				linearAgentActivitySessionId,
+				session.cyrusStatus || CyrusSessionStatus.Created,
+			);
+		}
+
+		const result = session.stateMachine.transition(event);
+
+		if (result.success) {
+			// Update both status fields for consistency
+			session.cyrusStatus = result.newState;
+			session.status = toLinearStatus(result.newState);
+			session.updatedAt = Date.now();
+
+			if (additionalMetadata) {
+				session.metadata = { ...session.metadata, ...additionalMetadata };
+			}
+
+			this.sessions.set(linearAgentActivitySessionId, session);
+		}
+
+		return result.success;
+	}
+
+	/**
+	 * Get the current CyrusSessionStatus for a session
+	 */
+	getCyrusSessionStatus(
+		linearAgentActivitySessionId: string,
+	): CyrusSessionStatus | undefined {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		return session?.cyrusStatus;
+	}
+
+	/**
+	 * Map Linear AgentSessionStatus to SessionEvent
+	 * Used for backwards compatibility when updateSessionStatus is called
+	 */
+	private linearStatusToEvent(
+		newStatus: AgentSessionStatus,
+		previousStatus: AgentSessionStatus,
+	): SessionEvent | null {
+		// Map transitions based on the Linear status change
+		if (newStatus === AgentSessionStatus.Complete) {
+			return SessionEvent.CleanupComplete;
+		}
+		if (newStatus === AgentSessionStatus.Error) {
+			return SessionEvent.Error;
+		}
+		if (
+			newStatus === AgentSessionStatus.Stale &&
+			previousStatus === AgentSessionStatus.Active
+		) {
+			// Session was stopped
+			return SessionEvent.RunnerStopped;
+		}
+		// For other transitions, return null as they may not map cleanly
+		return null;
 	}
 
 	/**
@@ -1181,6 +1281,7 @@ export class AgentSessionManager extends EventEmitter {
 			issueId: string;
 			issueIdentifier: string;
 			status: AgentSessionStatus;
+			cyrusStatus?: CyrusSessionStatus;
 			isRunning: boolean;
 			startedAt: number;
 		}>;
@@ -1201,6 +1302,7 @@ export class AgentSessionManager extends EventEmitter {
 				issueId: session.issueId,
 				issueIdentifier: session.issue.identifier,
 				status: session.status,
+				cyrusStatus: session.cyrusStatus,
 				isRunning: session.agentRunner?.isRunning() ?? false,
 				startedAt: session.createdAt,
 			})),
