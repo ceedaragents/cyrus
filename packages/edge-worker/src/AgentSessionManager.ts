@@ -234,6 +234,21 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
+		// Check if session is being stopped - if so, ignore error results
+		// This prevents race conditions where the runner emits an error result
+		// during stop signal processing, which would incorrectly transition to Failed
+		const isBeingStopped =
+			session.cyrusStatus === CyrusSessionStatus.Stopping ||
+			session.cyrusStatus === CyrusSessionStatus.Stopped;
+
+		if (isBeingStopped) {
+			console.log(
+				`[AgentSessionManager] Session ${linearAgentActivitySessionId} is being stopped (status: ${session.cyrusStatus}), ignoring result message`,
+			);
+			// Don't update status - handleStopSignal will set the correct final status
+			return;
+		}
+
 		// Clear any active Task when session completes
 		this.activeTasksBySession.delete(linearAgentActivitySessionId);
 
@@ -554,11 +569,20 @@ export class AgentSessionManager extends EventEmitter {
 			}
 		} catch (error) {
 			console.error(`[AgentSessionManager] Error handling message:`, error);
-			// Mark session as error state
-			await this.updateSessionStatus(
-				linearAgentActivitySessionId,
-				AgentSessionStatus.Error,
-			);
+
+			// Don't mark as error if session is being stopped - errors during stop are expected
+			const session = this.sessions.get(linearAgentActivitySessionId);
+			const isBeingStopped =
+				session?.cyrusStatus === CyrusSessionStatus.Stopping ||
+				session?.cyrusStatus === CyrusSessionStatus.Stopped;
+
+			if (!isBeingStopped) {
+				// Mark session as error state
+				await this.updateSessionStatus(
+					linearAgentActivitySessionId,
+					AgentSessionStatus.Error,
+				);
+			}
 		}
 	}
 

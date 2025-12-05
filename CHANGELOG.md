@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 - Added CLI platform mode support to enable in-memory issue tracking for testing and development ([CYPACK-509](https://linear.app/ceedar/issue/CYPACK-509))
 - Implemented state machine for agent session status transitions with finer-grained status tracking (`Created`, `Starting`, `Running`, `Stopping`, `Stopped`, `Completing`, `Completed`, `Failed`). The `/status` endpoint now includes `cyrusStatus` for more detailed session state visibility ([CYPACK-536](https://linear.app/ceedar/issue/CYPACK-536))
 
+### Fixed
+- Fixed race condition where stopped sessions would incorrectly show `cyrusStatus: "failed"` instead of `cyrusStatus: "stopped"`. Result messages emitted during stop signal processing are now correctly ignored ([CYPACK-536](https://linear.app/ceedar/issue/CYPACK-536))
+
 ## [0.2.5] - 2025-12-03
 
 ### Fixed
