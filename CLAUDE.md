@@ -61,6 +61,8 @@ To see Cyrus in action, refer to the test drives in `apps/f1/test-drives/`. Thes
 
 The F1 (Formula 1) testing framework provides a controlled environment to test Cyrus without affecting production Linear workspaces.
 
+CRITICAL: you must use the f1 test drive protocol during the 'testing and validation' stage of any major work undertaking. You CAN also use it in development situations where you want to test drive the version of the product that you're working on.
+
 ## Working with SDKs
 
 When examining or working with a package SDK:
