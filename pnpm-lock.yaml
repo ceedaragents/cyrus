@@ -181,6 +181,9 @@ importers:
       '@iarna/toml':
         specifier: ^3.0.0
         version: 3.0.0
+      cyrus-claude-runner:
+        specifier: workspace:*
+        version: link:../claude-runner
       cyrus-core:
         specifier: workspace:*
         version: link:../core
