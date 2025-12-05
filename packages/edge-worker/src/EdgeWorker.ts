@@ -1477,14 +1477,14 @@ export class EdgeWorker extends EventEmitter {
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
-			: orchestratorConfig?.labels;
+			: (orchestratorConfig?.labels ?? ["orchestrator"]);
 		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
 			labels.includes(label),
 		);
 
 		// Check for graphite label (for graphite-orchestrator combination)
 		const graphiteConfig = repository.labelPrompts?.graphite;
-		const graphiteLabels = graphiteConfig?.labels;
+		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
 		const hasGraphiteLabel = graphiteLabels?.some((label) =>
 			labels.includes(label),
 		);
@@ -2327,7 +2327,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Check for graphite-orchestrator first (requires BOTH graphite AND orchestrator labels)
 		const graphiteConfig = repository.labelPrompts.graphite;
-		const graphiteLabels = graphiteConfig?.labels;
+		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
 		const hasGraphiteLabel = graphiteLabels?.some((label) =>
 			labels.includes(label),
 		);
@@ -2335,7 +2335,7 @@ export class EdgeWorker extends EventEmitter {
 		const orchestratorConfig = repository.labelPrompts.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
-			: orchestratorConfig?.labels;
+			: (orchestratorConfig?.labels ?? ["orchestrator"]);
 		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
 			labels.includes(label),
 		);
@@ -2891,11 +2891,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		repository: RepositoryConfig,
 	): Promise<boolean> {
 		const graphiteConfig = repository.labelPrompts?.graphite;
-		const graphiteLabels = graphiteConfig?.labels;
-
-		if (!graphiteLabels || graphiteLabels.length === 0) {
-			return false;
-		}
+		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
 
 		const issueLabels = await this.fetchIssueLabels(issue);
 		return graphiteLabels.some((label) => issueLabels.includes(label));
@@ -5042,7 +5038,7 @@ ${input.userComment}
 				const orchestratorConfig = repository.labelPrompts?.orchestrator;
 				const orchestratorLabels = Array.isArray(orchestratorConfig)
 					? orchestratorConfig
-					: orchestratorConfig?.labels;
+					: (orchestratorConfig?.labels ?? ["orchestrator"]);
 				hasOrchestratorLabel =
 					orchestratorLabels?.some((label) => labels.includes(label)) || false;
 			} catch (error) {
@@ -5259,7 +5255,7 @@ ${input.userComment}
 							const orchestratorConfig = repository.labelPrompts.orchestrator;
 							const orchestratorLabels = Array.isArray(orchestratorConfig)
 								? orchestratorConfig
-								: orchestratorConfig?.labels;
+								: (orchestratorConfig?.labels ?? ["orchestrator"]);
 							const orchestratorLabel = orchestratorLabels?.find((label) =>
 								labels.includes(label),
 							);
