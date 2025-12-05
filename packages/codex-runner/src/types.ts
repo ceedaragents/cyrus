@@ -7,7 +7,6 @@
 
 import type {
 	AgentRunnerConfig,
-	AgentSessionInfo,
 	McpServerConfig,
 	SDKMessage,
 } from "cyrus-core";
@@ -133,18 +132,36 @@ export {
 export interface CodexRunnerConfig extends AgentRunnerConfig {
 	/** Path to codex CLI binary (defaults to 'codex' in PATH) */
 	codexPath?: string;
+	/** Sandbox mode: "read-only", "workspace-write", or "danger-full-access" */
+	sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+	/** Approval policy: "untrusted", "on-failure", "on-request", or "never" */
+	approvalPolicy?: "untrusted" | "on-failure" | "on-request" | "never";
+	/** Automatically approve all tool calls (bypasses approvals and sandbox) */
+	autoApprove?: boolean;
+	/** Enable full auto mode (no human intervention) */
+	fullAuto?: boolean;
+	/** Enable web search functionality */
+	webSearchEnabled?: boolean;
 	/** Additional directories to include in workspace context */
-	includeDirectories?: string[];
-	/** Enable single-turn mode */
-	singleTurn?: boolean;
+	additionalDirectories?: string[];
+	/** Skip git repository check before starting */
+	skipGitRepoCheck?: boolean;
+	/** List of MCP server names to allow (whitelist) */
+	allowMCPServers?: string[];
+	/** List of MCP server names to exclude (blacklist) */
+	excludeMCPServers?: string[];
 }
 
 /**
  * Session information for Codex runner
  */
-export interface CodexSessionInfo extends AgentSessionInfo {
+export interface CodexSessionInfo {
 	/** Codex-specific session ID (thread ID) */
 	sessionId: string | null;
+	/** When the session started */
+	startedAt: Date;
+	/** Whether the session is currently active */
+	isRunning: boolean;
 }
 
 /**
