@@ -2,11 +2,10 @@ import { existsSync, mkdirSync, watch } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RepositoryConfig } from "cyrus-core";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
-import { SharedApplicationServer } from "cyrus-edge-worker";
+import { GitService, SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
 import { ConfigService } from "./services/ConfigService.js";
-import { GitService } from "./services/GitService.js";
 import { Logger } from "./services/Logger.js";
 import { WorkerService } from "./services/WorkerService.js";
 

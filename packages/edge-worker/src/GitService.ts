@@ -2,15 +2,40 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import type { Issue, RepositoryConfig } from "cyrus-core";
-import type { Workspace } from "../config/types.js";
-import type { Logger } from "./Logger.js";
+
+import type { Issue, RepositoryConfig, Workspace } from "cyrus-core";
+
+/**
+ * Logger interface for GitService
+ * Allows consumers to provide their own logging implementation
+ */
+export interface GitServiceLogger {
+	info(message: string, ...args: unknown[]): void;
+	warn(message: string, ...args: unknown[]): void;
+	error(message: string, ...args: unknown[]): void;
+}
+
+/**
+ * Default console-based logger implementation
+ */
+const defaultLogger: GitServiceLogger = {
+	info: (message: string, ...args: unknown[]) =>
+		console.log(`[GitService] ${message}`, ...args),
+	warn: (message: string, ...args: unknown[]) =>
+		console.warn(`[GitService] ${message}`, ...args),
+	error: (message: string, ...args: unknown[]) =>
+		console.error(`[GitService] ${message}`, ...args),
+};
 
 /**
  * Service responsible for Git worktree operations
  */
 export class GitService {
-	constructor(private logger: Logger) {}
+	private logger: GitServiceLogger;
+
+	constructor(logger?: GitServiceLogger) {
+		this.logger = logger ?? defaultLogger;
+	}
 	/**
 	 * Check if a branch exists locally or remotely
 	 */
@@ -43,7 +68,7 @@ export class GitService {
 	/**
 	 * Sanitize branch name by removing backticks to prevent command injection
 	 */
-	private sanitizeBranchName(name: string): string {
+	public sanitizeBranchName(name: string): string {
 		return name ? name.replace(/`/g, "") : name;
 	}
 

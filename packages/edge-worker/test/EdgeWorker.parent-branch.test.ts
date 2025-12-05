@@ -205,7 +205,9 @@ Base Branch: {{base_branch}}`;
 		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
 
 		// Mock branchExists to always return true so parent branches are used
-		vi.spyOn(edgeWorker as any, "branchExists").mockResolvedValue(true);
+		vi.spyOn((edgeWorker as any).gitService, "branchExists").mockResolvedValue(
+			true,
+		);
 	});
 
 	afterEach(() => {
