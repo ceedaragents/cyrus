@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LinearClient, type Issue as LinearIssue } from "@linear/sdk";
+import { LinearClient } from "@linear/sdk";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
 	HookCallbackMatcher,
@@ -2718,17 +2718,11 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		let baseBranch = repository.baseBranch;
 
 		// Check if this issue has the graphite label - if so, blocked-by relationship takes priority
-		// Cast to LinearIssue since we need the full SDK type for relations queries
-		const isGraphiteIssue = await this.hasGraphiteLabel(
-			issue as LinearIssue,
-			repository,
-		);
+		const isGraphiteIssue = await this.hasGraphiteLabel(issue, repository);
 
 		if (isGraphiteIssue) {
 			// For Graphite stacking: use the blocking issue's branch as base
-			const blockingIssues = await this.fetchBlockingIssues(
-				issue as LinearIssue,
-			);
+			const blockingIssues = await this.fetchBlockingIssues(issue);
 
 			if (blockingIssues.length > 0) {
 				// Use the first blocking issue's branch (typically there's only one in a stack)
@@ -2827,7 +2821,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 	/**
 	 * Fetch issues that block this issue (i.e., issues this one is "blocked by")
-	 * Uses the Linear SDK's inverseRelations field with type "blocks"
+	 * Uses the inverseRelations field with type "blocks"
 	 *
 	 * Linear relations work like this:
 	 * - When Issue A "blocks" Issue B, a relation is created with:
@@ -2838,12 +2832,10 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	 * So to find "who blocks Issue B", we need inverseRelations (where B is the relatedIssue)
 	 * and look for type === "blocks", then get the `issue` field (the blocker).
 	 *
-	 * @param issue The Linear issue to fetch blocking issues for
+	 * @param issue The issue to fetch blocking issues for
 	 * @returns Array of issues that block this one, or empty array if none
 	 */
-	private async fetchBlockingIssues(
-		issue: LinearIssue,
-	): Promise<LinearIssue[]> {
+	private async fetchBlockingIssues(issue: Issue): Promise<Issue[]> {
 		try {
 			// inverseRelations contains relations where THIS issue is the relatedIssue
 			// When type is "blocks", it means the `issue` field blocks THIS issue
@@ -2852,7 +2844,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				return [];
 			}
 
-			const blockingIssues: LinearIssue[] = [];
+			const blockingIssues: Issue[] = [];
 
 			for (const relation of inverseRelations.nodes) {
 				// "blocks" type in inverseRelations means the `issue` blocks this one
@@ -2882,12 +2874,12 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	/**
 	 * Check if an issue has the graphite label
 	 *
-	 * @param issue The Linear issue to check
+	 * @param issue The issue to check
 	 * @param repository The repository configuration
 	 * @returns True if the issue has the graphite label
 	 */
 	private async hasGraphiteLabel(
-		issue: LinearIssue,
+		issue: Issue,
 		repository: RepositoryConfig,
 	): Promise<boolean> {
 		const graphiteConfig = repository.labelPrompts?.graphite;

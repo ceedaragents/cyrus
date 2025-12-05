@@ -64,6 +64,7 @@ export type {
 	IAgentEventTransport,
 	IIssueTrackerService,
 	Issue,
+	IssueRelation,
 	IssueUnassignedWebhook,
 	IssueUpdateInput,
 	IssueWithChildren,

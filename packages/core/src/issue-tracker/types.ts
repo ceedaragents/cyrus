@@ -93,6 +93,13 @@ export type Issue = Pick<
 			"id"
 		>,
 	): Promise<Connection<Issue>>;
+	// Issue relations method for blocked-by/blocks relationships
+	inverseRelations(
+		variables?: Omit<
+			LinearSDK.LinearDocument.Issue_InverseRelationsQueryVariables,
+			"id"
+		>,
+	): Promise<Connection<IssueRelation>>;
 	// Update method with simplified IssuePayload return type
 	update(
 		input?: LinearSDK.LinearDocument.IssueUpdateInput,
@@ -132,6 +139,22 @@ export type Label = Pick<
 	LinearSDK.IssueLabel,
 	"id" | "name" | "description" | "color"
 >;
+
+/**
+ * IssueRelation type - Represents a relationship between issues.
+ * Used for blocked-by/blocks relationships in Graphite stacking workflows.
+ *
+ * @see {@link LinearSDK.IssueRelation} - Linear's complete IssueRelation type
+ */
+export type IssueRelation = Pick<
+	LinearSDK.IssueRelation,
+	"id" | "type" | "createdAt" | "updatedAt" | "archivedAt"
+> & {
+	/** The issue whose relationship is being described */
+	readonly issue: Promise<Issue | undefined>;
+	/** The related issue */
+	readonly relatedIssue: Promise<Issue | undefined>;
+};
 
 /**
  * Team type - Combines Pick selections with custom method signatures.

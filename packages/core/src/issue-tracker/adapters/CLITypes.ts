@@ -20,6 +20,7 @@ import type {
 	Connection,
 	Issue,
 	IssuePayload,
+	IssueRelation,
 	Label,
 	Team,
 	User,
@@ -365,6 +366,14 @@ export function createCLIIssue(data: CLIIssueData): Issue {
 				"id"
 			>,
 		): Promise<Connection<LinearSDK.Attachment>> {
+			return Promise.resolve({ nodes: [] });
+		},
+		inverseRelations(
+			_variables?: Omit<
+				LinearSDK.LinearDocument.Issue_InverseRelationsQueryVariables,
+				"id"
+			>,
+		): Promise<Connection<IssueRelation>> {
 			return Promise.resolve({ nodes: [] });
 		},
 		update(
