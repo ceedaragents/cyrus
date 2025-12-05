@@ -83,8 +83,6 @@ export function createInitTestRepoCommand(): Command {
 				);
 				console.log(success("Created initial commit"));
 
-
-
 				console.log(`\n${success("Test repository created successfully!")}\n`);
 				console.log("Next steps:");
 				console.log(`  cd ${targetPath}`);
