@@ -1047,7 +1047,9 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Add or update agent runner for a session
+	 * Add or update agent runner for a session.
+	 * This also updates the session status to Active, which handles the case
+	 * where a session is resumed after being stopped or completed.
 	 */
 	addAgentRunner(
 		linearAgentActivitySessionId: string,
@@ -1062,9 +1064,10 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		session.agentRunner = agentRunner;
+		session.status = AgentSessionStatus.Active;
 		session.updatedAt = Date.now();
 		console.log(
-			`[AgentSessionManager] Added agent runner to session ${linearAgentActivitySessionId}`,
+			`[AgentSessionManager] Added agent runner to session ${linearAgentActivitySessionId} (status: Active)`,
 		);
 	}
 
