@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **OpenAI Codex CLI support** - Cyrus now supports OpenAI's Codex CLI alongside Claude and Gemini. Add the `codex` label to Linear issues to have them processed using OpenAI's GPT-4o model through the Codex CLI. The integration automatically configures the Codex CLI for full automation with git worktree compatibility ([CYPACK-528](https://linear.app/ceedar/issue/CYPACK-528))
 - Added CLI platform mode support to enable in-memory issue tracking for testing and development ([CYPACK-509](https://linear.app/ceedar/issue/CYPACK-509))
 
 ## [0.2.5] - 2025-12-03

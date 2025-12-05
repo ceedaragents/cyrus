@@ -22,6 +22,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	AgentEvent,
@@ -1639,7 +1640,9 @@ export class EdgeWorker extends EventEmitter {
 			const runner =
 				runnerType === "claude"
 					? new ClaudeRunner(runnerConfig)
-					: new GeminiRunner(runnerConfig);
+					: runnerType === "gemini"
+						? new GeminiRunner(runnerConfig)
+						: new CodexRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -2196,7 +2199,7 @@ export class EdgeWorker extends EventEmitter {
 	 * If no runner label is found, defaults to claude.
 	 */
 	private determineRunnerFromLabels(labels: string[]): {
-		runnerType: "claude" | "gemini";
+		runnerType: "claude" | "gemini" | "codex";
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
@@ -2269,6 +2272,16 @@ export class EdgeWorker extends EventEmitter {
 				fallbackModelOverride: "haiku",
 			};
 		}
+
+		// Check for Codex labels
+		if (lowercaseLabels.includes("codex")) {
+			return {
+				runnerType: "codex",
+				modelOverride: "gpt-4o",
+				fallbackModelOverride: "gpt-4o-mini",
+			};
+		}
+
 		// Default to claude if no runner labels found
 		return {
 			runnerType: "claude",
@@ -4247,7 +4260,7 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
-	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" | "codex" } {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
@@ -4286,6 +4299,10 @@ ${input.userComment}
 			runnerType = "gemini";
 			modelOverride = "gemini-2.5-pro";
 			fallbackModelOverride = "gemini-2.5-flash";
+		} else if (session.codexSessionId && runnerType !== "codex") {
+			runnerType = "codex";
+			modelOverride = "gpt-4o";
+			fallbackModelOverride = "gpt-4o-mini";
 		}
 
 		// Log model override if found
@@ -4340,6 +4357,15 @@ ${input.userComment}
 					`[EdgeWorker] Applied singleTurn maxTurns=1 (for session ${linearAgentActivitySessionId})`,
 				);
 			}
+		}
+
+		// Add Codex-specific configuration
+		if (runnerType === "codex") {
+			(config as any).autoApprove = true;
+			(config as any).skipGitRepoCheck = true;
+			console.log(
+				`[EdgeWorker] Applied Codex-specific config: autoApprove=true, skipGitRepoCheck=true (for session ${linearAgentActivitySessionId})`,
+			);
 		}
 
 		return { config, runnerType };
@@ -5132,8 +5158,10 @@ ${input.userComment}
 		// Determine which runner to use based on existing session IDs
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
+		const hasCodexSession = !isNewSession && Boolean(session.codexSessionId);
 		const needsNewSession =
-			isNewSession || (!hasClaudeSession && !hasGeminiSession);
+			isNewSession ||
+			(!hasClaudeSession && !hasGeminiSession && !hasCodexSession);
 
 		// Fetch system prompt based on labels
 
@@ -5181,7 +5209,9 @@ ${input.userComment}
 			? undefined
 			: session.claudeSessionId
 				? session.claudeSessionId
-				: session.geminiSessionId;
+				: session.geminiSessionId
+					? session.geminiSessionId
+					: session.codexSessionId;
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
@@ -5204,7 +5234,9 @@ ${input.userComment}
 		const runner =
 			runnerType === "claude"
 				? new ClaudeRunner(runnerConfig)
-				: new GeminiRunner(runnerConfig);
+				: runnerType === "gemini"
+					? new GeminiRunner(runnerConfig)
+					: new CodexRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
