@@ -2,6 +2,7 @@
  * Init Test Repo command - Initialize a test repository with a rate limiter library
  */
 
+import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,7 +16,7 @@ import {
 	TSCONFIG_JSON_TEMPLATE,
 	TYPES_TS_TEMPLATE,
 } from "../templates/index.js";
-import { error, success } from "../utils/colors.js";
+import { dim, error, success } from "../utils/colors.js";
 
 export function createInitTestRepoCommand(): Command {
 	const cmd = new Command("init-test-repo");
@@ -69,6 +70,20 @@ export function createInitTestRepoCommand(): Command {
 					await writeFile(filePath, file.content, "utf-8");
 					console.log(success(`Created ${file.path}`));
 				}
+				// Initialize git repository with main branch
+				console.log(dim("\nInitializing git repository..."));
+				execSync("git init -b main", { cwd: targetPath, stdio: "pipe" });
+				console.log(success("Initialized git repository with 'main' branch"));
+
+				// Make initial commit so worktrees can be created
+				execSync("git add .", { cwd: targetPath, stdio: "pipe" });
+				execSync(
+					'git commit -m "Initial commit: rate limiter library scaffold"',
+					{ cwd: targetPath, stdio: "pipe" },
+				);
+				console.log(success("Created initial commit"));
+
+
 
 				console.log(`\n${success("Test repository created successfully!")}\n`);
 				console.log("Next steps:");
