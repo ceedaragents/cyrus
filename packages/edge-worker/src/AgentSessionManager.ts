@@ -555,8 +555,9 @@ export class AgentSessionManager extends EventEmitter {
 
 	/**
 	 * Update session status and metadata
+	 * Public to allow EdgeWorker to update status on stop signals
 	 */
-	private async updateSessionStatus(
+	async updateSessionStatus(
 		linearAgentActivitySessionId: string,
 		status: AgentSessionStatus,
 		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
@@ -564,6 +565,7 @@ export class AgentSessionManager extends EventEmitter {
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		if (!session) return;
 
+		const previousStatus = session.status;
 		session.status = status;
 		session.updatedAt = Date.now();
 
@@ -572,6 +574,13 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		this.sessions.set(linearAgentActivitySessionId, session);
+
+		// Log status transitions for debugging
+		if (previousStatus !== status) {
+			console.log(
+				`[AgentSessionManager] Session ${linearAgentActivitySessionId} status: ${previousStatus} -> ${status}`,
+			);
+		}
 	}
 
 	/**
@@ -1130,6 +1139,72 @@ export class AgentSessionManager extends EventEmitter {
 	hasAgentRunner(linearAgentActivitySessionId: string): boolean {
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		return session?.agentRunner !== undefined;
+	}
+
+	/**
+	 * Check if a specific session is busy (actively running)
+	 * A session is busy if both:
+	 * 1. Its status is Active
+	 * 2. Its runner is currently running
+	 */
+	isSessionBusy(linearAgentActivitySessionId: string): boolean {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) return false;
+
+		return (
+			session.status === AgentSessionStatus.Active &&
+			(session.agentRunner?.isRunning() ?? false)
+		);
+	}
+
+	/**
+	 * Check if any session in this manager is busy
+	 */
+	isBusy(): boolean {
+		return Array.from(this.sessions.values()).some(
+			(session) =>
+				session.status === AgentSessionStatus.Active &&
+				(session.agentRunner?.isRunning() ?? false),
+		);
+	}
+
+	/**
+	 * Get the current status of this manager
+	 * Returns busy/idle status along with session counts
+	 */
+	getStatus(): {
+		status: "idle" | "busy";
+		activeSessions: number;
+		totalSessions: number;
+		sessions: Array<{
+			id: string;
+			issueId: string;
+			issueIdentifier: string;
+			status: AgentSessionStatus;
+			isRunning: boolean;
+			startedAt: number;
+		}>;
+	} {
+		const allSessions = Array.from(this.sessions.values());
+		const activeSessions = allSessions.filter(
+			(session) =>
+				session.status === AgentSessionStatus.Active &&
+				(session.agentRunner?.isRunning() ?? false),
+		);
+
+		return {
+			status: activeSessions.length > 0 ? "busy" : "idle",
+			activeSessions: activeSessions.length,
+			totalSessions: allSessions.length,
+			sessions: allSessions.map((session) => ({
+				id: session.linearAgentActivitySessionId,
+				issueId: session.issueId,
+				issueIdentifier: session.issue.identifier,
+				status: session.status,
+				isRunning: session.agentRunner?.isRunning() ?? false,
+				startedAt: session.createdAt,
+			})),
+		};
 	}
 
 	/**

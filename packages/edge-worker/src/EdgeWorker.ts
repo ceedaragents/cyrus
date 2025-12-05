@@ -47,6 +47,7 @@ import type {
 	WebhookIssue,
 } from "cyrus-core";
 import {
+	AgentSessionStatus,
 	CLIIssueTrackerService,
 	CLIRPCServer,
 	DEFAULT_PROXY_URL,
@@ -415,6 +416,11 @@ export class EdgeWorker extends EventEmitter {
 		console.log("   Routes: /api/update/cyrus-config, /api/update/cyrus-env,");
 		console.log(
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
+
+		// 3. Register /status endpoint
+		this.sharedApplicationServer.registerStatusEndpoint(() =>
+			this.getAggregatedStatus(),
 		);
 	}
 
@@ -1741,6 +1747,13 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Stopped agent session for agent activity session ${agentSessionId}`,
 			);
 		}
+
+		// Update session status to Complete (session was stopped, not errored)
+		// This ensures the session is no longer considered "active" or "busy"
+		await foundManager.updateSessionStatus(
+			agentSessionId,
+			AgentSessionStatus.Complete,
+		);
 
 		// Post confirmation
 		const issueTitle = issue?.title || "this issue";
@@ -5330,5 +5343,57 @@ ${input.userComment}
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Get aggregated status across all repositories and session managers
+	 * Used by the /status endpoint to provide real-time process status
+	 */
+	getAggregatedStatus(): {
+		status: "idle" | "busy";
+		activeSessions: number;
+		totalSessions: number;
+		sessions: Array<{
+			id: string;
+			issueId: string;
+			issueIdentifier: string;
+			status: string;
+			isRunning: boolean;
+			startedAt: number;
+			repositoryId?: string;
+		}>;
+	} {
+		const allSessions: Array<{
+			id: string;
+			issueId: string;
+			issueIdentifier: string;
+			status: string;
+			isRunning: boolean;
+			startedAt: number;
+			repositoryId?: string;
+		}> = [];
+
+		let activeSessions = 0;
+
+		// Aggregate status from all session managers
+		for (const [repositoryId, manager] of this.agentSessionManagers) {
+			const managerStatus = manager.getStatus();
+
+			// Add repository ID to each session for context
+			const sessionsWithRepo = managerStatus.sessions.map((session) => ({
+				...session,
+				repositoryId,
+			}));
+
+			allSessions.push(...sessionsWithRepo);
+			activeSessions += managerStatus.activeSessions;
+		}
+
+		return {
+			status: activeSessions > 0 ? "busy" : "idle",
+			activeSessions,
+			totalSessions: allSessions.length,
+			sessions: allSessions,
+		};
 	}
 }
