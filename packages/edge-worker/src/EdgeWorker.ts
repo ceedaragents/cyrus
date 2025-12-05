@@ -1686,14 +1686,11 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Stop the existing runner if it's active
-		const existingRunner = foundSession.agentRunner;
-		if (existingRunner) {
-			existingRunner.stop();
-			console.log(
-				`[EdgeWorker] Stopped agent session for agent activity session ${agentSessionId}`,
-			);
-		}
+		// Stop the session (this stops the runner and updates the status)
+		foundManager.stopSession(agentSessionId);
+		console.log(
+			`[EdgeWorker] Stopped agent session for agent activity session ${agentSessionId}`,
+		);
 
 		// Post confirmation
 		const issueTitle = issue?.title || "this issue";

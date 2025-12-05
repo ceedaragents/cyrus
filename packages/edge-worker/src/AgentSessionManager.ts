@@ -1069,6 +1069,36 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Stop a session and update its status.
+	 * This should be called when a stop signal is received to ensure
+	 * the session status is properly updated and the runner is stopped.
+	 */
+	stopSession(linearAgentActivitySessionId: string): void {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) {
+			console.warn(
+				`[AgentSessionManager] No session found for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
+			);
+			return;
+		}
+
+		// Stop the runner if it exists
+		if (session.agentRunner) {
+			session.agentRunner.stop();
+			console.log(
+				`[AgentSessionManager] Stopped agent runner for session ${linearAgentActivitySessionId}`,
+			);
+		}
+
+		// Update session status to indicate it was stopped/cancelled
+		session.status = AgentSessionStatus.Complete;
+		session.updatedAt = Date.now();
+		console.log(
+			`[AgentSessionManager] Updated session ${linearAgentActivitySessionId} status to Complete`,
+		);
+	}
+
+	/**
 	 *  Get all agent runners
 	 */
 	getAllAgentRunners(): IAgentRunner[] {
