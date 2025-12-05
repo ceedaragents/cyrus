@@ -129,6 +129,7 @@ export interface CreateIssueParams {
 	description?: string;
 	priority?: number;
 	stateId?: string;
+	labelIds?: string[];
 }
 
 /**
@@ -477,7 +478,7 @@ export class CLIRPCServer {
 		params: CreateIssueParams,
 		requestId: RPCRequestId,
 	): Promise<RPCResponse<CreateIssueData>> {
-		const { teamId, title, description, priority, stateId } = params;
+		const { teamId, title, description, priority, stateId, labelIds } = params;
 
 		if (!teamId || !title) {
 			return {
@@ -497,6 +498,7 @@ export class CLIRPCServer {
 				description,
 				priority,
 				stateId,
+				labelIds,
 			});
 
 			return {
