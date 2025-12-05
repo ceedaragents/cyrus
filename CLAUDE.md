@@ -14,6 +14,53 @@ Cyrus (Linear Claude Agent) is a monorepo JavaScript/TypeScript application that
 - Maintains conversation continuity using the `--continue` flag
 - Supports edge worker mode for distributed processing
 
+
+## How Cyrus Works
+
+When a Linear issue is assigned to Cyrus, the following sequence occurs:
+
+1. **Issue Detection & Routing**: The EdgeWorker receives a webhook from Linear and routes the issue to the appropriate repository based on configured patterns or workspace catch-all rules.
+
+2. **Workspace Isolation**: A dedicated Git worktree is created for each issue (e.g., `worktrees/DEF-1/`) with a sanitized branch name derived from the issue identifier. This ensures complete isolation between concurrent tasks.
+
+3. **AI Classification**: The issue content is analyzed to determine its type (`code`, `question`, `research`, etc.) and the appropriate procedure is selected (e.g., `full-development` for coding tasks).
+
+4. **Subroutine Execution**: For development tasks, Claude executes a sequence of subroutines:
+   - **coding-activity**: Implements the requested feature/fix
+   - **verifications**: Runs tests, type checks, and linting
+   - **git-gh**: Commits changes and creates pull requests
+   - **concise-summary**: Generates a final summary for Linear
+
+5. **Mid-Implementation Prompting**: Users can add comments to the Linear issue while Claude is working. These comments are streamed into the active session, allowing real-time guidance (e.g., "Also add a modulo method while you're at it").
+
+6. **Activity Tracking**: Every thought and action is posted back to Linear as activities, providing full visibility into what Claude is doing.
+
+### Example Interaction
+
+A typical session flow:
+```
+[GitService] Fetching latest changes from remote...
+[GitService] Creating git worktree at .../worktrees/DEF-1 from origin/main
+[EdgeWorker] Workspace created at: .../worktrees/DEF-1
+[EdgeWorker] AI routing decision: Classification: code, Procedure: full-development
+[ClaudeRunner] Session ID assigned by Claude: c5c1fc00-...
+[AgentSessionManager] Created thought activity activity-6
+[AgentSessionManager] Created action activity activity-7
+... (Claude implements the feature)
+[ClaudeRunner] Session completed with 84 messages
+[AgentSessionManager] Subroutine completed, advancing to next: verifications
+```
+
+### Test Drives
+
+To see Cyrus in action, refer to the test drives in `apps/f1/test-drives/`. These documents showcase real interactions demonstrating:
+- How issues are processed end-to-end
+- Mid-implementation prompting in action
+- Subroutine transitions and activity logging
+- Final repository state after completion
+
+The F1 (Formula 1) testing framework provides a controlled environment to test Cyrus without affecting production Linear workspaces.
+
 ## Working with SDKs
 
 When examining or working with a package SDK:

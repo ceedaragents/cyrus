@@ -389,3 +389,83 @@ cd apps/f1
 ```
 
 All commands should complete successfully with beautiful colored output.
+
+## F1 Test Drive Recommendations
+
+When running a comprehensive test drive, follow this checklist:
+
+### 1. Setup & Issue Creation
+```bash
+# Build and start
+pnpm install && pnpm build
+export CYRUS_PORT=3600
+node dist/server.js --port $CYRUS_PORT
+
+# Create test issue
+./f1 issue create --title "Add multiply and divide methods to Calculator" --labels sonnet
+```
+
+### 2. Monitor Output Formatting
+
+Watch for these key log patterns:
+
+**Routing & Classification:**
+```
+[EdgeWorker] AI routing decision: Classification: code, Procedure: full-development
+```
+
+**GitService Activity:**
+```
+[GitService] Fetching latest changes from remote...
+[GitService] Creating git worktree at .../worktrees/DEF-1 from origin/main
+```
+
+**Activity Creation:**
+```
+[AgentSessionManager] Created thought activity activity-6
+[AgentSessionManager] Created action activity activity-7
+```
+
+### 3. Mid-Implementation Prompting
+
+While Claude is actively working, inject a prompt:
+```bash
+./f1 comment add DEF-1 "Also please add a modulo (remainder) method while you're at it"
+```
+
+**Success indicator:**
+```
+[EdgeWorker] Adding prompt to existing stream for session-1 (prompted webhook (existing session))
+```
+
+### 4. Subroutine Progression
+
+Watch for transitions through all 4 subroutines:
+1. **coding-activity** (50-100 messages)
+2. **verifications** (15-30 messages)
+3. **git-gh** (20-35 messages)
+4. **concise-summary** (3 messages, singleTurn)
+
+### 5. Final Verification
+
+After `All subroutines completed`:
+```bash
+cd /path/to/worktrees/DEF-1
+git status           # Should be clean
+git log --oneline -3 # Verify commit
+cat src/calculator.ts # Check implementation
+```
+
+### What to Watch For
+
+**Healthy indicators:**
+- `[GitService]` logs show worktree creation
+- Continuous activity creation during coding
+- Mid-prompts show "Adding prompt to existing stream"
+- All 4 subroutines complete in sequence
+- Final commit in git log
+
+**Warning signs:**
+- Long pauses between activities
+- Subroutine stuck without advancing
+- No commit after git-gh subroutine
