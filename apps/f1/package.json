@@ -32,6 +32,7 @@
 	},
 	"dependencies": {
 		"commander": "^14.0.2",
+		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-edge-worker": "workspace:*"
 	},

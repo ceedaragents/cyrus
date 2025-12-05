@@ -45,6 +45,7 @@ import type {
 	WebhookAgentSession,
 	WebhookComment,
 	WebhookIssue,
+	Workspace,
 } from "cyrus-core";
 import {
 	CLIIssueTrackerService,
@@ -1201,12 +1202,10 @@ export class EdgeWorker extends EventEmitter {
 		await this.moveIssueToStartedState(fullIssue, repository.id);
 
 		// Create workspace using full issue data
+		// Use custom handler if provided, otherwise create a git worktree by default
 		const workspace = this.config.handlers?.createWorkspace
 			? await this.config.handlers.createWorkspace(fullIssue, repository)
-			: {
-					path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
-					isGitWorktree: false,
-				};
+			: await this.createDefaultGitWorktree(fullIssue, repository);
 
 		console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`);
 
@@ -2645,6 +2644,186 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				// Branch doesn't exist remotely either
 				return false;
 			}
+		}
+	}
+
+	/**
+	 * Create a git worktree for an issue (default workspace creation)
+	 * This is the built-in default that runs when no custom createWorkspace handler is provided.
+	 */
+	private async createDefaultGitWorktree(
+		issue: Issue,
+		repository: RepositoryConfig,
+	): Promise<Workspace> {
+		const { execSync } = await import("node:child_process");
+		const { mkdirSync } = await import("node:fs");
+
+		try {
+			// Verify this is a git repository
+			try {
+				execSync("git rev-parse --git-dir", {
+					cwd: repository.repositoryPath,
+					stdio: "pipe",
+				});
+			} catch {
+				console.log(
+					`[EdgeWorker] ${repository.repositoryPath} is not a git repository, creating plain directory`,
+				);
+				const fallbackPath = join(
+					repository.workspaceBaseDir,
+					issue.identifier,
+				);
+				mkdirSync(fallbackPath, { recursive: true });
+				return {
+					path: fallbackPath,
+					isGitWorktree: false,
+				};
+			}
+
+			// Use the issue's preferred branch name, or generate one if not available
+			const rawBranchName =
+				issue.branchName ||
+				`${issue.identifier}-${issue.title
+					?.toLowerCase()
+					.replace(/\s+/g, "-")
+					.substring(0, 30)}`;
+			const branchName = this.sanitizeBranchName(rawBranchName);
+			const workspacePath = join(repository.workspaceBaseDir, issue.identifier);
+
+			// Ensure workspace base directory exists
+			mkdirSync(repository.workspaceBaseDir, { recursive: true });
+
+			// Check if worktree already exists
+			try {
+				const worktrees = execSync("git worktree list --porcelain", {
+					cwd: repository.repositoryPath,
+					encoding: "utf-8",
+				});
+
+				if (worktrees.includes(workspacePath)) {
+					console.log(
+						`[EdgeWorker] Worktree already exists at ${workspacePath}, using existing`,
+					);
+					return {
+						path: workspacePath,
+						isGitWorktree: true,
+					};
+				}
+			} catch {
+				// git worktree command failed, continue with creation
+			}
+
+			// Check if branch already exists
+			let createBranch = true;
+			try {
+				execSync(`git rev-parse --verify "${branchName}"`, {
+					cwd: repository.repositoryPath,
+					stdio: "pipe",
+				});
+				createBranch = false;
+			} catch {
+				// Branch doesn't exist, we'll create it
+			}
+
+			// Determine base branch (considering parent issues)
+			const baseBranch = await this.determineBaseBranch(issue, repository);
+
+			// Fetch latest changes from remote
+			let hasRemote = true;
+			try {
+				execSync("git fetch origin", {
+					cwd: repository.repositoryPath,
+					stdio: "pipe",
+				});
+			} catch {
+				console.log(
+					"[EdgeWorker] git fetch failed, proceeding with local branch",
+				);
+				hasRemote = false;
+			}
+
+			// Create the worktree - use determined base branch
+			let worktreeCmd: string;
+			if (createBranch) {
+				if (hasRemote) {
+					// Check if the base branch exists remotely
+					let useRemoteBranch = false;
+					try {
+						const remoteOutput = execSync(
+							`git ls-remote --heads origin "${baseBranch}"`,
+							{
+								cwd: repository.repositoryPath,
+								stdio: "pipe",
+							},
+						);
+						useRemoteBranch =
+							remoteOutput && remoteOutput.toString().trim().length > 0;
+					} catch {
+						// Base branch doesn't exist remotely
+					}
+
+					if (useRemoteBranch) {
+						const remoteBranch = `origin/${baseBranch}`;
+						console.log(
+							`[EdgeWorker] Creating git worktree at ${workspacePath} from ${remoteBranch}`,
+						);
+						worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`;
+					} else {
+						// Check if base branch exists locally
+						try {
+							execSync(`git rev-parse --verify "${baseBranch}"`, {
+								cwd: repository.repositoryPath,
+								stdio: "pipe",
+							});
+							console.log(
+								`[EdgeWorker] Creating git worktree at ${workspacePath} from local ${baseBranch}`,
+							);
+							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
+						} catch {
+							// Fall back to remote default
+							const defaultRemoteBranch = `origin/${repository.baseBranch}`;
+							console.log(
+								`[EdgeWorker] Base branch '${baseBranch}' not found, falling back to ${defaultRemoteBranch}`,
+							);
+							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${defaultRemoteBranch}"`;
+						}
+					}
+				} else {
+					// No remote, use local branch
+					console.log(
+						`[EdgeWorker] Creating git worktree at ${workspacePath} from local ${baseBranch}`,
+					);
+					worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
+				}
+			} else {
+				// Branch already exists, just check it out
+				console.log(
+					`[EdgeWorker] Creating git worktree at ${workspacePath} with existing branch ${branchName}`,
+				);
+				worktreeCmd = `git worktree add "${workspacePath}" "${branchName}"`;
+			}
+
+			execSync(worktreeCmd, {
+				cwd: repository.repositoryPath,
+				stdio: "pipe",
+			});
+
+			return {
+				path: workspacePath,
+				isGitWorktree: true,
+			};
+		} catch (error) {
+			console.error(
+				"[EdgeWorker] Failed to create git worktree:",
+				(error as Error).message,
+			);
+			// Fall back to regular directory if git worktree fails
+			const fallbackPath = join(repository.workspaceBaseDir, issue.identifier);
+			mkdirSync(fallbackPath, { recursive: true });
+			return {
+				path: fallbackPath,
+				isGitWorktree: false,
+			};
 		}
 	}
 

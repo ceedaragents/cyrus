@@ -21,6 +21,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getAllTools } from "cyrus-claude-runner";
 import type { EdgeWorkerConfig, RepositoryConfig } from "cyrus-core";
 import { EdgeWorker } from "cyrus-edge-worker";
 import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
@@ -99,6 +100,8 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		serverHost: "localhost",
 		defaultModel: "sonnet",
 		defaultFallbackModel: "haiku",
+		// Enable all tools including Edit(**), Bash, etc. for full testing capability
+		defaultAllowedTools: getAllTools(),
 	};
 
 	return config;
