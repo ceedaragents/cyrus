@@ -17,6 +17,7 @@
 	},
 	"dependencies": {
 		"@iarna/toml": "^3.0.0",
+		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"zod": "^3.23.0"
 	},
