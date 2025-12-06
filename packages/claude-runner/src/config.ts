@@ -110,3 +110,24 @@ export function getCoordinatorTools(): string[] {
 		"Batch",
 	];
 }
+
+/**
+ * Get omnipotent tools - strictly read-only tools with NO ability to modify anything
+ * This is the most restrictive tool set, used for the omnipotent observer role.
+ * IMPORTANT: Bash is explicitly excluded to prevent sed/awk/echo workarounds for editing
+ * Includes: Read, Task (for sub-agents), WebFetch, WebSearch, TodoRead, TodoWrite, NotebookRead, Batch
+ * Excludes: Edit, Bash (prevents sed/awk/shell modification), NotebookEdit
+ * Note: TodoWrite is included as it only modifies internal task tracking, not files
+ */
+export function getOmnipotentTools(): string[] {
+	return [
+		"Read(**)",
+		"Task", // Sub-agents for complex research
+		"WebFetch",
+		"WebSearch",
+		"TodoRead",
+		"TodoWrite", // Internal task tracking only
+		"NotebookRead",
+		"Batch",
+	];
+}
