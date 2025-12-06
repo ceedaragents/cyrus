@@ -50,6 +50,7 @@ export class ProcedureRouter {
 				"code",
 				"debugger",
 				"orchestrator",
+				"user-testing",
 			] as const,
 			cyrusHome: config.cyrusHome,
 			model: config.model || defaultModel,
@@ -107,6 +108,12 @@ Analyze the Linear issue request and classify it into ONE of these categories:
 - Use this for ALL standard bug fixes and features with clear requirements
 - Use this for ALL test-related work: "Add unit tests", "Fix failing tests", "Write test coverage", etc.
 - Use this when user explicitly says "Classify as full development", "classify as code", or similar
+
+**user-testing**: User EXPLICITLY requests a manual testing or user testing session.
+- ONLY use this if the user specifically asks for: "test this for me", "run a testing session", "perform user testing", "manual testing"
+- Examples: "Test the login flow manually", "Run user testing on the checkout feature", "Help me test this integration"
+- DO NOT use for automated test writing (use "code" instead)
+- This is for interactive, user-guided testing sessions
 
 IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	}

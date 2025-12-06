@@ -88,6 +88,19 @@ export const SUBROUTINES = {
 		suppressThoughtPosting: true,
 		disallowedTools: ["mcp__linear__create_comment"],
 	},
+	userTesting: {
+		name: "user-testing",
+		promptPath: "subroutines/user-testing.md",
+		description: "Perform testing as requested by the user",
+	},
+	userTestingSummary: {
+		name: "user-testing-summary",
+		promptPath: "subroutines/user-testing-summary.md",
+		singleTurn: true,
+		description: "Summary of user testing session results",
+		suppressThoughtPosting: true,
+		disallowedTools: ["mcp__linear__create_comment"],
+	},
 } as const;
 
 /**
@@ -151,6 +164,12 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			"Planning mode for requests needing clarification or implementation planning",
 		subroutines: [SUBROUTINES.preparation, SUBROUTINES.planSummary],
 	},
+
+	"user-testing": {
+		name: "user-testing",
+		description: "User-driven testing workflow for manual testing sessions",
+		subroutines: [SUBROUTINES.userTesting, SUBROUTINES.userTestingSummary],
+	},
 };
 
 /**
@@ -167,6 +186,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	code: "full-development",
 	debugger: "debugger-full",
 	orchestrator: "orchestrator-full",
+	"user-testing": "user-testing",
 };
 
 /**

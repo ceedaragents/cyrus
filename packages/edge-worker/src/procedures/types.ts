@@ -74,7 +74,8 @@ export type RequestClassification =
 	| "planning"
 	| "code"
 	| "debugger"
-	| "orchestrator";
+	| "orchestrator"
+	| "user-testing";
 
 /**
  * Result of procedure routing decision
