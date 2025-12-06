@@ -1503,7 +1503,7 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Post an ephemeral "Routing your request..." thought and return the activity ID
+	 * Post an ephemeral "Analyzing your request..." thought and return the activity ID
 	 */
 	async postRoutingThought(
 		linearAgentActivitySessionId: string,
@@ -1513,7 +1513,7 @@ export class AgentSessionManager extends EventEmitter {
 				agentSessionId: linearAgentActivitySessionId,
 				content: {
 					type: "thought",
-					body: "Routing your request…",
+					body: "Analyzing your request…",
 				},
 				ephemeral: true,
 			});
