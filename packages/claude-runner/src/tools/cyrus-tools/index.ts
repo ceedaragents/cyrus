@@ -1,6 +1,10 @@
 import { basename, extname } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
-import { IssueRelationType, LinearClient } from "@linear/sdk";
+import {
+	AgentActivitySignal,
+	IssueRelationType,
+	LinearClient,
+} from "@linear/sdk";
 import fs from "fs-extra";
 import { z } from "zod";
 
@@ -1105,36 +1109,18 @@ export function createCyrusToolsServer(
 					})),
 				};
 
-				// Post the elicitation activity with select signal
-				const mutation = `
-					mutation CreateAgentActivity($agentSessionId: String!, $content: JSONObject!, $signal: String, $signalMetadata: JSONObject) {
-						agentActivityCreate(agentSessionId: $agentSessionId, content: $content, signal: $signal, signalMetadata: $signalMetadata) {
-							success
-							agentActivity {
-								id
-							}
-						}
-					}
-				`;
-
-				const response = await linearClient.client.rawRequest(mutation, {
+				// Post the elicitation activity with select signal using the SDK method
+				const result = await linearClient.createAgentActivity({
 					agentSessionId,
 					content: {
 						type: "elicitation",
 						body: question,
 					},
-					signal: "select",
+					signal: AgentActivitySignal.Select,
 					signalMetadata,
 				});
 
-				const result = response.data as {
-					agentActivityCreate: {
-						success: boolean;
-						agentActivity?: { id: string };
-					};
-				};
-
-				if (!result.agentActivityCreate?.success) {
+				if (!result.success) {
 					console.error(`[CyrusTools] Failed to post elicitation:`, result);
 					return {
 						content: [
@@ -1149,7 +1135,8 @@ export function createCyrusToolsServer(
 					};
 				}
 
-				const activityId = result.agentActivityCreate.agentActivity?.id;
+				const activity = await result.agentActivity;
+				const activityId = activity?.id;
 				console.log(
 					`[CyrusTools] User elicitation posted successfully: ${activityId}`,
 				);
