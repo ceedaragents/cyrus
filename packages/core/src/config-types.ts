@@ -97,7 +97,7 @@ export interface RepositoryConfig {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for graphite-orchestrator mode
 			disallowedTools?: string[]; // Tools to explicitly disallow in graphite-orchestrator mode
 		};
-		/** Label that indicates an issue should use Graphite stacked branches */
+		/** Label that indicates an issue should use the 'blocked by' issue as the 'base branch' for this issue worktree*/
 		graphite?: {
 			labels: string[]; // Labels that indicate Graphite stacking (e.g., ["graphite"])
 		};
