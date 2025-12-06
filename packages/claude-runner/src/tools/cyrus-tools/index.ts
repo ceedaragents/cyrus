@@ -618,18 +618,7 @@ export function createCyrusToolsServer(
 							type: "text" as const,
 							text: JSON.stringify({
 								success: true,
-								relation: {
-									id: relation?.id,
-									type: type,
-									blocker: {
-										id: issue.id,
-										identifier: issue.identifier,
-									},
-									blocked: {
-										id: relatedIssue.id,
-										identifier: relatedIssue.identifier,
-									},
-								},
+								relationId: relation?.id,
 								message: `Successfully created '${type}' relation: ${issue.identifier} ${type} ${relatedIssue.identifier}`,
 							}),
 						},
