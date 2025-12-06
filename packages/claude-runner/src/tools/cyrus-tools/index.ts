@@ -857,50 +857,19 @@ export function createCyrusToolsServer(
 				const sessions = await sessionsConnection.nodes;
 
 				// Process each session to get detailed information
-				const sessionsData = await Promise.all(
-					sessions.map(async (session) => {
-						const [issue, creator, appUser] = await Promise.all([
-							session.issue,
-							session.creator,
-							session.appUser,
-						]);
-
-						return {
-							id: session.id,
-							createdAt: session.createdAt.toISOString(),
-							updatedAt: session.updatedAt.toISOString(),
-							startedAt: session.startedAt?.toISOString() || null,
-							endedAt: session.endedAt?.toISOString() || null,
-							dismissedAt: session.dismissedAt?.toISOString() || null,
-							archivedAt: session.archivedAt?.toISOString() || null,
-							externalLink: session.externalLink || null,
-							summary: session.summary || null,
-							plan: session.plan || null,
-							sourceMetadata: session.sourceMetadata || null,
-							issue: issue
-								? {
-										id: issue.id,
-										identifier: issue.identifier,
-										title: issue.title,
-										url: issue.url,
-									}
-								: null,
-							creator: creator
-								? {
-										id: creator.id,
-										name: creator.name,
-										email: creator.email,
-									}
-								: null,
-							appUser: appUser
-								? {
-										id: appUser.id,
-										name: appUser.name,
-									}
-								: null,
-						};
-					}),
-				);
+				const sessionsData = sessions.map((session) => ({
+					id: session.id,
+					createdAt: session.createdAt.toISOString(),
+					updatedAt: session.updatedAt.toISOString(),
+					startedAt: session.startedAt?.toISOString() || null,
+					endedAt: session.endedAt?.toISOString() || null,
+					dismissedAt: session.dismissedAt?.toISOString() || null,
+					archivedAt: session.archivedAt?.toISOString() || null,
+					externalLink: session.externalLink || null,
+					summary: session.summary || null,
+					plan: session.plan || null,
+					sourceMetadata: session.sourceMetadata || null,
+				}));
 
 				const pageInfo = await sessionsConnection.pageInfo;
 
