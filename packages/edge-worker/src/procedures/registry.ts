@@ -101,6 +101,26 @@ export const SUBROUTINES = {
 		suppressThoughtPosting: true,
 		disallowedTools: ["mcp__linear__create_comment"],
 	},
+	omnipotentObservation: {
+		name: "omnipotent-observation",
+		promptPath: "subroutines/omnipotent-observation.md",
+		description:
+			"Observe and analyze all active Cyrus agents and worktrees (read-only)",
+		disallowedTools: ["Edit(**)", "Bash", "NotebookEdit"], // Strictly read-only
+	},
+	omnipotentSummary: {
+		name: "omnipotent-summary",
+		promptPath: "subroutines/omnipotent-summary.md",
+		singleTurn: true,
+		description: "Summary of active agent status and observations",
+		suppressThoughtPosting: true,
+		disallowedTools: [
+			"mcp__linear__create_comment",
+			"Edit(**)",
+			"Bash",
+			"NotebookEdit",
+		],
+	},
 } as const;
 
 /**
@@ -170,6 +190,16 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		description: "User-driven testing workflow for manual testing sessions",
 		subroutines: [SUBROUTINES.userTesting, SUBROUTINES.userTestingSummary],
 	},
+
+	"omnipotent-observer": {
+		name: "omnipotent-observer",
+		description:
+			"Read-only observer with access to all worktrees and agent session status",
+		subroutines: [
+			SUBROUTINES.omnipotentObservation,
+			SUBROUTINES.omnipotentSummary,
+		],
+	},
 };
 
 /**
@@ -187,6 +217,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	debugger: "debugger-full",
 	orchestrator: "orchestrator-full",
 	"user-testing": "user-testing",
+	omnipotent: "omnipotent-observer",
 };
 
 /**

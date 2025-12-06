@@ -11,6 +11,7 @@ export {
 	availableTools,
 	getAllTools,
 	getCoordinatorTools,
+	getOmnipotentTools,
 	getReadOnlyTools,
 	getSafeTools,
 	readOnlyTools,

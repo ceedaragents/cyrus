@@ -101,6 +101,12 @@ export interface RepositoryConfig {
 		graphite?: {
 			labels: string[]; // Labels that indicate Graphite stacking (e.g., ["graphite"])
 		};
+		/** Omnipotent mode - special read-only agent with access to all worktrees */
+		omnipotent?: {
+			labels: string[]; // Labels that trigger omnipotent mode (e.g., ["omnipotent"])
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for omnipotent mode
+			disallowedTools?: string[]; // Tools to explicitly disallow in omnipotent mode
+		};
 	};
 }
 
@@ -153,6 +159,10 @@ export interface EdgeWorkerConfig {
 			disallowedTools?: string[];
 		};
 		"graphite-orchestrator"?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
+		};
+		omnipotent?: {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
 			disallowedTools?: string[];
 		};
