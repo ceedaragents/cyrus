@@ -93,6 +93,18 @@ Implement the requested changes:
 
 **Do NOT**: commit, push, or create PRs (next phase handles that)
 
+## User Elicitation
+
+**IMPORTANT: If you have a blocking question, use the \`mcp__cyrus-tools__linear_user_elicitation\` tool.**
+
+Use this tool when you:
+- Need clarification on requirements or acceptance criteria
+- Have multiple valid implementation approaches and need the user to choose
+- Encounter an ambiguous situation that requires user decision
+- Need approval before making a significant architectural choice
+
+**DO NOT** simply state "Would you like me to..." or "Should I..." in your response. Instead, use the elicitation tool to present options and pause for user input.
+
 Complete with: \`Implementation complete - [what was done].\``)
 			.verify();
 	});
@@ -178,6 +190,18 @@ Gather information to answer the question (DON'T answer yet):
 - Search codebase for relevant files/functions
 - Read necessary files
 - Use tools if needed
+
+## User Elicitation
+
+**IMPORTANT: If you have a blocking question, use the \`mcp__cyrus-tools__linear_user_elicitation\` tool.**
+
+Use this tool when you:
+- Need clarification on what specifically the user is asking about
+- The question is ambiguous and could refer to multiple things
+- Need to know which aspect of a topic to focus on
+- Require additional context to provide an accurate answer
+
+**DO NOT** simply state "Would you like me to..." or "Should I..." in your response. Instead, use the elicitation tool to present options and pause for user input.
 
 Complete with: \`Investigation complete - gathered information from [sources].\``)
 			.verify();
@@ -265,7 +289,18 @@ Provide a clear, direct answer using investigation findings:
 - Include code references with line numbers
 - Be complete but concise
 
-Don't mention the investigation process - just answer the question.`)
+Don't mention the investigation process - just answer the question.
+
+## User Elicitation
+
+**IMPORTANT: If your answer leads to a follow-up action, use the \`mcp__cyrus-tools__linear_user_elicitation\` tool.**
+
+Use this tool when you:
+- Have answered the question but want to offer follow-up actions
+- Need to ask whether the user wants you to proceed with something
+- Have multiple recommendations and want the user to choose
+
+**DO NOT** simply state "Would you like me to..." or "Should I..." in your response. Instead, use the elicitation tool to present options and pause for user input.`)
 			.verify();
 	});
 
