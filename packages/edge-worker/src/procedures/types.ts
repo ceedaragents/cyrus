@@ -75,7 +75,8 @@ export type RequestClassification =
 	| "code"
 	| "debugger"
 	| "orchestrator"
-	| "user-testing";
+	| "user-testing"
+	| "omnipotent";
 
 /**
  * Result of procedure analysis decision
