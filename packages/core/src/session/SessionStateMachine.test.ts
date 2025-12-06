@@ -130,8 +130,9 @@ describe("SessionStateMachine", () => {
 	});
 
 	describe("invalid transitions", () => {
-		it("should fail transition from Completed state", () => {
+		it("should fail invalid transition from Completed state", () => {
 			const sm = new SessionStateMachine("test", CyrusSessionStatus.Completed);
+			// InitializeRunner is not valid from Completed state (only Resume is)
 			const result = sm.transition(SessionEvent.InitializeRunner);
 
 			expect(result.success).toBe(false);
@@ -139,12 +140,29 @@ describe("SessionStateMachine", () => {
 			expect(sm.getStatus()).toBe(CyrusSessionStatus.Completed);
 		});
 
-		it("should fail transition from Failed state", () => {
-			const sm = new SessionStateMachine("test", CyrusSessionStatus.Failed);
+		it("should allow Resume from Completed state", () => {
+			const sm = new SessionStateMachine("test", CyrusSessionStatus.Completed);
 			const result = sm.transition(SessionEvent.Resume);
+
+			expect(result.success).toBe(true);
+			expect(result.newState).toBe(CyrusSessionStatus.Starting);
+		});
+
+		it("should fail invalid transition from Failed state", () => {
+			const sm = new SessionStateMachine("test", CyrusSessionStatus.Failed);
+			// InitializeRunner is not valid from Failed state (only Resume is)
+			const result = sm.transition(SessionEvent.InitializeRunner);
 
 			expect(result.success).toBe(false);
 			expect(result.newState).toBe(CyrusSessionStatus.Failed);
+		});
+
+		it("should allow Resume from Failed state", () => {
+			const sm = new SessionStateMachine("test", CyrusSessionStatus.Failed);
+			const result = sm.transition(SessionEvent.Resume);
+
+			expect(result.success).toBe(true);
+			expect(result.newState).toBe(CyrusSessionStatus.Starting);
 		});
 
 		it("should throw InvalidTransitionError when throwOnInvalid is true", () => {

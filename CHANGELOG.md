@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Fixed race condition where stopped sessions would incorrectly show `cyrusStatus: "failed"` instead of `cyrusStatus: "stopped"`. Result messages emitted during stop signal processing are now correctly ignored ([CYPACK-536](https://linear.app/ceedar/issue/CYPACK-536))
 - Fixed `cyrusStatus` stuck in "starting" instead of transitioning to "running". Moved the `RunnerInitialized` transition to trigger when the first `init` message is received, rather than after session completion ([CYPACK-536](https://linear.app/ceedar/issue/CYPACK-536))
+- Fixed `cyrusStatus` not updating when re-prompting a stopped/completed/failed session. Added proper `Resume` state transitions in `resumeAgentSession` to correctly update status from stopped/completed/failed → starting → running ([CYPACK-536](https://linear.app/ceedar/issue/CYPACK-536))
 
 ## [0.2.5] - 2025-12-03
 

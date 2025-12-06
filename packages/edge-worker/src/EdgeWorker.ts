@@ -50,6 +50,7 @@ import {
 	AgentSessionStatus,
 	CLIIssueTrackerService,
 	CLIRPCServer,
+	CyrusSessionStatus,
 	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
@@ -5241,6 +5242,29 @@ ${input.userComment}
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
+
+		// Transition state machine based on current state
+		// - If session is Stopped/Completed/Failed, use Resume to go to Starting
+		// - Otherwise use InitializeRunner to go to Starting (for Created or other states)
+		const currentStatus = agentSessionManager.getCyrusSessionStatus(
+			linearAgentActivitySessionId,
+		);
+		const isResumableState =
+			currentStatus === CyrusSessionStatus.Stopped ||
+			currentStatus === CyrusSessionStatus.Completed ||
+			currentStatus === CyrusSessionStatus.Failed;
+
+		if (isResumableState) {
+			agentSessionManager.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.Resume,
+			);
+		} else {
+			agentSessionManager.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.InitializeRunner,
+			);
+		}
 
 		// Save state
 		await this.savePersistedState();

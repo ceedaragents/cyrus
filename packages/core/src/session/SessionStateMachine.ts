@@ -76,11 +76,13 @@ const STATE_TRANSITIONS: Record<
 	},
 
 	[CyrusSessionStatus.Completed]: {
-		// Terminal state - no transitions out
+		[SessionEvent.Resume]: CyrusSessionStatus.Starting,
+		// Completed sessions can be resumed for follow-up conversations
 	},
 
 	[CyrusSessionStatus.Failed]: {
-		// Terminal state - no transitions out
+		[SessionEvent.Resume]: CyrusSessionStatus.Starting,
+		// Failed sessions can be resumed to retry
 	},
 };
 
