@@ -710,26 +710,46 @@ export class CLIRPCServer {
 			const agentSession =
 				await this.config.issueTracker.fetchAgentSession(sessionId);
 
-			// Fetch activities from the issue tracker
-			const activityDataList = this.config.issueTracker.listAgentActivities(
-				sessionId,
-				{ limit: limit + 1, offset }, // Fetch one extra to check hasMore
-			);
+			// Fetch ALL activities from the issue tracker (no limit yet)
+			const activityDataList =
+				this.config.issueTracker.listAgentActivities(sessionId);
+
+			// Filter out ephemeral activities that have been replaced by subsequent activities
+			// An ephemeral activity is replaced if there's ANY activity that comes after it
+			const visibleActivities = activityDataList.filter((activity, index) => {
+				// If this activity is not ephemeral, it's always visible
+				if (activity.ephemeral !== true) {
+					return true;
+				}
+
+				// If this is an ephemeral activity, check if there's any activity after it (by index)
+				// If there is, this ephemeral activity should be hidden (replaced)
+				// We use index comparison because activities may have the same timestamp
+				const hasSubsequentActivity = activityDataList.some(
+					(_otherActivity, otherIndex) => otherIndex > index,
+				);
+
+				// Show ephemeral activity only if there's no subsequent activity
+				return !hasSubsequentActivity;
+			});
 
 			// Filter by search if provided
-			let filteredActivities = activityDataList;
+			let filteredActivities = visibleActivities;
 			if (search) {
 				const searchLower = search.toLowerCase();
-				filteredActivities = activityDataList.filter((a) =>
+				filteredActivities = visibleActivities.filter((a) =>
 					a.content.toLowerCase().includes(searchLower),
 				);
 			}
 
+			// Apply pagination after filtering
+			const paginatedActivityData = filteredActivities.slice(
+				offset,
+				offset + limit,
+			);
+
 			// Check if there are more activities
-			const hasMore = filteredActivities.length > limit;
-			const paginatedActivityData = hasMore
-				? filteredActivities.slice(0, limit)
-				: filteredActivities;
+			const hasMore = filteredActivities.length > offset + limit;
 
 			// Transform to AgentActivityData format
 			const activities: AgentActivityData[] = paginatedActivityData.map(
@@ -741,14 +761,8 @@ export class CLIRPCServer {
 				}),
 			);
 
-			// Get total count
-			const allActivities =
-				this.config.issueTracker.listAgentActivities(sessionId);
-			const totalCount = search
-				? allActivities.filter((a) =>
-						a.content.toLowerCase().includes(search.toLowerCase()),
-					).length
-				: allActivities.length;
+			// Total count is based on filtered activities
+			const totalCount = filteredActivities.length;
 
 			return {
 				jsonrpc: "2.0",
