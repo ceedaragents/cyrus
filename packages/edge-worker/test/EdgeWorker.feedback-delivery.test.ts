@@ -98,7 +98,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				claudeRunner: mockClaudeRunner,
 			}),
 			getAgentRunner: vi.fn().mockReturnValue(mockClaudeRunner),
-			postRoutingThought: vi.fn().mockResolvedValue(undefined),
+			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			on: vi.fn(), // EventEmitter method
 		};

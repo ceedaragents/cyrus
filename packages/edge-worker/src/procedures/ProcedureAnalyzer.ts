@@ -1,5 +1,5 @@
 /**
- * ProcedureRouter - Intelligent routing of agent sessions through procedures
+ * ProcedureAnalyzer - Intelligent analysis of agent sessions to determine procedures
  *
  * Uses a SimpleAgentRunner (Claude or Gemini) to analyze requests and determine
  * which procedure (sequence of subroutines) should be executed.
@@ -10,27 +10,27 @@ import { SimpleGeminiRunner } from "cyrus-gemini-runner";
 import { SimpleClaudeRunner } from "cyrus-simple-agent-runner";
 import { getProcedureForClassification, PROCEDURES } from "./registry.js";
 import type {
+	ProcedureAnalysisDecision,
 	ProcedureDefinition,
 	ProcedureMetadata,
 	RequestClassification,
-	RoutingDecision,
 	SubroutineDefinition,
 } from "./types.js";
 
 export type SimpleRunnerType = "claude" | "gemini";
 
-export interface ProcedureRouterConfig {
+export interface ProcedureAnalyzerConfig {
 	cyrusHome: string;
 	model?: string;
 	timeoutMs?: number;
 	runnerType?: SimpleRunnerType; // Default: "gemini"
 }
 
-export class ProcedureRouter {
-	private routingRunner: ISimpleAgentRunner<RequestClassification>;
+export class ProcedureAnalyzer {
+	private analysisRunner: ISimpleAgentRunner<RequestClassification>;
 	private procedures: Map<string, ProcedureDefinition> = new Map();
 
-	constructor(config: ProcedureRouterConfig) {
+	constructor(config: ProcedureAnalyzerConfig) {
 		// Determine which runner to use
 		const runnerType = config.runnerType || "gemini";
 
@@ -55,13 +55,13 @@ export class ProcedureRouter {
 			cyrusHome: config.cyrusHome,
 			model: config.model || defaultModel,
 			fallbackModel: defaultFallbackModel,
-			systemPrompt: this.buildRoutingSystemPrompt(),
+			systemPrompt: this.buildAnalysisSystemPrompt(),
 			maxTurns: 1,
 			timeoutMs: config.timeoutMs || 10000,
 		};
 
 		// Initialize the appropriate runner based on type
-		this.routingRunner =
+		this.analysisRunner =
 			runnerType === "claude"
 				? new SimpleClaudeRunner(runnerConfig)
 				: new SimpleGeminiRunner(runnerConfig);
@@ -71,9 +71,9 @@ export class ProcedureRouter {
 	}
 
 	/**
-	 * Build the system prompt for routing classification
+	 * Build the system prompt for request analysis and classification
 	 */
-	private buildRoutingSystemPrompt(): string {
+	private buildAnalysisSystemPrompt(): string {
 		return `You are a request classifier for a software agent system.
 
 Analyze the Linear issue request and classify it into ONE of these categories:
@@ -128,12 +128,14 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	}
 
 	/**
-	 * Determine which procedure to use for a given request
+	 * Analyze a request and determine which procedure to use
 	 */
-	async determineRoutine(requestText: string): Promise<RoutingDecision> {
+	async determineRoutine(
+		requestText: string,
+	): Promise<ProcedureAnalysisDecision> {
 		try {
-			// Classify the request using SimpleClaudeRunner
-			const result = await this.routingRunner.query(
+			// Classify the request using analysis runner
+			const result = await this.analysisRunner.query(
 				`Classify this Linear issue request:\n\n${requestText}`,
 			);
 
@@ -156,7 +158,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 			};
 		} catch (error) {
 			// Fallback to full-development on error
-			console.log("[ProcedureRouter] Error during routing decision:", error);
+			console.log("[ProcedureAnalyzer] Error during analysis:", error);
 			const fallbackProcedure = this.procedures.get("full-development");
 
 			if (!fallbackProcedure) {
@@ -181,7 +183,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 			| undefined;
 
 		if (!procedureMetadata) {
-			// No procedure metadata - session doesn't use procedure routing
+			// No procedure metadata - session doesn't use procedures
 			return null;
 		}
 
@@ -189,7 +191,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 
 		if (!procedure) {
 			console.error(
-				`[ProcedureRouter] Procedure "${procedureMetadata.procedureName}" not found`,
+				`[ProcedureAnalyzer] Procedure "${procedureMetadata.procedureName}" not found`,
 			);
 			return null;
 		}

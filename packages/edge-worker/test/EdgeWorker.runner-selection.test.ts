@@ -154,7 +154,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			getAllAgentRunners: vi.fn().mockReturnValue([]),
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
-			postRoutingThought: vi.fn().mockResolvedValue(null),
+			postAnalyzingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			on: vi.fn(), // EventEmitter method
 		};
@@ -256,7 +256,7 @@ Issue: {{issue_identifier}}`;
 			// Assert
 			expect(capturedRunnerType).toBe("gemini");
 			expect(GeminiRunner).toHaveBeenCalled();
-			// ClaudeRunner is called once for the classifier (ProcedureRouter uses Claude by default)
+			// ClaudeRunner is called once for the classifier (ProcedureAnalyzer uses Claude by default)
 			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
 		});
 
@@ -288,7 +288,7 @@ Issue: {{issue_identifier}}`;
 			// Assert
 			expect(capturedRunnerType).toBe("gemini");
 			expect(GeminiRunner).toHaveBeenCalled();
-			// ClaudeRunner is called once for the classifier (ProcedureRouter uses Claude by default)
+			// ClaudeRunner is called once for the classifier (ProcedureAnalyzer uses Claude by default)
 			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
 			expect(capturedRunnerConfig.model).toBe("gemini-2.5-pro");
 		});

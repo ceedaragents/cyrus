@@ -1,7 +1,7 @@
 /**
- * Procedure routing system for intelligent workflow selection
+ * Procedure analysis system for intelligent workflow selection
  */
 
-export * from "./ProcedureRouter.js";
+export * from "./ProcedureAnalyzer.js";
 export * from "./registry.js";
 export * from "./types.js";

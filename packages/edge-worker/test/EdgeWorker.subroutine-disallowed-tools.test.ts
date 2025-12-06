@@ -8,14 +8,14 @@
 
 import type { CyrusAgentSession } from "cyrus-core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ProcedureRouter } from "../src/procedures/ProcedureRouter";
+import { ProcedureAnalyzer } from "../src/procedures/ProcedureAnalyzer";
 import { PROCEDURES, SUBROUTINES } from "../src/procedures/registry";
 
 describe("EdgeWorker - Subroutine DisallowedTools", () => {
-	let procedureRouter: ProcedureRouter;
+	let procedureAnalyzer: ProcedureAnalyzer;
 
 	beforeEach(() => {
-		procedureRouter = new ProcedureRouter({
+		procedureAnalyzer = new ProcedureAnalyzer({
 			cyrusHome: "/test/.cyrus",
 		});
 	});
@@ -93,15 +93,15 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(session, procedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
 
 			// Advance to concise-summary (last subroutine)
 			// full-development: coding-activity → verifications → git-gh → concise-summary
-			procedureRouter.advanceToNextSubroutine(session, "claude-123"); // Move to verifications
-			procedureRouter.advanceToNextSubroutine(session, "claude-123"); // Move to git-gh
-			procedureRouter.advanceToNextSubroutine(session, "claude-123"); // Move to concise-summary
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to verifications
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to git-gh
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to concise-summary
 
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("concise-summary");
 			expect(currentSubroutine?.disallowedTools).toBeDefined();
 			expect(currentSubroutine?.disallowedTools).toContain(
@@ -136,13 +136,13 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			};
 
 			// Manually register a procedure with verbose-summary
-			procedureRouter.registerProcedure({
+			procedureAnalyzer.registerProcedure({
 				name: "test-verbose",
 				description: "Test procedure with verbose summary",
 				subroutines: [SUBROUTINES.verboseSummary],
 			});
 
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("verbose-summary");
 			expect(currentSubroutine?.disallowedTools).toBeDefined();
 			expect(currentSubroutine?.disallowedTools).toContain(
@@ -170,12 +170,12 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(session, procedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
 
 			// simple-question: question-investigation → question-answer
-			procedureRouter.advanceToNextSubroutine(session, "claude-789"); // Move to question-answer
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-789"); // Move to question-answer
 
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("question-answer");
 			expect(currentSubroutine?.disallowedTools).toBeDefined();
 			expect(currentSubroutine?.disallowedTools).toContain(
@@ -203,12 +203,12 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(session, procedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
 
 			// plan-mode: preparation → plan-summary
-			procedureRouter.advanceToNextSubroutine(session, "claude-101"); // Move to plan-summary
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-101"); // Move to plan-summary
 
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("plan-summary");
 			expect(currentSubroutine?.disallowedTools).toBeDefined();
 			expect(currentSubroutine?.disallowedTools).toContain(
@@ -236,22 +236,22 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(session, procedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
 
 			// Check coding-activity (first subroutine)
-			let currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			let currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("coding-activity");
 			expect(currentSubroutine?.disallowedTools).toBeUndefined();
 
 			// Advance to verifications
-			procedureRouter.advanceToNextSubroutine(session, "claude-202");
-			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("verifications");
 			expect(currentSubroutine?.disallowedTools).toBeUndefined();
 
 			// Advance to git-gh
-			procedureRouter.advanceToNextSubroutine(session, "claude-202");
-			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("git-gh");
 			expect(currentSubroutine?.disallowedTools).toBeUndefined();
 		});

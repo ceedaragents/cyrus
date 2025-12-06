@@ -138,7 +138,7 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 			getAllAgentRunners: vi.fn().mockReturnValue([]),
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
-			postRoutingThought: vi.fn().mockResolvedValue(null),
+			postAnalyzingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			on: vi.fn(), // EventEmitter method
 		};

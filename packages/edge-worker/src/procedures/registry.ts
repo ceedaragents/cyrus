@@ -1,5 +1,5 @@
 /**
- * Registry of predefined procedures and routing rules
+ * Registry of predefined procedures and analysis rules
  */
 
 import type { ProcedureDefinition, RequestClassification } from "./types.js";

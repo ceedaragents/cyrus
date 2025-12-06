@@ -68,8 +68,8 @@ import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { GitService } from "./GitService.js";
 import {
+	ProcedureAnalyzer,
 	type ProcedureDefinition,
-	ProcedureRouter,
 	type RequestClassification,
 	type SubroutineDefinition,
 } from "./procedures/index.js";
@@ -116,7 +116,7 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
-	private procedureRouter: ProcedureRouter; // Intelligent workflow routing
+	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
 	private configWatcher?: FSWatcher; // File watcher for config.json
 	private configPath?: string; // Path to config.json file
 	/** @internal - Exposed for testing only */
@@ -133,7 +133,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Initialize procedure router with haiku for fast classification
 		// Default to claude runner
-		this.procedureRouter = new ProcedureRouter({
+		this.procedureAnalyzer = new ProcedureAnalyzer({
 			cyrusHome: this.cyrusHome,
 			model: "haiku",
 			timeoutMs: 100000,
@@ -256,7 +256,7 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
-					this.procedureRouter,
+					this.procedureAnalyzer,
 					this.sharedApplicationServer,
 				);
 
@@ -598,7 +598,7 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Get next subroutine (advancement already handled by AgentSessionManager)
-		const nextSubroutine = this.procedureRouter.getCurrentSubroutine(session);
+		const nextSubroutine = this.procedureAnalyzer.getCurrentSubroutine(session);
 
 		if (!nextSubroutine) {
 			console.log(
@@ -892,7 +892,7 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
-					this.procedureRouter,
+					this.procedureAnalyzer,
 					this.sharedApplicationServer,
 				);
 
@@ -1460,7 +1460,9 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
+		await agentSessionManager.postAnalyzingThought(
+			linearAgentActivitySessionId,
+		);
 
 		// Fetch labels early (needed for label override check)
 		const labels = await this.fetchIssueLabels(fullIssue);
@@ -1499,7 +1501,7 @@ export class EdgeWorker extends EventEmitter {
 		// If labels indicate a specific procedure, use that instead of AI routing
 		if (hasDebuggerLabel) {
 			const debuggerProcedure =
-				this.procedureRouter.getProcedure("debugger-full");
+				this.procedureAnalyzer.getProcedure("debugger-full");
 			if (!debuggerProcedure) {
 				throw new Error("debugger-full procedure not found in registry");
 			}
@@ -1511,7 +1513,7 @@ export class EdgeWorker extends EventEmitter {
 		} else if (hasGraphiteOrchestratorLabels) {
 			// Graphite-orchestrator takes precedence over regular orchestrator when both labels present
 			const orchestratorProcedure =
-				this.procedureRouter.getProcedure("orchestrator-full");
+				this.procedureAnalyzer.getProcedure("orchestrator-full");
 			if (!orchestratorProcedure) {
 				throw new Error("orchestrator-full procedure not found in registry");
 			}
@@ -1523,7 +1525,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 		} else if (hasOrchestratorLabel) {
 			const orchestratorProcedure =
-				this.procedureRouter.getProcedure("orchestrator-full");
+				this.procedureAnalyzer.getProcedure("orchestrator-full");
 			if (!orchestratorProcedure) {
 				throw new Error("orchestrator-full procedure not found in registry");
 			}
@@ -1537,7 +1539,7 @@ export class EdgeWorker extends EventEmitter {
 			const issueDescription =
 				`${issue.title}\n\n${fullIssue.description || ""}`.trim();
 			const routingDecision =
-				await this.procedureRouter.determineRoutine(issueDescription);
+				await this.procedureAnalyzer.determineRoutine(issueDescription);
 			finalProcedure = routingDecision.procedure;
 			finalClassification = routingDecision.classification;
 
@@ -1551,7 +1553,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Initialize procedure metadata in session with final decision
-		this.procedureRouter.initializeProcedureMetadata(session, finalProcedure);
+		this.procedureAnalyzer.initializeProcedureMetadata(session, finalProcedure);
 
 		// Post single procedure selection result (replaces ephemeral routing thought)
 		await agentSessionManager.postProcedureSelectionThought(
@@ -1639,7 +1641,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Get current subroutine to check for singleTurn mode
 			const currentSubroutine =
-				this.procedureRouter.getCurrentSubroutine(session);
+				this.procedureAnalyzer.getCurrentSubroutine(session);
 
 			// Create agent runner with system prompt from assembly
 			// buildAgentRunnerConfig now determines runner type from labels internally
@@ -4190,7 +4192,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		components.push("issue-context");
 
 		// 4. Load and append initial subroutine prompt
-		const currentSubroutine = this.procedureRouter.getCurrentSubroutine(
+		const currentSubroutine = this.procedureAnalyzer.getCurrentSubroutine(
 			input.session,
 		);
 		let subroutineName: string | undefined;
@@ -4622,7 +4624,7 @@ ${input.userComment}
 		logContext: string,
 	): string[] {
 		const currentSubroutine =
-			this.procedureRouter.getCurrentSubroutine(session);
+			this.procedureAnalyzer.getCurrentSubroutine(session);
 		if (currentSubroutine?.disallowedTools) {
 			const mergedTools = [
 				...new Set([
@@ -5015,7 +5017,9 @@ ${input.userComment}
 		}
 
 		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
+		await agentSessionManager.postAnalyzingThought(
+			linearAgentActivitySessionId,
+		);
 
 		// Fetch full issue and labels to check for Orchestrator label override
 		const issueTracker = this.issueTrackers.get(repository.id);
@@ -5048,7 +5052,7 @@ ${input.userComment}
 		// If Orchestrator label is present, ALWAYS use orchestrator-full procedure
 		if (hasOrchestratorLabel) {
 			const orchestratorProcedure =
-				this.procedureRouter.getProcedure("orchestrator-full");
+				this.procedureAnalyzer.getProcedure("orchestrator-full");
 			if (!orchestratorProcedure) {
 				throw new Error("orchestrator-full procedure not found in registry");
 			}
@@ -5059,7 +5063,7 @@ ${input.userComment}
 			);
 		} else {
 			// No Orchestrator label - use AI routing based on prompt content
-			const routingDecision = await this.procedureRouter.determineRoutine(
+			const routingDecision = await this.procedureAnalyzer.determineRoutine(
 				promptBody.trim(),
 			);
 			selectedProcedure = routingDecision.procedure;
@@ -5075,7 +5079,7 @@ ${input.userComment}
 		}
 
 		// Initialize procedure metadata in session (resets currentSubroutine)
-		this.procedureRouter.initializeProcedureMetadata(
+		this.procedureAnalyzer.initializeProcedureMetadata(
 			session,
 			selectedProcedure,
 		);
@@ -5401,7 +5405,7 @@ ${input.userComment}
 
 		// Get current subroutine to check for singleTurn mode
 		const currentSubroutine =
-			this.procedureRouter.getCurrentSubroutine(session);
+			this.procedureAnalyzer.getCurrentSubroutine(session);
 
 		const resumeSessionId = needsNewSession
 			? undefined

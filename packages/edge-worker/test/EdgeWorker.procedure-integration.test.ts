@@ -1,7 +1,7 @@
 import type { CyrusAgentSession } from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
-import { ProcedureRouter } from "../src/procedures/ProcedureRouter";
+import { ProcedureAnalyzer } from "../src/procedures/ProcedureAnalyzer";
 import { PROCEDURES } from "../src/procedures/registry";
 
 /**
@@ -10,13 +10,13 @@ import { PROCEDURES } from "../src/procedures/registry";
  */
 
 describe("EdgeWorker - Procedure Routing Integration", () => {
-	let procedureRouter: ProcedureRouter;
+	let procedureAnalyzer: ProcedureAnalyzer;
 	let agentSessionManager: AgentSessionManager;
 	let mockLinearClient: any;
 
 	beforeEach(() => {
-		// Create ProcedureRouter
-		procedureRouter = new ProcedureRouter({
+		// Create ProcedureAnalyzer
+		procedureAnalyzer = new ProcedureAnalyzer({
 			cyrusHome: "/test/.cyrus",
 		});
 
@@ -33,7 +33,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			mockLinearClient,
 			undefined, // getParentSessionId
 			undefined, // resumeParentSession
-			procedureRouter,
+			procedureAnalyzer,
 		);
 	});
 
@@ -61,7 +61,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
 
 			// Verify initial state
 			expect(session.metadata.procedure).toBeDefined();
@@ -71,48 +71,48 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			expect(session.metadata.procedure?.currentSubroutineIndex).toBe(0);
 
 			// Step 3: Execute coding-activity subroutine (manually simulated completion)
-			let currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			let currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("coding-activity");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
 			// Step 4: coding-activity completes, AgentSessionManager checks for next subroutine
-			let nextSubroutine = procedureRouter.getNextSubroutine(session);
+			let nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine).toBeDefined();
 			expect(nextSubroutine?.name).toBe("verifications");
 
 			// Step 5: AgentSessionManager advances to next subroutine
-			procedureRouter.advanceToNextSubroutine(session, "claude-123");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
 			expect(session.metadata.procedure?.currentSubroutineIndex).toBe(1);
 
 			// Step 6: Execute verifications subroutine
-			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("verifications");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
 			// Step 7: Verifications completes, advance to git-gh
-			nextSubroutine = procedureRouter.getNextSubroutine(session);
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("git-gh");
-			procedureRouter.advanceToNextSubroutine(session, "claude-123");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
 
 			// Step 8: Execute git-gh subroutine
-			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("git-gh");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
 			// Step 9: git-gh completes, advance to concise-summary (last subroutine)
-			nextSubroutine = procedureRouter.getNextSubroutine(session);
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("concise-summary");
-			procedureRouter.advanceToNextSubroutine(session, "claude-123");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
 
 			// Step 10: Execute concise-summary (with thought suppression!)
-			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("concise-summary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true); // Suppression active!
 
 			// Step 11: Check that we're at the last subroutine
-			nextSubroutine = procedureRouter.getNextSubroutine(session);
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine).toBeNull(); // No more subroutines
-			expect(procedureRouter.isProcedureComplete(session)).toBe(true);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true);
 
 			// Verify subroutine history (only 3 recorded because we're still AT concise-summary)
 			// History only records completed subroutines when advancing AWAY from them
@@ -152,35 +152,35 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(session, docEditProcedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, docEditProcedure);
 
 			// Step 3: Execute primary (no suppression)
-			let currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			let currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("primary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
 			// Step 4: Advance to git-gh (no suppression)
-			let nextSubroutine = procedureRouter.getNextSubroutine(session);
+			let nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("git-gh");
-			procedureRouter.advanceToNextSubroutine(session, "claude-456");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-456");
 
-			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("git-gh");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
 			// Step 5: Advance to concise-summary (WITH suppression)
-			nextSubroutine = procedureRouter.getNextSubroutine(session);
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("concise-summary");
-			procedureRouter.advanceToNextSubroutine(session, "claude-456");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-456");
 
-			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("concise-summary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true); // Suppression!
 
 			// Step 6: Procedure complete
-			nextSubroutine = procedureRouter.getNextSubroutine(session);
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine).toBeNull();
-			expect(procedureRouter.isProcedureComplete(session)).toBe(true);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true);
 		});
 
 		it("should handle simple-question procedure with minimal workflow", async () => {
@@ -206,29 +206,29 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				metadata: {},
 			};
 
-			procedureRouter.initializeProcedureMetadata(
+			procedureAnalyzer.initializeProcedureMetadata(
 				session,
 				simpleQuestionProcedure,
 			);
 
 			// Step 3: Execute question-investigation (no suppression)
-			let currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			let currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("question-investigation");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
 			// Step 4: Advance to question-answer (WITH suppression)
-			let nextSubroutine = procedureRouter.getNextSubroutine(session);
+			let nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("question-answer");
-			procedureRouter.advanceToNextSubroutine(session, "claude-789");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-789");
 
-			currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("question-answer");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
 
 			// Step 5: Procedure complete
-			nextSubroutine = procedureRouter.getNextSubroutine(session);
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine).toBeNull();
-			expect(procedureRouter.isProcedureComplete(session)).toBe(true);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true);
 		});
 	});
 
@@ -263,7 +263,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			agentSessionManager.sessions.set("session-suppress-1", session as any);
 
 			// Verify suppression is active
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("question-answer");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
 
@@ -297,7 +297,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				},
 			};
 
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("coding-activity");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 		});
@@ -325,11 +325,11 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			};
 
 			const procedure1 = PROCEDURES["full-development"];
-			procedureRouter.initializeProcedureMetadata(session1, procedure1);
+			procedureAnalyzer.initializeProcedureMetadata(session1, procedure1);
 
 			// Advance through some subroutines
-			procedureRouter.advanceToNextSubroutine(session1, "claude-1");
-			procedureRouter.advanceToNextSubroutine(session1, "claude-1");
+			procedureAnalyzer.advanceToNextSubroutine(session1, "claude-1");
+			procedureAnalyzer.advanceToNextSubroutine(session1, "claude-1");
 
 			expect(session1.metadata.procedure?.currentSubroutineIndex).toBe(2);
 			expect(session1.metadata.procedure?.subroutineHistory).toHaveLength(2);
@@ -354,7 +354,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			};
 
 			const procedure2 = PROCEDURES["simple-question"];
-			procedureRouter.initializeProcedureMetadata(session2, procedure2);
+			procedureAnalyzer.initializeProcedureMetadata(session2, procedure2);
 
 			// Verify session2 has fresh state
 			expect(session2.metadata.procedure?.procedureName).toBe(
@@ -417,7 +417,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			// Now simulate a new comment arriving (EdgeWorker would route this)
 			// In the new behavior, initializeProcedureMetadata is called again
 			const newProcedure = PROCEDURES["simple-question"];
-			procedureRouter.initializeProcedureMetadata(session, newProcedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, newProcedure);
 
 			// Verify procedure was reset to the new one
 			expect(session.metadata.procedure?.procedureName).toBe("simple-question");
@@ -450,12 +450,12 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			};
 
 			// Attempting to get current subroutine without initialization should return null
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine).toBeNull();
 
 			// Attempting to advance without initialization should throw
 			expect(() => {
-				procedureRouter.advanceToNextSubroutine(session, "claude-error");
+				procedureAnalyzer.advanceToNextSubroutine(session, "claude-error");
 			}).toThrow("Cannot advance: session has no procedure metadata");
 		});
 	});

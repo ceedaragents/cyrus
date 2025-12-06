@@ -23,7 +23,7 @@ import {
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
 } from "cyrus-core";
-import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
+import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
 /**
@@ -65,7 +65,7 @@ export class AgentSessionManager extends EventEmitter {
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
-	private procedureRouter?: ProcedureRouter;
+	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
@@ -82,14 +82,14 @@ export class AgentSessionManager extends EventEmitter {
 			prompt: string,
 			childSessionId: string,
 		) => Promise<void>,
-		procedureRouter?: ProcedureRouter,
+		procedureAnalyzer?: ProcedureAnalyzer,
 		sharedApplicationServer?: SharedApplicationServer,
 	) {
 		super();
 		this.issueTracker = issueTracker;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
-		this.procedureRouter = procedureRouter;
+		this.procedureAnalyzer = procedureAnalyzer;
 		this.sharedApplicationServer = sharedApplicationServer;
 	}
 
@@ -261,8 +261,8 @@ export class AgentSessionManager extends EventEmitter {
 		linearAgentActivitySessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
-		if (!this.procedureRouter) {
-			throw new Error("ProcedureRouter not available");
+		if (!this.procedureAnalyzer) {
+			throw new Error("ProcedureAnalyzer not available");
 		}
 
 		// Check if error occurred
@@ -283,12 +283,12 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		// Check if there's a next subroutine
-		const nextSubroutine = this.procedureRouter.getNextSubroutine(session);
+		const nextSubroutine = this.procedureAnalyzer.getNextSubroutine(session);
 
 		if (nextSubroutine) {
 			// More subroutines to run - check if current subroutine requires approval
 			const currentSubroutine =
-				this.procedureRouter.getCurrentSubroutine(session);
+				this.procedureAnalyzer.getCurrentSubroutine(session);
 
 			if (currentSubroutine?.requiresApproval) {
 				console.log(
@@ -399,7 +399,7 @@ export class AgentSessionManager extends EventEmitter {
 			console.log(
 				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
-			this.procedureRouter.advanceToNextSubroutine(session, sessionId);
+			this.procedureAnalyzer.advanceToNextSubroutine(session, sessionId);
 
 			// Emit event for EdgeWorker to handle subroutine transition
 			// This replaces the callback pattern and allows EdgeWorker to subscribe
@@ -980,7 +980,7 @@ export class AgentSessionManager extends EventEmitter {
 			// Check if current subroutine has suppressThoughtPosting enabled
 			// If so, suppress thoughts and actions (but still post responses and results)
 			const currentSubroutine =
-				this.procedureRouter?.getCurrentSubroutine(session);
+				this.procedureAnalyzer?.getCurrentSubroutine(session);
 			if (currentSubroutine?.suppressThoughtPosting) {
 				// Only suppress thoughts and actions, not responses or results
 				if (content.type === "thought" || content.type === "action") {
@@ -1505,7 +1505,7 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Post an ephemeral "Analyzing your request..." thought and return the activity ID
 	 */
-	async postRoutingThought(
+	async postAnalyzingThought(
 		linearAgentActivitySessionId: string,
 	): Promise<string | null> {
 		try {
@@ -1521,19 +1521,19 @@ export class AgentSessionManager extends EventEmitter {
 			if (result.success && result.agentActivity) {
 				const activity = await result.agentActivity;
 				console.log(
-					`[AgentSessionManager] Posted routing thought for session ${linearAgentActivitySessionId}`,
+					`[AgentSessionManager] Posted analyzing thought for session ${linearAgentActivitySessionId}`,
 				);
 				return activity.id;
 			} else {
 				console.error(
-					`[AgentSessionManager] Failed to post routing thought:`,
+					`[AgentSessionManager] Failed to post analyzing thought:`,
 					result,
 				);
 				return null;
 			}
 		} catch (error) {
 			console.error(
-				`[AgentSessionManager] Error posting routing thought:`,
+				`[AgentSessionManager] Error posting analyzing thought:`,
 				error,
 			);
 			return null;

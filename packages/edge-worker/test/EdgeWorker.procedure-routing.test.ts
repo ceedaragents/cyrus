@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProcedureRouter } from "../src/procedures/ProcedureRouter";
+import { ProcedureAnalyzer } from "../src/procedures/ProcedureAnalyzer";
 import { PROCEDURES, SUBROUTINES } from "../src/procedures/registry";
 
 describe("EdgeWorker - Procedure Routing", () => {
-	let procedureRouter: ProcedureRouter;
+	let procedureAnalyzer: ProcedureAnalyzer;
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
 
-		// Create a standalone ProcedureRouter for testing
-		procedureRouter = new ProcedureRouter({
+		// Create a standalone ProcedureAnalyzer for testing
+		procedureAnalyzer = new ProcedureAnalyzer({
 			cyrusHome: "/test/.cyrus",
 		});
 	});
@@ -22,26 +22,26 @@ describe("EdgeWorker - Procedure Routing", () => {
 			};
 
 			// Initialize procedure metadata
-			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
 
 			// Verify initial state
 			expect(session.metadata.procedure.procedureName).toBe("full-development");
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(0);
 
 			// Simulate completing primary subroutine
-			procedureRouter.advanceToNextSubroutine(session, null);
-			expect(procedureRouter.isProcedureComplete(session)).toBe(false); // Not complete yet
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false); // Not complete yet
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(1);
 
 			// Simulate completing verifications subroutine
-			procedureRouter.advanceToNextSubroutine(session, null);
-			expect(procedureRouter.isProcedureComplete(session)).toBe(false);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(2);
 
 			// Simulate completing git-gh subroutine - advances to last subroutine
-			procedureRouter.advanceToNextSubroutine(session, null);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(3);
-			expect(procedureRouter.isProcedureComplete(session)).toBe(true); // At last subroutine, no next
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true); // At last subroutine, no next
 		});
 
 		it("should execute all subroutines in sequence for documentation-edit procedure", async () => {
@@ -49,7 +49,7 @@ describe("EdgeWorker - Procedure Routing", () => {
 			const session = { metadata: {} } as any;
 
 			// Initialize procedure metadata
-			procedureRouter.initializeProcedureMetadata(session, docEditProcedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, docEditProcedure);
 
 			// Verify initial state
 			expect(session.metadata.procedure.procedureName).toBe(
@@ -58,14 +58,14 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(0);
 
 			// Complete primary
-			procedureRouter.advanceToNextSubroutine(session, null);
-			expect(procedureRouter.isProcedureComplete(session)).toBe(false);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(1);
 
 			// Complete git-gh - advances to last subroutine
-			procedureRouter.advanceToNextSubroutine(session, null);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(2);
-			expect(procedureRouter.isProcedureComplete(session)).toBe(true); // At last subroutine, no next
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true); // At last subroutine, no next
 		});
 
 		it("should execute all subroutines in sequence for simple-question procedure", async () => {
@@ -73,7 +73,7 @@ describe("EdgeWorker - Procedure Routing", () => {
 			const session = { metadata: {} } as any;
 
 			// Initialize procedure metadata
-			procedureRouter.initializeProcedureMetadata(
+			procedureAnalyzer.initializeProcedureMetadata(
 				session,
 				simpleQuestionProcedure,
 			);
@@ -83,39 +83,39 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(0);
 
 			// Complete primary - advances to last subroutine
-			procedureRouter.advanceToNextSubroutine(session, null);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(1);
-			expect(procedureRouter.isProcedureComplete(session)).toBe(true); // At last subroutine, no next
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true); // At last subroutine, no next
 		});
 
 		it("should get current subroutine correctly at each step", async () => {
 			const fullDevProcedure = PROCEDURES["full-development"];
 			const session = { metadata: {} } as any;
 
-			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
 
 			// Check each subroutine
-			expect(procedureRouter.getCurrentSubroutine(session)?.name).toBe(
+			expect(procedureAnalyzer.getCurrentSubroutine(session)?.name).toBe(
 				"coding-activity",
 			);
 
-			procedureRouter.advanceToNextSubroutine(session, null);
-			expect(procedureRouter.getCurrentSubroutine(session)?.name).toBe(
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.getCurrentSubroutine(session)?.name).toBe(
 				"verifications",
 			);
 
-			procedureRouter.advanceToNextSubroutine(session, null);
-			expect(procedureRouter.getCurrentSubroutine(session)?.name).toBe(
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.getCurrentSubroutine(session)?.name).toBe(
 				"git-gh",
 			);
 
-			procedureRouter.advanceToNextSubroutine(session, null);
-			expect(procedureRouter.getCurrentSubroutine(session)?.name).toBe(
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.getCurrentSubroutine(session)?.name).toBe(
 				"concise-summary",
 			);
 
-			procedureRouter.advanceToNextSubroutine(session, null);
-			expect(procedureRouter.getCurrentSubroutine(session)).toBeNull();
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.getCurrentSubroutine(session)).toBeNull();
 		});
 	});
 
@@ -145,16 +145,16 @@ describe("EdgeWorker - Procedure Routing", () => {
 			const simpleQuestionProcedure = PROCEDURES["simple-question"];
 
 			// Initialize with simple-question procedure (ends with question-answer)
-			procedureRouter.initializeProcedureMetadata(
+			procedureAnalyzer.initializeProcedureMetadata(
 				session,
 				simpleQuestionProcedure,
 			);
 
 			// Advance to question-answer subroutine
-			procedureRouter.advanceToNextSubroutine(session, null);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
 
 			// Get current subroutine
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 
 			expect(currentSubroutine?.name).toBe("question-answer");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
@@ -165,15 +165,15 @@ describe("EdgeWorker - Procedure Routing", () => {
 			const fullDevProcedure = PROCEDURES["full-development"];
 
 			// Initialize with full-development procedure (ends with concise-summary)
-			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
 
 			// Advance to concise-summary subroutine (skip 3 subroutines)
-			procedureRouter.advanceToNextSubroutine(session, null); // coding-activity -> verifications
-			procedureRouter.advanceToNextSubroutine(session, null); // verifications -> git-gh
-			procedureRouter.advanceToNextSubroutine(session, null); // git-gh -> concise-summary
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // coding-activity -> verifications
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // verifications -> git-gh
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // git-gh -> concise-summary
 
 			// Get current subroutine
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 
 			expect(currentSubroutine?.name).toBe("concise-summary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true);
@@ -183,9 +183,9 @@ describe("EdgeWorker - Procedure Routing", () => {
 			const session = { metadata: {} } as any;
 			const fullDevProcedure = PROCEDURES["full-development"];
 
-			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
 
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 
 			expect(currentSubroutine?.name).toBe("coding-activity");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
@@ -195,10 +195,10 @@ describe("EdgeWorker - Procedure Routing", () => {
 			const session = { metadata: {} } as any;
 			const fullDevProcedure = PROCEDURES["full-development"];
 
-			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
-			procedureRouter.advanceToNextSubroutine(session, null);
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
 
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 
 			expect(currentSubroutine?.name).toBe("verifications");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
@@ -208,11 +208,11 @@ describe("EdgeWorker - Procedure Routing", () => {
 			const session = { metadata: {} } as any;
 			const fullDevProcedure = PROCEDURES["full-development"];
 
-			procedureRouter.initializeProcedureMetadata(session, fullDevProcedure);
-			procedureRouter.advanceToNextSubroutine(session, null);
-			procedureRouter.advanceToNextSubroutine(session, null);
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
 
-			const currentSubroutine = procedureRouter.getCurrentSubroutine(session);
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 
 			expect(currentSubroutine?.name).toBe("git-gh");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
