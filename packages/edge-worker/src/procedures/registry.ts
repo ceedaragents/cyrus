@@ -106,7 +106,7 @@ export const SUBROUTINES = {
 		promptPath: "subroutines/omnipotent-observation.md",
 		description:
 			"Observe and analyze all active Cyrus agents and worktrees (read-only)",
-		disallowedTools: ["Edit(**)", "Bash", "NotebookEdit"], // Strictly read-only
+		disallowedTools: ["Edit(**)", "NotebookEdit"], // Read-only, but Bash allowed for ls
 	},
 	omnipotentSummary: {
 		name: "omnipotent-summary",
@@ -114,12 +114,7 @@ export const SUBROUTINES = {
 		singleTurn: true,
 		description: "Summary of active agent status and observations",
 		suppressThoughtPosting: true,
-		disallowedTools: [
-			"mcp__linear__create_comment",
-			"Edit(**)",
-			"Bash",
-			"NotebookEdit",
-		],
+		disallowedTools: ["Edit(**)", "NotebookEdit"], // Can post comments, Bash allowed for ls
 	},
 } as const;
 
