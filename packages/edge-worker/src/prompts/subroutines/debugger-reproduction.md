@@ -62,6 +62,18 @@ Example: "Reproduction complete - root cause identified in session expiry logic 
 - ✅ **DO provide detailed root cause analysis**
 - ✅ **DO use TodoWrite for tracking reproduction/analysis tasks** if helpful (e.g., "Investigate error X", "Create test for Y")
 
+## User Elicitation
+
+**IMPORTANT: If you have a blocking question, use the `mcp__cyrus-tools__linear_user_elicitation` tool.**
+
+Use this tool when you:
+- Need additional context about the bug reproduction steps
+- Have multiple possible root causes and need the user to confirm which one to investigate
+- Can't reproduce the bug and need more information
+- Need approval before creating a potentially disruptive test case
+
+**DO NOT** simply state "Would you like me to..." or "Should I..." in your response. Instead, use the elicitation tool to present options and pause for user input.
+
 ## What Happens Next
 
 After you present your findings:
