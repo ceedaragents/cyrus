@@ -90,6 +90,12 @@ export interface CyrusToolsOptions {
 	 * The ID of the current parent session (if any)
 	 */
 	parentSessionId?: string;
+
+	/**
+	 * Callback triggered when a user elicitation is posted
+	 * The EdgeWorker should use this to stop the Claude session and wait for user response
+	 */
+	onElicitationPosted?: (agentSessionId: string, activityId: string) => void;
 }
 
 /**
@@ -1048,6 +1054,144 @@ export function createCyrusToolsServer(
 		},
 	);
 
+	const userElicitationTool = tool(
+		"linear_user_elicitation",
+		"Present the user with a question and options to select from in Linear. This triggers an elicitation signal that pauses the session until the user responds. Use this for yes/no questions, multiple choice selections, or any decision that requires user input.",
+		{
+			agentSessionId: z
+				.string()
+				.describe(
+					"The ID of the agent session to post the elicitation to (UUID)",
+				),
+			question: z
+				.string()
+				.describe("The question or prompt to display to the user"),
+			options: z
+				.array(
+					z.object({
+						value: z
+							.string()
+							.describe(
+								"The option value (this is what gets returned when user selects it). For URLs (especially GitHub URLs), Linear will automatically display them with appropriate icons.",
+							),
+						label: z
+							.string()
+							.optional()
+							.describe(
+								"Optional display label for the option. If not provided, the value will be shown.",
+							),
+					}),
+				)
+				.min(1)
+				.describe(
+					"Array of options for the user to choose from. Each option must have a value, and can optionally have a label.",
+				),
+		},
+		async ({ agentSessionId, question, options: elicitationOptions }) => {
+			try {
+				console.log(
+					`[CyrusTools] Posting user elicitation for session ${agentSessionId}`,
+				);
+				console.log(`[CyrusTools] Question: ${question}`);
+				console.log(
+					`[CyrusTools] Options: ${JSON.stringify(elicitationOptions)}`,
+				);
+
+				// Build the signal metadata with options
+				const signalMetadata = {
+					options: elicitationOptions.map((opt) => ({
+						value: opt.value,
+						...(opt.label && { label: opt.label }),
+					})),
+				};
+
+				// Post the elicitation activity with select signal
+				const mutation = `
+					mutation CreateAgentActivity($agentSessionId: String!, $content: JSONObject!, $signal: String, $signalMetadata: JSONObject) {
+						agentActivityCreate(agentSessionId: $agentSessionId, content: $content, signal: $signal, signalMetadata: $signalMetadata) {
+							success
+							agentActivity {
+								id
+							}
+						}
+					}
+				`;
+
+				const response = await linearClient.client.rawRequest(mutation, {
+					agentSessionId,
+					content: {
+						type: "elicitation",
+						body: question,
+					},
+					signal: "select",
+					signalMetadata,
+				});
+
+				const result = response.data as {
+					agentActivityCreate: {
+						success: boolean;
+						agentActivity?: { id: string };
+					};
+				};
+
+				if (!result.agentActivityCreate?.success) {
+					console.error(`[CyrusTools] Failed to post elicitation:`, result);
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: "Failed to post elicitation to Linear",
+								}),
+							},
+						],
+					};
+				}
+
+				const activityId = result.agentActivityCreate.agentActivity?.id;
+				console.log(
+					`[CyrusTools] User elicitation posted successfully: ${activityId}`,
+				);
+
+				// Trigger the callback to notify the EdgeWorker to stop the runner
+				if (options.onElicitationPosted && activityId) {
+					console.log(
+						`[CyrusTools] Triggering onElicitationPosted callback for session ${agentSessionId}`,
+					);
+					options.onElicitationPosted(agentSessionId, activityId);
+				}
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: true,
+								message:
+									"Elicitation posted successfully. The session will pause until the user responds.",
+								activityId,
+							}),
+						},
+					],
+				};
+			} catch (error) {
+				console.error(`[CyrusTools] Error posting elicitation:`, error);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
 	return createSdkMcpServer({
 		name: "cyrus-tools",
 		version: "1.0.0",
@@ -1060,6 +1204,7 @@ export function createCyrusToolsServer(
 			getChildIssuesTool,
 			getAgentSessionsTool,
 			getAgentSessionTool,
+			userElicitationTool,
 		],
 	});
 }
