@@ -25,6 +25,7 @@ You have access to:
 - `Read` - Read files from any worktree
 - `Glob` - Find files across worktrees
 - `Grep` - Search for content across worktrees
+- `Bash` - **Read-only commands only**: `ls`, `git status`, `git log`, `git diff`, etc.
 - `WebFetch` / `WebSearch` - Gather external information
 - `TodoRead` / `TodoWrite` - Track your own investigation progress
 - `Task` - Spawn sub-agents for complex research
@@ -32,8 +33,12 @@ You have access to:
 
 You explicitly DO NOT have access to:
 - `Edit` - No file editing
-- `Bash` - No shell commands (prevents sed, awk, etc. workarounds)
 - `NotebookEdit` - No notebook editing
+
+**CRITICAL**: While you have Bash access, you MUST NOT use it for:
+- File modification (`sed -i`, `echo >`, `cat >`, `mv`, `rm`, etc.)
+- Git writes (`git commit`, `git push`, `git checkout`, etc.)
+- Any command that changes state
 
 ## Primary Responsibilities
 
