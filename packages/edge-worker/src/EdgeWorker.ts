@@ -47,7 +47,6 @@ import type {
 	WebhookIssue,
 } from "cyrus-core";
 import {
-	AgentSessionStatus,
 	CLIIssueTrackerService,
 	CLIRPCServer,
 	CyrusSessionStatus,
@@ -1764,16 +1763,11 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Transition to Stopped state after runner has stopped
+		// Note: transitionSessionState updates both cyrusStatus and the Linear status
+		// The Linear status will be set to Stale (for stopped sessions) by toLinearStatus()
 		foundManager.transitionSessionState(
 			agentSessionId,
 			SessionEvent.RunnerStopped,
-		);
-
-		// Update session status to Complete (session was stopped, not errored)
-		// This ensures the session is no longer considered "active" or "busy"
-		await foundManager.updateSessionStatus(
-			agentSessionId,
-			AgentSessionStatus.Complete,
 		);
 
 		// Post confirmation

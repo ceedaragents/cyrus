@@ -256,16 +256,61 @@ export class AgentSessionManager extends EventEmitter {
 		// Note: We should ideally track by session, but for now clearing all is safer
 		// to prevent memory leaks
 
-		const status =
-			resultMessage.subtype === "success"
-				? AgentSessionStatus.Complete
-				: AgentSessionStatus.Error;
-
-		// Update session status and metadata
-		await this.updateSessionStatus(linearAgentActivitySessionId, status, {
+		// Use proper state machine transitions for completion
+		const metadata = {
 			totalCostUsd: resultMessage.total_cost_usd,
 			usage: resultMessage.usage,
-		});
+		};
+
+		if (resultMessage.subtype === "success") {
+			// Step 1: ResultReceived (Running -> Completing)
+			const resultSuccess = this.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.ResultReceived,
+				metadata,
+			);
+
+			if (resultSuccess) {
+				// Step 2: CleanupComplete (Completing -> Completed)
+				this.transitionSessionState(
+					linearAgentActivitySessionId,
+					SessionEvent.CleanupComplete,
+				);
+			} else {
+				// Fallback: If ResultReceived failed (e.g., session not in Running state),
+				// try to directly complete by forcing the state. This handles edge cases
+				// where session state got out of sync.
+				console.warn(
+					`[AgentSessionManager] ResultReceived transition failed for ${linearAgentActivitySessionId}, current state: ${session.cyrusStatus}. Forcing completion.`,
+				);
+				session.stateMachine?.forceSetState(CyrusSessionStatus.Completed);
+				session.cyrusStatus = CyrusSessionStatus.Completed;
+				session.status = toLinearStatus(CyrusSessionStatus.Completed);
+				session.metadata = { ...session.metadata, ...metadata };
+				session.updatedAt = Date.now();
+				this.sessions.set(linearAgentActivitySessionId, session);
+			}
+		} else {
+			// Error result - transition to Failed state
+			const errorSuccess = this.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.Error,
+				metadata,
+			);
+
+			if (!errorSuccess) {
+				// Fallback: Force to Failed state if transition fails
+				console.warn(
+					`[AgentSessionManager] Error transition failed for ${linearAgentActivitySessionId}, current state: ${session.cyrusStatus}. Forcing failed state.`,
+				);
+				session.stateMachine?.forceSetState(CyrusSessionStatus.Failed);
+				session.cyrusStatus = CyrusSessionStatus.Failed;
+				session.status = toLinearStatus(CyrusSessionStatus.Failed);
+				session.metadata = { ...session.metadata, ...metadata };
+				session.updatedAt = Date.now();
+				this.sessions.set(linearAgentActivitySessionId, session);
+			}
+		}
 
 		// Handle result using procedure routing system
 		if ("result" in resultMessage && resultMessage.result) {
