@@ -1337,13 +1337,22 @@ export class AgentSessionManager extends EventEmitter {
 
 	/**
 	 * Check if any session in this manager is busy
+	 * A session is busy if:
+	 * - It's in Created state (will soon start processing), OR
+	 * - It's Active and the runner is currently running
 	 */
 	isBusy(): boolean {
-		return Array.from(this.sessions.values()).some(
-			(session) =>
+		return Array.from(this.sessions.values()).some((session) => {
+			// A session in Created state is busy because it will soon start processing
+			if (session.cyrusStatus === CyrusSessionStatus.Created) {
+				return true;
+			}
+			// Otherwise check if the session is active and running
+			return (
 				session.status === AgentSessionStatus.Active &&
-				(session.agentRunner?.isRunning() ?? false),
-		);
+				(session.agentRunner?.isRunning() ?? false)
+			);
+		});
 	}
 
 	/**
@@ -1365,10 +1374,14 @@ export class AgentSessionManager extends EventEmitter {
 		}>;
 	} {
 		const allSessions = Array.from(this.sessions.values());
+		// Count sessions as active if:
+		// - They're in Created state (will soon start processing), OR
+		// - They're Active and the runner is currently running
 		const activeSessions = allSessions.filter(
 			(session) =>
-				session.status === AgentSessionStatus.Active &&
-				(session.agentRunner?.isRunning() ?? false),
+				session.cyrusStatus === CyrusSessionStatus.Created ||
+				(session.status === AgentSessionStatus.Active &&
+					(session.agentRunner?.isRunning() ?? false)),
 		);
 
 		return {
