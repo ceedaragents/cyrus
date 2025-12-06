@@ -3996,6 +3996,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					);
 					return true;
 				},
+				onElicitationPosted: (agentSessionId, activityId) => {
+					console.log(
+						`[EdgeWorker] User elicitation posted for session ${agentSessionId}, activity ${activityId}`,
+					);
+					// Find and stop the runner for this session
+					for (const manager of this.agentSessionManagers.values()) {
+						const runner = manager.getAgentRunner(agentSessionId);
+						if (runner) {
+							console.log(
+								`[EdgeWorker] Stopping runner for elicitation - session ${agentSessionId}`,
+							);
+							runner.stop();
+							break;
+						}
+					}
+				},
 			}),
 		};
 

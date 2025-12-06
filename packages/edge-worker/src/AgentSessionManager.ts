@@ -779,6 +779,15 @@ export class AgentSessionManager extends EventEmitter {
 								return;
 							}
 
+							// Skip creating activity for linear_user_elicitation results since the elicitation was already posted
+							// by the tool itself with the proper select signal
+							if (
+								toolName === "mcp__cyrus-tools__linear_user_elicitation" ||
+								toolName === "↪ mcp__cyrus-tools__linear_user_elicitation"
+							) {
+								return;
+							}
+
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
@@ -865,6 +874,12 @@ export class AgentSessionManager extends EventEmitter {
 							};
 							// TodoWrite/write_todos is not ephemeral
 							ephemeral = false;
+						} else if (
+							toolName === "mcp__cyrus-tools__linear_user_elicitation"
+						) {
+							// Skip creating action activity for linear_user_elicitation tool calls
+							// The elicitation is posted directly by the tool itself with the proper select signal
+							return;
 						} else if (toolName === "Task") {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
