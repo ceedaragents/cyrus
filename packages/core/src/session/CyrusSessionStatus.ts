@@ -66,6 +66,7 @@ export function isTerminalStatus(status: CyrusSessionStatus): boolean {
  */
 export function isActiveStatus(status: CyrusSessionStatus): boolean {
 	return (
+		status === CyrusSessionStatus.Created ||
 		status === CyrusSessionStatus.Starting ||
 		status === CyrusSessionStatus.Running ||
 		status === CyrusSessionStatus.Completing
