@@ -86,6 +86,18 @@ After you complete the fix:
 
 Your fix should be **production-ready** and **thoroughly tested** at this point.
 
+## User Elicitation
+
+**IMPORTANT: If you have a blocking question, use the `mcp__cyrus-tools__linear_user_elicitation` tool.**
+
+Use this tool when you:
+- Have multiple valid fix approaches and need the user to choose
+- The fix might have unintended side effects that need user approval
+- Need clarification on acceptance criteria for the fix
+- Encounter constraints that require user decision (e.g., performance vs. correctness tradeoff)
+
+**DO NOT** simply state "Would you like me to..." or "Should I..." in your response. Instead, use the elicitation tool to present options and pause for user input.
+
 ## Remember
 
 You're implementing a fix based on a clear root cause analysis. Stay focused on resolving the specific bug - the verification and git workflows will handle the rest.

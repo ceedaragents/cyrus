@@ -86,6 +86,8 @@ When you complete this subroutine:
 3. The user clicks the button to approve (or provides feedback in Linear)
 4. The workflow resumes with the next subroutine (or stays here if feedback given)
 
+**Alternative**: You can also use the `mcp__cyrus-tools__linear_user_elicitation` tool directly to present approval options to the user. This tool allows you to present a question with selectable options and automatically pauses the session until the user responds.
+
 ## Context Variables
 
 The system will provide context about what approval is being requested for based on the procedure configuration. Use that context to tailor your approval request appropriately.
