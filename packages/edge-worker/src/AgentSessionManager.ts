@@ -517,6 +517,15 @@ export class AgentSessionManager extends EventEmitter {
 							message,
 						);
 
+						// Transition to Running state - the runner has now actually started
+						// This is the correct place to transition because:
+						// 1. The init message is the first message from the runner
+						// 2. runner.start()/startStreaming() don't return until session completes
+						this.transitionSessionState(
+							linearAgentActivitySessionId,
+							SessionEvent.RunnerInitialized,
+						);
+
 						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
 						if (systemMessage.model) {

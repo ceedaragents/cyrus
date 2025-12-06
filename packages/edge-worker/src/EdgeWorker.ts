@@ -1686,27 +1686,22 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Start session - use streaming mode if supported for ability to add messages later
+			// Note: start()/startStreaming() don't return until the session completes.
+			// The transition to Running state happens in AgentSessionManager.handleClaudeMessage()
+			// when the first 'init' system message is received.
 			if (runner.supportsStreamingInput && runner.startStreaming) {
 				console.log(`[EdgeWorker] Starting streaming session`);
 				const sessionInfo = await runner.startStreaming(assembly.userPrompt);
 				console.log(
-					`[EdgeWorker] Streaming session started: ${sessionInfo.sessionId}`,
+					`[EdgeWorker] Streaming session completed: ${sessionInfo.sessionId}`,
 				);
 			} else {
 				console.log(`[EdgeWorker] Starting non-streaming session`);
 				const sessionInfo = await runner.start(assembly.userPrompt);
 				console.log(
-					`[EdgeWorker] Non-streaming session started: ${sessionInfo.sessionId}`,
+					`[EdgeWorker] Non-streaming session completed: ${sessionInfo.sessionId}`,
 				);
 			}
-
-			// Transition to Running state (runner is now active)
-			agentSessionManager.transitionSessionState(
-				linearAgentActivitySessionId,
-				SessionEvent.RunnerInitialized,
-			);
-			// Note: AgentSessionManager will be initialized automatically when the first system message
-			// is received via handleClaudeMessage() callback
 		} catch (error) {
 			console.error(`[EdgeWorker] Error in prompt building/starting:`, error);
 			throw error;
