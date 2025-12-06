@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 - Added CLI platform mode support to enable in-memory issue tracking for testing and development ([CYPACK-509](https://linear.app/ceedar/issue/CYPACK-509))
 - **Graphite workflow support** - Cyrus now integrates with Graphite CLI for stacked PR workflows. Apply a "graphite" label to any issue to enable Graphite-aware behavior: sub-issues automatically branch from their blocking issue's branch (based on Linear's "blocked by" relationships) instead of main, and PRs are created using `gt submit`. For orchestrating complex multi-part features, apply both "graphite" and "orchestrator" labels - the orchestrator will create dependent sub-issues with proper blocking relationships that automatically stack in Graphite's dashboard. ([CYPACK-466](https://linear.app/ceedar/issue/CYPACK-466), [#577](https://github.com/ceedaragents/cyrus/pull/577))
 
+### Changed
+- Verified compatibility with latest @anthropic-ai/claude-agent-sdk v0.1.60 and @anthropic-ai/sdk v0.71.2 - no updates needed as packages are already on latest versions ([CYPACK-540](https://linear.app/ceedar/issue/CYPACK-540))
+
 ## [0.2.5] - 2025-12-03
 
 ### Fixed
