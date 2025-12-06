@@ -16,11 +16,15 @@ import {
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
+	CyrusSessionStatus,
 	type IAgentRunner,
 	type IIssueTrackerService,
 	type IssueMinimal,
 	type SerializedCyrusAgentSession,
 	type SerializedCyrusAgentSessionEntry,
+	SessionEvent,
+	SessionStateMachine,
+	toLinearStatus,
 	type Workspace,
 } from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
@@ -107,10 +111,15 @@ export class AgentSessionManager extends EventEmitter {
 			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
 		);
 
+		// Create state machine for managing session lifecycle
+		const stateMachine = new SessionStateMachine(linearAgentActivitySessionId);
+
 		const agentSession: CyrusAgentSession = {
 			linearAgentActivitySessionId,
 			type: AgentSessionType.CommentThread,
-			status: AgentSessionStatus.Active,
+			status: AgentSessionStatus.Active, // Keep for backwards compatibility
+			cyrusStatus: CyrusSessionStatus.Created, // New fine-grained status
+			stateMachine, // Attach state machine for transition validation
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
@@ -225,6 +234,21 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
+		// Check if session is being stopped - if so, ignore error results
+		// This prevents race conditions where the runner emits an error result
+		// during stop signal processing, which would incorrectly transition to Failed
+		const isBeingStopped =
+			session.cyrusStatus === CyrusSessionStatus.Stopping ||
+			session.cyrusStatus === CyrusSessionStatus.Stopped;
+
+		if (isBeingStopped) {
+			console.log(
+				`[AgentSessionManager] Session ${linearAgentActivitySessionId} is being stopped (status: ${session.cyrusStatus}), ignoring result message`,
+			);
+			// Don't update status - handleStopSignal will set the correct final status
+			return;
+		}
+
 		// Clear any active Task when session completes
 		this.activeTasksBySession.delete(linearAgentActivitySessionId);
 
@@ -232,16 +256,61 @@ export class AgentSessionManager extends EventEmitter {
 		// Note: We should ideally track by session, but for now clearing all is safer
 		// to prevent memory leaks
 
-		const status =
-			resultMessage.subtype === "success"
-				? AgentSessionStatus.Complete
-				: AgentSessionStatus.Error;
-
-		// Update session status and metadata
-		await this.updateSessionStatus(linearAgentActivitySessionId, status, {
+		// Use proper state machine transitions for completion
+		const metadata = {
 			totalCostUsd: resultMessage.total_cost_usd,
 			usage: resultMessage.usage,
-		});
+		};
+
+		if (resultMessage.subtype === "success") {
+			// Step 1: ResultReceived (Running -> Completing)
+			const resultSuccess = this.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.ResultReceived,
+				metadata,
+			);
+
+			if (resultSuccess) {
+				// Step 2: CleanupComplete (Completing -> Completed)
+				this.transitionSessionState(
+					linearAgentActivitySessionId,
+					SessionEvent.CleanupComplete,
+				);
+			} else {
+				// Fallback: If ResultReceived failed (e.g., session not in Running state),
+				// try to directly complete by forcing the state. This handles edge cases
+				// where session state got out of sync.
+				console.warn(
+					`[AgentSessionManager] ResultReceived transition failed for ${linearAgentActivitySessionId}, current state: ${session.cyrusStatus}. Forcing completion.`,
+				);
+				session.stateMachine?.forceSetState(CyrusSessionStatus.Completed);
+				session.cyrusStatus = CyrusSessionStatus.Completed;
+				session.status = toLinearStatus(CyrusSessionStatus.Completed);
+				session.metadata = { ...session.metadata, ...metadata };
+				session.updatedAt = Date.now();
+				this.sessions.set(linearAgentActivitySessionId, session);
+			}
+		} else {
+			// Error result - transition to Failed state
+			const errorSuccess = this.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.Error,
+				metadata,
+			);
+
+			if (!errorSuccess) {
+				// Fallback: Force to Failed state if transition fails
+				console.warn(
+					`[AgentSessionManager] Error transition failed for ${linearAgentActivitySessionId}, current state: ${session.cyrusStatus}. Forcing failed state.`,
+				);
+				session.stateMachine?.forceSetState(CyrusSessionStatus.Failed);
+				session.cyrusStatus = CyrusSessionStatus.Failed;
+				session.status = toLinearStatus(CyrusSessionStatus.Failed);
+				session.metadata = { ...session.metadata, ...metadata };
+				session.updatedAt = Date.now();
+				this.sessions.set(linearAgentActivitySessionId, session);
+			}
+		}
 
 		// Handle result using procedure routing system
 		if ("result" in resultMessage && resultMessage.result) {
@@ -493,6 +562,15 @@ export class AgentSessionManager extends EventEmitter {
 							message,
 						);
 
+						// Transition to Running state - the runner has now actually started
+						// This is the correct place to transition because:
+						// 1. The init message is the first message from the runner
+						// 2. runner.start()/startStreaming() don't return until session completes
+						this.transitionSessionState(
+							linearAgentActivitySessionId,
+							SessionEvent.RunnerInitialized,
+						);
+
 						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
 						if (systemMessage.model) {
@@ -545,18 +623,29 @@ export class AgentSessionManager extends EventEmitter {
 			}
 		} catch (error) {
 			console.error(`[AgentSessionManager] Error handling message:`, error);
-			// Mark session as error state
-			await this.updateSessionStatus(
-				linearAgentActivitySessionId,
-				AgentSessionStatus.Error,
-			);
+
+			// Don't mark as error if session is being stopped - errors during stop are expected
+			const session = this.sessions.get(linearAgentActivitySessionId);
+			const isBeingStopped =
+				session?.cyrusStatus === CyrusSessionStatus.Stopping ||
+				session?.cyrusStatus === CyrusSessionStatus.Stopped;
+
+			if (!isBeingStopped) {
+				// Mark session as error state
+				await this.updateSessionStatus(
+					linearAgentActivitySessionId,
+					AgentSessionStatus.Error,
+				);
+			}
 		}
 	}
 
 	/**
 	 * Update session status and metadata
+	 * Public to allow EdgeWorker to update status on stop signals
+	 * @deprecated Use transitionSessionState for state machine based transitions
 	 */
-	private async updateSessionStatus(
+	async updateSessionStatus(
 		linearAgentActivitySessionId: string,
 		status: AgentSessionStatus,
 		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
@@ -564,14 +653,112 @@ export class AgentSessionManager extends EventEmitter {
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		if (!session) return;
 
+		const previousStatus = session.status;
 		session.status = status;
 		session.updatedAt = Date.now();
+
+		// Also update cyrusStatus if we have a state machine
+		// This maintains consistency between old and new status systems
+		if (session.stateMachine) {
+			// Map Linear status to the appropriate event
+			const event = this.linearStatusToEvent(status, previousStatus);
+			if (event) {
+				session.stateMachine.transition(event);
+				session.cyrusStatus = session.stateMachine.getStatus();
+			}
+		}
 
 		if (additionalMetadata) {
 			session.metadata = { ...session.metadata, ...additionalMetadata };
 		}
 
 		this.sessions.set(linearAgentActivitySessionId, session);
+
+		// Log status transitions for debugging
+		if (previousStatus !== status) {
+			console.log(
+				`[AgentSessionManager] Session ${linearAgentActivitySessionId} status: ${previousStatus} -> ${status}`,
+			);
+		}
+	}
+
+	/**
+	 * Transition session state using the state machine
+	 * This is the preferred method for state transitions
+	 */
+	transitionSessionState(
+		linearAgentActivitySessionId: string,
+		event: SessionEvent,
+		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
+	): boolean {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) {
+			console.warn(
+				`[AgentSessionManager] No session found for ${linearAgentActivitySessionId}`,
+			);
+			return false;
+		}
+
+		if (!session.stateMachine) {
+			// Fallback: create state machine if it doesn't exist (for backwards compatibility)
+			session.stateMachine = new SessionStateMachine(
+				linearAgentActivitySessionId,
+				session.cyrusStatus || CyrusSessionStatus.Created,
+			);
+		}
+
+		const result = session.stateMachine.transition(event);
+
+		if (result.success) {
+			// Update both status fields for consistency
+			session.cyrusStatus = result.newState;
+			session.status = toLinearStatus(result.newState);
+			session.updatedAt = Date.now();
+
+			if (additionalMetadata) {
+				session.metadata = { ...session.metadata, ...additionalMetadata };
+			}
+
+			this.sessions.set(linearAgentActivitySessionId, session);
+		}
+
+		return result.success;
+	}
+
+	/**
+	 * Get the current CyrusSessionStatus for a session
+	 */
+	getCyrusSessionStatus(
+		linearAgentActivitySessionId: string,
+	): CyrusSessionStatus | undefined {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		return session?.cyrusStatus;
+	}
+
+	/**
+	 * Map Linear AgentSessionStatus to SessionEvent
+	 * Used for backwards compatibility when updateSessionStatus is called
+	 */
+	private linearStatusToEvent(
+		newStatus: AgentSessionStatus,
+		previousStatus: AgentSessionStatus,
+	): SessionEvent | null {
+		// Map transitions based on the Linear status change
+		if (newStatus === AgentSessionStatus.Complete) {
+			return SessionEvent.CleanupComplete;
+		}
+		if (newStatus === AgentSessionStatus.Error) {
+			return SessionEvent.Error;
+		}
+		if (
+			newStatus === AgentSessionStatus.Stale &&
+			previousStatus === AgentSessionStatus.Active
+		) {
+			// Session was stopped
+			return SessionEvent.RunnerStopped;
+		}
+		// For other transitions, return null as they may not map cleanly
+		return null;
 	}
 
 	/**
@@ -1130,6 +1317,87 @@ export class AgentSessionManager extends EventEmitter {
 	hasAgentRunner(linearAgentActivitySessionId: string): boolean {
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		return session?.agentRunner !== undefined;
+	}
+
+	/**
+	 * Check if a specific session is busy (actively running)
+	 * A session is busy if both:
+	 * 1. Its status is Active
+	 * 2. Its runner is currently running
+	 */
+	isSessionBusy(linearAgentActivitySessionId: string): boolean {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) return false;
+
+		return (
+			session.status === AgentSessionStatus.Active &&
+			(session.agentRunner?.isRunning() ?? false)
+		);
+	}
+
+	/**
+	 * Check if any session in this manager is busy
+	 * A session is busy if:
+	 * - It's in Created state (will soon start processing), OR
+	 * - It's Active and the runner is currently running
+	 */
+	isBusy(): boolean {
+		return Array.from(this.sessions.values()).some((session) => {
+			// A session in Created state is busy because it will soon start processing
+			if (session.cyrusStatus === CyrusSessionStatus.Created) {
+				return true;
+			}
+			// Otherwise check if the session is active and running
+			return (
+				session.status === AgentSessionStatus.Active &&
+				(session.agentRunner?.isRunning() ?? false)
+			);
+		});
+	}
+
+	/**
+	 * Get the current status of this manager
+	 * Returns busy/idle status along with session counts
+	 */
+	getStatus(): {
+		status: "idle" | "busy";
+		activeSessions: number;
+		totalSessions: number;
+		sessions: Array<{
+			id: string;
+			issueId: string;
+			issueIdentifier: string;
+			status: AgentSessionStatus;
+			cyrusStatus?: CyrusSessionStatus;
+			isRunning: boolean;
+			startedAt: number;
+		}>;
+	} {
+		const allSessions = Array.from(this.sessions.values());
+		// Count sessions as active if:
+		// - They're in Created state (will soon start processing), OR
+		// - They're Active and the runner is currently running
+		const activeSessions = allSessions.filter(
+			(session) =>
+				session.cyrusStatus === CyrusSessionStatus.Created ||
+				(session.status === AgentSessionStatus.Active &&
+					(session.agentRunner?.isRunning() ?? false)),
+		);
+
+		return {
+			status: activeSessions.length > 0 ? "busy" : "idle",
+			activeSessions: activeSessions.length,
+			totalSessions: allSessions.length,
+			sessions: allSessions.map((session) => ({
+				id: session.linearAgentActivitySessionId,
+				issueId: session.issueId,
+				issueIdentifier: session.issue.identifier,
+				status: session.status,
+				cyrusStatus: session.cyrusStatus,
+				isRunning: session.agentRunner?.isRunning() ?? false,
+				startedAt: session.createdAt,
+			})),
+		};
 	}
 
 	/**

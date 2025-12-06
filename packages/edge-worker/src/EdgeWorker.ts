@@ -49,6 +49,7 @@ import type {
 import {
 	CLIIssueTrackerService,
 	CLIRPCServer,
+	CyrusSessionStatus,
 	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
@@ -58,6 +59,7 @@ import {
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 	resolvePath,
+	SessionEvent,
 } from "cyrus-core";
 import { GeminiRunner } from "cyrus-gemini-runner";
 import {
@@ -415,6 +417,11 @@ export class EdgeWorker extends EventEmitter {
 		console.log("   Routes: /api/update/cyrus-config, /api/update/cyrus-env,");
 		console.log(
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
+
+		// 3. Register /status endpoint
+		this.sharedApplicationServer.registerStatusEndpoint(() =>
+			this.getAggregatedStatus(),
 		);
 	}
 
@@ -1644,6 +1651,12 @@ export class EdgeWorker extends EventEmitter {
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
 
+			// Transition to Starting state (runner is being initialized)
+			agentSessionManager.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.InitializeRunner,
+			);
+
 			// Save state after mapping changes
 			await this.savePersistedState();
 
@@ -1673,21 +1686,22 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Start session - use streaming mode if supported for ability to add messages later
+			// Note: start()/startStreaming() don't return until the session completes.
+			// The transition to Running state happens in AgentSessionManager.handleClaudeMessage()
+			// when the first 'init' system message is received.
 			if (runner.supportsStreamingInput && runner.startStreaming) {
 				console.log(`[EdgeWorker] Starting streaming session`);
 				const sessionInfo = await runner.startStreaming(assembly.userPrompt);
 				console.log(
-					`[EdgeWorker] Streaming session started: ${sessionInfo.sessionId}`,
+					`[EdgeWorker] Streaming session completed: ${sessionInfo.sessionId}`,
 				);
 			} else {
 				console.log(`[EdgeWorker] Starting non-streaming session`);
 				const sessionInfo = await runner.start(assembly.userPrompt);
 				console.log(
-					`[EdgeWorker] Non-streaming session started: ${sessionInfo.sessionId}`,
+					`[EdgeWorker] Non-streaming session completed: ${sessionInfo.sessionId}`,
 				);
 			}
-			// Note: AgentSessionManager will be initialized automatically when the first system message
-			// is received via handleClaudeMessage() callback
 		} catch (error) {
 			console.error(`[EdgeWorker] Error in prompt building/starting:`, error);
 			throw error;
@@ -1733,6 +1747,12 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Transition to Stopping state before stopping the runner
+		foundManager.transitionSessionState(
+			agentSessionId,
+			SessionEvent.StopSignal,
+		);
+
 		// Stop the existing runner if it's active
 		const existingRunner = foundSession.agentRunner;
 		if (existingRunner) {
@@ -1741,6 +1761,14 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Stopped agent session for agent activity session ${agentSessionId}`,
 			);
 		}
+
+		// Transition to Stopped state after runner has stopped
+		// Note: transitionSessionState updates both cyrusStatus and the Linear status
+		// The Linear status will be set to Stale (for stopped sessions) by toLinearStatus()
+		foundManager.transitionSessionState(
+			agentSessionId,
+			SessionEvent.RunnerStopped,
+		);
 
 		// Post confirmation
 		const issueTitle = issue?.title || "this issue";
@@ -5209,6 +5237,29 @@ ${input.userComment}
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
 
+		// Transition state machine based on current state
+		// - If session is Stopped/Completed/Failed, use Resume to go to Starting
+		// - Otherwise use InitializeRunner to go to Starting (for Created or other states)
+		const currentStatus = agentSessionManager.getCyrusSessionStatus(
+			linearAgentActivitySessionId,
+		);
+		const isResumableState =
+			currentStatus === CyrusSessionStatus.Stopped ||
+			currentStatus === CyrusSessionStatus.Completed ||
+			currentStatus === CyrusSessionStatus.Failed;
+
+		if (isResumableState) {
+			agentSessionManager.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.Resume,
+			);
+		} else {
+			agentSessionManager.transitionSessionState(
+				linearAgentActivitySessionId,
+				SessionEvent.InitializeRunner,
+			);
+		}
+
 		// Save state
 		await this.savePersistedState();
 
@@ -5330,5 +5381,57 @@ ${input.userComment}
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Get aggregated status across all repositories and session managers
+	 * Used by the /status endpoint to provide real-time process status
+	 */
+	getAggregatedStatus(): {
+		status: "idle" | "busy";
+		activeSessions: number;
+		totalSessions: number;
+		sessions: Array<{
+			id: string;
+			issueId: string;
+			issueIdentifier: string;
+			status: string;
+			isRunning: boolean;
+			startedAt: number;
+			repositoryId?: string;
+		}>;
+	} {
+		const allSessions: Array<{
+			id: string;
+			issueId: string;
+			issueIdentifier: string;
+			status: string;
+			isRunning: boolean;
+			startedAt: number;
+			repositoryId?: string;
+		}> = [];
+
+		let activeSessions = 0;
+
+		// Aggregate status from all session managers
+		for (const [repositoryId, manager] of this.agentSessionManagers) {
+			const managerStatus = manager.getStatus();
+
+			// Add repository ID to each session for context
+			const sessionsWithRepo = managerStatus.sessions.map((session) => ({
+				...session,
+				repositoryId,
+			}));
+
+			allSessions.push(...sessionsWithRepo);
+			activeSessions += managerStatus.activeSessions;
+		}
+
+		return {
+			status: activeSessions > 0 ? "busy" : "idle",
+			activeSessions,
+			totalSessions: allSessions.length,
+			sessions: allSessions,
+		};
 	}
 }

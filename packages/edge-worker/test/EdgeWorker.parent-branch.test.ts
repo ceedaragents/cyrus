@@ -134,6 +134,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 			restoreState: vi.fn(),
 			postRoutingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+			transitionSessionState: vi.fn().mockReturnValue(true), // State machine transition
 			on: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(

@@ -319,6 +319,41 @@ export class SharedApplicationServer {
 	}
 
 	/**
+	 * Register a status endpoint handler
+	 * Allows EdgeWorker to provide real-time status information
+	 */
+	registerStatusEndpoint(
+		getStatusFn: () => {
+			status: "idle" | "busy";
+			activeSessions: number;
+			totalSessions: number;
+			sessions: Array<{
+				id: string;
+				issueId: string;
+				issueIdentifier: string;
+				status: string;
+				cyrusStatus?: string; // Fine-grained internal status
+				isRunning: boolean;
+				startedAt: number;
+				repositoryId?: string;
+			}>;
+		},
+	): void {
+		this.initializeFastify();
+
+		this.app!.get("/status", async (_request, reply) => {
+			const status = getStatusFn();
+			return reply.send({
+				...status,
+				uptime: process.uptime(),
+				timestamp: new Date().toISOString(),
+			});
+		});
+
+		console.log(`🔗 Registered /status endpoint`);
+	}
+
+	/**
 	 * Register an approval request and get approval URL
 	 */
 	registerApprovalRequest(sessionId: string): {
