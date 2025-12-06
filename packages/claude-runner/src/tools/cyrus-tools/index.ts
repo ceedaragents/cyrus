@@ -783,6 +783,302 @@ export function createCyrusToolsServer(
 		},
 	);
 
+	const getAgentSessionsTool = tool(
+		"linear_get_agent_sessions",
+		"Get all agent sessions. Returns a paginated list of agent sessions with their details including status, timestamps, and associated issues.",
+		{
+			first: z
+				.number()
+				.optional()
+				.describe(
+					"Number of items to fetch from the beginning (default: 50, max: 250)",
+				),
+			after: z
+				.string()
+				.optional()
+				.describe("Cursor to start fetching items after"),
+			before: z
+				.string()
+				.optional()
+				.describe("Cursor to start fetching items before"),
+			last: z
+				.number()
+				.optional()
+				.describe("Number of items to fetch from the end"),
+			includeArchived: z
+				.boolean()
+				.optional()
+				.describe(
+					"Whether to include archived agent sessions (default: false)",
+				),
+			orderBy: z
+				.enum(["createdAt", "updatedAt"])
+				.optional()
+				.describe(
+					"Field to order results by (default: updatedAt). Can be 'createdAt' or 'updatedAt'",
+				),
+		},
+		async ({
+			first = 50,
+			after,
+			before,
+			last,
+			includeArchived = false,
+			orderBy,
+		}) => {
+			try {
+				// Validate and clamp first/last
+				const finalFirst = first
+					? Math.min(Math.max(1, first), 250)
+					: undefined;
+				const finalLast = last ? Math.min(Math.max(1, last), 250) : undefined;
+
+				console.log("Fetching agent sessions with params:", {
+					first: finalFirst,
+					after,
+					before,
+					last: finalLast,
+					includeArchived,
+					orderBy,
+				});
+
+				// Build variables for the query
+				const variables: any = {};
+				if (finalFirst !== undefined) variables.first = finalFirst;
+				if (after) variables.after = after;
+				if (before) variables.before = before;
+				if (finalLast !== undefined) variables.last = finalLast;
+				if (includeArchived !== undefined)
+					variables.includeArchived = includeArchived;
+				if (orderBy) variables.orderBy = orderBy;
+
+				// Fetch agent sessions using the Linear SDK
+				const sessionsConnection = await linearClient.agentSessions(variables);
+				const sessions = await sessionsConnection.nodes;
+
+				// Process each session to get detailed information
+				const sessionsData = await Promise.all(
+					sessions.map(async (session) => {
+						const [issue, creator, appUser] = await Promise.all([
+							session.issue,
+							session.creator,
+							session.appUser,
+						]);
+
+						return {
+							id: session.id,
+							createdAt: session.createdAt.toISOString(),
+							updatedAt: session.updatedAt.toISOString(),
+							startedAt: session.startedAt?.toISOString() || null,
+							endedAt: session.endedAt?.toISOString() || null,
+							dismissedAt: session.dismissedAt?.toISOString() || null,
+							archivedAt: session.archivedAt?.toISOString() || null,
+							externalLink: session.externalLink || null,
+							summary: session.summary || null,
+							plan: session.plan || null,
+							sourceMetadata: session.sourceMetadata || null,
+							issue: issue
+								? {
+										id: issue.id,
+										identifier: issue.identifier,
+										title: issue.title,
+										url: issue.url,
+									}
+								: null,
+							creator: creator
+								? {
+										id: creator.id,
+										name: creator.name,
+										email: creator.email,
+									}
+								: null,
+							appUser: appUser
+								? {
+										id: appUser.id,
+										name: appUser.name,
+									}
+								: null,
+						};
+					}),
+				);
+
+				const pageInfo = await sessionsConnection.pageInfo;
+
+				console.log(`Found ${sessionsData.length} agent sessions`);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify(
+								{
+									success: true,
+									count: sessionsData.length,
+									sessions: sessionsData,
+									pageInfo: {
+										hasNextPage: pageInfo.hasNextPage,
+										hasPreviousPage: pageInfo.hasPreviousPage,
+										startCursor: pageInfo.startCursor,
+										endCursor: pageInfo.endCursor,
+									},
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			} catch (error) {
+				console.error("Error fetching agent sessions:", error);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
+	const getAgentSessionTool = tool(
+		"linear_get_agent_session",
+		"Get a single agent session by ID. Returns detailed information about the agent session including its status, timestamps, associated issue, and metadata.",
+		{
+			sessionId: z
+				.string()
+				.describe("The ID of the agent session to retrieve (UUID)"),
+		},
+		async ({ sessionId }) => {
+			try {
+				console.log(`Fetching agent session: ${sessionId}`);
+
+				// Fetch the agent session using the Linear SDK
+				const session = await linearClient.agentSession(sessionId);
+
+				if (!session) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `Agent session ${sessionId} not found`,
+								}),
+							},
+						],
+					};
+				}
+
+				// Get related entities
+				const [issue, creator, appUser, comment, sourceComment, dismissedBy] =
+					await Promise.all([
+						session.issue,
+						session.creator,
+						session.appUser,
+						session.comment,
+						session.sourceComment,
+						session.dismissedBy,
+					]);
+
+				const sessionData = {
+					id: session.id,
+					createdAt: session.createdAt.toISOString(),
+					updatedAt: session.updatedAt.toISOString(),
+					startedAt: session.startedAt?.toISOString() || null,
+					endedAt: session.endedAt?.toISOString() || null,
+					dismissedAt: session.dismissedAt?.toISOString() || null,
+					archivedAt: session.archivedAt?.toISOString() || null,
+					externalLink: session.externalLink || null,
+					summary: session.summary || null,
+					plan: session.plan || null,
+					sourceMetadata: session.sourceMetadata || null,
+					issue: issue
+						? {
+								id: issue.id,
+								identifier: issue.identifier,
+								title: issue.title,
+								url: issue.url,
+								description: issue.description,
+								priority: issue.priority,
+								priorityLabel: issue.priorityLabel,
+							}
+						: null,
+					creator: creator
+						? {
+								id: creator.id,
+								name: creator.name,
+								email: creator.email,
+								displayName: creator.displayName,
+							}
+						: null,
+					appUser: appUser
+						? {
+								id: appUser.id,
+								name: appUser.name,
+							}
+						: null,
+					comment: comment
+						? {
+								id: comment.id,
+								body: comment.body,
+								createdAt: comment.createdAt.toISOString(),
+							}
+						: null,
+					sourceComment: sourceComment
+						? {
+								id: sourceComment.id,
+								body: sourceComment.body,
+								createdAt: sourceComment.createdAt.toISOString(),
+							}
+						: null,
+					dismissedBy: dismissedBy
+						? {
+								id: dismissedBy.id,
+								name: dismissedBy.name,
+								email: dismissedBy.email,
+							}
+						: null,
+				};
+
+				console.log(`Successfully fetched agent session: ${sessionId}`);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify(
+								{
+									success: true,
+									session: sessionData,
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			} catch (error) {
+				console.error(`Error fetching agent session ${sessionId}:`, error);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
 	return createSdkMcpServer({
 		name: "cyrus-tools",
 		version: "1.0.0",
@@ -793,6 +1089,8 @@ export function createCyrusToolsServer(
 			giveFeedbackTool,
 			setIssueRelationTool,
 			getChildIssuesTool,
+			getAgentSessionsTool,
+			getAgentSessionTool,
 		],
 	});
 }
