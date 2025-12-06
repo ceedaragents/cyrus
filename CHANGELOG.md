@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Added CLI platform mode support to enable in-memory issue tracking for testing and development ([CYPACK-509](https://linear.app/ceedar/issue/CYPACK-509))
+- **Graphite stacked PR workflow support** - Cyrus can now coordinate complex features as stacked pull requests when using Graphite CLI. Apply both "graphite" and "orchestrator" labels to an issue to enable this workflow. The orchestrator creates dependent sub-issues that automatically branch from their prerequisites, uses `gt submit` for PR creation, and maintains the stack in Graphite's dashboard. This eliminates manual coordination of related changes and provides cleaner integration with Graphite's stack management tools. ([CYPACK-466](https://linear.app/ceedar/issue/CYPACK-466), [#577](https://github.com/ceedaragents/cyrus/pull/577))
 
 ## [0.2.5] - 2025-12-03
 
