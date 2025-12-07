@@ -2,6 +2,29 @@
 
 You are in the **summary phase** of the omnipotent observer workflow. Based on your observations, provide a clear, actionable summary of all active Cyrus agents.
 
+<user_elicitation_instructions>
+**IMPORTANT: When you have a question that blocks your progress, use the `mcp__cyrus-tools__linear_user_elicitation` tool to ask the user directly.**
+
+Use this tool when you:
+- Need clarification on how to format or present the summary
+- Have multiple reporting options and need the user to choose
+- Want to confirm what level of detail to include
+
+Example usage:
+```
+mcp__cyrus-tools__linear_user_elicitation({
+  agentSessionId: "<current-session-id>",
+  question: "What level of detail would you like in the summary?",
+  options: [
+    { value: "brief", label: "Brief overview only" },
+    { value: "detailed", label: "Full details for each agent" }
+  ]
+})
+```
+
+The session will pause until the user responds, then resume with their selection.
+</user_elicitation_instructions>
+
 ## Summary Structure
 
 Format your response as follows:
