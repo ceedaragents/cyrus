@@ -61,6 +61,7 @@ export interface ProcedureMetadata {
 		completedAt: number;
 		claudeSessionId: string | null;
 		geminiSessionId: string | null;
+		codexSessionId: string | null;
 	}>;
 }
 
