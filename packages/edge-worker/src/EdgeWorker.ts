@@ -19,6 +19,7 @@ import {
 	createSoraToolsServer,
 	getAllTools,
 	getCoordinatorTools,
+	getOmnipotentTools,
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
@@ -45,6 +46,7 @@ import type {
 	WebhookAgentSession,
 	WebhookComment,
 	WebhookIssue,
+	Workspace,
 } from "cyrus-core";
 import {
 	CLIIssueTrackerService,
@@ -1203,13 +1205,37 @@ export class EdgeWorker extends EventEmitter {
 		// Move issue to started state automatically, in case it's not already
 		await this.moveIssueToStartedState(fullIssue, repository.id);
 
-		// Create workspace using full issue data
-		// Use custom handler if provided, otherwise create a git worktree by default
-		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, repository)
-			: await this.gitService.createGitWorktree(fullIssue, repository);
+		// Check for omnipotent label - special handling without worktree creation
+		const labels = await this.fetchIssueLabels(fullIssue);
+		const omnipotentConfig = repository.labelPrompts?.omnipotent;
+		const omnipotentLabels = Array.isArray(omnipotentConfig)
+			? omnipotentConfig
+			: (omnipotentConfig?.labels ?? ["omnipotent"]);
+		const isOmnipotentSession = omnipotentLabels?.some((label) =>
+			labels.includes(label),
+		);
 
-		console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`);
+		let workspace: Workspace;
+		if (isOmnipotentSession) {
+			// Omnipotent mode: No worktree, cwd at worktrees root
+			const worktreesRoot = join(this.cyrusHome, "worktrees");
+			await mkdir(worktreesRoot, { recursive: true });
+			workspace = {
+				path: worktreesRoot,
+				isGitWorktree: false, // Not a git worktree
+			};
+			console.log(
+				`[EdgeWorker] Omnipotent mode: Using worktrees root ${workspace.path} (no worktree created)`,
+			);
+		} else {
+			// Create workspace using full issue data
+			// Use custom handler if provided, otherwise create a git worktree by default
+			workspace = this.config.handlers?.createWorkspace
+				? await this.config.handlers.createWorkspace(fullIssue, repository)
+				: await this.gitService.createGitWorktree(fullIssue, repository);
+
+			console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`);
+		}
 
 		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
 		agentSessionManager.createLinearAgentSession(
@@ -1245,16 +1271,26 @@ export class EdgeWorker extends EventEmitter {
 		);
 		await mkdir(attachmentsDir, { recursive: true });
 
-		// Build allowed directories list - always include attachments directory
-		const allowedDirectories: string[] = [
-			attachmentsDir,
-			repository.repositoryPath,
-		];
-
-		console.log(
-			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
-			allowedDirectories,
-		);
+		// Build allowed directories list - omnipotent mode gets access to all worktrees
+		let allowedDirectories: string[];
+		if (isOmnipotentSession) {
+			// Omnipotent mode: Read access to all worktrees
+			allowedDirectories = [
+				attachmentsDir,
+				join(this.cyrusHome, "worktrees"), // All worktrees
+			];
+			console.log(
+				`[EdgeWorker] Omnipotent mode - allowing read access to all worktrees for ${fullIssue.identifier}:`,
+				allowedDirectories,
+			);
+		} else {
+			// Normal mode: Only the repository path
+			allowedDirectories = [attachmentsDir, repository.repositoryPath];
+			console.log(
+				`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
+				allowedDirectories,
+			);
+		}
 
 		// Build allowed tools list with Linear MCP tools
 		const allowedTools = this.buildAllowedTools(repository);
@@ -1495,11 +1531,33 @@ export class EdgeWorker extends EventEmitter {
 		const hasGraphiteOrchestratorLabels =
 			hasGraphiteLabel && hasOrchestratorLabel;
 
+		// Check for omnipotent label (read-only observer with access to all worktrees)
+		const omnipotentConfig = repository.labelPrompts?.omnipotent;
+		const omnipotentLabels = Array.isArray(omnipotentConfig)
+			? omnipotentConfig
+			: (omnipotentConfig?.labels ?? ["omnipotent"]);
+		const hasOmnipotentLabel = omnipotentLabels?.some((label) =>
+			labels.includes(label),
+		);
+
 		let finalProcedure: ProcedureDefinition;
 		let finalClassification: RequestClassification;
 
 		// If labels indicate a specific procedure, use that instead of AI routing
-		if (hasDebuggerLabel) {
+		// Check omnipotent first as it's a special read-only mode
+		if (hasOmnipotentLabel) {
+			const omnipotentProcedure = this.procedureAnalyzer.getProcedure(
+				"omnipotent-observer",
+			);
+			if (!omnipotentProcedure) {
+				throw new Error("omnipotent-observer procedure not found in registry");
+			}
+			finalProcedure = omnipotentProcedure;
+			finalClassification = "omnipotent";
+			console.log(
+				`[EdgeWorker] Using omnipotent-observer procedure due to omnipotent label (read-only mode)`,
+			);
+		} else if (hasDebuggerLabel) {
 			const debuggerProcedure =
 				this.procedureAnalyzer.getProcedure("debugger-full");
 			if (!debuggerProcedure) {
@@ -1594,6 +1652,7 @@ export class EdgeWorker extends EventEmitter {
 				| "scoper"
 				| "orchestrator"
 				| "graphite-orchestrator"
+				| "omnipotent"
 				| undefined;
 
 			if (!isMentionTriggered || isLabelBasedPromptRequested) {
@@ -2319,7 +2378,8 @@ export class EdgeWorker extends EventEmitter {
 					| "builder"
 					| "scoper"
 					| "orchestrator"
-					| "graphite-orchestrator";
+					| "graphite-orchestrator"
+					| "omnipotent";
 		  }
 		| undefined
 	> {
@@ -2380,7 +2440,9 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check each prompt type for matching labels
+		// Note: "omnipotent" is checked first as it has special handling (no worktree creation)
 		const promptTypes = [
+			"omnipotent",
 			"debugger",
 			"builder",
 			"scoper",
@@ -4054,6 +4116,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return getAllTools();
 			case "coordinator":
 				return getCoordinatorTools();
+			case "omnipotent":
+				return getOmnipotentTools();
 			default:
 				// If it's a string but not a preset, treat it as a single tool
 				return [preset];
@@ -4575,7 +4639,8 @@ ${input.userComment}
 			| "builder"
 			| "scoper"
 			| "orchestrator"
-			| "graphite-orchestrator",
+			| "graphite-orchestrator"
+			| "omnipotent",
 	): string[] {
 		// graphite-orchestrator uses the same tool config as orchestrator
 		const effectivePromptType =
@@ -4667,7 +4732,8 @@ ${input.userComment}
 			| "builder"
 			| "scoper"
 			| "orchestrator"
-			| "graphite-orchestrator",
+			| "graphite-orchestrator"
+			| "omnipotent",
 	): string[] {
 		// graphite-orchestrator uses the same tool config as orchestrator
 		const effectivePromptType =

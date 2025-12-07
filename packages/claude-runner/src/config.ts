@@ -110,3 +110,25 @@ export function getCoordinatorTools(): string[] {
 		"Batch",
 	];
 }
+
+/**
+ * Get omnipotent tools - read-only tools for observing all worktrees
+ * Used for the omnipotent observer role that can see across all active agents.
+ * Includes: Read, Bash (for ls to list worktrees), Task, WebFetch, WebSearch, TodoRead, TodoWrite, NotebookRead, Batch
+ * Excludes: Edit, NotebookEdit (no file modification)
+ * Note: Bash is included for directory listing (ls) but the system prompt restricts editing commands
+ * Note: TodoWrite is included as it only modifies internal task tracking, not files
+ */
+export function getOmnipotentTools(): string[] {
+	return [
+		"Read(**)",
+		"Bash", // For ls to list worktrees and directories
+		"Task", // Sub-agents for complex research
+		"WebFetch",
+		"WebSearch",
+		"TodoRead",
+		"TodoWrite", // Internal task tracking only
+		"NotebookRead",
+		"Batch",
+	];
+}
