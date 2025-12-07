@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Verified Anthropic SDK packages are on latest versions: `@anthropic-ai/claude-agent-sdk@0.1.60` and `@anthropic-ai/sdk@0.71.2` ([CYPACK-561](https://linear.app/ceedar/issue/CYPACK-561))
+
 ### Added
 - Added CLI platform mode support to enable in-memory issue tracking for testing and development ([CYPACK-509](https://linear.app/ceedar/issue/CYPACK-509))
 - **User testing procedure** - New "user-testing" procedure for interactive, user-driven testing sessions. When you explicitly request manual testing (e.g., "test this for me", "run user testing"), Cyrus will execute tests based on your instructions and provide a comprehensive summary of results and findings. ([CYPACK-542](https://linear.app/ceedar/issue/CYPACK-542))
