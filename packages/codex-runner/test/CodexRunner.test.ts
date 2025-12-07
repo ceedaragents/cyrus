@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CodexRunner } from "../src/CodexRunner.js";
+import { safeParseCodexEvent } from "../src/schemas.js";
 import type { CodexRunnerConfig } from "../src/types.js";
 
 /**
@@ -334,6 +335,46 @@ describe("CodexRunner", () => {
 
 			const runner = new CodexRunner(fullConfig);
 			expect(runner).toBeInstanceOf(CodexRunner);
+		});
+	});
+
+	describe("JSONL Event Parsing (CYPACK-534 Fix)", () => {
+		it("should successfully parse JSONL events after parsing JSON first", () => {
+			// Valid JSONL events as strings (from bug report)
+			const threadStartedLine =
+				'{"type":"thread.started","thread_id":"019af058-b296-7b61-8e34-2f5a1a69d627"}';
+			const turnStartedLine = '{"type":"turn.started"}';
+
+			// FIX: Parse JSON first, then validate with safeParseCodexEvent
+			const parsed1 = JSON.parse(threadStartedLine);
+			const result1 = safeParseCodexEvent(parsed1);
+
+			const parsed2 = JSON.parse(turnStartedLine);
+			const result2 = safeParseCodexEvent(parsed2);
+
+			// Validation should succeed with parsed objects
+			expect(result1.success).toBe(true);
+			expect(result2.success).toBe(true);
+
+			if (result1.success) {
+				expect(result1.data.type).toBe("thread.started");
+				expect(result1.data.thread_id).toBe(
+					"019af058-b296-7b61-8e34-2f5a1a69d627",
+				);
+			}
+
+			if (result2.success) {
+				expect(result2.data.type).toBe("turn.started");
+			}
+		});
+
+		it("should document that raw strings fail validation", () => {
+			// Documentation: safeParseCodexEvent expects parsed objects, not strings
+			const jsonString = '{"type":"turn.started"}';
+
+			// Passing raw string fails (this is expected behavior)
+			const result = safeParseCodexEvent(jsonString);
+			expect(result.success).toBe(false);
 		});
 	});
 });
