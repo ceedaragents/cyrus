@@ -122,6 +122,7 @@ export class EdgeWorker extends EventEmitter {
 	/** @internal - Exposed for testing only */
 	public repositoryRouter: RepositoryRouter; // Repository routing and selection
 	private gitService: GitService;
+	private activeWebhookCount = 0; // Track number of webhooks currently being processed
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -416,6 +417,48 @@ export class EdgeWorker extends EventEmitter {
 		console.log(
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
+
+		// 3. Register /status endpoint for process activity monitoring
+		this.registerStatusEndpoint();
+	}
+
+	/**
+	 * Register the /status endpoint for checking if the process is busy or idle
+	 * This endpoint is used to determine if the process can be safely restarted
+	 */
+	private registerStatusEndpoint(): void {
+		const fastify = this.sharedApplicationServer.getFastifyInstance();
+
+		fastify.get("/status", async (_request, reply) => {
+			const status = this.computeStatus();
+			return reply.status(200).send({ status });
+		});
+
+		console.log("✅ Status endpoint registered");
+		console.log("   Route: GET /status");
+	}
+
+	/**
+	 * Compute the current status of the Cyrus process
+	 * @returns "idle" if the process can be safely restarted, "busy" if work is in progress
+	 */
+	private computeStatus(): "idle" | "busy" {
+		// Busy if any webhooks are currently being processed
+		if (this.activeWebhookCount > 0) {
+			return "busy";
+		}
+
+		// Busy if any runner is actively running
+		for (const manager of this.agentSessionManagers.values()) {
+			const runners = manager.getAllAgentRunners();
+			for (const runner of runners) {
+				if (runner.isRunning()) {
+					return "busy";
+				}
+			}
+		}
+
+		return "idle";
 	}
 
 	/**
@@ -1089,6 +1132,9 @@ export class EdgeWorker extends EventEmitter {
 		webhook: Webhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
+		// Track active webhook processing for status endpoint
+		this.activeWebhookCount++;
+
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			console.log(
@@ -1127,6 +1173,9 @@ export class EdgeWorker extends EventEmitter {
 			);
 			// Don't re-throw webhook processing errors to prevent application crashes
 			// The error has been logged and individual webhook failures shouldn't crash the entire system
+		} finally {
+			// Always decrement counter when webhook processing completes
+			this.activeWebhookCount--;
 		}
 	}
 
