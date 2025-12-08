@@ -33,7 +33,7 @@ export type {
 	OAuthCallbackHandler,
 	RepositoryConfig,
 } from "./config-types.js";
-export { resolvePath } from "./config-types.js";
+export { getWorkspaceLinearToken, resolvePath } from "./config-types.js";
 
 // Constants
 export { DEFAULT_PROXY_URL } from "./constants.js";
