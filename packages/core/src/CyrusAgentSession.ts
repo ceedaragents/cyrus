@@ -23,6 +23,18 @@ export interface Workspace {
 	historyPath?: string;
 }
 
+export interface RepositoryContext {
+	repositoryId: string;
+	repositoryPath: string;
+	workspaceBaseDir: string;
+	allowedTools?: string[];
+	disallowedTools?: string[];
+	mcpConfigPath?: string;
+	promptTemplatePath?: string;
+	model?: string;
+	fallbackModel?: string;
+}
+
 export interface CyrusAgentSession {
 	linearAgentActivitySessionId: string;
 	type: AgentSessionType.CommentThread;
@@ -33,6 +45,7 @@ export interface CyrusAgentSession {
 	issueId: string;
 	issue: IssueMinimal;
 	workspace: Workspace;
+	repositoryContext?: RepositoryContext;
 	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)
 	geminiSessionId?: string; // Gemini-specific session ID (assigned once it initializes)
