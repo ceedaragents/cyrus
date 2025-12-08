@@ -32,7 +32,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 	let mockChildAgentSessionManager: any;
 	let mockClaudeRunner: any;
 	let resumeClaudeSessionSpy: any;
-	let mockOnFeedbackDelivery: any;
+	let _mockOnFeedbackDelivery: any;
 	let _mockOnSessionCreated: any;
 
 	const mockRepository: RepositoryConfig = {
@@ -54,14 +54,14 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 
 		// Setup callbacks to be captured
-		mockOnFeedbackDelivery = vi.fn();
+		_mockOnFeedbackDelivery = vi.fn();
 		_mockOnSessionCreated = vi.fn();
 
 		// Mock createCyrusToolsServer to return a proper structure
 		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
 			// Capture the callbacks
 			if (options?.onFeedbackDelivery) {
-				mockOnFeedbackDelivery = options.onFeedbackDelivery;
+				_mockOnFeedbackDelivery = options.onFeedbackDelivery;
 			}
 			if (options?.onSessionCreated) {
 				_mockOnSessionCreated = options.onSessionCreated;
@@ -127,11 +127,18 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
-					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getFastifyInstance: vi.fn().mockReturnValue({
+						post: vi.fn(),
+						get: vi.fn(),
+						put: vi.fn(),
+						delete: vi.fn(),
+						patch: vi.fn(),
+					}),
 					getWebhookUrl: vi
 						.fn()
 						.mockReturnValue("http://localhost:3456/webhook"),
 					registerOAuthCallbackHandler: vi.fn(),
+					registerCyrusToolsMcp: vi.fn().mockReturnValue("mock-auth-token-123"),
 				}) as any,
 		);
 
@@ -209,15 +216,12 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 					return undefined;
 				});
 
-			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				"parent-session-123",
-			);
+			// Start EdgeWorker to register cyrus-tools MCP and capture callbacks
+			await edgeWorker.start();
 
-			// Act - Call the feedback delivery and measure time
+			// Act - Call the feedback delivery handler directly and measure time
 			const startTime = Date.now();
-			const result = await mockOnFeedbackDelivery(
+			const result = await (edgeWorker as any).handleFeedbackDelivery(
 				childSessionId,
 				feedbackMessage,
 			);
@@ -257,15 +261,12 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 					return undefined;
 				});
 
-			// Build MCP config
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				"parent-session-123",
-			);
+			// Start EdgeWorker to register cyrus-tools MCP and capture callbacks
+			await edgeWorker.start();
 
 			// Act
 			const startTime = Date.now();
-			const result = await mockOnFeedbackDelivery(
+			const result = await (edgeWorker as any).handleFeedbackDelivery(
 				childSessionId,
 				feedbackMessage,
 			);

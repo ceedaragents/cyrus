@@ -1,5 +1,5 @@
 import { LinearClient } from "@linear/sdk";
-import { ClaudeRunner, createCyrusToolsServer } from "cyrus-claude-runner";
+import { ClaudeRunner } from "cyrus-claude-runner";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
@@ -52,30 +52,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		vi.clearAllMocks();
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "warn").mockImplementation(() => {});
 
 		// Setup callbacks to be captured
 		mockOnFeedbackDelivery = vi.fn();
 		mockOnSessionCreated = vi.fn();
-
-		// Mock createCyrusToolsServer to return a proper structure
-		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
-			// Capture the callbacks
-			if (options?.onFeedbackDelivery) {
-				mockOnFeedbackDelivery = options.onFeedbackDelivery;
-			}
-			if (options?.onSessionCreated) {
-				mockOnSessionCreated = options.onSessionCreated;
-			}
-
-			// Return a mock structure that matches what the real function returns
-			return {
-				type: "sdk" as const,
-				name: "cyrus-tools",
-				instance: {
-					_options: options,
-				},
-			} as any;
-		});
 
 		// Mock ClaudeRunner
 		mockClaudeRunner = {
@@ -125,11 +106,28 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
-					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getFastifyInstance: vi.fn().mockReturnValue({
+						post: vi.fn(),
+						get: vi.fn(),
+						put: vi.fn(),
+						delete: vi.fn(),
+						patch: vi.fn(),
+					}),
 					getWebhookUrl: vi
 						.fn()
 						.mockReturnValue("http://localhost:3456/webhook"),
 					registerOAuthCallbackHandler: vi.fn(),
+					registerCyrusToolsMcp: vi.fn((_linearToken, options) => {
+						// Capture the callbacks
+						if (options?.onFeedbackDelivery) {
+							mockOnFeedbackDelivery = options.onFeedbackDelivery;
+						}
+						if (options?.onSessionCreated) {
+							mockOnSessionCreated = options.onSessionCreated;
+						}
+						// Return a mock auth token
+						return "mock-auth-token-123";
+					}),
 				}) as any,
 		);
 
@@ -197,13 +195,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const childSessionId = "child-session-456";
 			const feedbackMessage =
 				"Please revise your approach and focus on the error handling";
-			const parentSessionId = "parent-session-123";
+			const _parentSessionId = "parent-session-123";
 
-			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				parentSessionId,
-			);
+			// Start EdgeWorker to register cyrus-tools MCP
+			await edgeWorker.start();
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -261,11 +256,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback without known parent";
 
-			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				undefined, // No parent session ID
-			);
+			// Start EdgeWorker to register cyrus-tools MCP
+			await edgeWorker.start();
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -294,11 +286,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const childSessionId = "nonexistent-child-session";
 			const feedbackMessage = "This should fail";
 
-			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				"parent-session-123",
-			);
+			// Start EdgeWorker to register cyrus-tools MCP
+			await edgeWorker.start();
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -321,11 +310,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "This should also fail";
 
-			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				"parent-session-123",
-			);
+			// Start EdgeWorker to register cyrus-tools MCP
+			await edgeWorker.start();
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -348,11 +334,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "This will cause resume to fail";
 
-			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				"parent-session-123",
-			);
+			// Start EdgeWorker to register cyrus-tools MCP
+			await edgeWorker.start();
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -405,11 +388,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback across repositories";
 
-			// Build MCP config which will trigger createCyrusToolsServer
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				"parent-session-123",
-			);
+			// Start EdgeWorker to register cyrus-tools MCP
+			await edgeWorker.start();
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -434,30 +414,30 @@ describe("EdgeWorker - Feedback Delivery", () => {
 	});
 
 	describe("Integration with cyrus-tools server", () => {
-		it("should properly configure feedback delivery callback in MCP config", () => {
+		it("should properly configure HTTP MCP endpoint in MCP config", async () => {
 			// Arrange
 			const parentSessionId = "parent-session-123";
 
+			// Simulate the initialization that registers cyrus-tools MCP
+			await edgeWorker.start();
+
 			// Act
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				parentSessionId,
 			);
 
-			// Assert
-			expect(_mcpConfig).toHaveProperty("cyrus-tools");
+			// Assert - verify HTTP MCP configuration is returned
+			expect(mcpConfig).toHaveProperty("cyrus-tools");
+			expect(mcpConfig["cyrus-tools"]).toEqual({
+				type: "http",
+				url: expect.stringContaining("/mcp/cyrus-tools"),
+				headers: {
+					Authorization: "Bearer mock-auth-token-123",
+				},
+			});
 
-			// Verify createCyrusToolsServer was called with correct options
-			expect(createCyrusToolsServer).toHaveBeenCalledWith(
-				mockRepository.linearToken,
-				expect.objectContaining({
-					parentSessionId,
-					onFeedbackDelivery: expect.any(Function),
-					onSessionCreated: expect.any(Function),
-				}),
-			);
-
-			// Verify the callbacks were captured
+			// Verify the callbacks were captured during registration
 			expect(mockOnFeedbackDelivery).toBeDefined();
 			expect(mockOnSessionCreated).toBeDefined();
 		});
