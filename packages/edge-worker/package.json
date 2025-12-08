@@ -38,7 +38,7 @@
 		"fastify-mcp-server": "^0.2.1",
 		"file-type": "^18.7.0",
 		"fs-extra": "^11.2.0",
-		"zod": "^4.1.12"
+		"zod": "^3.24.1"
 	},
 	"devDependencies": {
 		"@types/fs-extra": "^11.0.4",
