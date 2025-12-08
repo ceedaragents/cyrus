@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CloudflareTunnelClient } from "cyrus-cloudflare-tunnel-client";
 import Fastify, { type FastifyInstance } from "fastify";
+import {
+	CyrusToolsHttpServer,
+	type CyrusToolsOptions,
+} from "./cyrus-tools-http-server.js";
 
 /**
  * OAuth callback state for tracking flows
@@ -50,6 +54,7 @@ export class SharedApplicationServer {
 	private isListening = false;
 	private tunnelClient: CloudflareTunnelClient | null = null;
 	private skipTunnel: boolean;
+	private cyrusToolsServer: CyrusToolsHttpServer | null = null;
 
 	constructor(
 		port: number = 3456,
@@ -176,6 +181,12 @@ export class SharedApplicationServer {
 			);
 		}
 		this.pendingApprovals.clear();
+
+		// Clean up Cyrus Tools MCP server if registered
+		if (this.cyrusToolsServer) {
+			console.log("🔧 Cleaning up Cyrus Tools MCP server");
+			this.cyrusToolsServer = null;
+		}
 
 		// Stop Cloudflare tunnel if running
 		if (this.tunnelClient) {
@@ -354,5 +365,45 @@ export class SharedApplicationServer {
 		);
 
 		return { promise, url };
+	}
+
+	/**
+	 * Register Cyrus Tools MCP server with the Fastify instance
+	 *
+	 * @param linearToken - Linear API token for the workspace
+	 * @param options - Optional configuration for session management
+	 * @returns The generated authentication token for the MCP server
+	 */
+	registerCyrusToolsMcp(
+		linearToken: string,
+		options: CyrusToolsOptions = {},
+	): string {
+		// Initialize Fastify if not already done
+		this.initializeFastify();
+
+		// Create and store the CyrusToolsHttpServer instance
+		this.cyrusToolsServer = new CyrusToolsHttpServer(
+			this.app!,
+			linearToken,
+			options,
+		);
+
+		// Get the auth token
+		const authToken = this.cyrusToolsServer.getToken();
+
+		console.log(
+			`🔧 Registered Cyrus Tools MCP server at /mcp/cyrus-tools with auth token: ${authToken.slice(0, 8)}...${authToken.slice(-8)}`,
+		);
+
+		return authToken;
+	}
+
+	/**
+	 * Get the authentication token for the Cyrus Tools MCP server
+	 *
+	 * @returns The auth token, or null if the MCP server hasn't been registered
+	 */
+	getCyrusToolsAuthToken(): string | null {
+		return this.cyrusToolsServer?.getToken() ?? null;
 	}
 }
