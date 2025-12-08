@@ -222,6 +222,9 @@ importers:
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.4
+        version: 1.22.0
       '@ngrok/ngrok':
         specifier: ^1.5.1
         version: 1.5.2
@@ -252,10 +255,22 @@ importers:
       fastify:
         specifier: ^5.2.0
         version: 5.6.1
+      fastify-mcp-server:
+        specifier: ^0.2.1
+        version: 0.2.1(@modelcontextprotocol/sdk@1.22.0)(fastify@5.6.1)
       file-type:
         specifier: ^18.7.0
         version: 18.7.0
+      fs-extra:
+        specifier: ^11.2.0
+        version: 11.3.2
+      zod:
+        specifier: ^4.1.12
+        version: 4.1.12
     devDependencies:
+      '@types/fs-extra':
+        specifier: ^11.0.4
+        version: 11.0.4
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.21
@@ -1977,6 +1992,16 @@ packages:
 
   fast-uri@3.1.0:
     resolution: {integrity: sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==}
+
+  fastify-mcp-server@0.2.1:
+    resolution: {integrity: sha512-y2tYEr3E4s3J9Z1/8WKyBlcDn9gg18NHBKhF3kYyRoCHrh5OpB6OL1EaMKwYUL1dceRbfeftZh/u9V5krclYbA==}
+    engines: {node: '>= 23.10.0'}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': ^1.x
+      fastify: ^5.x
+
+  fastify-plugin@5.1.0:
+    resolution: {integrity: sha512-FAIDA8eovSt5qcDgcBvDuX/v0Cjz0ohGhENZ/wpc3y+oZCY2afZ9Baqql3g/lC+OHRnciQol4ww7tuthOb9idw==}
 
   fastify@5.6.1:
     resolution: {integrity: sha512-WjjlOciBF0K8pDUPZoGPhqhKrQJ02I8DKaDIfO51EL0kbSMwQFl85cRwhOvmSDWoukNOdTo27gLN549pLCcH7Q==}
@@ -5316,6 +5341,14 @@ snapshots:
       fast-decode-uri-component: 1.0.1
 
   fast-uri@3.1.0: {}
+
+  fastify-mcp-server@0.2.1(@modelcontextprotocol/sdk@1.22.0)(fastify@5.6.1):
+    dependencies:
+      '@modelcontextprotocol/sdk': 1.22.0
+      fastify: 5.6.1
+      fastify-plugin: 5.1.0
+
+  fastify-plugin@5.1.0: {}
 
   fastify@5.6.1:
     dependencies:
