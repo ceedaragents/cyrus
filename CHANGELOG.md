@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 - **Graphite workflow support** - Cyrus now integrates with Graphite CLI for stacked PR workflows. Apply a "graphite" label to any issue to enable Graphite-aware behavior: sub-issues automatically branch from their blocking issue's branch (based on Linear's "blocked by" relationships) instead of main, and PRs are created using `gt submit`. For orchestrating complex multi-part features, apply both "graphite" and "orchestrator" labels - the orchestrator will create dependent sub-issues with proper blocking relationships that automatically stack in Graphite's dashboard. ([CYPACK-466](https://linear.app/ceedar/issue/CYPACK-466), [#577](https://github.com/ceedaragents/cyrus/pull/577))
 - **Linear agent sessions MCP tools** - Added `linear_get_agent_sessions` and `linear_get_agent_session` tools to cyrus-tools MCP server for retrieving agent session information from Linear. The tools support pagination, filtering, and provide comprehensive session details including timestamps, associated issues, and related entities. ([CYPACK-549](https://linear.app/ceedar/issue/CYPACK-549), [#625](https://github.com/ceedaragents/cyrus/pull/625))
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.1.60 to v0.1.61 for parity with Claude Code v2.0.61 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0161---2025-11-07)) ([CYPACK-575](https://linear.app/ceedar/issue/CYPACK-575))
+
 ## [0.2.5] - 2025-12-03
 
 ### Fixed
