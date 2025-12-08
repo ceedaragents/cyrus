@@ -40,6 +40,7 @@
 		"typescript": "^5.3.3"
 	},
 	"dependencies": {
+		"@cursor-ai/january": "^0.2.1",
 		"@linear/sdk": "60.0.0"
 	},
 	"lint-staged": {
