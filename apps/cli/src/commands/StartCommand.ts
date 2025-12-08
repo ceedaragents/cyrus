@@ -54,6 +54,7 @@ export class StartCommand extends BaseCommand {
 			this.logger.raw("");
 			this.logger.divider(70);
 			this.logger.success("Edge worker started successfully");
+			this.logger.info(`📌 Version: ${this.app.version}`);
 			this.logger.info(`🔗 Server running on port ${serverPort}`);
 
 			if (process.env.CLOUDFLARE_TOKEN) {

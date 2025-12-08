@@ -40,7 +40,11 @@ program
 	.description("Start the edge worker")
 	.action(async () => {
 		const opts = program.opts();
-		const app = new Application(opts.cyrusHome, opts.envFile);
+		const app = new Application(
+			opts.cyrusHome,
+			opts.envFile,
+			packageJson.version,
+		);
 		await new StartCommand(app).execute([]);
 	});
 
@@ -50,7 +54,11 @@ program
 	.description("Authenticate with Cyrus using auth key")
 	.action(async (authKey: string) => {
 		const opts = program.opts();
-		const app = new Application(opts.cyrusHome, opts.envFile);
+		const app = new Application(
+			opts.cyrusHome,
+			opts.envFile,
+			packageJson.version,
+		);
 		await new AuthCommand(app).execute([authKey]);
 	});
 
@@ -60,7 +68,11 @@ program
 	.description("Check the status of all Linear tokens")
 	.action(async () => {
 		const opts = program.opts();
-		const app = new Application(opts.cyrusHome, opts.envFile);
+		const app = new Application(
+			opts.cyrusHome,
+			opts.envFile,
+			packageJson.version,
+		);
 		await new CheckTokensCommand(app).execute([]);
 	});
 
@@ -70,7 +82,11 @@ program
 	.description("Refresh a specific Linear token")
 	.action(async () => {
 		const opts = program.opts();
-		const app = new Application(opts.cyrusHome, opts.envFile);
+		const app = new Application(
+			opts.cyrusHome,
+			opts.envFile,
+			packageJson.version,
+		);
 		await new RefreshTokenCommand(app).execute([]);
 	});
 
