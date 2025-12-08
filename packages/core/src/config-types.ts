@@ -24,6 +24,40 @@ export function resolvePath(path: string): string {
 }
 
 /**
+ * Get workspace-level Linear token from EdgeWorkerConfig
+ * Falls back to the first repository's token if workspace-level token is not provided
+ *
+ * @param config - EdgeWorkerConfig containing workspace and repository configurations
+ * @returns Linear token from workspace config or first repository
+ * @throws Error if no repositories are configured and workspace token is missing
+ *
+ * @example
+ * // With workspace-level token
+ * const token = getWorkspaceLinearToken({ linearToken: "lin_api_xxx", repositories: [...] });
+ * // Returns "lin_api_xxx"
+ *
+ * @example
+ * // Fallback to first repository's token
+ * const token = getWorkspaceLinearToken({ repositories: [{ linearToken: "lin_api_yyy", ... }] });
+ * // Returns "lin_api_yyy"
+ */
+export function getWorkspaceLinearToken(config: EdgeWorkerConfig): string {
+	// Use workspace-level token if provided
+	if (config.linearToken) {
+		return config.linearToken;
+	}
+
+	// Fallback to first repository's token
+	if (config.repositories.length > 0 && config.repositories[0]) {
+		return config.repositories[0].linearToken;
+	}
+
+	throw new Error(
+		"No Linear token found: workspace-level token is missing and no repositories are configured",
+	);
+}
+
+/**
  * OAuth callback handler type
  */
 export type OAuthCallbackHandler = (
@@ -127,6 +161,7 @@ export interface EdgeWorkerConfig {
 
 	// Linear configuration (global)
 	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
+	linearToken?: string; // Workspace-level Linear OAuth token (falls back to first repository's token if not provided)
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
