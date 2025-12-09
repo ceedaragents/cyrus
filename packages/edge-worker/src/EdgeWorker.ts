@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -14,7 +15,7 @@ import type {
 import {
 	AbortError,
 	ClaudeRunner,
-	createCyrusToolsServer,
+	CyrusToolsHttpServer,
 	createImageToolsServer,
 	createSoraToolsServer,
 	getAllTools,
@@ -123,6 +124,8 @@ export class EdgeWorker extends EventEmitter {
 	public repositoryRouter: RepositoryRouter; // Repository routing and selection
 	private gitService: GitService;
 	private activeWebhookCount = 0; // Track number of webhooks currently being processed
+	private cyrusToolsAuthToken: string; // Auth token for cyrus-tools HTTP MCP server
+	private cyrusToolsHttpServers: Map<string, CyrusToolsHttpServer> = new Map(); // Map repository ID to HTTP server instance
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -131,6 +134,9 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Generate cryptographically secure auth token for cyrus-tools HTTP MCP server
+		this.cyrusToolsAuthToken = randomBytes(32).toString("hex");
 
 		// Initialize procedure router with haiku for fast classification
 		// Default to claude runner
@@ -418,7 +424,10 @@ export class EdgeWorker extends EventEmitter {
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
 
-		// 3. Register /status endpoint for process activity monitoring
+		// 3. Initialize cyrus-tools HTTP MCP servers (one per repository)
+		await this.initializeCyrusToolsHttpServers();
+
+		// 4. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
 	}
 
@@ -436,6 +445,84 @@ export class EdgeWorker extends EventEmitter {
 
 		console.log("✅ Status endpoint registered");
 		console.log("   Route: GET /status");
+	}
+
+	/**
+	 * Initialize cyrus-tools HTTP MCP servers (one per repository)
+	 * Each server listens on its own port with bearer token authentication
+	 */
+	private async initializeCyrusToolsHttpServers(): Promise<void> {
+		console.log(
+			"[EdgeWorker] Initializing cyrus-tools HTTP MCP servers for each repository...",
+		);
+
+		for (const [repositoryId, repository] of this.repositories.entries()) {
+			const server = new CyrusToolsHttpServer({
+				linearApiToken: repository.linearToken,
+				authToken: this.cyrusToolsAuthToken,
+				port: 0, // Use random available port
+				host: "127.0.0.1",
+				endpoint: "/mcp",
+				options: {
+					parentSessionId: undefined, // Will be set per-session in buildMcpConfig
+					onSessionCreated: (childSessionId: string, parentId: string) => {
+						console.log(
+							`[EdgeWorker] Mapping child session ${childSessionId} to parent ${parentId}`,
+						);
+						this.childToParentAgentSession.set(childSessionId, parentId);
+					},
+					onFeedbackDelivery: async (
+						childSessionId: string,
+						message: string,
+					) => {
+						// Find the parent session ID
+						const parentSessionId =
+							this.childToParentAgentSession.get(childSessionId);
+						if (!parentSessionId) {
+							console.log(
+								`[EdgeWorker] No parent session found for child ${childSessionId}`,
+							);
+							return false;
+						}
+
+						// Find which repository and session manager has this parent session
+						for (const manager of this.agentSessionManagers.values()) {
+							if (manager.hasAgentRunner(parentSessionId)) {
+								const session = manager.getSession(parentSessionId);
+								if (session?.agentRunner?.addStreamMessage) {
+									console.log(
+										`[EdgeWorker] Delivering feedback to parent session ${parentSessionId}`,
+									);
+									session.agentRunner.addStreamMessage(message);
+									return true;
+								}
+							}
+						}
+
+						console.log(
+							`[EdgeWorker] Parent session ${parentSessionId} not found in any repository`,
+						);
+						return false;
+					},
+				},
+			});
+
+			// Start the server
+			await server.start();
+			const serverUrl = server.getServerUrl();
+
+			// Store the server instance
+			this.cyrusToolsHttpServers.set(repositoryId, server);
+
+			console.log(
+				`✅ Cyrus-tools HTTP MCP server started for repository ${repositoryId}`,
+			);
+			console.log(`   URL: ${serverUrl}`);
+		}
+
+		console.log(
+			`[EdgeWorker] All cyrus-tools HTTP MCP servers initialized (${this.cyrusToolsHttpServers.size} total)`,
+		);
 	}
 
 	/**
@@ -502,6 +589,22 @@ export class EdgeWorker extends EventEmitter {
 		// Clear event transport (no explicit cleanup needed, routes are removed when server stops)
 		this.linearEventTransport = null;
 		this.configUpdater = null;
+
+		// Stop all cyrus-tools HTTP MCP servers
+		for (const [repositoryId, server] of this.cyrusToolsHttpServers.entries()) {
+			try {
+				await server.stop();
+				console.log(
+					`✅ Cyrus-tools HTTP MCP server stopped for repository ${repositoryId}`,
+				);
+			} catch (error) {
+				console.error(
+					`❌ Error stopping cyrus-tools HTTP MCP server for repository ${repositoryId}:`,
+					error,
+				);
+			}
+		}
+		this.cyrusToolsHttpServers.clear();
 
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
 		await this.sharedApplicationServer.stop();
@@ -3890,7 +3993,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
-		parentSessionId?: string,
+		_parentSessionId?: string,
 	): Record<string, McpServerConfig> {
 		// Always inject the Linear MCP servers with the repository's token
 		// https://linear.app/docs/mcp
@@ -3902,151 +4005,33 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					Authorization: `Bearer ${repository.linearToken}`,
 				},
 			},
-			"cyrus-tools": createCyrusToolsServer(repository.linearToken, {
-				parentSessionId,
-				onSessionCreated: (childSessionId, parentId) => {
-					console.log(
-						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
-					);
-					// Map child to parent session
-					this.childToParentAgentSession.set(childSessionId, parentId);
-					console.log(
-						`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
-					);
-				},
-				onFeedbackDelivery: async (childSessionId, message) => {
-					console.log(
-						`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
-					);
-
-					// Find the parent session ID for context
-					const parentSessionId =
-						this.childToParentAgentSession.get(childSessionId);
-
-					// Find the repository containing the child session
-					// We need to search all repositories for this child session
-					let childRepo: RepositoryConfig | undefined;
-					let childAgentSessionManager: AgentSessionManager | undefined;
-
-					for (const [repoId, manager] of this.agentSessionManagers) {
-						if (manager.hasAgentRunner(childSessionId)) {
-							childRepo = this.repositories.get(repoId);
-							childAgentSessionManager = manager;
-							break;
-						}
-					}
-
-					if (!childRepo || !childAgentSessionManager) {
-						console.error(
-							`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
-						);
-						return false;
-					}
-
-					// Get the child session
-					const childSession =
-						childAgentSessionManager.getSession(childSessionId);
-					if (!childSession) {
-						console.error(
-							`[EdgeWorker] Child session ${childSessionId} not found`,
-						);
-						return false;
-					}
-
-					console.log(
-						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
-					);
-
-					// Get parent session info for better context in the thought
-					let parentIssueId: string | undefined;
-					if (parentSessionId) {
-						// Find parent session across all repositories
-						for (const manager of this.agentSessionManagers.values()) {
-							const parentSession = manager.getSession(parentSessionId);
-							if (parentSession) {
-								parentIssueId =
-									parentSession.issue?.identifier || parentSession.issueId;
-								break;
-							}
-						}
-					}
-
-					// Post thought to Linear showing feedback receipt
-					const issueTracker = this.issueTrackers.get(childRepo.id);
-					if (issueTracker) {
-						const feedbackThought = parentIssueId
-							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
-							: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
-
-						try {
-							const result = await issueTracker.createAgentActivity({
-								agentSessionId: childSessionId,
-								content: {
-									type: "thought",
-									body: feedbackThought,
-								},
-							});
-
-							if (result.success) {
-								console.log(
-									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
-								);
-							} else {
-								console.error(
-									`[EdgeWorker] Failed to post feedback receipt thought:`,
-									result,
-								);
-							}
-						} catch (error) {
-							console.error(
-								`[EdgeWorker] Error posting feedback receipt thought:`,
-								error,
-							);
-						}
-					}
-
-					// Format the feedback as a prompt for the child session with enhanced markdown formatting
-					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
-
-					// Use centralized streaming check and routing logic
-					// Important: We don't await the full session completion to avoid timeouts.
-					// The feedback is delivered immediately when the session starts, so we can
-					// return success right away while the session continues in the background.
-					console.log(
-						`[EdgeWorker] Handling feedback delivery to child session ${childSessionId}`,
-					);
-
-					this.handlePromptWithStreamingCheck(
-						childSession,
-						childRepo,
-						childSessionId,
-						childAgentSessionManager,
-						feedbackPrompt,
-						"", // No attachment manifest for feedback
-						false, // Not a new session
-						[], // No additional allowed directories for feedback
-						"give feedback to child",
-					)
-						.then(() => {
-							console.log(
-								`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
-							);
-						})
-						.catch((error) => {
-							console.error(
-								`[EdgeWorker] Failed to process feedback in child session:`,
-								error,
-							);
-						});
-
-					// Return success immediately after initiating the handling
-					console.log(
-						`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
-					);
-					return true;
-				},
-			}),
 		};
+
+		// Add cyrus-tools HTTP MCP server if it exists for this repository
+		const cyrusToolsServer = this.cyrusToolsHttpServers.get(repository.id);
+		if (cyrusToolsServer) {
+			const serverUrl = cyrusToolsServer.getServerUrl();
+			if (serverUrl) {
+				mcpConfig["cyrus-tools"] = {
+					type: "http",
+					url: serverUrl,
+					headers: {
+						Authorization: `Bearer ${this.cyrusToolsAuthToken}`,
+					},
+				};
+				console.log(
+					`[EdgeWorker] Configured cyrus-tools HTTP MCP for repository ${repository.id}: ${serverUrl}`,
+				);
+			} else {
+				console.warn(
+					`[EdgeWorker] Cyrus-tools HTTP MCP server exists but has no URL for repository ${repository.id}`,
+				);
+			}
+		} else {
+			console.warn(
+				`[EdgeWorker] No cyrus-tools HTTP MCP server found for repository ${repository.id}`,
+			);
+		}
 
 		// Add OpenAI-based MCP servers if API key is configured
 		if (repository.openaiApiKey) {
