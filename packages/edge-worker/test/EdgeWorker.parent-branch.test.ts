@@ -194,7 +194,7 @@ Base Branch: {{base_branch}}`;
 
 		// Inject mock issue tracker for the test repository
 		// The EdgeWorker constructor creates real LinearIssueTrackerService instances,
-		// but we need to replace them with mocks for testing using type-safe test method
+		// but we need to replace them with mocks for testing
 		const mockIssueTracker = {
 			fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
 				// Return the same mock data as mockLinearClient.issue()
@@ -202,7 +202,7 @@ Base Branch: {{base_branch}}`;
 			}),
 			getIssueLabels: vi.fn().mockResolvedValue([]),
 		};
-		edgeWorker.setIssueTrackerForTesting(mockIssueTracker as any);
+		(edgeWorker as any).issueTracker = mockIssueTracker;
 
 		// Mock branchExists to always return true so parent branches are used
 		vi.spyOn((edgeWorker as any).gitService, "branchExists").mockResolvedValue(

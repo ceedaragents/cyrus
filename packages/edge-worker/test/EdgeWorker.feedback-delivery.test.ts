@@ -169,26 +169,25 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
-		// Setup mock issue tracker using type-safe test method
-		edgeWorker.setIssueTrackerForTesting({
+		// Setup mock issue tracker
+		(edgeWorker as any).issueTracker = {
 			createAgentActivity: vi.fn().mockResolvedValue({ success: true }),
-		} as any);
+		};
 
 		// Spy on resumeAgentSession method
 		resumeAgentSessionSpy = vi
 			.spyOn(edgeWorker as any, "resumeAgentSession")
 			.mockResolvedValue(undefined);
 
-		// Setup parent-child mapping using type-safe test method
-		edgeWorker
-			.getChildToParentAgentSessionForTesting()
-			.set("child-session-456", "parent-session-123");
-
-		// Setup the single agent session manager with child session using type-safe test method
-		edgeWorker.setAgentSessionManagerForTesting(
-			mockChildAgentSessionManager as any,
+		// Setup parent-child mapping
+		(edgeWorker as any).childToParentAgentSession.set(
+			"child-session-456",
+			"parent-session-123",
 		);
-		edgeWorker.getRepositoriesForTesting().set("test-repo", mockRepository);
+
+		// Setup the single agent session manager with child session
+		(edgeWorker as any).agentSessionManager = mockChildAgentSessionManager;
+		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 	});
 
 	afterEach(() => {
@@ -260,9 +259,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		it("should handle feedback delivery when parent session ID is unknown", async () => {
 			// Arrange - Remove parent mapping to test unknown parent scenario
-			edgeWorker
-				.getChildToParentAgentSessionForTesting()
-				.delete("child-session-456");
+			(edgeWorker as any).childToParentAgentSession.delete("child-session-456");
 
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback without known parent";

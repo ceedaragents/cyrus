@@ -213,14 +213,14 @@ Issue: {{issue_identifier}}`;
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
-		// Inject mock issue tracker using type-safe test method
+		// Inject mock issue tracker
 		const mockIssueTracker = {
 			fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
 				return mockLinearClient.issue(issueId);
 			}),
 			getIssueLabels: vi.fn(),
 		};
-		edgeWorker.setIssueTrackerForTesting(mockIssueTracker as any);
+		(edgeWorker as any).issueTracker = mockIssueTracker;
 	});
 
 	afterEach(() => {
