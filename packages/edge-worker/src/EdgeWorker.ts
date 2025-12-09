@@ -220,33 +220,10 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Create single AgentSessionManager for all repositories
-		// Note: This pattern works (despite appearing recursive) because:
-		// 1. The agentSessionManager variable is captured by the closure after it's assigned
-		// 2. JavaScript's variable hoisting means 'agentSessionManager' exists (but is undefined) when the arrow function is created
-		// 3. By the time the callback is actually invoked (when a child session completes), agentSessionManager is fully initialized
-		// 4. The callback only executes asynchronously, well after the constructor has completed and agentSessionManager is assigned
-		//
-		// This allows the AgentSessionManager to call back into itself to access its own sessions,
-		// enabling child sessions to trigger parent session resumption using the same manager instance.
 		this.agentSessionManager = new AgentSessionManager(
 			this.issueTracker,
-			(childSessionId: string) => {
-				console.log(
-					`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
-				);
-				const parentId = this.childToParentAgentSession.get(childSessionId);
-				console.log(
-					`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || "not found"}`,
-				);
-				return parentId;
-			},
-			async (parentSessionId, prompt, childSessionId) => {
-				await this.handleResumeParentSession(
-					parentSessionId,
-					prompt,
-					childSessionId,
-				);
-			},
+			this.lookupParentSessionId.bind(this),
+			this.resumeParentSessionCallback.bind(this),
 			this.procedureAnalyzer,
 			this.sharedApplicationServer,
 		);
@@ -487,6 +464,37 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	setConfigPath(configPath: string): void {
 		this.configPath = configPath;
+	}
+
+	/**
+	 * Look up the parent session ID for a given child session ID
+	 * Used by AgentSessionManager to find parent sessions when child sessions complete
+	 */
+	private lookupParentSessionId(childSessionId: string): string | undefined {
+		console.log(
+			`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
+		);
+		const parentId = this.childToParentAgentSession.get(childSessionId);
+		console.log(
+			`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || "not found"}`,
+		);
+		return parentId;
+	}
+
+	/**
+	 * Callback to resume a parent session when its child session completes
+	 * Used by AgentSessionManager to trigger parent session resumption
+	 */
+	private async resumeParentSessionCallback(
+		parentSessionId: string,
+		prompt: string,
+		childSessionId: string,
+	): Promise<void> {
+		await this.handleResumeParentSession(
+			parentSessionId,
+			prompt,
+			childSessionId,
+		);
 	}
 
 	/**
@@ -923,28 +931,8 @@ export class EdgeWorker extends EventEmitter {
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create AgentSessionManager with same pattern as constructor
-				const agentSessionManager = new AgentSessionManager(
-					this.issueTracker,
-					(childSessionId: string) => {
-						return this.childToParentAgentSession.get(childSessionId);
-					},
-					async (parentSessionId, prompt, childSessionId) => {
-						await this.handleResumeParentSession(
-							parentSessionId,
-							prompt,
-							childSessionId,
-						);
-					},
-					this.procedureAnalyzer,
-					this.sharedApplicationServer,
-				);
-
-				// Subscribe to subroutine completion events
-				agentSessionManager.on(
-					"subroutineComplete",
-					this.onSubroutineComplete.bind(this),
-				);
+				// Note: No need to create a new AgentSessionManager - we use the single
+				// consolidated instance (this.agentSessionManager) created in the constructor
 
 				console.log(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
