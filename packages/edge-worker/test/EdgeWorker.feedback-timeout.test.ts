@@ -171,20 +171,21 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
-		// Setup mock issue tracker
-		(edgeWorker as any).issueTracker = {
+		// Setup mock issue tracker using type-safe test method
+		edgeWorker.setIssueTrackerForTesting({
 			createAgentActivity: vi.fn().mockResolvedValue({ success: true }),
-		};
+		} as any);
 
-		// Setup parent-child mapping
-		(edgeWorker as any).childToParentAgentSession.set(
-			"child-session-456",
-			"parent-session-123",
+		// Setup parent-child mapping using type-safe test method
+		edgeWorker
+			.getChildToParentAgentSessionForTesting()
+			.set("child-session-456", "parent-session-123");
+
+		// Setup the single agent session manager with child session using type-safe test method
+		edgeWorker.setAgentSessionManagerForTesting(
+			mockChildAgentSessionManager as any,
 		);
-
-		// Setup the single agent session manager with child session
-		(edgeWorker as any).agentSessionManager = mockChildAgentSessionManager;
-		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+		edgeWorker.getRepositoriesForTesting().set("test-repo", mockRepository);
 	});
 
 	afterEach(() => {

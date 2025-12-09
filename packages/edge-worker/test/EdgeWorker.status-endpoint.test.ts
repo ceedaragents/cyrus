@@ -141,8 +141,8 @@ describe("EdgeWorker - Status Endpoint", () => {
 				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner]),
 			};
 
-			// Set the single mock session manager
-			(edgeWorker as any).agentSessionManager = mockSessionManager;
+			// Set the single mock session manager using type-safe test method
+			edgeWorker.setAgentSessionManagerForTesting(mockSessionManager as any);
 
 			const status = (edgeWorker as any).computeStatus();
 
@@ -163,8 +163,8 @@ describe("EdgeWorker - Status Endpoint", () => {
 				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner]),
 			};
 
-			// Set the single mock session manager
-			(edgeWorker as any).agentSessionManager = mockSessionManager;
+			// Set the single mock session manager using type-safe test method
+			edgeWorker.setAgentSessionManagerForTesting(mockSessionManager as any);
 
 			const status = (edgeWorker as any).computeStatus();
 
@@ -187,8 +187,8 @@ describe("EdgeWorker - Status Endpoint", () => {
 				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner1, mockRunner2]),
 			};
 
-			// Set the single mock session manager
-			(edgeWorker as any).agentSessionManager = mockSessionManager;
+			// Set the single mock session manager using type-safe test method
+			edgeWorker.setAgentSessionManagerForTesting(mockSessionManager as any);
 
 			const status = (edgeWorker as any).computeStatus();
 
@@ -211,8 +211,8 @@ describe("EdgeWorker - Status Endpoint", () => {
 				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner1, mockRunner2]),
 			};
 
-			// Set the single session manager
-			(edgeWorker as any).agentSessionManager = mockSessionManager;
+			// Set the single session manager using type-safe test method
+			edgeWorker.setAgentSessionManagerForTesting(mockSessionManager as any);
 
 			const status = (edgeWorker as any).computeStatus();
 
