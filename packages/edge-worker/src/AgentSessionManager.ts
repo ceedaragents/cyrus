@@ -102,6 +102,7 @@ export class AgentSessionManager extends EventEmitter {
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
+		repositoryContext?: import("cyrus-core").RepositoryContext,
 	): CyrusAgentSession {
 		console.log(
 			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
@@ -117,6 +118,7 @@ export class AgentSessionManager extends EventEmitter {
 			issueId,
 			issue: issueMinimal,
 			workspace: workspace,
+			repositoryContext,
 		};
 
 		// Store locally
@@ -1104,6 +1106,15 @@ export class AgentSessionManager extends EventEmitter {
 			(session) =>
 				session.issueId === issueId &&
 				session.status === AgentSessionStatus.Active,
+		);
+	}
+
+	/**
+	 * Get sessions by repository ID
+	 */
+	getSessionsByRepositoryId(repositoryId: string): CyrusAgentSession[] {
+		return Array.from(this.sessions.values()).filter(
+			(session) => session.repositoryContext?.repositoryId === repositoryId,
 		);
 	}
 
