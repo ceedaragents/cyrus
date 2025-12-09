@@ -19,6 +19,7 @@ import {
 	type IAgentRunner,
 	type IIssueTrackerService,
 	type IssueMinimal,
+	type RepositoryContext,
 	type SerializedCyrusAgentSession,
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
@@ -102,7 +103,7 @@ export class AgentSessionManager extends EventEmitter {
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
-		repositoryContext?: import("cyrus-core").RepositoryContext,
+		repositoryContext?: RepositoryContext,
 	): CyrusAgentSession {
 		console.log(
 			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
