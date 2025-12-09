@@ -4828,22 +4828,38 @@ ${input.userComment}
 
 	/**
 	 * Restore EdgeWorker mappings from serialized state
+	 * Handles both new format (sessions under "default" key) and
+	 * legacy format (sessions under repository ID keys) for backwards compatibility
 	 */
 	public restoreMappings(state: SerializableEdgeWorkerState): void {
 		if (state.agentSessions && state.agentSessionEntries) {
-			// Restore Agent Session state from single AgentSessionManager
-			const repositorySessions = state.agentSessions.default || {};
-			const repositoryEntries = state.agentSessionEntries.default || {};
+			// Merge all sessions from all keys (handles both new "default" key and legacy repository ID keys)
+			const allSessions: Record<string, SerializedCyrusAgentSession> = {};
+			const allEntries: Record<string, SerializedCyrusAgentSessionEntry[]> = {};
+
+			// Iterate over all keys in the persisted state (could be "default" or repository IDs)
+			for (const key of Object.keys(state.agentSessions)) {
+				const sessions = state.agentSessions[key] || {};
+				const entries = state.agentSessionEntries[key] || {};
+
+				// Merge sessions from this key
+				for (const [sessionId, session] of Object.entries(sessions)) {
+					allSessions[sessionId] = session;
+				}
+				// Merge entries from this key
+				for (const [sessionId, sessionEntries] of Object.entries(entries)) {
+					allEntries[sessionId] = sessionEntries;
+				}
+			}
 
 			if (
-				Object.keys(repositorySessions).length > 0 ||
-				Object.keys(repositoryEntries).length > 0
+				Object.keys(allSessions).length > 0 ||
+				Object.keys(allEntries).length > 0
 			) {
-				this.agentSessionManager.restoreState(
-					repositorySessions,
-					repositoryEntries,
+				this.agentSessionManager.restoreState(allSessions, allEntries);
+				console.log(
+					`[EdgeWorker] Restored Agent Session state (${Object.keys(allSessions).length} sessions)`,
 				);
-				console.log(`[EdgeWorker] Restored Agent Session state`);
 			}
 		}
 
