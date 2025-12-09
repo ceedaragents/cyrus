@@ -254,12 +254,7 @@ export class EdgeWorker extends EventEmitter {
 		// Subscribe to subroutine completion events
 		this.agentSessionManager.on(
 			"subroutineComplete",
-			async ({ linearAgentActivitySessionId, session }) => {
-				await this.handleSubroutineTransition(
-					linearAgentActivitySessionId,
-					session,
-				);
-			},
+			this.onSubroutineComplete.bind(this),
 		);
 
 		// Components will be initialized and registered in start() method before server starts
@@ -622,6 +617,19 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Event handler for subroutine completion events from AgentSessionManager
+	 */
+	private async onSubroutineComplete(data: {
+		linearAgentActivitySessionId: string;
+		session: CyrusAgentSession;
+	}): Promise<void> {
+		await this.handleSubroutineTransition(
+			data.linearAgentActivitySessionId,
+			data.session,
+		);
+	}
+
+	/**
 	 * Handle subroutine transition when a subroutine completes
 	 * This is triggered by the AgentSessionManager's 'subroutineComplete' event
 	 */
@@ -935,12 +943,7 @@ export class EdgeWorker extends EventEmitter {
 				// Subscribe to subroutine completion events
 				agentSessionManager.on(
 					"subroutineComplete",
-					async ({ linearAgentActivitySessionId, session }) => {
-						await this.handleSubroutineTransition(
-							linearAgentActivitySessionId,
-							session,
-						);
-					},
+					this.onSubroutineComplete.bind(this),
 				);
 
 				console.log(`✅ Repository added successfully: ${repo.name}`);
