@@ -22,6 +22,11 @@ export {
 	type IMessageFormatter,
 } from "./formatter.js";
 export {
+	CyrusToolsHttpServer,
+	type CyrusToolsHttpServerConfig,
+	generateAuthToken,
+} from "./tools/cyrus-tools/http-server.js";
+export {
 	type CyrusToolsOptions,
 	createCyrusToolsServer,
 } from "./tools/cyrus-tools/index.js";
