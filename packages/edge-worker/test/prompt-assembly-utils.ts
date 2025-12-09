@@ -16,19 +16,9 @@ export function createTestWorker(
 	repositories: RepositoryConfig[] = [],
 	linearWorkspaceSlug?: string,
 ): EdgeWorker {
-	// Create mock IssueTrackerServices for each repository
-	const issueTrackers = new Map();
-	for (const repo of repositories) {
-		// Create a minimal mock IssueTrackerService with required methods
-		const mockIssueTracker = {
-			getComments: () => Promise.resolve([]),
-			getComment: () => Promise.resolve(null),
-			getIssueLabels: () => Promise.resolve([]),
-			client: {
-				rawRequest: () => Promise.resolve({ data: { comment: { body: "" } } }),
-			},
-		};
-		issueTrackers.set(repo.id, mockIssueTracker as any);
+	// Add a dummy linear token to the first repository if not present
+	if (repositories.length > 0 && !repositories[0].linearToken) {
+		repositories[0].linearToken = "test-token";
 	}
 
 	const config: EdgeWorkerConfig = {
@@ -36,8 +26,7 @@ export function createTestWorker(
 		defaultModel: "sonnet",
 		linearWorkspaceSlug,
 		repositories,
-		issueTrackers,
-		mcpServers: {},
+		platform: "cli", // Use CLI platform for tests to avoid real Linear client
 	};
 	return new EdgeWorker(config);
 }
@@ -132,19 +121,8 @@ export class PromptScenario {
 
 	withRepository(repo: any) {
 		this.input.repository = repo;
-		// Also ensure the worker has an IssueTrackerService for this repository
-		if (!(this.worker as any).issueTrackers.has(repo.id)) {
-			const mockIssueTracker = {
-				getComments: () => Promise.resolve([]),
-				getComment: () => Promise.resolve(null),
-				getIssueLabels: () => Promise.resolve([]),
-				client: {
-					rawRequest: () =>
-						Promise.resolve({ data: { comment: { body: "" } } }),
-				},
-			};
-			(this.worker as any).issueTrackers.set(repo.id, mockIssueTracker);
-		}
+		// Note: EdgeWorker now uses a single issueTracker instance for all repositories
+		// No need to set up per-repository issue trackers anymore
 		return this;
 	}
 

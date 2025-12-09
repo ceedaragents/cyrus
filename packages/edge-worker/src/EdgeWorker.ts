@@ -50,6 +50,7 @@ import {
 	CLIIssueTrackerService,
 	CLIRPCServer,
 	DEFAULT_PROXY_URL,
+	getWorkspaceLinearToken,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isIssueAssignedWebhook,
@@ -108,7 +109,7 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
-	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
+	private issueTracker: IIssueTrackerService; // Single issue tracker instance for the workspace
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private cliRPCServer: CLIRPCServer | null = null; // CLI RPC server for CLI platform mode
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
@@ -141,21 +142,25 @@ export class EdgeWorker extends EventEmitter {
 			runnerType: "claude", // Use Claude by default
 		});
 
+		// Create single issue tracker instance using workspace-level token
+		this.issueTracker =
+			this.config.platform === "cli"
+				? (() => {
+						const service = new CLIIssueTrackerService();
+						service.seedDefaultData();
+						return service;
+					})()
+				: new LinearIssueTrackerService(
+						new LinearClient({
+							accessToken: getWorkspaceLinearToken(config),
+						}),
+					);
+
 		// Initialize repository router with dependencies
 		const repositoryRouterDeps: RepositoryRouterDeps = {
-			fetchIssueLabels: async (issueId: string, workspaceId: string) => {
-				// Find repository for this workspace
-				const repo = Array.from(this.repositories.values()).find(
-					(r) => r.linearWorkspaceId === workspaceId,
-				);
-				if (!repo) return [];
-
-				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(repo.id);
-				if (!issueTracker) return [];
-
+			fetchIssueLabels: async (issueId: string, _workspaceId: string) => {
 				// Use platform-agnostic getIssueLabels method
-				return await issueTracker.getIssueLabels(issueId);
+				return await this.issueTracker.getIssueLabels(issueId);
 			},
 			hasActiveSession: (issueId: string, repositoryId: string) => {
 				const sessionManager = this.agentSessionManagers.get(repositoryId);
@@ -211,21 +216,6 @@ export class EdgeWorker extends EventEmitter {
 
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker for this repository's workspace
-				const issueTracker =
-					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
-						: new LinearIssueTrackerService(
-								new LinearClient({
-									accessToken: repo.linearToken,
-								}),
-							);
-				this.issueTrackers.set(repo.id, issueTracker);
-
 				// Create AgentSessionManager for this repository with parent session lookup and resume callback
 				//
 				// Note: This pattern works (despite appearing recursive) because:
@@ -237,7 +227,7 @@ export class EdgeWorker extends EventEmitter {
 				// This allows the AgentSessionManager to call back into itself to access its own sessions,
 				// enabling child sessions to trigger parent session resumption using the same manager instance.
 				const agentSessionManager = new AgentSessionManager(
-					issueTracker,
+					this.issueTracker,
 					(childSessionId: string) => {
 						console.log(
 							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
@@ -313,7 +303,7 @@ export class EdgeWorker extends EventEmitter {
 		// Platform-specific initialization
 		if (this.config.platform === "cli") {
 			// CLI mode: Create and register CLIRPCServer
-			const firstIssueTracker = this.issueTrackers.get(firstRepo.id);
+			const firstIssueTracker = this.issueTracker;
 			if (!firstIssueTracker) {
 				throw new Error("Issue tracker not found for first repository");
 			}
@@ -563,7 +553,7 @@ export class EdgeWorker extends EventEmitter {
 		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
 		// Post thought to Linear showing child result receipt
-		const issueTracker = this.issueTrackers.get(repo.id);
+		const issueTracker = this.issueTracker;
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -905,24 +895,9 @@ export class EdgeWorker extends EventEmitter {
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker
-				const issueTracker =
-					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
-						: new LinearIssueTrackerService(
-								new LinearClient({
-									accessToken: repo.linearToken,
-								}),
-							);
-				this.issueTrackers.set(repo.id, issueTracker);
-
 				// Create AgentSessionManager with same pattern as constructor
 				const agentSessionManager = new AgentSessionManager(
-					issueTracker,
+					this.issueTracker,
 					(childSessionId: string) => {
 						return this.childToParentAgentSession.get(childSessionId);
 					},
@@ -1000,10 +975,10 @@ export class EdgeWorker extends EventEmitter {
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// If token changed, recreate issue tracker
+				// If token changed, recreate the workspace issue tracker
 				if (oldRepo.linearToken !== repo.linearToken) {
-					console.log(`  🔑 Token changed, recreating issue tracker`);
-					const issueTracker =
+					console.log(`  🔑 Token changed, recreating workspace issue tracker`);
+					this.issueTracker =
 						this.config.platform === "cli"
 							? (() => {
 									const service = new CLIIssueTrackerService();
@@ -1012,10 +987,9 @@ export class EdgeWorker extends EventEmitter {
 								})()
 							: new LinearIssueTrackerService(
 									new LinearClient({
-										accessToken: repo.linearToken,
+										accessToken: getWorkspaceLinearToken(this.config),
 									}),
 								);
-					this.issueTrackers.set(repo.id, issueTracker);
 				}
 
 				// If active status changed
@@ -1073,7 +1047,7 @@ export class EdgeWorker extends EventEmitter {
 							}
 
 							// Post cancellation message to Linear
-							const issueTracker = this.issueTrackers.get(repo.id);
+							const issueTracker = this.issueTracker;
 							if (issueTracker) {
 								await issueTracker.createAgentActivity({
 									agentSessionId: session.linearAgentActivitySessionId,
@@ -1097,7 +1071,6 @@ export class EdgeWorker extends EventEmitter {
 
 				// Remove repository from all maps
 				this.repositories.delete(repo.id);
-				this.issueTrackers.delete(repo.id);
 				this.agentSessionManagers.delete(repo.id);
 
 				console.log(`✅ Repository removed successfully: ${repo.name}`);
@@ -1216,17 +1189,12 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Get issue tracker for a workspace by finding first repository with that workspace ID
+	 * Get issue tracker for a workspace (returns single instance)
 	 */
 	private getIssueTrackerForWorkspace(
-		workspaceId: string,
+		_workspaceId: string,
 	): IIssueTrackerService | undefined {
-		for (const [repoId, repo] of this.repositories) {
-			if (repo.linearWorkspaceId === workspaceId) {
-				return this.issueTrackers.get(repoId);
-			}
-		}
-		return undefined;
+		return this.issueTracker;
 	}
 
 	/**
@@ -1994,7 +1962,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Need to fetch full issue for routing context
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.issueTracker;
 			if (issueTracker) {
 				try {
 					fullIssue = await issueTracker.fetchIssue(issue.id);
@@ -2022,7 +1990,7 @@ export class EdgeWorker extends EventEmitter {
 		// (before any async routing work to ensure instant user feedback)
 
 		// Get issue tracker for this repository
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.issueTracker;
 		if (!issueTracker) {
 			console.error(
 				"Unexpected: There was no IssueTrackerService for the repository with id",
@@ -2545,7 +2513,7 @@ export class EdgeWorker extends EventEmitter {
 			}
 
 			// Get LinearClient for this repository
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.issueTracker;
 			if (!issueTracker) {
 				console.error(
 					`No IssueTrackerService found for repository ${repository.id}`,
@@ -3085,7 +3053,7 @@ ${reply.body}
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.issueTracker;
 			let commentThreads = "No comments yet.";
 
 			if (issueTracker && issue.id) {
@@ -3285,7 +3253,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
+			const issueTracker = this.issueTracker;
 			if (!issueTracker) {
 				console.warn(
 					`No issue tracker found for repository ${repositoryId}, skipping state update`,
@@ -3365,7 +3333,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	// private async postInitialComment(issueId: string, repositoryId: string): Promise<void> {
 	//   const body = "I'm getting started right away."
 	//   // Get the issue tracker for this repository
-	//   const issueTracker = this.issueTrackers.get(repositoryId)
+	//   const issueTracker = this.issueTracker
 	//   if (!issueTracker) {
 	//     throw new Error(`No issue tracker found for repository ${repositoryId}`)
 	//   }
@@ -3386,7 +3354,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		parentId?: string,
 	): Promise<void> {
 		// Get the issue tracker for this repository
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.issueTracker;
 		if (!issueTracker) {
 			throw new Error(`No issue tracker found for repository ${repositoryId}`);
 		}
@@ -3464,7 +3432,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 			// Extract URLs from comments if available
 			const commentUrls: string[] = [];
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.issueTracker;
 
 			// Fetch native Linear attachments (e.g., Sentry links)
 			const nativeAttachments: Array<{ title: string; url: string }> = [];
@@ -3972,7 +3940,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					}
 
 					// Post thought to Linear showing feedback receipt
-					const issueTracker = this.issueTrackers.get(childRepo.id);
+					const issueTracker = this.issueTracker;
 					if (issueTracker) {
 						const feedbackThought = parentIssueId
 							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
@@ -4901,7 +4869,7 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
+			const issueTracker = this.issueTracker;
 			if (!issueTracker) {
 				console.warn(
 					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
@@ -4944,7 +4912,7 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
+			const issueTracker = this.issueTracker;
 			if (!issueTracker) {
 				console.warn(
 					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
@@ -4997,7 +4965,7 @@ ${input.userComment}
 			| "user-selected",
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
+			const issueTracker = this.issueTracker;
 			if (!issueTracker) {
 				console.warn(
 					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
@@ -5071,7 +5039,7 @@ ${input.userComment}
 		);
 
 		// Fetch full issue and labels to check for Orchestrator label override
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.issueTracker;
 		let hasOrchestratorLabel = false;
 
 		if (issueTracker) {
@@ -5244,7 +5212,7 @@ ${input.userComment}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
+			const issueTracker = this.issueTracker;
 			if (!issueTracker) {
 				console.warn(
 					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
@@ -5528,7 +5496,7 @@ ${input.userComment}
 		isStreaming: boolean,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
+			const issueTracker = this.issueTracker;
 			if (!issueTracker) {
 				console.warn(
 					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
@@ -5574,7 +5542,7 @@ ${input.userComment}
 		issueId: string,
 		repositoryId: string,
 	): Promise<Issue | null> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.issueTracker;
 		if (!issueTracker) {
 			console.warn(
 				`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
