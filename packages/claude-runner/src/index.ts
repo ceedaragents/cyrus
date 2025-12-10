@@ -22,6 +22,10 @@ export {
 	type IMessageFormatter,
 } from "./formatter.js";
 export {
+	type CyrusToolsServerResult,
+	createCyrusToolsFastifyServer,
+} from "./tools/cyrus-tools/fastify-server.js";
+export {
 	type CyrusToolsOptions,
 	createCyrusToolsServer,
 } from "./tools/cyrus-tools/index.js";
