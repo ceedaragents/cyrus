@@ -1,5 +1,8 @@
 import { LinearClient } from "@linear/sdk";
-import { ClaudeRunner, createCyrusToolsServer } from "cyrus-claude-runner";
+import {
+	ClaudeRunner,
+	createCyrusToolsFastifyServer,
+} from "cyrus-claude-runner";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
@@ -48,34 +51,36 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		labelPrompts: {},
 	};
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "warn").mockImplementation(() => {});
 
 		// Setup callbacks to be captured
 		mockOnFeedbackDelivery = vi.fn();
 		_mockOnSessionCreated = vi.fn();
 
-		// Mock createCyrusToolsServer to return a proper structure
-		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
-			// Capture the callbacks
-			if (options?.onFeedbackDelivery) {
-				mockOnFeedbackDelivery = options.onFeedbackDelivery;
-			}
-			if (options?.onSessionCreated) {
-				_mockOnSessionCreated = options.onSessionCreated;
-			}
+		// Mock createCyrusToolsFastifyServer to return a proper structure
+		vi.mocked(createCyrusToolsFastifyServer).mockImplementation(
+			async (_token, options) => {
+				// Capture the callbacks
+				if (options?.onFeedbackDelivery) {
+					mockOnFeedbackDelivery = options.onFeedbackDelivery;
+				}
+				if (options?.onSessionCreated) {
+					_mockOnSessionCreated = options.onSessionCreated;
+				}
 
-			// Return a mock structure that matches what the real function returns
-			return {
-				type: "sdk" as const,
-				name: "cyrus-tools",
-				instance: {
-					_options: options,
-				},
-			} as any;
-		});
+				// Return a mock structure that matches the HTTP MCP server result
+				return {
+					port: 12345,
+					token: "test-mcp-token",
+					stop: vi.fn().mockResolvedValue(undefined),
+					fastify: {} as any,
+				};
+			},
+		);
 
 		// Mock ClaudeRunner with a long-running session to simulate the timeout
 		mockClaudeRunner = {
@@ -127,7 +132,12 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
-					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getFastifyInstance: vi.fn().mockReturnValue({
+						post: vi.fn(),
+						delete: vi.fn(),
+						get: vi.fn(),
+						put: vi.fn(),
+					}),
 					getWebhookUrl: vi
 						.fn()
 						.mockReturnValue("http://localhost:3456/webhook"),
@@ -169,6 +179,9 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
+
+		// Start the edge worker to initialize the MCP server
+		await edgeWorker.start();
 
 		// Setup parent-child mapping
 		(edgeWorker as any).childToParentAgentSession.set(

@@ -1,5 +1,8 @@
 import { LinearClient } from "@linear/sdk";
-import { ClaudeRunner, createCyrusToolsServer } from "cyrus-claude-runner";
+import {
+	ClaudeRunner,
+	createCyrusToolsFastifyServer,
+} from "cyrus-claude-runner";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
@@ -48,34 +51,36 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		labelPrompts: {},
 	};
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "warn").mockImplementation(() => {});
 
 		// Setup callbacks to be captured
 		mockOnFeedbackDelivery = vi.fn();
 		mockOnSessionCreated = vi.fn();
 
-		// Mock createCyrusToolsServer to return a proper structure
-		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
-			// Capture the callbacks
-			if (options?.onFeedbackDelivery) {
-				mockOnFeedbackDelivery = options.onFeedbackDelivery;
-			}
-			if (options?.onSessionCreated) {
-				mockOnSessionCreated = options.onSessionCreated;
-			}
+		// Mock createCyrusToolsFastifyServer to return a proper structure
+		vi.mocked(createCyrusToolsFastifyServer).mockImplementation(
+			async (_token, options) => {
+				// Capture the callbacks
+				if (options?.onFeedbackDelivery) {
+					mockOnFeedbackDelivery = options.onFeedbackDelivery;
+				}
+				if (options?.onSessionCreated) {
+					mockOnSessionCreated = options.onSessionCreated;
+				}
 
-			// Return a mock structure that matches what the real function returns
-			return {
-				type: "sdk" as const,
-				name: "cyrus-tools",
-				instance: {
-					_options: options,
-				},
-			} as any;
-		});
+				// Return a mock structure that matches the HTTP MCP server result
+				return {
+					port: 12345,
+					token: "test-mcp-token",
+					stop: vi.fn().mockResolvedValue(undefined),
+					fastify: {} as any,
+				};
+			},
+		);
 
 		// Mock ClaudeRunner
 		mockClaudeRunner = {
@@ -125,7 +130,12 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				({
 					start: vi.fn().mockResolvedValue(undefined),
 					stop: vi.fn().mockResolvedValue(undefined),
-					getFastifyInstance: vi.fn().mockReturnValue({ post: vi.fn() }),
+					getFastifyInstance: vi.fn().mockReturnValue({
+						post: vi.fn(),
+						delete: vi.fn(),
+						get: vi.fn(),
+						put: vi.fn(),
+					}),
 					getWebhookUrl: vi
 						.fn()
 						.mockReturnValue("http://localhost:3456/webhook"),
@@ -167,6 +177,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
+
+		// Start the edge worker to initialize the MCP server
+		await edgeWorker.start();
 
 		// Spy on resumeAgentSession method
 		resumeAgentSessionSpy = vi
@@ -434,30 +447,24 @@ describe("EdgeWorker - Feedback Delivery", () => {
 	});
 
 	describe("Integration with cyrus-tools server", () => {
-		it("should properly configure feedback delivery callback in MCP config", () => {
-			// Arrange
-			const parentSessionId = "parent-session-123";
-
+		it("should properly configure feedback delivery callback in HTTP MCP config", () => {
 			// Act
-			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
-				parentSessionId,
-			);
+			const _mcpConfig = (edgeWorker as any).buildMcpConfig(mockRepository);
 
-			// Assert
+			// Assert - Check that cyrus-tools is configured as HTTP MCP
 			expect(_mcpConfig).toHaveProperty("cyrus-tools");
+			expect(_mcpConfig["cyrus-tools"]).toEqual({
+				type: "http",
+				url: "http://127.0.0.1:12345/mcp",
+				headers: {
+					Authorization: "Bearer test-mcp-token",
+				},
+			});
 
-			// Verify createCyrusToolsServer was called with correct options
-			expect(createCyrusToolsServer).toHaveBeenCalledWith(
-				mockRepository.linearToken,
-				expect.objectContaining({
-					parentSessionId,
-					onFeedbackDelivery: expect.any(Function),
-					onSessionCreated: expect.any(Function),
-				}),
-			);
+			// Verify createCyrusToolsFastifyServer was called during start() with callbacks
+			expect(createCyrusToolsFastifyServer).toHaveBeenCalled();
 
-			// Verify the callbacks were captured
+			// Verify the callbacks were captured from server startup
 			expect(mockOnFeedbackDelivery).toBeDefined();
 			expect(mockOnSessionCreated).toBeDefined();
 		});
