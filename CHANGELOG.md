@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Self-hosted OAuth route restored** - Fixed missing `/oauth/authorize` route that was accidentally removed during the Fastify refactoring. Self-hosted Cyrus instances with `CYRUS_HOST_EXTERNAL=true` and `LINEAR_DIRECT_WEBHOOKS=true` can now properly handle OAuth flows without requiring the proxy server. ([CYPACK-605](https://linear.app/ceedar/issue/CYPACK-605), [#651](https://github.com/ceedaragents/cyrus/issues/651))
+- **Self-hosted OAuth route restored** - Fixed missing `/oauth/authorize` route that was accidentally removed during the Fastify refactoring. Self-hosted Cyrus instances with `LINEAR_DIRECT_WEBHOOKS=true` can now properly handle OAuth flows locally. When direct webhooks are not enabled, configuration (including tokens) must be pushed to the device from an external service, as there is no proxy OAuth service. ([CYPACK-605](https://linear.app/ceedar/issue/CYPACK-605), [#651](https://github.com/ceedaragents/cyrus/issues/651))
 
 ### Added
 - **Process status endpoint** - Added `GET /status` endpoint that returns `{"status": "idle"}` or `{"status": "busy"}` to safely determine when Cyrus can be restarted without interrupting active work. ([CYPACK-576](https://linear.app/ceedar/issue/CYPACK-576), [#632](https://github.com/ceedaragents/cyrus/pull/632))

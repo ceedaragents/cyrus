@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CloudflareTunnelClient } from "cyrus-cloudflare-tunnel-client";
-import { DEFAULT_PROXY_URL } from "cyrus-core";
 import Fastify, { type FastifyInstance } from "fastify";
 
 /**
@@ -82,25 +81,24 @@ export class SharedApplicationServer {
 
 	/**
 	 * Register OAuth routes (GET /oauth/authorize)
+	 * Only enabled when LINEAR_DIRECT_WEBHOOKS=true for self-hosted instances
 	 */
 	registerOAuthRoutes(): void {
 		this.initializeFastify();
 
 		this.app!.get("/oauth/authorize", async (_request, reply) => {
 			try {
-				// Check if we're in external host mode with direct webhooks
-				const isExternalHost =
-					process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+				// Check if direct webhooks are enabled (self-hosted mode)
 				const isDirectWebhooks =
 					process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
 
-				// Only handle OAuth locally if both external host AND direct webhooks are enabled
-				if (!isExternalHost || !isDirectWebhooks) {
-					// Redirect to proxy OAuth endpoint
-					const callbackBaseUrl = `http://${this.host}:${this.port}`;
-					const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
-					const proxyAuthUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
-					return reply.status(302).redirect(proxyAuthUrl);
+				if (!isDirectWebhooks) {
+					return reply
+						.code(400)
+						.type("text/plain")
+						.send(
+							"OAuth is not available in this mode. Configuration is managed externally.",
+						);
 				}
 
 				// Check for LINEAR_CLIENT_ID
@@ -340,8 +338,9 @@ export class SharedApplicationServer {
 
 	/**
 	 * Start OAuth flow and return promise that resolves when callback is received
+	 * Only works when LINEAR_DIRECT_WEBHOOKS=true for self-hosted instances
 	 */
-	async startOAuthFlow(proxyUrl: string): Promise<{
+	async startOAuthFlow(): Promise<{
 		linearToken: string;
 		linearWorkspaceId: string;
 		linearWorkspaceName: string;
@@ -351,29 +350,39 @@ export class SharedApplicationServer {
 			linearWorkspaceId: string;
 			linearWorkspaceName: string;
 		}>((resolve, reject) => {
+			// Check if direct webhooks are enabled
+			const isDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
+
+			if (!isDirectWebhooks) {
+				reject(
+					new Error(
+						"OAuth flow not available: LINEAR_DIRECT_WEBHOOKS must be set to true for self-hosted instances",
+					),
+				);
+				return;
+			}
+
+			// Check for LINEAR_CLIENT_ID
+			if (!process.env.LINEAR_CLIENT_ID) {
+				reject(
+					new Error(
+						"OAuth flow not available: LINEAR_CLIENT_ID environment variable is required",
+					),
+				);
+				return;
+			}
+
 			// Generate unique ID for this flow
 			const flowId = Date.now().toString();
 
 			// Store callback for this flow
 			this.oauthCallbacks.set(flowId, { resolve, reject, id: flowId });
 
-			// Check if we should use direct Linear OAuth (when self-hosting)
-			const isExternalHost =
-				process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
-			const useDirectOAuth = isExternalHost && process.env.LINEAR_CLIENT_ID;
-
 			const callbackBaseUrl = `http://${this.host}:${this.port}`;
-			let authUrl: string;
+			const authUrl = `${callbackBaseUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
 
-			if (useDirectOAuth) {
-				// Use local OAuth authorize endpoint
-				authUrl = `${callbackBaseUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
-				console.log(`\n🔐 Using direct OAuth mode (CYRUS_HOST_EXTERNAL=true)`);
-			} else {
-				// Use proxy OAuth endpoint
-				authUrl = `${proxyUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
-			}
-
+			console.log(`\n🔐 Using direct OAuth mode (LINEAR_DIRECT_WEBHOOKS=true)`);
 			console.log(`\n👉 Opening your browser to authorize with Linear...`);
 			console.log(`If the browser doesn't open, visit: ${authUrl}`);
 

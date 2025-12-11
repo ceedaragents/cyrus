@@ -49,7 +49,6 @@ import type {
 import {
 	CLIIssueTrackerService,
 	CLIRPCServer,
-	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isIssueAssignedWebhook,
@@ -3253,14 +3252,14 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 	/**
 	 * Start OAuth flow using the shared application server
+	 * Only works when LINEAR_DIRECT_WEBHOOKS=true for self-hosted instances
 	 */
-	async startOAuthFlow(proxyUrl?: string): Promise<{
+	async startOAuthFlow(): Promise<{
 		linearToken: string;
 		linearWorkspaceId: string;
 		linearWorkspaceName: string;
 	}> {
-		const oauthProxyUrl = proxyUrl || this.config.proxyUrl || DEFAULT_PROXY_URL;
-		return this.sharedApplicationServer.startOAuthFlow(oauthProxyUrl);
+		return this.sharedApplicationServer.startOAuthFlow();
 	}
 
 	/**
