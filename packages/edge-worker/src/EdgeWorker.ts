@@ -181,10 +181,12 @@ export class EdgeWorker extends EventEmitter {
 		const serverPort = config.serverPort || config.webhookPort || 3456;
 		const serverHost = config.serverHost || "localhost";
 		const skipTunnel = config.platform === "cli"; // Skip Cloudflare tunnel in CLI mode
+		const baseUrl = config.baseUrl || config.webhookBaseUrl; // Support legacy webhookBaseUrl
 		this.sharedApplicationServer = new SharedApplicationServer(
 			serverPort,
 			serverHost,
 			skipTunnel,
+			baseUrl,
 		);
 
 		// Initialize repositories with path resolution

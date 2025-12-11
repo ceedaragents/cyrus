@@ -52,6 +52,7 @@ export class SharedApplicationServer {
 	private pendingApprovals = new Map<string, ApprovalCallback>();
 	private port: number;
 	private host: string;
+	private baseUrl?: string;
 	private isListening = false;
 	private tunnelClient: CloudflareTunnelClient | null = null;
 	private skipTunnel: boolean;
@@ -60,10 +61,12 @@ export class SharedApplicationServer {
 		port: number = 3456,
 		host: string = "localhost",
 		skipTunnel: boolean = false,
+		baseUrl?: string,
 	) {
 		this.port = port;
 		this.host = host;
 		this.skipTunnel = skipTunnel;
+		this.baseUrl = baseUrl;
 	}
 
 	/**
@@ -115,10 +118,15 @@ export class SharedApplicationServer {
 				// Generate state for CSRF protection
 				const state = randomUUID();
 
+				// Determine callback URL (use baseUrl if available, otherwise construct from host:port)
+				const callbackBaseUrl =
+					this.baseUrl || `http://${this.host}:${this.port}`;
+				const redirectUri = `${callbackBaseUrl}/callback`;
+
 				// Store state with expiration (10 minutes)
 				this.oauthStates.set(state, {
 					createdAt: Date.now(),
-					redirectUri: `http://${this.host}:${this.port}/callback`,
+					redirectUri,
 				});
 
 				// Clean up expired states (older than 10 minutes)
@@ -132,10 +140,7 @@ export class SharedApplicationServer {
 				// Build Linear OAuth URL
 				const authUrl = new URL("https://linear.app/oauth/authorize");
 				authUrl.searchParams.set("client_id", clientId);
-				authUrl.searchParams.set(
-					"redirect_uri",
-					`http://${this.host}:${this.port}/callback`,
-				);
+				authUrl.searchParams.set("redirect_uri", redirectUri);
 				authUrl.searchParams.set("response_type", "code");
 				authUrl.searchParams.set("state", state);
 				authUrl.searchParams.set(
@@ -379,7 +384,9 @@ export class SharedApplicationServer {
 			// Store callback for this flow
 			this.oauthCallbacks.set(flowId, { resolve, reject, id: flowId });
 
-			const callbackBaseUrl = `http://${this.host}:${this.port}`;
+			// Use baseUrl if available, otherwise construct from host:port
+			const callbackBaseUrl =
+				this.baseUrl || `http://${this.host}:${this.port}`;
 			const authUrl = `${callbackBaseUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
 
 			console.log(`\n🔐 Using direct OAuth mode (LINEAR_DIRECT_WEBHOOKS=true)`);
