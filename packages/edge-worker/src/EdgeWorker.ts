@@ -420,6 +420,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// 3. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
+
+		// 4. Register OAuth routes for self-hosted mode
+		this.sharedApplicationServer.registerOAuthRoutes();
 	}
 
 	/**

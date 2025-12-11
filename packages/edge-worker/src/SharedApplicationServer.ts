@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CloudflareTunnelClient } from "cyrus-cloudflare-tunnel-client";
+import { DEFAULT_PROXY_URL } from "cyrus-core";
 import Fastify, { type FastifyInstance } from "fastify";
 
 /**
@@ -44,6 +46,10 @@ export class SharedApplicationServer {
 		(req: IncomingMessage, res: ServerResponse) => Promise<void>
 	>();
 	private oauthCallbacks = new Map<string, OAuthCallback>();
+	private oauthStates = new Map<
+		string,
+		{ createdAt: number; redirectUri?: string }
+	>();
 	private pendingApprovals = new Map<string, ApprovalCallback>();
 	private port: number;
 	private host: string;
@@ -72,6 +78,86 @@ export class SharedApplicationServer {
 		this.app = Fastify({
 			logger: false,
 		});
+	}
+
+	/**
+	 * Register OAuth routes (GET /oauth/authorize)
+	 */
+	registerOAuthRoutes(): void {
+		this.initializeFastify();
+
+		this.app!.get("/oauth/authorize", async (_request, reply) => {
+			try {
+				// Check if we're in external host mode with direct webhooks
+				const isExternalHost =
+					process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+				const isDirectWebhooks =
+					process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
+
+				// Only handle OAuth locally if both external host AND direct webhooks are enabled
+				if (!isExternalHost || !isDirectWebhooks) {
+					// Redirect to proxy OAuth endpoint
+					const callbackBaseUrl = `http://${this.host}:${this.port}`;
+					const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
+					const proxyAuthUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
+					return reply.status(302).redirect(proxyAuthUrl);
+				}
+
+				// Check for LINEAR_CLIENT_ID
+				const clientId = process.env.LINEAR_CLIENT_ID;
+				if (!clientId) {
+					return reply
+						.code(400)
+						.type("text/plain")
+						.send(
+							"LINEAR_CLIENT_ID environment variable is required for direct OAuth",
+						);
+				}
+
+				// Generate state for CSRF protection
+				const state = randomUUID();
+
+				// Store state with expiration (10 minutes)
+				this.oauthStates.set(state, {
+					createdAt: Date.now(),
+					redirectUri: `http://${this.host}:${this.port}/callback`,
+				});
+
+				// Clean up expired states (older than 10 minutes)
+				const now = Date.now();
+				for (const [stateKey, stateData] of this.oauthStates) {
+					if (now - stateData.createdAt > 10 * 60 * 1000) {
+						this.oauthStates.delete(stateKey);
+					}
+				}
+
+				// Build Linear OAuth URL
+				const authUrl = new URL("https://linear.app/oauth/authorize");
+				authUrl.searchParams.set("client_id", clientId);
+				authUrl.searchParams.set(
+					"redirect_uri",
+					`http://${this.host}:${this.port}/callback`,
+				);
+				authUrl.searchParams.set("response_type", "code");
+				authUrl.searchParams.set("state", state);
+				authUrl.searchParams.set(
+					"scope",
+					"read,write,app:assignable,app:mentionable",
+				);
+				authUrl.searchParams.set("actor", "app");
+				authUrl.searchParams.set("prompt", "consent");
+
+				console.log(`🔐 Redirecting to Linear OAuth: ${authUrl.toString()}`);
+
+				// Redirect to Linear OAuth
+				return reply.status(302).redirect(authUrl.toString());
+			} catch (error) {
+				console.error("🔐 OAuth authorize error:", error);
+				return reply.code(500).type("text/plain").send("Internal Server Error");
+			}
+		});
+
+		console.log("🔐 Registered OAuth route: GET /oauth/authorize");
 	}
 
 	/**
