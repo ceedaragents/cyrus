@@ -117,6 +117,10 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
+	private pendingRefreshes: Map<
+		string,
+		Promise<{ success: boolean; newToken?: string }>
+	> = new Map(); // Coalesces concurrent token refreshes per workspace
 	private configWatcher?: FSWatcher; // File watcher for config.json
 	private configPath?: string; // Path to config.json file
 	/** @internal - Exposed for testing only */
@@ -223,6 +227,13 @@ export class EdgeWorker extends EventEmitter {
 								new LinearClient({
 									accessToken: repo.linearToken,
 								}),
+								async () => {
+									const result = await this.refreshLinearToken(repo.id);
+									if (!result.success || !result.newToken) {
+										throw new Error("Token refresh failed");
+									}
+									return result.newToken;
+								},
 							);
 				this.issueTrackers.set(repo.id, issueTracker);
 
@@ -905,7 +916,7 @@ export class EdgeWorker extends EventEmitter {
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker
+				// Create issue tracker with token refresh callback
 				const issueTracker =
 					this.config.platform === "cli"
 						? (() => {
@@ -917,6 +928,13 @@ export class EdgeWorker extends EventEmitter {
 								new LinearClient({
 									accessToken: repo.linearToken,
 								}),
+								async () => {
+									const result = await this.refreshLinearToken(repo.id);
+									if (!result.success || !result.newToken) {
+										throw new Error("Token refresh failed");
+									}
+									return result.newToken;
+								},
 							);
 				this.issueTrackers.set(repo.id, issueTracker);
 
@@ -1000,22 +1018,15 @@ export class EdgeWorker extends EventEmitter {
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// If token changed, recreate issue tracker
+				// If token changed, update the issue tracker's client
 				if (oldRepo.linearToken !== repo.linearToken) {
-					console.log(`  🔑 Token changed, recreating issue tracker`);
-					const issueTracker =
-						this.config.platform === "cli"
-							? (() => {
-									const service = new CLIIssueTrackerService();
-									service.seedDefaultData();
-									return service;
-								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: repo.linearToken,
-									}),
-								);
-					this.issueTrackers.set(repo.id, issueTracker);
+					console.log(`  🔑 Token changed, updating client`);
+					const issueTracker = this.issueTrackers.get(repo.id);
+					if (issueTracker) {
+						(issueTracker as LinearIssueTrackerService).setAccessToken(
+							repo.linearToken,
+						);
+					}
 				}
 
 				// If active status changed
@@ -5608,6 +5619,180 @@ ${input.userComment}
 				error,
 			);
 			return null;
+		}
+	}
+
+	// ========================================================================
+	// OAuth Token Refresh
+	// ========================================================================
+
+	/**
+	 * Refresh Linear OAuth token with promise coalescing.
+	 * Multiple concurrent refresh requests for the same workspace will share a single HTTP call.
+	 */
+	private async refreshLinearToken(
+		repositoryId: string,
+	): Promise<{ success: boolean; newToken?: string }> {
+		const repo = this.repositories.get(repositoryId);
+		if (!repo) {
+			console.error(`[EdgeWorker] Repository ${repositoryId} not found`);
+			return { success: false };
+		}
+
+		// Check if we have OAuth credentials
+		const clientId = process.env.LINEAR_CLIENT_ID;
+		const clientSecret = process.env.LINEAR_CLIENT_SECRET;
+
+		if (!clientId || !clientSecret) {
+			console.error(
+				"[EdgeWorker] LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET required for token refresh",
+			);
+			return { success: false };
+		}
+
+		if (!repo.linearRefreshToken) {
+			console.error(
+				`[EdgeWorker] No refresh token available for repository ${repositoryId}`,
+			);
+			return { success: false };
+		}
+
+		const workspaceId = repo.linearWorkspaceId;
+
+		// Check if there's already a pending refresh for this workspace
+		const pendingRefresh = this.pendingRefreshes.get(workspaceId);
+		if (pendingRefresh) {
+			console.log(
+				`[EdgeWorker] Coalescing token refresh for workspace ${workspaceId}`,
+			);
+			return pendingRefresh;
+		}
+
+		// Create the refresh promise and store it
+		const refreshPromise = this.doTokenRefresh(repo, clientId, clientSecret);
+		this.pendingRefreshes.set(workspaceId, refreshPromise);
+
+		try {
+			return await refreshPromise;
+		} finally {
+			this.pendingRefreshes.delete(workspaceId);
+		}
+	}
+
+	/**
+	 * Performs the actual token refresh HTTP request
+	 * @internal
+	 */
+	private async doTokenRefresh(
+		repo: RepositoryConfig,
+		clientId: string,
+		clientSecret: string,
+	): Promise<{ success: boolean; newToken?: string }> {
+		const workspaceId = repo.linearWorkspaceId;
+
+		try {
+			console.log(
+				`[EdgeWorker] Refreshing token for workspace ${workspaceId}...`,
+			);
+
+			const params = new URLSearchParams({
+				grant_type: "refresh_token",
+				client_id: clientId,
+				client_secret: clientSecret,
+				refresh_token: repo.linearRefreshToken!,
+			});
+
+			const response = await fetch("https://api.linear.app/oauth/token", {
+				method: "POST",
+				headers: { "Content-Type": "application/x-www-form-urlencoded" },
+				body: params.toString(),
+			});
+
+			if (!response.ok) {
+				console.error(`[EdgeWorker] Token refresh failed: ${response.status}`);
+				return { success: false };
+			}
+
+			const data = (await response.json()) as {
+				access_token: string;
+				refresh_token: string;
+				expires_in: number;
+			};
+
+			// Update all repositories with this workspace ID
+			for (const [repoId, repository] of this.repositories) {
+				if (repository.linearWorkspaceId === workspaceId) {
+					repository.linearToken = data.access_token;
+					repository.linearRefreshToken = data.refresh_token;
+
+					// Update the issue tracker's client with new token
+					const issueTracker = this.issueTrackers.get(repoId);
+					if (issueTracker) {
+						(issueTracker as LinearIssueTrackerService).setAccessToken(
+							data.access_token,
+						);
+					}
+				}
+			}
+
+			// Save tokens to config.json
+			const workspaceName = repo.linearWorkspaceName || repo.linearWorkspaceId;
+			await this.saveOAuthTokens({
+				linearToken: data.access_token,
+				linearRefreshToken: data.refresh_token,
+				linearWorkspaceId: workspaceId,
+				linearWorkspaceName: workspaceName,
+			});
+
+			console.log(
+				`[EdgeWorker] ✅ Token refreshed successfully for workspace ${workspaceId}`,
+			);
+			return { success: true, newToken: data.access_token };
+		} catch (error) {
+			console.error("[EdgeWorker] Token refresh error:", error);
+			return { success: false };
+		}
+	}
+
+	/**
+	 * Save OAuth tokens to config.json
+	 */
+	private async saveOAuthTokens(tokens: {
+		linearToken: string;
+		linearRefreshToken?: string;
+		linearWorkspaceId: string;
+		linearWorkspaceName?: string;
+	}): Promise<void> {
+		if (!this.configPath) {
+			console.warn("[EdgeWorker] No config path set, cannot save OAuth tokens");
+			return;
+		}
+
+		try {
+			const configContent = await readFile(this.configPath, "utf-8");
+			const config = JSON.parse(configContent);
+
+			// Find and update all repositories with this workspace ID
+			if (config.repositories && Array.isArray(config.repositories)) {
+				for (const repo of config.repositories) {
+					if (repo.linearWorkspaceId === tokens.linearWorkspaceId) {
+						repo.linearToken = tokens.linearToken;
+						if (tokens.linearRefreshToken) {
+							repo.linearRefreshToken = tokens.linearRefreshToken;
+						}
+						if (tokens.linearWorkspaceName) {
+							repo.linearWorkspaceName = tokens.linearWorkspaceName;
+						}
+					}
+				}
+			}
+
+			await writeFile(this.configPath, JSON.stringify(config, null, "\t"));
+			console.log(
+				`[EdgeWorker] OAuth tokens saved to config for workspace ${tokens.linearWorkspaceId}`,
+			);
+		} catch (error) {
+			console.error("[EdgeWorker] Failed to save OAuth tokens:", error);
 		}
 	}
 }

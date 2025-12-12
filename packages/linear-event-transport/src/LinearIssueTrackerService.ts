@@ -63,9 +63,56 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Create a new LinearIssueTrackerService.
 	 *
 	 * @param linearClient - Configured LinearClient instance
+	 * @param refreshToken - Optional callback to refresh OAuth token on 401 errors
 	 */
-	constructor(linearClient: LinearClient) {
+	constructor(
+		linearClient: LinearClient,
+		refreshToken?: () => Promise<string>,
+	) {
 		this.linearClient = linearClient;
+
+		if (refreshToken) {
+			const client = linearClient.client;
+			const originalRequest = client.request.bind(client);
+
+			client.request = async <Data, Variables extends Record<string, unknown>>(
+				document: string,
+				variables?: Variables,
+				requestHeaders?: RequestInit["headers"],
+			): Promise<Data> => {
+				try {
+					return (await originalRequest(
+						document,
+						variables,
+						requestHeaders,
+					)) as Data;
+				} catch (error) {
+					if (!this.isTokenExpiredError(error)) throw error;
+					const newToken = await refreshToken();
+					client.setHeader("Authorization", `Bearer ${newToken}`);
+					return (await originalRequest(
+						document,
+						variables,
+						requestHeaders,
+					)) as Data;
+				}
+			};
+		}
+	}
+
+	/**
+	 * Check if an error is a 401 token expiration error.
+	 */
+	private isTokenExpiredError(error: unknown): boolean {
+		const err = error as { status?: number; response?: { status?: number } };
+		return err?.status === 401 || err?.response?.status === 401;
+	}
+
+	/**
+	 * @param token - New access token
+	 */
+	setAccessToken(token: string): void {
+		this.linearClient.client.setHeader("Authorization", `Bearer ${token}`);
 	}
 
 	// ========================================================================
