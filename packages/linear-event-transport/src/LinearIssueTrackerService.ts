@@ -71,14 +71,22 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	) {
 		this.linearClient = linearClient;
 
-		if (refreshToken) {
+		// Only patch if refreshToken callback is provided AND linearClient.client exists
+		// (the .client property may not exist in test mocks)
+		if (refreshToken && linearClient.client) {
 			const client = linearClient.client;
 			const originalRequest = client.request.bind(client);
+
+			// Track the current refresh promise - this is kept around after resolution
+			// so that ALL concurrent 401 errors share the same refreshed token.
+			// The promise is only cleared when refresh fails, allowing a fresh retry.
+			let refreshPromise: Promise<string> | null = null;
 
 			client.request = async <Data, Variables extends Record<string, unknown>>(
 				document: string,
 				variables?: Variables,
 				requestHeaders?: RequestInit["headers"],
+				isRetry = false,
 			): Promise<Data> => {
 				try {
 					return (await originalRequest(
@@ -87,14 +95,40 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 						requestHeaders,
 					)) as Data;
 				} catch (error) {
-					if (!this.isTokenExpiredError(error)) throw error;
-					const newToken = await refreshToken();
-					client.setHeader("Authorization", `Bearer ${newToken}`);
-					return (await originalRequest(
-						document,
-						variables,
-						requestHeaders,
-					)) as Data;
+					// Don't retry if this is already a retry attempt (prevents infinite loops)
+					// or if it's not a token expiration error
+					if (isRetry || !this.isTokenExpiredError(error)) throw error;
+
+					// Coalesce ALL concurrent refresh attempts - everyone shares the same promise.
+					// The promise persists after resolution so late-arriving 401s still get
+					// the same token without triggering a new refresh.
+					if (!refreshPromise) {
+						refreshPromise = refreshToken().catch((refreshError) => {
+							// On failure, clear the promise so next 401 can retry fresh
+							refreshPromise = null;
+							console.error(
+								"[LinearIssueTrackerService] Token refresh failed:",
+								refreshError,
+							);
+							throw refreshError;
+						});
+					}
+
+					try {
+						const newToken = await refreshPromise;
+						client.setHeader("Authorization", `Bearer ${newToken}`);
+
+						// Retry the request with the new token (marked as retry to prevent loops)
+						return (await (client.request as any)(
+							document,
+							variables,
+							requestHeaders,
+							true, // isRetry flag
+						)) as Data;
+					} catch (_refreshError) {
+						// If refresh failed, throw the original 401 error for clarity
+						throw error;
+					}
 				}
 			};
 		}
@@ -109,10 +143,15 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	}
 
 	/**
+	 * Update the access token using setHeader on the underlying GraphQL client.
+	 * This is more efficient than recreating the entire LinearClient.
 	 * @param token - New access token
 	 */
 	setAccessToken(token: string): void {
-		this.linearClient.client.setHeader("Authorization", `Bearer ${token}`);
+		// Guard for test mocks that may not have the .client property
+		if (this.linearClient.client) {
+			this.linearClient.client.setHeader("Authorization", `Bearer ${token}`);
+		}
 	}
 
 	// ========================================================================
