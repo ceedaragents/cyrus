@@ -750,6 +750,27 @@ export interface IIssueTrackerService {
 	requestFileUpload(request: FileUploadRequest): Promise<FileUploadResponse>;
 
 	// ========================================================================
+	// TOKEN MANAGEMENT
+	// ========================================================================
+
+	/**
+	 * Update the access token on the underlying client.
+	 *
+	 * Used when token is refreshed externally (e.g., by config change or
+	 * workspace-level OAuth token refresh). This allows updating the token
+	 * without recreating the entire service instance.
+	 *
+	 * @param token - New access token to use for API requests
+	 *
+	 * @example
+	 * ```typescript
+	 * // Update token after OAuth refresh
+	 * issueTracker.setAccessToken(newAccessToken);
+	 * ```
+	 */
+	setAccessToken(token: string): void;
+
+	// ========================================================================
 	// PLATFORM METADATA
 	// ========================================================================
 

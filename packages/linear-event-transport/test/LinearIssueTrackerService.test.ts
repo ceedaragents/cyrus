@@ -771,4 +771,147 @@ describe("LinearIssueTrackerService", () => {
 			expect(result.assetUrl).toBe("https://assets.example.com/file.png");
 		});
 	});
+
+	describe("Token Refresh", () => {
+		it("should patch client.request when refreshToken callback is provided", async () => {
+			const mockGraphQLClient = {
+				request: vi.fn().mockResolvedValue({ issue: { id: "123" } }),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+				issue: vi.fn().mockResolvedValue({ id: "123", title: "Test" }),
+			} as any;
+
+			const refreshCallback = vi.fn().mockResolvedValue("new-token");
+
+			const serviceWithRefresh = new LinearIssueTrackerService(
+				mockClientWithGraphQL,
+				refreshCallback,
+			);
+
+			// The request method should be patched
+			expect(mockGraphQLClient.request).not.toBe(
+				serviceWithRefresh.linearClient.client.request,
+			);
+		});
+
+		it("should retry request with new token on 401 error", async () => {
+			const error401 = new Error("Unauthorized");
+			(error401 as any).status = 401;
+
+			const mockGraphQLClient = {
+				request: vi
+					.fn()
+					.mockRejectedValueOnce(error401)
+					.mockResolvedValueOnce({ data: "success" }),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+			} as any;
+
+			const refreshCallback = vi.fn().mockResolvedValue("refreshed-token");
+
+			new LinearIssueTrackerService(mockClientWithGraphQL, refreshCallback);
+
+			// Call the patched request directly
+			const result = await mockClientWithGraphQL.client.request(
+				"query",
+				{},
+				{},
+			);
+
+			expect(refreshCallback).toHaveBeenCalledTimes(1);
+			expect(mockGraphQLClient.setHeader).toHaveBeenCalledWith(
+				"Authorization",
+				"Bearer refreshed-token",
+			);
+			expect(result).toEqual({ data: "success" });
+		});
+
+		it("should not retry on non-401 errors", async () => {
+			const error500 = new Error("Internal Server Error");
+			(error500 as any).status = 500;
+
+			const mockGraphQLClient = {
+				request: vi.fn().mockRejectedValueOnce(error500),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+			} as any;
+
+			const refreshCallback = vi.fn();
+
+			new LinearIssueTrackerService(mockClientWithGraphQL, refreshCallback);
+
+			await expect(
+				mockClientWithGraphQL.client.request("query", {}, {}),
+			).rejects.toThrow("Internal Server Error");
+
+			expect(refreshCallback).not.toHaveBeenCalled();
+			expect(mockGraphQLClient.setHeader).not.toHaveBeenCalled();
+		});
+
+		it("should detect 401 from response.status as well", async () => {
+			const error401Response = new Error("Unauthorized");
+			(error401Response as any).response = { status: 401 };
+
+			const mockGraphQLClient = {
+				request: vi
+					.fn()
+					.mockRejectedValueOnce(error401Response)
+					.mockResolvedValueOnce({ data: "success" }),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+			} as any;
+
+			const refreshCallback = vi.fn().mockResolvedValue("refreshed-token");
+
+			new LinearIssueTrackerService(mockClientWithGraphQL, refreshCallback);
+
+			const result = await mockClientWithGraphQL.client.request(
+				"query",
+				{},
+				{},
+			);
+
+			expect(refreshCallback).toHaveBeenCalledTimes(1);
+			expect(result).toEqual({ data: "success" });
+		});
+	});
+
+	describe("setAccessToken", () => {
+		it("should update the Authorization header on the client", () => {
+			const mockGraphQLClient = {
+				request: vi.fn(),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+			} as any;
+
+			const service = new LinearIssueTrackerService(mockClientWithGraphQL);
+
+			service.setAccessToken("new-access-token");
+
+			expect(mockGraphQLClient.setHeader).toHaveBeenCalledWith(
+				"Authorization",
+				"Bearer new-access-token",
+			);
+		});
+	});
 });
