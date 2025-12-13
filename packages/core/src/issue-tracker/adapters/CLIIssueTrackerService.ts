@@ -1237,6 +1237,17 @@ export class CLIIssueTrackerService
 	}
 
 	// ========================================================================
+	// TOKEN MANAGEMENT
+	// ========================================================================
+
+	/**
+	 * Update the access token (no-op for CLI platform).
+	 */
+	setAccessToken(_token: string): void {
+		// CLI platform doesn't use OAuth tokens, so this is a no-op
+	}
+
+	// ========================================================================
 	// PLATFORM METADATA
 	// ========================================================================
 
