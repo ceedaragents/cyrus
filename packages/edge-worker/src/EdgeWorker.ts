@@ -63,6 +63,7 @@ import { GeminiRunner } from "cyrus-gemini-runner";
 import {
 	LinearEventTransport,
 	LinearIssueTrackerService,
+	type LinearOAuthConfig,
 } from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
@@ -117,10 +118,6 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
-	private pendingRefreshes: Map<
-		string,
-		Promise<{ success: boolean; newToken?: string }>
-	> = new Map(); // Coalesces concurrent token refreshes per workspace
 	private configWatcher?: FSWatcher; // File watcher for config.json
 	private configPath?: string; // Path to config.json file
 	/** @internal - Exposed for testing only */
@@ -227,13 +224,7 @@ export class EdgeWorker extends EventEmitter {
 								new LinearClient({
 									accessToken: repo.linearToken,
 								}),
-								async () => {
-									const result = await this.refreshLinearToken(repo.id);
-									if (!result.success || !result.newToken) {
-										throw new Error("Token refresh failed");
-									}
-									return result.newToken;
-								},
+								this.buildOAuthConfig(resolvedRepo),
 							);
 				this.issueTrackers.set(repo.id, issueTracker);
 
@@ -916,7 +907,7 @@ export class EdgeWorker extends EventEmitter {
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker with token refresh callback
+				// Create issue tracker with OAuth config for token refresh
 				const issueTracker =
 					this.config.platform === "cli"
 						? (() => {
@@ -928,13 +919,7 @@ export class EdgeWorker extends EventEmitter {
 								new LinearClient({
 									accessToken: repo.linearToken,
 								}),
-								async () => {
-									const result = await this.refreshLinearToken(repo.id);
-									if (!result.success || !result.newToken) {
-										throw new Error("Token refresh failed");
-									}
-									return result.newToken;
-								},
+								this.buildOAuthConfig(resolvedRepo),
 							);
 				this.issueTrackers.set(repo.id, issueTracker);
 
@@ -5627,131 +5612,55 @@ ${input.userComment}
 	// ========================================================================
 
 	/**
-	 * Refresh Linear OAuth token with promise coalescing.
-	 * Multiple concurrent refresh requests for the same workspace will share a single HTTP call.
+	 * Build OAuth config for LinearIssueTrackerService.
+	 * Returns undefined if OAuth credentials are not available.
 	 */
-	private async refreshLinearToken(
-		repositoryId: string,
-	): Promise<{ success: boolean; newToken?: string }> {
-		const repo = this.repositories.get(repositoryId);
-		if (!repo) {
-			console.error(`[EdgeWorker] Repository ${repositoryId} not found`);
-			return { success: false };
-		}
-
-		// Check if we have OAuth credentials
+	private buildOAuthConfig(
+		repo: RepositoryConfig,
+	): LinearOAuthConfig | undefined {
 		const clientId = process.env.LINEAR_CLIENT_ID;
 		const clientSecret = process.env.LINEAR_CLIENT_SECRET;
 
 		if (!clientId || !clientSecret) {
-			console.error(
-				"[EdgeWorker] LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET required for token refresh",
+			console.warn(
+				"[EdgeWorker] LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET not set, token refresh disabled",
 			);
-			return { success: false };
+			return undefined;
 		}
 
 		if (!repo.linearRefreshToken) {
-			console.error(
-				`[EdgeWorker] No refresh token available for repository ${repositoryId}`,
+			console.warn(
+				`[EdgeWorker] No refresh token for repository ${repo.id}, token refresh disabled`,
 			);
-			return { success: false };
+			return undefined;
 		}
 
 		const workspaceId = repo.linearWorkspaceId;
+		const workspaceName = repo.linearWorkspaceName || workspaceId;
 
-		// Check if there's already a pending refresh for this workspace
-		const pendingRefresh = this.pendingRefreshes.get(workspaceId);
-		if (pendingRefresh) {
-			console.log(
-				`[EdgeWorker] Coalescing token refresh for workspace ${workspaceId}`,
-			);
-			return pendingRefresh;
-		}
-
-		// Create the refresh promise and store it
-		const refreshPromise = this.doTokenRefresh(repo, clientId, clientSecret);
-		this.pendingRefreshes.set(workspaceId, refreshPromise);
-
-		try {
-			return await refreshPromise;
-		} finally {
-			this.pendingRefreshes.delete(workspaceId);
-		}
-	}
-
-	/**
-	 * Performs the actual token refresh HTTP request
-	 * @internal
-	 */
-	private async doTokenRefresh(
-		repo: RepositoryConfig,
-		clientId: string,
-		clientSecret: string,
-	): Promise<{ success: boolean; newToken?: string }> {
-		const workspaceId = repo.linearWorkspaceId;
-
-		try {
-			console.log(
-				`[EdgeWorker] Refreshing token for workspace ${workspaceId}...`,
-			);
-
-			const params = new URLSearchParams({
-				grant_type: "refresh_token",
-				client_id: clientId,
-				client_secret: clientSecret,
-				refresh_token: repo.linearRefreshToken!,
-			});
-
-			const response = await fetch("https://api.linear.app/oauth/token", {
-				method: "POST",
-				headers: { "Content-Type": "application/x-www-form-urlencoded" },
-				body: params.toString(),
-			});
-
-			if (!response.ok) {
-				console.error(`[EdgeWorker] Token refresh failed: ${response.status}`);
-				return { success: false };
-			}
-
-			const data = (await response.json()) as {
-				access_token: string;
-				refresh_token: string;
-				expires_in: number;
-			};
-
-			// Update all repositories with this workspace ID
-			for (const [repoId, repository] of this.repositories) {
-				if (repository.linearWorkspaceId === workspaceId) {
-					repository.linearToken = data.access_token;
-					repository.linearRefreshToken = data.refresh_token;
-
-					// Update the issue tracker's client with new token
-					const issueTracker = this.issueTrackers.get(repoId);
-					if (issueTracker) {
-						(issueTracker as LinearIssueTrackerService).setAccessToken(
-							data.access_token,
-						);
+		return {
+			clientId,
+			clientSecret,
+			refreshToken: repo.linearRefreshToken,
+			workspaceId,
+			onTokenRefresh: async (tokens) => {
+				// Update repository config state (for EdgeWorker's internal tracking)
+				for (const [, repository] of this.repositories) {
+					if (repository.linearWorkspaceId === workspaceId) {
+						repository.linearToken = tokens.accessToken;
+						repository.linearRefreshToken = tokens.refreshToken;
 					}
 				}
-			}
 
-			// Save tokens to config.json
-			const workspaceName = repo.linearWorkspaceName || repo.linearWorkspaceId;
-			await this.saveOAuthTokens({
-				linearToken: data.access_token,
-				linearRefreshToken: data.refresh_token,
-				linearWorkspaceId: workspaceId,
-				linearWorkspaceName: workspaceName,
-			});
-
-			console.log(
-				`[EdgeWorker] ✅ Token refreshed successfully for workspace ${workspaceId}`,
-			);
-			return { success: true, newToken: data.access_token };
-		} catch (error) {
-			console.error("[EdgeWorker] Token refresh error:", error);
-			return { success: false };
-		}
+				// Persist tokens to config.json
+				await this.saveOAuthTokens({
+					linearToken: tokens.accessToken,
+					linearRefreshToken: tokens.refreshToken,
+					linearWorkspaceId: workspaceId,
+					linearWorkspaceName: workspaceName,
+				});
+			},
+		};
 	}
 
 	/**

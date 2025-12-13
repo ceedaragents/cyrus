@@ -9,6 +9,23 @@
  */
 
 import type { LinearClient } from "@linear/sdk";
+
+/**
+ * OAuth configuration for automatic token refresh.
+ */
+export interface LinearOAuthConfig {
+	clientId: string;
+	clientSecret: string;
+	refreshToken: string;
+	/** Workspace ID for coalescing concurrent refreshes across instances */
+	workspaceId: string;
+	/** Called when tokens are refreshed - use to persist new tokens */
+	onTokenRefresh?: (tokens: {
+		accessToken: string;
+		refreshToken: string;
+	}) => void | Promise<void>;
+}
+
 import type {
 	AgentActivityCreateInput,
 	AgentActivityPayload,
@@ -58,22 +75,41 @@ import { LinearEventTransport } from "./LinearEventTransport.js";
  */
 export class LinearIssueTrackerService implements IIssueTrackerService {
 	private readonly linearClient: LinearClient;
+	private oauthConfig?: LinearOAuthConfig;
+
+	/**
+	 * Static map for workspace-level coalescing of concurrent token refreshes.
+	 * Multiple instances sharing the same workspace will share a single refresh HTTP call.
+	 */
+	private static pendingRefreshes: Map<string, Promise<string>> = new Map();
+
+	/**
+	 * Static map storing the current refresh token per workspace.
+	 * All instances sharing a workspace read/write from this shared state.
+	 */
+	private static workspaceRefreshTokens: Map<string, string> = new Map();
 
 	/**
 	 * Create a new LinearIssueTrackerService.
 	 *
 	 * @param linearClient - Configured LinearClient instance
-	 * @param refreshToken - Optional callback to refresh OAuth token on 401 errors
+	 * @param oauthConfig - Optional OAuth config for automatic token refresh on 401 errors
 	 */
-	constructor(
-		linearClient: LinearClient,
-		refreshToken?: () => Promise<string>,
-	) {
+	constructor(linearClient: LinearClient, oauthConfig?: LinearOAuthConfig) {
 		this.linearClient = linearClient;
+		this.oauthConfig = oauthConfig;
 
-		// Only patch if refreshToken callback is provided AND linearClient.client exists
+		// Register initial refresh token in shared static map
+		if (oauthConfig?.refreshToken) {
+			LinearIssueTrackerService.workspaceRefreshTokens.set(
+				oauthConfig.workspaceId,
+				oauthConfig.refreshToken,
+			);
+		}
+
+		// Only patch if oauthConfig is provided AND linearClient.client exists
 		// (the .client property may not exist in test mocks)
-		if (refreshToken && linearClient.client) {
+		if (oauthConfig && linearClient.client) {
 			const client = linearClient.client;
 			const originalRequest = client.request.bind(client);
 
@@ -103,7 +139,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					// The promise persists after resolution so late-arriving 401s still get
 					// the same token without triggering a new refresh.
 					if (!refreshPromise) {
-						refreshPromise = refreshToken().catch((refreshError) => {
+						refreshPromise = this.doTokenRefresh().catch((refreshError) => {
 							// On failure, clear the promise so next 401 can retry fresh
 							refreshPromise = null;
 							console.error(
@@ -132,6 +168,110 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				}
 			};
 		}
+	}
+
+	/**
+	 * Performs the OAuth token refresh with workspace-level coalescing.
+	 * Multiple concurrent refresh requests for the same workspace share a single HTTP call.
+	 * @returns The new access token
+	 */
+	private async doTokenRefresh(): Promise<string> {
+		if (!this.oauthConfig) {
+			throw new Error("OAuth config not provided");
+		}
+
+		const { workspaceId } = this.oauthConfig;
+
+		// Check if there's already a pending refresh for this workspace
+		const pendingRefresh =
+			LinearIssueTrackerService.pendingRefreshes.get(workspaceId);
+		if (pendingRefresh) {
+			console.log(
+				`[LinearIssueTrackerService] Coalescing token refresh for workspace ${workspaceId}`,
+			);
+			return pendingRefresh;
+		}
+
+		// Create the refresh promise and store it
+		const refreshPromise = this.executeTokenRefresh();
+		LinearIssueTrackerService.pendingRefreshes.set(workspaceId, refreshPromise);
+
+		try {
+			return await refreshPromise;
+		} finally {
+			LinearIssueTrackerService.pendingRefreshes.delete(workspaceId);
+		}
+	}
+
+	/**
+	 * Executes the actual OAuth token refresh HTTP request.
+	 * @internal
+	 */
+	private async executeTokenRefresh(): Promise<string> {
+		const { clientId, clientSecret, workspaceId, onTokenRefresh } =
+			this.oauthConfig!;
+
+		// Read current refresh token from shared static map (may have been updated by another instance)
+		const refreshToken =
+			LinearIssueTrackerService.workspaceRefreshTokens.get(workspaceId);
+		if (!refreshToken) {
+			throw new Error(
+				`No refresh token available for workspace ${workspaceId}`,
+			);
+		}
+
+		console.log(
+			`[LinearIssueTrackerService] Refreshing token for workspace ${workspaceId}...`,
+		);
+
+		const params = new URLSearchParams({
+			grant_type: "refresh_token",
+			client_id: clientId,
+			client_secret: clientSecret,
+			refresh_token: refreshToken,
+		});
+
+		const response = await fetch("https://api.linear.app/oauth/token", {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: params.toString(),
+		});
+
+		if (!response.ok) {
+			throw new Error(`Token refresh failed: ${response.status}`);
+		}
+
+		const data = (await response.json()) as {
+			access_token: string;
+			refresh_token: string;
+			expires_in: number;
+		};
+
+		// Update shared static map for all instances sharing this workspace
+		LinearIssueTrackerService.workspaceRefreshTokens.set(
+			workspaceId,
+			data.refresh_token,
+		);
+
+		// Notify caller so they can persist tokens to disk
+		if (onTokenRefresh) {
+			try {
+				await onTokenRefresh({
+					accessToken: data.access_token,
+					refreshToken: data.refresh_token,
+				});
+			} catch (err) {
+				console.error(
+					"[LinearIssueTrackerService] onTokenRefresh callback failed:",
+					err,
+				);
+			}
+		}
+
+		console.log(
+			`[LinearIssueTrackerService] ✅ Token refreshed successfully for workspace ${workspaceId}`,
+		);
+		return data.access_token;
 	}
 
 	/**
