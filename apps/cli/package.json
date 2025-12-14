@@ -48,7 +48,7 @@
 		"cyrus-core": "workspace:*",
 		"cyrus-edge-worker": "workspace:*",
 		"dotenv": "^16.5.0",
-		"express": "^5.1.0",
+		"express": "^5.2.0",
 		"file-type": "^21.0.0",
 		"fs-extra": "^11.3.0",
 		"node-fetch": "^2.7.0",
