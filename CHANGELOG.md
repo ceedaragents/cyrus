@@ -4,9 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Fixed
-- Removed stale `@anthropic-ai/claude-code` references that were triggering CVE-2025-64755 vulnerability alerts, including legacy npm lockfile and pnpm workspace configuration. The project migrated to `@anthropic-ai/claude-agent-sdk` previously, but these artifacts remained. ([CYPACK-610](https://linear.app/ceedar/issue/CYPACK-610))
-
 ### Added
 - **Process status endpoint** - Added `GET /status` endpoint that returns `{"status": "idle"}` or `{"status": "busy"}` to safely determine when Cyrus can be restarted without interrupting active work. ([CYPACK-576](https://linear.app/ceedar/issue/CYPACK-576), [#632](https://github.com/ceedaragents/cyrus/pull/632))
 - **Version logging on startup** - Cyrus now displays the running version when the edge worker starts, making it easier to verify which version is deployed. ([CYPACK-585](https://linear.app/ceedar/issue/CYPACK-585))
