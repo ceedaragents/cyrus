@@ -42,6 +42,12 @@
 	"dependencies": {
 		"@linear/sdk": "60.0.0"
 	},
+	"pnpm": {
+		"overrides": {
+			"jws": ">=4.0.1",
+			"@modelcontextprotocol/sdk": ">=1.24.0"
+		}
+	},
 	"lint-staged": {
 		"*.{js,jsx,ts,tsx,json,md}": [
 			"biome check --write --unsafe"
