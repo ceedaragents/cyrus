@@ -2279,8 +2279,8 @@ export class EdgeWorker extends EventEmitter {
 		if (!labels || labels.length === 0) {
 			return {
 				runnerType: "claude",
-				modelOverride: "sonnet",
-				fallbackModelOverride: "haiku",
+				modelOverride: "opus",
+				fallbackModelOverride: "sonnet",
 			};
 		}
 
@@ -2348,8 +2348,8 @@ export class EdgeWorker extends EventEmitter {
 		// Default to claude if no runner labels found
 		return {
 			runnerType: "claude",
-			modelOverride: "sonnet",
-			fallbackModelOverride: "haiku",
+			modelOverride: "opus",
+			fallbackModelOverride: "sonnet",
 		};
 	}
 
