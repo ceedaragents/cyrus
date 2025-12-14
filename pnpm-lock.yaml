@@ -7,6 +7,7 @@ settings:
 overrides:
   jws: '>=4.0.1'
   '@modelcontextprotocol/sdk': '>=1.24.0'
+  semver: '>=7.5.2'
 
 importers:
 
@@ -3099,14 +3100,6 @@ packages:
 
   selderee@0.11.0:
     resolution: {integrity: sha512-5TF+l7p4+OsnP8BCCvSyZiSPc4x4//p5uPwK8TCnVPJYRmU2aYKMpOXvw8zM5a5JvuuCGN1jmsMwuU2W02ukfA==}
-
-  semver@5.7.2:
-    resolution: {integrity: sha512-cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g==}
-    hasBin: true
-
-  semver@7.0.0:
-    resolution: {integrity: sha512-+GB6zVA9LWh6zovYQLALHwv5rb2PHGlJi3lfiqIHxR0uuwCgefcOJc59v9fv1w8GbStwxuuqqAjI9NMAOOgq1A==}
-    hasBin: true
 
   semver@7.7.3:
     resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
@@ -6248,7 +6241,7 @@ snapshots:
       ignore-by-default: 1.0.1
       minimatch: 3.1.2
       pstree.remy: 1.1.8
-      semver: 5.7.2
+      semver: 7.7.3
       simple-update-notifier: 1.1.0
       supports-color: 5.5.0
       touch: 3.1.1
@@ -6623,10 +6616,6 @@ snapshots:
     dependencies:
       parseley: 0.12.1
 
-  semver@5.7.2: {}
-
-  semver@7.0.0: {}
-
   semver@7.7.3: {}
 
   send@1.2.0:
@@ -6708,7 +6697,7 @@ snapshots:
 
   simple-update-notifier@1.1.0:
     dependencies:
-      semver: 7.0.0
+      semver: 7.7.3
 
   sirv@3.0.2:
     dependencies:
