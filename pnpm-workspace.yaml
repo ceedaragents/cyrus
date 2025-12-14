@@ -3,7 +3,6 @@ packages:
   - apps/*
 
 onlyBuiltDependencies:
-  - '@anthropic-ai/claude-code'
   - '@tailwindcss/oxide'
   - core-js
   - electron
