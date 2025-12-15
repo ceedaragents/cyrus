@@ -282,7 +282,12 @@ When working on this codebase, follow these practices:
    - Run `pnpm typecheck` to verify TypeScript compilation
    - Consider running `pnpm build` to ensure the build succeeds
 
-2. **Changelog Format**:
+2. **Internal Changelog**:
+   - For internal development changes, refactors, tooling updates, or other non-user-facing modifications, update `CHANGELOG.internal.md`.
+   - Follow the same format as the main changelog.
+   - This helps track internal improvements that don't need to be exposed to end-users.
+
+3. **Changelog Format**:
    - Follow [Keep a Changelog](https://keepachangelog.com/) format
    - **Focus only on end-user impact**: Write entries from the perspective of users running the `cyrus` CLI binary
    - Avoid technical implementation details, package names, or internal architecture changes
