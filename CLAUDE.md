@@ -274,7 +274,7 @@ The agent automatically moves issues to the "started" state when assigned. Linea
 
 When working on this codebase, follow these practices:
 
-1. **Before submitting a Pull Request**:
+1. **As part of submitting a Pull Request**:
    - Update `CHANGELOG.md` under the `## [Unreleased]` section with your changes
    - Use appropriate subsections: `### Added`, `### Changed`, `### Fixed`, `### Removed`
    - Include brief, clear descriptions of what was changed and why
