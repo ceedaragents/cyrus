@@ -278,6 +278,7 @@ When working on this codebase, follow these practices:
    - Update `CHANGELOG.md` under the `## [Unreleased]` section with your changes
    - Use appropriate subsections: `### Added`, `### Changed`, `### Fixed`, `### Removed`
    - Include brief, clear descriptions of what was changed and why
+   - **Include the PR number/link**: If the PR is already created, include the link (e.g., `([#123](https://github.com/ceedaragents/cyrus/pull/123))`). If not, create the PR first, then update the changelog with the link, commit, and push.
    - Run `pnpm test:packages` to ensure all package tests pass
    - Run `pnpm typecheck` to verify TypeScript compilation
    - Consider running `pnpm build` to ensure the build succeeds
