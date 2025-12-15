@@ -274,15 +274,21 @@ The agent automatically moves issues to the "started" state when assigned. Linea
 
 When working on this codebase, follow these practices:
 
-1. **Before submitting a Pull Request**:
+1. **As part of submitting a Pull Request**:
    - Update `CHANGELOG.md` under the `## [Unreleased]` section with your changes
    - Use appropriate subsections: `### Added`, `### Changed`, `### Fixed`, `### Removed`
    - Include brief, clear descriptions of what was changed and why
+   - **Include the PR number/link**: If the PR is already created, include the link (e.g., `([#123](https://github.com/ceedaragents/cyrus/pull/123))`). If not, create the PR first, then update the changelog with the link, commit, and push.
    - Run `pnpm test:packages` to ensure all package tests pass
    - Run `pnpm typecheck` to verify TypeScript compilation
    - Consider running `pnpm build` to ensure the build succeeds
 
-2. **Changelog Format**:
+2. **Internal Changelog**:
+   - For internal development changes, refactors, tooling updates, or other non-user-facing modifications, update `CHANGELOG.internal.md`.
+   - Follow the same format as the main changelog.
+   - This helps track internal improvements that don't need to be exposed to end-users.
+
+3. **Changelog Format**:
    - Follow [Keep a Changelog](https://keepachangelog.com/) format
    - **Focus only on end-user impact**: Write entries from the perspective of users running the `cyrus` CLI binary
    - Avoid technical implementation details, package names, or internal architecture changes
