@@ -1,14 +1,23 @@
 /**
  * Claude CLI configuration helpers
+ *
+ * Tool permission patterns:
+ * - "Read", "Edit" - Base tools that require path-specific approval via allowedDirectories
+ * - "Read(**)", "Edit(**)" - Wildcard patterns that allow access to all paths (legacy, less secure)
+ *
+ * The default configuration uses base tool names without wildcards.
+ * Path-specific access is controlled via allowedDirectories in the runner config.
+ * This approach combined with sandbox mode provides better security and control.
  */
 
 /**
  * List of all available tools in Claude Code
+ * Uses base tool names - path access controlled via allowedDirectories
  */
 export const availableTools = [
-	// File system tools
-	"Read(**)",
-	"Edit(**)",
+	// File system tools - base names, paths controlled via allowedDirectories
+	"Read",
+	"Edit",
 
 	// Execution tools
 	"Bash",
@@ -37,7 +46,7 @@ export type ToolName = (typeof availableTools)[number];
  * Note: TodoWrite is included as it only modifies task tracking, not actual code files
  */
 export const readOnlyTools: ToolName[] = [
-	"Read(**)",
+	"Read",
 	"WebFetch",
 	"WebSearch",
 	"TodoRead",
@@ -52,7 +61,7 @@ export const readOnlyTools: ToolName[] = [
  * Note: TodoWrite modifies task state but not actual files
  */
 export const writeTools: ToolName[] = [
-	"Edit(**)",
+	"Edit",
 	"Bash",
 	"TodoWrite",
 	"NotebookEdit",
@@ -74,11 +83,12 @@ export function getAllTools(): string[] {
 
 /**
  * Get all tools except Bash (safer default for repository configuration)
+ * Uses base tool names - paths controlled via allowedDirectories and sandbox mode
  */
 export function getSafeTools(): string[] {
 	return [
-		"Read(**)",
-		"Edit(**)",
+		"Read",
+		"Edit",
 		"Task",
 		"WebFetch",
 		"WebSearch",
@@ -99,7 +109,7 @@ export function getSafeTools(): string[] {
  */
 export function getCoordinatorTools(): string[] {
 	return [
-		"Read(**)",
+		"Read",
 		"Bash", // Included for running tests, builds, git commands
 		"Task",
 		"WebFetch",

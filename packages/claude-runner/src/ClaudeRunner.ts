@@ -319,6 +319,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					...(this.config.hooks && { hooks: this.config.hooks }),
 					...(this.config.maxTurns && { maxTurns: this.config.maxTurns }),
+					// Sandbox settings for command isolation - enables auto-allow for Bash when sandboxed
+					...(this.config.sandbox && { sandbox: this.config.sandbox }),
+					// Permission mode controls how tool permissions are handled
+					...(this.config.permissionMode && {
+						permissionMode: this.config.permissionMode,
+					}),
+					// Custom permission callback for elicitation-based permission flows
+					...(this.config.canUseTool && { canUseTool: this.config.canUseTool }),
 				},
 			};
 

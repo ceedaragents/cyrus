@@ -42,7 +42,7 @@ describe("ClaudeRunner - disallowedTools", () => {
 	it("should pass disallowedTools to Claude Code when configured", async () => {
 		const config: ClaudeRunnerConfig = {
 			workingDirectory: "/test",
-			allowedTools: ["Read(**)", "Edit(**)"],
+			allowedTools: ["Read", "Edit"],
 			disallowedTools: ["Bash", "WebFetch"],
 			cyrusHome: "/test/cyrus",
 		};
@@ -73,14 +73,14 @@ describe("ClaudeRunner - disallowedTools", () => {
 
 		expect(callArgs.options).toBeDefined();
 		expect(callArgs.options.disallowedTools).toEqual(["Bash", "WebFetch"]);
-		expect(callArgs.options.allowedTools).toContain("Read(**)");
-		expect(callArgs.options.allowedTools).toContain("Edit(**)");
+		expect(callArgs.options.allowedTools).toContain("Read");
+		expect(callArgs.options.allowedTools).toContain("Edit");
 	});
 
 	it("should not pass disallowedTools when not configured", async () => {
 		const config: ClaudeRunnerConfig = {
 			workingDirectory: "/test",
-			allowedTools: ["Read(**)", "Edit(**)"],
+			allowedTools: ["Read", "Edit"],
 			// No disallowedTools
 			cyrusHome: "/test/cyrus",
 		};
@@ -105,14 +105,14 @@ describe("ClaudeRunner - disallowedTools", () => {
 
 		expect(callArgs.options).toBeDefined();
 		expect(callArgs.options.disallowedTools).toBeUndefined();
-		expect(callArgs.options.allowedTools).toContain("Read(**)");
-		expect(callArgs.options.allowedTools).toContain("Edit(**)");
+		expect(callArgs.options.allowedTools).toContain("Read");
+		expect(callArgs.options.allowedTools).toContain("Edit");
 	});
 
 	it("should handle empty disallowedTools array", async () => {
 		const config: ClaudeRunnerConfig = {
 			workingDirectory: "/test",
-			allowedTools: ["Read(**)", "Edit(**)"],
+			allowedTools: ["Read", "Edit"],
 			disallowedTools: [], // Empty array
 			cyrusHome: "/test/cyrus",
 		};

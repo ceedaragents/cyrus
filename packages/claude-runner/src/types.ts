@@ -1,7 +1,10 @@
 import type {
+	CanUseTool,
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
+	PermissionMode,
+	SandboxSettings,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
@@ -30,6 +33,25 @@ export interface ClaudeRunnerConfig {
 		systemPromptVersion?: string;
 	};
 	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>; // Claude SDK hooks
+	/**
+	 * Sandbox settings for command execution isolation.
+	 * When enabled with autoAllowBashIfSandboxed, Bash commands run in a sandboxed environment
+	 * without prompting for permission.
+	 */
+	sandbox?: SandboxSettings;
+	/**
+	 * Permission mode for the session.
+	 * - 'default': Standard behavior, prompts for dangerous operations
+	 * - 'acceptEdits': Auto-accept file edit operations
+	 * - 'dontAsk': Don't prompt for permissions, deny if not pre-approved
+	 */
+	permissionMode?: PermissionMode;
+	/**
+	 * Custom permission handler for controlling tool usage.
+	 * Called before each tool execution to determine if it should be allowed, denied, or prompt the user.
+	 * Use this for elicitation-based permission flows where the user approves via external UI.
+	 */
+	canUseTool?: CanUseTool;
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;
@@ -53,7 +75,11 @@ export interface ClaudeRunnerEvents {
 
 // Re-export SDK types for convenience
 export type {
+	CanUseTool,
 	McpServerConfig,
+	PermissionMode,
+	PermissionResult,
+	SandboxSettings,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,

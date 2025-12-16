@@ -38,6 +38,7 @@ import type {
 	IssueMinimal,
 	IssueUnassignedWebhook,
 	RepositoryConfig,
+	SandboxSettings,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
@@ -4555,6 +4556,13 @@ ${input.userComment}
 		const finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
 
+		// Configure sandbox settings for command isolation
+		// autoAllowBashIfSandboxed enables Bash commands within the sandbox without prompting
+		const sandbox: SandboxSettings = {
+			enabled: true,
+			autoAllowBashIfSandboxed: true,
+		};
+
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -4572,6 +4580,10 @@ ${input.userComment}
 				repository.fallbackModel ||
 				this.config.defaultFallbackModel,
 			hooks,
+			// Sandbox settings for command isolation - Bash runs in sandbox without prompting
+			sandbox,
+			// Permission mode 'dontAsk' prevents interactive prompts - tools not pre-approved are denied
+			permissionMode: "dontAsk" as const,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
 					linearAgentActivitySessionId,
