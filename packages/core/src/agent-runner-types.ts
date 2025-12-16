@@ -1,7 +1,10 @@
 import type {
+	CanUseTool,
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
+	PermissionMode,
+	SandboxSettings,
 	SDKMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -258,7 +261,7 @@ export interface IAgentRunner {
 export interface AgentRunnerConfig {
 	/** Working directory for the agent session */
 	workingDirectory?: string;
-	/** List of allowed tool patterns (e.g., ["Read(**)", "Edit(**)"]) */
+	/** List of allowed tools (e.g., ["Read", "Edit"]) - path access controlled via allowedDirectories */
 	allowedTools?: string[];
 	/** List of disallowed tool patterns */
 	disallowedTools?: string[];
@@ -289,6 +292,25 @@ export interface AgentRunnerConfig {
 	};
 	/** Event hooks for customizing agent behavior */
 	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>;
+	/**
+	 * Sandbox settings for command execution isolation (Claude SDK specific).
+	 * When enabled with autoAllowBashIfSandboxed, Bash commands run in a sandboxed
+	 * environment without prompting for permission.
+	 */
+	sandbox?: SandboxSettings;
+	/**
+	 * Permission mode for the session (Claude SDK specific).
+	 * - 'default': Standard behavior, prompts for dangerous operations
+	 * - 'acceptEdits': Auto-accept file edit operations
+	 * - 'dontAsk': Don't prompt for permissions, deny if not pre-approved
+	 */
+	permissionMode?: PermissionMode;
+	/**
+	 * Custom permission handler for controlling tool usage (Claude SDK specific).
+	 * Called before each tool execution to determine if it should be allowed,
+	 * denied, or prompt the user. Use for elicitation-based permission flows.
+	 */
+	canUseTool?: CanUseTool;
 	/** Callback for each message received */
 	onMessage?: (message: AgentMessage) => void | Promise<void>;
 	/** Callback for errors */
@@ -351,9 +373,13 @@ export type AgentUserMessage = SDKUserMessage;
  * underlying provider SDK.
  */
 export type {
+	CanUseTool,
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
+	PermissionMode,
+	PermissionResult,
+	SandboxSettings,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,

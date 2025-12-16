@@ -12,10 +12,10 @@ import {
 
 describe("config", () => {
 	describe("Tool Lists", () => {
-		it("should define all available tools", () => {
+		it("should define all available tools with base names (not wildcards)", () => {
 			expect(availableTools).toEqual([
-				"Read(**)",
-				"Edit(**)",
+				"Read",
+				"Edit",
 				"Bash",
 				"Task",
 				"WebFetch",
@@ -31,7 +31,7 @@ describe("config", () => {
 
 		it("should define read-only tools", () => {
 			expect(readOnlyTools).toEqual([
-				"Read(**)",
+				"Read",
 				"WebFetch",
 				"WebSearch",
 				"TodoRead",
@@ -44,12 +44,7 @@ describe("config", () => {
 		});
 
 		it("should define write tools", () => {
-			expect(writeTools).toEqual([
-				"Edit(**)",
-				"Bash",
-				"TodoWrite",
-				"NotebookEdit",
-			]);
+			expect(writeTools).toEqual(["Edit", "Bash", "TodoWrite", "NotebookEdit"]);
 			expect(writeTools).toHaveLength(4);
 		});
 
@@ -99,8 +94,8 @@ describe("config", () => {
 			const tools = getSafeTools();
 
 			// Should contain all tools except Bash
-			expect(tools).toContain("Read(**)");
-			expect(tools).toContain("Edit(**)");
+			expect(tools).toContain("Read");
+			expect(tools).toContain("Edit");
 			expect(tools).toContain("Task");
 			expect(tools).toContain("WebFetch");
 			expect(tools).toContain("WebSearch");
@@ -119,7 +114,7 @@ describe("config", () => {
 			const tools = getCoordinatorTools();
 
 			// Should include read and execution tools
-			expect(tools).toContain("Read(**)");
+			expect(tools).toContain("Read");
 			expect(tools).toContain("Bash"); // For running tests/builds
 			expect(tools).toContain("Task");
 			expect(tools).toContain("WebFetch");
@@ -130,7 +125,7 @@ describe("config", () => {
 			expect(tools).toContain("Batch");
 
 			// Should NOT include file editing tools
-			expect(tools).not.toContain("Edit(**)");
+			expect(tools).not.toContain("Edit");
 			expect(tools).not.toContain("NotebookEdit");
 
 			// Should have 9 tools
@@ -141,11 +136,11 @@ describe("config", () => {
 			const coordinatorTools = getCoordinatorTools();
 
 			// Can read files
-			expect(coordinatorTools).toContain("Read(**)");
+			expect(coordinatorTools).toContain("Read");
 			expect(coordinatorTools).toContain("NotebookRead");
 
 			// Cannot edit files
-			expect(coordinatorTools).not.toContain("Edit(**)");
+			expect(coordinatorTools).not.toContain("Edit");
 			expect(coordinatorTools).not.toContain("NotebookEdit");
 
 			// Can run commands (for tests, builds, git)
@@ -161,7 +156,7 @@ describe("config", () => {
 	describe("Type Safety", () => {
 		it("should allow valid tool names in typed contexts", () => {
 			// This is a compile-time check, but we can verify runtime behavior
-			const validTool: ToolName = "Read(**)";
+			const validTool: ToolName = "Read";
 			expect(availableTools).toContain(validTool);
 		});
 
@@ -181,14 +176,14 @@ describe("config", () => {
 	});
 
 	describe("Tool Categorization Logic", () => {
-		it("Read(**) should be read-only", () => {
-			expect(readOnlyTools).toContain("Read(**)");
-			expect(writeTools).not.toContain("Read(**)");
+		it("Read should be read-only", () => {
+			expect(readOnlyTools).toContain("Read");
+			expect(writeTools).not.toContain("Read");
 		});
 
-		it("Edit(**) should be a write tool", () => {
-			expect(writeTools).toContain("Edit(**)");
-			expect(readOnlyTools).not.toContain("Edit(**)");
+		it("Edit should be a write tool", () => {
+			expect(writeTools).toContain("Edit");
+			expect(readOnlyTools).not.toContain("Edit");
 		});
 
 		it("Bash should be a write tool (can modify system)", () => {
@@ -224,6 +219,23 @@ describe("config", () => {
 		it("Batch should be read-only", () => {
 			expect(readOnlyTools).toContain("Batch");
 			expect(writeTools).not.toContain("Batch");
+		});
+	});
+
+	describe("Tool Permission Pattern Design", () => {
+		it("should use base tool names without wildcards for security", () => {
+			// All tools should be base names without wildcard patterns
+			availableTools.forEach((tool) => {
+				expect(tool).not.toContain("(**)");
+			});
+		});
+
+		it("should control path access via allowedDirectories, not tool patterns", () => {
+			// Read and Edit should be base names - path access is controlled by allowedDirectories config
+			expect(availableTools).toContain("Read");
+			expect(availableTools).toContain("Edit");
+			expect(availableTools).not.toContain("Read(**)");
+			expect(availableTools).not.toContain("Edit(**)");
 		});
 	});
 });
