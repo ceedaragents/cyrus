@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Default model upgraded to Opus** - Cyrus now uses Claude Opus as the default model with Sonnet as fallback (previously Sonnet with Haiku fallback). This provides higher quality responses for all tasks. ([CYPACK-613](https://linear.app/ceedar/issue/CYPACK-613))
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.1.69 to v0.1.70. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-616](https://linear.app/ceedar/issue/CYPACK-616))
 - Updated `@anthropic-ai/claude-agent-sdk` from v0.1.60 to v0.1.69 to maintain parity with Claude Code v2.0.69. This update includes fixes for disallowed MCP tools visibility, project MCP server access issues, and improved handling when stdin is closed. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0169) for full details. ([CYPACK-611](https://linear.app/ceedar/issue/CYPACK-611))
 
 ### Added
