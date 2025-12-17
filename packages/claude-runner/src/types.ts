@@ -1,13 +1,21 @@
 import type {
 	HookCallbackMatcher,
 	HookEvent,
+	JsonSchemaOutputFormat,
 	McpServerConfig,
+	OutputFormat,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+
+/**
+ * Output format configuration for structured outputs
+ * Re-exported from Claude Agent SDK for convenience
+ */
+export type OutputFormatConfig = OutputFormat;
 
 export interface ClaudeRunnerConfig {
 	workingDirectory?: string;
@@ -30,6 +38,7 @@ export interface ClaudeRunnerConfig {
 		systemPromptVersion?: string;
 	};
 	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>; // Claude SDK hooks
+	outputFormat?: OutputFormatConfig; // Structured output format configuration
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;
@@ -53,7 +62,9 @@ export interface ClaudeRunnerEvents {
 
 // Re-export SDK types for convenience
 export type {
+	JsonSchemaOutputFormat,
 	McpServerConfig,
+	OutputFormat,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
@@ -61,6 +72,9 @@ export type {
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+
+// Legacy alias - JsonSchema type is now part of JsonSchemaOutputFormat['schema']
+export type JsonSchema = JsonSchemaOutputFormat["schema"];
 // Re-export Anthropic API message types
 export type {
 	Message as APIAssistantMessage,

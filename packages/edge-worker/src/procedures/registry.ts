@@ -34,6 +34,12 @@ export const SUBROUTINES = {
 		name: "verifications",
 		promptPath: "subroutines/verifications.md",
 		description: "Run tests, linting, and type checking",
+		usesValidationLoop: true, // Enable validation loop with retry logic
+	},
+	validationFixer: {
+		name: "validation-fixer",
+		promptPath: "subroutines/validation-fixer.md",
+		description: "Fix validation failures from the verifications subroutine",
 	},
 	gitGh: {
 		name: "git-gh",

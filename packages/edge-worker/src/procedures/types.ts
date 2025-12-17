@@ -29,6 +29,13 @@ export interface SubroutineDefinition {
 
 	/** Tools that should be explicitly disallowed during this subroutine */
 	disallowedTools?: readonly string[];
+
+	/**
+	 * Whether this subroutine uses the validation loop with retry logic.
+	 * When true, the subroutine output is parsed as ValidationResult and
+	 * the validation-fixer subroutine is run on failures (up to maxIterations).
+	 */
+	usesValidationLoop?: boolean;
 }
 
 /**
@@ -43,6 +50,23 @@ export interface ProcedureDefinition {
 
 	/** Ordered list of subroutines to execute */
 	subroutines: SubroutineDefinition[];
+}
+
+/**
+ * Validation loop state for subroutines that use retry logic
+ */
+export interface ValidationLoopMetadata {
+	/** Current iteration (1-based) */
+	iteration: number;
+	/** Whether the loop is in fixer mode (running validation-fixer) */
+	inFixerMode: boolean;
+	/** Results from each validation attempt */
+	attempts: Array<{
+		iteration: number;
+		pass: boolean;
+		reason: string;
+		timestamp: number;
+	}>;
 }
 
 /**
@@ -62,6 +86,9 @@ export interface ProcedureMetadata {
 		claudeSessionId: string | null;
 		geminiSessionId: string | null;
 	}>;
+
+	/** State for validation loop (when current subroutine uses usesValidationLoop) */
+	validationLoop?: ValidationLoopMetadata;
 }
 
 /**
