@@ -33,9 +33,9 @@ You have completed the primary work on this issue. Now perform thorough verifica
 - **Do NOT post Linear comments** - your output is for internal workflow only
 - Be thorough in running and reporting verification results
 
-## Expected Output Format
+## Expected FINAL Message Output Format
 
-You MUST respond with a JSON object in exactly this format:
+You MUST respond in your FINAL message with a JSON object in exactly this format:
 
 ```json
 {
@@ -60,4 +60,4 @@ Or if there are failures:
    - If passing: Brief summary like "X tests passing, linting clean, types valid"
    - If failing: Specific error details that would help someone fix the issues
 
-**CRITICAL**: Your entire response must be valid JSON matching the schema above. Do not include any text before or after the JSON.
+**CRITICAL**: Your entire final response message must be valid JSON matching the schema above. Do not include any text before or after the JSON.
