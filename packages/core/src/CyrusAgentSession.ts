@@ -23,6 +23,30 @@ export interface Workspace {
 	historyPath?: string;
 }
 
+/**
+ * Repository-specific configuration and context for a session.
+ * Enables consolidating managers while maintaining per-session repository context.
+ */
+export interface RepositoryContext {
+	/** Unique identifier for the repository */
+	repositoryId: string;
+	/** Absolute path to the repository root */
+	repositoryPath: string;
+	/** Base directory for worktrees */
+	workspaceBaseDir: string;
+	/** Optional tool configuration */
+	allowedTools?: string[];
+	disallowedTools?: string[];
+	/** Optional path to MCP configuration file */
+	mcpConfigPath?: string;
+	/** Optional path to prompt template file */
+	promptTemplatePath?: string;
+	/** Preferred model for this repository */
+	model?: string;
+	/** Fallback model if preferred model is unavailable */
+	fallbackModel?: string;
+}
+
 export interface CyrusAgentSession {
 	linearAgentActivitySessionId: string;
 	type: AgentSessionType.CommentThread;
@@ -37,6 +61,8 @@ export interface CyrusAgentSession {
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)
 	geminiSessionId?: string; // Gemini-specific session ID (assigned once it initializes)
 	agentRunner?: IAgentRunner;
+	/** Repository-specific configuration for this session (optional for backwards compatibility) */
+	repositoryContext?: RepositoryContext;
 	metadata?: {
 		model?: string;
 		tools?: string[];
