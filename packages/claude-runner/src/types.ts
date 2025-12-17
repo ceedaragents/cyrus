@@ -9,6 +9,20 @@ import type {
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 
+/**
+ * JSON Schema definition for structured outputs
+ * Uses Record<string, unknown> to match SDK's expected type
+ */
+export type JsonSchema = Record<string, unknown>;
+
+/**
+ * Output format configuration for structured outputs
+ */
+export interface OutputFormatConfig {
+	type: "json_schema";
+	schema: JsonSchema;
+}
+
 export interface ClaudeRunnerConfig {
 	workingDirectory?: string;
 	allowedTools?: string[];
@@ -30,6 +44,7 @@ export interface ClaudeRunnerConfig {
 		systemPromptVersion?: string;
 	};
 	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>; // Claude SDK hooks
+	outputFormat?: OutputFormatConfig; // Structured output format configuration
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;

@@ -24,7 +24,13 @@ import {
 	type Workspace,
 } from "cyrus-core";
 import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
+import type { ValidationLoopMetadata } from "./procedures/types.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
+import {
+	DEFAULT_VALIDATION_LOOP_CONFIG,
+	parseValidationResult,
+	renderValidationFixerPrompt,
+} from "./validation/index.js";
 
 /**
  * Events emitted by AgentSessionManager
@@ -33,6 +39,29 @@ export interface AgentSessionManagerEvents {
 	subroutineComplete: (data: {
 		linearAgentActivitySessionId: string;
 		session: CyrusAgentSession;
+	}) => void;
+	/**
+	 * Emitted when validation fails and we need to run the validation-fixer
+	 * The EdgeWorker should respond by running the fixer prompt and then re-running verifications
+	 */
+	validationLoopIteration: (data: {
+		linearAgentActivitySessionId: string;
+		session: CyrusAgentSession;
+		/** The fixer prompt to run (already rendered with failure context) */
+		fixerPrompt: string;
+		/** Current iteration (1-based) */
+		iteration: number;
+		/** Maximum iterations allowed */
+		maxIterations: number;
+	}) => void;
+	/**
+	 * Emitted when we need to re-run the verifications subroutine
+	 */
+	validationLoopRerun: (data: {
+		linearAgentActivitySessionId: string;
+		session: CyrusAgentSession;
+		/** Current iteration (1-based) */
+		iteration: number;
 	}) => void;
 }
 
@@ -395,6 +424,21 @@ export class AgentSessionManager extends EventEmitter {
 				}
 			}
 
+			// Check if current subroutine uses validation loop
+			if (currentSubroutine?.usesValidationLoop) {
+				const handled = await this.handleValidationLoopCompletion(
+					session,
+					linearAgentActivitySessionId,
+					resultMessage,
+					sessionId,
+					nextSubroutine,
+				);
+				if (handled) {
+					return; // Validation loop took over control flow
+				}
+				// If not handled (validation passed or max retries), continue with normal advancement
+			}
+
 			// Advance procedure state
 			console.log(
 				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
@@ -424,6 +468,165 @@ export class AgentSessionManager extends EventEmitter {
 					resultMessage,
 				);
 			}
+		}
+	}
+
+	/**
+	 * Handle validation loop completion for subroutines that use usesValidationLoop
+	 * Returns true if the validation loop took over control flow (needs fixer or retry)
+	 * Returns false if validation passed or max retries reached (continue with normal advancement)
+	 */
+	private async handleValidationLoopCompletion(
+		session: CyrusAgentSession,
+		linearAgentActivitySessionId: string,
+		resultMessage: SDKResultMessage,
+		_sessionId: string,
+		_nextSubroutine: { name: string } | null,
+	): Promise<boolean> {
+		const maxIterations = DEFAULT_VALIDATION_LOOP_CONFIG.maxIterations;
+
+		// Get or initialize validation loop state
+		let validationLoop = session.metadata?.procedure?.validationLoop;
+		if (!validationLoop) {
+			validationLoop = {
+				iteration: 0,
+				inFixerMode: false,
+				attempts: [],
+			};
+		}
+
+		// Check if we're coming back from the fixer
+		if (validationLoop.inFixerMode) {
+			// Fixer completed, now we need to re-run verifications
+			console.log(
+				`[AgentSessionManager] Validation fixer completed for iteration ${validationLoop.iteration}, re-running verifications`,
+			);
+
+			// Clear fixer mode flag
+			validationLoop.inFixerMode = false;
+			this.updateValidationLoopState(session, validationLoop);
+
+			// Emit event to re-run verifications
+			this.emit("validationLoopRerun", {
+				linearAgentActivitySessionId,
+				session,
+				iteration: validationLoop.iteration,
+			});
+
+			return true;
+		}
+
+		// Parse the validation result from the response
+		const resultText =
+			"result" in resultMessage ? resultMessage.result : undefined;
+		const structuredOutput =
+			"structured_output" in resultMessage
+				? (resultMessage as { structured_output?: unknown }).structured_output
+				: undefined;
+
+		const validationResult = parseValidationResult(
+			resultText,
+			structuredOutput,
+		);
+
+		// Record this attempt
+		const newIteration = validationLoop.iteration + 1;
+		validationLoop.iteration = newIteration;
+		validationLoop.attempts.push({
+			iteration: newIteration,
+			pass: validationResult.pass,
+			reason: validationResult.reason,
+			timestamp: Date.now(),
+		});
+
+		console.log(
+			`[AgentSessionManager] Validation result for iteration ${newIteration}/${maxIterations}: pass=${validationResult.pass}, reason="${validationResult.reason.substring(0, 100)}..."`,
+		);
+
+		// Update state in session
+		this.updateValidationLoopState(session, validationLoop);
+
+		// Check if validation passed
+		if (validationResult.pass) {
+			console.log(
+				`[AgentSessionManager] Validation passed after ${newIteration} iteration(s)`,
+			);
+			// Clear validation loop state for next subroutine
+			this.clearValidationLoopState(session);
+			return false; // Continue with normal advancement
+		}
+
+		// Check if we've exceeded max retries
+		if (newIteration >= maxIterations) {
+			console.log(
+				`[AgentSessionManager] Validation failed after ${newIteration} iterations, continuing anyway`,
+			);
+			// Post a thought about the failures
+			await this.createThoughtActivity(
+				linearAgentActivitySessionId,
+				`Validation loop exhausted after ${newIteration} attempts. Last failure: ${validationResult.reason}`,
+			);
+			// Clear validation loop state for next subroutine
+			this.clearValidationLoopState(session);
+			return false; // Continue with normal advancement
+		}
+
+		// Validation failed and we have retries left - run the fixer
+		console.log(
+			`[AgentSessionManager] Validation failed, running fixer (iteration ${newIteration}/${maxIterations})`,
+		);
+
+		// Set fixer mode flag
+		validationLoop.inFixerMode = true;
+		this.updateValidationLoopState(session, validationLoop);
+
+		// Render the fixer prompt with context
+		const previousAttempts = validationLoop.attempts.slice(0, -1).map((a) => ({
+			iteration: a.iteration,
+			reason: a.reason,
+		}));
+
+		const fixerPrompt = renderValidationFixerPrompt({
+			failureReason: validationResult.reason,
+			iteration: newIteration,
+			maxIterations,
+			previousAttempts,
+		});
+
+		// Emit event for EdgeWorker to run the fixer
+		this.emit("validationLoopIteration", {
+			linearAgentActivitySessionId,
+			session,
+			fixerPrompt,
+			iteration: newIteration,
+			maxIterations,
+		});
+
+		return true; // Validation loop took over control flow
+	}
+
+	/**
+	 * Update validation loop state in session metadata
+	 */
+	private updateValidationLoopState(
+		session: CyrusAgentSession,
+		validationLoop: ValidationLoopMetadata,
+	): void {
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+		if (!session.metadata.procedure) {
+			return; // No procedure metadata, can't update
+		}
+		session.metadata.procedure.validationLoop = validationLoop;
+	}
+
+	/**
+	 * Clear validation loop state from session metadata
+	 */
+	private clearValidationLoopState(session: CyrusAgentSession): void {
+		if (session.metadata?.procedure) {
+			delete session.metadata.procedure.validationLoop;
 		}
 	}
 

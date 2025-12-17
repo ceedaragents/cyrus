@@ -319,6 +319,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					...(this.config.hooks && { hooks: this.config.hooks }),
 					...(this.config.maxTurns && { maxTurns: this.config.maxTurns }),
+					...(this.config.outputFormat && {
+						outputFormat: this.config.outputFormat,
+					}),
 				},
 			};
 

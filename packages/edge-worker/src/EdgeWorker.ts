@@ -274,6 +274,45 @@ export class EdgeWorker extends EventEmitter {
 					},
 				);
 
+				// Subscribe to validation loop events
+				agentSessionManager.on(
+					"validationLoopIteration",
+					async ({
+						linearAgentActivitySessionId,
+						session,
+						fixerPrompt,
+						iteration,
+						maxIterations,
+					}) => {
+						console.log(
+							`[EdgeWorker] Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
+						);
+						await this.handleValidationLoopFixer(
+							linearAgentActivitySessionId,
+							session,
+							repo,
+							agentSessionManager,
+							fixerPrompt,
+							iteration,
+						);
+					},
+				);
+
+				agentSessionManager.on(
+					"validationLoopRerun",
+					async ({ linearAgentActivitySessionId, session, iteration }) => {
+						console.log(
+							`[EdgeWorker] Validation loop re-running verifications (iteration ${iteration})`,
+						);
+						await this.handleValidationLoopRerun(
+							linearAgentActivitySessionId,
+							session,
+							repo,
+							agentSessionManager,
+						);
+					},
+				);
+
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
 		}
@@ -699,6 +738,100 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Handle validation loop fixer - run the fixer prompt
+	 */
+	private async handleValidationLoopFixer(
+		linearAgentActivitySessionId: string,
+		session: CyrusAgentSession,
+		repo: RepositoryConfig,
+		agentSessionManager: AgentSessionManager,
+		fixerPrompt: string,
+		iteration: number,
+	): Promise<void> {
+		console.log(
+			`[Validation Loop] Running fixer for session ${linearAgentActivitySessionId}, iteration ${iteration}`,
+		);
+
+		try {
+			await this.resumeAgentSession(
+				session,
+				repo,
+				linearAgentActivitySessionId,
+				agentSessionManager,
+				fixerPrompt,
+				"", // No attachment manifest
+				false, // Not a new session
+				[], // No additional allowed directories
+				undefined, // No maxTurns limit for fixer
+			);
+			console.log(
+				`[Validation Loop] Successfully started fixer for iteration ${iteration}`,
+			);
+		} catch (error) {
+			console.error(
+				`[Validation Loop] Failed to run fixer for iteration ${iteration}:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Handle validation loop rerun - re-run the verifications subroutine
+	 */
+	private async handleValidationLoopRerun(
+		linearAgentActivitySessionId: string,
+		session: CyrusAgentSession,
+		repo: RepositoryConfig,
+		agentSessionManager: AgentSessionManager,
+	): Promise<void> {
+		console.log(
+			`[Validation Loop] Re-running verifications for session ${linearAgentActivitySessionId}`,
+		);
+
+		// Get the verifications subroutine definition
+		const verificationsSubroutine =
+			this.procedureAnalyzer.getCurrentSubroutine(session);
+
+		if (
+			!verificationsSubroutine ||
+			verificationsSubroutine.name !== "verifications"
+		) {
+			console.error(
+				`[Validation Loop] Expected verifications subroutine, got: ${verificationsSubroutine?.name}`,
+			);
+			return;
+		}
+
+		try {
+			// Load the verifications prompt
+			const subroutinePrompt = await this.loadSubroutinePrompt(
+				verificationsSubroutine,
+				this.config.linearWorkspaceSlug,
+			);
+
+			if (!subroutinePrompt) {
+				console.error(`[Validation Loop] Failed to load verifications prompt`);
+				return;
+			}
+
+			await this.resumeAgentSession(
+				session,
+				repo,
+				linearAgentActivitySessionId,
+				agentSessionManager,
+				subroutinePrompt,
+				"", // No attachment manifest
+				false, // Not a new session
+				[], // No additional allowed directories
+				undefined, // No maxTurns limit
+			);
+			console.log(`[Validation Loop] Successfully re-started verifications`);
+		} catch (error) {
+			console.error(`[Validation Loop] Failed to re-run verifications:`, error);
+		}
+	}
+
+	/**
 	 * Start watching config file for changes
 	 */
 	private startConfigWatcher(): void {
@@ -944,6 +1077,45 @@ export class EdgeWorker extends EventEmitter {
 					"subroutineComplete",
 					async ({ linearAgentActivitySessionId, session }) => {
 						await this.handleSubroutineTransition(
+							linearAgentActivitySessionId,
+							session,
+							repo,
+							agentSessionManager,
+						);
+					},
+				);
+
+				// Subscribe to validation loop events
+				agentSessionManager.on(
+					"validationLoopIteration",
+					async ({
+						linearAgentActivitySessionId,
+						session,
+						fixerPrompt,
+						iteration,
+						maxIterations,
+					}) => {
+						console.log(
+							`[EdgeWorker] Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
+						);
+						await this.handleValidationLoopFixer(
+							linearAgentActivitySessionId,
+							session,
+							repo,
+							agentSessionManager,
+							fixerPrompt,
+							iteration,
+						);
+					},
+				);
+
+				agentSessionManager.on(
+					"validationLoopRerun",
+					async ({ linearAgentActivitySessionId, session, iteration }) => {
+						console.log(
+							`[EdgeWorker] Validation loop re-running verifications (iteration ${iteration})`,
+						);
+						await this.handleValidationLoopRerun(
 							linearAgentActivitySessionId,
 							session,
 							repo,
