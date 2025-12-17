@@ -16,27 +16,12 @@ export function createTestWorker(
 	repositories: RepositoryConfig[] = [],
 	linearWorkspaceSlug?: string,
 ): EdgeWorker {
-	// Create mock IssueTrackerServices for each repository
-	const issueTrackers = new Map();
-	for (const repo of repositories) {
-		// Create a minimal mock IssueTrackerService with required methods
-		const mockIssueTracker = {
-			getComments: () => Promise.resolve([]),
-			getComment: () => Promise.resolve(null),
-			getIssueLabels: () => Promise.resolve([]),
-			client: {
-				rawRequest: () => Promise.resolve({ data: { comment: { body: "" } } }),
-			},
-		};
-		issueTrackers.set(repo.id, mockIssueTracker as any);
-	}
-
 	const config: EdgeWorkerConfig = {
 		cyrusHome: "/tmp/test-cyrus-home",
 		defaultModel: "sonnet",
 		linearWorkspaceSlug,
 		repositories,
-		issueTrackers,
+		platform: "cli", // Use CLI platform for testing (creates single CLIIssueTrackerService)
 		mcpServers: {},
 	};
 	return new EdgeWorker(config);
@@ -132,19 +117,8 @@ export class PromptScenario {
 
 	withRepository(repo: any) {
 		this.input.repository = repo;
-		// Also ensure the worker has an IssueTrackerService for this repository
-		if (!(this.worker as any).issueTrackers.has(repo.id)) {
-			const mockIssueTracker = {
-				getComments: () => Promise.resolve([]),
-				getComment: () => Promise.resolve(null),
-				getIssueLabels: () => Promise.resolve([]),
-				client: {
-					rawRequest: () =>
-						Promise.resolve({ data: { comment: { body: "" } } }),
-				},
-			};
-			(this.worker as any).issueTrackers.set(repo.id, mockIssueTracker);
-		}
+		// Note: IssueTracker is now a single instance shared across all repositories,
+		// so no need to set it per repository
 		return this;
 	}
 

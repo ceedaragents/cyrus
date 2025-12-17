@@ -81,11 +81,11 @@ describe("EdgeWorker - Native Attachments", () => {
 				} as AttachmentConnection),
 			} as unknown as LinearIssue;
 
-			// Mock IssueTrackerService
+			// Mock IssueTrackerService - replace the shared instance
 			const mockIssueTracker = {
 				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
+			(edgeWorker as any).issueTracker = mockIssueTracker;
 
 			// Call the method
 			const result = await (edgeWorker as any).downloadIssueAttachments(
@@ -123,7 +123,7 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockIssueTracker = {
 				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
+			(edgeWorker as any).issueTracker = mockIssueTracker;
 
 			const result = await (edgeWorker as any).downloadIssueAttachments(
 				mockIssue,
@@ -150,7 +150,7 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockIssueTracker = {
 				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
+			(edgeWorker as any).issueTracker = mockIssueTracker;
 
 			// Should not throw, but handle gracefully
 			const result = await (edgeWorker as any).downloadIssueAttachments(

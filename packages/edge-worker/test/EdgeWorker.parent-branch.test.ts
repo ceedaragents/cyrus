@@ -192,9 +192,7 @@ Base Branch: {{base_branch}}`;
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
-		// Inject mock issue tracker for the test repository
-		// The EdgeWorker constructor creates real LinearIssueTrackerService instances,
-		// but we need to replace them with mocks for testing
+		// Inject mock issue tracker - replace the shared instance created by EdgeWorker
 		const mockIssueTracker = {
 			fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
 				// Return the same mock data as mockLinearClient.issue()
@@ -202,7 +200,7 @@ Base Branch: {{base_branch}}`;
 			}),
 			getIssueLabels: vi.fn().mockResolvedValue([]),
 		};
-		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+		(edgeWorker as any).issueTracker = mockIssueTracker;
 
 		// Mock branchExists to always return true so parent branches are used
 		vi.spyOn((edgeWorker as any).gitService, "branchExists").mockResolvedValue(

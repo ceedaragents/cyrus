@@ -127,7 +127,7 @@ No comments yet.
 
 <workspace_context>
 <teams>
-
+- Default Team (DEF): team-default - Default team for F1 CLI testing
 </teams>
 <labels>
 

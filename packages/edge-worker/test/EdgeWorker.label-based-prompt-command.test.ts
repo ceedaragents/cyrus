@@ -214,14 +214,14 @@ Issue: {{issue_identifier}}`;
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
-		// Inject mock issue tracker for the test repository
+		// Inject mock issue tracker - replace the shared instance created by EdgeWorker
 		const mockIssueTracker = {
 			fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
 				return mockLinearClient.issue(issueId);
 			}),
 			getIssueLabels: vi.fn().mockResolvedValue([{ name: "bug" }]),
 		};
-		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+		(edgeWorker as any).issueTracker = mockIssueTracker;
 	});
 
 	afterEach(() => {
