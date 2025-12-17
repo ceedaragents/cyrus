@@ -12,6 +12,7 @@ import {
 	shouldProceedAfterValidation,
 	type ValidationLoopState,
 	type ValidationResult,
+	ValidationResultSchema,
 } from "../src/validation/index.js";
 
 describe("Validation Loop", () => {
@@ -123,6 +124,74 @@ describe("Validation Loop", () => {
 			expect(schema.required).toContain("pass");
 			expect(schema.required).toContain("reason");
 			expect(schema.additionalProperties).toBe(false);
+		});
+	});
+
+	describe("ValidationResultSchema (Zod)", () => {
+		it("should validate correct input", () => {
+			const result = ValidationResultSchema.safeParse({
+				pass: true,
+				reason: "All tests passed",
+			});
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.data.pass).toBe(true);
+				expect(result.data.reason).toBe("All tests passed");
+			}
+		});
+
+		it("should validate false pass value", () => {
+			const result = ValidationResultSchema.safeParse({
+				pass: false,
+				reason: "TypeScript error",
+			});
+			expect(result.success).toBe(true);
+			if (result.success) {
+				expect(result.data.pass).toBe(false);
+			}
+		});
+
+		it("should reject missing pass field", () => {
+			const result = ValidationResultSchema.safeParse({
+				reason: "Some reason",
+			});
+			expect(result.success).toBe(false);
+		});
+
+		it("should reject missing reason field", () => {
+			const result = ValidationResultSchema.safeParse({
+				pass: true,
+			});
+			expect(result.success).toBe(false);
+		});
+
+		it("should reject invalid pass type", () => {
+			const result = ValidationResultSchema.safeParse({
+				pass: "true",
+				reason: "Some reason",
+			});
+			expect(result.success).toBe(false);
+		});
+
+		it("should reject invalid reason type", () => {
+			const result = ValidationResultSchema.safeParse({
+				pass: true,
+				reason: 123,
+			});
+			expect(result.success).toBe(false);
+		});
+
+		it("should allow extra properties (Zod strips them)", () => {
+			const result = ValidationResultSchema.safeParse({
+				pass: true,
+				reason: "Test",
+				extra: "field",
+			});
+			expect(result.success).toBe(true);
+			if (result.success) {
+				// Zod strips extra properties by default
+				expect(result.data).not.toHaveProperty("extra");
+			}
 		});
 	});
 

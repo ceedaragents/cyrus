@@ -2,35 +2,48 @@
  * Types for the validation loop system
  */
 
-/**
- * Result of a validation run, used with structured outputs
- */
-export interface ValidationResult {
-	/** Whether all verifications passed */
-	pass: boolean;
-	/** Summary of validation results or failure reasons */
-	reason: string;
-}
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 /**
- * JSON Schema for ValidationResult - used with Claude SDK structured outputs
+ * Zod schema for ValidationResult - the single source of truth
+ * Used with Claude SDK structured outputs
  */
-export const VALIDATION_RESULT_SCHEMA = {
-	type: "object",
-	properties: {
-		pass: {
-			type: "boolean",
-			description: "Whether all verifications passed",
-		},
-		reason: {
-			type: "string",
-			description:
-				"Summary of validation results (e.g., '47 tests passing, linting clean, types valid') or failure reasons (e.g., 'TypeScript error in src/foo.ts:42 - Property x does not exist on type Y')",
-		},
+export const ValidationResultSchema = z.object({
+	/** Whether all verifications passed */
+	pass: z.boolean().describe("Whether all verifications passed"),
+	/** Summary of validation results or failure reasons */
+	reason: z
+		.string()
+		.describe(
+			"Summary of validation results (e.g., '47 tests passing, linting clean, types valid') or failure reasons (e.g., 'TypeScript error in src/foo.ts:42 - Property x does not exist on type Y')",
+		),
+});
+
+/**
+ * TypeScript type inferred from the Zod schema
+ */
+export type ValidationResult = z.infer<typeof ValidationResultSchema>;
+
+/**
+ * JSON Schema for ValidationResult - converted from Zod schema
+ * Used with Claude SDK structured outputs
+ */
+export const VALIDATION_RESULT_SCHEMA = zodToJsonSchema(
+	ValidationResultSchema,
+	{
+		$refStrategy: "none",
+		target: "jsonSchema7",
 	},
-	required: ["pass", "reason"],
-	additionalProperties: false,
-} as const;
+) as {
+	type: "object";
+	properties: {
+		pass: { type: "boolean"; description: string };
+		reason: { type: "string"; description: string };
+	};
+	required: ["pass", "reason"];
+	additionalProperties: false;
+};
 
 /**
  * Configuration for the validation loop

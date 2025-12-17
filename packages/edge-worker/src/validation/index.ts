@@ -10,6 +10,7 @@ export {
 	type ValidationLoopConfig,
 	type ValidationLoopState,
 	type ValidationResult,
+	ValidationResultSchema,
 } from "./types.js";
 export {
 	createInitialState,

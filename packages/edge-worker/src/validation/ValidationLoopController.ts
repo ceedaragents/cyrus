@@ -17,6 +17,7 @@ import type {
 import {
 	DEFAULT_VALIDATION_LOOP_CONFIG,
 	VALIDATION_RESULT_SCHEMA,
+	ValidationResultSchema,
 } from "./types.js";
 
 // Get __dirname equivalent for ESM
@@ -27,26 +28,28 @@ const __dirname = dirname(__filename);
  * Parse a validation result from an agent's response
  *
  * Supports multiple formats:
- * 1. Native structured output (message.structured_output)
- * 2. JSON in response text
- * 3. Fallback prompt engineering extraction
+ * 1. Native structured output (message.structured_output) - validated with Zod
+ * 2. JSON in response text - validated with Zod
+ * 3. Fallback prompt engineering extraction (for Gemini and other runners)
  */
 export function parseValidationResult(
 	response: string | undefined,
 	structuredOutput?: unknown,
 ): ValidationResult {
-	// 1. Try native structured output first (Claude SDK)
+	// 1. Try native structured output first (Claude SDK) - validate with Zod
 	if (structuredOutput && typeof structuredOutput === "object") {
-		const output = structuredOutput as Record<string, unknown>;
-		if (typeof output.pass === "boolean" && typeof output.reason === "string") {
-			return {
-				pass: output.pass,
-				reason: output.reason,
-			};
+		const parsed = ValidationResultSchema.safeParse(structuredOutput);
+		if (parsed.success) {
+			return parsed.data;
 		}
+		// Log validation error for debugging but continue to fallback methods
+		console.debug(
+			"[parseValidationResult] Structured output validation failed:",
+			parsed.error.message,
+		);
 	}
 
-	// 2. Try to parse JSON from response
+	// 2. Try to parse JSON from response - validate with Zod
 	if (response) {
 		// Try to extract JSON from markdown code blocks
 		const jsonMatch = response.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
@@ -55,21 +58,16 @@ export function parseValidationResult(
 			: response.trim();
 
 		try {
-			const parsed = JSON.parse(jsonString);
-			if (
-				typeof parsed.pass === "boolean" &&
-				typeof parsed.reason === "string"
-			) {
-				return {
-					pass: parsed.pass,
-					reason: parsed.reason,
-				};
+			const jsonParsed = JSON.parse(jsonString);
+			const zodParsed = ValidationResultSchema.safeParse(jsonParsed);
+			if (zodParsed.success) {
+				return zodParsed.data;
 			}
 		} catch {
 			// JSON parsing failed, continue to fallback
 		}
 
-		// 3. Fallback: try to infer from response text (for Gemini)
+		// 3. Fallback: try to infer from response text (for Gemini and other runners)
 		const lowerResponse = response.toLowerCase();
 
 		// Check for explicit pass/fail indicators
