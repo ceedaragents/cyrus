@@ -127,6 +127,13 @@ export interface EdgeWorkerConfig {
 
 	// Linear configuration (global)
 	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
+	/**
+	 * Optional workspace-level Linear OAuth token shared across all repositories.
+	 * If present, takes precedence over per-repository tokens.
+	 * If missing, falls back to the first repository's linearToken.
+	 * Since only a single Linear workspace is supported, this allows centralizing the token.
+	 */
+	linearToken?: string;
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
