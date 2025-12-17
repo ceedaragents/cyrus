@@ -1,7 +1,9 @@
 import type {
 	HookCallbackMatcher,
 	HookEvent,
+	JsonSchemaOutputFormat,
 	McpServerConfig,
+	OutputFormat,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
@@ -10,18 +12,10 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 
 /**
- * JSON Schema definition for structured outputs
- * Uses Record<string, unknown> to match SDK's expected type
- */
-export type JsonSchema = Record<string, unknown>;
-
-/**
  * Output format configuration for structured outputs
+ * Re-exported from Claude Agent SDK for convenience
  */
-export interface OutputFormatConfig {
-	type: "json_schema";
-	schema: JsonSchema;
-}
+export type OutputFormatConfig = OutputFormat;
 
 export interface ClaudeRunnerConfig {
 	workingDirectory?: string;
@@ -68,7 +62,9 @@ export interface ClaudeRunnerEvents {
 
 // Re-export SDK types for convenience
 export type {
+	JsonSchemaOutputFormat,
 	McpServerConfig,
+	OutputFormat,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
@@ -76,6 +72,9 @@ export type {
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+
+// Legacy alias - JsonSchema type is now part of JsonSchemaOutputFormat['schema']
+export type JsonSchema = JsonSchemaOutputFormat["schema"];
 // Re-export Anthropic API message types
 export type {
 	Message as APIAssistantMessage,
