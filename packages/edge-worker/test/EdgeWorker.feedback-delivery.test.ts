@@ -96,6 +96,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				claudeSessionId: "child-claude-session-456",
 				workspace: { path: "/test/workspaces/CHILD-456" },
 				claudeRunner: mockClaudeRunner,
+				repositoryContext: {
+					repositoryId: "test-repo",
+					repositoryPath: "/test/repo",
+					workspaceBaseDir: "/test/workspaces",
+				},
 			}),
 			getAgentRunner: vi.fn().mockReturnValue(mockClaudeRunner),
 			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
@@ -179,11 +184,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			"parent-session-123",
 		);
 
-		// Setup repository managers
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
-			mockChildAgentSessionManager,
-		);
+		// Setup single shared agent session manager (replaces per-repository managers)
+		(edgeWorker as any).agentSessionManager = mockChildAgentSessionManager;
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 	});
 
@@ -289,7 +291,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		it("should return false when child session is not found in any repository", async () => {
 			// Arrange
-			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(false);
+			mockChildAgentSessionManager.getSession.mockReturnValue(null);
 
 			const childSessionId = "nonexistent-child-session";
 			const feedbackMessage = "This should fail";
@@ -310,7 +312,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(result).toBe(false);
 			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
-				`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
+				`[EdgeWorker] Child session ${childSessionId} not found`,
 			);
 		});
 
@@ -386,21 +388,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				name: "Test Repo 2",
 			};
 
-			const mockRepo2Manager = {
-				hasAgentRunner: vi.fn().mockReturnValue(false),
-				getSession: vi.fn().mockReturnValue(null),
-			};
-
-			// First repository doesn't have the session
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo-2",
-				mockRepo2Manager,
-			);
+			// Add second repository to repositories map
 			(edgeWorker as any).repositories.set("test-repo-2", repo2);
 
-			// Adjust mock to make first repo not have it, second repo has it
-			mockRepo2Manager.hasAgentRunner.mockReturnValue(false);
-			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(true);
+			// Single shared manager already has the session (set in beforeEach)
+			// No need to set multiple managers - we now have one shared instance
 
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback across repositories";
@@ -425,11 +417,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
-			// Verify the child was found in one of the repositories
-			const hasAgentRunnerCalls =
-				mockRepo2Manager.hasAgentRunner.mock.calls.length +
-				mockChildAgentSessionManager.hasAgentRunner.mock.calls.length;
-			expect(hasAgentRunnerCalls).toBeGreaterThan(0);
+			// Verify the child session was found via getSession on the shared manager
+			expect(mockChildAgentSessionManager.getSession).toHaveBeenCalledWith(
+				childSessionId,
+			);
 		});
 	});
 
