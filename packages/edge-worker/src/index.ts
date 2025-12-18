@@ -15,3 +15,14 @@ export { GitService } from "./GitService.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
 export type { EdgeWorkerEvents } from "./types.js";
+
+// Export validation loop module
+export {
+	DEFAULT_VALIDATION_LOOP_CONFIG,
+	parseValidationResult,
+	VALIDATION_RESULT_SCHEMA,
+	type ValidationFixerContext,
+	type ValidationLoopConfig,
+	type ValidationLoopState,
+	type ValidationResult,
+} from "./validation/index.js";
