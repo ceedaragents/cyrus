@@ -84,7 +84,8 @@ export declare interface AgentSessionManager {
  * Transforms Claude streaming messages into Agent Session format
  * Handles session lifecycle: create → active → complete/error
  *
- * CURRENTLY BEING HANDLED 'per repository'
+ * Shared across all repositories. Each session stores its repository context
+ * via the `repositoryContext` field in CyrusAgentSession.
  */
 export class AgentSessionManager extends EventEmitter {
 	private issueTracker: IIssueTrackerService;
@@ -131,6 +132,17 @@ export class AgentSessionManager extends EventEmitter {
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
+		repositoryContext?: {
+			repositoryId: string;
+			repositoryPath: string;
+			workspaceBaseDir: string;
+			allowedTools?: string[];
+			disallowedTools?: string[];
+			mcpConfigPath?: string;
+			promptTemplatePath?: string;
+			model?: string;
+			fallbackModel?: string;
+		},
 	): CyrusAgentSession {
 		console.log(
 			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
@@ -146,6 +158,7 @@ export class AgentSessionManager extends EventEmitter {
 			issueId,
 			issue: issueMinimal,
 			workspace: workspace,
+			repositoryContext,
 		};
 
 		// Store locally
