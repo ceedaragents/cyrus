@@ -105,6 +105,39 @@ export {
 } from "./portAllocator.js";
 
 // ============================================================================
+// Event Adapters (CYPACK-634)
+// ============================================================================
+
+// Type exports
+export type { AccumulatedMessage, ProcessableEvent } from "./adapters.js";
+// Main adapter function
+// Part conversion functions
+// Message conversion functions
+// Event type guards
+// Helper functions
+export {
+	createUserMessage,
+	errorEventToSDKMessage,
+	extractSessionId,
+	isMessagePartUpdated,
+	isMessageUpdated,
+	isSessionError,
+	isSessionIdle,
+	isSessionStatus,
+	isTextPart,
+	isToolPart,
+	isToolStateCompleted,
+	isToolStateError,
+	messageEventToSDKMessage,
+	openCodeEventToSDKMessage,
+	partEventToSDKMessage,
+	synthesizeResultMessage,
+	textPartToContentBlock,
+	toolPartToToolResultBlock,
+	toolPartToToolUseBlock,
+} from "./adapters.js";
+
+// ============================================================================
 // Placeholder Exports for Future Implementation
 // ============================================================================
 
