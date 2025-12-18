@@ -245,6 +245,9 @@ importers:
       cyrus-linear-event-transport:
         specifier: workspace:*
         version: link:../linear-event-transport
+      cyrus-opencode-runner:
+        specifier: workspace:*
+        version: link:../opencode-runner
       cyrus-simple-agent-runner:
         specifier: workspace:*
         version: link:../simple-agent-runner

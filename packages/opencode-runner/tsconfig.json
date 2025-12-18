@@ -2,13 +2,9 @@
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"outDir": "./dist",
+		"rootDir": "./src",
 		"module": "NodeNext",
-		"moduleResolution": "NodeNext",
-		"baseUrl": "../../",
-		"paths": {
-			"cyrus-core": ["packages/core/src/index.ts"],
-			"cyrus-opencode-runner": ["packages/opencode-runner/src"]
-		}
+		"moduleResolution": "NodeNext"
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts"]

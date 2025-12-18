@@ -273,13 +273,16 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 		if (currentSubroutine) {
 			// Determine which type of session ID this is
 			const isGeminiSession = session.geminiSessionId !== undefined;
+			const isOpenCodeSession = session.opencodeSessionId !== undefined;
 
 			// Record completion with the appropriate session ID
 			procedureMetadata.subroutineHistory.push({
 				subroutine: currentSubroutine.name,
 				completedAt: Date.now(),
-				claudeSessionId: isGeminiSession ? null : sessionId,
+				claudeSessionId:
+					isGeminiSession || isOpenCodeSession ? null : sessionId,
 				geminiSessionId: isGeminiSession ? sessionId : null,
+				opencodeSessionId: isOpenCodeSession ? sessionId : null,
 			});
 		}
 

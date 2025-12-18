@@ -8,6 +8,7 @@ import {
 } from "cyrus-core";
 import { GeminiRunner } from "cyrus-gemini-runner";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
+import { OpenCodeRunner } from "cyrus-opencode-runner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
@@ -25,6 +26,7 @@ vi.mock("fs/promises", () => ({
 // Mock dependencies
 vi.mock("cyrus-claude-runner");
 vi.mock("cyrus-gemini-runner");
+vi.mock("cyrus-opencode-runner");
 vi.mock("cyrus-linear-event-transport");
 vi.mock("@linear/sdk");
 vi.mock("../src/SharedApplicationServer.js");
@@ -49,8 +51,9 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 	let mockLinearClient: any;
 	let mockClaudeRunner: any;
 	let mockGeminiRunner: any;
+	let mockOpenCodeRunner: any;
 	let mockAgentSessionManager: any;
-	let capturedRunnerType: "claude" | "gemini" | null = null;
+	let capturedRunnerType: "claude" | "gemini" | "opencode" | null = null;
 	let capturedRunnerConfig: any = null;
 
 	const mockRepository: RepositoryConfig = {
@@ -141,6 +144,24 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			capturedRunnerType = "gemini";
 			capturedRunnerConfig = config;
 			return mockGeminiRunner;
+		});
+
+		// Mock OpenCodeRunner
+		mockOpenCodeRunner = {
+			supportsStreamingInput: true,
+			start: vi.fn().mockResolvedValue({ sessionId: "opencode-session-123" }),
+			startStreaming: vi
+				.fn()
+				.mockResolvedValue({ sessionId: "opencode-session-123" }),
+			stop: vi.fn(),
+			isStreaming: vi.fn().mockReturnValue(false),
+			addStreamMessage: vi.fn(),
+			updatePromptVersions: vi.fn(),
+		};
+		vi.mocked(OpenCodeRunner).mockImplementation((config: any) => {
+			capturedRunnerType = "opencode";
+			capturedRunnerConfig = config;
+			return mockOpenCodeRunner;
 		});
 
 		// Mock AgentSessionManager
@@ -451,6 +472,102 @@ Issue: {{issue_identifier}}`;
 		});
 	});
 
+	describe("OpenCode Runner Selection", () => {
+		it("should select OpenCode runner when 'opencode' label is present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["opencode"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("opencode");
+			expect(OpenCodeRunner).toHaveBeenCalled();
+			// ClaudeRunner is called once for the classifier (ProcedureAnalyzer uses Claude by default)
+			expect(ClaudeRunner).toHaveBeenCalledTimes(1);
+			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+
+		it("should prioritize OpenCode over Gemini when both labels are present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["opencode", "gemini"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("opencode");
+			expect(OpenCodeRunner).toHaveBeenCalled();
+			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+
+		it("should prioritize OpenCode over Claude when both labels are present", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["opencode", "opus"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("opencode");
+			expect(OpenCodeRunner).toHaveBeenCalled();
+		});
+	});
+
 	describe("Default Runner Selection", () => {
 		it("should default to Claude runner when no runner-related labels are present", async () => {
 			// Arrange
@@ -575,6 +692,36 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("claude");
 			expect(ClaudeRunner).toHaveBeenCalled();
 		});
+
+		it("should select OpenCode runner with mixed-case 'OpenCode' label", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels(["OpenCode"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("opencode");
+			expect(OpenCodeRunner).toHaveBeenCalled();
+		});
 	});
 
 	describe("Session Continuation Model Override Validation", () => {
@@ -629,6 +776,34 @@ Issue: {{issue_identifier}}`;
 			expect(labelRunnerType).not.toBe(actualRunnerType);
 
 			// This mismatch would trigger the warning in resumeAgentSession
+		});
+
+		it("should return opencode runner type for opencode label", () => {
+			// Arrange
+			const labels = ["opencode"];
+
+			// Act
+			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+				labels,
+			);
+
+			// Assert
+			expect(runnerSelection.runnerType).toBe("opencode");
+			expect(runnerSelection.modelOverride).toBeUndefined();
+			expect(runnerSelection.fallbackModelOverride).toBeUndefined();
+		});
+
+		it("should prioritize opencode over gemini in determineRunnerFromLabels", () => {
+			// Arrange
+			const labels = ["opencode", "gemini"];
+
+			// Act
+			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+				labels,
+			);
+
+			// Assert - OpenCode has highest priority
+			expect(runnerSelection.runnerType).toBe("opencode");
 		});
 	});
 });
