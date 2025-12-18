@@ -105,6 +105,20 @@ export {
 } from "./portAllocator.js";
 
 // ============================================================================
+// Configuration Builder
+// ============================================================================
+
+export {
+	type OpenCodeAgentConfig,
+	type OpenCodeConfig,
+	OpenCodeConfigBuilder,
+	type OpenCodeConfigBuilderOptions,
+	type OpenCodeConfigBuildResult,
+	type OpenCodeMcpLocalConfig,
+	type OpenCodeMcpRemoteConfig,
+} from "./configBuilder.js";
+
+// ============================================================================
 // Placeholder Exports for Future Implementation
 // ============================================================================
 
