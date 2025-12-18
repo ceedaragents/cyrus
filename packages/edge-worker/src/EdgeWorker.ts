@@ -4744,6 +4744,8 @@ ${input.userComment}
 				repository.fallbackModel ||
 				this.config.defaultFallbackModel,
 			hooks,
+			// Enable Chrome integration for Claude runner (disabled for other runners)
+			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
 					linearAgentActivitySessionId,

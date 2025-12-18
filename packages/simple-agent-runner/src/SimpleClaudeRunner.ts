@@ -39,6 +39,8 @@ export class SimpleClaudeRunner<T extends string> extends SimpleAgentRunner<T> {
 				? []
 				: ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
 			allowedDirectories: options?.allowedDirectories,
+			// Explicitly disable Chrome integration for simple queries
+			extraArgs: {},
 		});
 
 		// Set up event handlers
