@@ -64,6 +64,7 @@ import {
 	LinearEventTransport,
 	LinearIssueTrackerService,
 } from "cyrus-linear-event-transport";
+import { OpenCodeRunner } from "cyrus-opencode-runner";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { GitService } from "./GitService.js";
@@ -1887,7 +1888,9 @@ export class EdgeWorker extends EventEmitter {
 			const runner =
 				runnerType === "claude"
 					? new ClaudeRunner(runnerConfig)
-					: new GeminiRunner(runnerConfig);
+					: runnerType === "gemini"
+						? new GeminiRunner(runnerConfig)
+						: new OpenCodeRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -2435,16 +2438,17 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Determine runner type and model from issue labels.
-	 * Returns the runner type ("claude" or "gemini"), optional model override, and fallback model.
+	 * Returns the runner type ("claude", "gemini", or "opencode"), optional model override, and fallback model.
 	 *
 	 * Label priority (case-insensitive):
+	 * - OpenCode labels: opencode (checked first)
 	 * - Gemini labels: gemini, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-pro, gemini-3-pro-preview
 	 * - Claude labels: claude, sonnet, opus
 	 *
 	 * If no runner label is found, defaults to claude.
 	 */
 	private determineRunnerFromLabels(labels: string[]): {
-		runnerType: "claude" | "gemini";
+		runnerType: "claude" | "gemini" | "opencode";
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
@@ -2458,7 +2462,17 @@ export class EdgeWorker extends EventEmitter {
 
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
-		// Check for Gemini labels first
+		// Check for OpenCode labels first (highest priority)
+		if (lowercaseLabels.includes("opencode")) {
+			return {
+				runnerType: "opencode",
+				// OpenCode doesn't use model overrides in the same way
+				modelOverride: undefined,
+				fallbackModelOverride: undefined,
+			};
+		}
+
+		// Check for Gemini labels
 		if (
 			lowercaseLabels.includes("gemini-2.5-pro") ||
 			lowercaseLabels.includes("gemini-2.5")
@@ -4672,7 +4686,10 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
-	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+	): {
+		config: AgentRunnerConfig;
+		runnerType: "claude" | "gemini" | "opencode";
+	} {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
@@ -4711,6 +4728,10 @@ ${input.userComment}
 			runnerType = "gemini";
 			modelOverride = "gemini-2.5-pro";
 			fallbackModelOverride = "gemini-2.5-flash";
+		} else if (session.opencodeSessionId && runnerType !== "opencode") {
+			runnerType = "opencode";
+			modelOverride = undefined;
+			fallbackModelOverride = undefined;
 		}
 
 		// Log model override if found
@@ -5585,8 +5606,11 @@ ${input.userComment}
 		// Determine which runner to use based on existing session IDs
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
+		const hasOpenCodeSession =
+			!isNewSession && Boolean(session.opencodeSessionId);
 		const needsNewSession =
-			isNewSession || (!hasClaudeSession && !hasGeminiSession);
+			isNewSession ||
+			(!hasClaudeSession && !hasGeminiSession && !hasOpenCodeSession);
 
 		// Fetch system prompt based on labels
 
@@ -5634,7 +5658,9 @@ ${input.userComment}
 			? undefined
 			: session.claudeSessionId
 				? session.claudeSessionId
-				: session.geminiSessionId;
+				: session.geminiSessionId
+					? session.geminiSessionId
+					: session.opencodeSessionId;
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
@@ -5657,7 +5683,9 @@ ${input.userComment}
 		const runner =
 			runnerType === "claude"
 				? new ClaudeRunner(runnerConfig)
-				: new GeminiRunner(runnerConfig);
+				: runnerType === "gemini"
+					? new GeminiRunner(runnerConfig)
+					: new OpenCodeRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
