@@ -1331,6 +1331,16 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Get sessions by repository ID
+	 * Useful for filtering sessions in a specific repository context
+	 */
+	getSessionsByRepositoryId(repositoryId: string): CyrusAgentSession[] {
+		return Array.from(this.sessions.values()).filter(
+			(session) => session.repositoryContext?.repositoryId === repositoryId,
+		);
+	}
+
+	/**
 	 * Get agent runner for a specific session
 	 */
 	getAgentRunner(
