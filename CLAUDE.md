@@ -112,6 +112,8 @@ cyrus/
     ├── core/         # Shared types and session management
     ├── claude-parser/# Claude stdout parsing with jq
     ├── claude-runner/# Claude CLI execution wrapper
+    ├── opencode-runner/ # OpenCode SDK integration
+    ├── gemini-runner/# Gemini CLI integration
     ├── edge-worker/  # Edge worker client implementation
     └── ndjson-client/# NDJSON streaming client
 ```
@@ -439,3 +441,51 @@ For detailed information about Gemini CLI configuration options (settings.json s
 - **Official Documentation**: https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
 
 The GeminiRunner automatically generates a `~/.gemini/settings.json` file with single-turn model aliases and preview features enabled if one doesn't already exist.
+
+## OpenCode Runner
+
+Cyrus supports the OpenCode SDK as an alternative AI backend. The OpenCodeRunner enables using OpenCode's agent capabilities for issue processing.
+
+### Enabling OpenCode Runner
+
+To use OpenCode instead of Claude for an issue, add the `opencode` label to the Linear issue. The EdgeWorker automatically selects the appropriate runner based on labels:
+
+| Label | Runner Selected | Notes |
+|-------|-----------------|-------|
+| `opencode` | OpenCodeRunner | Highest priority |
+| `gemini`, `gemini-*` | GeminiRunner | Second priority |
+| `sonnet`, `opus`, `haiku` | ClaudeRunner | Model override |
+| (none) | ClaudeRunner | Default (Opus) |
+
+### OpenCode SDK Installation
+
+```bash
+# Install the OpenCode SDK globally
+npm install -g @opencode-ai/sdk@1.0.167
+
+# Verify installation
+opencode --version
+```
+
+### Key Differences from ClaudeRunner
+
+| Aspect | ClaudeRunner | OpenCodeRunner |
+|--------|--------------|----------------|
+| SDK | Claude Agent SDK | OpenCode SDK |
+| Streaming Input | ✅ Yes | ✅ Yes (native) |
+| MCP Support | Full | Converted (stdio→local, HTTP→remote) |
+| Session Logs | `~/.cyrus/logs/` | `~/.cyrus/logs/` |
+
+### Architecture
+
+The OpenCodeRunner implementation consists of:
+
+- **OpenCodeRunner** (`packages/opencode-runner/src/OpenCodeRunner.ts`): Main runner class implementing `IAgentRunner` interface
+- **OpenCodeConfigBuilder** (`packages/opencode-runner/src/configBuilder.ts`): Maps Cyrus config to OpenCode SDK format
+- **OpenCodeMessageFormatter** (`packages/opencode-runner/src/formatter.ts`): Formats tool messages for Linear activities
+
+### Known Limitations
+
+1. **Custom Tool Callbacks**: Deferred until cyrus-tools MCP migration is complete
+2. **In-Process MCP Servers**: Not supported (OpenCode requires external transport configurations)
+3. **Model Override**: Not applicable (OpenCode uses its own model selection)
