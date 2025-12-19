@@ -372,6 +372,7 @@ pnpm test:packages:run
 
 1. **Missing default labels in CLI mode** - Fixed by adding `opencode`, `gemini`, `sonnet`, `opus`, `haiku` labels to `seedDefaultData()`
 2. **Working directory mismatch** - OpenCode SDK operates on original repo path instead of git worktree (non-blocking, code still executes)
+3. **Streaming text deltas posted as separate activities** - Each text delta was being posted as a separate thought activity, creating 348+ fragmented messages. Fixed by adding text accumulation in `handleMessagePartUpdated()` - text is now accumulated and flushed as complete messages when a tool use occurs or session completes. ([CYPACK-643](https://linear.app/ceedar/issue/CYPACK-643))
 
 ### Performance Metrics
 

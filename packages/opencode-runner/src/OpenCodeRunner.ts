@@ -257,6 +257,10 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	private streamingPrompt: StreamingPrompt | null = null;
 	private configCleanup: (() => Promise<void>) | null = null;
 
+	// Text accumulation state (to avoid emitting deltas as separate messages)
+	private accumulatingTextPartId: string | null = null;
+	private accumulatedText: string = "";
+
 	// Logging
 	private logStream: WriteStream | null = null;
 	private readableLogStream: WriteStream | null = null;
@@ -652,6 +656,12 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 
 	/**
 	 * Handle message.part.updated event.
+	 *
+	 * For text parts, we accumulate deltas instead of emitting each one
+	 * as a separate message. Text is flushed when:
+	 * - A different part type is received (e.g., tool use)
+	 * - A different text part ID is received
+	 * - The session completes
 	 */
 	private async handleMessagePartUpdated(
 		data: Record<string, unknown>,
@@ -664,13 +674,61 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			return;
 		}
 
-		// Convert part to message and emit
+		// Handle text parts with accumulation
+		if (part.type === "text") {
+			const textPart = part as TextPart;
+			if (textPart.synthetic || textPart.ignored) {
+				return;
+			}
+
+			// If this is a new text part, flush the old one first
+			if (
+				this.accumulatingTextPartId !== null &&
+				this.accumulatingTextPartId !== textPart.id
+			) {
+				this.flushAccumulatedText();
+			}
+
+			// Accumulate text (the SDK sends cumulative text, not deltas)
+			this.accumulatingTextPartId = textPart.id;
+			this.accumulatedText = textPart.text;
+			return;
+		}
+
+		// For non-text parts, flush any accumulated text first
+		if (this.accumulatingTextPartId !== null) {
+			this.flushAccumulatedText();
+		}
+
+		// Convert non-text part to message and emit
 		const message = this.convertPartToMessage(part);
 		if (message) {
 			this.messages.push(message);
 			this.logMessage(message);
 			this.emit("message", message);
 		}
+	}
+
+	/**
+	 * Flush accumulated text as a single message.
+	 */
+	private flushAccumulatedText(): void {
+		if (this.accumulatingTextPartId === null || !this.accumulatedText) {
+			return;
+		}
+
+		const message = createSDKAssistantMessage(
+			[{ type: "text", text: this.accumulatedText }],
+			this.sessionInfo?.sessionId ?? null,
+		);
+
+		this.messages.push(message);
+		this.logMessage(message);
+		this.emit("message", message);
+
+		// Reset accumulation state
+		this.accumulatingTextPartId = null;
+		this.accumulatedText = "";
 	}
 
 	/**
@@ -697,6 +755,9 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	 */
 	private handleSessionComplete(): void {
 		if (!this.sessionInfo) return;
+
+		// Flush any accumulated text before completing
+		this.flushAccumulatedText();
 
 		// Mark as not running BEFORE emitting events (prevents race conditions)
 		this.sessionInfo.isRunning = false;
@@ -991,6 +1052,10 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	 * Clean up resources.
 	 */
 	private cleanup(): void {
+		// Reset text accumulation state
+		this.accumulatingTextPartId = null;
+		this.accumulatedText = "";
+
 		// Close server
 		if (this.server) {
 			console.log(`${LOG_PREFIX} Closing server...`);
