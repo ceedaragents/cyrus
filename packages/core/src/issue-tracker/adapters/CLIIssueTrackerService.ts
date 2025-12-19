@@ -1397,6 +1397,64 @@ export class CLIIssueTrackerService
 		for (const state of workflowStates) {
 			this.state.workflowStates.set(state.id, state);
 		}
+
+		// Create default labels for runner selection
+		const defaultLabels: CLILabelData[] = [
+			{
+				id: "opencode",
+				name: "opencode",
+				description: "Use OpenCode SDK for this issue",
+				color: "#10b981",
+				isGroup: false,
+				teamId: defaultTeam.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "gemini",
+				name: "gemini",
+				description: "Use Gemini for this issue",
+				color: "#3b82f6",
+				isGroup: false,
+				teamId: defaultTeam.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "sonnet",
+				name: "sonnet",
+				description: "Use Claude Sonnet for this issue",
+				color: "#8b5cf6",
+				isGroup: false,
+				teamId: defaultTeam.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "opus",
+				name: "opus",
+				description: "Use Claude Opus for this issue",
+				color: "#ec4899",
+				isGroup: false,
+				teamId: defaultTeam.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			{
+				id: "haiku",
+				name: "haiku",
+				description: "Use Claude Haiku for this issue",
+				color: "#f97316",
+				isGroup: false,
+				teamId: defaultTeam.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		];
+
+		for (const label of defaultLabels) {
+			this.state.labels.set(label.id, label);
+		}
 	}
 
 	/**
