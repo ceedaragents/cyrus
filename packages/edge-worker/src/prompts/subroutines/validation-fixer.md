@@ -32,6 +32,7 @@ Fix ONLY the specific issues mentioned in the failure reason above. Do not make 
 
 ### Common Fix Patterns
 
+- **Acceptance criteria failures**: Re-read the specific criterion that failed, understand what's missing, and implement the missing functionality
 - **Test failures**: Read the failing test, understand the expected vs actual behavior, fix the code or test
 - **TypeScript errors**: Check the type definitions and ensure proper typing
 - **Linting errors**: Run the linter with auto-fix first, then manually fix what remains
