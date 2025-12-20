@@ -12,7 +12,6 @@ import type {
 	SDKMessage,
 } from "cyrus-claude-runner";
 import {
-	AbortError,
 	ClaudeRunner,
 	createCyrusToolsServer,
 	createImageToolsServer,
@@ -2411,7 +2410,16 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async handleClaudeError(error: Error): Promise<void> {
 		// AbortError is expected when user stops Claude process, don't log it
-		if (error instanceof AbortError) {
+		// Check by name since the SDK's AbortError class may not match our imported definition
+		const isAbortError =
+			error.name === "AbortError" || error.message.includes("aborted by user");
+
+		// Also check for SIGTERM (exit code 143), which indicates graceful termination
+		const isSigterm = error.message.includes(
+			"Claude Code process exited with code 143",
+		);
+
+		if (isAbortError || isSigterm) {
 			return;
 		}
 		console.error("Unhandled claude error:", error);

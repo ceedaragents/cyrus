@@ -402,24 +402,34 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			this.emit("complete", this.messages);
 		} catch (error) {
-			console.error("[ClaudeRunner] Session error:", error);
-
 			if (this.sessionInfo) {
 				this.sessionInfo.isRunning = false;
 			}
 
-			if (error instanceof AbortError) {
-				console.log("[ClaudeRunner] Session was aborted");
-			} else if (
+			// Check for user-initiated abort - this is a normal operation, not an error
+			// The SDK throws AbortError when the process is aborted via AbortController
+			// We check by name since the SDK's AbortError class may not match our local definition
+			const isAbortError =
 				error instanceof Error &&
-				error.message.includes("Claude Code process exited with code 143")
-			) {
-				// Exit code 143 is SIGTERM (128 + 15), which indicates graceful termination
-				// This is expected when the session is stopped during unassignment
+				(error.name === "AbortError" ||
+					error.message.includes("aborted by user"));
+
+			// Check for SIGTERM (exit code 143 = 128 + 15), which indicates graceful termination
+			// This is expected when the session is stopped during unassignment
+			const isSigterm =
+				error instanceof Error &&
+				error.message.includes("Claude Code process exited with code 143");
+
+			if (isAbortError) {
+				// User-initiated stop - log at info level, not error
+				console.log("[ClaudeRunner] Session stopped by user");
+			} else if (isSigterm) {
 				console.log(
 					"[ClaudeRunner] Session was terminated gracefully (SIGTERM)",
 				);
 			} else {
+				// Actual error - log and emit
+				console.error("[ClaudeRunner] Session error:", error);
 				this.emit(
 					"error",
 					error instanceof Error ? error : new Error(String(error)),
