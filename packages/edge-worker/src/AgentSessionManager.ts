@@ -2079,7 +2079,12 @@ export class AgentSessionManager extends EventEmitter {
 		toolInput: any,
 	): Promise<boolean> {
 		// Check if this parent is part of a parallel group
-		if (!this.parallelTaskTracker.isParallelTaskParent(parentToolUseId)) {
+		const isParallel =
+			this.parallelTaskTracker.isParallelTaskParent(parentToolUseId);
+		console.log(
+			`[AgentSessionManager] updateParallelTaskProgress: parentToolUseId=${parentToolUseId}, toolName=${toolName}, isParallel=${isParallel}`,
+		);
+		if (!isParallel) {
 			return false;
 		}
 
@@ -2095,8 +2100,19 @@ export class AgentSessionManager extends EventEmitter {
 			toolInput,
 		);
 
-		if (!group || !group.ephemeralActivityId) {
+		if (!group) {
 			return false;
+		}
+
+		// If ephemeral activity is still being created, just update the tracking state
+		// and return true to prevent individual activity creation
+		if (!group.ephemeralActivityId) {
+			// Still pending creation - return true to suppress individual activities
+			// We still track the progress, but skip the Linear API call
+			console.log(
+				`[AgentSessionManager] Ephemeral activity pending, suppressing individual activity for ${toolName}`,
+			);
+			return true;
 		}
 
 		// Create an updated ephemeral activity (Linear ephemeral replacement)

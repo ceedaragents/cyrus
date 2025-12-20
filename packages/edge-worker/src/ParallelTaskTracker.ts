@@ -50,6 +50,8 @@ export interface ParallelAgentGroup {
 	agents: Map<string, ParallelAgent>;
 	/** Linear activity ID for the ephemeral unified view */
 	ephemeralActivityId?: string;
+	/** Whether an ephemeral activity is being created (prevents race condition) */
+	ephemeralActivityPending: boolean;
 	/** Timestamp when the group was created */
 	createdAt: number;
 }
@@ -127,6 +129,7 @@ export class ParallelTaskTracker {
 		const group: ParallelAgentGroup = {
 			groupId,
 			agents,
+			ephemeralActivityPending: true, // Mark as pending synchronously
 			createdAt: Date.now(),
 		};
 
@@ -137,6 +140,10 @@ export class ParallelTaskTracker {
 
 		console.log(
 			`[ParallelTaskTracker] Started parallel group ${groupId} with ${tasks.length} agents for session ${sessionId}`,
+		);
+		console.log(
+			`[ParallelTaskTracker] Registered tool_use_ids:`,
+			tasks.map((t) => t.id),
 		);
 
 		return group;
@@ -268,6 +275,7 @@ export class ParallelTaskTracker {
 			const group = groups.find((g) => g.groupId === groupId);
 			if (group) {
 				group.ephemeralActivityId = activityId;
+				group.ephemeralActivityPending = false; // No longer pending
 				return;
 			}
 		}
