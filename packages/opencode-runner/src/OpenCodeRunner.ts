@@ -559,8 +559,14 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	/**
-	 * Send a prompt asynchronously via the SDK.
-	 * Includes timeout protection to prevent indefinite hangs.
+	 * Send a prompt via the SDK's synchronous prompt endpoint.
+	 *
+	 * NOTE: We use the synchronous `prompt` method (POST /session/{id}/message)
+	 * instead of `promptAsync` (POST /session/{id}/prompt_async) because
+	 * promptAsync hangs indefinitely in OpenCode SDK v1.0.167.
+	 *
+	 * The synchronous prompt blocks until complete, but we still receive
+	 * real-time updates via the SSE event stream.
 	 */
 	private async sendPromptAsync(content: string): Promise<void> {
 		if (!this.client || !this.sessionInfo?.openCodeSessionId) {
@@ -576,18 +582,6 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		console.log(
 			`${LOG_PREFIX} Sending prompt to session ${this.sessionInfo.openCodeSessionId}`,
 		);
-
-		// Add timeout protection (30 seconds) to prevent indefinite hangs
-		const PROMPT_TIMEOUT_MS = 30000;
-		const timeoutPromise = new Promise<never>((_, reject) => {
-			setTimeout(() => {
-				reject(
-					new Error(
-						`promptAsync timed out after ${PROMPT_TIMEOUT_MS}ms - OpenCode server may not be responding`,
-					),
-				);
-			}, PROMPT_TIMEOUT_MS);
-		});
 
 		try {
 			// Build prompt body with model if available
@@ -606,13 +600,13 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
-			const response = await Promise.race([
-				this.client.session.promptAsync({
-					path: { id: this.sessionInfo.openCodeSessionId },
-					body: promptBody,
-				}),
-				timeoutPromise,
-			]);
+			// Use synchronous prompt endpoint - promptAsync hangs in OpenCode SDK v1.0.167
+			// This call blocks until the prompt is processed, but we receive real-time
+			// updates via the SSE event stream subscribed in subscribeToEvents()
+			const response = await this.client.session.prompt({
+				path: { id: this.sessionInfo.openCodeSessionId },
+				body: promptBody,
+			});
 
 			if (response.error) {
 				throw new Error(
@@ -620,7 +614,7 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
-			console.log(`${LOG_PREFIX} Prompt sent successfully`);
+			console.log(`${LOG_PREFIX} Prompt completed successfully`);
 		} catch (error) {
 			console.error(`${LOG_PREFIX} Error sending prompt:`, error);
 			throw error;
