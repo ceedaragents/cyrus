@@ -23,6 +23,7 @@ import {
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
 } from "cyrus-core";
+import { ParallelTaskTracker } from "./ParallelTaskTracker.js";
 import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
 import type { ValidationLoopMetadata } from "./procedures/types.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
@@ -94,6 +95,7 @@ export class AgentSessionManager extends EventEmitter {
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
+	private parallelTaskTracker: ParallelTaskTracker = new ParallelTaskTracker(); // Tracks parallel Task tool executions
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -256,6 +258,9 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Clear any active Task when session completes
 		this.activeTasksBySession.delete(linearAgentActivitySessionId);
+
+		// Clear parallel task tracking for this session
+		this.parallelTaskTracker.clearSession(linearAgentActivitySessionId);
 
 		// Clear tool calls tracking for this session
 		// Note: We should ideally track by session, but for now clearing all is safer
@@ -723,14 +728,30 @@ export class AgentSessionManager extends EventEmitter {
 				}
 
 				case "assistant": {
-					const assistantEntry = await this.createSessionEntry(
-						linearAgentActivitySessionId,
-						message as SDKAssistantMessage,
-					);
-					await this.syncEntryToLinear(
-						assistantEntry,
-						linearAgentActivitySessionId,
-					);
+					const assistantMessage = message as SDKAssistantMessage;
+
+					// Check for parallel Task tool calls (multiple Tasks in single message)
+					const allToolUses = this.extractAllToolUses(assistantMessage);
+					const taskToolUses = allToolUses.filter((t) => t.name === "Task");
+
+					if (taskToolUses.length >= 2) {
+						// Parallel Task detection - create unified ephemeral activity
+						await this.handleParallelTasks(
+							linearAgentActivitySessionId,
+							assistantMessage,
+							taskToolUses,
+						);
+					} else {
+						// Standard single tool or non-Task - use normal flow
+						const assistantEntry = await this.createSessionEntry(
+							linearAgentActivitySessionId,
+							assistantMessage,
+						);
+						await this.syncEntryToLinear(
+							assistantEntry,
+							linearAgentActivitySessionId,
+						);
+					}
 					break;
 				}
 
@@ -886,6 +907,29 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Extract ALL tool_use blocks from Claude assistant message
+	 * Used to detect parallel tool execution (multiple tool_use in single message)
+	 */
+	private extractAllToolUses(
+		sdkMessage: SDKAssistantMessage,
+	): Array<{ id: string; name: string; input: any }> {
+		const message = sdkMessage.message as APIAssistantMessage;
+
+		if (!Array.isArray(message.content)) {
+			return [];
+		}
+
+		return message.content
+			.filter((block) => block.type === "tool_use")
+			.filter((block) => "id" in block && "name" in block && "input" in block)
+			.map((block) => ({
+				id: (block as any).id,
+				name: (block as any).name,
+				input: (block as any).input,
+			}));
+	}
+
+	/**
 	 * Extract tool_use_id and error status from Claude user message containing tool_result
 	 */
 	private extractToolResultInfo(
@@ -951,6 +995,22 @@ export class AgentSessionManager extends EventEmitter {
 					const activeTaskId = this.activeTasksBySession.get(
 						linearAgentActivitySessionId,
 					);
+
+					// Check if this completes a parallel task agent
+					if (entry.metadata?.toolUseId) {
+						const wasParallelCompletion = await this.completeParallelTaskAgent(
+							linearAgentActivitySessionId,
+							entry.metadata.toolUseId,
+							entry.content,
+						);
+						if (wasParallelCompletion) {
+							// Parallel task completion is handled - don't create individual activity
+							// Clean up the tool call tracking
+							this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
+							return;
+						}
+					}
+
 					if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
 						content = {
 							type: "thought",
@@ -1103,6 +1163,30 @@ export class AgentSessionManager extends EventEmitter {
 							// Task is not ephemeral
 							ephemeral = false;
 						} else {
+							// Other tools - check if they're part of a parallel task group
+							const toolInput = entry.metadata.toolInput || entry.content;
+
+							// Check if this is a subtask of a parallel task group
+							if (entry.metadata?.parentToolUseId) {
+								const wasParallelUpdate = await this.updateParallelTaskProgress(
+									linearAgentActivitySessionId,
+									entry.metadata.parentToolUseId,
+									toolName,
+									toolInput,
+								);
+								if (wasParallelUpdate) {
+									// Subtask handled by parallel tracker - don't create individual activity
+									// Still track the tool call for result handling
+									if (entry.metadata.toolUseId) {
+										this.toolCallsByToolUseId.set(entry.metadata.toolUseId, {
+											name: `↪ ${toolName}`,
+											input: toolInput,
+										});
+									}
+									return;
+								}
+							}
+
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
@@ -1112,8 +1196,7 @@ export class AgentSessionManager extends EventEmitter {
 								return;
 							}
 
-							// Other tools - check if they're within an active Task
-							const toolInput = entry.metadata.toolInput || entry.content;
+							// Other tools - check if they're within an active Task (non-parallel)
 							let displayName = toolName;
 
 							if (entry.metadata?.parentToolUseId) {
@@ -1854,5 +1937,241 @@ export class AgentSessionManager extends EventEmitter {
 				error,
 			);
 		}
+	}
+
+	/**
+	 * Handle parallel Task tool calls by creating a unified ephemeral activity
+	 *
+	 * When Claude calls multiple Task tools in a single message (parallel execution),
+	 * we create a single ephemeral activity showing all agents in a tree view,
+	 * similar to Claude Code's native display:
+	 *
+	 * ```
+	 * ● Running 6 agents...
+	 * ├── Explore cyrus desktop app
+	 * │   └─Starting...
+	 * ├── Explore cyrus-hosted backend
+	 * │   └─Starting...
+	 * └── Explore cyrus-images
+	 *     └─Starting...
+	 * ```
+	 */
+	private async handleParallelTasks(
+		linearAgentActivitySessionId: string,
+		_sdkMessage: SDKAssistantMessage,
+		taskToolUses: Array<{ id: string; name: string; input: any }>,
+	): Promise<void> {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) {
+			console.warn(
+				`[AgentSessionManager] No session found for parallel tasks: ${linearAgentActivitySessionId}`,
+			);
+			return;
+		}
+
+		console.log(
+			`[AgentSessionManager] Detected ${taskToolUses.length} parallel Task tools in session ${linearAgentActivitySessionId}`,
+		);
+
+		// Start tracking this parallel group
+		const group = this.parallelTaskTracker.startParallelGroup(
+			linearAgentActivitySessionId,
+			taskToolUses,
+		);
+
+		// Register all task tool_use_ids for tool call tracking
+		for (const task of taskToolUses) {
+			this.toolCallsByToolUseId.set(task.id, {
+				name: task.name,
+				input: task.input,
+			});
+		}
+
+		// Create the unified ephemeral activity
+		const unifiedContent = this.parallelTaskTracker.formatUnifiedView(group);
+
+		try {
+			const result = await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: unifiedContent,
+				},
+				ephemeral: true,
+			});
+
+			if (result.success && result.agentActivity) {
+				const activity = await result.agentActivity;
+				this.parallelTaskTracker.setEphemeralActivityId(
+					group.groupId,
+					activity.id,
+				);
+				console.log(
+					`[AgentSessionManager] Created unified parallel activity ${activity.id} for group ${group.groupId}`,
+				);
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to create unified parallel activity:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error creating unified parallel activity:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Update the unified parallel activity when a subtask makes progress
+	 * Returns true if this was handled as a parallel subtask, false otherwise
+	 */
+	private async updateParallelTaskProgress(
+		linearAgentActivitySessionId: string,
+		parentToolUseId: string,
+		toolName: string,
+		toolInput: any,
+	): Promise<boolean> {
+		// Check if this parent is part of a parallel group
+		if (!this.parallelTaskTracker.isParallelTaskParent(parentToolUseId)) {
+			return false;
+		}
+
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) {
+			return false;
+		}
+
+		// Update the agent's progress
+		const group = this.parallelTaskTracker.updateAgentAction(
+			parentToolUseId,
+			toolName,
+			toolInput,
+		);
+
+		if (!group || !group.ephemeralActivityId) {
+			return false;
+		}
+
+		// Create an updated ephemeral activity (Linear ephemeral replacement)
+		const unifiedContent = this.parallelTaskTracker.formatUnifiedView(group);
+
+		try {
+			const result = await this.issueTracker.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: unifiedContent,
+				},
+				ephemeral: true,
+			});
+
+			if (result.success && result.agentActivity) {
+				const activity = await result.agentActivity;
+				// Update the stored activity ID
+				this.parallelTaskTracker.setEphemeralActivityId(
+					group.groupId,
+					activity.id,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error updating parallel activity:`,
+				error,
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Complete a parallel task agent and check if all agents are done
+	 * Returns true if this was handled as a parallel task completion, false otherwise
+	 */
+	private async completeParallelTaskAgent(
+		linearAgentActivitySessionId: string,
+		toolUseId: string,
+		result?: string,
+	): Promise<boolean> {
+		// Check if this is part of a parallel group
+		if (!this.parallelTaskTracker.isParallelTaskParent(toolUseId)) {
+			return false;
+		}
+
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) {
+			return false;
+		}
+
+		// Mark the agent as completed
+		const completion = this.parallelTaskTracker.completeAgent(
+			toolUseId,
+			result,
+		);
+		if (!completion) {
+			return false;
+		}
+
+		const { group, allCompleted } = completion;
+
+		if (allCompleted) {
+			// All agents completed - post final non-ephemeral summary
+			console.log(
+				`[AgentSessionManager] All parallel agents completed in group ${group.groupId}`,
+			);
+
+			const finalContent = this.parallelTaskTracker.formatUnifiedView(group);
+
+			try {
+				// Create non-ephemeral final activity (replaces ephemeral)
+				const activityResult = await this.issueTracker.createAgentActivity({
+					agentSessionId: session.linearAgentActivitySessionId,
+					content: {
+						type: "thought",
+						body: `✅ Parallel agents completed\n\n${finalContent}`,
+					},
+					ephemeral: false,
+				});
+
+				if (activityResult.success) {
+					console.log(
+						`[AgentSessionManager] Posted final parallel completion for group ${group.groupId}`,
+					);
+				}
+			} catch (error) {
+				console.error(
+					`[AgentSessionManager] Error posting parallel completion:`,
+					error,
+				);
+			}
+
+			// Clean up the completed group
+			this.parallelTaskTracker.removeGroup(
+				linearAgentActivitySessionId,
+				group.groupId,
+			);
+		} else {
+			// Not all complete yet - update the ephemeral activity
+			const unifiedContent = this.parallelTaskTracker.formatUnifiedView(group);
+
+			try {
+				await this.issueTracker.createAgentActivity({
+					agentSessionId: session.linearAgentActivitySessionId,
+					content: {
+						type: "thought",
+						body: unifiedContent,
+					},
+					ephemeral: true,
+				});
+			} catch (error) {
+				console.error(
+					`[AgentSessionManager] Error updating parallel progress:`,
+					error,
+				);
+			}
+		}
+
+		return true;
 	}
 }
