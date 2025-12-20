@@ -482,6 +482,23 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			// Update logs with real session ID
 			await this.setupLogging(workspaceName);
 
+			// Emit system init message with model info (for AgentSessionManager)
+			// This allows AgentSessionManager to post "Using model: X" thought to Linear
+			if (this.config.model) {
+				const systemInitMessage = {
+					type: "system" as const,
+					subtype: "init" as const,
+					session_id: session.id,
+					model: this.config.model,
+					tools: [], // OpenCode manages tools internally
+					permissionMode: "auto_approve" as const,
+					apiKeySource: "opencode" as const,
+				};
+				this.messages.push(systemInitMessage as any);
+				this.logMessage(systemInitMessage as any);
+				this.emit("message", systemInitMessage as any);
+			}
+
 			// Send initial prompt if provided
 			if (promptForSession) {
 				await this.sendPromptAsync(promptForSession);
@@ -534,7 +551,7 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		);
 		this.messages.push(userMessage);
 		this.logMessage(userMessage);
-		this.emit("message", userMessage);
+		// Note: Do not emit user messages as events - they are inputs, not outputs
 	}
 
 	/**
