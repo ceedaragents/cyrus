@@ -96,6 +96,15 @@ export class AgentSessionManager extends EventEmitter {
 		new Map(); // Track tool calls by their tool_use_id
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private parallelTaskTracker: ParallelTaskTracker = new ParallelTaskTracker(); // Tracks parallel Task tool executions
+	// Track pending Task tools by message ID to detect parallel execution from streaming
+	private pendingTasksByMessageId: Map<
+		string,
+		{
+			sessionId: string;
+			tasks: Array<{ id: string; name: string; input: any }>;
+			timestamp: number;
+		}
+	> = new Map();
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -729,20 +738,45 @@ export class AgentSessionManager extends EventEmitter {
 
 				case "assistant": {
 					const assistantMessage = message as SDKAssistantMessage;
+					const apiMessage = assistantMessage.message as APIAssistantMessage;
+					const messageId = apiMessage?.id;
 
-					// Check for parallel Task tool calls (multiple Tasks in single message)
+					// Extract tool uses from this streaming chunk
 					const allToolUses = this.extractAllToolUses(assistantMessage);
 					const taskToolUses = allToolUses.filter((t) => t.name === "Task");
 
-					if (taskToolUses.length >= 2) {
-						// Parallel Task detection - create unified ephemeral activity
-						await this.handleParallelTasks(
-							linearAgentActivitySessionId,
-							assistantMessage,
-							taskToolUses,
-						);
-					} else {
-						// Standard single tool or non-Task - use normal flow
+					// Check if this message contains Task tools that might be part of parallel execution
+					if (taskToolUses.length > 0 && messageId) {
+						// Accumulate Task tools by message ID to detect parallel execution
+						const pending = this.pendingTasksByMessageId.get(messageId);
+						if (pending) {
+							// Add new tasks to existing pending group
+							pending.tasks.push(...taskToolUses);
+							pending.timestamp = Date.now();
+						} else {
+							// Start new pending group
+							this.pendingTasksByMessageId.set(messageId, {
+								sessionId: linearAgentActivitySessionId,
+								tasks: [...taskToolUses],
+								timestamp: Date.now(),
+							});
+						}
+
+						// Check if we've accumulated multiple Task tools - handle as parallel
+						if (pending && pending.tasks.length >= 2) {
+							console.log(
+								`[AgentSessionManager] Detected ${pending.tasks.length} parallel Task tools from message ${messageId}`,
+							);
+							await this.handleParallelTasks(
+								linearAgentActivitySessionId,
+								assistantMessage,
+								pending.tasks,
+							);
+							this.pendingTasksByMessageId.delete(messageId);
+							break;
+						}
+
+						// Single Task so far - create entry and continue
 						const assistantEntry = await this.createSessionEntry(
 							linearAgentActivitySessionId,
 							assistantMessage,
@@ -751,7 +785,18 @@ export class AgentSessionManager extends EventEmitter {
 							assistantEntry,
 							linearAgentActivitySessionId,
 						);
+						break;
 					}
+
+					// Standard processing for non-Task or single Task tools
+					const assistantEntry = await this.createSessionEntry(
+						linearAgentActivitySessionId,
+						assistantMessage,
+					);
+					await this.syncEntryToLinear(
+						assistantEntry,
+						linearAgentActivitySessionId,
+					);
 					break;
 				}
 
