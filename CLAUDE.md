@@ -489,3 +489,4 @@ The OpenCodeRunner implementation consists of:
 1. **Custom Tool Callbacks**: Deferred until cyrus-tools MCP migration is complete
 2. **In-Process MCP Servers**: Not supported (OpenCode requires external transport configurations)
 3. **Model Override**: Not applicable (OpenCode uses its own model selection)
+4. **Session Initialization**: The `session.init()` method is intentionally skipped due to indefinite hanging issues with OpenCode SDK v1.0.167. Sessions work correctly without this call, as `promptAsync` handles initialization internally.

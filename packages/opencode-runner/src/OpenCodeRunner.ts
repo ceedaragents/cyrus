@@ -513,6 +513,11 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 
 			console.log(`${LOG_PREFIX} Session created successfully: ${session.id}`);
 
+			// NOTE: We intentionally skip session.init() here.
+			// The OpenCode SDK v1.0.167 hangs indefinitely when session.init() is called.
+			// Testing confirms that promptAsync() works correctly without initialization -
+			// sessions process prompts immediately after creation.
+
 			// Update logs with real session ID
 			await this.setupLogging(workspaceName);
 
