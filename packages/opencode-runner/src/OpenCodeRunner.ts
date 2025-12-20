@@ -261,6 +261,9 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	private accumulatingTextPartId: string | null = null;
 	private accumulatedText: string = "";
 
+	// Model configuration (parsed provider/modelID for prompt requests)
+	private modelConfig: { providerID: string; modelID: string } | null = null;
+
 	// Logging
 	private logStream: WriteStream | null = null;
 	private readableLogStream: WriteStream | null = null;
@@ -436,6 +439,25 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			});
 			this.configCleanup = configResult.cleanup;
 
+			// Parse and store model config for prompt requests
+			// The model is in "provider/model" format (e.g., "anthropic/claude-sonnet-4-20250514")
+			if (configResult.config.model) {
+				const modelParts = configResult.config.model.split("/");
+				if (
+					modelParts.length === 2 &&
+					modelParts[0] !== undefined &&
+					modelParts[1] !== undefined
+				) {
+					this.modelConfig = {
+						providerID: modelParts[0],
+						modelID: modelParts[1],
+					};
+					console.log(
+						`${LOG_PREFIX} Model config: ${this.modelConfig.providerID}/${this.modelConfig.modelID}`,
+					);
+				}
+			}
+
 			// Allocate port
 			const portResult = await allocateOpenCodePort({
 				preferredPort: this.config.serverConfig?.port,
@@ -563,12 +585,26 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		});
 
 		try {
+			// Build prompt body with model if available
+			const promptBody: {
+				parts: Array<{ type: "text"; text: string }>;
+				model?: { providerID: string; modelID: string };
+			} = {
+				parts: [{ type: "text", text: content }],
+			};
+
+			// Include model in prompt request - this is critical for OpenCode to know which model to use
+			if (this.modelConfig) {
+				promptBody.model = this.modelConfig;
+				console.log(
+					`${LOG_PREFIX} Including model in prompt: ${this.modelConfig.providerID}/${this.modelConfig.modelID}`,
+				);
+			}
+
 			const response = await Promise.race([
 				this.client.session.promptAsync({
 					path: { id: this.sessionInfo.openCodeSessionId },
-					body: {
-						parts: [{ type: "text", text: content }],
-					},
+					body: promptBody,
 				}),
 				timeoutPromise,
 			]);
