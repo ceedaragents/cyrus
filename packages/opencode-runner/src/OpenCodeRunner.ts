@@ -456,13 +456,23 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			this.sessionInfo.serverPort = portResult.port;
 
 			console.log(`${LOG_PREFIX} Server started at ${server.url}`);
+			if (this.config.workingDirectory) {
+				console.log(
+					`${LOG_PREFIX} Working directory: ${this.config.workingDirectory}`,
+				);
+			}
 			this.emit("serverStart", portResult.port);
 
 			// Subscribe to events
 			await this.subscribeToEvents();
 
-			// Create session
-			const sessionResponse = await client.session.create();
+			// Create session with working directory
+			// Pass the working directory to OpenCode so it operates in the correct repository
+			const sessionResponse = await client.session.create({
+				query: this.config.workingDirectory
+					? { directory: this.config.workingDirectory }
+					: undefined,
+			});
 			if (sessionResponse.error) {
 				throw new Error(`Failed to create session: ${sessionResponse.error}`);
 			}

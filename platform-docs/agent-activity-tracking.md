@@ -194,6 +194,29 @@ All activity creation methods detect and support multiple runner types:
 
 ---
 
+## Behaviors NOT Logged to Activities
+
+The following behind-the-scenes behaviors occur but are **not posted** to the agent activity feed:
+
+### Worktree Creation
+
+When an `agentSessionCreated` event is received, Cyrus creates a git worktree for the issue before the agent starts working. This includes:
+- Repository routing and selection
+- Git worktree creation at `/worktrees/{ISSUE-ID}/`
+- Setup script execution (`cyrus-setup.sh`)
+- Issue state transition to "started"
+
+**Current Status**: Not logged.
+
+**Consideration**: Logging worktree creation could provide users visibility into:
+- Which repository was matched
+- That the workspace is ready
+- Setup script execution results
+
+See [agent-session-created.md](./agent-session-created.md) for full details.
+
+---
+
 ## Implementation Reference
 
 Key files involved in activity tracking:
