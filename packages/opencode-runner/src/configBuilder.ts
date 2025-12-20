@@ -7,6 +7,7 @@
  * @packageDocumentation
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -404,6 +405,8 @@ export class OpenCodeConfigBuilder {
 	 * - stdio (command-based) → McpLocalConfig { type: "local", command: [...] }
 	 * - HTTP → McpRemoteConfig { type: "remote", url: "..." }
 	 *
+	 * Also auto-detects .mcp.json in the working directory (like ClaudeRunner does).
+	 *
 	 * @param runnerConfig - Cyrus runner configuration
 	 * @returns MCP configuration for OpenCode
 	 */
@@ -412,21 +415,53 @@ export class OpenCodeConfigBuilder {
 	):
 		| Record<string, OpenCodeMcpLocalConfig | OpenCodeMcpRemoteConfig>
 		| undefined {
-		if (!runnerConfig.mcpConfig) {
-			return undefined;
-		}
-
 		const mcpConfig: Record<
 			string,
 			OpenCodeMcpLocalConfig | OpenCodeMcpRemoteConfig
 		> = {};
 
-		for (const [serverName, serverConfig] of Object.entries(
-			runnerConfig.mcpConfig,
-		)) {
-			const converted = this.convertMcpServerConfig(serverName, serverConfig);
-			if (converted) {
-				mcpConfig[serverName] = converted;
+		// Auto-detect .mcp.json in working directory (base config)
+		if (runnerConfig.workingDirectory) {
+			const autoMcpPath = join(runnerConfig.workingDirectory, ".mcp.json");
+			if (existsSync(autoMcpPath)) {
+				try {
+					const mcpConfigContent = readFileSync(autoMcpPath, "utf8");
+					const parsedConfig = JSON.parse(mcpConfigContent);
+					const servers = parsedConfig.mcpServers || {};
+
+					for (const [serverName, serverConfig] of Object.entries(servers)) {
+						const converted = this.convertMcpServerConfig(
+							serverName,
+							serverConfig as McpServerConfig,
+						);
+						if (converted) {
+							mcpConfig[serverName] = converted;
+						}
+					}
+
+					if (Object.keys(servers).length > 0) {
+						console.log(
+							`[OpenCodeConfigBuilder] Auto-detected MCP config at ${autoMcpPath}: ${Object.keys(servers).join(", ")}`,
+						);
+					}
+				} catch (_error) {
+					// Silently skip invalid .mcp.json files (could be test fixtures, etc.)
+					console.log(
+						`[OpenCodeConfigBuilder] Skipping invalid .mcp.json at ${autoMcpPath}`,
+					);
+				}
+			}
+		}
+
+		// Merge inline config (overrides file config for same server names)
+		if (runnerConfig.mcpConfig) {
+			for (const [serverName, serverConfig] of Object.entries(
+				runnerConfig.mcpConfig,
+			)) {
+				const converted = this.convertMcpServerConfig(serverName, serverConfig);
+				if (converted) {
+					mcpConfig[serverName] = converted;
+				}
 			}
 		}
 

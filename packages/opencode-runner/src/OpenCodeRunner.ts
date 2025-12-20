@@ -16,7 +16,12 @@
 
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { createWriteStream, type WriteStream } from "node:fs";
+import {
+	createWriteStream,
+	existsSync,
+	mkdirSync,
+	type WriteStream,
+} from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -40,6 +45,7 @@ import type {
 	SDKUserMessage,
 } from "cyrus-core";
 import { StreamingPrompt } from "cyrus-core";
+import dotenv from "dotenv";
 
 import { OpenCodeConfigBuilder } from "./configBuilder.js";
 import { OpenCodeMessageFormatter } from "./formatter.js";
@@ -412,6 +418,27 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		};
 
 		this.messages = [];
+
+		console.log(`${LOG_PREFIX} Starting new session`);
+		console.log(
+			`${LOG_PREFIX} Working directory: ${this.config.workingDirectory}`,
+		);
+
+		// Ensure working directory exists (like ClaudeRunner does)
+		if (this.config.workingDirectory) {
+			try {
+				mkdirSync(this.config.workingDirectory, { recursive: true });
+				console.log(`${LOG_PREFIX} Created working directory`);
+			} catch (err) {
+				console.error(`${LOG_PREFIX} Failed to create working directory:`, err);
+			}
+		}
+
+		// Load environment variables from repository .env file
+		// This must happen BEFORE MCP config processing so the SDK can expand ${VAR} references
+		if (this.config.workingDirectory) {
+			this.loadRepositoryEnv(this.config.workingDirectory);
+		}
 
 		// Setup logging
 		await this.setupLogging(workspaceName);
@@ -1122,6 +1149,36 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	// ========================================================================
 	// Utilities
 	// ========================================================================
+
+	/**
+	 * Load environment variables from repository .env file.
+	 * Does not override existing process.env values.
+	 */
+	private loadRepositoryEnv(workingDirectory: string): void {
+		try {
+			const envPath = join(workingDirectory, ".env");
+
+			if (existsSync(envPath)) {
+				// Load but don't override existing env vars
+				const result = dotenv.config({
+					path: envPath,
+					override: false, // Existing process.env takes precedence
+				});
+
+				if (result.error) {
+					console.warn(
+						`${LOG_PREFIX} Failed to parse .env file:`,
+						result.error,
+					);
+				} else if (result.parsed && Object.keys(result.parsed).length > 0) {
+					console.log(`${LOG_PREFIX} Loaded environment variables from .env`);
+				}
+			}
+		} catch (error) {
+			console.warn(`${LOG_PREFIX} Error loading repository .env:`, error);
+			// Don't fail the session, just warn
+		}
+	}
 
 	/**
 	 * Resolve tilde (~) in paths.
