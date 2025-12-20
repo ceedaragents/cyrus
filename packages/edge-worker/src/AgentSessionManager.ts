@@ -1087,6 +1087,18 @@ export class AgentSessionManager extends EventEmitter {
 								return;
 							}
 
+							// Skip creating activity for parallel subtask results
+							// The unified parallel view handles subtask progress
+							if (entry.metadata?.parentToolUseId) {
+								const isParallelSubtask =
+									this.parallelTaskTracker.isParallelTaskParent(
+										entry.metadata.parentToolUseId,
+									);
+								if (isParallelSubtask) {
+									return;
+								}
+							}
+
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
