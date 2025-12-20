@@ -463,11 +463,13 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			}
 			this.emit("serverStart", portResult.port);
 
-			// Subscribe to events
+			// Subscribe to events (starts background event loop)
+			console.log(`${LOG_PREFIX} Setting up event subscription...`);
 			await this.subscribeToEvents();
 
 			// Create session with working directory
 			// Pass the working directory to OpenCode so it operates in the correct repository
+			console.log(`${LOG_PREFIX} Creating session...`);
 			const sessionResponse = await client.session.create({
 				query: this.config.workingDirectory
 					? { directory: this.config.workingDirectory }
@@ -487,7 +489,7 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			this.sessionInfo.title = session.title;
 			this.sessionInfo.version = session.version;
 
-			console.log(`${LOG_PREFIX} Session created: ${session.id}`);
+			console.log(`${LOG_PREFIX} Session created successfully: ${session.id}`);
 
 			// Update logs with real session ID
 			await this.setupLogging(workspaceName);
@@ -531,27 +533,56 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 
 	/**
 	 * Send a prompt asynchronously via the SDK.
+	 * Includes timeout protection to prevent indefinite hangs.
 	 */
 	private async sendPromptAsync(content: string): Promise<void> {
 		if (!this.client || !this.sessionInfo?.openCodeSessionId) {
 			throw new Error("Cannot send prompt: session not started");
 		}
 
+		// Guard against sending prompts to stopped sessions
+		if (!this.sessionInfo.isRunning) {
+			console.warn(`${LOG_PREFIX} Ignoring prompt - session not running`);
+			return;
+		}
+
 		console.log(
 			`${LOG_PREFIX} Sending prompt to session ${this.sessionInfo.openCodeSessionId}`,
 		);
 
-		const response = await this.client.session.promptAsync({
-			path: { id: this.sessionInfo.openCodeSessionId },
-			body: {
-				parts: [{ type: "text", text: content }],
-			},
+		// Add timeout protection (30 seconds) to prevent indefinite hangs
+		const PROMPT_TIMEOUT_MS = 30000;
+		const timeoutPromise = new Promise<never>((_, reject) => {
+			setTimeout(() => {
+				reject(
+					new Error(
+						`promptAsync timed out after ${PROMPT_TIMEOUT_MS}ms - OpenCode server may not be responding`,
+					),
+				);
+			}, PROMPT_TIMEOUT_MS);
 		});
 
-		if (response.error) {
-			throw new Error(
-				`Failed to send prompt: ${JSON.stringify(response.error)}`,
-			);
+		try {
+			const response = await Promise.race([
+				this.client.session.promptAsync({
+					path: { id: this.sessionInfo.openCodeSessionId },
+					body: {
+						parts: [{ type: "text", text: content }],
+					},
+				}),
+				timeoutPromise,
+			]);
+
+			if (response.error) {
+				throw new Error(
+					`Failed to send prompt: ${JSON.stringify(response.error)}`,
+				);
+			}
+
+			console.log(`${LOG_PREFIX} Prompt sent successfully`);
+		} catch (error) {
+			console.error(`${LOG_PREFIX} Error sending prompt:`, error);
+			throw error;
 		}
 
 		// Record user message
@@ -576,6 +607,12 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 
 		const { stream } = await this.client.event.subscribe();
 
+		if (!stream) {
+			throw new Error("Event subscription returned no stream");
+		}
+
+		console.log(`${LOG_PREFIX} Event subscription established`);
+
 		// Process events in background - cast to expected format
 		this.processEventStream(
 			stream as unknown as AsyncIterable<{
@@ -594,20 +631,47 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			properties: Record<string, unknown>;
 		}>,
 	): Promise<void> {
+		let eventCount = 0;
+		const startTime = Date.now();
+
+		console.log(`${LOG_PREFIX} Starting event stream processing loop`);
+
 		try {
 			for await (const event of stream) {
+				eventCount++;
+				const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
+
+				if (this.config.debug || eventCount <= 5) {
+					console.log(
+						`${LOG_PREFIX} [Event #${eventCount} @ ${elapsedSec}s] ${event.type}`,
+					);
+				}
+
 				if (!this.sessionInfo?.isRunning) {
+					console.log(
+						`${LOG_PREFIX} Session stopped - breaking event loop after ${eventCount} events`,
+					);
 					break;
 				}
 
 				await this.handleEvent(event);
 			}
+
+			console.log(
+				`${LOG_PREFIX} Event stream ended normally after ${eventCount} events`,
+			);
 		} catch (error) {
 			if (this.sessionInfo?.isRunning) {
-				console.error(`${LOG_PREFIX} Event stream error:`, error);
+				console.error(
+					`${LOG_PREFIX} Event stream error after ${eventCount} events:`,
+					error,
+				);
 				this.emit("error", error);
 			}
 		} finally {
+			console.log(
+				`${LOG_PREFIX} Event loop finished - processed ${eventCount} total events`,
+			);
 			this.handleSessionComplete();
 		}
 	}
