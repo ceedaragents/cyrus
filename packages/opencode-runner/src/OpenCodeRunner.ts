@@ -638,15 +638,27 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				this.handleSessionUpdated(data);
 				break;
 			}
-			case "session.error":
+			case "session.error": {
+				// Session errored - log and mark as complete
+				const errorInfo = data.error as { message?: string } | undefined;
+				console.error(
+					`${LOG_PREFIX} Session error:`,
+					errorInfo?.message || data,
+				);
+				// Mark session as not running to break the event loop
+				if (this.sessionInfo) {
+					this.sessionInfo.isRunning = false;
+				}
+				break;
+			}
 			case "session.idle": {
-				// Session completed or errored
-				if (eventType === "session.error") {
-					const errorInfo = data.error as { message?: string } | undefined;
-					console.error(
-						`${LOG_PREFIX} Session error:`,
-						errorInfo?.message || data,
-					);
+				// Session completed - OpenCode signals it's done processing
+				console.log(`${LOG_PREFIX} Session idle - completing session`);
+				// Flush any accumulated text before completing
+				this.flushAccumulatedText();
+				// Mark session as not running to break the event loop
+				if (this.sessionInfo) {
+					this.sessionInfo.isRunning = false;
 				}
 				break;
 			}
@@ -805,6 +817,10 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		);
 		this.messages.push(resultMessage);
 		this.logMessage(resultMessage);
+
+		// Emit result message as event (required for AgentSessionManager to post 'response' activity)
+		// This must happen AFTER isRunning is set to false, matching ClaudeRunner/GeminiRunner pattern
+		this.emit("message", resultMessage);
 
 		// Emit complete event
 		this.emit("complete", this.getMessages());

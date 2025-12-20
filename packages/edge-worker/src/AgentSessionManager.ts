@@ -308,8 +308,11 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
-		// Get the session ID (either Claude or Gemini)
-		const sessionId = session.claudeSessionId || session.geminiSessionId;
+		// Get the session ID (Claude, Gemini, or OpenCode)
+		const sessionId =
+			session.claudeSessionId ||
+			session.geminiSessionId ||
+			session.opencodeSessionId;
 		if (!sessionId) {
 			console.error(
 				`[AgentSessionManager] No session ID found for procedure session`,
