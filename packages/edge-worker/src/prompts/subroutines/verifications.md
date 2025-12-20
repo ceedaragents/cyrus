@@ -6,10 +6,10 @@ You have completed the primary work on this issue. Now perform thorough verifica
 
 ### 1. Acceptance Criteria Validation (CRITICAL - Do This First)
 
-Use the `mcp__linear__get_issue` tool to fetch the current issue details. The issue identifier is available in your conversation context (e.g., "CYPACK-123").
+Use the issue tracker `get_issue` tool to fetch the current issue details. The issue identifier is available in your conversation context (e.g., "CYPACK-123").
 
 **Steps:**
-1. Fetch the issue using `mcp__linear__get_issue` with the issue identifier
+1. Fetch the issue using the issue tracker `get_issue` tool with the issue identifier
 2. Extract ALL acceptance criteria from the issue description (look for bullet points, numbered lists, checkboxes, or sections labeled "Acceptance Criteria", "Requirements", "Definition of Done", etc.)
 3. For EACH acceptance criterion, verify that the implementation satisfies it
 4. Document which criteria pass and which fail
