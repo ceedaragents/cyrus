@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Default model upgraded to Opus** - Cyrus now uses Claude Opus as the default model with Sonnet as fallback (previously Sonnet with Haiku fallback). This provides higher quality responses for all tasks. ([CYPACK-613](https://linear.app/ceedar/issue/CYPACK-613))
-- Updated `@anthropic-ai/claude-agent-sdk` from v0.1.69 to v0.1.72 to maintain parity with Claude Code v2.0.72. This update includes fixed `/context` command behavior to respect custom system prompts, improved non-streaming performance for single-turn queries, and renamed V2 session API method from `receive()` to `stream()`. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0172) for full details. ([CYPACK-618](https://linear.app/ceedar/issue/CYPACK-618))
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.1.72 to v0.1.75 to maintain parity with Claude Code v2.0.74. This update includes fixed Stop hooks to run consistently, and general stability improvements. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0175) for full details. ([CYPACK-652](https://linear.app/ceedar/issue/CYPACK-652))
 
 ### Added
 - **Acceptance criteria validation** - The verifications subroutine now fetches the Linear issue and validates the implementation against all acceptance criteria. Failing to meet acceptance criteria counts as a failed verification, ensuring requirements are fully satisfied before proceeding to commit and PR creation. ([CYPACK-649](https://linear.app/ceedar/issue/CYPACK-649), [#687](https://github.com/ceedaragents/cyrus/pull/687))
