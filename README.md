@@ -165,13 +165,13 @@ Routes issues to different AI modes based on Linear labels and optionally config
 
 **Tool Presets:**
 
-- **`"readOnly"`**: Only tools that read/view content (7 tools)
-   - `Read(**)`, `WebFetch`, `WebSearch`, `TodoRead`, `NotebookRead`, `Task`, `Batch`
+- **`"readOnly"`**: Only tools that read/view content (9 tools)
+   - `Read(**)`, `WebFetch`, `WebSearch`, `TodoRead`, `TodoWrite`, `NotebookRead`, `Task`, `Batch`, `Skill`
 
-- **`"safe"`**: All tools except Bash (10 tools)
-   - All readOnly tools plus: `Edit(**)`, `TodoWrite`, `NotebookEdit`
+- **`"safe"`**: All tools except Bash (11 tools)
+   - All readOnly tools plus: `Edit(**)`, `NotebookEdit`
 
-- **`"all"`**: All available tools including Bash (11 tools)
+- **`"all"`**: All available tools including Bash (12 tools)
    - All safe tools plus: `Bash`
 
 - **Custom array**: Specify exact tools needed, e.g., `["Read(**)", "Edit(**)", "Task"]`

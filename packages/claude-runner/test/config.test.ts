@@ -25,8 +25,9 @@ describe("config", () => {
 				"NotebookRead",
 				"NotebookEdit",
 				"Batch",
+				"Skill",
 			]);
-			expect(availableTools).toHaveLength(11);
+			expect(availableTools).toHaveLength(12);
 		});
 
 		it("should define read-only tools", () => {
@@ -39,8 +40,9 @@ describe("config", () => {
 				"NotebookRead",
 				"Task",
 				"Batch",
+				"Skill",
 			]);
-			expect(readOnlyTools).toHaveLength(8);
+			expect(readOnlyTools).toHaveLength(9);
 		});
 
 		it("should define write tools", () => {
@@ -109,10 +111,11 @@ describe("config", () => {
 			expect(tools).toContain("NotebookRead");
 			expect(tools).toContain("NotebookEdit");
 			expect(tools).toContain("Batch");
+			expect(tools).toContain("Skill");
 			expect(tools).not.toContain("Bash");
 
-			// Should have 10 tools (all 11 minus Bash)
-			expect(tools).toHaveLength(10);
+			// Should have 11 tools (all 12 minus Bash)
+			expect(tools).toHaveLength(11);
 		});
 
 		it("getCoordinatorTools should return all tools except file editing tools", () => {
@@ -128,13 +131,14 @@ describe("config", () => {
 			expect(tools).toContain("TodoWrite"); // For task tracking
 			expect(tools).toContain("NotebookRead");
 			expect(tools).toContain("Batch");
+			expect(tools).toContain("Skill"); // For Skills functionality
 
 			// Should NOT include file editing tools
 			expect(tools).not.toContain("Edit(**)");
 			expect(tools).not.toContain("NotebookEdit");
 
-			// Should have 9 tools
-			expect(tools).toHaveLength(9);
+			// Should have 10 tools
+			expect(tools).toHaveLength(10);
 		});
 
 		it("coordinator tools should allow reading and task tracking but not file editing", () => {
@@ -155,6 +159,9 @@ describe("config", () => {
 			expect(coordinatorTools).toContain("Task");
 			expect(coordinatorTools).toContain("TodoWrite");
 			expect(coordinatorTools).toContain("TodoRead");
+
+			// Can use Skills
+			expect(coordinatorTools).toContain("Skill");
 		});
 	});
 
@@ -224,6 +231,11 @@ describe("config", () => {
 		it("Batch should be read-only", () => {
 			expect(readOnlyTools).toContain("Batch");
 			expect(writeTools).not.toContain("Batch");
+		});
+
+		it("Skill should be read-only", () => {
+			expect(readOnlyTools).toContain("Skill");
+			expect(writeTools).not.toContain("Skill");
 		});
 	});
 });
