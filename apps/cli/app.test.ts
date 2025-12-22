@@ -17,11 +17,13 @@ vi.mock("node:child_process", () => ({
 // Mock fs
 const mockExistsSync = vi.fn();
 const mockMkdirSync = vi.fn();
+const mockReadFileSync = vi.fn();
+const mockWriteFileSync = vi.fn();
 vi.mock("node:fs", () => ({
 	existsSync: mockExistsSync,
 	mkdirSync: mockMkdirSync,
-	readFileSync: vi.fn(),
-	writeFileSync: vi.fn(),
+	readFileSync: mockReadFileSync,
+	writeFileSync: mockWriteFileSync,
 	copyFileSync: vi.fn(),
 }));
 
@@ -632,5 +634,229 @@ describe("Windows Bash Script Compatibility", () => {
 			stdio: "inherit",
 			env: expect.any(Object),
 		});
+	});
+});
+
+describe("ConfigService - Skill Migration", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("should add Skill to allowedTools arrays that don't have it", async () => {
+		// Mock config file exists
+		mockExistsSync.mockReturnValue(true);
+
+		// Mock config with repository that has allowedTools but no Skill
+		const existingConfig = {
+			repositories: [
+				{
+					id: "repo-1",
+					name: "test-repo",
+					repositoryPath: "/path/to/repo",
+					baseBranch: "main",
+					allowedTools: ["Read(**)", "Edit(**)", "Bash"],
+				},
+			],
+		};
+		mockReadFileSync.mockReturnValue(JSON.stringify(existingConfig));
+
+		// Import ConfigService dynamically
+		const { ConfigService } = await import("./src/services/ConfigService.js");
+
+		// Create a mock logger
+		const mockLogger = {
+			info: vi.fn(),
+			error: vi.fn(),
+			warn: vi.fn(),
+			success: vi.fn(),
+			debug: vi.fn(),
+			raw: vi.fn(),
+			divider: vi.fn(),
+		};
+
+		const configService = new ConfigService(
+			"/home/user/.cyrus",
+			mockLogger as any,
+		);
+		const config = configService.load();
+
+		// Verify Skill was added to allowedTools
+		expect(config.repositories[0].allowedTools).toContain("Skill");
+		expect(config.repositories[0].allowedTools).toEqual([
+			"Read(**)",
+			"Edit(**)",
+			"Bash",
+			"Skill",
+		]);
+
+		// Verify config was saved
+		expect(mockWriteFileSync).toHaveBeenCalled();
+
+		// Verify log message was recorded
+		expect(mockLogger.info).toHaveBeenCalledWith(
+			'[Migration] Added "Skill" to allowedTools for repository: test-repo',
+		);
+	});
+
+	it("should not modify repositories that already have Skill in allowedTools", async () => {
+		mockExistsSync.mockReturnValue(true);
+
+		// Config with Skill already present
+		const existingConfig = {
+			repositories: [
+				{
+					id: "repo-1",
+					name: "test-repo",
+					repositoryPath: "/path/to/repo",
+					baseBranch: "main",
+					allowedTools: ["Read(**)", "Edit(**)", "Skill", "Bash"],
+				},
+			],
+		};
+		mockReadFileSync.mockReturnValue(JSON.stringify(existingConfig));
+
+		const { ConfigService } = await import("./src/services/ConfigService.js");
+
+		const mockLogger = {
+			info: vi.fn(),
+			error: vi.fn(),
+			warn: vi.fn(),
+			success: vi.fn(),
+			debug: vi.fn(),
+			raw: vi.fn(),
+			divider: vi.fn(),
+		};
+
+		const configService = new ConfigService(
+			"/home/user/.cyrus",
+			mockLogger as any,
+		);
+		const config = configService.load();
+
+		// Skill should still be there, but not duplicated
+		expect(
+			config.repositories[0].allowedTools?.filter((t: string) => t === "Skill")
+				.length,
+		).toBe(1);
+
+		// Config should NOT be saved since no changes were made
+		expect(mockWriteFileSync).not.toHaveBeenCalled();
+
+		// No migration log should be recorded
+		expect(mockLogger.info).not.toHaveBeenCalledWith(
+			expect.stringContaining("[Migration]"),
+		);
+	});
+
+	it("should not modify repositories without allowedTools array", async () => {
+		mockExistsSync.mockReturnValue(true);
+
+		// Config without allowedTools (uses defaults)
+		const existingConfig = {
+			repositories: [
+				{
+					id: "repo-1",
+					name: "test-repo",
+					repositoryPath: "/path/to/repo",
+					baseBranch: "main",
+					// No allowedTools - uses system defaults
+				},
+			],
+		};
+		mockReadFileSync.mockReturnValue(JSON.stringify(existingConfig));
+
+		const { ConfigService } = await import("./src/services/ConfigService.js");
+
+		const mockLogger = {
+			info: vi.fn(),
+			error: vi.fn(),
+			warn: vi.fn(),
+			success: vi.fn(),
+			debug: vi.fn(),
+			raw: vi.fn(),
+			divider: vi.fn(),
+		};
+
+		const configService = new ConfigService(
+			"/home/user/.cyrus",
+			mockLogger as any,
+		);
+		const config = configService.load();
+
+		// Repository should not have allowedTools added
+		expect(config.repositories[0].allowedTools).toBeUndefined();
+
+		// Config should NOT be saved
+		expect(mockWriteFileSync).not.toHaveBeenCalled();
+	});
+
+	it("should handle multiple repositories with mixed configurations", async () => {
+		mockExistsSync.mockReturnValue(true);
+
+		// Mixed config
+		const existingConfig = {
+			repositories: [
+				{
+					id: "repo-1",
+					name: "repo-without-skill",
+					repositoryPath: "/path/to/repo1",
+					baseBranch: "main",
+					allowedTools: ["Read(**)", "Edit(**)"],
+				},
+				{
+					id: "repo-2",
+					name: "repo-with-skill",
+					repositoryPath: "/path/to/repo2",
+					baseBranch: "main",
+					allowedTools: ["Read(**)", "Edit(**)", "Skill"],
+				},
+				{
+					id: "repo-3",
+					name: "repo-no-allowed-tools",
+					repositoryPath: "/path/to/repo3",
+					baseBranch: "main",
+					// No allowedTools
+				},
+			],
+		};
+		mockReadFileSync.mockReturnValue(JSON.stringify(existingConfig));
+
+		const { ConfigService } = await import("./src/services/ConfigService.js");
+
+		const mockLogger = {
+			info: vi.fn(),
+			error: vi.fn(),
+			warn: vi.fn(),
+			success: vi.fn(),
+			debug: vi.fn(),
+			raw: vi.fn(),
+			divider: vi.fn(),
+		};
+
+		const configService = new ConfigService(
+			"/home/user/.cyrus",
+			mockLogger as any,
+		);
+		const config = configService.load();
+
+		// First repo should have Skill added
+		expect(config.repositories[0].allowedTools).toContain("Skill");
+
+		// Second repo should still have Skill (not duplicated)
+		expect(
+			config.repositories[1].allowedTools?.filter((t: string) => t === "Skill")
+				.length,
+		).toBe(1);
+
+		// Third repo should not have allowedTools added
+		expect(config.repositories[2].allowedTools).toBeUndefined();
+
+		// Config should be saved (first repo was modified)
+		expect(mockWriteFileSync).toHaveBeenCalled();
+
+		// Only one migration log for the first repo
+		expect(mockLogger.info).toHaveBeenCalledWith(
+			'[Migration] Added "Skill" to allowedTools for repository: repo-without-skill',
+		);
 	});
 });

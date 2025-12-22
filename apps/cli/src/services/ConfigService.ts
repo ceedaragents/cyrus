@@ -54,6 +54,43 @@ export class ConfigService {
 			});
 		}
 
+		// Run migrations on loaded config
+		config = this.migrateConfig(config);
+
+		return config;
+	}
+
+	/**
+	 * Run migrations on config to ensure it's up to date
+	 * Persists changes to disk if any migrations were applied
+	 */
+	private migrateConfig(config: EdgeConfig): EdgeConfig {
+		let configModified = false;
+
+		// Migration: Add "Skill" to allowedTools arrays that don't have it
+		// This enables Claude Skills functionality for existing configurations
+		// See: https://code.claude.com/docs/en/skills
+		// See: https://platform.claude.com/docs/en/agent-sdk/skills
+		if (config.repositories) {
+			for (const repo of config.repositories) {
+				if (repo.allowedTools && Array.isArray(repo.allowedTools)) {
+					if (!repo.allowedTools.includes("Skill")) {
+						repo.allowedTools.push("Skill");
+						configModified = true;
+						this.logger.info(
+							`[Migration] Added "Skill" to allowedTools for repository: ${repo.name}`,
+						);
+					}
+				}
+			}
+		}
+
+		// Persist changes if any migrations were applied
+		if (configModified) {
+			this.save(config);
+			this.logger.info("[Migration] Configuration updated and saved to disk");
+		}
+
 		return config;
 	}
 
