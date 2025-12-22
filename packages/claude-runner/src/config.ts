@@ -1,5 +1,14 @@
 /**
  * Claude CLI configuration helpers
+ *
+ * Skills Documentation:
+ * - Claude Code CLI: https://code.claude.com/docs/en/skills
+ * - Agent SDK: https://platform.claude.com/docs/en/agent-sdk/skills
+ *
+ * IMPORTANT: The `allowed-tools` frontmatter field in SKILL.md is only supported
+ * when using Claude Code CLI directly. It does not apply when using Skills through
+ * the SDK. When using the SDK, control tool access through the main `allowedTools`
+ * option in your query configuration.
  */
 
 /**
@@ -28,6 +37,10 @@ export const availableTools = [
 
 	// Utility tools
 	"Batch",
+
+	// Skills - enables Claude to use packaged capabilities (SKILL.md files)
+	// See: https://platform.claude.com/docs/en/agent-sdk/skills
+	"Skill",
 ] as const;
 
 export type ToolName = (typeof availableTools)[number];
@@ -35,6 +48,7 @@ export type ToolName = (typeof availableTools)[number];
 /**
  * Default read-only tools that are safe to enable
  * Note: TodoWrite is included as it only modifies task tracking, not actual code files
+ * Note: Skill is included as it enables Claude to use Skills which are packaged capabilities
  */
 export const readOnlyTools: ToolName[] = [
 	"Read(**)",
@@ -45,6 +59,7 @@ export const readOnlyTools: ToolName[] = [
 	"NotebookRead",
 	"Task",
 	"Batch",
+	"Skill",
 ];
 
 /**
@@ -87,15 +102,17 @@ export function getSafeTools(): string[] {
 		"NotebookRead",
 		"NotebookEdit",
 		"Batch",
+		"Skill",
 	];
 }
 
 /**
  * Get coordinator tools - all tools except those that can edit files
- * Includes: Read, Bash (for running tests/builds), Task, WebFetch, WebSearch, TodoRead, TodoWrite, NotebookRead, Batch
+ * Includes: Read, Bash (for running tests/builds), Task, WebFetch, WebSearch, TodoRead, TodoWrite, NotebookRead, Batch, Skill
  * Excludes: Edit, NotebookEdit (no file/content modification)
  * Used by orchestrator role for coordination without direct file modification
  * Note: TodoWrite is included for task tracking during coordination
+ * Note: Skill is included to enable Skills functionality
  */
 export function getCoordinatorTools(): string[] {
 	return [
@@ -108,5 +125,6 @@ export function getCoordinatorTools(): string[] {
 		"TodoWrite", // For task tracking during coordination
 		"NotebookRead",
 		"Batch",
+		"Skill", // For Skills functionality
 	];
 }
