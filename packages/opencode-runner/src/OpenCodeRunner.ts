@@ -261,6 +261,13 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	private accumulatingTextPartId: string | null = null;
 	private accumulatedText: string = "";
 
+	// Stall detection state - detects when provider isn't configured
+	// If we receive multiple heartbeats without any content events, the provider
+	// is likely not configured (missing ANTHROPIC_API_KEY, etc.)
+	private hasReceivedContentEvent: boolean = false;
+	private heartbeatCount: number = 0;
+	private static readonly MAX_HEARTBEATS_WITHOUT_CONTENT = 3;
+
 	// Model configuration (parsed provider/modelID for prompt requests)
 	private modelConfig: { providerID: string; modelID: string } | null = null;
 
@@ -415,6 +422,10 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		};
 
 		this.messages = [];
+
+		// Reset stall detection state
+		this.hasReceivedContentEvent = false;
+		this.heartbeatCount = 0;
 
 		// Setup logging
 		await this.setupLogging(workspaceName);
@@ -730,6 +741,8 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				break;
 			}
 			case "message.part.updated": {
+				// Mark that we received actual content (not just heartbeats)
+				this.hasReceivedContentEvent = true;
 				await this.handleMessagePartUpdated(data);
 				break;
 			}
@@ -738,12 +751,17 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				break;
 			}
 			case "session.error": {
-				// Session errored - log and mark as complete
+				// Session errored - emit error and mark as complete
 				const errorInfo = data.error as { message?: string } | undefined;
-				console.error(
-					`${LOG_PREFIX} Session error:`,
-					errorInfo?.message || data,
+				const errorMessage = errorInfo?.message || JSON.stringify(data);
+				console.error(`${LOG_PREFIX} Session error: ${errorMessage}`);
+
+				// Emit error event so EdgeWorker can post to Linear
+				this.emit(
+					"error",
+					new Error(`OpenCode session error: ${errorMessage}`),
 				);
+
 				// Mark session as not running to break the event loop
 				if (this.sessionInfo) {
 					this.sessionInfo.isRunning = false;
@@ -759,6 +777,37 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				if (this.sessionInfo) {
 					this.sessionInfo.isRunning = false;
 				}
+				break;
+			}
+			case "server.heartbeat": {
+				// Track heartbeats for stall detection
+				this.heartbeatCount++;
+
+				// If we've received multiple heartbeats without any content events,
+				// the provider is likely not configured correctly
+				if (
+					!this.hasReceivedContentEvent &&
+					this.heartbeatCount >= OpenCodeRunner.MAX_HEARTBEATS_WITHOUT_CONTENT
+				) {
+					const errorMessage =
+						`OpenCode session stalled: received ${this.heartbeatCount} heartbeats without any content. ` +
+						`This usually indicates the AI provider is not configured. ` +
+						`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'.`;
+					console.error(`${LOG_PREFIX} ${errorMessage}`);
+
+					// Emit error event so EdgeWorker can post to Linear
+					this.emit("error", new Error(errorMessage));
+
+					// Mark session as not running to break the event loop
+					if (this.sessionInfo) {
+						this.sessionInfo.isRunning = false;
+					}
+				}
+				break;
+			}
+			case "server.connected": {
+				// Server connected - just log, no action needed
+				console.log(`${LOG_PREFIX} Server connected`);
 				break;
 			}
 			default:
@@ -905,15 +954,32 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			this.streamingPrompt.complete();
 		}
 
-		// Create result message
+		// Create result message - check if session stalled without content
 		const durationMs = Date.now() - this.sessionInfo.startedAt.getTime();
 		const numTurns = this.messages.filter((m) => m.type === "assistant").length;
-		const resultMessage = createSDKResultMessage(
-			this.sessionInfo.sessionId,
-			durationMs,
-			numTurns,
-			"Session completed",
-		);
+
+		// Determine if this was a stall (no content events received)
+		const wasStall =
+			!this.hasReceivedContentEvent &&
+			this.heartbeatCount >= OpenCodeRunner.MAX_HEARTBEATS_WITHOUT_CONTENT;
+
+		const resultMessage = wasStall
+			? createSDKResultMessage(
+					this.sessionInfo.sessionId,
+					durationMs,
+					numTurns,
+					`OpenCode session stalled: received ${this.heartbeatCount} heartbeats without any content. ` +
+						`This usually indicates the AI provider is not configured. ` +
+						`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'.`,
+					true, // isError
+				)
+			: createSDKResultMessage(
+					this.sessionInfo.sessionId,
+					durationMs,
+					numTurns,
+					"Session completed",
+				);
+
 		this.messages.push(resultMessage);
 		this.logMessage(resultMessage);
 
