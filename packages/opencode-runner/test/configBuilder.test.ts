@@ -27,30 +27,26 @@ describe("OpenCodeConfigBuilder", () => {
 	});
 
 	describe("mapModelName", () => {
-		it("should map 'opus' to anthropic/claude-opus-4-20250514", () => {
-			expect(builder.mapModelName("opus")).toBe(
-				"anthropic/claude-opus-4-20250514",
-			);
+		// All model mappings use short alias format (e.g., claude-opus-4-5)
+		// that works with `opencode run --model`
+		it("should map 'opus' to anthropic/claude-opus-4-5", () => {
+			expect(builder.mapModelName("opus")).toBe("anthropic/claude-opus-4-5");
 		});
 
-		it("should map 'sonnet' to anthropic/claude-sonnet-4-20250514", () => {
+		it("should map 'sonnet' to anthropic/claude-sonnet-4-5", () => {
 			expect(builder.mapModelName("sonnet")).toBe(
-				"anthropic/claude-sonnet-4-20250514",
+				"anthropic/claude-sonnet-4-5",
 			);
 		});
 
-		it("should map 'haiku' to anthropic/claude-haiku-3-5-20241022", () => {
-			expect(builder.mapModelName("haiku")).toBe(
-				"anthropic/claude-haiku-3-5-20241022",
-			);
+		it("should map 'haiku' to anthropic/claude-haiku-4-5", () => {
+			expect(builder.mapModelName("haiku")).toBe("anthropic/claude-haiku-4-5");
 		});
 
 		it("should handle case-insensitive aliases", () => {
-			expect(builder.mapModelName("OPUS")).toBe(
-				"anthropic/claude-opus-4-20250514",
-			);
+			expect(builder.mapModelName("OPUS")).toBe("anthropic/claude-opus-4-5");
 			expect(builder.mapModelName("Sonnet")).toBe(
-				"anthropic/claude-sonnet-4-20250514",
+				"anthropic/claude-sonnet-4-5",
 			);
 		});
 
@@ -62,20 +58,29 @@ describe("OpenCodeConfigBuilder", () => {
 		});
 
 		it("should handle partial model name matches", () => {
+			// Using short alias format that works with `opencode run --model`
 			expect(builder.mapModelName("claude-opus")).toBe(
-				"anthropic/claude-opus-4-20250514",
+				"anthropic/claude-opus-4-5",
 			);
 			expect(builder.mapModelName("my-sonnet-model")).toBe(
-				"anthropic/claude-sonnet-4-20250514",
+				"anthropic/claude-sonnet-4-5",
 			);
 		});
 
-		it("should return undefined for undefined input", () => {
-			expect(builder.mapModelName(undefined)).toBeUndefined();
+		it("should return default model for undefined input", () => {
+			// When no model is specified, OpenCode uses a default Anthropic model
+			// to avoid falling back to unconfigured providers like Google
+			// Using short alias format that works with `opencode run --model`
+			expect(builder.mapModelName(undefined)).toBe(
+				"anthropic/claude-sonnet-4-5",
+			);
 		});
 
-		it("should return unknown models as-is", () => {
-			expect(builder.mapModelName("unknown-model")).toBe("unknown-model");
+		it("should add anthropic prefix for unknown models", () => {
+			// Unknown models without provider prefix are assumed to be Anthropic models
+			expect(builder.mapModelName("unknown-model")).toBe(
+				"anthropic/unknown-model",
+			);
 		});
 	});
 
@@ -91,7 +96,7 @@ describe("OpenCodeConfigBuilder", () => {
 
 			const result = await builder.build(options);
 
-			expect(result.config.model).toBe("anthropic/claude-opus-4-20250514");
+			expect(result.config.model).toBe("anthropic/claude-opus-4-5");
 			expect(result.systemPromptPath).toBeNull();
 
 			await result.cleanup();

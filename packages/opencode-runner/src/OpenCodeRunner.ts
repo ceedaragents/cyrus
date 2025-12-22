@@ -257,6 +257,20 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	private streamingPrompt: StreamingPrompt | null = null;
 	private configCleanup: (() => Promise<void>) | null = null;
 
+	// Text accumulation state (to avoid emitting deltas as separate messages)
+	private accumulatingTextPartId: string | null = null;
+	private accumulatedText: string = "";
+
+	// Stall detection state - detects when provider isn't configured
+	// If we receive multiple heartbeats without any content events, the provider
+	// is likely not configured (missing ANTHROPIC_API_KEY, etc.)
+	private hasReceivedContentEvent: boolean = false;
+	private heartbeatCount: number = 0;
+	private static readonly MAX_HEARTBEATS_WITHOUT_CONTENT = 3;
+
+	// Model configuration (parsed provider/modelID for prompt requests)
+	private modelConfig: { providerID: string; modelID: string } | null = null;
+
 	// Logging
 	private logStream: WriteStream | null = null;
 	private readableLogStream: WriteStream | null = null;
@@ -409,6 +423,10 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 
 		this.messages = [];
 
+		// Reset stall detection state
+		this.hasReceivedContentEvent = false;
+		this.heartbeatCount = 0;
+
 		// Setup logging
 		await this.setupLogging(workspaceName);
 
@@ -432,6 +450,25 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			});
 			this.configCleanup = configResult.cleanup;
 
+			// Parse and store model config for prompt requests
+			// The model is in "provider/model" format (e.g., "anthropic/claude-sonnet-4-20250514")
+			if (configResult.config.model) {
+				const modelParts = configResult.config.model.split("/");
+				if (
+					modelParts.length === 2 &&
+					modelParts[0] !== undefined &&
+					modelParts[1] !== undefined
+				) {
+					this.modelConfig = {
+						providerID: modelParts[0],
+						modelID: modelParts[1],
+					};
+					console.log(
+						`${LOG_PREFIX} Model config: ${this.modelConfig.providerID}/${this.modelConfig.modelID}`,
+					);
+				}
+			}
+
 			// Allocate port
 			const portResult = await allocateOpenCodePort({
 				preferredPort: this.config.serverConfig?.port,
@@ -452,13 +489,25 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			this.sessionInfo.serverPort = portResult.port;
 
 			console.log(`${LOG_PREFIX} Server started at ${server.url}`);
+			if (this.config.workingDirectory) {
+				console.log(
+					`${LOG_PREFIX} Working directory: ${this.config.workingDirectory}`,
+				);
+			}
 			this.emit("serverStart", portResult.port);
 
-			// Subscribe to events
+			// Subscribe to events (starts background event loop)
+			console.log(`${LOG_PREFIX} Setting up event subscription...`);
 			await this.subscribeToEvents();
 
-			// Create session
-			const sessionResponse = await client.session.create();
+			// Create session with working directory
+			// Pass the working directory to OpenCode so it operates in the correct repository
+			console.log(`${LOG_PREFIX} Creating session...`);
+			const sessionResponse = await client.session.create({
+				query: this.config.workingDirectory
+					? { directory: this.config.workingDirectory }
+					: undefined,
+			});
 			if (sessionResponse.error) {
 				throw new Error(`Failed to create session: ${sessionResponse.error}`);
 			}
@@ -473,10 +522,32 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			this.sessionInfo.title = session.title;
 			this.sessionInfo.version = session.version;
 
-			console.log(`${LOG_PREFIX} Session created: ${session.id}`);
+			console.log(`${LOG_PREFIX} Session created successfully: ${session.id}`);
+
+			// NOTE: We intentionally skip session.init() here.
+			// The OpenCode SDK v1.0.167 hangs indefinitely when session.init() is called.
+			// Testing confirms that promptAsync() works correctly without initialization -
+			// sessions process prompts immediately after creation.
 
 			// Update logs with real session ID
 			await this.setupLogging(workspaceName);
+
+			// Emit system init message with model info (for AgentSessionManager)
+			// This allows AgentSessionManager to post "Using model: X" thought to Linear
+			if (this.config.model) {
+				const systemInitMessage = {
+					type: "system" as const,
+					subtype: "init" as const,
+					session_id: session.id,
+					model: this.config.model,
+					tools: [], // OpenCode manages tools internally
+					permissionMode: "auto_approve" as const,
+					apiKeySource: "opencode" as const,
+				};
+				this.messages.push(systemInitMessage as any);
+				this.logMessage(systemInitMessage as any);
+				this.emit("message", systemInitMessage as any);
+			}
 
 			// Send initial prompt if provided
 			if (promptForSession) {
@@ -499,28 +570,65 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	/**
-	 * Send a prompt asynchronously via the SDK.
+	 * Send a prompt via the SDK's synchronous prompt endpoint.
+	 *
+	 * NOTE: We use the synchronous `prompt` method (POST /session/{id}/message)
+	 * instead of `promptAsync` (POST /session/{id}/prompt_async) because
+	 * promptAsync hangs indefinitely in OpenCode SDK v1.0.167.
+	 *
+	 * The synchronous prompt blocks until complete, but we still receive
+	 * real-time updates via the SSE event stream.
 	 */
 	private async sendPromptAsync(content: string): Promise<void> {
 		if (!this.client || !this.sessionInfo?.openCodeSessionId) {
 			throw new Error("Cannot send prompt: session not started");
 		}
 
+		// Guard against sending prompts to stopped sessions
+		if (!this.sessionInfo.isRunning) {
+			console.warn(`${LOG_PREFIX} Ignoring prompt - session not running`);
+			return;
+		}
+
 		console.log(
 			`${LOG_PREFIX} Sending prompt to session ${this.sessionInfo.openCodeSessionId}`,
 		);
 
-		const response = await this.client.session.promptAsync({
-			path: { id: this.sessionInfo.openCodeSessionId },
-			body: {
+		try {
+			// Build prompt body with model if available
+			const promptBody: {
+				parts: Array<{ type: "text"; text: string }>;
+				model?: { providerID: string; modelID: string };
+			} = {
 				parts: [{ type: "text", text: content }],
-			},
-		});
+			};
 
-		if (response.error) {
-			throw new Error(
-				`Failed to send prompt: ${JSON.stringify(response.error)}`,
-			);
+			// Include model in prompt request - this is critical for OpenCode to know which model to use
+			if (this.modelConfig) {
+				promptBody.model = this.modelConfig;
+				console.log(
+					`${LOG_PREFIX} Including model in prompt: ${this.modelConfig.providerID}/${this.modelConfig.modelID}`,
+				);
+			}
+
+			// Use synchronous prompt endpoint - promptAsync hangs in OpenCode SDK v1.0.167
+			// This call blocks until the prompt is processed, but we receive real-time
+			// updates via the SSE event stream subscribed in subscribeToEvents()
+			const response = await this.client.session.prompt({
+				path: { id: this.sessionInfo.openCodeSessionId },
+				body: promptBody,
+			});
+
+			if (response.error) {
+				throw new Error(
+					`Failed to send prompt: ${JSON.stringify(response.error)}`,
+				);
+			}
+
+			console.log(`${LOG_PREFIX} Prompt completed successfully`);
+		} catch (error) {
+			console.error(`${LOG_PREFIX} Error sending prompt:`, error);
+			throw error;
 		}
 
 		// Record user message
@@ -530,7 +638,7 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		);
 		this.messages.push(userMessage);
 		this.logMessage(userMessage);
-		this.emit("message", userMessage);
+		// Note: Do not emit user messages as events - they are inputs, not outputs
 	}
 
 	/**
@@ -544,6 +652,12 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 		console.log(`${LOG_PREFIX} Subscribing to events...`);
 
 		const { stream } = await this.client.event.subscribe();
+
+		if (!stream) {
+			throw new Error("Event subscription returned no stream");
+		}
+
+		console.log(`${LOG_PREFIX} Event subscription established`);
 
 		// Process events in background - cast to expected format
 		this.processEventStream(
@@ -563,20 +677,47 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			properties: Record<string, unknown>;
 		}>,
 	): Promise<void> {
+		let eventCount = 0;
+		const startTime = Date.now();
+
+		console.log(`${LOG_PREFIX} Starting event stream processing loop`);
+
 		try {
 			for await (const event of stream) {
+				eventCount++;
+				const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
+
+				if (this.config.debug || eventCount <= 5) {
+					console.log(
+						`${LOG_PREFIX} [Event #${eventCount} @ ${elapsedSec}s] ${event.type}`,
+					);
+				}
+
 				if (!this.sessionInfo?.isRunning) {
+					console.log(
+						`${LOG_PREFIX} Session stopped - breaking event loop after ${eventCount} events`,
+					);
 					break;
 				}
 
 				await this.handleEvent(event);
 			}
+
+			console.log(
+				`${LOG_PREFIX} Event stream ended normally after ${eventCount} events`,
+			);
 		} catch (error) {
 			if (this.sessionInfo?.isRunning) {
-				console.error(`${LOG_PREFIX} Event stream error:`, error);
+				console.error(
+					`${LOG_PREFIX} Event stream error after ${eventCount} events:`,
+					error,
+				);
 				this.emit("error", error);
 			}
 		} finally {
+			console.log(
+				`${LOG_PREFIX} Event loop finished - processed ${eventCount} total events`,
+			);
 			this.handleSessionComplete();
 		}
 	}
@@ -600,6 +741,8 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				break;
 			}
 			case "message.part.updated": {
+				// Mark that we received actual content (not just heartbeats)
+				this.hasReceivedContentEvent = true;
 				await this.handleMessagePartUpdated(data);
 				break;
 			}
@@ -607,16 +750,80 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 				this.handleSessionUpdated(data);
 				break;
 			}
-			case "session.error":
-			case "session.idle": {
-				// Session completed or errored
-				if (eventType === "session.error") {
-					const errorInfo = data.error as { message?: string } | undefined;
-					console.error(
-						`${LOG_PREFIX} Session error:`,
-						errorInfo?.message || data,
-					);
+			case "session.error": {
+				// Session errored - emit error and mark as complete
+				const errorInfo = data.error as { message?: string } | undefined;
+				const errorMessage = errorInfo?.message || JSON.stringify(data);
+				console.error(`${LOG_PREFIX} Session error: ${errorMessage}`);
+
+				// Emit error event so EdgeWorker can post to Linear
+				this.emit(
+					"error",
+					new Error(`OpenCode session error: ${errorMessage}`),
+				);
+
+				// Mark session as not running to break the event loop
+				if (this.sessionInfo) {
+					this.sessionInfo.isRunning = false;
 				}
+				break;
+			}
+			case "session.idle": {
+				// Session completed - OpenCode signals it's done processing
+				console.log(`${LOG_PREFIX} Session idle - completing session`);
+
+				// Check if session completed without any content (silent failure)
+				// This happens when the SDK throws ProviderModelNotFoundError internally
+				// but doesn't emit session.error - it just goes straight to session.idle
+				if (!this.hasReceivedContentEvent) {
+					const errorMessage =
+						`OpenCode session completed without generating any content. ` +
+						`This usually indicates the AI provider is not configured. ` +
+						`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'. ` +
+						`Check ~/.local/share/opencode/log/ for ProviderModelNotFoundError.`;
+					console.error(`${LOG_PREFIX} ${errorMessage}`);
+
+					// Emit error event so EdgeWorker can post to Linear
+					this.emit("error", new Error(errorMessage));
+				}
+
+				// Flush any accumulated text before completing
+				this.flushAccumulatedText();
+				// Mark session as not running to break the event loop
+				if (this.sessionInfo) {
+					this.sessionInfo.isRunning = false;
+				}
+				break;
+			}
+			case "server.heartbeat": {
+				// Track heartbeats for stall detection
+				this.heartbeatCount++;
+
+				// If we've received multiple heartbeats without any content events,
+				// the provider is likely not configured correctly
+				if (
+					!this.hasReceivedContentEvent &&
+					this.heartbeatCount >= OpenCodeRunner.MAX_HEARTBEATS_WITHOUT_CONTENT
+				) {
+					const errorMessage =
+						`OpenCode session stalled: received ${this.heartbeatCount} heartbeats without any content. ` +
+						`This usually indicates the AI provider is not configured. ` +
+						`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'.`;
+					console.error(`${LOG_PREFIX} ${errorMessage}`);
+
+					// Emit error event so EdgeWorker can post to Linear
+					this.emit("error", new Error(errorMessage));
+
+					// Mark session as not running to break the event loop
+					if (this.sessionInfo) {
+						this.sessionInfo.isRunning = false;
+					}
+				}
+				break;
+			}
+			case "server.connected": {
+				// Server connected - just log, no action needed
+				console.log(`${LOG_PREFIX} Server connected`);
 				break;
 			}
 			default:
@@ -652,6 +859,12 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 
 	/**
 	 * Handle message.part.updated event.
+	 *
+	 * For text parts, we accumulate deltas instead of emitting each one
+	 * as a separate message. Text is flushed when:
+	 * - A different part type is received (e.g., tool use)
+	 * - A different text part ID is received
+	 * - The session completes
 	 */
 	private async handleMessagePartUpdated(
 		data: Record<string, unknown>,
@@ -664,13 +877,61 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			return;
 		}
 
-		// Convert part to message and emit
+		// Handle text parts with accumulation
+		if (part.type === "text") {
+			const textPart = part as TextPart;
+			if (textPart.synthetic || textPart.ignored) {
+				return;
+			}
+
+			// If this is a new text part, flush the old one first
+			if (
+				this.accumulatingTextPartId !== null &&
+				this.accumulatingTextPartId !== textPart.id
+			) {
+				this.flushAccumulatedText();
+			}
+
+			// Accumulate text (the SDK sends cumulative text, not deltas)
+			this.accumulatingTextPartId = textPart.id;
+			this.accumulatedText = textPart.text;
+			return;
+		}
+
+		// For non-text parts, flush any accumulated text first
+		if (this.accumulatingTextPartId !== null) {
+			this.flushAccumulatedText();
+		}
+
+		// Convert non-text part to message and emit
 		const message = this.convertPartToMessage(part);
 		if (message) {
 			this.messages.push(message);
 			this.logMessage(message);
 			this.emit("message", message);
 		}
+	}
+
+	/**
+	 * Flush accumulated text as a single message.
+	 */
+	private flushAccumulatedText(): void {
+		if (this.accumulatingTextPartId === null || !this.accumulatedText) {
+			return;
+		}
+
+		const message = createSDKAssistantMessage(
+			[{ type: "text", text: this.accumulatedText }],
+			this.sessionInfo?.sessionId ?? null,
+		);
+
+		this.messages.push(message);
+		this.logMessage(message);
+		this.emit("message", message);
+
+		// Reset accumulation state
+		this.accumulatingTextPartId = null;
+		this.accumulatedText = "";
 	}
 
 	/**
@@ -698,6 +959,9 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	private handleSessionComplete(): void {
 		if (!this.sessionInfo) return;
 
+		// Flush any accumulated text before completing
+		this.flushAccumulatedText();
+
 		// Mark as not running BEFORE emitting events (prevents race conditions)
 		this.sessionInfo.isRunning = false;
 
@@ -706,17 +970,56 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			this.streamingPrompt.complete();
 		}
 
-		// Create result message
+		// Create result message - check if session failed without content
 		const durationMs = Date.now() - this.sessionInfo.startedAt.getTime();
 		const numTurns = this.messages.filter((m) => m.type === "assistant").length;
-		const resultMessage = createSDKResultMessage(
-			this.sessionInfo.sessionId,
-			durationMs,
-			numTurns,
-			"Session completed",
-		);
+
+		// Determine if this was a failure (no content events received)
+		// This covers two cases:
+		// 1. Stall with heartbeats: provider not responding, only heartbeats received
+		// 2. Silent failure: SDK threw error internally, went straight to session.idle
+		const wasFailure = !this.hasReceivedContentEvent;
+		const wasHeartbeatStall =
+			wasFailure &&
+			this.heartbeatCount >= OpenCodeRunner.MAX_HEARTBEATS_WITHOUT_CONTENT;
+
+		let resultMessage: ReturnType<typeof createSDKResultMessage>;
+		if (wasHeartbeatStall) {
+			resultMessage = createSDKResultMessage(
+				this.sessionInfo.sessionId,
+				durationMs,
+				numTurns,
+				`OpenCode session stalled: received ${this.heartbeatCount} heartbeats without any content. ` +
+					`This usually indicates the AI provider is not configured. ` +
+					`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'.`,
+				true, // isError
+			);
+		} else if (wasFailure) {
+			resultMessage = createSDKResultMessage(
+				this.sessionInfo.sessionId,
+				durationMs,
+				numTurns,
+				`OpenCode session completed without generating any content. ` +
+					`This usually indicates the AI provider is not configured. ` +
+					`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'. ` +
+					`Check ~/.local/share/opencode/log/ for ProviderModelNotFoundError.`,
+				true, // isError
+			);
+		} else {
+			resultMessage = createSDKResultMessage(
+				this.sessionInfo.sessionId,
+				durationMs,
+				numTurns,
+				"Session completed",
+			);
+		}
+
 		this.messages.push(resultMessage);
 		this.logMessage(resultMessage);
+
+		// Emit result message as event (required for AgentSessionManager to post 'response' activity)
+		// This must happen AFTER isRunning is set to false, matching ClaudeRunner/GeminiRunner pattern
+		this.emit("message", resultMessage);
 
 		// Emit complete event
 		this.emit("complete", this.getMessages());
@@ -991,6 +1294,10 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 	 * Clean up resources.
 	 */
 	private cleanup(): void {
+		// Reset text accumulation state
+		this.accumulatingTextPartId = null;
+		this.accumulatedText = "";
+
 		// Close server
 		if (this.server) {
 			console.log(`${LOG_PREFIX} Closing server...`);

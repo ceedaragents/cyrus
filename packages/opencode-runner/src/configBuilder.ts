@@ -187,17 +187,21 @@ export class OpenCodeConfigBuilder {
 
 	/**
 	 * Model name mapping from Cyrus aliases to OpenCode format.
-	 * OpenCode uses "provider/model" format.
+	 * OpenCode uses "provider/model" format with short alias names.
+	 * Using short alias format (e.g., claude-opus-4-5) that works with `opencode run --model`.
 	 */
 	private static MODEL_MAPPINGS: Record<string, string> = {
-		// Claude models (Cyrus aliases)
-		opus: "anthropic/claude-opus-4-20250514",
-		sonnet: "anthropic/claude-sonnet-4-20250514",
-		haiku: "anthropic/claude-haiku-3-5-20241022",
-		"opus-4": "anthropic/claude-opus-4-20250514",
-		"sonnet-4": "anthropic/claude-sonnet-4-20250514",
+		// Claude models (Cyrus aliases) - using short alias format
+		opus: "anthropic/claude-opus-4-5",
+		sonnet: "anthropic/claude-sonnet-4-5",
+		haiku: "anthropic/claude-haiku-4-5",
+		"opus-4": "anthropic/claude-opus-4-5",
+		"opus-4.5": "anthropic/claude-opus-4-5",
+		"sonnet-4": "anthropic/claude-sonnet-4-5",
+		"sonnet-4.5": "anthropic/claude-sonnet-4-5",
 		"sonnet-3.5": "anthropic/claude-3-5-sonnet-20241022",
-		"haiku-3.5": "anthropic/claude-haiku-3-5-20241022",
+		"haiku-3.5": "anthropic/claude-3-5-haiku-20241022",
+		"haiku-4.5": "anthropic/claude-haiku-4-5",
 
 		// OpenAI models
 		"gpt-4": "openai/gpt-4",
@@ -267,13 +271,26 @@ export class OpenCodeConfigBuilder {
 	}
 
 	/**
+	 * Default model for OpenCode when none is specified.
+	 * OpenCode requires a model to be set to avoid falling back to
+	 * providers that may not be configured (e.g., Google).
+	 * Using the short alias format (e.g., claude-sonnet-4-5) that works with `opencode run --model`.
+	 */
+	private static DEFAULT_MODEL = "anthropic/claude-sonnet-4-5";
+
+	/**
 	 * Map Cyrus model name/alias to OpenCode format.
 	 *
 	 * @param model - Cyrus model name or alias
 	 * @returns OpenCode model name in "provider/model" format
 	 */
-	mapModelName(model?: string): string | undefined {
-		if (!model) return undefined;
+	mapModelName(model?: string): string {
+		if (!model) {
+			console.log(
+				`[OpenCodeConfigBuilder] No model specified, using default: ${OpenCodeConfigBuilder.DEFAULT_MODEL}`,
+			);
+			return OpenCodeConfigBuilder.DEFAULT_MODEL;
+		}
 
 		// Check if it's a known alias
 		const lowerModel = model.toLowerCase();
@@ -287,18 +304,26 @@ export class OpenCodeConfigBuilder {
 		}
 
 		// Default: assume it's an Anthropic model alias
-		// Try to match partial names
+		// Try to match partial names (using non-null assertions since we know these keys exist)
 		if (model.includes("opus")) {
-			return OpenCodeConfigBuilder.MODEL_MAPPINGS.opus;
+			return OpenCodeConfigBuilder.MODEL_MAPPINGS.opus!;
 		}
 		if (model.includes("sonnet")) {
-			return OpenCodeConfigBuilder.MODEL_MAPPINGS.sonnet;
+			return OpenCodeConfigBuilder.MODEL_MAPPINGS.sonnet!;
 		}
 		if (model.includes("haiku")) {
-			return OpenCodeConfigBuilder.MODEL_MAPPINGS.haiku;
+			return OpenCodeConfigBuilder.MODEL_MAPPINGS.haiku!;
 		}
 
-		// Return as-is if no mapping found
+		// Return as-is if no mapping found (assume it's in provider/model format or Anthropic model)
+		// Add anthropic prefix if not already present
+		if (!model.includes("/")) {
+			const anthropicModel = `anthropic/${model}`;
+			console.log(
+				`[OpenCodeConfigBuilder] Unknown model "${model}", assuming Anthropic: ${anthropicModel}`,
+			);
+			return anthropicModel;
+		}
 		return model;
 	}
 
