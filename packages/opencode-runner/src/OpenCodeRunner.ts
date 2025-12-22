@@ -771,6 +771,22 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			case "session.idle": {
 				// Session completed - OpenCode signals it's done processing
 				console.log(`${LOG_PREFIX} Session idle - completing session`);
+
+				// Check if session completed without any content (silent failure)
+				// This happens when the SDK throws ProviderModelNotFoundError internally
+				// but doesn't emit session.error - it just goes straight to session.idle
+				if (!this.hasReceivedContentEvent) {
+					const errorMessage =
+						`OpenCode session completed without generating any content. ` +
+						`This usually indicates the AI provider is not configured. ` +
+						`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'. ` +
+						`Check ~/.local/share/opencode/log/ for ProviderModelNotFoundError.`;
+					console.error(`${LOG_PREFIX} ${errorMessage}`);
+
+					// Emit error event so EdgeWorker can post to Linear
+					this.emit("error", new Error(errorMessage));
+				}
+
 				// Flush any accumulated text before completing
 				this.flushAccumulatedText();
 				// Mark session as not running to break the event loop
@@ -954,31 +970,49 @@ export class OpenCodeRunner extends EventEmitter implements IAgentRunner {
 			this.streamingPrompt.complete();
 		}
 
-		// Create result message - check if session stalled without content
+		// Create result message - check if session failed without content
 		const durationMs = Date.now() - this.sessionInfo.startedAt.getTime();
 		const numTurns = this.messages.filter((m) => m.type === "assistant").length;
 
-		// Determine if this was a stall (no content events received)
-		const wasStall =
-			!this.hasReceivedContentEvent &&
+		// Determine if this was a failure (no content events received)
+		// This covers two cases:
+		// 1. Stall with heartbeats: provider not responding, only heartbeats received
+		// 2. Silent failure: SDK threw error internally, went straight to session.idle
+		const wasFailure = !this.hasReceivedContentEvent;
+		const wasHeartbeatStall =
+			wasFailure &&
 			this.heartbeatCount >= OpenCodeRunner.MAX_HEARTBEATS_WITHOUT_CONTENT;
 
-		const resultMessage = wasStall
-			? createSDKResultMessage(
-					this.sessionInfo.sessionId,
-					durationMs,
-					numTurns,
-					`OpenCode session stalled: received ${this.heartbeatCount} heartbeats without any content. ` +
-						`This usually indicates the AI provider is not configured. ` +
-						`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'.`,
-					true, // isError
-				)
-			: createSDKResultMessage(
-					this.sessionInfo.sessionId,
-					durationMs,
-					numTurns,
-					"Session completed",
-				);
+		let resultMessage: ReturnType<typeof createSDKResultMessage>;
+		if (wasHeartbeatStall) {
+			resultMessage = createSDKResultMessage(
+				this.sessionInfo.sessionId,
+				durationMs,
+				numTurns,
+				`OpenCode session stalled: received ${this.heartbeatCount} heartbeats without any content. ` +
+					`This usually indicates the AI provider is not configured. ` +
+					`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'.`,
+				true, // isError
+			);
+		} else if (wasFailure) {
+			resultMessage = createSDKResultMessage(
+				this.sessionInfo.sessionId,
+				durationMs,
+				numTurns,
+				`OpenCode session completed without generating any content. ` +
+					`This usually indicates the AI provider is not configured. ` +
+					`For Anthropic models, ensure ANTHROPIC_API_KEY is set or run 'opencode auth login'. ` +
+					`Check ~/.local/share/opencode/log/ for ProviderModelNotFoundError.`,
+				true, // isError
+			);
+		} else {
+			resultMessage = createSDKResultMessage(
+				this.sessionInfo.sessionId,
+				durationMs,
+				numTurns,
+				"Session completed",
+			);
+		}
 
 		this.messages.push(resultMessage);
 		this.logMessage(resultMessage);
