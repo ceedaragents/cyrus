@@ -10,6 +10,9 @@ import type {
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import type { OnAskUserQuestion } from "cyrus-core";
+
+export type { OnAskUserQuestion } from "cyrus-core";
 
 /**
  * Output format configuration for structured outputs
@@ -40,6 +43,14 @@ export interface ClaudeRunnerConfig {
 	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>; // Claude SDK hooks
 	outputFormat?: OutputFormatConfig; // Structured output format configuration
 	extraArgs?: Record<string, string | null>; // Additional CLI arguments to pass to Claude Code (e.g., { chrome: null } for --chrome flag)
+	/**
+	 * Callback for handling AskUserQuestion tool invocations.
+	 * When provided, the ClaudeRunner will intercept AskUserQuestion tool calls
+	 * via the canUseTool callback and delegate to this handler.
+	 *
+	 * Note: Only one question at a time is supported. Multiple questions will be rejected.
+	 */
+	onAskUserQuestion?: OnAskUserQuestion;
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;

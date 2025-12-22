@@ -9,6 +9,11 @@ export type {
 	Workspace,
 } from "cyrus-core";
 export { AgentSessionManager } from "./AgentSessionManager.js";
+export type {
+	AskUserQuestionHandlerConfig,
+	AskUserQuestionHandlerDeps,
+} from "./AskUserQuestionHandler.js";
+export { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 export { EdgeWorker } from "./EdgeWorker.js";
 export type { GitServiceLogger } from "./GitService.js";
 export { GitService } from "./GitService.js";

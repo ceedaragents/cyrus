@@ -26,8 +26,9 @@ describe("config", () => {
 				"NotebookEdit",
 				"Batch",
 				"Skill",
+				"AskUserQuestion",
 			]);
-			expect(availableTools).toHaveLength(12);
+			expect(availableTools).toHaveLength(13);
 		});
 
 		it("should define read-only tools", () => {
@@ -112,10 +113,11 @@ describe("config", () => {
 			expect(tools).toContain("NotebookEdit");
 			expect(tools).toContain("Batch");
 			expect(tools).toContain("Skill");
+			expect(tools).toContain("AskUserQuestion");
 			expect(tools).not.toContain("Bash");
 
-			// Should have 11 tools (all 12 minus Bash)
-			expect(tools).toHaveLength(11);
+			// Should have 12 tools (all 13 minus Bash)
+			expect(tools).toHaveLength(12);
 		});
 
 		it("getCoordinatorTools should return all tools except file editing tools", () => {

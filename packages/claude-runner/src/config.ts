@@ -41,6 +41,9 @@ export const availableTools = [
 	// Skills - enables Claude to use packaged capabilities (SKILL.md files)
 	// See: https://platform.claude.com/docs/en/agent-sdk/skills
 	"Skill",
+
+	// User interaction tools
+	"AskUserQuestion",
 ] as const;
 
 export type ToolName = (typeof availableTools)[number];
@@ -103,6 +106,7 @@ export function getSafeTools(): string[] {
 		"NotebookEdit",
 		"Batch",
 		"Skill",
+		"AskUserQuestion",
 	];
 }
 
