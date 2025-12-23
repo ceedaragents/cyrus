@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **AskUserQuestion UI cleanup** - The AskUserQuestion tool no longer appears as raw JSON in Linear's activity stream. Since the tool is custom-handled via Linear's select signal elicitation, the tool call and result are now suppressed from the activity UI for a cleaner experience. ([CYPACK-654](https://linear.app/ceedar/issue/CYPACK-654), [#698](https://github.com/ceedaragents/cyrus/pull/698))
+
 ## [0.2.6] - 2025-12-22
 
 ### Changed
