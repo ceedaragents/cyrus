@@ -974,10 +974,13 @@ export class AgentSessionManager extends EventEmitter {
 							}
 
 							// Skip creating activity for TodoWrite/write_todos results since they already created a non-ephemeral thought
+							// Skip AskUserQuestion results since it's custom handled via Linear's select signal elicitation
 							if (
 								toolName === "TodoWrite" ||
 								toolName === "↪ TodoWrite" ||
-								toolName === "write_todos"
+								toolName === "write_todos" ||
+								toolName === "AskUserQuestion" ||
+								toolName === "↪ AskUserQuestion"
 							) {
 								return;
 							}
@@ -1046,6 +1049,11 @@ export class AgentSessionManager extends EventEmitter {
 								name: storedName,
 								input: entry.metadata.toolInput || entry.content,
 							});
+						}
+
+						// Skip AskUserQuestion tool - it's custom handled via Linear's select signal elicitation
+						if (toolName === "AskUserQuestion") {
+							return;
 						}
 
 						// Special handling for TodoWrite tool (Claude) and write_todos (Gemini) - treat as thought instead of action
