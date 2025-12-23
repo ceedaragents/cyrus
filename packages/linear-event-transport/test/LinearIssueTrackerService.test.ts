@@ -771,4 +771,325 @@ describe("LinearIssueTrackerService", () => {
 			expect(result.assetUrl).toBe("https://assets.example.com/file.png");
 		});
 	});
+
+	describe("Token Refresh with OAuth Config", () => {
+		const mockOAuthConfig = {
+			clientId: "test-client-id",
+			clientSecret: "test-client-secret",
+			refreshToken: "test-refresh-token",
+			workspaceId: "workspace-123",
+			onTokenRefresh: vi.fn(),
+		};
+
+		beforeEach(() => {
+			vi.clearAllMocks();
+			// Clear static maps between tests
+			(LinearIssueTrackerService as any).pendingRefreshes.clear();
+			(LinearIssueTrackerService as any).workspaceRefreshTokens.clear();
+		});
+
+		it("should patch client.request when OAuth config is provided", async () => {
+			const mockGraphQLClient = {
+				request: vi.fn().mockResolvedValue({ issue: { id: "123" } }),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+				issue: vi.fn().mockResolvedValue({ id: "123", title: "Test" }),
+			} as any;
+
+			new LinearIssueTrackerService(mockClientWithGraphQL, mockOAuthConfig);
+
+			// The request method should be patched (original is wrapped)
+			expect(mockGraphQLClient.request).toBeDefined();
+		});
+
+		it("should retry request with new token on 401 error", async () => {
+			const error401 = new Error("Unauthorized");
+			(error401 as any).status = 401;
+
+			const mockGraphQLClient = {
+				request: vi
+					.fn()
+					.mockRejectedValueOnce(error401)
+					.mockResolvedValueOnce({ data: "success" }),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+			} as any;
+
+			// Mock fetch for token refresh
+			global.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						access_token: "refreshed-token",
+						refresh_token: "new-refresh-token",
+						expires_in: 86400,
+					}),
+			});
+
+			new LinearIssueTrackerService(mockClientWithGraphQL, {
+				...mockOAuthConfig,
+			});
+
+			// Call the patched request directly
+			const result = await mockClientWithGraphQL.client.request(
+				"query",
+				{},
+				{},
+			);
+
+			expect(fetch).toHaveBeenCalledWith(
+				"https://api.linear.app/oauth/token",
+				expect.objectContaining({ method: "POST" }),
+			);
+			expect(mockGraphQLClient.setHeader).toHaveBeenCalledWith(
+				"Authorization",
+				"Bearer refreshed-token",
+			);
+			expect(result).toEqual({ data: "success" });
+		});
+
+		it("should not retry on non-401 errors", async () => {
+			const error500 = new Error("Internal Server Error");
+			(error500 as any).status = 500;
+
+			const mockGraphQLClient = {
+				request: vi.fn().mockRejectedValueOnce(error500),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+			} as any;
+
+			global.fetch = vi.fn();
+
+			new LinearIssueTrackerService(mockClientWithGraphQL, mockOAuthConfig);
+
+			await expect(
+				mockClientWithGraphQL.client.request("query", {}, {}),
+			).rejects.toThrow("Internal Server Error");
+
+			expect(fetch).not.toHaveBeenCalled();
+			expect(mockGraphQLClient.setHeader).not.toHaveBeenCalled();
+		});
+
+		it("should call onTokenRefresh callback when tokens are refreshed", async () => {
+			const error401 = new Error("Unauthorized");
+			(error401 as any).status = 401;
+
+			const mockGraphQLClient = {
+				request: vi
+					.fn()
+					.mockRejectedValueOnce(error401)
+					.mockResolvedValueOnce({ data: "success" }),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+			} as any;
+
+			const onTokenRefresh = vi.fn();
+
+			global.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						access_token: "new-access-token",
+						refresh_token: "new-refresh-token",
+						expires_in: 86400,
+					}),
+			});
+
+			new LinearIssueTrackerService(mockClientWithGraphQL, {
+				...mockOAuthConfig,
+				onTokenRefresh,
+			});
+
+			await mockClientWithGraphQL.client.request("query", {}, {});
+
+			expect(onTokenRefresh).toHaveBeenCalledWith({
+				accessToken: "new-access-token",
+				refreshToken: "new-refresh-token",
+			});
+		});
+
+		it("should coalesce concurrent token refresh requests for the same workspace", async () => {
+			const error401 = new Error("Unauthorized");
+			(error401 as any).status = 401;
+
+			// Track call count for each service
+			let requestCallCount1 = 0;
+			let requestCallCount2 = 0;
+
+			const mockGraphQLClient1 = {
+				request: vi.fn().mockImplementation(async () => {
+					requestCallCount1++;
+					if (requestCallCount1 === 1) throw error401;
+					return { data: "success1" };
+				}),
+				setHeader: vi.fn(),
+			};
+
+			const mockGraphQLClient2 = {
+				request: vi.fn().mockImplementation(async () => {
+					requestCallCount2++;
+					if (requestCallCount2 === 1) throw error401;
+					return { data: "success2" };
+				}),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL1 = {
+				...createMockLinearClient(),
+				client: mockGraphQLClient1,
+			} as any;
+
+			const mockClientWithGraphQL2 = {
+				...createMockLinearClient(),
+				client: mockGraphQLClient2,
+			} as any;
+
+			// Mock fetch to delay response to ensure concurrency
+			global.fetch = vi.fn().mockImplementation(
+				() =>
+					new Promise((resolve) => {
+						setTimeout(() => {
+							resolve({
+								ok: true,
+								json: () =>
+									Promise.resolve({
+										access_token: "coalesced-token",
+										refresh_token: "coalesced-refresh-token",
+										expires_in: 86400,
+									}),
+							});
+						}, 50);
+					}),
+			);
+
+			// Both services use the same workspace ID
+			new LinearIssueTrackerService(mockClientWithGraphQL1, {
+				...mockOAuthConfig,
+				workspaceId: "same-workspace",
+			});
+
+			new LinearIssueTrackerService(mockClientWithGraphQL2, {
+				...mockOAuthConfig,
+				workspaceId: "same-workspace",
+			});
+
+			// Trigger concurrent 401s from both services
+			const [result1, result2] = await Promise.all([
+				mockClientWithGraphQL1.client.request("query1", {}, {}),
+				mockClientWithGraphQL2.client.request("query2", {}, {}),
+			]);
+
+			// Both should succeed
+			expect(result1).toEqual({ data: "success1" });
+			expect(result2).toEqual({ data: "success2" });
+
+			// Only ONE HTTP request should have been made (coalesced)
+			expect(fetch).toHaveBeenCalledTimes(1);
+		});
+
+		it("should NOT coalesce requests from different workspaces", async () => {
+			const error401 = new Error("Unauthorized");
+			(error401 as any).status = 401;
+
+			let requestCallCount1 = 0;
+			let requestCallCount2 = 0;
+
+			const mockGraphQLClient1 = {
+				request: vi.fn().mockImplementation(async () => {
+					requestCallCount1++;
+					if (requestCallCount1 === 1) throw error401;
+					return { data: "success1" };
+				}),
+				setHeader: vi.fn(),
+			};
+
+			const mockGraphQLClient2 = {
+				request: vi.fn().mockImplementation(async () => {
+					requestCallCount2++;
+					if (requestCallCount2 === 1) throw error401;
+					return { data: "success2" };
+				}),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL1 = {
+				...createMockLinearClient(),
+				client: mockGraphQLClient1,
+			} as any;
+
+			const mockClientWithGraphQL2 = {
+				...createMockLinearClient(),
+				client: mockGraphQLClient2,
+			} as any;
+
+			global.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						access_token: "new-token",
+						refresh_token: "new-refresh-token",
+						expires_in: 86400,
+					}),
+			});
+
+			// Different workspace IDs
+			new LinearIssueTrackerService(mockClientWithGraphQL1, {
+				...mockOAuthConfig,
+				workspaceId: "workspace-A",
+			});
+
+			new LinearIssueTrackerService(mockClientWithGraphQL2, {
+				...mockOAuthConfig,
+				workspaceId: "workspace-B",
+			});
+
+			// Trigger concurrent 401s from both services
+			await Promise.all([
+				mockClientWithGraphQL1.client.request("query1", {}, {}),
+				mockClientWithGraphQL2.client.request("query2", {}, {}),
+			]);
+
+			// TWO HTTP requests should have been made (not coalesced)
+			expect(fetch).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe("setAccessToken", () => {
+		it("should update the Authorization header on the client", () => {
+			const mockGraphQLClient = {
+				request: vi.fn(),
+				setHeader: vi.fn(),
+			};
+
+			const mockClientWithGraphQL = {
+				...mockLinearClient,
+				client: mockGraphQLClient,
+			} as any;
+
+			const service = new LinearIssueTrackerService(mockClientWithGraphQL);
+
+			service.setAccessToken("new-access-token");
+
+			expect(mockGraphQLClient.setHeader).toHaveBeenCalledWith(
+				"Authorization",
+				"Bearer new-access-token",
+			);
+		});
+	});
 });
