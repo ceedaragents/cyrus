@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.2.6] - 2025-12-22
 
 ### Changed
 - **Default model upgraded to Opus** - Cyrus now uses Claude Opus as the default model with Sonnet as fallback (previously Sonnet with Haiku fallback). This provides higher quality responses for all tasks. ([CYPACK-613](https://linear.app/ceedar/issue/CYPACK-613))
@@ -20,6 +20,35 @@ All notable changes to this project will be documented in this file.
 - **User testing procedure** - New "user-testing" procedure for interactive, user-driven testing sessions. When you explicitly request manual testing (e.g., "test this for me", "run user testing"), Cyrus will execute tests based on your instructions and provide a comprehensive summary of results and findings. ([CYPACK-542](https://linear.app/ceedar/issue/CYPACK-542))
 - **Graphite workflow support** - Cyrus now integrates with Graphite CLI for stacked PR workflows. Apply a "graphite" label to any issue to enable Graphite-aware behavior: sub-issues automatically branch from their blocking issue's branch (based on Linear's "blocked by" relationships) instead of main, and PRs are created using `gt submit`. For orchestrating complex multi-part features, apply both "graphite" and "orchestrator" labels - the orchestrator will create dependent sub-issues with proper blocking relationships that automatically stack in Graphite's dashboard. ([CYPACK-466](https://linear.app/ceedar/issue/CYPACK-466), [#577](https://github.com/ceedaragents/cyrus/pull/577))
 - **Linear agent sessions MCP tools** - Added `linear_get_agent_sessions` and `linear_get_agent_session` tools to cyrus-tools MCP server for retrieving agent session information from Linear. The tools support pagination, filtering, and provide comprehensive session details including timestamps, associated issues, and related entities. ([CYPACK-549](https://linear.app/ceedar/issue/CYPACK-549), [#625](https://github.com/ceedaragents/cyrus/pull/625))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.6
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.6
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.6
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.6
+
+#### cyrus-core
+- cyrus-core@0.2.6
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.6
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.6
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.6
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.6
 
 ## [0.2.5] - 2025-12-03
 
