@@ -65,6 +65,7 @@ import {
 } from "cyrus-linear-event-transport";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { GitService } from "./GitService.js";
 import {
 	ProcedureAnalyzer,
@@ -122,6 +123,8 @@ export class EdgeWorker extends EventEmitter {
 	public repositoryRouter: RepositoryRouter; // Repository routing and selection
 	private gitService: GitService;
 	private activeWebhookCount = 0; // Track number of webhooks currently being processed
+	/** Handler for AskUserQuestion tool invocations via Linear select signal */
+	private askUserQuestionHandler: AskUserQuestionHandler;
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -169,6 +172,13 @@ export class EdgeWorker extends EventEmitter {
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
 		this.gitService = new GitService();
+
+		// Initialize AskUserQuestion handler for elicitation via Linear select signal
+		this.askUserQuestionHandler = new AskUserQuestionHandler({
+			getIssueTracker: (workspaceId: string) => {
+				return this.getIssueTrackerForWorkspace(workspaceId) ?? null;
+			},
+		});
 
 		console.log(
 			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
@@ -2070,6 +2080,54 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Handle AskUserQuestion response from prompted webhook
+	 * Branch 2.5: User response to a question posed via AskUserQuestion tool
+	 *
+	 * @param webhook The prompted webhook containing user's response
+	 */
+	private async handleAskUserQuestionResponse(
+		webhook: AgentSessionPromptedWebhook,
+	): Promise<void> {
+		const { agentSession, agentActivity } = webhook;
+		const agentSessionId = agentSession.id;
+
+		if (!agentActivity) {
+			console.warn(
+				"[EdgeWorker] Cannot handle AskUserQuestion response without agentActivity",
+			);
+			// Resolve with a denial to unblock the waiting promise
+			this.askUserQuestionHandler.cancelPendingQuestion(
+				agentSessionId,
+				"No agent activity in webhook",
+			);
+			return;
+		}
+
+		// Extract the user's response from the activity body
+		const userResponse = agentActivity.content?.body || "";
+
+		console.log(
+			`[EdgeWorker] Processing AskUserQuestion response for session ${agentSessionId}: "${userResponse}"`,
+		);
+
+		// Pass the response to the handler to resolve the waiting promise
+		const handled = this.askUserQuestionHandler.handleUserResponse(
+			agentSessionId,
+			userResponse,
+		);
+
+		if (!handled) {
+			console.warn(
+				`[EdgeWorker] AskUserQuestion response not handled for session ${agentSessionId} (no pending question)`,
+			);
+		} else {
+			console.log(
+				`[EdgeWorker] AskUserQuestion response handled for session ${agentSessionId}`,
+			);
+		}
+	}
+
+	/**
 	 * Handle normal prompted activity (existing session continuation)
 	 * Branch 3 of agentSessionPrompted (see packages/CLAUDE.md)
 	 */
@@ -2315,6 +2373,14 @@ export class EdgeWorker extends EventEmitter {
 		// and caches the repository for future use.
 		if (this.repositoryRouter.hasPendingSelection(agentSessionId)) {
 			await this.handleRepositorySelectionResponse(webhook);
+			return;
+		}
+
+		// Branch 2.5: Handle AskUserQuestion response
+		// This handles responses to questions posed via the AskUserQuestion tool.
+		// The response is passed to the pending promise resolver.
+		if (this.askUserQuestionHandler.hasPendingQuestion(agentSessionId)) {
+			await this.handleAskUserQuestionResponse(webhook);
 			return;
 		}
 
@@ -4754,6 +4820,13 @@ ${input.userComment}
 			hooks,
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
+			// AskUserQuestion callback - only for Claude runner
+			...(runnerType === "claude" && {
+				onAskUserQuestion: this.createAskUserQuestionCallback(
+					linearAgentActivitySessionId,
+					repository.linearWorkspaceId,
+				),
+			}),
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
 					linearAgentActivitySessionId,
@@ -4778,6 +4851,30 @@ ${input.userComment}
 		}
 
 		return { config, runnerType };
+	}
+
+	/**
+	 * Create an onAskUserQuestion callback for the ClaudeRunner.
+	 * This callback delegates to the AskUserQuestionHandler which posts
+	 * elicitations to Linear and waits for user responses.
+	 *
+	 * @param linearAgentSessionId - Linear agent session ID for tracking
+	 * @param organizationId - Linear organization/workspace ID
+	 */
+	private createAskUserQuestionCallback(
+		linearAgentSessionId: string,
+		organizationId: string,
+	): AgentRunnerConfig["onAskUserQuestion"] {
+		return async (input, _sessionId, signal) => {
+			// Note: We use linearAgentSessionId (from closure) instead of the passed sessionId
+			// because the passed sessionId is the Claude session ID, not the Linear agent session ID
+			return this.askUserQuestionHandler.handleAskUserQuestion(
+				input,
+				linearAgentSessionId,
+				organizationId,
+				signal,
+			);
+		};
 	}
 
 	/**

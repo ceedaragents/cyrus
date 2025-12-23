@@ -6,6 +6,114 @@ import type {
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 
+// Import the AskUserQuestionInput type from the SDK's tool input types
+// This ensures we use the SDK's official type definitions
+import type { AskUserQuestionInput as SDKAskUserQuestionInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools.d.ts";
+
+// ============================================================================
+// ASK USER QUESTION TYPES
+// ============================================================================
+// Re-export the SDK's AskUserQuestionInput type as the canonical input type.
+// The SDK's type has complex tuple structures for questions and options.
+// We also provide simplified types for easier consumption in our callback API.
+
+/**
+ * The canonical AskUserQuestionInput type from the Claude SDK.
+ *
+ * @see {@link https://platform.claude.com/docs/en/agent-sdk/typescript#ask-user-question}
+ */
+export type AskUserQuestionInput = SDKAskUserQuestionInput;
+
+/**
+ * Simplified option type for easier API consumption.
+ * Matches the structure within AskUserQuestionInput but without tuple constraints.
+ */
+export interface AskUserQuestionOption {
+	/** The display text for this option */
+	label: string;
+	/** Explanation of what this option means */
+	description: string;
+}
+
+/**
+ * Simplified question type for easier API consumption.
+ * Matches the structure within AskUserQuestionInput but without tuple constraints.
+ */
+export interface AskUserQuestion {
+	/** The complete question to ask the user */
+	question: string;
+	/** Short label for the question (max 12 chars) */
+	header: string;
+	/** The available choices (2-4 options) */
+	options: AskUserQuestionOption[];
+	/** Whether multiple options can be selected */
+	multiSelect: boolean;
+}
+
+/**
+ * Result of user responding to questions.
+ * Maps question text to selected option label(s).
+ *
+ * For single-select: the value is the selected option's label
+ * For multi-select: the value is a comma-separated string of selected labels
+ *
+ * @see {@link https://platform.claude.com/docs/en/agent-sdk/permissions#returning-answers}
+ */
+export type AskUserQuestionAnswers = Record<string, string>;
+
+/**
+ * Result of presenting questions to the user.
+ */
+export interface AskUserQuestionResult {
+	/** Whether the user provided answers (true) or the request was cancelled/denied (false) */
+	answered: boolean;
+	/** The user's answers, if answered is true */
+	answers?: AskUserQuestionAnswers;
+	/** Message explaining why the request was denied, if answered is false */
+	message?: string;
+}
+
+/**
+ * Callback for handling AskUserQuestion tool invocations.
+ *
+ * This callback is invoked when Claude uses the AskUserQuestion tool to ask
+ * the user clarifying questions. Implementations should present the questions
+ * to the user (e.g., via Linear's select signal) and return their answers.
+ *
+ * @param input - The questions to present to the user
+ * @param sessionId - The agent session ID (used for tracking pending responses)
+ * @param signal - AbortSignal to cancel the operation if needed
+ * @returns Promise resolving to the user's answers or a denial
+ *
+ * @example
+ * ```typescript
+ * const onAskUserQuestion: OnAskUserQuestion = async (input, sessionId, signal) => {
+ *   // Present questions to user via Linear select signal
+ *   const answers = await presentToLinear(input.questions, sessionId);
+ *
+ *   if (answers) {
+ *     return {
+ *       answered: true,
+ *       answers: {
+ *         "Which database should we use?": "PostgreSQL",
+ *         "Which features should we enable?": "Authentication, Caching"
+ *       }
+ *     };
+ *   } else {
+ *     return {
+ *       answered: false,
+ *       message: "User did not respond"
+ *     };
+ *   }
+ * };
+ * ```
+ */
+export type OnAskUserQuestion = (
+	input: AskUserQuestionInput,
+	sessionId: string,
+	signal: AbortSignal,
+) => Promise<AskUserQuestionResult>;
+
 /**
  * Message Formatter Interface
  *
@@ -289,6 +397,15 @@ export interface AgentRunnerConfig {
 	};
 	/** Event hooks for customizing agent behavior */
 	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>;
+	/**
+	 * Callback for handling AskUserQuestion tool invocations.
+	 * When provided, intercepts the AskUserQuestion tool to allow presenting
+	 * questions to users via external interfaces (e.g., Linear's select signal).
+	 *
+	 * Note: Only one question at a time is supported. Multiple questions in
+	 * a single tool call will be rejected.
+	 */
+	onAskUserQuestion?: OnAskUserQuestion;
 	/** Callback for each message received */
 	onMessage?: (message: AgentMessage) => void | Promise<void>;
 	/** Callback for errors */

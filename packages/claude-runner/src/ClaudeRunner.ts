@@ -9,10 +9,13 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import {
+	type CanUseTool,
+	type PermissionResult,
 	query,
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import type { AskUserQuestionInput } from "cyrus-core";
 import { type IAgentRunner, StreamingPrompt } from "cyrus-core";
 import dotenv from "dotenv";
 
@@ -61,6 +64,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private cyrusHome: string;
 	private formatter: IMessageFormatter;
 	private pendingResultMessage: SDKMessage | null = null;
+	private canUseToolCallback: CanUseTool | undefined;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
@@ -68,10 +72,140 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		this.cyrusHome = config.cyrusHome;
 		this.formatter = new ClaudeMessageFormatter();
 
+		// Create canUseTool callback if onAskUserQuestion is provided
+		if (config.onAskUserQuestion) {
+			this.canUseToolCallback = this.createCanUseToolCallback();
+		}
+
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
 		if (config.onError) this.on("error", config.onError);
 		if (config.onComplete) this.on("complete", config.onComplete);
+	}
+
+	/**
+	 * Create the canUseTool callback for intercepting AskUserQuestion tool calls.
+	 *
+	 * This implements the Claude SDK permission handling pattern:
+	 * - Intercepts AskUserQuestion tool calls
+	 * - Rejects requests with multiple questions (only 1 allowed at a time)
+	 * - Delegates to the onAskUserQuestion callback for presentation
+	 * - Returns the user's answers or denial
+	 *
+	 * @see {@link https://platform.claude.com/docs/en/agent-sdk/permissions#handling-the-ask-user-question-tool}
+	 */
+	private createCanUseToolCallback(): CanUseTool {
+		return async (
+			toolName: string,
+			input: Record<string, unknown>,
+			options: {
+				signal: AbortSignal;
+				toolUseID: string;
+			},
+		): Promise<PermissionResult> => {
+			// Only intercept AskUserQuestion tool
+			if (toolName !== "AskUserQuestion") {
+				// Allow all other tools to proceed normally
+				return {
+					behavior: "allow",
+					updatedInput: input,
+				};
+			}
+
+			console.log(
+				`[ClaudeRunner] Intercepted AskUserQuestion tool call (toolUseID: ${options.toolUseID})`,
+			);
+
+			// Validate the input structure
+			const askInput = input as unknown as AskUserQuestionInput;
+			if (!askInput.questions || !Array.isArray(askInput.questions)) {
+				return {
+					behavior: "deny",
+					message:
+						"Invalid AskUserQuestion input: 'questions' array is required",
+				};
+			}
+
+			// IMPORTANT: Only allow one question at a time
+			if (askInput.questions.length !== 1) {
+				console.log(
+					`[ClaudeRunner] Rejecting AskUserQuestion with ${askInput.questions.length} questions (only 1 allowed)`,
+				);
+				return {
+					behavior: "deny",
+					message:
+						"Only one question at a time is supported. Please ask each question separately.",
+				};
+			}
+
+			// Validate the onAskUserQuestion callback exists
+			if (!this.config.onAskUserQuestion) {
+				console.error(
+					"[ClaudeRunner] onAskUserQuestion callback not configured",
+				);
+				return {
+					behavior: "deny",
+					message: "AskUserQuestion handler not configured",
+				};
+			}
+
+			// Get the session ID (required for tracking)
+			const sessionId = this.sessionInfo?.sessionId;
+			if (!sessionId) {
+				console.error(
+					"[ClaudeRunner] Cannot handle AskUserQuestion without session ID",
+				);
+				return {
+					behavior: "deny",
+					message: "Session not initialized",
+				};
+			}
+
+			try {
+				// Delegate to the onAskUserQuestion callback
+				console.log(
+					`[ClaudeRunner] Delegating AskUserQuestion to callback for session ${sessionId}`,
+				);
+
+				const result = await this.config.onAskUserQuestion(
+					askInput,
+					sessionId,
+					options.signal,
+				);
+
+				if (result.answered && result.answers) {
+					console.log(
+						`[ClaudeRunner] User answered AskUserQuestion for session ${sessionId}`,
+					);
+
+					// Return the answers via updatedInput as per SDK documentation
+					return {
+						behavior: "allow",
+						updatedInput: {
+							questions: askInput.questions,
+							answers: result.answers,
+						},
+					};
+				} else {
+					console.log(
+						`[ClaudeRunner] User denied AskUserQuestion for session ${sessionId}: ${result.message}`,
+					);
+					return {
+						behavior: "deny",
+						message: result.message || "User did not respond to the question",
+					};
+				}
+			} catch (error) {
+				const errorMessage = (error as Error).message || String(error);
+				console.error(
+					`[ClaudeRunner] Error handling AskUserQuestion: ${errorMessage}`,
+				);
+				return {
+					behavior: "deny",
+					message: `Failed to present question: ${errorMessage}`,
+				};
+			}
+		};
 	}
 
 	/**
@@ -312,6 +446,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(processedAllowedTools && { allowedTools: processedAllowedTools }),
 					...(processedDisallowedTools && {
 						disallowedTools: processedDisallowedTools,
+					}),
+					...(this.canUseToolCallback && {
+						canUseTool: this.canUseToolCallback,
 					}),
 					...(this.config.resumeSessionId && {
 						resume: this.config.resumeSessionId,
