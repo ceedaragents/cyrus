@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.1.72 to v0.1.76 to maintain parity with the latest Claude Agent SDK releases. This update includes improvements and bug fixes from versions 0.1.73 (fixed Stop hooks consistency), 0.1.74 (parity with Claude Code v2.0.74), 0.1.75, and 0.1.76. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for full details. (CYPACK-662, #TBD)
+
 ### Fixed
 - **AskUserQuestion UI cleanup** - The AskUserQuestion tool no longer appears as raw JSON in Linear's activity stream. Since the tool is custom-handled via Linear's select signal elicitation, the tool call and result are now suppressed from the activity UI for a cleaner experience. ([CYPACK-654](https://linear.app/ceedar/issue/CYPACK-654), [#698](https://github.com/ceedaragents/cyrus/pull/698))
 
