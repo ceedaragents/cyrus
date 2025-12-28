@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **Release procedure** - Added a new `release` procedure with two subroutines for executing software releases. When an issue is classified as a release request, Cyrus will: (1) check for a release skill in the project, (2) check CLAUDE.md or README.md for release instructions, or (3) ask the user via AskUserQuestion how to perform the release. This enables Cyrus to handle release workflows for any project type. ([CYPACK-668](https://linear.app/ceedar/issue/CYPACK-668), [#706](https://github.com/ceedaragents/cyrus/pull/706))
+- **Self-hosting OAuth commands** - New CLI commands for self-hosted deployments: `cyrus self-auth` performs direct Linear OAuth authorization without a proxy, and `cyrus self-add-repo` clones repositories and adds them to config with inherited workspace credentials. Both commands support the `--cyrus-home` flag for custom configuration directories. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
+
+### Changed
+- **Documentation restructured** - Moved self-hosting documentation from `selfhosting/` folder to `docs/` with separate files: `SELF_HOSTING.md` (main guide), `CONFIG_FILE.md` (configuration reference), and `CLOUDFLARE_TUNNEL.md` (optional tunnel setup). Main README now links to these docs. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
+- **Shared constants** - Moved `DEFAULT_WORKTREES_DIR`, `DEFAULT_BASE_BRANCH`, and `DEFAULT_CONFIG_FILENAME` to `cyrus-core` package for consistent use across CLI and other packages. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
+- **OAuth scope reduced** - Self-hosted OAuth now uses minimal scope `write,app:assignable,app:mentionable` matching the hosted version. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
+- **Fastify for OAuth callback** - Replaced Node.js `http.createServer` with Fastify for the OAuth callback server in `self-auth` command. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
 
 ## [0.2.7] - 2025-12-28
 
