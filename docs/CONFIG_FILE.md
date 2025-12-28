@@ -221,16 +221,19 @@ When determining allowed tools, Cyrus follows this priority order:
 
 ---
 
-## Self-Hosting Additional Fields
+## Core Repository Fields
 
-When self-hosting Cyrus, each repository also includes:
+Each repository configuration includes these required fields:
 
-- `linearWorkspaceId` - Linear workspace UUID
-- `linearWorkspaceName` - Linear workspace display name
-- `linearToken` - OAuth access token
-- `linearRefreshToken` - OAuth refresh token
+- `id` - Unique identifier for the repository
+- `name` - Repository name
+- `repositoryPath` - Absolute path to the repository on disk
 - `baseBranch` - Default branch for the repository (e.g., "main")
 - `workspaceBaseDir` - Directory for git worktrees
 - `isActive` - Whether the repository is active
+- `linearWorkspaceId` - Linear workspace UUID
+- `linearWorkspaceName` - Linear workspace display name
+- `linearToken` - OAuth access token
+- `linearRefreshToken` - OAuth refresh token (optional)
 
-These fields are managed automatically by the `cyrus self-auth` and `cyrus self-add-repo` commands.
+These fields are managed automatically during setup. For self-hosted instances, use the `cyrus self-auth` and `cyrus self-add-repo` commands.
