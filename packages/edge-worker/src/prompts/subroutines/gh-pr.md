@@ -1,39 +1,37 @@
 # GitHub PR - Pull Request Management
 
-Your changes have been committed and pushed. Now create or update the GitHub Pull Request.
+A draft PR exists and all changes have been committed and pushed. Now update the PR with a full description and mark it as ready.
 
 ## Your Tasks
 
-### 1. Check for Existing PR
-First, check if a PR already exists for the current branch:
+### 1. Get PR Information
+First, get the current PR URL:
 ```bash
-gh pr view --json url 2>/dev/null || echo "NO_PR"
+gh pr view --json url -q '.url'
 ```
 
-### 2. Create or Update PR
-- **If no PR exists**: Create a new PR using the GitHub CLI:
-  ```bash
-  gh pr create
-  ```
-- **If PR already exists**: Update it if needed:
-  ```bash
-  gh pr edit
-  ```
-- **IMPORTANT**: Make sure the PR is created for the correct base branch associated with the current working branch. Do NOT assume the base branch is the default one.
-- Ensure the PR has a clear, descriptive title
-- Write a comprehensive PR description including:
-  - Summary of changes
-  - Implementation approach
-  - Testing performed
-  - Any breaking changes or migration notes
-- Link the PR to the Linear issue if not already linked
-- Verify the PR is targeting the correct base branch
+### 2. Update PR with Full Description
+Update the PR with a comprehensive description:
+```bash
+gh pr edit --title "[descriptive title]" --body "[full description]"
+```
 
-### 3. Update Changelog with PR Link (if applicable)
-After the PR is created, if a changelog was updated earlier:
-- Add the PR link to the changelog entry
-- Amend the commit to include the PR link: `git commit --amend`
-- Push the amended commit: `git push --force-with-lease`
+The PR description should include:
+- Summary of changes
+- Implementation approach
+- Testing performed
+- Any breaking changes or migration notes
+- Link to the Linear issue
+
+Ensure the PR has a clear, descriptive title (remove "WIP:" prefix if present).
+
+### 3. Mark PR as Ready
+Convert the draft PR to ready for review:
+```bash
+gh pr ready
+```
+
+Unless the project instructions specify to keep it as draft, or the user has requested it remain as draft.
 
 ### 4. Final Checks
 - Confirm the PR URL is valid and accessible
@@ -42,9 +40,10 @@ After the PR is created, if a changelog was updated earlier:
 
 ## Important Notes
 
-- **Changes have already been committed** - you're just creating/updating the PR
+- **A draft PR already exists** - you're updating it and marking it ready
+- **All commits are pushed** - the changelog already includes the PR link
 - **Be thorough with the PR description** - it should be self-contained and informative
-- **Do NOT touch the changelog content** - only add the PR link if changelog was already updated
+- **Verify the correct base branch** - ensure PR targets the right base branch
 - Take as many turns as needed to complete these tasks
 
 ## Expected Output
@@ -54,7 +53,7 @@ After the PR is created, if a changelog was updated earlier:
 Provide a brief completion message (1 sentence max) that includes the PR URL:
 
 ```
-PR [created/updated] at [PR URL].
+PR ready at [PR URL].
 ```
 
-Example: "PR created at https://github.com/org/repo/pull/123."
+Example: "PR ready at https://github.com/org/repo/pull/123."
