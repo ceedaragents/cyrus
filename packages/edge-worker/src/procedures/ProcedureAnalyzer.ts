@@ -51,6 +51,7 @@ export class ProcedureAnalyzer {
 				"debugger",
 				"orchestrator",
 				"user-testing",
+				"release",
 			] as const,
 			cyrusHome: config.cyrusHome,
 			model: config.model || defaultModel,
@@ -114,6 +115,12 @@ Analyze the Linear issue request and classify it into ONE of these categories:
 - Examples: "Test the login flow manually", "Run user testing on the checkout feature", "Help me test this integration"
 - DO NOT use for automated test writing (use "code" instead)
 - This is for interactive, user-guided testing sessions
+
+**release**: User EXPLICITLY requests a release, publish, or deployment workflow.
+- ONLY use this if the user specifically asks for: "release", "publish", "deploy to npm", "create a release", "publish packages"
+- Examples: "Release the new version", "Publish to npm", "Create a new release", "Deploy version 1.2.0"
+- DO NOT use for regular code changes that mention versions (use "code" instead)
+- This is for executing the full release/publish workflow
 
 IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	}

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Release procedure** - Added a new `release` procedure with two subroutines for executing software releases. When an issue is classified as a release request, Cyrus will: (1) check for a release skill in the project, (2) check CLAUDE.md or README.md for release instructions, or (3) ask the user via AskUserQuestion how to perform the release. This enables Cyrus to handle release workflows for any project type. ([CYPACK-668](https://linear.app/ceedar/issue/CYPACK-668))
+
 ## [0.2.7] - 2025-12-28
 
 ### Fixed
