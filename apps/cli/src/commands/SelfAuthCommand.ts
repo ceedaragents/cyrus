@@ -185,7 +185,7 @@ export class SelfAuthCommand extends BaseCommand {
 		const baseUrl = process.env.CYRUS_BASE_URL;
 		const redirectUri = `${baseUrl}/callback`;
 
-        // https://linear.app/developers/oauth-2-0-authentication
+		// https://linear.app/developers/oauth-2-0-authentication
 		const response = await fetch("https://api.linear.app/oauth/token", {
 			method: "POST",
 			headers: {
