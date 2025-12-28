@@ -29,14 +29,14 @@ node --version    # Should show v18 or higher
 
 You need a public URL so Linear can send webhooks to your local Cyrus instance.
 
-### 2.1 Create Cloudflare Account (if needed)
+### 1.1 Create Cloudflare Account (if needed)
 
 1. Go to https://cloudflare.com
 2. Click **Sign up**
 3. Create free account
 4. Verify email
 
-### 2.2 Create Cloudflare Tunnel
+### 1.2 Create Cloudflare Tunnel
 
 1. **Log in to Cloudflare Dashboard:**
    - Go to https://one.dash.cloudflare.com/
@@ -126,7 +126,6 @@ Leave this terminal running in the background. It auto-compiles TypeScript files
 5. **Start Cyrus in tmux:**
 
 ```bash
-tmux kill-server  # Kill any existing sessions
 tmux new-session -s cyrus
 ```
 
@@ -135,7 +134,7 @@ Inside the tmux session, run:
 cyrus
 ```
 
-When you make code changes, `pnpm dev` auto-compiles them. Kill the Cyrus tmux session and restart it to pick up changes.
+When you make code changes, `pnpm dev` auto-compiles them. Detach from the tmux session (Ctrl+B, D) and reattach with `tmux attach -t cyrus` to pick up changes.
 
 ---
 

@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
 import { resolve } from "node:path";
+import { LinearClient } from "@linear/sdk";
+import type { EdgeConfig } from "cyrus-core";
+import Fastify, { type FastifyInstance } from "fastify";
 import open from "open";
 import { BaseCommand } from "./ICommand.js";
 
@@ -9,7 +11,7 @@ import { BaseCommand } from "./ICommand.js";
  * Handles the complete OAuth flow without requiring EdgeWorker
  */
 export class SelfAuthCommand extends BaseCommand {
-	private server: Server | null = null;
+	private server: FastifyInstance | null = null;
 	private callbackPort = parseInt(process.env.CYRUS_SERVER_PORT || "3456", 10);
 
 	async execute(_args: string[]): Promise<void> {
@@ -35,9 +37,9 @@ export class SelfAuthCommand extends BaseCommand {
 
 		// Check config file exists
 		const configPath = resolve(this.app.cyrusHome, "config.json");
-		let config: any;
+		let config: EdgeConfig;
 		try {
-			config = JSON.parse(readFileSync(configPath, "utf-8"));
+			config = JSON.parse(readFileSync(configPath, "utf-8")) as EdgeConfig;
 		} catch {
 			this.logError(`Config file not found: ${configPath}`);
 			console.log("Run 'cyrus' first to create initial configuration.");
@@ -73,10 +75,10 @@ export class SelfAuthCommand extends BaseCommand {
 
 			// Update config.json
 			console.log("Saving tokens to config.json...");
-			this.updateConfig(config, configPath, tokens, workspace);
+			this.overwriteRepoConfigTokens(config, configPath, tokens, workspace);
 
 			const updatedCount = config.repositories.filter(
-				(r: any) => r.linearWorkspaceId === workspace.id,
+				(r) => r.linearWorkspaceId === workspace.id,
 			).length;
 			this.logSuccess(`Updated ${updatedCount} repository/repositories`);
 
@@ -89,7 +91,8 @@ export class SelfAuthCommand extends BaseCommand {
 			this.logError(`Authentication failed: ${(error as Error).message}`);
 			process.exit(1);
 		} finally {
-			this.cleanup();
+			// One of the key guarantees of finally — it runs regardless of how the try block exits (return, throw, or normal completion).
+			await this.cleanup();
 		}
 	}
 
@@ -101,74 +104,76 @@ export class SelfAuthCommand extends BaseCommand {
 				return;
 			}
 			const redirectUri = `${baseUrl}/callback`;
-			const oauthUrl = `https://linear.app/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=read,write,comments:create,app:assignable,app:mentionable&actor=app`;
+			// https://linear.app/developers/oauth-2-0-authentication
+			// https://linear.app/developers/oauth-actor-authorization
+			const oauthUrl = `https://linear.app/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=write,app:assignable,app:mentionable&actor=app`;
 
-			this.server = createServer((req, res) => {
-				const url = new URL(
-					req.url || "",
-					`http://localhost:${this.callbackPort}`,
-				);
+			this.server = Fastify({ logger: false });
 
-				if (url.pathname === "/callback") {
-					const code = url.searchParams.get("code");
-					const error = url.searchParams.get("error");
+			this.server.get("/callback", async (request, reply) => {
+				const query = request.query as { code?: string; error?: string };
+				const code = query.code;
+				const error = query.error;
 
-					if (error) {
-						res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-						res.end(`<!DOCTYPE html>
+				if (error) {
+					reply
+						.type("text/html; charset=utf-8")
+						.code(400)
+						.send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family: system-ui; padding: 40px; text-align: center;">
 <h2>Authorization failed</h2>
 <p>${error}</p>
 </body></html>`);
-						reject(new Error(`OAuth error: ${error}`));
-						return;
-					}
+					reject(new Error(`OAuth error: ${error}`));
+					return;
+				}
 
-					if (code) {
-						res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-						res.end(`<!DOCTYPE html>
+				if (code) {
+					reply
+						.type("text/html; charset=utf-8")
+						.code(200)
+						.send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family: system-ui; padding: 40px; text-align: center;">
 <h2>Cyrus authorized successfully</h2>
 <p>You can close this window and return to the terminal.</p>
 </body></html>`);
-						resolve(code);
-						return;
-					}
+					resolve(code);
+					return;
+				}
 
-					res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-					res.end(`<!DOCTYPE html>
+				reply
+					.type("text/html; charset=utf-8")
+					.code(400)
+					.send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family: system-ui; padding: 40px; text-align: center;">
 <h2>Missing authorization code</h2>
 </body></html>`);
-					reject(new Error("Missing authorization code"));
-				} else {
-					res.writeHead(404);
-					res.end("Not found");
-				}
+				reject(new Error("Missing authorization code"));
 			});
 
-			this.server.listen(this.callbackPort, () => {
-				console.log(
-					`Waiting for authorization on port ${this.callbackPort}...`,
-				);
-				console.log();
-				console.log("Opening browser for Linear authorization...");
-				console.log();
-				console.log("If browser doesn't open, visit:");
-				console.log(oauthUrl);
-				console.log();
+			this.server
+				.listen({ port: this.callbackPort, host: "localhost" })
+				.then(() => {
+					console.log(
+						`Waiting for authorization on port ${this.callbackPort}...`,
+					);
+					console.log();
+					console.log("Opening browser for Linear authorization...");
+					console.log();
+					console.log("If browser doesn't open, visit:");
+					console.log(oauthUrl);
+					console.log();
 
-				open(oauthUrl).catch(() => {
-					console.log("Could not open browser automatically.");
+					open(oauthUrl).catch(() => {
+						console.log("Could not open browser automatically.");
+					});
+				})
+				.catch((err) => {
+					reject(new Error(`Server error: ${err.message}`));
 				});
-			});
-
-			this.server.on("error", (err) => {
-				reject(new Error(`Server error: ${err.message}`));
-			});
 		});
 	}
 
@@ -217,35 +222,19 @@ export class SelfAuthCommand extends BaseCommand {
 	private async fetchWorkspaceInfo(
 		accessToken: string,
 	): Promise<{ id: string; name: string }> {
-		const response = await fetch("https://api.linear.app/graphql", {
-			method: "POST",
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({
-				query: "{ viewer { organization { id name } } }",
-			}),
-		});
+		const linearClient = new LinearClient({ accessToken });
+		const viewer = await linearClient.viewer;
+		const organization = await viewer.organization;
 
-		if (!response.ok) {
-			throw new Error(`Failed to fetch workspace info: ${response.statusText}`);
-		}
-
-		const data = (await response.json()) as {
-			data?: { viewer?: { organization?: { id: string; name: string } } };
-		};
-
-		const org = data.data?.viewer?.organization;
-		if (!org?.id) {
+		if (!organization?.id) {
 			throw new Error("Failed to get workspace info from Linear");
 		}
 
-		return { id: org.id, name: org.name || org.id };
+		return { id: organization.id, name: organization.name || organization.id };
 	}
 
-	private updateConfig(
-		config: any,
+	private overwriteRepoConfigTokens(
+		config: EdgeConfig,
 		configPath: string,
 		tokens: { accessToken: string; refreshToken?: string },
 		workspace: { id: string; name: string },
@@ -267,9 +256,9 @@ export class SelfAuthCommand extends BaseCommand {
 		writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
 	}
 
-	private cleanup(): void {
+	private async cleanup(): Promise<void> {
 		if (this.server) {
-			this.server.close();
+			await this.server.close();
 			this.server = null;
 		}
 	}

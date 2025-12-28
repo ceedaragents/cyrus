@@ -3,7 +3,28 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as readline from "node:readline";
+import type { EdgeConfig } from "cyrus-core";
 import { BaseCommand } from "./ICommand.js";
+
+/**
+ * Default directory name for git worktrees
+ */
+const DEFAULT_WORKTREES_DIR = "worktrees";
+
+/**
+ * Default base branch for new repositories
+ */
+const DEFAULT_BASE_BRANCH = "main";
+
+/**
+ * Workspace credentials extracted from existing repository configurations
+ */
+interface WorkspaceCredentials {
+	id: string;
+	name: string;
+	token: string;
+	refreshToken?: string;
+}
 
 /**
  * Self-add-repo command - clones a repo and adds it to config.json
@@ -46,9 +67,9 @@ export class SelfAddRepoCommand extends BaseCommand {
 		try {
 			// Load config
 			const configPath = resolve(this.app.cyrusHome, "config.json");
-			let config: any;
+			let config: EdgeConfig;
 			try {
-				config = JSON.parse(readFileSync(configPath, "utf-8"));
+				config = JSON.parse(readFileSync(configPath, "utf-8")) as EdgeConfig;
 			} catch {
 				this.logError(`Config file not found: ${configPath}`);
 				process.exit(1);
@@ -78,13 +99,13 @@ export class SelfAddRepoCommand extends BaseCommand {
 			}
 
 			// Check for duplicate
-			if (config.repositories.some((r: any) => r.name === repoName)) {
+			if (config.repositories.some((r) => r.name === repoName)) {
 				this.logError(`Repository '${repoName}' already exists in config`);
 				process.exit(1);
 			}
 
 			// Find workspaces with Linear credentials
-			const workspaces = new Map<string, any>();
+			const workspaces = new Map<string, WorkspaceCredentials>();
 			for (const repo of config.repositories) {
 				if (
 					repo.linearWorkspaceId &&
@@ -108,17 +129,21 @@ export class SelfAddRepoCommand extends BaseCommand {
 			}
 
 			// Get workspace
-			let selectedWorkspace: any;
+			let selectedWorkspace: WorkspaceCredentials;
 			const workspaceList = Array.from(workspaces.values());
 
 			if (workspaceList.length === 1) {
-				selectedWorkspace = workspaceList[0];
+				// Safe: we checked length === 1 above
+				selectedWorkspace = workspaceList[0]!;
 			} else if (workspaceName) {
-				selectedWorkspace = workspaceList.find((w) => w.name === workspaceName);
-				if (!selectedWorkspace) {
+				const foundWorkspace = workspaceList.find(
+					(w) => w.name === workspaceName,
+				);
+				if (!foundWorkspace) {
 					this.logError(`Workspace '${workspaceName}' not found`);
 					process.exit(1);
 				}
+				selectedWorkspace = foundWorkspace;
 			} else {
 				console.log("\nAvailable workspaces:");
 				workspaceList.forEach((w, i) => {
@@ -132,7 +157,8 @@ export class SelfAddRepoCommand extends BaseCommand {
 					this.logError("Invalid selection");
 					process.exit(1);
 				}
-				selectedWorkspace = workspaceList[idx];
+				// Safe: we validated idx is within bounds above
+				selectedWorkspace = workspaceList[idx]!;
 			}
 
 			// Clone the repo
@@ -157,8 +183,8 @@ export class SelfAddRepoCommand extends BaseCommand {
 				id,
 				name: repoName,
 				repositoryPath,
-				baseBranch: "main",
-				workspaceBaseDir: resolve(this.app.cyrusHome, "worktrees"),
+				baseBranch: DEFAULT_BASE_BRANCH,
+				workspaceBaseDir: resolve(this.app.cyrusHome, DEFAULT_WORKTREES_DIR),
 				linearWorkspaceId: selectedWorkspace.id,
 				linearWorkspaceName: selectedWorkspace.name,
 				linearToken: selectedWorkspace.token,

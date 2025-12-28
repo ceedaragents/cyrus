@@ -199,6 +199,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		try {
 			return await refreshPromise;
 		} finally {
+			// One of the key guarantees of finally — it runs regardless of how the try block exits (return, throw, or normal completion).
 			LinearIssueTrackerService.pendingRefreshes.delete(workspaceId);
 		}
 	}
@@ -231,6 +232,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			refresh_token: refreshToken,
 		});
 
+		// https://linear.app/developers/oauth-2-0-authentication
 		const response = await fetch("https://api.linear.app/oauth/token", {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
