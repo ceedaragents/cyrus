@@ -66,7 +66,6 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			expect(SUBROUTINES.primary.disallowedTools).toBeUndefined();
 			expect(SUBROUTINES.codingActivity.disallowedTools).toBeUndefined();
 			expect(SUBROUTINES.verifications.disallowedTools).toBeUndefined();
-			expect(SUBROUTINES.gitGh.disallowedTools).toBeUndefined();
 			expect(SUBROUTINES.gitCommit.disallowedTools).toBeUndefined();
 			expect(SUBROUTINES.ghPr.disallowedTools).toBeUndefined();
 			expect(SUBROUTINES.changelogUpdate.disallowedTools).toBeUndefined();

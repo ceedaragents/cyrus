@@ -41,11 +41,6 @@ export const SUBROUTINES = {
 		promptPath: "subroutines/validation-fixer.md",
 		description: "Fix validation failures from the verifications subroutine",
 	},
-	gitGh: {
-		name: "git-gh",
-		promptPath: "subroutines/git-gh.md",
-		description: "Commit changes and create/update PR",
-	},
 	gitCommit: {
 		name: "git-commit",
 		promptPath: "subroutines/git-commit.md",

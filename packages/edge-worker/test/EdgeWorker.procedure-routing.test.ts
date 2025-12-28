@@ -161,10 +161,6 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(SUBROUTINES.verifications.suppressThoughtPosting).toBeUndefined();
 		});
 
-		it("should NOT have suppressThoughtPosting on git-gh subroutine", () => {
-			expect(SUBROUTINES.gitGh.suppressThoughtPosting).toBeUndefined();
-		});
-
 		it("should NOT have suppressThoughtPosting on git-commit subroutine", () => {
 			expect(SUBROUTINES.gitCommit.suppressThoughtPosting).toBeUndefined();
 		});
