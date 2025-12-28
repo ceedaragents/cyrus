@@ -59,8 +59,7 @@ export const SUBROUTINES = {
 	changelogUpdate: {
 		name: "changelog-update",
 		promptPath: "subroutines/changelog-update.md",
-		description:
-			"Update changelog with PR link (only if changelog files exist)",
+		description: "Update changelog (only if changelog files exist)",
 	},
 	conciseSummary: {
 		name: "concise-summary",
@@ -170,9 +169,9 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		subroutines: [
 			SUBROUTINES.codingActivity,
 			SUBROUTINES.verifications,
+			SUBROUTINES.changelogUpdate,
 			SUBROUTINES.gitCommit,
 			SUBROUTINES.ghPr,
-			SUBROUTINES.changelogUpdate,
 			SUBROUTINES.conciseSummary,
 		],
 	},
@@ -185,9 +184,9 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			SUBROUTINES.debuggerReproduction,
 			SUBROUTINES.debuggerFix,
 			SUBROUTINES.verifications,
+			SUBROUTINES.changelogUpdate,
 			SUBROUTINES.gitCommit,
 			SUBROUTINES.ghPr,
-			SUBROUTINES.changelogUpdate,
 			SUBROUTINES.conciseSummary,
 		],
 	},

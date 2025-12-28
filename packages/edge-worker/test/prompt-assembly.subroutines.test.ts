@@ -91,7 +91,9 @@ Implement the requested changes:
 - Run tests to verify it works
 - Follow existing patterns
 
-**Do NOT**: commit, push, or create PRs (next phase handles that)
+**Do NOT**:
+- Commit, push, or create PRs (later phases handle that)
+- Touch the changelog (a separate subroutine handles changelog updates)
 
 Complete with: \`Implementation complete - [what was done].\``)
 			.verify();

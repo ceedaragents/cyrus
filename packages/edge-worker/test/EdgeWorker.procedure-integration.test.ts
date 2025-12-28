@@ -89,37 +89,38 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			expect(currentSubroutine?.name).toBe("verifications");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 7: Verifications completes, advance to git-commit
-			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
-			expect(nextSubroutine?.name).toBe("git-commit");
-			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
-
-			// Step 8: Execute git-commit subroutine
-			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("git-commit");
-			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
-
-			// Step 9: git-commit completes, advance to gh-pr
-			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
-			expect(nextSubroutine?.name).toBe("gh-pr");
-			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
-
-			// Step 10: Execute gh-pr subroutine
-			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("gh-pr");
-			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
-
-			// Step 11: gh-pr completes, advance to changelog-update
+			// Step 7: Verifications completes, advance to changelog-update
+			// full-development: coding-activity → verifications → changelog-update → git-commit → gh-pr → concise-summary
 			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("changelog-update");
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
 
-			// Step 12: Execute changelog-update subroutine
+			// Step 8: Execute changelog-update subroutine
 			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("changelog-update");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 13: changelog-update completes, advance to concise-summary (last subroutine)
+			// Step 9: changelog-update completes, advance to git-commit
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
+			expect(nextSubroutine?.name).toBe("git-commit");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
+
+			// Step 10: Execute git-commit subroutine
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+			expect(currentSubroutine?.name).toBe("git-commit");
+			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
+
+			// Step 11: git-commit completes, advance to gh-pr
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
+			expect(nextSubroutine?.name).toBe("gh-pr");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
+
+			// Step 12: Execute gh-pr subroutine
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+			expect(currentSubroutine?.name).toBe("gh-pr");
+			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
+
+			// Step 13: gh-pr completes, advance to concise-summary (last subroutine)
 			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("concise-summary");
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
@@ -144,13 +145,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				"verifications",
 			);
 			expect(session.metadata.procedure?.subroutineHistory[2].subroutine).toBe(
-				"git-commit",
+				"changelog-update",
 			);
 			expect(session.metadata.procedure?.subroutineHistory[3].subroutine).toBe(
-				"gh-pr",
+				"git-commit",
 			);
 			expect(session.metadata.procedure?.subroutineHistory[4].subroutine).toBe(
-				"changelog-update",
+				"gh-pr",
 			);
 			// concise-summary is NOT yet in history because we haven't advanced away from it
 		});

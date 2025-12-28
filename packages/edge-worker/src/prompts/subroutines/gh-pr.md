@@ -1,14 +1,16 @@
 # GitHub PR - Pull Request Management
 
-Your changes have been committed. Now create or update the GitHub Pull Request.
+Your changes have been committed and pushed. Now create or update the GitHub Pull Request.
 
 ## Your Tasks
 
-### 1. Pull Request Management
-- **Check if a PR already exists** for the current branch using:
-  ```bash
-  gh pr view --json url 2>/dev/null || echo "NO_PR"
-  ```
+### 1. Check for Existing PR
+First, check if a PR already exists for the current branch:
+```bash
+gh pr view --json url 2>/dev/null || echo "NO_PR"
+```
+
+### 2. Create or Update PR
 - **If no PR exists**: Create a new PR using the GitHub CLI:
   ```bash
   gh pr create
@@ -27,7 +29,13 @@ Your changes have been committed. Now create or update the GitHub Pull Request.
 - Link the PR to the Linear issue if not already linked
 - Verify the PR is targeting the correct base branch
 
-### 2. Final Checks
+### 3. Update Changelog with PR Link (if applicable)
+After the PR is created, if a changelog was updated earlier:
+- Add the PR link to the changelog entry
+- Amend the commit to include the PR link: `git commit --amend`
+- Push the amended commit: `git push --force-with-lease`
+
+### 4. Final Checks
 - Confirm the PR URL is valid and accessible
 - Verify all commits are included in the PR
 - Check that CI/CD pipelines start running (if applicable)
@@ -36,6 +44,7 @@ Your changes have been committed. Now create or update the GitHub Pull Request.
 
 - **Changes have already been committed** - you're just creating/updating the PR
 - **Be thorough with the PR description** - it should be self-contained and informative
+- **Do NOT touch the changelog content** - only add the PR link if changelog was already updated
 - Take as many turns as needed to complete these tasks
 
 ## Expected Output

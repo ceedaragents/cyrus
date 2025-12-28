@@ -99,11 +99,11 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
 
 			// Advance to concise-summary (last subroutine)
-			// full-development: coding-activity → verifications → git-commit → gh-pr → changelog-update → concise-summary
+			// full-development: coding-activity → verifications → changelog-update → git-commit → gh-pr → concise-summary
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to verifications
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to changelog-update
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to git-commit
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to gh-pr
-			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to changelog-update
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to concise-summary
 
 			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
@@ -243,6 +243,8 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 
 			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
 
+			// full-development: coding-activity → verifications → changelog-update → git-commit → gh-pr → concise-summary
+
 			// Check coding-activity (first subroutine)
 			let currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("coding-activity");
@@ -252,6 +254,12 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
 			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("verifications");
+			expect(currentSubroutine?.disallowedTools).toBeUndefined();
+
+			// Advance to changelog-update
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+			expect(currentSubroutine?.name).toBe("changelog-update");
 			expect(currentSubroutine?.disallowedTools).toBeUndefined();
 
 			// Advance to git-commit
@@ -264,12 +272,6 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
 			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("gh-pr");
-			expect(currentSubroutine?.disallowedTools).toBeUndefined();
-
-			// Advance to changelog-update
-			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
-			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("changelog-update");
 			expect(currentSubroutine?.disallowedTools).toBeUndefined();
 		});
 	});
