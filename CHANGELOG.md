@@ -4,8 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.7] - 2025-12-28
+
 ### Fixed
 - **AskUserQuestion UI cleanup** - The AskUserQuestion tool no longer appears as raw JSON in Linear's activity stream. Since the tool is custom-handled via Linear's select signal elicitation, the tool call and result are now suppressed from the activity UI for a cleaner experience. ([CYPACK-654](https://linear.app/ceedar/issue/CYPACK-654), [#698](https://github.com/ceedaragents/cyrus/pull/698))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.7
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.7
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.7
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.7
+
+#### cyrus-core
+- cyrus-core@0.2.7
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.7
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.7
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.7
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.7
 
 ## [0.2.6] - 2025-12-22
 
