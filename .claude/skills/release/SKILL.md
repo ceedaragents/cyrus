@@ -1,7 +1,6 @@
 ---
 name: release
 description: Run a Cyrus release by publishing all packages to npm in the correct dependency order, updating changelogs, and creating git tags.
-allowed-tools: Bash, Read, Edit, Write, Glob, Grep, mcp__linear__update_issue, mcp__linear__list_issues
 ---
 
 # Release

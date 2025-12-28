@@ -342,7 +342,7 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
 
 ## Publishing
 
-For publishing and release instructions, use the `/release` skill which provides a complete guide for publishing packages to npm in the correct dependency order. Invoke it with:
+For publishing and release instructions, use the `/release` skill (within Claude Code or Claude Agent SDK) which provides a complete guide for publishing packages to npm in the correct dependency order. Invoke it with:
 
 ```
 /release
