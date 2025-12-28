@@ -4,9 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	mockReadFileSync: vi.fn(),
 	mockWriteFileSync: vi.fn(),
-	mockCreateServer: vi.fn(),
 	mockOpen: vi.fn(),
 	mockFetch: vi.fn(),
+	mockFastifyInstance: {
+		get: vi.fn(),
+		listen: vi.fn(),
+		close: vi.fn(),
+	},
+	mockFastify: vi.fn(),
 }));
 
 // Mock modules
@@ -15,18 +20,27 @@ vi.mock("node:fs", () => ({
 	writeFileSync: mocks.mockWriteFileSync,
 }));
 
-const mockServerInstance = {
-	listen: vi.fn(),
-	close: vi.fn(),
-	on: vi.fn(),
-};
-
-vi.mock("node:http", () => ({
-	createServer: mocks.mockCreateServer,
+// Mock Fastify
+vi.mock("fastify", () => ({
+	default: mocks.mockFastify,
 }));
 
 vi.mock("open", () => ({
 	default: mocks.mockOpen,
+}));
+
+// Mock LinearClient
+const mockLinearClient = {
+	viewer: Promise.resolve({
+		organization: Promise.resolve({
+			id: "workspace-123",
+			name: "Test Workspace",
+		}),
+	}),
+};
+
+vi.mock("@linear/sdk", () => ({
+	LinearClient: vi.fn(() => mockLinearClient),
 }));
 
 // Mock process.exit
@@ -72,11 +86,15 @@ describe("SelfAuthCommand", () => {
 		command = new SelfAuthCommand(mockApp as any);
 		originalEnv = { ...process.env };
 
-		// Setup default server mock
-		mocks.mockCreateServer.mockReturnValue(mockServerInstance);
-		mockServerInstance.listen.mockImplementation((_port, cb) => {
-			if (cb) cb();
-		});
+		// Reset Fastify mock instance
+		mocks.mockFastifyInstance.get.mockReset();
+		mocks.mockFastifyInstance.listen.mockReset();
+		mocks.mockFastifyInstance.close.mockReset();
+
+		// Setup default Fastify mock
+		mocks.mockFastify.mockReturnValue(mocks.mockFastifyInstance);
+		mocks.mockFastifyInstance.listen.mockResolvedValue(undefined);
+		mocks.mockFastifyInstance.close.mockResolvedValue(undefined);
 		mocks.mockOpen.mockResolvedValue(undefined);
 
 		// Setup global fetch mock
@@ -171,78 +189,65 @@ describe("SelfAuthCommand", () => {
 			);
 		});
 
-		it("should start HTTP server on correct port", async () => {
-			// Simulate server starting but no callback
-			mockServerInstance.listen.mockImplementation((port, _cb) => {
-				expect(port).toBe(3456);
-				// Don't call callback to avoid waiting for auth
-			});
+		it("should start Fastify server on correct port", async () => {
+			// Simulate server starting but never resolving to test startup
+			mocks.mockFastifyInstance.listen.mockImplementation(
+				async (options: { port: number; host: string }) => {
+					expect(options.port).toBe(3456);
+					expect(options.host).toBe("localhost");
+					// Never resolve to avoid waiting for auth
+					return new Promise(() => {});
+				},
+			);
 
-			// This will hang waiting for callback, so we need to handle that
+			// This will hang waiting for listen to resolve
 			const _executePromise = command.execute([]);
 
 			// Give it a moment to start
 			await new Promise((resolve) => setTimeout(resolve, 10));
 
-			expect(mocks.mockCreateServer).toHaveBeenCalled();
-			expect(mockServerInstance.listen).toHaveBeenCalledWith(
-				3456,
+			expect(mocks.mockFastify).toHaveBeenCalledWith({ logger: false });
+			expect(mocks.mockFastifyInstance.get).toHaveBeenCalledWith(
+				"/callback",
 				expect.any(Function),
 			);
-
-			// Clean up by closing server
-			mockServerInstance.close();
 		});
 
 		it("should open browser with correct OAuth URL", async () => {
-			let requestHandler: Function;
+			let routeHandler: Function;
 
-			mocks.mockCreateServer.mockImplementation((handler: Function) => {
-				requestHandler = handler;
-				return mockServerInstance;
+			// Capture the route handler when get() is called
+			mocks.mockFastifyInstance.get.mockImplementation(
+				(_path: string, handler: Function) => {
+					routeHandler = handler;
+				},
+			);
+
+			// When listen is called, simulate the callback arriving
+			mocks.mockFastifyInstance.listen.mockImplementation(async () => {
+				// Simulate OAuth callback with code after a short delay
+				setTimeout(async () => {
+					const mockRequest = {
+						query: { code: "test-auth-code" },
+					};
+					const mockReply = {
+						type: vi.fn().mockReturnThis(),
+						code: vi.fn().mockReturnThis(),
+						send: vi.fn().mockReturnThis(),
+					};
+					await routeHandler(mockRequest, mockReply);
+				}, 10);
 			});
-
-			mockServerInstance.listen.mockImplementation((_port, cb) => {
-				cb();
-			});
-
-			// Simulate OAuth callback with code
-			setTimeout(() => {
-				const mockReq = {
-					url: "/callback?code=test-auth-code",
-				};
-				const mockRes = {
-					writeHead: vi.fn(),
-					end: vi.fn(),
-				};
-				requestHandler(mockReq, mockRes);
-			}, 10);
 
 			// Mock token exchange
-			mocks.mockFetch
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () =>
-						Promise.resolve({
-							access_token: "lin_oauth_test_token",
-							refresh_token: "refresh_test_token",
-						}),
-				})
-				// Mock workspace info fetch
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () =>
-						Promise.resolve({
-							data: {
-								viewer: {
-									organization: {
-										id: "workspace-123",
-										name: "Test Workspace",
-									},
-								},
-							},
-						}),
-				});
+			mocks.mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						access_token: "lin_oauth_test_token",
+						refresh_token: "refresh_test_token",
+					}),
+			});
 
 			await expect(command.execute([])).rejects.toThrow("process.exit called");
 			expect(mockExit).toHaveBeenCalledWith(0); // Success exit
@@ -256,28 +261,29 @@ describe("SelfAuthCommand", () => {
 		});
 
 		it("should handle OAuth error response", async () => {
-			let requestHandler: Function;
+			let routeHandler: Function;
 
-			mocks.mockCreateServer.mockImplementation((handler: Function) => {
-				requestHandler = handler;
-				return mockServerInstance;
+			// Capture the route handler when get() is called
+			mocks.mockFastifyInstance.get.mockImplementation(
+				(_path: string, handler: Function) => {
+					routeHandler = handler;
+				},
+			);
+
+			// When listen is called, simulate the error callback arriving
+			mocks.mockFastifyInstance.listen.mockImplementation(async () => {
+				setTimeout(async () => {
+					const mockRequest = {
+						query: { error: "access_denied" },
+					};
+					const mockReply = {
+						type: vi.fn().mockReturnThis(),
+						code: vi.fn().mockReturnThis(),
+						send: vi.fn().mockReturnThis(),
+					};
+					await routeHandler(mockRequest, mockReply);
+				}, 10);
 			});
-
-			mockServerInstance.listen.mockImplementation((_port, cb) => {
-				cb();
-			});
-
-			// Simulate OAuth error callback
-			setTimeout(() => {
-				const mockReq = {
-					url: "/callback?error=access_denied",
-				};
-				const mockRes = {
-					writeHead: vi.fn(),
-					end: vi.fn(),
-				};
-				requestHandler(mockReq, mockRes);
-			}, 10);
 
 			await expect(command.execute([])).rejects.toThrow("process.exit called");
 			expect(mockExit).toHaveBeenCalledWith(1);
@@ -298,41 +304,36 @@ describe("SelfAuthCommand", () => {
 		});
 
 		it("should exchange code for tokens with correct parameters", async () => {
-			let requestHandler: Function;
+			let routeHandler: Function;
 
-			mocks.mockCreateServer.mockImplementation((handler: Function) => {
-				requestHandler = handler;
-				return mockServerInstance;
+			// Capture the route handler when get() is called
+			mocks.mockFastifyInstance.get.mockImplementation(
+				(_path: string, handler: Function) => {
+					routeHandler = handler;
+				},
+			);
+
+			// When listen is called, simulate the callback arriving
+			mocks.mockFastifyInstance.listen.mockImplementation(async () => {
+				setTimeout(async () => {
+					const mockRequest = { query: { code: "auth-code-123" } };
+					const mockReply = {
+						type: vi.fn().mockReturnThis(),
+						code: vi.fn().mockReturnThis(),
+						send: vi.fn().mockReturnThis(),
+					};
+					await routeHandler(mockRequest, mockReply);
+				}, 10);
 			});
 
-			mockServerInstance.listen.mockImplementation((_port, cb) => {
-				cb();
+			mocks.mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						access_token: "lin_oauth_new_token",
+						refresh_token: "refresh_token",
+					}),
 			});
-
-			setTimeout(() => {
-				const mockReq = { url: "/callback?code=auth-code-123" };
-				const mockRes = { writeHead: vi.fn(), end: vi.fn() };
-				requestHandler(mockReq, mockRes);
-			}, 10);
-
-			mocks.mockFetch
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () =>
-						Promise.resolve({
-							access_token: "lin_oauth_new_token",
-							refresh_token: "refresh_token",
-						}),
-				})
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () =>
-						Promise.resolve({
-							data: {
-								viewer: { organization: { id: "ws-1", name: "Workspace" } },
-							},
-						}),
-				});
 
 			await expect(command.execute([])).rejects.toThrow("process.exit called");
 
@@ -354,22 +355,27 @@ describe("SelfAuthCommand", () => {
 		});
 
 		it("should error on invalid access token format", async () => {
-			let requestHandler: Function;
+			let routeHandler: Function;
 
-			mocks.mockCreateServer.mockImplementation((handler: Function) => {
-				requestHandler = handler;
-				return mockServerInstance;
+			// Capture the route handler when get() is called
+			mocks.mockFastifyInstance.get.mockImplementation(
+				(_path: string, handler: Function) => {
+					routeHandler = handler;
+				},
+			);
+
+			// When listen is called, simulate the callback arriving
+			mocks.mockFastifyInstance.listen.mockImplementation(async () => {
+				setTimeout(async () => {
+					const mockRequest = { query: { code: "auth-code" } };
+					const mockReply = {
+						type: vi.fn().mockReturnThis(),
+						code: vi.fn().mockReturnThis(),
+						send: vi.fn().mockReturnThis(),
+					};
+					await routeHandler(mockRequest, mockReply);
+				}, 10);
 			});
-
-			mockServerInstance.listen.mockImplementation((_port, cb) => {
-				cb();
-			});
-
-			setTimeout(() => {
-				const mockReq = { url: "/callback?code=auth-code" };
-				const mockRes = { writeHead: vi.fn(), end: vi.fn() };
-				requestHandler(mockReq, mockRes);
-			}, 10);
 
 			mocks.mockFetch.mockResolvedValueOnce({
 				ok: true,
@@ -403,37 +409,43 @@ describe("SelfAuthCommand", () => {
 				}),
 			);
 
-			let requestHandler: Function;
-			mocks.mockCreateServer.mockImplementation((handler: Function) => {
-				requestHandler = handler;
-				return mockServerInstance;
+			let routeHandler: Function;
+			mocks.mockFastifyInstance.get.mockImplementation(
+				(_path: string, handler: Function) => {
+					routeHandler = handler;
+				},
+			);
+			mocks.mockFastifyInstance.listen.mockImplementation(async () => {
+				setTimeout(async () => {
+					const mockRequest = { query: { code: "code" } };
+					const mockReply = {
+						type: vi.fn().mockReturnThis(),
+						code: vi.fn().mockReturnThis(),
+						send: vi.fn().mockReturnThis(),
+					};
+					await routeHandler(mockRequest, mockReply);
+				}, 10);
 			});
-			mockServerInstance.listen.mockImplementation((_port, cb) => cb());
 
-			setTimeout(() => {
-				const mockReq = { url: "/callback?code=code" };
-				const mockRes = { writeHead: vi.fn(), end: vi.fn() };
-				requestHandler(mockReq, mockRes);
-			}, 10);
+			mocks.mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						access_token: "lin_oauth_new",
+						refresh_token: "refresh_new",
+					}),
+			});
 
-			mocks.mockFetch
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () =>
-						Promise.resolve({
-							access_token: "lin_oauth_new",
-							refresh_token: "refresh_new",
-						}),
-				})
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () =>
-						Promise.resolve({
-							data: {
-								viewer: { organization: { id: "ws-123", name: "Workspace" } },
-							},
-						}),
-				});
+			// Update the LinearClient mock for this specific test
+			const { LinearClient } = await import("@linear/sdk");
+			(LinearClient as any).mockImplementation(() => ({
+				viewer: Promise.resolve({
+					organization: Promise.resolve({
+						id: "ws-123",
+						name: "Workspace",
+					}),
+				}),
+			}));
 
 			await expect(command.execute([])).rejects.toThrow("process.exit called");
 			expect(mockExit).toHaveBeenCalledWith(0);
@@ -465,39 +477,43 @@ describe("SelfAuthCommand", () => {
 				}),
 			);
 
-			let requestHandler: Function;
-			mocks.mockCreateServer.mockImplementation((handler: Function) => {
-				requestHandler = handler;
-				return mockServerInstance;
+			let routeHandler: Function;
+			mocks.mockFastifyInstance.get.mockImplementation(
+				(_path: string, handler: Function) => {
+					routeHandler = handler;
+				},
+			);
+			mocks.mockFastifyInstance.listen.mockImplementation(async () => {
+				setTimeout(async () => {
+					const mockRequest = { query: { code: "code" } };
+					const mockReply = {
+						type: vi.fn().mockReturnThis(),
+						code: vi.fn().mockReturnThis(),
+						send: vi.fn().mockReturnThis(),
+					};
+					await routeHandler(mockRequest, mockReply);
+				}, 10);
 			});
-			mockServerInstance.listen.mockImplementation((_port, cb) => cb());
 
-			setTimeout(() => {
-				const mockReq = { url: "/callback?code=code" };
-				const mockRes = { writeHead: vi.fn(), end: vi.fn() };
-				requestHandler(mockReq, mockRes);
-			}, 10);
+			mocks.mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						access_token: "lin_oauth_new",
+						refresh_token: "refresh",
+					}),
+			});
 
-			mocks.mockFetch
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () =>
-						Promise.resolve({
-							access_token: "lin_oauth_new",
-							refresh_token: "refresh",
-						}),
-				})
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () =>
-						Promise.resolve({
-							data: {
-								viewer: {
-									organization: { id: "ws-new", name: "New Workspace" },
-								},
-							},
-						}),
-				});
+			// Update the LinearClient mock for this specific test
+			const { LinearClient } = await import("@linear/sdk");
+			(LinearClient as any).mockImplementation(() => ({
+				viewer: Promise.resolve({
+					organization: Promise.resolve({
+						id: "ws-new",
+						name: "New Workspace",
+					}),
+				}),
+			}));
 
 			await expect(command.execute([])).rejects.toThrow("process.exit called");
 
