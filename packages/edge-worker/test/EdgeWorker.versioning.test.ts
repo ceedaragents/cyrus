@@ -13,7 +13,22 @@ vi.mock("fs/promises", () => ({
 
 // Mock other dependencies
 vi.mock("cyrus-claude-runner");
-vi.mock("@linear/sdk");
+vi.mock("@linear/sdk", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@linear/sdk")>();
+	return {
+		...actual,
+		LinearClient: vi.fn().mockImplementation(() => ({
+			issue: vi.fn(),
+			viewer: Promise.resolve({
+				organization: Promise.resolve({ id: "ws-123", name: "Test" }),
+			}),
+			client: {
+				request: vi.fn(),
+				setHeader: vi.fn(),
+			},
+		})),
+	};
+});
 vi.mock("../src/SharedApplicationServer.js");
 vi.mock("../src/AgentSessionManager.js");
 vi.mock("cyrus-core");
@@ -56,7 +71,8 @@ describe("EdgeWorker - Version Tag Extraction", () => {
 	});
 
 	afterEach(() => {
-		vi.restoreAllMocks();
+		// Only clear mocks, don't restore them (restoreAllMocks would undo module mocks)
+		vi.clearAllMocks();
 	});
 
 	it("should extract version from prompt template", async () => {

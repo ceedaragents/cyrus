@@ -63,13 +63,19 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 					nodes: [], // No labels by default
 				}),
 			}),
+			// Mock the underlying GraphQL client for token refresh patching
+			client: {
+				request: vi.fn(),
+				setHeader: vi.fn(),
+			},
 		};
 		vi.mocked(LinearClient).mockImplementation(() => mockLinearClient);
 
 		// Mock AgentSessionManager
 		mockAgentSessionManager = {
-			postAnalyzingThought: vi.fn().mockResolvedValue(null),
+			postRoutingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
 			on: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(

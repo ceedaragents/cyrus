@@ -22,7 +22,11 @@ import { existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAllTools } from "cyrus-claude-runner";
-import type { EdgeWorkerConfig, RepositoryConfig } from "cyrus-core";
+import {
+	DEFAULT_WORKTREES_DIR,
+	type EdgeWorkerConfig,
+	type RepositoryConfig,
+} from "cyrus-core";
 import { EdgeWorker } from "cyrus-edge-worker";
 import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
 
@@ -59,7 +63,7 @@ function setupDirectories(): void {
 	const requiredDirs = [
 		CYRUS_HOME,
 		join(CYRUS_HOME, "repos"),
-		join(CYRUS_HOME, "worktrees"),
+		join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
 		join(CYRUS_HOME, "mcp-configs"),
 		join(CYRUS_HOME, "state"),
 	];
@@ -88,7 +92,7 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		linearWorkspaceId: "cli-workspace",
 		linearWorkspaceName: "F1 Testing",
 		linearToken: "f1-test-token", // Dummy token for CLI mode
-		workspaceBaseDir: join(CYRUS_HOME, "worktrees"),
+		workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
 		isActive: true,
 	};
 
