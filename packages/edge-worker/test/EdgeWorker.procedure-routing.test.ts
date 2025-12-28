@@ -28,9 +28,9 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(session.metadata.procedure.procedureName).toBe("full-development");
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(0);
 
-			// Simulate completing primary subroutine
+			// Simulate completing coding-activity subroutine
 			procedureAnalyzer.advanceToNextSubroutine(session, null);
-			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false); // Not complete yet
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(1);
 
 			// Simulate completing verifications subroutine
@@ -38,9 +38,19 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(2);
 
-			// Simulate completing git-gh subroutine - advances to last subroutine
+			// Simulate completing git-commit subroutine
 			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(3);
+
+			// Simulate completing gh-pr subroutine
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false);
+			expect(session.metadata.procedure.currentSubroutineIndex).toBe(4);
+
+			// Simulate completing changelog-update subroutine - advances to last subroutine
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(session.metadata.procedure.currentSubroutineIndex).toBe(5);
 			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true); // At last subroutine, no next
 		});
 
@@ -62,9 +72,14 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(1);
 
-			// Complete git-gh - advances to last subroutine
+			// Complete git-commit
 			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(false);
 			expect(session.metadata.procedure.currentSubroutineIndex).toBe(2);
+
+			// Complete gh-pr - advances to last subroutine
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(session.metadata.procedure.currentSubroutineIndex).toBe(3);
 			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true); // At last subroutine, no next
 		});
 
@@ -106,7 +121,17 @@ describe("EdgeWorker - Procedure Routing", () => {
 
 			procedureAnalyzer.advanceToNextSubroutine(session, null);
 			expect(procedureAnalyzer.getCurrentSubroutine(session)?.name).toBe(
-				"git-gh",
+				"git-commit",
+			);
+
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.getCurrentSubroutine(session)?.name).toBe(
+				"gh-pr",
+			);
+
+			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			expect(procedureAnalyzer.getCurrentSubroutine(session)?.name).toBe(
+				"changelog-update",
 			);
 
 			procedureAnalyzer.advanceToNextSubroutine(session, null);
@@ -140,6 +165,20 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(SUBROUTINES.gitGh.suppressThoughtPosting).toBeUndefined();
 		});
 
+		it("should NOT have suppressThoughtPosting on git-commit subroutine", () => {
+			expect(SUBROUTINES.gitCommit.suppressThoughtPosting).toBeUndefined();
+		});
+
+		it("should NOT have suppressThoughtPosting on gh-pr subroutine", () => {
+			expect(SUBROUTINES.ghPr.suppressThoughtPosting).toBeUndefined();
+		});
+
+		it("should NOT have suppressThoughtPosting on changelog-update subroutine", () => {
+			expect(
+				SUBROUTINES.changelogUpdate.suppressThoughtPosting,
+			).toBeUndefined();
+		});
+
 		it("should suppress thoughts/actions but not responses during question-answer", async () => {
 			const session = { metadata: {} } as any;
 			const simpleQuestionProcedure = PROCEDURES["simple-question"];
@@ -167,10 +206,12 @@ describe("EdgeWorker - Procedure Routing", () => {
 			// Initialize with full-development procedure (ends with concise-summary)
 			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
 
-			// Advance to concise-summary subroutine (skip 3 subroutines)
+			// Advance to concise-summary subroutine (skip 5 subroutines)
 			procedureAnalyzer.advanceToNextSubroutine(session, null); // coding-activity -> verifications
-			procedureAnalyzer.advanceToNextSubroutine(session, null); // verifications -> git-gh
-			procedureAnalyzer.advanceToNextSubroutine(session, null); // git-gh -> concise-summary
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // verifications -> git-commit
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // git-commit -> gh-pr
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // gh-pr -> changelog-update
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // changelog-update -> concise-summary
 
 			// Get current subroutine
 			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
@@ -204,17 +245,48 @@ describe("EdgeWorker - Procedure Routing", () => {
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 		});
 
-		it("should NOT suppress during git-gh subroutine", async () => {
+		it("should NOT suppress during git-commit subroutine", async () => {
 			const session = { metadata: {} } as any;
 			const fullDevProcedure = PROCEDURES["full-development"];
 
 			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
-			procedureAnalyzer.advanceToNextSubroutine(session, null);
-			procedureAnalyzer.advanceToNextSubroutine(session, null);
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // coding-activity -> verifications
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // verifications -> git-commit
 
 			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 
-			expect(currentSubroutine?.name).toBe("git-gh");
+			expect(currentSubroutine?.name).toBe("git-commit");
+			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
+		});
+
+		it("should NOT suppress during gh-pr subroutine", async () => {
+			const session = { metadata: {} } as any;
+			const fullDevProcedure = PROCEDURES["full-development"];
+
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // coding-activity -> verifications
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // verifications -> git-commit
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // git-commit -> gh-pr
+
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+
+			expect(currentSubroutine?.name).toBe("gh-pr");
+			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
+		});
+
+		it("should NOT suppress during changelog-update subroutine", async () => {
+			const session = { metadata: {} } as any;
+			const fullDevProcedure = PROCEDURES["full-development"];
+
+			procedureAnalyzer.initializeProcedureMetadata(session, fullDevProcedure);
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // coding-activity -> verifications
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // verifications -> git-commit
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // git-commit -> gh-pr
+			procedureAnalyzer.advanceToNextSubroutine(session, null); // gh-pr -> changelog-update
+
+			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+
+			expect(currentSubroutine?.name).toBe("changelog-update");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 		});
 	});
