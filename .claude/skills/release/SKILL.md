@@ -96,7 +96,20 @@ git push origin <branch-name>
 git push origin v0.1.XX
 ```
 
-### 6. Update Linear Issues
+### 6. Create GitHub Release
+Create a GitHub release using the changelog notes as the content:
+```bash
+gh release create v0.1.XX --title "v0.1.XX" --notes-file - << 'EOF'
+<paste the changelog notes for this version here>
+EOF
+```
+
+Or interactively:
+```bash
+gh release create v0.1.XX --title "v0.1.XX" --notes "$(cat CHANGELOG.md | sed -n '/## \[0.1.XX\]/,/## \[/p' | head -n -1)"
+```
+
+### 7. Update Linear Issues
 After a successful release, move each Linear issue mentioned in the changelog from 'MergedUnreleased' (Done) status to 'ReleasedMonitoring' (also Done) status.
 
 ## Key Notes
