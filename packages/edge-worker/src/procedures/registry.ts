@@ -107,6 +107,20 @@ export const SUBROUTINES = {
 		suppressThoughtPosting: true,
 		disallowedTools: ["mcp__linear__create_comment"],
 	},
+	releaseExecution: {
+		name: "release-execution",
+		promptPath: "subroutines/release-execution.md",
+		description:
+			"Execute release process using project skill or gather release info via AskUserQuestion",
+	},
+	releaseSummary: {
+		name: "release-summary",
+		promptPath: "subroutines/release-summary.md",
+		singleTurn: true,
+		description: "Summary of the release process",
+		suppressThoughtPosting: true,
+		disallowedTools: ["mcp__linear__create_comment"],
+	},
 } as const;
 
 /**
@@ -176,6 +190,13 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		description: "User-driven testing workflow for manual testing sessions",
 		subroutines: [SUBROUTINES.userTesting, SUBROUTINES.userTestingSummary],
 	},
+
+	release: {
+		name: "release",
+		description:
+			"Release workflow that invokes project release skill or asks user for release info",
+		subroutines: [SUBROUTINES.releaseExecution, SUBROUTINES.releaseSummary],
+	},
 };
 
 /**
@@ -193,6 +214,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	debugger: "debugger-full",
 	orchestrator: "orchestrator-full",
 	"user-testing": "user-testing",
+	release: "release",
 };
 
 /**
