@@ -10,9 +10,6 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Documentation restructured** - Moved self-hosting documentation from `selfhosting/` folder to `docs/` with separate files: `SELF_HOSTING.md` (main guide), `CONFIG_FILE.md` (configuration reference), and `CLOUDFLARE_TUNNEL.md` (optional tunnel setup). Main README now links to these docs. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
-- **Shared constants** - Moved `DEFAULT_WORKTREES_DIR`, `DEFAULT_BASE_BRANCH`, and `DEFAULT_CONFIG_FILENAME` to `cyrus-core` package for consistent use across CLI and other packages. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
-- **OAuth scope reduced** - Self-hosted OAuth now uses minimal scope `write,app:assignable,app:mentionable` matching the hosted version. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
-- **Fastify for OAuth callback** - Replaced Node.js `http.createServer` with Fastify for the OAuth callback server in `self-auth` command. ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
 
 ## [0.2.7] - 2025-12-28
 

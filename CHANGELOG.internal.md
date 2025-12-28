@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Moved `DEFAULT_WORKTREES_DIR`, `DEFAULT_BASE_BRANCH`, and `DEFAULT_CONFIG_FILENAME` constants to `cyrus-core` package for consistent use across CLI and other packages ([CYPACK-669](https://linear.app/ceedar/issue/CYPACK-669), [#707](https://github.com/ceedaragents/cyrus/pull/707))
+
 ## [0.2.7] - 2025-12-28
 
 ### Changed
