@@ -3,18 +3,13 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as readline from "node:readline";
-import type { EdgeConfig } from "cyrus-core";
+import {
+	DEFAULT_BASE_BRANCH,
+	DEFAULT_CONFIG_FILENAME,
+	DEFAULT_WORKTREES_DIR,
+	type EdgeConfig,
+} from "cyrus-core";
 import { BaseCommand } from "./ICommand.js";
-
-/**
- * Default directory name for git worktrees
- */
-const DEFAULT_WORKTREES_DIR = "worktrees";
-
-/**
- * Default base branch for new repositories
- */
-const DEFAULT_BASE_BRANCH = "main";
 
 /**
  * Workspace credentials extracted from existing repository configurations
@@ -66,7 +61,7 @@ export class SelfAddRepoCommand extends BaseCommand {
 
 		try {
 			// Load config
-			const configPath = resolve(this.app.cyrusHome, "config.json");
+			const configPath = resolve(this.app.cyrusHome, DEFAULT_CONFIG_FILENAME);
 			let config: EdgeConfig;
 			try {
 				config = JSON.parse(readFileSync(configPath, "utf-8")) as EdgeConfig;

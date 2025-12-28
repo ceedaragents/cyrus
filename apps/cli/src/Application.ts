@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, watch } from "node:fs";
 import { dirname, join } from "node:path";
-import type { RepositoryConfig } from "cyrus-core";
-import { DEFAULT_PROXY_URL } from "cyrus-core";
+import {
+	DEFAULT_PROXY_URL,
+	DEFAULT_WORKTREES_DIR,
+	type RepositoryConfig,
+} from "cyrus-core";
 import { GitService, SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
@@ -100,7 +103,7 @@ export class Application {
 	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs
 	 */
 	private ensureRequiredDirectories(): void {
-		const requiredDirs = ["repos", "worktrees", "mcp-configs"];
+		const requiredDirs = ["repos", DEFAULT_WORKTREES_DIR, "mcp-configs"];
 
 		for (const dir of requiredDirs) {
 			const dirPath = join(this.cyrusHome, dir);

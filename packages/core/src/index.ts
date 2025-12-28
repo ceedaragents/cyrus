@@ -41,7 +41,12 @@ export type {
 export { resolvePath } from "./config-types.js";
 
 // Constants
-export { DEFAULT_PROXY_URL } from "./constants.js";
+export {
+	DEFAULT_BASE_BRANCH,
+	DEFAULT_CONFIG_FILENAME,
+	DEFAULT_PROXY_URL,
+	DEFAULT_WORKTREES_DIR,
+} from "./constants.js";
 // Issue Tracker Abstraction
 export type {
 	AgentActivity,

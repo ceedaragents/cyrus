@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import type { EdgeConfig } from "cyrus-core";
+import { DEFAULT_CONFIG_FILENAME, type EdgeConfig } from "cyrus-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import open from "open";
 import { BaseCommand } from "./ICommand.js";
@@ -36,7 +36,7 @@ export class SelfAuthCommand extends BaseCommand {
 		}
 
 		// Check config file exists
-		const configPath = resolve(this.app.cyrusHome, "config.json");
+		const configPath = resolve(this.app.cyrusHome, DEFAULT_CONFIG_FILENAME);
 		let config: EdgeConfig;
 		try {
 			config = JSON.parse(readFileSync(configPath, "utf-8")) as EdgeConfig;

@@ -39,9 +39,13 @@ const mockLinearClient = {
 	}),
 };
 
-vi.mock("@linear/sdk", () => ({
-	LinearClient: vi.fn(() => mockLinearClient),
-}));
+vi.mock("@linear/sdk", async (importOriginal) => {
+	const actual = await importOriginal();
+	return {
+		...(actual as object),
+		LinearClient: vi.fn(() => mockLinearClient),
+	};
+});
 
 // Mock process.exit
 const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {

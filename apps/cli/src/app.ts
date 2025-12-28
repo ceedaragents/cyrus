@@ -107,11 +107,11 @@ program
 	});
 
 // Self-add-repo command - Clone and add repository
-// url: Any valid git clone address (e.g., "https://github.com/org/repo.git" or "git@github.com:org/repo.git")
-// workspace: The display name of the Linear workspace (e.g., "My Workspace") - not a UUID
 program
 	.command("self-add-repo [url] [workspace]")
-	.description("Clone a repo and add it to config")
+	.description(
+		'Clone a repo and add it to config. URL accepts any valid git clone address (e.g., "https://github.com/org/repo.git"). Workspace is the display name of the Linear workspace (e.g., "My Workspace") - not a UUID.',
+	)
 	.action(async (url?: string, workspace?: string) => {
 		const opts = program.opts();
 		const app = new Application(
