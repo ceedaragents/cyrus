@@ -342,85 +342,11 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
 
 ## Publishing
 
-**Important: Always publish packages in the correct order to ensure proper dependency resolution.**
+For publishing and release instructions, use the `/release` skill (within Claude Code or Claude Agent SDK) which provides a complete guide for publishing packages to npm in the correct dependency order. Invoke it with:
 
-### Pre-Publishing Checklist
-
-1. **Update CHANGELOG.md**: 
-   - Move items from `## [Unreleased]` to a new versioned section
-   - Use the CLI version number (e.g., `## [0.1.22] - 2025-01-06`)
-   - Focus on end-user impact from the perspective of the `cyrus` CLI
-
-2. **Commit all changes**:
-   ```bash
-   git add -A
-   git commit -m "Prepare release v0.1.XX"
-   git push
-   ```
-
-### Publishing Workflow
-
-1. **Install dependencies from root**:
-   ```bash
-   pnpm install  # Ensures all workspace dependencies are up to date
-   ```
-
-2. **Build all packages from root first**:
-   ```bash
-   pnpm build  # Builds all packages to ensure dependencies are resolved
-   ```
-
-3. **Publish packages in dependency order**:
-
-   **IMPORTANT**: Publish in this exact order to avoid dependency resolution issues:
-
-   ```bash
-   # 1. Packages with no internal dependencies
-   cd packages/ndjson-client && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 2. Packages that depend on external deps only
-   cd packages/claude-runner && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 3. Core package (depends on claude-runner)
-   cd packages/core && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 4. Simple agent runner (depends on claude-runner)
-   cd packages/simple-agent-runner && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 5. Edge worker (depends on core, claude-runner, ndjson-client, simple-agent-runner)
-   cd packages/edge-worker && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-   ```
-
-4. **Finally publish the CLI**:
-   ```bash
-   pnpm install  # Final install to ensure all deps are latest
-   cd apps/cli && pnpm publish --access public --no-git-checks
-   cd ../..
-   ```
-
-5. **Create git tag and push**:
-   ```bash
-   git tag v0.1.XX
-   git push origin <branch-name>
-   git push origin v0.1.XX
-   ```
-
-**Key Notes:**
-- Always use `--no-git-checks` flag to publish from feature branches
-- Run `pnpm install` after each publish to update the lockfile
-- The `simple-agent-runner` package MUST be published before `edge-worker`
-- Build all packages once at the start, then publish without rebuilding
-- This ensures `workspace:*` references resolve to published versions
+```
+/release
+```
 
 
 ## Gemini CLI for Testing
