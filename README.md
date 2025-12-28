@@ -14,7 +14,13 @@
 
 AI development agent for Linear powered by Claude Code. Cyrus monitors Linear issues assigned to it, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments, all from the safety and security of your own computer.
 
-**Please Note: Cyrus is built entirely on the premise that you bring your own Claude Code keys/billing. Subscribing to Cyrus Pro gets you priority support, convenience of not hosting a Linear app and cloudflare worker, and funds feature development. You can also host the proxy yourself if you don't wish to pay for that convenience. Documentation coming soon.**
+**Please Note: Cyrus is built entirely on the premise that you bring your own Claude Code keys/billing. Subscribing to Cyrus Pro gets you priority support, convenience of not hosting a Linear app and cloudflare worker, and funds feature development. You can also host the proxy yourself if you don't wish to pay for that convenience.**
+
+## Documentation
+
+- **[Self-Hosting Guide](./docs/SELF_HOSTING.md)** - Set up Cyrus on your own machine or server
+- **[Configuration Reference](./docs/CONFIG_FILE.md)** - Detailed config.json options and examples
+- **[Cloudflare Tunnel Setup](./docs/CLOUDFLARE_TUNNEL.md)** - Optional guide for exposing your local instance
 
 ## Installation
 
@@ -48,208 +54,15 @@ Keep `cyrus` running, and the agent will start monitoring issues assigned to you
 
 ## Configuration
 
-After initial setup, Cyrus stores your configuration in `~/.cyrus/config.json`. You can edit this file to customize the following settings:
+After initial setup, Cyrus stores your configuration in `~/.cyrus/config.json`. For detailed configuration options including:
 
-### Repository Configuration
+- **Tool permissions** (`allowedTools`)
+- **MCP server configuration** (`mcpConfigPath`)
+- **Issue routing** (`teamKeys`, `projectKeys`, `routingLabels`)
+- **AI modes** (`labelPrompts`)
+- **Global defaults** (`promptDefaults`)
 
-Each repository in the `repositories` array can have these optional properties:
-
-#### `allowedTools` (array of strings)
-
-Controls which tools Claude can use when processing issues. Default: all standard tools plus `Bash(git:*)` and `Bash(gh:*)`.
-
-Examples:
-
-- `["Read(**)", "Edit(**)", "Bash(git:*)", "Task"]` - Allow reading, editing, git commands, and task management
-- `["Read(**)", "Edit(**)", "Bash(npm:*)", "WebSearch"]` - Allow reading, editing, npm commands, and web search
-- `["Read(**)", "Edit(**)", "mcp__github"]` - Allow all tools from the GitHub MCP server
-- `["Read(**)", "Edit(**)", "mcp__github__search_repositories"]` - Allow only the search_repositories tool from GitHub MCP
-
-For security configuration details, see: https://code.claude.com/docs/en/settings#permission-settings 
-
-#### `mcpConfigPath` (string or array of strings)
-
-Path(s) to MCP (Model Context Protocol) configuration files. MCP allows Claude to access external tools and data sources like databases or APIs.
-
-Can be specified as:
-
-- A single string: `"mcpConfigPath": "/home/user/myapp/mcp-config.json"`
-- An array of strings: `"mcpConfigPath": ["/home/user/myapp/mcp-base.json", "/home/user/myapp/mcp-local.json"]`
-
-When multiple files are provided, configurations are composed together. Later files override earlier ones for the same server names.
-
-Expected file format:
-
-```json
-{
-  "mcpServers": {
-    "server-name": {
-      "type": "stdio",
-      "command": "command-to-run",
-      "args": ["arg1", "arg2"]
-    }
-  }
-}
-```
-
-Learn more about MCP: https://code.claude.com/docs/en/mcp
-
-#### `teamKeys` (array of strings)
-
-Routes Linear issues from specific teams to this repository. When specified, only issues from matching teams trigger Cyrus.
-
-Example: `["CEE", "FRONT", "BACK"]` - Only process issues from teams CEE, FRONT, and BACK
-
-#### `projectKeys` (array of strings)
-
-Routes Linear issues from specific projects to this repository. When specified, only issues belonging to the listed Linear projects will be processed by this repository.
-
-Example: `["Mobile App", "Web Platform", "API Service"]` - Only process issues that belong to these Linear projects
-
-Note: This is useful when you want to separate work by project rather than by team, especially in organizations where multiple projects span across teams.
-
-#### `routingLabels` (array of strings)
-
-Routes Linear issues with specific labels to this repository. This is useful when you have multiple repositories handling issues from the same Linear team but want to route based on labels (e.g., "backend" vs "frontend" labels).
-
-Example: `["backend", "api"]` - Only process issues that have the "backend" or "api" label
-
-### Routing Priority Order
-
-When multiple routing configurations are present, Cyrus evaluates them in the following priority order:
-
-1. **`routingLabels`** (highest priority) - Label-based routing
-2. **`projectKeys`** (medium priority) - Project-based routing
-3. **`teamKeys`** (lowest priority) - Team-based routing
-
-If an issue matches multiple routing configurations, the highest priority match will be used. For example, if an issue has a label that matches `routingLabels` and also belongs to a project in `projectKeys`, the label-based routing will take precedence.
-
-#### `labelPrompts` (object)
-
-Routes issues to different AI modes based on Linear labels and optionally configures allowed tools per mode.
-
-**Simple format (labels only):**
-
-```json
-{
-  "debugger": ["Bug"],
-  "builder": ["Feature", "Improvement"],
-  "scoper": ["PRD"]
-}
-```
-
-**Advanced format (with dynamic tool configuration):**
-
-```json
-{
-  "debugger": {
-    "labels": ["Bug"],
-    "allowedTools": "readOnly"  // or ["Read(**)", "Task"] or "safe" or "all"
-  },
-  "builder": {
-    "labels": ["Feature", "Improvement"],
-    "allowedTools": "safe"
-  },
-  "scoper": {
-    "labels": ["PRD"],
-    "allowedTools": ["Read(**)", "WebFetch", "mcp__linear"]
-  }
-}
-```
-
-**Modes:**
-
-- **debugger**: Systematic problem investigation mode
-- **builder**: Feature implementation mode
-- **scoper**: Requirements analysis mode
-
-**Tool Presets:**
-
-- **`"readOnly"`**: Only tools that read/view content (9 tools)
-   - `Read(**)`, `WebFetch`, `WebSearch`, `TodoRead`, `TodoWrite`, `NotebookRead`, `Task`, `Batch`, `Skill`
-
-- **`"safe"`**: All tools except Bash (11 tools)
-   - All readOnly tools plus: `Edit(**)`, `NotebookEdit`
-
-- **`"all"`**: All available tools including Bash (12 tools)
-   - All safe tools plus: `Bash`
-
-- **Custom array**: Specify exact tools needed, e.g., `["Read(**)", "Edit(**)", "Task"]`
-
-Note: Linear MCP tools (`mcp__linear`) are always included automatically.
-
-### Global Configuration
-
-In addition to repository-specific settings, you can configure global defaults:
-
-#### `promptDefaults` (object)
-
-Sets default allowed tools for each prompt type across all repositories. Repository-specific configurations override these defaults.
-
-```json
-{
-  "promptDefaults": {
-    "debugger": {
-      "allowedTools": "readOnly"
-    },
-    "builder": {
-      "allowedTools": "safe"
-    },
-    "scoper": {
-      "allowedTools": ["Read(**)", "WebFetch", "mcp__linear"]
-    }
-  }
-}
-```
-
-### Example Configuration
-
-```json
-{
-  "promptDefaults": {
-    "debugger": {
-      "allowedTools": "readOnly"
-    },
-    "builder": {
-      "allowedTools": "safe"
-    }
-  },
-  "repositories": [{
-    "id": "workspace-123456",
-    "name": "my-app",
-    "repositoryPath": "/path/to/repo",
-    "allowedTools": ["Read(**)", "Edit(**)", "Bash(git:*)", "Bash(gh:*)", "Task"],
-    "mcpConfigPath": "./mcp-config.json",
-    "teamKeys": ["BACKEND"],
-    "projectKeys": ["API Service", "Backend Infrastructure"],
-    "routingLabels": ["backend", "api", "infrastructure"],
-    "labelPrompts": {
-      "debugger": {
-        "labels": ["Bug", "Hotfix"],
-        "allowedTools": "all"  // Override global default for this repo
-      },
-      "builder": {
-        "labels": ["Feature"]
-        // Uses global promptDefaults.builder.allowedTools ("safe")
-      },
-      "scoper": {
-        "labels": ["RFC", "Design"]
-        // Falls back to repository allowedTools or global defaults
-      }
-    }
-  }]
-}
-```
-
-### Tool Configuration Priority
-
-When determining allowed tools, Cyrus follows this priority order:
-
-1. Repository-specific prompt configuration (`labelPrompts.debugger.allowedTools`)
-2. Global prompt defaults (`promptDefaults.debugger.allowedTools`)
-3. Repository-level allowed tools (`allowedTools`)
-4. Global default allowed tools
-5. Safe tools fallback (all tools except Bash)
+See the **[Configuration Reference](./docs/CONFIG_FILE.md)**.
 
 ## Setup on Remote Host
 
