@@ -44,26 +44,39 @@ pnpm build  # Builds all packages to ensure dependencies are resolved
 
 ```bash
 # 1. Packages with no internal dependencies
-cd packages/ndjson-client && pnpm publish --access public --no-git-checks
+cd packages/cloudflare-tunnel-client && pnpm publish --access public --no-git-checks
 cd ../..
 pnpm install  # Update lockfile
 
-# 2. Packages that depend on external deps only
 cd packages/claude-runner && pnpm publish --access public --no-git-checks
 cd ../..
 pnpm install  # Update lockfile
 
-# 3. Core package (depends on claude-runner)
+# 2. Core package (depends on claude-runner)
 cd packages/core && pnpm publish --access public --no-git-checks
 cd ../..
 pnpm install  # Update lockfile
 
-# 4. Simple agent runner (depends on claude-runner)
+# 3. Simple agent runner (depends on claude-runner)
 cd packages/simple-agent-runner && pnpm publish --access public --no-git-checks
 cd ../..
 pnpm install  # Update lockfile
 
-# 5. Edge worker (depends on core, claude-runner, ndjson-client, simple-agent-runner)
+# 4. Packages that depend on core
+cd packages/linear-event-transport && pnpm publish --access public --no-git-checks
+cd ../..
+pnpm install  # Update lockfile
+
+cd packages/config-updater && pnpm publish --access public --no-git-checks
+cd ../..
+pnpm install  # Update lockfile
+
+# 5. Gemini runner (depends on claude-runner, core, simple-agent-runner)
+cd packages/gemini-runner && pnpm publish --access public --no-git-checks
+cd ../..
+pnpm install  # Update lockfile
+
+# 6. Edge worker (depends on all packages above)
 cd packages/edge-worker && pnpm publish --access public --no-git-checks
 cd ../..
 pnpm install  # Update lockfile
