@@ -9,6 +9,8 @@ import { Application } from "./Application.js";
 import { AuthCommand } from "./commands/AuthCommand.js";
 import { CheckTokensCommand } from "./commands/CheckTokensCommand.js";
 import { RefreshTokenCommand } from "./commands/RefreshTokenCommand.js";
+import { SelfAddRepoCommand } from "./commands/SelfAddRepoCommand.js";
+import { SelfAuthCommand } from "./commands/SelfAuthCommand.js";
 import { StartCommand } from "./commands/StartCommand.js";
 
 // Get the directory of the current module for reading package.json
@@ -88,6 +90,36 @@ program
 			packageJson.version,
 		);
 		await new RefreshTokenCommand(app).execute([]);
+	});
+
+// Self-auth command - Linear OAuth directly from CLI
+program
+	.command("self-auth")
+	.description("Authenticate with Linear OAuth directly")
+	.action(async () => {
+		const opts = program.opts();
+		const app = new Application(
+			opts.cyrusHome,
+			opts.envFile,
+			packageJson.version,
+		);
+		await new SelfAuthCommand(app).execute([]);
+	});
+
+// Self-add-repo command - Clone and add repository
+program
+	.command("self-add-repo [url] [workspace]")
+	.description("Clone a repo and add it to config")
+	.action(async (url?: string, workspace?: string) => {
+		const opts = program.opts();
+		const app = new Application(
+			opts.cyrusHome,
+			opts.envFile,
+			packageJson.version,
+		);
+		await new SelfAddRepoCommand(app).execute(
+			[url, workspace].filter(Boolean) as string[],
+		);
 	});
 
 // Parse and execute
