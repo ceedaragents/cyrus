@@ -1,9 +1,6 @@
 # Cyrus
 
 <div>
-  <a href="https://ceedar.ai">
-    <img src="https://img.shields.io/badge/Built%20by-Ceedar.ai-b8ec83?style=for-the-badge&logoColor=black&labelColor=333333" alt="Built by Ceedar.ai">
-  </a><br />
   <a href="https://github.com/ceedaragents/cyrus/actions">
     <img src="https://github.com/ceedaragents/cyrus/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
