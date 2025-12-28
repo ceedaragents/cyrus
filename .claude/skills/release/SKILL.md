@@ -10,10 +10,11 @@ Publish Cyrus packages to npm and create a release.
 
 ## Pre-Publishing Checklist
 
-1. **Update CHANGELOG.md**:
-   - Move items from `## [Unreleased]` to a new versioned section
+1. **Update CHANGELOG.md and CHANGELOG.internal.md**:
+   - Move items from `## [Unreleased]` to a new versioned section in both files
    - Use the CLI version number (e.g., `## [0.1.22] - 2025-01-06`)
-   - Focus on end-user impact from the perspective of the `cyrus` CLI
+   - CHANGELOG.md: Focus on end-user impact from the perspective of the `cyrus` CLI
+   - CHANGELOG.internal.md: Internal development changes, refactors, and tooling updates
 
 2. **Check Linear Issues**:
    - Review all Linear issues mentioned in the Unreleased changelog
