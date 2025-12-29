@@ -281,7 +281,9 @@ sudo systemctl start cyrus
 
 ## Configuration
 
-For detailed configuration options, see [Configuration File Reference](./CONFIG_FILE.md).
+Cyrus stores its configuration in `~/.cyrus/config.json`. You can customize tool permissions, issue routing rules, MCP server integrations, and label-based AI modes by editing this file. Cyrus watches the config file and automatically picks up changes—no restart required.
+
+For detailed options, see the [Configuration File Reference](./CONFIG_FILE.md).
 
 ---
 
