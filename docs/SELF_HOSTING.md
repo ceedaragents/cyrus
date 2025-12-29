@@ -47,6 +47,8 @@ Self-hosting Cyrus requires:
 2. A Linear OAuth application
 3. Cyrus installed and configured
 
+> **Tip:** Throughout this guide, you'll collect various environment variables. We recommend storing them in a single env file (e.g., `~/.cyrus/env`) and starting Cyrus with `cyrus --env-file=~/.cyrus/env`.
+
 ### Public URL Options
 
 Linear needs to send webhooks to your Cyrus instance. Choose one:
@@ -116,23 +118,24 @@ For Cloudflare Tunnel setup, see [Cloudflare Tunnel Guide](./CLOUDFLARE_TUNNEL.m
 
 ---
 
-## Step 3: Set Environment Variables
+## Step 3: Create Environment File
 
-Export the basic environment variables:
+Create an env file (e.g., `~/.cyrus/env`) with the base configuration:
 
 ```bash
-export LINEAR_DIRECT_WEBHOOKS=true
-export CYRUS_BASE_URL=https://your-public-url.com
-export CYRUS_SERVER_PORT=3456
+# Server configuration
+LINEAR_DIRECT_WEBHOOKS=true
+CYRUS_BASE_URL=https://your-public-url.com
+CYRUS_SERVER_PORT=3456
+
+# If using Cloudflare Tunnel (optional)
+# CLOUDFLARE_TOKEN=eyJhIjoiXXXXXXX...your_token_here...XXXXXXX
 ```
 
 **Replace:**
 - `CYRUS_BASE_URL` - Your public URL from Step 2
 
-If using Cloudflare Tunnel, also set:
-```bash
-export CLOUDFLARE_TOKEN=eyJhIjoiXXXXXXX...your_token_here...XXXXXXX
-```
+You'll add more variables to this file in the following steps.
 
 ---
 
@@ -184,12 +187,15 @@ After saving, copy these values from the app page:
 2. **Client Secret** - Another long string (may only be shown once!)
 3. **Webhook Signing Secret** - Found in webhook settings
 
-### 4.4 Set Linear OAuth Environment Variables
+### 4.4 Add Linear OAuth to Environment File
+
+Add these variables to your env file (`~/.cyrus/env`):
 
 ```bash
-export LINEAR_CLIENT_ID=client_id_27653g3h4y4ght3g4
-export LINEAR_CLIENT_SECRET=client_secret_shgd5a6jdk86823h
-export LINEAR_WEBHOOK_SECRET=lin_whs_s56dlmfhg72038474nmfojhsn7
+# Linear OAuth configuration
+LINEAR_CLIENT_ID=client_id_27653g3h4y4ght3g4
+LINEAR_CLIENT_SECRET=client_secret_shgd5a6jdk86823h
+LINEAR_WEBHOOK_SECRET=lin_whs_s56dlmfhg72038474nmfojhsn7
 ```
 
 ---
@@ -197,7 +203,7 @@ export LINEAR_WEBHOOK_SECRET=lin_whs_s56dlmfhg72038474nmfojhsn7
 ## Step 5: Start Cyrus
 
 ```bash
-cyrus
+cyrus --env-file=~/.cyrus/env
 ```
 
 You'll see Cyrus start up and show logs. If using Cloudflare Tunnel, it will automatically start in the background.
@@ -268,19 +274,19 @@ gh auth login
 
 ### 3. Configure Claude Code Authentication
 
-Cyrus needs Claude Code credentials. Choose one authentication method:
+Cyrus needs Claude Code credentials. Add one of these to your env file:
 
 **Option A: API Key** (recommended for self-hosting)
 ```bash
-export ANTHROPIC_API_KEY=your-api-key
+ANTHROPIC_API_KEY=your-api-key
 ```
 Get your API key from the [Anthropic Console](https://console.anthropic.com/).
 
 **Option B: OAuth Token** (for subscription users)
 
-Run `claude setup-token` on any machine where you already have Claude Code installed (e.g., your laptop). Then set the token on your server:
+Run `claude setup-token` on any machine where you already have Claude Code installed (e.g., your laptop), then add to your env file:
 ```bash
-export CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
+CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 ```
 
 **Option C: Third-Party Providers**
@@ -295,26 +301,28 @@ git clone git@github.com:your-org/your-repo.git
 
 ### 5. Create Environment File
 
-Create an environment file with your configuration:
+Create your env file (e.g., `~/.cyrus/env`) with all required variables:
 
 ```bash
 # Server configuration
+LINEAR_DIRECT_WEBHOOKS=true
+CYRUS_BASE_URL=<your publicly accessible URL>
 CYRUS_SERVER_PORT=3456
 
-# Base URL configuration (required for Linear integration)
-CYRUS_BASE_URL=<your publicly accessible URL>
-
-# Linear OAuth configuration (for self-hosted)
-LINEAR_DIRECT_WEBHOOKS=true
+# Linear OAuth configuration
 LINEAR_CLIENT_ID=<your Linear OAuth app client ID>
 LINEAR_CLIENT_SECRET=<your Linear OAuth app client secret>
 LINEAR_WEBHOOK_SECRET=<your Linear webhook secret>
+
+# Claude Code authentication (choose one)
+ANTHROPIC_API_KEY=<your API key>
+# or: CLAUDE_CODE_OAUTH_TOKEN=<your OAuth token>
 ```
 
 Start Cyrus with the environment file:
 
 ```bash
-cyrus --env-file=/path/to/env-file
+cyrus --env-file=~/.cyrus/env
 ```
 
 ---
@@ -327,7 +335,7 @@ For 24/7 availability, run Cyrus in a persistent session:
 
 ```bash
 tmux new-session -s cyrus
-cyrus
+cyrus --env-file=~/.cyrus/env
 # Ctrl+B, D to detach
 # tmux attach -t cyrus to reattach
 ```
@@ -344,12 +352,7 @@ After=network.target
 [Service]
 Type=simple
 User=your-user
-Environment=LINEAR_DIRECT_WEBHOOKS=true
-Environment=CYRUS_BASE_URL=https://your-url.com
-Environment=CYRUS_SERVER_PORT=3456
-Environment=LINEAR_CLIENT_ID=your_client_id
-Environment=LINEAR_CLIENT_SECRET=your_client_secret
-Environment=LINEAR_WEBHOOK_SECRET=your_webhook_secret
+EnvironmentFile=/home/your-user/.cyrus/env
 ExecStart=/usr/local/bin/cyrus
 Restart=always
 
