@@ -42,8 +42,8 @@ You'll complete these steps:
 1. Set up a public URL for webhooks
 2. Configure Claude Code authentication
 3. Create a Linear OAuth application
-4. Install and configure Cyrus
-5. Authorize with Linear and add repositories
+4. Install Cyrus and complete your environment file
+5. Start Cyrus, authorize with Linear, and add repositories
 
 > **Tip:** Cyrus automatically loads environment variables from `~/.cyrus/.env` on startup. You can override this path with `cyrus --env-file=/path/to/your/env`.
 
@@ -177,21 +177,25 @@ ANTHROPIC_API_KEY=your-api-key
 # CLOUDFLARE_TOKEN=your-cloudflare-token
 ```
 
-### 4.3 Start Cyrus
+---
+
+## Step 5: Authorize and Add Repositories
+
+### 5.1 Start Cyrus (for authorization)
+
+Start Cyrus to enable the OAuth callback server:
 
 ```bash
 cyrus
 ```
 
-Cyrus automatically loads `~/.cyrus/.env` on startup. You'll see Cyrus start up and show logs. If using Cloudflare Tunnel, it will automatically start in the background.
+Cyrus automatically loads `~/.cyrus/.env` on startup. You'll see Cyrus start up and show logs.
 
 > **Note:** To use a different env file location, use `cyrus --env-file=/path/to/your/env`.
 
----
+### 5.2 Authorize with Linear
 
-## Step 5: Authorize and Add Repositories
-
-### 5.1 Authorize with Linear
+In a separate terminal, run:
 
 ```bash
 cyrus self-auth
@@ -202,7 +206,7 @@ This will:
 2. After you click **Authorize**, redirect back to Cyrus
 3. Save the tokens to your config
 
-### 5.2 Add a Repository
+### 5.3 Add a Repository
 
 ```bash
 cyrus self-add-repo https://github.com/yourorg/yourrepo.git
@@ -214,6 +218,8 @@ For multiple workspaces, specify which one:
 ```bash
 cyrus self-add-repo https://github.com/yourorg/yourrepo.git "My Workspace"
 ```
+
+Cyrus will automatically pick up the new repository configuration.
 
 ---
 
