@@ -181,32 +181,18 @@ ANTHROPIC_API_KEY=your-api-key
 
 ## Step 5: Authorize and Add Repositories
 
-### 5.1 Start Cyrus (for authorization)
-
-Start Cyrus to enable the OAuth callback server:
-
-```bash
-cyrus
-```
-
-Cyrus automatically loads `~/.cyrus/.env` on startup. You'll see Cyrus start up and show logs.
-
-> **Note:** To use a different env file location, use `cyrus --env-file=/path/to/your/env`.
-
-### 5.2 Authorize with Linear
-
-In a separate terminal, run:
+### 5.1 Authorize with Linear
 
 ```bash
 cyrus self-auth
 ```
 
 This will:
-1. Open your browser to Linear's OAuth authorization page
-2. After you click **Authorize**, redirect back to Cyrus
-3. Save the tokens to your config
+1. Start a temporary OAuth callback server
+2. Open your browser to Linear's OAuth authorization page
+3. After you click **Authorize**, redirect back and save the tokens to your config
 
-### 5.3 Add a Repository
+### 5.2 Add a Repository
 
 ```bash
 cyrus self-add-repo https://github.com/yourorg/yourrepo.git
@@ -220,6 +206,18 @@ cyrus self-add-repo https://github.com/yourorg/yourrepo.git "My Workspace"
 ```
 
 You can run `cyrus self-add-repo` at any time, even while Cyrus is running. No restart is required—Cyrus will automatically pick up the new repository configuration.
+
+### 5.3 Start Cyrus
+
+Once authorization is complete and repositories are added, start Cyrus:
+
+```bash
+cyrus
+```
+
+Cyrus automatically loads `~/.cyrus/.env` on startup. You'll see Cyrus start up and show logs.
+
+> **Note:** To use a different env file location, use `cyrus --env-file=/path/to/your/env`.
 
 ---
 
@@ -283,7 +281,9 @@ sudo systemctl start cyrus
 
 ## Configuration
 
-For detailed configuration options, see [Configuration File Reference](./CONFIG_FILE.md).
+Cyrus stores its configuration in `~/.cyrus/config.json`. You can customize tool permissions, issue routing rules, MCP server integrations, and label-based AI modes by editing this file. Cyrus watches the config file and automatically picks up changes—no restart required.
+
+For detailed options, see the [Configuration File Reference](./CONFIG_FILE.md).
 
 ---
 
