@@ -45,7 +45,7 @@ You'll complete these steps:
 4. Install and configure Cyrus
 5. Authorize with Linear and add repositories
 
-> **Tip:** Store all environment variables in a single file (e.g., `~/.cyrus/env`) and start Cyrus with `cyrus --env-file=~/.cyrus/env`.
+> **Tip:** Cyrus automatically loads environment variables from `~/.cyrus/.env` on startup. You can override this path with `cyrus --env-file=/path/to/your/env`.
 
 ---
 
@@ -68,7 +68,7 @@ You'll need:
 
 ## Step 2: Configure Claude Code Authentication
 
-Cyrus needs Claude Code credentials. Choose one option and add it to your env file (`~/.cyrus/env`):
+Cyrus needs Claude Code credentials. Choose one option and add it to your env file (`~/.cyrus/.env`):
 
 **Option A: API Key** (recommended)
 ```bash
@@ -134,7 +134,7 @@ After saving, copy these values:
 
 ### 3.4 Add to Environment File
 
-Add these to your env file (`~/.cyrus/env`):
+Add these to your env file (`~/.cyrus/.env`):
 
 ```bash
 # Linear OAuth configuration
@@ -156,7 +156,7 @@ npm install -g cyrus-ai
 
 ### 4.2 Complete Your Environment File
 
-Your env file (`~/.cyrus/env`) should now contain:
+Your env file (`~/.cyrus/.env`) should now contain:
 
 ```bash
 # Server configuration
@@ -180,10 +180,12 @@ ANTHROPIC_API_KEY=your-api-key
 ### 4.3 Start Cyrus
 
 ```bash
-cyrus --env-file=~/.cyrus/env
+cyrus
 ```
 
-You'll see Cyrus start up and show logs. If using Cloudflare Tunnel, it will automatically start in the background.
+Cyrus automatically loads `~/.cyrus/.env` on startup. You'll see Cyrus start up and show logs. If using Cloudflare Tunnel, it will automatically start in the background.
+
+> **Note:** To use a different env file location, use `cyrus --env-file=/path/to/your/env`.
 
 ---
 
@@ -242,7 +244,7 @@ For 24/7 availability, run Cyrus as a persistent process.
 
 ```bash
 tmux new-session -s cyrus
-cyrus --env-file=~/.cyrus/env
+cyrus
 # Ctrl+B, D to detach
 # tmux attach -t cyrus to reattach
 ```
@@ -250,7 +252,7 @@ cyrus --env-file=~/.cyrus/env
 ### Using pm2
 
 ```bash
-pm2 start cyrus --name cyrus -- --env-file=~/.cyrus/env
+pm2 start cyrus --name cyrus
 pm2 save
 pm2 startup
 ```
@@ -267,7 +269,7 @@ After=network.target
 [Service]
 Type=simple
 User=your-user
-EnvironmentFile=/home/your-user/.cyrus/env
+EnvironmentFile=/home/your-user/.cyrus/.env
 ExecStart=/usr/local/bin/cyrus
 Restart=always
 
@@ -333,5 +335,5 @@ pnpm link --global
 pnpm dev
 
 # Then run cyrus normally
-cyrus --env-file=~/.cyrus/env
+cyrus
 ```
