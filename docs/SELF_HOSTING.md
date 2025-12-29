@@ -266,17 +266,30 @@ gh auth login
 # Follow prompts to authenticate with a token
 ```
 
-### 3. Install Claude Code
+### 3. Install and Authenticate Claude Code
 
 ```bash
 npm install -g @anthropic-ai/claude-code
-
-# Authenticate Claude
-claude
-# Follow the prompts to complete authentication
-
-# If you're on subscription-based pricing, verify with /cost in the Claude console
 ```
+
+**Authentication Options** (choose one):
+
+**Option A: API Key** (recommended for self-hosting)
+```bash
+export ANTHROPIC_API_KEY=your-api-key
+```
+Get your API key from the [Anthropic Console](https://console.anthropic.com/).
+
+**Option B: OAuth Token** (for subscription users)
+```bash
+claude setup-token
+# Follow prompts, then set:
+export CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
+```
+
+**Option C: Third-Party Providers**
+
+For Vertex AI, Azure, AWS Bedrock, and other providers, see the [Third-Party Integrations](https://docs.anthropic.com/en/docs/claude-code/bedrock-vertex) documentation.
 
 ### 4. Clone Your Repository
 
