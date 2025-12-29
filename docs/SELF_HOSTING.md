@@ -266,13 +266,9 @@ gh auth login
 # Follow prompts to authenticate with a token
 ```
 
-### 3. Install and Authenticate Claude Code
+### 3. Configure Claude Code Authentication
 
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-**Authentication Options** (choose one):
+Cyrus needs Claude Code credentials. Choose one authentication method:
 
 **Option A: API Key** (recommended for self-hosting)
 ```bash
@@ -281,9 +277,9 @@ export ANTHROPIC_API_KEY=your-api-key
 Get your API key from the [Anthropic Console](https://console.anthropic.com/).
 
 **Option B: OAuth Token** (for subscription users)
+
+Run `claude setup-token` on any machine where you already have Claude Code installed (e.g., your laptop). Then set the token on your server:
 ```bash
-claude setup-token
-# Follow prompts, then set:
 export CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 ```
 
