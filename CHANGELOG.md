@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Updated `@anthropic-ai/claude-agent-sdk` from v0.1.72 to v0.1.76 to maintain parity with Claude Code v2.0.76. This update includes bug fixes for Stop hooks and other improvements. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0176) for details. (CYPACK-672, [#TBD](https://github.com/ceedaragents/cyrus/pull/TBD))
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.1.72 to v0.1.76 to maintain parity with Claude Code v2.0.76. This update includes bug fixes for Stop hooks and other improvements. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0176) for details. (CYPACK-672, [#712](https://github.com/ceedaragents/cyrus/pull/712))
 
 ## [0.2.8] - 2025-12-28
 
