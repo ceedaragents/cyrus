@@ -23,6 +23,20 @@ jq --version      # Should show version like jq-1.7
 node --version    # Should show v18 or higher
 ```
 
+### Install Tools (Linux/Ubuntu)
+
+For remote servers or VPS instances:
+
+```bash
+# Install required packages
+apt install -y gh npm git jq
+
+# Verify installations
+jq --version      # Should show version like jq-1.7
+node --version    # Should show v18 or higher
+gh --version      # GitHub CLI
+```
+
 ---
 
 ## Overview
@@ -228,6 +242,71 @@ Cyrus will automatically pick up the new repository.
 ## Configuration
 
 For detailed configuration options, see [Configuration File Reference](./CONFIG_FILE.md).
+
+---
+
+## Remote Server Setup
+
+If you're setting up Cyrus on a remote VPS or cloud VM for 24/7 availability, follow these additional steps.
+
+### 1. Set Up Git SSH Keys
+
+```bash
+ssh-keygen
+# Follow the prompts, then paste the public key into GitHub
+
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+```
+
+### 2. Authenticate GitHub CLI
+
+```bash
+gh auth login
+# Follow prompts to authenticate with a token
+```
+
+### 3. Install Claude Code
+
+```bash
+npm install -g @anthropic-ai/claude-code
+
+# Authenticate Claude
+claude
+# Follow the prompts to complete authentication
+
+# If you're on subscription-based pricing, verify with /cost in the Claude console
+```
+
+### 4. Clone Your Repository
+
+```bash
+git clone git@github.com:your-org/your-repo.git
+```
+
+### 5. Create Environment File
+
+Create an environment file with your configuration:
+
+```bash
+# Server configuration
+CYRUS_SERVER_PORT=3456
+
+# Base URL configuration (required for Linear integration)
+CYRUS_BASE_URL=<your publicly accessible URL>
+
+# Linear OAuth configuration (for self-hosted)
+LINEAR_DIRECT_WEBHOOKS=true
+LINEAR_CLIENT_ID=<your Linear OAuth app client ID>
+LINEAR_CLIENT_SECRET=<your Linear OAuth app client secret>
+LINEAR_WEBHOOK_SECRET=<your Linear webhook secret>
+```
+
+Start Cyrus with the environment file:
+
+```bash
+cyrus --env-file=/path/to/env-file
+```
 
 ---
 
