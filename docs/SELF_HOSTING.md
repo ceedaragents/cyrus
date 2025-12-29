@@ -1,6 +1,6 @@
-# Self-Hosting Cyrus
+# End-to-End Self-Hosting Guide
 
-This guide walks you through setting up Cyrus on your local computer or server (self-hosted).
+This guide walks you through setting up Cyrus completely self-hosted, including your own Linear OAuth application. This is the free, zero-cost option that gives you full control.
 
 > **Tip:** If you're using Claude, Cursor, or any AI coding agent, ask it to read this file and help you implement all the steps. Example: *"Read docs/SELF_HOSTING.md and help me set up self-hosted Cyrus"*
 
@@ -11,278 +11,72 @@ This guide walks you through setting up Cyrus on your local computer or server (
 - **Linear workspace** with admin access (required to create OAuth apps)
 - **Node.js** v18 or higher
 - **jq** (for Claude Code parsing)
+- **A public URL** for receiving Linear webhooks
 
-### Install Tools (macOS)
+### Install Dependencies
 
+**macOS:**
 ```bash
-# Install jq
-brew install jq
+brew install jq gh
 
 # Verify
 jq --version      # Should show version like jq-1.7
 node --version    # Should show v18 or higher
 ```
 
-### Install Tools (Linux/Ubuntu)
-
-For remote servers or VPS instances:
-
+**Linux/Ubuntu:**
 ```bash
-# Install required packages
 apt install -y gh npm git jq
 
-# Verify installations
+# Verify
 jq --version      # Should show version like jq-1.7
 node --version    # Should show v18 or higher
-gh --version      # GitHub CLI
 ```
 
 ---
 
 ## Overview
 
-Self-hosting Cyrus requires:
+You'll complete these steps:
 
-1. A public URL for Linear webhooks (choose one option below)
-2. A Linear OAuth application
-3. Cyrus installed and configured
+1. Set up a public URL for webhooks
+2. Configure Claude Code authentication
+3. Create a Linear OAuth application
+4. Install and configure Cyrus
+5. Authorize with Linear and add repositories
 
-> **Tip:** Throughout this guide, you'll collect various environment variables. We recommend storing them in a single env file (e.g., `~/.cyrus/env`) and starting Cyrus with `cyrus --env-file=~/.cyrus/env`.
+> **Tip:** Store all environment variables in a single file (e.g., `~/.cyrus/env`) and start Cyrus with `cyrus --env-file=~/.cyrus/env`.
 
-### Public URL Options
+---
 
-Linear needs to send webhooks to your Cyrus instance. Choose one:
+## Step 1: Set Up Public URL
+
+Linear needs to send webhooks to your Cyrus instance. Choose one option:
 
 | Option | Best For | Persistence |
 |--------|----------|-------------|
-| [Cloudflare Tunnel](./CLOUDFLARE_TUNNEL.md) | Production self-hosting | Permanent URL |
+| [Cloudflare Tunnel](./CLOUDFLARE_TUNNEL.md) | Production | Permanent URL |
 | ngrok | Development/testing | Changes on restart |
 | Public server/domain | VPS or cloud hosting | Permanent URL |
 | Reverse proxy (nginx/caddy) | Existing infrastructure | Permanent URL |
 
----
-
-## Step 1: Install Cyrus
-
-```bash
-# Install Cyrus globally
-npm install -g cyrus-ai
-
-# Run once to initialize (creates ~/.cyrus/ directory)
-cyrus
-```
-
-Cyrus will start and create the configuration directory. Stop it (Ctrl+C).
-
-### Development Mode (Optional)
-
-If you're developing Cyrus from source:
-
-1. **Install dependencies:**
-
-```bash
-cd /path/to/cyrus
-pnpm install
-```
-
-2. **Link the CLI package globally:**
-
-```bash
-cd apps/cli
-pnpm link --global
-```
-
-3. **Start the TypeScript watch compiler in a separate terminal:**
-
-```bash
-cd apps/cli
-pnpm dev
-```
-
-4. **Start Cyrus:**
-
-```bash
-cyrus
-```
-
----
-
-## Step 2: Set Up Public URL
-
-Choose your preferred method from the options above. You'll need:
-
+You'll need:
 - A public URL (e.g., `https://cyrus.yourdomain.com`)
 - The URL must be accessible from the internet
 
-For Cloudflare Tunnel setup, see [Cloudflare Tunnel Guide](./CLOUDFLARE_TUNNEL.md).
-
 ---
 
-## Step 3: Create Environment File
+## Step 2: Configure Claude Code Authentication
 
-Create an env file (e.g., `~/.cyrus/env`) with the base configuration:
+Cyrus needs Claude Code credentials. Choose one option and add it to your env file (`~/.cyrus/env`):
 
-```bash
-# Server configuration
-LINEAR_DIRECT_WEBHOOKS=true
-CYRUS_BASE_URL=https://your-public-url.com
-CYRUS_SERVER_PORT=3456
-
-# If using Cloudflare Tunnel (optional)
-# CLOUDFLARE_TOKEN=eyJhIjoiXXXXXXX...your_token_here...XXXXXXX
-```
-
-**Replace:**
-- `CYRUS_BASE_URL` - Your public URL from Step 2
-
-You'll add more variables to this file in the following steps.
-
----
-
-## Step 4: Create Linear OAuth Application
-
-**IMPORTANT:** You must be a **workspace admin** in Linear to create OAuth apps.
-
-### 4.1 Open Linear Settings
-
-1. Go to Linear: https://linear.app
-2. Click your workspace name (top-left corner)
-3. Click **Settings** in the dropdown
-4. In the left sidebar, scroll down to **Account** section
-5. Click **API**
-6. Scroll down to **OAuth Applications** section
-
-### 4.2 Create New Application
-
-1. Click **Create new OAuth Application** button
-
-2. Fill in the form:
-
-   **Name:** `Cyrus`
-
-   **Description:** `Self-hosted Cyrus agent for automated development`
-
-   **Callback URLs:** `https://your-public-url.com/callback`
-
-3. **Enable Client credentials** toggle
-
-4. **Enable Webhooks** toggle
-
-5. **Configure Webhook Settings:**
-
-   **Webhook URL:** `https://your-public-url.com/webhook`
-
-   **App events** - Check these boxes:
-   - **Agent session events** (REQUIRED - makes Cyrus appear as agent)
-   - **Inbox notifications** (recommended)
-   - **Permission changes** (recommended)
-
-6. Click **Save**
-
-### 4.3 Copy OAuth Credentials
-
-After saving, copy these values from the app page:
-
-1. **Client ID** - Long string like `client_id_27653g3h4y4ght3g4`
-2. **Client Secret** - Another long string (may only be shown once!)
-3. **Webhook Signing Secret** - Found in webhook settings
-
-### 4.4 Add Linear OAuth to Environment File
-
-Add these variables to your env file (`~/.cyrus/env`):
-
-```bash
-# Linear OAuth configuration
-LINEAR_CLIENT_ID=client_id_27653g3h4y4ght3g4
-LINEAR_CLIENT_SECRET=client_secret_shgd5a6jdk86823h
-LINEAR_WEBHOOK_SECRET=lin_whs_s56dlmfhg72038474nmfojhsn7
-```
-
----
-
-## Step 5: Start Cyrus
-
-```bash
-cyrus --env-file=~/.cyrus/env
-```
-
-You'll see Cyrus start up and show logs. If using Cloudflare Tunnel, it will automatically start in the background.
-
----
-
-## Step 6: Authorize Cyrus with Linear
-
-Run the authorization command:
-
-```bash
-cyrus self-auth
-```
-
-This will:
-1. Open your browser to Linear's OAuth authorization page
-2. After you click **Authorize**, redirect back to Cyrus
-3. Save the tokens to your config
-
----
-
-## Step 7: Add Repository
-
-Add a repository using the CLI:
-
-```bash
-cyrus self-add-repo https://github.com/yourorg/yourrepo.git
-```
-
-This clones the repository to `~/.cyrus/repos/` and adds it to your config with the Linear workspace credentials.
-
-If you have multiple Linear workspaces, specify which one:
-
-```bash
-cyrus self-add-repo https://github.com/yourorg/yourrepo.git "My Workspace"
-```
-
-Cyrus will automatically pick up the new repository.
-
----
-
-## Configuration
-
-For detailed configuration options, see [Configuration File Reference](./CONFIG_FILE.md).
-
----
-
-## Remote Server Setup
-
-If you're setting up Cyrus on a remote VPS or cloud VM for 24/7 availability, follow these additional steps.
-
-### 1. Set Up Git SSH Keys
-
-```bash
-ssh-keygen
-# Follow the prompts, then paste the public key into GitHub
-
-git config --global user.name "Your Name"
-git config --global user.email "your.email@example.com"
-```
-
-### 2. Authenticate GitHub CLI
-
-```bash
-gh auth login
-# Follow prompts to authenticate with a token
-```
-
-### 3. Configure Claude Code Authentication
-
-Cyrus needs Claude Code credentials. Add one of these to your env file:
-
-**Option A: API Key** (recommended for self-hosting)
+**Option A: API Key** (recommended)
 ```bash
 ANTHROPIC_API_KEY=your-api-key
 ```
 Get your API key from the [Anthropic Console](https://console.anthropic.com/).
 
-**Option B: OAuth Token** (for subscription users)
+**Option B: OAuth Token** (for Max subscription users)
 
 Run `claude setup-token` on any machine where you already have Claude Code installed (e.g., your laptop), then add to your env file:
 ```bash
@@ -293,43 +87,156 @@ CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 
 For Vertex AI, Azure, AWS Bedrock, and other providers, see the [Third-Party Integrations](https://docs.anthropic.com/en/docs/claude-code/bedrock-vertex) documentation.
 
-### 4. Clone Your Repository
+---
+
+## Step 3: Create Linear OAuth Application
+
+**IMPORTANT:** You must be a **workspace admin** in Linear.
+
+### 3.1 Open Linear Settings
+
+1. Go to Linear: https://linear.app
+2. Click your workspace name (top-left corner)
+3. Click **Settings** in the dropdown
+4. In the left sidebar, scroll down to **Account** section
+5. Click **API**
+6. Scroll down to **OAuth Applications** section
+
+### 3.2 Create New Application
+
+1. Click **Create new OAuth Application** button
+
+2. Fill in the form:
+   - **Name:** `Cyrus`
+   - **Description:** `Self-hosted Cyrus agent for automated development`
+   - **Callback URLs:** `https://your-public-url.com/callback`
+
+3. **Enable Client credentials** toggle
+
+4. **Enable Webhooks** toggle
+
+5. **Configure Webhook Settings:**
+   - **Webhook URL:** `https://your-public-url.com/webhook`
+   - **App events** - Check these boxes:
+     - **Agent session events** (REQUIRED - makes Cyrus appear as agent)
+     - **Inbox notifications** (recommended)
+     - **Permission changes** (recommended)
+
+6. Click **Save**
+
+### 3.3 Copy OAuth Credentials
+
+After saving, copy these values:
+
+1. **Client ID** - Long string like `client_id_27653g3h4y4ght3g4`
+2. **Client Secret** - Another long string (may only be shown once!)
+3. **Webhook Signing Secret** - Found in webhook settings
+
+### 3.4 Add to Environment File
+
+Add these to your env file (`~/.cyrus/env`):
 
 ```bash
-git clone git@github.com:your-org/your-repo.git
+# Linear OAuth configuration
+LINEAR_DIRECT_WEBHOOKS=true
+LINEAR_CLIENT_ID=client_id_27653g3h4y4ght3g4
+LINEAR_CLIENT_SECRET=client_secret_shgd5a6jdk86823h
+LINEAR_WEBHOOK_SECRET=lin_whs_s56dlmfhg72038474nmfojhsn7
 ```
 
-### 5. Create Environment File
+---
 
-Create your env file (e.g., `~/.cyrus/env`) with all required variables:
+## Step 4: Install and Configure Cyrus
+
+### 4.1 Install Cyrus
+
+```bash
+npm install -g cyrus-ai
+```
+
+### 4.2 Complete Your Environment File
+
+Your env file (`~/.cyrus/env`) should now contain:
 
 ```bash
 # Server configuration
 LINEAR_DIRECT_WEBHOOKS=true
-CYRUS_BASE_URL=<your publicly accessible URL>
+CYRUS_BASE_URL=https://your-public-url.com
 CYRUS_SERVER_PORT=3456
 
-# Linear OAuth configuration
-LINEAR_CLIENT_ID=<your Linear OAuth app client ID>
-LINEAR_CLIENT_SECRET=<your Linear OAuth app client secret>
-LINEAR_WEBHOOK_SECRET=<your Linear webhook secret>
+# Linear OAuth
+LINEAR_CLIENT_ID=your_client_id
+LINEAR_CLIENT_SECRET=your_client_secret
+LINEAR_WEBHOOK_SECRET=your_webhook_secret
 
 # Claude Code authentication (choose one)
-ANTHROPIC_API_KEY=<your API key>
-# or: CLAUDE_CODE_OAUTH_TOKEN=<your OAuth token>
+ANTHROPIC_API_KEY=your-api-key
+# or: CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
+
+# Optional: Cloudflare Tunnel
+# CLOUDFLARE_TOKEN=your-cloudflare-token
 ```
 
-Start Cyrus with the environment file:
+### 4.3 Start Cyrus
 
 ```bash
 cyrus --env-file=~/.cyrus/env
+```
+
+You'll see Cyrus start up and show logs. If using Cloudflare Tunnel, it will automatically start in the background.
+
+---
+
+## Step 5: Authorize and Add Repositories
+
+### 5.1 Authorize with Linear
+
+```bash
+cyrus self-auth
+```
+
+This will:
+1. Open your browser to Linear's OAuth authorization page
+2. After you click **Authorize**, redirect back to Cyrus
+3. Save the tokens to your config
+
+### 5.2 Add a Repository
+
+```bash
+cyrus self-add-repo https://github.com/yourorg/yourrepo.git
+```
+
+This clones the repository to `~/.cyrus/repos/` and configures it with your Linear workspace credentials.
+
+For multiple workspaces, specify which one:
+```bash
+cyrus self-add-repo https://github.com/yourorg/yourrepo.git "My Workspace"
+```
+
+---
+
+## Step 6: Set Up GitHub (Optional)
+
+For Cyrus to create pull requests, configure Git and GitHub CLI:
+
+```bash
+# Configure Git
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+
+# Set up SSH key (if not already done)
+ssh-keygen
+# Add the public key to GitHub
+
+# Authenticate GitHub CLI
+gh auth login
 ```
 
 ---
 
 ## Running as a Service
 
-For 24/7 availability, run Cyrus in a persistent session:
+For 24/7 availability, run Cyrus as a persistent process.
 
 ### Using tmux
 
@@ -338,6 +245,14 @@ tmux new-session -s cyrus
 cyrus --env-file=~/.cyrus/env
 # Ctrl+B, D to detach
 # tmux attach -t cyrus to reattach
+```
+
+### Using pm2
+
+```bash
+pm2 start cyrus --name cyrus -- --env-file=~/.cyrus/env
+pm2 save
+pm2 startup
 ```
 
 ### Using systemd (Linux)
@@ -369,13 +284,19 @@ sudo systemctl start cyrus
 
 ---
 
+## Configuration
+
+For detailed configuration options, see [Configuration File Reference](./CONFIG_FILE.md).
+
+---
+
 ## Troubleshooting
 
 ### OAuth Authorization Fails
 
 - Verify `CYRUS_BASE_URL` matches your Linear OAuth callback URL exactly
 - Check that your public URL is accessible from the internet
-- Ensure all three Linear environment variables are set
+- Ensure all Linear environment variables are set
 
 ### Webhooks Not Received
 
@@ -388,3 +309,29 @@ sudo systemctl start cyrus
 - Check that the repository is in your config (`~/.cyrus/config.json`)
 - Verify Linear tokens are valid with `cyrus check-tokens`
 - Ensure the issue is assigned to Cyrus in Linear
+
+### Claude Code Not Working
+
+- Verify your Claude Code credentials are set in the env file
+- For API key: Check it's valid at [console.anthropic.com](https://console.anthropic.com/)
+- For OAuth token: Run `claude setup-token` again to refresh
+
+---
+
+## Development Mode
+
+If you're developing Cyrus from source:
+
+```bash
+cd /path/to/cyrus
+pnpm install
+
+cd apps/cli
+pnpm link --global
+
+# In a separate terminal
+pnpm dev
+
+# Then run cyrus normally
+cyrus --env-file=~/.cyrus/env
+```

@@ -11,52 +11,51 @@
 
 Your Claude Code powered Linear agent. Cyrus monitors Linear issues assigned to it, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments.
 
-**Note:** Cyrus requires you to bring your own Claude Code keys/billing. Paid plans provide support, easy configuration UI, and hosted infrastructure.
+**Note:** Cyrus requires you to bring your own Claude Code keys/billing.
 
 ---
 
 ## Getting Started
 
-Choose the option that best fits your needs:
+| Plan | Hosting | Description |
+|------|---------|-------------|
+| **Pro** | Self-hosted | Run Cyrus on your own machine or server |
+| **Pro** | Cloud-hosted | We run Cyrus for you in our cloud |
+| **Team** | Self-hosted | Run Cyrus on your infrastructure with team features |
+| **Team** | Cloud-hosted | Fully managed with team collaboration |
+| **Free** | End-to-End Self-hosted | Host everything yourself, including Linear OAuth app |
 
-### Option 1: Pro Plan (Run on Your Machine)
+### Pro & Team Plans
 
-For paid Pro users who want Cyrus running on their own machine.
+Configure Cyrus through the dashboard at [app.atcyrus.com](https://app.atcyrus.com).
+
+**For self-hosted deployments:**
 
 ```bash
 # Install Cyrus
 npm install -g cyrus-ai
 
-# Authenticate with your token (provided during onboarding at app.atcyrus.com)
+# Authenticate with your token (provided during onboarding)
 cyrus auth <your-token>
 ```
 
-**Running Cyrus:**
-
-Keep Cyrus running as a persistent process using any of these methods:
+Keep Cyrus running as a persistent process:
 
 - **tmux**: `tmux new -s cyrus` then run `cyrus` (Ctrl+B, D to detach)
 - **pm2**: `pm2 start cyrus --name cyrus`
-- **systemd**: Create a service file (see [Self-Hosting Guide](./docs/SELF_HOSTING.md#using-systemd-linux))
-- **macOS**: Configure as a startup service
+- **systemd**: See [Running as a Service](./docs/SELF_HOSTING.md#running-as-a-service)
 
-Press Ctrl+C to stop Cyrus at any time.
+**For cloud-hosted deployments:**
 
----
-
-### Option 2: Team Plan (Fully Hosted)
-
-For paid Team users using the fully hosted strategy.
-
-No local installation required. Your Cyrus agent runs entirely in our cloud infrastructure. Configure everything through the dashboard at [app.atcyrus.com](https://app.atcyrus.com).
+No installation required. Everything is managed through [app.atcyrus.com](https://app.atcyrus.com).
 
 ---
 
-### Option 3: Self-Hosted (Free)
+### End-to-End Self-Hosted (Free)
 
-For those who want a completely free, zero-cost option with full control.
+For those who want a completely free, zero-cost option with full control. This requires hosting everything yourself, including your own Linear OAuth app.
 
-This requires self-hosting everything including your own Linear OAuth app. Follow the complete **[Self-Hosting Guide](./docs/SELF_HOSTING.md)** for step-by-step instructions.
+Follow the complete **[End-to-End Self-Hosting Guide](./docs/SELF_HOSTING.md)**.
 
 ---
 
@@ -78,9 +77,9 @@ gh auth login
 
 ## Documentation
 
-- **[Self-Hosting Guide](./docs/SELF_HOSTING.md)** - Complete self-hosted setup instructions
-- **[Configuration Reference](./docs/CONFIG_FILE.md)** - Detailed config.json options and examples
-- **[Cloudflare Tunnel Setup](./docs/CLOUDFLARE_TUNNEL.md)** - Expose your local instance with a permanent URL
+- **[End-to-End Self-Hosting Guide](./docs/SELF_HOSTING.md)** - Complete free self-hosted setup
+- **[Configuration Reference](./docs/CONFIG_FILE.md)** - Detailed config.json options
+- **[Cloudflare Tunnel Setup](./docs/CLOUDFLARE_TUNNEL.md)** - Expose your local instance
 - **[Setup Scripts](./docs/SETUP_SCRIPTS.md)** - Repository and global initialization scripts
 
 ---
