@@ -219,7 +219,7 @@ For multiple workspaces, specify which one:
 cyrus self-add-repo https://github.com/yourorg/yourrepo.git "My Workspace"
 ```
 
-Cyrus will automatically pick up the new repository configuration.
+You can run `cyrus self-add-repo` at any time, even while Cyrus is running. No restart is required—Cyrus will automatically pick up the new repository configuration.
 
 ---
 
