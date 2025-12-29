@@ -225,20 +225,9 @@ Cyrus will automatically pick up the new repository configuration.
 
 ## Step 6: Set Up GitHub (Optional)
 
-For Cyrus to create pull requests, configure Git and GitHub CLI:
+For Cyrus to create pull requests, configure Git and GitHub CLI authentication.
 
-```bash
-# Configure Git
-git config --global user.name "Your Name"
-git config --global user.email "your.email@example.com"
-
-# Set up SSH key (if not already done)
-ssh-keygen
-# Add the public key to GitHub
-
-# Authenticate GitHub CLI
-gh auth login
-```
+See the **[Git & GitHub Setup Guide](./GIT_GITHUB.md)** for complete instructions.
 
 ---
 

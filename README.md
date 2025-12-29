@@ -23,7 +23,7 @@ Your Claude Code powered Linear agent. Cyrus monitors Linear issues assigned to 
 | **Pro** | Cloud-hosted | We run Cyrus for you in our cloud |
 | **Team** | Self-hosted | Run Cyrus on your infrastructure with team features |
 | **Team** | Cloud-hosted | Fully managed with team collaboration |
-| **Free** | End-to-End Self-hosted | Host everything yourself, including Linear OAuth app |
+| **Community** | End-to-End Self-hosted | Zero cost. Host everything yourself, including Linear OAuth app |
 
 ### Pro & Team Plans
 
@@ -39,6 +39,8 @@ npm install -g cyrus-ai
 cyrus auth <your-token>
 ```
 
+For Cyrus to create pull requests, configure Git and GitHub CLI. See **[Git & GitHub Setup](./docs/GIT_GITHUB.md)**.
+
 Keep Cyrus running as a persistent process:
 
 - **tmux**: `tmux new -s cyrus` then run `cyrus` (Ctrl+B, D to detach)
@@ -51,60 +53,21 @@ No installation required. Everything is managed through [app.atcyrus.com](https:
 
 ---
 
-### End-to-End Self-Hosted (Free)
+### End-to-End Self-Hosted (Community)
 
-For those who want a completely free, zero-cost option with full control. This requires hosting everything yourself, including your own Linear OAuth app.
+Zero cost option with full control. This requires hosting everything yourself, including your own Linear OAuth app.
 
 Follow the complete **[End-to-End Self-Hosting Guide](./docs/SELF_HOSTING.md)**.
 
 ---
 
-## Optional: GitHub Integration
-
-For Cyrus to create pull requests on GitHub, install and authenticate the GitHub CLI:
-
-```bash
-# Install (macOS)
-brew install gh
-
-# Or find your platform: https://cli.github.com/
-
-# Authenticate
-gh auth login
-```
-
----
-
 ## Documentation
 
-- **[End-to-End Self-Hosting Guide](./docs/SELF_HOSTING.md)** - Complete free self-hosted setup
+- **[End-to-End Self-Hosting Guide](./docs/SELF_HOSTING.md)** - Complete community self-hosted setup
+- **[Git & GitHub Setup](./docs/GIT_GITHUB.md)** - Git and GitHub CLI configuration for PRs
 - **[Configuration Reference](./docs/CONFIG_FILE.md)** - Detailed config.json options
 - **[Cloudflare Tunnel Setup](./docs/CLOUDFLARE_TUNNEL.md)** - Expose your local instance
 - **[Setup Scripts](./docs/SETUP_SCRIPTS.md)** - Repository and global initialization scripts
-
----
-
-## Configuration
-
-After setup, Cyrus stores configuration in `~/.cyrus/config.json`. Key options include:
-
-- **Tool permissions** (`allowedTools`)
-- **MCP server configuration** (`mcpConfigPath`)
-- **Issue routing** (`teamKeys`, `projectKeys`, `routingLabels`)
-- **AI modes** (`labelPrompts`)
-- **Global defaults** (`promptDefaults`)
-
-See the **[Configuration Reference](./docs/CONFIG_FILE.md)** for details.
-
----
-
-## How It Works
-
-When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authentication. This means:
-
-- All PRs and commits are created under your GitHub account
-- Your repository permissions apply to all operations
-- The only indication that Claude assisted is the "Co-Authored-By" commit trailer
 
 ---
 
@@ -114,9 +77,7 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 ## Credits
 
-Developed by [Ceedar](https://ceedar.ai/)
-
 This project builds on the technologies built by the awesome teams at Linear, and Claude by Anthropic:
 
 - [Linear API](https://linear.app/developers)
-- [Anthropic Claude Code](https://code.claude.com/docs/en/overview)
+- [Anthropic Claude Code](https://www.claude.com/product/claude-code)
