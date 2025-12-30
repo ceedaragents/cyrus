@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 - **GPT Image 1.5 support** - The image-tools MCP server now supports `gpt-image-1.5`, OpenAI's latest and highest quality image generation model. You can choose between `gpt-image-1.5` (default, best quality), `gpt-image-1`, or `gpt-image-1-mini` (faster, lower cost). ([CYPACK-675](https://linear.app/ceedar/issue/CYPACK-675), [#717](https://github.com/ceedaragents/cyrus/pull/717))
 
 ### Changed
-- **Claude Agent SDK updated** - Updated `@anthropic-ai/claude-agent-sdk` from version 0.1.72 to [0.1.76](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0176). This includes improvements and bug fixes from versions 0.1.73-0.1.76. ([CYPACK-676](https://linear.app/ceedar/issue/CYPACK-676))
+- **Claude Agent SDK updated** - Updated `@anthropic-ai/claude-agent-sdk` from version 0.1.72 to [0.1.76](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0176). This includes improvements and bug fixes from versions 0.1.73-0.1.76. ([CYPACK-676](https://linear.app/ceedar/issue/CYPACK-676), [#718](https://github.com/ceedaragents/cyrus/pull/718))
 
 ## [0.2.8] - 2025-12-28
 
