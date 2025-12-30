@@ -132,11 +132,12 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 				}
 
 				// Build request parameters
+				// Note: GPT Image models always return base64-encoded images,
+				// so response_format is not needed (and not supported for gpt-image-1.5)
 				const params: ImageGenerateParams = {
 					model: model as ImageModel,
 					prompt,
 					n: 1,
-					response_format: "b64_json",
 				};
 
 				// Add optional parameters (only if not auto)
