@@ -686,6 +686,75 @@ export class CLIIssueTrackerService
 		return labelNames;
 	}
 
+	/**
+	 * Find a label by name or create it if it doesn't exist.
+	 * This enables dynamic label creation on first use.
+	 *
+	 * @param name - The label name to find or create
+	 * @returns The label ID
+	 */
+	async findOrCreateLabel(name: string): Promise<string> {
+		// First, try to find existing label by name
+		for (const [, labelData] of this.state.labels) {
+			if (labelData.name === name) {
+				return labelData.id;
+			}
+		}
+
+		// Label doesn't exist, create it
+		const labelId = `label-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		const now = new Date();
+
+		const labelData: CLILabelData = {
+			id: labelId,
+			name,
+			description: undefined,
+			color: this.generateLabelColor(name),
+			isGroup: false,
+			createdAt: now,
+			updatedAt: now,
+			teamId: undefined, // Workspace-level label
+			creatorId: this.state.currentUserId,
+			parentId: undefined,
+		};
+
+		this.state.labels.set(labelId, labelData);
+
+		// Emit label created event
+		this.emit("label:created", { label: createCLILabel(labelData) });
+
+		return labelId;
+	}
+
+	/**
+	 * Generate a consistent color for a label based on its name.
+	 * Uses a simple hash to pick from a palette of colors.
+	 */
+	private generateLabelColor(name: string): string {
+		const colors = [
+			"#ef4444", // red
+			"#f97316", // orange
+			"#eab308", // yellow
+			"#22c55e", // green
+			"#14b8a6", // teal
+			"#3b82f6", // blue
+			"#8b5cf6", // violet
+			"#ec4899", // pink
+			"#6366f1", // indigo
+			"#06b6d4", // cyan
+		];
+
+		// Simple hash based on character codes
+		let hash = 0;
+		for (const char of name) {
+			hash = (hash << 5) - hash + char.charCodeAt(0);
+			hash = hash & hash; // Convert to 32-bit integer
+		}
+
+		const index = Math.abs(hash) % colors.length;
+		return colors[index] ?? "#3b82f6"; // Fallback to blue if undefined
+	}
+
 	// ========================================================================
 	// WORKFLOW STATE OPERATIONS
 	// ========================================================================
