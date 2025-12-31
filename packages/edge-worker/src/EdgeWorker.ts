@@ -85,6 +85,13 @@ import {
 	RepositoryRouter,
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
+import {
+	getLoopStatusMessage,
+	incrementIteration,
+	initializeRalphWiggumLoop,
+	loadRalphWiggumState,
+	parseRalphWiggumConfig,
+} from "./ralph-wiggum/index.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 
@@ -320,6 +327,28 @@ export class EdgeWorker extends EventEmitter {
 							session,
 							repo,
 							agentSessionManager,
+						);
+					},
+				);
+
+				// Subscribe to Ralph Wiggum loop events
+				agentSessionManager.on(
+					"ralphWiggumLoopIteration",
+					async ({
+						linearAgentActivitySessionId,
+						session,
+						continuationPrompt,
+						iteration,
+						maxIterations,
+					}) => {
+						await this.handleRalphWiggumLoopIteration(
+							linearAgentActivitySessionId,
+							session,
+							repo,
+							agentSessionManager,
+							continuationPrompt,
+							iteration,
+							maxIterations,
 						);
 					},
 				);
@@ -843,6 +872,51 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Handle Ralph Wiggum loop iteration - continue the loop with a new prompt
+	 */
+	private async handleRalphWiggumLoopIteration(
+		linearAgentActivitySessionId: string,
+		session: CyrusAgentSession,
+		repo: RepositoryConfig,
+		agentSessionManager: AgentSessionManager,
+		continuationPrompt: string,
+		iteration: number,
+		maxIterations: number,
+	): Promise<void> {
+		console.log(
+			`[Ralph Wiggum] Continuing loop for session ${linearAgentActivitySessionId}, iteration ${iteration}/${maxIterations || "unlimited"}`,
+		);
+
+		try {
+			// Increment the iteration in the state file
+			const currentState = loadRalphWiggumState(session.workspace.path);
+			if (currentState) {
+				incrementIteration(session.workspace.path, currentState);
+			}
+
+			await this.resumeAgentSession(
+				session,
+				repo,
+				linearAgentActivitySessionId,
+				agentSessionManager,
+				continuationPrompt,
+				"", // No attachment manifest
+				false, // Not a new session
+				[], // No additional allowed directories
+				undefined, // No maxTurns limit
+			);
+			console.log(
+				`[Ralph Wiggum] Successfully started iteration ${iteration + 1}`,
+			);
+		} catch (error) {
+			console.error(
+				`[Ralph Wiggum] Failed to continue loop at iteration ${iteration}:`,
+				error,
+			);
+		}
+	}
+
+	/**
 	 * Start watching config file for changes
 	 */
 	private startConfigWatcher(): void {
@@ -1132,6 +1206,28 @@ export class EdgeWorker extends EventEmitter {
 							session,
 							repo,
 							agentSessionManager,
+						);
+					},
+				);
+
+				// Subscribe to Ralph Wiggum loop events
+				agentSessionManager.on(
+					"ralphWiggumLoopIteration",
+					async ({
+						linearAgentActivitySessionId,
+						session,
+						continuationPrompt,
+						iteration,
+						maxIterations,
+					}) => {
+						await this.handleRalphWiggumLoopIteration(
+							linearAgentActivitySessionId,
+							session,
+							repo,
+							agentSessionManager,
+							continuationPrompt,
+							iteration,
+							maxIterations,
 						);
 					},
 				);
@@ -1924,6 +2020,26 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[EdgeWorker] Initial prompt built successfully - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}, length: ${assembly.userPrompt.length} characters`,
 			);
+
+			// Initialize Ralph Wiggum loop if label is present
+			const ralphWiggumConfig = parseRalphWiggumConfig(labels);
+			if (ralphWiggumConfig?.enabled) {
+				const ralphWiggumState = initializeRalphWiggumLoop(
+					session.workspace.path,
+					ralphWiggumConfig,
+					assembly.userPrompt,
+					linearAgentActivitySessionId,
+				);
+				console.log(
+					`[EdgeWorker] Ralph Wiggum loop initialized for ${fullIssue.identifier} - max iterations: ${ralphWiggumConfig.maxIterations}`,
+				);
+
+				// Post a thought about Ralph Wiggum loop activation
+				await agentSessionManager.createThoughtActivity(
+					linearAgentActivitySessionId,
+					getLoopStatusMessage(ralphWiggumState, "started"),
+				);
+			}
 
 			// Start session - use streaming mode if supported for ability to add messages later
 			if (runner.supportsStreamingInput && runner.startStreaming) {

@@ -25,6 +25,13 @@ import {
 } from "cyrus-core";
 import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
 import type { ValidationLoopMetadata } from "./procedures/types.js";
+import {
+	buildContinuationPrompt,
+	deactivateLoop,
+	getLoopStatusMessage,
+	loadRalphWiggumState,
+	shouldContinueLoop,
+} from "./ralph-wiggum/index.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 import {
 	DEFAULT_VALIDATION_LOOP_CONFIG,
@@ -62,6 +69,22 @@ export interface AgentSessionManagerEvents {
 		session: CyrusAgentSession;
 		/** Current iteration (1-based) */
 		iteration: number;
+	}) => void;
+	/**
+	 * Emitted when Ralph Wiggum loop should continue
+	 * The EdgeWorker should respond by resuming the session with the continuation prompt
+	 */
+	ralphWiggumLoopIteration: (data: {
+		linearAgentActivitySessionId: string;
+		session: CyrusAgentSession;
+		/** The continuation prompt to resume with */
+		continuationPrompt: string;
+		/** Current iteration (1-based, before increment) */
+		iteration: number;
+		/** Maximum iterations allowed (0 = unlimited) */
+		maxIterations: number;
+		/** The last response from the agent (for checking completion promise) */
+		lastResponse: string;
 	}) => void;
 }
 
@@ -452,6 +475,68 @@ export class AgentSessionManager extends EventEmitter {
 				session,
 			});
 		} else {
+			// Procedure complete - check for Ralph Wiggum loop before posting final result
+			const ralphWiggumState = loadRalphWiggumState(session.workspace.path);
+
+			if (ralphWiggumState?.active) {
+				// Get the last response for completion promise checking
+				const lastResponse =
+					"result" in resultMessage && resultMessage.result
+						? resultMessage.result
+						: "";
+
+				// Check if we should continue the loop
+				const { shouldContinue, reason } = shouldContinueLoop(
+					ralphWiggumState,
+					lastResponse,
+				);
+
+				if (shouldContinue) {
+					// Build continuation prompt and emit event
+					const continuationPrompt = buildContinuationPrompt(ralphWiggumState);
+
+					console.log(
+						`[AgentSessionManager] Ralph Wiggum loop continuing - iteration ${ralphWiggumState.iteration}, reason: ${reason}`,
+					);
+
+					// Post a thought about the loop continuation
+					await this.createThoughtActivity(
+						linearAgentActivitySessionId,
+						getLoopStatusMessage(ralphWiggumState, "continuing"),
+					);
+
+					// Emit event for EdgeWorker to handle loop continuation
+					this.emit("ralphWiggumLoopIteration", {
+						linearAgentActivitySessionId,
+						session,
+						continuationPrompt,
+						iteration: ralphWiggumState.iteration,
+						maxIterations: ralphWiggumState.maxIterations,
+						lastResponse,
+					});
+
+					return; // Don't post final result yet - loop continues
+				} else {
+					// Loop is done - deactivate and continue to post final result
+					deactivateLoop(session.workspace.path, ralphWiggumState, reason);
+
+					console.log(
+						`[AgentSessionManager] Ralph Wiggum loop completed - ${reason}`,
+					);
+
+					// Post a thought about the loop completion
+					await this.createThoughtActivity(
+						linearAgentActivitySessionId,
+						getLoopStatusMessage(
+							ralphWiggumState,
+							reason.includes("Max iterations")
+								? "max_iterations"
+								: "completed",
+						),
+					);
+				}
+			}
+
 			// Procedure complete - post final result
 			console.log(
 				`[AgentSessionManager] All subroutines completed, posting final result to Linear`,
