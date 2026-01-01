@@ -4866,6 +4866,9 @@ ${input.userComment}
 
 		// Add Stop hook for Ralph Wiggum loop if configured
 		if (session.metadata?.ralphWiggum?.isActive) {
+			// Get the agentSessionManager for posting thoughts to Linear
+			const agentSessionManager = this.agentSessionManagers.get(repository.id);
+
 			hooks.Stop = [
 				{
 					hooks: [
@@ -4881,43 +4884,106 @@ ${input.userComment}
 								return { continue: true };
 							}
 
-							// Prevent infinite loops: if stop_hook_active is true, this is a recursive invocation
+							// NOTE: stop_hook_active=true means this is the "confirmation" call after we
+							// returned decision=block. The SDK is asking "are you sure you want to block?"
+							// For Ralph Wiggum loop, we SHOULD block (return decision=block again) to
+							// actually continue the session with our continuation prompt.
+							//
+							// On the confirmation call, we just re-confirm the block without
+							// re-doing all the transcript reading, iteration incrementing, etc.
 							if (stopInput.stop_hook_active) {
 								console.log(
-									`[EdgeWorker] Ralph Wiggum: stop_hook_active=true, preventing infinite loop`,
+									`[EdgeWorker] Ralph Wiggum: stop_hook_active=true, confirming block for iteration ${ralphState.currentIteration}/${ralphState.maxIterations}`,
 								);
-								return { continue: true };
+								// Re-confirm the block with the same formatted continuation prompt
+								const confirmationPrompt = `# CONTINUE WORKING - Ralph Wiggum Loop Iteration ${ralphState.currentIteration}/${ralphState.maxIterations}
+
+**IMPORTANT**: This is NOT a stop or pause signal. You are in a Ralph Wiggum iterative loop.
+Continue working on the task below. Do NOT ask what to do next - just keep making progress.
+If you believe you're done, include <promise>DONE</promise> in your response.
+
+---
+
+${ralphState.originalPrompt}`;
+								return {
+									decision: "block",
+									reason: confirmationPrompt,
+									systemMessage: `Ralph Wiggum Loop: Iteration ${ralphState.currentIteration}/${ralphState.maxIterations} - Continue working, do not stop.`,
+								};
 							}
 
-							// Check for completion promise in transcript
+							// Check for completion promise in assistant messages only
 							try {
 								console.log(
-									`[EdgeWorker] Ralph Wiggum: Checking transcript at: ${stopInput.transcript_path}`,
+									`[EdgeWorker] [${new Date().toISOString()}] Ralph Wiggum: Checking transcript at: ${stopInput.transcript_path}`,
 								);
 								const transcriptContent = await readFile(
 									stopInput.transcript_path,
 									"utf-8",
 								);
-								// Look for <promise>DONE</promise> in the last assistant message
-								// The transcript is JSONL format, so we check the last few lines
+								// Parse JSONL to find assistant messages only
 								const lines = transcriptContent.trim().split("\n");
 								console.log(
 									`[EdgeWorker] Ralph Wiggum: Transcript has ${lines.length} lines`,
 								);
-								// Check the last 5 lines for the completion promise
-								const recentContent = lines.slice(-5).join("\n");
-								console.log(
-									`[EdgeWorker] Ralph Wiggum: Recent content preview (last 200 chars): ${recentContent.slice(-200)}`,
-								);
-								if (recentContent.includes("<promise>DONE</promise>")) {
+
+								// Find the last assistant message and check for completion promise
+								let foundCompletionPromise = false;
+								for (let i = lines.length - 1; i >= 0; i--) {
+									try {
+										const line = lines[i];
+										if (!line) continue;
+										const entry = JSON.parse(line);
+										// Check if this is an assistant message
+										if (
+											entry.message?.role === "assistant" ||
+											entry.type === "assistant"
+										) {
+											// Extract text content from assistant message
+											const content = entry.message?.content;
+											let textContent = "";
+											if (typeof content === "string") {
+												textContent = content;
+											} else if (Array.isArray(content)) {
+												// Handle array of content blocks
+												textContent = content
+													.filter(
+														(block: { type: string }) => block.type === "text",
+													)
+													.map((block: { text: string }) => block.text || "")
+													.join("\n");
+											}
+
+											if (textContent.includes("<promise>DONE</promise>")) {
+												console.log(
+													`[EdgeWorker] Ralph Wiggum: Completion promise found in assistant message`,
+												);
+												foundCompletionPromise = true;
+											}
+											// Only check the most recent assistant message
+											break;
+										}
+									} catch {
+										// Skip malformed lines
+									}
+								}
+
+								if (foundCompletionPromise) {
 									console.log(
 										`[EdgeWorker] Ralph Wiggum: Completion promise detected in iteration ${ralphState.currentIteration}/${ralphState.maxIterations}, ending loop`,
 									);
+									// Post a thought to Linear about loop completion
+									if (agentSessionManager) {
+										await agentSessionManager.createThoughtActivity(
+											linearAgentActivitySessionId,
+											`✅ Ralph Wiggum Loop: Completed after ${ralphState.currentIteration} iteration${ralphState.currentIteration > 1 ? "s" : ""} (task signaled done)`,
+										);
+									}
 									ralphState.isActive = false;
 									return { continue: true };
 								}
 								console.log(
-									`[EdgeWorker] Ralph Wiggum: No completion promise found, will continue loop`,
+									`[EdgeWorker] Ralph Wiggum: No completion promise found in assistant message, will continue loop`,
 								);
 							} catch (error) {
 								console.log(
@@ -4930,6 +4996,13 @@ ${input.userComment}
 								console.log(
 									`[EdgeWorker] Ralph Wiggum: Max iterations (${ralphState.maxIterations}) reached, ending loop`,
 								);
+								// Post a thought to Linear about reaching max iterations
+								if (agentSessionManager) {
+									await agentSessionManager.createThoughtActivity(
+										linearAgentActivitySessionId,
+										`⏹️ Ralph Wiggum Loop: Reached maximum iterations (${ralphState.maxIterations})`,
+									);
+								}
 								ralphState.isActive = false;
 								return { continue: true };
 							}
@@ -4937,16 +5010,45 @@ ${input.userComment}
 							// Increment iteration and continue the loop
 							ralphState.currentIteration++;
 							console.log(
-								`[EdgeWorker] Ralph Wiggum: Continuing to iteration ${ralphState.currentIteration}/${ralphState.maxIterations}`,
+								`[EdgeWorker] [${new Date().toISOString()}] Ralph Wiggum: Continuing to iteration ${ralphState.currentIteration}/${ralphState.maxIterations}`,
 							);
+
+							// Post a thought to Linear about the iteration progress
+							if (agentSessionManager) {
+								await agentSessionManager.createThoughtActivity(
+									linearAgentActivitySessionId,
+									`🔄 Ralph Wiggum Loop: Starting iteration ${ralphState.currentIteration} of ${ralphState.maxIterations}`,
+								);
+							}
 
 							// Block the session from stopping and provide the continuation prompt
 							// Note: Only use decision + reason, don't include continue field
 							// as per the native Ralph Wiggum plugin pattern
-							const systemMsg = `Ralph Wiggum Loop: Iteration ${ralphState.currentIteration}/${ralphState.maxIterations}`;
+							//
+							// IMPORTANT: The SDK prefixes the reason with "Stop hook feedback:\n"
+							// which confuses Claude into thinking it was stopped. We prefix our
+							// prompt with clear continuation instructions to override this framing.
+							const continuationPrompt = `# CONTINUE WORKING - Ralph Wiggum Loop Iteration ${ralphState.currentIteration}/${ralphState.maxIterations}
+
+**IMPORTANT**: This is NOT a stop or pause signal. You are in a Ralph Wiggum iterative loop.
+Continue working on the task below. Do NOT ask what to do next - just keep making progress.
+If you believe you're done, include <promise>DONE</promise> in your response.
+
+---
+
+${ralphState.originalPrompt}`;
+
+							const systemMsg = `Ralph Wiggum Loop: Iteration ${ralphState.currentIteration}/${ralphState.maxIterations} - Continue working, do not stop.`;
+							console.log(
+								`[EdgeWorker] [${new Date().toISOString()}] Ralph Wiggum: Returning decision=block to continue session`,
+							);
+
+							// NOTE: isActive remains true, which tells AgentSessionManager to skip
+							// subroutine transition when the SDK emits a result message
+
 							return {
 								decision: "block",
-								reason: ralphState.originalPrompt,
+								reason: continuationPrompt,
 								systemMessage: systemMsg,
 							};
 						},
