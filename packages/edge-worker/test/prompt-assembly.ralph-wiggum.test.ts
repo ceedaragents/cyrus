@@ -1,8 +1,9 @@
 /**
  * Prompt Assembly Tests - Ralph Wiggum Loop
  *
- * Tests that the Ralph Wiggum iteration info is added to the system prompt
- * when a session has active Ralph Wiggum state.
+ * Tests that Ralph Wiggum metadata does NOT affect the system prompt assembly.
+ * Iteration tracking is handled by the Stop hook continuation prompt, not the
+ * initial system prompt (since system prompts are only sent once at session start).
  *
  * @see https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-wiggum
  * @see https://platform.claude.com/docs/en/agent-sdk/plugins
@@ -12,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { createTestWorker, scenario } from "./prompt-assembly-utils.js";
 
 describe("Prompt Assembly - Ralph Wiggum Loop", () => {
-	it("should add iteration info to system prompt when Ralph Wiggum is active", async () => {
+	it("should NOT add iteration info to system prompt (handled by Stop hook continuation)", async () => {
 		const worker = createTestWorker();
 
 		const session = {
@@ -52,16 +53,13 @@ describe("Prompt Assembly - Ralph Wiggum Loop", () => {
 			.expectComponents("issue-context")
 			.verify();
 
-		// Verify system prompt contains Ralph Wiggum iteration info
+		// System prompt should NOT contain Ralph Wiggum iteration info
+		// because system prompts are only sent once at session start.
+		// The Stop hook handles iteration tracking via continuation prompts.
 		expect(result.systemPrompt).toBeDefined();
-		expect(result.systemPrompt).toContain("## Ralph Wiggum Loop Status");
-		expect(result.systemPrompt).toContain("You are in iteration 2 of 5");
-		expect(result.systemPrompt).toContain(
-			"When you output `<promise>DONE</promise>`, the loop will end",
-		);
-		expect(result.systemPrompt).toContain(
-			"Do NOT output `<promise>DONE</promise>` until you have completed ALL iterations",
-		);
+		expect(result.systemPrompt).not.toContain("Ralph Wiggum");
+		expect(result.systemPrompt).not.toContain("iteration");
+		expect(result.systemPrompt).not.toContain("<promise>DONE</promise>");
 	});
 
 	it("should NOT add iteration info when Ralph Wiggum is inactive", async () => {
@@ -104,8 +102,8 @@ describe("Prompt Assembly - Ralph Wiggum Loop", () => {
 
 		// Verify system prompt does NOT contain Ralph Wiggum iteration info
 		expect(result.systemPrompt).toBeDefined();
-		expect(result.systemPrompt).not.toContain("## Ralph Wiggum Loop Status");
-		expect(result.systemPrompt).not.toContain("You are in iteration");
+		expect(result.systemPrompt).not.toContain("Ralph Wiggum");
+		expect(result.systemPrompt).not.toContain("iteration");
 	});
 
 	it("should NOT add iteration info when no Ralph Wiggum metadata exists", async () => {
@@ -141,11 +139,11 @@ describe("Prompt Assembly - Ralph Wiggum Loop", () => {
 
 		// Verify system prompt does NOT contain Ralph Wiggum iteration info
 		expect(result.systemPrompt).toBeDefined();
-		expect(result.systemPrompt).not.toContain("## Ralph Wiggum Loop Status");
-		expect(result.systemPrompt).not.toContain("You are in iteration");
+		expect(result.systemPrompt).not.toContain("Ralph Wiggum");
+		expect(result.systemPrompt).not.toContain("iteration");
 	});
 
-	it("should show correct iteration numbers for first iteration", async () => {
+	it("should preserve Ralph Wiggum metadata in session for Stop hook to use", async () => {
 		const worker = createTestWorker();
 
 		const session = {
@@ -154,7 +152,7 @@ describe("Prompt Assembly - Ralph Wiggum Loop", () => {
 			metadata: {
 				ralphWiggum: {
 					maxIterations: 3,
-					currentIteration: 1, // First iteration
+					currentIteration: 1,
 					originalPrompt: "Test prompt",
 					isActive: true,
 				},
@@ -164,8 +162,8 @@ describe("Prompt Assembly - Ralph Wiggum Loop", () => {
 		const issue = {
 			id: "ralph-wiggum-test-id-4",
 			identifier: "TEST-4",
-			title: "First Iteration Test",
-			description: "Test task for first iteration",
+			title: "Metadata Preservation Test",
+			description: "Test that Ralph Wiggum metadata is preserved",
 		};
 
 		const repository = {
@@ -183,49 +181,14 @@ describe("Prompt Assembly - Ralph Wiggum Loop", () => {
 			.withLabels()
 			.verify();
 
-		// Verify system prompt shows iteration 1 of 3
-		expect(result.systemPrompt).toContain("You are in iteration 1 of 3");
-	});
-
-	it("should show correct iteration numbers for last iteration", async () => {
-		const worker = createTestWorker();
-
-		const session = {
-			issueId: "ralph-wiggum-test-id-5",
-			workspace: { path: "/test" },
-			metadata: {
-				ralphWiggum: {
-					maxIterations: 10,
-					currentIteration: 10, // Last iteration
-					originalPrompt: "Test prompt",
-					isActive: true,
-				},
-			},
-		};
-
-		const issue = {
-			id: "ralph-wiggum-test-id-5",
-			identifier: "TEST-5",
-			title: "Last Iteration Test",
-			description: "Test task for last iteration",
-		};
-
-		const repository = {
-			id: "repo-ralph-wiggum-test-5",
-			path: "/test/repo",
-		};
-
-		const result = await scenario(worker)
-			.newSession()
-			.assignmentBased()
-			.withSession(session)
-			.withIssue(issue)
-			.withRepository(repository)
-			.withUserComment("")
-			.withLabels()
-			.verify();
-
-		// Verify system prompt shows iteration 10 of 10
-		expect(result.systemPrompt).toContain("You are in iteration 10 of 10");
+		// The prompt assembly should work normally - metadata is preserved
+		// on the session object for the Stop hook to access later
+		expect(result.systemPrompt).toBeDefined();
+		expect(result.userPrompt).toBeDefined();
+		// Session metadata remains intact for Stop hook to use
+		expect(session.metadata.ralphWiggum).toBeDefined();
+		expect(session.metadata.ralphWiggum.maxIterations).toBe(3);
+		expect(session.metadata.ralphWiggum.currentIteration).toBe(1);
+		expect(session.metadata.ralphWiggum.isActive).toBe(true);
 	});
 });

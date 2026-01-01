@@ -4605,19 +4605,12 @@ ${input.userComment}
 			components.push("guidance-rules");
 		}
 
-		// 7. Add Ralph Wiggum iteration info to system prompt (if active)
-		let finalSystemPrompt = systemPrompt;
-		if (input.session.metadata?.ralphWiggum?.isActive) {
-			const ralphState = input.session.metadata.ralphWiggum;
-			const iterationInfo = `\n\n## Ralph Wiggum Loop Status\nYou are in iteration ${ralphState.currentIteration} of ${ralphState.maxIterations}.\n- When you complete this iteration's work, the session will automatically restart with a new iteration.\n- When you output \`<promise>DONE</promise>\`, the loop will end.\n- Do NOT output \`<promise>DONE</promise>\` until you have completed ALL iterations.`;
-			finalSystemPrompt = systemPrompt + iterationInfo;
-			console.log(
-				`[PromptAssembly] Ralph Wiggum: Added iteration ${ralphState.currentIteration}/${ralphState.maxIterations} info to system prompt`,
-			);
-		}
+		// Note: Ralph Wiggum iteration info is NOT added to system prompt because
+		// system prompts are only sent once at session start. The continuation
+		// prompt returned by the Stop hook handles iteration tracking for iterations 2+.
 
 		return {
-			systemPrompt: finalSystemPrompt,
+			systemPrompt,
 			userPrompt: parts.join("\n\n"),
 			metadata: {
 				components,

@@ -316,21 +316,18 @@ Add a label to your Linear issue in the format `ralph-wiggum-N` where N is the m
 #### How It Works
 
 1. **Detection**: When an issue has a `ralph-wiggum-N` label, the EdgeWorker detects it and initializes the loop state
-2. **Iteration Tracking**: The system prompt includes iteration status (e.g., "You are in iteration 2 of 5")
-3. **Automatic Continuation**: After each turn, the session automatically continues to the next iteration
+2. **Stop Hook**: Uses the Claude Agent SDK's stop hook with `decision: "block"` to prevent premature termination
+3. **Continuation Prompt**: After each iteration, a continuation prompt is fed back with the current iteration status
 4. **Completion Signal**: Claude can output `<promise>DONE</promise>` to end the loop early
-5. **Stop Hook**: Uses the Claude Agent SDK's stop hook with `decision: "block"` to prevent premature termination
+5. **Automatic Termination**: Loop ends when max iterations reached or completion signal detected
 
-#### Example System Prompt Addition
+#### Example Continuation Prompt
 
-When Ralph Wiggum is active, the following is appended to the system prompt:
+After each iteration, the Stop hook returns a continuation prompt like:
 
 ```
-## Ralph Wiggum Loop Status
-You are in iteration 2 of 5.
-- When you complete this iteration's work, the session will automatically restart with a new iteration.
-- When you output `<promise>DONE</promise>`, the loop will end.
-- Do NOT output `<promise>DONE</promise>` until you have completed ALL iterations.
+Continue to the next iteration. You are now on iteration 3 of 5.
+Remember: Output `<promise>DONE</promise>` only when ALL work is complete.
 ```
 
 #### Procedure Selection
