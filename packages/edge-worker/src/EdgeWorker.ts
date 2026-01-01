@@ -1773,6 +1773,23 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[EdgeWorker] Using simple-question procedure due to ralph-wiggum label (skipping AI routing)`,
 			);
+
+			// Initialize Ralph Wiggum state early so it's available for prompt assembly
+			const ralphWiggumConfig = this.parseRalphWiggumLabel(labels);
+			if (ralphWiggumConfig) {
+				if (!session.metadata) {
+					session.metadata = {};
+				}
+				session.metadata.ralphWiggum = {
+					maxIterations: ralphWiggumConfig.maxIterations,
+					currentIteration: 1,
+					originalPrompt: "", // Will be set after prompt assembly
+					isActive: true,
+				};
+				console.log(
+					`[EdgeWorker] Initialized Ralph Wiggum loop early: iteration 1/${ralphWiggumConfig.maxIterations} for session ${linearAgentActivitySessionId}`,
+				);
+			}
 		} else {
 			// No label override - use AI routing
 			const issueDescription =
@@ -2612,6 +2629,10 @@ export class EdgeWorker extends EventEmitter {
 	/**
 	 * Parse Ralph Wiggum label to extract max iterations.
 	 * Label format: "ralph-wiggum-{N}" where N is the max number of iterations.
+	 *
+	 * This feature is based on the official Anthropic Claude Plugin:
+	 * @see https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-wiggum
+	 * @see https://platform.claude.com/docs/en/agent-sdk/plugins
 	 *
 	 * Examples:
 	 * - "ralph-wiggum-20" -> { maxIterations: 20 }
@@ -4584,8 +4605,19 @@ ${input.userComment}
 			components.push("guidance-rules");
 		}
 
+		// 7. Add Ralph Wiggum iteration info to system prompt (if active)
+		let finalSystemPrompt = systemPrompt;
+		if (input.session.metadata?.ralphWiggum?.isActive) {
+			const ralphState = input.session.metadata.ralphWiggum;
+			const iterationInfo = `\n\n## Ralph Wiggum Loop Status\nYou are in iteration ${ralphState.currentIteration} of ${ralphState.maxIterations}.\n- When you complete this iteration's work, the session will automatically restart with a new iteration.\n- When you output \`<promise>DONE</promise>\`, the loop will end.\n- Do NOT output \`<promise>DONE</promise>\` until you have completed ALL iterations.`;
+			finalSystemPrompt = systemPrompt + iterationInfo;
+			console.log(
+				`[PromptAssembly] Ralph Wiggum: Added iteration ${ralphState.currentIteration}/${ralphState.maxIterations} info to system prompt`,
+			);
+		}
+
 		return {
-			systemPrompt,
+			systemPrompt: finalSystemPrompt,
 			userPrompt: parts.join("\n\n"),
 			metadata: {
 				components,
@@ -4803,24 +4835,17 @@ ${input.userComment}
 		singleTurn?: boolean,
 		originalPrompt?: string,
 	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
-		// Parse Ralph Wiggum label and initialize session state if present
-		const ralphWiggumConfig = this.parseRalphWiggumLabel(labels || []);
-		if (ralphWiggumConfig && originalPrompt) {
-			// Initialize Ralph Wiggum state in session metadata
-			if (!session.metadata) {
-				session.metadata = {};
-			}
-			if (!session.metadata.ralphWiggum) {
-				session.metadata.ralphWiggum = {
-					maxIterations: ralphWiggumConfig.maxIterations,
-					currentIteration: 1,
-					originalPrompt: originalPrompt,
-					isActive: true,
-				};
-				console.log(
-					`[EdgeWorker] Initialized Ralph Wiggum loop: iteration 1/${ralphWiggumConfig.maxIterations} for session ${linearAgentActivitySessionId}`,
-				);
-			}
+		// Update Ralph Wiggum originalPrompt if state was initialized early
+		// (The state is initialized early during label detection so prompt assembly can include iteration info)
+		if (
+			session.metadata?.ralphWiggum &&
+			originalPrompt &&
+			!session.metadata.ralphWiggum.originalPrompt
+		) {
+			session.metadata.ralphWiggum.originalPrompt = originalPrompt;
+			console.log(
+				`[EdgeWorker] Ralph Wiggum: Set originalPrompt (${originalPrompt.length} chars) for session ${linearAgentActivitySessionId}`,
+			);
 		}
 
 		// Configure PostToolUse hook for playwright screenshots
@@ -4968,17 +4993,6 @@ ${input.userComment}
 		const finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
 
-		// Build final system prompt, including Ralph Wiggum iteration info if active
-		let finalSystemPrompt = systemPrompt || "";
-		if (session.metadata?.ralphWiggum?.isActive) {
-			const ralphState = session.metadata.ralphWiggum;
-			const iterationInfo = `\n\n## Ralph Wiggum Loop Status\nYou are in iteration ${ralphState.currentIteration} of ${ralphState.maxIterations}.\n- When you complete this iteration's work, the session will automatically restart with a new iteration.\n- When you output \`<promise>DONE</promise>\`, the loop will end.\n- Do NOT output \`<promise>DONE</promise>\` until you have completed ALL iterations.`;
-			finalSystemPrompt = finalSystemPrompt + iterationInfo;
-			console.log(
-				`[EdgeWorker] Ralph Wiggum: Added iteration ${ralphState.currentIteration}/${ralphState.maxIterations} info to system prompt`,
-			);
-		}
-
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -4988,7 +5002,7 @@ ${input.userComment}
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
-			appendSystemPrompt: finalSystemPrompt,
+			appendSystemPrompt: systemPrompt || "",
 			// Priority order: label override > repository config > global default
 			model: finalModel,
 			fallbackModel:
@@ -5585,6 +5599,23 @@ ${input.userComment}
 			console.log(
 				`[EdgeWorker] Using simple-question procedure due to ralph-wiggum label (skipping AI routing)`,
 			);
+
+			// Initialize Ralph Wiggum state early so it's available for prompt assembly
+			const ralphWiggumConfig = this.parseRalphWiggumLabel(fetchedLabels);
+			if (ralphWiggumConfig && !session.metadata?.ralphWiggum) {
+				if (!session.metadata) {
+					session.metadata = {};
+				}
+				session.metadata.ralphWiggum = {
+					maxIterations: ralphWiggumConfig.maxIterations,
+					currentIteration: 1,
+					originalPrompt: "", // Will be set after prompt assembly
+					isActive: true,
+				};
+				console.log(
+					`[EdgeWorker] Initialized Ralph Wiggum loop early: iteration 1/${ralphWiggumConfig.maxIterations} for session ${linearAgentActivitySessionId}`,
+				);
+			}
 		} else {
 			// No label override - use AI routing based on prompt content
 			const routingDecision = await this.procedureAnalyzer.determineRoutine(

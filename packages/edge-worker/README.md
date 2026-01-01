@@ -291,3 +291,48 @@ const edgeWorker = new EdgeWorker({
     promptTemplatePath: './prompts/backend-specific.md'
   }]
 })
+```
+
+## Label-Based Features
+
+### Ralph Wiggum Loop
+
+The Ralph Wiggum loop enables iterative agent sessions where Claude automatically continues working through multiple iterations. This is useful for tasks that benefit from multiple passes or self-reflection.
+
+#### Source Material
+
+This feature is based on the official Anthropic Claude Plugin:
+- [Ralph Wiggum Plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-wiggum) - Official Anthropic implementation
+- [Claude Agent SDK Plugins Documentation](https://platform.claude.com/docs/en/agent-sdk/plugins) - Plugin system overview
+
+#### Usage
+
+Add a label to your Linear issue in the format `ralph-wiggum-N` where N is the maximum number of iterations:
+
+- `ralph-wiggum-3` - Run up to 3 iterations
+- `ralph-wiggum-10` - Run up to 10 iterations
+- `ralph-wiggum-20` - Run up to 20 iterations (maximum)
+
+#### How It Works
+
+1. **Detection**: When an issue has a `ralph-wiggum-N` label, the EdgeWorker detects it and initializes the loop state
+2. **Iteration Tracking**: The system prompt includes iteration status (e.g., "You are in iteration 2 of 5")
+3. **Automatic Continuation**: After each turn, the session automatically continues to the next iteration
+4. **Completion Signal**: Claude can output `<promise>DONE</promise>` to end the loop early
+5. **Stop Hook**: Uses the Claude Agent SDK's stop hook with `decision: "block"` to prevent premature termination
+
+#### Example System Prompt Addition
+
+When Ralph Wiggum is active, the following is appended to the system prompt:
+
+```
+## Ralph Wiggum Loop Status
+You are in iteration 2 of 5.
+- When you complete this iteration's work, the session will automatically restart with a new iteration.
+- When you output `<promise>DONE</promise>`, the loop will end.
+- Do NOT output `<promise>DONE</promise>` until you have completed ALL iterations.
+```
+
+#### Procedure Selection
+
+When a Ralph Wiggum label is detected, the EdgeWorker automatically selects the `simple-question` procedure (transient), bypassing the AI-based procedure analyzer. This is optimized for iterative workflows
