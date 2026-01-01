@@ -294,6 +294,18 @@ export class AgentSessionManager extends EventEmitter {
 			throw new Error("ProcedureAnalyzer not available");
 		}
 
+		// Check if Ralph Wiggum loop is active - if so, the session is continuing
+		// with a new iteration and we should NOT trigger subroutine transitions.
+		// When isActive is true, it means the Stop hook blocked and the session
+		// will continue with the continuation prompt.
+		const ralphState = session.metadata?.ralphWiggum;
+		if (ralphState?.isActive) {
+			console.log(
+				`[AgentSessionManager] [${new Date().toISOString()}] Ralph Wiggum loop is active (iteration ${ralphState.currentIteration}/${ralphState.maxIterations}) - skipping subroutine transition`,
+			);
+			return;
+		}
+
 		// Check if error occurred
 		if (resultMessage.subtype !== "success") {
 			console.log(
@@ -441,12 +453,15 @@ export class AgentSessionManager extends EventEmitter {
 
 			// Advance procedure state
 			console.log(
-				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
+				`[AgentSessionManager] [${new Date().toISOString()}] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
 			this.procedureAnalyzer.advanceToNextSubroutine(session, sessionId);
 
 			// Emit event for EdgeWorker to handle subroutine transition
 			// This replaces the callback pattern and allows EdgeWorker to subscribe
+			console.log(
+				`[AgentSessionManager] [${new Date().toISOString()}] Emitting subroutineComplete event`,
+			);
 			this.emit("subroutineComplete", {
 				linearAgentActivitySessionId,
 				session,
@@ -735,6 +750,9 @@ export class AgentSessionManager extends EventEmitter {
 				}
 
 				case "result":
+					console.log(
+						`[AgentSessionManager] [${new Date().toISOString()}] Received result message for session ${linearAgentActivitySessionId}`,
+					);
 					await this.completeSession(
 						linearAgentActivitySessionId,
 						message as SDKResultMessage,

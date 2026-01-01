@@ -10,6 +10,7 @@ import type {
 	McpServerConfig,
 	PostToolUseHookInput,
 	SDKMessage,
+	StopHookInput,
 } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
@@ -1760,6 +1761,35 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
 			);
+		} else if (this.parseRalphWiggumLabel(labels)) {
+			// Ralph Wiggum loop: use simple-question (transient) procedure
+			const simpleQuestionProcedure =
+				this.procedureAnalyzer.getProcedure("simple-question");
+			if (!simpleQuestionProcedure) {
+				throw new Error("simple-question procedure not found in registry");
+			}
+			finalProcedure = simpleQuestionProcedure;
+			finalClassification = "transient";
+			console.log(
+				`[EdgeWorker] Using simple-question procedure due to ralph-wiggum label (skipping AI routing)`,
+			);
+
+			// Initialize Ralph Wiggum state early so it's available for prompt assembly
+			const ralphWiggumConfig = this.parseRalphWiggumLabel(labels);
+			if (ralphWiggumConfig) {
+				if (!session.metadata) {
+					session.metadata = {};
+				}
+				session.metadata.ralphWiggum = {
+					maxIterations: ralphWiggumConfig.maxIterations,
+					currentIteration: 1,
+					originalPrompt: "", // Will be set after prompt assembly
+					isActive: true,
+				};
+				console.log(
+					`[EdgeWorker] Initialized Ralph Wiggum loop early: iteration 1/${ralphWiggumConfig.maxIterations} for session ${linearAgentActivitySessionId}`,
+				);
+			}
 		} else {
 			// No label override - use AI routing
 			const issueDescription =
@@ -1883,6 +1913,7 @@ export class EdgeWorker extends EventEmitter {
 				labels, // Pass labels for runner selection and model override
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
+				assembly.userPrompt, // originalPrompt for Ralph Wiggum loop
 			);
 
 			console.log(
@@ -2593,6 +2624,55 @@ export class EdgeWorker extends EventEmitter {
 			modelOverride: "opus",
 			fallbackModelOverride: "sonnet",
 		};
+	}
+
+	/**
+	 * Parse Ralph Wiggum label to extract max iterations.
+	 * Label format: "ralph-wiggum-{N}" where N is the max number of iterations.
+	 *
+	 * This feature is based on the official Anthropic Claude Plugin:
+	 * @see https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-wiggum
+	 * @see https://platform.claude.com/docs/en/agent-sdk/plugins
+	 *
+	 * Examples:
+	 * - "ralph-wiggum-20" -> { maxIterations: 20 }
+	 * - "ralph-wiggum-5" -> { maxIterations: 5 }
+	 * - "ralph-wiggum" -> { maxIterations: 10 } (default)
+	 *
+	 * Returns undefined if no Ralph Wiggum label is found.
+	 */
+	private parseRalphWiggumLabel(
+		labels: string[],
+	): { maxIterations: number } | undefined {
+		if (!labels || labels.length === 0) {
+			return undefined;
+		}
+
+		const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
+		// Look for ralph-wiggum-{N} pattern
+		for (const label of lowercaseLabels) {
+			const match = label.match(/^ralph-wiggum-(\d+)$/);
+			if (match?.[1]) {
+				const maxIterations = parseInt(match[1], 10);
+				if (maxIterations > 0 && maxIterations <= 100) {
+					console.log(
+						`[EdgeWorker] Ralph Wiggum label detected: ${label} (max ${maxIterations} iterations)`,
+					);
+					return { maxIterations };
+				}
+			}
+
+			// Also support just "ralph-wiggum" with a default of 10 iterations
+			if (label === "ralph-wiggum") {
+				console.log(
+					`[EdgeWorker] Ralph Wiggum label detected: ${label} (default max 10 iterations)`,
+				);
+				return { maxIterations: 10 };
+			}
+		}
+
+		return undefined;
 	}
 
 	/**
@@ -4525,6 +4605,10 @@ ${input.userComment}
 			components.push("guidance-rules");
 		}
 
+		// Note: Ralph Wiggum iteration info is NOT added to system prompt because
+		// system prompts are only sent once at session start. The continuation
+		// prompt returned by the Stop hook handles iteration tracking for iterations 2+.
+
 		return {
 			systemPrompt,
 			userPrompt: parts.join("\n\n"),
@@ -4742,7 +4826,21 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
+		originalPrompt?: string,
 	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+		// Update Ralph Wiggum originalPrompt if state was initialized early
+		// (The state is initialized early during label detection so prompt assembly can include iteration info)
+		if (
+			session.metadata?.ralphWiggum &&
+			originalPrompt &&
+			!session.metadata.ralphWiggum.originalPrompt
+		) {
+			session.metadata.ralphWiggum.originalPrompt = originalPrompt;
+			console.log(
+				`[EdgeWorker] Ralph Wiggum: Set originalPrompt (${originalPrompt.length} chars) for session ${linearAgentActivitySessionId}`,
+			);
+		}
+
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
@@ -4765,6 +4863,199 @@ ${input.userComment}
 				},
 			],
 		};
+
+		// Add Stop hook for Ralph Wiggum loop if configured
+		if (session.metadata?.ralphWiggum?.isActive) {
+			// Get the agentSessionManager for posting thoughts to Linear
+			const agentSessionManager = this.agentSessionManagers.get(repository.id);
+
+			hooks.Stop = [
+				{
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const stopInput = input as StopHookInput;
+							const ralphState = session.metadata?.ralphWiggum;
+
+							// If no Ralph Wiggum state or loop is inactive, allow session to end
+							if (!ralphState || !ralphState.isActive) {
+								console.log(
+									`[EdgeWorker] Ralph Wiggum: No active loop, allowing session to end`,
+								);
+								return { continue: true };
+							}
+
+							// NOTE: stop_hook_active=true means this is the "confirmation" call after we
+							// returned decision=block. The SDK is asking "are you sure you want to block?"
+							// For Ralph Wiggum loop, we SHOULD block (return decision=block again) to
+							// actually continue the session with our continuation prompt.
+							//
+							// On the confirmation call, we just re-confirm the block without
+							// re-doing all the transcript reading, iteration incrementing, etc.
+							if (stopInput.stop_hook_active) {
+								console.log(
+									`[EdgeWorker] Ralph Wiggum: stop_hook_active=true, confirming block for iteration ${ralphState.currentIteration}/${ralphState.maxIterations}`,
+								);
+								// Re-confirm the block with the same formatted continuation prompt
+								const confirmationPrompt = `# CONTINUE WORKING - Ralph Wiggum Loop Iteration ${ralphState.currentIteration}/${ralphState.maxIterations}
+
+**IMPORTANT**: This is NOT a stop or pause signal. You are in a Ralph Wiggum iterative loop.
+Continue working on the task below. Do NOT ask what to do next - just keep making progress.
+If you believe you're done, include <promise>DONE</promise> in your response.
+
+---
+
+${ralphState.originalPrompt}`;
+								return {
+									decision: "block",
+									reason: confirmationPrompt,
+									systemMessage: `Ralph Wiggum Loop: Iteration ${ralphState.currentIteration}/${ralphState.maxIterations} - Continue working, do not stop.`,
+								};
+							}
+
+							// Check for completion promise in assistant messages only
+							try {
+								console.log(
+									`[EdgeWorker] [${new Date().toISOString()}] Ralph Wiggum: Checking transcript at: ${stopInput.transcript_path}`,
+								);
+								const transcriptContent = await readFile(
+									stopInput.transcript_path,
+									"utf-8",
+								);
+								// Parse JSONL to find assistant messages only
+								const lines = transcriptContent.trim().split("\n");
+								console.log(
+									`[EdgeWorker] Ralph Wiggum: Transcript has ${lines.length} lines`,
+								);
+
+								// Find the last assistant message and check for completion promise
+								let foundCompletionPromise = false;
+								for (let i = lines.length - 1; i >= 0; i--) {
+									try {
+										const line = lines[i];
+										if (!line) continue;
+										const entry = JSON.parse(line);
+										// Check if this is an assistant message
+										if (
+											entry.message?.role === "assistant" ||
+											entry.type === "assistant"
+										) {
+											// Extract text content from assistant message
+											const content = entry.message?.content;
+											let textContent = "";
+											if (typeof content === "string") {
+												textContent = content;
+											} else if (Array.isArray(content)) {
+												// Handle array of content blocks
+												textContent = content
+													.filter(
+														(block: { type: string }) => block.type === "text",
+													)
+													.map((block: { text: string }) => block.text || "")
+													.join("\n");
+											}
+
+											if (textContent.includes("<promise>DONE</promise>")) {
+												console.log(
+													`[EdgeWorker] Ralph Wiggum: Completion promise found in assistant message`,
+												);
+												foundCompletionPromise = true;
+											}
+											// Only check the most recent assistant message
+											break;
+										}
+									} catch {
+										// Skip malformed lines
+									}
+								}
+
+								if (foundCompletionPromise) {
+									console.log(
+										`[EdgeWorker] Ralph Wiggum: Completion promise detected in iteration ${ralphState.currentIteration}/${ralphState.maxIterations}, ending loop`,
+									);
+									// Post a thought to Linear about loop completion
+									if (agentSessionManager) {
+										await agentSessionManager.createThoughtActivity(
+											linearAgentActivitySessionId,
+											`✅ Ralph Wiggum Loop: Completed after ${ralphState.currentIteration} iteration${ralphState.currentIteration > 1 ? "s" : ""} (task signaled done)`,
+										);
+									}
+									ralphState.isActive = false;
+									return { continue: true };
+								}
+								console.log(
+									`[EdgeWorker] Ralph Wiggum: No completion promise found in assistant message, will continue loop`,
+								);
+							} catch (error) {
+								console.log(
+									`[EdgeWorker] Ralph Wiggum: Could not read transcript (${error}), continuing with iteration check`,
+								);
+							}
+
+							// Check if max iterations reached
+							if (ralphState.currentIteration >= ralphState.maxIterations) {
+								console.log(
+									`[EdgeWorker] Ralph Wiggum: Max iterations (${ralphState.maxIterations}) reached, ending loop`,
+								);
+								// Post a thought to Linear about reaching max iterations
+								if (agentSessionManager) {
+									await agentSessionManager.createThoughtActivity(
+										linearAgentActivitySessionId,
+										`⏹️ Ralph Wiggum Loop: Reached maximum iterations (${ralphState.maxIterations})`,
+									);
+								}
+								ralphState.isActive = false;
+								return { continue: true };
+							}
+
+							// Increment iteration and continue the loop
+							ralphState.currentIteration++;
+							console.log(
+								`[EdgeWorker] [${new Date().toISOString()}] Ralph Wiggum: Continuing to iteration ${ralphState.currentIteration}/${ralphState.maxIterations}`,
+							);
+
+							// Post a thought to Linear about the iteration progress
+							if (agentSessionManager) {
+								await agentSessionManager.createThoughtActivity(
+									linearAgentActivitySessionId,
+									`🔄 Ralph Wiggum Loop: Starting iteration ${ralphState.currentIteration} of ${ralphState.maxIterations}`,
+								);
+							}
+
+							// Block the session from stopping and provide the continuation prompt
+							// Note: Only use decision + reason, don't include continue field
+							// as per the native Ralph Wiggum plugin pattern
+							//
+							// IMPORTANT: The SDK prefixes the reason with "Stop hook feedback:\n"
+							// which confuses Claude into thinking it was stopped. We prefix our
+							// prompt with clear continuation instructions to override this framing.
+							const continuationPrompt = `# CONTINUE WORKING - Ralph Wiggum Loop Iteration ${ralphState.currentIteration}/${ralphState.maxIterations}
+
+**IMPORTANT**: This is NOT a stop or pause signal. You are in a Ralph Wiggum iterative loop.
+Continue working on the task below. Do NOT ask what to do next - just keep making progress.
+If you believe you're done, include <promise>DONE</promise> in your response.
+
+---
+
+${ralphState.originalPrompt}`;
+
+							const systemMsg = `Ralph Wiggum Loop: Iteration ${ralphState.currentIteration}/${ralphState.maxIterations} - Continue working, do not stop.`;
+							console.log(
+								`[EdgeWorker] [${new Date().toISOString()}] Ralph Wiggum: Returning decision=block to continue session`,
+							);
+
+							// NOTE: isActive remains true, which tells AgentSessionManager to skip
+							// subroutine transition when the SDK emits a result message
+
+							return {
+								decision: "block",
+								reason: continuationPrompt,
+								systemMessage: systemMsg,
+							};
+						},
+					],
+				},
+			];
+		}
 
 		// Determine runner type and model override from labels
 		const runnerSelection = this.determineRunnerFromLabels(labels || []);
@@ -5345,14 +5636,16 @@ ${input.userComment}
 			linearAgentActivitySessionId,
 		);
 
-		// Fetch full issue and labels to check for Orchestrator label override
+		// Fetch full issue and labels to check for label-based procedure overrides
 		const issueTracker = this.issueTrackers.get(repository.id);
 		let hasOrchestratorLabel = false;
+		let hasRalphWiggumLabel = false;
+		let fetchedLabels: string[] = [];
 
 		if (issueTracker) {
 			try {
 				const fullIssue = await issueTracker.fetchIssue(session.issueId);
-				const labels = await this.fetchIssueLabels(fullIssue);
+				fetchedLabels = await this.fetchIssueLabels(fullIssue);
 
 				// Check for Orchestrator label (same logic as initial routing)
 				const orchestratorConfig = repository.labelPrompts?.orchestrator;
@@ -5360,7 +5653,11 @@ ${input.userComment}
 					? orchestratorConfig
 					: (orchestratorConfig?.labels ?? ["orchestrator"]);
 				hasOrchestratorLabel =
-					orchestratorLabels?.some((label) => labels.includes(label)) || false;
+					orchestratorLabels?.some((label) => fetchedLabels.includes(label)) ||
+					false;
+
+				// Check for Ralph Wiggum label
+				hasRalphWiggumLabel = !!this.parseRalphWiggumLabel(fetchedLabels);
 			} catch (error) {
 				console.error(
 					`[EdgeWorker] Failed to fetch issue labels for routing:`,
@@ -5385,8 +5682,37 @@ ${input.userComment}
 			console.log(
 				`[EdgeWorker] Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)`,
 			);
+		} else if (hasRalphWiggumLabel) {
+			// Ralph Wiggum loop: use simple-question (transient) procedure
+			const simpleQuestionProcedure =
+				this.procedureAnalyzer.getProcedure("simple-question");
+			if (!simpleQuestionProcedure) {
+				throw new Error("simple-question procedure not found in registry");
+			}
+			selectedProcedure = simpleQuestionProcedure;
+			finalClassification = "transient";
+			console.log(
+				`[EdgeWorker] Using simple-question procedure due to ralph-wiggum label (skipping AI routing)`,
+			);
+
+			// Initialize Ralph Wiggum state early so it's available for prompt assembly
+			const ralphWiggumConfig = this.parseRalphWiggumLabel(fetchedLabels);
+			if (ralphWiggumConfig && !session.metadata?.ralphWiggum) {
+				if (!session.metadata) {
+					session.metadata = {};
+				}
+				session.metadata.ralphWiggum = {
+					maxIterations: ralphWiggumConfig.maxIterations,
+					currentIteration: 1,
+					originalPrompt: "", // Will be set after prompt assembly
+					isActive: true,
+				};
+				console.log(
+					`[EdgeWorker] Initialized Ralph Wiggum loop early: iteration 1/${ralphWiggumConfig.maxIterations} for session ${linearAgentActivitySessionId}`,
+				);
+			}
 		} else {
-			// No Orchestrator label - use AI routing based on prompt content
+			// No label override - use AI routing based on prompt content
 			const routingDecision = await this.procedureAnalyzer.determineRoutine(
 				promptBody.trim(),
 			);
@@ -5752,6 +6078,7 @@ ${input.userComment}
 			labels, // Always pass labels to preserve model override
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
+			promptBody, // originalPrompt for Ralph Wiggum loop
 		);
 
 		// Create the appropriate runner based on session state

@@ -69,6 +69,21 @@ export interface CyrusAgentSession {
 				}>;
 			};
 		};
+		/**
+		 * State for Ralph Wiggum loop (continuous iterative development loop).
+		 * Activated by a label like "ralph-wiggum-20" where 20 is the max iterations.
+		 * Uses a Stop hook to prevent session ending and re-feed the continuation prompt.
+		 */
+		ralphWiggum?: {
+			/** Maximum number of iterations allowed */
+			maxIterations: number;
+			/** Current iteration (1-based) */
+			currentIteration: number;
+			/** The original prompt that started the loop */
+			originalPrompt: string;
+			/** Whether the loop is currently active */
+			isActive: boolean;
+		};
 	};
 }
 
