@@ -216,10 +216,22 @@ export interface EdgeWorkerConfig {
 }
 
 /**
+ * Workspace credentials stored independently of repositories
+ * This allows self-auth to save credentials before any repositories are added
+ */
+export interface WorkspaceCredentials {
+	id: string; // Linear workspace ID
+	name: string; // Linear workspace display name
+	token: string; // OAuth access token
+	refreshToken?: string; // OAuth refresh token
+}
+
+/**
  * Edge configuration containing all repositories and global settings
  */
 export interface EdgeConfig {
 	repositories: RepositoryConfig[];
+	workspaces?: WorkspaceCredentials[]; // Authenticated workspaces (used by self-auth/self-add-repo)
 	ngrokAuthToken?: string;
 	stripeCustomerId?: string;
 	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")

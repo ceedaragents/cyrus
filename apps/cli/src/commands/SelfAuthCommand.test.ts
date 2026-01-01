@@ -471,6 +471,71 @@ describe("SelfAuthCommand", () => {
 			expect(writtenConfig.repositories[1].linearToken).toBe("other");
 		});
 
+		it("should save workspace credentials to workspaces array even with empty repositories", async () => {
+			// This is the bug fix for CYPACK-674:
+			// When repositories array is empty, credentials should still be saved to workspaces array
+			mocks.mockReadFileSync.mockReturnValue(
+				JSON.stringify({
+					repositories: [],
+				}),
+			);
+
+			let routeHandler: Function;
+			mocks.mockFastifyInstance.get.mockImplementation(
+				(_path: string, handler: Function) => {
+					routeHandler = handler;
+				},
+			);
+			mocks.mockFastifyInstance.listen.mockImplementation(async () => {
+				setTimeout(async () => {
+					const mockRequest = { query: { code: "code" } };
+					const mockReply = {
+						type: vi.fn().mockReturnThis(),
+						code: vi.fn().mockReturnThis(),
+						send: vi.fn().mockReturnThis(),
+					};
+					await routeHandler(mockRequest, mockReply);
+				}, 10);
+			});
+
+			mocks.mockFetch.mockResolvedValueOnce({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						access_token: "lin_oauth_new_token",
+						refresh_token: "refresh_token",
+					}),
+			});
+
+			// Update the LinearClient mock for this specific test
+			const { LinearClient } = await import("@linear/sdk");
+			(LinearClient as any).mockImplementation(() => ({
+				viewer: Promise.resolve({
+					organization: Promise.resolve({
+						id: "ws-new",
+						name: "New Workspace",
+					}),
+				}),
+			}));
+
+			await expect(command.execute([])).rejects.toThrow("process.exit called");
+			expect(mockExit).toHaveBeenCalledWith(0);
+
+			// Verify config was written with workspaces array
+			expect(mocks.mockWriteFileSync).toHaveBeenCalled();
+			const writtenConfig = JSON.parse(
+				mocks.mockWriteFileSync.mock.calls[0][1],
+			);
+
+			// workspaces array should contain the new workspace credentials
+			expect(writtenConfig.workspaces).toBeDefined();
+			expect(writtenConfig.workspaces).toHaveLength(1);
+			expect(writtenConfig.workspaces[0].id).toBe("ws-new");
+			expect(writtenConfig.workspaces[0].name).toBe("New Workspace");
+			expect(writtenConfig.workspaces[0].token).toBe("lin_oauth_new_token");
+			expect(writtenConfig.workspaces[0].refreshToken).toBe("refresh_token");
+		});
+
 		it("should update repositories with empty workspace ID", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({

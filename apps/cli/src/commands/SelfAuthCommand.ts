@@ -1,7 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import { DEFAULT_CONFIG_FILENAME, type EdgeConfig } from "cyrus-core";
+import {
+	DEFAULT_CONFIG_FILENAME,
+	type EdgeConfig,
+	type WorkspaceCredentials,
+} from "cyrus-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import open from "open";
 import { BaseCommand } from "./ICommand.js";
@@ -77,10 +81,16 @@ export class SelfAuthCommand extends BaseCommand {
 			console.log("Saving tokens to config.json...");
 			this.overwriteRepoConfigTokens(config, configPath, tokens, workspace);
 
+			// Report what was saved
+			this.logSuccess(`Saved workspace credentials for "${workspace.name}"`);
 			const updatedCount = config.repositories.filter(
 				(r) => r.linearWorkspaceId === workspace.id,
 			).length;
-			this.logSuccess(`Updated ${updatedCount} repository/repositories`);
+			if (updatedCount > 0) {
+				this.logSuccess(
+					`Updated ${updatedCount} existing repository/repositories`,
+				);
+			}
 
 			console.log();
 			this.logSuccess(
@@ -240,6 +250,28 @@ export class SelfAuthCommand extends BaseCommand {
 		tokens: { accessToken: string; refreshToken?: string },
 		workspace: { id: string; name: string },
 	): void {
+		// Initialize workspaces array if not present
+		if (!config.workspaces) {
+			config.workspaces = [];
+		}
+
+		// Update or add workspace credentials
+		const existingWorkspaceIndex = config.workspaces.findIndex(
+			(w) => w.id === workspace.id,
+		);
+		const workspaceCredentials: WorkspaceCredentials = {
+			id: workspace.id,
+			name: workspace.name,
+			token: tokens.accessToken,
+			refreshToken: tokens.refreshToken,
+		};
+
+		if (existingWorkspaceIndex >= 0) {
+			config.workspaces[existingWorkspaceIndex] = workspaceCredentials;
+		} else {
+			config.workspaces.push(workspaceCredentials);
+		}
+
 		// Update all repositories matching this workspace (or unset workspace)
 		for (const repo of config.repositories) {
 			if (

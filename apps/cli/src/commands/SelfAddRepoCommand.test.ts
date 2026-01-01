@@ -253,7 +253,7 @@ describe("SelfAddRepoCommand", () => {
 			);
 		});
 
-		it("should error when repositories array is empty", async () => {
+		it("should error when repositories array is empty and no workspaces", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
 					repositories: [],
@@ -264,6 +264,42 @@ describe("SelfAddRepoCommand", () => {
 				command.execute(["https://github.com/user/new-repo.git"]),
 			).rejects.toThrow("process.exit called");
 			expect(mockExit).toHaveBeenCalledWith(1);
+		});
+
+		it("should use credentials from workspaces array when repositories is empty (CYPACK-674 fix)", async () => {
+			// This is the bug fix for CYPACK-674:
+			// When repositories array is empty, credentials should be found in workspaces array
+			mocks.mockReadFileSync.mockReturnValue(
+				JSON.stringify({
+					repositories: [],
+					workspaces: [
+						{
+							id: "ws-from-self-auth",
+							name: "Test Workspace",
+							token: "token-from-self-auth",
+							refreshToken: "refresh-from-self-auth",
+						},
+					],
+				}),
+			);
+
+			await expect(
+				command.execute(["https://github.com/user/new-repo.git"]),
+			).rejects.toThrow("process.exit called");
+			expect(mockExit).toHaveBeenCalledWith(0); // Should succeed now
+
+			const writtenConfig = JSON.parse(
+				mocks.mockWriteFileSync.mock.calls[0][1],
+			);
+			const addedRepo = writtenConfig.repositories.find(
+				(r: any) => r.id === "generated-uuid-123",
+			);
+
+			// Should have used credentials from workspaces array
+			expect(addedRepo.linearWorkspaceId).toBe("ws-from-self-auth");
+			expect(addedRepo.linearWorkspaceName).toBe("Test Workspace");
+			expect(addedRepo.linearToken).toBe("token-from-self-auth");
+			expect(addedRepo.linearRefreshToken).toBe("refresh-from-self-auth");
 		});
 	});
 

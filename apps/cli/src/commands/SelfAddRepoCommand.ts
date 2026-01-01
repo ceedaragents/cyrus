@@ -8,18 +8,9 @@ import {
 	DEFAULT_CONFIG_FILENAME,
 	DEFAULT_WORKTREES_DIR,
 	type EdgeConfig,
+	type WorkspaceCredentials,
 } from "cyrus-core";
 import { BaseCommand } from "./ICommand.js";
-
-/**
- * Workspace credentials extracted from existing repository configurations
- */
-interface WorkspaceCredentials {
-	id: string;
-	name: string;
-	token: string;
-	refreshToken?: string;
-}
 
 /**
  * Self-add-repo command - clones a repo and adds it to config.json
@@ -100,7 +91,18 @@ export class SelfAddRepoCommand extends BaseCommand {
 			}
 
 			// Find workspaces with Linear credentials
+			// First, check the dedicated workspaces array (populated by self-auth)
 			const workspaces = new Map<string, WorkspaceCredentials>();
+
+			if (config.workspaces) {
+				for (const ws of config.workspaces) {
+					if (ws.id && ws.token) {
+						workspaces.set(ws.id, ws);
+					}
+				}
+			}
+
+			// Also check repositories for backwards compatibility
 			for (const repo of config.repositories) {
 				if (
 					repo.linearWorkspaceId &&
