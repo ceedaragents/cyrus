@@ -1761,6 +1761,18 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
 			);
+		} else if (this.parseRalphWiggumLabel(labels)) {
+			// Ralph Wiggum loop: use simple-question (transient) procedure
+			const simpleQuestionProcedure =
+				this.procedureAnalyzer.getProcedure("simple-question");
+			if (!simpleQuestionProcedure) {
+				throw new Error("simple-question procedure not found in registry");
+			}
+			finalProcedure = simpleQuestionProcedure;
+			finalClassification = "transient";
+			console.log(
+				`[EdgeWorker] Using simple-question procedure due to ralph-wiggum label (skipping AI routing)`,
+			);
 		} else {
 			// No label override - use AI routing
 			const issueDescription =
@@ -5515,14 +5527,16 @@ ${input.userComment}
 			linearAgentActivitySessionId,
 		);
 
-		// Fetch full issue and labels to check for Orchestrator label override
+		// Fetch full issue and labels to check for label-based procedure overrides
 		const issueTracker = this.issueTrackers.get(repository.id);
 		let hasOrchestratorLabel = false;
+		let hasRalphWiggumLabel = false;
+		let fetchedLabels: string[] = [];
 
 		if (issueTracker) {
 			try {
 				const fullIssue = await issueTracker.fetchIssue(session.issueId);
-				const labels = await this.fetchIssueLabels(fullIssue);
+				fetchedLabels = await this.fetchIssueLabels(fullIssue);
 
 				// Check for Orchestrator label (same logic as initial routing)
 				const orchestratorConfig = repository.labelPrompts?.orchestrator;
@@ -5530,7 +5544,11 @@ ${input.userComment}
 					? orchestratorConfig
 					: (orchestratorConfig?.labels ?? ["orchestrator"]);
 				hasOrchestratorLabel =
-					orchestratorLabels?.some((label) => labels.includes(label)) || false;
+					orchestratorLabels?.some((label) => fetchedLabels.includes(label)) ||
+					false;
+
+				// Check for Ralph Wiggum label
+				hasRalphWiggumLabel = !!this.parseRalphWiggumLabel(fetchedLabels);
 			} catch (error) {
 				console.error(
 					`[EdgeWorker] Failed to fetch issue labels for routing:`,
@@ -5555,8 +5573,20 @@ ${input.userComment}
 			console.log(
 				`[EdgeWorker] Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)`,
 			);
+		} else if (hasRalphWiggumLabel) {
+			// Ralph Wiggum loop: use simple-question (transient) procedure
+			const simpleQuestionProcedure =
+				this.procedureAnalyzer.getProcedure("simple-question");
+			if (!simpleQuestionProcedure) {
+				throw new Error("simple-question procedure not found in registry");
+			}
+			selectedProcedure = simpleQuestionProcedure;
+			finalClassification = "transient";
+			console.log(
+				`[EdgeWorker] Using simple-question procedure due to ralph-wiggum label (skipping AI routing)`,
+			);
 		} else {
-			// No Orchestrator label - use AI routing based on prompt content
+			// No label override - use AI routing based on prompt content
 			const routingDecision = await this.procedureAnalyzer.determineRoutine(
 				promptBody.trim(),
 			);
