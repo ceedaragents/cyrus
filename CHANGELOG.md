@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Improved changelog handling** - Changelog updates now run as a separate subroutine before git operations, ensuring PR links can be included via amend. The `git-gh` subroutine has been split into `changelog-update`, `git-commit`, and `gh-pr` for better modularity. Non-changelog subroutines now explicitly avoid touching the changelog to prevent conflicts. ([CYPACK-670](https://linear.app/ceedar/issue/CYPACK-670), [#708](https://github.com/ceedaragents/cyrus/pull/708))
+
 ### Added
 - **GPT Image 1.5 support** - The image-tools MCP server now supports `gpt-image-1.5`, OpenAI's latest and highest quality image generation model. You can choose between `gpt-image-1.5` (default, best quality), `gpt-image-1`, or `gpt-image-1-mini` (faster, lower cost). ([CYPACK-675](https://linear.app/ceedar/issue/CYPACK-675), [#717](https://github.com/ceedaragents/cyrus/pull/717))
 

@@ -41,6 +41,7 @@ Use the issue tracker `get_issue` tool to fetch the current issue details. The i
 
 - **Do NOT commit or push changes** - that happens in a later subroutine
 - **Do NOT create or update PRs** - that also happens in a later subroutine
+- **Do NOT touch the changelog** - a separate subroutine handles changelog updates
 - **Do NOT fix issues yourself** - your job is to verify and report
 - **Do NOT post Linear comments** - your output is for internal workflow only
 - Be thorough in running and reporting verification results

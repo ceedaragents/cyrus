@@ -57,6 +57,7 @@ Example: "Reproduction complete - root cause identified in session expiry logic 
 - ❌ **DO NOT modify production code** - only test files
 - ❌ **DO NOT commit or push anything** - that happens in later phases
 - ❌ **DO NOT create todos for fixing the issue** - fix planning happens in debugger-fix phase
+- ❌ **DO NOT touch the changelog** - a separate subroutine handles changelog updates
 - ✅ **DO use Task extensively** for all analysis
 - ✅ **DO create a clear, failing test**
 - ✅ **DO provide detailed root cause analysis**
