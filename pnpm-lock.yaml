@@ -122,7 +122,7 @@ importers:
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.72
+        specifier: ^0.1.76
         version: 0.1.76(zod@3.25.76)
       '@anthropic-ai/sdk':
         specifier: ^0.71.2
@@ -200,7 +200,7 @@ importers:
   packages/core:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.72
+        specifier: ^0.1.76
         version: 0.1.76(zod@4.1.12)
       '@linear/sdk':
         specifier: ^64.0.0
@@ -345,7 +345,7 @@ importers:
   packages/simple-agent-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.1.72
+        specifier: ^0.1.76
         version: 0.1.76(zod@4.1.12)
       cyrus-claude-runner:
         specifier: workspace:*
