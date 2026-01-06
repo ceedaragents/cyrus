@@ -116,44 +116,55 @@ export class SelfAddRepoCommand extends BaseCommand {
 				}
 			}
 
-			if (workspaces.size === 0) {
-				this.logError(
-					"No Linear credentials found. Run 'cyrus self-auth' first.",
-				);
-				process.exit(1);
-			}
-
-			// Get workspace
+			// Get workspace credentials (or use empty placeholders for first repo)
 			let selectedWorkspace: WorkspaceCredentials;
-			const workspaceList = Array.from(workspaces.values());
 
-			if (workspaceList.length === 1) {
-				// Safe: we checked length === 1 above
-				selectedWorkspace = workspaceList[0]!;
-			} else if (workspaceName) {
-				const foundWorkspace = workspaceList.find(
-					(w) => w.name === workspaceName,
+			if (workspaces.size === 0) {
+				// No credentials yet - this is the first repo
+				// Add with empty credentials, user will run self-auth after
+				console.log(
+					"\nNo Linear credentials found. Adding repository with placeholder credentials.",
 				);
-				if (!foundWorkspace) {
-					this.logError(`Workspace '${workspaceName}' not found`);
-					process.exit(1);
-				}
-				selectedWorkspace = foundWorkspace;
+				console.log(
+					"Run 'cyrus self-auth' after to authenticate with Linear.\n",
+				);
+				selectedWorkspace = {
+					id: "",
+					name: "",
+					token: "",
+					refreshToken: undefined,
+				};
 			} else {
-				console.log("\nAvailable workspaces:");
-				workspaceList.forEach((w, i) => {
-					console.log(`  ${i + 1}. ${w.name}`);
-				});
-				const choice = await this.prompt(
-					`Select workspace [1-${workspaceList.length}]: `,
-				);
-				const idx = parseInt(choice, 10) - 1;
-				if (idx < 0 || idx >= workspaceList.length) {
-					this.logError("Invalid selection");
-					process.exit(1);
+				const workspaceList = Array.from(workspaces.values());
+
+				if (workspaceList.length === 1) {
+					// Safe: we checked length === 1 above
+					selectedWorkspace = workspaceList[0]!;
+				} else if (workspaceName) {
+					const foundWorkspace = workspaceList.find(
+						(w) => w.name === workspaceName,
+					);
+					if (!foundWorkspace) {
+						this.logError(`Workspace '${workspaceName}' not found`);
+						process.exit(1);
+					}
+					selectedWorkspace = foundWorkspace;
+				} else {
+					console.log("\nAvailable workspaces:");
+					workspaceList.forEach((w, i) => {
+						console.log(`  ${i + 1}. ${w.name}`);
+					});
+					const choice = await this.prompt(
+						`Select workspace [1-${workspaceList.length}]: `,
+					);
+					const idx = parseInt(choice, 10) - 1;
+					if (idx < 0 || idx >= workspaceList.length) {
+						this.logError("Invalid selection");
+						process.exit(1);
+					}
+					// Safe: we validated idx is within bounds above
+					selectedWorkspace = workspaceList[idx]!;
 				}
-				// Safe: we validated idx is within bounds above
-				selectedWorkspace = workspaceList[idx]!;
 			}
 
 			// Clone the repo
@@ -191,7 +202,11 @@ export class SelfAddRepoCommand extends BaseCommand {
 
 			console.log(`\nAdded: ${repoName}`);
 			console.log(`  ID: ${id}`);
-			console.log(`  Workspace: ${selectedWorkspace.name}`);
+			if (selectedWorkspace.name) {
+				console.log(`  Workspace: ${selectedWorkspace.name}`);
+			} else {
+				console.log(`  Workspace: (not configured - run 'cyrus self-auth')`);
+			}
 			process.exit(0);
 		} finally {
 			this.cleanup();
