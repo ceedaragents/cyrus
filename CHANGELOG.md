@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Self-add-repo no longer requires credentials first** - The `cyrus self-add-repo` command now works without existing Linear credentials. Previously, users had to manually create a fake repository entry in config.json to work around a circular dependency. Now, when adding the first repository, placeholder credentials are used and the user is prompted to run `cyrus self-auth` afterwards to authenticate. ([CYPACK-674](https://linear.app/ceedar/issue/CYPACK-674), [#728](https://github.com/ceedaragents/cyrus/pull/728))
+
 ### Added
 - **GPT Image 1.5 support** - The image-tools MCP server now supports `gpt-image-1.5`, OpenAI's latest and highest quality image generation model. You can choose between `gpt-image-1.5` (default, best quality), `gpt-image-1`, or `gpt-image-1-mini` (faster, lower cost). ([CYPACK-675](https://linear.app/ceedar/issue/CYPACK-675), [#717](https://github.com/ceedaragents/cyrus/pull/717))
 
