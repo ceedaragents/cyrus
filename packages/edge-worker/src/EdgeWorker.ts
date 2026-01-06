@@ -160,6 +160,32 @@ export class EdgeWorker extends EventEmitter {
 				// Use platform-agnostic getIssueLabels method
 				return await issueTracker.getIssueLabels(issueId);
 			},
+			fetchIssueDescription: async (
+				issueId: string,
+				workspaceId: string,
+			): Promise<string | undefined> => {
+				// Find repository for this workspace
+				const repo = Array.from(this.repositories.values()).find(
+					(r) => r.linearWorkspaceId === workspaceId,
+				);
+				if (!repo) return undefined;
+
+				// Get issue tracker for this repository
+				const issueTracker = this.issueTrackers.get(repo.id);
+				if (!issueTracker) return undefined;
+
+				// Fetch issue and get description
+				try {
+					const issue = await issueTracker.fetchIssue(issueId);
+					return issue?.description ?? undefined;
+				} catch (error) {
+					console.error(
+						`[EdgeWorker] Failed to fetch issue description for routing:`,
+						error,
+					);
+					return undefined;
+				}
+			},
 			hasActiveSession: (issueId: string, repositoryId: string) => {
 				const sessionManager = this.agentSessionManagers.get(repositoryId);
 				if (!sessionManager) return false;
@@ -5263,6 +5289,7 @@ ${input.userComment}
 		repositoryId: string,
 		repositoryName: string,
 		selectionMethod:
+			| "description-tag"
 			| "label-based"
 			| "project-based"
 			| "team-based"
@@ -5283,6 +5310,8 @@ ${input.userComment}
 			let methodDisplay: string;
 			if (selectionMethod === "user-selected") {
 				methodDisplay = "selected by user";
+			} else if (selectionMethod === "description-tag") {
+				methodDisplay = "matched via [repo=...] tag in issue description";
 			} else if (selectionMethod === "label-based") {
 				methodDisplay = "matched via label-based routing";
 			} else if (selectionMethod === "project-based") {
