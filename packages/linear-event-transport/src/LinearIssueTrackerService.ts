@@ -905,6 +905,14 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		};
 	}
 
+	/**
+	 * Get the underlying LinearClient for shared use.
+	 * Allows other components to reuse this client with its token refresh handling.
+	 */
+	getClient(): LinearClient {
+		return this.linearClient;
+	}
+
 	// ========================================================================
 	// EVENT TRANSPORT
 	// ========================================================================
