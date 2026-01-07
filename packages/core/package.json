@@ -23,7 +23,7 @@
 		"@types/node": "^20.0.0",
 		"fastify": "^5.6.1",
 		"typescript": "^5.3.3",
-		"vitest": "^1.1.0"
+		"vitest": "^3.1.4"
 	},
 	"publishConfig": {
 		"access": "public"
