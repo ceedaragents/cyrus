@@ -259,6 +259,9 @@ importers:
       file-type:
         specifier: ^18.7.0
         version: 18.7.0
+      ignore:
+        specifier: ^7.0.5
+        version: 7.0.5
       zod:
         specifier: 3.24.1
         version: 3.24.1
