@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Repository tag routing now works with Linear's escaped brackets** - Fixed a bug where `[repo=...]` tags weren't recognized because Linear escapes square brackets in descriptions (e.g., `\[repo=cyrus\]`). The parser now handles both escaped and unescaped formats. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#738](https://github.com/ceedaragents/cyrus/pull/738))
+
 ## [0.2.10] - 2026-01-06
 
 ### Added
@@ -41,6 +44,7 @@ All notable changes to this project will be documented in this file.
 ## [0.2.9] - 2025-12-30
 
 ### Added
+- **Repository tag routing** - You can now specify which repository an issue should be routed to by adding a `[repo=...]` tag in the issue description. Supports `[repo=org/repo-name]` to match GitHub URLs, `[repo=repo-name]` to match by name, or `[repo=repo-id]` to match by ID. This takes precedence over label, project, and team-based routing. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#732](https://github.com/ceedaragents/cyrus/pull/732))
 - **GPT Image 1.5 support** - The image-tools MCP server now supports `gpt-image-1.5`, OpenAI's latest and highest quality image generation model. You can choose between `gpt-image-1.5` (default, best quality), `gpt-image-1`, or `gpt-image-1-mini` (faster, lower cost). ([CYPACK-675](https://linear.app/ceedar/issue/CYPACK-675), [#717](https://github.com/ceedaragents/cyrus/pull/717))
 
 ### Packages

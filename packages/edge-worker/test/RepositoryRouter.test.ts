@@ -777,6 +777,36 @@ describe("RepositoryRouter", () => {
 				);
 				expect(result).toBe("my-repo");
 			});
+
+			it("should handle escaped brackets from Linear (\\[repo=...\\])", () => {
+				// Linear escapes square brackets in descriptions
+				const result = env.router.parseRepoTagFromDescription(
+					"test\\n\\n\\[repo=cyrus\\]",
+				);
+				expect(result).toBe("cyrus");
+			});
+
+			it("should handle escaped brackets with org/repo format", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Fix bug in \\[repo=org/repo-name\\]",
+				);
+				expect(result).toBe("org/repo-name");
+			});
+
+			it("should handle mixed escaped and unescaped brackets", () => {
+				// Only the opening bracket is escaped
+				const result = env.router.parseRepoTagFromDescription(
+					"Work on \\[repo=my-repo]",
+				);
+				expect(result).toBe("my-repo");
+			});
+
+			it("should handle only closing bracket escaped", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Work on [repo=my-repo\\]",
+				);
+				expect(result).toBe("my-repo");
+			});
 		});
 	});
 
