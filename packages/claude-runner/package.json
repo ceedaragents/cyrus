@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-claude-runner",
-	"version": "0.2.8",
+	"version": "0.2.9",
 	"description": "Claude CLI execution wrapper for Cyrus",
 	"type": "module",
 	"main": "dist/index.js",
