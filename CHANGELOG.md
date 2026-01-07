@@ -4,8 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-01-07
+
 ### Fixed
 - **Repository tag routing now works with Linear's escaped brackets** - Fixed a bug where `[repo=...]` tags weren't recognized because Linear escapes square brackets in descriptions (e.g., `\[repo=cyrus\]`). The parser now handles both escaped and unescaped formats. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#738](https://github.com/ceedaragents/cyrus/pull/738))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.11
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.11
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.11
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.11
+
+#### cyrus-core
+- cyrus-core@0.2.11
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.11
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.11
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.11
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.11
 
 ## [0.2.10] - 2026-01-06
 
