@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated @anthropic-ai/claude-agent-sdk to v0.2.0** - Updated from v0.1.72 to v0.2.0. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#020) for details on what's new in v0.2.0. ([CYPACK-692](https://linear.app/ceedar/issue/CYPACK-692))
+- **Updated zod to v4.3.5** - Updated from v3.24.1 to v4.3.5 to satisfy @anthropic-ai/claude-agent-sdk v0.2.0's peer dependency requirement. ([CYPACK-692](https://linear.app/ceedar/issue/CYPACK-692))
+
 ### Fixed
 - **Repository tag routing now works with Linear's escaped brackets** - Fixed a bug where `[repo=...]` tags weren't recognized because Linear escapes square brackets in descriptions (e.g., `\[repo=cyrus\]`). The parser now handles both escaped and unescaped formats. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#738](https://github.com/ceedaragents/cyrus/pull/738))
 
