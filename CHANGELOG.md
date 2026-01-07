@@ -4,8 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-01-06
+
 ### Added
 - **Repository tag routing** - You can now specify which repository an issue should be routed to by adding a `[repo=...]` tag in the issue description. Supports `[repo=org/repo-name]` to match GitHub URLs, `[repo=repo-name]` to match by name, or `[repo=repo-id]` to match by ID. This takes precedence over label, project, and team-based routing. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#732](https://github.com/ceedaragents/cyrus/pull/732))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.10
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.10
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.10
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.10
+
+#### cyrus-core
+- cyrus-core@0.2.10
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.10
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.10
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.10
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.10
 
 ## [0.2.9] - 2025-12-30
 
