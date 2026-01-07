@@ -415,12 +415,16 @@ export class RepositoryRouter {
 	 * - [repo=repo-name]
 	 * - [repo=repo-id]
 	 *
+	 * Also handles escaped brackets (\\[repo=...\\]) which Linear may produce
+	 * when the description contains markdown-escaped square brackets.
+	 *
 	 * Returns the tag value or null if not found.
 	 */
 	parseRepoTagFromDescription(description: string): string | null {
 		// Match [repo=...] pattern - captures everything between = and ]
 		// The pattern allows: alphanumeric, hyphens, underscores, forward slashes, dots
-		const match = description.match(/\[repo=([a-zA-Z0-9_\-/.]+)\]/);
+		// Also handles escaped brackets (\\[ and \\]) that Linear may produce
+		const match = description.match(/\\?\[repo=([a-zA-Z0-9_\-/.]+)\\?\]/);
 		return match?.[1] ?? null;
 	}
 
