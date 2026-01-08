@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Improved changelog handling** - Changelog updates now run as a separate subroutine before git operations, ensuring PR links can be included via amend. The `git-gh` subroutine has been split into `changelog-update`, `git-commit`, and `gh-pr` for better modularity. Non-changelog subroutines now explicitly avoid touching the changelog to prevent conflicts. ([CYPACK-670](https://linear.app/ceedar/issue/CYPACK-670), [#708](https://github.com/ceedaragents/cyrus/pull/708))
+- **Updated dependencies to latest versions** - Updated `@anthropic-ai/claude-agent-sdk` from v0.1.72 to v0.2.1 (includes MCP error handling improvements and Claude Code v2.1.0 parity) and `zod` from v3.x to v4.3.5 across all packages. See the [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-697](https://linear.app/ceedar/issue/CYPACK-697), [#742](https://github.com/ceedaragents/cyrus/pull/742))
 
 ### Added
 - **Screenshot upload guidance hooks** - Agents are now guided to use `linear_upload_file` when taking screenshots, ensuring screenshots are viewable in Linear comments instead of remaining as local files. Hooks added for `playwright_screenshot`, `mcp__claude-in-chrome__computer`, `mcp__claude-in-chrome__gif_creator`, and `mcp__chrome-devtools__take_screenshot`. ([CYPACK-699](https://linear.app/ceedar/issue/CYPACK-699), [#744](https://github.com/ceedaragents/cyrus/pull/744))
