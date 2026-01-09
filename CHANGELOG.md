@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Screenshot upload guidance hooks** - Agents are now guided to use `linear_upload_file` when taking screenshots, ensuring screenshots are viewable in Linear comments instead of remaining as local files. Hooks added for `playwright_screenshot`, `mcp__claude-in-chrome__computer`, `mcp__claude-in-chrome__gif_creator`, and `mcp__chrome-devtools__take_screenshot`. ([CYPACK-699](https://linear.app/ceedar/issue/CYPACK-699), [#744](https://github.com/ceedaragents/cyrus/pull/744))
+
 ## [0.2.11] - 2026-01-07
 
 ### Fixed

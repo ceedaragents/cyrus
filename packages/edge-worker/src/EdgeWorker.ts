@@ -4769,7 +4769,8 @@ ${input.userComment}
 		maxTurns?: number,
 		singleTurn?: boolean,
 	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
-		// Configure PostToolUse hook for playwright screenshots
+		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
+		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
 				{
@@ -4781,10 +4782,73 @@ ${input.userComment}
 								`Tool ${postToolUseInput.tool_name} completed with response:`,
 								postToolUseInput.tool_response,
 							);
+							const response = postToolUseInput.tool_response as {
+								path?: string;
+							};
+							const filePath = response?.path || "the screenshot file";
 							return {
 								continue: true,
-								additionalContext:
-									"Screenshot taken successfully. You should use the Read tool to view the screenshot file to analyze the visual content.",
+								additionalContext: `Screenshot taken successfully. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown. You can also use the Read tool to view the screenshot file to analyze the visual content.`,
+							};
+						},
+					],
+				},
+				{
+					matcher: "mcp__claude-in-chrome__computer",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							const response = postToolUseInput.tool_response as {
+								action?: string;
+								imageId?: string;
+								path?: string;
+							};
+							// Only provide upload guidance for screenshot actions
+							if (response?.action === "screenshot") {
+								const filePath = response?.path || "the screenshot file";
+								return {
+									continue: true,
+									additionalContext: `Screenshot captured. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
+								};
+							}
+							return { continue: true };
+						},
+					],
+				},
+				{
+					matcher: "mcp__claude-in-chrome__gif_creator",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							const response = postToolUseInput.tool_response as {
+								action?: string;
+								path?: string;
+							};
+							// Only provide upload guidance for export actions
+							if (response?.action === "export") {
+								const filePath = response?.path || "the exported GIF";
+								return {
+									continue: true,
+									additionalContext: `GIF exported successfully. To share this GIF in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
+								};
+							}
+							return { continue: true };
+						},
+					],
+				},
+				{
+					matcher: "mcp__chrome-devtools__take_screenshot",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							// Extract file path from input (the tool saves to filePath parameter)
+							const toolInput = postToolUseInput.tool_input as {
+								filePath?: string;
+							};
+							const filePath = toolInput?.filePath || "the screenshot file";
+							return {
+								continue: true,
+								additionalContext: `Screenshot saved. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
 							};
 						},
 					],
