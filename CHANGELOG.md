@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 - **Improved changelog handling** - Changelog updates now run as a separate subroutine before git operations, ensuring PR links can be included via amend. The `git-gh` subroutine has been split into `changelog-update`, `git-commit`, and `gh-pr` for better modularity. Non-changelog subroutines now explicitly avoid touching the changelog to prevent conflicts. ([CYPACK-670](https://linear.app/ceedar/issue/CYPACK-670), [#708](https://github.com/ceedaragents/cyrus/pull/708))
 
 ### Added
+- **Worktree include support** - Add `.worktreeinclude` file support to automatically copy gitignored files (like `.env`, local configs) from the main repository to new worktrees. Files must be listed in both `.worktreeinclude` AND `.gitignore` to be copied. Supports glob patterns like `.env.*` and `**/.claude/settings.local.json`. ([CYPACK-690](https://linear.app/ceedar/issue/CYPACK-690), [#734](https://github.com/ceedaragents/cyrus/pull/734))
 - **Screenshot upload guidance hooks** - Agents are now guided to use `linear_upload_file` when taking screenshots, ensuring screenshots are viewable in Linear comments instead of remaining as local files. Hooks added for `playwright_screenshot`, `mcp__claude-in-chrome__computer`, `mcp__claude-in-chrome__gif_creator`, and `mcp__chrome-devtools__take_screenshot`. ([CYPACK-699](https://linear.app/ceedar/issue/CYPACK-699), [#744](https://github.com/ceedaragents/cyrus/pull/744))
 
 ## [0.2.11] - 2026-01-07
