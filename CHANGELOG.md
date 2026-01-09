@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Haiku model label support** - Added "haiku" as a supported model label for label-based model selection. Uses sonnet as fallback model for retry scenarios. ([CYPACK-701](https://linear.app/ceedar/issue/CYPACK-701), [#746](https://github.com/ceedaragents/cyrus/pull/746))
+
+### Fixed
+- **Case-insensitive label matching for orchestrator/debugger modes** - Label matching for orchestrator, debugger, builder, and scoper modes is now case-insensitive, matching the existing behavior of model selection. Labels like "Orchestrator" in Linear now correctly match config entries like `["orchestrator"]`. ([CYPACK-701](https://linear.app/ceedar/issue/CYPACK-701), [#746](https://github.com/ceedaragents/cyrus/pull/746))
+
 ### Changed
 - **Improved changelog handling** - Changelog updates now run as a separate subroutine before git operations, ensuring PR links can be included via amend. The `git-gh` subroutine has been split into `changelog-update`, `git-commit`, and `gh-pr` for better modularity. Non-changelog subroutines now explicitly avoid touching the changelog to prevent conflicts. ([CYPACK-670](https://linear.app/ceedar/issue/CYPACK-670), [#708](https://github.com/ceedaragents/cyrus/pull/708))
 
