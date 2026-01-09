@@ -2613,6 +2613,13 @@ export class EdgeWorker extends EventEmitter {
 				fallbackModelOverride: "haiku",
 			};
 		}
+		if (lowercaseLabels.includes("haiku")) {
+			return {
+				runnerType: "claude",
+				modelOverride: "haiku",
+				fallbackModelOverride: "haiku",
+			};
+		}
 		// Default to claude if no runner labels found
 		return {
 			runnerType: "claude",
