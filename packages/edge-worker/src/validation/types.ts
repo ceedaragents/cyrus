@@ -30,7 +30,7 @@ export type ValidationResult = z.infer<typeof ValidationResultSchema>;
  * Used with Claude SDK structured outputs
  */
 export const VALIDATION_RESULT_SCHEMA = zodToJsonSchema(
-	ValidationResultSchema,
+	ValidationResultSchema as any,
 	{
 		$refStrategy: "none",
 		target: "jsonSchema7",
