@@ -4836,6 +4836,23 @@ ${input.userComment}
 						},
 					],
 				},
+				{
+					matcher: "mcp__chrome-devtools__take_screenshot",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							// Extract file path from input (the tool saves to filePath parameter)
+							const toolInput = postToolUseInput.tool_input as {
+								filePath?: string;
+							};
+							const filePath = toolInput?.filePath || "the screenshot file";
+							return {
+								continue: true,
+								additionalContext: `Screenshot saved. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
+							};
+						},
+					],
+				},
 			],
 		};
 

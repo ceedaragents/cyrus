@@ -272,6 +272,28 @@ Issue: {{issue_identifier}}`;
 		return result?.additionalContext;
 	}
 
+	/**
+	 * Helper to execute a hook with both input and response (for tools like chrome-devtools)
+	 */
+	async function executeHookAndGetContextWithInput(
+		hookMatcher: HookCallbackMatcher,
+		toolName: string,
+		toolInput: any,
+		toolResponse: any,
+	): Promise<string | undefined> {
+		const hookFn = hookMatcher.hooks[0];
+		const result = await hookFn(
+			{
+				tool_name: toolName,
+				tool_input: toolInput,
+				tool_response: toolResponse,
+			} as any,
+			"test-tool-use-id",
+			{ signal: new AbortController().signal },
+		);
+		return result?.additionalContext;
+	}
+
 	describe("Playwright Screenshot Hook - Linear Upload Guidance", () => {
 		it("should have a hook configured for playwright_screenshot", async () => {
 			// Arrange
@@ -617,6 +639,89 @@ Issue: {{issue_identifier}}`;
 			expect(additionalContext).toMatch(
 				/linear_upload_file|upload.*screenshot|share.*linear/i,
 			);
+		});
+	});
+
+	describe("Chrome DevTools Screenshot Hook - Linear Upload Guidance", () => {
+		it("should have a hook configured for mcp__chrome-devtools__take_screenshot", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels([]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus take a screenshot with devtools" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert - there should be a hook for the chrome devtools screenshot tool
+			const devtoolsHook = findHookMatcher(
+				"mcp__chrome-devtools__take_screenshot",
+			);
+			expect(devtoolsHook).toBeDefined();
+		});
+
+		it("should provide guidance about linear_upload_file when chrome devtools takes a screenshot", async () => {
+			// Arrange
+			const mockIssue = createMockIssueWithLabels([]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus take a screenshot with devtools" },
+				},
+			};
+
+			// Act
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			const devtoolsHook = findHookMatcher(
+				"mcp__chrome-devtools__take_screenshot",
+			);
+			expect(devtoolsHook).toBeDefined();
+
+			// Simulate a screenshot response - note: this tool uses filePath in input, not response
+			const additionalContext = await executeHookAndGetContextWithInput(
+				devtoolsHook!,
+				"mcp__chrome-devtools__take_screenshot",
+				{
+					filePath: "/home/cyrus/cyrus-workspaces/PF-738/step1-screenshot.png",
+					fullPage: true,
+				},
+				{
+					text: "Took a screenshot of the full current page.",
+				},
+			);
+
+			// Assert - should mention linear_upload_file and the file path
+			expect(additionalContext).toBeDefined();
+			expect(additionalContext).toContain("linear_upload_file");
+			expect(additionalContext).toContain("step1-screenshot.png");
 		});
 	});
 });
