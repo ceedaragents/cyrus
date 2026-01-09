@@ -2616,10 +2616,12 @@ export class EdgeWorker extends EventEmitter {
 			};
 		}
 		if (lowercaseLabels.includes("haiku")) {
+			// fallbackModelOverride must be different from modelOverride
+			// (haiku falls back to sonnet for retry scenarios)
 			return {
 				runnerType: "claude",
 				modelOverride: "haiku",
-				fallbackModelOverride: "haiku",
+				fallbackModelOverride: "sonnet",
 			};
 		}
 		// Default to claude if no runner labels found
