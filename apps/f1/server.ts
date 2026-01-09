@@ -94,6 +94,28 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		linearToken: "f1-test-token", // Dummy token for CLI mode
 		workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
 		isActive: true,
+		// Label-based system prompt configuration for F1 testing
+		// This enables testing of label-based orchestrator/debugger/builder/scoper modes
+		labelPrompts: {
+			debugger: {
+				labels: ["bug", "Bug", "debugger", "Debugger"],
+			},
+			builder: {
+				labels: ["feature", "Feature", "builder", "Builder", "enhancement"],
+			},
+			scoper: {
+				labels: ["scope", "Scope", "scoper", "Scoper", "research", "Research"],
+			},
+			orchestrator: {
+				labels: ["orchestrator", "Orchestrator"],
+			},
+			"graphite-orchestrator": {
+				labels: ["graphite-orchestrator"],
+			},
+			graphite: {
+				labels: ["graphite", "Graphite"],
+			},
+		},
 	};
 
 	const config: EdgeWorkerConfig = {

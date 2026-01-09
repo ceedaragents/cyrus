@@ -1718,6 +1718,8 @@ export class EdgeWorker extends EventEmitter {
 
 		// Fetch labels early (needed for label override check)
 		const labels = await this.fetchIssueLabels(fullIssue);
+		// Lowercase labels for case-insensitive comparison
+		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
 		// Check for label overrides BEFORE AI routing
 		const debuggerConfig = repository.labelPrompts?.debugger;
@@ -1725,7 +1727,7 @@ export class EdgeWorker extends EventEmitter {
 			? debuggerConfig
 			: debuggerConfig?.labels;
 		const hasDebuggerLabel = debuggerLabels?.some((label) =>
-			labels.includes(label),
+			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
@@ -1733,14 +1735,14 @@ export class EdgeWorker extends EventEmitter {
 			? orchestratorConfig
 			: (orchestratorConfig?.labels ?? ["orchestrator"]);
 		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
-			labels.includes(label),
+			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
 		// Check for graphite label (for graphite-orchestrator combination)
 		const graphiteConfig = repository.labelPrompts?.graphite;
 		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
 		const hasGraphiteLabel = graphiteLabels?.some((label) =>
-			labels.includes(label),
+			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
 		// Graphite-orchestrator requires BOTH graphite AND orchestrator labels
@@ -2613,6 +2615,15 @@ export class EdgeWorker extends EventEmitter {
 				fallbackModelOverride: "haiku",
 			};
 		}
+		if (lowercaseLabels.includes("haiku")) {
+			// fallbackModelOverride must be different from modelOverride
+			// (haiku falls back to sonnet for retry scenarios)
+			return {
+				runnerType: "claude",
+				modelOverride: "haiku",
+				fallbackModelOverride: "sonnet",
+			};
+		}
 		// Default to claude if no runner labels found
 		return {
 			runnerType: "claude",
@@ -2644,11 +2655,14 @@ export class EdgeWorker extends EventEmitter {
 			return undefined;
 		}
 
+		// Lowercase labels for case-insensitive comparison
+		const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
 		// Check for graphite-orchestrator first (requires BOTH graphite AND orchestrator labels)
 		const graphiteConfig = repository.labelPrompts.graphite;
 		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
 		const hasGraphiteLabel = graphiteLabels?.some((label) =>
-			labels.includes(label),
+			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
 		const orchestratorConfig = repository.labelPrompts.orchestrator;
@@ -2656,7 +2670,7 @@ export class EdgeWorker extends EventEmitter {
 			? orchestratorConfig
 			: (orchestratorConfig?.labels ?? ["orchestrator"]);
 		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
-			labels.includes(label),
+			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
 		// If both graphite AND orchestrator labels are present, use graphite-orchestrator prompt
@@ -2711,7 +2725,11 @@ export class EdgeWorker extends EventEmitter {
 				? promptConfig
 				: promptConfig?.labels;
 
-			if (configuredLabels?.some((label) => labels.includes(label))) {
+			if (
+				configuredLabels?.some((label) =>
+					lowercaseLabels.includes(label.toLowerCase()),
+				)
+			) {
 				try {
 					// Load the prompt template from file
 					const __filename = fileURLToPath(import.meta.url);
