@@ -265,9 +265,6 @@ importers:
       zod:
         specifier: 4.3.5
         version: 4.3.5
-      zod-to-json-schema:
-        specifier: 3.25.1
-        version: 3.25.1(zod@4.3.5)
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -6726,10 +6723,6 @@ snapshots:
   zod-to-json-schema@3.25.1(zod@3.25.76):
     dependencies:
       zod: 3.25.76
-
-  zod-to-json-schema@3.25.1(zod@4.3.5):
-    dependencies:
-      zod: 4.3.5
 
   zod@3.25.76: {}
 
