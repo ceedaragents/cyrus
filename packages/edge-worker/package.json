@@ -36,8 +36,7 @@
 		"fastify": "^5.2.0",
 		"file-type": "^18.7.0",
 		"ignore": "^7.0.5",
-		"zod": "3.24.1",
-		"zod-to-json-schema": "3.24.1"
+		"zod": "4.3.5"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",

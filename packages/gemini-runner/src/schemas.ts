@@ -322,7 +322,7 @@ export const ReplaceToolUseEventSchema = ToolUseBaseSchema.extend({
  */
 export const UnknownToolUseEventSchema = ToolUseBaseSchema.extend({
 	tool_name: z.string(),
-	parameters: z.record(z.unknown()),
+	parameters: z.record(z.string(), z.unknown()),
 });
 
 // Type exports for typed tool use events
@@ -364,7 +364,7 @@ export const GeminiToolUseEventSchema = z.object({
 	timestamp: TimestampSchema,
 	tool_name: z.string(),
 	tool_id: z.string(),
-	parameters: z.record(z.unknown()),
+	parameters: z.record(z.string(), z.unknown()),
 });
 
 // ============================================================================

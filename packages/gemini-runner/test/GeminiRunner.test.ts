@@ -294,7 +294,7 @@ describe("GeminiRunner", () => {
 
 			await new Promise((resolve) => setImmediate(resolve));
 
-			const newSessionId = "c3d4e5f6-a7b8-4c9d-0e1f-333333333333";
+			const newSessionId = "c3d4e5f6-a7b8-4c9d-8e1f-333333333333";
 			processEmulator.emitEvent(createInitEvent(newSessionId));
 			processEmulator.emitEvent(createResultEvent("success"));
 			processEmulator.emitClose(0);
@@ -645,8 +645,8 @@ describe("GeminiRunner", () => {
 		});
 
 		it("should clear messages between sessions", async () => {
-			const session1Id = "d4e5f6a7-b8c9-4d0e-1f2a-444444444444";
-			const session2Id = "e5f6a7b8-c9d0-4e1f-2a3b-555555555555";
+			const session1Id = "d4e5f6a7-b8c9-4d0e-8f2a-444444444444";
+			const session2Id = "e5f6a7b8-c9d0-4e1f-9a3b-555555555555";
 
 			// First session
 			let promise = runner.start("First");
