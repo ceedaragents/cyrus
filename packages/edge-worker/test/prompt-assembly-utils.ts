@@ -163,11 +163,6 @@ export class PromptScenario {
 		return this;
 	}
 
-	withSubroutineTransition(isTransition: boolean) {
-		this.input.isSubroutineTransition = isTransition;
-		return this;
-	}
-
 	// ===== Expectation Builders =====
 
 	expectUserPrompt(prompt: string) {
