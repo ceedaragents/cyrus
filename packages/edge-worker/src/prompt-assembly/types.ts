@@ -105,6 +105,14 @@ export interface PromptAssemblyInput {
 	/** Whether /label-based-prompt command was used */
 	isLabelBasedPromptRequested?: boolean;
 
+	/**
+	 * Whether this is a subroutine transition prompt.
+	 * When true, the prompt will be wrapped in <subroutine_directive> instead of <new_comment>
+	 * to clearly signal to Claude that this is a mandatory task switch, not an optional comment.
+	 * (CYPACK-705: Fix for Claude ignoring subroutine transition prompts)
+	 */
+	isSubroutineTransition?: boolean;
+
 	/** Agent session data (for mention-triggered prompts) */
 	agentSession?: WebhookAgentSession;
 

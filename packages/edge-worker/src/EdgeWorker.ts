@@ -762,6 +762,9 @@ export class EdgeWorker extends EventEmitter {
 				false, // Not a new session
 				[], // No additional allowed directories
 				nextSubroutine?.singleTurn ? 1 : undefined, // Convert singleTurn to maxTurns: 1
+				undefined, // commentAuthor
+				undefined, // commentTimestamp
+				true, // CYPACK-705: This is a subroutine transition, use directive wrapper
 			);
 			console.log(
 				`[Subroutine Transition] Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.singleTurn ? " (singleTurn)" : ""}`,
@@ -800,6 +803,9 @@ export class EdgeWorker extends EventEmitter {
 				false, // Not a new session
 				[], // No additional allowed directories
 				undefined, // No maxTurns limit for fixer
+				undefined, // commentAuthor
+				undefined, // commentTimestamp
+				true, // CYPACK-705: This is a subroutine transition, use directive wrapper
 			);
 			console.log(
 				`[Validation Loop] Successfully started fixer for iteration ${iteration}`,
@@ -861,6 +867,9 @@ export class EdgeWorker extends EventEmitter {
 				false, // Not a new session
 				[], // No additional allowed directories
 				undefined, // No maxTurns limit
+				undefined, // commentAuthor
+				undefined, // commentTimestamp
+				true, // CYPACK-705: This is a subroutine transition, use directive wrapper
 			);
 			console.log(`[Validation Loop] Successfully re-started verifications`);
 		} catch (error) {
@@ -4400,6 +4409,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		attachmentManifest?: string,
 		commentAuthor?: string,
 		commentTimestamp?: string,
+		isSubroutineTransition?: boolean,
 	): Promise<string> {
 		// Fetch labels for system prompt determination
 		const labels = await this.fetchIssueLabels(fullIssue);
@@ -4416,6 +4426,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			isNewSession,
 			isStreaming: false, // This path is only for non-streaming prompts
 			labels,
+			isSubroutineTransition, // CYPACK-705: Flag for subroutine transition prompts
 		};
 
 		// Use unified prompt assembly
@@ -4595,15 +4606,28 @@ ${input.userComment}
 		const author = input.commentAuthor || "Unknown";
 		const timestamp = input.commentTimestamp || new Date().toISOString();
 
-		const commentXml = `<new_comment>
+		// CYPACK-705: Use different XML wrapper for subroutine transitions
+		// to clearly signal to Claude that this is a mandatory task switch
+		let promptXml: string;
+		if (input.isSubroutineTransition) {
+			promptXml = `<subroutine_directive priority="override">
+  <instruction>STOP your current work. This is a mandatory subroutine transition.</instruction>
+  <timestamp>${timestamp}</timestamp>
+  <content>
+${input.userComment}
+  </content>
+</subroutine_directive>`;
+		} else {
+			promptXml = `<new_comment>
   <author>${author}</author>
   <timestamp>${timestamp}</timestamp>
   <content>
 ${input.userComment}
   </content>
 </new_comment>`;
+		}
 
-		const parts: string[] = [commentXml];
+		const parts: string[] = [promptXml];
 		if (input.attachmentManifest) {
 			parts.push(input.attachmentManifest);
 		}
@@ -5754,6 +5778,7 @@ ${input.userComment}
 		maxTurns?: number,
 		commentAuthor?: string,
 		commentTimestamp?: string,
+		isSubroutineTransition?: boolean, // CYPACK-705: Flag for subroutine transition prompts
 	): Promise<void> {
 		// Check for existing runner
 		const existingRunner = session.agentRunner;
@@ -5887,6 +5912,7 @@ ${input.userComment}
 			attachmentManifest,
 			commentAuthor,
 			commentTimestamp,
+			isSubroutineTransition, // CYPACK-705: Pass subroutine transition flag
 		);
 
 		// Start session - use streaming mode if supported for ability to add messages later
