@@ -112,6 +112,28 @@ gh release create v0.1.XX --title "v0.1.XX" --notes "$(cat CHANGELOG.md | sed -n
 ### 7. Update Linear Issues
 After a successful release, move each Linear issue mentioned in the changelog from 'MergedUnreleased' (Done) status to 'ReleasedMonitoring' (also Done) status.
 
+### 8. Create Pull Request
+**IMPORTANT**: Always create a PR to merge the release changes back to main:
+```bash
+gh pr create --title "Release v0.1.XX" --body "$(cat <<'EOF'
+## Summary
+- Release v0.1.XX to npm
+- Update changelogs
+- Create git tag
+
+## Changes
+- CHANGELOG.md updated with v0.1.XX release notes
+- CHANGELOG.internal.md updated
+- Package versions bumped to 0.1.XX
+
+## Links
+- [GitHub Release](https://github.com/ceedaragents/cyrus/releases/tag/v0.1.XX)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
 ## Key Notes
 
 - Always use `--no-git-checks` flag to publish from feature branches

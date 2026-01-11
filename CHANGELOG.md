@@ -4,17 +4,48 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-01-09
+
 ### Fixed
 - **Case-insensitive label matching for orchestrator/debugger modes** - Label matching for orchestrator, debugger, builder, and scoper modes is now case-insensitive, matching the existing behavior of model selection. Labels like "Orchestrator" in Linear now correctly match config entries like `["orchestrator"]`. ([CYPACK-701](https://linear.app/ceedar/issue/CYPACK-701), [#746](https://github.com/ceedaragents/cyrus/pull/746))
 - **Haiku model label support** - Fixed "haiku" as a supported model label for label-based model selection. Uses sonnet as fallback model for retry scenarios. ([CYPACK-701](https://linear.app/ceedar/issue/CYPACK-701), [#746](https://github.com/ceedaragents/cyrus/pull/746))
 
 ### Changed
 - **Improved changelog handling** - Changelog updates now run as a separate subroutine before git operations, ensuring PR links can be included via amend. The `git-gh` subroutine has been split into `changelog-update`, `git-commit`, and `gh-pr` for better modularity. Non-changelog subroutines now explicitly avoid touching the changelog to prevent conflicts. ([CYPACK-670](https://linear.app/ceedar/issue/CYPACK-670), [#708](https://github.com/ceedaragents/cyrus/pull/708))
-- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.1.72 to 0.2.2 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#020-2026-01-07)). Updated `zod` from 3.x to 4.3.5 to satisfy peer dependencies. Migrated from `zod-to-json-schema` to Zod v4's native `toJSONSchema()` method. ([CYPACK-700](https://linear.app/ceedar/issue/CYPACK-700))
+- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.1.72 to 0.2.2 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#020-2026-01-07)). Updated `zod` from 3.x to 4.3.5 to satisfy peer dependencies. Migrated from `zod-to-json-schema` to Zod v4's native `toJSONSchema()` method. ([CYPACK-700](https://linear.app/ceedar/issue/CYPACK-700), [#745](https://github.com/ceedaragents/cyrus/pull/745))
 
 ### Added
 - **Worktree include support** - Add `.worktreeinclude` file support to automatically copy gitignored files (like `.env`, local configs) from the main repository to new worktrees. Files must be listed in both `.worktreeinclude` AND `.gitignore` to be copied. Supports glob patterns like `.env.*` and `**/.claude/settings.local.json`. ([CYPACK-690](https://linear.app/ceedar/issue/CYPACK-690), [#734](https://github.com/ceedaragents/cyrus/pull/734))
 - **Screenshot upload guidance hooks** - Agents are now guided to use `linear_upload_file` when taking screenshots, ensuring screenshots are viewable in Linear comments instead of remaining as local files. Hooks added for `playwright_screenshot`, `mcp__claude-in-chrome__computer`, `mcp__claude-in-chrome__gif_creator`, and `mcp__chrome-devtools__take_screenshot`. ([CYPACK-699](https://linear.app/ceedar/issue/CYPACK-699), [#744](https://github.com/ceedaragents/cyrus/pull/744))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.12
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.12
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.12
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.12
+
+#### cyrus-core
+- cyrus-core@0.2.12
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.12
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.12
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.12
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.12
 
 ## [0.2.11] - 2026-01-07
 
