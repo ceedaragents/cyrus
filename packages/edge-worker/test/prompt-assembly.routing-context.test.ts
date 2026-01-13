@@ -2,9 +2,12 @@
  * Prompt Assembly Tests - Routing Context Generation
  *
  * Tests the routing context generation for orchestrator multi-repository scenarios.
+ *
+ * IMPORTANT: These tests assert the ENTIRE prompt, not partial checks with .toContain().
+ * This ensures comprehensive test coverage and catches regressions in prompt structure.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import { createTestWorker, scenario } from "./prompt-assembly-utils.js";
 
 describe("Prompt Assembly - Routing Context", () => {
@@ -40,7 +43,7 @@ describe("Prompt Assembly - Routing Context", () => {
 			description: "Test issue",
 		};
 
-		const result = await scenario(worker)
+		await scenario(worker)
 			.newSession()
 			.assignmentBased()
 			.withSession(session)
@@ -48,11 +51,38 @@ describe("Prompt Assembly - Routing Context", () => {
 			.withRepository(repository)
 			.withUserComment("Orchestrate this task")
 			.withLabels("Orchestrator")
-			.build();
+			.expectUserPrompt(`<git_context>
+<repository>Single Repo</repository>
+<base_branch>main</base_branch>
+</git_context>
 
-		// Verify no routing context in the prompt
-		expect(result.userPrompt).not.toContain("<repository_routing_context>");
-		expect(result.userPrompt).not.toContain("<available_repositories>");
+<linear_issue>
+<id>issue-123</id>
+<identifier>BACK-100</identifier>
+<title>Single repo orchestration</title>
+<description>Test issue</description>
+<url></url>
+<assignee>
+<id></id>
+<name></name>
+</assignee>
+</linear_issue>
+
+<workspace_context>
+<teams>
+
+</teams>
+<labels>
+
+</labels>
+</workspace_context>
+
+<user_comment>
+Orchestrate this task
+</user_comment>`)
+			.expectPromptType("label-based")
+			.expectComponents("issue-context", "user-comment")
+			.verify();
 	});
 
 	it("should include routing context for multi-repository setup", async () => {
@@ -101,7 +131,7 @@ describe("Prompt Assembly - Routing Context", () => {
 			description: "Add feature spanning frontend and backend",
 		};
 
-		const result = await scenario(worker)
+		await scenario(worker)
 			.newSession()
 			.assignmentBased()
 			.withSession(session)
@@ -109,37 +139,71 @@ describe("Prompt Assembly - Routing Context", () => {
 			.withRepository(frontendRepo)
 			.withUserComment("Orchestrate this cross-repo feature")
 			.withLabels("Orchestrator")
-			.build();
+			.expectUserPrompt(`<git_context>
+<repository>Frontend App</repository>
+<base_branch>main</base_branch>
+</git_context>
 
-		// Verify routing context is present
-		expect(result.userPrompt).toContain("<repository_routing_context>");
-		expect(result.userPrompt).toContain("<available_repositories>");
+<linear_issue>
+<id>issue-456</id>
+<identifier>FE-200</identifier>
+<title>Cross-repo feature</title>
+<description>Add feature spanning frontend and backend</description>
+<url></url>
+<assignee>
+<id></id>
+<name></name>
+</assignee>
+</linear_issue>
 
-		// Verify both repositories are listed
-		expect(result.userPrompt).toContain('name="Frontend App"');
-		expect(result.userPrompt).toContain('name="Backend API"');
+<workspace_context>
+<teams>
 
-		// Verify the current repository is marked
-		expect(result.userPrompt).toContain('name="Frontend App" (current)');
+</teams>
+<labels>
 
-		// Verify routing methods for frontend
-		expect(result.userPrompt).toContain("[repo=myorg/frontend-app]");
-		expect(result.userPrompt).toContain('"frontend"');
-		expect(result.userPrompt).toContain('"ui"');
-		expect(result.userPrompt).toContain('"FE"');
+</labels>
+</workspace_context>
 
-		// Verify routing methods for backend
-		expect(result.userPrompt).toContain("[repo=myorg/backend-api]");
-		expect(result.userPrompt).toContain('"backend"');
-		expect(result.userPrompt).toContain('"api"');
-		expect(result.userPrompt).toContain('"BE"');
-		expect(result.userPrompt).toContain('"API Project"');
+<repository_routing_context>
+<description>
+When creating sub-issues that should be handled in a DIFFERENT repository, use one of these routing methods:
 
-		// Verify description explains usage
-		expect(result.userPrompt).toContain("Description Tag (Recommended)");
-		expect(result.userPrompt).toContain(
-			"Description Tag > Labels > Project > Team",
-		);
+1. **Description Tag (Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description
+2. **Routing Labels**: Apply a label that routes to the target repository
+3. **Team Selection**: Create the issue in a team that routes to the target repository
+4. **Project Assignment**: Add the issue to a project that routes to the target repository
+
+The routing is evaluated in this priority order: Description Tag > Labels > Project > Team
+</description>
+
+<available_repositories>
+  <repository name="Frontend App" (current)>
+    <github_url>https://github.com/myorg/frontend-app</github_url>
+    <routing_methods>
+    - Description tag: Add \`[repo=myorg/frontend-app]\` to sub-issue description
+    - Routing labels: "frontend", "ui"
+    - Team keys: "FE" (create issue in this team)
+    </routing_methods>
+  </repository>
+  <repository name="Backend API">
+    <github_url>https://github.com/myorg/backend-api</github_url>
+    <routing_methods>
+    - Description tag: Add \`[repo=myorg/backend-api]\` to sub-issue description
+    - Routing labels: "backend", "api"
+    - Team keys: "BE" (create issue in this team)
+    - Project keys: "API Project" (add issue to this project)
+    </routing_methods>
+  </repository>
+</available_repositories>
+</repository_routing_context>
+
+<user_comment>
+Orchestrate this cross-repo feature
+</user_comment>`)
+			.expectPromptType("label-based")
+			.expectComponents("issue-context", "user-comment")
+			.verify();
 	});
 
 	it("should exclude inactive repositories from routing context", async () => {
@@ -185,7 +249,8 @@ describe("Prompt Assembly - Routing Context", () => {
 			description: "Should not show inactive repo",
 		};
 
-		const result = await scenario(worker)
+		// Only one active repo means no routing context (same as single-repo case)
+		await scenario(worker)
 			.newSession()
 			.assignmentBased()
 			.withSession(session)
@@ -193,11 +258,38 @@ describe("Prompt Assembly - Routing Context", () => {
 			.withRepository(activeRepo)
 			.withUserComment("Check routing context")
 			.withLabels("Orchestrator")
-			.build();
+			.expectUserPrompt(`<git_context>
+<repository>Active Repo</repository>
+<base_branch>main</base_branch>
+</git_context>
 
-		// Only one active repo means no routing context
-		expect(result.userPrompt).not.toContain("<repository_routing_context>");
-		expect(result.userPrompt).not.toContain("Inactive Repo");
+<linear_issue>
+<id>issue-789</id>
+<identifier>TEST-300</identifier>
+<title>Test inactive filtering</title>
+<description>Should not show inactive repo</description>
+<url></url>
+<assignee>
+<id></id>
+<name></name>
+</assignee>
+</linear_issue>
+
+<workspace_context>
+<teams>
+
+</teams>
+<labels>
+
+</labels>
+</workspace_context>
+
+<user_comment>
+Check routing context
+</user_comment>`)
+			.expectPromptType("label-based")
+			.expectComponents("issue-context", "user-comment")
+			.verify();
 	});
 
 	it("should only include repositories from the same workspace", async () => {
@@ -241,7 +333,8 @@ describe("Prompt Assembly - Routing Context", () => {
 			description: "Should not show other workspace repos",
 		};
 
-		const result = await scenario(worker)
+		// Only one repo in this workspace means no routing context
+		await scenario(worker)
 			.newSession()
 			.assignmentBased()
 			.withSession(session)
@@ -249,10 +342,37 @@ describe("Prompt Assembly - Routing Context", () => {
 			.withRepository(workspace1Repo)
 			.withUserComment("Check workspace isolation")
 			.withLabels("Orchestrator")
-			.build();
+			.expectUserPrompt(`<git_context>
+<repository>Workspace 1 Repo</repository>
+<base_branch>main</base_branch>
+</git_context>
 
-		// Only one repo in this workspace means no routing context
-		expect(result.userPrompt).not.toContain("<repository_routing_context>");
-		expect(result.userPrompt).not.toContain("Workspace 2 Repo");
+<linear_issue>
+<id>issue-999</id>
+<identifier>WS1-100</identifier>
+<title>Workspace isolation test</title>
+<description>Should not show other workspace repos</description>
+<url></url>
+<assignee>
+<id></id>
+<name></name>
+</assignee>
+</linear_issue>
+
+<workspace_context>
+<teams>
+
+</teams>
+<labels>
+
+</labels>
+</workspace_context>
+
+<user_comment>
+Check workspace isolation
+</user_comment>`)
+			.expectPromptType("label-based")
+			.expectComponents("issue-context", "user-comment")
+			.verify();
 	});
 });
