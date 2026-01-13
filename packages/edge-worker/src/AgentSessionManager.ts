@@ -1274,9 +1274,59 @@ export class AgentSessionManager extends EventEmitter {
 
 		session.agentRunner = agentRunner;
 		session.updatedAt = Date.now();
+
+		// Subscribe to runner error events to post errors to Linear (if runner supports events)
+		if (agentRunner.on) {
+			agentRunner.on("error", async (error: unknown) => {
+				const errorObj =
+					error instanceof Error ? error : new Error(String(error));
+				console.error(
+					`[AgentSessionManager] Runner error for session ${linearAgentActivitySessionId}:`,
+					errorObj,
+				);
+				const sanitizedMessage = this.sanitizeErrorMessage(errorObj);
+				await this.createErrorActivity(
+					linearAgentActivitySessionId,
+					`An error occurred while processing this request:\n\n${sanitizedMessage}\n\nPlease check your configuration and try again. If the problem persists, contact support.`,
+				);
+			});
+		}
+
 		console.log(
 			`[AgentSessionManager] Added agent runner to session ${linearAgentActivitySessionId}`,
 		);
+	}
+
+	/**
+	 * Sanitize error message for display in Linear
+	 * Removes potentially sensitive information like file paths and API keys
+	 */
+	private sanitizeErrorMessage(error: Error): string {
+		let message = error.message || "Unknown error";
+
+		// Remove absolute file paths (keep just the filename/relative part)
+		message = message.replace(/\/[^\s:]+\//g, (match) => {
+			// Keep only the last component of the path
+			const parts = match.split("/").filter(Boolean);
+			return parts.length > 0 ? `.../${parts[parts.length - 1]}/` : match;
+		});
+
+		// Remove potential API keys or tokens (alphanumeric strings > 20 chars)
+		message = message.replace(/[A-Za-z0-9_-]{20,}/g, "[REDACTED]");
+
+		// Remove stack traces (anything after "at " with file paths)
+		const stackTraceIndex = message.indexOf("\n    at ");
+		if (stackTraceIndex !== -1) {
+			message = message.substring(0, stackTraceIndex);
+		}
+
+		// Truncate very long messages
+		const maxLength = 500;
+		if (message.length > maxLength) {
+			message = `${message.substring(0, maxLength)}...`;
+		}
+
+		return message;
 	}
 
 	/**
