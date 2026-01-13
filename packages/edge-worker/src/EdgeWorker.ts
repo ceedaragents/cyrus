@@ -3011,14 +3011,17 @@ ${routingMethods.join("\n")}
 
 		return `<repository_routing_context>
 <description>
-When creating sub-issues that should be handled in a DIFFERENT repository, use one of these routing methods:
+When creating sub-issues that should be handled in a DIFFERENT repository, use one of these routing methods.
 
-1. **Description Tag (Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description
-2. **Routing Labels**: Apply a label that routes to the target repository
-3. **Team Selection**: Create the issue in a team that routes to the target repository
-4. **Project Assignment**: Add the issue to a project that routes to the target repository
+**IMPORTANT - Routing Priority Order:**
+The system evaluates routing methods in this strict priority order. The FIRST match wins:
 
-The routing is evaluated in this priority order: Description Tag > Labels > Project > Team
+1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description. This is the most explicit and reliable method.
+2. **Routing Labels (Priority 2)**: Apply a label configured to route to the target repository.
+3. **Project Assignment (Priority 3)**: Add the issue to a project that routes to the target repository.
+4. **Team Selection (Priority 4 - Lowest)**: Create the issue in a Linear team that routes to the target repository.
+
+For reliable cross-repository routing, prefer Description Tags as they are explicit and unambiguous.
 </description>
 
 <available_repositories>
