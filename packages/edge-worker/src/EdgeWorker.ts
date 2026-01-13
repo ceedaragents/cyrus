@@ -2896,6 +2896,9 @@ export class EdgeWorker extends EventEmitter {
 				);
 			}
 
+			// Generate routing context for orchestrator mode
+			const routingContext = this.generateRoutingContext(repository);
+
 			// Build the simplified prompt with only essential variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
@@ -2911,7 +2914,12 @@ export class EdgeWorker extends EventEmitter {
 				.replace(/{{assignee_id}}/g, assigneeId)
 				.replace(/{{assignee_name}}/g, assigneeName)
 				.replace(/{{workspace_teams}}/g, workspaceTeams)
-				.replace(/{{workspace_labels}}/g, workspaceLabels);
+				.replace(/{{workspace_labels}}/g, workspaceLabels)
+				// Replace routing context - if empty, also remove the preceding newlines
+				.replace(
+					routingContext ? /{{routing_context}}/g : /\n*{{routing_context}}/g,
+					routingContext,
+				);
 
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
@@ -2931,6 +2939,92 @@ export class EdgeWorker extends EventEmitter {
 			console.error(`[EdgeWorker] Error building label-based prompt:`, error);
 			throw error;
 		}
+	}
+
+	/**
+	 * Generate routing context for orchestrator mode
+	 *
+	 * This provides the orchestrator with information about available repositories
+	 * and how to route sub-issues to them. The context includes:
+	 * - List of configured repositories in the workspace
+	 * - Routing rules for each repository (labels, teams, projects)
+	 * - Instructions on using description tags for explicit routing
+	 *
+	 * @param currentRepository The repository handling the current orchestrator issue
+	 * @returns XML-formatted routing context string, or empty string if no routing info available
+	 */
+	private generateRoutingContext(currentRepository: RepositoryConfig): string {
+		// Get all repositories in the same workspace
+		const workspaceRepos = Array.from(this.repositories.values()).filter(
+			(repo) =>
+				repo.linearWorkspaceId === currentRepository.linearWorkspaceId &&
+				repo.isActive !== false,
+		);
+
+		// If there's only one repository, no routing context needed
+		if (workspaceRepos.length <= 1) {
+			return "";
+		}
+
+		const repoDescriptions = workspaceRepos.map((repo) => {
+			const routingMethods: string[] = [];
+
+			// Description tag routing (always available)
+			const repoIdentifier = repo.githubUrl
+				? repo.githubUrl.replace("https://github.com/", "")
+				: repo.name;
+			routingMethods.push(
+				`    - Description tag: Add \`[repo=${repoIdentifier}]\` to sub-issue description`,
+			);
+
+			// Label-based routing
+			if (repo.routingLabels && repo.routingLabels.length > 0) {
+				routingMethods.push(
+					`    - Routing labels: ${repo.routingLabels.map((l) => `"${l}"`).join(", ")}`,
+				);
+			}
+
+			// Team-based routing
+			if (repo.teamKeys && repo.teamKeys.length > 0) {
+				routingMethods.push(
+					`    - Team keys: ${repo.teamKeys.map((t) => `"${t}"`).join(", ")} (create issue in this team)`,
+				);
+			}
+
+			// Project-based routing
+			if (repo.projectKeys && repo.projectKeys.length > 0) {
+				routingMethods.push(
+					`    - Project keys: ${repo.projectKeys.map((p) => `"${p}"`).join(", ")} (add issue to this project)`,
+				);
+			}
+
+			const currentMarker =
+				repo.id === currentRepository.id ? " (current)" : "";
+
+			return `  <repository name="${repo.name}"${currentMarker}>
+    <github_url>${repo.githubUrl || "N/A"}</github_url>
+    <routing_methods>
+${routingMethods.join("\n")}
+    </routing_methods>
+  </repository>`;
+		});
+
+		return `<repository_routing_context>
+<description>
+When creating sub-issues that should be handled in a DIFFERENT repository, use one of these routing methods:
+
+1. **Description Tag (Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description
+2. **Routing Labels**: Apply a label that routes to the target repository
+3. **Team Selection**: Create the issue in a team that routes to the target repository
+4. **Project Assignment**: Add the issue to a project that routes to the target repository
+
+The routing is evaluated in this priority order: Description Tag > Labels > Project > Team
+</description>
+
+<available_repositories>
+${repoDescriptions.join("\n")}
+</available_repositories>
+</repository_routing_context>`;
 	}
 
 	/**
