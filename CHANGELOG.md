@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Multi-repository orchestration routing context** - Orchestrator prompts now receive routing context when multiple repositories are configured in the same workspace. This enables orchestrators to intelligently route sub-issues to different repositories using description tags (`[repo=org/repo-name]`), routing labels, team keys, or project keys. ([CYPACK-711](https://linear.app/ceedar/issue/CYPACK-711), [#756](https://github.com/ceedaragents/cyrus/pull/756))
+
 ## [0.2.12] - 2026-01-09
 
 ### Fixed
