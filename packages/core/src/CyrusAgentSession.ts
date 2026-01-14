@@ -72,6 +72,18 @@ export interface CyrusAgentSession {
 	};
 }
 
+/**
+ * SDK error types that can occur during assistant message generation.
+ * Re-exported from Claude SDK for type safety.
+ */
+export type SDKAssistantMessageError =
+	| "authentication_failed"
+	| "billing_error"
+	| "rate_limit"
+	| "invalid_request"
+	| "server_error"
+	| "unknown";
+
 export interface CyrusAgentSessionEntry {
 	claudeSessionId?: string; // originated in this Claude session (if using Claude)
 	geminiSessionId?: string; // originated in this Gemini session (if using Gemini)
@@ -87,5 +99,6 @@ export interface CyrusAgentSessionEntry {
 		timestamp: number; // e.g. Date.now()
 		durationMs?: number;
 		isError?: boolean;
+		sdkError?: SDKAssistantMessageError; // SDK error type (e.g., 'rate_limit') from assistant messages
 	};
 }

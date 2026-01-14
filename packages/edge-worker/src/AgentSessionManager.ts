@@ -207,6 +207,9 @@ export class AgentSessionManager extends EventEmitter {
 			sdkMessage.type === "user"
 				? this.extractToolResultInfo(sdkMessage)
 				: null;
+		// Extract SDK error from assistant messages (e.g., rate_limit, billing_error)
+		const sdkError =
+			sdkMessage.type === "assistant" ? sdkMessage.error : undefined;
 
 		// Determine which runner is being used
 		const session = this.sessions.get(linearAgentActivitySessionId);
@@ -232,6 +235,7 @@ export class AgentSessionManager extends EventEmitter {
 					toolUseId: toolResultInfo.toolUseId,
 					toolResultError: toolResultInfo.isError,
 				}),
+				...(sdkError && { sdkError }),
 			},
 		};
 
@@ -1147,6 +1151,13 @@ export class AgentSessionManager extends EventEmitter {
 							// Standard tool calls are ephemeral
 							ephemeral = true;
 						}
+					} else if (entry.metadata?.sdkError) {
+						// Assistant message with SDK error (e.g., rate_limit, billing_error)
+						// Create a response type so it's more visible to users
+						content = {
+							type: "response",
+							body: entry.content,
+						};
 					} else {
 						// Regular assistant message - create a thought
 						content = {
