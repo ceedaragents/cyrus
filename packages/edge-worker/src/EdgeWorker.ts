@@ -331,6 +331,7 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 							fixerPrompt,
 							iteration,
+							maxIterations,
 						);
 					},
 				);
@@ -730,6 +731,13 @@ export class EdgeWorker extends EventEmitter {
 			`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
 		);
 
+		// Post subroutine transition notification to Linear
+		await agentSessionManager.postSubroutineTransitionThought(
+			linearAgentActivitySessionId,
+			nextSubroutine.name,
+			nextSubroutine.description,
+		);
+
 		// Load subroutine prompt
 		let subroutinePrompt: string | null;
 		try {
@@ -784,9 +792,17 @@ export class EdgeWorker extends EventEmitter {
 		agentSessionManager: AgentSessionManager,
 		fixerPrompt: string,
 		iteration: number,
+		maxIterations: number,
 	): Promise<void> {
 		console.log(
 			`[Validation Loop] Running fixer for session ${linearAgentActivitySessionId}, iteration ${iteration}`,
+		);
+
+		// Post validation fixer notification to Linear
+		await agentSessionManager.postSubroutineTransitionThought(
+			linearAgentActivitySessionId,
+			"validation-fixer",
+			`Fixing validation failures (attempt ${iteration}/${maxIterations})`,
 		);
 
 		try {
@@ -838,6 +854,13 @@ export class EdgeWorker extends EventEmitter {
 			);
 			return;
 		}
+
+		// Post verifications re-run notification to Linear
+		await agentSessionManager.postSubroutineTransitionThought(
+			linearAgentActivitySessionId,
+			verificationsSubroutine.name,
+			"Re-running verifications after fixes",
+		);
 
 		try {
 			// Load the verifications prompt
@@ -1143,6 +1166,7 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 							fixerPrompt,
 							iteration,
+							maxIterations,
 						);
 					},
 				);
