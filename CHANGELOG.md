@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Subroutine transition notifications** - Users now see messages in Linear when Cyrus transitions between sub-procedures, such as "Starting: **verifications** - Run tests, linting, and type checking". This helps clarify what Cyrus is doing during longer operations. ([CYPACK-717](https://linear.app/ceedar/issue/CYPACK-717), [#759](https://github.com/ceedaragents/cyrus/pull/759))
+
 ### Changed
 - **Orchestrator label routing is now hardcoded** - Issues with 'orchestrator' or 'Orchestrator' labels now always route to the orchestrator procedure, regardless of EdgeConfig settings. This ensures consistent orchestrator behavior without requiring explicit configuration. ([CYPACK-715](https://linear.app/ceedar/issue/CYPACK-715), [#757](https://github.com/ceedaragents/cyrus/pull/757))
 
