@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Orchestrator label routing is now hardcoded** - Issues with 'orchestrator' or 'Orchestrator' labels now always route to the orchestrator procedure, regardless of EdgeConfig settings. This ensures consistent orchestrator behavior without requiring explicit configuration. ([CYPACK-715](https://linear.app/ceedar/issue/CYPACK-715), [#757](https://github.com/ceedaragents/cyrus/pull/757))
+- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.2.2 to 0.2.7 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#027-2026-01-14)). This brings compatibility with Claude Code v2.1.7. ([CYPACK-716](https://linear.app/ceedar/issue/CYPACK-716), [#758](https://github.com/ceedaragents/cyrus/pull/758))
 
 ## [0.2.12] - 2026-01-09
 
