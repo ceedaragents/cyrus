@@ -447,5 +447,254 @@ Work completed on subtask TEST-124.
 			);
 			expect(hasOrchestratorOverrideLog).toBe(true);
 		});
+
+		it("should use orchestrator-full procedure when orchestrator label is present WITHOUT labelPrompts config", async () => {
+			// Create a repository WITHOUT labelPrompts.orchestrator config
+			const repositoryWithoutOrchestratorConfig: RepositoryConfig = {
+				id: "test-repo-no-config",
+				name: "Test Repo No Config",
+				repositoryPath: "/test/repo",
+				workspaceBaseDir: "/test/workspaces",
+				baseBranch: "main",
+				linearToken: "test-token",
+				linearWorkspaceId: "test-workspace",
+				isActive: true,
+				allowedTools: ["Read", "Edit"],
+				// NO labelPrompts.orchestrator configured!
+			};
+
+			// Create new EdgeWorker with the config that has no orchestrator labelPrompts
+			const configWithoutOrchestratorLabels: EdgeWorkerConfig = {
+				proxyUrl: "http://localhost:3000",
+				cyrusHome: "/tmp/test-cyrus-home",
+				repositories: [repositoryWithoutOrchestratorConfig],
+				handlers: {
+					createWorkspace: vi.fn().mockResolvedValue({
+						path: "/test/workspaces/TEST-123",
+						isGitWorktree: false,
+					}),
+				},
+			};
+
+			const edgeWorkerNoConfig = new EdgeWorker(
+				configWithoutOrchestratorLabels,
+			);
+
+			// Arrange - Mock issue WITH orchestrator label (lowercase)
+			mockLinearClient.issue.mockResolvedValue({
+				id: "issue-123",
+				identifier: "TEST-123",
+				title: "Test Issue",
+				description: "Test description",
+				url: "https://linear.app/test/issue/TEST-123",
+				branchName: "test-branch",
+				state: { name: "In Progress", type: "started" },
+				team: { id: "team-123" },
+				labels: vi.fn().mockResolvedValue({
+					nodes: [{ name: "orchestrator" }], // lowercase orchestrator label
+				}),
+			});
+
+			const session: CyrusAgentSession = {
+				linearAgentActivitySessionId: "agent-session-123",
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				metadata: {},
+			};
+
+			const promptBody = "Test comment";
+
+			// Act
+			await (edgeWorkerNoConfig as any).rerouteProcedureForSession(
+				session,
+				"agent-session-123",
+				mockAgentSessionManager,
+				promptBody,
+				repositoryWithoutOrchestratorConfig,
+			);
+
+			// Assert
+			expect(
+				mockAgentSessionManager.postProcedureSelectionThought,
+			).toHaveBeenCalled();
+			const procedureCallArgs =
+				mockAgentSessionManager.postProcedureSelectionThought.mock.calls[0];
+
+			// Should use orchestrator-full even without labelPrompts config
+			expect(procedureCallArgs[1]).toBe("orchestrator-full");
+			expect(procedureCallArgs[2]).toBe("orchestrator");
+
+			// Verify Orchestrator label override log
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)",
+				),
+			);
+		});
+
+		it("should use orchestrator-full procedure when Orchestrator label (capitalized) is present WITHOUT labelPrompts config", async () => {
+			// Create a repository WITHOUT labelPrompts.orchestrator config
+			const repositoryWithoutOrchestratorConfig: RepositoryConfig = {
+				id: "test-repo-no-config",
+				name: "Test Repo No Config",
+				repositoryPath: "/test/repo",
+				workspaceBaseDir: "/test/workspaces",
+				baseBranch: "main",
+				linearToken: "test-token",
+				linearWorkspaceId: "test-workspace",
+				isActive: true,
+				allowedTools: ["Read", "Edit"],
+				// NO labelPrompts.orchestrator configured!
+			};
+
+			// Create new EdgeWorker with the config that has no orchestrator labelPrompts
+			const configWithoutOrchestratorLabels: EdgeWorkerConfig = {
+				proxyUrl: "http://localhost:3000",
+				cyrusHome: "/tmp/test-cyrus-home",
+				repositories: [repositoryWithoutOrchestratorConfig],
+				handlers: {
+					createWorkspace: vi.fn().mockResolvedValue({
+						path: "/test/workspaces/TEST-123",
+						isGitWorktree: false,
+					}),
+				},
+			};
+
+			const edgeWorkerNoConfig = new EdgeWorker(
+				configWithoutOrchestratorLabels,
+			);
+
+			// Arrange - Mock issue WITH Orchestrator label (capitalized)
+			mockLinearClient.issue.mockResolvedValue({
+				id: "issue-123",
+				identifier: "TEST-123",
+				title: "Test Issue",
+				description: "Test description",
+				url: "https://linear.app/test/issue/TEST-123",
+				branchName: "test-branch",
+				state: { name: "In Progress", type: "started" },
+				team: { id: "team-123" },
+				labels: vi.fn().mockResolvedValue({
+					nodes: [{ name: "Orchestrator" }], // Capitalized Orchestrator label
+				}),
+			});
+
+			const session: CyrusAgentSession = {
+				linearAgentActivitySessionId: "agent-session-123",
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				metadata: {},
+			};
+
+			const promptBody = "Test comment";
+
+			// Act
+			await (edgeWorkerNoConfig as any).rerouteProcedureForSession(
+				session,
+				"agent-session-123",
+				mockAgentSessionManager,
+				promptBody,
+				repositoryWithoutOrchestratorConfig,
+			);
+
+			// Assert
+			expect(
+				mockAgentSessionManager.postProcedureSelectionThought,
+			).toHaveBeenCalled();
+			const procedureCallArgs =
+				mockAgentSessionManager.postProcedureSelectionThought.mock.calls[0];
+
+			// Should use orchestrator-full even without labelPrompts config
+			expect(procedureCallArgs[1]).toBe("orchestrator-full");
+			expect(procedureCallArgs[2]).toBe("orchestrator");
+
+			// Verify Orchestrator label override log
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)",
+				),
+			);
+		});
+
+		it("should NOT use orchestrator-full when no orchestrator label and no labelPrompts config", async () => {
+			// Create a repository WITHOUT labelPrompts.orchestrator config
+			const repositoryWithoutOrchestratorConfig: RepositoryConfig = {
+				id: "test-repo-no-config",
+				name: "Test Repo No Config",
+				repositoryPath: "/test/repo",
+				workspaceBaseDir: "/test/workspaces",
+				baseBranch: "main",
+				linearToken: "test-token",
+				linearWorkspaceId: "test-workspace",
+				isActive: true,
+				allowedTools: ["Read", "Edit"],
+				// NO labelPrompts.orchestrator configured!
+			};
+
+			// Create new EdgeWorker with the config that has no orchestrator labelPrompts
+			const configWithoutOrchestratorLabels: EdgeWorkerConfig = {
+				proxyUrl: "http://localhost:3000",
+				cyrusHome: "/tmp/test-cyrus-home",
+				repositories: [repositoryWithoutOrchestratorConfig],
+				handlers: {
+					createWorkspace: vi.fn().mockResolvedValue({
+						path: "/test/workspaces/TEST-123",
+						isGitWorktree: false,
+					}),
+				},
+			};
+
+			const edgeWorkerNoConfig = new EdgeWorker(
+				configWithoutOrchestratorLabels,
+			);
+
+			// Arrange - Mock issue WITHOUT orchestrator label
+			mockLinearClient.issue.mockResolvedValue({
+				id: "issue-123",
+				identifier: "TEST-123",
+				title: "Test Issue",
+				description: "Test description",
+				url: "https://linear.app/test/issue/TEST-123",
+				branchName: "test-branch",
+				state: { name: "In Progress", type: "started" },
+				team: { id: "team-123" },
+				labels: vi.fn().mockResolvedValue({
+					nodes: [{ name: "Bug" }], // Different label, not orchestrator
+				}),
+			});
+
+			const session: CyrusAgentSession = {
+				linearAgentActivitySessionId: "agent-session-123",
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				metadata: {},
+			};
+
+			const promptBody = "Please fix this bug in the codebase";
+
+			// Act
+			await (edgeWorkerNoConfig as any).rerouteProcedureForSession(
+				session,
+				"agent-session-123",
+				mockAgentSessionManager,
+				promptBody,
+				repositoryWithoutOrchestratorConfig,
+			);
+
+			// Assert
+			expect(
+				mockAgentSessionManager.postProcedureSelectionThought,
+			).toHaveBeenCalled();
+			const procedureCallArgs =
+				mockAgentSessionManager.postProcedureSelectionThought.mock.calls[0];
+
+			// Should NOT use orchestrator-full (should use AI routing)
+			expect(procedureCallArgs[1]).not.toBe("orchestrator-full");
+
+			// Verify AI routing was used
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining("AI routing decision"),
+			);
+		});
 	});
 });
