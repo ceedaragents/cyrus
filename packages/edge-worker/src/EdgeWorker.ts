@@ -2662,12 +2662,56 @@ export class EdgeWorker extends EventEmitter {
 		  }
 		| undefined
 	> {
-		if (!repository.labelPrompts || labels.length === 0) {
+		if (labels.length === 0) {
 			return undefined;
 		}
 
 		// Lowercase labels for case-insensitive comparison
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
+		// HARDCODED RULE: Always check for 'orchestrator' label (case-insensitive)
+		// regardless of whether repository.labelPrompts is configured.
+		// This matches the hardcoded routing behavior from CYPACK-715.
+		const hasHardcodedOrchestratorLabel =
+			lowercaseLabels.includes("orchestrator");
+
+		// If no labelPrompts configured but has hardcoded orchestrator label,
+		// load orchestrator system prompt directly
+		if (!repository.labelPrompts && hasHardcodedOrchestratorLabel) {
+			try {
+				const __filename = fileURLToPath(import.meta.url);
+				const __dirname = dirname(__filename);
+				const promptPath = join(__dirname, "..", "prompts", "orchestrator.md");
+				const promptContent = await readFile(promptPath, "utf-8");
+				console.log(
+					`[EdgeWorker] Using orchestrator system prompt (hardcoded rule) for labels: ${labels.join(", ")}`,
+				);
+
+				const promptVersion = this.extractVersionTag(promptContent);
+				if (promptVersion) {
+					console.log(
+						`[EdgeWorker] orchestrator system prompt version: ${promptVersion}`,
+					);
+				}
+
+				return {
+					prompt: promptContent,
+					version: promptVersion,
+					type: "orchestrator",
+				};
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Failed to load orchestrator prompt template:`,
+					error,
+				);
+				return undefined;
+			}
+		}
+
+		// If no labelPrompts configured and no hardcoded orchestrator, return undefined
+		if (!repository.labelPrompts) {
+			return undefined;
+		}
 
 		// Check for graphite-orchestrator first (requires BOTH graphite AND orchestrator labels)
 		const graphiteConfig = repository.labelPrompts.graphite;
@@ -2680,9 +2724,12 @@ export class EdgeWorker extends EventEmitter {
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: (orchestratorConfig?.labels ?? ["orchestrator"]);
-		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
-			lowercaseLabels.includes(label.toLowerCase()),
-		);
+		// Use hardcoded check OR config-based check for orchestrator
+		const hasOrchestratorLabel =
+			hasHardcodedOrchestratorLabel ||
+			orchestratorLabels?.some((label) =>
+				lowercaseLabels.includes(label.toLowerCase()),
+			);
 
 		// If both graphite AND orchestrator labels are present, use graphite-orchestrator prompt
 		if (hasGraphiteLabel && hasOrchestratorLabel) {
@@ -2736,11 +2783,19 @@ export class EdgeWorker extends EventEmitter {
 				? promptConfig
 				: promptConfig?.labels;
 
-			if (
-				configuredLabels?.some((label) =>
-					lowercaseLabels.includes(label.toLowerCase()),
-				)
-			) {
+			// For orchestrator type, also check the hardcoded 'orchestrator' label
+			// This ensures orchestrator prompt loads even without explicit labelPrompts config
+			const matchesLabel =
+				promptType === "orchestrator"
+					? hasHardcodedOrchestratorLabel ||
+						configuredLabels?.some((label) =>
+							lowercaseLabels.includes(label.toLowerCase()),
+						)
+					: configuredLabels?.some((label) =>
+							lowercaseLabels.includes(label.toLowerCase()),
+						);
+
+			if (matchesLabel) {
 				try {
 					// Load the prompt template from file
 					const __filename = fileURLToPath(import.meta.url);
@@ -2907,6 +2962,9 @@ export class EdgeWorker extends EventEmitter {
 				);
 			}
 
+			// Generate routing context for orchestrator mode
+			const routingContext = this.generateRoutingContext(repository);
+
 			// Build the simplified prompt with only essential variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
@@ -2922,7 +2980,12 @@ export class EdgeWorker extends EventEmitter {
 				.replace(/{{assignee_id}}/g, assigneeId)
 				.replace(/{{assignee_name}}/g, assigneeName)
 				.replace(/{{workspace_teams}}/g, workspaceTeams)
-				.replace(/{{workspace_labels}}/g, workspaceLabels);
+				.replace(/{{workspace_labels}}/g, workspaceLabels)
+				// Replace routing context - if empty, also remove the preceding newlines
+				.replace(
+					routingContext ? /{{routing_context}}/g : /\n*{{routing_context}}/g,
+					routingContext,
+				);
 
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
@@ -2942,6 +3005,95 @@ export class EdgeWorker extends EventEmitter {
 			console.error(`[EdgeWorker] Error building label-based prompt:`, error);
 			throw error;
 		}
+	}
+
+	/**
+	 * Generate routing context for orchestrator mode
+	 *
+	 * This provides the orchestrator with information about available repositories
+	 * and how to route sub-issues to them. The context includes:
+	 * - List of configured repositories in the workspace
+	 * - Routing rules for each repository (labels, teams, projects)
+	 * - Instructions on using description tags for explicit routing
+	 *
+	 * @param currentRepository The repository handling the current orchestrator issue
+	 * @returns XML-formatted routing context string, or empty string if no routing info available
+	 */
+	private generateRoutingContext(currentRepository: RepositoryConfig): string {
+		// Get all repositories in the same workspace
+		const workspaceRepos = Array.from(this.repositories.values()).filter(
+			(repo) =>
+				repo.linearWorkspaceId === currentRepository.linearWorkspaceId &&
+				repo.isActive !== false,
+		);
+
+		// If there's only one repository, no routing context needed
+		if (workspaceRepos.length <= 1) {
+			return "";
+		}
+
+		const repoDescriptions = workspaceRepos.map((repo) => {
+			const routingMethods: string[] = [];
+
+			// Description tag routing (always available)
+			const repoIdentifier = repo.githubUrl
+				? repo.githubUrl.replace("https://github.com/", "")
+				: repo.name;
+			routingMethods.push(
+				`    - Description tag: Add \`[repo=${repoIdentifier}]\` to sub-issue description`,
+			);
+
+			// Label-based routing
+			if (repo.routingLabels && repo.routingLabels.length > 0) {
+				routingMethods.push(
+					`    - Routing labels: ${repo.routingLabels.map((l) => `"${l}"`).join(", ")}`,
+				);
+			}
+
+			// Team-based routing
+			if (repo.teamKeys && repo.teamKeys.length > 0) {
+				routingMethods.push(
+					`    - Team keys: ${repo.teamKeys.map((t) => `"${t}"`).join(", ")} (create issue in this team)`,
+				);
+			}
+
+			// Project-based routing
+			if (repo.projectKeys && repo.projectKeys.length > 0) {
+				routingMethods.push(
+					`    - Project keys: ${repo.projectKeys.map((p) => `"${p}"`).join(", ")} (add issue to this project)`,
+				);
+			}
+
+			const currentMarker =
+				repo.id === currentRepository.id ? " (current)" : "";
+
+			return `  <repository name="${repo.name}"${currentMarker}>
+    <github_url>${repo.githubUrl || "N/A"}</github_url>
+    <routing_methods>
+${routingMethods.join("\n")}
+    </routing_methods>
+  </repository>`;
+		});
+
+		return `<repository_routing_context>
+<description>
+When creating sub-issues that should be handled in a DIFFERENT repository, use one of these routing methods.
+
+**IMPORTANT - Routing Priority Order:**
+The system evaluates routing methods in this strict priority order. The FIRST match wins:
+
+1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description. This is the most explicit and reliable method.
+2. **Routing Labels (Priority 2)**: Apply a label configured to route to the target repository.
+3. **Project Assignment (Priority 3)**: Add the issue to a project that routes to the target repository.
+4. **Team Selection (Priority 4 - Lowest)**: Create the issue in a Linear team that routes to the target repository.
+
+For reliable cross-repository routing, prefer Description Tags as they are explicit and unambiguous.
+</description>
+
+<available_repositories>
+${repoDescriptions.join("\n")}
+</available_repositories>
+</repository_routing_context>`;
 	}
 
 	/**
