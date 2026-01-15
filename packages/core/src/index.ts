@@ -28,7 +28,6 @@ export type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
 	IssueMinimal,
-	SDKAssistantMessageError,
 	Workspace,
 } from "./CyrusAgentSession.js";
 

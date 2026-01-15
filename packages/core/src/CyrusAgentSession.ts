@@ -74,7 +74,7 @@ export interface CyrusAgentSession {
 
 /**
  * SDK error types that can occur during assistant message generation.
- * Re-exported from Claude SDK for type safety.
+ * Mirrors the error types from Claude SDK's SDKAssistantMessage.
  */
 export type SDKAssistantMessageError =
 	| "authentication_failed"
