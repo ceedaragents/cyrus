@@ -3,7 +3,10 @@
  * These types represent the core data structures for tracking agent sessions in Linear
  */
 
-import type { IAgentRunner } from "./agent-runner-types.js";
+import type {
+	IAgentRunner,
+	SDKAssistantMessageError,
+} from "./agent-runner-types.js";
 import type {
 	AgentSessionStatus,
 	AgentSessionType,
@@ -87,5 +90,6 @@ export interface CyrusAgentSessionEntry {
 		timestamp: number; // e.g. Date.now()
 		durationMs?: number;
 		isError?: boolean;
+		sdkError?: SDKAssistantMessageError; // SDK error type (e.g., 'rate_limit') from assistant messages
 	};
 }

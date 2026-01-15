@@ -207,6 +207,13 @@ export class AgentSessionManager extends EventEmitter {
 			sdkMessage.type === "user"
 				? this.extractToolResultInfo(sdkMessage)
 				: null;
+		// Extract SDK error from assistant messages (e.g., rate_limit, billing_error)
+		// SDKAssistantMessage has optional `error?: SDKAssistantMessageError` field
+		// See: @anthropic-ai/claude-agent-sdk sdk.d.ts lines 1013-1022
+		// Evidence from ~/.cyrus/logs/CYGROW-348 session jsonl shows assistant messages with
+		// "error":"rate_limit" field when usage limits are hit
+		const sdkError =
+			sdkMessage.type === "assistant" ? sdkMessage.error : undefined;
 
 		// Determine which runner is being used
 		const session = this.sessions.get(linearAgentActivitySessionId);
@@ -232,6 +239,7 @@ export class AgentSessionManager extends EventEmitter {
 					toolUseId: toolResultInfo.toolUseId,
 					toolResultError: toolResultInfo.isError,
 				}),
+				...(sdkError && { sdkError }),
 			},
 		};
 
@@ -1147,6 +1155,14 @@ export class AgentSessionManager extends EventEmitter {
 							// Standard tool calls are ephemeral
 							ephemeral = true;
 						}
+					} else if (entry.metadata?.sdkError) {
+						// Assistant message with SDK error (e.g., rate_limit, billing_error)
+						// Create an error type so it's visible to users (not just a thought)
+						// Per CYPACK-719: usage limits should trigger "error" type activity
+						content = {
+							type: "error",
+							body: entry.content,
+						};
 					} else {
 						// Regular assistant message - create a thought
 						content = {
