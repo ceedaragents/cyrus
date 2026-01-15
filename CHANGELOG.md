@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Usage limit errors now display as errors** - When hitting usage limits (rate_limit) or other SDK errors, the agent now creates an "error" type activity instead of a "thought" type, making error messages more visible to users in the Linear UI. ([CYPACK-719](https://linear.app/ceedar/issue/CYPACK-719), [#760](https://github.com/ceedaragents/cyrus/pull/760))
+- **Usage limit errors now display as responses** - When hitting usage limits (rate_limit) or other SDK errors, the agent now creates a "response" type activity instead of a "thought" type, making error messages more visible to users in the Linear UI. ([CYPACK-719](https://linear.app/ceedar/issue/CYPACK-719), [#760](https://github.com/ceedaragents/cyrus/pull/760))
 
 ### Changed
 - **Orchestrator label routing is now hardcoded** - Issues with 'orchestrator' or 'Orchestrator' labels now always route to the orchestrator procedure, regardless of EdgeConfig settings. This ensures consistent orchestrator behavior without requiring explicit configuration. ([CYPACK-715](https://linear.app/ceedar/issue/CYPACK-715), [#757](https://github.com/ceedaragents/cyrus/pull/757))
