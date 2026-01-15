@@ -2662,12 +2662,56 @@ export class EdgeWorker extends EventEmitter {
 		  }
 		| undefined
 	> {
-		if (!repository.labelPrompts || labels.length === 0) {
+		if (labels.length === 0) {
 			return undefined;
 		}
 
 		// Lowercase labels for case-insensitive comparison
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
+		// HARDCODED RULE: Always check for 'orchestrator' label (case-insensitive)
+		// regardless of whether repository.labelPrompts is configured.
+		// This matches the hardcoded routing behavior from CYPACK-715.
+		const hasHardcodedOrchestratorLabel =
+			lowercaseLabels.includes("orchestrator");
+
+		// If no labelPrompts configured but has hardcoded orchestrator label,
+		// load orchestrator system prompt directly
+		if (!repository.labelPrompts && hasHardcodedOrchestratorLabel) {
+			try {
+				const __filename = fileURLToPath(import.meta.url);
+				const __dirname = dirname(__filename);
+				const promptPath = join(__dirname, "..", "prompts", "orchestrator.md");
+				const promptContent = await readFile(promptPath, "utf-8");
+				console.log(
+					`[EdgeWorker] Using orchestrator system prompt (hardcoded rule) for labels: ${labels.join(", ")}`,
+				);
+
+				const promptVersion = this.extractVersionTag(promptContent);
+				if (promptVersion) {
+					console.log(
+						`[EdgeWorker] orchestrator system prompt version: ${promptVersion}`,
+					);
+				}
+
+				return {
+					prompt: promptContent,
+					version: promptVersion,
+					type: "orchestrator",
+				};
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Failed to load orchestrator prompt template:`,
+					error,
+				);
+				return undefined;
+			}
+		}
+
+		// If no labelPrompts configured and no hardcoded orchestrator, return undefined
+		if (!repository.labelPrompts) {
+			return undefined;
+		}
 
 		// Check for graphite-orchestrator first (requires BOTH graphite AND orchestrator labels)
 		const graphiteConfig = repository.labelPrompts.graphite;
@@ -2680,9 +2724,12 @@ export class EdgeWorker extends EventEmitter {
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: (orchestratorConfig?.labels ?? ["orchestrator"]);
-		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
-			lowercaseLabels.includes(label.toLowerCase()),
-		);
+		// Use hardcoded check OR config-based check for orchestrator
+		const hasOrchestratorLabel =
+			hasHardcodedOrchestratorLabel ||
+			orchestratorLabels?.some((label) =>
+				lowercaseLabels.includes(label.toLowerCase()),
+			);
 
 		// If both graphite AND orchestrator labels are present, use graphite-orchestrator prompt
 		if (hasGraphiteLabel && hasOrchestratorLabel) {
