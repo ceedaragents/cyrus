@@ -73,11 +73,13 @@ Follow the complete **[End-to-End Self-Hosting Guide](./docs/SELF_HOSTING.md)**.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+This project is dual-licensed:
+
+- **AGPL-3.0** — for open-source use, modification, and deployment in compliance with the AGPL.
+- **Commercial License** — for use without AGPL obligations, including proprietary and SaaS deployments.
+
+If you wish to use this software under the commercial license, please contact: licensing@yourcompany.com
 
 ## Credits
 
 This project builds on the technologies built by the awesome teams at Linear, and Claude by Anthropic:
-
-- [Linear API](https://linear.app/developers)
-- [Anthropic Claude Code](https://www.claude.com/product/claude-code)
