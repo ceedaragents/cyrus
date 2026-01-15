@@ -208,6 +208,8 @@ export class AgentSessionManager extends EventEmitter {
 				? this.extractToolResultInfo(sdkMessage)
 				: null;
 		// Extract SDK error from assistant messages (e.g., rate_limit, billing_error)
+		// SDKAssistantMessage has optional `error?: SDKAssistantMessageError` field
+		// See: @anthropic-ai/claude-agent-sdk sdk.d.ts lines 1013-1022
 		const sdkError =
 			sdkMessage.type === "assistant" ? sdkMessage.error : undefined;
 
