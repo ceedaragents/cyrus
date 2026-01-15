@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-core",
-	"version": "0.2.12",
+	"version": "0.2.13",
 	"description": "Core business logic for Cyrus",
 	"type": "module",
 	"main": "dist/index.js",
