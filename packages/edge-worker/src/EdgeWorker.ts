@@ -1730,13 +1730,24 @@ export class EdgeWorker extends EventEmitter {
 			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
+		// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
+		// This is a hardcoded rule: any issue with 'orchestrator'/'Orchestrator' label
+		// goes to orchestrator procedure
+		const hasHardcodedOrchestratorLabel =
+			lowercaseLabels.includes("orchestrator");
+
+		// Also check any additional orchestrator labels from config
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
-			: (orchestratorConfig?.labels ?? ["orchestrator"]);
-		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
-			lowercaseLabels.includes(label.toLowerCase()),
-		);
+			: orchestratorConfig?.labels;
+		const hasConfiguredOrchestratorLabel =
+			orchestratorLabels?.some((label) =>
+				lowercaseLabels.includes(label.toLowerCase()),
+			) ?? false;
+
+		const hasOrchestratorLabel =
+			hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
 
 		// Check for graphite label (for graphite-orchestrator combination)
 		const graphiteConfig = repository.labelPrompts?.graphite;
@@ -5562,13 +5573,25 @@ ${input.userComment}
 				const fullIssue = await issueTracker.fetchIssue(session.issueId);
 				const labels = await this.fetchIssueLabels(fullIssue);
 
-				// Check for Orchestrator label (same logic as initial routing)
+				// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
+				// This is a hardcoded rule: any issue with 'orchestrator'/'Orchestrator' label
+				// goes to orchestrator procedure
+				const lowercaseLabels = labels.map((label) => label.toLowerCase());
+				const hasHardcodedOrchestratorLabel =
+					lowercaseLabels.includes("orchestrator");
+
+				// Also check any additional orchestrator labels from config
 				const orchestratorConfig = repository.labelPrompts?.orchestrator;
 				const orchestratorLabels = Array.isArray(orchestratorConfig)
 					? orchestratorConfig
-					: (orchestratorConfig?.labels ?? ["orchestrator"]);
+					: orchestratorConfig?.labels;
+				const hasConfiguredOrchestratorLabel =
+					orchestratorLabels?.some((label) =>
+						lowercaseLabels.includes(label.toLowerCase()),
+					) ?? false;
+
 				hasOrchestratorLabel =
-					orchestratorLabels?.some((label) => labels.includes(label)) || false;
+					hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
 			} catch (error) {
 				console.error(
 					`[EdgeWorker] Failed to fetch issue labels for routing:`,

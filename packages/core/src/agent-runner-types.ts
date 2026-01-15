@@ -472,6 +472,7 @@ export type {
 	HookEvent,
 	McpServerConfig,
 	SDKAssistantMessage,
+	SDKAssistantMessageError,
 	SDKMessage,
 	SDKResultMessage,
 	SDKUserMessage,
