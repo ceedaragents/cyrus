@@ -210,6 +210,8 @@ export class AgentSessionManager extends EventEmitter {
 		// Extract SDK error from assistant messages (e.g., rate_limit, billing_error)
 		// SDKAssistantMessage has optional `error?: SDKAssistantMessageError` field
 		// See: @anthropic-ai/claude-agent-sdk sdk.d.ts lines 1013-1022
+		// Evidence from ~/.cyrus/logs/CYGROW-348 session jsonl shows assistant messages with
+		// "error":"rate_limit" field when usage limits are hit
 		const sdkError =
 			sdkMessage.type === "assistant" ? sdkMessage.error : undefined;
 
