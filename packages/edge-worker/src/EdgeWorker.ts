@@ -2783,11 +2783,19 @@ export class EdgeWorker extends EventEmitter {
 				? promptConfig
 				: promptConfig?.labels;
 
-			if (
-				configuredLabels?.some((label) =>
-					lowercaseLabels.includes(label.toLowerCase()),
-				)
-			) {
+			// For orchestrator type, also check the hardcoded 'orchestrator' label
+			// This ensures orchestrator prompt loads even without explicit labelPrompts config
+			const matchesLabel =
+				promptType === "orchestrator"
+					? hasHardcodedOrchestratorLabel ||
+						configuredLabels?.some((label) =>
+							lowercaseLabels.includes(label.toLowerCase()),
+						)
+					: configuredLabels?.some((label) =>
+							lowercaseLabels.includes(label.toLowerCase()),
+						);
+
+			if (matchesLabel) {
 				try {
 					// Load the prompt template from file
 					const __filename = fileURLToPath(import.meta.url);

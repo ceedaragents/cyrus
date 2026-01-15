@@ -243,4 +243,92 @@ Orchestrate this task
 			"CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively",
 		);
 	});
+
+	it("should load orchestrator system prompt when labelPrompts exists but without orchestrator entry (hardcoded rule)", async () => {
+		// Repository WITH labelPrompts configured but WITHOUT orchestrator - simulates cyrus-hosted scenario
+		// where labelPrompts has builder/debugger/scoper but NOT orchestrator
+		const repository = {
+			id: "repo-uuid-7890-1234-56cd-ef0123456789",
+			repositoryPath: "/test/repo",
+			workspaceBaseDir: "/test/workspace",
+			linearToken: "test-token-123",
+			labelPrompts: {
+				// Has other entries but NOT orchestrator
+				debugger: ["Bug"],
+				builder: ["Feature"],
+				scoper: ["PRD"],
+			},
+		};
+
+		const worker = createTestWorker([repository]);
+
+		const session = {
+			issueId: "a7b8c9d0-e1f2-3456-0123-456789abcdef",
+			workspace: { path: "/test" },
+			metadata: {},
+		};
+
+		const issue = {
+			id: "a7b8c9d0-e1f2-3456-0123-456789abcdef",
+			identifier: "CEE-4000",
+			title: "Orchestrator task with partial labelPrompts config",
+			description:
+				"Task that should use orchestrator system prompt even though orchestrator is not in labelPrompts",
+		};
+
+		const result = await scenario(worker)
+			.newSession()
+			.assignmentBased()
+			.withSession(session)
+			.withIssue(issue)
+			.withRepository(repository)
+			.withUserComment("Orchestrate this task")
+			.withLabels("Orchestrator") // Hardcoded orchestrator label
+			.expectUserPrompt(`<git_context>
+<repository>undefined</repository>
+<base_branch>undefined</base_branch>
+</git_context>
+
+<linear_issue>
+<id>a7b8c9d0-e1f2-3456-0123-456789abcdef</id>
+<identifier>CEE-4000</identifier>
+<title>Orchestrator task with partial labelPrompts config</title>
+<description>Task that should use orchestrator system prompt even though orchestrator is not in labelPrompts</description>
+<url></url>
+<assignee>
+<id></id>
+<name></name>
+</assignee>
+</linear_issue>
+
+<workspace_context>
+<teams>
+
+</teams>
+<labels>
+
+</labels>
+</workspace_context>
+
+<user_comment>
+Orchestrate this task
+</user_comment>`)
+			.expectPromptType("label-based")
+			.expectComponents("issue-context", "user-comment")
+			.verify();
+
+		// Verify the orchestrator system prompt is loaded via hardcoded rule
+		expect(result.systemPrompt).toBeDefined();
+		expect(typeof result.systemPrompt).toBe("string");
+		expect(result.systemPrompt?.length).toBeGreaterThan(0);
+
+		// Check for orchestrator prompt content
+		expect(result.systemPrompt).toContain("orchestrator");
+		expect(result.systemPrompt).toContain("sub-issue");
+
+		// Verify shared instructions are NOT included in label-based prompts
+		expect(result.systemPrompt).not.toContain(
+			"CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively",
+		);
+	});
 });
