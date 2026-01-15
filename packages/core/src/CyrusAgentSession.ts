@@ -3,7 +3,10 @@
  * These types represent the core data structures for tracking agent sessions in Linear
  */
 
-import type { IAgentRunner } from "./agent-runner-types.js";
+import type {
+	IAgentRunner,
+	SDKAssistantMessageError,
+} from "./agent-runner-types.js";
 import type {
 	AgentSessionStatus,
 	AgentSessionType,
@@ -71,18 +74,6 @@ export interface CyrusAgentSession {
 		};
 	};
 }
-
-/**
- * SDK error types that can occur during assistant message generation.
- * Mirrors the error types from Claude SDK's SDKAssistantMessage.
- */
-export type SDKAssistantMessageError =
-	| "authentication_failed"
-	| "billing_error"
-	| "rate_limit"
-	| "invalid_request"
-	| "server_error"
-	| "unknown";
 
 export interface CyrusAgentSessionEntry {
 	claudeSessionId?: string; // originated in this Claude session (if using Claude)

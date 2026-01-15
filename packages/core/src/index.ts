@@ -20,6 +20,7 @@ export type {
 	McpServerConfig,
 	OnAskUserQuestion,
 	SDKAssistantMessage,
+	SDKAssistantMessageError,
 	SDKMessage,
 	SDKResultMessage,
 	SDKUserMessage,
