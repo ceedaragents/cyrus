@@ -1157,10 +1157,10 @@ export class AgentSessionManager extends EventEmitter {
 						}
 					} else if (entry.metadata?.sdkError) {
 						// Assistant message with SDK error (e.g., rate_limit, billing_error)
-						// Create a response type so it's visible to users (not just a thought)
-						// Per CYPACK-719: usage limits should trigger "response" type activity
+						// Create an error type so it's visible to users (not just a thought)
+						// Per CYPACK-719: usage limits should trigger "error" type activity
 						content = {
-							type: "response",
+							type: "error",
 							body: entry.content,
 						};
 					} else {
