@@ -23,3 +23,5 @@
 {{workspace_labels}}
 </labels>
 </workspace_context>
+
+{{routing_context}}

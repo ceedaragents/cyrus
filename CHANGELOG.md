@@ -7,8 +7,50 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Subroutine transition notifications** - Users now see messages in Linear when Cyrus transitions between sub-procedures, such as "Starting: **verifications** - Run tests, linting, and type checking". This helps clarify what Cyrus is doing during longer operations. ([CYPACK-717](https://linear.app/ceedar/issue/CYPACK-717), [#759](https://github.com/ceedaragents/cyrus/pull/759))
 
+### Fixed
+- **Cross-repository orchestration** - Fixed an issue where parent sessions could not be resumed when orchestrating sub-issues across different repositories. Child sessions now correctly locate and resume their parent sessions regardless of which repository they belong to. ([CYPACK-722](https://linear.app/ceedar/issue/CYPACK-722), [#768](https://github.com/ceedaragents/cyrus/pull/768))
+- **Summary subroutines no longer show extended "Working" status** - During summarization phases (concise-summary, verbose-summary, question-answer, plan-summary, user-testing-summary, release-summary), the agent no longer makes tool calls that caused users to see an extended "Working" status in Linear. The agent now produces only text output during these phases. ([CYPACK-723](https://linear.app/ceedar/issue/CYPACK-723), [#764](https://github.com/ceedaragents/cyrus/pull/764))
+
+## [0.2.13] - 2026-01-15
+
+### Added
+- **Multi-repository orchestration routing context** - Orchestrator prompts now receive routing context when multiple repositories are configured in the same workspace. This enables orchestrators to intelligently route sub-issues to different repositories using description tags (`[repo=org/repo-name]`), routing labels, team keys, or project keys. ([CYPACK-711](https://linear.app/ceedar/issue/CYPACK-711), [#756](https://github.com/ceedaragents/cyrus/pull/756))
+
+### Fixed
+- **Usage limit errors now display as errors** - When hitting usage limits (rate_limit) or other SDK errors, the agent now creates an "error" type activity instead of a "thought" type, making error messages more visible to users in the Linear UI. ([CYPACK-719](https://linear.app/ceedar/issue/CYPACK-719), [#760](https://github.com/ceedaragents/cyrus/pull/760))
+
 ### Changed
 - **Orchestrator label routing is now hardcoded** - Issues with 'orchestrator' or 'Orchestrator' labels now always route to the orchestrator procedure, regardless of EdgeConfig settings. This ensures consistent orchestrator behavior without requiring explicit configuration. ([CYPACK-715](https://linear.app/ceedar/issue/CYPACK-715), [#757](https://github.com/ceedaragents/cyrus/pull/757))
+- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.2.2 to 0.2.7 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#027-2026-01-14)). This brings compatibility with Claude Code v2.1.7, which enables MCP tool search auto mode by default. When MCP tool descriptions exceed 10% of the context window, they are automatically deferred and discovered via the MCPSearch tool instead of being loaded upfront, reducing context usage for sessions with many MCP tools configured. ([CYPACK-716](https://linear.app/ceedar/issue/CYPACK-716), [#758](https://github.com/ceedaragents/cyrus/pull/758))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.13
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.13
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.13
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.13
+
+#### cyrus-core
+- cyrus-core@0.2.13
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.13
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.13
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.13
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.13
 
 ## [0.2.12] - 2026-01-09
 

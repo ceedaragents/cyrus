@@ -62,7 +62,7 @@ export const SUBROUTINES = {
 		singleTurn: true,
 		description: "Brief summary for simple requests",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	verboseSummary: {
 		name: "verbose-summary",
@@ -70,7 +70,7 @@ export const SUBROUTINES = {
 		singleTurn: true,
 		description: "Detailed summary with implementation details",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	questionInvestigation: {
 		name: "question-investigation",
@@ -83,7 +83,7 @@ export const SUBROUTINES = {
 		singleTurn: true,
 		description: "Format final answer to user question",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	codingActivity: {
 		name: "coding-activity",
@@ -102,7 +102,7 @@ export const SUBROUTINES = {
 		singleTurn: true,
 		description: "Present clarifying questions or implementation plan",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	userTesting: {
 		name: "user-testing",
@@ -115,7 +115,7 @@ export const SUBROUTINES = {
 		singleTurn: true,
 		description: "Summary of user testing session results",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	releaseExecution: {
 		name: "release-execution",
@@ -129,7 +129,7 @@ export const SUBROUTINES = {
 		singleTurn: true,
 		description: "Summary of the release process",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 } as const;
 
