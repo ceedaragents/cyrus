@@ -28,6 +28,7 @@ export type {
 export type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
+	IssueContext,
 	IssueMinimal,
 	Workspace,
 } from "./CyrusAgentSession.js";
@@ -119,7 +120,10 @@ export type {
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 } from "./PersistenceManager.js";
-export { PersistenceManager } from "./PersistenceManager.js";
+export {
+	PERSISTENCE_VERSION,
+	PersistenceManager,
+} from "./PersistenceManager.js";
 export { StreamingPrompt } from "./StreamingPrompt.js";
 // Simple Agent Runner types
 export type {
