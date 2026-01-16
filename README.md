@@ -17,19 +17,11 @@ Your Claude Code powered Linear agent. Cyrus monitors Linear issues assigned to 
 
 ## Getting Started
 
-| Plan | Hosting | Description |
-|------|---------|-------------|
-| **Pro** | Self-hosted | Run Cyrus on your own machine or server |
-| **Pro** | Cloud-hosted | We run Cyrus for you in our cloud |
-| **Team** | Self-hosted | Run Cyrus on your infrastructure with team features |
-| **Team** | Cloud-hosted | Fully managed with team collaboration |
-| **Community** | End-to-End Self-hosted | Zero cost. Host everything yourself, including Linear OAuth app |
-
 ### Pro & Team Plans
 
 Configure Cyrus through the dashboard at [app.atcyrus.com](https://app.atcyrus.com).
 
-**For self-hosted deployments:**
+#### For self-hosted deployments
 
 ```bash
 # Install Cyrus
@@ -47,7 +39,7 @@ Keep Cyrus running as a persistent process:
 - **pm2**: `pm2 start cyrus --name cyrus`
 - **systemd**: See [Running as a Service](./docs/SELF_HOSTING.md#running-as-a-service)
 
-**For cloud-hosted deployments:**
+#### For cloud-hosted deployments
 
 No installation required. Everything is managed through [app.atcyrus.com](https://app.atcyrus.com).
 
@@ -55,15 +47,15 @@ No installation required. Everything is managed through [app.atcyrus.com](https:
 
 ### End-to-End Self-Hosted (Community)
 
-Zero cost option with full control. This requires hosting everything yourself, including your own Linear OAuth app.
+Zero cost option. This requires hosting everything yourself, including your own Linear OAuth app.
 
-Follow the complete **[End-to-End Self-Hosting Guide](./docs/SELF_HOSTING.md)**.
+Follow the complete **[End-to-End Community Guide](./docs/SELF_HOSTING.md)**.
 
 ---
 
 ## Documentation
 
-- **[End-to-End Self-Hosting Guide](./docs/SELF_HOSTING.md)** - Complete community self-hosted setup
+- **[End-to-End Community Guide](./docs/SELF_HOSTING.md)** - Complete community manual setup
 - **[Git & GitHub Setup](./docs/GIT_GITHUB.md)** - Git and GitHub CLI configuration for PRs
 - **[Configuration Reference](./docs/CONFIG_FILE.md)** - Detailed config.json options
 - **[Cloudflare Tunnel Setup](./docs/CLOUDFLARE_TUNNEL.md)** - Expose your local instance
