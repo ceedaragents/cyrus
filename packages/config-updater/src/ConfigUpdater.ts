@@ -27,11 +27,18 @@ export class ConfigUpdater {
 	private fastify: FastifyInstance;
 	private cyrusHome: string;
 	private apiKey: string;
+	private version: string | null;
 
-	constructor(fastify: FastifyInstance, cyrusHome: string, apiKey: string) {
+	constructor(
+		fastify: FastifyInstance,
+		cyrusHome: string,
+		apiKey: string,
+		version?: string,
+	) {
 		this.fastify = fastify;
 		this.cyrusHome = cyrusHome;
 		this.apiKey = apiKey;
+		this.version = version || null;
 	}
 
 	/**
@@ -71,6 +78,10 @@ export class ConfigUpdater {
 			try {
 				const response = await handler.call(this, request.body);
 				const statusCode = response.success ? 200 : 400;
+				// Add CLI version to success responses
+				if (response.success) {
+					response.cyrus_cli_version = this.version;
+				}
 				return reply.status(statusCode).send(response);
 			} catch (error) {
 				return reply.status(500).send({
@@ -102,6 +113,10 @@ export class ConfigUpdater {
 			try {
 				const response = await handler.call(this, request.body);
 				const statusCode = response.success ? 200 : 400;
+				// Add CLI version to success responses
+				if (response.success) {
+					response.cyrus_cli_version = this.version;
+				}
 				return reply.status(statusCode).send(response);
 			} catch (error) {
 				return reply.status(500).send({

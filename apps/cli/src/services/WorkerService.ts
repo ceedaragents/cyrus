@@ -19,6 +19,7 @@ export class WorkerService {
 		private gitService: GitService,
 		private cyrusHome: string,
 		private logger: Logger,
+		private version?: string,
 	) {}
 
 	/**
@@ -64,6 +65,7 @@ export class WorkerService {
 			this.setupWaitingServer.getFastifyInstance(),
 			this.cyrusHome,
 			process.env.CYRUS_API_KEY || "",
+			this.version,
 		);
 		configUpdater.register();
 
@@ -123,6 +125,7 @@ export class WorkerService {
 			this.setupWaitingServer.getFastifyInstance(),
 			this.cyrusHome,
 			process.env.CYRUS_API_KEY || "",
+			this.version,
 		);
 		configUpdater.register();
 
@@ -193,6 +196,7 @@ export class WorkerService {
 		const config: EdgeWorkerConfig = {
 			repositories,
 			cyrusHome: this.cyrusHome,
+			version: this.version,
 			defaultAllowedTools:
 				process.env.ALLOWED_TOOLS?.split(",").map((t) => t.trim()) || [],
 			defaultDisallowedTools:

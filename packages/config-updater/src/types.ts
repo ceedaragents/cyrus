@@ -106,6 +106,7 @@ export interface SuccessResponse {
 	success: true;
 	message: string;
 	data?: any;
+	cyrus_cli_version?: string | null; // Installed Cyrus CLI version (null if unavailable)
 }
 
 export type ApiResponse = SuccessResponse | ErrorResponse;

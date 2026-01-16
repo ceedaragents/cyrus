@@ -169,6 +169,9 @@ export interface EdgeWorkerConfig {
 	agentHandle?: string; // The name/handle the agent responds to (e.g., "john", "cyrus")
 	agentUserId?: string; // The user ID of the agent (for CLI mode)
 
+	// CLI version (optional)
+	version?: string; // The version of the Cyrus CLI (e.g., "0.2.13")
+
 	// Optional handlers that apps can implement
 	handlers?: {
 		// Called when workspace needs to be created
