@@ -68,6 +68,7 @@ import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { GitService } from "./GitService.js";
+import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import {
 	ProcedureAnalyzer,
 	type ProcedureDefinition,
@@ -116,6 +117,7 @@ export class EdgeWorker extends EventEmitter {
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
+	private globalSessionRegistry: GlobalSessionRegistry; // Centralized session storage across all repositories
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
 	private configWatcher?: FSWatcher; // File watcher for config.json
@@ -134,6 +136,9 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Initialize global session registry (centralized session storage)
+		this.globalSessionRegistry = new GlobalSessionRegistry();
 
 		// Initialize procedure router with haiku for fast classification
 		// Default to claude runner
@@ -279,7 +284,8 @@ export class EdgeWorker extends EventEmitter {
 						console.log(
 							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
 						);
-						const parentId = this.childToParentAgentSession.get(childSessionId);
+						const parentId =
+							this.globalSessionRegistry.getParentSessionId(childSessionId);
 						console.log(
 							`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || "not found"}`,
 						);
@@ -296,6 +302,7 @@ export class EdgeWorker extends EventEmitter {
 					},
 					this.procedureAnalyzer,
 					this.sharedApplicationServer,
+					this.globalSessionRegistry,
 				);
 
 				// Subscribe to subroutine completion events
@@ -1095,7 +1102,9 @@ export class EdgeWorker extends EventEmitter {
 				const agentSessionManager = new AgentSessionManager(
 					issueTracker,
 					(childSessionId: string) => {
-						return this.childToParentAgentSession.get(childSessionId);
+						return this.globalSessionRegistry.getParentSessionId(
+							childSessionId,
+						);
 					},
 					async (parentSessionId, prompt, childSessionId) => {
 						await this.handleResumeParentSession(
@@ -1108,6 +1117,7 @@ export class EdgeWorker extends EventEmitter {
 					},
 					this.procedureAnalyzer,
 					this.sharedApplicationServer,
+					this.globalSessionRegistry,
 				);
 
 				// Subscribe to subroutine completion events
@@ -4367,9 +4377,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
 					);
 					// Map child to parent session
-					this.childToParentAgentSession.set(childSessionId, parentId);
+					this.globalSessionRegistry.setParentSession(childSessionId, parentId);
 					console.log(
-						`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+						`[EdgeWorker] Parent-child mapping updated via GlobalSessionRegistry`,
 					);
 				},
 				onFeedbackDelivery: async (childSessionId, message) => {
@@ -4379,7 +4389,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 					// Find the parent session ID for context
 					const parentSessionId =
-						this.childToParentAgentSession.get(childSessionId);
+						this.globalSessionRegistry.getParentSessionId(childSessionId);
 
 					// Find the repository containing the child session
 					// We need to search all repositories for this child session
