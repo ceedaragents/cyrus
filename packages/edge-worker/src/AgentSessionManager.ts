@@ -23,6 +23,7 @@ import {
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
 } from "cyrus-core";
+import type { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
 import type { ValidationLoopMetadata } from "./procedures/types.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
@@ -113,6 +114,7 @@ export class AgentSessionManager extends EventEmitter {
 		) => Promise<void>,
 		procedureAnalyzer?: ProcedureAnalyzer,
 		sharedApplicationServer?: SharedApplicationServer,
+		_globalSessionRegistry?: GlobalSessionRegistry,
 	) {
 		super();
 		this.issueTracker = issueTracker;
@@ -120,6 +122,10 @@ export class AgentSessionManager extends EventEmitter {
 		this.resumeParentSession = resumeParentSession;
 		this.procedureAnalyzer = procedureAnalyzer;
 		this.sharedApplicationServer = sharedApplicationServer;
+		// GlobalSessionRegistry parameter added for future migration (Phase 4)
+		// Currently unused but prepared for when AgentSessionManager is refactored
+		// to use centralized session storage instead of local Maps
+		// Prefixed with _ to indicate intentionally unused for now
 	}
 
 	/**
