@@ -1900,8 +1900,15 @@ export class EdgeWorker extends EventEmitter {
 				}
 			}
 
+			// Get current subroutine to check for singleTurn mode and disallowAllTools
+			const currentSubroutine =
+				this.procedureAnalyzer.getCurrentSubroutine(session);
+
 			// Build allowed tools list with Linear MCP tools (now with prompt type context)
-			const allowedTools = this.buildAllowedTools(repository, promptType);
+			// If subroutine has disallowAllTools: true, use empty array to disable all tools
+			const allowedTools = currentSubroutine?.disallowAllTools
+				? []
+				: this.buildAllowedTools(repository, promptType);
 			const baseDisallowedTools = this.buildDisallowedTools(
 				repository,
 				promptType,
@@ -1914,20 +1921,22 @@ export class EdgeWorker extends EventEmitter {
 				"EdgeWorker",
 			);
 
-			console.log(
-				`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
-				allowedTools,
-			);
+			if (currentSubroutine?.disallowAllTools) {
+				console.log(
+					`[EdgeWorker] All tools disabled for ${fullIssue.identifier} (subroutine: ${currentSubroutine.name})`,
+				);
+			} else {
+				console.log(
+					`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
+					allowedTools,
+				);
+			}
 			if (disallowedTools.length > 0) {
 				console.log(
 					`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
 					disallowedTools,
 				);
 			}
-
-			// Get current subroutine to check for singleTurn mode
-			const currentSubroutine =
-				this.procedureAnalyzer.getCurrentSubroutine(session);
 
 			// Create agent runner with system prompt from assembly
 			// buildAgentRunnerConfig now determines runner type from labels internally
@@ -6005,8 +6014,15 @@ ${input.userComment}
 		const systemPrompt = systemPromptResult?.prompt;
 		const promptType = systemPromptResult?.type;
 
+		// Get current subroutine to check for singleTurn mode and disallowAllTools
+		const currentSubroutine =
+			this.procedureAnalyzer.getCurrentSubroutine(session);
+
 		// Build allowed tools list
-		const allowedTools = this.buildAllowedTools(repository, promptType);
+		// If subroutine has disallowAllTools: true, use empty array to disable all tools
+		const allowedTools = currentSubroutine?.disallowAllTools
+			? []
+			: this.buildAllowedTools(repository, promptType);
 		const baseDisallowedTools = this.buildDisallowedTools(
 			repository,
 			promptType,
@@ -6018,6 +6034,12 @@ ${input.userComment}
 			baseDisallowedTools,
 			"resumeClaudeSession",
 		);
+
+		if (currentSubroutine?.disallowAllTools) {
+			console.log(
+				`[resumeClaudeSession] All tools disabled for subroutine: ${currentSubroutine.name}`,
+			);
+		}
 
 		// Set up attachments directory
 		const workspaceFolderName = basename(session.workspace.path);
@@ -6033,10 +6055,6 @@ ${input.userComment}
 			repository.repositoryPath,
 			...additionalAllowedDirectories,
 		];
-
-		// Get current subroutine to check for singleTurn mode
-		const currentSubroutine =
-			this.procedureAnalyzer.getCurrentSubroutine(session);
 
 		const resumeSessionId = needsNewSession
 			? undefined
