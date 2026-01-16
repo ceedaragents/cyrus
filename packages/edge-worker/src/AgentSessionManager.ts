@@ -38,7 +38,7 @@ import {
  */
 export interface AgentSessionManagerEvents {
 	subroutineComplete: (data: {
-		linearAgentActivitySessionId: string;
+		sessionId: string;
 		session: CyrusAgentSession;
 	}) => void;
 	/**
@@ -46,7 +46,7 @@ export interface AgentSessionManagerEvents {
 	 * The EdgeWorker should respond by running the fixer prompt and then re-running verifications
 	 */
 	validationLoopIteration: (data: {
-		linearAgentActivitySessionId: string;
+		sessionId: string;
 		session: CyrusAgentSession;
 		/** The fixer prompt to run (already rendered with failure context) */
 		fixerPrompt: string;
@@ -59,7 +59,7 @@ export interface AgentSessionManagerEvents {
 	 * Emitted when we need to re-run the verifications subroutine
 	 */
 	validationLoopRerun: (data: {
-		linearAgentActivitySessionId: string;
+		sessionId: string;
 		session: CyrusAgentSession;
 		/** Current iteration (1-based) */
 		iteration: number;
@@ -90,7 +90,7 @@ export declare interface AgentSessionManager {
 export class AgentSessionManager extends EventEmitter {
 	private issueTracker: IIssueTrackerService;
 	private sessions: Map<string, CyrusAgentSession> = new Map();
-	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
+	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its id
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
@@ -133,30 +133,36 @@ export class AgentSessionManager extends EventEmitter {
 	 * The session is already created by Linear, we just need to track it
 	 */
 	createLinearAgentSession(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
 	): CyrusAgentSession {
 		console.log(
-			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
+			`[AgentSessionManager] Tracking Linear session ${sessionId} for issue ${issueId}`,
 		);
 
 		const agentSession: CyrusAgentSession = {
-			linearAgentActivitySessionId,
+			id: sessionId,
+			externalSessionId: sessionId, // For Linear sessions, the external ID is the same as our internal ID
 			type: AgentSessionType.CommentThread,
 			status: AgentSessionStatus.Active,
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
-			issueId,
+			issueContext: {
+				trackerId: "linear",
+				issueId: issueId,
+				issueIdentifier: issueMinimal.identifier,
+			},
+			issueId, // Kept for backwards compatibility
 			issue: issueMinimal,
 			workspace: workspace,
 		};
 
 		// Store locally
-		this.sessions.set(linearAgentActivitySessionId, agentSession);
-		this.entries.set(linearAgentActivitySessionId, []);
+		this.sessions.set(sessionId, agentSession);
+		this.entries.set(sessionId, []);
 
 		return agentSession;
 	}
@@ -166,13 +172,13 @@ export class AgentSessionManager extends EventEmitter {
 	 * Automatically detects whether it's Claude or Gemini based on the runner
 	 */
 	updateAgentSessionWithClaudeSessionId(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		claudeSystemMessage: SDKSystemMessage,
 	): void {
-		const linearSession = this.sessions.get(linearAgentActivitySessionId);
+		const linearSession = this.sessions.get(sessionId);
 		if (!linearSession) {
 			console.warn(
-				`[AgentSessionManager] No Linear session found for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
+				`[AgentSessionManager] No Linear session found for sessionId ${sessionId}`,
 			);
 			return;
 		}
@@ -202,7 +208,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create a session entry from user/assistant message (without syncing to Linear)
 	 */
 	private async createSessionEntry(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		sdkMessage: SDKUserMessage | SDKAssistantMessage,
 	): Promise<CyrusAgentSessionEntry> {
 		// Extract tool info if this is an assistant message
@@ -222,7 +228,7 @@ export class AgentSessionManager extends EventEmitter {
 			sdkMessage.type === "assistant" ? sdkMessage.error : undefined;
 
 		// Determine which runner is being used
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		const runner = session?.agentRunner;
 		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
 
@@ -257,19 +263,19 @@ export class AgentSessionManager extends EventEmitter {
 	 * Complete a session from Claude result message
 	 */
 	async completeSession(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		if (!session) {
 			console.error(
-				`[AgentSessionManager] No session found for linearAgentActivitySessionId: ${linearAgentActivitySessionId}`,
+				`[AgentSessionManager] No session found for sessionId: ${sessionId}`,
 			);
 			return;
 		}
 
 		// Clear any active Task when session completes
-		this.activeTasksBySession.delete(linearAgentActivitySessionId);
+		this.activeTasksBySession.delete(sessionId);
 
 		// Clear tool calls tracking for this session
 		// Note: We should ideally track by session, but for now clearing all is safer
@@ -281,18 +287,14 @@ export class AgentSessionManager extends EventEmitter {
 				: AgentSessionStatus.Error;
 
 		// Update session status and metadata
-		await this.updateSessionStatus(linearAgentActivitySessionId, status, {
+		await this.updateSessionStatus(sessionId, status, {
 			totalCostUsd: resultMessage.total_cost_usd,
 			usage: resultMessage.usage,
 		});
 
 		// Handle result using procedure routing system
 		if ("result" in resultMessage && resultMessage.result) {
-			await this.handleProcedureCompletion(
-				session,
-				linearAgentActivitySessionId,
-				resultMessage,
-			);
+			await this.handleProcedureCompletion(session, sessionId, resultMessage);
 		}
 	}
 
@@ -301,7 +303,7 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	private async handleProcedureCompletion(
 		session: CyrusAgentSession,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
 		if (!this.procedureAnalyzer) {
@@ -316,11 +318,11 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
-		// Get the session ID (either Claude or Gemini)
-		const sessionId = session.claudeSessionId || session.geminiSessionId;
-		if (!sessionId) {
+		// Get the runner session ID (either Claude or Gemini)
+		const runnerSessionId = session.claudeSessionId || session.geminiSessionId;
+		if (!runnerSessionId) {
 			console.error(
-				`[AgentSessionManager] No session ID found for procedure session`,
+				`[AgentSessionManager] No runner session ID found for procedure session`,
 			);
 			return;
 		}
@@ -344,7 +346,7 @@ export class AgentSessionManager extends EventEmitter {
 						`[AgentSessionManager] SharedApplicationServer not available for approval workflow`,
 					);
 					await this.createErrorActivity(
-						linearAgentActivitySessionId,
+						sessionId,
 						"Approval workflow failed: Server not available",
 					);
 					return;
@@ -359,15 +361,13 @@ export class AgentSessionManager extends EventEmitter {
 				try {
 					// Register approval request with server
 					const approvalRequest =
-						this.sharedApplicationServer.registerApprovalRequest(
-							linearAgentActivitySessionId,
-						);
+						this.sharedApplicationServer.registerApprovalRequest(sessionId);
 
 					// Post approval elicitation to Linear with auth signal URL
 					const approvalMessage = `The previous step has completed. Please review the result below and approve to continue:\n\n${subroutineResult}`;
 
 					await this.createApprovalElicitation(
-						linearAgentActivitySessionId,
+						sessionId,
 						approvalMessage,
 						approvalRequest.url,
 					);
@@ -392,10 +392,10 @@ export class AgentSessionManager extends EventEmitter {
 
 					if (!approved) {
 						console.log(
-							`[AgentSessionManager] Approval rejected for session ${linearAgentActivitySessionId}`,
+							`[AgentSessionManager] Approval rejected for session ${sessionId}`,
 						);
 						await this.createErrorActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							`Workflow stopped: User rejected approval.${feedback ? `\n\nFeedback: ${feedback}` : ""}`,
 						);
 						return; // Stop workflow
@@ -408,7 +408,7 @@ export class AgentSessionManager extends EventEmitter {
 					// Optionally post feedback as a thought
 					if (feedback) {
 						await this.createThoughtActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							`User feedback: ${feedback}`,
 						);
 					}
@@ -418,10 +418,10 @@ export class AgentSessionManager extends EventEmitter {
 					const errorMessage = (error as Error).message;
 					if (errorMessage === "Approval timeout") {
 						console.log(
-							`[AgentSessionManager] Approval timed out for session ${linearAgentActivitySessionId}`,
+							`[AgentSessionManager] Approval timed out for session ${sessionId}`,
 						);
 						await this.createErrorActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							"Workflow stopped: Approval request timed out after 30 minutes.",
 						);
 					} else {
@@ -430,7 +430,7 @@ export class AgentSessionManager extends EventEmitter {
 							error,
 						);
 						await this.createErrorActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							`Workflow stopped: Approval request failed - ${errorMessage}`,
 						);
 					}
@@ -442,9 +442,9 @@ export class AgentSessionManager extends EventEmitter {
 			if (currentSubroutine?.usesValidationLoop) {
 				const handled = await this.handleValidationLoopCompletion(
 					session,
-					linearAgentActivitySessionId,
-					resultMessage,
 					sessionId,
+					resultMessage,
+					runnerSessionId,
 					nextSubroutine,
 				);
 				if (handled) {
@@ -457,12 +457,12 @@ export class AgentSessionManager extends EventEmitter {
 			console.log(
 				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
-			this.procedureAnalyzer.advanceToNextSubroutine(session, sessionId);
+			this.procedureAnalyzer.advanceToNextSubroutine(session, runnerSessionId);
 
 			// Emit event for EdgeWorker to handle subroutine transition
 			// This replaces the callback pattern and allows EdgeWorker to subscribe
 			this.emit("subroutineComplete", {
-				linearAgentActivitySessionId,
+				sessionId,
 				session,
 			});
 		} else {
@@ -470,17 +470,12 @@ export class AgentSessionManager extends EventEmitter {
 			console.log(
 				`[AgentSessionManager] All subroutines completed, posting final result to Linear`,
 			);
-			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+			await this.addResultEntry(sessionId, resultMessage);
 
 			// Handle child session completion
-			const isChildSession = this.getParentSessionId?.(
-				linearAgentActivitySessionId,
-			);
+			const isChildSession = this.getParentSessionId?.(sessionId);
 			if (isChildSession && this.resumeParentSession) {
-				await this.handleChildSessionCompletion(
-					linearAgentActivitySessionId,
-					resultMessage,
-				);
+				await this.handleChildSessionCompletion(sessionId, resultMessage);
 			}
 		}
 	}
@@ -492,7 +487,7 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	private async handleValidationLoopCompletion(
 		session: CyrusAgentSession,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 		_sessionId: string,
 		_nextSubroutine: { name: string } | null,
@@ -522,7 +517,7 @@ export class AgentSessionManager extends EventEmitter {
 
 			// Emit event to re-run verifications
 			this.emit("validationLoopRerun", {
-				linearAgentActivitySessionId,
+				sessionId,
 				session,
 				iteration: validationLoop.iteration,
 			});
@@ -577,7 +572,7 @@ export class AgentSessionManager extends EventEmitter {
 			);
 			// Post a thought about the failures
 			await this.createThoughtActivity(
-				linearAgentActivitySessionId,
+				sessionId,
 				`Validation loop exhausted after ${newIteration} attempts. Last failure: ${validationResult.reason}`,
 			);
 			// Clear validation loop state for next subroutine
@@ -609,7 +604,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Emit event for EdgeWorker to run the fixer
 		this.emit("validationLoopIteration", {
-			linearAgentActivitySessionId,
+			sessionId,
 			session,
 			fixerPrompt,
 			iteration: newIteration,
@@ -648,26 +643,24 @@ export class AgentSessionManager extends EventEmitter {
 	 * Handle child session completion and resume parent
 	 */
 	private async handleChildSessionCompletion(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
 		if (!this.getParentSessionId || !this.resumeParentSession) {
 			return;
 		}
 
-		const parentAgentSessionId = this.getParentSessionId(
-			linearAgentActivitySessionId,
-		);
+		const parentAgentSessionId = this.getParentSessionId(sessionId);
 
 		if (!parentAgentSessionId) {
 			console.error(
-				`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
+				`[AgentSessionManager] No parent session ID found for child ${sessionId}`,
 			);
 			return;
 		}
 
 		console.log(
-			`[AgentSessionManager] Child session ${linearAgentActivitySessionId} completed, resuming parent ${parentAgentSessionId}`,
+			`[AgentSessionManager] Child session ${sessionId} completed, resuming parent ${parentAgentSessionId}`,
 		);
 
 		try {
@@ -675,12 +668,12 @@ export class AgentSessionManager extends EventEmitter {
 				"result" in resultMessage
 					? resultMessage.result
 					: "No result available";
-			const promptToParent = `Child agent session ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
+			const promptToParent = `Child agent session ${sessionId} completed with result:\n\n${childResult}`;
 
 			await this.resumeParentSession(
 				parentAgentSessionId,
 				promptToParent,
-				linearAgentActivitySessionId,
+				sessionId,
 			);
 
 			console.log(
@@ -698,30 +691,27 @@ export class AgentSessionManager extends EventEmitter {
 	 * Handle streaming Claude messages and route to appropriate methods
 	 */
 	async handleClaudeMessage(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		message: SDKMessage,
 	): Promise<void> {
 		try {
 			switch (message.type) {
 				case "system":
 					if (message.subtype === "init") {
-						this.updateAgentSessionWithClaudeSessionId(
-							linearAgentActivitySessionId,
-							message,
-						);
+						this.updateAgentSessionWithClaudeSessionId(sessionId, message);
 
 						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
 						if (systemMessage.model) {
 							await this.postModelNotificationThought(
-								linearAgentActivitySessionId,
+								sessionId,
 								systemMessage.model,
 							);
 						}
 					} else if (message.subtype === "status") {
 						// Handle status updates (compacting, etc.)
 						await this.handleStatusMessage(
-							linearAgentActivitySessionId,
+							sessionId,
 							message as SDKStatusMessage,
 						);
 					}
@@ -729,30 +719,24 @@ export class AgentSessionManager extends EventEmitter {
 
 				case "user": {
 					const userEntry = await this.createSessionEntry(
-						linearAgentActivitySessionId,
+						sessionId,
 						message as SDKUserMessage,
 					);
-					await this.syncEntryToLinear(userEntry, linearAgentActivitySessionId);
+					await this.syncEntryToLinear(userEntry, sessionId);
 					break;
 				}
 
 				case "assistant": {
 					const assistantEntry = await this.createSessionEntry(
-						linearAgentActivitySessionId,
+						sessionId,
 						message as SDKAssistantMessage,
 					);
-					await this.syncEntryToLinear(
-						assistantEntry,
-						linearAgentActivitySessionId,
-					);
+					await this.syncEntryToLinear(assistantEntry, sessionId);
 					break;
 				}
 
 				case "result":
-					await this.completeSession(
-						linearAgentActivitySessionId,
-						message as SDKResultMessage,
-					);
+					await this.completeSession(sessionId, message as SDKResultMessage);
 					break;
 
 				default:
@@ -763,10 +747,7 @@ export class AgentSessionManager extends EventEmitter {
 		} catch (error) {
 			console.error(`[AgentSessionManager] Error handling message:`, error);
 			// Mark session as error state
-			await this.updateSessionStatus(
-				linearAgentActivitySessionId,
-				AgentSessionStatus.Error,
-			);
+			await this.updateSessionStatus(sessionId, AgentSessionStatus.Error);
 		}
 	}
 
@@ -774,11 +755,11 @@ export class AgentSessionManager extends EventEmitter {
 	 * Update session status and metadata
 	 */
 	private async updateSessionStatus(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		status: AgentSessionStatus,
 		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
 	): Promise<void> {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		if (!session) return;
 
 		session.status = status;
@@ -788,18 +769,18 @@ export class AgentSessionManager extends EventEmitter {
 			session.metadata = { ...session.metadata, ...additionalMetadata };
 		}
 
-		this.sessions.set(linearAgentActivitySessionId, session);
+		this.sessions.set(sessionId, session);
 	}
 
 	/**
 	 * Add result entry from result message
 	 */
 	private async addResultEntry(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
 		// Determine which runner is being used
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		const runner = session?.agentRunner;
 		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
 
@@ -819,7 +800,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		// DON'T store locally - syncEntryToLinear will do it
 		// Sync to Linear
-		await this.syncEntryToLinear(resultEntry, linearAgentActivitySessionId);
+		await this.syncEntryToLinear(resultEntry, sessionId);
 	}
 
 	/**
@@ -941,36 +922,34 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	private async syncEntryToLinear(
 		entry: CyrusAgentSessionEntry,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 	): Promise<void> {
 		try {
-			const session = this.sessions.get(linearAgentActivitySessionId);
+			const session = this.sessions.get(sessionId);
 			if (!session) {
 				console.warn(
-					`[AgentSessionManager] No Linear session for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
+					`[AgentSessionManager] No Linear session for sessionId ${sessionId}`,
 				);
 				return;
 			}
 
 			// Store entry locally first
-			const entries = this.entries.get(linearAgentActivitySessionId) || [];
+			const entries = this.entries.get(sessionId) || [];
 			entries.push(entry);
-			this.entries.set(linearAgentActivitySessionId, entries);
+			this.entries.set(sessionId, entries);
 
 			// Build activity content based on entry type
 			let content: any;
 			let ephemeral = false;
 			switch (entry.type) {
 				case "user": {
-					const activeTaskId = this.activeTasksBySession.get(
-						linearAgentActivitySessionId,
-					);
+					const activeTaskId = this.activeTasksBySession.get(sessionId);
 					if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
 						content = {
 							type: "thought",
 							body: `✅ Task Completed\n\n\n\n${entry.content}\n\n---\n\n`,
 						};
-						this.activeTasksBySession.delete(linearAgentActivitySessionId);
+						this.activeTasksBySession.delete(sessionId);
 					} else if (entry.metadata?.toolUseId) {
 						// This is a tool result - create an action activity with the result
 						const toolResult = this.extractToolResult(entry);
@@ -1003,7 +982,7 @@ export class AgentSessionManager extends EventEmitter {
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
 								console.warn(
-									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
+									`[AgentSessionManager] No formatter available for session ${sessionId}`,
 								);
 								return;
 							}
@@ -1051,9 +1030,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Check if this is a subtask with arrow prefix
 							let storedName = toolName;
 							if (entry.metadata?.parentToolUseId) {
-								const activeTaskId = this.activeTasksBySession.get(
-									linearAgentActivitySessionId,
-								);
+								const activeTaskId = this.activeTasksBySession.get(sessionId);
 								if (activeTaskId === entry.metadata?.parentToolUseId) {
 									storedName = `↪ ${toolName}`;
 								}
@@ -1076,7 +1053,7 @@ export class AgentSessionManager extends EventEmitter {
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
 								console.warn(
-									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
+									`[AgentSessionManager] No formatter available for session ${sessionId}`,
 								);
 								return;
 							}
@@ -1095,7 +1072,7 @@ export class AgentSessionManager extends EventEmitter {
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
 								console.warn(
-									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
+									`[AgentSessionManager] No formatter available for session ${sessionId}`,
 								);
 								return;
 							}
@@ -1111,7 +1088,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Track this as the active Task for this session
 							if (entry.metadata?.toolUseId) {
 								this.activeTasksBySession.set(
-									linearAgentActivitySessionId,
+									sessionId,
 									entry.metadata.toolUseId,
 								);
 							}
@@ -1129,7 +1106,7 @@ export class AgentSessionManager extends EventEmitter {
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
 								console.warn(
-									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
+									`[AgentSessionManager] No formatter available for session ${sessionId}`,
 								);
 								return;
 							}
@@ -1139,9 +1116,7 @@ export class AgentSessionManager extends EventEmitter {
 							let displayName = toolName;
 
 							if (entry.metadata?.parentToolUseId) {
-								const activeTaskId = this.activeTasksBySession.get(
-									linearAgentActivitySessionId,
-								);
+								const activeTaskId = this.activeTasksBySession.get(sessionId);
 								if (activeTaskId === entry.metadata?.parentToolUseId) {
 									displayName = `↪ ${toolName}`;
 								}
@@ -1224,8 +1199,16 @@ export class AgentSessionManager extends EventEmitter {
 				}
 			}
 
+			// Ensure we have an external session ID for Linear API
+			if (!session.externalSessionId) {
+				console.warn(
+					`[AgentSessionManager] No external session ID for session ${sessionId}, skipping Linear activity`,
+				);
+				return;
+			}
+
 			const activityInput: AgentActivityCreateInput = {
-				agentSessionId: session.linearAgentActivitySessionId, // Use the Linear session ID
+				agentSessionId: session.externalSessionId, // Use the Linear session ID
 				content,
 				...(ephemeral && { ephemeral: true }),
 			};
@@ -1255,19 +1238,15 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Get session by ID
 	 */
-	getSession(
-		linearAgentActivitySessionId: string,
-	): CyrusAgentSession | undefined {
-		return this.sessions.get(linearAgentActivitySessionId);
+	getSession(sessionId: string): CyrusAgentSession | undefined {
+		return this.sessions.get(sessionId);
 	}
 
 	/**
 	 * Get session entries by session ID
 	 */
-	getSessionEntries(
-		linearAgentActivitySessionId: string,
-	): CyrusAgentSessionEntry[] {
-		return this.entries.get(linearAgentActivitySessionId) || [];
+	getSessionEntries(sessionId: string): CyrusAgentSessionEntry[] {
+		return this.entries.get(sessionId) || [];
 	}
 
 	/**
@@ -1282,14 +1261,11 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Add or update agent runner for a session
 	 */
-	addAgentRunner(
-		linearAgentActivitySessionId: string,
-		agentRunner: IAgentRunner,
-	): void {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+	addAgentRunner(sessionId: string, agentRunner: IAgentRunner): void {
+		const session = this.sessions.get(sessionId);
 		if (!session) {
 			console.warn(
-				`[AgentSessionManager] No session found for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
+				`[AgentSessionManager] No session found for sessionId ${sessionId}`,
 			);
 			return;
 		}
@@ -1297,7 +1273,7 @@ export class AgentSessionManager extends EventEmitter {
 		session.agentRunner = agentRunner;
 		session.updatedAt = Date.now();
 		console.log(
-			`[AgentSessionManager] Added agent runner to session ${linearAgentActivitySessionId}`,
+			`[AgentSessionManager] Added agent runner to session ${sessionId}`,
 		);
 	}
 
@@ -1350,18 +1326,16 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Get agent runner for a specific session
 	 */
-	getAgentRunner(
-		linearAgentActivitySessionId: string,
-	): IAgentRunner | undefined {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+	getAgentRunner(sessionId: string): IAgentRunner | undefined {
+		const session = this.sessions.get(sessionId);
 		return session?.agentRunner;
 	}
 
 	/**
 	 * Check if an agent runner exists for a session
 	 */
-	hasAgentRunner(linearAgentActivitySessionId: string): boolean {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+	hasAgentRunner(sessionId: string): boolean {
+		const session = this.sessions.get(sessionId);
 		return session?.agentRunner !== undefined;
 	}
 
@@ -1370,7 +1344,7 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	async createThoughtActivity(sessionId: string, body: string): Promise<void> {
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
+		if (!session || !session.externalSessionId) {
 			console.warn(
 				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
 			);
@@ -1379,7 +1353,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "thought",
 					body,
@@ -1414,7 +1388,7 @@ export class AgentSessionManager extends EventEmitter {
 		result?: string,
 	): Promise<void> {
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
+		if (!session || !session.externalSessionId) {
 			console.warn(
 				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
 			);
@@ -1433,7 +1407,7 @@ export class AgentSessionManager extends EventEmitter {
 			}
 
 			const response = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content,
 			});
 
@@ -1460,7 +1434,7 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	async createResponseActivity(sessionId: string, body: string): Promise<void> {
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
+		if (!session || !session.externalSessionId) {
 			console.warn(
 				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
 			);
@@ -1469,7 +1443,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "response",
 					body,
@@ -1499,7 +1473,7 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	async createErrorActivity(sessionId: string, body: string): Promise<void> {
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
+		if (!session || !session.externalSessionId) {
 			console.warn(
 				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
 			);
@@ -1508,7 +1482,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "error",
 					body,
@@ -1541,7 +1515,7 @@ export class AgentSessionManager extends EventEmitter {
 		body: string,
 	): Promise<void> {
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
+		if (!session || !session.externalSessionId) {
 			console.warn(
 				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
 			);
@@ -1550,7 +1524,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "elicitation",
 					body,
@@ -1584,7 +1558,7 @@ export class AgentSessionManager extends EventEmitter {
 		approvalUrl: string,
 	): Promise<void> {
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
+		if (!session || !session.externalSessionId) {
 			console.warn(
 				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
 			);
@@ -1593,7 +1567,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "elicitation",
 					body,
@@ -1705,12 +1679,12 @@ export class AgentSessionManager extends EventEmitter {
 	 * Post a thought about the model being used
 	 */
 	private async postModelNotificationThought(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		model: string,
 	): Promise<void> {
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Using model: ${model}`,
@@ -1719,7 +1693,7 @@ export class AgentSessionManager extends EventEmitter {
 
 			if (result.success) {
 				console.log(
-					`[AgentSessionManager] Posted model notification for session ${linearAgentActivitySessionId} (model: ${model})`,
+					`[AgentSessionManager] Posted model notification for session ${sessionId} (model: ${model})`,
 				);
 			} else {
 				console.error(
@@ -1738,12 +1712,10 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Post an ephemeral "Analyzing your request..." thought and return the activity ID
 	 */
-	async postAnalyzingThought(
-		linearAgentActivitySessionId: string,
-	): Promise<string | null> {
+	async postAnalyzingThought(sessionId: string): Promise<string | null> {
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: "Analyzing your request…",
@@ -1754,7 +1726,7 @@ export class AgentSessionManager extends EventEmitter {
 			if (result.success && result.agentActivity) {
 				const activity = await result.agentActivity;
 				console.log(
-					`[AgentSessionManager] Posted analyzing thought for session ${linearAgentActivitySessionId}`,
+					`[AgentSessionManager] Posted analyzing thought for session ${sessionId}`,
 				);
 				return activity.id;
 			} else {
@@ -1777,13 +1749,13 @@ export class AgentSessionManager extends EventEmitter {
 	 * Post the procedure selection result as a non-ephemeral thought
 	 */
 	async postProcedureSelectionThought(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		procedureName: string,
 		classification: string,
 	): Promise<void> {
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Selected procedure: **${procedureName}** (classified as: ${classification})`,
@@ -1793,7 +1765,7 @@ export class AgentSessionManager extends EventEmitter {
 
 			if (result.success) {
 				console.log(
-					`[AgentSessionManager] Posted procedure selection for session ${linearAgentActivitySessionId}: ${procedureName}`,
+					`[AgentSessionManager] Posted procedure selection for session ${sessionId}: ${procedureName}`,
 				);
 			} else {
 				console.error(
@@ -1813,13 +1785,13 @@ export class AgentSessionManager extends EventEmitter {
 	 * Handle status messages (compacting, etc.)
 	 */
 	private async handleStatusMessage(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		message: SDKStatusMessage,
 	): Promise<void> {
-		const session = this.sessions.get(linearAgentActivitySessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
+		const session = this.sessions.get(sessionId);
+		if (!session || !session.externalSessionId) {
 			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${linearAgentActivitySessionId}`,
+				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
 			);
 			return;
 		}
@@ -1828,7 +1800,7 @@ export class AgentSessionManager extends EventEmitter {
 			if (message.status === "compacting") {
 				// Create an ephemeral thought for the compacting status
 				const result = await this.issueTracker.createAgentActivity({
-					agentSessionId: session.linearAgentActivitySessionId,
+					agentSessionId: session.externalSessionId,
 					content: {
 						type: "thought",
 						body: "Compacting conversation history…",
@@ -1839,12 +1811,9 @@ export class AgentSessionManager extends EventEmitter {
 				if (result.success && result.agentActivity) {
 					const activity = await result.agentActivity;
 					// Store the activity ID so we can replace it later
-					this.activeStatusActivitiesBySession.set(
-						linearAgentActivitySessionId,
-						activity.id,
-					);
+					this.activeStatusActivitiesBySession.set(sessionId, activity.id);
 					console.log(
-						`[AgentSessionManager] Posted ephemeral compacting status for session ${linearAgentActivitySessionId}`,
+						`[AgentSessionManager] Posted ephemeral compacting status for session ${sessionId}`,
 					);
 				} else {
 					console.error(
@@ -1855,7 +1824,7 @@ export class AgentSessionManager extends EventEmitter {
 			} else if (message.status === null) {
 				// Clear the status - post a non-ephemeral thought to replace the ephemeral one
 				const result = await this.issueTracker.createAgentActivity({
-					agentSessionId: session.linearAgentActivitySessionId,
+					agentSessionId: session.externalSessionId,
 					content: {
 						type: "thought",
 						body: "Conversation history compacted",
@@ -1865,11 +1834,9 @@ export class AgentSessionManager extends EventEmitter {
 
 				if (result.success) {
 					// Clean up the stored activity ID
-					this.activeStatusActivitiesBySession.delete(
-						linearAgentActivitySessionId,
-					);
+					this.activeStatusActivitiesBySession.delete(sessionId);
 					console.log(
-						`[AgentSessionManager] Posted non-ephemeral status clear for session ${linearAgentActivitySessionId}`,
+						`[AgentSessionManager] Posted non-ephemeral status clear for session ${sessionId}`,
 					);
 				} else {
 					console.error(

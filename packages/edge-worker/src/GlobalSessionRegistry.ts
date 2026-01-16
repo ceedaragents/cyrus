@@ -52,12 +52,12 @@ export interface GlobalSessionRegistryEvents {
  */
 export class GlobalSessionRegistry extends EventEmitter {
 	/**
-	 * All sessions keyed by linearAgentActivitySessionId
+	 * All sessions keyed by session id
 	 */
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 
 	/**
-	 * All entries keyed by linearAgentActivitySessionId
+	 * All entries keyed by session id
 	 */
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map();
 
@@ -73,21 +73,19 @@ export class GlobalSessionRegistry extends EventEmitter {
 	 * @throws Error if session with same ID already exists
 	 */
 	createSession(session: CyrusAgentSession): void {
-		if (this.sessions.has(session.linearAgentActivitySessionId)) {
-			throw new Error(
-				`Session with ID ${session.linearAgentActivitySessionId} already exists`,
-			);
+		if (this.sessions.has(session.id)) {
+			throw new Error(`Session with ID ${session.id} already exists`);
 		}
 
-		this.sessions.set(session.linearAgentActivitySessionId, session);
-		this.entries.set(session.linearAgentActivitySessionId, []);
+		this.sessions.set(session.id, session);
+		this.entries.set(session.id, []);
 
 		this.emit("sessionCreated", session);
 	}
 
 	/**
 	 * Get a session by ID
-	 * @param sessionId The linearAgentActivitySessionId
+	 * @param sessionId The session id
 	 * @returns The session or undefined if not found
 	 */
 	getSession(sessionId: string): CyrusAgentSession | undefined {
@@ -96,7 +94,7 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 	/**
 	 * Update a session with partial data
-	 * @param sessionId The linearAgentActivitySessionId
+	 * @param sessionId The session id
 	 * @param updates Partial session data to merge
 	 * @throws Error if session doesn't exist
 	 */
@@ -124,7 +122,7 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 	/**
 	 * Delete a session and its entries
-	 * @param sessionId The linearAgentActivitySessionId
+	 * @param sessionId The session id
 	 */
 	deleteSession(sessionId: string): void {
 		this.sessions.delete(sessionId);
@@ -150,7 +148,7 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 	/**
 	 * Add an entry to a session's conversation history
-	 * @param sessionId The linearAgentActivitySessionId
+	 * @param sessionId The session id
 	 * @param entry The entry to add
 	 * @throws Error if session doesn't exist
 	 */
@@ -172,7 +170,7 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 	/**
 	 * Get all entries for a session
-	 * @param sessionId The linearAgentActivitySessionId
+	 * @param sessionId The session id
 	 * @returns Array of entries (empty if session has no entries or doesn't exist)
 	 */
 	getEntries(sessionId: string): CyrusAgentSessionEntry[] {
@@ -181,7 +179,7 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 	/**
 	 * Update an entry in a session's conversation history
-	 * @param sessionId The linearAgentActivitySessionId
+	 * @param sessionId The session id
 	 * @param entryIndex The index of the entry to update (0-based)
 	 * @param updates Partial entry data to merge
 	 * @throws Error if session doesn't exist or index out of bounds
@@ -221,8 +219,8 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 	/**
 	 * Set parent session for a child session (orchestrator workflow)
-	 * @param childSessionId The child's linearAgentActivitySessionId
-	 * @param parentSessionId The parent's linearAgentActivitySessionId
+	 * @param childSessionId The child's session id
+	 * @param parentSessionId The parent's session id
 	 */
 	setParentSession(childSessionId: string, parentSessionId: string): void {
 		this.childToParentMap.set(childSessionId, parentSessionId);
@@ -230,7 +228,7 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 	/**
 	 * Get parent session ID for a child session
-	 * @param childSessionId The child's linearAgentActivitySessionId
+	 * @param childSessionId The child's session id
 	 * @returns The parent session ID or undefined if not found
 	 */
 	getParentSessionId(childSessionId: string): string | undefined {
@@ -239,7 +237,7 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 	/**
 	 * Get all child session IDs for a parent session
-	 * @param parentSessionId The parent's linearAgentActivitySessionId
+	 * @param parentSessionId The parent's session id
 	 * @returns Array of child session IDs
 	 */
 	getChildSessionIds(parentSessionId: string): string[] {
