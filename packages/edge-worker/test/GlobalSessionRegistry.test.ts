@@ -14,12 +14,18 @@ describe("GlobalSessionRegistry", () => {
 		sessionId: string,
 		overrides?: Partial<CyrusAgentSession>,
 	): CyrusAgentSession => ({
-		linearAgentActivitySessionId: sessionId,
+		id: sessionId,
+		externalSessionId: sessionId,
 		type: "comment-thread" as const,
 		status: "active",
 		context: "comment-thread" as const,
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
+		issueContext: {
+			trackerId: "linear",
+			issueId: `issue-${sessionId}`,
+			issueIdentifier: `TEST-${sessionId}`,
+		},
 		issueId: `issue-${sessionId}`,
 		issue: {
 			id: `issue-${sessionId}`,
@@ -388,7 +394,7 @@ describe("GlobalSessionRegistry", () => {
 
 			expect(serialized.version).toBe("3.0");
 			expect(serialized.sessions["session-1"]).toMatchObject({
-				linearAgentActivitySessionId: "session-1",
+				id: "session-1",
 				claudeSessionId: "claude-123",
 			});
 			expect(serialized.entries["session-1"]).toHaveLength(1);
@@ -429,7 +435,7 @@ describe("GlobalSessionRegistry", () => {
 			registry.restoreState(serialized);
 
 			expect(registry.getSession("session-1")).toMatchObject({
-				linearAgentActivitySessionId: "session-1",
+				id: "session-1",
 			});
 			expect(registry.getEntries("session-1")).toHaveLength(1);
 			expect(registry.getParentSessionId("session-1")).toBe("parent-1");
@@ -470,7 +476,7 @@ describe("GlobalSessionRegistry", () => {
 			newRegistry.restoreState(serialized);
 
 			expect(newRegistry.getSession("session-1")).toMatchObject({
-				linearAgentActivitySessionId: "session-1",
+				id: "session-1",
 			});
 			expect(newRegistry.getEntries("session-1")).toHaveLength(1);
 			expect(newRegistry.getParentSessionId("session-1")).toBe("parent-1");
