@@ -599,21 +599,40 @@ export class EdgeWorker extends EventEmitter {
 		parentSessionId: string,
 		prompt: string,
 		childSessionId: string,
-		repo: RepositoryConfig,
-		agentSessionManager: AgentSessionManager,
+		_childRepo: RepositoryConfig,
+		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		console.log(
 			`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
 		);
 
-		// Get the parent session and repository
+		// Find parent session across all repositories
+		// This is critical for cross-repository orchestration where parent and child
+		// may be in different repositories with different AgentSessionManagers
+		// See also: feedback delivery code at line ~4413 which uses same pattern
 		console.log(
-			`[Parent Session Resume] Retrieving parent session ${parentSessionId} from agent session manager`,
+			`[Parent Session Resume] Searching for parent session ${parentSessionId} across all repositories`,
 		);
-		const parentSession = agentSessionManager.getSession(parentSessionId);
-		if (!parentSession) {
+		let parentSession: CyrusAgentSession | undefined;
+		let parentRepo: RepositoryConfig | undefined;
+		let parentAgentSessionManager: AgentSessionManager | undefined;
+
+		for (const [repoId, manager] of this.agentSessionManagers) {
+			const candidate = manager.getSession(parentSessionId);
+			if (candidate) {
+				parentSession = candidate;
+				parentRepo = this.repositories.get(repoId);
+				parentAgentSessionManager = manager;
+				console.log(
+					`[Parent Session Resume] Found parent session in repository: ${parentRepo?.name || repoId}`,
+				);
+				break;
+			}
+		}
+
+		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
 			console.error(
-				`[Parent Session Resume] Parent session ${parentSessionId} not found in agent session manager`,
+				`[Parent Session Resume] Parent session ${parentSessionId} not found in any repository's agent session manager`,
 			);
 			return;
 		}
@@ -623,7 +642,8 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Get the child session to access its workspace path
-		const childSession = agentSessionManager.getSession(childSessionId);
+		// Child session is in the child's manager (passed in from the callback)
+		const childSession = childAgentSessionManager.getSession(childSessionId);
 		const childWorkspaceDirs: string[] = [];
 		if (childSession) {
 			childWorkspaceDirs.push(childSession.workspace.path);
@@ -636,10 +656,11 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+		await this.postParentResumeAcknowledgment(parentSessionId, parentRepo.id);
 
 		// Post thought to Linear showing child result receipt
-		const issueTracker = this.issueTrackers.get(repo.id);
+		// Use parent's issue tracker since we're posting to the parent's Linear session
+		const issueTracker = this.issueTrackers.get(parentRepo.id);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -679,9 +700,9 @@ export class EdgeWorker extends EventEmitter {
 		try {
 			await this.handlePromptWithStreamingCheck(
 				parentSession,
-				repo,
+				parentRepo,
 				parentSessionId,
-				agentSessionManager,
+				parentAgentSessionManager,
 				prompt,
 				"", // No attachment manifest for child results
 				false, // Not a new session
@@ -697,7 +718,7 @@ export class EdgeWorker extends EventEmitter {
 				error,
 			);
 			console.error(
-				`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${repo.name}`,
+				`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${parentRepo.name}`,
 			);
 		}
 	}
