@@ -202,9 +202,13 @@ export class GlobalSessionRegistry extends EventEmitter {
 			);
 		}
 
+		const existingEntry = sessionEntries[entryIndex]!; // Safe: bounds checked above
 		const updatedEntry: CyrusAgentSessionEntry = {
-			...sessionEntries[entryIndex],
+			...existingEntry,
 			...updates,
+			// Ensure required fields are never undefined
+			type: updates.type ?? existingEntry.type,
+			content: updates.content ?? existingEntry.content,
 		};
 		sessionEntries[entryIndex] = updatedEntry;
 
