@@ -21,6 +21,8 @@ export type { SerializedGlobalRegistryState } from "./GlobalSessionRegistry.js";
 export { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
+export type { IActivitySink } from "./sinks/index.js";
+export { LinearActivitySink } from "./sinks/index.js";
 export type { EdgeWorkerEvents } from "./types.js";
 // Export validation loop module
 export {
