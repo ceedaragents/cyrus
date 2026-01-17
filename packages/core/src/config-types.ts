@@ -109,6 +109,9 @@ export interface RepositoryConfig {
  * Configuration for the EdgeWorker supporting multiple repositories
  */
 export interface EdgeWorkerConfig {
+	// CLI version info
+	version?: string; // Cyrus CLI version (e.g., "1.2.3"), used in /health endpoint
+
 	// Proxy connection config
 	proxyUrl?: string; // Optional - defaults to DEFAULT_PROXY_URL for OAuth flows
 	baseUrl?: string;

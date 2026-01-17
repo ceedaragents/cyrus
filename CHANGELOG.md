@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Version endpoint** - Added a `/version` endpoint that returns the Cyrus CLI version, enabling the dashboard to display version information. The endpoint returns `{ "cyrus_cli_version": "x.y.z" }` or `null` if unavailable. ([CYPACK-731](https://linear.app/ceedar/issue/CYPACK-731), [#775](https://github.com/ceedaragents/cyrus/pull/775))
+
 ## [0.2.14] - 2026-01-16
 
 ### Fixed
