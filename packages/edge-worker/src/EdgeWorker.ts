@@ -497,6 +497,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// 3. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
+
+		// 4. Register /version endpoint for CLI version info
+		this.registerVersionEndpoint();
 	}
 
 	/**
@@ -513,6 +516,23 @@ export class EdgeWorker extends EventEmitter {
 
 		console.log("✅ Status endpoint registered");
 		console.log("   Route: GET /status");
+	}
+
+	/**
+	 * Register the /version endpoint for CLI version information
+	 * This endpoint is used by dashboards to display the installed CLI version
+	 */
+	private registerVersionEndpoint(): void {
+		const fastify = this.sharedApplicationServer.getFastifyInstance();
+
+		fastify.get("/version", async (_request, reply) => {
+			return reply.status(200).send({
+				cyrus_cli_version: this.config.version ?? null,
+			});
+		});
+
+		console.log("✅ Version endpoint registered");
+		console.log("   Route: GET /version");
 	}
 
 	/**

@@ -7,9 +7,74 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Subroutine transition notifications** - Users now see messages in Linear when Cyrus transitions between sub-procedures, such as "Starting: **verifications** - Run tests, linting, and type checking". This helps clarify what Cyrus is doing during longer operations. ([CYPACK-717](https://linear.app/ceedar/issue/CYPACK-717), [#759](https://github.com/ceedaragents/cyrus/pull/759))
 
+## [0.2.15] - 2026-01-16
+
+### Added
+- **Version endpoint** - Added a `/version` endpoint that returns the Cyrus CLI version, enabling the dashboard to display version information. The endpoint returns `{ "cyrus_cli_version": "x.y.z" }` or `null` if unavailable. ([CYPACK-731](https://linear.app/ceedar/issue/CYPACK-731), [#775](https://github.com/ceedaragents/cyrus/pull/775))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.15
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.15
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.15
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.15
+
+#### cyrus-core
+- cyrus-core@0.2.15
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.15
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.15
+
+## [0.2.14] - 2026-01-16
+
 ### Fixed
 - **Cross-repository orchestration** - Fixed an issue where parent sessions could not be resumed when orchestrating sub-issues across different repositories. Child sessions now correctly locate and resume their parent sessions regardless of which repository they belong to. ([CYPACK-722](https://linear.app/ceedar/issue/CYPACK-722), [#768](https://github.com/ceedaragents/cyrus/pull/768))
 - **Summary subroutines no longer show extended "Working" status** - During summarization phases (concise-summary, verbose-summary, question-answer, plan-summary, user-testing-summary, release-summary), the agent no longer makes tool calls that caused users to see an extended "Working" status in Linear. The agent now produces only text output during these phases. ([CYPACK-723](https://linear.app/ceedar/issue/CYPACK-723), [#764](https://github.com/ceedaragents/cyrus/pull/764))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.14
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.14
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.14
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.14
+
+#### cyrus-core
+- cyrus-core@0.2.14
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.14
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.14
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.14
 
 ## [0.2.13] - 2026-01-15
 
