@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Health endpoint with CLI version** - Added a `/health` endpoint that returns the Cyrus CLI version, enabling the dashboard to display version information. The endpoint returns `{ "status": "healthy", "cyrus_cli_version": "x.y.z" }` when running, or `null` for the version if unavailable. ([CYPACK-731](https://linear.app/ceedar/issue/CYPACK-731), [#775](https://github.com/ceedaragents/cyrus/pull/775))
+
 ### Fixed
 - **Cross-repository orchestration** - Fixed an issue where parent sessions could not be resumed when orchestrating sub-issues across different repositories. Child sessions now correctly locate and resume their parent sessions regardless of which repository they belong to. ([CYPACK-722](https://linear.app/ceedar/issue/CYPACK-722), [#768](https://github.com/ceedaragents/cyrus/pull/768))
 - **Summary subroutines no longer show extended "Working" status** - During summarization phases (concise-summary, verbose-summary, question-answer, plan-summary, user-testing-summary, release-summary), the agent no longer makes tool calls that caused users to see an extended "Working" status in Linear. The agent now produces only text output during these phases. ([CYPACK-723](https://linear.app/ceedar/issue/CYPACK-723), [#764](https://github.com/ceedaragents/cyrus/pull/764))
