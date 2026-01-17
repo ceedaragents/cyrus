@@ -160,6 +160,32 @@ export class EdgeWorker extends EventEmitter {
 				// Use platform-agnostic getIssueLabels method
 				return await issueTracker.getIssueLabels(issueId);
 			},
+			fetchIssueDescription: async (
+				issueId: string,
+				workspaceId: string,
+			): Promise<string | undefined> => {
+				// Find repository for this workspace
+				const repo = Array.from(this.repositories.values()).find(
+					(r) => r.linearWorkspaceId === workspaceId,
+				);
+				if (!repo) return undefined;
+
+				// Get issue tracker for this repository
+				const issueTracker = this.issueTrackers.get(repo.id);
+				if (!issueTracker) return undefined;
+
+				// Fetch issue and get description
+				try {
+					const issue = await issueTracker.fetchIssue(issueId);
+					return issue?.description ?? undefined;
+				} catch (error) {
+					console.error(
+						`[EdgeWorker] Failed to fetch issue description for routing:`,
+						error,
+					);
+					return undefined;
+				}
+			},
 			hasActiveSession: (issueId: string, repositoryId: string) => {
 				const sessionManager = this.agentSessionManagers.get(repositoryId);
 				if (!sessionManager) return false;
@@ -470,6 +496,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// 3. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
+
+		// 4. Register /version endpoint for CLI version info
+		this.registerVersionEndpoint();
 	}
 
 	/**
@@ -486,6 +515,23 @@ export class EdgeWorker extends EventEmitter {
 
 		console.log("✅ Status endpoint registered");
 		console.log("   Route: GET /status");
+	}
+
+	/**
+	 * Register the /version endpoint for CLI version information
+	 * This endpoint is used by dashboards to display the installed CLI version
+	 */
+	private registerVersionEndpoint(): void {
+		const fastify = this.sharedApplicationServer.getFastifyInstance();
+
+		fastify.get("/version", async (_request, reply) => {
+			return reply.status(200).send({
+				cyrus_cli_version: this.config.version ?? null,
+			});
+		});
+
+		console.log("✅ Version endpoint registered");
+		console.log("   Route: GET /version");
 	}
 
 	/**
@@ -573,21 +619,40 @@ export class EdgeWorker extends EventEmitter {
 		parentSessionId: string,
 		prompt: string,
 		childSessionId: string,
-		repo: RepositoryConfig,
-		agentSessionManager: AgentSessionManager,
+		_childRepo: RepositoryConfig,
+		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		console.log(
 			`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
 		);
 
-		// Get the parent session and repository
+		// Find parent session across all repositories
+		// This is critical for cross-repository orchestration where parent and child
+		// may be in different repositories with different AgentSessionManagers
+		// See also: feedback delivery code at line ~4413 which uses same pattern
 		console.log(
-			`[Parent Session Resume] Retrieving parent session ${parentSessionId} from agent session manager`,
+			`[Parent Session Resume] Searching for parent session ${parentSessionId} across all repositories`,
 		);
-		const parentSession = agentSessionManager.getSession(parentSessionId);
-		if (!parentSession) {
+		let parentSession: CyrusAgentSession | undefined;
+		let parentRepo: RepositoryConfig | undefined;
+		let parentAgentSessionManager: AgentSessionManager | undefined;
+
+		for (const [repoId, manager] of this.agentSessionManagers) {
+			const candidate = manager.getSession(parentSessionId);
+			if (candidate) {
+				parentSession = candidate;
+				parentRepo = this.repositories.get(repoId);
+				parentAgentSessionManager = manager;
+				console.log(
+					`[Parent Session Resume] Found parent session in repository: ${parentRepo?.name || repoId}`,
+				);
+				break;
+			}
+		}
+
+		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
 			console.error(
-				`[Parent Session Resume] Parent session ${parentSessionId} not found in agent session manager`,
+				`[Parent Session Resume] Parent session ${parentSessionId} not found in any repository's agent session manager`,
 			);
 			return;
 		}
@@ -597,7 +662,8 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Get the child session to access its workspace path
-		const childSession = agentSessionManager.getSession(childSessionId);
+		// Child session is in the child's manager (passed in from the callback)
+		const childSession = childAgentSessionManager.getSession(childSessionId);
 		const childWorkspaceDirs: string[] = [];
 		if (childSession) {
 			childWorkspaceDirs.push(childSession.workspace.path);
@@ -610,10 +676,11 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+		await this.postParentResumeAcknowledgment(parentSessionId, parentRepo.id);
 
 		// Post thought to Linear showing child result receipt
-		const issueTracker = this.issueTrackers.get(repo.id);
+		// Use parent's issue tracker since we're posting to the parent's Linear session
+		const issueTracker = this.issueTrackers.get(parentRepo.id);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -653,9 +720,9 @@ export class EdgeWorker extends EventEmitter {
 		try {
 			await this.handlePromptWithStreamingCheck(
 				parentSession,
-				repo,
+				parentRepo,
 				parentSessionId,
-				agentSessionManager,
+				parentAgentSessionManager,
 				prompt,
 				"", // No attachment manifest for child results
 				false, // Not a new session
@@ -671,7 +738,7 @@ export class EdgeWorker extends EventEmitter {
 				error,
 			);
 			console.error(
-				`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${repo.name}`,
+				`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${parentRepo.name}`,
 			);
 		}
 	}
@@ -1692,6 +1759,8 @@ export class EdgeWorker extends EventEmitter {
 
 		// Fetch labels early (needed for label override check)
 		const labels = await this.fetchIssueLabels(fullIssue);
+		// Lowercase labels for case-insensitive comparison
+		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
 		// Check for label overrides BEFORE AI routing
 		const debuggerConfig = repository.labelPrompts?.debugger;
@@ -1699,22 +1768,33 @@ export class EdgeWorker extends EventEmitter {
 			? debuggerConfig
 			: debuggerConfig?.labels;
 		const hasDebuggerLabel = debuggerLabels?.some((label) =>
-			labels.includes(label),
+			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
+		// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
+		// This is a hardcoded rule: any issue with 'orchestrator'/'Orchestrator' label
+		// goes to orchestrator procedure
+		const hasHardcodedOrchestratorLabel =
+			lowercaseLabels.includes("orchestrator");
+
+		// Also check any additional orchestrator labels from config
 		const orchestratorConfig = repository.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
-			: (orchestratorConfig?.labels ?? ["orchestrator"]);
-		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
-			labels.includes(label),
-		);
+			: orchestratorConfig?.labels;
+		const hasConfiguredOrchestratorLabel =
+			orchestratorLabels?.some((label) =>
+				lowercaseLabels.includes(label.toLowerCase()),
+			) ?? false;
+
+		const hasOrchestratorLabel =
+			hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
 
 		// Check for graphite label (for graphite-orchestrator combination)
 		const graphiteConfig = repository.labelPrompts?.graphite;
 		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
 		const hasGraphiteLabel = graphiteLabels?.some((label) =>
-			labels.includes(label),
+			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
 		// Graphite-orchestrator requires BOTH graphite AND orchestrator labels
@@ -1840,8 +1920,15 @@ export class EdgeWorker extends EventEmitter {
 				}
 			}
 
+			// Get current subroutine to check for singleTurn mode and disallowAllTools
+			const currentSubroutine =
+				this.procedureAnalyzer.getCurrentSubroutine(session);
+
 			// Build allowed tools list with Linear MCP tools (now with prompt type context)
-			const allowedTools = this.buildAllowedTools(repository, promptType);
+			// If subroutine has disallowAllTools: true, use empty array to disable all tools
+			const allowedTools = currentSubroutine?.disallowAllTools
+				? []
+				: this.buildAllowedTools(repository, promptType);
 			const baseDisallowedTools = this.buildDisallowedTools(
 				repository,
 				promptType,
@@ -1854,20 +1941,22 @@ export class EdgeWorker extends EventEmitter {
 				"EdgeWorker",
 			);
 
-			console.log(
-				`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
-				allowedTools,
-			);
+			if (currentSubroutine?.disallowAllTools) {
+				console.log(
+					`[EdgeWorker] All tools disabled for ${fullIssue.identifier} (subroutine: ${currentSubroutine.name})`,
+				);
+			} else {
+				console.log(
+					`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
+					allowedTools,
+				);
+			}
 			if (disallowedTools.length > 0) {
 				console.log(
 					`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
 					disallowedTools,
 				);
 			}
-
-			// Get current subroutine to check for singleTurn mode
-			const currentSubroutine =
-				this.procedureAnalyzer.getCurrentSubroutine(session);
 
 			// Create agent runner with system prompt from assembly
 			// buildAgentRunnerConfig now determines runner type from labels internally
@@ -2587,6 +2676,15 @@ export class EdgeWorker extends EventEmitter {
 				fallbackModelOverride: "haiku",
 			};
 		}
+		if (lowercaseLabels.includes("haiku")) {
+			// fallbackModelOverride must be different from modelOverride
+			// (haiku falls back to sonnet for retry scenarios)
+			return {
+				runnerType: "claude",
+				modelOverride: "haiku",
+				fallbackModelOverride: "sonnet",
+			};
+		}
 		// Default to claude if no runner labels found
 		return {
 			runnerType: "claude",
@@ -2614,7 +2712,54 @@ export class EdgeWorker extends EventEmitter {
 		  }
 		| undefined
 	> {
-		if (!repository.labelPrompts || labels.length === 0) {
+		if (labels.length === 0) {
+			return undefined;
+		}
+
+		// Lowercase labels for case-insensitive comparison
+		const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
+		// HARDCODED RULE: Always check for 'orchestrator' label (case-insensitive)
+		// regardless of whether repository.labelPrompts is configured.
+		// This matches the hardcoded routing behavior from CYPACK-715.
+		const hasHardcodedOrchestratorLabel =
+			lowercaseLabels.includes("orchestrator");
+
+		// If no labelPrompts configured but has hardcoded orchestrator label,
+		// load orchestrator system prompt directly
+		if (!repository.labelPrompts && hasHardcodedOrchestratorLabel) {
+			try {
+				const __filename = fileURLToPath(import.meta.url);
+				const __dirname = dirname(__filename);
+				const promptPath = join(__dirname, "..", "prompts", "orchestrator.md");
+				const promptContent = await readFile(promptPath, "utf-8");
+				console.log(
+					`[EdgeWorker] Using orchestrator system prompt (hardcoded rule) for labels: ${labels.join(", ")}`,
+				);
+
+				const promptVersion = this.extractVersionTag(promptContent);
+				if (promptVersion) {
+					console.log(
+						`[EdgeWorker] orchestrator system prompt version: ${promptVersion}`,
+					);
+				}
+
+				return {
+					prompt: promptContent,
+					version: promptVersion,
+					type: "orchestrator",
+				};
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Failed to load orchestrator prompt template:`,
+					error,
+				);
+				return undefined;
+			}
+		}
+
+		// If no labelPrompts configured and no hardcoded orchestrator, return undefined
+		if (!repository.labelPrompts) {
 			return undefined;
 		}
 
@@ -2622,16 +2767,19 @@ export class EdgeWorker extends EventEmitter {
 		const graphiteConfig = repository.labelPrompts.graphite;
 		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
 		const hasGraphiteLabel = graphiteLabels?.some((label) =>
-			labels.includes(label),
+			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
 		const orchestratorConfig = repository.labelPrompts.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: (orchestratorConfig?.labels ?? ["orchestrator"]);
-		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
-			labels.includes(label),
-		);
+		// Use hardcoded check OR config-based check for orchestrator
+		const hasOrchestratorLabel =
+			hasHardcodedOrchestratorLabel ||
+			orchestratorLabels?.some((label) =>
+				lowercaseLabels.includes(label.toLowerCase()),
+			);
 
 		// If both graphite AND orchestrator labels are present, use graphite-orchestrator prompt
 		if (hasGraphiteLabel && hasOrchestratorLabel) {
@@ -2685,7 +2833,19 @@ export class EdgeWorker extends EventEmitter {
 				? promptConfig
 				: promptConfig?.labels;
 
-			if (configuredLabels?.some((label) => labels.includes(label))) {
+			// For orchestrator type, also check the hardcoded 'orchestrator' label
+			// This ensures orchestrator prompt loads even without explicit labelPrompts config
+			const matchesLabel =
+				promptType === "orchestrator"
+					? hasHardcodedOrchestratorLabel ||
+						configuredLabels?.some((label) =>
+							lowercaseLabels.includes(label.toLowerCase()),
+						)
+					: configuredLabels?.some((label) =>
+							lowercaseLabels.includes(label.toLowerCase()),
+						);
+
+			if (matchesLabel) {
 				try {
 					// Load the prompt template from file
 					const __filename = fileURLToPath(import.meta.url);
@@ -2852,6 +3012,9 @@ export class EdgeWorker extends EventEmitter {
 				);
 			}
 
+			// Generate routing context for orchestrator mode
+			const routingContext = this.generateRoutingContext(repository);
+
 			// Build the simplified prompt with only essential variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
@@ -2867,7 +3030,12 @@ export class EdgeWorker extends EventEmitter {
 				.replace(/{{assignee_id}}/g, assigneeId)
 				.replace(/{{assignee_name}}/g, assigneeName)
 				.replace(/{{workspace_teams}}/g, workspaceTeams)
-				.replace(/{{workspace_labels}}/g, workspaceLabels);
+				.replace(/{{workspace_labels}}/g, workspaceLabels)
+				// Replace routing context - if empty, also remove the preceding newlines
+				.replace(
+					routingContext ? /{{routing_context}}/g : /\n*{{routing_context}}/g,
+					routingContext,
+				);
 
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
@@ -2887,6 +3055,95 @@ export class EdgeWorker extends EventEmitter {
 			console.error(`[EdgeWorker] Error building label-based prompt:`, error);
 			throw error;
 		}
+	}
+
+	/**
+	 * Generate routing context for orchestrator mode
+	 *
+	 * This provides the orchestrator with information about available repositories
+	 * and how to route sub-issues to them. The context includes:
+	 * - List of configured repositories in the workspace
+	 * - Routing rules for each repository (labels, teams, projects)
+	 * - Instructions on using description tags for explicit routing
+	 *
+	 * @param currentRepository The repository handling the current orchestrator issue
+	 * @returns XML-formatted routing context string, or empty string if no routing info available
+	 */
+	private generateRoutingContext(currentRepository: RepositoryConfig): string {
+		// Get all repositories in the same workspace
+		const workspaceRepos = Array.from(this.repositories.values()).filter(
+			(repo) =>
+				repo.linearWorkspaceId === currentRepository.linearWorkspaceId &&
+				repo.isActive !== false,
+		);
+
+		// If there's only one repository, no routing context needed
+		if (workspaceRepos.length <= 1) {
+			return "";
+		}
+
+		const repoDescriptions = workspaceRepos.map((repo) => {
+			const routingMethods: string[] = [];
+
+			// Description tag routing (always available)
+			const repoIdentifier = repo.githubUrl
+				? repo.githubUrl.replace("https://github.com/", "")
+				: repo.name;
+			routingMethods.push(
+				`    - Description tag: Add \`[repo=${repoIdentifier}]\` to sub-issue description`,
+			);
+
+			// Label-based routing
+			if (repo.routingLabels && repo.routingLabels.length > 0) {
+				routingMethods.push(
+					`    - Routing labels: ${repo.routingLabels.map((l) => `"${l}"`).join(", ")}`,
+				);
+			}
+
+			// Team-based routing
+			if (repo.teamKeys && repo.teamKeys.length > 0) {
+				routingMethods.push(
+					`    - Team keys: ${repo.teamKeys.map((t) => `"${t}"`).join(", ")} (create issue in this team)`,
+				);
+			}
+
+			// Project-based routing
+			if (repo.projectKeys && repo.projectKeys.length > 0) {
+				routingMethods.push(
+					`    - Project keys: ${repo.projectKeys.map((p) => `"${p}"`).join(", ")} (add issue to this project)`,
+				);
+			}
+
+			const currentMarker =
+				repo.id === currentRepository.id ? " (current)" : "";
+
+			return `  <repository name="${repo.name}"${currentMarker}>
+    <github_url>${repo.githubUrl || "N/A"}</github_url>
+    <routing_methods>
+${routingMethods.join("\n")}
+    </routing_methods>
+  </repository>`;
+		});
+
+		return `<repository_routing_context>
+<description>
+When creating sub-issues that should be handled in a DIFFERENT repository, use one of these routing methods.
+
+**IMPORTANT - Routing Priority Order:**
+The system evaluates routing methods in this strict priority order. The FIRST match wins:
+
+1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description. This is the most explicit and reliable method.
+2. **Routing Labels (Priority 2)**: Apply a label configured to route to the target repository.
+3. **Project Assignment (Priority 3)**: Add the issue to a project that routes to the target repository.
+4. **Team Selection (Priority 4 - Lowest)**: Create the issue in a Linear team that routes to the target repository.
+
+For reliable cross-repository routing, prefer Description Tags as they are explicit and unambiguous.
+</description>
+
+<available_repositories>
+${repoDescriptions.join("\n")}
+</available_repositories>
+</repository_routing_context>`;
 	}
 
 	/**
@@ -4748,7 +5005,8 @@ ${input.userComment}
 		maxTurns?: number,
 		singleTurn?: boolean,
 	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
-		// Configure PostToolUse hook for playwright screenshots
+		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
+		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [
 				{
@@ -4760,10 +5018,73 @@ ${input.userComment}
 								`Tool ${postToolUseInput.tool_name} completed with response:`,
 								postToolUseInput.tool_response,
 							);
+							const response = postToolUseInput.tool_response as {
+								path?: string;
+							};
+							const filePath = response?.path || "the screenshot file";
 							return {
 								continue: true,
-								additionalContext:
-									"Screenshot taken successfully. You should use the Read tool to view the screenshot file to analyze the visual content.",
+								additionalContext: `Screenshot taken successfully. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown. You can also use the Read tool to view the screenshot file to analyze the visual content.`,
+							};
+						},
+					],
+				},
+				{
+					matcher: "mcp__claude-in-chrome__computer",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							const response = postToolUseInput.tool_response as {
+								action?: string;
+								imageId?: string;
+								path?: string;
+							};
+							// Only provide upload guidance for screenshot actions
+							if (response?.action === "screenshot") {
+								const filePath = response?.path || "the screenshot file";
+								return {
+									continue: true,
+									additionalContext: `Screenshot captured. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
+								};
+							}
+							return { continue: true };
+						},
+					],
+				},
+				{
+					matcher: "mcp__claude-in-chrome__gif_creator",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							const response = postToolUseInput.tool_response as {
+								action?: string;
+								path?: string;
+							};
+							// Only provide upload guidance for export actions
+							if (response?.action === "export") {
+								const filePath = response?.path || "the exported GIF";
+								return {
+									continue: true,
+									additionalContext: `GIF exported successfully. To share this GIF in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
+								};
+							}
+							return { continue: true };
+						},
+					],
+				},
+				{
+					matcher: "mcp__chrome-devtools__take_screenshot",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							// Extract file path from input (the tool saves to filePath parameter)
+							const toolInput = postToolUseInput.tool_input as {
+								filePath?: string;
+							};
+							const filePath = toolInput?.filePath || "the screenshot file";
+							return {
+								continue: true,
+								additionalContext: `Screenshot saved. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
 							};
 						},
 					],
@@ -5268,6 +5589,7 @@ ${input.userComment}
 		repositoryId: string,
 		repositoryName: string,
 		selectionMethod:
+			| "description-tag"
 			| "label-based"
 			| "project-based"
 			| "team-based"
@@ -5288,6 +5610,8 @@ ${input.userComment}
 			let methodDisplay: string;
 			if (selectionMethod === "user-selected") {
 				methodDisplay = "selected by user";
+			} else if (selectionMethod === "description-tag") {
+				methodDisplay = "matched via [repo=...] tag in issue description";
 			} else if (selectionMethod === "label-based") {
 				methodDisplay = "matched via label-based routing";
 			} else if (selectionMethod === "project-based") {
@@ -5359,13 +5683,25 @@ ${input.userComment}
 				const fullIssue = await issueTracker.fetchIssue(session.issueId);
 				const labels = await this.fetchIssueLabels(fullIssue);
 
-				// Check for Orchestrator label (same logic as initial routing)
+				// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
+				// This is a hardcoded rule: any issue with 'orchestrator'/'Orchestrator' label
+				// goes to orchestrator procedure
+				const lowercaseLabels = labels.map((label) => label.toLowerCase());
+				const hasHardcodedOrchestratorLabel =
+					lowercaseLabels.includes("orchestrator");
+
+				// Also check any additional orchestrator labels from config
 				const orchestratorConfig = repository.labelPrompts?.orchestrator;
 				const orchestratorLabels = Array.isArray(orchestratorConfig)
 					? orchestratorConfig
-					: (orchestratorConfig?.labels ?? ["orchestrator"]);
+					: orchestratorConfig?.labels;
+				const hasConfiguredOrchestratorLabel =
+					orchestratorLabels?.some((label) =>
+						lowercaseLabels.includes(label.toLowerCase()),
+					) ?? false;
+
 				hasOrchestratorLabel =
-					orchestratorLabels?.some((label) => labels.includes(label)) || false;
+					hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
 			} catch (error) {
 				console.error(
 					`[EdgeWorker] Failed to fetch issue labels for routing:`,
@@ -5703,8 +6039,15 @@ ${input.userComment}
 		const systemPrompt = systemPromptResult?.prompt;
 		const promptType = systemPromptResult?.type;
 
+		// Get current subroutine to check for singleTurn mode and disallowAllTools
+		const currentSubroutine =
+			this.procedureAnalyzer.getCurrentSubroutine(session);
+
 		// Build allowed tools list
-		const allowedTools = this.buildAllowedTools(repository, promptType);
+		// If subroutine has disallowAllTools: true, use empty array to disable all tools
+		const allowedTools = currentSubroutine?.disallowAllTools
+			? []
+			: this.buildAllowedTools(repository, promptType);
 		const baseDisallowedTools = this.buildDisallowedTools(
 			repository,
 			promptType,
@@ -5716,6 +6059,12 @@ ${input.userComment}
 			baseDisallowedTools,
 			"resumeClaudeSession",
 		);
+
+		if (currentSubroutine?.disallowAllTools) {
+			console.log(
+				`[resumeClaudeSession] All tools disabled for subroutine: ${currentSubroutine.name}`,
+			);
+		}
 
 		// Set up attachments directory
 		const workspaceFolderName = basename(session.workspace.path);
@@ -5731,10 +6080,6 @@ ${input.userComment}
 			repository.repositoryPath,
 			...additionalAllowedDirectories,
 		];
-
-		// Get current subroutine to check for singleTurn mode
-		const currentSubroutine =
-			this.procedureAnalyzer.getCurrentSubroutine(session);
 
 		const resumeSessionId = needsNewSession
 			? undefined

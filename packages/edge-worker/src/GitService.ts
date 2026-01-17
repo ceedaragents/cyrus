@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 import type { Issue, RepositoryConfig, Workspace } from "cyrus-core";
+import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
 /**
  * Logger interface for GitService
@@ -32,9 +33,11 @@ const defaultLogger: GitServiceLogger = {
  */
 export class GitService {
 	private logger: GitServiceLogger;
+	private worktreeIncludeService: WorktreeIncludeService;
 
 	constructor(logger?: GitServiceLogger) {
 		this.logger = logger ?? defaultLogger;
+		this.worktreeIncludeService = new WorktreeIncludeService(this.logger);
 	}
 	/**
 	 * Check if a branch exists locally or remotely
@@ -370,6 +373,13 @@ export class GitService {
 				cwd: repository.repositoryPath,
 				stdio: "pipe",
 			});
+
+			// Copy files specified in .worktreeinclude that are also in .gitignore
+			// This runs before setup scripts so they can access these files
+			await this.worktreeIncludeService.copyIgnoredFiles(
+				repository.repositoryPath,
+				workspacePath,
+			);
 
 			// First, run the global setup script if configured
 			if (globalSetupScript) {

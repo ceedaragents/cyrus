@@ -15,6 +15,7 @@ export type RepositoryRoutingResult =
 			type: "selected";
 			repository: RepositoryConfig;
 			routingMethod:
+				| "description-tag"
 				| "label-based"
 				| "project-based"
 				| "team-based"
@@ -39,6 +40,12 @@ export interface PendingRepositorySelection {
 export interface RepositoryRouterDeps {
 	/** Fetch issue labels for label-based routing */
 	fetchIssueLabels: (issueId: string, workspaceId: string) => Promise<string[]>;
+
+	/** Fetch issue description for description-tag routing */
+	fetchIssueDescription: (
+		issueId: string,
+		workspaceId: string,
+	) => Promise<string | undefined>;
 
 	/** Check if an issue has active sessions in a repository */
 	hasActiveSession: (issueId: string, repositoryId: string) => boolean;
@@ -107,10 +114,11 @@ export class RepositoryRouter {
 	/**
 	 * Determine repository for webhook using multi-priority routing:
 	 * Priority 0: Existing active sessions
-	 * Priority 1: Routing labels
-	 * Priority 2: Project-based routing
-	 * Priority 3: Team-based routing
-	 * Priority 4: Catch-all repositories
+	 * Priority 1: Description tag (explicit [repo=...] in issue description)
+	 * Priority 2: Routing labels
+	 * Priority 3: Project-based routing
+	 * Priority 4: Team-based routing
+	 * Priority 5: Catch-all repositories
 	 */
 	async determineRepositoryForWebhook(
 		webhook: AgentSessionCreatedWebhook,
@@ -154,7 +162,24 @@ export class RepositoryRouter {
 		);
 		if (workspaceRepos.length === 0) return { type: "none" };
 
-		// Priority 1: Check routing labels
+		// Priority 1: Check description tag [repo=...]
+		const descriptionTagRepo = await this.findRepositoryByDescriptionTag(
+			issueId,
+			workspaceRepos,
+			workspaceId,
+		);
+		if (descriptionTagRepo) {
+			console.log(
+				`[RepositoryRouter] Repository selected: ${descriptionTagRepo.name} (description-tag routing)`,
+			);
+			return {
+				type: "selected",
+				repository: descriptionTagRepo,
+				routingMethod: "description-tag",
+			};
+		}
+
+		// Priority 2: Check routing labels
 		const labelMatchedRepo = await this.findRepositoryByLabels(
 			issueId,
 			workspaceRepos,
@@ -171,7 +196,7 @@ export class RepositoryRouter {
 			};
 		}
 
-		// Priority 2: Check project-based routing
+		// Priority 3: Check project-based routing
 		if (issueId) {
 			const projectMatchedRepo = await this.findRepositoryByProject(
 				issueId,
@@ -190,7 +215,7 @@ export class RepositoryRouter {
 			}
 		}
 
-		// Priority 3: Check team-based routing
+		// Priority 4: Check team-based routing
 		if (teamKey) {
 			const teamMatchedRepo = this.findRepositoryByTeamKey(
 				teamKey,
@@ -227,7 +252,7 @@ export class RepositoryRouter {
 			}
 		}
 
-		// Priority 4: Find catch-all repository (no routing configuration)
+		// Priority 5: Find catch-all repository (no routing configuration)
 		// TODO: Remove catch-all routing - require explicit routing configuration for all repositories
 		const catchAllRepo = workspaceRepos.find(
 			(repo) =>
@@ -307,6 +332,100 @@ export class RepositoryRouter {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Find repository by description tag
+	 *
+	 * Parses the issue description for a [repo=...] tag and matches against:
+	 * - Repository GitHub URL (contains org/repo-name)
+	 * - Repository name
+	 * - Repository ID
+	 *
+	 * Example tags:
+	 * - [repo=Trelent/lighthouse-financial-disclosure]
+	 * - [repo=my-repo-name]
+	 */
+	private async findRepositoryByDescriptionTag(
+		issueId: string | undefined,
+		repos: RepositoryConfig[],
+		workspaceId: string,
+	): Promise<RepositoryConfig | null> {
+		if (!issueId) return null;
+
+		try {
+			const description = await this.deps.fetchIssueDescription(
+				issueId,
+				workspaceId,
+			);
+			if (!description) return null;
+
+			const repoTag = this.parseRepoTagFromDescription(description);
+			if (!repoTag) return null;
+
+			console.log(
+				`[RepositoryRouter] Found [repo=${repoTag}] tag in issue description`,
+			);
+
+			// Try to match against repositories
+			for (const repo of repos) {
+				// Match by GitHub URL containing the tag value (e.g., "org/repo-name")
+				if (repo.githubUrl?.includes(repoTag)) {
+					console.log(
+						`[RepositoryRouter] Matched repo tag "${repoTag}" to repository ${repo.name} via GitHub URL`,
+					);
+					return repo;
+				}
+
+				// Match by repository name (exact match, case-insensitive)
+				if (repo.name.toLowerCase() === repoTag.toLowerCase()) {
+					console.log(
+						`[RepositoryRouter] Matched repo tag "${repoTag}" to repository ${repo.name} via name`,
+					);
+					return repo;
+				}
+
+				// Match by repository ID
+				if (repo.id === repoTag) {
+					console.log(
+						`[RepositoryRouter] Matched repo tag "${repoTag}" to repository ${repo.name} via ID`,
+					);
+					return repo;
+				}
+			}
+
+			console.log(
+				`[RepositoryRouter] No repository matched [repo=${repoTag}] tag`,
+			);
+		} catch (error) {
+			console.error(
+				`[RepositoryRouter] Failed to fetch description for routing:`,
+				error,
+			);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Parse [repo=...] tag from issue description
+	 *
+	 * Supports various formats:
+	 * - [repo=org/repo-name]
+	 * - [repo=repo-name]
+	 * - [repo=repo-id]
+	 *
+	 * Also handles escaped brackets (\\[repo=...\\]) which Linear may produce
+	 * when the description contains markdown-escaped square brackets.
+	 *
+	 * Returns the tag value or null if not found.
+	 */
+	parseRepoTagFromDescription(description: string): string | null {
+		// Match [repo=...] pattern - captures everything between = and ]
+		// The pattern allows: alphanumeric, hyphens, underscores, forward slashes, dots
+		// Also handles escaped brackets (\\[ and \\]) that Linear may produce
+		const match = description.match(/\\?\[repo=([a-zA-Z0-9_\-/.]+)\\?\]/);
+		return match?.[1] ?? null;
 	}
 
 	/**

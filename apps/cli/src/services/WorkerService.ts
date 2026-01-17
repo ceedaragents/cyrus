@@ -19,6 +19,7 @@ export class WorkerService {
 		private gitService: GitService,
 		private cyrusHome: string,
 		private logger: Logger,
+		private version?: string,
 	) {}
 
 	/**
@@ -191,6 +192,7 @@ export class WorkerService {
 
 		// Create EdgeWorker configuration
 		const config: EdgeWorkerConfig = {
+			version: this.version,
 			repositories,
 			cyrusHome: this.cyrusHome,
 			defaultAllowedTools:

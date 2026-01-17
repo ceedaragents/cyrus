@@ -131,6 +131,7 @@ class RoutingTestEnvironment {
 	public mockDeps: RepositoryRouterDeps;
 	private issueLabels: Map<string, string[]> = new Map();
 	private issueProjects: Map<string, string> = new Map();
+	private issueDescriptions: Map<string, string> = new Map();
 	private activeSessions: Map<string, Set<string>> = new Map();
 
 	constructor() {
@@ -149,6 +150,11 @@ class RoutingTestEnvironment {
 			fetchIssueLabels: vi.fn().mockImplementation(async (issueId: string) => {
 				return this.issueLabels.get(issueId) || [];
 			}),
+			fetchIssueDescription: vi
+				.fn()
+				.mockImplementation(async (issueId: string) => {
+					return this.issueDescriptions.get(issueId);
+				}),
 			hasActiveSession: vi
 				.fn()
 				.mockImplementation((issueId: string, repoId: string) => {
@@ -177,6 +183,14 @@ class RoutingTestEnvironment {
 	}
 
 	/**
+	 * Configure issue to have a specific description
+	 */
+	issueHasDescription(issueId: string, description: string): this {
+		this.issueDescriptions.set(issueId, description);
+		return this;
+	}
+
+	/**
 	 * Configure issue to have an active session in a repository
 	 */
 	issueHasActiveSessionIn(issueId: string, repoId: string): this {
@@ -194,6 +208,16 @@ class RoutingTestEnvironment {
 		this.mockDeps.fetchIssueLabels = vi
 			.fn()
 			.mockRejectedValue(new Error("Failed to fetch labels"));
+		return this;
+	}
+
+	/**
+	 * Simulate description fetching failure
+	 */
+	descriptionFetchingFails(): this {
+		this.mockDeps.fetchIssueDescription = vi
+			.fn()
+			.mockRejectedValue(new Error("Failed to fetch description"));
 		return this;
 	}
 
@@ -423,10 +447,374 @@ describe("RepositoryRouter", () => {
 	});
 
 	// ========================================================================
-	// Priority 1: Label-Based Routing
+	// Priority 1: Description Tag Routing
 	// ========================================================================
 
-	describe("Priority 1: Label-Based Routing", () => {
+	describe("Priority 1: Description Tag Routing", () => {
+		describe("when issue description contains [repo=...] tag", () => {
+			it("should route to repository when tag matches GitHub URL", async () => {
+				// Given: Repositories with different GitHub URLs
+				const cyrusRepo = env
+					.repository("repo-1", "Cyrus")
+					.inWorkspace("default-workspace")
+					.withGithubUrl("https://github.com/ceedaragents/cyrus")
+					.build();
+
+				const otherRepo = env
+					.repository("repo-2", "Other Repo")
+					.inWorkspace("default-workspace")
+					.withGithubUrl("https://github.com/org/other-repo")
+					.build();
+
+				// Issue has description with repo tag
+				env.issueHasDescription(
+					"issue-1",
+					"Please fix this bug in [repo=ceedaragents/cyrus]\n\nMore details here.",
+				);
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					cyrusRepo,
+					otherRepo,
+				]);
+
+				// Then: Should select cyrus repo via description-tag routing
+				expectRouting(result).shouldSelectRepositoryVia(
+					cyrusRepo,
+					"description-tag",
+				);
+			});
+
+			it("should route to repository when tag matches repository name exactly", async () => {
+				// Given: Repositories with different names
+				const frontendRepo = env
+					.repository("repo-1", "frontend-app")
+					.inWorkspace("default-workspace")
+					.build();
+
+				const backendRepo = env
+					.repository("repo-2", "backend-api")
+					.inWorkspace("default-workspace")
+					.build();
+
+				// Issue has description with repo tag matching name
+				env.issueHasDescription(
+					"issue-1",
+					"This is for [repo=frontend-app] development",
+				);
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					frontendRepo,
+					backendRepo,
+				]);
+
+				// Then: Should select frontend repo via description-tag routing
+				expectRouting(result).shouldSelectRepositoryVia(
+					frontendRepo,
+					"description-tag",
+				);
+			});
+
+			it("should route to repository when tag matches repository name case-insensitively", async () => {
+				// Given: Repository with specific casing
+				const repo = env
+					.repository("repo-1", "MyApp")
+					.inWorkspace("default-workspace")
+					.build();
+
+				// Issue has description with lowercase repo tag
+				env.issueHasDescription("issue-1", "Fix bug in [repo=myapp]");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should select repo via description-tag routing
+				expectRouting(result).shouldSelectRepositoryVia(
+					repo,
+					"description-tag",
+				);
+			});
+
+			it("should route to repository when tag matches repository ID", async () => {
+				// Given: Repositories with known IDs
+				const targetRepo = env
+					.repository("specific-repo-id", "Target Repo")
+					.inWorkspace("default-workspace")
+					.build();
+
+				// Issue has description with repo ID tag
+				env.issueHasDescription(
+					"issue-1",
+					"Work on [repo=specific-repo-id] feature",
+				);
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					targetRepo,
+				]);
+
+				// Then: Should select repo via description-tag routing
+				expectRouting(result).shouldSelectRepositoryVia(
+					targetRepo,
+					"description-tag",
+				);
+			});
+
+			it("should take precedence over label-based routing", async () => {
+				// Given: A repository matched by label, another by description tag
+				const labelMatchedRepo = env
+					.repository("repo-1", "Label Matched")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.build();
+
+				const descriptionMatchedRepo = env
+					.repository("repo-2", "Description Matched")
+					.inWorkspace("default-workspace")
+					.withGithubUrl("https://github.com/org/description-matched")
+					.build();
+
+				// Issue has both label and description tag
+				env.issueHasLabels("issue-1", "frontend");
+				env.issueHasDescription(
+					"issue-1",
+					"Work on [repo=org/description-matched]",
+				);
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					labelMatchedRepo,
+					descriptionMatchedRepo,
+				]);
+
+				// Then: Should select description-matched repo (higher priority)
+				expectRouting(result).shouldSelectRepositoryVia(
+					descriptionMatchedRepo,
+					"description-tag",
+				);
+			});
+
+			it("should continue to label routing when description has no repo tag", async () => {
+				// Given: A repository with routing labels
+				const repo = env
+					.repository("repo-1", "Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.build();
+
+				// Issue has description without repo tag
+				env.issueHasDescription(
+					"issue-1",
+					"This is a regular description without any tags",
+				);
+				env.issueHasLabels("issue-1", "frontend");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should fallback to label-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "label-based");
+			});
+
+			it("should continue to next priority when repo tag does not match any repository", async () => {
+				// Given: A repository with routing labels
+				const repo = env
+					.repository("repo-1", "Actual Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.build();
+
+				// Issue has description with unmatched repo tag
+				env.issueHasDescription(
+					"issue-1",
+					"Work on [repo=non-existent-repo] feature",
+				);
+				env.issueHasLabels("issue-1", "frontend");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should fallback to label-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "label-based");
+			});
+
+			it("should handle description fetching failures gracefully", async () => {
+				// Given: A repository with routing labels
+				const repo = env
+					.repository("repo-1", "Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.build();
+
+				// Description fetching will fail
+				env.descriptionFetchingFails();
+				env.issueHasLabels("issue-1", "frontend");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository (should not throw)
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should fallback to label-based routing
+				expectRouting(result).shouldSelectRepositoryVia(repo, "label-based");
+			});
+		});
+
+		describe("parseRepoTagFromDescription", () => {
+			it("should parse simple repo name", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Work on [repo=my-repo] feature",
+				);
+				expect(result).toBe("my-repo");
+			});
+
+			it("should parse org/repo format", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Fix bug in [repo=org/repo-name]",
+				);
+				expect(result).toBe("org/repo-name");
+			});
+
+			it("should parse repo with dots", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Work on [repo=my.dotted.repo]",
+				);
+				expect(result).toBe("my.dotted.repo");
+			});
+
+			it("should parse repo with underscores", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Fix [repo=my_repo_name]",
+				);
+				expect(result).toBe("my_repo_name");
+			});
+
+			it("should return first tag when multiple tags exist", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"[repo=first-repo] and [repo=second-repo]",
+				);
+				expect(result).toBe("first-repo");
+			});
+
+			it("should return null when no tag exists", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"This is a description without tags",
+				);
+				expect(result).toBeNull();
+			});
+
+			it("should return null for malformed tags", () => {
+				const result = env.router.parseRepoTagFromDescription("[repo=]");
+				expect(result).toBeNull();
+			});
+
+			it("should return null for tags with spaces (invalid characters)", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"[repo=invalid chars here!]",
+				);
+				// Tags with spaces are invalid and don't match
+				expect(result).toBeNull();
+			});
+
+			it("should handle multiline descriptions", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Line 1\n\n[repo=my-repo]\n\nLine 3",
+				);
+				expect(result).toBe("my-repo");
+			});
+
+			it("should handle escaped brackets from Linear (\\[repo=...\\])", () => {
+				// Linear escapes square brackets in descriptions
+				const result = env.router.parseRepoTagFromDescription(
+					"test\\n\\n\\[repo=cyrus\\]",
+				);
+				expect(result).toBe("cyrus");
+			});
+
+			it("should handle escaped brackets with org/repo format", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Fix bug in \\[repo=org/repo-name\\]",
+				);
+				expect(result).toBe("org/repo-name");
+			});
+
+			it("should handle mixed escaped and unescaped brackets", () => {
+				// Only the opening bracket is escaped
+				const result = env.router.parseRepoTagFromDescription(
+					"Work on \\[repo=my-repo]",
+				);
+				expect(result).toBe("my-repo");
+			});
+
+			it("should handle only closing bracket escaped", () => {
+				const result = env.router.parseRepoTagFromDescription(
+					"Work on [repo=my-repo\\]",
+				);
+				expect(result).toBe("my-repo");
+			});
+		});
+	});
+
+	// ========================================================================
+	// Priority 2: Label-Based Routing
+	// ========================================================================
+
+	describe("Priority 2: Label-Based Routing", () => {
 		describe("when repositories have routing labels configured", () => {
 			it("should route to repository when issue has matching label", async () => {
 				// Given: A repository configured with routing label "frontend"
@@ -548,10 +936,10 @@ describe("RepositoryRouter", () => {
 	});
 
 	// ========================================================================
-	// Priority 2: Project-Based Routing
+	// Priority 3: Project-Based Routing
 	// ========================================================================
 
-	describe("Priority 2: Project-Based Routing", () => {
+	describe("Priority 3: Project-Based Routing", () => {
 		describe("when repositories have project keys configured", () => {
 			it("should route to repository when issue is in matching project", async () => {
 				// Given: A repository configured for "Mobile App" project
@@ -641,10 +1029,10 @@ describe("RepositoryRouter", () => {
 	});
 
 	// ========================================================================
-	// Priority 3: Team-Based Routing
+	// Priority 4: Team-Based Routing
 	// ========================================================================
 
-	describe("Priority 3: Team-Based Routing", () => {
+	describe("Priority 4: Team-Based Routing", () => {
 		describe("when repositories have team keys configured", () => {
 			it("should route to repository when webhook team matches repository team key", async () => {
 				// Given: Repositories configured for different teams
@@ -734,10 +1122,10 @@ describe("RepositoryRouter", () => {
 	});
 
 	// ========================================================================
-	// Priority 4: Catch-All Routing
+	// Priority 5: Catch-All Routing
 	// ========================================================================
 
-	describe("Priority 4: Catch-All Routing", () => {
+	describe("Priority 5: Catch-All Routing", () => {
 		describe("when no specific routing rules match", () => {
 			it("should route to catch-all repository with no routing configuration", async () => {
 				// Given: One repository with routing config, one without
@@ -1267,7 +1655,7 @@ describe("RepositoryRouter", () => {
 					.asCatchAll()
 					.build();
 
-				// Test Priority 1: Label routing
+				// Test Priority 2: Label routing
 				env.issueHasLabels("issue-1", "frontend");
 				let webhook = env
 					.webhook()
@@ -1283,7 +1671,7 @@ describe("RepositoryRouter", () => {
 					"label-based",
 				);
 
-				// Test Priority 2: Project routing (no labels)
+				// Test Priority 3: Project routing (no labels)
 				env.issueHasLabels("issue-2", "other-label");
 				env.issueIsInProject("issue-2", "Mobile");
 				webhook = env
@@ -1300,7 +1688,7 @@ describe("RepositoryRouter", () => {
 					"project-based",
 				);
 
-				// Test Priority 3: Team routing (no labels or project match)
+				// Test Priority 4: Team routing (no labels or project match)
 				env.issueHasLabels("issue-3", "other-label");
 				env.issueIsInProject("issue-3", "Other Project");
 				webhook = env
@@ -1315,7 +1703,7 @@ describe("RepositoryRouter", () => {
 				]);
 				expectRouting(result).shouldSelectRepositoryVia(fullRepo, "team-based");
 
-				// Test Priority 4: Catch-all (nothing matches)
+				// Test Priority 5: Catch-all (nothing matches)
 				env.issueHasLabels("issue-4", "other-label");
 				env.issueIsInProject("issue-4", "Other Project");
 				webhook = env

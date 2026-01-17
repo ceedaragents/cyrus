@@ -4,8 +4,261 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-01-16
+
 ### Added
+- **Version endpoint** - Added a `/version` endpoint that returns the Cyrus CLI version, enabling the dashboard to display version information. The endpoint returns `{ "cyrus_cli_version": "x.y.z" }` or `null` if unavailable. ([CYPACK-731](https://linear.app/ceedar/issue/CYPACK-731), [#775](https://github.com/ceedaragents/cyrus/pull/775))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.15
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.15
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.15
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.15
+
+#### cyrus-core
+- cyrus-core@0.2.15
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.15
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.15
+
+## [0.2.14] - 2026-01-16
+
+### Fixed
+- **Cross-repository orchestration** - Fixed an issue where parent sessions could not be resumed when orchestrating sub-issues across different repositories. Child sessions now correctly locate and resume their parent sessions regardless of which repository they belong to. ([CYPACK-722](https://linear.app/ceedar/issue/CYPACK-722), [#768](https://github.com/ceedaragents/cyrus/pull/768))
+- **Summary subroutines no longer show extended "Working" status** - During summarization phases (concise-summary, verbose-summary, question-answer, plan-summary, user-testing-summary, release-summary), the agent no longer makes tool calls that caused users to see an extended "Working" status in Linear. The agent now produces only text output during these phases. ([CYPACK-723](https://linear.app/ceedar/issue/CYPACK-723), [#764](https://github.com/ceedaragents/cyrus/pull/764))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.14
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.14
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.14
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.14
+
+#### cyrus-core
+- cyrus-core@0.2.14
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.14
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.14
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.14
+
+## [0.2.13] - 2026-01-15
+
+### Added
+- **Multi-repository orchestration routing context** - Orchestrator prompts now receive routing context when multiple repositories are configured in the same workspace. This enables orchestrators to intelligently route sub-issues to different repositories using description tags (`[repo=org/repo-name]`), routing labels, team keys, or project keys. ([CYPACK-711](https://linear.app/ceedar/issue/CYPACK-711), [#756](https://github.com/ceedaragents/cyrus/pull/756))
+
+### Fixed
+- **Usage limit errors now display as errors** - When hitting usage limits (rate_limit) or other SDK errors, the agent now creates an "error" type activity instead of a "thought" type, making error messages more visible to users in the Linear UI. ([CYPACK-719](https://linear.app/ceedar/issue/CYPACK-719), [#760](https://github.com/ceedaragents/cyrus/pull/760))
+
+### Changed
+- **Orchestrator label routing is now hardcoded** - Issues with 'orchestrator' or 'Orchestrator' labels now always route to the orchestrator procedure, regardless of EdgeConfig settings. This ensures consistent orchestrator behavior without requiring explicit configuration. ([CYPACK-715](https://linear.app/ceedar/issue/CYPACK-715), [#757](https://github.com/ceedaragents/cyrus/pull/757))
+- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.2.2 to 0.2.7 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#027-2026-01-14)). This brings compatibility with Claude Code v2.1.7, which enables MCP tool search auto mode by default. When MCP tool descriptions exceed 10% of the context window, they are automatically deferred and discovered via the MCPSearch tool instead of being loaded upfront, reducing context usage for sessions with many MCP tools configured. ([CYPACK-716](https://linear.app/ceedar/issue/CYPACK-716), [#758](https://github.com/ceedaragents/cyrus/pull/758))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.13
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.13
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.13
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.13
+
+#### cyrus-core
+- cyrus-core@0.2.13
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.13
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.13
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.13
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.13
+
+## [0.2.12] - 2026-01-09
+
+### Fixed
+- **Case-insensitive label matching for orchestrator/debugger modes** - Label matching for orchestrator, debugger, builder, and scoper modes is now case-insensitive, matching the existing behavior of model selection. Labels like "Orchestrator" in Linear now correctly match config entries like `["orchestrator"]`. ([CYPACK-701](https://linear.app/ceedar/issue/CYPACK-701), [#746](https://github.com/ceedaragents/cyrus/pull/746))
+- **Haiku model label support** - Fixed "haiku" as a supported model label for label-based model selection. Uses sonnet as fallback model for retry scenarios. ([CYPACK-701](https://linear.app/ceedar/issue/CYPACK-701), [#746](https://github.com/ceedaragents/cyrus/pull/746))
+
+### Changed
+- **Improved changelog handling** - Changelog updates now run as a separate subroutine before git operations, ensuring PR links can be included via amend. The `git-gh` subroutine has been split into `changelog-update`, `git-commit`, and `gh-pr` for better modularity. Non-changelog subroutines now explicitly avoid touching the changelog to prevent conflicts. ([CYPACK-670](https://linear.app/ceedar/issue/CYPACK-670), [#708](https://github.com/ceedaragents/cyrus/pull/708))
+- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.1.72 to 0.2.2 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#020-2026-01-07)). Updated `zod` from 3.x to 4.3.5 to satisfy peer dependencies. Migrated from `zod-to-json-schema` to Zod v4's native `toJSONSchema()` method. ([CYPACK-700](https://linear.app/ceedar/issue/CYPACK-700), [#745](https://github.com/ceedaragents/cyrus/pull/745))
+
+### Added
+- **Worktree include support** - Add `.worktreeinclude` file support to automatically copy gitignored files (like `.env`, local configs) from the main repository to new worktrees. Files must be listed in both `.worktreeinclude` AND `.gitignore` to be copied. Supports glob patterns like `.env.*` and `**/.claude/settings.local.json`. ([CYPACK-690](https://linear.app/ceedar/issue/CYPACK-690), [#734](https://github.com/ceedaragents/cyrus/pull/734))
+- **Screenshot upload guidance hooks** - Agents are now guided to use `linear_upload_file` when taking screenshots, ensuring screenshots are viewable in Linear comments instead of remaining as local files. Hooks added for `playwright_screenshot`, `mcp__claude-in-chrome__computer`, `mcp__claude-in-chrome__gif_creator`, and `mcp__chrome-devtools__take_screenshot`. ([CYPACK-699](https://linear.app/ceedar/issue/CYPACK-699), [#744](https://github.com/ceedaragents/cyrus/pull/744))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.12
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.12
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.12
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.12
+
+#### cyrus-core
+- cyrus-core@0.2.12
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.12
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.12
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.12
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.12
+
+## [0.2.11] - 2026-01-07
+
+### Fixed
+- **Repository tag routing now works with Linear's escaped brackets** - Fixed a bug where `[repo=...]` tags weren't recognized because Linear escapes square brackets in descriptions (e.g., `\[repo=cyrus\]`). The parser now handles both escaped and unescaped formats. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#738](https://github.com/ceedaragents/cyrus/pull/738))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.11
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.11
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.11
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.11
+
+#### cyrus-core
+- cyrus-core@0.2.11
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.11
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.11
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.11
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.11
+
+## [0.2.10] - 2026-01-06
+
+### Added
+- **Repository tag routing** - You can now specify which repository an issue should be routed to by adding a `[repo=...]` tag in the issue description. Supports `[repo=org/repo-name]` to match GitHub URLs, `[repo=repo-name]` to match by name, or `[repo=repo-id]` to match by ID. This takes precedence over label, project, and team-based routing. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#732](https://github.com/ceedaragents/cyrus/pull/732))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.10
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.10
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.10
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.10
+
+#### cyrus-core
+- cyrus-core@0.2.10
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.10
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.10
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.10
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.10
+
+## [0.2.9] - 2025-12-30
+
+### Added
+- **Repository tag routing** - You can now specify which repository an issue should be routed to by adding a `[repo=...]` tag in the issue description. Supports `[repo=org/repo-name]` to match GitHub URLs, `[repo=repo-name]` to match by name, or `[repo=repo-id]` to match by ID. This takes precedence over label, project, and team-based routing. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#732](https://github.com/ceedaragents/cyrus/pull/732))
 - **GPT Image 1.5 support** - The image-tools MCP server now supports `gpt-image-1.5`, OpenAI's latest and highest quality image generation model. You can choose between `gpt-image-1.5` (default, best quality), `gpt-image-1`, or `gpt-image-1-mini` (faster, lower cost). ([CYPACK-675](https://linear.app/ceedar/issue/CYPACK-675), [#717](https://github.com/ceedaragents/cyrus/pull/717))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.9
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.9
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.9
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.9
+
+#### cyrus-core
+- cyrus-core@0.2.9
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.9
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.9
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.9
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.9
 
 ## [0.2.8] - 2025-12-28
 

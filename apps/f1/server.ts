@@ -37,6 +37,9 @@ import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
 const CYRUS_PORT = Number.parseInt(process.env.CYRUS_PORT || "3600", 10);
 const CYRUS_REPO_PATH = process.env.CYRUS_REPO_PATH || process.cwd();
 const CYRUS_HOME = join(tmpdir(), `cyrus-f1-${Date.now()}`);
+// Optional second repository path for multi-repo orchestration testing
+const CYRUS_REPO_PATH_2 = process.env.CYRUS_REPO_PATH_2;
+const MULTI_REPO_MODE = Boolean(CYRUS_REPO_PATH_2);
 
 // Validate port
 if (Number.isNaN(CYRUS_PORT) || CYRUS_PORT < 1 || CYRUS_PORT > 65535) {
@@ -83,22 +86,79 @@ function setupDirectories(): void {
  * Create EdgeWorker configuration for CLI platform
  */
 function createEdgeWorkerConfig(): EdgeWorkerConfig {
-	// Create a test repository configuration
+	// Create primary test repository configuration
 	const repository: RepositoryConfig = {
 		id: "f1-test-repo",
 		name: "F1 Test Repository",
 		repositoryPath: CYRUS_REPO_PATH,
 		baseBranch: "main",
+		githubUrl: "https://github.com/f1-test/primary-repo",
 		linearWorkspaceId: "cli-workspace",
 		linearWorkspaceName: "F1 Testing",
 		linearToken: "f1-test-token", // Dummy token for CLI mode
 		workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
 		isActive: true,
+		// Routing configuration for multi-repo support
+		routingLabels: ["primary", "main-repo"],
+		teamKeys: ["PRIMARY"],
+		// Label-based system prompt configuration for F1 testing
+		// This enables testing of label-based orchestrator/debugger/builder/scoper modes
+		labelPrompts: {
+			debugger: {
+				labels: ["bug", "Bug", "debugger", "Debugger"],
+			},
+			builder: {
+				labels: ["feature", "Feature", "builder", "Builder", "enhancement"],
+			},
+			scoper: {
+				labels: ["scope", "Scope", "scoper", "Scoper", "research", "Research"],
+			},
+			orchestrator: {
+				labels: ["orchestrator", "Orchestrator"],
+			},
+			"graphite-orchestrator": {
+				labels: ["graphite-orchestrator"],
+			},
+			graphite: {
+				labels: ["graphite", "Graphite"],
+			},
+		},
 	};
+
+	const repositories: RepositoryConfig[] = [repository];
+
+	// Add second repository if multi-repo mode is enabled
+	if (MULTI_REPO_MODE && CYRUS_REPO_PATH_2) {
+		const secondaryRepository: RepositoryConfig = {
+			id: "f1-test-repo-secondary",
+			name: "F1 Secondary Repository",
+			repositoryPath: CYRUS_REPO_PATH_2,
+			baseBranch: "main",
+			githubUrl: "https://github.com/f1-test/secondary-repo",
+			linearWorkspaceId: "cli-workspace", // Same workspace for routing test
+			linearWorkspaceName: "F1 Testing",
+			linearToken: "f1-test-token-2",
+			workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR, "secondary"),
+			isActive: true,
+			// Different routing labels for second repo
+			routingLabels: ["secondary", "backend"],
+			teamKeys: ["SECONDARY"],
+			projectKeys: ["Backend Project"],
+			labelPrompts: {
+				debugger: {
+					labels: ["bug", "Bug"],
+				},
+				builder: {
+					labels: ["feature", "Feature"],
+				},
+			},
+		};
+		repositories.push(secondaryRepository);
+	}
 
 	const config: EdgeWorkerConfig = {
 		platform: "cli" as const,
-		repositories: [repository],
+		repositories,
 		cyrusHome: CYRUS_HOME,
 		serverPort: CYRUS_PORT,
 		serverHost: "localhost",
@@ -135,6 +195,14 @@ function displayConnectionInfo(): void {
 	console.log(`  ${cyan("Platform:")}  ${bold("cli")}`);
 	console.log(`  ${cyan("Cyrus Home:")} ${dim(CYRUS_HOME)}`);
 	console.log(`  ${cyan("Repository:")} ${dim(CYRUS_REPO_PATH)}`);
+	if (MULTI_REPO_MODE) {
+		console.log(
+			`  ${cyan("Multi-Repo:")} ${bold("enabled")} (${dim(CYRUS_REPO_PATH_2 || "")})`,
+		);
+		console.log(
+			dim("  Routing context will be included in orchestrator prompts"),
+		);
+	}
 	console.log("");
 	console.log(dim("  Press Ctrl+C to stop the server"));
 	console.log(`${divider}\n`);
