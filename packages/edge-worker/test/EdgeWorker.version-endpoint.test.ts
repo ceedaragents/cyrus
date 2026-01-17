@@ -63,7 +63,7 @@ vi.mock("chokidar", () => ({
 	}),
 }));
 
-describe("EdgeWorker - Health Endpoint", () => {
+describe("EdgeWorker - Version Endpoint", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
 
@@ -103,8 +103,8 @@ describe("EdgeWorker - Health Endpoint", () => {
 		}
 	});
 
-	describe("registerHealthEndpoint", () => {
-		it("should register GET /health endpoint with Fastify", async () => {
+	describe("registerVersionEndpoint", () => {
+		it("should register GET /version endpoint with Fastify", async () => {
 			const mockGet = vi.fn();
 			const mockFastify = {
 				get: mockGet,
@@ -130,17 +130,17 @@ describe("EdgeWorker - Health Endpoint", () => {
 
 			edgeWorker = new EdgeWorker(mockConfig);
 
-			// Call registerHealthEndpoint
-			(edgeWorker as any).registerHealthEndpoint();
+			// Call registerVersionEndpoint
+			(edgeWorker as any).registerVersionEndpoint();
 
-			// Verify GET /health was registered
-			expect(mockGet).toHaveBeenCalledWith("/health", expect.any(Function));
+			// Verify GET /version was registered
+			expect(mockGet).toHaveBeenCalledWith("/version", expect.any(Function));
 		});
 
-		it("should return healthy status with null version when version is not provided", async () => {
+		it("should return null version when version is not provided", async () => {
 			let capturedHandler: any = null;
 			const mockGet = vi.fn((path: string, handler: any) => {
-				if (path === "/health") {
+				if (path === "/version") {
 					capturedHandler = handler;
 				}
 			});
@@ -167,7 +167,7 @@ describe("EdgeWorker - Health Endpoint", () => {
 
 			// Config without version
 			edgeWorker = new EdgeWorker(mockConfig);
-			(edgeWorker as any).registerHealthEndpoint();
+			(edgeWorker as any).registerVersionEndpoint();
 
 			// Mock reply object
 			const mockReply = {
@@ -181,15 +181,14 @@ describe("EdgeWorker - Health Endpoint", () => {
 
 			expect(mockReply.status).toHaveBeenCalledWith(200);
 			expect(mockReply.send).toHaveBeenCalledWith({
-				status: "healthy",
 				cyrus_cli_version: null,
 			});
 		});
 
-		it("should return healthy status with version when version is provided", async () => {
+		it("should return version when version is provided", async () => {
 			let capturedHandler: any = null;
 			const mockGet = vi.fn((path: string, handler: any) => {
-				if (path === "/health") {
+				if (path === "/version") {
 					capturedHandler = handler;
 				}
 			});
@@ -220,7 +219,7 @@ describe("EdgeWorker - Health Endpoint", () => {
 				version: "1.2.3",
 			};
 			edgeWorker = new EdgeWorker(configWithVersion);
-			(edgeWorker as any).registerHealthEndpoint();
+			(edgeWorker as any).registerVersionEndpoint();
 
 			// Mock reply object
 			const mockReply = {
@@ -234,15 +233,14 @@ describe("EdgeWorker - Health Endpoint", () => {
 
 			expect(mockReply.status).toHaveBeenCalledWith(200);
 			expect(mockReply.send).toHaveBeenCalledWith({
-				status: "healthy",
 				cyrus_cli_version: "1.2.3",
 			});
 		});
 
-		it("should return null for empty string version", async () => {
+		it("should return empty string for empty string version", async () => {
 			let capturedHandler: any = null;
 			const mockGet = vi.fn((path: string, handler: any) => {
-				if (path === "/health") {
+				if (path === "/version") {
 					capturedHandler = handler;
 				}
 			});
@@ -274,7 +272,7 @@ describe("EdgeWorker - Health Endpoint", () => {
 				version: "",
 			};
 			edgeWorker = new EdgeWorker(configWithEmptyVersion);
-			(edgeWorker as any).registerHealthEndpoint();
+			(edgeWorker as any).registerVersionEndpoint();
 
 			// Mock reply object
 			const mockReply = {
@@ -289,57 +287,8 @@ describe("EdgeWorker - Health Endpoint", () => {
 			expect(mockReply.status).toHaveBeenCalledWith(200);
 			// Empty string is truthy for ?? operator, so it returns empty string
 			expect(mockReply.send).toHaveBeenCalledWith({
-				status: "healthy",
 				cyrus_cli_version: "",
 			});
-		});
-
-		it("should maintain backward compatibility - existing health check functionality works", async () => {
-			let capturedHandler: any = null;
-			const mockGet = vi.fn((path: string, handler: any) => {
-				if (path === "/health") {
-					capturedHandler = handler;
-				}
-			});
-			const mockFastify = {
-				get: mockGet,
-				post: vi.fn(),
-			};
-
-			const { SharedApplicationServer } = await import(
-				"../src/SharedApplicationServer.js"
-			);
-			vi.mocked(SharedApplicationServer).mockImplementation(
-				() =>
-					({
-						initializeFastify: vi.fn(),
-						getFastifyInstance: vi.fn().mockReturnValue(mockFastify),
-						start: vi.fn().mockResolvedValue(undefined),
-						stop: vi.fn().mockResolvedValue(undefined),
-						getWebhookUrl: vi
-							.fn()
-							.mockReturnValue("http://localhost:3456/webhook"),
-					}) as any,
-			);
-
-			edgeWorker = new EdgeWorker(mockConfig);
-			(edgeWorker as any).registerHealthEndpoint();
-
-			// Mock reply object
-			const mockReply = {
-				status: vi.fn().mockReturnThis(),
-				send: vi.fn().mockReturnThis(),
-			};
-
-			// Call the captured handler
-			expect(capturedHandler).not.toBeNull();
-			await capturedHandler({}, mockReply);
-
-			// Verify the response always includes status field
-			expect(mockReply.status).toHaveBeenCalledWith(200);
-			const sentData = mockReply.send.mock.calls[0][0];
-			expect(sentData).toHaveProperty("status", "healthy");
-			expect(sentData).toHaveProperty("cyrus_cli_version");
 		});
 	});
 });
