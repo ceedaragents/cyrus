@@ -18,8 +18,10 @@ import {
 import type { AskUserQuestionInput } from "cyrus-core";
 import { type IAgentRunner, StreamingPrompt } from "cyrus-core";
 import dotenv from "dotenv";
+import { classifyError } from "./errors.js";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
+// Keep for backwards compatibility
 export class AbortError extends Error {
 	constructor(message?: string) {
 		super(message);
@@ -543,34 +545,24 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				this.sessionInfo.isRunning = false;
 			}
 
-			// Check for user-initiated abort - this is a normal operation, not an error
-			// The SDK throws AbortError when the process is aborted via AbortController
-			// We check by name since the SDK's AbortError class may not match our local definition
-			const isAbortError =
-				error instanceof Error &&
-				(error.name === "AbortError" ||
-					error.message.includes("aborted by user"));
+			// Classify the error into a typed ClaudeRunnerError
+			const classifiedError = classifyError(error, this.sessionInfo?.sessionId);
 
-			// Check for SIGTERM (exit code 143 = 128 + 15), which indicates graceful termination
-			// This is expected when the session is stopped during unassignment
-			const isSigterm =
-				error instanceof Error &&
-				error.message.includes("Claude Code process exited with code 143");
-
-			if (isAbortError) {
-				// User-initiated stop - log at info level, not error
+			if (classifiedError.isAbort()) {
+				// User-initiated stop - log at info level, not an error to report
 				console.log("[ClaudeRunner] Session stopped by user");
-			} else if (isSigterm) {
+			} else if (classifiedError.isTermination()) {
+				// Graceful termination via SIGTERM - expected during unassignment
 				console.log(
 					"[ClaudeRunner] Session was terminated gracefully (SIGTERM)",
 				);
 			} else {
-				// Actual error - log and emit
-				console.error("[ClaudeRunner] Session error:", error);
-				this.emit(
-					"error",
-					error instanceof Error ? error : new Error(String(error)),
+				// Actual error - log and emit typed error
+				console.error(
+					"[ClaudeRunner] Session error:",
+					classifiedError.toDetailedString(),
 				);
+				this.emit("error", classifiedError);
 			}
 		} finally {
 			// Clean up
