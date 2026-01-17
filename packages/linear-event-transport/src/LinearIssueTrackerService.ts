@@ -82,7 +82,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Cleared when setAccessToken() is called (either from own refresh or external propagation)
 	 * to ensure stale promises aren't reused after token expiration.
 	 */
-	private refreshPromise: Promise<string> | null = null;
+	private token: Promise<string> | null = null;
 
 	/**
 	 * Static map for workspace-level coalescing of concurrent token refreshes.
@@ -106,18 +106,11 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		this.linearClient = linearClient;
 		this.oauthConfig = oauthConfig;
 
-		console.log(
-			`[LinearIssueTrackerService] Constructor: oauthConfig=${!!oauthConfig}, linearClient.client=${!!linearClient.client}`,
-		);
-
 		// Register initial refresh token in shared static map
 		if (oauthConfig?.refreshToken) {
 			LinearIssueTrackerService.workspaceRefreshTokens.set(
 				oauthConfig.workspaceId,
 				oauthConfig.refreshToken,
-			);
-			console.log(
-				`[LinearIssueTrackerService] Registered refresh token for workspace ${oauthConfig.workspaceId}`,
 			);
 		}
 
@@ -147,22 +140,20 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					// Coalesce concurrent refresh attempts within this instance.
 					// The promise is cleared by setAccessToken() when a new token arrives
 					// (either from our own refresh or propagated from another instance).
-					if (!this.refreshPromise) {
-						this.refreshPromise = this.doTokenRefresh().catch(
-							(refreshError) => {
-								// On failure, clear the promise so next 401 can retry fresh
-								this.refreshPromise = null;
-								console.error(
-									"[LinearIssueTrackerService] Token refresh failed:",
-									refreshError,
-								);
-								throw refreshError;
-							},
-						);
+					if (!this.token) {
+						this.token = this.doTokenRefresh().catch((refreshError) => {
+							// On failure, clear the promise so next 401 can retry fresh
+							this.token = null;
+							console.error(
+								"[LinearIssueTrackerService] Token refresh failed:",
+								refreshError,
+							);
+							throw refreshError;
+						});
 					}
 
 					try {
-						const newToken = await this.refreshPromise;
+						const newToken = await this.token;
 						client.setHeader("Authorization", `Bearer ${newToken}`);
 
 						// Retry the request with the new token (marked as retry to prevent loops)
@@ -307,7 +298,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	setAccessToken(token: string): void {
 		// Clear any cached refresh promise - the token is being updated externally,
 		// so any stale promise should not be reused on the next 401
-		this.refreshPromise = null;
+		this.token = null;
 
 		// Guard for test mocks that may not have the .client property
 		if (this.linearClient.client) {
