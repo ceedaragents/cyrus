@@ -4,8 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-01-16
+
 ### Added
 - **Version endpoint** - Added a `/version` endpoint that returns the Cyrus CLI version, enabling the dashboard to display version information. The endpoint returns `{ "cyrus_cli_version": "x.y.z" }` or `null` if unavailable. ([CYPACK-731](https://linear.app/ceedar/issue/CYPACK-731), [#775](https://github.com/ceedaragents/cyrus/pull/775))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.15
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.15
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.15
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.15
+
+#### cyrus-core
+- cyrus-core@0.2.15
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.15
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.15
 
 ## [0.2.14] - 2026-01-16
 
