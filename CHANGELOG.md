@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.2.7 to 0.2.11 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0211-2026-01-17)). This brings compatibility with Claude Code v2.1.11, including support for `skills` and `maxTurns` configuration options in custom agent definitions. ([CYPACK-734](https://linear.app/ceedar/issue/CYPACK-734), [#778](https://github.com/ceedaragents/cyrus/pull/778))
+
 ## [0.2.15] - 2026-01-16
 
 ### Added
