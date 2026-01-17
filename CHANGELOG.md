@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Subroutine transition notifications** - Users now see messages in Linear when Cyrus transitions between sub-procedures, such as "Starting: **verifications** - Run tests, linting, and type checking". This helps clarify what Cyrus is doing during longer operations. ([CYPACK-717](https://linear.app/ceedar/issue/CYPACK-717), [#759](https://github.com/ceedaragents/cyrus/pull/759))
+
 ## [0.2.15] - 2026-01-16
 
 ### Added

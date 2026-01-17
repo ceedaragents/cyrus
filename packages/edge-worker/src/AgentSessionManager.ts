@@ -1804,6 +1804,43 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Post a subroutine transition notification to Linear
+	 * This informs the user which subroutine is starting next
+	 */
+	async postSubroutineTransitionThought(
+		linearAgentActivitySessionId: string,
+		subroutineName: string,
+		subroutineDescription: string,
+	): Promise<void> {
+		try {
+			const result = await this.issueTracker.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: `Starting: **${subroutineName}** - ${subroutineDescription}`,
+				},
+				ephemeral: false,
+			});
+
+			if (result.success) {
+				console.log(
+					`[AgentSessionManager] Posted subroutine transition for session ${linearAgentActivitySessionId}: ${subroutineName}`,
+				);
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to post subroutine transition:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error posting subroutine transition:`,
+				error,
+			);
+		}
+	}
+
+	/**
 	 * Handle status messages (compacting, etc.)
 	 */
 	private async handleStatusMessage(
