@@ -6,6 +6,8 @@ export type {
 	EdgeWorkerConfig,
 	OAuthCallbackHandler,
 	RepositoryConfig,
+	UserAccessControlConfig,
+	UserIdentifier,
 	Workspace,
 } from "cyrus-core";
 export { AgentSessionManager } from "./AgentSessionManager.js";
@@ -20,6 +22,12 @@ export { GitService } from "./GitService.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
 export type { EdgeWorkerEvents } from "./types.js";
+// User access control
+export {
+	type AccessCheckResult,
+	DEFAULT_BLOCK_MESSAGE,
+	UserAccessControl,
+} from "./UserAccessControl.js";
 // Export validation loop module
 export {
 	DEFAULT_VALIDATION_LOOP_CONFIG,

@@ -103,6 +103,15 @@ export interface RepositoryConfig {
 			labels: string[]; // Labels that indicate Graphite stacking (e.g., ["graphite"])
 		};
 	};
+
+	/**
+	 * Repository-specific user access control.
+	 * - allowedUsers: OVERRIDES global allowlist (not merged)
+	 * - blockedUsers: EXTENDS global blocklist (merged/additive)
+	 * - blockBehavior: OVERRIDES global setting
+	 * - blockMessage: OVERRIDES global message
+	 */
+	userAccessControl?: UserAccessControlConfig;
 }
 
 /**
@@ -216,6 +225,57 @@ export interface EdgeWorkerConfig {
 		enableAttachmentDownload?: boolean; // Download issue attachments (default: false)
 		promptTemplatePath?: string; // Path to custom prompt template
 	};
+
+	/**
+	 * Global user access control settings.
+	 * Applied to all repositories unless overridden.
+	 */
+	userAccessControl?: UserAccessControlConfig;
+}
+
+/**
+ * User identifier for access control matching.
+ * Supports multiple formats for flexibility:
+ * - String: treated as user ID (e.g., "usr_abc123")
+ * - Object with id: explicit user ID match
+ * - Object with email: email-based match
+ */
+export type UserIdentifier =
+	| string // Treated as user ID
+	| { id: string } // Explicit user ID
+	| { email: string }; // Email address
+
+/**
+ * User access control configuration for whitelisting/blacklisting users.
+ */
+export interface UserAccessControlConfig {
+	/**
+	 * Users allowed to delegate issues.
+	 * If specified, ONLY these users can trigger Cyrus sessions.
+	 * Empty array means no one is allowed (effectively disables Cyrus).
+	 * Omitting this field means everyone is allowed (unless blocked).
+	 */
+	allowedUsers?: UserIdentifier[];
+
+	/**
+	 * Users blocked from delegating issues.
+	 * These users cannot trigger Cyrus sessions.
+	 * Takes precedence over allowedUsers.
+	 */
+	blockedUsers?: UserIdentifier[];
+
+	/**
+	 * What happens when a blocked user tries to delegate.
+	 * - 'silent': Ignore the webhook quietly (default)
+	 * - 'comment': Post an activity explaining the user is not authorized
+	 */
+	blockBehavior?: "silent" | "comment";
+
+	/**
+	 * Custom message to post when blockBehavior is 'comment'.
+	 * Defaults to: "You are not authorized to delegate issues to this agent."
+	 */
+	blockMessage?: string;
 }
 
 /**
@@ -229,4 +289,10 @@ export interface EdgeConfig {
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
+
+	/**
+	 * Global user access control settings.
+	 * Applied to all repositories unless overridden.
+	 */
+	userAccessControl?: UserAccessControlConfig;
 }

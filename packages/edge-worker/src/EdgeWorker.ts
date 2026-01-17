@@ -87,6 +87,7 @@ import {
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
+import { UserAccessControl } from "./UserAccessControl.js";
 
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(
@@ -126,6 +127,8 @@ export class EdgeWorker extends EventEmitter {
 	private activeWebhookCount = 0; // Track number of webhooks currently being processed
 	/** Handler for AskUserQuestion tool invocations via Linear select signal */
 	private askUserQuestionHandler: AskUserQuestionHandler;
+	/** User access control for whitelisting/blacklisting Linear users */
+	private userAccessControl: UserAccessControl;
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -353,6 +356,21 @@ export class EdgeWorker extends EventEmitter {
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
 		}
+
+		// Initialize user access control with global and per-repository configs
+		const repoAccessConfigs = new Map<
+			string,
+			import("cyrus-core").UserAccessControlConfig | undefined
+		>();
+		for (const repo of config.repositories) {
+			if (repo.isActive !== false) {
+				repoAccessConfigs.set(repo.id, repo.userAccessControl);
+			}
+		}
+		this.userAccessControl = new UserAccessControl(
+			config.userAccessControl,
+			repoAccessConfigs,
+		);
 
 		// Components will be initialized and registered in start() method before server starts
 	}
@@ -1641,6 +1659,16 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// User access control check
+		const accessResult = this.checkUserAccess(webhook, repository);
+		if (!accessResult.allowed) {
+			console.log(
+				`[EdgeWorker] User ${accessResult.userName} blocked from delegating: ${accessResult.reason}`,
+			);
+			await this.handleBlockedUser(webhook, repository, accessResult.reason);
+			return;
+		}
+
 		console.log(
 			`[EdgeWorker] Handling agent session created: ${webhook.agentSession.issue.identifier}`,
 		);
@@ -2486,6 +2514,16 @@ export class EdgeWorker extends EventEmitter {
 			console.warn(
 				`[EdgeWorker] No cached repository found for prompted webhook ${agentSessionId}`,
 			);
+			return;
+		}
+
+		// User access control check for mid-session prompts
+		const accessResult = this.checkUserAccess(webhook, repository);
+		if (!accessResult.allowed) {
+			console.log(
+				`[EdgeWorker] User ${accessResult.userName} blocked from prompting: ${accessResult.reason}`,
+			);
+			await this.handleBlockedUser(webhook, repository, accessResult.reason);
 			return;
 		}
 
@@ -5368,6 +5406,91 @@ ${input.userComment}
 		}
 
 		return agentSessionManager.getSessionsByIssueId(issueId);
+	}
+
+	// ========================================================================
+	// User Access Control
+	// ========================================================================
+
+	/**
+	 * Check if the user who triggered the webhook is allowed to interact.
+	 * @param webhook The webhook containing user information
+	 * @param repository The repository configuration
+	 * @returns Access check result with allowed status and user name
+	 */
+	private checkUserAccess(
+		webhook: AgentSessionCreatedWebhook | AgentSessionPromptedWebhook,
+		repository: RepositoryConfig,
+	): { allowed: true } | { allowed: false; reason: string; userName: string } {
+		const creator = webhook.agentSession.creator;
+		const userId = creator?.id;
+		const userEmail = creator?.email;
+		const userName = creator?.name || userId || "Unknown";
+
+		const result = this.userAccessControl.checkAccess(
+			userId,
+			userEmail,
+			repository.id,
+		);
+
+		if (!result.allowed) {
+			return { allowed: false, reason: result.reason, userName };
+		}
+		return { allowed: true };
+	}
+
+	/**
+	 * Handle blocked user according to configured behavior.
+	 * Posts a response activity to end the session.
+	 * @param webhook The webhook that triggered the blocked access
+	 * @param repository The repository configuration
+	 * @param _reason The reason for blocking (for logging)
+	 */
+	private async handleBlockedUser(
+		webhook: AgentSessionCreatedWebhook | AgentSessionPromptedWebhook,
+		repository: RepositoryConfig,
+		_reason: string,
+	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(repository.id);
+		const agentSessionId = webhook.agentSession.id;
+		const behavior = this.userAccessControl.getBlockBehavior(repository.id);
+
+		if (!issueTracker) {
+			return;
+		}
+
+		if (behavior === "comment") {
+			// Get user info for templating
+			const creator = webhook.agentSession.creator;
+			const userName = creator?.name || "User";
+			const userId = creator?.id || "";
+
+			// Get the message template and replace variables
+			// Supported variables:
+			// - {{userName}} - The user's display name
+			// - {{userId}} - The user's Linear ID
+			let message = this.userAccessControl.getBlockMessage(repository.id);
+			message = message
+				.replace(/\{\{userName\}\}/g, userName)
+				.replace(/\{\{userId\}\}/g, userId);
+
+			try {
+				await issueTracker.createAgentActivity({
+					agentSessionId,
+					content: {
+						type: "response",
+						body: message,
+					},
+				});
+			} catch (error) {
+				console.error(
+					"[EdgeWorker] Failed to post blocked user message:",
+					error,
+				);
+			}
+		}
+		// For "silent" behavior, we don't post any activity.
+		// The session will remain in "Working" state until manually stopped or timed out.
 	}
 
 	/**
