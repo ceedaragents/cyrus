@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Issue update awareness** - Cyrus now detects when you edit an issue's title, description, or attachments while it's actively working on that issue. The agent receives context showing what changed (old vs new values) along with guidance to evaluate whether the update affects its implementation or action plan. ([CYPACK-736](https://linear.app/ceedar/issue/CYPACK-736), [#782](https://github.com/ceedaragents/cyrus/pull/782))
+
 ## [0.2.16] - 2026-01-23
 
 ### Added
