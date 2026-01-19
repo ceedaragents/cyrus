@@ -1424,8 +1424,8 @@ export class EdgeWorker extends EventEmitter {
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPromptedAgentActivity(webhook);
 			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
-				// Handle issue title/description updates - feed changes into active session
-				await this.handleIssueTitleOrDescriptionUpdate(webhook);
+				// Handle issue title/description/attachments updates - feed changes into active session
+				await this.handleIssueContentUpdate(webhook);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					console.log(
@@ -1483,9 +1483,9 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Handle issue title or description update webhook.
+	 * Handle issue content update webhook (title, description, or attachments).
 	 *
-	 * When the title or description of an issue is updated, this handler feeds
+	 * When the title, description, or attachments of an issue are updated, this handler feeds
 	 * the changes into any active session for that issue, allowing the AI to
 	 * compare old vs new values and decide whether to take action.
 	 *
@@ -1493,12 +1493,14 @@ export class EdgeWorker extends EventEmitter {
 	 * - <issue_update> wrapper with timestamp and issue identifier
 	 * - <title_change> with <old_title> and <new_title> if title changed
 	 * - <description_change> with <old_description> and <new_description> if description changed
+	 * - <attachments_change> with <old_attachments> and <new_attachments> if attachments changed
+	 * - <guidance> section instructing the agent to evaluate whether changes affect its work
 	 *
 	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
 	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/IssueWebhookPayload
 	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/unions/DataWebhookPayload
 	 */
-	private async handleIssueTitleOrDescriptionUpdate(
+	private async handleIssueContentUpdate(
 		webhook: IssueUpdateWebhook,
 	): Promise<void> {
 		const issueData = webhook.data;
@@ -1524,8 +1526,14 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Determine what changed for logging
+		const changedFields: string[] = [];
+		if ("title" in updatedFrom) changedFields.push("title");
+		if ("description" in updatedFrom) changedFields.push("description");
+		if ("attachments" in updatedFrom) changedFields.push("attachments");
+
 		console.log(
-			`[EdgeWorker] Handling issue title/description update: ${issueIdentifier}`,
+			`[EdgeWorker] Handling issue content update: ${issueIdentifier} (changed: ${changedFields.join(", ")})`,
 		);
 
 		// Get agent session manager for this repository
@@ -1602,7 +1610,7 @@ export class EdgeWorker extends EventEmitter {
 					"", // No attachment manifest
 					false, // Not a new session
 					[], // No additional allowed directories
-					"issue title/description update",
+					"issue content update",
 					undefined, // No comment author
 					undefined, // No comment timestamp
 				);
@@ -1611,20 +1619,23 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Build an XML-formatted prompt for issue title/description updates.
+	 * Build an XML-formatted prompt for issue content updates (title, description, attachments).
 	 *
 	 * The prompt clearly shows what fields changed by comparing old vs new values,
-	 * allowing the AI to understand the context and decide whether to take action.
+	 * and includes guidance for the agent to evaluate whether these changes affect
+	 * its current implementation or action plan.
 	 */
 	private buildIssueUpdatePrompt(
 		issueIdentifier: string,
 		issueData: {
 			title: string;
 			description?: string | null;
+			attachments?: unknown;
 		},
 		updatedFrom: {
 			title?: string;
 			description?: string;
+			attachments?: unknown;
 		},
 	): string {
 		const timestamp = new Date().toISOString();
@@ -1654,7 +1665,42 @@ export class EdgeWorker extends EventEmitter {
 			parts.push(`  </description_change>`);
 		}
 
+		// Add attachments change if attachments were updated
+		if ("attachments" in updatedFrom) {
+			parts.push(`  <attachments_change>`);
+			parts.push(
+				`    <old_attachments>${JSON.stringify(updatedFrom.attachments ?? null)}</old_attachments>`,
+			);
+			parts.push(
+				`    <new_attachments>${JSON.stringify(issueData.attachments ?? null)}</new_attachments>`,
+			);
+			parts.push(`  </attachments_change>`);
+		}
+
 		parts.push(`</issue_update>`);
+
+		// Add guidance for the agent on how to respond to this update
+		parts.push(``);
+		parts.push(`<guidance>`);
+		parts.push(
+			`  The issue has been updated while you are working on it. Please evaluate whether these changes`,
+		);
+		parts.push(
+			`  affect your current implementation or action plan. Consider the following:`,
+		);
+		parts.push(
+			`  - Does the updated content change the requirements or scope of your work?`,
+		);
+		parts.push(
+			`  - Are there new details, clarifications, or attachments that should inform your approach?`,
+		);
+		parts.push(
+			`  - Should you adjust your implementation strategy based on this update?`,
+		);
+		parts.push(
+			`  If the changes are relevant, incorporate them into your work. If not, you may continue as planned.`,
+		);
+		parts.push(`</guidance>`);
 
 		return parts.join("\n");
 	}

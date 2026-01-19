@@ -802,10 +802,12 @@ export type IssueUpdateWebhook =
 		type: "Issue";
 		action: "update";
 		data: LinearSDK.LinearDocument.IssueWebhookPayload;
-		/** Previous values of updated properties. Contains `title` and/or `description` when those fields changed. */
+		/** Previous values of updated properties. Contains `title`, `description`, and/or `attachments` when those fields changed. */
 		updatedFrom?: {
 			title?: string;
 			description?: string;
+			/** Serialized JSON of previous attachments state */
+			attachments?: unknown;
 			[key: string]: unknown;
 		};
 	};
@@ -892,10 +894,10 @@ export function isIssueUnassignedWebhook(
 }
 
 /**
- * Type guard to check if webhook is an issue update with title or description changes.
+ * Type guard to check if webhook is an issue update with title, description, or attachments changes.
  *
  * This identifies Issue entity webhooks where the `updatedFrom` field contains
- * previous values for `title` and/or `description` fields, indicating these
+ * previous values for `title`, `description`, and/or `attachments` fields, indicating these
  * fields were modified. Other field changes (like status, assignee, etc.) are ignored.
  *
  * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
@@ -908,19 +910,23 @@ export function isIssueTitleOrDescriptionUpdateWebhook(
 		return false;
 	}
 
-	// Check if updatedFrom contains title or description changes
+	// Check if updatedFrom contains title, description, or attachments changes
 	const entityWebhook =
 		webhook as LinearSDK.LinearDocument.EntityWebhookPayload;
 	const updatedFrom = entityWebhook.updatedFrom as
-		| { title?: string; description?: string }
+		| { title?: string; description?: string; attachments?: unknown }
 		| undefined;
 
 	if (!updatedFrom) {
 		return false;
 	}
 
-	// Only return true if title or description was changed (not other fields)
-	return "title" in updatedFrom || "description" in updatedFrom;
+	// Only return true if title, description, or attachments was changed (not other fields)
+	return (
+		"title" in updatedFrom ||
+		"description" in updatedFrom ||
+		"attachments" in updatedFrom
+	);
 }
 
 /**
