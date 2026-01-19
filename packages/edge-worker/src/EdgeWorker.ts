@@ -1556,13 +1556,6 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Build the XML-formatted prompt showing old vs new values
-		const promptBody = this.buildIssueUpdatePrompt(
-			issueIdentifier,
-			issueData,
-			updatedFrom,
-		);
-
 		// Get the first active session for this issue
 		const sessions = agentSessionManager.getSessionsByIssueId(issueId);
 		if (sessions.length === 0) {
@@ -1572,6 +1565,63 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
+		// Process attachments from the updated description if description changed
+		let attachmentManifest = "";
+		if ("description" in updatedFrom && issueData.description) {
+			const firstSession = sessions[0];
+			if (!firstSession) {
+				console.log(
+					`[EdgeWorker] No sessions found for issue ${issueIdentifier}`,
+				);
+				return;
+			}
+			const workspaceFolderName = basename(firstSession.workspace.path);
+			const attachmentsDir = join(
+				this.cyrusHome,
+				workspaceFolderName,
+				"attachments",
+			);
+
+			try {
+				// Ensure directory exists
+				await mkdir(attachmentsDir, { recursive: true });
+
+				// Count existing attachments
+				const existingFiles = await readdir(attachmentsDir).catch(() => []);
+				const existingAttachmentCount = existingFiles.filter(
+					(file) => file.startsWith("attachment_") || file.startsWith("image_"),
+				).length;
+
+				// Download attachments from the new description
+				const downloadResult = await this.downloadCommentAttachments(
+					issueData.description,
+					attachmentsDir,
+					repository.linearToken,
+					existingAttachmentCount,
+				);
+
+				if (downloadResult.totalNewAttachments > 0) {
+					attachmentManifest =
+						this.generateNewAttachmentManifest(downloadResult);
+					console.log(
+						`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} attachments from updated description`,
+					);
+				}
+			} catch (error) {
+				console.error(
+					"[EdgeWorker] Failed to process attachments from updated description:",
+					error,
+				);
+			}
+		}
+
+		// Build the XML-formatted prompt showing old vs new values
+		const promptBody = this.buildIssueUpdatePrompt(
+			issueIdentifier,
+			issueData,
+			updatedFrom,
+		);
+
 		// Feed the update into each active session
 		for (const session of sessions) {
 			const linearAgentActivitySessionId = session.linearAgentActivitySessionId;
@@ -1579,6 +1629,12 @@ export class EdgeWorker extends EventEmitter {
 			// Check if runner is actively running and supports streaming input
 			const existingRunner = session.agentRunner;
 			const isRunning = existingRunner?.isRunning() || false;
+
+			// Combine prompt body with attachment manifest
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
 
 			if (
 				isRunning &&
@@ -1589,7 +1645,7 @@ export class EdgeWorker extends EventEmitter {
 				console.log(
 					`[EdgeWorker] Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
 				);
-				existingRunner.addStreamMessage(promptBody);
+				existingRunner.addStreamMessage(fullPrompt);
 			} else if (isRunning) {
 				// Runner is running but doesn't support streaming input - log and skip
 				console.log(
@@ -1607,7 +1663,7 @@ export class EdgeWorker extends EventEmitter {
 					linearAgentActivitySessionId,
 					agentSessionManager,
 					promptBody,
-					"", // No attachment manifest
+					attachmentManifest,
 					false, // Not a new session
 					[], // No additional allowed directories
 					"issue content update",
