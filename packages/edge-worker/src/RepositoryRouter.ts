@@ -674,12 +674,44 @@ export class RepositoryRouter {
 			};
 		}
 
-		// Handle notification webhooks
-		return {
-			issueId: webhook.notification?.issue?.id,
-			teamKey: webhook.notification?.issue?.team?.key,
-			issueIdentifier: webhook.notification?.issue?.identifier,
-		};
+		// Handle entity webhooks (e.g., Issue updates)
+		if (this.isEntityWebhook(webhook)) {
+			// For Issue entity webhooks, data contains the issue payload
+			if (webhook.type === "Issue") {
+				const issueData = webhook.data as {
+					id?: string;
+					identifier?: string;
+					team?: { key?: string };
+				};
+				return {
+					issueId: issueData?.id,
+					teamKey: issueData?.team?.key,
+					issueIdentifier: issueData?.identifier,
+				};
+			}
+			// Other entity types don't have issue info
+			return {};
+		}
+
+		// Handle notification webhooks (AppUserNotification)
+		if ("notification" in webhook && webhook.notification) {
+			return {
+				issueId: webhook.notification?.issue?.id,
+				teamKey: webhook.notification?.issue?.team?.key,
+				issueIdentifier: webhook.notification?.issue?.identifier,
+			};
+		}
+
+		return {};
+	}
+
+	/**
+	 * Type guard for entity webhooks (Issue, Comment, etc.)
+	 */
+	private isEntityWebhook(
+		webhook: Webhook,
+	): webhook is Webhook & { data: unknown } {
+		return "data" in webhook && webhook.data !== undefined;
 	}
 
 	/**

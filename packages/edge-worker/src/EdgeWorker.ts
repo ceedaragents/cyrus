@@ -36,6 +36,7 @@ import type {
 	Issue,
 	IssueMinimal,
 	IssueUnassignedWebhook,
+	IssueUpdateWebhook,
 	RepositoryConfig,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
@@ -54,6 +55,7 @@ import {
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
+	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 	resolvePath,
@@ -1421,6 +1423,9 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleAgentSessionCreatedWebhook(webhook, repos);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPromptedAgentActivity(webhook);
+			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
+				// Handle issue title/description updates - feed changes into active session
+				await this.handleIssueTitleOrDescriptionUpdate(webhook);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					console.log(
@@ -1475,6 +1480,183 @@ export class EdgeWorker extends EventEmitter {
 		// console.log('=== END WEBHOOK PAYLOAD ===')
 
 		await this.handleIssueUnassigned(webhook.notification.issue, repository);
+	}
+
+	/**
+	 * Handle issue title or description update webhook.
+	 *
+	 * When the title or description of an issue is updated, this handler feeds
+	 * the changes into any active session for that issue, allowing the AI to
+	 * compare old vs new values and decide whether to take action.
+	 *
+	 * The prompt uses XML-style formatting to clearly show what changed:
+	 * - <issue_update> wrapper with timestamp and issue identifier
+	 * - <title_change> with <old_title> and <new_title> if title changed
+	 * - <description_change> with <old_description> and <new_description> if description changed
+	 *
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/IssueWebhookPayload
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/unions/DataWebhookPayload
+	 */
+	private async handleIssueTitleOrDescriptionUpdate(
+		webhook: IssueUpdateWebhook,
+	): Promise<void> {
+		const issueData = webhook.data;
+		const issueId = issueData.id;
+		const issueIdentifier = issueData.identifier;
+		const updatedFrom = webhook.updatedFrom;
+
+		if (!updatedFrom) {
+			console.warn(
+				`[EdgeWorker] Issue update webhook for ${issueIdentifier} has no updatedFrom data`,
+			);
+			return;
+		}
+
+		// Get cached repository (updates should only be processed for issues with active sessions)
+		const repository = this.getCachedRepository(issueId);
+		if (!repository) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					`[EdgeWorker] No cached repository for issue update webhook ${issueIdentifier} (no active sessions to notify)`,
+				);
+			}
+			return;
+		}
+
+		console.log(
+			`[EdgeWorker] Handling issue title/description update: ${issueIdentifier}`,
+		);
+
+		// Get agent session manager for this repository
+		const agentSessionManager = this.agentSessionManagers.get(repository.id);
+		if (!agentSessionManager) {
+			console.log(
+				`[EdgeWorker] No agent session manager for repository ${repository.id}`,
+			);
+			return;
+		}
+
+		// Find active session(s) for this issue
+		const agentRunners = agentSessionManager.getAgentRunnersForIssue(issueId);
+		if (agentRunners.length === 0) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					`[EdgeWorker] No active sessions for issue ${issueIdentifier} to receive update`,
+				);
+			}
+			return;
+		}
+
+		// Build the XML-formatted prompt showing old vs new values
+		const promptBody = this.buildIssueUpdatePrompt(
+			issueIdentifier,
+			issueData,
+			updatedFrom,
+		);
+
+		// Get the first active session for this issue
+		const sessions = agentSessionManager.getSessionsByIssueId(issueId);
+		if (sessions.length === 0) {
+			console.log(
+				`[EdgeWorker] No sessions found for issue ${issueIdentifier}`,
+			);
+			return;
+		}
+
+		// Feed the update into each active session
+		for (const session of sessions) {
+			const linearAgentActivitySessionId = session.linearAgentActivitySessionId;
+
+			// Check if runner is actively running and supports streaming input
+			const existingRunner = session.agentRunner;
+			const isRunning = existingRunner?.isRunning() || false;
+
+			if (
+				isRunning &&
+				existingRunner?.supportsStreamingInput &&
+				existingRunner.addStreamMessage
+			) {
+				// Add to existing stream
+				console.log(
+					`[EdgeWorker] Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
+				);
+				existingRunner.addStreamMessage(promptBody);
+			} else if (isRunning) {
+				// Runner is running but doesn't support streaming input - log and skip
+				console.log(
+					`[EdgeWorker] Session ${linearAgentActivitySessionId} is running but doesn't support streaming input, skipping issue update`,
+				);
+			} else {
+				// Session exists but runner is not running - resume with the update
+				console.log(
+					`[EdgeWorker] Resuming session ${linearAgentActivitySessionId} with issue update`,
+				);
+
+				await this.handlePromptWithStreamingCheck(
+					session,
+					repository,
+					linearAgentActivitySessionId,
+					agentSessionManager,
+					promptBody,
+					"", // No attachment manifest
+					false, // Not a new session
+					[], // No additional allowed directories
+					"issue title/description update",
+					undefined, // No comment author
+					undefined, // No comment timestamp
+				);
+			}
+		}
+	}
+
+	/**
+	 * Build an XML-formatted prompt for issue title/description updates.
+	 *
+	 * The prompt clearly shows what fields changed by comparing old vs new values,
+	 * allowing the AI to understand the context and decide whether to take action.
+	 */
+	private buildIssueUpdatePrompt(
+		issueIdentifier: string,
+		issueData: {
+			title: string;
+			description?: string | null;
+		},
+		updatedFrom: {
+			title?: string;
+			description?: string;
+		},
+	): string {
+		const timestamp = new Date().toISOString();
+		const parts: string[] = [];
+
+		parts.push(`<issue_update>`);
+		parts.push(`  <identifier>${issueIdentifier}</identifier>`);
+		parts.push(`  <timestamp>${timestamp}</timestamp>`);
+
+		// Add title change if title was updated
+		if ("title" in updatedFrom) {
+			parts.push(`  <title_change>`);
+			parts.push(`    <old_title>${updatedFrom.title ?? ""}</old_title>`);
+			parts.push(`    <new_title>${issueData.title}</new_title>`);
+			parts.push(`  </title_change>`);
+		}
+
+		// Add description change if description was updated
+		if ("description" in updatedFrom) {
+			parts.push(`  <description_change>`);
+			parts.push(
+				`    <old_description>${updatedFrom.description ?? ""}</old_description>`,
+			);
+			parts.push(
+				`    <new_description>${issueData.description ?? ""}</new_description>`,
+			);
+			parts.push(`  </description_change>`);
+		}
+
+		parts.push(`</issue_update>`);
+
+		return parts.join("\n");
 	}
 
 	/**
