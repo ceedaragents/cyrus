@@ -1558,23 +1558,14 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Find active session(s) for this issue
-		const agentRunners = agentSessionManager.getAgentRunnersForIssue(issueId);
-		if (agentRunners.length === 0) {
-			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-				console.log(
-					`[EdgeWorker] No active sessions for issue ${issueIdentifier} to receive update`,
-				);
-			}
-			return;
-		}
-
-		// Get the first active session for this issue
+		// Find session(s) for this issue (may be running or paused between subroutines)
 		const sessions = agentSessionManager.getSessionsByIssueId(issueId);
 		if (sessions.length === 0) {
-			console.log(
-				`[EdgeWorker] No sessions found for issue ${issueIdentifier}`,
-			);
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					`[EdgeWorker] No sessions found for issue ${issueIdentifier} to receive update`,
+				);
+			}
 			return;
 		}
 

@@ -283,6 +283,7 @@ export interface UserAccessControlConfig {
 	 * Defaults to: "You are not authorized to delegate issues to this agent."
 	 */
 	blockMessage?: string;
+}
 
 /**
  * Edge configuration containing all repositories and global settings
