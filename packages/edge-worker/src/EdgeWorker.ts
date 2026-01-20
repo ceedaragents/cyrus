@@ -2084,11 +2084,54 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
+		// Stop all child sessions recursively
+		await this.stopChildSessions(agentSessionId);
+
 		// Post confirmation
 		const issueTitle = issue?.title || "this issue";
 		const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
 
 		await foundManager.createResponseActivity(agentSessionId, stopConfirmation);
+	}
+
+	/**
+	 * Recursively stop all child sessions of a given parent session.
+	 * Uses the childToParentAgentSession map to find children by reverse lookup.
+	 */
+	private async stopChildSessions(parentSessionId: string): Promise<void> {
+		// Find all child sessions by reverse lookup in childToParentAgentSession
+		const childSessionIds: string[] = [];
+		for (const [
+			childId,
+			parentId,
+		] of this.childToParentAgentSession.entries()) {
+			if (parentId === parentSessionId) {
+				childSessionIds.push(childId);
+			}
+		}
+
+		if (childSessionIds.length === 0) {
+			return;
+		}
+
+		console.log(
+			`[EdgeWorker] Stopping ${childSessionIds.length} child session(s) of parent ${parentSessionId}`,
+		);
+
+		for (const childSessionId of childSessionIds) {
+			// Find the manager and session for this child
+			for (const manager of this.agentSessionManagers.values()) {
+				const childSession = manager.getSession(childSessionId);
+				if (childSession?.agentRunner) {
+					childSession.agentRunner.stop();
+					console.log(`[EdgeWorker] Stopped child session ${childSessionId}`);
+					break;
+				}
+			}
+
+			// Recursively stop any grandchildren
+			await this.stopChildSessions(childSessionId);
+		}
 	}
 
 	/**
