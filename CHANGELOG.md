@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Stop signal propagation to child sessions** - Stop signals sent from Linear now correctly propagate to child sessions (sub-tasks) spawned during orchestration. Previously, stopping a parent session left child sessions running. ([CYPACK-740](https://linear.app/ceedar/issue/CYPACK-740), [#786](https://github.com/ceedaragents/cyrus/pull/786))
+
 ## [0.2.15] - 2026-01-16
 
 ### Added
