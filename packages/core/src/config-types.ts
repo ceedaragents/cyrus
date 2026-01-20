@@ -227,6 +227,13 @@ export interface EdgeWorkerConfig {
 	};
 
 	/**
+	 * Whether to trigger agent sessions when issue title, description, or attachments are updated.
+	 * When enabled, the agent receives context showing what changed (old vs new values).
+	 * Defaults to true if not specified.
+	 */
+	issueUpdateTrigger?: boolean;
+
+	/**
 	 * Global user access control settings.
 	 * Applied to all repositories unless overridden.
 	 */
@@ -276,7 +283,6 @@ export interface UserAccessControlConfig {
 	 * Defaults to: "You are not authorized to delegate issues to this agent."
 	 */
 	blockMessage?: string;
-}
 
 /**
  * Edge configuration containing all repositories and global settings
@@ -289,6 +295,12 @@ export interface EdgeConfig {
 	defaultModel?: string; // Default Claude model to use across all repositories
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
+	/**
+	 * Whether to trigger agent sessions when issue title, description, or attachments are updated.
+	 * When enabled, the agent receives context showing what changed (old vs new values).
+	 * Defaults to true if not specified.
+	 */
+	issueUpdateTrigger?: boolean;
 
 	/**
 	 * Global user access control settings.

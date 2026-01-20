@@ -1027,6 +1027,9 @@ export class EdgeWorker extends EventEmitter {
 				defaultDisallowedTools:
 					parsedConfig.defaultDisallowedTools ||
 					this.config.defaultDisallowedTools,
+				// Issue update trigger: use parsed value if explicitly set, otherwise keep current or default to true
+				issueUpdateTrigger:
+					parsedConfig.issueUpdateTrigger ?? this.config.issueUpdateTrigger,
 			};
 
 			// Basic validation
@@ -1503,6 +1506,16 @@ export class EdgeWorker extends EventEmitter {
 	private async handleIssueContentUpdate(
 		webhook: IssueUpdateWebhook,
 	): Promise<void> {
+		// Check if issue update trigger is enabled (defaults to true if not set)
+		if (this.config.issueUpdateTrigger === false) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					"[EdgeWorker] Issue update trigger is disabled, skipping issue content update",
+				);
+			}
+			return;
+		}
+
 		const issueData = webhook.data;
 		const issueId = issueData.id;
 		const issueIdentifier = issueData.identifier;
