@@ -79,6 +79,20 @@ export class StartCommand extends BaseCommand {
 				this.logger.info(
 					"   - Get your token from: https://app.atcyrus.com/onboarding",
 				);
+			} else if (
+				error.message?.includes("Timeout waiting for Cloudflare tunnel")
+			) {
+				// Cloudflare tunnel connection timeout - don't duplicate error details
+				// since the error message already includes troubleshooting guidance
+				this.logger.info("\n💡 Next steps:");
+				this.logger.info(
+					"   1. Review the connectivity prechecks in the link above",
+				);
+				this.logger.info("   2. Check your firewall/VPN/proxy settings");
+				this.logger.info("   3. Verify your CLOUDFLARE_TOKEN is valid");
+				this.logger.info(
+					"   4. Consider alternative tunnel solutions (ngrok, etc.)",
+				);
 			} else if (error.message?.includes("Failed to connect")) {
 				this.logger.info("\n💡 Connection issues can occur when:");
 				this.logger.info("   - Linear OAuth tokens have expired");
