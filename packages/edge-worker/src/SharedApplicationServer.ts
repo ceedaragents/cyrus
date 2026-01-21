@@ -154,22 +154,11 @@ export class SharedApplicationServer {
 			// Timeout after 30 seconds
 			setTimeout(() => {
 				if (connectionCount < requiredConnections) {
-					const errorMessage = [
-						`Timeout waiting for Cloudflare tunnel (${connectionCount}/${requiredConnections} connections)`,
-						"",
-						"This usually indicates a network or firewall configuration issue.",
-						"",
-						"Common causes:",
-						"- Corporate firewall blocking cloudflared connections",
-						"- VPN interfering with tunnel establishment",
-						"- Network proxy requiring additional configuration",
-						"- Invalid or expired CLOUDFLARE_TOKEN",
-						"",
-						"Troubleshooting resources:",
-						"- Cloudflare connectivity prechecks: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/troubleshoot-tunnels/connectivity-prechecks/",
-						"- Cyrus tunnel guide: https://github.com/ceedaragents/cyrus/blob/main/docs/CLOUDFLARE_TUNNEL.md#troubleshooting",
-					].join("\n");
-					reject(new Error(errorMessage));
+					reject(
+						new Error(
+							`Timeout waiting for Cloudflare tunnel (${connectionCount}/${requiredConnections} connections). This is usually caused by firewall/VPN/proxy blocking cloudflared. See troubleshooting: https://github.com/ceedaragents/cyrus/blob/main/docs/CLOUDFLARE_TUNNEL.md#troubleshooting`,
+						),
+					);
 				}
 			}, 30000);
 		});

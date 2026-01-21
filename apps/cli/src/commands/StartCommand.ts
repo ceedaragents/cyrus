@@ -72,34 +72,6 @@ export class StartCommand extends BaseCommand {
 		} catch (error: any) {
 			this.logger.error(`Failed to start edge application: ${error.message}`);
 
-			// Provide helpful error guidance
-			if (error.message?.includes("CLOUDFLARE_TOKEN")) {
-				this.logger.info("\n💡 Cloudflare tunnel requires:");
-				this.logger.info("   - CLOUDFLARE_TOKEN environment variable");
-				this.logger.info(
-					"   - Get your token from: https://app.atcyrus.com/onboarding",
-				);
-			} else if (
-				error.message?.includes("Timeout waiting for Cloudflare tunnel")
-			) {
-				// Cloudflare tunnel connection timeout - don't duplicate error details
-				// since the error message already includes troubleshooting guidance
-				this.logger.info("\n💡 Next steps:");
-				this.logger.info(
-					"   1. Review the connectivity prechecks in the link above",
-				);
-				this.logger.info("   2. Check your firewall/VPN/proxy settings");
-				this.logger.info("   3. Verify your CLOUDFLARE_TOKEN is valid");
-				this.logger.info(
-					"   4. Consider alternative tunnel solutions (ngrok, etc.)",
-				);
-			} else if (error.message?.includes("Failed to connect")) {
-				this.logger.info("\n💡 Connection issues can occur when:");
-				this.logger.info("   - Linear OAuth tokens have expired");
-				this.logger.info("   - The Linear API is temporarily unavailable");
-				this.logger.info("   - Your network connection is having issues");
-			}
-
 			await this.app.shutdown();
 			process.exit(1);
 		}
