@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added test case documenting root cause investigation for agent session hanging issue - Claude SDK session resume with `--continue` flag does not enforce new `allowedTools` restrictions ([CYPACK-744](https://linear.app/ceedar/issue/CYPACK-744), [#789](https://github.com/ceedaragents/cyrus/pull/789))
+
 ## [0.2.15] - 2026-01-16
 
 (No internal changes in this release)

@@ -139,6 +139,52 @@ describe("ClaudeRunner - disallowedTools", () => {
 		expect(callArgs.options.disallowedTools).toBeUndefined();
 	});
 
+	/**
+	 * CYPACK-744: This test demonstrates the bug where empty allowedTools array
+	 * is intended to disable all tools (for disallowAllTools: true subroutines),
+	 * but gets silently dropped due to falsy check in ClaudeRunner.
+	 *
+	 * When disallowAllTools: true is set on a subroutine (e.g., question-answer),
+	 * EdgeWorker sets allowedTools = [] to disable all tools. However, ClaudeRunner
+	 * uses `...(processedAllowedTools && { allowedTools: processedAllowedTools })`
+	 * which drops empty arrays, causing all tools to be available instead of none.
+	 *
+	 * Root cause of CYSTATS-66 hanging: Claude used mcp__linear__create_comment
+	 * during question-answer subroutine (which should have no tools), causing
+	 * error_max_turns which prevented the final response activity from being posted.
+	 */
+	it("CYPACK-744: should pass empty allowedTools array to disable all tools", async () => {
+		const config: ClaudeRunnerConfig = {
+			workingDirectory: "/test",
+			allowedTools: [], // Empty array - intended to disable ALL tools
+			cyrusHome: "/test/cyrus",
+		};
+
+		// Mock the query to capture arguments and return a session ID message
+		queryMock.mockImplementation(async function* (_args: any) {
+			yield {
+				type: "system",
+				role: "session_info",
+				content: {
+					session_id: "test-session",
+				},
+			};
+		});
+
+		const runner = new ClaudeRunner(config);
+		await runner.start("Test prompt");
+
+		// Check that query was called
+		expect(queryMock).toHaveBeenCalledTimes(1);
+		const callArgs = queryMock.mock.calls[0][0];
+
+		expect(callArgs.options).toBeDefined();
+		// BUG: Empty allowedTools array should be passed to disable all tools,
+		// but currently it's being dropped due to falsy check
+		// This should be an empty array [], not undefined
+		expect(callArgs.options.allowedTools).toEqual([]);
+	});
+
 	it("should log disallowedTools when configured", async () => {
 		const consoleSpy = vi.spyOn(console, "log");
 
