@@ -374,6 +374,21 @@ export class GitService {
 				stdio: "pipe",
 			});
 
+			// Configure git user for the worktree to use cyrusagent GitHub user
+			// This ensures all commits in this worktree are attributed to the Cyrus agent
+			this.logger.info("Configuring git user for worktree...");
+			execSync('git config user.name "cyrusagent"', {
+				cwd: workspacePath,
+				stdio: "pipe",
+			});
+			execSync(
+				'git config user.email "208047790+cyrusagent@users.noreply.github.com"',
+				{
+					cwd: workspacePath,
+					stdio: "pipe",
+				},
+			);
+
 			// Copy files specified in .worktreeinclude that are also in .gitignore
 			// This runs before setup scripts so they can access these files
 			await this.worktreeIncludeService.copyIgnoredFiles(
