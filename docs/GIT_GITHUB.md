@@ -6,13 +6,12 @@ Cyrus uses your local Git and GitHub CLI (`gh`) authentication to create commits
 
 ## Understanding Permissions
 
-**Important:** Cyrus operates with the same permissions as your authenticated Git and GitHub CLI user.
+**Important:** Cyrus operates with the same permissions as your authenticated GitHub CLI user for repository access.
 
 When Cyrus creates commits and PRs:
-- All commits are attributed to your Git user (`git config user.name` and `user.email`)
-- All PRs are created under your GitHub account
+- All commits are attributed to the `cyrusagent` GitHub user ([github.com/cyrusagent](https://github.com/cyrusagent))
+- All PRs are created under your GitHub account (using `gh` CLI authentication)
 - Your repository access permissions apply to all operations
-- The only indication that Claude assisted is the "Co-Authored-By" commit trailer
 
 This means Cyrus can access any repository your authenticated user can access. Configure authentication carefully based on what repositories you want Cyrus to work with.
 
@@ -20,12 +19,11 @@ This means Cyrus can access any repository your authenticated user can access. C
 
 ## Git Configuration
 
-Configure Git with your identity:
+Cyrus automatically configures git user settings within each worktree it creates. Commits will be attributed to:
+- **User:** `cyrusagent`
+- **Email:** `208047790+cyrusagent@users.noreply.github.com`
 
-```bash
-git config --global user.name "Your Name"
-git config --global user.email "your.email@example.com"
-```
+This allows you to mention `@cyrusagent` on GitHub PRs and enables proper attribution of AI-assisted commits.
 
 ### SSH Authentication (Recommended)
 
@@ -97,4 +95,4 @@ gh auth status
 - **Use a dedicated account** for Cyrus if you want to limit its access
 - **Repository access** is determined by your SSH key and GitHub token permissions
 - **Review permissions** before adding repositories to Cyrus
-- **Audit commits** - all Cyrus commits include the "Co-Authored-By" trailer for traceability
+- **Audit commits** - all Cyrus commits are attributed to the `cyrusagent` GitHub user for easy identification

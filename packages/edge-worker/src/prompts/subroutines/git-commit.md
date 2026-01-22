@@ -22,6 +22,7 @@ Changelog updates are complete (with PR link included). Now commit all changes a
 - **Include changelog updates** - the changelog (with PR link) was updated in the previous subroutine
 - **Do NOT touch the changelog content** - changelog updates were handled in the previous subroutine
 - **Draft PR already exists** - pushing will update it
+- **Do NOT add "Co-Authored-By" trailers** - the git user is already configured to attribute commits to Cyrus
 - Take as many turns as needed to complete these tasks
 
 ## Expected Output

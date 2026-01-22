@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Commits attributed to cyrusagent GitHub user** - All commits made by Cyrus are now attributed to the `cyrusagent` GitHub user instead of using Co-Authored-By trailers. This enables `@cyrusagent` mentions on GitHub PRs and provides cleaner commit attribution. ([CYPACK-745](https://linear.app/ceedar/issue/CYPACK-745), [#790](https://github.com/ceedaragents/cyrus/pull/790))
+
 ### Improved
 - **Better Cloudflare tunnel error messages** - When the Cloudflare tunnel fails to connect, Cyrus now provides detailed troubleshooting guidance including common causes (firewall, VPN, proxy issues) and links to connectivity prechecks documentation. This helps users quickly identify and resolve network configuration issues preventing tunnel establishment. ([CYPACK-743](https://linear.app/ceedar/issue/CYPACK-743), [#788](https://github.com/ceedaragents/cyrus/pull/788))
 
