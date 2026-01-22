@@ -52,7 +52,7 @@
 		}
 	},
 	"lint-staged": {
-		"*.{js,jsx,ts,tsx,json,md}": [
+		"*.{js,jsx,ts,tsx,json}": [
 			"biome check --write --unsafe"
 		]
 	}
