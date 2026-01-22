@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **GitHub MCP server integration** - Added first-party support for the GitHub MCP server, giving Cyrus access to GitHub tools for creating, updating, and watching PRs. Configure by adding a `githubToken` to your repository configuration. ([CYPACK-748](https://linear.app/ceedar/issue/CYPACK-748), [#794](https://github.com/ceedaragents/cyrus/pull/794))
 - **User access control** - Added the ability to whitelist or blacklist Linear users from delegating issues to Cyrus. Supports blocking specific users by Linear ID or email address, allowing only specific users (allowlist mode blocks everyone not explicitly listed), configurable block behavior (silent ignore or post comment), and template variables in block messages. Blocklist is additive (global + repo), while allowlist overrides (repo replaces global). Thanks to [@tjorri](https://github.com/tjorri) for the contribution! ([#779](https://github.com/ceedaragents/cyrus/pull/779))
 
 ### Improved

@@ -4585,6 +4585,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}),
 		};
 
+		// Add GitHub MCP server if token is configured
+		// https://github.com/github/github-mcp-server
+		if (repository.githubToken) {
+			mcpConfig.github = {
+				type: "http",
+				url: "https://api.githubcopilot.com/mcp/",
+				headers: {
+					Authorization: `Bearer ${repository.githubToken}`,
+				},
+			};
+
+			console.log(
+				`[EdgeWorker] Configured GitHub MCP server for repository: ${repository.name}`,
+			);
+		}
+
 		// Add OpenAI-based MCP servers if API key is configured
 		if (repository.openaiApiKey) {
 			// Sora video generation tools
