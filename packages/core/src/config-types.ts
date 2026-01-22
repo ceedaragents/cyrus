@@ -54,6 +54,9 @@ export interface RepositoryConfig {
 	routingLabels?: string[]; // Linear labels for routing issues to this repository (e.g., ["backend", "api"])
 	projectKeys?: string[]; // Linear project names for routing (e.g., ["Mobile App", "API"])
 
+	// GitHub configuration
+	githubToken?: string; // GitHub Personal Access Token for GitHub MCP server (enables PR/issue tools)
+
 	// Workspace configuration
 	workspaceBaseDir: string; // Where to create issue workspaces for this repo
 
