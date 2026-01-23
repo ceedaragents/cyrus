@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 ### Improved
 - **Better Cloudflare tunnel error messages** - When the Cloudflare tunnel fails to connect, Cyrus now provides detailed troubleshooting guidance including common causes (firewall, VPN, proxy issues) and links to connectivity prechecks documentation. This helps users quickly identify and resolve network configuration issues preventing tunnel establishment. ([CYPACK-743](https://linear.app/ceedar/issue/CYPACK-743), [#788](https://github.com/ceedaragents/cyrus/pull/788))
 
+### Dependencies
+- **Updated Claude Agent SDK** - Updated `@anthropic-ai/claude-agent-sdk` from 0.2.7 to 0.2.17, bringing notification hook support, `close()` method for Query interface, and parity with Claude Code v2.1.17. See [Claude Agent SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0217-2026-01-23) for full details. (CYPACK-750, #TBD)
+
 ## [0.2.15] - 2026-01-16
 
 ### Added
