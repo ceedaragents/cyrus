@@ -9,8 +9,12 @@ import type { Issue } from "./issue-tracker/types.js";
 // Re-export schemas and types from config-schemas
 export {
 	type EdgeConfig,
+	type EdgeConfigPayload,
+	EdgeConfigPayloadSchema,
 	EdgeConfigSchema,
 	type RepositoryConfig,
+	type RepositoryConfigPayload,
+	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
 	type UserAccessControlConfig,
 	UserAccessControlConfigSchema,

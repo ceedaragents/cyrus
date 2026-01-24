@@ -35,15 +35,19 @@ export type {
 // Configuration types
 export type {
 	EdgeConfig,
+	EdgeConfigPayload,
 	EdgeWorkerConfig,
 	OAuthCallbackHandler,
 	RepositoryConfig,
+	RepositoryConfigPayload,
 	UserAccessControlConfig,
 	UserIdentifier,
 } from "./config-types.js";
 export {
+	EdgeConfigPayloadSchema,
 	// Zod schemas for runtime validation
 	EdgeConfigSchema,
+	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
 	resolvePath,
 	UserAccessControlConfigSchema,
