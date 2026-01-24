@@ -122,7 +122,7 @@ export interface RepositoryConfig {
  * be persisted to config.json.
  */
 export interface EdgeWorkerRuntimeConfig {
-	/** Cyrus CLI version (e.g., "1.2.3"), used in /health endpoint */
+	/** Cyrus CLI version (e.g., "1.2.3"), used in /version endpoint */
 	version?: string;
 
 	/** Cyrus home directory - required at runtime */
