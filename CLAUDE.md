@@ -63,6 +63,21 @@ The F1 (Formula 1) testing framework provides a controlled environment to test C
 
 CRITICAL: you must use the f1 test drive protocol during the 'testing and validation' stage of any major work undertaking. You CAN also use it in development situations where you want to test drive the version of the product that you're working on.
 
+## Linear Webhooks Reference
+
+Cyrus processes Linear webhooks to respond to events like issue assignments, user prompts, and issue updates. The Linear SDK and webhook schemas are documented at:
+
+- **EntityWebhookPayload**: https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+- **DataWebhookPayload**: https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/unions/DataWebhookPayload
+- **IssueWebhookPayload**: https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/IssueWebhookPayload
+
+Key webhook types handled:
+- `AgentSessionEvent` (created/prompted) - When issues are assigned to Cyrus or users send prompts
+- `AppUserNotification` (issueUnassignedFromYou) - When issues are unassigned
+- `Issue` (update with title/description changes) - When issue title or description is modified
+
+The `EntityWebhookPayload` contains an `updatedFrom` field that holds previous values of changed properties, enabling Cyrus to detect what changed and compare old vs new values.
+
 ## Working with SDKs
 
 When examining or working with a package SDK:

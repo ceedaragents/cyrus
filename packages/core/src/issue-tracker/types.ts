@@ -784,12 +784,42 @@ export type IssueUnassignedWebhook =
 	LinearSDK.LinearDocument.AppUserNotificationWebhookPayload;
 
 /**
+ * Platform-agnostic issue update webhook payload.
+ * Maps to Linear SDK's EntityWebhookPayload with issue-specific data.
+ *
+ * This type is used for Issue update webhooks that include:
+ * - `type`: "Issue"
+ * - `action`: "create" | "update" | "remove"
+ * - `data`: IssueWebhookPayload (current issue state)
+ * - `updatedFrom`: JSON object with previous values of changed fields
+ *
+ * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+ * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/unions/DataWebhookPayload
+ * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/IssueWebhookPayload
+ */
+export type IssueUpdateWebhook =
+	LinearSDK.LinearDocument.EntityWebhookPayload & {
+		type: "Issue";
+		action: "update";
+		data: LinearSDK.LinearDocument.IssueWebhookPayload;
+		/** Previous values of updated properties. Contains `title`, `description`, and/or `attachments` when those fields changed. */
+		updatedFrom?: {
+			title?: string;
+			description?: string;
+			/** Serialized JSON of previous attachments state */
+			attachments?: unknown;
+			[key: string]: unknown;
+		};
+	};
+
+/**
  * Platform-agnostic union of all webhook types.
  * Maps to Linear SDK's webhook payload union types.
  */
 export type Webhook =
 	| LinearSDK.LinearDocument.AgentSessionEventWebhookPayload
-	| LinearSDK.LinearDocument.AppUserNotificationWebhookPayload;
+	| LinearSDK.LinearDocument.AppUserNotificationWebhookPayload
+	| LinearSDK.LinearDocument.EntityWebhookPayload;
 
 /**
  * Platform-agnostic guidance rule type.
@@ -860,6 +890,42 @@ export function isIssueUnassignedWebhook(
 	return (
 		webhook.type === "AppUserNotification" &&
 		webhook.action === "issueUnassignedFromYou"
+	);
+}
+
+/**
+ * Type guard to check if webhook is an issue update with title, description, or attachments changes.
+ *
+ * This identifies Issue entity webhooks where the `updatedFrom` field contains
+ * previous values for `title`, `description`, and/or `attachments` fields, indicating these
+ * fields were modified. Other field changes (like status, assignee, etc.) are ignored.
+ *
+ * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+ * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/IssueWebhookPayload
+ */
+export function isIssueTitleOrDescriptionUpdateWebhook(
+	webhook: Webhook,
+): webhook is IssueUpdateWebhook {
+	if (webhook.type !== "Issue" || webhook.action !== "update") {
+		return false;
+	}
+
+	// Check if updatedFrom contains title, description, or attachments changes
+	const entityWebhook =
+		webhook as LinearSDK.LinearDocument.EntityWebhookPayload;
+	const updatedFrom = entityWebhook.updatedFrom as
+		| { title?: string; description?: string; attachments?: unknown }
+		| undefined;
+
+	if (!updatedFrom) {
+		return false;
+	}
+
+	// Only return true if title, description, or attachments was changed (not other fields)
+	return (
+		"title" in updatedFrom ||
+		"description" in updatedFrom ||
+		"attachments" in updatedFrom
 	);
 }
 

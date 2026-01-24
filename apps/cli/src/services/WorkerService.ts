@@ -211,9 +211,6 @@ export class WorkerService {
 			ngrokAuthToken,
 			// User access control configuration
 			userAccessControl: edgeConfig.userAccessControl,
-			features: {
-				enableContinuation: true,
-			},
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,

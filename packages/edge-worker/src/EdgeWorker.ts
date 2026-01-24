@@ -36,6 +36,7 @@ import type {
 	Issue,
 	IssueMinimal,
 	IssueUnassignedWebhook,
+	IssueUpdateWebhook,
 	RepositoryConfig,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
@@ -54,6 +55,7 @@ import {
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
+	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 	resolvePath,
@@ -1025,6 +1027,9 @@ export class EdgeWorker extends EventEmitter {
 				defaultDisallowedTools:
 					parsedConfig.defaultDisallowedTools ||
 					this.config.defaultDisallowedTools,
+				// Issue update trigger: use parsed value if explicitly set, otherwise keep current or default to true
+				issueUpdateTrigger:
+					parsedConfig.issueUpdateTrigger ?? this.config.issueUpdateTrigger,
 			};
 
 			// Basic validation
@@ -1421,6 +1426,9 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleAgentSessionCreatedWebhook(webhook, repos);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPromptedAgentActivity(webhook);
+			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
+				// Handle issue title/description/attachments updates - feed changes into active session
+				await this.handleIssueContentUpdate(webhook);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					console.log(
@@ -1475,6 +1483,286 @@ export class EdgeWorker extends EventEmitter {
 		// console.log('=== END WEBHOOK PAYLOAD ===')
 
 		await this.handleIssueUnassigned(webhook.notification.issue, repository);
+	}
+
+	/**
+	 * Handle issue content update webhook (title, description, or attachments).
+	 *
+	 * When the title, description, or attachments of an issue are updated, this handler feeds
+	 * the changes into any active session for that issue, allowing the AI to
+	 * compare old vs new values and decide whether to take action.
+	 *
+	 * The prompt uses XML-style formatting to clearly show what changed:
+	 * - <issue_update> wrapper with timestamp and issue identifier
+	 * - <title_change> with <old_title> and <new_title> if title changed
+	 * - <description_change> with <old_description> and <new_description> if description changed
+	 * - <attachments_change> with <old_attachments> and <new_attachments> if attachments changed
+	 * - <guidance> section instructing the agent to evaluate whether changes affect its work
+	 *
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/IssueWebhookPayload
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/unions/DataWebhookPayload
+	 */
+	private async handleIssueContentUpdate(
+		webhook: IssueUpdateWebhook,
+	): Promise<void> {
+		// Check if issue update trigger is enabled (defaults to true if not set)
+		if (this.config.issueUpdateTrigger === false) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					"[EdgeWorker] Issue update trigger is disabled, skipping issue content update",
+				);
+			}
+			return;
+		}
+
+		const issueData = webhook.data;
+		const issueId = issueData.id;
+		const issueIdentifier = issueData.identifier;
+		const updatedFrom = webhook.updatedFrom;
+
+		if (!updatedFrom) {
+			console.warn(
+				`[EdgeWorker] Issue update webhook for ${issueIdentifier} has no updatedFrom data`,
+			);
+			return;
+		}
+
+		// Get cached repository (updates should only be processed for issues with active sessions)
+		const repository = this.getCachedRepository(issueId);
+		if (!repository) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					`[EdgeWorker] No cached repository for issue update webhook ${issueIdentifier} (no active sessions to notify)`,
+				);
+			}
+			return;
+		}
+
+		// Determine what changed for logging
+		const changedFields: string[] = [];
+		if ("title" in updatedFrom) changedFields.push("title");
+		if ("description" in updatedFrom) changedFields.push("description");
+		if ("attachments" in updatedFrom) changedFields.push("attachments");
+
+		console.log(
+			`[EdgeWorker] Handling issue content update: ${issueIdentifier} (changed: ${changedFields.join(", ")})`,
+		);
+
+		// Get agent session manager for this repository
+		const agentSessionManager = this.agentSessionManagers.get(repository.id);
+		if (!agentSessionManager) {
+			console.log(
+				`[EdgeWorker] No agent session manager for repository ${repository.id}`,
+			);
+			return;
+		}
+
+		// Find session(s) for this issue (may be running or paused between subroutines)
+		const sessions = agentSessionManager.getSessionsByIssueId(issueId);
+		if (sessions.length === 0) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					`[EdgeWorker] No sessions found for issue ${issueIdentifier} to receive update`,
+				);
+			}
+			return;
+		}
+
+		// Process attachments from the updated description if description changed
+		let attachmentManifest = "";
+		if ("description" in updatedFrom && issueData.description) {
+			const firstSession = sessions[0];
+			if (!firstSession) {
+				console.log(
+					`[EdgeWorker] No sessions found for issue ${issueIdentifier}`,
+				);
+				return;
+			}
+			const workspaceFolderName = basename(firstSession.workspace.path);
+			const attachmentsDir = join(
+				this.cyrusHome,
+				workspaceFolderName,
+				"attachments",
+			);
+
+			try {
+				// Ensure directory exists
+				await mkdir(attachmentsDir, { recursive: true });
+
+				// Count existing attachments
+				const existingFiles = await readdir(attachmentsDir).catch(() => []);
+				const existingAttachmentCount = existingFiles.filter(
+					(file) => file.startsWith("attachment_") || file.startsWith("image_"),
+				).length;
+
+				// Download attachments from the new description
+				const downloadResult = await this.downloadCommentAttachments(
+					issueData.description,
+					attachmentsDir,
+					repository.linearToken,
+					existingAttachmentCount,
+				);
+
+				if (downloadResult.totalNewAttachments > 0) {
+					attachmentManifest =
+						this.generateNewAttachmentManifest(downloadResult);
+					console.log(
+						`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} attachments from updated description`,
+					);
+				}
+			} catch (error) {
+				console.error(
+					"[EdgeWorker] Failed to process attachments from updated description:",
+					error,
+				);
+			}
+		}
+
+		// Build the XML-formatted prompt showing old vs new values
+		const promptBody = this.buildIssueUpdatePrompt(
+			issueIdentifier,
+			issueData,
+			updatedFrom,
+		);
+
+		// Feed the update into each active session
+		for (const session of sessions) {
+			const linearAgentActivitySessionId = session.linearAgentActivitySessionId;
+
+			// Check if runner is actively running and supports streaming input
+			const existingRunner = session.agentRunner;
+			const isRunning = existingRunner?.isRunning() || false;
+
+			// Combine prompt body with attachment manifest
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
+			if (
+				isRunning &&
+				existingRunner?.supportsStreamingInput &&
+				existingRunner.addStreamMessage
+			) {
+				// Add to existing stream
+				console.log(
+					`[EdgeWorker] Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
+				);
+				existingRunner.addStreamMessage(fullPrompt);
+			} else if (isRunning) {
+				// Runner is running but doesn't support streaming input - log and skip
+				console.log(
+					`[EdgeWorker] Session ${linearAgentActivitySessionId} is running but doesn't support streaming input, skipping issue update`,
+				);
+			} else {
+				// Session exists but runner is not running - resume with the update
+				console.log(
+					`[EdgeWorker] Resuming session ${linearAgentActivitySessionId} with issue update`,
+				);
+
+				await this.handlePromptWithStreamingCheck(
+					session,
+					repository,
+					linearAgentActivitySessionId,
+					agentSessionManager,
+					promptBody,
+					attachmentManifest,
+					false, // Not a new session
+					[], // No additional allowed directories
+					"issue content update",
+					undefined, // No comment author
+					undefined, // No comment timestamp
+				);
+			}
+		}
+	}
+
+	/**
+	 * Build an XML-formatted prompt for issue content updates (title, description, attachments).
+	 *
+	 * The prompt clearly shows what fields changed by comparing old vs new values,
+	 * and includes guidance for the agent to evaluate whether these changes affect
+	 * its current implementation or action plan.
+	 */
+	private buildIssueUpdatePrompt(
+		issueIdentifier: string,
+		issueData: {
+			title: string;
+			description?: string | null;
+			attachments?: unknown;
+		},
+		updatedFrom: {
+			title?: string;
+			description?: string;
+			attachments?: unknown;
+		},
+	): string {
+		const timestamp = new Date().toISOString();
+		const parts: string[] = [];
+
+		parts.push(`<issue_update>`);
+		parts.push(`  <identifier>${issueIdentifier}</identifier>`);
+		parts.push(`  <timestamp>${timestamp}</timestamp>`);
+
+		// Add title change if title was updated
+		if ("title" in updatedFrom) {
+			parts.push(`  <title_change>`);
+			parts.push(`    <old_title>${updatedFrom.title ?? ""}</old_title>`);
+			parts.push(`    <new_title>${issueData.title}</new_title>`);
+			parts.push(`  </title_change>`);
+		}
+
+		// Add description change if description was updated
+		if ("description" in updatedFrom) {
+			parts.push(`  <description_change>`);
+			parts.push(
+				`    <old_description>${updatedFrom.description ?? ""}</old_description>`,
+			);
+			parts.push(
+				`    <new_description>${issueData.description ?? ""}</new_description>`,
+			);
+			parts.push(`  </description_change>`);
+		}
+
+		// Add attachments change if attachments were updated
+		if ("attachments" in updatedFrom) {
+			parts.push(`  <attachments_change>`);
+			parts.push(
+				`    <old_attachments>${JSON.stringify(updatedFrom.attachments ?? null)}</old_attachments>`,
+			);
+			parts.push(
+				`    <new_attachments>${JSON.stringify(issueData.attachments ?? null)}</new_attachments>`,
+			);
+			parts.push(`  </attachments_change>`);
+		}
+
+		parts.push(`</issue_update>`);
+
+		// Add guidance for the agent on how to respond to this update
+		parts.push(``);
+		parts.push(`<guidance>`);
+		parts.push(
+			`  The issue has been updated while you are working on it. Please evaluate whether these changes`,
+		);
+		parts.push(
+			`  affect your current implementation or action plan. Consider the following:`,
+		);
+		parts.push(
+			`  - Does the updated content change the requirements or scope of your work?`,
+		);
+		parts.push(
+			`  - Are there new details, clarifications, or attachments that should inform your approach?`,
+		);
+		parts.push(
+			`  - Should you adjust your implementation strategy based on this update?`,
+		);
+		parts.push(
+			`  If the changes are relevant, incorporate them into your work. If not, you may continue as planned.`,
+		);
+		parts.push(`</guidance>`);
+
+		return parts.join("\n");
 	}
 
 	/**
@@ -3586,10 +3874,8 @@ ${reply.body}
 		);
 
 		try {
-			// Use custom template if provided (repository-specific takes precedence)
-			let templatePath =
-				repository.promptTemplatePath ||
-				this.config.features?.promptTemplatePath;
+			// Use custom template if provided (repository-specific)
+			let templatePath = repository.promptTemplatePath;
 
 			// If no custom template, use the standard issue assigned user prompt template
 			if (!templatePath) {
