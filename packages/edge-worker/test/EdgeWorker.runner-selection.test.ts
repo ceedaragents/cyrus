@@ -219,6 +219,7 @@ Issue: {{issue_identifier}}`;
 				return mockLinearClient.issue(issueId);
 			}),
 			getIssueLabels: vi.fn(),
+			getClient: vi.fn().mockReturnValue(mockLinearClient),
 		};
 		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
 	});

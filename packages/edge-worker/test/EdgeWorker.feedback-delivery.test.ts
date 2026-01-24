@@ -58,7 +58,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		mockOnSessionCreated = vi.fn();
 
 		// Mock createCyrusToolsServer to return a proper structure
-		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
+		vi.mocked(createCyrusToolsServer).mockImplementation((_client, options) => {
 			// Capture the callbacks
 			if (options?.onFeedbackDelivery) {
 				mockOnFeedbackDelivery = options.onFeedbackDelivery;
@@ -185,6 +185,12 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+
+		// Setup mock issue tracker with getClient method
+		const mockIssueTracker = {
+			getClient: vi.fn().mockReturnValue({}),
+		};
+		(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
 	});
 
 	afterEach(() => {
@@ -449,7 +455,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Verify createCyrusToolsServer was called with correct options
 			expect(createCyrusToolsServer).toHaveBeenCalledWith(
-				mockRepository.linearToken,
+				expect.any(Object), // LinearClient from issueTracker.getClient()
 				expect.objectContaining({
 					parentSessionId,
 					onFeedbackDelivery: expect.any(Function),
