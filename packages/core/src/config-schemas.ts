@@ -202,6 +202,22 @@ export const EdgeConfigSchema = z.object({
 	promptDefaults: PromptDefaultsSchema.optional(),
 });
 
+/**
+ * Payload version of RepositoryConfigSchema for incoming API requests.
+ * Makes workspaceBaseDir optional since the handler applies a default.
+ */
+export const RepositoryConfigPayloadSchema = RepositoryConfigSchema.extend({
+	workspaceBaseDir: z.string().optional(),
+});
+
+/**
+ * Payload version of EdgeConfigSchema for incoming API requests.
+ * Uses RepositoryConfigPayloadSchema which has optional workspaceBaseDir.
+ */
+export const EdgeConfigPayloadSchema = EdgeConfigSchema.extend({
+	repositories: z.array(RepositoryConfigPayloadSchema),
+});
+
 // Infer types from schemas
 export type UserIdentifier = z.infer<typeof UserIdentifierSchema>;
 export type UserAccessControlConfig = z.infer<
@@ -209,3 +225,7 @@ export type UserAccessControlConfig = z.infer<
 >;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
+export type RepositoryConfigPayload = z.infer<
+	typeof RepositoryConfigPayloadSchema
+>;
+export type EdgeConfigPayload = z.infer<typeof EdgeConfigPayloadSchema>;

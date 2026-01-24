@@ -1,4 +1,4 @@
-import { EdgeConfigSchema } from "cyrus-core";
+import { EdgeConfigPayloadSchema } from "cyrus-core";
 import { z } from "zod";
 
 /**
@@ -22,9 +22,11 @@ export interface DeleteRepositoryPayload {
 
 /**
  * Cyrus config update payload schema
- * Extends EdgeConfigSchema with operation flags for the update process
+ * Extends EdgeConfigPayloadSchema with operation flags for the update process.
+ * Uses EdgeConfigPayloadSchema (not EdgeConfigSchema) because incoming payloads
+ * may omit workspaceBaseDir - the handler applies a default value.
  */
-export const CyrusConfigPayloadSchema = EdgeConfigSchema.extend({
+export const CyrusConfigPayloadSchema = EdgeConfigPayloadSchema.extend({
 	restartCyrus: z.boolean().optional(),
 	backupConfig: z.boolean().optional(),
 });
