@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-01-24
+
+### Fixed
+- Fixed configuration schema compatibility issue between cyrus-hosted and local installations. ([#802](https://github.com/ceedaragents/cyrus/pull/802))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.19
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.19
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.19
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.19
+
+#### cyrus-core
+- cyrus-core@0.2.19
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.19
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.19
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.19
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.19
+
 ## [0.2.18] - 2026-01-23
 
 ### Packages
