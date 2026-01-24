@@ -4,8 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-01-23
+
 ### Added
 - **Issue update awareness** - Cyrus now detects when you edit an issue's title, description, or attachments while it's actively working on that issue. The agent receives context showing what changed (old vs new values) along with guidance to evaluate whether the update affects its implementation or action plan. TIP: instead of re-prompting Cyrus in a comment or chat window, just update the issue description with additional acceptance criteria! It will auto-start or adjust course and apply changes. ([CYPACK-736](https://linear.app/ceedar/issue/CYPACK-736), [#782](https://github.com/ceedaragents/cyrus/pull/782))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.17
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.17
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.17
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.17
+
+#### cyrus-core
+- cyrus-core@0.2.17
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.17
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.17
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.17
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.17
 
 ## [0.2.16] - 2026-01-23
 
