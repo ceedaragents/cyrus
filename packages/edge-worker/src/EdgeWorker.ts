@@ -2108,8 +2108,10 @@ export class EdgeWorker extends EventEmitter {
 
 		// Check for graphite label (for graphite-orchestrator combination)
 		const graphiteConfig = repository.labelPrompts?.graphite;
-		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
-		const hasGraphiteLabel = graphiteLabels?.some((label) =>
+		const graphiteLabels = Array.isArray(graphiteConfig)
+			? graphiteConfig
+			: (graphiteConfig?.labels ?? ["graphite"]);
+		const hasGraphiteLabel = graphiteLabels?.some((label: string) =>
 			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
@@ -3091,8 +3093,10 @@ export class EdgeWorker extends EventEmitter {
 
 		// Check for graphite-orchestrator first (requires BOTH graphite AND orchestrator labels)
 		const graphiteConfig = repository.labelPrompts.graphite;
-		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
-		const hasGraphiteLabel = graphiteLabels?.some((label) =>
+		const graphiteLabels = Array.isArray(graphiteConfig)
+			? graphiteConfig
+			: (graphiteConfig?.labels ?? ["graphite"]);
+		const hasGraphiteLabel = graphiteLabels?.some((label: string) =>
 			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
@@ -3759,10 +3763,12 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		repository: RepositoryConfig,
 	): Promise<boolean> {
 		const graphiteConfig = repository.labelPrompts?.graphite;
-		const graphiteLabels = graphiteConfig?.labels ?? ["graphite"];
+		const graphiteLabels = Array.isArray(graphiteConfig)
+			? graphiteConfig
+			: (graphiteConfig?.labels ?? ["graphite"]);
 
 		const issueLabels = await this.fetchIssueLabels(issue);
-		return graphiteLabels.some((label) => issueLabels.includes(label));
+		return graphiteLabels.some((label: string) => issueLabels.includes(label));
 	}
 
 	/**
@@ -5538,12 +5544,16 @@ ${input.userComment}
 
 		// Priority order (same as allowedTools):
 		// 1. Repository-specific prompt type configuration
-		if (
-			effectivePromptType &&
-			repository.labelPrompts?.[effectivePromptType]?.disallowedTools
-		) {
-			disallowedTools =
-				repository.labelPrompts[effectivePromptType].disallowedTools;
+		const promptConfig = effectivePromptType
+			? repository.labelPrompts?.[effectivePromptType]
+			: undefined;
+		// Only access disallowedTools if config is object form (not simple string[])
+		const promptDisallowedTools =
+			promptConfig && !Array.isArray(promptConfig)
+				? promptConfig.disallowedTools
+				: undefined;
+		if (promptDisallowedTools) {
+			disallowedTools = promptDisallowedTools;
 			toolSource = `repository label prompt (${effectivePromptType})`;
 		}
 		// 2. Global prompt type defaults
@@ -5630,13 +5640,16 @@ ${input.userComment}
 
 		// Priority order:
 		// 1. Repository-specific prompt type configuration
-		if (
-			effectivePromptType &&
-			repository.labelPrompts?.[effectivePromptType]?.allowedTools
-		) {
-			baseTools = this.resolveToolPreset(
-				repository.labelPrompts[effectivePromptType].allowedTools,
-			);
+		const promptConfig = effectivePromptType
+			? repository.labelPrompts?.[effectivePromptType]
+			: undefined;
+		// Only access allowedTools if config is object form (not simple string[])
+		const promptAllowedTools =
+			promptConfig && !Array.isArray(promptConfig)
+				? promptConfig.allowedTools
+				: undefined;
+		if (promptAllowedTools) {
+			baseTools = this.resolveToolPreset(promptAllowedTools);
 			toolSource = `repository label prompt (${effectivePromptType})`;
 		}
 		// 2. Global prompt type defaults

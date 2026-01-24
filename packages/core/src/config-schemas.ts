@@ -58,20 +58,34 @@ const ToolRestrictionSchema = z.union([
 ]);
 
 /**
- * Label prompt configuration with optional tool restrictions
+ * Label prompt configuration with optional tool restrictions.
+ * Accepts either:
+ * - Simple form: string[] (e.g., ["Bug", "Fix"])
+ * - Complex form: { labels: string[], allowedTools?: ..., disallowedTools?: ... }
  */
-const LabelPromptConfigSchema = z.object({
-	labels: z.array(z.string()),
-	allowedTools: ToolRestrictionSchema.optional(),
-	disallowedTools: z.array(z.string()).optional(),
-});
+const LabelPromptConfigSchema = z.union([
+	// Simple form: just an array of label strings
+	z.array(z.string()),
+	// Complex form: object with labels and optional tool restrictions
+	z.object({
+		labels: z.array(z.string()),
+		allowedTools: ToolRestrictionSchema.optional(),
+		disallowedTools: z.array(z.string()).optional(),
+	}),
+]);
 
 /**
- * Graphite label configuration (labels only, no tool restrictions)
+ * Graphite label configuration (labels only, no tool restrictions).
+ * Accepts either:
+ * - Simple form: string[] (e.g., ["Bug", "Fix"])
+ * - Complex form: { labels: string[] }
  */
-const GraphiteLabelConfigSchema = z.object({
-	labels: z.array(z.string()),
-});
+const GraphiteLabelConfigSchema = z.union([
+	z.array(z.string()),
+	z.object({
+		labels: z.array(z.string()),
+	}),
+]);
 
 /**
  * Label-based system prompt configuration
