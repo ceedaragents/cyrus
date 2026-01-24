@@ -41,7 +41,14 @@ export type {
 	UserAccessControlConfig,
 	UserIdentifier,
 } from "./config-types.js";
-export { resolvePath } from "./config-types.js";
+export {
+	// Zod schemas for runtime validation
+	EdgeConfigSchema,
+	RepositoryConfigSchema,
+	resolvePath,
+	UserAccessControlConfigSchema,
+	UserIdentifierSchema,
+} from "./config-types.js";
 
 // Constants
 export {
