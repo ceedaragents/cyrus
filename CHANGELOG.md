@@ -4,11 +4,42 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-01-23
+
 ### Added
 - **User access control** - Added the ability to whitelist or blacklist Linear users from delegating issues to Cyrus. Supports blocking specific users by Linear ID or email address, allowing only specific users (allowlist mode blocks everyone not explicitly listed), configurable block behavior (silent ignore or post comment), and template variables in block messages. Blocklist is additive (global + repo), while allowlist overrides (repo replaces global). Thanks to [@tjorri](https://github.com/tjorri) for the contribution! ([#779](https://github.com/ceedaragents/cyrus/pull/779))
 
 ### Improved
 - **Better Cloudflare tunnel error messages** - When the Cloudflare tunnel fails to connect, Cyrus now provides detailed troubleshooting guidance including common causes (firewall, VPN, proxy issues) and links to connectivity prechecks documentation. This helps users quickly identify and resolve network configuration issues preventing tunnel establishment. ([CYPACK-743](https://linear.app/ceedar/issue/CYPACK-743), [#788](https://github.com/ceedaragents/cyrus/pull/788))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.16
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.16
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.16
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.16
+
+#### cyrus-core
+- cyrus-core@0.2.16
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.16
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.16
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.16
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.16
 
 ## [0.2.15] - 2026-01-16
 
