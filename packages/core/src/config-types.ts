@@ -353,16 +353,4 @@ export interface EdgeConfig {
 			disallowedTools?: string[];
 		};
 	};
-
-	/** Optional features (can be overridden per repository) */
-	features?: {
-		/** Support --continue flag (default: true) */
-		enableContinuation?: boolean;
-		/** Auto-handle token limits (default: true) */
-		enableTokenLimitHandling?: boolean;
-		/** Download issue attachments (default: false) */
-		enableAttachmentDownload?: boolean;
-		/** Path to custom prompt template */
-		promptTemplatePath?: string;
-	};
 }

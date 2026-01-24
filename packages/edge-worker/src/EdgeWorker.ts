@@ -3874,10 +3874,8 @@ ${reply.body}
 		);
 
 		try {
-			// Use custom template if provided (repository-specific takes precedence)
-			let templatePath =
-				repository.promptTemplatePath ||
-				this.config.features?.promptTemplatePath;
+			// Use custom template if provided (repository-specific)
+			let templatePath = repository.promptTemplatePath;
 
 			// If no custom template, use the standard issue assigned user prompt template
 			if (!templatePath) {

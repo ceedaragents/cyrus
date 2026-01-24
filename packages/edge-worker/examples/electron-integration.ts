@@ -109,13 +109,6 @@ export async function createElectronEdgeWorker(
 				}
 			},
 		},
-
-		// Default features for Electron
-		features: {
-			enableContinuation: true,
-			enableTokenLimitHandling: true,
-			enableAttachmentDownload: true, // Download attachments for preview
-		},
 	});
 
 	// Listen for renderer requests
