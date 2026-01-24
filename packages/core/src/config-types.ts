@@ -115,22 +115,41 @@ export interface RepositoryConfig {
 }
 
 /**
- * Configuration for the EdgeWorker supporting multiple repositories
+ * Runtime-only configuration fields for EdgeWorker.
+ *
+ * These fields are NOT serializable to JSON and are only available at runtime.
+ * They include callbacks, handlers, and runtime-specific settings that cannot
+ * be persisted to config.json.
  */
-export interface EdgeWorkerConfig {
-	// CLI version info
-	version?: string; // Cyrus CLI version (e.g., "1.2.3"), used in /health endpoint
+export interface EdgeWorkerRuntimeConfig {
+	/** Cyrus CLI version (e.g., "1.2.3"), used in /health endpoint */
+	version?: string;
 
-	// Proxy connection config
-	proxyUrl?: string; // Optional - defaults to DEFAULT_PROXY_URL for OAuth flows
+	/** Cyrus home directory - required at runtime */
+	cyrusHome: string;
+
+	// --- Server/Network Configuration (runtime-specific) ---
+
+	/** Optional proxy URL - defaults to DEFAULT_PROXY_URL for OAuth flows */
+	proxyUrl?: string;
+
+	/** Base URL for the server */
 	baseUrl?: string;
-	webhookBaseUrl?: string; // Legacy support - use baseUrl instead
-	webhookPort?: number; // Legacy support - now uses serverPort
-	serverPort?: number; // Unified server port for both webhooks and OAuth callbacks (default: 3456)
-	serverHost?: string; // Server host address ('localhost' or '0.0.0.0', default: 'localhost')
-	ngrokAuthToken?: string; // Ngrok auth token for tunnel creation
 
-	// Issue tracker platform configuration
+	/** @deprecated Use baseUrl instead */
+	webhookBaseUrl?: string;
+
+	/** @deprecated Use serverPort instead */
+	webhookPort?: number;
+
+	/** Unified server port for both webhooks and OAuth callbacks (default: 3456) */
+	serverPort?: number;
+
+	/** Server host address ('localhost' or '0.0.0.0', default: 'localhost') */
+	serverHost?: string;
+
+	// --- Platform Configuration ---
+
 	/**
 	 * Issue tracker platform type (default: "linear")
 	 * - "linear": Uses Linear as the issue tracker (default production mode)
@@ -138,107 +157,82 @@ export interface EdgeWorkerConfig {
 	 */
 	platform?: "linear" | "cli";
 
-	// Linear configuration (global)
-	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
+	// --- Agent Configuration (for CLI mode) ---
 
-	// Claude config (shared across all repos)
-	defaultAllowedTools?: string[];
-	defaultDisallowedTools?: string[]; // Tools to explicitly disallow across all repositories (no defaults)
-	defaultModel?: string; // Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku")
-	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
+	/** The name/handle the agent responds to (e.g., "john", "cyrus") */
+	agentHandle?: string;
 
-	// Global defaults for prompt types
-	promptDefaults?: {
-		debugger?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		builder?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		scoper?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		orchestrator?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-		"graphite-orchestrator"?: {
-			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
-			disallowedTools?: string[];
-		};
-	};
+	/** The user ID of the agent (for CLI mode) */
+	agentUserId?: string;
 
-	// Repository configurations
-	repositories: RepositoryConfig[];
+	// --- Runtime Handlers (non-serializable callbacks) ---
 
-	// Cyrus home directory
-	cyrusHome: string;
-
-	// Agent configuration (for CLI mode)
-	agentHandle?: string; // The name/handle the agent responds to (e.g., "john", "cyrus")
-	agentUserId?: string; // The user ID of the agent (for CLI mode)
-
-	// Optional handlers that apps can implement
+	/**
+	 * Optional handlers that apps can implement.
+	 * These are callback functions that cannot be serialized to JSON.
+	 */
 	handlers?: {
-		// Called when workspace needs to be created
-		// Now includes repository context
+		/** Called when workspace needs to be created. Includes repository context. */
 		createWorkspace?: (
 			issue: Issue,
 			repository: RepositoryConfig,
 		) => Promise<Workspace>;
 
-		// Called with Claude messages (for UI updates, logging, etc)
-		// Now includes repository ID
+		/** Called with Claude messages (for UI updates, logging, etc). Includes repository ID. */
 		onClaudeMessage?: (
 			issueId: string,
 			message: SDKMessage,
 			repositoryId: string,
 		) => void;
 
-		// Called when session starts/ends
-		// Now includes repository ID
+		/** Called when session starts. Includes repository ID. */
 		onSessionStart?: (
 			issueId: string,
 			issue: Issue,
 			repositoryId: string,
 		) => void;
+
+		/** Called when session ends. Includes repository ID. */
 		onSessionEnd?: (
 			issueId: string,
 			exitCode: number | null,
 			repositoryId: string,
 		) => void;
 
-		// Called on errors
-		onError?: (error: Error, context?: any) => void;
+		/** Called on errors */
+		onError?: (error: Error, context?: unknown) => void;
 
-		// Called when OAuth callback is received
+		/** Called when OAuth callback is received */
 		onOAuthCallback?: OAuthCallbackHandler;
 	};
-
-	// Optional features (can be overridden per repository)
-	features?: {
-		enableContinuation?: boolean; // Support --continue flag (default: true)
-		enableTokenLimitHandling?: boolean; // Auto-handle token limits (default: true)
-		enableAttachmentDownload?: boolean; // Download issue attachments (default: false)
-		promptTemplatePath?: string; // Path to custom prompt template
-	};
-
-	/**
-	 * Whether to trigger agent sessions when issue title, description, or attachments are updated.
-	 * When enabled, the agent receives context showing what changed (old vs new values).
-	 * Defaults to true if not specified.
-	 */
-	issueUpdateTrigger?: boolean;
-
-	/**
-	 * Global user access control settings.
-	 * Applied to all repositories unless overridden.
-	 */
-	userAccessControl?: UserAccessControlConfig;
 }
+
+/**
+ * Configuration for the EdgeWorker supporting multiple repositories.
+ *
+ * This is the complete runtime configuration that combines:
+ * - EdgeConfig: Serializable settings from ~/.cyrus/config.json
+ * - EdgeWorkerRuntimeConfig: Runtime-only fields (callbacks, handlers, server config)
+ *
+ * The separation exists because EdgeConfig can be persisted to disk as JSON,
+ * while EdgeWorkerRuntimeConfig contains callback functions and other
+ * non-serializable runtime state that must be provided programmatically.
+ *
+ * @example
+ * // EdgeConfig is loaded from config.json
+ * const fileConfig: EdgeConfig = JSON.parse(fs.readFileSync('config.json'));
+ *
+ * // EdgeWorkerConfig adds runtime handlers
+ * const runtimeConfig: EdgeWorkerConfig = {
+ *   ...fileConfig,
+ *   cyrusHome: '/home/user/.cyrus',
+ *   handlers: {
+ *     onSessionStart: (issueId, issue, repoId) => console.log('Started'),
+ *     onError: (error) => console.error(error),
+ *   },
+ * };
+ */
+export type EdgeWorkerConfig = EdgeConfig & EdgeWorkerRuntimeConfig;
 
 /**
  * User identifier for access control matching.
@@ -286,16 +280,43 @@ export interface UserAccessControlConfig {
 }
 
 /**
- * Edge configuration containing all repositories and global settings
+ * Edge configuration - the serializable configuration stored in ~/.cyrus/config.json
+ *
+ * This interface defines all settings that can be persisted to disk.
+ * It contains global settings that apply across all repositories,
+ * plus the array of repository-specific configurations.
+ *
+ * For runtime configuration that includes non-serializable callbacks,
+ * see EdgeWorkerConfig which extends this interface.
  */
 export interface EdgeConfig {
+	/** Array of repository configurations */
 	repositories: RepositoryConfig[];
+
+	/** Ngrok auth token for tunnel creation */
 	ngrokAuthToken?: string;
+
+	/** Stripe customer ID for billing */
 	stripeCustomerId?: string;
-	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
-	defaultModel?: string; // Default Claude model to use across all repositories
-	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
-	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
+
+	/** Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...") */
+	linearWorkspaceSlug?: string;
+
+	/** Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku") */
+	defaultModel?: string;
+
+	/** Default fallback model if primary model is unavailable */
+	defaultFallbackModel?: string;
+
+	/** Optional path to global setup script that runs for all repositories */
+	global_setup_script?: string;
+
+	/** Default tools to allow across all repositories */
+	defaultAllowedTools?: string[];
+
+	/** Tools to explicitly disallow across all repositories */
+	defaultDisallowedTools?: string[];
+
 	/**
 	 * Whether to trigger agent sessions when issue title, description, or attachments are updated.
 	 * When enabled, the agent receives context showing what changed (old vs new values).
@@ -308,4 +329,40 @@ export interface EdgeConfig {
 	 * Applied to all repositories unless overridden.
 	 */
 	userAccessControl?: UserAccessControlConfig;
+
+	/** Global defaults for prompt types (tool restrictions per prompt type) */
+	promptDefaults?: {
+		debugger?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
+		};
+		builder?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
+		};
+		scoper?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
+		};
+		orchestrator?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
+		};
+		"graphite-orchestrator"?: {
+			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
+		};
+	};
+
+	/** Optional features (can be overridden per repository) */
+	features?: {
+		/** Support --continue flag (default: true) */
+		enableContinuation?: boolean;
+		/** Auto-handle token limits (default: true) */
+		enableTokenLimitHandling?: boolean;
+		/** Download issue attachments (default: false) */
+		enableAttachmentDownload?: boolean;
+		/** Path to custom prompt template */
+		promptTemplatePath?: string;
+	};
 }
