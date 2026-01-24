@@ -1,43 +1,41 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ApiResponse, CyrusConfigPayload } from "../types.js";
+import type { EdgeConfig } from "cyrus-core";
+import {
+	type ApiResponse,
+	type CyrusConfigPayload,
+	CyrusConfigPayloadSchema,
+} from "../types.js";
 
 /**
  * Handle Cyrus configuration update
  * Updates the ~/.cyrus/config.json file with the provided configuration
+ *
+ * @param rawPayload - Unvalidated payload from the request
+ * @param cyrusHome - Path to the Cyrus home directory
  */
 export async function handleCyrusConfig(
-	payload: CyrusConfigPayload,
+	rawPayload: unknown,
 	cyrusHome: string,
 ): Promise<ApiResponse> {
 	try {
-		// Validate payload
-		if (!payload.repositories || !Array.isArray(payload.repositories)) {
+		// Validate payload with Zod schema
+		const parseResult = CyrusConfigPayloadSchema.safeParse(rawPayload);
+
+		if (!parseResult.success) {
+			const issues = parseResult.error.issues;
+			const firstIssue = issues[0];
+			const path = firstIssue?.path.join(".") || "unknown";
+			const message = firstIssue?.message || "Invalid configuration";
+
 			return {
 				success: false,
-				error: "Configuration update requires repositories array",
-				details:
-					"The repositories field must be provided as an array, even if empty.",
+				error: "Configuration validation failed",
+				details: `${path}: ${message}`,
 			};
 		}
 
-		// Validate each repository has required fields
-		for (const repo of payload.repositories) {
-			if (!repo.id || !repo.name || !repo.repositoryPath || !repo.baseBranch) {
-				const missingFields: string[] = [];
-				if (!repo.id) missingFields.push("id");
-				if (!repo.name) missingFields.push("name");
-				if (!repo.repositoryPath) missingFields.push("repositoryPath");
-				if (!repo.baseBranch) missingFields.push("baseBranch");
-
-				return {
-					success: false,
-					error: "Repository configuration is incomplete",
-					details: `Repository "${repo.name || "unknown"}" is missing required fields: ${missingFields.join(", ")}`,
-				};
-			}
-		}
-
+		const payload: CyrusConfigPayload = parseResult.data;
 		const configPath = join(cyrusHome, "config.json");
 
 		// Ensure the .cyrus directory exists
@@ -46,101 +44,31 @@ export async function handleCyrusConfig(
 			mkdirSync(configDir, { recursive: true });
 		}
 
-		// Build the config object with repositories and optional settings
-		const repositories = payload.repositories.map((repo) => {
-			const repoConfig: any = {
-				id: repo.id,
-				name: repo.name,
-				repositoryPath: repo.repositoryPath,
-				baseBranch: repo.baseBranch,
+		// Extract operation flags (not part of EdgeConfig)
+		const { restartCyrus, backupConfig, ...edgeConfig } = payload;
+
+		// Process repositories to apply defaults
+		const repositories = edgeConfig.repositories.map((repo) => {
+			return {
+				...repo,
+				// Set workspaceBaseDir (use provided or default to ~/.cyrus/workspaces)
+				workspaceBaseDir:
+					repo.workspaceBaseDir || join(cyrusHome, "workspaces"),
+				// Set isActive (defaults to true)
+				isActive: repo.isActive !== false,
+				// Ensure teamKeys is always an array
+				teamKeys: repo.teamKeys || [],
 			};
-
-			// Add optional GitHub URL
-			if (repo.githubUrl) {
-				repoConfig.githubUrl = repo.githubUrl;
-			}
-
-			// Add optional Linear fields
-			if (repo.linearWorkspaceId) {
-				repoConfig.linearWorkspaceId = repo.linearWorkspaceId;
-			}
-			if (repo.linearToken) {
-				repoConfig.linearToken = repo.linearToken;
-			}
-
-			// Set workspaceBaseDir (use provided or default to ~/.cyrus/workspaces)
-			repoConfig.workspaceBaseDir =
-				repo.workspaceBaseDir || join(cyrusHome, "workspaces");
-
-			// Set isActive (defaults to true)
-			repoConfig.isActive = repo.isActive !== false;
-
-			// Optional arrays and objects
-			if (repo.allowedTools && repo.allowedTools.length > 0) {
-				repoConfig.allowedTools = repo.allowedTools;
-			}
-
-			if (repo.mcpConfigPath && repo.mcpConfigPath.length > 0) {
-				repoConfig.mcpConfigPath = repo.mcpConfigPath;
-			}
-
-			if (repo.teamKeys) {
-				repoConfig.teamKeys = repo.teamKeys;
-			} else {
-				repoConfig.teamKeys = [];
-			}
-
-			if (repo.routingLabels && repo.routingLabels.length > 0) {
-				repoConfig.routingLabels = repo.routingLabels;
-			}
-
-			if (repo.projectKeys && repo.projectKeys.length > 0) {
-				repoConfig.projectKeys = repo.projectKeys;
-			}
-
-			if (repo.labelPrompts && Object.keys(repo.labelPrompts).length > 0) {
-				repoConfig.labelPrompts = repo.labelPrompts;
-			}
-
-			return repoConfig;
 		});
 
-		// Build complete config
-		const config: any = {
+		// Build complete config by spreading EdgeConfig fields and overriding repositories
+		const config: EdgeConfig = {
+			...edgeConfig,
 			repositories,
 		};
 
-		// Add optional global settings
-		if (payload.disallowedTools && payload.disallowedTools.length > 0) {
-			config.disallowedTools = payload.disallowedTools;
-		}
-
-		if (payload.ngrokAuthToken) {
-			config.ngrokAuthToken = payload.ngrokAuthToken;
-		}
-
-		if (payload.stripeCustomerId) {
-			config.stripeCustomerId = payload.stripeCustomerId;
-		}
-
-		if (payload.linearWorkspaceSlug) {
-			config.linearWorkspaceSlug = payload.linearWorkspaceSlug;
-		}
-
-		if (payload.defaultModel) {
-			config.defaultModel = payload.defaultModel;
-		}
-
-		if (payload.defaultFallbackModel) {
-			config.defaultFallbackModel = payload.defaultFallbackModel;
-		}
-
-		if (payload.global_setup_script) {
-			config.global_setup_script = payload.global_setup_script;
-		}
-
 		// Backup existing config if requested
-		if (payload.backupConfig && existsSync(configPath)) {
+		if (backupConfig && existsSync(configPath)) {
 			try {
 				const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 				const backupPath = join(cyrusHome, `config.backup-${timestamp}.json`);
@@ -164,7 +92,7 @@ export async function handleCyrusConfig(
 				data: {
 					configPath,
 					repositoriesCount: repositories.length,
-					restartCyrus: payload.restartCyrus || false,
+					restartCyrus: restartCyrus || false,
 				},
 			};
 		} catch (error) {
