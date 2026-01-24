@@ -1048,6 +1048,219 @@ export function createCyrusToolsServer(
 		},
 	);
 
+	const editIssueDescriptionTool = tool(
+		"edit_issue_description",
+		"Performs exact string replacements in the issue's description field. Works like Claude Code's Edit tool - finds old_string in the description and replaces it with new_string. The edit will FAIL if old_string is not found or is not unique (unless replace_all is true). Provide more surrounding context to make the string unique if needed.",
+		{
+			issueId: z
+				.string()
+				.describe(
+					"The ID or identifier of the Linear issue (e.g., 'PROJ-123' or UUID)",
+				),
+			oldString: z.string().describe("The text to replace in the description"),
+			newString: z
+				.string()
+				.describe(
+					"The text to replace it with (must be different from oldString)",
+				),
+			replaceAll: z
+				.boolean()
+				.optional()
+				.default(false)
+				.describe(
+					"Replace all occurrences of oldString (default: false). Set to true for global find-and-replace.",
+				),
+		},
+		async ({ issueId, oldString, newString, replaceAll = false }) => {
+			try {
+				// Validation: oldString and newString must be different
+				if (oldString === newString) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: "oldString and newString must be different.",
+								}),
+							},
+						],
+					};
+				}
+
+				// Validation: oldString cannot be empty
+				if (!oldString) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: "oldString cannot be empty.",
+								}),
+							},
+						],
+					};
+				}
+
+				console.log(
+					`Editing description for issue ${issueId}: replacing "${oldString.substring(0, 50)}${oldString.length > 50 ? "..." : ""}"`,
+				);
+
+				// Fetch the issue
+				const issue = await linearClient.issue(issueId);
+
+				if (!issue) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: "Issue does not exist.",
+								}),
+							},
+						],
+					};
+				}
+
+				const currentDescription = issue.description || "";
+
+				// Handle empty description
+				if (!currentDescription) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `String to replace not found in description.\nString: ${oldString}`,
+								}),
+							},
+						],
+					};
+				}
+
+				// Check if oldString exists in the description
+				if (!currentDescription.includes(oldString)) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `String to replace not found in description.\nString: ${oldString}`,
+								}),
+							},
+						],
+					};
+				}
+
+				// Count occurrences of oldString
+				let count = 0;
+				let position = currentDescription.indexOf(oldString);
+				while (position !== -1) {
+					count++;
+					position = currentDescription.indexOf(
+						oldString,
+						position + oldString.length,
+					);
+				}
+
+				// Check for multiple matches when replace_all is false
+				if (count > 1 && !replaceAll) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `Found ${count} matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_all to true. To replace only one occurrence, please provide more context to uniquely identify the instance.\nString: ${oldString}`,
+								}),
+							},
+						],
+					};
+				}
+
+				// Perform the replacement
+				let newDescription: string;
+				if (replaceAll) {
+					newDescription = currentDescription.split(oldString).join(newString);
+				} else {
+					newDescription = currentDescription.replace(oldString, newString);
+				}
+
+				// Update the issue
+				const updateResult = await issue.update({
+					description: newDescription,
+				});
+
+				if (!updateResult.success) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: "Failed to update issue description.",
+								}),
+							},
+						],
+					};
+				}
+
+				console.log(
+					`Successfully updated description for issue ${issueId} (${count} replacement${count > 1 ? "s" : ""})`,
+				);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: true,
+								issueId: issue.id,
+								identifier: issue.identifier,
+								replacementCount: replaceAll ? count : 1,
+							}),
+						},
+					],
+				};
+			} catch (error) {
+				// Handle specific Linear SDK errors
+				const errorMessage =
+					error instanceof Error ? error.message : String(error);
+
+				// Check for "Entity not found" error pattern
+				if (errorMessage.includes("Entity not found")) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: "Issue does not exist.",
+								}),
+							},
+						],
+					};
+				}
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: errorMessage,
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
 	return createSdkMcpServer({
 		name: "cyrus-tools",
 		version: "1.0.0",
@@ -1060,6 +1273,7 @@ export function createCyrusToolsServer(
 			getChildIssuesTool,
 			getAgentSessionsTool,
 			getAgentSessionTool,
+			editIssueDescriptionTool,
 		],
 	});
 }
