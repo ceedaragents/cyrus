@@ -58,6 +58,7 @@ export class Application {
 			this.git,
 			cyrusHome,
 			this.logger,
+			this.version,
 		);
 	}
 

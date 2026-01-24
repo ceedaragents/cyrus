@@ -13,6 +13,22 @@ This changelog documents internal development changes, refactors, tooling update
 - Extracted `IActivitySink` interface and `LinearActivitySink` implementation to decouple activity posting from `IIssueTrackerService`, enabling multiple activity sinks to receive session activities ([CYPACK-726](https://linear.app/ceedar/issue/CYPACK-726), [#767](https://github.com/ceedaragents/cyrus/pull/767))
 - Integrated `GlobalSessionRegistry` with `EdgeWorker`, making it the single source of truth for parent-child session mappings and cross-repository session lookups ([CYPACK-727](https://linear.app/ceedar/issue/CYPACK-727), [#769](https://github.com/ceedaragents/cyrus/pull/769))
 
+## [0.2.17] - 2026-01-23
+
+(No internal changes in this release)
+
+## [0.2.16] - 2026-01-23
+
+(No internal changes in this release)
+
+## [0.2.15] - 2026-01-16
+
+(No internal changes in this release)
+
+## [0.2.14] - 2026-01-16
+
+(No internal changes in this release)
+
 ## [0.2.13] - 2026-01-15
 
 (No internal changes in this release)

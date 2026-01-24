@@ -4,8 +4,145 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-01-23
+
+### Added
+- **Issue update awareness** - Cyrus now detects when you edit an issue's title, description, or attachments while it's actively working on that issue. The agent receives context showing what changed (old vs new values) along with guidance to evaluate whether the update affects its implementation or action plan. TIP: instead of re-prompting Cyrus in a comment or chat window, just update the issue description with additional acceptance criteria! It will auto-start or adjust course and apply changes. ([CYPACK-736](https://linear.app/ceedar/issue/CYPACK-736), [#782](https://github.com/ceedaragents/cyrus/pull/782))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.17
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.17
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.17
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.17
+
+#### cyrus-core
+- cyrus-core@0.2.17
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.17
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.17
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.17
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.17
+
+## [0.2.16] - 2026-01-23
+
+### Added
+- **User access control** - Added the ability to whitelist or blacklist Linear users from delegating issues to Cyrus. Supports blocking specific users by Linear ID or email address, allowing only specific users (allowlist mode blocks everyone not explicitly listed), configurable block behavior (silent ignore or post comment), and template variables in block messages. Blocklist is additive (global + repo), while allowlist overrides (repo replaces global). Thanks to [@tjorri](https://github.com/tjorri) for the contribution! ([#779](https://github.com/ceedaragents/cyrus/pull/779))
+
+### Improved
+- **Better Cloudflare tunnel error messages** - When the Cloudflare tunnel fails to connect, Cyrus now provides detailed troubleshooting guidance including common causes (firewall, VPN, proxy issues) and links to connectivity prechecks documentation. This helps users quickly identify and resolve network configuration issues preventing tunnel establishment. ([CYPACK-743](https://linear.app/ceedar/issue/CYPACK-743), [#788](https://github.com/ceedaragents/cyrus/pull/788))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.16
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.16
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.16
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.16
+
+#### cyrus-core
+- cyrus-core@0.2.16
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.16
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.16
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.16
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.16
+
+## [0.2.15] - 2026-01-16
+
+### Added
+- **Version endpoint** - Added a `/version` endpoint that returns the Cyrus CLI version, enabling the dashboard to display version information. The endpoint returns `{ "cyrus_cli_version": "x.y.z" }` or `null` if unavailable. ([CYPACK-731](https://linear.app/ceedar/issue/CYPACK-731), [#775](https://github.com/ceedaragents/cyrus/pull/775))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.15
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.15
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.15
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.15
+
+#### cyrus-core
+- cyrus-core@0.2.15
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.15
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.15
+
+## [0.2.14] - 2026-01-16
+
 ### Fixed
+- **Cross-repository orchestration** - Fixed an issue where parent sessions could not be resumed when orchestrating sub-issues across different repositories. Child sessions now correctly locate and resume their parent sessions regardless of which repository they belong to. ([CYPACK-722](https://linear.app/ceedar/issue/CYPACK-722), [#768](https://github.com/ceedaragents/cyrus/pull/768))
 - **Summary subroutines no longer show extended "Working" status** - During summarization phases (concise-summary, verbose-summary, question-answer, plan-summary, user-testing-summary, release-summary), the agent no longer makes tool calls that caused users to see an extended "Working" status in Linear. The agent now produces only text output during these phases. ([CYPACK-723](https://linear.app/ceedar/issue/CYPACK-723), [#764](https://github.com/ceedaragents/cyrus/pull/764))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.14
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.14
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.14
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.14
+
+#### cyrus-core
+- cyrus-core@0.2.14
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.14
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.14
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.14
 
 ## [0.2.13] - 2026-01-15
 

@@ -103,22 +103,53 @@ export interface RepositoryConfig {
 			labels: string[]; // Labels that indicate Graphite stacking (e.g., ["graphite"])
 		};
 	};
+
+	/**
+	 * Repository-specific user access control.
+	 * - allowedUsers: OVERRIDES global allowlist (not merged)
+	 * - blockedUsers: EXTENDS global blocklist (merged/additive)
+	 * - blockBehavior: OVERRIDES global setting
+	 * - blockMessage: OVERRIDES global message
+	 */
+	userAccessControl?: UserAccessControlConfig;
 }
 
 /**
- * Configuration for the EdgeWorker supporting multiple repositories
+ * Runtime-only configuration fields for EdgeWorker.
+ *
+ * These fields are NOT serializable to JSON and are only available at runtime.
+ * They include callbacks, handlers, and runtime-specific settings that cannot
+ * be persisted to config.json.
  */
-export interface EdgeWorkerConfig {
-	// Proxy connection config
-	proxyUrl?: string; // Optional - defaults to DEFAULT_PROXY_URL for OAuth flows
-	baseUrl?: string;
-	webhookBaseUrl?: string; // Legacy support - use baseUrl instead
-	webhookPort?: number; // Legacy support - now uses serverPort
-	serverPort?: number; // Unified server port for both webhooks and OAuth callbacks (default: 3456)
-	serverHost?: string; // Server host address ('localhost' or '0.0.0.0', default: 'localhost')
-	ngrokAuthToken?: string; // Ngrok auth token for tunnel creation
+export interface EdgeWorkerRuntimeConfig {
+	/** Cyrus CLI version (e.g., "1.2.3"), used in /version endpoint */
+	version?: string;
 
-	// Issue tracker platform configuration
+	/** Cyrus home directory - required at runtime */
+	cyrusHome: string;
+
+	// --- Server/Network Configuration (runtime-specific) ---
+
+	/** Optional proxy URL - defaults to DEFAULT_PROXY_URL for OAuth flows */
+	proxyUrl?: string;
+
+	/** Base URL for the server */
+	baseUrl?: string;
+
+	/** @deprecated Use baseUrl instead */
+	webhookBaseUrl?: string;
+
+	/** @deprecated Use serverPort instead */
+	webhookPort?: number;
+
+	/** Unified server port for both webhooks and OAuth callbacks (default: 3456) */
+	serverPort?: number;
+
+	/** Server host address ('localhost' or '0.0.0.0', default: 'localhost') */
+	serverHost?: string;
+
+	// --- Platform Configuration ---
+
 	/**
 	 * Issue tracker platform type (default: "linear")
 	 * - "linear": Uses Linear as the issue tracker (default production mode)
@@ -126,16 +157,180 @@ export interface EdgeWorkerConfig {
 	 */
 	platform?: "linear" | "cli";
 
-	// Linear configuration (global)
-	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
+	// --- Agent Configuration (for CLI mode) ---
 
-	// Claude config (shared across all repos)
+	/** The name/handle the agent responds to (e.g., "john", "cyrus") */
+	agentHandle?: string;
+
+	/** The user ID of the agent (for CLI mode) */
+	agentUserId?: string;
+
+	// --- Runtime Handlers (non-serializable callbacks) ---
+
+	/**
+	 * Optional handlers that apps can implement.
+	 * These are callback functions that cannot be serialized to JSON.
+	 */
+	handlers?: {
+		/** Called when workspace needs to be created. Includes repository context. */
+		createWorkspace?: (
+			issue: Issue,
+			repository: RepositoryConfig,
+		) => Promise<Workspace>;
+
+		/** Called with Claude messages (for UI updates, logging, etc). Includes repository ID. */
+		onClaudeMessage?: (
+			issueId: string,
+			message: SDKMessage,
+			repositoryId: string,
+		) => void;
+
+		/** Called when session starts. Includes repository ID. */
+		onSessionStart?: (
+			issueId: string,
+			issue: Issue,
+			repositoryId: string,
+		) => void;
+
+		/** Called when session ends. Includes repository ID. */
+		onSessionEnd?: (
+			issueId: string,
+			exitCode: number | null,
+			repositoryId: string,
+		) => void;
+
+		/** Called on errors */
+		onError?: (error: Error, context?: unknown) => void;
+
+		/** Called when OAuth callback is received */
+		onOAuthCallback?: OAuthCallbackHandler;
+	};
+}
+
+/**
+ * Configuration for the EdgeWorker supporting multiple repositories.
+ *
+ * This is the complete runtime configuration that combines:
+ * - EdgeConfig: Serializable settings from ~/.cyrus/config.json
+ * - EdgeWorkerRuntimeConfig: Runtime-only fields (callbacks, handlers, server config)
+ *
+ * The separation exists because EdgeConfig can be persisted to disk as JSON,
+ * while EdgeWorkerRuntimeConfig contains callback functions and other
+ * non-serializable runtime state that must be provided programmatically.
+ *
+ * @example
+ * // EdgeConfig is loaded from config.json
+ * const fileConfig: EdgeConfig = JSON.parse(fs.readFileSync('config.json'));
+ *
+ * // EdgeWorkerConfig adds runtime handlers
+ * const runtimeConfig: EdgeWorkerConfig = {
+ *   ...fileConfig,
+ *   cyrusHome: '/home/user/.cyrus',
+ *   handlers: {
+ *     onSessionStart: (issueId, issue, repoId) => console.log('Started'),
+ *     onError: (error) => console.error(error),
+ *   },
+ * };
+ */
+export type EdgeWorkerConfig = EdgeConfig & EdgeWorkerRuntimeConfig;
+
+/**
+ * User identifier for access control matching.
+ * Supports multiple formats for flexibility:
+ * - String: treated as user ID (e.g., "usr_abc123")
+ * - Object with id: explicit user ID match
+ * - Object with email: email-based match
+ */
+export type UserIdentifier =
+	| string // Treated as user ID
+	| { id: string } // Explicit user ID
+	| { email: string }; // Email address
+
+/**
+ * User access control configuration for whitelisting/blacklisting users.
+ */
+export interface UserAccessControlConfig {
+	/**
+	 * Users allowed to delegate issues.
+	 * If specified, ONLY these users can trigger Cyrus sessions.
+	 * Empty array means no one is allowed (effectively disables Cyrus).
+	 * Omitting this field means everyone is allowed (unless blocked).
+	 */
+	allowedUsers?: UserIdentifier[];
+
+	/**
+	 * Users blocked from delegating issues.
+	 * These users cannot trigger Cyrus sessions.
+	 * Takes precedence over allowedUsers.
+	 */
+	blockedUsers?: UserIdentifier[];
+
+	/**
+	 * What happens when a blocked user tries to delegate.
+	 * - 'silent': Ignore the webhook quietly (default)
+	 * - 'comment': Post an activity explaining the user is not authorized
+	 */
+	blockBehavior?: "silent" | "comment";
+
+	/**
+	 * Custom message to post when blockBehavior is 'comment'.
+	 * Defaults to: "You are not authorized to delegate issues to this agent."
+	 */
+	blockMessage?: string;
+}
+
+/**
+ * Edge configuration - the serializable configuration stored in ~/.cyrus/config.json
+ *
+ * This interface defines all settings that can be persisted to disk.
+ * It contains global settings that apply across all repositories,
+ * plus the array of repository-specific configurations.
+ *
+ * For runtime configuration that includes non-serializable callbacks,
+ * see EdgeWorkerConfig which extends this interface.
+ */
+export interface EdgeConfig {
+	/** Array of repository configurations */
+	repositories: RepositoryConfig[];
+
+	/** Ngrok auth token for tunnel creation */
+	ngrokAuthToken?: string;
+
+	/** Stripe customer ID for billing */
+	stripeCustomerId?: string;
+
+	/** Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...") */
+	linearWorkspaceSlug?: string;
+
+	/** Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku") */
+	defaultModel?: string;
+
+	/** Default fallback model if primary model is unavailable */
+	defaultFallbackModel?: string;
+
+	/** Optional path to global setup script that runs for all repositories */
+	global_setup_script?: string;
+
+	/** Default tools to allow across all repositories */
 	defaultAllowedTools?: string[];
-	defaultDisallowedTools?: string[]; // Tools to explicitly disallow across all repositories (no defaults)
-	defaultModel?: string; // Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku")
-	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 
-	// Global defaults for prompt types
+	/** Tools to explicitly disallow across all repositories */
+	defaultDisallowedTools?: string[];
+
+	/**
+	 * Whether to trigger agent sessions when issue title, description, or attachments are updated.
+	 * When enabled, the agent receives context showing what changed (old vs new values).
+	 * Defaults to true if not specified.
+	 */
+	issueUpdateTrigger?: boolean;
+
+	/**
+	 * Global user access control settings.
+	 * Applied to all repositories unless overridden.
+	 */
+	userAccessControl?: UserAccessControlConfig;
+
+	/** Global defaults for prompt types (tool restrictions per prompt type) */
 	promptDefaults?: {
 		debugger?: {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
@@ -158,72 +353,4 @@ export interface EdgeWorkerConfig {
 			disallowedTools?: string[];
 		};
 	};
-
-	// Repository configurations
-	repositories: RepositoryConfig[];
-
-	// Cyrus home directory
-	cyrusHome: string;
-
-	// Agent configuration (for CLI mode)
-	agentHandle?: string; // The name/handle the agent responds to (e.g., "john", "cyrus")
-	agentUserId?: string; // The user ID of the agent (for CLI mode)
-
-	// Optional handlers that apps can implement
-	handlers?: {
-		// Called when workspace needs to be created
-		// Now includes repository context
-		createWorkspace?: (
-			issue: Issue,
-			repository: RepositoryConfig,
-		) => Promise<Workspace>;
-
-		// Called with Claude messages (for UI updates, logging, etc)
-		// Now includes repository ID
-		onClaudeMessage?: (
-			issueId: string,
-			message: SDKMessage,
-			repositoryId: string,
-		) => void;
-
-		// Called when session starts/ends
-		// Now includes repository ID
-		onSessionStart?: (
-			issueId: string,
-			issue: Issue,
-			repositoryId: string,
-		) => void;
-		onSessionEnd?: (
-			issueId: string,
-			exitCode: number | null,
-			repositoryId: string,
-		) => void;
-
-		// Called on errors
-		onError?: (error: Error, context?: any) => void;
-
-		// Called when OAuth callback is received
-		onOAuthCallback?: OAuthCallbackHandler;
-	};
-
-	// Optional features (can be overridden per repository)
-	features?: {
-		enableContinuation?: boolean; // Support --continue flag (default: true)
-		enableTokenLimitHandling?: boolean; // Auto-handle token limits (default: true)
-		enableAttachmentDownload?: boolean; // Download issue attachments (default: false)
-		promptTemplatePath?: string; // Path to custom prompt template
-	};
-}
-
-/**
- * Edge configuration containing all repositories and global settings
- */
-export interface EdgeConfig {
-	repositories: RepositoryConfig[];
-	ngrokAuthToken?: string;
-	stripeCustomerId?: string;
-	linearWorkspaceSlug?: string; // Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...")
-	defaultModel?: string; // Default Claude model to use across all repositories
-	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
-	global_setup_script?: string; // Optional path to global setup script that runs for all repositories
 }

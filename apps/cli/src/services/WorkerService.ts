@@ -19,6 +19,7 @@ export class WorkerService {
 		private gitService: GitService,
 		private cyrusHome: string,
 		private logger: Logger,
+		private version?: string,
 	) {}
 
 	/**
@@ -191,6 +192,7 @@ export class WorkerService {
 
 		// Create EdgeWorker configuration
 		const config: EdgeWorkerConfig = {
+			version: this.version,
 			repositories,
 			cyrusHome: this.cyrusHome,
 			defaultAllowedTools:
@@ -207,9 +209,8 @@ export class WorkerService {
 			serverPort: parsePort(process.env.CYRUS_SERVER_PORT, DEFAULT_SERVER_PORT),
 			serverHost: isExternalHost ? "0.0.0.0" : "localhost",
 			ngrokAuthToken,
-			features: {
-				enableContinuation: true,
-			},
+			// User access control configuration
+			userAccessControl: edgeConfig.userAccessControl,
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,

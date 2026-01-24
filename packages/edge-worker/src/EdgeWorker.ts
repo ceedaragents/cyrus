@@ -36,6 +36,7 @@ import type {
 	Issue,
 	IssueMinimal,
 	IssueUnassignedWebhook,
+	IssueUpdateWebhook,
 	RepositoryConfig,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
@@ -54,6 +55,7 @@ import {
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
+	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	PersistenceManager,
 	resolvePath,
@@ -88,6 +90,7 @@ import {
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
+import { UserAccessControl } from "./UserAccessControl.js";
 
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(
@@ -128,6 +131,8 @@ export class EdgeWorker extends EventEmitter {
 	private activeWebhookCount = 0; // Track number of webhooks currently being processed
 	/** Handler for AskUserQuestion tool invocations via Linear select signal */
 	private askUserQuestionHandler: AskUserQuestionHandler;
+	/** User access control for whitelisting/blacklisting Linear users */
+	private userAccessControl: UserAccessControl;
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -361,6 +366,21 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
+		// Initialize user access control with global and per-repository configs
+		const repoAccessConfigs = new Map<
+			string,
+			import("cyrus-core").UserAccessControlConfig | undefined
+		>();
+		for (const repo of config.repositories) {
+			if (repo.isActive !== false) {
+				repoAccessConfigs.set(repo.id, repo.userAccessControl);
+			}
+		}
+		this.userAccessControl = new UserAccessControl(
+			config.userAccessControl,
+			repoAccessConfigs,
+		);
+
 		// Components will be initialized and registered in start() method before server starts
 	}
 
@@ -503,6 +523,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// 3. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
+
+		// 4. Register /version endpoint for CLI version info
+		this.registerVersionEndpoint();
 	}
 
 	/**
@@ -519,6 +542,23 @@ export class EdgeWorker extends EventEmitter {
 
 		console.log("✅ Status endpoint registered");
 		console.log("   Route: GET /status");
+	}
+
+	/**
+	 * Register the /version endpoint for CLI version information
+	 * This endpoint is used by dashboards to display the installed CLI version
+	 */
+	private registerVersionEndpoint(): void {
+		const fastify = this.sharedApplicationServer.getFastifyInstance();
+
+		fastify.get("/version", async (_request, reply) => {
+			return reply.status(200).send({
+				cyrus_cli_version: this.config.version ?? null,
+			});
+		});
+
+		console.log("✅ Version endpoint registered");
+		console.log("   Route: GET /version");
 	}
 
 	/**
@@ -606,21 +646,40 @@ export class EdgeWorker extends EventEmitter {
 		parentSessionId: string,
 		prompt: string,
 		childSessionId: string,
-		repo: RepositoryConfig,
-		agentSessionManager: AgentSessionManager,
+		_childRepo: RepositoryConfig,
+		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		console.log(
 			`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
 		);
 
-		// Get the parent session and repository
+		// Find parent session across all repositories
+		// This is critical for cross-repository orchestration where parent and child
+		// may be in different repositories with different AgentSessionManagers
+		// See also: feedback delivery code at line ~4413 which uses same pattern
 		console.log(
-			`[Parent Session Resume] Retrieving parent session ${parentSessionId} from agent session manager`,
+			`[Parent Session Resume] Searching for parent session ${parentSessionId} across all repositories`,
 		);
-		const parentSession = agentSessionManager.getSession(parentSessionId);
-		if (!parentSession) {
+		let parentSession: CyrusAgentSession | undefined;
+		let parentRepo: RepositoryConfig | undefined;
+		let parentAgentSessionManager: AgentSessionManager | undefined;
+
+		for (const [repoId, manager] of this.agentSessionManagers) {
+			const candidate = manager.getSession(parentSessionId);
+			if (candidate) {
+				parentSession = candidate;
+				parentRepo = this.repositories.get(repoId);
+				parentAgentSessionManager = manager;
+				console.log(
+					`[Parent Session Resume] Found parent session in repository: ${parentRepo?.name || repoId}`,
+				);
+				break;
+			}
+		}
+
+		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
 			console.error(
-				`[Parent Session Resume] Parent session ${parentSessionId} not found in agent session manager`,
+				`[Parent Session Resume] Parent session ${parentSessionId} not found in any repository's agent session manager`,
 			);
 			return;
 		}
@@ -630,7 +689,8 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Get the child session to access its workspace path
-		const childSession = agentSessionManager.getSession(childSessionId);
+		// Child session is in the child's manager (passed in from the callback)
+		const childSession = childAgentSessionManager.getSession(childSessionId);
 		const childWorkspaceDirs: string[] = [];
 		if (childSession) {
 			childWorkspaceDirs.push(childSession.workspace.path);
@@ -643,10 +703,11 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+		await this.postParentResumeAcknowledgment(parentSessionId, parentRepo.id);
 
 		// Post thought to Linear showing child result receipt
-		const issueTracker = this.issueTrackers.get(repo.id);
+		// Use parent's issue tracker since we're posting to the parent's Linear session
+		const issueTracker = this.issueTrackers.get(parentRepo.id);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -686,9 +747,9 @@ export class EdgeWorker extends EventEmitter {
 		try {
 			await this.handlePromptWithStreamingCheck(
 				parentSession,
-				repo,
+				parentRepo,
 				parentSessionId,
-				agentSessionManager,
+				parentAgentSessionManager,
 				prompt,
 				"", // No attachment manifest for child results
 				false, // Not a new session
@@ -704,7 +765,7 @@ export class EdgeWorker extends EventEmitter {
 				error,
 			);
 			console.error(
-				`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${repo.name}`,
+				`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${parentRepo.name}`,
 			);
 		}
 	}
@@ -973,6 +1034,9 @@ export class EdgeWorker extends EventEmitter {
 				defaultDisallowedTools:
 					parsedConfig.defaultDisallowedTools ||
 					this.config.defaultDisallowedTools,
+				// Issue update trigger: use parsed value if explicitly set, otherwise keep current or default to true
+				issueUpdateTrigger:
+					parsedConfig.issueUpdateTrigger ?? this.config.issueUpdateTrigger,
 			};
 
 			// Basic validation
@@ -1370,6 +1434,9 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleAgentSessionCreatedWebhook(webhook, repos);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPromptedAgentActivity(webhook);
+			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
+				// Handle issue title/description/attachments updates - feed changes into active session
+				await this.handleIssueContentUpdate(webhook);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 					console.log(
@@ -1424,6 +1491,286 @@ export class EdgeWorker extends EventEmitter {
 		// console.log('=== END WEBHOOK PAYLOAD ===')
 
 		await this.handleIssueUnassigned(webhook.notification.issue, repository);
+	}
+
+	/**
+	 * Handle issue content update webhook (title, description, or attachments).
+	 *
+	 * When the title, description, or attachments of an issue are updated, this handler feeds
+	 * the changes into any active session for that issue, allowing the AI to
+	 * compare old vs new values and decide whether to take action.
+	 *
+	 * The prompt uses XML-style formatting to clearly show what changed:
+	 * - <issue_update> wrapper with timestamp and issue identifier
+	 * - <title_change> with <old_title> and <new_title> if title changed
+	 * - <description_change> with <old_description> and <new_description> if description changed
+	 * - <attachments_change> with <old_attachments> and <new_attachments> if attachments changed
+	 * - <guidance> section instructing the agent to evaluate whether changes affect its work
+	 *
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/IssueWebhookPayload
+	 * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/unions/DataWebhookPayload
+	 */
+	private async handleIssueContentUpdate(
+		webhook: IssueUpdateWebhook,
+	): Promise<void> {
+		// Check if issue update trigger is enabled (defaults to true if not set)
+		if (this.config.issueUpdateTrigger === false) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					"[EdgeWorker] Issue update trigger is disabled, skipping issue content update",
+				);
+			}
+			return;
+		}
+
+		const issueData = webhook.data;
+		const issueId = issueData.id;
+		const issueIdentifier = issueData.identifier;
+		const updatedFrom = webhook.updatedFrom;
+
+		if (!updatedFrom) {
+			console.warn(
+				`[EdgeWorker] Issue update webhook for ${issueIdentifier} has no updatedFrom data`,
+			);
+			return;
+		}
+
+		// Get cached repository (updates should only be processed for issues with active sessions)
+		const repository = this.getCachedRepository(issueId);
+		if (!repository) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					`[EdgeWorker] No cached repository for issue update webhook ${issueIdentifier} (no active sessions to notify)`,
+				);
+			}
+			return;
+		}
+
+		// Determine what changed for logging
+		const changedFields: string[] = [];
+		if ("title" in updatedFrom) changedFields.push("title");
+		if ("description" in updatedFrom) changedFields.push("description");
+		if ("attachments" in updatedFrom) changedFields.push("attachments");
+
+		console.log(
+			`[EdgeWorker] Handling issue content update: ${issueIdentifier} (changed: ${changedFields.join(", ")})`,
+		);
+
+		// Get agent session manager for this repository
+		const agentSessionManager = this.agentSessionManagers.get(repository.id);
+		if (!agentSessionManager) {
+			console.log(
+				`[EdgeWorker] No agent session manager for repository ${repository.id}`,
+			);
+			return;
+		}
+
+		// Find session(s) for this issue (may be running or paused between subroutines)
+		const sessions = agentSessionManager.getSessionsByIssueId(issueId);
+		if (sessions.length === 0) {
+			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+				console.log(
+					`[EdgeWorker] No sessions found for issue ${issueIdentifier} to receive update`,
+				);
+			}
+			return;
+		}
+
+		// Process attachments from the updated description if description changed
+		let attachmentManifest = "";
+		if ("description" in updatedFrom && issueData.description) {
+			const firstSession = sessions[0];
+			if (!firstSession) {
+				console.log(
+					`[EdgeWorker] No sessions found for issue ${issueIdentifier}`,
+				);
+				return;
+			}
+			const workspaceFolderName = basename(firstSession.workspace.path);
+			const attachmentsDir = join(
+				this.cyrusHome,
+				workspaceFolderName,
+				"attachments",
+			);
+
+			try {
+				// Ensure directory exists
+				await mkdir(attachmentsDir, { recursive: true });
+
+				// Count existing attachments
+				const existingFiles = await readdir(attachmentsDir).catch(() => []);
+				const existingAttachmentCount = existingFiles.filter(
+					(file) => file.startsWith("attachment_") || file.startsWith("image_"),
+				).length;
+
+				// Download attachments from the new description
+				const downloadResult = await this.downloadCommentAttachments(
+					issueData.description,
+					attachmentsDir,
+					repository.linearToken,
+					existingAttachmentCount,
+				);
+
+				if (downloadResult.totalNewAttachments > 0) {
+					attachmentManifest =
+						this.generateNewAttachmentManifest(downloadResult);
+					console.log(
+						`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} attachments from updated description`,
+					);
+				}
+			} catch (error) {
+				console.error(
+					"[EdgeWorker] Failed to process attachments from updated description:",
+					error,
+				);
+			}
+		}
+
+		// Build the XML-formatted prompt showing old vs new values
+		const promptBody = this.buildIssueUpdatePrompt(
+			issueIdentifier,
+			issueData,
+			updatedFrom,
+		);
+
+		// Feed the update into each active session
+		for (const session of sessions) {
+			const linearAgentActivitySessionId = session.linearAgentActivitySessionId;
+
+			// Check if runner is actively running and supports streaming input
+			const existingRunner = session.agentRunner;
+			const isRunning = existingRunner?.isRunning() || false;
+
+			// Combine prompt body with attachment manifest
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
+			if (
+				isRunning &&
+				existingRunner?.supportsStreamingInput &&
+				existingRunner.addStreamMessage
+			) {
+				// Add to existing stream
+				console.log(
+					`[EdgeWorker] Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
+				);
+				existingRunner.addStreamMessage(fullPrompt);
+			} else if (isRunning) {
+				// Runner is running but doesn't support streaming input - log and skip
+				console.log(
+					`[EdgeWorker] Session ${linearAgentActivitySessionId} is running but doesn't support streaming input, skipping issue update`,
+				);
+			} else {
+				// Session exists but runner is not running - resume with the update
+				console.log(
+					`[EdgeWorker] Resuming session ${linearAgentActivitySessionId} with issue update`,
+				);
+
+				await this.handlePromptWithStreamingCheck(
+					session,
+					repository,
+					linearAgentActivitySessionId,
+					agentSessionManager,
+					promptBody,
+					attachmentManifest,
+					false, // Not a new session
+					[], // No additional allowed directories
+					"issue content update",
+					undefined, // No comment author
+					undefined, // No comment timestamp
+				);
+			}
+		}
+	}
+
+	/**
+	 * Build an XML-formatted prompt for issue content updates (title, description, attachments).
+	 *
+	 * The prompt clearly shows what fields changed by comparing old vs new values,
+	 * and includes guidance for the agent to evaluate whether these changes affect
+	 * its current implementation or action plan.
+	 */
+	private buildIssueUpdatePrompt(
+		issueIdentifier: string,
+		issueData: {
+			title: string;
+			description?: string | null;
+			attachments?: unknown;
+		},
+		updatedFrom: {
+			title?: string;
+			description?: string;
+			attachments?: unknown;
+		},
+	): string {
+		const timestamp = new Date().toISOString();
+		const parts: string[] = [];
+
+		parts.push(`<issue_update>`);
+		parts.push(`  <identifier>${issueIdentifier}</identifier>`);
+		parts.push(`  <timestamp>${timestamp}</timestamp>`);
+
+		// Add title change if title was updated
+		if ("title" in updatedFrom) {
+			parts.push(`  <title_change>`);
+			parts.push(`    <old_title>${updatedFrom.title ?? ""}</old_title>`);
+			parts.push(`    <new_title>${issueData.title}</new_title>`);
+			parts.push(`  </title_change>`);
+		}
+
+		// Add description change if description was updated
+		if ("description" in updatedFrom) {
+			parts.push(`  <description_change>`);
+			parts.push(
+				`    <old_description>${updatedFrom.description ?? ""}</old_description>`,
+			);
+			parts.push(
+				`    <new_description>${issueData.description ?? ""}</new_description>`,
+			);
+			parts.push(`  </description_change>`);
+		}
+
+		// Add attachments change if attachments were updated
+		if ("attachments" in updatedFrom) {
+			parts.push(`  <attachments_change>`);
+			parts.push(
+				`    <old_attachments>${JSON.stringify(updatedFrom.attachments ?? null)}</old_attachments>`,
+			);
+			parts.push(
+				`    <new_attachments>${JSON.stringify(issueData.attachments ?? null)}</new_attachments>`,
+			);
+			parts.push(`  </attachments_change>`);
+		}
+
+		parts.push(`</issue_update>`);
+
+		// Add guidance for the agent on how to respond to this update
+		parts.push(``);
+		parts.push(`<guidance>`);
+		parts.push(
+			`  The issue has been updated while you are working on it. Please evaluate whether these changes`,
+		);
+		parts.push(
+			`  affect your current implementation or action plan. Consider the following:`,
+		);
+		parts.push(
+			`  - Does the updated content change the requirements or scope of your work?`,
+		);
+		parts.push(
+			`  - Are there new details, clarifications, or attachments that should inform your approach?`,
+		);
+		parts.push(
+			`  - Should you adjust your implementation strategy based on this update?`,
+		);
+		parts.push(
+			`  If the changes are relevant, incorporate them into your work. If not, you may continue as planned.`,
+		);
+		parts.push(`</guidance>`);
+
+		return parts.join("\n");
 	}
 
 	/**
@@ -1603,6 +1950,16 @@ export class EdgeWorker extends EventEmitter {
 
 		if (!webhook.agentSession.issue) {
 			console.warn("[EdgeWorker] Agent session created webhook missing issue");
+			return;
+		}
+
+		// User access control check
+		const accessResult = this.checkUserAccess(webhook, repository);
+		if (!accessResult.allowed) {
+			console.log(
+				`[EdgeWorker] User ${accessResult.userName} blocked from delegating: ${accessResult.reason}`,
+			);
+			await this.handleBlockedUser(webhook, repository, accessResult.reason);
 			return;
 		}
 
@@ -2444,6 +2801,16 @@ export class EdgeWorker extends EventEmitter {
 			console.warn(
 				`[EdgeWorker] No cached repository found for prompted webhook ${agentSessionId}`,
 			);
+			return;
+		}
+
+		// User access control check for mid-session prompts
+		const accessResult = this.checkUserAccess(webhook, repository);
+		if (!accessResult.allowed) {
+			console.log(
+				`[EdgeWorker] User ${accessResult.userName} blocked from prompting: ${accessResult.reason}`,
+			);
+			await this.handleBlockedUser(webhook, repository, accessResult.reason);
 			return;
 		}
 
@@ -3503,10 +3870,8 @@ ${reply.body}
 		);
 
 		try {
-			// Use custom template if provided (repository-specific takes precedence)
-			let templatePath =
-				repository.promptTemplatePath ||
-				this.config.features?.promptTemplatePath;
+			// Use custom template if provided (repository-specific)
+			let templatePath = repository.promptTemplatePath;
 
 			// If no custom template, use the standard issue assigned user prompt template
 			if (!templatePath) {
@@ -5319,6 +5684,91 @@ ${input.userComment}
 		}
 
 		return agentSessionManager.getSessionsByIssueId(issueId);
+	}
+
+	// ========================================================================
+	// User Access Control
+	// ========================================================================
+
+	/**
+	 * Check if the user who triggered the webhook is allowed to interact.
+	 * @param webhook The webhook containing user information
+	 * @param repository The repository configuration
+	 * @returns Access check result with allowed status and user name
+	 */
+	private checkUserAccess(
+		webhook: AgentSessionCreatedWebhook | AgentSessionPromptedWebhook,
+		repository: RepositoryConfig,
+	): { allowed: true } | { allowed: false; reason: string; userName: string } {
+		const creator = webhook.agentSession.creator;
+		const userId = creator?.id;
+		const userEmail = creator?.email;
+		const userName = creator?.name || userId || "Unknown";
+
+		const result = this.userAccessControl.checkAccess(
+			userId,
+			userEmail,
+			repository.id,
+		);
+
+		if (!result.allowed) {
+			return { allowed: false, reason: result.reason, userName };
+		}
+		return { allowed: true };
+	}
+
+	/**
+	 * Handle blocked user according to configured behavior.
+	 * Posts a response activity to end the session.
+	 * @param webhook The webhook that triggered the blocked access
+	 * @param repository The repository configuration
+	 * @param _reason The reason for blocking (for logging)
+	 */
+	private async handleBlockedUser(
+		webhook: AgentSessionCreatedWebhook | AgentSessionPromptedWebhook,
+		repository: RepositoryConfig,
+		_reason: string,
+	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(repository.id);
+		const agentSessionId = webhook.agentSession.id;
+		const behavior = this.userAccessControl.getBlockBehavior(repository.id);
+
+		if (!issueTracker) {
+			return;
+		}
+
+		if (behavior === "comment") {
+			// Get user info for templating
+			const creator = webhook.agentSession.creator;
+			const userName = creator?.name || "User";
+			const userId = creator?.id || "";
+
+			// Get the message template and replace variables
+			// Supported variables:
+			// - {{userName}} - The user's display name
+			// - {{userId}} - The user's Linear ID
+			let message = this.userAccessControl.getBlockMessage(repository.id);
+			message = message
+				.replace(/\{\{userName\}\}/g, userName)
+				.replace(/\{\{userId\}\}/g, userId);
+
+			try {
+				await issueTracker.createAgentActivity({
+					agentSessionId,
+					content: {
+						type: "response",
+						body: message,
+					},
+				});
+			} catch (error) {
+				console.error(
+					"[EdgeWorker] Failed to post blocked user message:",
+					error,
+				);
+			}
+		}
+		// For "silent" behavior, we don't post any activity.
+		// The session will remain in "Working" state until manually stopped or timed out.
 	}
 
 	/**

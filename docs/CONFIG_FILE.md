@@ -142,6 +142,75 @@ Note: Linear MCP tools (`mcp__linear`) are always included automatically.
 
 ---
 
+## User Access Control
+
+Control which Linear users can delegate issues to Cyrus. Supports both global configuration and per-repository overrides.
+
+### `userAccessControl` (object)
+
+Can be configured at the global level or per-repository.
+
+**Properties:**
+
+- **`allowedUsers`** (array) - Users allowed to delegate issues. If specified, ONLY these users can trigger sessions. Omit to allow everyone.
+- **`blockedUsers`** (array) - Users blocked from delegating issues. Takes precedence over allowedUsers.
+- **`blockBehavior`** (string) - What happens when a blocked user tries to delegate:
+  - `"silent"` (default) - Ignore the webhook quietly
+  - `"comment"` - Post a message explaining the user is not authorized
+- **`blockMessage`** (string) - Custom message when blockBehavior is "comment". Supports template variables:
+  - `{{userName}}` - The user's display name
+  - `{{userId}}` - The user's Linear ID
+
+  Default: `"{{userName}}, you are not authorized to delegate issues to this agent."`
+
+**User Identifiers:**
+
+Users can be specified in three formats:
+- String (treated as Linear user ID): `"usr_abc123"`
+- Object with ID: `{ "id": "usr_abc123" }`
+- Object with email: `{ "email": "user@example.com" }` (case-insensitive)
+
+**Example - Global configuration:**
+
+```json
+{
+  "userAccessControl": {
+    "blockedUsers": ["usr_known_bad_actor"],
+    "blockBehavior": "comment",
+    "blockMessage": "{{userName}}, please contact your team lead to use this agent."
+  },
+  "repositories": [...]
+}
+```
+
+**Example - Per-repository configuration:**
+
+```json
+{
+  "repositories": [{
+    "id": "main-app",
+    "name": "Main Application",
+    "userAccessControl": {
+      "allowedUsers": [
+        "usr_senior_dev_1",
+        { "email": "lead@company.com" },
+        { "id": "usr_senior_dev_2" }
+      ],
+      "blockBehavior": "comment"
+    }
+  }]
+}
+```
+
+**Inheritance Rules:**
+
+- **allowedUsers**: Repository config OVERRIDES global (not merged)
+- **blockedUsers**: Repository config EXTENDS global (merged/additive)
+- **blockBehavior**: Repository config OVERRIDES global
+- **blockMessage**: Repository config OVERRIDES global
+
+---
+
 ## Global Configuration
 
 In addition to repository-specific settings, you can configure global defaults:

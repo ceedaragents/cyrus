@@ -39,6 +39,8 @@ export type {
 	EdgeWorkerConfig,
 	OAuthCallbackHandler,
 	RepositoryConfig,
+	UserAccessControlConfig,
+	UserIdentifier,
 } from "./config-types.js";
 export { resolvePath } from "./config-types.js";
 
@@ -80,6 +82,7 @@ export type {
 	IssueRelation,
 	IssueUnassignedWebhook,
 	IssueUpdateInput,
+	IssueUpdateWebhook,
 	IssueWithChildren,
 	Label,
 	PaginationOptions,
@@ -108,6 +111,7 @@ export {
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
+	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedEvent,
 	isIssueUnassignedWebhook,
 	isNewCommentEvent,
