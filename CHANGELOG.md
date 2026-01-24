@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Edit issue description tool** - New MCP tool `edit_issue_description` allows diff-based editing of Linear issue descriptions. Works like Claude Code's Edit tool - finds and replaces exact strings with proper error handling for edge cases (string not found, non-unique matches, empty descriptions). Supports `replace_all` option for global find-and-replace. ([CYPACK-754](https://linear.app/ceedar/issue/CYPACK-754), [#799](https://github.com/ceedaragents/cyrus/pull/799))
+
 ## [0.2.17] - 2026-01-23
 
 ### Added
