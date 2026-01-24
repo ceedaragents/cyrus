@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-01-23
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.18
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.18
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.18
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.18
+
+#### cyrus-core
+- cyrus-core@0.2.18
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.18
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.18
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.18
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.18
+
 ## [0.2.17] - 2026-01-23
 
 ### Added
