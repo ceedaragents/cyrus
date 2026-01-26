@@ -2290,6 +2290,7 @@ export class EdgeWorker extends EventEmitter {
 				labels, // Pass labels for runner selection and model override
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
+				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
 			);
 
 			console.log(
@@ -5329,6 +5330,7 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
+		disallowAllTools?: boolean,
 	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
 		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
 		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
@@ -5448,6 +5450,21 @@ ${input.userComment}
 		const finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
 
+		// When disallowAllTools is true, don't provide any MCP servers to ensure
+		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
+		const mcpConfig = disallowAllTools
+			? undefined
+			: this.buildMcpConfig(repository, linearAgentActivitySessionId);
+		const mcpConfigPath = disallowAllTools
+			? undefined
+			: repository.mcpConfigPath;
+
+		if (disallowAllTools) {
+			console.log(
+				`[EdgeWorker] MCP tools disabled for session ${linearAgentActivitySessionId} (disallowAllTools=true)`,
+			);
+		}
+
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -5455,8 +5472,8 @@ ${input.userComment}
 			allowedDirectories,
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
-			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
+			mcpConfigPath,
+			mcpConfig,
 			appendSystemPrompt: systemPrompt || "",
 			// Priority order: label override > repository config > global default
 			model: finalModel,
@@ -6519,6 +6536,7 @@ ${input.userComment}
 			labels, // Always pass labels to preserve model override
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
+			currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
 		);
 
 		// Create the appropriate runner based on session state
