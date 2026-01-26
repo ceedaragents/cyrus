@@ -7,7 +7,8 @@ import {
 	type WriteStream,
 	writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import {
 	type CanUseTool,
 	type PermissionResult,
@@ -24,6 +25,44 @@ export class AbortError extends Error {
 	constructor(message?: string) {
 		super(message);
 		this.name = "AbortError";
+	}
+}
+
+// Create a require function for resolving module paths in ESM
+const require = createRequire(import.meta.url);
+
+/**
+ * Resolves the path to the Claude Agent SDK's cli.js executable.
+ * This is needed because the SDK's default path resolution (via import.meta.url)
+ * can fail in symlinked environments like global npm installs or pnpm workspaces.
+ *
+ * @returns The resolved path to cli.js, or undefined if resolution fails
+ */
+function resolveClaudeCodeExecutablePath(): string | undefined {
+	try {
+		// Resolve the SDK's main entry point using Node's module resolution
+		const sdkPath = require.resolve("@anthropic-ai/claude-agent-sdk");
+		// The SDK exports sdk.mjs, but cli.js is in the same directory
+		const sdkDir = dirname(sdkPath);
+		const cliPath = join(sdkDir, "cli.js");
+
+		// Verify the cli.js file exists
+		if (existsSync(cliPath)) {
+			return cliPath;
+		}
+
+		console.warn(
+			`[ClaudeRunner] Resolved SDK path but cli.js not found at: ${cliPath}`,
+		);
+		return undefined;
+	} catch (error) {
+		// This can happen if the SDK is not installed or path resolution fails
+		// In this case, let the SDK use its own default resolution logic
+		console.warn(
+			"[ClaudeRunner] Failed to resolve SDK executable path:",
+			error instanceof Error ? error.message : error,
+		);
+		return undefined;
 	}
 }
 
@@ -418,6 +457,12 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 
+			// Resolve pathToClaudeCodeExecutable: use config value if provided,
+			// otherwise auto-resolve to fix issues in symlinked environments (CYPACK-762)
+			const pathToClaudeCodeExecutable =
+				this.config.pathToClaudeCodeExecutable ||
+				resolveClaudeCodeExecutablePath();
+
 			const queryOptions: Parameters<typeof query>[0] = {
 				prompt: promptForQuery,
 				options: {
@@ -460,6 +505,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						outputFormat: this.config.outputFormat,
 					}),
 					...(this.config.extraArgs && { extraArgs: this.config.extraArgs }),
+					...(pathToClaudeCodeExecutable && { pathToClaudeCodeExecutable }),
 				},
 			};
 

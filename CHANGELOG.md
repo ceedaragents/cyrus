@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed "Claude Code executable not found" error in global npm installs and pnpm workspaces by auto-resolving the executable path. ([CYPACK-762](https://linear.app/ceedar/issue/CYPACK-762), [#809](https://github.com/ceedaragents/cyrus/pull/809))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed

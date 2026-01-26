@@ -35,6 +35,7 @@ export interface ClaudeRunnerConfig {
 	fallbackModel?: string; // Fallback model if primary model is unavailable
 	maxTurns?: number; // Maximum number of turns before completing the session
 	cyrusHome: string; // Cyrus home directory
+	pathToClaudeCodeExecutable?: string; // Path to Claude Code executable (cli.js) - use when SDK can't auto-detect
 	promptVersions?: {
 		// Optional prompt template version information
 		userPromptVersion?: string;
