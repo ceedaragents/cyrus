@@ -16,6 +16,7 @@ import {
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
+	createLogger,
 	type IAgentRunner,
 	type IIssueTrackerService,
 	type IssueMinimal,
@@ -23,6 +24,10 @@ import {
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
 } from "cyrus-core";
+
+// Domain-specific logger for session management
+const log = createLogger("session");
+
 import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
 import type { ValidationLoopMetadata } from "./procedures/types.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
@@ -132,9 +137,10 @@ export class AgentSessionManager extends EventEmitter {
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
 	): CyrusAgentSession {
-		console.log(
-			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
-		);
+		log.info("Session created", {
+			sessionId: linearAgentActivitySessionId,
+			issueId,
+		});
 
 		const agentSession: CyrusAgentSession = {
 			linearAgentActivitySessionId,
@@ -165,9 +171,9 @@ export class AgentSessionManager extends EventEmitter {
 	): void {
 		const linearSession = this.sessions.get(linearAgentActivitySessionId);
 		if (!linearSession) {
-			console.warn(
-				`[AgentSessionManager] No Linear session found for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
-			);
+			log.warn("Session not found for SDK session update", {
+				sessionId: linearAgentActivitySessionId,
+			});
 			return;
 		}
 

@@ -3,8 +3,16 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
-import type { Issue, RepositoryConfig, Workspace } from "cyrus-core";
+import {
+	createLogger,
+	type Issue,
+	type RepositoryConfig,
+	type Workspace,
+} from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
+
+// Domain-specific logger for git operations
+const log = createLogger("git");
 
 /**
  * Logger interface for GitService
@@ -17,15 +25,21 @@ export interface GitServiceLogger {
 }
 
 /**
- * Default console-based logger implementation
+ * Default logger implementation using the centralized logger
  */
 const defaultLogger: GitServiceLogger = {
-	info: (message: string, ...args: unknown[]) =>
-		console.log(`[GitService] ${message}`, ...args),
-	warn: (message: string, ...args: unknown[]) =>
-		console.warn(`[GitService] ${message}`, ...args),
-	error: (message: string, ...args: unknown[]) =>
-		console.error(`[GitService] ${message}`, ...args),
+	info: (message: string, ...args: unknown[]) => {
+		const ctx = args.length > 0 ? { details: args } : undefined;
+		log.info(message, ctx);
+	},
+	warn: (message: string, ...args: unknown[]) => {
+		const ctx = args.length > 0 ? { details: args } : undefined;
+		log.warn(message, ctx);
+	},
+	error: (message: string, ...args: unknown[]) => {
+		const ctx = args.length > 0 ? { details: args } : undefined;
+		log.error(message, ctx);
+	},
 };
 
 /**
