@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Refactored logging system for improved observability: created centralized Logger in packages/core with structured logging, log levels (DEBUG, INFO, WARN, ERROR), log domains for categorical filtering, and environment-based configuration via CYRUS_LOG_LEVEL, CYRUS_LOG_DOMAINS, and CYRUS_LOG_JSON. ([CYPACK-767](https://linear.app/ceedar/issue/CYPACK-767), [#813](https://github.com/ceedaragents/cyrus/pull/813))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed

@@ -49,6 +49,7 @@ import type {
 import {
 	CLIIssueTrackerService,
 	CLIRPCServer,
+	createLogger,
 	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
@@ -60,6 +61,14 @@ import {
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
+
+// Domain-specific loggers for different subsystems
+const webhookLog = createLogger("webhook");
+const sessionLog = createLogger("session");
+const configLog = createLogger("config");
+const systemLog = createLogger("system");
+const routerLog = createLogger("router");
+
 import { GeminiRunner } from "cyrus-gemini-runner";
 import {
 	LinearEventTransport,
@@ -212,12 +221,7 @@ export class EdgeWorker extends EventEmitter {
 			},
 		});
 
-		console.log(
-			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
-		);
-		console.log(
-			`[EdgeWorker Constructor] Parent-child mapping initialized with 0 entries`,
-		);
+		sessionLog.debug("Initializing parent-child session mapping system");
 
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
@@ -281,13 +285,11 @@ export class EdgeWorker extends EventEmitter {
 				const agentSessionManager = new AgentSessionManager(
 					issueTracker,
 					(childSessionId: string) => {
-						console.log(
-							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
-						);
 						const parentId = this.childToParentAgentSession.get(childSessionId);
-						console.log(
-							`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || "not found"}`,
-						);
+						sessionLog.debug("Looking up parent session", {
+							childSessionId,
+							parentId: parentId || "not found",
+						});
 						return parentId;
 					},
 					async (parentSessionId, prompt, childSessionId) => {
@@ -326,9 +328,11 @@ export class EdgeWorker extends EventEmitter {
 						iteration,
 						maxIterations,
 					}) => {
-						console.log(
-							`[EdgeWorker] Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
-						);
+						sessionLog.info("Validation loop running fixer", {
+							sessionId: linearAgentActivitySessionId,
+							iteration,
+							maxIterations,
+						});
 						await this.handleValidationLoopFixer(
 							linearAgentActivitySessionId,
 							session,
@@ -343,9 +347,10 @@ export class EdgeWorker extends EventEmitter {
 				agentSessionManager.on(
 					"validationLoopRerun",
 					async ({ linearAgentActivitySessionId, session, iteration }) => {
-						console.log(
-							`[EdgeWorker] Validation loop re-running verifications (iteration ${iteration})`,
-						);
+						sessionLog.info("Validation loop re-running verifications", {
+							sessionId: linearAgentActivitySessionId,
+							iteration,
+						});
 						await this.handleValidationLoopRerun(
 							linearAgentActivitySessionId,
 							session,
@@ -430,8 +435,7 @@ export class EdgeWorker extends EventEmitter {
 			// Register the /cli/rpc endpoint
 			this.cliRPCServer.register();
 
-			console.log("✅ CLI RPC server registered");
-			console.log("   RPC endpoint: /cli/rpc");
+			systemLog.info("CLI RPC server registered", { endpoint: "/cli/rpc" });
 
 			// Create CLI event transport and register listener
 			const cliEventTransport = firstIssueTracker.createEventTransport({
@@ -454,10 +458,7 @@ export class EdgeWorker extends EventEmitter {
 			// Register the CLI event transport endpoints
 			cliEventTransport.register();
 
-			console.log("✅ CLI event transport registered");
-			console.log(
-				"   Event listener: listening for AgentSessionCreated events",
-			);
+			systemLog.info("CLI event transport registered");
 		} else {
 			// Linear mode: Create and register LinearEventTransport
 			const useDirectWebhooks =
@@ -490,12 +491,10 @@ export class EdgeWorker extends EventEmitter {
 			// Register the /webhook endpoint
 			this.linearEventTransport.register();
 
-			console.log(
-				`✅ Linear event transport registered (${verificationMode} mode)`,
-			);
-			console.log(
-				`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
-			);
+			systemLog.info("Linear event transport registered", {
+				mode: verificationMode,
+				webhookUrl: this.sharedApplicationServer.getWebhookUrl(),
+			});
 		}
 
 		// 2. Create and register ConfigUpdater (both platforms)
@@ -508,11 +507,15 @@ export class EdgeWorker extends EventEmitter {
 		// Register config update routes
 		this.configUpdater.register();
 
-		console.log("✅ Config updater registered");
-		console.log("   Routes: /api/update/cyrus-config, /api/update/cyrus-env,");
-		console.log(
-			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
-		);
+		configLog.info("Config updater registered", {
+			routes: [
+				"/api/update/cyrus-config",
+				"/api/update/cyrus-env",
+				"/api/update/repository",
+				"/api/test-mcp",
+				"/api/configure-mcp",
+			],
+		});
 
 		// 3. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
@@ -533,8 +536,7 @@ export class EdgeWorker extends EventEmitter {
 			return reply.status(200).send({ status });
 		});
 
-		console.log("✅ Status endpoint registered");
-		console.log("   Route: GET /status");
+		systemLog.info("Status endpoint registered", { route: "GET /status" });
 	}
 
 	/**
@@ -550,8 +552,7 @@ export class EdgeWorker extends EventEmitter {
 			});
 		});
 
-		console.log("✅ Version endpoint registered");
-		console.log("   Route: GET /version");
+		systemLog.info("Version endpoint registered", { route: "GET /version" });
 	}
 
 	/**
@@ -585,17 +586,16 @@ export class EdgeWorker extends EventEmitter {
 		if (this.configWatcher) {
 			await this.configWatcher.close();
 			this.configWatcher = undefined;
-			console.log("✅ Config file watcher stopped");
+			configLog.info("Config file watcher stopped");
 		}
 
 		try {
 			await this.savePersistedState();
-			console.log("✅ EdgeWorker state saved successfully");
+			systemLog.info("EdgeWorker state saved");
 		} catch (error) {
-			console.error(
-				"❌ Failed to save EdgeWorker state during shutdown:",
-				error,
-			);
+			systemLog.error("Failed to save EdgeWorker state during shutdown", {
+				error: error instanceof Error ? error.message : String(error),
+			});
 		}
 
 		// get all agent runners
@@ -610,7 +610,9 @@ export class EdgeWorker extends EventEmitter {
 				try {
 					runner.stop();
 				} catch (error) {
-					console.error("Error stopping Claude runner:", error);
+					sessionLog.error("Error stopping agent runner", {
+						error: error instanceof Error ? error.message : String(error),
+					});
 				}
 			}
 		}
@@ -642,17 +644,10 @@ export class EdgeWorker extends EventEmitter {
 		_childRepo: RepositoryConfig,
 		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
-		console.log(
-			`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
-		);
-
-		// Find parent session across all repositories
-		// This is critical for cross-repository orchestration where parent and child
-		// may be in different repositories with different AgentSessionManagers
-		// See also: feedback delivery code at line ~4413 which uses same pattern
-		console.log(
-			`[Parent Session Resume] Searching for parent session ${parentSessionId} across all repositories`,
-		);
+		sessionLog.info("Child session completed, resuming parent", {
+			parentSessionId,
+			childSessionId,
+		});
 		let parentSession: CyrusAgentSession | undefined;
 		let parentRepo: RepositoryConfig | undefined;
 		let parentAgentSessionManager: AgentSessionManager | undefined;
@@ -663,23 +658,22 @@ export class EdgeWorker extends EventEmitter {
 				parentSession = candidate;
 				parentRepo = this.repositories.get(repoId);
 				parentAgentSessionManager = manager;
-				console.log(
-					`[Parent Session Resume] Found parent session in repository: ${parentRepo?.name || repoId}`,
-				);
+				sessionLog.debug("Found parent session", {
+					repository: parentRepo?.name || repoId,
+				});
 				break;
 			}
 		}
 
 		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
-			console.error(
-				`[Parent Session Resume] Parent session ${parentSessionId} not found in any repository's agent session manager`,
-			);
+			sessionLog.error("Parent session not found", { parentSessionId });
 			return;
 		}
 
-		console.log(
-			`[Parent Session Resume] Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
-		);
+		sessionLog.debug("Parent session details", {
+			issueId: parentSession.issueId,
+			workspace: parentSession.workspace.path,
+		});
 
 		// Get the child session to access its workspace path
 		// Child session is in the child's manager (passed in from the callback)
@@ -687,13 +681,13 @@ export class EdgeWorker extends EventEmitter {
 		const childWorkspaceDirs: string[] = [];
 		if (childSession) {
 			childWorkspaceDirs.push(childSession.workspace.path);
-			console.log(
-				`[Parent Session Resume] Adding child workspace to parent allowed directories: ${childSession.workspace.path}`,
-			);
+			sessionLog.debug("Adding child workspace to allowed directories", {
+				childWorkspace: childSession.workspace.path,
+			});
 		} else {
-			console.warn(
-				`[Parent Session Resume] Could not find child session ${childSessionId} to add workspace to parent allowed directories`,
-			);
+			sessionLog.warn("Could not find child session for workspace access", {
+				childSessionId,
+			});
 		}
 
 		await this.postParentResumeAcknowledgment(parentSessionId, parentRepo.id);
@@ -1197,9 +1191,11 @@ export class EdgeWorker extends EventEmitter {
 						iteration,
 						maxIterations,
 					}) => {
-						console.log(
-							`[EdgeWorker] Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
-						);
+						sessionLog.info("Validation loop running fixer", {
+							sessionId: linearAgentActivitySessionId,
+							iteration,
+							maxIterations,
+						});
 						await this.handleValidationLoopFixer(
 							linearAgentActivitySessionId,
 							session,
@@ -1214,9 +1210,10 @@ export class EdgeWorker extends EventEmitter {
 				agentSessionManager.on(
 					"validationLoopRerun",
 					async ({ linearAgentActivitySessionId, session, iteration }) => {
-						console.log(
-							`[EdgeWorker] Validation loop re-running verifications (iteration ${iteration})`,
-						);
+						sessionLog.info("Validation loop re-running verifications", {
+							sessionId: linearAgentActivitySessionId,
+							iteration,
+						});
 						await this.handleValidationLoopRerun(
 							linearAgentActivitySessionId,
 							session,
@@ -1943,7 +1940,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		if (!webhook.agentSession.issue) {
-			console.warn("[EdgeWorker] Agent session created webhook missing issue");
+			webhookLog.warn("Agent session created webhook missing issue");
 			return;
 		}
 
@@ -2168,12 +2165,12 @@ export class EdgeWorker extends EventEmitter {
 			finalClassification = routingDecision.classification;
 
 			// Log AI routing decision
-			console.log(
-				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
-			);
-			console.log(`  Classification: ${routingDecision.classification}`);
-			console.log(`  Procedure: ${finalProcedure.name}`);
-			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+			routerLog.info("AI routing decision", {
+				sessionId: linearAgentActivitySessionId,
+				classification: routingDecision.classification,
+				procedure: finalProcedure.name,
+				reasoning: routingDecision.reasoning,
+			});
 		}
 
 		// Initialize procedure metadata in session with final decision
