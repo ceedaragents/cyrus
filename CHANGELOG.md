@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Dependencies** - Updated `@anthropic-ai/claude-agent-sdk` to v0.2.20, bringing support for the new task system and additional CLAUDE.md loading directories. ([CYPACK-763](https://linear.app/ceedar/issue/CYPACK-763), [#810](https://github.com/ceedaragents/cyrus/pull/810), [SDK v0.2.20 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0220-2026-01-25))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
