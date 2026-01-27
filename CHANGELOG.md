@@ -4,9 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-- **Configurable Cyrus app URL** - Set `CYRUS_APP_URL` environment variable to use preview environments instead of the default `app.atcyrus.com` endpoint. ([CYPACK-764](https://linear.app/ceedar/issue/CYPACK-764), [#811](https://github.com/ceedaragents/cyrus/pull/811))
-
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
