@@ -113,6 +113,7 @@ export class SharedApplicationServer {
 		return new Promise<void>((resolve, reject) => {
 			let connectionCount = 0;
 			const requiredConnections = 4;
+			let fullyConnected = false;
 
 			this.tunnelClient = new CloudflareTunnelClient(
 				cloudflareToken,
@@ -127,6 +128,7 @@ export class SharedApplicationServer {
 				);
 
 				if (connectionCount === requiredConnections) {
+					fullyConnected = true;
 					console.log("✅ Cloudflare tunnel fully connected and ready");
 					resolve();
 				}
@@ -138,9 +140,21 @@ export class SharedApplicationServer {
 			});
 
 			// Listen for error events
+			// Note: cloudflared can emit non-fatal errors (e.g., DNS resolution failures for
+			// optional features like cfd-features.argotunnel.com) while still successfully
+			// establishing connections. We only reject on errors if we haven't fully connected yet.
 			this.tunnelClient.on("error", (error: Error) => {
-				console.error("❌ Cloudflare tunnel error:", error);
-				reject(error);
+				if (fullyConnected) {
+					// After successful connection, log errors but don't crash
+					console.warn("⚠️ Cloudflare tunnel error (non-fatal):", error.message);
+				} else {
+					// During startup, log the error but rely on timeout for fatal failures
+					// This allows cloudflared to recover from transient DNS issues
+					console.warn(
+						"⚠️ Cloudflare tunnel error during startup:",
+						error.message,
+					);
+				}
 			});
 
 			// Listen for disconnect events
@@ -149,11 +163,21 @@ export class SharedApplicationServer {
 			});
 
 			// Start the tunnel
-			this.tunnelClient.startTunnel().catch(reject);
+			this.tunnelClient.startTunnel().catch((error: Error) => {
+				// Only reject if we haven't successfully connected
+				if (!fullyConnected) {
+					reject(error);
+				} else {
+					console.warn(
+						"⚠️ Cloudflare tunnel startTunnel error (non-fatal):",
+						error.message,
+					);
+				}
+			});
 
 			// Timeout after 30 seconds
 			setTimeout(() => {
-				if (connectionCount < requiredConnections) {
+				if (connectionCount < requiredConnections && !fullyConnected) {
 					reject(
 						new Error(
 							`Timeout waiting for Cloudflare tunnel (${connectionCount}/${requiredConnections} connections). This is usually caused by firewall/VPN/proxy blocking cloudflared. See troubleshooting: https://github.com/ceedaragents/cyrus/blob/main/docs/CLOUDFLARE_TUNNEL.md#troubleshooting`,
