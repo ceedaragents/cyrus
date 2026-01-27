@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Cloudflare tunnel stability** - Non-fatal DNS errors from cloudflared (like failing to resolve optional feature endpoints) no longer crash Cyrus during startup. The tunnel now successfully establishes connections even when transient DNS issues occur. ([CYPACK-768](https://linear.app/ceedar/issue/CYPACK-768), [#814](https://github.com/ceedaragents/cyrus/pull/814))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
