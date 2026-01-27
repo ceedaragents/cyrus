@@ -16,7 +16,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@anthropic-ai/claude-agent-sdk": "^0.2.7",
+		"@anthropic-ai/claude-agent-sdk": "^0.2.20",
 		"@anthropic-ai/sdk": "^0.71.2",
 		"@linear/sdk": "^64.0.0",
 		"cyrus-core": "workspace:*",
