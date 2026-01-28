@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.2.7 to 0.2.22 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0222-2026-01-28)). Includes fixes for structured outputs handling and parity updates with Claude Code v2.1.22. ([CYPACK-769](https://linear.app/ceedar/issue/CYPACK-769), [#816](https://github.com/ceedaragents/cyrus/pull/816))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
