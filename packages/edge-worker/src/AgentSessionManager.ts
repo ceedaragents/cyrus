@@ -1287,11 +1287,18 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Resolve the issue ID from a session, checking issueContext first then deprecated issueId.
+	 */
+	private getSessionIssueId(session: CyrusAgentSession): string | undefined {
+		return session.issueContext?.issueId ?? session.issueId;
+	}
+
+	/**
 	 * Get all agent runners for a specific issue
 	 */
 	getAgentRunnersForIssue(issueId: string): IAgentRunner[] {
 		return Array.from(this.sessions.values())
-			.filter((session) => session.issueId === issueId)
+			.filter((session) => this.getSessionIssueId(session) === issueId)
 			.map((session) => session.agentRunner)
 			.filter((runner): runner is IAgentRunner => runner !== undefined);
 	}
@@ -1301,7 +1308,7 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	getSessionsByIssueId(issueId: string): CyrusAgentSession[] {
 		return Array.from(this.sessions.values()).filter(
-			(session) => session.issueId === issueId,
+			(session) => this.getSessionIssueId(session) === issueId,
 		);
 	}
 
@@ -1311,7 +1318,7 @@ export class AgentSessionManager extends EventEmitter {
 	getActiveSessionsByIssueId(issueId: string): CyrusAgentSession[] {
 		return Array.from(this.sessions.values()).filter(
 			(session) =>
-				session.issueId === issueId &&
+				this.getSessionIssueId(session) === issueId &&
 				session.status === AgentSessionStatus.Active,
 		);
 	}
