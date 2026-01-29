@@ -4,6 +4,7 @@ import {
 	type LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
 import type { IAgentEventTransport } from "cyrus-core";
+import { createLogger, type ILogger } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
 	LinearEventTransportConfig,
@@ -40,10 +41,12 @@ export class LinearEventTransport
 {
 	private config: LinearEventTransportConfig;
 	private linearWebhookClient: LinearWebhookClient | null = null;
+	private logger: ILogger;
 
-	constructor(config: LinearEventTransportConfig) {
+	constructor(config: LinearEventTransportConfig, logger?: ILogger) {
 		super();
 		this.config = config;
+		this.logger = logger ?? createLogger({ component: "LinearEventTransport" });
 
 		// Initialize Linear webhook client for direct mode
 		if (config.verificationMode === "direct") {
@@ -66,19 +69,19 @@ export class LinearEventTransport
 						await this.handleProxyWebhook(request, reply);
 					}
 				} catch (error) {
-					const err = new Error("[LinearEventTransport] Webhook error");
+					const err = new Error("Webhook error");
 					if (error instanceof Error) {
 						err.cause = error;
 					}
-					console.error(err);
+					this.logger.error("Webhook error", err);
 					this.emit("error", err);
 					reply.code(500).send({ error: "Internal server error" });
 				}
 			},
 		);
 
-		console.log(
-			`[LinearEventTransport] Registered POST /webhook endpoint (${this.config.verificationMode} mode)`,
+		this.logger.info(
+			`Registered POST /webhook endpoint (${this.config.verificationMode} mode)`,
 		);
 	}
 
@@ -117,13 +120,11 @@ export class LinearEventTransport
 			// Send success response
 			reply.code(200).send({ success: true });
 		} catch (error) {
-			const err = new Error(
-				"[LinearEventTransport] Direct webhook verification failed",
-			);
+			const err = new Error("Direct webhook verification failed");
 			if (error instanceof Error) {
 				err.cause = error;
 			}
-			console.error(err);
+			this.logger.error("Direct webhook verification failed", err);
 			reply.code(401).send({ error: "Invalid webhook signature" });
 		}
 	}
@@ -156,13 +157,11 @@ export class LinearEventTransport
 			// Send success response
 			reply.code(200).send({ success: true });
 		} catch (error) {
-			const err = new Error(
-				"[LinearEventTransport] Proxy webhook processing failed",
-			);
+			const err = new Error("Proxy webhook processing failed");
 			if (error instanceof Error) {
 				err.cause = error;
 			}
-			console.error(err);
+			this.logger.error("Proxy webhook processing failed", err);
 			reply.code(500).send({ error: "Failed to process webhook" });
 		}
 	}

@@ -8,6 +8,7 @@ import type {
 	IssueContext,
 	IssueMinimal,
 } from "./CyrusAgentSession.js";
+import { createLogger, type ILogger } from "./logging/index.js";
 
 /** Current persistence format version */
 export const PERSISTENCE_VERSION = "3.0";
@@ -69,10 +70,12 @@ export interface SerializableEdgeWorkerState {
  */
 export class PersistenceManager {
 	private persistencePath: string;
+	private logger: ILogger;
 
-	constructor(persistencePath?: string) {
+	constructor(persistencePath?: string, logger?: ILogger) {
 		this.persistencePath =
 			persistencePath || join(homedir(), ".cyrus", "state");
+		this.logger = logger ?? createLogger({ component: "PersistenceManager" });
 	}
 
 	/**
@@ -103,7 +106,7 @@ export class PersistenceManager {
 			};
 			await writeFile(stateFile, JSON.stringify(stateData, null, 2), "utf8");
 		} catch (error) {
-			console.error(`Failed to save EdgeWorker state:`, error);
+			this.logger.error("Failed to save EdgeWorker state:", error);
 			throw error;
 		}
 	}
@@ -123,24 +126,24 @@ export class PersistenceManager {
 
 			// Validate state structure exists
 			if (!stateData.state) {
-				console.warn(`Invalid state file (missing state), ignoring`);
+				this.logger.warn("Invalid state file (missing state), ignoring");
 				return null;
 			}
 
 			// Handle version migration
 			if (stateData.version === "2.0") {
-				console.log(`[PersistenceManager] Migrating state from v2.0 to v3.0`);
+				this.logger.info("Migrating state from v2.0 to v3.0");
 				const migratedState = this.migrateV2ToV3(stateData.state);
 				// Save the migrated state
 				await this.saveEdgeWorkerState(migratedState);
-				console.log(
-					`[PersistenceManager] Migration complete, saved as v${PERSISTENCE_VERSION}`,
+				this.logger.info(
+					`Migration complete, saved as v${PERSISTENCE_VERSION}`,
 				);
 				return migratedState;
 			}
 
 			if (stateData.version !== PERSISTENCE_VERSION) {
-				console.warn(
+				this.logger.warn(
 					`Unknown state file version ${stateData.version}, ignoring`,
 				);
 				return null;
@@ -148,7 +151,7 @@ export class PersistenceManager {
 
 			return stateData.state;
 		} catch (error) {
-			console.error(`Failed to load EdgeWorker state:`, error);
+			this.logger.error("Failed to load EdgeWorker state:", error);
 			return null;
 		}
 	}
@@ -248,7 +251,7 @@ export class PersistenceManager {
 				await writeFile(stateFile, "", "utf8"); // Clear file instead of deleting
 			}
 		} catch (error) {
-			console.error(`Failed to delete EdgeWorker state file:`, error);
+			this.logger.error("Failed to delete EdgeWorker state file:", error);
 		}
 	}
 

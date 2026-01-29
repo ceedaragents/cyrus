@@ -17,7 +17,6 @@ export type {
 } from "./AskUserQuestionHandler.js";
 export { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 export { EdgeWorker } from "./EdgeWorker.js";
-export type { GitServiceLogger } from "./GitService.js";
 export { GitService } from "./GitService.js";
 export type { SerializedGlobalRegistryState } from "./GlobalSessionRegistry.js";
 export { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
@@ -42,5 +41,4 @@ export {
 	type ValidationLoopState,
 	type ValidationResult,
 } from "./validation/index.js";
-export type { WorktreeIncludeLogger } from "./WorktreeIncludeService.js";
 export { WorktreeIncludeService } from "./WorktreeIncludeService.js";
