@@ -70,6 +70,7 @@ import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { GitService } from "./GitService.js";
+import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import {
 	ProcedureAnalyzer,
 	type ProcedureDefinition,
@@ -119,6 +120,7 @@ export class EdgeWorker extends EventEmitter {
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
+	private globalSessionRegistry: GlobalSessionRegistry; // Centralized session storage across all repositories
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
 	private configWatcher?: FSWatcher; // File watcher for config.json
@@ -139,6 +141,9 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Initialize global session registry (centralized session storage)
+		this.globalSessionRegistry = new GlobalSessionRegistry();
 
 		// Initialize procedure router with haiku for fast classification
 		// Default to claude runner
@@ -284,7 +289,8 @@ export class EdgeWorker extends EventEmitter {
 						console.log(
 							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
 						);
-						const parentId = this.childToParentAgentSession.get(childSessionId);
+						const parentId =
+							this.globalSessionRegistry.getParentSessionId(childSessionId);
 						console.log(
 							`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || "not found"}`,
 						);
@@ -301,14 +307,15 @@ export class EdgeWorker extends EventEmitter {
 					},
 					this.procedureAnalyzer,
 					this.sharedApplicationServer,
+					this.globalSessionRegistry,
 				);
 
 				// Subscribe to subroutine completion events
 				agentSessionManager.on(
 					"subroutineComplete",
-					async ({ linearAgentActivitySessionId, session }) => {
+					async ({ sessionId, session }) => {
 						await this.handleSubroutineTransition(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -320,7 +327,7 @@ export class EdgeWorker extends EventEmitter {
 				agentSessionManager.on(
 					"validationLoopIteration",
 					async ({
-						linearAgentActivitySessionId,
+						sessionId,
 						session,
 						fixerPrompt,
 						iteration,
@@ -330,7 +337,7 @@ export class EdgeWorker extends EventEmitter {
 							`[EdgeWorker] Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
 						);
 						await this.handleValidationLoopFixer(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -342,12 +349,12 @@ export class EdgeWorker extends EventEmitter {
 
 				agentSessionManager.on(
 					"validationLoopRerun",
-					async ({ linearAgentActivitySessionId, session, iteration }) => {
+					async ({ sessionId, session, iteration }) => {
 						console.log(
 							`[EdgeWorker] Validation loop re-running verifications (iteration ${iteration})`,
 						);
 						await this.handleValidationLoopRerun(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -768,13 +775,13 @@ export class EdgeWorker extends EventEmitter {
 	 * This is triggered by the AgentSessionManager's 'subroutineComplete' event
 	 */
 	private async handleSubroutineTransition(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		session: CyrusAgentSession,
 		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		console.log(
-			`[Subroutine Transition] Handling subroutine completion for session ${linearAgentActivitySessionId}`,
+			`[Subroutine Transition] Handling subroutine completion for session ${sessionId}`,
 		);
 
 		// Get next subroutine (advancement already handled by AgentSessionManager)
@@ -782,7 +789,7 @@ export class EdgeWorker extends EventEmitter {
 
 		if (!nextSubroutine) {
 			console.log(
-				`[Subroutine Transition] Procedure complete for session ${linearAgentActivitySessionId}`,
+				`[Subroutine Transition] Procedure complete for session ${sessionId}`,
 			);
 			return;
 		}
@@ -816,7 +823,7 @@ export class EdgeWorker extends EventEmitter {
 			await this.resumeAgentSession(
 				session,
 				repo,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				subroutinePrompt,
 				"", // No attachment manifest
@@ -839,7 +846,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle validation loop fixer - run the fixer prompt
 	 */
 	private async handleValidationLoopFixer(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		session: CyrusAgentSession,
 		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
@@ -847,14 +854,14 @@ export class EdgeWorker extends EventEmitter {
 		iteration: number,
 	): Promise<void> {
 		console.log(
-			`[Validation Loop] Running fixer for session ${linearAgentActivitySessionId}, iteration ${iteration}`,
+			`[Validation Loop] Running fixer for session ${sessionId}, iteration ${iteration}`,
 		);
 
 		try {
 			await this.resumeAgentSession(
 				session,
 				repo,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				fixerPrompt,
 				"", // No attachment manifest
@@ -877,13 +884,13 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle validation loop rerun - re-run the verifications subroutine
 	 */
 	private async handleValidationLoopRerun(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		session: CyrusAgentSession,
 		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		console.log(
-			`[Validation Loop] Re-running verifications for session ${linearAgentActivitySessionId}`,
+			`[Validation Loop] Re-running verifications for session ${sessionId}`,
 		);
 
 		// Get the verifications subroutine definition
@@ -915,7 +922,7 @@ export class EdgeWorker extends EventEmitter {
 			await this.resumeAgentSession(
 				session,
 				repo,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				subroutinePrompt,
 				"", // No attachment manifest
@@ -1159,7 +1166,9 @@ export class EdgeWorker extends EventEmitter {
 				const agentSessionManager = new AgentSessionManager(
 					issueTracker,
 					(childSessionId: string) => {
-						return this.childToParentAgentSession.get(childSessionId);
+						return this.globalSessionRegistry.getParentSessionId(
+							childSessionId,
+						);
 					},
 					async (parentSessionId, prompt, childSessionId) => {
 						await this.handleResumeParentSession(
@@ -1172,14 +1181,15 @@ export class EdgeWorker extends EventEmitter {
 					},
 					this.procedureAnalyzer,
 					this.sharedApplicationServer,
+					this.globalSessionRegistry,
 				);
 
 				// Subscribe to subroutine completion events
 				agentSessionManager.on(
 					"subroutineComplete",
-					async ({ linearAgentActivitySessionId, session }) => {
+					async ({ sessionId, session }) => {
 						await this.handleSubroutineTransition(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -1191,7 +1201,7 @@ export class EdgeWorker extends EventEmitter {
 				agentSessionManager.on(
 					"validationLoopIteration",
 					async ({
-						linearAgentActivitySessionId,
+						sessionId,
 						session,
 						fixerPrompt,
 						iteration,
@@ -1201,7 +1211,7 @@ export class EdgeWorker extends EventEmitter {
 							`[EdgeWorker] Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
 						);
 						await this.handleValidationLoopFixer(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -1213,12 +1223,12 @@ export class EdgeWorker extends EventEmitter {
 
 				agentSessionManager.on(
 					"validationLoopRerun",
-					async ({ linearAgentActivitySessionId, session, iteration }) => {
+					async ({ sessionId, session, iteration }) => {
 						console.log(
 							`[EdgeWorker] Validation loop re-running verifications (iteration ${iteration})`,
 						);
 						await this.handleValidationLoopRerun(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -1328,22 +1338,20 @@ export class EdgeWorker extends EventEmitter {
 							console.log(`  🛑 Stopping session for issue ${session.issueId}`);
 
 							// Get the agent runner for this session
-							const runner = manager?.getAgentRunner(
-								session.linearAgentActivitySessionId,
-							);
+							const runner = manager?.getAgentRunner(session.id);
 							if (runner) {
 								// Stop the agent process
 								runner.stop();
 								console.log(
-									`  ✅ Stopped Claude runner for session ${session.linearAgentActivitySessionId}`,
+									`  ✅ Stopped Claude runner for session ${session.id}`,
 								);
 							}
 
 							// Post cancellation message to Linear
 							const issueTracker = this.issueTrackers.get(repo.id);
-							if (issueTracker) {
+							if (issueTracker && session.externalSessionId) {
 								await issueTracker.createAgentActivity({
-									agentSessionId: session.linearAgentActivitySessionId,
+									agentSessionId: session.externalSessionId,
 									content: {
 										type: "response",
 										body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
@@ -1355,7 +1363,7 @@ export class EdgeWorker extends EventEmitter {
 							}
 						} catch (error) {
 							console.error(
-								`  ❌ Failed to stop session ${session.linearAgentActivitySessionId}:`,
+								`  ❌ Failed to stop session ${session.id}:`,
 								error,
 							);
 						}
@@ -1628,7 +1636,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Feed the update into each active session
 		for (const session of sessions) {
-			const linearAgentActivitySessionId = session.linearAgentActivitySessionId;
+			const linearAgentActivitySessionId = session.id;
 
 			// Check if runner is actively running and supports streaming input
 			const existingRunner = session.agentRunner;
@@ -1781,14 +1789,14 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Create a new Linear agent session with all necessary setup
-	 * @param linearAgentActivitySessionId The Linear agent activity session ID
+	 * @param sessionId The Linear agent activity session ID
 	 * @param issue Linear issue object
 	 * @param repository Repository configuration
 	 * @param agentSessionManager Agent session manager instance
 	 * @returns Object containing session details and setup information
 	 */
 	private async createLinearAgentSession(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		issue: { id: string; identifier: string },
 		repository: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
@@ -1812,19 +1820,17 @@ export class EdgeWorker extends EventEmitter {
 
 		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
 		agentSessionManager.createLinearAgentSession(
-			linearAgentActivitySessionId,
+			sessionId,
 			issue.id,
 			issueMinimal,
 			workspace,
 		);
 
 		// Get the newly created session
-		const session = agentSessionManager.getSession(
-			linearAgentActivitySessionId,
-		);
+		const session = agentSessionManager.getSession(sessionId);
 		if (!session) {
 			throw new Error(
-				`Failed to create session for agent activity session ${linearAgentActivitySessionId}`,
+				`Failed to create session for agent activity session ${sessionId}`,
 			);
 		}
 
@@ -1990,7 +1996,7 @@ export class EdgeWorker extends EventEmitter {
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 	): Promise<void> {
-		const linearAgentActivitySessionId = agentSession.id;
+		const sessionId = agentSession.id;
 		const { issue } = agentSession;
 
 		if (!issue) {
@@ -2040,14 +2046,11 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Post instant acknowledgment thought
-		await this.postInstantAcknowledgment(
-			linearAgentActivitySessionId,
-			repository.id,
-		);
+		await this.postInstantAcknowledgment(sessionId, repository.id);
 
 		// Create the session using the shared method
 		const sessionData = await this.createLinearAgentSession(
-			linearAgentActivitySessionId,
+			sessionId,
 			issue,
 			repository,
 			agentSessionManager,
@@ -2069,9 +2072,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postAnalyzingThought(
-			linearAgentActivitySessionId,
-		);
+		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch labels early (needed for label override check)
 		const labels = await this.fetchIssueLabels(fullIssue);
@@ -2168,9 +2169,7 @@ export class EdgeWorker extends EventEmitter {
 			finalClassification = routingDecision.classification;
 
 			// Log AI routing decision
-			console.log(
-				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
-			);
+			console.log(`[EdgeWorker] AI routing decision for ${sessionId}:`);
 			console.log(`  Classification: ${routingDecision.classification}`);
 			console.log(`  Procedure: ${finalProcedure.name}`);
 			console.log(`  Reasoning: ${routingDecision.reasoning}`);
@@ -2181,7 +2180,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Post single procedure selection result (replaces ephemeral routing thought)
 		await agentSessionManager.postProcedureSelectionThought(
-			linearAgentActivitySessionId,
+			sessionId,
 			finalProcedure.name,
 			finalClassification,
 		);
@@ -2231,7 +2230,7 @@ export class EdgeWorker extends EventEmitter {
 				// Post thought about system prompt selection
 				if (assembly.systemPrompt) {
 					await this.postSystemPromptSelectionThought(
-						linearAgentActivitySessionId,
+						sessionId,
 						labels,
 						repository.id,
 					);
@@ -2281,7 +2280,7 @@ export class EdgeWorker extends EventEmitter {
 			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 				session,
 				repository,
-				linearAgentActivitySessionId,
+				sessionId,
 				assembly.systemPrompt,
 				allowedTools,
 				allowedDirectories,
@@ -2293,7 +2292,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			console.log(
-				`[EdgeWorker] Label-based runner selection for new session: ${runnerType} (session ${linearAgentActivitySessionId})`,
+				`[EdgeWorker] Label-based runner selection for new session: ${runnerType} (session ${sessionId})`,
 			);
 
 			const runner =
@@ -2302,7 +2301,7 @@ export class EdgeWorker extends EventEmitter {
 					: new GeminiRunner(runnerConfig);
 
 			// Store runner by comment ID
-			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
+			agentSessionManager.addAgentRunner(sessionId, runner);
 
 			// Save state after mapping changes
 			await this.savePersistedState();
@@ -2539,7 +2538,7 @@ export class EdgeWorker extends EventEmitter {
 		repository: RepositoryConfig,
 	): Promise<void> {
 		const { agentSession } = webhook;
-		const linearAgentActivitySessionId = agentSession.id;
+		const sessionId = agentSession.id;
 		const { issue } = agentSession;
 
 		if (!issue) {
@@ -2568,26 +2567,26 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
+		let session = agentSessionManager.getSession(sessionId);
 		let isNewSession = false;
 		let fullIssue: Issue | null = null;
 
 		if (!session) {
 			console.log(
-				`[EdgeWorker] No existing session found for agent activity session ${linearAgentActivitySessionId}, creating new session`,
+				`[EdgeWorker] No existing session found for agent activity session ${sessionId}, creating new session`,
 			);
 			isNewSession = true;
 
 			// Post instant acknowledgment for new session creation
 			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
+				sessionId,
 				repository.id,
 				false,
 			);
 
 			// Create the session using the shared method
 			const sessionData = await this.createLinearAgentSession(
-				linearAgentActivitySessionId,
+				sessionId,
 				issue,
 				repository,
 				agentSessionManager,
@@ -2598,7 +2597,7 @@ export class EdgeWorker extends EventEmitter {
 			session = sessionData.session;
 
 			console.log(
-				`[EdgeWorker] Created new session ${linearAgentActivitySessionId} (prompted webhook)`,
+				`[EdgeWorker] Created new session ${sessionId} (prompted webhook)`,
 			);
 
 			// Save state and emit events for new session
@@ -2612,7 +2611,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 		} else {
 			console.log(
-				`[EdgeWorker] Found existing session ${linearAgentActivitySessionId} for new user prompt`,
+				`[EdgeWorker] Found existing session ${sessionId} for new user prompt`,
 			);
 
 			// Post instant acknowledgment for existing session BEFORE any async work
@@ -2620,7 +2619,7 @@ export class EdgeWorker extends EventEmitter {
 			const isCurrentlyStreaming = session?.agentRunner?.isRunning() || false;
 
 			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
+				sessionId,
 				repository.id,
 				isCurrentlyStreaming,
 			);
@@ -2646,7 +2645,7 @@ export class EdgeWorker extends EventEmitter {
 		// Ensure session is not null after creation/retrieval
 		if (!session) {
 			throw new Error(
-				`Failed to get or create session for agent activity session ${linearAgentActivitySessionId}`,
+				`Failed to get or create session for agent activity session ${sessionId}`,
 			);
 		}
 
@@ -2733,7 +2732,7 @@ export class EdgeWorker extends EventEmitter {
 			await this.handlePromptWithStreamingCheck(
 				session,
 				repository,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				promptBody,
 				attachmentManifest,
@@ -2869,17 +2868,14 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle Claude messages
 	 */
 	private async handleClaudeMessage(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		message: SDKMessage,
 		repositoryId: string,
 	): Promise<void> {
 		const agentSessionManager = this.agentSessionManagers.get(repositoryId);
 		// Integrate with AgentSessionManager to capture streaming messages
 		if (agentSessionManager) {
-			await agentSessionManager.handleClaudeMessage(
-				linearAgentActivitySessionId,
-				message,
-			);
+			await agentSessionManager.handleClaudeMessage(sessionId, message);
 		}
 	}
 
@@ -4738,9 +4734,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
 					);
 					// Map child to parent session
-					this.childToParentAgentSession.set(childSessionId, parentId);
+					this.globalSessionRegistry.setParentSession(childSessionId, parentId);
 					console.log(
-						`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+						`[EdgeWorker] Parent-child mapping updated via GlobalSessionRegistry`,
 					);
 				},
 				onFeedbackDelivery: async (childSessionId, message) => {
@@ -4750,7 +4746,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 					// Find the parent session ID for context
 					const parentSessionId =
-						this.childToParentAgentSession.get(childSessionId);
+						this.globalSessionRegistry.getParentSessionId(childSessionId);
 
 					// Find the repository containing the child session
 					// We need to search all repositories for this child session
@@ -5320,7 +5316,7 @@ ${input.userComment}
 	private buildAgentRunnerConfig(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		systemPrompt: string | undefined,
 		allowedTools: string[],
 		allowedDirectories: string[],
@@ -5437,7 +5433,7 @@ ${input.userComment}
 		// Log model override if found
 		if (modelOverride) {
 			console.log(
-				`[EdgeWorker] Model override via label: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
+				`[EdgeWorker] Model override via label: ${modelOverride} (for session ${sessionId})`,
 			);
 		}
 
@@ -5456,7 +5452,7 @@ ${input.userComment}
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
+			mcpConfig: this.buildMcpConfig(repository, sessionId),
 			appendSystemPrompt: systemPrompt || "",
 			// Priority order: label override > repository config > global default
 			model: finalModel,
@@ -5470,16 +5466,12 @@ ${input.userComment}
 			// AskUserQuestion callback - only for Claude runner
 			...(runnerType === "claude" && {
 				onAskUserQuestion: this.createAskUserQuestionCallback(
-					linearAgentActivitySessionId,
+					sessionId,
 					repository.linearWorkspaceId,
 				),
 			}),
 			onMessage: (message: SDKMessage) => {
-				this.handleClaudeMessage(
-					linearAgentActivitySessionId,
-					message,
-					repository.id,
-				);
+				this.handleClaudeMessage(sessionId, message, repository.id);
 			},
 			onError: (error: Error) => this.handleClaudeError(error),
 		};
@@ -5492,7 +5484,7 @@ ${input.userComment}
 			(config as any).maxTurns = effectiveMaxTurns;
 			if (singleTurn) {
 				console.log(
-					`[EdgeWorker] Applied singleTurn maxTurns=1 (for session ${linearAgentActivitySessionId})`,
+					`[EdgeWorker] Applied singleTurn maxTurns=1 (for session ${sessionId})`,
 				);
 			}
 		}
@@ -5915,7 +5907,7 @@ ${input.userComment}
 	 * Post instant acknowledgment thought when agent session is created
 	 */
 	private async postInstantAcknowledgment(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
 		try {
@@ -5928,7 +5920,7 @@ ${input.userComment}
 			}
 
 			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
@@ -5938,7 +5930,7 @@ ${input.userComment}
 			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
-					`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
+					`[EdgeWorker] Posted instant acknowledgment thought for session ${sessionId}`,
 				);
 			} else {
 				console.error(
@@ -5958,7 +5950,7 @@ ${input.userComment}
 	 * Post parent resume acknowledgment thought when parent session is resumed from child
 	 */
 	private async postParentResumeAcknowledgment(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
 		try {
@@ -5971,7 +5963,7 @@ ${input.userComment}
 			}
 
 			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: "Resuming from child session",
@@ -5981,7 +5973,7 @@ ${input.userComment}
 			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
-					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
+					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${sessionId}`,
 				);
 			} else {
 				console.error(
@@ -6002,7 +5994,7 @@ ${input.userComment}
 	 * Shows which method was used to select the repository (auto-routing or user selection)
 	 */
 	private async postRepositorySelectionActivity(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		repositoryId: string,
 		repositoryName: string,
 		selectionMethod:
@@ -6044,7 +6036,7 @@ ${input.userComment}
 			}
 
 			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Repository "${repositoryName}" has been ${methodDisplay}.`,
@@ -6054,7 +6046,7 @@ ${input.userComment}
 			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
-					`[EdgeWorker] Posted repository selection activity for session ${linearAgentActivitySessionId} (${selectionMethod})`,
+					`[EdgeWorker] Posted repository selection activity for session ${sessionId} (${selectionMethod})`,
 				);
 			} else {
 				console.error(
@@ -6076,7 +6068,7 @@ ${input.userComment}
 	 */
 	private async rerouteProcedureForSession(
 		session: CyrusAgentSession,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
 		repository: RepositoryConfig,
@@ -6087,17 +6079,17 @@ ${input.userComment}
 		}
 
 		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postAnalyzingThought(
-			linearAgentActivitySessionId,
-		);
+		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch full issue and labels to check for Orchestrator label override
 		const issueTracker = this.issueTrackers.get(repository.id);
 		let hasOrchestratorLabel = false;
 
-		if (issueTracker) {
+		// Get issueId from issueContext (preferred) or deprecated issueId field
+		const issueId = session.issueContext?.issueId ?? session.issueId;
+		if (issueTracker && issueId) {
 			try {
-				const fullIssue = await issueTracker.fetchIssue(session.issueId);
+				const fullIssue = await issueTracker.fetchIssue(issueId);
 				const labels = await this.fetchIssueLabels(fullIssue);
 
 				// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
@@ -6152,9 +6144,7 @@ ${input.userComment}
 			finalClassification = routingDecision.classification;
 
 			// Log AI routing decision
-			console.log(
-				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
-			);
+			console.log(`[EdgeWorker] AI routing decision for ${sessionId}:`);
 			console.log(`  Classification: ${routingDecision.classification}`);
 			console.log(`  Procedure: ${selectedProcedure.name}`);
 			console.log(`  Reasoning: ${routingDecision.reasoning}`);
@@ -6168,7 +6158,7 @@ ${input.userComment}
 
 		// Post procedure selection result (replaces ephemeral routing thought)
 		await agentSessionManager.postProcedureSelectionThought(
-			linearAgentActivitySessionId,
+			sessionId,
 			selectedProcedure.name,
 			finalClassification,
 		);
@@ -6184,7 +6174,7 @@ ${input.userComment}
 	 *
 	 * @param session The Cyrus agent session
 	 * @param repository Repository configuration
-	 * @param linearAgentActivitySessionId Linear agent activity session ID
+	 * @param sessionId Linear agent activity session ID
 	 * @param agentSessionManager Agent session manager instance
 	 * @param promptBody The prompt text to send
 	 * @param attachmentManifest Optional attachment manifest to append
@@ -6196,7 +6186,7 @@ ${input.userComment}
 	private async handlePromptWithStreamingCheck(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
 		attachmentManifest: string,
@@ -6214,7 +6204,7 @@ ${input.userComment}
 		if (!isRunning) {
 			await this.rerouteProcedureForSession(
 				session,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				promptBody,
 				repository,
@@ -6222,7 +6212,7 @@ ${input.userComment}
 			console.log(`[EdgeWorker] Routed procedure for ${logContext}`);
 		} else {
 			console.log(
-				`[EdgeWorker] Skipping routing for ${linearAgentActivitySessionId} (${logContext}) - runner is actively running`,
+				`[EdgeWorker] Skipping routing for ${sessionId} (${logContext}) - runner is actively running`,
 			);
 		}
 
@@ -6233,7 +6223,7 @@ ${input.userComment}
 			existingRunner.addStreamMessage
 		) {
 			console.log(
-				`[EdgeWorker] Adding prompt to existing stream for ${linearAgentActivitySessionId} (${logContext})`,
+				`[EdgeWorker] Adding prompt to existing stream for ${sessionId} (${logContext})`,
 			);
 
 			// Append attachment manifest to the prompt if we have one
@@ -6248,13 +6238,13 @@ ${input.userComment}
 
 		// Not streaming - resume/start session
 		console.log(
-			`[EdgeWorker] Resuming Claude session for ${linearAgentActivitySessionId} (${logContext})`,
+			`[EdgeWorker] Resuming Claude session for ${sessionId} (${logContext})`,
 		);
 
 		await this.resumeAgentSession(
 			session,
 			repository,
-			linearAgentActivitySessionId,
+			sessionId,
 			agentSessionManager,
 			promptBody,
 			attachmentManifest,
@@ -6272,7 +6262,7 @@ ${input.userComment}
 	 * Post thought about system prompt selection based on labels
 	 */
 	private async postSystemPromptSelectionThought(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		labels: string[],
 		repositoryId: string,
 	): Promise<void> {
@@ -6352,7 +6342,7 @@ ${input.userComment}
 			}
 
 			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Entering '${selectedPromptType}' mode because of the '${triggerLabel}' label. I'll follow the ${selectedPromptType} process...`,
@@ -6362,7 +6352,7 @@ ${input.userComment}
 			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
-					`[EdgeWorker] Posted system prompt selection thought for session ${linearAgentActivitySessionId} (${selectedPromptType} mode)`,
+					`[EdgeWorker] Posted system prompt selection thought for session ${sessionId} (${selectedPromptType} mode)`,
 				);
 			} else {
 				console.error(
@@ -6383,7 +6373,7 @@ ${input.userComment}
 	 * This is the core logic for handling prompted agent activities
 	 * @param session The Cyrus agent session
 	 * @param repository The repository configuration
-	 * @param linearAgentActivitySessionId The Linear agent session ID
+	 * @param sessionId The Linear agent session ID
 	 * @param agentSessionManager The agent session manager
 	 * @param promptBody The prompt text to send
 	 * @param attachmentManifest Optional attachment manifest
@@ -6392,7 +6382,7 @@ ${input.userComment}
 	async resumeAgentSession(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
 		attachmentManifest: string = "",
@@ -6424,17 +6414,26 @@ ${input.userComment}
 			existingRunner.stop();
 		}
 
+		// Get issueId from issueContext (preferred) or deprecated issueId field
+		const issueIdForResume = session.issueContext?.issueId ?? session.issueId;
+		if (!issueIdForResume) {
+			console.error(
+				`[resumeAgentSession] No issue ID found for session ${session.id}`,
+			);
+			throw new Error(`No issue ID found for session ${session.id}`);
+		}
+
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
-			session.issueId,
+			issueIdForResume,
 			repository.id,
 		);
 		if (!fullIssue) {
 			console.error(
-				`[resumeAgentSession] Failed to fetch full issue details for ${session.issueId}`,
+				`[resumeAgentSession] Failed to fetch full issue details for ${issueIdForResume}`,
 			);
 			throw new Error(
-				`Failed to fetch full issue details for ${session.issueId}`,
+				`Failed to fetch full issue details for ${issueIdForResume}`,
 			);
 		}
 
@@ -6510,7 +6509,7 @@ ${input.userComment}
 		const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 			session,
 			repository,
-			linearAgentActivitySessionId,
+			sessionId,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
@@ -6528,7 +6527,7 @@ ${input.userComment}
 				: new GeminiRunner(runnerConfig);
 
 		// Store runner
-		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
+		agentSessionManager.addAgentRunner(sessionId, runner);
 
 		// Save state
 		await this.savePersistedState();
@@ -6554,7 +6553,7 @@ ${input.userComment}
 			}
 		} catch (error) {
 			console.error(
-				`[resumeAgentSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
+				`[resumeAgentSession] Failed to start streaming session for ${sessionId}:`,
 				error,
 			);
 			throw error;
@@ -6565,7 +6564,7 @@ ${input.userComment}
 	 * Post instant acknowledgment thought when receiving prompted webhook
 	 */
 	private async postInstantPromptedAcknowledgment(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		repositoryId: string,
 		isStreaming: boolean,
 	): Promise<void> {
@@ -6583,7 +6582,7 @@ ${input.userComment}
 				: "Getting started on that...";
 
 			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: message,
@@ -6593,7 +6592,7 @@ ${input.userComment}
 			const result = await issueTracker.createAgentActivity(activityInput);
 			if (result.success) {
 				console.log(
-					`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`,
+					`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${sessionId} (streaming: ${isStreaming})`,
 				);
 			} else {
 				console.error(
