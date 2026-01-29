@@ -103,6 +103,12 @@ export class LinearActivitySink implements IActivitySink {
 			issueId,
 		});
 
+		if (!result.success) {
+			throw new Error(
+				`Failed to create agent session for issue ${issueId}: request was not successful`,
+			);
+		}
+
 		// Extract session ID from the result
 		// Result has `agentSession` property that may be a Promise
 		const session = await result.agentSession;

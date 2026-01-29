@@ -180,6 +180,17 @@ describe("LinearActivitySink", () => {
 			});
 		});
 
+		it("should throw when result.success is false", async () => {
+			vi.mocked(mockIssueTracker.createAgentSessionOnIssue).mockResolvedValue({
+				success: false,
+				agentSession: Promise.resolve({ id: "should-not-reach" }),
+			} as any);
+
+			await expect(sink.createAgentSession(mockIssueId)).rejects.toThrow(
+				"request was not successful",
+			);
+		});
+
 		it("should handle session creation errors", async () => {
 			const error = new Error("Failed to create session");
 			vi.mocked(mockIssueTracker.createAgentSessionOnIssue).mockRejectedValue(
