@@ -1636,7 +1636,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Feed the update into each active session
 		for (const session of sessions) {
-			const linearAgentActivitySessionId = session.linearAgentActivitySessionId;
+			const linearAgentActivitySessionId = session.id;
 
 			// Check if runner is actively running and supports streaming input
 			const existingRunner = session.agentRunner;
