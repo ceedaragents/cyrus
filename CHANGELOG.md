@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.2.7 to 0.2.23 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0223)). Includes 16 versions with enhancements: MCP server management with introspection and control, structured output validation fixes, task system support, query termination capabilities, notification hook support, and CLAUDE.md file loading from additional directories. ([CYPACK-770](https://linear.app/ceedar/issue/CYPACK-770), [#817](https://github.com/ceedaragents/cyrus/pull/817))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
