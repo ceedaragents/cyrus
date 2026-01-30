@@ -722,9 +722,9 @@ export class EdgeWorker extends EventEmitter {
 				branchName: branchRef,
 			};
 
-			// Create an internal agent session (no Linear session for GitHub)
+			// Create a GitHub session — does NOT sync activities to Linear
 			const githubSessionId = `github-${event.deliveryId}`;
-			agentSessionManager.createLinearAgentSession(
+			agentSessionManager.createGitHubSession(
 				githubSessionId,
 				sessionKey,
 				issueMinimal,

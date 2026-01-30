@@ -165,6 +165,7 @@ export class AgentSessionManager extends EventEmitter {
 		const agentSession: CyrusAgentSession = {
 			id: sessionId,
 			externalSessionId: sessionId, // For Linear sessions, the external ID is the same as our internal ID
+			platform: "linear",
 			type: AgentSessionType.CommentThread,
 			status: AgentSessionStatus.Active,
 			context: AgentSessionType.CommentThread,
@@ -176,6 +177,50 @@ export class AgentSessionManager extends EventEmitter {
 				issueIdentifier: issueMinimal.identifier,
 			},
 			issueId, // Kept for backwards compatibility
+			issue: issueMinimal,
+			workspace: workspace,
+		};
+
+		// Store locally
+		this.sessions.set(sessionId, agentSession);
+		this.entries.set(sessionId, []);
+
+		return agentSession;
+	}
+
+	/**
+	 * Initialize a GitHub agent session from a PR comment webhook.
+	 * GitHub sessions do NOT sync activities to Linear — only the final result
+	 * is posted back to the PR as a GitHub comment (handled by EdgeWorker.postGitHubReply).
+	 */
+	createGitHubSession(
+		sessionId: string,
+		issueId: string,
+		issueMinimal: IssueMinimal,
+		workspace: Workspace,
+	): CyrusAgentSession {
+		const log = this.logger.withContext({
+			sessionId,
+			platform: "github",
+			issueIdentifier: issueMinimal.identifier,
+		});
+		log.info(`Tracking GitHub session for ${issueId}`);
+
+		const agentSession: CyrusAgentSession = {
+			id: sessionId,
+			externalSessionId: sessionId,
+			platform: "github",
+			type: AgentSessionType.CommentThread,
+			status: AgentSessionStatus.Active,
+			context: AgentSessionType.CommentThread,
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+			issueContext: {
+				trackerId: "github",
+				issueId: issueId,
+				issueIdentifier: issueMinimal.identifier,
+			},
+			issueId,
 			issue: issueMinimal,
 			workspace: workspace,
 		};
@@ -968,6 +1013,11 @@ export class AgentSessionManager extends EventEmitter {
 			entries.push(entry);
 			this.entries.set(sessionId, entries);
 
+			// GitHub sessions don't sync activities to Linear
+			if (session.platform !== "linear") {
+				return;
+			}
+
 			// Build activity content based on entry type
 			let content: any;
 			let ephemeral = false;
@@ -1654,6 +1704,10 @@ export class AgentSessionManager extends EventEmitter {
 		model: string,
 	): Promise<void> {
 		const log = this.sessionLog(sessionId);
+		const session = this.sessions.get(sessionId);
+		if (session?.platform !== "linear") {
+			return;
+		}
 		try {
 			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: sessionId,
@@ -1678,6 +1732,10 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	async postAnalyzingThought(sessionId: string): Promise<string | null> {
 		const log = this.sessionLog(sessionId);
+		const session = this.sessions.get(sessionId);
+		if (session?.platform !== "linear") {
+			return null;
+		}
 		try {
 			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: sessionId,
@@ -1711,6 +1769,10 @@ export class AgentSessionManager extends EventEmitter {
 		classification: string,
 	): Promise<void> {
 		const log = this.sessionLog(sessionId);
+		const session = this.sessions.get(sessionId);
+		if (session?.platform !== "linear") {
+			return;
+		}
 		try {
 			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: sessionId,
@@ -1742,6 +1804,11 @@ export class AgentSessionManager extends EventEmitter {
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
 			log.warn(`No Linear session ID`);
+			return;
+		}
+
+		// GitHub sessions don't sync status activities to Linear
+		if (session.platform !== "linear") {
 			return;
 		}
 
