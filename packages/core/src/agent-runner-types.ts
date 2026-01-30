@@ -388,6 +388,8 @@ export interface AgentRunnerConfig {
 	fallbackModel?: string;
 	/** Maximum number of turns before completing session */
 	maxTurns?: number;
+	/** Built-in tools available in model context (empty array disables all tools) */
+	tools?: string[];
 	/** Cyrus home directory (required) */
 	cyrusHome: string;
 	/** Prompt template version information */

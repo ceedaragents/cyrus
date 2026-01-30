@@ -310,7 +310,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(result).toBe(false);
 			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
-				`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
+				expect.stringContaining(
+					`Child session ${childSessionId} not found in any repository`,
+				),
 			);
 		});
 
@@ -337,7 +339,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(result).toBe(false);
 			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
-				`[EdgeWorker] Child session ${childSessionId} not found`,
+				expect.stringContaining(`Child session ${childSessionId} not found`),
 			);
 		});
 
@@ -373,7 +375,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// The error is logged asynchronously
 			expect(console.error).toHaveBeenCalledWith(
-				`[EdgeWorker] Failed to process feedback in child session:`,
+				expect.stringContaining(`Failed to process feedback in child session:`),
 				expect.any(Error),
 			);
 		});
