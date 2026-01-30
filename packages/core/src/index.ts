@@ -1,3 +1,8 @@
+// Logging
+
+export type { ILogger, LogContext } from "./logging/index.js";
+export { createLogger, LogLevel } from "./logging/index.js";
+
 // export { Session } from './Session.js'
 // export type { SessionOptions, , NarrativeItem } from './Session.js'
 // export { ClaudeSessionManager as SessionManager } from './ClaudeSessionManager.js'
