@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from 0.2.7 to 0.2.25 and `@anthropic-ai/sdk` from 0.71.2 to 0.72.1 across cyrus-core, cyrus-claude-runner, and cyrus-simple-agent-runner packages. Includes MCP server management improvements, structured output fixes, and task system support. ([CYPACK-771](https://linear.app/ceedar/issue/CYPACK-771), [#819](https://github.com/ceedaragents/cyrus/pull/819))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
