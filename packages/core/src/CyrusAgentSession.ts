@@ -44,6 +44,8 @@ export interface CyrusAgentSession {
 	id: string;
 	/** External session ID from the issue tracker (e.g., Linear's AgentSession ID) */
 	externalSessionId?: string;
+	/** Platform that originated this session — determines activity syncing behavior */
+	platform: "linear" | "github";
 	type: AgentSessionType.CommentThread;
 	status: AgentSessionStatus;
 	context: AgentSessionType.CommentThread;
