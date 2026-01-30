@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { createLogger, type ILogger } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
 	GitHubEventTransportConfig,
@@ -38,10 +39,12 @@ export declare interface GitHubEventTransport {
  */
 export class GitHubEventTransport extends EventEmitter {
 	private config: GitHubEventTransportConfig;
+	private logger: ILogger;
 
-	constructor(config: GitHubEventTransportConfig) {
+	constructor(config: GitHubEventTransportConfig, logger?: ILogger) {
 		super();
 		this.config = config;
+		this.logger = logger ?? createLogger({ component: "GitHubEventTransport" });
 	}
 
 	/**
@@ -63,19 +66,19 @@ export class GitHubEventTransport extends EventEmitter {
 						await this.handleProxyWebhook(request, reply);
 					}
 				} catch (error) {
-					const err = new Error("[GitHubEventTransport] Webhook error");
+					const err = new Error("Webhook error");
 					if (error instanceof Error) {
 						err.cause = error;
 					}
-					console.error(err);
+					this.logger.error("Webhook error", err);
 					this.emit("error", err);
 					reply.code(500).send({ error: "Internal server error" });
 				}
 			},
 		);
 
-		console.log(
-			`[GitHubEventTransport] Registered POST /github-webhook endpoint (${this.config.verificationMode} mode)`,
+		this.logger.info(
+			`Registered POST /github-webhook endpoint (${this.config.verificationMode} mode)`,
 		);
 	}
 
@@ -107,13 +110,11 @@ export class GitHubEventTransport extends EventEmitter {
 
 			this.processAndEmitEvent(request, reply);
 		} catch (error) {
-			const err = new Error(
-				"[GitHubEventTransport] Signature verification failed",
-			);
+			const err = new Error("Signature verification failed");
 			if (error instanceof Error) {
 				err.cause = error;
 			}
-			console.error(err);
+			this.logger.error("Signature verification failed", err);
 			reply.code(401).send({ error: "Invalid webhook signature" });
 		}
 	}
@@ -140,13 +141,11 @@ export class GitHubEventTransport extends EventEmitter {
 		try {
 			this.processAndEmitEvent(request, reply);
 		} catch (error) {
-			const err = new Error(
-				"[GitHubEventTransport] Proxy webhook processing failed",
-			);
+			const err = new Error("Proxy webhook processing failed");
 			if (error instanceof Error) {
 				err.cause = error;
 			}
-			console.error(err);
+			this.logger.error("Proxy webhook processing failed", err);
 			reply.code(500).send({ error: "Failed to process webhook" });
 		}
 	}
@@ -171,9 +170,7 @@ export class GitHubEventTransport extends EventEmitter {
 			eventType !== "issue_comment" &&
 			eventType !== "pull_request_review_comment"
 		) {
-			console.log(
-				`[GitHubEventTransport] Ignoring unsupported event type: ${eventType}`,
-			);
+			this.logger.debug(`Ignoring unsupported event type: ${eventType}`);
 			reply.code(200).send({ success: true, ignored: true });
 			return;
 		}
@@ -184,9 +181,7 @@ export class GitHubEventTransport extends EventEmitter {
 
 		// Only handle 'created' actions (new comments, not edits/deletes)
 		if (payload.action !== "created") {
-			console.log(
-				`[GitHubEventTransport] Ignoring ${eventType} with action: ${payload.action}`,
-			);
+			this.logger.debug(`Ignoring ${eventType} with action: ${payload.action}`);
 			reply.code(200).send({ success: true, ignored: true });
 			return;
 		}
@@ -197,9 +192,7 @@ export class GitHubEventTransport extends EventEmitter {
 			payload,
 		};
 
-		console.log(
-			`[GitHubEventTransport] Received ${eventType} webhook (delivery: ${deliveryId})`,
-		);
+		this.logger.info(`Received ${eventType} webhook (delivery: ${deliveryId})`);
 
 		this.emit("event", webhookEvent);
 		reply.code(200).send({ success: true });

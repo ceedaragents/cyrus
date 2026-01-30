@@ -336,6 +336,9 @@ importers:
 
   packages/github-event-transport:
     dependencies:
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
       fastify:
         specifier: ^5.2.0
         version: 5.6.1
