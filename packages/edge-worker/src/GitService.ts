@@ -340,7 +340,37 @@ export class GitService {
 					worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
 				}
 			} else {
-				// Branch already exists, just check it out
+				// Branch already exists — check if it's already checked out in another worktree
+				try {
+					const worktreeListOutput = execSync("git worktree list --porcelain", {
+						cwd: repository.repositoryPath,
+						stdio: "pipe",
+						encoding: "utf-8",
+					});
+
+					const worktreeEntries = worktreeListOutput
+						.split("\n\n")
+						.filter(Boolean);
+					for (const entry of worktreeEntries) {
+						const branchMatch = entry.match(/branch refs\/heads\/(.+)/);
+						if (branchMatch?.[1] === branchName) {
+							const pathMatch = entry.match(/worktree (.+)/);
+							if (pathMatch?.[1]) {
+								const existingPath = pathMatch[1];
+								this.logger.info(
+									`Branch ${branchName} already checked out at ${existingPath}, reusing existing worktree`,
+								);
+								return {
+									path: existingPath,
+									isGitWorktree: true,
+								};
+							}
+						}
+					}
+				} catch (_e) {
+					// Failed to check worktree list, proceed with standard create
+				}
+
 				this.logger.info(
 					`Creating git worktree at ${workspacePath} with existing branch ${branchName}`,
 				);
