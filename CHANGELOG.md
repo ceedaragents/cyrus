@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- GitHub PR comment support: Cyrus can now be triggered by `@cyrusagent` mentions on GitHub pull request comments, creating sessions and posting replies directly on PRs. ([CYPACK-772](https://linear.app/ceedar/issue/CYPACK-772), [#820](https://github.com/ceedaragents/cyrus/pull/820))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
