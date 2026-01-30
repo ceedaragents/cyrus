@@ -151,7 +151,7 @@ describe("AgentSessionManager - Model Notification", () => {
 
 		// Verify error was logged
 		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			"[AgentSessionManager] Failed to post model notification:",
+			expect.stringContaining("Failed to post model notification:"),
 			expect.objectContaining({ success: false }),
 		);
 
