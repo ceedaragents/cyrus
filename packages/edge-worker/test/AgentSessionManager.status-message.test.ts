@@ -169,7 +169,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		// Verify error was logged
 		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			"[AgentSessionManager] Failed to post compacting status:",
+			expect.stringContaining("Failed to post compacting status:"),
 			expect.objectContaining({ success: false }),
 		);
 
@@ -211,7 +211,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		// Verify error was logged
 		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			"[AgentSessionManager] Failed to post status clear:",
+			expect.stringContaining("Failed to post status clear:"),
 			expect.objectContaining({ success: false }),
 		);
 
@@ -238,7 +238,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		// Verify warning was logged
 		expect(consoleWarnSpy).toHaveBeenCalledWith(
-			"[AgentSessionManager] No Linear session ID for session non-existent-session",
+			expect.stringContaining("No Linear session ID"),
 		);
 
 		// Verify createAgentActivity was not called

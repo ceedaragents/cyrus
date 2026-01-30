@@ -16,13 +16,16 @@ import {
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
+	createLogger,
 	type IAgentRunner,
 	type IIssueTrackerService,
+	type ILogger,
 	type IssueMinimal,
 	type SerializedCyrusAgentSession,
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
 } from "cyrus-core";
+import type { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
 import type { ValidationLoopMetadata } from "./procedures/types.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
@@ -37,7 +40,7 @@ import {
  */
 export interface AgentSessionManagerEvents {
 	subroutineComplete: (data: {
-		linearAgentActivitySessionId: string;
+		sessionId: string;
 		session: CyrusAgentSession;
 	}) => void;
 	/**
@@ -45,7 +48,7 @@ export interface AgentSessionManagerEvents {
 	 * The EdgeWorker should respond by running the fixer prompt and then re-running verifications
 	 */
 	validationLoopIteration: (data: {
-		linearAgentActivitySessionId: string;
+		sessionId: string;
 		session: CyrusAgentSession;
 		/** The fixer prompt to run (already rendered with failure context) */
 		fixerPrompt: string;
@@ -58,7 +61,7 @@ export interface AgentSessionManagerEvents {
 	 * Emitted when we need to re-run the verifications subroutine
 	 */
 	validationLoopRerun: (data: {
-		linearAgentActivitySessionId: string;
+		sessionId: string;
 		session: CyrusAgentSession;
 		/** Current iteration (1-based) */
 		iteration: number;
@@ -87,9 +90,10 @@ export declare interface AgentSessionManager {
  * CURRENTLY BEING HANDLED 'per repository'
  */
 export class AgentSessionManager extends EventEmitter {
+	private logger: ILogger;
 	private issueTracker: IIssueTrackerService;
 	private sessions: Map<string, CyrusAgentSession> = new Map();
-	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
+	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its id
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
@@ -113,13 +117,32 @@ export class AgentSessionManager extends EventEmitter {
 		) => Promise<void>,
 		procedureAnalyzer?: ProcedureAnalyzer,
 		sharedApplicationServer?: SharedApplicationServer,
+		_globalSessionRegistry?: GlobalSessionRegistry,
+		logger?: ILogger,
 	) {
 		super();
+		this.logger = logger ?? createLogger({ component: "AgentSessionManager" });
 		this.issueTracker = issueTracker;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.procedureAnalyzer = procedureAnalyzer;
 		this.sharedApplicationServer = sharedApplicationServer;
+		// GlobalSessionRegistry parameter added for future migration (Phase 4)
+		// Currently unused but prepared for when AgentSessionManager is refactored
+		// to use centralized session storage instead of local Maps
+		// Prefixed with _ to indicate intentionally unused for now
+	}
+
+	/**
+	 * Get a session-scoped logger with context (sessionId, platform, issueIdentifier).
+	 */
+	private sessionLog(sessionId: string): ILogger {
+		const session = this.sessions.get(sessionId);
+		return this.logger.withContext({
+			sessionId,
+			platform: session?.issueContext?.trackerId,
+			issueIdentifier: session?.issueContext?.issueIdentifier,
+		});
 	}
 
 	/**
@@ -127,30 +150,39 @@ export class AgentSessionManager extends EventEmitter {
 	 * The session is already created by Linear, we just need to track it
 	 */
 	createLinearAgentSession(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
 	): CyrusAgentSession {
-		console.log(
-			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
-		);
+		const log = this.logger.withContext({
+			sessionId,
+			platform: "linear",
+			issueIdentifier: issueMinimal.identifier,
+		});
+		log.info(`Tracking session for issue ${issueId}`);
 
 		const agentSession: CyrusAgentSession = {
-			linearAgentActivitySessionId,
+			id: sessionId,
+			externalSessionId: sessionId, // For Linear sessions, the external ID is the same as our internal ID
 			type: AgentSessionType.CommentThread,
 			status: AgentSessionStatus.Active,
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
-			issueId,
+			issueContext: {
+				trackerId: "linear",
+				issueId: issueId,
+				issueIdentifier: issueMinimal.identifier,
+			},
+			issueId, // Kept for backwards compatibility
 			issue: issueMinimal,
 			workspace: workspace,
 		};
 
 		// Store locally
-		this.sessions.set(linearAgentActivitySessionId, agentSession);
-		this.entries.set(linearAgentActivitySessionId, []);
+		this.sessions.set(sessionId, agentSession);
+		this.entries.set(sessionId, []);
 
 		return agentSession;
 	}
@@ -160,14 +192,13 @@ export class AgentSessionManager extends EventEmitter {
 	 * Automatically detects whether it's Claude or Gemini based on the runner
 	 */
 	updateAgentSessionWithClaudeSessionId(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		claudeSystemMessage: SDKSystemMessage,
 	): void {
-		const linearSession = this.sessions.get(linearAgentActivitySessionId);
+		const linearSession = this.sessions.get(sessionId);
 		if (!linearSession) {
-			console.warn(
-				`[AgentSessionManager] No Linear session found for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
-			);
+			const log = this.sessionLog(sessionId);
+			log.warn(`No Linear session found`);
 			return;
 		}
 
@@ -196,7 +227,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create a session entry from user/assistant message (without syncing to Linear)
 	 */
 	private async createSessionEntry(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		sdkMessage: SDKUserMessage | SDKAssistantMessage,
 	): Promise<CyrusAgentSessionEntry> {
 		// Extract tool info if this is an assistant message
@@ -216,7 +247,7 @@ export class AgentSessionManager extends EventEmitter {
 			sdkMessage.type === "assistant" ? sdkMessage.error : undefined;
 
 		// Determine which runner is being used
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		const runner = session?.agentRunner;
 		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
 
@@ -251,19 +282,20 @@ export class AgentSessionManager extends EventEmitter {
 	 * Complete a session from Claude result message
 	 */
 	async completeSession(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		if (!session) {
-			console.error(
-				`[AgentSessionManager] No session found for linearAgentActivitySessionId: ${linearAgentActivitySessionId}`,
-			);
+			const log = this.sessionLog(sessionId);
+			log.error(`No session found`);
 			return;
 		}
 
+		const log = this.sessionLog(sessionId);
+
 		// Clear any active Task when session completes
-		this.activeTasksBySession.delete(linearAgentActivitySessionId);
+		this.activeTasksBySession.delete(sessionId);
 
 		// Clear tool calls tracking for this session
 		// Note: We should ideally track by session, but for now clearing all is safer
@@ -275,18 +307,41 @@ export class AgentSessionManager extends EventEmitter {
 				: AgentSessionStatus.Error;
 
 		// Update session status and metadata
-		await this.updateSessionStatus(linearAgentActivitySessionId, status, {
+		await this.updateSessionStatus(sessionId, status, {
 			totalCostUsd: resultMessage.total_cost_usd,
 			usage: resultMessage.usage,
 		});
 
 		// Handle result using procedure routing system
 		if ("result" in resultMessage && resultMessage.result) {
-			await this.handleProcedureCompletion(
-				session,
-				linearAgentActivitySessionId,
-				resultMessage,
-			);
+			await this.handleProcedureCompletion(session, sessionId, resultMessage);
+		} else if (resultMessage.subtype !== "success") {
+			// Error result (e.g. error_max_turns from singleTurn subroutines) — try to
+			// recover from the last completed subroutine's result so the procedure can still complete.
+			const recoveredText =
+				this.procedureAnalyzer?.getLastSubroutineResult(session);
+			if (recoveredText) {
+				log.info(
+					`Recovered result from previous subroutine (subtype: ${resultMessage.subtype}), treating as success for procedure completion`,
+				);
+				// Create a synthetic success result for procedure routing
+				const syntheticResult: SDKResultMessage = {
+					...resultMessage,
+					subtype: "success",
+					result: recoveredText,
+					is_error: false,
+				};
+				await this.handleProcedureCompletion(
+					session,
+					sessionId,
+					syntheticResult,
+				);
+			} else {
+				log.warn(
+					`Error result with no recoverable text (subtype: ${resultMessage.subtype}), posting error to Linear`,
+				);
+				await this.addResultEntry(sessionId, resultMessage);
+			}
 		}
 	}
 
@@ -295,27 +350,26 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	private async handleProcedureCompletion(
 		session: CyrusAgentSession,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		if (!this.procedureAnalyzer) {
 			throw new Error("ProcedureAnalyzer not available");
 		}
 
 		// Check if error occurred
 		if (resultMessage.subtype !== "success") {
-			console.log(
-				`[AgentSessionManager] Subroutine completed with error, not triggering next subroutine`,
+			log.info(
+				`Subroutine completed with error, not triggering next subroutine`,
 			);
 			return;
 		}
 
-		// Get the session ID (either Claude or Gemini)
-		const sessionId = session.claudeSessionId || session.geminiSessionId;
-		if (!sessionId) {
-			console.error(
-				`[AgentSessionManager] No session ID found for procedure session`,
-			);
+		// Get the runner session ID (either Claude or Gemini)
+		const runnerSessionId = session.claudeSessionId || session.geminiSessionId;
+		if (!runnerSessionId) {
+			log.error(`No runner session ID found for procedure session`);
 			return;
 		}
 
@@ -328,17 +382,17 @@ export class AgentSessionManager extends EventEmitter {
 				this.procedureAnalyzer.getCurrentSubroutine(session);
 
 			if (currentSubroutine?.requiresApproval) {
-				console.log(
-					`[AgentSessionManager] Current subroutine "${currentSubroutine.name}" requires approval before proceeding`,
+				log.info(
+					`Current subroutine "${currentSubroutine.name}" requires approval before proceeding`,
 				);
 
 				// Check if SharedApplicationServer is available
 				if (!this.sharedApplicationServer) {
-					console.error(
-						`[AgentSessionManager] SharedApplicationServer not available for approval workflow`,
+					log.error(
+						`SharedApplicationServer not available for approval workflow`,
 					);
 					await this.createErrorActivity(
-						linearAgentActivitySessionId,
+						sessionId,
 						"Approval workflow failed: Server not available",
 					);
 					return;
@@ -353,22 +407,18 @@ export class AgentSessionManager extends EventEmitter {
 				try {
 					// Register approval request with server
 					const approvalRequest =
-						this.sharedApplicationServer.registerApprovalRequest(
-							linearAgentActivitySessionId,
-						);
+						this.sharedApplicationServer.registerApprovalRequest(sessionId);
 
 					// Post approval elicitation to Linear with auth signal URL
 					const approvalMessage = `The previous step has completed. Please review the result below and approve to continue:\n\n${subroutineResult}`;
 
 					await this.createApprovalElicitation(
-						linearAgentActivitySessionId,
+						sessionId,
 						approvalMessage,
 						approvalRequest.url,
 					);
 
-					console.log(
-						`[AgentSessionManager] Waiting for approval at URL: ${approvalRequest.url}`,
-					);
+					log.info(`Waiting for approval at URL: ${approvalRequest.url}`);
 
 					// Wait for approval with timeout (30 minutes)
 					const approvalTimeout = 30 * 60 * 1000;
@@ -385,24 +435,20 @@ export class AgentSessionManager extends EventEmitter {
 					]);
 
 					if (!approved) {
-						console.log(
-							`[AgentSessionManager] Approval rejected for session ${linearAgentActivitySessionId}`,
-						);
+						log.info(`Approval rejected`);
 						await this.createErrorActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							`Workflow stopped: User rejected approval.${feedback ? `\n\nFeedback: ${feedback}` : ""}`,
 						);
 						return; // Stop workflow
 					}
 
-					console.log(
-						`[AgentSessionManager] Approval granted, continuing to next subroutine`,
-					);
+					log.info(`Approval granted, continuing to next subroutine`);
 
 					// Optionally post feedback as a thought
 					if (feedback) {
 						await this.createThoughtActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							`User feedback: ${feedback}`,
 						);
 					}
@@ -411,20 +457,15 @@ export class AgentSessionManager extends EventEmitter {
 				} catch (error) {
 					const errorMessage = (error as Error).message;
 					if (errorMessage === "Approval timeout") {
-						console.log(
-							`[AgentSessionManager] Approval timed out for session ${linearAgentActivitySessionId}`,
-						);
+						log.info(`Approval timed out`);
 						await this.createErrorActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							"Workflow stopped: Approval request timed out after 30 minutes.",
 						);
 					} else {
-						console.error(
-							`[AgentSessionManager] Approval request failed:`,
-							error,
-						);
+						log.error(`Approval request failed:`, error);
 						await this.createErrorActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							`Workflow stopped: Approval request failed - ${errorMessage}`,
 						);
 					}
@@ -436,9 +477,9 @@ export class AgentSessionManager extends EventEmitter {
 			if (currentSubroutine?.usesValidationLoop) {
 				const handled = await this.handleValidationLoopCompletion(
 					session,
-					linearAgentActivitySessionId,
-					resultMessage,
 					sessionId,
+					resultMessage,
+					runnerSessionId,
 					nextSubroutine,
 				);
 				if (handled) {
@@ -448,33 +489,32 @@ export class AgentSessionManager extends EventEmitter {
 			}
 
 			// Advance procedure state
-			console.log(
-				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
+			log.info(
+				`Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
-			this.procedureAnalyzer.advanceToNextSubroutine(session, sessionId);
+			const subroutineResult =
+				"result" in resultMessage ? resultMessage.result : undefined;
+			this.procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				runnerSessionId,
+				subroutineResult,
+			);
 
 			// Emit event for EdgeWorker to handle subroutine transition
 			// This replaces the callback pattern and allows EdgeWorker to subscribe
 			this.emit("subroutineComplete", {
-				linearAgentActivitySessionId,
+				sessionId,
 				session,
 			});
 		} else {
 			// Procedure complete - post final result
-			console.log(
-				`[AgentSessionManager] All subroutines completed, posting final result to Linear`,
-			);
-			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+			log.info(`All subroutines completed, posting final result to Linear`);
+			await this.addResultEntry(sessionId, resultMessage);
 
 			// Handle child session completion
-			const isChildSession = this.getParentSessionId?.(
-				linearAgentActivitySessionId,
-			);
+			const isChildSession = this.getParentSessionId?.(sessionId);
 			if (isChildSession && this.resumeParentSession) {
-				await this.handleChildSessionCompletion(
-					linearAgentActivitySessionId,
-					resultMessage,
-				);
+				await this.handleChildSessionCompletion(sessionId, resultMessage);
 			}
 		}
 	}
@@ -486,11 +526,12 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	private async handleValidationLoopCompletion(
 		session: CyrusAgentSession,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 		_sessionId: string,
 		_nextSubroutine: { name: string } | null,
 	): Promise<boolean> {
+		const log = this.sessionLog(sessionId);
 		const maxIterations = DEFAULT_VALIDATION_LOOP_CONFIG.maxIterations;
 
 		// Get or initialize validation loop state
@@ -506,8 +547,8 @@ export class AgentSessionManager extends EventEmitter {
 		// Check if we're coming back from the fixer
 		if (validationLoop.inFixerMode) {
 			// Fixer completed, now we need to re-run verifications
-			console.log(
-				`[AgentSessionManager] Validation fixer completed for iteration ${validationLoop.iteration}, re-running verifications`,
+			log.info(
+				`Validation fixer completed for iteration ${validationLoop.iteration}, re-running verifications`,
 			);
 
 			// Clear fixer mode flag
@@ -516,7 +557,7 @@ export class AgentSessionManager extends EventEmitter {
 
 			// Emit event to re-run verifications
 			this.emit("validationLoopRerun", {
-				linearAgentActivitySessionId,
+				sessionId,
 				session,
 				iteration: validationLoop.iteration,
 			});
@@ -547,8 +588,8 @@ export class AgentSessionManager extends EventEmitter {
 			timestamp: Date.now(),
 		});
 
-		console.log(
-			`[AgentSessionManager] Validation result for iteration ${newIteration}/${maxIterations}: pass=${validationResult.pass}, reason="${validationResult.reason.substring(0, 100)}..."`,
+		log.info(
+			`Validation result for iteration ${newIteration}/${maxIterations}: pass=${validationResult.pass}, reason="${validationResult.reason.substring(0, 100)}..."`,
 		);
 
 		// Update state in session
@@ -556,9 +597,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Check if validation passed
 		if (validationResult.pass) {
-			console.log(
-				`[AgentSessionManager] Validation passed after ${newIteration} iteration(s)`,
-			);
+			log.info(`Validation passed after ${newIteration} iteration(s)`);
 			// Clear validation loop state for next subroutine
 			this.clearValidationLoopState(session);
 			return false; // Continue with normal advancement
@@ -566,12 +605,12 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Check if we've exceeded max retries
 		if (newIteration >= maxIterations) {
-			console.log(
-				`[AgentSessionManager] Validation failed after ${newIteration} iterations, continuing anyway`,
+			log.info(
+				`Validation failed after ${newIteration} iterations, continuing anyway`,
 			);
 			// Post a thought about the failures
 			await this.createThoughtActivity(
-				linearAgentActivitySessionId,
+				sessionId,
 				`Validation loop exhausted after ${newIteration} attempts. Last failure: ${validationResult.reason}`,
 			);
 			// Clear validation loop state for next subroutine
@@ -580,8 +619,8 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		// Validation failed and we have retries left - run the fixer
-		console.log(
-			`[AgentSessionManager] Validation failed, running fixer (iteration ${newIteration}/${maxIterations})`,
+		log.info(
+			`Validation failed, running fixer (iteration ${newIteration}/${maxIterations})`,
 		);
 
 		// Set fixer mode flag
@@ -603,7 +642,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Emit event for EdgeWorker to run the fixer
 		this.emit("validationLoopIteration", {
-			linearAgentActivitySessionId,
+			sessionId,
 			session,
 			fixerPrompt,
 			iteration: newIteration,
@@ -642,26 +681,23 @@ export class AgentSessionManager extends EventEmitter {
 	 * Handle child session completion and resume parent
 	 */
 	private async handleChildSessionCompletion(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		if (!this.getParentSessionId || !this.resumeParentSession) {
 			return;
 		}
 
-		const parentAgentSessionId = this.getParentSessionId(
-			linearAgentActivitySessionId,
-		);
+		const parentAgentSessionId = this.getParentSessionId(sessionId);
 
 		if (!parentAgentSessionId) {
-			console.error(
-				`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
-			);
+			log.error(`No parent session ID found for child session`);
 			return;
 		}
 
-		console.log(
-			`[AgentSessionManager] Child session ${linearAgentActivitySessionId} completed, resuming parent ${parentAgentSessionId}`,
+		log.info(
+			`Child session completed, resuming parent ${parentAgentSessionId}`,
 		);
 
 		try {
@@ -669,22 +705,17 @@ export class AgentSessionManager extends EventEmitter {
 				"result" in resultMessage
 					? resultMessage.result
 					: "No result available";
-			const promptToParent = `Child agent session ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
+			const promptToParent = `Child agent session ${sessionId} completed with result:\n\n${childResult}`;
 
 			await this.resumeParentSession(
 				parentAgentSessionId,
 				promptToParent,
-				linearAgentActivitySessionId,
+				sessionId,
 			);
 
-			console.log(
-				`[AgentSessionManager] Successfully resumed parent session ${parentAgentSessionId}`,
-			);
+			log.info(`Successfully resumed parent session ${parentAgentSessionId}`);
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Failed to resume parent session:`,
-				error,
-			);
+			log.error(`Failed to resume parent session:`, error);
 		}
 	}
 
@@ -692,30 +723,28 @@ export class AgentSessionManager extends EventEmitter {
 	 * Handle streaming Claude messages and route to appropriate methods
 	 */
 	async handleClaudeMessage(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		message: SDKMessage,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		try {
 			switch (message.type) {
 				case "system":
 					if (message.subtype === "init") {
-						this.updateAgentSessionWithClaudeSessionId(
-							linearAgentActivitySessionId,
-							message,
-						);
+						this.updateAgentSessionWithClaudeSessionId(sessionId, message);
 
 						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
 						if (systemMessage.model) {
 							await this.postModelNotificationThought(
-								linearAgentActivitySessionId,
+								sessionId,
 								systemMessage.model,
 							);
 						}
 					} else if (message.subtype === "status") {
 						// Handle status updates (compacting, etc.)
 						await this.handleStatusMessage(
-							linearAgentActivitySessionId,
+							sessionId,
 							message as SDKStatusMessage,
 						);
 					}
@@ -723,44 +752,33 @@ export class AgentSessionManager extends EventEmitter {
 
 				case "user": {
 					const userEntry = await this.createSessionEntry(
-						linearAgentActivitySessionId,
+						sessionId,
 						message as SDKUserMessage,
 					);
-					await this.syncEntryToLinear(userEntry, linearAgentActivitySessionId);
+					await this.syncEntryToLinear(userEntry, sessionId);
 					break;
 				}
 
 				case "assistant": {
 					const assistantEntry = await this.createSessionEntry(
-						linearAgentActivitySessionId,
+						sessionId,
 						message as SDKAssistantMessage,
 					);
-					await this.syncEntryToLinear(
-						assistantEntry,
-						linearAgentActivitySessionId,
-					);
+					await this.syncEntryToLinear(assistantEntry, sessionId);
 					break;
 				}
 
 				case "result":
-					await this.completeSession(
-						linearAgentActivitySessionId,
-						message as SDKResultMessage,
-					);
+					await this.completeSession(sessionId, message as SDKResultMessage);
 					break;
 
 				default:
-					console.warn(
-						`[AgentSessionManager] Unknown message type: ${(message as any).type}`,
-					);
+					log.warn(`Unknown message type: ${(message as any).type}`);
 			}
 		} catch (error) {
-			console.error(`[AgentSessionManager] Error handling message:`, error);
+			log.error(`Error handling message:`, error);
 			// Mark session as error state
-			await this.updateSessionStatus(
-				linearAgentActivitySessionId,
-				AgentSessionStatus.Error,
-			);
+			await this.updateSessionStatus(sessionId, AgentSessionStatus.Error);
 		}
 	}
 
@@ -768,11 +786,11 @@ export class AgentSessionManager extends EventEmitter {
 	 * Update session status and metadata
 	 */
 	private async updateSessionStatus(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		status: AgentSessionStatus,
 		additionalMetadata?: Partial<CyrusAgentSession["metadata"]>,
 	): Promise<void> {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		if (!session) return;
 
 		session.status = status;
@@ -782,18 +800,18 @@ export class AgentSessionManager extends EventEmitter {
 			session.metadata = { ...session.metadata, ...additionalMetadata };
 		}
 
-		this.sessions.set(linearAgentActivitySessionId, session);
+		this.sessions.set(sessionId, session);
 	}
 
 	/**
 	 * Add result entry from result message
 	 */
 	private async addResultEntry(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
 		// Determine which runner is being used
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		const runner = session?.agentRunner;
 		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
 
@@ -813,7 +831,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		// DON'T store locally - syncEntryToLinear will do it
 		// Sync to Linear
-		await this.syncEntryToLinear(resultEntry, linearAgentActivitySessionId);
+		await this.syncEntryToLinear(resultEntry, sessionId);
 	}
 
 	/**
@@ -935,36 +953,33 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	private async syncEntryToLinear(
 		entry: CyrusAgentSessionEntry,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		try {
-			const session = this.sessions.get(linearAgentActivitySessionId);
+			const session = this.sessions.get(sessionId);
 			if (!session) {
-				console.warn(
-					`[AgentSessionManager] No Linear session for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
-				);
+				log.warn(`No Linear session found`);
 				return;
 			}
 
 			// Store entry locally first
-			const entries = this.entries.get(linearAgentActivitySessionId) || [];
+			const entries = this.entries.get(sessionId) || [];
 			entries.push(entry);
-			this.entries.set(linearAgentActivitySessionId, entries);
+			this.entries.set(sessionId, entries);
 
 			// Build activity content based on entry type
 			let content: any;
 			let ephemeral = false;
 			switch (entry.type) {
 				case "user": {
-					const activeTaskId = this.activeTasksBySession.get(
-						linearAgentActivitySessionId,
-					);
+					const activeTaskId = this.activeTasksBySession.get(sessionId);
 					if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
 						content = {
 							type: "thought",
 							body: `✅ Task Completed\n\n\n\n${entry.content}\n\n---\n\n`,
 						};
-						this.activeTasksBySession.delete(linearAgentActivitySessionId);
+						this.activeTasksBySession.delete(sessionId);
 					} else if (entry.metadata?.toolUseId) {
 						// This is a tool result - create an action activity with the result
 						const toolResult = this.extractToolResult(entry);
@@ -996,9 +1011,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
-								console.warn(
-									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
-								);
+								log.warn(`No formatter available`);
 								return;
 							}
 
@@ -1045,9 +1058,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Check if this is a subtask with arrow prefix
 							let storedName = toolName;
 							if (entry.metadata?.parentToolUseId) {
-								const activeTaskId = this.activeTasksBySession.get(
-									linearAgentActivitySessionId,
-								);
+								const activeTaskId = this.activeTasksBySession.get(sessionId);
 								if (activeTaskId === entry.metadata?.parentToolUseId) {
 									storedName = `↪ ${toolName}`;
 								}
@@ -1069,9 +1080,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
-								console.warn(
-									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
-								);
+								log.warn(`No formatter available`);
 								return;
 							}
 
@@ -1088,9 +1097,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
-								console.warn(
-									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
-								);
+								log.warn(`No formatter available`);
 								return;
 							}
 
@@ -1105,7 +1112,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Track this as the active Task for this session
 							if (entry.metadata?.toolUseId) {
 								this.activeTasksBySession.set(
-									linearAgentActivitySessionId,
+									sessionId,
 									entry.metadata.toolUseId,
 								);
 							}
@@ -1122,9 +1129,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
-								console.warn(
-									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
-								);
+								log.warn(`No formatter available`);
 								return;
 							}
 
@@ -1133,9 +1138,7 @@ export class AgentSessionManager extends EventEmitter {
 							let displayName = toolName;
 
 							if (entry.metadata?.parentToolUseId) {
-								const activeTaskId = this.activeTasksBySession.get(
-									linearAgentActivitySessionId,
-								);
+								const activeTaskId = this.activeTasksBySession.get(sessionId);
 								if (activeTaskId === entry.metadata?.parentToolUseId) {
 									displayName = `↪ ${toolName}`;
 								}
@@ -1211,15 +1214,21 @@ export class AgentSessionManager extends EventEmitter {
 			if (currentSubroutine?.suppressThoughtPosting) {
 				// Only suppress thoughts and actions, not responses or results
 				if (content.type === "thought" || content.type === "action") {
-					console.log(
-						`[AgentSessionManager] Suppressing ${content.type} posting for subroutine "${currentSubroutine.name}"`,
+					log.debug(
+						`Suppressing ${content.type} posting for subroutine "${currentSubroutine.name}"`,
 					);
 					return; // Don't post to Linear
 				}
 			}
 
+			// Ensure we have an external session ID for Linear API
+			if (!session.externalSessionId) {
+				log.warn(`No external session ID, skipping Linear activity`);
+				return;
+			}
+
 			const activityInput: AgentActivityCreateInput = {
-				agentSessionId: session.linearAgentActivitySessionId, // Use the Linear session ID
+				agentSessionId: session.externalSessionId, // Use the Linear session ID
 				content,
 				...(ephemeral && { ephemeral: true }),
 			};
@@ -1229,39 +1238,35 @@ export class AgentSessionManager extends EventEmitter {
 			if (result.success && result.agentActivity) {
 				const agentActivity = await result.agentActivity;
 				entry.linearAgentActivityId = agentActivity.id;
-				console.log(
-					`[AgentSessionManager] Created ${content.type} activity ${entry.linearAgentActivityId}`,
-				);
+				if (entry.type === "result") {
+					log.info(
+						`Result message emitted to Linear (activity ${entry.linearAgentActivityId})`,
+					);
+				} else {
+					log.debug(
+						`Created ${content.type} activity ${entry.linearAgentActivityId}`,
+					);
+				}
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create Linear activity:`,
-					result,
-				);
+				log.error(`Failed to create Linear activity:`, result);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Failed to sync entry to Linear:`,
-				error,
-			);
+			log.error(`Failed to sync entry to Linear:`, error);
 		}
 	}
 
 	/**
 	 * Get session by ID
 	 */
-	getSession(
-		linearAgentActivitySessionId: string,
-	): CyrusAgentSession | undefined {
-		return this.sessions.get(linearAgentActivitySessionId);
+	getSession(sessionId: string): CyrusAgentSession | undefined {
+		return this.sessions.get(sessionId);
 	}
 
 	/**
 	 * Get session entries by session ID
 	 */
-	getSessionEntries(
-		linearAgentActivitySessionId: string,
-	): CyrusAgentSessionEntry[] {
-		return this.entries.get(linearAgentActivitySessionId) || [];
+	getSessionEntries(sessionId: string): CyrusAgentSessionEntry[] {
+		return this.entries.get(sessionId) || [];
 	}
 
 	/**
@@ -1276,23 +1281,17 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Add or update agent runner for a session
 	 */
-	addAgentRunner(
-		linearAgentActivitySessionId: string,
-		agentRunner: IAgentRunner,
-	): void {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+	addAgentRunner(sessionId: string, agentRunner: IAgentRunner): void {
+		const log = this.sessionLog(sessionId);
+		const session = this.sessions.get(sessionId);
 		if (!session) {
-			console.warn(
-				`[AgentSessionManager] No session found for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
-			);
+			log.warn(`No session found`);
 			return;
 		}
 
 		session.agentRunner = agentRunner;
 		session.updatedAt = Date.now();
-		console.log(
-			`[AgentSessionManager] Added agent runner to session ${linearAgentActivitySessionId}`,
-		);
+		log.debug(`Added agent runner`);
 	}
 
 	/**
@@ -1305,11 +1304,18 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Resolve the issue ID from a session, checking issueContext first then deprecated issueId.
+	 */
+	private getSessionIssueId(session: CyrusAgentSession): string | undefined {
+		return session.issueContext?.issueId ?? session.issueId;
+	}
+
+	/**
 	 * Get all agent runners for a specific issue
 	 */
 	getAgentRunnersForIssue(issueId: string): IAgentRunner[] {
 		return Array.from(this.sessions.values())
-			.filter((session) => session.issueId === issueId)
+			.filter((session) => this.getSessionIssueId(session) === issueId)
 			.map((session) => session.agentRunner)
 			.filter((runner): runner is IAgentRunner => runner !== undefined);
 	}
@@ -1319,7 +1325,7 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	getSessionsByIssueId(issueId: string): CyrusAgentSession[] {
 		return Array.from(this.sessions.values()).filter(
-			(session) => session.issueId === issueId,
+			(session) => this.getSessionIssueId(session) === issueId,
 		);
 	}
 
@@ -1329,7 +1335,7 @@ export class AgentSessionManager extends EventEmitter {
 	getActiveSessionsByIssueId(issueId: string): CyrusAgentSession[] {
 		return Array.from(this.sessions.values()).filter(
 			(session) =>
-				session.issueId === issueId &&
+				this.getSessionIssueId(session) === issueId &&
 				session.status === AgentSessionStatus.Active,
 		);
 	}
@@ -1344,18 +1350,16 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Get agent runner for a specific session
 	 */
-	getAgentRunner(
-		linearAgentActivitySessionId: string,
-	): IAgentRunner | undefined {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+	getAgentRunner(sessionId: string): IAgentRunner | undefined {
+		const session = this.sessions.get(sessionId);
 		return session?.agentRunner;
 	}
 
 	/**
 	 * Check if an agent runner exists for a session
 	 */
-	hasAgentRunner(linearAgentActivitySessionId: string): boolean {
-		const session = this.sessions.get(linearAgentActivitySessionId);
+	hasAgentRunner(sessionId: string): boolean {
+		const session = this.sessions.get(sessionId);
 		return session?.agentRunner !== undefined;
 	}
 
@@ -1363,17 +1367,16 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create a thought activity
 	 */
 	async createThoughtActivity(sessionId: string, body: string): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+		if (!session || !session.externalSessionId) {
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "thought",
 					body,
@@ -1381,20 +1384,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created thought activity for session ${sessionId}`,
-				);
+				log.debug(`Created thought activity`);
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create thought activity:`,
-					result,
-				);
+				log.error(`Failed to create thought activity:`, result);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating thought activity:`,
-				error,
-			);
+			log.error(`Error creating thought activity:`, error);
 		}
 	}
 
@@ -1407,11 +1402,10 @@ export class AgentSessionManager extends EventEmitter {
 		parameter: string,
 		result?: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+		if (!session || !session.externalSessionId) {
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1427,25 +1421,17 @@ export class AgentSessionManager extends EventEmitter {
 			}
 
 			const response = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content,
 			});
 
 			if (response.success) {
-				console.log(
-					`[AgentSessionManager] Created action activity for session ${sessionId}`,
-				);
+				log.debug(`Created action activity`);
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create action activity:`,
-					response,
-				);
+				log.error(`Failed to create action activity:`, response);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating action activity:`,
-				error,
-			);
+			log.error(`Error creating action activity:`, error);
 		}
 	}
 
@@ -1453,17 +1439,16 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create a response activity
 	 */
 	async createResponseActivity(sessionId: string, body: string): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+		if (!session || !session.externalSessionId) {
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "response",
 					body,
@@ -1471,20 +1456,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created response activity for session ${sessionId}`,
-				);
+				log.debug(`Created response activity`);
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create response activity:`,
-					result,
-				);
+				log.error(`Failed to create response activity:`, result);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating response activity:`,
-				error,
-			);
+			log.error(`Error creating response activity:`, error);
 		}
 	}
 
@@ -1492,17 +1469,16 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create an error activity
 	 */
 	async createErrorActivity(sessionId: string, body: string): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+		if (!session || !session.externalSessionId) {
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "error",
 					body,
@@ -1510,20 +1486,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created error activity for session ${sessionId}`,
-				);
+				log.debug(`Created error activity`);
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create error activity:`,
-					result,
-				);
+				log.error(`Failed to create error activity:`, result);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating error activity:`,
-				error,
-			);
+			log.error(`Error creating error activity:`, error);
 		}
 	}
 
@@ -1534,17 +1502,16 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		body: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+		if (!session || !session.externalSessionId) {
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "elicitation",
 					body,
@@ -1552,20 +1519,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created elicitation activity for session ${sessionId}`,
-				);
+				log.debug(`Created elicitation activity`);
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create elicitation activity:`,
-					result,
-				);
+				log.error(`Failed to create elicitation activity:`, result);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating elicitation activity:`,
-				error,
-			);
+			log.error(`Error creating elicitation activity:`, error);
 		}
 	}
 
@@ -1577,17 +1536,16 @@ export class AgentSessionManager extends EventEmitter {
 		body: string,
 		approvalUrl: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+		if (!session || !session.externalSessionId) {
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "elicitation",
 					body,
@@ -1599,20 +1557,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created approval elicitation for session ${sessionId} with URL: ${approvalUrl}`,
-				);
+				log.debug(`Created approval elicitation with URL: ${approvalUrl}`);
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create approval elicitation:`,
-					result,
-				);
+				log.error(`Failed to create approval elicitation:`, result);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating approval elicitation:`,
-				error,
-			);
+			log.error(`Error creating approval elicitation:`, error);
 		}
 	}
 
@@ -1627,9 +1577,10 @@ export class AgentSessionManager extends EventEmitter {
 				(session.status === "complete" || session.status === "error") &&
 				session.updatedAt < cutoff
 			) {
+				const log = this.sessionLog(sessionId);
 				this.sessions.delete(sessionId);
 				this.entries.delete(sessionId);
-				console.log(`[AgentSessionManager] Cleaned up session ${sessionId}`);
+				log.debug(`Cleaned up session`);
 			}
 		}
 	}
@@ -1690,8 +1641,8 @@ export class AgentSessionManager extends EventEmitter {
 			this.entries.set(sessionId, sessionEntries);
 		}
 
-		console.log(
-			`[AgentSessionManager] Restored ${this.sessions.size} sessions, ${Object.keys(serializedEntries).length} entry collections`,
+		this.logger.debug(
+			`Restored ${this.sessions.size} sessions, ${Object.keys(serializedEntries).length} entry collections`,
 		);
 	}
 
@@ -1699,12 +1650,13 @@ export class AgentSessionManager extends EventEmitter {
 	 * Post a thought about the model being used
 	 */
 	private async postModelNotificationThought(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		model: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Using model: ${model}`,
@@ -1712,32 +1664,23 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Posted model notification for session ${linearAgentActivitySessionId} (model: ${model})`,
-				);
+				log.debug(`Posted model notification (model: ${model})`);
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post model notification:`,
-					result,
-				);
+				log.error(`Failed to post model notification:`, result);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error posting model notification:`,
-				error,
-			);
+			log.error(`Error posting model notification:`, error);
 		}
 	}
 
 	/**
 	 * Post an ephemeral "Analyzing your request..." thought and return the activity ID
 	 */
-	async postAnalyzingThought(
-		linearAgentActivitySessionId: string,
-	): Promise<string | null> {
+	async postAnalyzingThought(sessionId: string): Promise<string | null> {
+		const log = this.sessionLog(sessionId);
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: "Analyzing your request…",
@@ -1747,22 +1690,14 @@ export class AgentSessionManager extends EventEmitter {
 
 			if (result.success && result.agentActivity) {
 				const activity = await result.agentActivity;
-				console.log(
-					`[AgentSessionManager] Posted analyzing thought for session ${linearAgentActivitySessionId}`,
-				);
+				log.debug(`Posted analyzing thought`);
 				return activity.id;
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post analyzing thought:`,
-					result,
-				);
+				log.error(`Failed to post analyzing thought:`, result);
 				return null;
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error posting analyzing thought:`,
-				error,
-			);
+			log.error(`Error posting analyzing thought:`, error);
 			return null;
 		}
 	}
@@ -1771,13 +1706,14 @@ export class AgentSessionManager extends EventEmitter {
 	 * Post the procedure selection result as a non-ephemeral thought
 	 */
 	async postProcedureSelectionThought(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		procedureName: string,
 		classification: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: linearAgentActivitySessionId,
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Selected procedure: **${procedureName}** (classified as: ${classification})`,
@@ -1786,20 +1722,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Posted procedure selection for session ${linearAgentActivitySessionId}: ${procedureName}`,
-				);
+				log.debug(`Posted procedure selection: ${procedureName}`);
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post procedure selection:`,
-					result,
-				);
+				log.error(`Failed to post procedure selection:`, result);
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error posting procedure selection:`,
-				error,
-			);
+			log.error(`Error posting procedure selection:`, error);
 		}
 	}
 
@@ -1807,14 +1735,13 @@ export class AgentSessionManager extends EventEmitter {
 	 * Handle status messages (compacting, etc.)
 	 */
 	private async handleStatusMessage(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		message: SDKStatusMessage,
 	): Promise<void> {
-		const session = this.sessions.get(linearAgentActivitySessionId);
-		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${linearAgentActivitySessionId}`,
-			);
+		const log = this.sessionLog(sessionId);
+		const session = this.sessions.get(sessionId);
+		if (!session || !session.externalSessionId) {
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1822,7 +1749,7 @@ export class AgentSessionManager extends EventEmitter {
 			if (message.status === "compacting") {
 				// Create an ephemeral thought for the compacting status
 				const result = await this.issueTracker.createAgentActivity({
-					agentSessionId: session.linearAgentActivitySessionId,
+					agentSessionId: session.externalSessionId,
 					content: {
 						type: "thought",
 						body: "Compacting conversation history…",
@@ -1833,23 +1760,15 @@ export class AgentSessionManager extends EventEmitter {
 				if (result.success && result.agentActivity) {
 					const activity = await result.agentActivity;
 					// Store the activity ID so we can replace it later
-					this.activeStatusActivitiesBySession.set(
-						linearAgentActivitySessionId,
-						activity.id,
-					);
-					console.log(
-						`[AgentSessionManager] Posted ephemeral compacting status for session ${linearAgentActivitySessionId}`,
-					);
+					this.activeStatusActivitiesBySession.set(sessionId, activity.id);
+					log.debug(`Posted ephemeral compacting status`);
 				} else {
-					console.error(
-						`[AgentSessionManager] Failed to post compacting status:`,
-						result,
-					);
+					log.error(`Failed to post compacting status:`, result);
 				}
 			} else if (message.status === null) {
 				// Clear the status - post a non-ephemeral thought to replace the ephemeral one
 				const result = await this.issueTracker.createAgentActivity({
-					agentSessionId: session.linearAgentActivitySessionId,
+					agentSessionId: session.externalSessionId,
 					content: {
 						type: "thought",
 						body: "Conversation history compacted",
@@ -1859,24 +1778,14 @@ export class AgentSessionManager extends EventEmitter {
 
 				if (result.success) {
 					// Clean up the stored activity ID
-					this.activeStatusActivitiesBySession.delete(
-						linearAgentActivitySessionId,
-					);
-					console.log(
-						`[AgentSessionManager] Posted non-ephemeral status clear for session ${linearAgentActivitySessionId}`,
-					);
+					this.activeStatusActivitiesBySession.delete(sessionId);
+					log.debug(`Posted non-ephemeral status clear`);
 				} else {
-					console.error(
-						`[AgentSessionManager] Failed to post status clear:`,
-						result,
-					);
+					log.error(`Failed to post status clear:`, result);
 				}
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error handling status message:`,
-				error,
-			);
+			log.error(`Error handling status message:`, error);
 		}
 	}
 }

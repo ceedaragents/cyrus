@@ -31,7 +31,16 @@ vi.mock("@linear/sdk", async (importOriginal) => {
 });
 vi.mock("../src/SharedApplicationServer.js");
 vi.mock("../src/AgentSessionManager.js");
-vi.mock("cyrus-core");
+vi.mock("cyrus-core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("cyrus-core")>();
+	return {
+		...actual,
+		PersistenceManager: vi.fn().mockImplementation(() => ({
+			loadEdgeWorkerState: vi.fn().mockResolvedValue(null),
+			saveEdgeWorkerState: vi.fn().mockResolvedValue(undefined),
+		})),
+	};
+});
 vi.mock("file-type");
 
 describe("EdgeWorker - Version Tag Extraction", () => {
@@ -126,6 +135,13 @@ Repository: {{repository_name}}`;
 
 		vi.mocked(readFile).mockResolvedValue(templateWithVersion);
 
+		// Set log level to DEBUG so version logging (a debug message) is visible
+		const originalLogLevel = process.env.CYRUS_LOG_LEVEL;
+		process.env.CYRUS_LOG_LEVEL = "DEBUG";
+		// Recreate EdgeWorker with DEBUG log level
+		edgeWorker = new EdgeWorker(mockConfig);
+		process.env.CYRUS_LOG_LEVEL = originalLogLevel;
+
 		// Spy on console.log to check for version logging
 		const logSpy = vi.spyOn(console, "log");
 
@@ -147,9 +163,9 @@ Repository: {{repository_name}}`;
 
 		await buildIssueContextPrompt(mockIssue, mockConfig.repositories[0]);
 
-		// Check that version was logged
+		// Check that version was logged (at DEBUG level)
 		expect(logSpy).toHaveBeenCalledWith(
-			"[EdgeWorker] Prompt template version: debugger-v2.1.0",
+			expect.stringContaining("Prompt template version: debugger-v2.1.0"),
 		);
 	});
 
