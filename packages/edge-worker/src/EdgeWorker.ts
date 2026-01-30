@@ -62,6 +62,25 @@ import {
 } from "cyrus-core";
 import { GeminiRunner } from "cyrus-gemini-runner";
 import {
+	extractCommentAuthor,
+	extractCommentBody,
+	extractCommentId,
+	extractCommentUrl,
+	extractPRBranchRef,
+	extractPRNumber,
+	extractPRTitle,
+	extractRepoFullName,
+	extractRepoName,
+	extractRepoOwner,
+	extractSessionKey,
+	GitHubCommentService,
+	GitHubEventTransport,
+	type GitHubWebhookEvent,
+	isCommentOnPullRequest,
+	isIssueCommentPayload,
+	stripMention,
+} from "cyrus-github-event-transport";
+import {
 	LinearEventTransport,
 	LinearIssueTrackerService,
 	type LinearOAuthConfig,
@@ -114,6 +133,8 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
+	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
+	private gitHubCommentService: GitHubCommentService; // Service for posting comments back to GitHub PRs
 	private cliRPCServer: CLIRPCServer | null = null; // CLI RPC server for CLI platform mode
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
@@ -139,6 +160,9 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Initialize GitHub comment service for posting replies to GitHub PRs
+		this.gitHubCommentService = new GitHubCommentService();
 
 		// Initialize procedure router with haiku for fast classification
 		// Default to claude runner
@@ -498,7 +522,11 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		// 2. Create and register ConfigUpdater (both platforms)
+		// 2. Register GitHub event transport (for forwarded GitHub webhooks from CYHOST)
+		// This is registered regardless of platform mode since GitHub webhooks can come from CYHOST
+		this.registerGitHubEventTransport();
+
+		// 3. Create and register ConfigUpdater (both platforms)
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
@@ -514,10 +542,10 @@ export class EdgeWorker extends EventEmitter {
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
 
-		// 3. Register /status endpoint for process activity monitoring
+		// 4. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
 
-		// 4. Register /version endpoint for CLI version info
+		// 5. Register /version endpoint for CLI version info
 		this.registerVersionEndpoint();
 	}
 
@@ -552,6 +580,480 @@ export class EdgeWorker extends EventEmitter {
 
 		console.log("✅ Version endpoint registered");
 		console.log("   Route: GET /version");
+	}
+
+	/**
+	 * Register the GitHub event transport for receiving forwarded GitHub webhooks from CYHOST.
+	 * This creates a /github-webhook endpoint that handles @cyrusagent mentions on GitHub PRs.
+	 */
+	private registerGitHubEventTransport(): void {
+		// Use the same verification approach as Linear webhooks
+		// In proxy mode: Bearer token (CYRUS_API_KEY)
+		// In direct/cloud mode: GitHub HMAC-SHA256 signature
+		const useSignatureVerification =
+			process.env.GITHUB_WEBHOOK_SECRET != null &&
+			process.env.GITHUB_WEBHOOK_SECRET !== "";
+		const verificationMode = useSignatureVerification ? "signature" : "proxy";
+		const secret = useSignatureVerification
+			? process.env.GITHUB_WEBHOOK_SECRET!
+			: process.env.CYRUS_API_KEY || "";
+
+		this.gitHubEventTransport = new GitHubEventTransport({
+			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+			verificationMode,
+			secret,
+		});
+
+		// Listen for GitHub webhook events
+		this.gitHubEventTransport.on("event", (event: GitHubWebhookEvent) => {
+			this.handleGitHubWebhook(event).catch((error) => {
+				console.error("[EdgeWorker] Failed to handle GitHub webhook:", error);
+			});
+		});
+
+		// Listen for errors
+		this.gitHubEventTransport.on("error", (error: Error) => {
+			this.handleError(error);
+		});
+
+		// Register the /github-webhook endpoint
+		this.gitHubEventTransport.register();
+
+		console.log(
+			`✅ GitHub event transport registered (${verificationMode} mode)`,
+		);
+		console.log("   Webhook endpoint: POST /github-webhook");
+	}
+
+	/**
+	 * Handle a GitHub webhook event (forwarded from CYHOST).
+	 *
+	 * This creates a new session for the GitHub PR comment, checks out the PR branch
+	 * via git worktree, and processes the comment as a task prompt.
+	 */
+	private async handleGitHubWebhook(event: GitHubWebhookEvent): Promise<void> {
+		this.activeWebhookCount++;
+
+		try {
+			// Only handle comments on pull requests
+			if (!isCommentOnPullRequest(event)) {
+				console.log("[EdgeWorker] Ignoring GitHub comment on non-PR issue");
+				return;
+			}
+
+			const repoFullName = extractRepoFullName(event);
+			const prNumber = extractPRNumber(event);
+			const commentBody = extractCommentBody(event);
+			const commentAuthor = extractCommentAuthor(event);
+			const prTitle = extractPRTitle(event);
+			const sessionKey = extractSessionKey(event);
+
+			console.log(
+				`[EdgeWorker] Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}`,
+			);
+
+			// Find the repository configuration that matches this GitHub repo
+			const repository = this.findRepositoryByGitHubUrl(repoFullName);
+			if (!repository) {
+				console.warn(
+					`[EdgeWorker] No repository configured for GitHub repo: ${repoFullName}`,
+				);
+				return;
+			}
+
+			// Get the agent session manager for this repository
+			const agentSessionManager = this.agentSessionManagers.get(repository.id);
+			if (!agentSessionManager) {
+				console.error(
+					`[EdgeWorker] No AgentSessionManager for repository ${repository.name}`,
+				);
+				return;
+			}
+
+			// Determine the PR branch
+			let branchRef = extractPRBranchRef(event);
+
+			// For issue_comment events, the branch ref is not in the payload
+			// We need to fetch it from the GitHub API
+			if (!branchRef && isIssueCommentPayload(event.payload)) {
+				branchRef = await this.fetchPRBranchRef(event, repository);
+			}
+
+			if (!branchRef) {
+				console.error(
+					`[EdgeWorker] Could not determine branch for ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			// Strip the @cyrusagent mention to get the task instructions
+			const taskInstructions = stripMention(commentBody);
+
+			// Create workspace (git worktree) for the PR branch
+			const workspace = await this.createGitHubWorkspace(
+				repository,
+				branchRef,
+				prNumber!,
+			);
+
+			if (!workspace) {
+				console.error(
+					`[EdgeWorker] Failed to create workspace for ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			console.log(
+				`[EdgeWorker] GitHub workspace created at: ${workspace.path}`,
+			);
+
+			// Create a synthetic session for this GitHub PR comment
+			const issueMinimal: IssueMinimal = {
+				id: sessionKey,
+				identifier: `${extractRepoName(event)}#${prNumber}`,
+				title: prTitle || `PR #${prNumber}`,
+				branchName: branchRef,
+			};
+
+			// Create an internal agent session (no Linear session for GitHub)
+			const githubSessionId = `github-${event.deliveryId}`;
+			agentSessionManager.createLinearAgentSession(
+				githubSessionId,
+				sessionKey,
+				issueMinimal,
+				workspace,
+			);
+
+			const session = agentSessionManager.getSession(githubSessionId);
+			if (!session) {
+				console.error(
+					`[EdgeWorker] Failed to create session for GitHub webhook ${event.deliveryId}`,
+				);
+				return;
+			}
+
+			// Initialize procedure metadata
+			if (!session.metadata) {
+				session.metadata = {};
+			}
+
+			// Store GitHub-specific metadata for reply posting
+			session.metadata.commentId = String(extractCommentId(event));
+
+			// Build the system prompt for this GitHub PR session
+			const systemPrompt = this.buildGitHubSystemPrompt(
+				event,
+				branchRef,
+				taskInstructions,
+			);
+
+			// Build allowed tools and directories
+			const allowedTools = this.buildAllowedTools(repository);
+			const disallowedTools = this.buildDisallowedTools(repository);
+			const allowedDirectories: string[] = [repository.repositoryPath];
+
+			// Create agent runner using the standard config builder
+			const { config: runnerConfig } = this.buildAgentRunnerConfig(
+				session,
+				repository,
+				githubSessionId,
+				systemPrompt,
+				allowedTools,
+				allowedDirectories,
+				disallowedTools,
+				undefined, // resumeSessionId
+				undefined, // labels
+				200, // maxTurns
+				false, // singleTurn
+			);
+
+			const runner = new ClaudeRunner(runnerConfig);
+
+			// Store the runner in the session manager
+			agentSessionManager.addAgentRunner(githubSessionId, runner);
+
+			// Save persisted state
+			await this.savePersistedState();
+
+			this.emit(
+				"session:started",
+				sessionKey,
+				issueMinimal as unknown as Issue,
+				repository.id,
+			);
+
+			console.log(
+				`[EdgeWorker] Starting Claude runner for GitHub PR ${repoFullName}#${prNumber}`,
+			);
+
+			// Start the session and handle completion
+			try {
+				const sessionInfo = await runner.start(taskInstructions);
+				console.log(
+					`[EdgeWorker] GitHub session started: ${sessionInfo.sessionId}`,
+				);
+
+				// When session completes, post the reply back to GitHub
+				await this.postGitHubReply(event, runner, repository);
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] GitHub session error for ${repoFullName}#${prNumber}:`,
+					error,
+				);
+			} finally {
+				await this.savePersistedState();
+			}
+		} catch (error) {
+			console.error("[EdgeWorker] Failed to process GitHub webhook:", error);
+		} finally {
+			this.activeWebhookCount--;
+		}
+	}
+
+	/**
+	 * Find a repository configuration that matches a GitHub repository URL.
+	 * Matches against the githubUrl field in repository config.
+	 */
+	private findRepositoryByGitHubUrl(
+		repoFullName: string,
+	): RepositoryConfig | null {
+		for (const repo of this.repositories.values()) {
+			if (!repo.githubUrl) continue;
+			// Match against full name (owner/repo) or URL containing it
+			if (
+				repo.githubUrl.includes(repoFullName) ||
+				repo.githubUrl.endsWith(`/${repoFullName}`)
+			) {
+				return repo;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Fetch the PR branch ref for an issue_comment webhook.
+	 * For issue_comment events, the branch ref is not in the payload
+	 * and must be fetched from the GitHub API.
+	 */
+	private async fetchPRBranchRef(
+		event: GitHubWebhookEvent,
+		_repository: RepositoryConfig,
+	): Promise<string | null> {
+		if (!isIssueCommentPayload(event.payload)) return null;
+
+		const prUrl = event.payload.issue.pull_request?.url;
+		if (!prUrl) return null;
+
+		try {
+			const owner = extractRepoOwner(event);
+			const repo = extractRepoName(event);
+			const prNumber = event.payload.issue.number;
+
+			const headers: Record<string, string> = {
+				Accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28",
+			};
+
+			// Use GITHUB_TOKEN for authenticated requests if available
+			const token = process.env.GITHUB_TOKEN;
+			if (token) {
+				headers.Authorization = `Bearer ${token}`;
+			}
+
+			const response = await fetch(
+				`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+				{ headers },
+			);
+
+			if (!response.ok) {
+				console.warn(
+					`[EdgeWorker] Failed to fetch PR details from GitHub API: ${response.status}`,
+				);
+				return null;
+			}
+
+			const prData = (await response.json()) as { head?: { ref?: string } };
+			return prData.head?.ref ?? null;
+		} catch (error) {
+			console.error("[EdgeWorker] Failed to fetch PR branch ref:", error);
+			return null;
+		}
+	}
+
+	/**
+	 * Create a git worktree for a GitHub PR branch.
+	 * If the worktree already exists for this branch, reuse it.
+	 */
+	private async createGitHubWorkspace(
+		repository: RepositoryConfig,
+		branchRef: string,
+		prNumber: number,
+	): Promise<{ path: string; isGitWorktree: boolean } | null> {
+		try {
+			// Use the GitService to create the worktree
+			// Create a synthetic issue-like object for the git service
+			const syntheticIssue = {
+				id: `github-pr-${prNumber}`,
+				identifier: `PR-${prNumber}`,
+				title: `PR #${prNumber}`,
+				description: null,
+				url: "",
+				branchName: branchRef,
+				assigneeId: null,
+				stateId: null,
+				teamId: null,
+				labelIds: [],
+				priority: 0,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				archivedAt: null,
+				state: Promise.resolve(undefined),
+				assignee: Promise.resolve(undefined),
+				team: Promise.resolve(undefined),
+				parent: Promise.resolve(undefined),
+				project: Promise.resolve(undefined),
+				labels: () => Promise.resolve({ nodes: [] }),
+				comments: () => Promise.resolve({ nodes: [] }),
+				attachments: () => Promise.resolve({ nodes: [] }),
+				children: () => Promise.resolve({ nodes: [] }),
+				inverseRelations: () => Promise.resolve({ nodes: [] }),
+				update: () =>
+					Promise.resolve({
+						success: true,
+						issue: undefined,
+						lastSyncId: 0,
+					}),
+			} as unknown as Issue;
+
+			return await this.gitService.createGitWorktree(
+				syntheticIssue,
+				repository,
+			);
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to create GitHub workspace for PR #${prNumber}:`,
+				error,
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Build a system prompt for a GitHub PR comment session.
+	 */
+	private buildGitHubSystemPrompt(
+		event: GitHubWebhookEvent,
+		branchRef: string,
+		taskInstructions: string,
+	): string {
+		const repoFullName = extractRepoFullName(event);
+		const prNumber = extractPRNumber(event);
+		const prTitle = extractPRTitle(event);
+		const commentAuthor = extractCommentAuthor(event);
+		const commentUrl = extractCommentUrl(event);
+
+		return `You are working on a GitHub Pull Request.
+
+## Context
+- **Repository**: ${repoFullName}
+- **PR**: #${prNumber} - ${prTitle || "Untitled"}
+- **Branch**: ${branchRef}
+- **Requested by**: @${commentAuthor}
+- **Comment URL**: ${commentUrl}
+
+## Task
+${taskInstructions}
+
+## Instructions
+- You are already checked out on the PR branch \`${branchRef}\`
+- Make changes directly to the code on this branch
+- After making changes, commit and push them to the branch
+- Be concise in your responses as they will be posted back to the GitHub PR`;
+	}
+
+	/**
+	 * Post a reply back to the GitHub PR comment after the session completes.
+	 */
+	private async postGitHubReply(
+		event: GitHubWebhookEvent,
+		runner: IAgentRunner,
+		_repository: RepositoryConfig,
+	): Promise<void> {
+		try {
+			// Get the last assistant message from the runner as the summary
+			const messages = runner.getMessages();
+			const lastAssistantMessage = [...messages]
+				.reverse()
+				.find((m) => m.type === "assistant");
+
+			let summary = "Task completed. Please review the changes on this branch.";
+			if (
+				lastAssistantMessage &&
+				lastAssistantMessage.type === "assistant" &&
+				"message" in lastAssistantMessage
+			) {
+				const msg = lastAssistantMessage as {
+					message: { content: Array<{ type: string; text?: string }> };
+				};
+				const textBlock = msg.message.content?.find(
+					(block) => block.type === "text" && block.text,
+				);
+				if (textBlock?.text) {
+					summary = textBlock.text;
+				}
+			}
+
+			const owner = extractRepoOwner(event);
+			const repo = extractRepoName(event);
+			const prNumber = extractPRNumber(event);
+			const commentId = extractCommentId(event);
+
+			if (!prNumber) {
+				console.warn("[EdgeWorker] Cannot post GitHub reply: no PR number");
+				return;
+			}
+
+			// For now, we need an installation access token from CYHOST
+			// The token should be provided via environment or forwarded with the webhook
+			const token = process.env.GITHUB_TOKEN;
+			if (!token) {
+				console.warn(
+					"[EdgeWorker] Cannot post GitHub reply: no GITHUB_TOKEN configured",
+				);
+				console.log(
+					`[EdgeWorker] Would have posted reply to ${owner}/${repo}#${prNumber} (comment ${commentId}):`,
+				);
+				console.log(summary);
+				return;
+			}
+
+			if (event.eventType === "pull_request_review_comment") {
+				// Reply to the specific review comment thread
+				await this.gitHubCommentService.postReviewCommentReply({
+					token,
+					owner,
+					repo,
+					pullNumber: prNumber,
+					commentId,
+					body: summary,
+				});
+			} else {
+				// Post as a regular issue comment on the PR
+				await this.gitHubCommentService.postIssueComment({
+					token,
+					owner,
+					repo,
+					issueNumber: prNumber,
+					body: summary,
+				});
+			}
+
+			console.log(
+				`[EdgeWorker] Posted GitHub reply to ${owner}/${repo}#${prNumber}`,
+			);
+		} catch (error) {
+			console.error("[EdgeWorker] Failed to post GitHub reply:", error);
+		}
 	}
 
 	/**
