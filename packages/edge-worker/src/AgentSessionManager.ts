@@ -134,6 +134,18 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Get a session-scoped logger with context (sessionId, platform, issueIdentifier).
+	 */
+	private sessionLog(sessionId: string): ILogger {
+		const session = this.sessions.get(sessionId);
+		return this.logger.withContext({
+			sessionId,
+			platform: session?.issueContext?.trackerId,
+			issueIdentifier: session?.issueContext?.issueIdentifier,
+		});
+	}
+
+	/**
 	 * Initialize a Linear agent session from webhook
 	 * The session is already created by Linear, we just need to track it
 	 */
@@ -143,9 +155,12 @@ export class AgentSessionManager extends EventEmitter {
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
 	): CyrusAgentSession {
-		this.logger.info(
-			`Tracking Linear session ${sessionId} for issue ${issueId}`,
-		);
+		const log = this.logger.withContext({
+			sessionId,
+			platform: "linear",
+			issueIdentifier: issueMinimal.identifier,
+		});
+		log.info(`Tracking session for issue ${issueId}`);
 
 		const agentSession: CyrusAgentSession = {
 			id: sessionId,
@@ -182,7 +197,8 @@ export class AgentSessionManager extends EventEmitter {
 	): void {
 		const linearSession = this.sessions.get(sessionId);
 		if (!linearSession) {
-			this.logger.warn(`No Linear session found for sessionId ${sessionId}`);
+			const log = this.sessionLog(sessionId);
+			log.warn(`No Linear session found`);
 			return;
 		}
 
@@ -271,7 +287,8 @@ export class AgentSessionManager extends EventEmitter {
 	): Promise<void> {
 		const session = this.sessions.get(sessionId);
 		if (!session) {
-			this.logger.error(`No session found for sessionId: ${sessionId}`);
+			const log = this.sessionLog(sessionId);
+			log.error(`No session found`);
 			return;
 		}
 
@@ -307,13 +324,14 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		if (!this.procedureAnalyzer) {
 			throw new Error("ProcedureAnalyzer not available");
 		}
 
 		// Check if error occurred
 		if (resultMessage.subtype !== "success") {
-			this.logger.info(
+			log.info(
 				`Subroutine completed with error, not triggering next subroutine`,
 			);
 			return;
@@ -322,7 +340,7 @@ export class AgentSessionManager extends EventEmitter {
 		// Get the runner session ID (either Claude or Gemini)
 		const runnerSessionId = session.claudeSessionId || session.geminiSessionId;
 		if (!runnerSessionId) {
-			this.logger.error(`No runner session ID found for procedure session`);
+			log.error(`No runner session ID found for procedure session`);
 			return;
 		}
 
@@ -335,13 +353,13 @@ export class AgentSessionManager extends EventEmitter {
 				this.procedureAnalyzer.getCurrentSubroutine(session);
 
 			if (currentSubroutine?.requiresApproval) {
-				this.logger.info(
+				log.info(
 					`Current subroutine "${currentSubroutine.name}" requires approval before proceeding`,
 				);
 
 				// Check if SharedApplicationServer is available
 				if (!this.sharedApplicationServer) {
-					this.logger.error(
+					log.error(
 						`SharedApplicationServer not available for approval workflow`,
 					);
 					await this.createErrorActivity(
@@ -371,9 +389,7 @@ export class AgentSessionManager extends EventEmitter {
 						approvalRequest.url,
 					);
 
-					this.logger.info(
-						`Waiting for approval at URL: ${approvalRequest.url}`,
-					);
+					log.info(`Waiting for approval at URL: ${approvalRequest.url}`);
 
 					// Wait for approval with timeout (30 minutes)
 					const approvalTimeout = 30 * 60 * 1000;
@@ -390,7 +406,7 @@ export class AgentSessionManager extends EventEmitter {
 					]);
 
 					if (!approved) {
-						this.logger.info(`Approval rejected for session ${sessionId}`);
+						log.info(`Approval rejected`);
 						await this.createErrorActivity(
 							sessionId,
 							`Workflow stopped: User rejected approval.${feedback ? `\n\nFeedback: ${feedback}` : ""}`,
@@ -398,7 +414,7 @@ export class AgentSessionManager extends EventEmitter {
 						return; // Stop workflow
 					}
 
-					this.logger.info(`Approval granted, continuing to next subroutine`);
+					log.info(`Approval granted, continuing to next subroutine`);
 
 					// Optionally post feedback as a thought
 					if (feedback) {
@@ -412,13 +428,13 @@ export class AgentSessionManager extends EventEmitter {
 				} catch (error) {
 					const errorMessage = (error as Error).message;
 					if (errorMessage === "Approval timeout") {
-						this.logger.info(`Approval timed out for session ${sessionId}`);
+						log.info(`Approval timed out`);
 						await this.createErrorActivity(
 							sessionId,
 							"Workflow stopped: Approval request timed out after 30 minutes.",
 						);
 					} else {
-						this.logger.error(`Approval request failed:`, error);
+						log.error(`Approval request failed:`, error);
 						await this.createErrorActivity(
 							sessionId,
 							`Workflow stopped: Approval request failed - ${errorMessage}`,
@@ -444,7 +460,7 @@ export class AgentSessionManager extends EventEmitter {
 			}
 
 			// Advance procedure state
-			this.logger.info(
+			log.info(
 				`Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
 			this.procedureAnalyzer.advanceToNextSubroutine(session, runnerSessionId);
@@ -457,9 +473,7 @@ export class AgentSessionManager extends EventEmitter {
 			});
 		} else {
 			// Procedure complete - post final result
-			this.logger.info(
-				`All subroutines completed, posting final result to Linear`,
-			);
+			log.info(`All subroutines completed, posting final result to Linear`);
 			await this.addResultEntry(sessionId, resultMessage);
 
 			// Handle child session completion
@@ -482,6 +496,7 @@ export class AgentSessionManager extends EventEmitter {
 		_sessionId: string,
 		_nextSubroutine: { name: string } | null,
 	): Promise<boolean> {
+		const log = this.sessionLog(sessionId);
 		const maxIterations = DEFAULT_VALIDATION_LOOP_CONFIG.maxIterations;
 
 		// Get or initialize validation loop state
@@ -497,7 +512,7 @@ export class AgentSessionManager extends EventEmitter {
 		// Check if we're coming back from the fixer
 		if (validationLoop.inFixerMode) {
 			// Fixer completed, now we need to re-run verifications
-			this.logger.info(
+			log.info(
 				`Validation fixer completed for iteration ${validationLoop.iteration}, re-running verifications`,
 			);
 
@@ -538,7 +553,7 @@ export class AgentSessionManager extends EventEmitter {
 			timestamp: Date.now(),
 		});
 
-		this.logger.info(
+		log.info(
 			`Validation result for iteration ${newIteration}/${maxIterations}: pass=${validationResult.pass}, reason="${validationResult.reason.substring(0, 100)}..."`,
 		);
 
@@ -547,7 +562,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Check if validation passed
 		if (validationResult.pass) {
-			this.logger.info(`Validation passed after ${newIteration} iteration(s)`);
+			log.info(`Validation passed after ${newIteration} iteration(s)`);
 			// Clear validation loop state for next subroutine
 			this.clearValidationLoopState(session);
 			return false; // Continue with normal advancement
@@ -555,7 +570,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Check if we've exceeded max retries
 		if (newIteration >= maxIterations) {
-			this.logger.info(
+			log.info(
 				`Validation failed after ${newIteration} iterations, continuing anyway`,
 			);
 			// Post a thought about the failures
@@ -569,7 +584,7 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		// Validation failed and we have retries left - run the fixer
-		this.logger.info(
+		log.info(
 			`Validation failed, running fixer (iteration ${newIteration}/${maxIterations})`,
 		);
 
@@ -634,6 +649,7 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		resultMessage: SDKResultMessage,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		if (!this.getParentSessionId || !this.resumeParentSession) {
 			return;
 		}
@@ -641,12 +657,12 @@ export class AgentSessionManager extends EventEmitter {
 		const parentAgentSessionId = this.getParentSessionId(sessionId);
 
 		if (!parentAgentSessionId) {
-			this.logger.error(`No parent session ID found for child ${sessionId}`);
+			log.error(`No parent session ID found for child session`);
 			return;
 		}
 
-		this.logger.info(
-			`Child session ${sessionId} completed, resuming parent ${parentAgentSessionId}`,
+		log.info(
+			`Child session completed, resuming parent ${parentAgentSessionId}`,
 		);
 
 		try {
@@ -662,11 +678,9 @@ export class AgentSessionManager extends EventEmitter {
 				sessionId,
 			);
 
-			this.logger.info(
-				`Successfully resumed parent session ${parentAgentSessionId}`,
-			);
+			log.info(`Successfully resumed parent session ${parentAgentSessionId}`);
 		} catch (error) {
-			this.logger.error(`Failed to resume parent session:`, error);
+			log.error(`Failed to resume parent session:`, error);
 		}
 	}
 
@@ -677,6 +691,7 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		message: SDKMessage,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		try {
 			switch (message.type) {
 				case "system":
@@ -723,10 +738,10 @@ export class AgentSessionManager extends EventEmitter {
 					break;
 
 				default:
-					this.logger.warn(`Unknown message type: ${(message as any).type}`);
+					log.warn(`Unknown message type: ${(message as any).type}`);
 			}
 		} catch (error) {
-			this.logger.error(`Error handling message:`, error);
+			log.error(`Error handling message:`, error);
 			// Mark session as error state
 			await this.updateSessionStatus(sessionId, AgentSessionStatus.Error);
 		}
@@ -905,10 +920,11 @@ export class AgentSessionManager extends EventEmitter {
 		entry: CyrusAgentSessionEntry,
 		sessionId: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		try {
 			const session = this.sessions.get(sessionId);
 			if (!session) {
-				this.logger.warn(`No Linear session for sessionId ${sessionId}`);
+				log.warn(`No Linear session found`);
 				return;
 			}
 
@@ -960,9 +976,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
-								this.logger.warn(
-									`No formatter available for session ${sessionId}`,
-								);
+								log.warn(`No formatter available`);
 								return;
 							}
 
@@ -1031,9 +1045,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
-								this.logger.warn(
-									`No formatter available for session ${sessionId}`,
-								);
+								log.warn(`No formatter available`);
 								return;
 							}
 
@@ -1050,9 +1062,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
-								this.logger.warn(
-									`No formatter available for session ${sessionId}`,
-								);
+								log.warn(`No formatter available`);
 								return;
 							}
 
@@ -1084,9 +1094,7 @@ export class AgentSessionManager extends EventEmitter {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
-								this.logger.warn(
-									`No formatter available for session ${sessionId}`,
-								);
+								log.warn(`No formatter available`);
 								return;
 							}
 
@@ -1171,7 +1179,7 @@ export class AgentSessionManager extends EventEmitter {
 			if (currentSubroutine?.suppressThoughtPosting) {
 				// Only suppress thoughts and actions, not responses or results
 				if (content.type === "thought" || content.type === "action") {
-					this.logger.debug(
+					log.debug(
 						`Suppressing ${content.type} posting for subroutine "${currentSubroutine.name}"`,
 					);
 					return; // Don't post to Linear
@@ -1180,9 +1188,7 @@ export class AgentSessionManager extends EventEmitter {
 
 			// Ensure we have an external session ID for Linear API
 			if (!session.externalSessionId) {
-				this.logger.warn(
-					`No external session ID for session ${sessionId}, skipping Linear activity`,
-				);
+				log.warn(`No external session ID, skipping Linear activity`);
 				return;
 			}
 
@@ -1197,14 +1203,20 @@ export class AgentSessionManager extends EventEmitter {
 			if (result.success && result.agentActivity) {
 				const agentActivity = await result.agentActivity;
 				entry.linearAgentActivityId = agentActivity.id;
-				this.logger.debug(
-					`Created ${content.type} activity ${entry.linearAgentActivityId}`,
-				);
+				if (entry.type === "result") {
+					log.info(
+						`Result message emitted to Linear (activity ${entry.linearAgentActivityId})`,
+					);
+				} else {
+					log.debug(
+						`Created ${content.type} activity ${entry.linearAgentActivityId}`,
+					);
+				}
 			} else {
-				this.logger.error(`Failed to create Linear activity:`, result);
+				log.error(`Failed to create Linear activity:`, result);
 			}
 		} catch (error) {
-			this.logger.error(`Failed to sync entry to Linear:`, error);
+			log.error(`Failed to sync entry to Linear:`, error);
 		}
 	}
 
@@ -1235,15 +1247,16 @@ export class AgentSessionManager extends EventEmitter {
 	 * Add or update agent runner for a session
 	 */
 	addAgentRunner(sessionId: string, agentRunner: IAgentRunner): void {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session) {
-			this.logger.warn(`No session found for sessionId ${sessionId}`);
+			log.warn(`No session found`);
 			return;
 		}
 
 		session.agentRunner = agentRunner;
 		session.updatedAt = Date.now();
-		this.logger.debug(`Added agent runner to session ${sessionId}`);
+		log.debug(`Added agent runner`);
 	}
 
 	/**
@@ -1319,9 +1332,10 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create a thought activity
 	 */
 	async createThoughtActivity(sessionId: string, body: string): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			this.logger.warn(`No Linear session ID for session ${sessionId}`);
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1335,12 +1349,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				this.logger.debug(`Created thought activity for session ${sessionId}`);
+				log.debug(`Created thought activity`);
 			} else {
-				this.logger.error(`Failed to create thought activity:`, result);
+				log.error(`Failed to create thought activity:`, result);
 			}
 		} catch (error) {
-			this.logger.error(`Error creating thought activity:`, error);
+			log.error(`Error creating thought activity:`, error);
 		}
 	}
 
@@ -1353,9 +1367,10 @@ export class AgentSessionManager extends EventEmitter {
 		parameter: string,
 		result?: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			this.logger.warn(`No Linear session ID for session ${sessionId}`);
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1376,12 +1391,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (response.success) {
-				this.logger.debug(`Created action activity for session ${sessionId}`);
+				log.debug(`Created action activity`);
 			} else {
-				this.logger.error(`Failed to create action activity:`, response);
+				log.error(`Failed to create action activity:`, response);
 			}
 		} catch (error) {
-			this.logger.error(`Error creating action activity:`, error);
+			log.error(`Error creating action activity:`, error);
 		}
 	}
 
@@ -1389,9 +1404,10 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create a response activity
 	 */
 	async createResponseActivity(sessionId: string, body: string): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			this.logger.warn(`No Linear session ID for session ${sessionId}`);
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1405,12 +1421,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				this.logger.debug(`Created response activity for session ${sessionId}`);
+				log.debug(`Created response activity`);
 			} else {
-				this.logger.error(`Failed to create response activity:`, result);
+				log.error(`Failed to create response activity:`, result);
 			}
 		} catch (error) {
-			this.logger.error(`Error creating response activity:`, error);
+			log.error(`Error creating response activity:`, error);
 		}
 	}
 
@@ -1418,9 +1434,10 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create an error activity
 	 */
 	async createErrorActivity(sessionId: string, body: string): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			this.logger.warn(`No Linear session ID for session ${sessionId}`);
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1434,12 +1451,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				this.logger.debug(`Created error activity for session ${sessionId}`);
+				log.debug(`Created error activity`);
 			} else {
-				this.logger.error(`Failed to create error activity:`, result);
+				log.error(`Failed to create error activity:`, result);
 			}
 		} catch (error) {
-			this.logger.error(`Error creating error activity:`, error);
+			log.error(`Error creating error activity:`, error);
 		}
 	}
 
@@ -1450,9 +1467,10 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		body: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			this.logger.warn(`No Linear session ID for session ${sessionId}`);
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1466,14 +1484,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				this.logger.debug(
-					`Created elicitation activity for session ${sessionId}`,
-				);
+				log.debug(`Created elicitation activity`);
 			} else {
-				this.logger.error(`Failed to create elicitation activity:`, result);
+				log.error(`Failed to create elicitation activity:`, result);
 			}
 		} catch (error) {
-			this.logger.error(`Error creating elicitation activity:`, error);
+			log.error(`Error creating elicitation activity:`, error);
 		}
 	}
 
@@ -1485,9 +1501,10 @@ export class AgentSessionManager extends EventEmitter {
 		body: string,
 		approvalUrl: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			this.logger.warn(`No Linear session ID for session ${sessionId}`);
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1505,14 +1522,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				this.logger.debug(
-					`Created approval elicitation for session ${sessionId} with URL: ${approvalUrl}`,
-				);
+				log.debug(`Created approval elicitation with URL: ${approvalUrl}`);
 			} else {
-				this.logger.error(`Failed to create approval elicitation:`, result);
+				log.error(`Failed to create approval elicitation:`, result);
 			}
 		} catch (error) {
-			this.logger.error(`Error creating approval elicitation:`, error);
+			log.error(`Error creating approval elicitation:`, error);
 		}
 	}
 
@@ -1527,9 +1542,10 @@ export class AgentSessionManager extends EventEmitter {
 				(session.status === "complete" || session.status === "error") &&
 				session.updatedAt < cutoff
 			) {
+				const log = this.sessionLog(sessionId);
 				this.sessions.delete(sessionId);
 				this.entries.delete(sessionId);
-				this.logger.debug(`Cleaned up session ${sessionId}`);
+				log.debug(`Cleaned up session`);
 			}
 		}
 	}
@@ -1602,6 +1618,7 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		model: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		try {
 			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: sessionId,
@@ -1612,14 +1629,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				this.logger.debug(
-					`Posted model notification for session ${sessionId} (model: ${model})`,
-				);
+				log.debug(`Posted model notification (model: ${model})`);
 			} else {
-				this.logger.error(`Failed to post model notification:`, result);
+				log.error(`Failed to post model notification:`, result);
 			}
 		} catch (error) {
-			this.logger.error(`Error posting model notification:`, error);
+			log.error(`Error posting model notification:`, error);
 		}
 	}
 
@@ -1627,6 +1642,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Post an ephemeral "Analyzing your request..." thought and return the activity ID
 	 */
 	async postAnalyzingThought(sessionId: string): Promise<string | null> {
+		const log = this.sessionLog(sessionId);
 		try {
 			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: sessionId,
@@ -1639,14 +1655,14 @@ export class AgentSessionManager extends EventEmitter {
 
 			if (result.success && result.agentActivity) {
 				const activity = await result.agentActivity;
-				this.logger.debug(`Posted analyzing thought for session ${sessionId}`);
+				log.debug(`Posted analyzing thought`);
 				return activity.id;
 			} else {
-				this.logger.error(`Failed to post analyzing thought:`, result);
+				log.error(`Failed to post analyzing thought:`, result);
 				return null;
 			}
 		} catch (error) {
-			this.logger.error(`Error posting analyzing thought:`, error);
+			log.error(`Error posting analyzing thought:`, error);
 			return null;
 		}
 	}
@@ -1659,6 +1675,7 @@ export class AgentSessionManager extends EventEmitter {
 		procedureName: string,
 		classification: string,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		try {
 			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: sessionId,
@@ -1670,14 +1687,12 @@ export class AgentSessionManager extends EventEmitter {
 			});
 
 			if (result.success) {
-				this.logger.debug(
-					`Posted procedure selection for session ${sessionId}: ${procedureName}`,
-				);
+				log.debug(`Posted procedure selection: ${procedureName}`);
 			} else {
-				this.logger.error(`Failed to post procedure selection:`, result);
+				log.error(`Failed to post procedure selection:`, result);
 			}
 		} catch (error) {
-			this.logger.error(`Error posting procedure selection:`, error);
+			log.error(`Error posting procedure selection:`, error);
 		}
 	}
 
@@ -1688,9 +1703,10 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		message: SDKStatusMessage,
 	): Promise<void> {
+		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			this.logger.warn(`No Linear session ID for session ${sessionId}`);
+			log.warn(`No Linear session ID`);
 			return;
 		}
 
@@ -1710,11 +1726,9 @@ export class AgentSessionManager extends EventEmitter {
 					const activity = await result.agentActivity;
 					// Store the activity ID so we can replace it later
 					this.activeStatusActivitiesBySession.set(sessionId, activity.id);
-					this.logger.debug(
-						`Posted ephemeral compacting status for session ${sessionId}`,
-					);
+					log.debug(`Posted ephemeral compacting status`);
 				} else {
-					this.logger.error(`Failed to post compacting status:`, result);
+					log.error(`Failed to post compacting status:`, result);
 				}
 			} else if (message.status === null) {
 				// Clear the status - post a non-ephemeral thought to replace the ephemeral one
@@ -1730,15 +1744,13 @@ export class AgentSessionManager extends EventEmitter {
 				if (result.success) {
 					// Clean up the stored activity ID
 					this.activeStatusActivitiesBySession.delete(sessionId);
-					this.logger.debug(
-						`Posted non-ephemeral status clear for session ${sessionId}`,
-					);
+					log.debug(`Posted non-ephemeral status clear`);
 				} else {
-					this.logger.error(`Failed to post status clear:`, result);
+					log.error(`Failed to post status clear:`, result);
 				}
 			}
 		} catch (error) {
-			this.logger.error(`Error handling status message:`, error);
+			log.error(`Error handling status message:`, error);
 		}
 	}
 }

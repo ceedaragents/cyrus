@@ -238,9 +238,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		// Verify warning was logged
 		expect(consoleWarnSpy).toHaveBeenCalledWith(
-			expect.stringContaining(
-				"No Linear session ID for session non-existent-session",
-			),
+			expect.stringContaining("No Linear session ID"),
 		);
 
 		// Verify createAgentActivity was not called

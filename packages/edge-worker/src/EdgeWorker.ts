@@ -1944,9 +1944,12 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		this.logger.info(
-			`Handling agent session created: ${webhook.agentSession.issue.identifier}`,
-		);
+		const log = this.logger.withContext({
+			sessionId: webhook.agentSession.id,
+			platform: this.getRepositoryPlatform(repository.id),
+			issueIdentifier: webhook.agentSession.issue.identifier,
+		});
+		log.info(`Handling agent session created`);
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
 
@@ -4251,7 +4254,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 								url: attachment.url,
 							});
 						}
-						this.logger.info(
+						this.logger.debug(
 							`Found ${nativeAttachments.length} native attachments`,
 						);
 					}
@@ -5270,6 +5273,12 @@ ${input.userComment}
 		maxTurns?: number,
 		singleTurn?: boolean,
 	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+		const log = this.logger.withContext({
+			sessionId,
+			platform: session.issueContext?.trackerId,
+			issueIdentifier: session.issueContext?.issueIdentifier,
+		});
+
 		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
 		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -5279,7 +5288,7 @@ ${input.userComment}
 					hooks: [
 						async (input, _toolUseID, { signal: _signal }) => {
 							const postToolUseInput = input as PostToolUseHookInput;
-							this.logger.debug(
+							log.debug(
 								`Tool ${postToolUseInput.tool_name} completed with response:`,
 								postToolUseInput.tool_response,
 							);
@@ -5376,9 +5385,7 @@ ${input.userComment}
 
 		// Log model override if found
 		if (modelOverride) {
-			this.logger.debug(
-				`Model override via label: ${modelOverride} (for session ${sessionId})`,
-			);
+			log.debug(`Model override via label: ${modelOverride}`);
 		}
 
 		// Convert singleTurn flag to effective maxTurns value
@@ -5404,6 +5411,7 @@ ${input.userComment}
 				fallbackModelOverride ||
 				repository.fallbackModel ||
 				this.config.defaultFallbackModel,
+			logger: log,
 			hooks,
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
@@ -5427,9 +5435,7 @@ ${input.userComment}
 		if (effectiveMaxTurns !== undefined) {
 			(config as any).maxTurns = effectiveMaxTurns;
 			if (singleTurn) {
-				this.logger.debug(
-					`Applied singleTurn maxTurns=1 (for session ${sessionId})`,
-				);
+				log.debug(`Applied singleTurn maxTurns=1`);
 			}
 		}
 
@@ -6529,6 +6535,17 @@ ${input.userComment}
 	}
 
 	/**
+	 * Get the platform type for a repository's issue tracker.
+	 */
+	private getRepositoryPlatform(repositoryId: string): string | undefined {
+		try {
+			return this.issueTrackers.get(repositoryId)?.getPlatformType();
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
 	 * Fetch complete issue details from Linear API
 	 */
 	public async fetchFullIssueDetails(
@@ -6544,7 +6561,7 @@ ${input.userComment}
 		try {
 			this.logger.debug(`Fetching full issue details for ${issueId}`);
 			const fullIssue = await issueTracker.fetchIssue(issueId);
-			this.logger.info(`Successfully fetched issue details for ${issueId}`);
+			this.logger.debug(`Successfully fetched issue details for ${issueId}`);
 
 			// Check if issue has a parent
 			try {
