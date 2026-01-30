@@ -353,6 +353,59 @@ describe("GitHubEventTransport", () => {
 				}),
 			);
 		});
+
+		it("extracts installation token from X-GitHub-Installation-Token header", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const installationToken = "ghs_test_installation_token_12345";
+
+			const request = createMockRequest(issueCommentPayload, {
+				authorization: `Bearer ${testSecret}`,
+				"x-github-event": "issue_comment",
+				"x-github-delivery": "delivery-token-test",
+				"x-github-installation-token": installationToken,
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/github-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "issue_comment",
+					deliveryId: "delivery-token-test",
+					payload: issueCommentPayload,
+					installationToken,
+				}),
+			);
+		});
+
+		it("includes undefined installationToken when header is not present", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const request = createMockRequest(issueCommentPayload, {
+				authorization: `Bearer ${testSecret}`,
+				"x-github-event": "issue_comment",
+				"x-github-delivery": "delivery-no-token",
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/github-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "issue_comment",
+					deliveryId: "delivery-no-token",
+					payload: issueCommentPayload,
+					installationToken: undefined,
+				}),
+			);
+		});
 	});
 
 	describe("error handling", () => {
