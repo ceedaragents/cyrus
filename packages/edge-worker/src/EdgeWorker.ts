@@ -810,7 +810,7 @@ export class EdgeWorker extends EventEmitter {
 				"", // No attachment manifest
 				false, // Not a new session
 				[], // No additional allowed directories
-				nextSubroutine?.singleTurn ? 1 : undefined, // Convert singleTurn to maxTurns: 1
+				nextSubroutine?.singleTurn ? 1 : undefined, // singleTurn mode
 			);
 			log.info(
 				`Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.singleTurn ? " (singleTurn)" : ""}`,
@@ -5422,6 +5422,9 @@ ${input.userComment}
 			mcpConfigPath,
 			mcpConfig,
 			appendSystemPrompt: systemPrompt || "",
+			// When disallowAllTools is true, remove all built-in tools from model context
+			// so Claude cannot see or attempt tool use (distinct from allowedTools which only controls permissions)
+			...(disallowAllTools && { tools: [] }),
 			// Priority order: label override > repository config > global default
 			model: finalModel,
 			fallbackModel:

@@ -292,6 +292,8 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
+		const log = this.sessionLog(sessionId);
+
 		// Clear any active Task when session completes
 		this.activeTasksBySession.delete(sessionId);
 
@@ -313,6 +315,33 @@ export class AgentSessionManager extends EventEmitter {
 		// Handle result using procedure routing system
 		if ("result" in resultMessage && resultMessage.result) {
 			await this.handleProcedureCompletion(session, sessionId, resultMessage);
+		} else if (resultMessage.subtype !== "success") {
+			// Error result (e.g. error_max_turns from singleTurn subroutines) — try to
+			// recover from the last completed subroutine's result so the procedure can still complete.
+			const recoveredText =
+				this.procedureAnalyzer?.getLastSubroutineResult(session);
+			if (recoveredText) {
+				log.info(
+					`Recovered result from previous subroutine (subtype: ${resultMessage.subtype}), treating as success for procedure completion`,
+				);
+				// Create a synthetic success result for procedure routing
+				const syntheticResult: SDKResultMessage = {
+					...resultMessage,
+					subtype: "success",
+					result: recoveredText,
+					is_error: false,
+				};
+				await this.handleProcedureCompletion(
+					session,
+					sessionId,
+					syntheticResult,
+				);
+			} else {
+				log.warn(
+					`Error result with no recoverable text (subtype: ${resultMessage.subtype}), posting error to Linear`,
+				);
+				await this.addResultEntry(sessionId, resultMessage);
+			}
 		}
 	}
 
@@ -463,7 +492,13 @@ export class AgentSessionManager extends EventEmitter {
 			log.info(
 				`Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
-			this.procedureAnalyzer.advanceToNextSubroutine(session, runnerSessionId);
+			const subroutineResult =
+				"result" in resultMessage ? resultMessage.result : undefined;
+			this.procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				runnerSessionId,
+				subroutineResult,
+			);
 
 			// Emit event for EdgeWorker to handle subroutine transition
 			// This replaces the callback pattern and allows EdgeWorker to subscribe
