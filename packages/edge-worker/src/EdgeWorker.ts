@@ -862,8 +862,8 @@ export class EdgeWorker extends EventEmitter {
 				"X-GitHub-Api-Version": "2022-11-28",
 			};
 
-			// Use GITHUB_TOKEN for authenticated requests if available
-			const token = process.env.GITHUB_TOKEN;
+			// Prefer forwarded installation token, fall back to GITHUB_TOKEN
+			const token = event.installationToken || process.env.GITHUB_TOKEN;
 			if (token) {
 				headers.Authorization = `Bearer ${token}`;
 			}
