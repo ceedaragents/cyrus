@@ -559,9 +559,18 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			// Check for stale session error - occurs when resuming a session that no longer exists
 			// This typically happens after a pod restart when the persisted session ID is stale
-			const isStaleSessionError =
+			// Detection methods:
+			// 1. Error message contains "No conversation found with session ID" (from SDK stderr)
+			// 2. Exit code 1 + resumeSessionId set + only init message received (Claude crashed immediately)
+			const hasStaleSessionText =
 				error instanceof Error &&
 				error.message.includes("No conversation found with session ID");
+			const isExitCode1WithResume =
+				error instanceof Error &&
+				error.message.includes("Claude Code process exited with code 1") &&
+				this.config.resumeSessionId &&
+				this.messages.length <= 1; // Only init message received before crash
+			const isStaleSessionError = hasStaleSessionText || isExitCode1WithResume;
 
 			if (isAbortError) {
 				// User-initiated stop - log at info level, not error
