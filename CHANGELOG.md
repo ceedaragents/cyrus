@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Sessions now recover automatically after pod restarts instead of failing with "No conversation found" error
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
