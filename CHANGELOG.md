@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Discord bot integration** - New `cyrus-discord-bot` package enables Cyrus to participate in Discord communities as a bot, with support for message handling, slash commands, and thread-based conversations. ([CYPACK-787](https://linear.app/ceedar/issue/CYPACK-787), [#836](https://github.com/ceedaragents/cyrus/pull/836))
+
 ## [0.2.20] - 2026-02-05
 
 ### Fixed
