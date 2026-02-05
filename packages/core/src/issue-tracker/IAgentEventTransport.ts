@@ -58,13 +58,42 @@ export interface CLIEventTransportConfig extends AgentEventTransportConfigBase {
 }
 
 /**
+ * Configuration for Discord event transport.
+ * Uses Discord bot token authentication.
+ */
+export interface DiscordEventTransportConfig {
+	platform: "discord";
+	/**
+	 * Fastify server instance (optional for Discord, as the bot uses WebSocket).
+	 */
+	fastifyServer?: FastifyInstance;
+	/**
+	 * Discord bot token (from Discord Developer Portal).
+	 */
+	botToken: string;
+	/**
+	 * Discord application ID.
+	 */
+	applicationId: string;
+	/**
+	 * Guild IDs where the bot should operate (optional).
+	 */
+	guildIds?: string[];
+	/**
+	 * Channel IDs where the bot should listen (optional).
+	 */
+	channelIds?: string[];
+}
+
+/**
  * Discriminated union of all event transport configurations.
  * Platform-specific config values are only required when using that platform.
  */
 export type AgentEventTransportConfig =
 	| LinearDirectEventTransportConfig
 	| LinearProxyEventTransportConfig
-	| CLIEventTransportConfig;
+	| CLIEventTransportConfig
+	| DiscordEventTransportConfig;
 
 /**
  * Event handlers for agent event transport.
