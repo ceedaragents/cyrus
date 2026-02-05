@@ -4,8 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-02-05
+
 ### Fixed
-- **Agent guidance for draft PRs now respected** - When your Linear workspace guidance specifies `--draft` or requests PRs remain as drafts, Cyrus will no longer automatically convert them to ready for review. PRs also now correctly target the configured base branch instead of defaulting to main. ([CYPACK-784](https://linear.app/ceedar/issue/CYPACK-784))
+- **Agent guidance for draft PRs now respected** - When your Linear workspace guidance specifies `--draft` or requests PRs remain as drafts, Cyrus will no longer automatically convert them to ready for review. PRs also now correctly target the configured base branch instead of defaulting to main. ([CYPACK-784](https://linear.app/ceedar/issue/CYPACK-784), [#834](https://github.com/ceedaragents/cyrus/pull/834))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.20
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.20
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.20
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.20
+
+#### cyrus-core
+- cyrus-core@0.2.20
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.20
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.20
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.20
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.20
 
 ## [0.2.19] - 2026-01-24
 
