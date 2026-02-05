@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Plugin support** - Plugins can now be installed and automatically loaded based on issue labels, allowing custom extensions to enhance Cyrus capabilities for specific workflows ([CYPACK-782](https://linear.app/ceedaragents/issue/CYPACK-782), [#832](https://github.com/ceedaragents/cyrus/pull/832))
+
 ### Fixed
 - Summary subroutines now properly disable all tools including MCP tools like Linear's create_comment ([#808](https://github.com/ceedaragents/cyrus/pull/808))
 - Procedures no longer fail when a subroutine exits with an error (e.g., hitting the max turns limit). Cyrus now recovers by using the last successful subroutine's result, allowing the workflow to continue to completion instead of stopping mid-procedure ([#818](https://github.com/ceedaragents/cyrus/pull/818))

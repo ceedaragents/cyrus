@@ -20,6 +20,17 @@ export { EdgeWorker } from "./EdgeWorker.js";
 export { GitService } from "./GitService.js";
 export type { SerializedGlobalRegistryState } from "./GlobalSessionRegistry.js";
 export { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
+export type {
+	PluginInstallInput,
+	PluginInstallResult,
+	PluginManifest,
+	PluginValidationResult,
+} from "./PluginService.js";
+export {
+	PLUGIN_MANIFEST_PATH,
+	PLUGINS_DIRECTORY,
+	PluginService,
+} from "./PluginService.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
 export type { IActivitySink } from "./sinks/index.js";

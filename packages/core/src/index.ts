@@ -44,6 +44,8 @@ export type {
 	EdgeConfigPayload,
 	EdgeWorkerConfig,
 	OAuthCallbackHandler,
+	PluginConfig,
+	PluginRouting,
 	RepositoryConfig,
 	RepositoryConfigPayload,
 	UserAccessControlConfig,
@@ -53,6 +55,8 @@ export {
 	EdgeConfigPayloadSchema,
 	// Zod schemas for runtime validation
 	EdgeConfigSchema,
+	PluginConfigSchema,
+	PluginRoutingSchema,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
 	resolvePath,

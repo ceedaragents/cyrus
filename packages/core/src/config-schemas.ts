@@ -119,6 +119,40 @@ const PromptDefaultsSchema = z.object({
 });
 
 /**
+ * Configuration for a single plugin with label associations.
+ * Plugins provide custom commands, agents, skills, and hooks.
+ */
+export const PluginConfigSchema = z.object({
+	/** Human-readable name of the plugin */
+	name: z.string(),
+
+	/**
+	 * Path to the plugin directory.
+	 * Can be absolute or use ~ for home directory.
+	 * @example "~/.cyrus/plugins/security-review"
+	 * @example "/opt/cyrus/plugins/custom-tool"
+	 */
+	path: z.string(),
+
+	/**
+	 * Linear labels that trigger this plugin.
+	 * Label matching is case-insensitive.
+	 * @example ["security", "audit"]
+	 */
+	labels: z.array(z.string()),
+
+	/** Whether this plugin is active (default: true) */
+	isActive: z.boolean().optional().default(true),
+});
+
+/**
+ * Plugin routing configuration.
+ * Maps label names to arrays of plugin paths.
+ * @example { "security": ["~/.cyrus/plugins/security-review"], "docs": ["~/.cyrus/plugins/doc-generator"] }
+ */
+export const PluginRoutingSchema = z.record(z.string(), z.array(z.string()));
+
+/**
  * Configuration for a single repository/workspace pair
  */
 export const RepositoryConfigSchema = z.object({
@@ -162,6 +196,20 @@ export const RepositoryConfigSchema = z.object({
 
 	// Repository-specific user access control
 	userAccessControl: UserAccessControlConfigSchema.optional(),
+
+	// Plugin configuration
+	/**
+	 * Plugin routing based on Linear labels.
+	 * Maps label names to arrays of plugin paths.
+	 * @example { "security": ["~/.cyrus/plugins/security-review"] }
+	 */
+	pluginRouting: PluginRoutingSchema.optional(),
+
+	/**
+	 * Array of plugin configurations with label associations.
+	 * Alternative to pluginRouting for more detailed plugin configuration.
+	 */
+	plugins: z.array(PluginConfigSchema).optional(),
 });
 
 /**
@@ -237,6 +285,8 @@ export type UserIdentifier = z.infer<typeof UserIdentifierSchema>;
 export type UserAccessControlConfig = z.infer<
 	typeof UserAccessControlConfigSchema
 >;
+export type PluginConfig = z.infer<typeof PluginConfigSchema>;
+export type PluginRouting = z.infer<typeof PluginRoutingSchema>;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
 export type RepositoryConfigPayload = z.infer<

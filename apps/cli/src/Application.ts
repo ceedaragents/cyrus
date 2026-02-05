@@ -101,10 +101,15 @@ export class Application {
 
 	/**
 	 * Ensure required Cyrus directories exist
-	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs
+	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs, ~/.cyrus/plugins
 	 */
 	private ensureRequiredDirectories(): void {
-		const requiredDirs = ["repos", DEFAULT_WORKTREES_DIR, "mcp-configs"];
+		const requiredDirs = [
+			"repos",
+			DEFAULT_WORKTREES_DIR,
+			"mcp-configs",
+			"plugins",
+		];
 
 		for (const dir of requiredDirs) {
 			const dirPath = join(this.cyrusHome, dir);

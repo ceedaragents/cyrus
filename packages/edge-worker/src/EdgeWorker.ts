@@ -10,6 +10,7 @@ import type {
 	McpServerConfig,
 	PostToolUseHookInput,
 	SDKMessage,
+	SdkPluginConfig,
 } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
@@ -73,6 +74,8 @@ import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
+import type { PluginInstallInput } from "./PluginService.js";
+import { PluginService } from "./PluginService.js";
 import {
 	ProcedureAnalyzer,
 	type ProcedureDefinition,
@@ -135,6 +138,8 @@ export class EdgeWorker extends EventEmitter {
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
 	private userAccessControl: UserAccessControl;
+	/** Plugin service for plugin installation, validation, and label-based resolution */
+	private pluginService: PluginService;
 	private logger: ILogger;
 
 	constructor(config: EdgeWorkerConfig) {
@@ -213,6 +218,9 @@ export class EdgeWorker extends EventEmitter {
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
 		this.gitService = new GitService();
+
+		// Initialize plugin service for plugin management
+		this.pluginService = new PluginService(this.cyrusHome);
 
 		// Initialize AskUserQuestion handler for elicitation via Linear select signal
 		this.askUserQuestionHandler = new AskUserQuestionHandler({
@@ -525,6 +533,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// 4. Register /version endpoint for CLI version info
 		this.registerVersionEndpoint();
+
+		// 5. Register plugin management endpoints
+		this.registerPluginEndpoints();
 	}
 
 	/**
@@ -558,6 +569,119 @@ export class EdgeWorker extends EventEmitter {
 
 		this.logger.info("✅ Version endpoint registered");
 		this.logger.info("   Route: GET /version");
+	}
+
+	/**
+	 * Register plugin management endpoints
+	 * - POST /api/plugins/install - Install a plugin from zip or URL
+	 * - GET /api/plugins - List all installed plugins
+	 * - DELETE /api/plugins/:name - Delete a plugin by name
+	 */
+	private registerPluginEndpoints(): void {
+		const fastify = this.sharedApplicationServer.getFastifyInstance();
+
+		// POST /api/plugins/install - Install a plugin
+		fastify.post("/api/plugins/install", async (request, reply) => {
+			try {
+				const input = request.body as PluginInstallInput;
+
+				if (!input.zipContent && !input.sourceUrl) {
+					return reply.status(400).send({
+						success: false,
+						error: "Either zipContent or sourceUrl must be provided",
+					});
+				}
+
+				let result: Awaited<
+					ReturnType<typeof this.pluginService.installFromZip>
+				>;
+				if (input.zipContent) {
+					result = await this.pluginService.installFromZip(
+						input.zipContent,
+						input.name,
+					);
+				} else {
+					// sourceUrl is guaranteed to exist here due to the check above
+					result = await this.pluginService.installFromUrl(
+						input.sourceUrl!,
+						input.name,
+					);
+				}
+
+				if (result.success) {
+					return reply.status(200).send(result);
+				}
+				return reply.status(400).send(result);
+			} catch (error) {
+				this.logger.error("Plugin installation failed:", error);
+				return reply.status(500).send({
+					success: false,
+					error: `Internal error: ${(error as Error).message}`,
+				});
+			}
+		});
+
+		// GET /api/plugins - List all installed plugins
+		fastify.get("/api/plugins", async (_request, reply) => {
+			try {
+				const plugins = await this.pluginService.listPlugins();
+				return reply.status(200).send({ plugins });
+			} catch (error) {
+				this.logger.error("Failed to list plugins:", error);
+				return reply.status(500).send({
+					error: `Internal error: ${(error as Error).message}`,
+				});
+			}
+		});
+
+		// DELETE /api/plugins/:name - Delete a plugin
+		fastify.delete<{ Params: { name: string } }>(
+			"/api/plugins/:name",
+			async (request, reply) => {
+				try {
+					const { name } = request.params;
+					const result = await this.pluginService.deletePlugin(name);
+
+					if (result.success) {
+						return reply.status(200).send(result);
+					}
+					return reply.status(404).send(result);
+				} catch (error) {
+					this.logger.error("Failed to delete plugin:", error);
+					return reply.status(500).send({
+						success: false,
+						error: `Internal error: ${(error as Error).message}`,
+					});
+				}
+			},
+		);
+
+		// GET /api/plugins/:name/validate - Validate a plugin
+		fastify.get<{ Params: { name: string } }>(
+			"/api/plugins/:name/validate",
+			async (request, reply) => {
+				try {
+					const { name } = request.params;
+					const pluginPath = join(
+						this.pluginService.getPluginsDirectory(),
+						name,
+					);
+					const result = await this.pluginService.validatePlugin(pluginPath);
+					return reply.status(200).send(result);
+				} catch (error) {
+					this.logger.error("Failed to validate plugin:", error);
+					return reply.status(500).send({
+						isValid: false,
+						error: `Internal error: ${(error as Error).message}`,
+					});
+				}
+			},
+		);
+
+		this.logger.info("✅ Plugin endpoints registered");
+		this.logger.info(
+			"   Routes: POST /api/plugins/install, GET /api/plugins, DELETE /api/plugins/:name",
+		);
 	}
 
 	/**
@@ -5393,6 +5517,17 @@ ${input.userComment}
 		// Convert singleTurn flag to effective maxTurns value
 		const effectiveMaxTurns = singleTurn ? 1 : maxTurns;
 
+		// Resolve plugins based on issue labels
+		const plugins: SdkPluginConfig[] = labels
+			? this.pluginService.resolvePluginsForLabels(labels, repository)
+			: [];
+
+		if (plugins.length > 0) {
+			log.info(
+				`Resolved ${plugins.length} plugin(s) for session ${sessionId}: ${plugins.map((p) => p.path).join(", ")}`,
+			);
+		}
+
 		// Determine final model name with singleTurn suffix for Gemini
 		const finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
@@ -5433,6 +5568,8 @@ ${input.userComment}
 				this.config.defaultFallbackModel,
 			logger: log,
 			hooks,
+			// Load plugins resolved from issue labels (only for Claude runner)
+			...(runnerType === "claude" && plugins.length > 0 && { plugins }),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner

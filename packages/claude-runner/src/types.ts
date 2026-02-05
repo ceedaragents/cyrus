@@ -9,6 +9,7 @@ import type {
 	SDKResultMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
+	SdkPluginConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ILogger, OnAskUserQuestion } from "cyrus-core";
 
@@ -53,6 +54,18 @@ export interface ClaudeRunnerConfig {
 	 * Note: Only one question at a time is supported. Multiple questions will be rejected.
 	 */
 	onAskUserQuestion?: OnAskUserQuestion;
+	/**
+	 * Claude Code plugins to load for this session.
+	 * Plugins provide custom commands, agents, skills, and hooks.
+	 * Currently only local plugins are supported via the 'local' type.
+	 *
+	 * @example
+	 * plugins: [
+	 *   { type: 'local', path: '/path/to/plugin' },
+	 *   { type: 'local', path: '~/.cyrus/plugins/my-plugin' }
+	 * ]
+	 */
+	plugins?: SdkPluginConfig[];
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;
@@ -85,6 +98,7 @@ export type {
 	SDKStatusMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
+	SdkPluginConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 
 // Legacy alias - JsonSchema type is now part of JsonSchemaOutputFormat['schema']
