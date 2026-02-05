@@ -1,0 +1,31 @@
+{
+	"name": "cyrus-discord-bot",
+	"version": "0.2.20",
+	"description": "Discord bot integration for Cyrus - allows Cyrus to participate in Discord communities",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run"
+	},
+	"dependencies": {
+		"cyrus-core": "workspace:*",
+		"discord.js": "^14.14.1",
+		"fastify": "^5.2.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^3.1.4"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}
