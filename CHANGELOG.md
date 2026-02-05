@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Agent guidance for draft PRs now respected** - When your Linear workspace guidance specifies `--draft` or requests PRs remain as drafts, Cyrus will no longer automatically convert them to ready for review. PRs also now correctly target the configured base branch instead of defaulting to main. ([CYPACK-784](https://linear.app/ceedar/issue/CYPACK-784))
+
 ## [0.2.19] - 2026-01-24
 
 ### Fixed
