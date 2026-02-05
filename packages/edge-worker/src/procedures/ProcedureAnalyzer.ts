@@ -5,7 +5,12 @@
  * which procedure (sequence of subroutines) should be executed.
  */
 
-import type { CyrusAgentSession, ISimpleAgentRunner } from "cyrus-core";
+import {
+	type CyrusAgentSession,
+	createLogger,
+	type ILogger,
+	type ISimpleAgentRunner,
+} from "cyrus-core";
 import { SimpleGeminiRunner } from "cyrus-gemini-runner";
 import { SimpleClaudeRunner } from "cyrus-simple-agent-runner";
 import { getProcedureForClassification, PROCEDURES } from "./registry.js";
@@ -24,13 +29,18 @@ export interface ProcedureAnalyzerConfig {
 	model?: string;
 	timeoutMs?: number;
 	runnerType?: SimpleRunnerType; // Default: "gemini"
+	logger?: ILogger;
 }
 
 export class ProcedureAnalyzer {
 	private analysisRunner: ISimpleAgentRunner<RequestClassification>;
 	private procedures: Map<string, ProcedureDefinition> = new Map();
+	private logger: ILogger;
 
 	constructor(config: ProcedureAnalyzerConfig) {
+		this.logger =
+			config.logger ?? createLogger({ component: "ProcedureAnalyzer" });
+
 		// Determine which runner to use
 		const runnerType = config.runnerType || "gemini";
 
@@ -165,7 +175,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 			};
 		} catch (error) {
 			// Fallback to full-development on error
-			console.log("[ProcedureAnalyzer] Error during analysis:", error);
+			this.logger.info("Error during analysis:", error);
 			const fallbackProcedure = this.procedures.get("full-development");
 
 			if (!fallbackProcedure) {
@@ -197,8 +207,8 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 		const procedure = this.procedures.get(procedureMetadata.procedureName);
 
 		if (!procedure) {
-			console.error(
-				`[ProcedureAnalyzer] Procedure "${procedureMetadata.procedureName}" not found`,
+			this.logger.error(
+				`Procedure "${procedureMetadata.procedureName}" not found`,
 			);
 			return null;
 		}
@@ -266,6 +276,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	advanceToNextSubroutine(
 		session: CyrusAgentSession,
 		sessionId: string | null,
+		result?: string,
 	): void {
 		const procedureMetadata = session.metadata?.procedure as
 			| ProcedureMetadata
@@ -287,11 +298,33 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 				completedAt: Date.now(),
 				claudeSessionId: isGeminiSession ? null : sessionId,
 				geminiSessionId: isGeminiSession ? sessionId : null,
+				...(result !== undefined && { result }),
 			});
 		}
 
 		// Advance index
 		procedureMetadata.currentSubroutineIndex++;
+	}
+
+	/**
+	 * Get the result from the last completed subroutine in the history.
+	 * Returns null if there is no history or no result stored.
+	 */
+	getLastSubroutineResult(session: CyrusAgentSession): string | null {
+		const procedureMetadata = session.metadata?.procedure as
+			| ProcedureMetadata
+			| undefined;
+
+		if (!procedureMetadata) {
+			return null;
+		}
+
+		const history = procedureMetadata.subroutineHistory;
+		if (history.length === 0) {
+			return null;
+		}
+
+		return history[history.length - 1]?.result ?? null;
 	}
 
 	/**

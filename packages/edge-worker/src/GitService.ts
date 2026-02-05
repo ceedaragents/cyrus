@@ -2,41 +2,19 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-
 import type { Issue, RepositoryConfig, Workspace } from "cyrus-core";
+import { createLogger, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
-
-/**
- * Logger interface for GitService
- * Allows consumers to provide their own logging implementation
- */
-export interface GitServiceLogger {
-	info(message: string, ...args: unknown[]): void;
-	warn(message: string, ...args: unknown[]): void;
-	error(message: string, ...args: unknown[]): void;
-}
-
-/**
- * Default console-based logger implementation
- */
-const defaultLogger: GitServiceLogger = {
-	info: (message: string, ...args: unknown[]) =>
-		console.log(`[GitService] ${message}`, ...args),
-	warn: (message: string, ...args: unknown[]) =>
-		console.warn(`[GitService] ${message}`, ...args),
-	error: (message: string, ...args: unknown[]) =>
-		console.error(`[GitService] ${message}`, ...args),
-};
 
 /**
  * Service responsible for Git worktree operations
  */
 export class GitService {
-	private logger: GitServiceLogger;
+	private logger: ILogger;
 	private worktreeIncludeService: WorktreeIncludeService;
 
-	constructor(logger?: GitServiceLogger) {
-		this.logger = logger ?? defaultLogger;
+	constructor(logger?: ILogger) {
+		this.logger = logger ?? createLogger({ component: "GitService" });
 		this.worktreeIncludeService = new WorktreeIncludeService(this.logger);
 	}
 	/**
@@ -282,7 +260,7 @@ export class GitService {
 			}
 
 			// Fetch latest changes from remote
-			this.logger.info("Fetching latest changes from remote...");
+			this.logger.debug("Fetching latest changes from remote...");
 			let hasRemote = true;
 			try {
 				execSync("git fetch origin", {

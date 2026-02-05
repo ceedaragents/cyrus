@@ -50,6 +50,7 @@ import type {
 	User,
 	WorkflowState,
 } from "cyrus-core";
+import { createLogger, type ILogger } from "cyrus-core";
 import { LinearEventTransport } from "./LinearEventTransport.js";
 
 /**
@@ -76,6 +77,7 @@ import { LinearEventTransport } from "./LinearEventTransport.js";
 export class LinearIssueTrackerService implements IIssueTrackerService {
 	private readonly linearClient: LinearClient;
 	private oauthConfig?: LinearOAuthConfig;
+	private logger: ILogger;
 
 	/**
 	 * Static map for workspace-level coalescing of concurrent token refreshes.
@@ -94,10 +96,17 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 *
 	 * @param linearClient - Configured LinearClient instance
 	 * @param oauthConfig - Optional OAuth config for automatic token refresh on 401 errors
+	 * @param logger - Optional logger instance
 	 */
-	constructor(linearClient: LinearClient, oauthConfig?: LinearOAuthConfig) {
+	constructor(
+		linearClient: LinearClient,
+		oauthConfig?: LinearOAuthConfig,
+		logger?: ILogger,
+	) {
 		this.linearClient = linearClient;
 		this.oauthConfig = oauthConfig;
+		this.logger =
+			logger ?? createLogger({ component: "LinearIssueTrackerService" });
 
 		// Register initial refresh token in shared static map
 		if (oauthConfig?.refreshToken) {
@@ -142,10 +151,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 						refreshPromise = this.doTokenRefresh().catch((refreshError) => {
 							// On failure, clear the promise so next 401 can retry fresh
 							refreshPromise = null;
-							console.error(
-								"[LinearIssueTrackerService] Token refresh failed:",
-								refreshError,
-							);
+							this.logger.error("Token refresh failed:", refreshError);
 							throw refreshError;
 						});
 					}
@@ -186,9 +192,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 		const pendingRefresh =
 			LinearIssueTrackerService.pendingRefreshes.get(workspaceId);
 		if (pendingRefresh) {
-			console.log(
-				`[LinearIssueTrackerService] Coalescing token refresh for workspace ${workspaceId}`,
-			);
+			this.logger.info(`Coalescing token refresh for workspace ${workspaceId}`);
 			return pendingRefresh;
 		}
 
@@ -221,9 +225,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			);
 		}
 
-		console.log(
-			`[LinearIssueTrackerService] Refreshing token for workspace ${workspaceId}...`,
-		);
+		this.logger.info(`Refreshing token for workspace ${workspaceId}...`);
 
 		const params = new URLSearchParams({
 			grant_type: "refresh_token",
@@ -263,15 +265,12 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					refreshToken: data.refresh_token,
 				});
 			} catch (err) {
-				console.error(
-					"[LinearIssueTrackerService] onTokenRefresh callback failed:",
-					err,
-				);
+				this.logger.error("onTokenRefresh callback failed:", err);
 			}
 		}
 
-		console.log(
-			`[LinearIssueTrackerService] ✅ Token refreshed successfully for workspace ${workspaceId}`,
+		this.logger.info(
+			`Token refreshed successfully for workspace ${workspaceId}`,
 		);
 		return data.access_token;
 	}

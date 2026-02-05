@@ -50,4 +50,5 @@ export type {
 	SDKStatusMessage,
 	SDKSystemMessage,
 	SDKUserMessage,
+	SdkPluginConfig,
 } from "./types.js";
