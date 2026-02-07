@@ -23,9 +23,9 @@ export class TeamEvaluator {
 	constructor(config: TeamEvaluatorConfig) {
 		const runnerType = config.runnerType || "gemini";
 		const defaultModel =
-			runnerType === "claude" ? "haiku" : "gemini-2.5-flash-lite";
+			runnerType === "claude" ? "sonnet" : "gemini-2.5-flash-lite";
 		const defaultFallbackModel =
-			runnerType === "claude" ? "sonnet" : "gemini-2.0-flash-exp";
+			runnerType === "claude" ? "opus" : "gemini-2.0-flash-exp";
 
 		const runnerConfig = {
 			validResponses: ["0", "2", "3", "4", "5", "6"] as const,
