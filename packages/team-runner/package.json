@@ -1,0 +1,31 @@
+{
+	"name": "cyrus-team-runner",
+	"version": "0.2.20",
+	"description": "Team orchestration and complexity scoring for Cyrus",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@anthropic-ai/claude-agent-sdk": "^0.2.7",
+		"cyrus-core": "workspace:*",
+		"cyrus-claude-runner": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^3.1.4"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

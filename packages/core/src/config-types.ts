@@ -16,6 +16,8 @@ export {
 	type RepositoryConfigPayload,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
+	type TeamConfig,
+	TeamConfigSchema,
 	type UserAccessControlConfig,
 	UserAccessControlConfigSchema,
 	type UserIdentifier,

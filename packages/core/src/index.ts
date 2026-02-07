@@ -40,6 +40,7 @@ export type {
 	OAuthCallbackHandler,
 	RepositoryConfig,
 	RepositoryConfigPayload,
+	TeamConfig,
 	UserAccessControlConfig,
 	UserIdentifier,
 } from "./config-types.js";
@@ -50,6 +51,7 @@ export {
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
 	resolvePath,
+	TeamConfigSchema,
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,
 } from "./config-types.js";

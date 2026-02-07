@@ -119,6 +119,33 @@ const PromptDefaultsSchema = z.object({
 });
 
 /**
+ * Team configuration for agent teams feature.
+ * Controls when and how agent teams are formed for complex tasks.
+ */
+export const TeamConfigSchema = z.object({
+	/**
+	 * Complexity score threshold above which agent teams are used.
+	 * Issues scored above this threshold will be handled by a team instead of a single agent.
+	 */
+	complexityThreshold: z.number().min(0).max(100).optional().default(60),
+
+	/** Maximum number of teammates (including the lead) in a team */
+	maxTeamSize: z.number().min(2).max(6).optional().default(4),
+
+	/** Model to use for teammate agents (e.g., "sonnet", "haiku") */
+	teammateModel: z.string().optional().default("sonnet"),
+
+	/** Model to use for the team lead agent (e.g., "opus", "sonnet") */
+	leadModel: z.string().optional().default("opus"),
+
+	/**
+	 * Which issue classifications are eligible to use agent teams.
+	 * Only issues classified as one of these types will consider team formation.
+	 */
+	enabledClassifications: z.array(z.string()).optional(),
+});
+
+/**
  * Configuration for a single repository/workspace pair
  */
 export const RepositoryConfigSchema = z.object({
@@ -162,6 +189,13 @@ export const RepositoryConfigSchema = z.object({
 
 	// Repository-specific user access control
 	userAccessControl: UserAccessControlConfigSchema.optional(),
+
+	// Agent teams configuration
+	/** Whether to enable agent teams for this repository */
+	enableAgentTeams: z.boolean().optional(),
+
+	/** Team-specific configuration for agent teams */
+	teamConfig: TeamConfigSchema.optional(),
 });
 
 /**
@@ -237,6 +271,7 @@ export type UserIdentifier = z.infer<typeof UserIdentifierSchema>;
 export type UserAccessControlConfig = z.infer<
 	typeof UserAccessControlConfigSchema
 >;
+export type TeamConfig = z.infer<typeof TeamConfigSchema>;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
 export type RepositoryConfigPayload = z.infer<

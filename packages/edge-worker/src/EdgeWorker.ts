@@ -66,6 +66,18 @@ import {
 	LinearIssueTrackerService,
 	type LinearOAuthConfig,
 } from "cyrus-linear-event-transport";
+import type {
+	ActivityInput,
+	TeamRunnerConfig,
+	TeamTask,
+} from "cyrus-team-runner";
+import {
+	buildDebuggerTasks,
+	buildFullDevelopmentTasks,
+	LinearActivityBridge,
+	scoreComplexity,
+	TeamRunner,
+} from "cyrus-team-runner";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
@@ -2296,10 +2308,102 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Label-based runner selection for new session: ${runnerType} (session ${linearAgentActivitySessionId})`,
 			);
 
-			const runner =
-				runnerType === "claude"
-					? new ClaudeRunner(runnerConfig)
-					: new GeminiRunner(runnerConfig);
+			// Check if this task should use an agent team
+			const teamsEnabled = repository.enableAgentTeams ?? false;
+			let runner: IAgentRunner;
+
+			if (teamsEnabled && runnerType === "claude") {
+				const complexityResult = scoreComplexity({
+					classification: finalClassification,
+					issueTitle: fullIssue.title || "",
+					issueDescription: fullIssue.description || "",
+					procedureName: finalProcedure.name,
+					labels: labels || [],
+				});
+
+				const teamConfig = repository.teamConfig;
+				const threshold = teamConfig?.complexityThreshold ?? 60;
+				const enabledClassifications = teamConfig?.enabledClassifications ?? [
+					"orchestrator",
+					"debugger",
+					"code",
+				];
+				const useTeam =
+					complexityResult.score >= threshold &&
+					enabledClassifications.includes(finalClassification);
+
+				console.log(
+					`[EdgeWorker] Team evaluation: score=${complexityResult.score}, threshold=${threshold}, ` +
+						`useTeam=${useTeam}, reasoning=${complexityResult.reasoning}`,
+				);
+
+				if (useTeam) {
+					const issueContext = `Title: ${fullIssue.title}\nDescription: ${fullIssue.description || ""}`;
+					let tasks: TeamTask[];
+
+					switch (finalClassification) {
+						case "debugger":
+							tasks = buildDebuggerTasks(issueContext);
+							break;
+						default:
+							tasks = buildFullDevelopmentTasks(issueContext);
+							break;
+					}
+
+					const teamSize = Math.min(
+						complexityResult.suggestedTeamSize,
+						teamConfig?.maxTeamSize ?? 4,
+					);
+
+					// Create activity bridge for Linear
+					const issueTracker = this.issueTrackers.get(repository.id);
+					const activityBridge = issueTracker
+						? new LinearActivityBridge({
+								postActivity: async (input: ActivityInput) => {
+									await issueTracker.createAgentActivity({
+										agentSessionId: linearAgentActivitySessionId,
+										content: {
+											type:
+												input.type === "thought"
+													? "thought"
+													: input.type === "action"
+														? "action"
+														: "response",
+											body: input.body,
+										},
+										ephemeral: input.ephemeral,
+									});
+								},
+							})
+						: undefined;
+
+					const teamRunnerConfig: TeamRunnerConfig = {
+						...runnerConfig,
+						tasks,
+						teamSize,
+						activityBridge,
+						classification: finalClassification,
+						model: teamConfig?.leadModel ?? runnerConfig.model,
+					};
+
+					runner = new TeamRunner(teamRunnerConfig);
+
+					console.log(
+						`[EdgeWorker] Using TeamRunner for ${fullIssue.identifier}: ` +
+							`${tasks.length} tasks, ${teamSize} teammates, classification=${finalClassification}`,
+					);
+				} else {
+					runner =
+						runnerType === "claude"
+							? new ClaudeRunner(runnerConfig)
+							: new GeminiRunner(runnerConfig);
+				}
+			} else {
+				runner =
+					runnerType === "claude"
+						? new ClaudeRunner(runnerConfig)
+						: new GeminiRunner(runnerConfig);
+			}
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -5051,6 +5155,14 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			systemPrompt = sharedInstructions;
 		}
 
+		// 2b. Append agent teams guidance when enabled for this repository
+		if (input.repository.enableAgentTeams) {
+			const agentTeamsGuidance = await this.loadAgentTeamsGuidance();
+			if (agentTeamsGuidance) {
+				systemPrompt = `${systemPrompt}\n\n${agentTeamsGuidance}`;
+			}
+		}
+
 		// 3. Build issue context using appropriate builder
 		// Use label-based prompt ONLY if we have a label-based system prompt
 		const promptType = this.determinePromptType(
@@ -5249,6 +5361,28 @@ ${input.userComment}
 				error,
 			);
 			return ""; // Return empty string if file can't be loaded
+		}
+	}
+
+	private async loadAgentTeamsGuidance(): Promise<string> {
+		const __filename = fileURLToPath(import.meta.url);
+		const __dirname = dirname(__filename);
+		const guidancePath = join(
+			__dirname,
+			"..",
+			"prompts",
+			"agent-teams-guidance.md",
+		);
+
+		try {
+			const guidance = await readFile(guidancePath, "utf-8");
+			return guidance;
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to load agent teams guidance from ${guidancePath}:`,
+				error,
+			);
+			return "";
 		}
 	}
 

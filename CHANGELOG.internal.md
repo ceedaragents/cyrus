@@ -4,6 +4,16 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- New `cyrus-team-runner` package implementing Claude Code Agent Teams integration:
+  - `ComplexityScorer` — heuristic scorer that decides whether an issue warrants a team based on classification, description length, and keyword analysis
+  - `TeamTaskBuilder` — converts sequential procedures (full-development, debugger, orchestrator) into dependency-aware parallel task graphs
+  - `TeamRunner` — new `IAgentRunner` implementation that wraps Claude SDK `query()` with a team-lead prompt and task coordination
+  - `LinearActivityBridge` — streams team progress events (task creation, assignments, completions) back to Linear as agent activities
+  - 91 unit tests covering all modules
+- Added `enableAgentTeams` and `teamConfig` fields to `RepositoryConfigSchema` in cyrus-core for per-repo team configuration
+- Integrated team-based execution into EdgeWorker: when `enableAgentTeams` is enabled and complexity exceeds the configured threshold, the EdgeWorker creates a `TeamRunner` instead of a `ClaudeRunner`
+
 ## [0.2.20] - 2026-02-05
 
 (No internal changes in this release)
