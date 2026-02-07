@@ -60,7 +60,6 @@ Teams are NOT useful for:
 - Questions or information requests
 - Documentation-only changes
 - Small tweaks, config changes, or single-file modifications
-- Issues with vague or unclear requirements (planning needed first)
 
 Respond with ONLY a single number representing the team size:
 - 0: No team needed (single agent can handle it)
@@ -74,6 +73,7 @@ Consider:
 3. Whether subtasks can be parallelized
 4. The classification of the issue (e.g., "code", "planning", "question")
 5. Issue labels that hint at complexity
+6. If the user explicitly requests a team, agents, or parallel work, ALWAYS honor that request with a team size of at least 2
 
 IMPORTANT: Respond with ONLY the number (0, 2, 3, or 4), nothing else.`;
 	}
