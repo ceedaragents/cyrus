@@ -3,6 +3,10 @@ import type { SDKMessage } from "cyrus-core";
 export interface ActivityInput {
 	type: "thought" | "action" | "response";
 	body: string;
+	/** For action type: the action name (e.g. tool name) */
+	action?: string;
+	/** For action type: the parameter/details */
+	parameter?: string;
 	ephemeral?: boolean;
 }
 
@@ -62,9 +66,15 @@ export class LinearActivityBridge {
 					if (block.type === "tool_use") {
 						const toolName = (block as any).name;
 						if (this.isTeamTool(toolName)) {
+							const teamAction = this.formatTeamAction(
+								toolName,
+								(block as any).input,
+							);
 							await this.config.postActivity({
 								type: "action",
-								body: this.formatTeamAction(toolName, (block as any).input),
+								body: `${teamAction.action}: ${teamAction.parameter}`,
+								action: teamAction.action,
+								parameter: teamAction.parameter,
 								ephemeral: true,
 							});
 							this.lastPostedAt = now;
@@ -99,18 +109,33 @@ export class LinearActivityBridge {
 		return text;
 	}
 
-	private formatTeamAction(toolName: string, input: any): string {
+	private formatTeamAction(
+		toolName: string,
+		input: any,
+	): { action: string; parameter: string } {
 		switch (toolName) {
 			case "TaskCreate":
-				return `Created task: ${input?.subject || "unknown"}`;
+				return {
+					action: "Create task",
+					parameter: input?.subject || "unknown",
+				};
 			case "TaskUpdate":
-				return `Task ${input?.taskId} -> ${input?.status || "updated"}`;
+				return {
+					action: "Update task",
+					parameter: `${input?.taskId} -> ${input?.status || "updated"}`,
+				};
 			case "SendMessage":
-				return `Message to ${input?.recipient || "teammate"}: ${(input?.summary || "").substring(0, 100)}`;
+				return {
+					action: "Send message",
+					parameter: `to ${input?.recipient || "teammate"}: ${(input?.summary || "").substring(0, 100)}`,
+				};
 			case "Task":
-				return `Spawned teammate: ${input?.name || input?.description || "agent"}`;
+				return {
+					action: "Spawn teammate",
+					parameter: input?.name || input?.description || "agent",
+				};
 			default:
-				return toolName;
+				return { action: toolName, parameter: "" };
 		}
 	}
 }

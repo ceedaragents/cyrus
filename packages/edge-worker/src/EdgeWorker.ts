@@ -2388,17 +2388,26 @@ export class EdgeWorker extends EventEmitter {
 					const activityBridge = issueTracker
 						? new LinearActivityBridge({
 								postActivity: async (input: ActivityInput) => {
+									const content: any = {
+										type:
+											input.type === "thought"
+												? "thought"
+												: input.type === "action"
+													? "action"
+													: "response",
+										body: input.body,
+									};
+									if (
+										input.type === "action" &&
+										input.action &&
+										input.parameter !== undefined
+									) {
+										content.action = input.action;
+										content.parameter = input.parameter;
+									}
 									await issueTracker.createAgentActivity({
 										agentSessionId: linearAgentActivitySessionId,
-										content: {
-											type:
-												input.type === "thought"
-													? "thought"
-													: input.type === "action"
-														? "action"
-														: "response",
-											body: input.body,
-										},
+										content,
 										ephemeral: input.ephemeral,
 									});
 								},

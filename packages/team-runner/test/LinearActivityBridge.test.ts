@@ -145,7 +145,7 @@ describe("LinearActivityBridge", () => {
 	});
 
 	describe("team tool uses", () => {
-		it("should detect TaskCreate and format with subject", async () => {
+		it("should detect TaskCreate and format with action and parameter", async () => {
 			const msg = makeAssistantMessage([
 				{
 					type: "tool_use",
@@ -158,7 +158,9 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith({
 				type: "action",
-				body: "Created task: Implement auth module",
+				body: "Create task: Implement auth module",
+				action: "Create task",
+				parameter: "Implement auth module",
 				ephemeral: true,
 			});
 		});
@@ -176,7 +178,8 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith(
 				expect.objectContaining({
-					body: "Created task: unknown",
+					action: "Create task",
+					parameter: "unknown",
 				}),
 			);
 		});
@@ -194,7 +197,8 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith(
 				expect.objectContaining({
-					body: "Task task-3 -> completed",
+					action: "Update task",
+					parameter: "task-3 -> completed",
 				}),
 			);
 		});
@@ -212,7 +216,8 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith(
 				expect.objectContaining({
-					body: "Task task-7 -> updated",
+					action: "Update task",
+					parameter: "task-7 -> updated",
 				}),
 			);
 		});
@@ -233,7 +238,8 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith(
 				expect.objectContaining({
-					body: "Message to coder-1: Please fix the tests",
+					action: "Send message",
+					parameter: "to coder-1: Please fix the tests",
 				}),
 			);
 		});
@@ -252,9 +258,9 @@ describe("LinearActivityBridge", () => {
 
 			await bridge.onMessage(msg);
 
-			const body = postActivity.mock.calls[0][0].body;
-			// "Message to worker: " + 100 chars of "a"
-			expect(body).toBe(`Message to worker: ${"a".repeat(100)}`);
+			const param = postActivity.mock.calls[0][0].parameter;
+			// "to worker: " + 100 chars of "a"
+			expect(param).toBe(`to worker: ${"a".repeat(100)}`);
 		});
 
 		it("should detect Task tool and format with name", async () => {
@@ -270,7 +276,8 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith(
 				expect.objectContaining({
-					body: "Spawned teammate: code-reviewer",
+					action: "Spawn teammate",
+					parameter: "code-reviewer",
 				}),
 			);
 		});
@@ -288,12 +295,13 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith(
 				expect.objectContaining({
-					body: "Spawned teammate: Run the linter",
+					action: "Spawn teammate",
+					parameter: "Run the linter",
 				}),
 			);
 		});
 
-		it("should detect TaskList tool and use tool name as body", async () => {
+		it("should detect TaskList tool and use tool name as action", async () => {
 			const msg = makeAssistantMessage([
 				{
 					type: "tool_use",
@@ -306,12 +314,13 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith(
 				expect.objectContaining({
-					body: "TaskList",
+					action: "TaskList",
+					parameter: "",
 				}),
 			);
 		});
 
-		it("should detect TeamCreate tool and use tool name as body", async () => {
+		it("should detect TeamCreate tool and use tool name as action", async () => {
 			const msg = makeAssistantMessage([
 				{
 					type: "tool_use",
@@ -324,7 +333,8 @@ describe("LinearActivityBridge", () => {
 
 			expect(postActivity).toHaveBeenCalledWith(
 				expect.objectContaining({
-					body: "TeamCreate",
+					action: "TeamCreate",
+					parameter: "",
 				}),
 			);
 		});
@@ -512,7 +522,9 @@ describe("LinearActivityBridge", () => {
 			});
 			expect(freshPostActivity).toHaveBeenNthCalledWith(2, {
 				type: "action",
-				body: "Created task: Write tests",
+				body: "Create task: Write tests",
+				action: "Create task",
+				parameter: "Write tests",
 				ephemeral: true,
 			});
 		});
