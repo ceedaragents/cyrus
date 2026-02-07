@@ -13,12 +13,7 @@ const COMPLEXITY_KEYWORDS = [
 	"security",
 ];
 
-const ZERO_SCORE_CLASSIFICATIONS = [
-	"question",
-	"documentation",
-	"transient",
-	"planning",
-];
+const ZERO_SCORE_CLASSIFICATIONS = ["question", "documentation", "transient"];
 
 const DEFAULT_THRESHOLD = 60;
 

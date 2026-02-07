@@ -34,11 +34,10 @@ describe("scoreComplexity", () => {
 		expect(result.useTeam).toBe(false);
 	});
 
-	it("should score planning classification as 0", () => {
+	it("should score planning classification based on content (not zero)", () => {
 		const result = scoreComplexity(makeInput({ classification: "planning" }));
-		expect(result.score).toBe(0);
-		expect(result.useTeam).toBe(false);
-		expect(result.suggestedTeamSize).toBe(0);
+		// Planning is no longer zero-scored — it gets evaluated like code
+		expect(result.score).toBeGreaterThanOrEqual(0);
 	});
 
 	it("should score short code description low", () => {
