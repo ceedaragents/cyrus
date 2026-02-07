@@ -1,5 +1,9 @@
 import { EventEmitter } from "node:events";
-import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import {
+	type CanUseTool,
+	query,
+	type SDKMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import { ClaudeMessageFormatter } from "cyrus-claude-runner";
 import type {
 	AgentMessage,
@@ -72,8 +76,7 @@ export class TeamRunner extends EventEmitter implements IAgentRunner {
 					model: this.config.model || "opus",
 					fallbackModel: this.config.fallbackModel || "sonnet",
 					abortController: this.abortController,
-					permissionMode: "bypassPermissions" as const,
-					allowDangerouslySkipPermissions: true,
+					canUseTool: this.createCanUseToolCallback(),
 					env: {
 						...process.env,
 						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
@@ -237,6 +240,17 @@ export class TeamRunner extends EventEmitter implements IAgentRunner {
 
 	getFormatter(): IMessageFormatter {
 		return this.formatter;
+	}
+
+	/**
+	 * Create a canUseTool callback that auto-allows all tools.
+	 * Team sessions run non-interactively so we allow everything.
+	 */
+	private createCanUseToolCallback(): CanUseTool {
+		return async (_toolName: string, input: Record<string, unknown>) => ({
+			behavior: "allow" as const,
+			updatedInput: input,
+		});
 	}
 
 	/**
