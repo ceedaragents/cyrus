@@ -269,12 +269,8 @@ describe("TeamRunner", () => {
 			const runner = new TeamRunner(makeConfig());
 			const prompt = runner.buildTeamLeadPrompt("test");
 
-			expect(prompt).toContain(
-				"Do NOT implement tasks yourself -- delegate everything to teammates",
-			);
-			expect(prompt).toContain(
-				"Wait for teammates to finish before proceeding to dependent tasks",
-			);
+			expect(prompt).toContain("Do NOT implement tasks yourself");
+			expect(prompt).toContain("delegate everything to teammates");
 			expect(prompt).toContain("If a teammate fails, spawn a replacement");
 		});
 
@@ -282,9 +278,9 @@ describe("TeamRunner", () => {
 			const runner = new TeamRunner(makeConfig());
 			const prompt = runner.buildTeamLeadPrompt("test");
 
-			expect(prompt).toContain("Assign tasks to appropriate teammates");
-			expect(prompt).toContain("Monitor progress via the task list");
+			expect(prompt).toContain("Assign all unblocked tasks");
 			expect(prompt).toContain("Shut down all teammates");
+			expect(prompt).toContain("do NOT need to poll");
 		});
 
 		it("should handle empty task list", () => {

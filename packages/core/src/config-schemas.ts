@@ -123,12 +123,6 @@ const PromptDefaultsSchema = z.object({
  * Controls when and how agent teams are formed for complex tasks.
  */
 export const TeamConfigSchema = z.object({
-	/**
-	 * Complexity score threshold above which agent teams are used.
-	 * Issues scored above this threshold will be handled by a team instead of a single agent.
-	 */
-	complexityThreshold: z.number().min(0).max(100).optional().default(60),
-
 	/** Maximum number of teammates (including the lead) in a team */
 	maxTeamSize: z.number().min(2).max(6).optional().default(4),
 
@@ -137,12 +131,6 @@ export const TeamConfigSchema = z.object({
 
 	/** Model to use for the team lead agent (e.g., "opus", "sonnet") */
 	leadModel: z.string().optional().default("opus"),
-
-	/**
-	 * Which issue classifications are eligible to use agent teams.
-	 * Only issues classified as one of these types will consider team formation.
-	 */
-	enabledClassifications: z.array(z.string()).optional(),
 });
 
 /**

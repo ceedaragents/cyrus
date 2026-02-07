@@ -2405,11 +2405,18 @@ export class EdgeWorker extends EventEmitter {
 										content.action = input.action;
 										content.parameter = input.parameter;
 									}
-									await issueTracker.createAgentActivity({
-										agentSessionId: linearAgentActivitySessionId,
-										content,
-										ephemeral: input.ephemeral,
-									});
+									try {
+										await issueTracker.createAgentActivity({
+											agentSessionId: linearAgentActivitySessionId,
+											content,
+											ephemeral: input.ephemeral,
+										});
+									} catch (error) {
+										console.error(
+											"[EdgeWorker] Failed to post team activity to Linear:",
+											error,
+										);
+									}
 								},
 							})
 						: undefined;
