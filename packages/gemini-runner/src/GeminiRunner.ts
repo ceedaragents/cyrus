@@ -447,6 +447,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				is_error: true,
 				num_turns: 0,
 				errors: [errorMessage],
+				stop_reason: null,
 				total_cost_usd: 0,
 				usage: {
 					input_tokens: 0,
