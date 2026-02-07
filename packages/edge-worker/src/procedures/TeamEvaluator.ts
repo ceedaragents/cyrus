@@ -46,34 +46,24 @@ export class TeamEvaluator {
 	private buildSystemPrompt(): string {
 		return `You are a team size evaluator for a software development agent system.
 
-Your job is to decide whether a Linear issue requires an agent team (multiple parallel workers) or can be handled by a single agent.
+Your job is to decide the team size for a Linear issue. Agent teams spawn 2-4 parallel teammates coordinated by a lead agent. Teams handle context very well and should be used generously.
 
-Agent teams spawn 2-4 parallel teammates coordinated by a lead agent. Teams are useful for:
-- Complex multi-file changes spanning multiple modules or packages
-- Large refactoring efforts that touch many parts of the codebase
-- Features requiring both frontend and backend changes
-- Debugging complex issues where multiple hypotheses need investigation
-- Implementation work with clear parallelizable subtasks
+DEFAULT TO USING A TEAM. Most code tasks benefit from parallel work. Only use 0 (no team) for genuinely trivial work.
 
-Teams are NOT useful for:
-- Simple bug fixes (single file, obvious cause)
-- Questions or information requests
-- Documentation-only changes
-- Small tweaks, config changes, or single-file modifications
+Team size guide:
+- 0: ONLY for trivial tasks — simple one-liner fixes, pure questions, documentation typos
+- 2: Standard tasks — most bug fixes, small features, single-component changes
+- 3: Moderate tasks — multi-file features, refactoring, tasks touching 2-3 components
+- 4: Complex tasks — cross-cutting changes, large features, multi-package work, architecture changes
 
-Respond with ONLY a single number representing the team size:
-- 0: No team needed (single agent can handle it)
-- 2: Moderate complexity (2 teammates)
-- 3: High complexity (3 teammates)
-- 4: Very high complexity (4 teammates)
+When to use 0 (rare):
+- Pure questions or information requests with no code changes
+- Single-line typo or config value fix
+- Documentation-only edits
 
-Consider:
-1. The scope of changes described in the issue
-2. How many components, files, or modules are likely involved
-3. Whether subtasks can be parallelized
-4. The classification of the issue (e.g., "code", "planning", "question")
-5. Issue labels that hint at complexity
-6. If the user explicitly requests a team, agents, or parallel work, ALWAYS honor that request with a team size of at least 2
+When in doubt, prefer a LARGER team size. Teams parallelize well and the overhead is minimal.
+
+If the user explicitly requests a team, agents, or parallel work, ALWAYS honor that with at least 2.
 
 IMPORTANT: Respond with ONLY the number (0, 2, 3, or 4), nothing else.`;
 	}
