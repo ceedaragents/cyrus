@@ -167,6 +167,7 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize AI-based team evaluator
 		this.teamEvaluator = new TeamEvaluator({
 			cyrusHome: this.cyrusHome,
+			runnerType: "claude",
 		});
 
 		// Initialize repository router with dependencies
