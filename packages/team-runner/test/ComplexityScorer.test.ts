@@ -34,6 +34,13 @@ describe("scoreComplexity", () => {
 		expect(result.useTeam).toBe(false);
 	});
 
+	it("should score planning classification as 0", () => {
+		const result = scoreComplexity(makeInput({ classification: "planning" }));
+		expect(result.score).toBe(0);
+		expect(result.useTeam).toBe(false);
+		expect(result.suggestedTeamSize).toBe(0);
+	});
+
 	it("should score short code description low", () => {
 		const result = scoreComplexity(
 			makeInput({

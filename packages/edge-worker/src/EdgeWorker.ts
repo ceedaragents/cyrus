@@ -143,6 +143,8 @@ export class EdgeWorker extends EventEmitter {
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
 	private userAccessControl: UserAccessControl;
+	/** Tracks issues that completed plan-mode, for team re-evaluation on subsequent sessions */
+	private planCompletedIssues: Map<string, number> = new Map();
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -796,6 +798,17 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[Subroutine Transition] Procedure complete for session ${linearAgentActivitySessionId}`,
 			);
+
+			// Track plan completion for team re-evaluation
+			const procedureName = session.metadata?.procedure?.procedureName;
+			if (procedureName === "plan-mode") {
+				this.planCompletedIssues.set(session.issueId, Date.now());
+				console.log(
+					`[EdgeWorker] Plan completed for issue ${session.issueId}, future sessions eligible for team re-evaluation`,
+				);
+				await this.savePersistedState();
+			}
+
 			return;
 		}
 
@@ -2186,6 +2199,23 @@ export class EdgeWorker extends EventEmitter {
 			console.log(`  Classification: ${routingDecision.classification}`);
 			console.log(`  Procedure: ${finalProcedure.name}`);
 			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+
+			// Re-evaluate classification if issue previously completed plan-mode
+			if (
+				finalClassification === "planning" &&
+				this.planCompletedIssues.has(session.issueId)
+			) {
+				const fullDevProcedure =
+					this.procedureAnalyzer.getProcedure("full-development");
+				if (fullDevProcedure) {
+					console.log(
+						`[EdgeWorker] Plan re-evaluation: issue ${fullIssue.identifier} previously completed plan-mode, ` +
+							`overriding classification from "planning" to "code" for team evaluation`,
+					);
+					finalClassification = "code";
+					finalProcedure = fullDevProcedure;
+				}
+			}
 		}
 
 		// Initialize procedure metadata in session with final decision
@@ -5994,6 +6024,9 @@ ${input.userComment}
 			agentSessionEntries,
 			childToParentAgentSession,
 			issueRepositoryCache,
+			planCompletedIssues: Object.fromEntries(
+				this.planCompletedIssues.entries(),
+			),
 		};
 	}
 
@@ -6041,6 +6074,19 @@ ${input.userComment}
 			this.repositoryRouter.restoreIssueRepositoryCache(cache);
 			console.log(
 				`[EdgeWorker] Restored ${cache.size} issue-to-repository cache mappings`,
+			);
+		}
+
+		// Restore plan-completed issues for team re-evaluation
+		if (state.planCompletedIssues) {
+			this.planCompletedIssues = new Map(
+				Object.entries(state.planCompletedIssues).map(([k, v]) => [
+					k,
+					v as number,
+				]),
+			);
+			console.log(
+				`[EdgeWorker] Restored ${this.planCompletedIssues.size} plan-completed issue mappings`,
 			);
 		}
 	}

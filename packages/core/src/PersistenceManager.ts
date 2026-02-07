@@ -35,6 +35,8 @@ export interface SerializableEdgeWorkerState {
 	childToParentAgentSession?: Record<string, string>;
 	// Issue to repository mapping (for caching user repository selections)
 	issueRepositoryCache?: Record<string, string>;
+	// Issues that completed plan-mode (issueId → timestamp), for team re-evaluation
+	planCompletedIssues?: Record<string, number>;
 }
 
 /**
