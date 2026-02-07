@@ -2,7 +2,7 @@ import type { ISimpleAgentRunner } from "cyrus-core";
 import { SimpleGeminiRunner } from "cyrus-gemini-runner";
 import { SimpleClaudeRunner } from "cyrus-simple-agent-runner";
 
-type TeamSizeResponse = "0" | "2" | "3" | "4";
+type TeamSizeResponse = "0" | "2" | "3" | "4" | "5" | "6";
 
 export interface TeamEvaluationResult {
 	useTeam: boolean;
@@ -28,7 +28,7 @@ export class TeamEvaluator {
 			runnerType === "claude" ? "sonnet" : "gemini-2.0-flash-exp";
 
 		const runnerConfig = {
-			validResponses: ["0", "2", "3", "4"] as const,
+			validResponses: ["0", "2", "3", "4", "5", "6"] as const,
 			cyrusHome: config.cyrusHome,
 			model: config.model || defaultModel,
 			fallbackModel: defaultFallbackModel,
@@ -55,6 +55,8 @@ Team size guide:
 - 2: Standard tasks — most bug fixes, small features, single-component changes
 - 3: Moderate tasks — multi-file features, refactoring, tasks touching 2-3 components
 - 4: Complex tasks — cross-cutting changes, large features, multi-package work, architecture changes
+- 5: Very complex tasks — major refactors across many modules, full-stack rewrites
+- 6: Massive tasks — platform migrations, complete system redesigns
 
 When to use 0 (rare):
 - Pure questions or information requests with no code changes
@@ -65,7 +67,7 @@ When in doubt, prefer a LARGER team size. Teams parallelize well and the overhea
 
 If the user explicitly requests a team, agents, or parallel work, ALWAYS honor that with at least 2.
 
-IMPORTANT: Respond with ONLY the number (0, 2, 3, or 4), nothing else.`;
+IMPORTANT: Respond with ONLY the number (0, 2, 3, 4, 5, or 6), nothing else.`;
 	}
 
 	async evaluate(input: {

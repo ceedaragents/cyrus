@@ -2380,7 +2380,7 @@ export class EdgeWorker extends EventEmitter {
 
 					const teamSize = Math.min(
 						teamResult.teamSize,
-						teamConfig?.maxTeamSize ?? 4,
+						teamConfig?.maxTeamSize ?? 6,
 					);
 
 					// Create activity bridge for Linear
