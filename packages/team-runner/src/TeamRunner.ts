@@ -72,6 +72,8 @@ export class TeamRunner extends EventEmitter implements IAgentRunner {
 					model: this.config.model || "opus",
 					fallbackModel: this.config.fallbackModel || "sonnet",
 					abortController: this.abortController,
+					permissionMode: "bypassPermissions" as const,
+					allowDangerouslySkipPermissions: true,
 					env: {
 						...process.env,
 						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
