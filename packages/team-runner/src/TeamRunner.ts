@@ -288,21 +288,25 @@ ${taskListStr}
    - Give each teammate a descriptive name matching their role
    - Include the full task context in their spawn prompts
 
-4. Coordinate:
-   - Assign tasks to appropriate teammates
-   - Monitor progress via the task list
-   - When teammates report findings, share relevant results with dependent teammates
-   - If verification fails, create a fix task and reassign
+4. Assign all unblocked tasks immediately after spawning teammates.
 
 5. When all tasks are complete:
    - Shut down all teammates
    - Clean up the team
    - Report the final result
 
+## How Teammate Communication Works
+
+- Teammates automatically send you messages when they finish work or need help. These messages are delivered to you as new conversation turns — you do NOT need to poll or check on them.
+- After each turn, teammates go idle. This is NORMAL. "Idle" just means they sent their message and are waiting. It does NOT mean they are stuck.
+- When a teammate sends you a completion message, react by: marking their task completed, assigning their next task, and forwarding any findings to teammates who need them.
+- Do NOT proactively "check on" teammates or ask for status updates. Just wait for their messages to arrive.
+
 ## Critical Rules
 
-- Do NOT implement tasks yourself -- delegate everything to teammates
-- Wait for teammates to finish before proceeding to dependent tasks
+- Do NOT implement tasks yourself — delegate everything to teammates
+- Spawn all teammates and assign all unblocked tasks upfront — do not wait between spawns
+- When a teammate completes a task, immediately unblock and assign dependent tasks
 - If a teammate fails, spawn a replacement
 - Share research findings between teammates via messages`;
 	}
