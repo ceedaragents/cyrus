@@ -66,6 +66,17 @@ import {
 	LinearIssueTrackerService,
 	type LinearOAuthConfig,
 } from "cyrus-linear-event-transport";
+import type {
+	ActivityInput,
+	TeamRunnerConfig,
+	TeamTask,
+} from "cyrus-team-runner";
+import {
+	buildDebuggerTasks,
+	buildFullDevelopmentTasks,
+	LinearActivityBridge,
+	TeamRunner,
+} from "cyrus-team-runner";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
@@ -75,6 +86,7 @@ import {
 	type ProcedureDefinition,
 	type RequestClassification,
 	type SubroutineDefinition,
+	TeamEvaluator,
 } from "./procedures/index.js";
 import type {
 	IssueContextResult,
@@ -121,6 +133,7 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
+	private teamEvaluator: TeamEvaluator; // AI-based team size evaluation
 	private configWatcher?: FSWatcher; // File watcher for config.json
 	private configPath?: string; // Path to config.json file
 	/** @internal - Exposed for testing only */
@@ -131,6 +144,8 @@ export class EdgeWorker extends EventEmitter {
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
 	private userAccessControl: UserAccessControl;
+	/** Tracks issues that completed plan-mode, for team re-evaluation on subsequent sessions */
+	private planCompletedIssues: Map<string, number> = new Map();
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -147,6 +162,14 @@ export class EdgeWorker extends EventEmitter {
 			model: "haiku",
 			timeoutMs: 100000,
 			runnerType: "claude", // Use Claude by default
+		});
+
+		// Initialize AI-based team evaluator
+		this.teamEvaluator = new TeamEvaluator({
+			cyrusHome: this.cyrusHome,
+			model: "haiku",
+			timeoutMs: 100000,
+			runnerType: "claude",
 		});
 
 		// Initialize repository router with dependencies
@@ -784,6 +807,17 @@ export class EdgeWorker extends EventEmitter {
 			console.log(
 				`[Subroutine Transition] Procedure complete for session ${linearAgentActivitySessionId}`,
 			);
+
+			// Track plan completion for team re-evaluation
+			const procedureName = session.metadata?.procedure?.procedureName;
+			if (procedureName === "plan-mode") {
+				this.planCompletedIssues.set(session.issueId, Date.now());
+				console.log(
+					`[EdgeWorker] Plan completed for issue ${session.issueId}, future sessions eligible for team re-evaluation`,
+				);
+				await this.savePersistedState();
+			}
+
 			return;
 		}
 
@@ -2174,6 +2208,23 @@ export class EdgeWorker extends EventEmitter {
 			console.log(`  Classification: ${routingDecision.classification}`);
 			console.log(`  Procedure: ${finalProcedure.name}`);
 			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+
+			// Re-evaluate classification if issue previously completed plan-mode
+			if (
+				finalClassification === "planning" &&
+				this.planCompletedIssues.has(session.issueId)
+			) {
+				const fullDevProcedure =
+					this.procedureAnalyzer.getProcedure("full-development");
+				if (fullDevProcedure) {
+					console.log(
+						`[EdgeWorker] Plan re-evaluation: issue ${fullIssue.identifier} previously completed plan-mode, ` +
+							`overriding classification from "planning" to "code" for team evaluation`,
+					);
+					finalClassification = "code";
+					finalProcedure = fullDevProcedure;
+				}
+			}
 		}
 
 		// Initialize procedure metadata in session with final decision
@@ -2296,10 +2347,109 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Label-based runner selection for new session: ${runnerType} (session ${linearAgentActivitySessionId})`,
 			);
 
-			const runner =
-				runnerType === "claude"
-					? new ClaudeRunner(runnerConfig)
-					: new GeminiRunner(runnerConfig);
+			// Check if this task should use an agent team
+			const teamsEnabled = repository.enableAgentTeams ?? false;
+			let runner: IAgentRunner;
+
+			if (teamsEnabled && runnerType === "claude") {
+				const teamResult = await this.teamEvaluator.evaluate({
+					issueTitle: fullIssue.title || "",
+					issueDescription: fullIssue.description || "",
+					classification: finalClassification,
+					labels: labels || [],
+				});
+
+				const teamConfig = repository.teamConfig;
+				const useTeam = teamResult.useTeam;
+
+				console.log(
+					`[EdgeWorker] Team evaluation: useTeam=${useTeam}, teamSize=${teamResult.teamSize}, ` +
+						`reasoning=${teamResult.reasoning}`,
+				);
+
+				if (useTeam) {
+					const issueContext = `Title: ${fullIssue.title}\nDescription: ${fullIssue.description || ""}`;
+					let tasks: TeamTask[];
+
+					switch (finalClassification) {
+						case "debugger":
+							tasks = buildDebuggerTasks(issueContext);
+							break;
+						default:
+							tasks = buildFullDevelopmentTasks(issueContext);
+							break;
+					}
+
+					const teamSize = Math.min(
+						teamResult.teamSize,
+						teamConfig?.maxTeamSize ?? 6,
+					);
+
+					// Create activity bridge for Linear
+					const issueTracker = this.issueTrackers.get(repository.id);
+					const activityBridge = issueTracker
+						? new LinearActivityBridge({
+								postActivity: async (input: ActivityInput) => {
+									const content: any = {
+										type:
+											input.type === "thought"
+												? "thought"
+												: input.type === "action"
+													? "action"
+													: "response",
+										body: input.body,
+									};
+									if (
+										input.type === "action" &&
+										input.action &&
+										input.parameter !== undefined
+									) {
+										content.action = input.action;
+										content.parameter = input.parameter;
+									}
+									try {
+										await issueTracker.createAgentActivity({
+											agentSessionId: linearAgentActivitySessionId,
+											content,
+											ephemeral: input.ephemeral,
+										});
+									} catch (error) {
+										console.error(
+											"[EdgeWorker] Failed to post team activity to Linear:",
+											error,
+										);
+									}
+								},
+							})
+						: undefined;
+
+					const teamRunnerConfig: TeamRunnerConfig = {
+						...runnerConfig,
+						tasks,
+						teamSize,
+						activityBridge,
+						classification: finalClassification,
+						model: teamConfig?.leadModel ?? runnerConfig.model,
+					};
+
+					runner = new TeamRunner(teamRunnerConfig);
+
+					console.log(
+						`[EdgeWorker] Using TeamRunner for ${fullIssue.identifier}: ` +
+							`${tasks.length} tasks, ${teamSize} teammates, classification=${finalClassification}`,
+					);
+				} else {
+					runner =
+						runnerType === "claude"
+							? new ClaudeRunner(runnerConfig)
+							: new GeminiRunner(runnerConfig);
+				}
+			} else {
+				runner =
+					runnerType === "claude"
+						? new ClaudeRunner(runnerConfig)
+						: new GeminiRunner(runnerConfig);
+			}
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -5051,6 +5201,14 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			systemPrompt = sharedInstructions;
 		}
 
+		// 2b. Append agent teams guidance when enabled for this repository
+		if (input.repository.enableAgentTeams) {
+			const agentTeamsGuidance = await this.loadAgentTeamsGuidance();
+			if (agentTeamsGuidance) {
+				systemPrompt = `${systemPrompt}\n\n${agentTeamsGuidance}`;
+			}
+		}
+
 		// 3. Build issue context using appropriate builder
 		// Use label-based prompt ONLY if we have a label-based system prompt
 		const promptType = this.determinePromptType(
@@ -5249,6 +5407,28 @@ ${input.userComment}
 				error,
 			);
 			return ""; // Return empty string if file can't be loaded
+		}
+	}
+
+	private async loadAgentTeamsGuidance(): Promise<string> {
+		const __filename = fileURLToPath(import.meta.url);
+		const __dirname = dirname(__filename);
+		const guidancePath = join(
+			__dirname,
+			"..",
+			"prompts",
+			"agent-teams-guidance.md",
+		);
+
+		try {
+			const guidance = await readFile(guidancePath, "utf-8");
+			return guidance;
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Failed to load agent teams guidance from ${guidancePath}:`,
+				error,
+			);
+			return "";
 		}
 	}
 
@@ -5860,6 +6040,9 @@ ${input.userComment}
 			agentSessionEntries,
 			childToParentAgentSession,
 			issueRepositoryCache,
+			planCompletedIssues: Object.fromEntries(
+				this.planCompletedIssues.entries(),
+			),
 		};
 	}
 
@@ -5907,6 +6090,19 @@ ${input.userComment}
 			this.repositoryRouter.restoreIssueRepositoryCache(cache);
 			console.log(
 				`[EdgeWorker] Restored ${cache.size} issue-to-repository cache mappings`,
+			);
+		}
+
+		// Restore plan-completed issues for team re-evaluation
+		if (state.planCompletedIssues) {
+			this.planCompletedIssues = new Map(
+				Object.entries(state.planCompletedIssues).map(([k, v]) => [
+					k,
+					v as number,
+				]),
+			);
+			console.log(
+				`[EdgeWorker] Restored ${this.planCompletedIssues.size} plan-completed issue mappings`,
 			);
 		}
 	}

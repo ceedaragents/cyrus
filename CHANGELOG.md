@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Agent Teams support** — Cyrus can now automatically parallelise complex issues using Claude Code Agent Teams. When enabled per repository, issues classified as high-complexity (debugger, orchestrator, or large code tasks) are executed by a coordinated team of agents working in parallel instead of sequentially. Configure with the new `enableAgentTeams` and `teamConfig` repository options.
+
 ## [0.2.20] - 2026-02-05
 
 ### Fixed

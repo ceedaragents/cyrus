@@ -214,6 +214,7 @@ export function geminiEventToSDKMessage(
 					is_error: false,
 					num_turns: stats.tool_calls || 0, // Use tool calls as proxy for turns
 					result: resultContent,
+					stop_reason: "end_turn",
 					total_cost_usd: 0, // Gemini doesn't provide cost info
 					usage: {
 						input_tokens: stats.input_tokens || 0,
@@ -246,6 +247,7 @@ export function geminiEventToSDKMessage(
 					is_error: true,
 					num_turns: stats.tool_calls || 0,
 					errors: [event.error?.message || "Unknown error"],
+					stop_reason: null,
 					total_cost_usd: 0,
 					usage: {
 						input_tokens: stats.input_tokens || 0,
@@ -281,6 +283,7 @@ export function geminiEventToSDKMessage(
 				is_error: true,
 				num_turns: 0,
 				errors: [event.message],
+				stop_reason: null,
 				total_cost_usd: 0,
 				usage: {
 					input_tokens: 0,

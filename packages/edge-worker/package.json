@@ -33,6 +33,7 @@
 		"cyrus-gemini-runner": "workspace:*",
 		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
+		"cyrus-team-runner": "workspace:*",
 		"fastify": "^5.2.0",
 		"file-type": "^18.7.0",
 		"ignore": "^7.0.5",

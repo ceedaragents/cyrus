@@ -1,7 +1,7 @@
 {
-	"name": "cyrus-simple-agent-runner",
+	"name": "cyrus-team-runner",
 	"version": "0.2.20",
-	"description": "Simple agent runner for enumerated responses",
+	"description": "Team orchestration and complexity scoring for Cyrus",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -12,7 +12,7 @@
 		"build": "tsc",
 		"dev": "tsc --watch",
 		"test": "vitest",
-		"test:run": "vitest run --passWithNoTests",
+		"test:run": "vitest run",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
