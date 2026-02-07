@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated Anthropic SDK dependencies** - Updated `@anthropic-ai/claude-agent-sdk` to v0.2.34 (from v0.2.7) and `@anthropic-ai/sdk` to v0.73.0 (from v0.71.2). See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for new features including custom session IDs, enhanced PDF handling, and improved debug logging. ([CYPACK-789](https://linear.app/ceedar/issue/CYPACK-789), [#838](https://github.com/ceedaragents/cyrus/pull/838))
+
 ## [0.2.20] - 2026-02-05
 
 ### Fixed
