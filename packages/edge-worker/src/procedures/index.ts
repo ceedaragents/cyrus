@@ -4,4 +4,5 @@
 
 export * from "./ProcedureAnalyzer.js";
 export * from "./registry.js";
+export * from "./TeamEvaluator.js";
 export * from "./types.js";

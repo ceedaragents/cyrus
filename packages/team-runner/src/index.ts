@@ -1,4 +1,3 @@
-export { scoreComplexity } from "./ComplexityScorer.js";
 export type {
 	ActivityInput,
 	LinearActivityBridgeConfig,
@@ -11,8 +10,4 @@ export {
 	buildFullDevelopmentTasks,
 	buildOrchestratorTasks,
 } from "./TeamTaskBuilder.js";
-export type {
-	ComplexityInput,
-	ComplexityScore,
-	TeamTask,
-} from "./types.js";
+export type { TeamTask } from "./types.js";

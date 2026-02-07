@@ -6,10 +6,10 @@ import { PROCEDURES } from "../src/procedures/registry";
 /**
  * Tests for plan re-evaluation after plan-mode completion.
  *
- * When an issue goes through plan-mode (classified as "planning"), the team evaluation
- * scores 0 because "planning" is in ZERO_SCORE_CLASSIFICATIONS. After the plan is approved
+ * When an issue goes through plan-mode (classified as "planning"), the AI team evaluator
+ * handles classification filtering directly. After the plan is approved
  * and a new session starts, the EdgeWorker should override "planning" → "code" so the
- * team scorer can properly evaluate the implementation phase.
+ * AI team evaluator can properly evaluate the implementation phase.
  *
  * These tests verify:
  * 1. Plan-mode completion detection via procedure metadata

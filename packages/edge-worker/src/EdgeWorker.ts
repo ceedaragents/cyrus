@@ -75,7 +75,6 @@ import {
 	buildDebuggerTasks,
 	buildFullDevelopmentTasks,
 	LinearActivityBridge,
-	scoreComplexity,
 	TeamRunner,
 } from "cyrus-team-runner";
 import { fileTypeFromBuffer } from "file-type";
@@ -87,6 +86,7 @@ import {
 	type ProcedureDefinition,
 	type RequestClassification,
 	type SubroutineDefinition,
+	TeamEvaluator,
 } from "./procedures/index.js";
 import type {
 	IssueContextResult,
@@ -133,6 +133,7 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
+	private teamEvaluator: TeamEvaluator; // AI-based team size evaluation
 	private configWatcher?: FSWatcher; // File watcher for config.json
 	private configPath?: string; // Path to config.json file
 	/** @internal - Exposed for testing only */
@@ -161,6 +162,11 @@ export class EdgeWorker extends EventEmitter {
 			model: "haiku",
 			timeoutMs: 100000,
 			runnerType: "claude", // Use Claude by default
+		});
+
+		// Initialize AI-based team evaluator
+		this.teamEvaluator = new TeamEvaluator({
+			cyrusHome: this.cyrusHome,
 		});
 
 		// Initialize repository router with dependencies
@@ -2343,28 +2349,19 @@ export class EdgeWorker extends EventEmitter {
 			let runner: IAgentRunner;
 
 			if (teamsEnabled && runnerType === "claude") {
-				const complexityResult = scoreComplexity({
-					classification: finalClassification,
+				const teamResult = await this.teamEvaluator.evaluate({
 					issueTitle: fullIssue.title || "",
 					issueDescription: fullIssue.description || "",
-					procedureName: finalProcedure.name,
+					classification: finalClassification,
 					labels: labels || [],
 				});
 
 				const teamConfig = repository.teamConfig;
-				const threshold = teamConfig?.complexityThreshold ?? 60;
-				const enabledClassifications = teamConfig?.enabledClassifications ?? [
-					"orchestrator",
-					"debugger",
-					"code",
-				];
-				const useTeam =
-					complexityResult.score >= threshold &&
-					enabledClassifications.includes(finalClassification);
+				const useTeam = teamResult.useTeam;
 
 				console.log(
-					`[EdgeWorker] Team evaluation: score=${complexityResult.score}, threshold=${threshold}, ` +
-						`useTeam=${useTeam}, reasoning=${complexityResult.reasoning}`,
+					`[EdgeWorker] Team evaluation: useTeam=${useTeam}, teamSize=${teamResult.teamSize}, ` +
+						`reasoning=${teamResult.reasoning}`,
 				);
 
 				if (useTeam) {
@@ -2381,7 +2378,7 @@ export class EdgeWorker extends EventEmitter {
 					}
 
 					const teamSize = Math.min(
-						complexityResult.suggestedTeamSize,
+						teamResult.teamSize,
 						teamConfig?.maxTeamSize ?? 4,
 					);
 
