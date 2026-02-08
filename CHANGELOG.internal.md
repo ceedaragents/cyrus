@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.2.7 to v0.2.37 and `@anthropic-ai/sdk` from v0.71.2 to v0.74.0. Added support for new SDK fields including `stop_reason` in result messages and `inference_geo`, `iterations`, `speed` in usage metadata. See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for detailed changes. ([CYPACK-790](https://linear.app/ceedar/issue/CYPACK-790), [#840](https://github.com/ceedaragents/cyrus/pull/840))
+
 ## [0.2.20] - 2026-02-05
 
 (No internal changes in this release)
