@@ -287,6 +287,33 @@ export class AgentSessionManager extends EventEmitter {
 				linearAgentActivitySessionId,
 				resultMessage,
 			);
+		} else if (resultMessage.subtype !== "success") {
+			// Error result (e.g. error_max_turns from singleTurn subroutines) — try to
+			// recover from the last completed subroutine's result so the procedure can still complete.
+			const recoveredText =
+				this.procedureAnalyzer?.getLastSubroutineResult(session);
+			if (recoveredText) {
+				console.log(
+					`[AgentSessionManager] Recovered result from previous subroutine (subtype: ${resultMessage.subtype}), treating as success for procedure completion`,
+				);
+				// Create a synthetic success result for procedure routing
+				const syntheticResult: SDKResultMessage = {
+					...resultMessage,
+					subtype: "success",
+					result: recoveredText,
+					is_error: false,
+				};
+				await this.handleProcedureCompletion(
+					session,
+					linearAgentActivitySessionId,
+					syntheticResult,
+				);
+			} else {
+				console.warn(
+					`[AgentSessionManager] Error result with no recoverable text (subtype: ${resultMessage.subtype}), posting error to Linear`,
+				);
+				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+			}
 		}
 	}
 
@@ -451,7 +478,13 @@ export class AgentSessionManager extends EventEmitter {
 			console.log(
 				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
-			this.procedureAnalyzer.advanceToNextSubroutine(session, sessionId);
+			const subroutineResult =
+				"result" in resultMessage ? resultMessage.result : undefined;
+			this.procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				sessionId,
+				subroutineResult,
+			);
 
 			// Emit event for EdgeWorker to handle subroutine transition
 			// This replaces the callback pattern and allows EdgeWorker to subscribe
