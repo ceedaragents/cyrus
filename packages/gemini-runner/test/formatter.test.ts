@@ -373,50 +373,38 @@ describe("GeminiMessageFormatter", () => {
 		});
 
 		describe("Task tools", () => {
-			it("should format TaskCreate as concise pending checklist item", () => {
+			it("should format TaskCreate parameter with subject and description", () => {
 				const result = formatter.formatToolParameter("TaskCreate", {
 					subject: "Implement feature X",
 					description: "Add new feature with tests",
 					activeForm: "Implementing feature X",
 				});
-				expect(result).toBe("⏳ **Implement feature X**");
+				expect(result).toContain("Implement feature X");
+				expect(result).toContain("Add new feature with tests");
+				expect(result).toContain("_Active: Implementing feature X_");
 			});
 
-			it("should format TaskUpdate with task number only", () => {
+			it("should format TaskUpdate parameter with status", () => {
 				const result = formatter.formatToolParameter("TaskUpdate", {
 					taskId: "123",
 					status: "completed",
 					subject: "Feature completed",
 				});
-				expect(result).toBe("✅ Task #123");
+				expect(result).toContain("Task #123");
+				expect(result).toContain("✅");
+				expect(result).toContain("Feature completed");
 			});
 
-			it("should format TaskUpdate without subject", () => {
-				const result = formatter.formatToolParameter("TaskUpdate", {
-					taskId: "123",
-					status: "in_progress",
-				});
-				expect(result).toBe("🔄 Task #123");
-			});
-
-			it("should format TaskGet with task number only", () => {
-				const result = formatter.formatToolParameter("TaskGet", {
-					taskId: "456",
-					subject: "Fix authentication bug",
-				});
-				expect(result).toBe("📋 Task #456");
-			});
-
-			it("should format TaskGet without subject", () => {
+			it("should format TaskGet parameter", () => {
 				const result = formatter.formatToolParameter("TaskGet", {
 					taskId: "456",
 				});
-				expect(result).toBe("📋 Task #456");
+				expect(result).toBe("Task #456");
 			});
 
 			it("should format TaskList parameter", () => {
 				const result = formatter.formatToolParameter("TaskList", {});
-				expect(result).toBe("📋 List all tasks");
+				expect(result).toBe("List all tasks");
 			});
 
 			it("should format TaskCreate result", () => {
@@ -447,97 +435,8 @@ describe("GeminiMessageFormatter", () => {
 					subject: "Test",
 					description: "Test desc",
 				});
-				expect(result).toBe("⏳ **Test**");
-			});
-		});
-
-		describe("ToolSearch", () => {
-			it("should format ToolSearch with select query as tool name", () => {
-				const result = formatter.formatToolParameter("ToolSearch", {
-					query: "select:mcp__linear__get_issue",
-					max_results: 1,
-				});
-				expect(result).toBe("mcp__linear__get_issue");
-			});
-
-			it("should format ToolSearch with keyword search as query", () => {
-				const result = formatter.formatToolParameter("ToolSearch", {
-					query: "+linear get_issue",
-					max_results: 3,
-				});
-				expect(result).toBe("+linear get_issue");
-			});
-
-			it("should format ToolSearch result with results", () => {
-				const result = formatter.formatToolResult(
-					"ToolSearch",
-					{ query: "select:mcp__linear__get_issue" },
-					"Found tool: mcp__linear__get_issue",
-					false,
-				);
-				expect(result).toBe("*Found tool: mcp__linear__get_issue*");
-			});
-
-			it("should format ToolSearch result with no results", () => {
-				const result = formatter.formatToolResult(
-					"ToolSearch",
-					{ query: "nonexistent" },
-					"",
-					false,
-				);
-				expect(result).toBe("*No tools found*");
-			});
-		});
-
-		describe("TaskOutput", () => {
-			it("should format TaskOutput blocking", () => {
-				const result = formatter.formatToolParameter("TaskOutput", {
-					task_id: "b6e6efb",
-					block: true,
-					timeout: 120000,
-				});
-				expect(result).toBe("📤 Waiting for task b6e6efb");
-			});
-
-			it("should format TaskOutput non-blocking", () => {
-				const result = formatter.formatToolParameter("TaskOutput", {
-					task_id: "abc123",
-					block: false,
-					timeout: 30000,
-				});
-				expect(result).toBe("📤 Checking task abc123");
-			});
-
-			it("should format TaskOutput result with short output", () => {
-				const result = formatter.formatToolResult(
-					"TaskOutput",
-					{ task_id: "abc123" },
-					"Task completed successfully",
-					false,
-				);
-				expect(result).toBe("Task completed successfully");
-			});
-
-			it("should format TaskOutput result with long multiline output", () => {
-				const longResult = `Line 1\nLine 2\nLine 3\n${"More output ".repeat(20)}`;
-				const result = formatter.formatToolResult(
-					"TaskOutput",
-					{ task_id: "abc123" },
-					longResult,
-					false,
-				);
-				expect(result).toContain("```");
-				expect(result).toContain(longResult);
-			});
-
-			it("should format TaskOutput result with no output", () => {
-				const result = formatter.formatToolResult(
-					"TaskOutput",
-					{ task_id: "abc123" },
-					"",
-					false,
-				);
-				expect(result).toBe("*No output yet*");
+				expect(result).toContain("Test");
+				expect(result).toContain("Test desc");
 			});
 		});
 

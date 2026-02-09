@@ -104,38 +104,64 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 
 			switch (toolName) {
 				case "TaskCreate": {
-					// TaskCreate fires in parallel — keep it concise as a pending checklist item
+					// TaskCreate: { subject, description, activeForm? }
 					const subject = getString(toolInput, "subject") || "";
-					return `⏳ **${subject}**`;
+					const description = getString(toolInput, "description") || "";
+					const activeForm = getString(toolInput, "activeForm");
+
+					let formatted = subject;
+					if (description && description !== subject) {
+						// Add description if it's different from subject
+						formatted += `\n${description}`;
+					}
+					if (activeForm) {
+						formatted += `\n_Active: ${activeForm}_`;
+					}
+					return formatted;
 				}
 
 				case "TaskUpdate": {
-					// TaskUpdate: { taskId, status? }
+					// TaskUpdate: { taskId, status?, subject?, description?, activeForm? }
 					const taskId = getString(toolInput, "taskId") || "";
 					const status = getString(toolInput, "status");
+					const subject = getString(toolInput, "subject");
+					const description = getString(toolInput, "description");
 
-					let statusEmoji = "";
-					if (status === "completed") {
-						statusEmoji = "✅";
-					} else if (status === "in_progress") {
-						statusEmoji = "🔄";
-					} else if (status === "pending") {
-						statusEmoji = "⏳";
-					} else if (status === "deleted") {
-						statusEmoji = "🗑️";
+					let formatted = `Task #${taskId}`;
+
+					if (status) {
+						let statusEmoji = "";
+						if (status === "completed") {
+							statusEmoji = " ✅";
+						} else if (status === "in_progress") {
+							statusEmoji = " 🔄";
+						} else if (status === "pending") {
+							statusEmoji = " ⏳";
+						} else if (status === "deleted") {
+							statusEmoji = " 🗑️";
+						}
+						formatted += statusEmoji;
 					}
 
-					return `${statusEmoji} Task #${taskId}`;
+					if (subject) {
+						formatted += `\n${subject}`;
+					}
+					if (description && description !== subject) {
+						formatted += `\n${description}`;
+					}
+
+					return formatted;
 				}
 
 				case "TaskGet": {
 					// TaskGet: { taskId }
 					const taskId = getString(toolInput, "taskId") || "";
-					return `📋 Task #${taskId}`;
+					return `Task #${taskId}`;
 				}
 
 				case "TaskList": {
-					return "📋 List all tasks";
+					// TaskList: no parameters typically
+					return "List all tasks";
 				}
 
 				default: {
@@ -261,24 +287,6 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 				case "TaskList":
 					// Delegate to formatTaskParameter for Task tools
 					return this.formatTaskParameter(toolName, toolInput);
-
-				case "ToolSearch": {
-					// Show query directly, like how Bash shows command and Read shows file_path
-					const query = getString(toolInput, "query") || "";
-					if (query.startsWith("select:")) {
-						return query.replace("select:", "");
-					}
-					return query;
-				}
-
-				case "TaskOutput": {
-					const taskId = getString(toolInput, "task_id") || "";
-					const block = toolInput.block;
-					if (block === false) {
-						return `📤 Checking task ${taskId}`;
-					}
-					return `📤 Waiting for task ${taskId}`;
-				}
 
 				default:
 					// For MCP tools or other unknown tools, try to extract meaningful info
@@ -532,23 +540,6 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 						return `\`\`\`\n${result}\n\`\`\``;
 					}
 					return "*No tasks*";
-
-				case "ToolSearch":
-					// ToolSearch results show which tools were found
-					if (result?.trim()) {
-						return `*${result}*`;
-					}
-					return "*No tools found*";
-
-				case "TaskOutput":
-					// TaskOutput returns background task output
-					if (result?.trim()) {
-						if (result.includes("\n") && result.length > 100) {
-							return `\`\`\`\n${result}\n\`\`\``;
-						}
-						return result;
-					}
-					return "*No output yet*";
 
 				default:
 					// For unknown tools, use code block if result has multiple lines
