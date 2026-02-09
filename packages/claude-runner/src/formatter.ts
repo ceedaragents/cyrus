@@ -135,10 +135,9 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 				}
 
 				case "TaskUpdate": {
-					// TaskUpdate: { taskId, status?, subject? }
+					// TaskUpdate: { taskId, status? }
 					const taskId = toolInput.taskId || "";
 					const status = toolInput.status;
-					const subject = toolInput.subject;
 
 					let statusEmoji = "";
 					if (status === "completed") {
@@ -151,19 +150,12 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 						statusEmoji = "🗑️";
 					}
 
-					if (subject) {
-						return `${statusEmoji} **${subject}**`;
-					}
 					return `${statusEmoji} Task #${taskId}`;
 				}
 
 				case "TaskGet": {
-					// TaskGet: { taskId, subject? (enriched by AgentSessionManager) }
+					// TaskGet: { taskId }
 					const taskId = toolInput.taskId || "";
-					const subject = toolInput.subject;
-					if (subject) {
-						return `📋 **${subject}** (#${taskId})`;
-					}
 					return `📋 Task #${taskId}`;
 				}
 
@@ -290,12 +282,12 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 
 				case "ToolSearch":
 				case "↪ ToolSearch": {
+					// Show query directly, like how Bash shows command and Read shows file_path
 					const query = toolInput.query || "";
 					if (query.startsWith("select:")) {
-						const toolNameToLoad = query.replace("select:", "");
-						return `🔍 Loading \`${toolNameToLoad}\``;
+						return query.replace("select:", "");
 					}
-					return `🔍 Searching tools: \`${query}\``;
+					return query;
 				}
 
 				case "TaskOutput":

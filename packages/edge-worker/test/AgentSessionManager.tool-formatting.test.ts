@@ -326,17 +326,26 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		expect(result).toBe("⏳ **Fix bug in login page**");
 	});
 
-	test("formatToolParameter - TaskUpdate with status completed and subject", () => {
+	test("formatToolParameter - TaskUpdate with status completed", () => {
+		const result = formatter.formatToolParameter("TaskUpdate", {
+			taskId: "123",
+			status: "completed",
+		});
+
+		expect(result).toBe("✅ Task #123");
+	});
+
+	test("formatToolParameter - TaskUpdate with status completed and subject (ignores subject)", () => {
 		const result = formatter.formatToolParameter("TaskUpdate", {
 			taskId: "123",
 			status: "completed",
 			subject: "Authentication implemented",
 		});
 
-		expect(result).toBe("✅ **Authentication implemented**");
+		expect(result).toBe("✅ Task #123");
 	});
 
-	test("formatToolParameter - TaskUpdate with status in_progress without subject", () => {
+	test("formatToolParameter - TaskUpdate with status in_progress", () => {
 		const result = formatter.formatToolParameter("TaskUpdate", {
 			taskId: "456",
 			status: "in_progress",
@@ -354,18 +363,18 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		expect(result).toBe("🗑️ Task #789");
 	});
 
-	test("formatToolParameter - TaskGet with subject", () => {
+	test("formatToolParameter - TaskGet shows task number only", () => {
+		const result = formatter.formatToolParameter("TaskGet", {
+			taskId: "999",
+		});
+
+		expect(result).toBe("📋 Task #999");
+	});
+
+	test("formatToolParameter - TaskGet with subject (ignores subject)", () => {
 		const result = formatter.formatToolParameter("TaskGet", {
 			taskId: "999",
 			subject: "Fix authentication bug",
-		});
-
-		expect(result).toBe("📋 **Fix authentication bug** (#999)");
-	});
-
-	test("formatToolParameter - TaskGet without subject", () => {
-		const result = formatter.formatToolParameter("TaskGet", {
-			taskId: "999",
 		});
 
 		expect(result).toBe("📋 Task #999");
@@ -386,20 +395,20 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		expect(result).toBe("⏳ **Test task**");
 	});
 
-	test("formatToolParameter - TaskUpdate with arrow prefix and subject", () => {
+	test("formatToolParameter - TaskUpdate with arrow prefix", () => {
+		const result = formatter.formatToolParameter("↪ TaskUpdate", {
+			taskId: "111",
+			status: "completed",
+		});
+
+		expect(result).toBe("✅ Task #111");
+	});
+
+	test("formatToolParameter - TaskUpdate with arrow prefix and subject (ignores subject)", () => {
 		const result = formatter.formatToolParameter("↪ TaskUpdate", {
 			taskId: "111",
 			status: "completed",
 			subject: "Task done",
-		});
-
-		expect(result).toBe("✅ **Task done**");
-	});
-
-	test("formatToolParameter - TaskUpdate with arrow prefix without subject", () => {
-		const result = formatter.formatToolParameter("↪ TaskUpdate", {
-			taskId: "111",
-			status: "completed",
 		});
 
 		expect(result).toBe("✅ Task #111");
@@ -458,7 +467,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			max_results: 1,
 		});
 
-		expect(result).toBe("🔍 Loading `mcp__linear__get_issue`");
+		expect(result).toBe("mcp__linear__get_issue");
 	});
 
 	test("formatToolParameter - ToolSearch with keyword search", () => {
@@ -467,7 +476,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			max_results: 3,
 		});
 
-		expect(result).toBe("🔍 Searching tools: `+linear get_issue`");
+		expect(result).toBe("+linear get_issue");
 	});
 
 	test("formatToolParameter - ToolSearch with arrow prefix", () => {
@@ -476,7 +485,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			max_results: 1,
 		});
 
-		expect(result).toBe("🔍 Loading `mcp__slack__read_channel`");
+		expect(result).toBe("mcp__slack__read_channel");
 	});
 
 	test("formatToolResult - ToolSearch with results", () => {

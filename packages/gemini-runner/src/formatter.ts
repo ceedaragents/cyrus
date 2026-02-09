@@ -110,10 +110,9 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 				}
 
 				case "TaskUpdate": {
-					// TaskUpdate: { taskId, status?, subject? }
+					// TaskUpdate: { taskId, status? }
 					const taskId = getString(toolInput, "taskId") || "";
 					const status = getString(toolInput, "status");
-					const subject = getString(toolInput, "subject");
 
 					let statusEmoji = "";
 					if (status === "completed") {
@@ -126,19 +125,12 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 						statusEmoji = "🗑️";
 					}
 
-					if (subject) {
-						return `${statusEmoji} **${subject}**`;
-					}
 					return `${statusEmoji} Task #${taskId}`;
 				}
 
 				case "TaskGet": {
-					// TaskGet: { taskId, subject? (enriched by AgentSessionManager) }
+					// TaskGet: { taskId }
 					const taskId = getString(toolInput, "taskId") || "";
-					const subject = getString(toolInput, "subject");
-					if (subject) {
-						return `📋 **${subject}** (#${taskId})`;
-					}
 					return `📋 Task #${taskId}`;
 				}
 
@@ -271,12 +263,12 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 					return this.formatTaskParameter(toolName, toolInput);
 
 				case "ToolSearch": {
+					// Show query directly, like how Bash shows command and Read shows file_path
 					const query = getString(toolInput, "query") || "";
 					if (query.startsWith("select:")) {
-						const toolNameToLoad = query.replace("select:", "");
-						return `🔍 Loading \`${toolNameToLoad}\``;
+						return query.replace("select:", "");
 					}
-					return `🔍 Searching tools: \`${query}\``;
+					return query;
 				}
 
 				case "TaskOutput": {

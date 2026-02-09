@@ -382,13 +382,13 @@ describe("GeminiMessageFormatter", () => {
 				expect(result).toBe("⏳ **Implement feature X**");
 			});
 
-			it("should format TaskUpdate with status and subject", () => {
+			it("should format TaskUpdate with task number only", () => {
 				const result = formatter.formatToolParameter("TaskUpdate", {
 					taskId: "123",
 					status: "completed",
 					subject: "Feature completed",
 				});
-				expect(result).toBe("✅ **Feature completed**");
+				expect(result).toBe("✅ Task #123");
 			});
 
 			it("should format TaskUpdate without subject", () => {
@@ -399,12 +399,12 @@ describe("GeminiMessageFormatter", () => {
 				expect(result).toBe("🔄 Task #123");
 			});
 
-			it("should format TaskGet with subject", () => {
+			it("should format TaskGet with task number only", () => {
 				const result = formatter.formatToolParameter("TaskGet", {
 					taskId: "456",
 					subject: "Fix authentication bug",
 				});
-				expect(result).toBe("📋 **Fix authentication bug** (#456)");
+				expect(result).toBe("📋 Task #456");
 			});
 
 			it("should format TaskGet without subject", () => {
@@ -452,20 +452,20 @@ describe("GeminiMessageFormatter", () => {
 		});
 
 		describe("ToolSearch", () => {
-			it("should format ToolSearch with select query", () => {
+			it("should format ToolSearch with select query as tool name", () => {
 				const result = formatter.formatToolParameter("ToolSearch", {
 					query: "select:mcp__linear__get_issue",
 					max_results: 1,
 				});
-				expect(result).toBe("🔍 Loading `mcp__linear__get_issue`");
+				expect(result).toBe("mcp__linear__get_issue");
 			});
 
-			it("should format ToolSearch with keyword search", () => {
+			it("should format ToolSearch with keyword search as query", () => {
 				const result = formatter.formatToolParameter("ToolSearch", {
 					query: "+linear get_issue",
 					max_results: 3,
 				});
-				expect(result).toBe("🔍 Searching tools: `+linear get_issue`");
+				expect(result).toBe("+linear get_issue");
 			});
 
 			it("should format ToolSearch result with results", () => {
