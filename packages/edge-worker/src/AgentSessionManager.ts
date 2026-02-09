@@ -94,6 +94,13 @@ export class AgentSessionManager extends EventEmitter {
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
 	private taskSubjectsByTaskId: Map<string, string> = new Map(); // Maps task ID to task subject for enriching TaskUpdate/TaskGet
+	private pendingTaskBatch: Map<
+		string,
+		{
+			tasks: Array<{ toolName: string; toolInput: any }>;
+			timer: ReturnType<typeof setTimeout>;
+		}
+	> = new Map(); // Batches rapid-fire TaskCreate/TaskUpdate calls per session
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
@@ -1173,6 +1180,35 @@ export class AgentSessionManager extends EventEmitter {
 								}
 							}
 
+							// Batch TaskCreate and TaskUpdate calls - they often arrive in rapid succession
+							if (toolName === "TaskCreate" || toolName === "TaskUpdate") {
+								const batch = this.pendingTaskBatch.get(
+									linearAgentActivitySessionId,
+								);
+								const taskEntry = { toolName, toolInput: { ...toolInput } };
+
+								if (batch) {
+									// Add to existing batch, reset timer
+									clearTimeout(batch.timer);
+									batch.tasks.push(taskEntry);
+									batch.timer = setTimeout(() => {
+										this.flushTaskBatch(linearAgentActivitySessionId, session);
+									}, 300);
+								} else {
+									// Start new batch with debounce timer
+									const timer = setTimeout(() => {
+										this.flushTaskBatch(linearAgentActivitySessionId, session);
+									}, 300);
+									this.pendingTaskBatch.set(linearAgentActivitySessionId, {
+										tasks: [taskEntry],
+										timer,
+									});
+								}
+								// Don't post individual activity - batch will handle it
+								return;
+							}
+
+							// TaskGet and TaskList are posted immediately (not batched)
 							const formattedTask = formatter.formatTaskParameter(
 								toolName,
 								toolInput,
@@ -1342,6 +1378,66 @@ export class AgentSessionManager extends EventEmitter {
 				`[AgentSessionManager] Failed to sync entry to Linear:`,
 				error,
 			);
+		}
+	}
+
+	/**
+	 * Flush pending task batch for a session - posts consolidated checklist activity
+	 */
+	private async flushTaskBatch(
+		linearAgentActivitySessionId: string,
+		session: CyrusAgentSession,
+	): Promise<void> {
+		const batch = this.pendingTaskBatch.get(linearAgentActivitySessionId);
+		if (!batch || batch.tasks.length === 0) return;
+
+		// Clear the batch immediately to prevent double-flush
+		this.pendingTaskBatch.delete(linearAgentActivitySessionId);
+
+		try {
+			const formatter = session.agentRunner?.getFormatter();
+			if (!formatter) {
+				console.warn(
+					`[AgentSessionManager] No formatter available for task batch flush`,
+				);
+				return;
+			}
+
+			const formattedBatch = formatter.formatTaskBatch(batch.tasks);
+
+			// Check if current subroutine has suppressThoughtPosting enabled
+			const currentSubroutine =
+				this.procedureAnalyzer?.getCurrentSubroutine(session);
+			if (currentSubroutine?.suppressThoughtPosting) {
+				console.log(
+					`[AgentSessionManager] Suppressing task batch posting for subroutine "${currentSubroutine.name}"`,
+				);
+				return;
+			}
+
+			const activityInput: AgentActivityCreateInput = {
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: formattedBatch,
+				},
+			};
+
+			const result = await this.issueTracker.createAgentActivity(activityInput);
+
+			if (result.success && result.agentActivity) {
+				const agentActivity = await result.agentActivity;
+				console.log(
+					`[AgentSessionManager] Created batched task activity ${agentActivity.id} with ${batch.tasks.length} tasks`,
+				);
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to create batched task activity:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(`[AgentSessionManager] Failed to flush task batch:`, error);
 		}
 	}
 

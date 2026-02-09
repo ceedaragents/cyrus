@@ -455,4 +455,80 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		expect(result).toContain("```");
 		expect(result).toContain(taskDetails);
 	});
+
+	// Task batch formatting tests
+	test("formatTaskBatch - batch of TaskCreate calls", () => {
+		const result = formatter.formatTaskBatch([
+			{ toolName: "TaskCreate", toolInput: { subject: "Implement feature A" } },
+			{
+				toolName: "TaskCreate",
+				toolInput: { subject: "Write tests for feature A" },
+			},
+			{
+				toolName: "TaskCreate",
+				toolInput: { subject: "Update documentation" },
+			},
+		]);
+
+		expect(result).toBe(
+			"\u23f3 Implement feature A\n\u23f3 Write tests for feature A\n\u23f3 Update documentation",
+		);
+	});
+
+	test("formatTaskBatch - batch of TaskUpdate calls with mixed statuses", () => {
+		const result = formatter.formatTaskBatch([
+			{
+				toolName: "TaskUpdate",
+				toolInput: { taskId: "1", status: "completed", subject: "Feature A" },
+			},
+			{
+				toolName: "TaskUpdate",
+				toolInput: { taskId: "2", status: "in_progress", subject: "Feature B" },
+			},
+			{
+				toolName: "TaskUpdate",
+				toolInput: { taskId: "3", status: "pending" },
+			},
+		]);
+
+		expect(result).toBe(
+			"\u2705 Feature A\n\ud83d\udd04 Feature B\n\u23f3 Task #3",
+		);
+	});
+
+	test("formatTaskBatch - mixed TaskCreate and TaskUpdate", () => {
+		const result = formatter.formatTaskBatch([
+			{ toolName: "TaskCreate", toolInput: { subject: "New task" } },
+			{
+				toolName: "TaskUpdate",
+				toolInput: { taskId: "1", status: "completed", subject: "Done task" },
+			},
+		]);
+
+		expect(result).toBe("\u23f3 New task\n\u2705 Done task");
+	});
+
+	test("formatTaskBatch - empty batch returns empty string", () => {
+		const result = formatter.formatTaskBatch([]);
+		expect(result).toBe("");
+	});
+
+	test("formatTaskBatch - single TaskCreate", () => {
+		const result = formatter.formatTaskBatch([
+			{ toolName: "TaskCreate", toolInput: { subject: "Solo task" } },
+		]);
+
+		expect(result).toBe("\u23f3 Solo task");
+	});
+
+	test("formatTaskBatch - TaskUpdate with deleted status", () => {
+		const result = formatter.formatTaskBatch([
+			{
+				toolName: "TaskUpdate",
+				toolInput: { taskId: "5", status: "deleted", subject: "Removed task" },
+			},
+		]);
+
+		expect(result).toBe("\ud83d\uddd1\ufe0f Removed task");
+	});
 });

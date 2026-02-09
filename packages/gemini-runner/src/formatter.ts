@@ -187,6 +187,45 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 	}
 
 	/**
+	 * Format a batch of Task tool calls into a consolidated checklist
+	 */
+	formatTaskBatch(
+		tasks: Array<{ toolName: string; toolInput: FormatterToolInput }>,
+	): string {
+		if (tasks.length === 0) return "";
+
+		const lines: string[] = [];
+		for (const task of tasks) {
+			const { toolName, toolInput } = task;
+			switch (toolName) {
+				case "TaskCreate": {
+					const subject = getString(toolInput, "subject") || "";
+					lines.push(`⏳ ${subject}`);
+					break;
+				}
+				case "TaskUpdate": {
+					const subject = getString(toolInput, "subject") || "";
+					const status = getString(toolInput, "status");
+					let statusEmoji = "⏳";
+					if (status === "completed") statusEmoji = "✅";
+					else if (status === "in_progress") statusEmoji = "🔄";
+					else if (status === "deleted") statusEmoji = "🗑️";
+					const label =
+						subject || `Task #${getString(toolInput, "taskId") || ""}`;
+					lines.push(`${statusEmoji} ${label}`);
+					break;
+				}
+				default: {
+					// For TaskGet, TaskList, etc. - format individually
+					lines.push(this.formatTaskParameter(toolName, toolInput));
+					break;
+				}
+			}
+		}
+		return lines.join("\n");
+	}
+
+	/**
 	 * Format tool input for display in Linear agent activities
 	 * Converts raw tool inputs into user-friendly parameter strings
 	 */

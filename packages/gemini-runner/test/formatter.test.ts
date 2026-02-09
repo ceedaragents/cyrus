@@ -481,4 +481,56 @@ describe("GeminiMessageFormatter", () => {
 			});
 		});
 	});
+
+	describe("formatTaskBatch", () => {
+		it("should format batch of TaskCreate calls as checklist", () => {
+			const result = formatter.formatTaskBatch([
+				{
+					toolName: "TaskCreate",
+					toolInput: { subject: "Implement feature A" },
+				},
+				{ toolName: "TaskCreate", toolInput: { subject: "Write tests" } },
+				{ toolName: "TaskCreate", toolInput: { subject: "Update docs" } },
+			]);
+
+			expect(result).toBe(
+				"\u23f3 Implement feature A\n\u23f3 Write tests\n\u23f3 Update docs",
+			);
+		});
+
+		it("should format batch of TaskUpdate calls with mixed statuses", () => {
+			const result = formatter.formatTaskBatch([
+				{
+					toolName: "TaskUpdate",
+					toolInput: { taskId: "1", status: "completed", subject: "Feature A" },
+				},
+				{
+					toolName: "TaskUpdate",
+					toolInput: {
+						taskId: "2",
+						status: "in_progress",
+						subject: "Feature B",
+					},
+				},
+			]);
+
+			expect(result).toBe("\u2705 Feature A\n\ud83d\udd04 Feature B");
+		});
+
+		it("should return empty string for empty batch", () => {
+			const result = formatter.formatTaskBatch([]);
+			expect(result).toBe("");
+		});
+
+		it("should handle TaskUpdate without subject", () => {
+			const result = formatter.formatTaskBatch([
+				{
+					toolName: "TaskUpdate",
+					toolInput: { taskId: "3", status: "pending" },
+				},
+			]);
+
+			expect(result).toBe("\u23f3 Task #3");
+		});
+	});
 });

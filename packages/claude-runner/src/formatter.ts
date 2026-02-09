@@ -23,6 +23,13 @@ export interface IMessageFormatter {
 	formatTaskParameter(toolName: string, toolInput: any): string;
 
 	/**
+	 * Format a batch of Task tool calls into a consolidated checklist
+	 * @param tasks - Array of { toolName, toolInput } objects to format as a batch
+	 * @returns Formatted checklist string with status emojis
+	 */
+	formatTaskBatch(tasks: Array<{ toolName: string; toolInput: any }>): string;
+
+	/**
 	 * Format tool input for display in Linear agent activities
 	 * Converts raw tool inputs into user-friendly parameter strings
 	 * @param toolName - The name of the tool (e.g., "Bash", "Read", "Grep")
@@ -206,6 +213,42 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 			);
 			return JSON.stringify(toolInput);
 		}
+	}
+
+	/**
+	 * Format a batch of Task tool calls into a consolidated checklist
+	 */
+	formatTaskBatch(tasks: Array<{ toolName: string; toolInput: any }>): string {
+		if (tasks.length === 0) return "";
+
+		const lines: string[] = [];
+		for (const task of tasks) {
+			const { toolName, toolInput } = task;
+			switch (toolName) {
+				case "TaskCreate": {
+					const subject = toolInput.subject || "";
+					lines.push(`⏳ ${subject}`);
+					break;
+				}
+				case "TaskUpdate": {
+					const subject = toolInput.subject || "";
+					const status = toolInput.status;
+					let statusEmoji = "⏳";
+					if (status === "completed") statusEmoji = "✅";
+					else if (status === "in_progress") statusEmoji = "🔄";
+					else if (status === "deleted") statusEmoji = "🗑️";
+					const label = subject || `Task #${toolInput.taskId || ""}`;
+					lines.push(`${statusEmoji} ${label}`);
+					break;
+				}
+				default: {
+					// For TaskGet, TaskList, etc. - format individually
+					lines.push(this.formatTaskParameter(toolName, toolInput));
+					break;
+				}
+			}
+		}
+		return lines.join("\n");
 	}
 
 	/**
