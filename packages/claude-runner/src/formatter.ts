@@ -8,10 +8,19 @@
 export interface IMessageFormatter {
 	/**
 	 * Format TodoWrite tool parameter as a nice checklist
+	 * @deprecated TodoWrite has been replaced by Task tools (TaskCreate, TaskUpdate, etc.)
 	 * @param jsonContent - The raw JSON content from the TodoWrite tool
 	 * @returns Formatted checklist string with status emojis
 	 */
 	formatTodoWriteParameter(jsonContent: string): string;
+
+	/**
+	 * Format Task tool parameter (TaskCreate, TaskUpdate, TaskList, TaskGet)
+	 * @param toolName - The specific Task tool name (e.g., "TaskCreate", "TaskUpdate")
+	 * @param toolInput - The raw tool input object
+	 * @returns Formatted task information string
+	 */
+	formatTaskParameter(toolName: string, toolInput: any): string;
 
 	/**
 	 * Format tool input for display in Linear agent activities
@@ -63,6 +72,7 @@ export interface IMessageFormatter {
 export class ClaudeMessageFormatter implements IMessageFormatter {
 	/**
 	 * Format TodoWrite tool parameter as a nice checklist
+	 * @deprecated TodoWrite has been replaced by Task tools
 	 */
 	formatTodoWriteParameter(jsonContent: string): string {
 		try {
@@ -104,6 +114,97 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 				error,
 			);
 			return jsonContent;
+		}
+	}
+
+	/**
+	 * Format Task tool parameter (TaskCreate, TaskUpdate, TaskList, TaskGet)
+	 */
+	formatTaskParameter(toolName: string, toolInput: any): string {
+		try {
+			// If input is already a string, return it
+			if (typeof toolInput === "string") {
+				return toolInput;
+			}
+
+			switch (toolName) {
+				case "TaskCreate": {
+					// TaskCreate: { subject, description, activeForm? }
+					const subject = toolInput.subject || "";
+					const description = toolInput.description || "";
+					const activeForm = toolInput.activeForm;
+
+					let formatted = subject;
+					if (description && description !== subject) {
+						// Add description if it's different from subject
+						formatted += `\n${description}`;
+					}
+					if (activeForm) {
+						formatted += `\n_Active: ${activeForm}_`;
+					}
+					return formatted;
+				}
+
+				case "TaskUpdate": {
+					// TaskUpdate: { taskId, status?, subject?, description?, activeForm? }
+					const taskId = toolInput.taskId || "";
+					const status = toolInput.status;
+					const subject = toolInput.subject;
+					const description = toolInput.description;
+
+					let formatted = `Task #${taskId}`;
+
+					if (status) {
+						let statusEmoji = "";
+						if (status === "completed") {
+							statusEmoji = " ✅";
+						} else if (status === "in_progress") {
+							statusEmoji = " 🔄";
+						} else if (status === "pending") {
+							statusEmoji = " ⏳";
+						} else if (status === "deleted") {
+							statusEmoji = " 🗑️";
+						}
+						formatted += statusEmoji;
+					}
+
+					if (subject) {
+						formatted += `\n${subject}`;
+					}
+					if (description && description !== subject) {
+						formatted += `\n${description}`;
+					}
+
+					return formatted;
+				}
+
+				case "TaskGet": {
+					// TaskGet: { taskId }
+					const taskId = toolInput.taskId || "";
+					return `Task #${taskId}`;
+				}
+
+				case "TaskList": {
+					// TaskList: no parameters typically
+					return "List all tasks";
+				}
+
+				default:
+					// Fallback for unknown Task tool types
+					if (toolInput.subject) {
+						return toolInput.subject;
+					}
+					if (toolInput.description) {
+						return toolInput.description;
+					}
+					return JSON.stringify(toolInput);
+			}
+		} catch (error) {
+			console.error(
+				"[ClaudeMessageFormatter] Failed to format Task parameter:",
+				error,
+			);
+			return JSON.stringify(toolInput);
 		}
 	}
 
@@ -185,10 +286,25 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 
 				case "Task":
 				case "↪ Task":
+					// Legacy Task tool - deprecated, use specific Task tools instead
 					if (toolInput.description) {
 						return toolInput.description;
 					}
 					break;
+
+				case "TaskCreate":
+				case "↪ TaskCreate":
+				case "TaskUpdate":
+				case "↪ TaskUpdate":
+				case "TaskGet":
+				case "↪ TaskGet":
+				case "TaskList":
+				case "↪ TaskList":
+					// Delegate to formatTaskParameter for Task tools
+					return this.formatTaskParameter(
+						toolName.replace("↪ ", ""),
+						toolInput,
+					);
 
 				case "WebFetch":
 				case "↪ WebFetch":
@@ -441,7 +557,7 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 
 				case "Task":
 				case "↪ Task":
-					// Task results can be complex - keep as is but in code block if multiline
+					// Legacy Task tool - deprecated
 					if (result?.trim()) {
 						if (result.includes("\n")) {
 							return `\`\`\`\n${result}\n\`\`\``;
@@ -449,6 +565,41 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 						return result;
 					}
 					return "*Task completed*";
+
+				case "TaskCreate":
+				case "↪ TaskCreate":
+					// TaskCreate result typically contains task ID
+					if (result?.trim()) {
+						return `*Task created*\n${result}`;
+					}
+					return "*Task created*";
+
+				case "TaskUpdate":
+				case "↪ TaskUpdate":
+					// TaskUpdate result confirmation
+					if (result?.trim()) {
+						return result;
+					}
+					return "*Task updated*";
+
+				case "TaskGet":
+				case "↪ TaskGet":
+					// TaskGet returns task details - format as code block if multiline
+					if (result?.trim()) {
+						if (result.includes("\n")) {
+							return `\`\`\`\n${result}\n\`\`\``;
+						}
+						return result;
+					}
+					return "*No task found*";
+
+				case "TaskList":
+				case "↪ TaskList":
+					// TaskList returns list of tasks - format as code block
+					if (result?.trim()) {
+						return `\`\`\`\n${result}\n\`\`\``;
+					}
+					return "*No tasks*";
 
 				case "WebFetch":
 				case "↪ WebFetch":
