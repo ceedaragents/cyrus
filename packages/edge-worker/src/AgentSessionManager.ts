@@ -1016,6 +1016,7 @@ export class AgentSessionManager extends EventEmitter {
 
 							// Skip creating activity for TodoWrite/write_todos results since they already created a non-ephemeral thought
 							// Skip Task tool results (TaskCreate, TaskUpdate, etc.) since they already created a non-ephemeral thought
+							// Skip ToolSearch results since they already created a non-ephemeral thought
 							// Skip AskUserQuestion results since it's custom handled via Linear's select signal elicitation
 							if (
 								toolName === "TodoWrite" ||
@@ -1029,6 +1030,8 @@ export class AgentSessionManager extends EventEmitter {
 								toolName === "↪ TaskList" ||
 								toolName === "TaskGet" ||
 								toolName === "↪ TaskGet" ||
+								toolName === "ToolSearch" ||
+								toolName === "↪ ToolSearch" ||
 								toolName === "AskUserQuestion" ||
 								toolName === "↪ AskUserQuestion"
 							) {
@@ -1152,6 +1155,28 @@ export class AgentSessionManager extends EventEmitter {
 								body: formattedTask,
 							};
 							// Task tools are not ephemeral
+							ephemeral = false;
+						} else if (toolName === "ToolSearch") {
+							// Get formatter from runner
+							const formatter = session.agentRunner?.getFormatter();
+							if (!formatter) {
+								console.warn(
+									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
+								);
+								return;
+							}
+
+							// Special handling for ToolSearch - format as thought instead of action
+							const toolInput = entry.metadata.toolInput || entry.content;
+							const formattedParam = formatter.formatToolParameter(
+								toolName,
+								toolInput,
+							);
+							content = {
+								type: "thought",
+								body: formattedParam,
+							};
+							// ToolSearch is not ephemeral
 							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Get formatter from runner
