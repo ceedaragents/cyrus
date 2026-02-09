@@ -65,7 +65,7 @@ describe("TeamRunner", () => {
 			const config = makeConfig();
 			const runner = new TeamRunner(config);
 
-			expect(runner.supportsStreamingInput).toBe(false);
+			expect(runner.supportsStreamingInput).toBe(true);
 			expect(runner.isRunning()).toBe(false);
 			expect(runner.getMessages()).toEqual([]);
 		});
@@ -172,9 +172,42 @@ describe("TeamRunner", () => {
 	});
 
 	describe("supportsStreamingInput", () => {
-		it("should be false", () => {
+		it("should be true", () => {
 			const runner = new TeamRunner(makeConfig());
-			expect(runner.supportsStreamingInput).toBe(false);
+			expect(runner.supportsStreamingInput).toBe(true);
+		});
+	});
+
+	describe("startStreaming", () => {
+		it("should throw if already running", async () => {
+			const runner = new TeamRunner(makeConfig());
+
+			// Manually set the session as running to simulate an active session
+			(runner as any).sessionInfo = {
+				sessionId: "test-session",
+				startedAt: new Date(),
+				isRunning: true,
+			};
+
+			await expect(runner.startStreaming("test prompt")).rejects.toThrow(
+				"Team session already running",
+			);
+		});
+	});
+
+	describe("addStreamMessage", () => {
+		it("should throw when not in streaming mode", () => {
+			const runner = new TeamRunner(makeConfig());
+			expect(() => runner.addStreamMessage("test")).toThrow(
+				"Cannot add stream message when not in streaming mode",
+			);
+		});
+	});
+
+	describe("completeStream", () => {
+		it("should not throw when no streaming prompt exists", () => {
+			const runner = new TeamRunner(makeConfig());
+			expect(() => runner.completeStream()).not.toThrow();
 		});
 	});
 

@@ -5,12 +5,13 @@ import {
 	type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { ClaudeMessageFormatter } from "cyrus-claude-runner";
-import type {
-	AgentMessage,
-	AgentRunnerConfig,
-	AgentSessionInfo,
-	IAgentRunner,
-	IMessageFormatter,
+import {
+	type AgentMessage,
+	type AgentRunnerConfig,
+	type AgentSessionInfo,
+	type IAgentRunner,
+	type IMessageFormatter,
+	StreamingPrompt,
 } from "cyrus-core";
 import type { LinearActivityBridge } from "./LinearActivityBridge.js";
 import type { TeamTask } from "./types.js";
@@ -27,13 +28,14 @@ export interface TeamRunnerConfig extends AgentRunnerConfig {
 }
 
 export class TeamRunner extends EventEmitter implements IAgentRunner {
-	readonly supportsStreamingInput = false;
+	readonly supportsStreamingInput = true;
 
 	private config: TeamRunnerConfig;
 	private abortController: AbortController | null = null;
 	private sessionInfo: AgentSessionInfo | null = null;
 	private messages: SDKMessage[] = [];
 	private formatter: IMessageFormatter;
+	private streamingPrompt: StreamingPrompt | null = null;
 
 	constructor(config: TeamRunnerConfig) {
 		super();
@@ -47,6 +49,45 @@ export class TeamRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	async start(prompt: string): Promise<AgentSessionInfo> {
+		const teamLeadPrompt = this.buildTeamLeadPrompt(prompt);
+		return this.runSession(teamLeadPrompt);
+	}
+
+	async startStreaming(initialPrompt?: string): Promise<AgentSessionInfo> {
+		const teamLeadPrompt = initialPrompt
+			? this.buildTeamLeadPrompt(initialPrompt)
+			: undefined;
+		return this.runSession(teamLeadPrompt);
+	}
+
+	addStreamMessage(content: string): void {
+		if (!this.streamingPrompt) {
+			throw new Error("Cannot add stream message when not in streaming mode");
+		}
+		this.streamingPrompt.addMessage(content);
+	}
+
+	completeStream(): void {
+		if (this.streamingPrompt) {
+			this.streamingPrompt.complete();
+		}
+	}
+
+	stop(): void {
+		if (this.streamingPrompt) {
+			this.streamingPrompt.complete();
+			this.streamingPrompt = null;
+		}
+		if (this.abortController) {
+			this.abortController.abort();
+			this.abortController = null;
+		}
+		if (this.sessionInfo) {
+			this.sessionInfo.isRunning = false;
+		}
+	}
+
+	private async runSession(initialPrompt?: string): Promise<AgentSessionInfo> {
 		if (this.isRunning()) {
 			throw new Error("Team session already running");
 		}
@@ -67,11 +108,12 @@ export class TeamRunner extends EventEmitter implements IAgentRunner {
 			`[TeamRunner] Classification: ${this.config.classification}, Tasks: ${this.config.tasks.length}`,
 		);
 
-		const teamLeadPrompt = this.buildTeamLeadPrompt(prompt);
+		console.log("[TeamRunner] Starting query with streaming prompt");
+		this.streamingPrompt = new StreamingPrompt(null, initialPrompt);
 
 		try {
 			const queryOptions = {
-				prompt: teamLeadPrompt,
+				prompt: this.streamingPrompt,
 				options: {
 					model: this.config.model || "opus",
 					fallbackModel: this.config.fallbackModel || "sonnet",
@@ -158,6 +200,9 @@ export class TeamRunner extends EventEmitter implements IAgentRunner {
 					console.log(
 						`[TeamRunner] Session ID assigned: ${message.session_id}`,
 					);
+					if (this.streamingPrompt) {
+						this.streamingPrompt.updateSessionId(message.session_id);
+					}
 				}
 
 				this.messages.push(message);
@@ -170,6 +215,13 @@ export class TeamRunner extends EventEmitter implements IAgentRunner {
 				// Defer result message emission until after loop completes to avoid race conditions
 				if (message.type === "result") {
 					pendingResultMessage = message;
+					// Complete streaming prompt immediately so it stops accepting input
+					if (this.streamingPrompt) {
+						console.log(
+							"[TeamRunner] Got result message, completing streaming prompt",
+						);
+						this.streamingPrompt.complete();
+					}
 				} else {
 					this.emit("message", message);
 				}
@@ -214,20 +266,14 @@ export class TeamRunner extends EventEmitter implements IAgentRunner {
 				);
 			}
 		} finally {
+			if (this.streamingPrompt) {
+				this.streamingPrompt.complete();
+				this.streamingPrompt = null;
+			}
 			this.abortController = null;
 		}
 
 		return this.sessionInfo;
-	}
-
-	stop(): void {
-		if (this.abortController) {
-			this.abortController.abort();
-			this.abortController = null;
-		}
-		if (this.sessionInfo) {
-			this.sessionInfo.isRunning = false;
-		}
 	}
 
 	isRunning(): boolean {
