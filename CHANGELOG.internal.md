@@ -5,6 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Changed
+- Improved Task tool formatting with full-state checklist rendering: TaskCreate/TaskUpdate calls are debounce-batched (300ms) and each flush renders the **complete** session task list (via `sessionTaskStates` map) rather than just the current batch delta. This ensures each posted activity shows the full, up-to-date picture of all tasks and their statuses. Added `formatTaskBatch()` to IMessageFormatter interface and both formatters. TaskCreate bolds subjects, TaskUpdate/TaskGet show cached task subjects via `taskSubjectsByTaskId`. ([CYPACK-794](https://linear.app/ceedar/issue/CYPACK-794), [#845](https://github.com/ceedaragents/cyrus/pull/845))
 - Refactored formatting strategy from TodoWrite to Task tools (TaskCreate, TaskUpdate, TaskList, TaskGet). Added `formatTaskParameter()` method to IMessageFormatter interface and updated AgentSessionManager to handle Task tools as thought activities. ([CYPACK-788](https://linear.app/ceedar/issue/CYPACK-788), [#837](https://github.com/ceedaragents/cyrus/pull/837))
 
 ### Added

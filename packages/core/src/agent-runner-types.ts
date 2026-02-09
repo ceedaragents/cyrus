@@ -129,6 +129,13 @@ export interface IMessageFormatter {
 	 * Format Task tool parameter (TaskCreate, TaskUpdate, TaskList, TaskGet)
 	 */
 	formatTaskParameter(toolName: string, toolInput: any): string;
+	/**
+	 * Format a batch of Task tool calls into a consolidated checklist
+	 * Used when multiple TaskCreate or TaskUpdate calls arrive in rapid succession
+	 * @param tasks - Array of { toolName, toolInput } objects to format as a batch
+	 * @returns Formatted checklist string with status emojis
+	 */
+	formatTaskBatch(tasks: Array<{ toolName: string; toolInput: any }>): string;
 	formatToolParameter(toolName: string, toolInput: any): string;
 	formatToolActionName(
 		toolName: string,
