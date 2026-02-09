@@ -307,16 +307,14 @@ describe("AgentSessionManager - Tool Formatting", () => {
 	});
 
 	// Task tool formatting tests
-	test("formatToolParameter - TaskCreate with subject and description", () => {
+	test("formatToolParameter - TaskCreate shows concise pending checklist item", () => {
 		const result = formatter.formatToolParameter("TaskCreate", {
 			subject: "Implement user authentication",
 			description: "Add OAuth login flow with Google provider",
 			activeForm: "Implementing user authentication",
 		});
 
-		expect(result).toContain("Implement user authentication");
-		expect(result).toContain("Add OAuth login flow with Google provider");
-		expect(result).toContain("_Active: Implementing user authentication_");
+		expect(result).toBe("⏳ **Implement user authentication**");
 	});
 
 	test("formatToolParameter - TaskCreate with only subject", () => {
@@ -325,20 +323,26 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			description: "Fix bug in login page",
 		});
 
-		// Should not repeat description if it matches subject
-		expect(result).toBe("Fix bug in login page");
+		expect(result).toBe("⏳ **Fix bug in login page**");
 	});
 
 	test("formatToolParameter - TaskUpdate with status completed", () => {
 		const result = formatter.formatToolParameter("TaskUpdate", {
 			taskId: "123",
 			status: "completed",
+		});
+
+		expect(result).toBe("✅ Task #123");
+	});
+
+	test("formatToolParameter - TaskUpdate with status completed and subject", () => {
+		const result = formatter.formatToolParameter("TaskUpdate", {
+			taskId: "123",
+			status: "completed",
 			subject: "Authentication implemented",
 		});
 
-		expect(result).toContain("Task #123");
-		expect(result).toContain("✅");
-		expect(result).toContain("Authentication implemented");
+		expect(result).toBe("✅ Task #123 — Authentication implemented");
 	});
 
 	test("formatToolParameter - TaskUpdate with status in_progress", () => {
@@ -347,8 +351,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			status: "in_progress",
 		});
 
-		expect(result).toContain("Task #456");
-		expect(result).toContain("🔄");
+		expect(result).toBe("🔄 Task #456");
 	});
 
 	test("formatToolParameter - TaskUpdate with status deleted", () => {
@@ -357,22 +360,30 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			status: "deleted",
 		});
 
-		expect(result).toContain("Task #789");
-		expect(result).toContain("🗑️");
+		expect(result).toBe("🗑️ Task #789");
 	});
 
-	test("formatToolParameter - TaskGet with taskId", () => {
+	test("formatToolParameter - TaskGet shows task number only", () => {
 		const result = formatter.formatToolParameter("TaskGet", {
 			taskId: "999",
 		});
 
-		expect(result).toBe("Task #999");
+		expect(result).toBe("📋 Task #999");
+	});
+
+	test("formatToolParameter - TaskGet with subject", () => {
+		const result = formatter.formatToolParameter("TaskGet", {
+			taskId: "999",
+			subject: "Fix authentication bug",
+		});
+
+		expect(result).toBe("📋 Task #999 — Fix authentication bug");
 	});
 
 	test("formatToolParameter - TaskList", () => {
 		const result = formatter.formatToolParameter("TaskList", {});
 
-		expect(result).toBe("List all tasks");
+		expect(result).toBe("📋 List all tasks");
 	});
 
 	test("formatToolParameter - TaskCreate delegates to formatTaskParameter", () => {
@@ -381,8 +392,7 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			description: "Test description",
 		});
 
-		expect(result).toContain("Test task");
-		expect(result).toContain("Test description");
+		expect(result).toBe("⏳ **Test task**");
 	});
 
 	test("formatToolParameter - TaskUpdate with arrow prefix", () => {
@@ -391,8 +401,17 @@ describe("AgentSessionManager - Tool Formatting", () => {
 			status: "completed",
 		});
 
-		expect(result).toContain("Task #111");
-		expect(result).toContain("✅");
+		expect(result).toBe("✅ Task #111");
+	});
+
+	test("formatToolParameter - TaskUpdate with arrow prefix and subject", () => {
+		const result = formatter.formatToolParameter("↪ TaskUpdate", {
+			taskId: "111",
+			status: "completed",
+			subject: "Task done",
+		});
+
+		expect(result).toBe("✅ Task #111 — Task done");
 	});
 
 	test("formatToolResult - TaskCreate success", () => {
@@ -439,5 +458,121 @@ describe("AgentSessionManager - Tool Formatting", () => {
 
 		expect(result).toContain("```");
 		expect(result).toContain(taskDetails);
+	});
+
+	// ToolSearch formatting tests
+	test("formatToolParameter - ToolSearch with select query", () => {
+		const result = formatter.formatToolParameter("ToolSearch", {
+			query: "select:mcp__linear__get_issue",
+			max_results: 1,
+		});
+
+		expect(result).toBe("mcp__linear__get_issue");
+	});
+
+	test("formatToolParameter - ToolSearch with keyword search", () => {
+		const result = formatter.formatToolParameter("ToolSearch", {
+			query: "+linear get_issue",
+			max_results: 3,
+		});
+
+		expect(result).toBe("+linear get_issue");
+	});
+
+	test("formatToolParameter - ToolSearch with arrow prefix", () => {
+		const result = formatter.formatToolParameter("↪ ToolSearch", {
+			query: "select:mcp__slack__read_channel",
+			max_results: 1,
+		});
+
+		expect(result).toBe("mcp__slack__read_channel");
+	});
+
+	test("formatToolResult - ToolSearch with results", () => {
+		const result = formatter.formatToolResult(
+			"ToolSearch",
+			{ query: "select:mcp__linear__get_issue" },
+			"Found tool: mcp__linear__get_issue",
+			false,
+		);
+
+		expect(result).toBe("*Found tool: mcp__linear__get_issue*");
+	});
+
+	test("formatToolResult - ToolSearch with no results", () => {
+		const result = formatter.formatToolResult(
+			"ToolSearch",
+			{ query: "nonexistent" },
+			"",
+			false,
+		);
+
+		expect(result).toBe("*No tools found*");
+	});
+
+	// TaskOutput formatting tests
+	test("formatToolParameter - TaskOutput blocking", () => {
+		const result = formatter.formatToolParameter("TaskOutput", {
+			task_id: "b6e6efb",
+			block: true,
+			timeout: 120000,
+		});
+
+		expect(result).toBe("📤 Waiting for task b6e6efb");
+	});
+
+	test("formatToolParameter - TaskOutput non-blocking", () => {
+		const result = formatter.formatToolParameter("TaskOutput", {
+			task_id: "abc123",
+			block: false,
+			timeout: 30000,
+		});
+
+		expect(result).toBe("📤 Checking task abc123");
+	});
+
+	test("formatToolParameter - TaskOutput with arrow prefix", () => {
+		const result = formatter.formatToolParameter("↪ TaskOutput", {
+			task_id: "def456",
+			block: true,
+			timeout: 60000,
+		});
+
+		expect(result).toBe("📤 Waiting for task def456");
+	});
+
+	test("formatToolResult - TaskOutput with short result", () => {
+		const result = formatter.formatToolResult(
+			"TaskOutput",
+			{ task_id: "abc123" },
+			"Task completed successfully",
+			false,
+		);
+
+		expect(result).toBe("Task completed successfully");
+	});
+
+	test("formatToolResult - TaskOutput with long multiline result", () => {
+		const longResult = `Line 1\nLine 2\nLine 3\n${"More output ".repeat(20)}`;
+		const result = formatter.formatToolResult(
+			"TaskOutput",
+			{ task_id: "abc123" },
+			longResult,
+			false,
+		);
+
+		expect(result).toContain("```");
+		expect(result).toContain(longResult);
+	});
+
+	test("formatToolResult - TaskOutput with no output", () => {
+		const result = formatter.formatToolResult(
+			"TaskOutput",
+			{ task_id: "abc123" },
+			"",
+			false,
+		);
+
+		expect(result).toBe("*No output yet*");
 	});
 });

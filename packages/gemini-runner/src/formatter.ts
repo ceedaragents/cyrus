@@ -121,41 +121,35 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 				}
 
 				case "TaskUpdate": {
-					// TaskUpdate: { taskId, status?, subject?, description?, activeForm? }
+					// TaskUpdate: { taskId, status?, subject? }
 					const taskId = getString(toolInput, "taskId") || "";
 					const status = getString(toolInput, "status");
 					const subject = getString(toolInput, "subject");
-					const description = getString(toolInput, "description");
 
-					let formatted = `Task #${taskId}`;
-
-					if (status) {
-						let statusEmoji = "";
-						if (status === "completed") {
-							statusEmoji = " ✅";
-						} else if (status === "in_progress") {
-							statusEmoji = " 🔄";
-						} else if (status === "pending") {
-							statusEmoji = " ⏳";
-						} else if (status === "deleted") {
-							statusEmoji = " 🗑️";
-						}
-						formatted += statusEmoji;
+					let statusEmoji = "";
+					if (status === "completed") {
+						statusEmoji = "✅";
+					} else if (status === "in_progress") {
+						statusEmoji = "🔄";
+					} else if (status === "pending") {
+						statusEmoji = "⏳";
+					} else if (status === "deleted") {
+						statusEmoji = "🗑️";
 					}
 
 					if (subject) {
-						formatted += `\n${subject}`;
+						return `${statusEmoji} Task #${taskId} — ${subject}`;
 					}
-					if (description && description !== subject) {
-						formatted += `\n${description}`;
-					}
-
-					return formatted;
+					return `${statusEmoji} Task #${taskId}`;
 				}
 
 				case "TaskGet": {
-					// TaskGet: { taskId }
+					// TaskGet: { taskId, subject? }
 					const taskId = getString(toolInput, "taskId") || "";
+					const subject = getString(toolInput, "subject") || "";
+					if (subject) {
+						return `Task #${taskId} — ${subject}`;
+					}
 					return `Task #${taskId}`;
 				}
 

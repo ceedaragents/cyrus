@@ -129,64 +129,46 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 
 			switch (toolName) {
 				case "TaskCreate": {
-					// TaskCreate: { subject, description, activeForm? }
+					// TaskCreate fires in parallel — keep it concise as a pending checklist item
 					const subject = toolInput.subject || "";
-					const description = toolInput.description || "";
-					const activeForm = toolInput.activeForm;
-
-					let formatted = subject;
-					if (description && description !== subject) {
-						// Add description if it's different from subject
-						formatted += `\n${description}`;
-					}
-					if (activeForm) {
-						formatted += `\n_Active: ${activeForm}_`;
-					}
-					return formatted;
+					return `⏳ **${subject}**`;
 				}
 
 				case "TaskUpdate": {
-					// TaskUpdate: { taskId, status?, subject?, description?, activeForm? }
+					// TaskUpdate: { taskId, status?, subject? }
 					const taskId = toolInput.taskId || "";
 					const status = toolInput.status;
-					const subject = toolInput.subject;
-					const description = toolInput.description;
+					const subject = toolInput.subject || "";
 
-					let formatted = `Task #${taskId}`;
-
-					if (status) {
-						let statusEmoji = "";
-						if (status === "completed") {
-							statusEmoji = " ✅";
-						} else if (status === "in_progress") {
-							statusEmoji = " 🔄";
-						} else if (status === "pending") {
-							statusEmoji = " ⏳";
-						} else if (status === "deleted") {
-							statusEmoji = " 🗑️";
-						}
-						formatted += statusEmoji;
+					let statusEmoji = "";
+					if (status === "completed") {
+						statusEmoji = "✅";
+					} else if (status === "in_progress") {
+						statusEmoji = "🔄";
+					} else if (status === "pending") {
+						statusEmoji = "⏳";
+					} else if (status === "deleted") {
+						statusEmoji = "🗑️";
 					}
 
 					if (subject) {
-						formatted += `\n${subject}`;
+						return `${statusEmoji} Task #${taskId} — ${subject}`;
 					}
-					if (description && description !== subject) {
-						formatted += `\n${description}`;
-					}
-
-					return formatted;
+					return `${statusEmoji} Task #${taskId}`;
 				}
 
 				case "TaskGet": {
-					// TaskGet: { taskId }
+					// TaskGet: { taskId, subject? }
 					const taskId = toolInput.taskId || "";
-					return `Task #${taskId}`;
+					const subject = toolInput.subject || "";
+					if (subject) {
+						return `📋 Task #${taskId} — ${subject}`;
+					}
+					return `📋 Task #${taskId}`;
 				}
 
 				case "TaskList": {
-					// TaskList: no parameters typically
-					return "List all tasks";
+					return "📋 List all tasks";
 				}
 
 				default:
@@ -305,6 +287,26 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 						toolName.replace("↪ ", ""),
 						toolInput,
 					);
+
+				case "ToolSearch":
+				case "↪ ToolSearch": {
+					// Show query directly, like how Bash shows command and Read shows file_path
+					const query = toolInput.query || "";
+					if (query.startsWith("select:")) {
+						return query.replace("select:", "");
+					}
+					return query;
+				}
+
+				case "TaskOutput":
+				case "↪ TaskOutput": {
+					const taskId = toolInput.task_id || "";
+					const block = toolInput.block;
+					if (block === false) {
+						return `📤 Checking task ${taskId}`;
+					}
+					return `📤 Waiting for task ${taskId}`;
+				}
 
 				case "WebFetch":
 				case "↪ WebFetch":
@@ -600,6 +602,25 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 						return `\`\`\`\n${result}\n\`\`\``;
 					}
 					return "*No tasks*";
+
+				case "ToolSearch":
+				case "↪ ToolSearch":
+					// ToolSearch results show which tools were found
+					if (result?.trim()) {
+						return `*${result}*`;
+					}
+					return "*No tools found*";
+
+				case "TaskOutput":
+				case "↪ TaskOutput":
+					// TaskOutput returns background task output
+					if (result?.trim()) {
+						if (result.includes("\n") && result.length > 100) {
+							return `\`\`\`\n${result}\n\`\`\``;
+						}
+						return result;
+					}
+					return "*No output yet*";
 
 				case "WebFetch":
 				case "↪ WebFetch":
