@@ -46,6 +46,9 @@ function createBetaMessage(
 			cache_creation: null,
 			server_tool_use: null,
 			service_tier: null,
+			inference_geo: null,
+			iterations: null,
+			speed: null,
 		},
 		container: null,
 		context_management: null,
@@ -214,6 +217,7 @@ export function geminiEventToSDKMessage(
 					is_error: false,
 					num_turns: stats.tool_calls || 0, // Use tool calls as proxy for turns
 					result: resultContent,
+					stop_reason: null,
 					total_cost_usd: 0, // Gemini doesn't provide cost info
 					usage: {
 						input_tokens: stats.input_tokens || 0,
@@ -229,6 +233,9 @@ export function geminiEventToSDKMessage(
 							web_search_requests: 0,
 						},
 						service_tier: "standard" as const,
+						inference_geo: "",
+						iterations: [],
+						speed: "standard" as const,
 					},
 					modelUsage: {},
 					permission_denials: [],
@@ -245,6 +252,7 @@ export function geminiEventToSDKMessage(
 					duration_api_ms: 0,
 					is_error: true,
 					num_turns: stats.tool_calls || 0,
+					stop_reason: null,
 					errors: [event.error?.message || "Unknown error"],
 					total_cost_usd: 0,
 					usage: {
@@ -261,6 +269,9 @@ export function geminiEventToSDKMessage(
 							web_search_requests: 0,
 						},
 						service_tier: "standard" as const,
+						inference_geo: "",
+						iterations: [],
+						speed: "standard" as const,
 					},
 					modelUsage: {},
 					permission_denials: [],
@@ -280,6 +291,7 @@ export function geminiEventToSDKMessage(
 				duration_api_ms: 0,
 				is_error: true,
 				num_turns: 0,
+				stop_reason: null,
 				errors: [event.message],
 				total_cost_usd: 0,
 				usage: {
@@ -296,6 +308,9 @@ export function geminiEventToSDKMessage(
 						web_search_requests: 0,
 					},
 					service_tier: "standard" as const,
+					inference_geo: "",
+					iterations: [],
+					speed: "standard" as const,
 				},
 				modelUsage: {},
 				permission_denials: [],
