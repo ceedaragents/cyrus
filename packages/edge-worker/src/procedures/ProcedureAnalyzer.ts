@@ -50,6 +50,7 @@ export class ProcedureAnalyzer {
 				"code",
 				"debugger",
 				"orchestrator",
+				"team",
 				"user-testing",
 				"release",
 			] as const,
@@ -103,6 +104,11 @@ Analyze the Linear issue request and classify it into ONE of these categories:
 - ONLY use this if the user specifically asks for: "break this into sub-issues", "orchestrate this work", "use sub-agents", "delegate to specialized agents"
 - DO NOT use for regular complex work - those should use "code"
 - Examples: "Orchestrate this feature with sub-issues", "Break this down and delegate to specialized agents", "Create sub-tasks for this epic"
+
+**team**: User EXPLICITLY requests parallel/team-based development.
+- ONLY use if user asks for: "use a team", "parallel agents", "multi-agent"
+- DO NOT use for regular complex work - those should use "code"
+- Examples: "Use a team of agents", "Implement this with parallel agents", "Multi-agent development"
 
 **code**: Request involves code changes with clear, specific requirements (DEFAULT for most work).
 - Examples: "Fix bug in X", "Add feature Y", "Refactor module Z", "Implement new API endpoint", "Fix the login issue"

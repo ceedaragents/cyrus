@@ -110,6 +110,7 @@ export type RequestClassification =
 	| "code"
 	| "debugger"
 	| "orchestrator"
+	| "team"
 	| "user-testing"
 	| "release";
 

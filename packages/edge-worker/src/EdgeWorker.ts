@@ -88,6 +88,7 @@ import {
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { TeamRoutingEngine } from "./TeamRoutingEngine.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -2119,6 +2120,18 @@ export class EdgeWorker extends EventEmitter {
 		const hasGraphiteOrchestratorLabels =
 			hasGraphiteLabel && hasOrchestratorLabel;
 
+		// Check for team label
+		const hasHardcodedTeamLabel = lowercaseLabels.includes("team");
+		const teamLabelConfig = repository.labelPrompts?.team;
+		const teamLabels = Array.isArray(teamLabelConfig)
+			? teamLabelConfig
+			: teamLabelConfig?.labels;
+		const hasConfiguredTeamLabel =
+			teamLabels?.some((label) =>
+				lowercaseLabels.includes(label.toLowerCase()),
+			) ?? false;
+		const hasTeamLabel = hasHardcodedTeamLabel || hasConfiguredTeamLabel;
+
 		let finalProcedure: ProcedureDefinition;
 		let finalClassification: RequestClassification;
 
@@ -2157,6 +2170,52 @@ export class EdgeWorker extends EventEmitter {
 			finalClassification = "orchestrator";
 			console.log(
 				`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
+			);
+		} else if (hasTeamLabel) {
+			// Team label detected - route to team-development procedure
+			const teamProcedure =
+				this.procedureAnalyzer.getProcedure("team-development");
+			if (!teamProcedure) {
+				throw new Error("team-development procedure not found in registry");
+			}
+			finalProcedure = teamProcedure;
+			finalClassification = "team";
+
+			// Apply team routing config if available
+			if (repository.teamConfig?.routing?.rules) {
+				const routingEngine = new TeamRoutingEngine();
+				const complexity = routingEngine.scoreComplexity(
+					issue.title,
+					fullIssue.description || "",
+					labels,
+				);
+				const decision = routingEngine.evaluateRules(
+					repository.teamConfig.routing.rules,
+					labels,
+					complexity,
+					{
+						pattern:
+							repository.teamConfig.routing.defaultPattern || "subagents",
+						agents: repository.teamConfig.routing.defaultAgents || [],
+					},
+				);
+				// Enrich with model config
+				if (repository.teamConfig.optimization?.modelByRole) {
+					decision.modelByRole = repository.teamConfig.optimization.modelByRole;
+				}
+				if (repository.teamConfig.qualityGates) {
+					decision.qualityGates = repository.teamConfig.qualityGates;
+				}
+				session.metadata.teamRouting = decision;
+			}
+
+			// Set environment variables for swarm-mem integration
+			process.env.REPO_ID = repository.id;
+			process.env.AGENT_ID = `cyrus-${linearAgentActivitySessionId}`;
+			process.env.ISSUE_ID = issue.identifier;
+
+			console.log(
+				`[EdgeWorker] Using team-development procedure due to team label (skipping AI routing)`,
 			);
 		} else {
 			// No label override - use AI routing
@@ -2218,6 +2277,7 @@ export class EdgeWorker extends EventEmitter {
 				| "scoper"
 				| "orchestrator"
 				| "graphite-orchestrator"
+				| "team"
 				| undefined;
 
 			if (!isMentionTriggered || isLabelBasedPromptRequested) {
@@ -3036,7 +3096,8 @@ export class EdgeWorker extends EventEmitter {
 					| "builder"
 					| "scoper"
 					| "orchestrator"
-					| "graphite-orchestrator";
+					| "graphite-orchestrator"
+					| "team";
 		  }
 		| undefined
 	> {
@@ -3086,7 +3147,40 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// If no labelPrompts configured and no hardcoded orchestrator, return undefined
+		// HARDCODED RULE: Check for 'team' label (case-insensitive)
+		const hasHardcodedTeamLabel = lowercaseLabels.includes("team");
+		if (!repository.labelPrompts && hasHardcodedTeamLabel) {
+			try {
+				const __filename = fileURLToPath(import.meta.url);
+				const __dirname = dirname(__filename);
+				const promptPath = join(__dirname, "..", "prompts", "team-lead.md");
+				const promptContent = await readFile(promptPath, "utf-8");
+				console.log(
+					`[EdgeWorker] Using team-lead system prompt (hardcoded rule) for labels: ${labels.join(", ")}`,
+				);
+
+				const promptVersion = this.extractVersionTag(promptContent);
+				if (promptVersion) {
+					console.log(
+						`[EdgeWorker] team-lead system prompt version: ${promptVersion}`,
+					);
+				}
+
+				return {
+					prompt: promptContent,
+					version: promptVersion,
+					type: "team",
+				};
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Failed to load team-lead prompt template:`,
+					error,
+				);
+				return undefined;
+			}
+		}
+
+		// If no labelPrompts configured and no hardcoded orchestrator/team, return undefined
 		if (!repository.labelPrompts) {
 			return undefined;
 		}
@@ -3154,7 +3248,13 @@ export class EdgeWorker extends EventEmitter {
 			"builder",
 			"scoper",
 			"orchestrator",
+			"team",
 		] as const;
+
+		// Map prompt type to filename (when they differ)
+		const promptFileMap: Record<string, string> = {
+			team: "team-lead",
+		};
 
 		for (const promptType of promptTypes) {
 			const promptConfig = repository.labelPrompts[promptType];
@@ -3165,26 +3265,33 @@ export class EdgeWorker extends EventEmitter {
 
 			// For orchestrator type, also check the hardcoded 'orchestrator' label
 			// This ensures orchestrator prompt loads even without explicit labelPrompts config
+			// For team type, also check the hardcoded 'team' label
 			const matchesLabel =
 				promptType === "orchestrator"
 					? hasHardcodedOrchestratorLabel ||
 						configuredLabels?.some((label) =>
 							lowercaseLabels.includes(label.toLowerCase()),
 						)
-					: configuredLabels?.some((label) =>
-							lowercaseLabels.includes(label.toLowerCase()),
-						);
+					: promptType === "team"
+						? hasHardcodedTeamLabel ||
+							configuredLabels?.some((label) =>
+								lowercaseLabels.includes(label.toLowerCase()),
+							)
+						: configuredLabels?.some((label) =>
+								lowercaseLabels.includes(label.toLowerCase()),
+							);
 
 			if (matchesLabel) {
 				try {
 					// Load the prompt template from file
 					const __filename = fileURLToPath(import.meta.url);
 					const __dirname = dirname(__filename);
+					const promptFileName = promptFileMap[promptType] || promptType;
 					const promptPath = join(
 						__dirname,
 						"..",
 						"prompts",
-						`${promptType}.md`,
+						`${promptFileName}.md`,
 					);
 					const promptContent = await readFile(promptPath, "utf-8");
 					console.log(
@@ -3366,6 +3473,12 @@ export class EdgeWorker extends EventEmitter {
 					routingContext ? /{{routing_context}}/g : /\n*{{routing_context}}/g,
 					routingContext,
 				);
+
+			// Inject team routing configuration variables
+			prompt = prompt
+				.replace(/{{model_by_role}}/g, "default model for all roles")
+				.replace(/{{quality_gates}}/g, "Run standard verification suite")
+				.replace(/{{team_agents}}/g, "general-purpose agents");
 
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
@@ -5534,7 +5647,8 @@ ${input.userComment}
 			| "builder"
 			| "scoper"
 			| "orchestrator"
-			| "graphite-orchestrator",
+			| "graphite-orchestrator"
+			| "team",
 	): string[] {
 		// graphite-orchestrator uses the same tool config as orchestrator
 		const effectivePromptType =
@@ -5630,7 +5744,8 @@ ${input.userComment}
 			| "builder"
 			| "scoper"
 			| "orchestrator"
-			| "graphite-orchestrator",
+			| "graphite-orchestrator"
+			| "team",
 	): string[] {
 		// graphite-orchestrator uses the same tool config as orchestrator
 		const effectivePromptType =
