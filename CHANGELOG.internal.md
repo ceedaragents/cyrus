@@ -5,6 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Changed
+- Improved Task tool formatting: TaskCreate now bolds subjects for list-like appearance, TaskUpdate/TaskGet show cached task subjects instead of bare IDs. Added `taskSubjectsByTaskId` cache in AgentSessionManager that captures subjects from TaskCreate results and enriches subsequent TaskUpdate/TaskGet tool inputs. Updated both ClaudeMessageFormatter and GeminiMessageFormatter. ([CYPACK-794](https://linear.app/ceedar/issue/CYPACK-794), [#845](https://github.com/ceedaragents/cyrus/pull/845))
 - Refactored formatting strategy from TodoWrite to Task tools (TaskCreate, TaskUpdate, TaskList, TaskGet). Added `formatTaskParameter()` method to IMessageFormatter interface and updated AgentSessionManager to handle Task tools as thought activities. ([CYPACK-788](https://linear.app/ceedar/issue/CYPACK-788), [#837](https://github.com/ceedaragents/cyrus/pull/837))
 
 ### Added

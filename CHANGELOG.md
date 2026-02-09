@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 - **Updated Claude SDK dependencies** - Updated `@anthropic-ai/claude-agent-sdk` to v0.2.34 and `@anthropic-ai/sdk` to v0.73.0. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#v0234) for details. ([CYPACK-788](https://linear.app/ceedar/issue/CYPACK-788), [#837](https://github.com/ceedaragents/cyrus/pull/837))
 
 ### Fixed
+- **Improved task list formatting in Linear activities** - Task lists now display with bold subjects for better readability, and subsequent task references show the task name instead of just a number like "#1". ([CYPACK-794](https://linear.app/ceedar/issue/CYPACK-794), [#845](https://github.com/ceedaragents/cyrus/pull/845))
 - **Procedures no longer fail when a subroutine exits with an error** - When a single-turn subroutine hits the max turns limit, Cyrus now recovers by using the last successful subroutine's result, allowing the workflow to continue to completion instead of stopping mid-procedure. ([CYPACK-792](https://linear.app/ceedar/issue/CYPACK-792), [#843](https://github.com/ceedaragents/cyrus/pull/843))
 
 ## [0.2.20] - 2026-02-05
