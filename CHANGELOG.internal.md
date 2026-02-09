@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.2.7 to v0.2.37 ([changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md)) and `@anthropic-ai/sdk` from v0.71.2 to v0.74.0 ([changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md)). This includes Claude Opus 4.6 support, fast-mode enablement, Structured Outputs support, and memory leak fixes. Updated gemini-runner adapters to support new required BetaUsage fields (inference_geo, iterations, speed). ([CYPACK-791](https://linear.app/ceedar/issue/CYPACK-791), [#841](https://github.com/ceedaragents/cyrus/pull/841))
+
 ## [0.2.20] - 2026-02-05
 
 (No internal changes in this release)
