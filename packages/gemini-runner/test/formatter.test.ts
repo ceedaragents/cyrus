@@ -379,20 +379,28 @@ describe("GeminiMessageFormatter", () => {
 					description: "Add new feature with tests",
 					activeForm: "Implementing feature X",
 				});
-				expect(result).toContain("Implement feature X");
-				expect(result).toContain("Add new feature with tests");
-				expect(result).toContain("_Active: Implementing feature X_");
+				expect(result).toBe(
+					"**Implement feature X**\nAdd new feature with tests\n_Active: Implementing feature X_",
+				);
 			});
 
-			it("should format TaskUpdate parameter with status", () => {
+			it("should format TaskUpdate parameter with status and subject", () => {
 				const result = formatter.formatToolParameter("TaskUpdate", {
 					taskId: "123",
 					status: "completed",
 					subject: "Feature completed",
 				});
-				expect(result).toContain("Task #123");
-				expect(result).toContain("✅");
-				expect(result).toContain("Feature completed");
+				// Subject shown prominently with bold, status emoji inline
+				expect(result).toBe("**Feature completed** ✅");
+			});
+
+			it("should format TaskUpdate parameter with status without subject", () => {
+				const result = formatter.formatToolParameter("TaskUpdate", {
+					taskId: "123",
+					status: "completed",
+				});
+				// Falls back to Task #id format when no subject
+				expect(result).toBe("Task #123 ✅");
 			});
 
 			it("should format TaskGet parameter", () => {

@@ -134,7 +134,7 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 					const description = toolInput.description || "";
 					const activeForm = toolInput.activeForm;
 
-					let formatted = subject;
+					let formatted = `**${subject}**`;
 					if (description && description !== subject) {
 						// Add description if it's different from subject
 						formatted += `\n${description}`;
@@ -152,10 +152,8 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 					const subject = toolInput.subject;
 					const description = toolInput.description;
 
-					let formatted = `Task #${taskId}`;
-
+					let statusEmoji = "";
 					if (status) {
-						let statusEmoji = "";
 						if (status === "completed") {
 							statusEmoji = " ✅";
 						} else if (status === "in_progress") {
@@ -165,12 +163,13 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 						} else if (status === "deleted") {
 							statusEmoji = " 🗑️";
 						}
-						formatted += statusEmoji;
 					}
 
-					if (subject) {
-						formatted += `\n${subject}`;
-					}
+					// Show subject prominently if available, fallback to "Task #id"
+					let formatted = subject
+						? `**${subject}**${statusEmoji}`
+						: `Task #${taskId}${statusEmoji}`;
+
 					if (description && description !== subject) {
 						formatted += `\n${description}`;
 					}
@@ -179,9 +178,10 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 				}
 
 				case "TaskGet": {
-					// TaskGet: { taskId }
+					// TaskGet: { taskId, subject? }
 					const taskId = toolInput.taskId || "";
-					return `Task #${taskId}`;
+					const subject = toolInput.subject;
+					return subject ? `**${subject}** (#${taskId})` : `Task #${taskId}`;
 				}
 
 				case "TaskList": {

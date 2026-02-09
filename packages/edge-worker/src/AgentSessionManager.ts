@@ -93,6 +93,7 @@ export class AgentSessionManager extends EventEmitter {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private taskSubjectsByTaskId: Map<string, string> = new Map(); // Maps task ID to task subject for enriching TaskUpdate/TaskGet
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
@@ -1032,6 +1033,20 @@ export class AgentSessionManager extends EventEmitter {
 								toolName === "AskUserQuestion" ||
 								toolName === "↪ AskUserQuestion"
 							) {
+								// Cache task subject from TaskCreate result for enriching TaskUpdate/TaskGet
+								if (
+									(toolName === "TaskCreate" || toolName === "↪ TaskCreate") &&
+									toolResult.content
+								) {
+									// Extract task ID from result like "Task #1 created successfully: Subject"
+									const taskIdMatch = toolResult.content.match(/Task #(\d+)/);
+									if (taskIdMatch?.[1] && toolInput?.subject) {
+										this.taskSubjectsByTaskId.set(
+											taskIdMatch[1],
+											toolInput.subject,
+										);
+									}
+								}
 								return;
 							}
 
@@ -1143,6 +1158,21 @@ export class AgentSessionManager extends EventEmitter {
 
 							// Special handling for Task tools - format as thought instead of action
 							const toolInput = entry.metadata.toolInput || entry.content;
+
+							// Enrich TaskUpdate/TaskGet with cached task subject if not already provided
+							if (
+								(toolName === "TaskUpdate" || toolName === "TaskGet") &&
+								toolInput?.taskId &&
+								!toolInput.subject
+							) {
+								const cachedSubject = this.taskSubjectsByTaskId.get(
+									String(toolInput.taskId),
+								);
+								if (cachedSubject) {
+									toolInput.subject = cachedSubject;
+								}
+							}
+
 							const formattedTask = formatter.formatTaskParameter(
 								toolName,
 								toolInput,

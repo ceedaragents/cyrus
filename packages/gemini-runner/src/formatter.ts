@@ -109,7 +109,7 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 					const description = getString(toolInput, "description") || "";
 					const activeForm = getString(toolInput, "activeForm");
 
-					let formatted = subject;
+					let formatted = `**${subject}**`;
 					if (description && description !== subject) {
 						// Add description if it's different from subject
 						formatted += `\n${description}`;
@@ -127,10 +127,8 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 					const subject = getString(toolInput, "subject");
 					const description = getString(toolInput, "description");
 
-					let formatted = `Task #${taskId}`;
-
+					let statusEmoji = "";
 					if (status) {
-						let statusEmoji = "";
 						if (status === "completed") {
 							statusEmoji = " ✅";
 						} else if (status === "in_progress") {
@@ -140,12 +138,13 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 						} else if (status === "deleted") {
 							statusEmoji = " 🗑️";
 						}
-						formatted += statusEmoji;
 					}
 
-					if (subject) {
-						formatted += `\n${subject}`;
-					}
+					// Show subject prominently if available, fallback to "Task #id"
+					let formatted = subject
+						? `**${subject}**${statusEmoji}`
+						: `Task #${taskId}${statusEmoji}`;
+
 					if (description && description !== subject) {
 						formatted += `\n${description}`;
 					}
@@ -154,9 +153,10 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 				}
 
 				case "TaskGet": {
-					// TaskGet: { taskId }
+					// TaskGet: { taskId, subject? }
 					const taskId = getString(toolInput, "taskId") || "";
-					return `Task #${taskId}`;
+					const subject = getString(toolInput, "subject");
+					return subject ? `**${subject}** (#${taskId})` : `Task #${taskId}`;
 				}
 
 				case "TaskList": {
