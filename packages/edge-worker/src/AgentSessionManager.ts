@@ -97,10 +97,13 @@ export class AgentSessionManager extends EventEmitter {
 	private pendingTaskBatch: Map<
 		string,
 		{
-			tasks: Array<{ toolName: string; toolInput: any }>;
 			timer: ReturnType<typeof setTimeout>;
 		}
-	> = new Map(); // Batches rapid-fire TaskCreate/TaskUpdate calls per session
+	> = new Map(); // Debounce timers for batching rapid-fire TaskCreate/TaskUpdate calls per session
+	private sessionTaskStates: Map<
+		string,
+		Array<{ subject: string; status: string }>
+	> = new Map(); // Tracks full task list state per session for rendering complete checklists
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
@@ -272,6 +275,9 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Clear any active Task when session completes
 		this.activeTasksBySession.delete(linearAgentActivitySessionId);
+
+		// Clear session task state tracking
+		this.sessionTaskStates.delete(linearAgentActivitySessionId);
 
 		// Clear tool calls tracking for this session
 		// Note: We should ideally track by session, but for now clearing all is safer
@@ -1181,26 +1187,49 @@ export class AgentSessionManager extends EventEmitter {
 							}
 
 							// Batch TaskCreate and TaskUpdate calls - they often arrive in rapid succession
+							// Also update the session task state map for rendering the full checklist
 							if (toolName === "TaskCreate" || toolName === "TaskUpdate") {
+								// Update the session-level task state map
+								const taskStates =
+									this.sessionTaskStates.get(linearAgentActivitySessionId) ||
+									[];
+								if (toolName === "TaskCreate") {
+									taskStates.push({
+										subject: toolInput.subject || "",
+										status: "pending",
+									});
+								} else {
+									// TaskUpdate - find by subject and update status
+									const subject = toolInput.subject || "";
+									const existing = subject
+										? taskStates.find((t) => t.subject === subject)
+										: undefined;
+									if (existing && toolInput.status) {
+										existing.status = toolInput.status;
+									}
+								}
+								this.sessionTaskStates.set(
+									linearAgentActivitySessionId,
+									taskStates,
+								);
+
+								// Use debounce timer to batch rapid-fire calls
 								const batch = this.pendingTaskBatch.get(
 									linearAgentActivitySessionId,
 								);
-								const taskEntry = { toolName, toolInput: { ...toolInput } };
 
 								if (batch) {
-									// Add to existing batch, reset timer
+									// Reset timer for debounce
 									clearTimeout(batch.timer);
-									batch.tasks.push(taskEntry);
 									batch.timer = setTimeout(() => {
 										this.flushTaskBatch(linearAgentActivitySessionId, session);
 									}, 300);
 								} else {
-									// Start new batch with debounce timer
+									// Start new debounce timer
 									const timer = setTimeout(() => {
 										this.flushTaskBatch(linearAgentActivitySessionId, session);
 									}, 300);
 									this.pendingTaskBatch.set(linearAgentActivitySessionId, {
-										tasks: [taskEntry],
 										timer,
 									});
 								}
@@ -1382,17 +1411,24 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Flush pending task batch for a session - posts consolidated checklist activity
+	 * Flush pending task batch for a session - posts the full task checklist activity
+	 * Renders the complete session task state (not just the delta) so each activity
+	 * shows the full, up-to-date picture of all tasks and their statuses.
 	 */
 	private async flushTaskBatch(
 		linearAgentActivitySessionId: string,
 		session: CyrusAgentSession,
 	): Promise<void> {
 		const batch = this.pendingTaskBatch.get(linearAgentActivitySessionId);
-		if (!batch || batch.tasks.length === 0) return;
+		if (!batch) return;
 
 		// Clear the batch immediately to prevent double-flush
 		this.pendingTaskBatch.delete(linearAgentActivitySessionId);
+
+		// Get the full task state for this session
+		const taskStates =
+			this.sessionTaskStates.get(linearAgentActivitySessionId) || [];
+		if (taskStates.length === 0) return;
 
 		try {
 			const formatter = session.agentRunner?.getFormatter();
@@ -1403,7 +1439,12 @@ export class AgentSessionManager extends EventEmitter {
 				return;
 			}
 
-			const formattedBatch = formatter.formatTaskBatch(batch.tasks);
+			// Build the full task list from session state for rendering
+			const fullTaskList = taskStates.map((task) => ({
+				toolName: "TaskUpdate" as const,
+				toolInput: { subject: task.subject, status: task.status },
+			}));
+			const formattedBatch = formatter.formatTaskBatch(fullTaskList);
 
 			// Check if current subroutine has suppressThoughtPosting enabled
 			const currentSubroutine =
@@ -1428,11 +1469,11 @@ export class AgentSessionManager extends EventEmitter {
 			if (result.success && result.agentActivity) {
 				const agentActivity = await result.agentActivity;
 				console.log(
-					`[AgentSessionManager] Created batched task activity ${agentActivity.id} with ${batch.tasks.length} tasks`,
+					`[AgentSessionManager] Created task checklist activity ${agentActivity.id} with ${taskStates.length} tasks`,
 				);
 			} else {
 				console.error(
-					`[AgentSessionManager] Failed to create batched task activity:`,
+					`[AgentSessionManager] Failed to create task checklist activity:`,
 					result,
 				);
 			}
