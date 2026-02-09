@@ -372,6 +372,74 @@ describe("GeminiMessageFormatter", () => {
 			});
 		});
 
+		describe("Task tools", () => {
+			it("should format TaskCreate parameter with subject and description", () => {
+				const result = formatter.formatToolParameter("TaskCreate", {
+					subject: "Implement feature X",
+					description: "Add new feature with tests",
+					activeForm: "Implementing feature X",
+				});
+				expect(result).toContain("Implement feature X");
+				expect(result).toContain("Add new feature with tests");
+				expect(result).toContain("_Active: Implementing feature X_");
+			});
+
+			it("should format TaskUpdate parameter with status", () => {
+				const result = formatter.formatToolParameter("TaskUpdate", {
+					taskId: "123",
+					status: "completed",
+					subject: "Feature completed",
+				});
+				expect(result).toContain("Task #123");
+				expect(result).toContain("✅");
+				expect(result).toContain("Feature completed");
+			});
+
+			it("should format TaskGet parameter", () => {
+				const result = formatter.formatToolParameter("TaskGet", {
+					taskId: "456",
+				});
+				expect(result).toBe("Task #456");
+			});
+
+			it("should format TaskList parameter", () => {
+				const result = formatter.formatToolParameter("TaskList", {});
+				expect(result).toBe("List all tasks");
+			});
+
+			it("should format TaskCreate result", () => {
+				const result = formatter.formatToolResult(
+					"TaskCreate",
+					{ subject: "New task" },
+					"Created task ID: 789",
+					false,
+				);
+				expect(result).toContain("*Task created*");
+				expect(result).toContain("Created task ID: 789");
+			});
+
+			it("should format TaskList result", () => {
+				const taskList = "1. Task A\n2. Task B";
+				const result = formatter.formatToolResult(
+					"TaskList",
+					{},
+					taskList,
+					false,
+				);
+				expect(result).toContain("```");
+				expect(result).toContain(taskList);
+			});
+
+			it("should delegate to formatTaskParameter from formatToolParameter", () => {
+				const result = formatter.formatToolParameter("TaskCreate", {
+					subject: "Test",
+					description: "Test desc",
+				});
+				expect(result).toContain("Test");
+				expect(result).toContain("Test desc");
+			});
+		});
+
 		describe("Unknown tools", () => {
 			it("should format short unknown tool result as plain text", () => {
 				const result = formatter.formatToolResult(

@@ -305,4 +305,139 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		// Should show action name without modification for non-Bash tools
 		expect(result).toBe("Read");
 	});
+
+	// Task tool formatting tests
+	test("formatToolParameter - TaskCreate with subject and description", () => {
+		const result = formatter.formatToolParameter("TaskCreate", {
+			subject: "Implement user authentication",
+			description: "Add OAuth login flow with Google provider",
+			activeForm: "Implementing user authentication",
+		});
+
+		expect(result).toContain("Implement user authentication");
+		expect(result).toContain("Add OAuth login flow with Google provider");
+		expect(result).toContain("_Active: Implementing user authentication_");
+	});
+
+	test("formatToolParameter - TaskCreate with only subject", () => {
+		const result = formatter.formatToolParameter("TaskCreate", {
+			subject: "Fix bug in login page",
+			description: "Fix bug in login page",
+		});
+
+		// Should not repeat description if it matches subject
+		expect(result).toBe("Fix bug in login page");
+	});
+
+	test("formatToolParameter - TaskUpdate with status completed", () => {
+		const result = formatter.formatToolParameter("TaskUpdate", {
+			taskId: "123",
+			status: "completed",
+			subject: "Authentication implemented",
+		});
+
+		expect(result).toContain("Task #123");
+		expect(result).toContain("✅");
+		expect(result).toContain("Authentication implemented");
+	});
+
+	test("formatToolParameter - TaskUpdate with status in_progress", () => {
+		const result = formatter.formatToolParameter("TaskUpdate", {
+			taskId: "456",
+			status: "in_progress",
+		});
+
+		expect(result).toContain("Task #456");
+		expect(result).toContain("🔄");
+	});
+
+	test("formatToolParameter - TaskUpdate with status deleted", () => {
+		const result = formatter.formatToolParameter("TaskUpdate", {
+			taskId: "789",
+			status: "deleted",
+		});
+
+		expect(result).toContain("Task #789");
+		expect(result).toContain("🗑️");
+	});
+
+	test("formatToolParameter - TaskGet with taskId", () => {
+		const result = formatter.formatToolParameter("TaskGet", {
+			taskId: "999",
+		});
+
+		expect(result).toBe("Task #999");
+	});
+
+	test("formatToolParameter - TaskList", () => {
+		const result = formatter.formatToolParameter("TaskList", {});
+
+		expect(result).toBe("List all tasks");
+	});
+
+	test("formatToolParameter - TaskCreate delegates to formatTaskParameter", () => {
+		const result = formatter.formatToolParameter("TaskCreate", {
+			subject: "Test task",
+			description: "Test description",
+		});
+
+		expect(result).toContain("Test task");
+		expect(result).toContain("Test description");
+	});
+
+	test("formatToolParameter - TaskUpdate with arrow prefix", () => {
+		const result = formatter.formatToolParameter("↪ TaskUpdate", {
+			taskId: "111",
+			status: "completed",
+		});
+
+		expect(result).toContain("Task #111");
+		expect(result).toContain("✅");
+	});
+
+	test("formatToolResult - TaskCreate success", () => {
+		const result = formatter.formatToolResult(
+			"TaskCreate",
+			{ subject: "New task" },
+			"Task created with ID: task-123",
+			false,
+		);
+
+		expect(result).toContain("*Task created*");
+		expect(result).toContain("Task created with ID: task-123");
+	});
+
+	test("formatToolResult - TaskUpdate success", () => {
+		const result = formatter.formatToolResult(
+			"TaskUpdate",
+			{ taskId: "123" },
+			"Task updated successfully",
+			false,
+		);
+
+		expect(result).toBe("Task updated successfully");
+	});
+
+	test("formatToolResult - TaskList with tasks", () => {
+		const taskList =
+			"1. Task A (pending)\n2. Task B (completed)\n3. Task C (in_progress)";
+		const result = formatter.formatToolResult("TaskList", {}, taskList, false);
+
+		expect(result).toContain("```");
+		expect(result).toContain(taskList);
+	});
+
+	test("formatToolResult - TaskGet with task details", () => {
+		const taskDetails =
+			"ID: 123\nSubject: Fix bug\nStatus: in_progress\nDescription: Fix login bug";
+		const result = formatter.formatToolResult(
+			"TaskGet",
+			{ taskId: "123" },
+			taskDetails,
+			false,
+		);
+
+		expect(result).toContain("```");
+		expect(result).toContain(taskDetails);
+	});
 });

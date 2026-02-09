@@ -287,6 +287,33 @@ export class AgentSessionManager extends EventEmitter {
 				linearAgentActivitySessionId,
 				resultMessage,
 			);
+		} else if (resultMessage.subtype !== "success") {
+			// Error result (e.g. error_max_turns from singleTurn subroutines) — try to
+			// recover from the last completed subroutine's result so the procedure can still complete.
+			const recoveredText =
+				this.procedureAnalyzer?.getLastSubroutineResult(session);
+			if (recoveredText) {
+				console.log(
+					`[AgentSessionManager] Recovered result from previous subroutine (subtype: ${resultMessage.subtype}), treating as success for procedure completion`,
+				);
+				// Create a synthetic success result for procedure routing
+				const syntheticResult: SDKResultMessage = {
+					...resultMessage,
+					subtype: "success",
+					result: recoveredText,
+					is_error: false,
+				};
+				await this.handleProcedureCompletion(
+					session,
+					linearAgentActivitySessionId,
+					syntheticResult,
+				);
+			} else {
+				console.warn(
+					`[AgentSessionManager] Error result with no recoverable text (subtype: ${resultMessage.subtype}), posting error to Linear`,
+				);
+				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+			}
 		}
 	}
 
@@ -451,7 +478,13 @@ export class AgentSessionManager extends EventEmitter {
 			console.log(
 				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
 			);
-			this.procedureAnalyzer.advanceToNextSubroutine(session, sessionId);
+			const subroutineResult =
+				"result" in resultMessage ? resultMessage.result : undefined;
+			this.procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				sessionId,
+				subroutineResult,
+			);
 
 			// Emit event for EdgeWorker to handle subroutine transition
 			// This replaces the callback pattern and allows EdgeWorker to subscribe
@@ -982,11 +1015,20 @@ export class AgentSessionManager extends EventEmitter {
 							}
 
 							// Skip creating activity for TodoWrite/write_todos results since they already created a non-ephemeral thought
+							// Skip Task tool results (TaskCreate, TaskUpdate, etc.) since they already created a non-ephemeral thought
 							// Skip AskUserQuestion results since it's custom handled via Linear's select signal elicitation
 							if (
 								toolName === "TodoWrite" ||
 								toolName === "↪ TodoWrite" ||
 								toolName === "write_todos" ||
+								toolName === "TaskCreate" ||
+								toolName === "↪ TaskCreate" ||
+								toolName === "TaskUpdate" ||
+								toolName === "↪ TaskUpdate" ||
+								toolName === "TaskList" ||
+								toolName === "↪ TaskList" ||
+								toolName === "TaskGet" ||
+								toolName === "↪ TaskGet" ||
 								toolName === "AskUserQuestion" ||
 								toolName === "↪ AskUserQuestion"
 							) {
@@ -1083,6 +1125,33 @@ export class AgentSessionManager extends EventEmitter {
 								body: formattedTodos,
 							};
 							// TodoWrite/write_todos is not ephemeral
+							ephemeral = false;
+						} else if (
+							toolName === "TaskCreate" ||
+							toolName === "TaskUpdate" ||
+							toolName === "TaskList" ||
+							toolName === "TaskGet"
+						) {
+							// Get formatter from runner
+							const formatter = session.agentRunner?.getFormatter();
+							if (!formatter) {
+								console.warn(
+									`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
+								);
+								return;
+							}
+
+							// Special handling for Task tools - format as thought instead of action
+							const toolInput = entry.metadata.toolInput || entry.content;
+							const formattedTask = formatter.formatTaskParameter(
+								toolName,
+								toolInput,
+							);
+							content = {
+								type: "thought",
+								body: formattedTask,
+							};
+							// Task tools are not ephemeral
 							ephemeral = false;
 						} else if (toolName === "Task") {
 							// Get formatter from runner
