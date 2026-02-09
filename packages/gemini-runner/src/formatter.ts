@@ -327,6 +327,14 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 					// Delegate to formatTaskParameter for Task tools
 					return this.formatTaskParameter(toolName, toolInput);
 
+				case "ToolSearch": {
+					const query = getString(toolInput, "query");
+					if (query) {
+						return `Query: ${query}`;
+					}
+					break;
+				}
+
 				default:
 					// For MCP tools or other unknown tools, try to extract meaningful info
 					if (toolName.startsWith("mcp__")) {

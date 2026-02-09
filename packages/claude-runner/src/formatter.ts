@@ -363,6 +363,13 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 					}
 					break;
 
+				case "ToolSearch":
+				case "↪ ToolSearch":
+					if (toolInput.query) {
+						return `Query: ${toolInput.query}`;
+					}
+					break;
+
 				case "NotebookEdit":
 				case "↪ NotebookEdit":
 					if (toolInput.notebook_path) {

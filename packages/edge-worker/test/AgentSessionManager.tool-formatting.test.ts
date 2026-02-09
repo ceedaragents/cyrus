@@ -306,6 +306,24 @@ describe("AgentSessionManager - Tool Formatting", () => {
 		expect(result).toBe("Read");
 	});
 
+	test("formatToolParameter - ToolSearch with query", () => {
+		const result = formatter.formatToolParameter("ToolSearch", {
+			query: "+linear get_issue",
+			max_results: 3,
+		});
+
+		expect(result).toBe("Query: +linear get_issue");
+	});
+
+	test("formatToolParameter - ToolSearch with select query", () => {
+		const result = formatter.formatToolParameter("ToolSearch", {
+			query: "select:mcp__linear__get_issue",
+			max_results: 1,
+		});
+
+		expect(result).toBe("Query: select:mcp__linear__get_issue");
+	});
+
 	// Task tool formatting tests
 	test("formatToolParameter - TaskCreate with subject and description", () => {
 		const result = formatter.formatToolParameter("TaskCreate", {

@@ -482,6 +482,16 @@ describe("GeminiMessageFormatter", () => {
 		});
 	});
 
+	describe("formatToolParameter - ToolSearch", () => {
+		it("should format ToolSearch with query", () => {
+			const result = formatter.formatToolParameter("ToolSearch", {
+				query: "+linear get_issue",
+				max_results: 3,
+			});
+			expect(result).toBe("Query: +linear get_issue");
+		});
+	});
+
 	describe("formatTaskBatch", () => {
 		it("should format batch of TaskCreate calls as checklist", () => {
 			const result = formatter.formatTaskBatch([
