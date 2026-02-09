@@ -135,9 +135,10 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 				}
 
 				case "TaskUpdate": {
-					// TaskUpdate: { taskId, status? }
+					// TaskUpdate: { taskId, status?, subject? }
 					const taskId = toolInput.taskId || "";
 					const status = toolInput.status;
+					const subject = toolInput.subject || "";
 
 					let statusEmoji = "";
 					if (status === "completed") {
@@ -150,12 +151,19 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 						statusEmoji = "🗑️";
 					}
 
+					if (subject) {
+						return `${statusEmoji} Task #${taskId} — ${subject}`;
+					}
 					return `${statusEmoji} Task #${taskId}`;
 				}
 
 				case "TaskGet": {
-					// TaskGet: { taskId }
+					// TaskGet: { taskId, subject? }
 					const taskId = toolInput.taskId || "";
+					const subject = toolInput.subject || "";
+					if (subject) {
+						return `📋 Task #${taskId} — ${subject}`;
+					}
 					return `📋 Task #${taskId}`;
 				}
 
