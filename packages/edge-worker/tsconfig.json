@@ -8,6 +8,8 @@
 		"paths": {
 			"cyrus-core": ["packages/core/src"],
 			"cyrus-claude-runner": ["packages/claude-runner/src"],
+			"cyrus-codex-runner": ["packages/codex-runner/src/index.ts"],
+			"cyrus-gemini-runner": ["packages/gemini-runner/src"],
 			"cyrus-simple-agent-runner": ["packages/simple-agent-runner/src"],
 			"cyrus-config-updater": ["packages/config-updater/src"]
 		}

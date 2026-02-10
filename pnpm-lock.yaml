@@ -180,6 +180,25 @@ importers:
         specifier: ^3.1.4
         version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
 
+  packages/codex-runner:
+    dependencies:
+      cyrus-claude-runner:
+        specifier: workspace:*
+        version: link:../claude-runner
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
+
   packages/config-updater:
     dependencies:
       cyrus-core:
@@ -244,6 +263,9 @@ importers:
       cyrus-cloudflare-tunnel-client:
         specifier: workspace:*
         version: link:../cloudflare-tunnel-client
+      cyrus-codex-runner:
+        specifier: workspace:*
+        version: link:../codex-runner
       cyrus-config-updater:
         specifier: workspace:*
         version: link:../config-updater

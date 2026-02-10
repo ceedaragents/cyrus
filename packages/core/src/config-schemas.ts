@@ -184,7 +184,7 @@ export const EdgeConfigSchema = z.object({
 	/** Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...") */
 	linearWorkspaceSlug: z.string().optional(),
 
-	/** Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku") */
+	/** Default model to use across all repositories (e.g., "opus", "gemini-2.5-pro", "gpt-5-codex") */
 	defaultModel: z.string().optional(),
 
 	/** Default fallback model if primary model is unavailable */
