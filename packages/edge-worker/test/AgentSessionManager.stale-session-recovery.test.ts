@@ -124,8 +124,8 @@ describe("AgentSessionManager - Stale Session Recovery", () => {
 			const summary = manager.buildConversationSummary(sessionId);
 
 			expect(summary).toBeDefined();
-			expect(summary).toContain("Previous context (session was interrupted):");
-			expect(summary).toContain("User:");
+			expect(summary).toContain("# Session Recovery Context");
+			expect(summary).toContain("## User Requests");
 			expect(summary).toContain("Please implement the feature");
 		});
 
@@ -141,7 +141,7 @@ describe("AgentSessionManager - Stale Session Recovery", () => {
 							type: "tool_use",
 							id: "tool-123",
 							name: "Edit",
-							input: { file: "test.ts" },
+							input: { file_path: "test.ts" },
 						},
 					],
 				},
@@ -150,7 +150,8 @@ describe("AgentSessionManager - Stale Session Recovery", () => {
 			const summary = manager.buildConversationSummary(sessionId);
 
 			expect(summary).toBeDefined();
-			expect(summary).toContain("You used: Edit");
+			expect(summary).toContain("## Files You Modified");
+			expect(summary).toContain("test.ts");
 		});
 
 		it("should skip TodoWrite in summary (noisy)", async () => {
@@ -178,8 +179,8 @@ describe("AgentSessionManager - Stale Session Recovery", () => {
 		});
 
 		it("should truncate long user messages", async () => {
-			// Add a user message with very long content
-			const longContent = "A".repeat(500);
+			// Add a user message with very long content (>500 chars triggers truncation)
+			const longContent = "A".repeat(1000);
 			await manager.handleClaudeMessage(sessionId, {
 				type: "user",
 				session_id: claudeSessionId,
@@ -192,13 +193,14 @@ describe("AgentSessionManager - Stale Session Recovery", () => {
 			const summary = manager.buildConversationSummary(sessionId);
 
 			expect(summary).toBeDefined();
-			// Should be truncated to ~200 chars + "..."
+			// Should be truncated to 500 chars + "..."
 			expect(summary).toContain("...");
+			// Summary (including headers) should be shorter than the raw content
 			expect(summary!.length).toBeLessThan(longContent.length);
 		});
 
-		it("should respect max summary length", async () => {
-			// Add many entries to exceed the limit
+		it("should only include recent user messages in summary", async () => {
+			// Add many entries — implementation only keeps last 3 user messages
 			for (let i = 0; i < 50; i++) {
 				await manager.handleClaudeMessage(sessionId, {
 					type: "user",
@@ -215,10 +217,13 @@ describe("AgentSessionManager - Stale Session Recovery", () => {
 			const summary = manager.buildConversationSummary(sessionId);
 
 			expect(summary).toBeDefined();
-			// Should be under the ~2000 char limit
-			expect(summary!.length).toBeLessThanOrEqual(2100); // Allow small buffer
-			// Should indicate truncation
-			expect(summary).toContain("earlier context truncated");
+			// Should only contain the last 3 user messages (47, 48, 49)
+			expect(summary).toContain("This is user message number 47");
+			expect(summary).toContain("This is user message number 48");
+			expect(summary).toContain("This is user message number 49");
+			// Should NOT contain earlier messages
+			expect(summary).not.toContain("This is user message number 0");
+			expect(summary).not.toContain("This is user message number 46");
 		});
 
 		it("should skip tool result entries (user messages with toolUseId)", async () => {
