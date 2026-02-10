@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Stale session recovery on resume** - When resuming a session with a persisted session ID that no longer exists (e.g., after a process restart), Cyrus now detects the failure, clears the stale ID, and retries with a fresh session that includes a conversation summary for context continuity.
+- **Auto-resume interrupted sessions on startup** - Sessions that were actively running when the process was stopped are now automatically detected and resumed on startup, including sessions between subroutines in multi-step procedures.
+- **Runner crash recovery** - When a runner crashes unexpectedly during execution, Cyrus now automatically retries (up to 2 times) with a recovery prompt that includes conversation context, instead of silently failing.
 
 ## [0.2.25] - 2026-02-27
 
