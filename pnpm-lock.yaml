@@ -182,6 +182,9 @@ importers:
 
   packages/codex-runner:
     dependencies:
+      '@openai/codex-sdk':
+        specifier: ^0.98.0
+        version: 0.98.0
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -1181,6 +1184,10 @@ packages:
   '@ngrok/ngrok@1.5.2':
     resolution: {integrity: sha512-gN7KKdLTKer+wBSk9s9eDx53MUFdcnXNHsXxiC5sJLLD5HY9JRMSn6UzcCqnk7IgeIgCgw5h1k6YDqhjx6lmtg==}
     engines: {node: '>= 10'}
+
+  '@openai/codex-sdk@0.98.0':
+    resolution: {integrity: sha512-TbPgrBpuSNMJyOXys0HNsh6UoP5VIHu1fVh2KDdACi5XyB0vuPtzBZC+qOsxHz7WXEQPFlomPLyxS6JnE5Okmg==}
+    engines: {node: '>=18'}
 
   '@opentelemetry/api-logs@0.203.0':
     resolution: {integrity: sha512-9B9RU0H7Ya1Dx/Rkyc4stuBZSGVQF27WigitInx2QQoj6KUpEFYPKoWjdFTunJYxmXmh17HeBvbMa1EhGyPmqQ==}
@@ -4255,6 +4262,8 @@ snapshots:
       '@ngrok/ngrok-win32-arm64-msvc': 1.5.2
       '@ngrok/ngrok-win32-ia32-msvc': 1.5.2
       '@ngrok/ngrok-win32-x64-msvc': 1.5.2
+
+  '@openai/codex-sdk@0.98.0': {}
 
   '@opentelemetry/api-logs@0.203.0':
     dependencies:

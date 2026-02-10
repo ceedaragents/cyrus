@@ -1,18 +1,29 @@
 import type {
+	ApprovalMode,
+	ModelReasoningEffort,
+	SandboxMode,
+	ThreadEvent,
+	WebSearchMode,
+} from "@openai/codex-sdk";
+import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
 	SDKMessage,
 } from "cyrus-core";
 
+export type CodexConfigValue =
+	| string
+	| number
+	| boolean
+	| CodexConfigValue[]
+	| { [key: string]: CodexConfigValue };
+
+export type CodexConfigOverrides = { [key: string]: CodexConfigValue };
+
 /**
- * Raw JSON event shape emitted by `codex exec --json`.
- * The CLI emits multiple event types and can evolve over time, so this
- * keeps the payload open while preserving the stable `type` discriminator.
+ * Typed event shape emitted by Codex SDK thread streams.
  */
-export interface CodexJsonEvent {
-	type: string;
-	[key: string]: unknown;
-}
+export type CodexJsonEvent = ThreadEvent;
 
 /**
  * Configuration for CodexRunner.
@@ -26,18 +37,22 @@ export interface CodexRunnerConfig extends AgentRunnerConfig {
 	 */
 	codexHome?: string;
 	/**
-	 * Override Codex reasoning effort via `-c model_reasoning_effort=...`.
+	 * Override Codex reasoning effort.
 	 * If omitted, CodexRunner applies a safe default for known model constraints.
 	 */
-	modelReasoningEffort?: "low" | "medium" | "high" | "xhigh";
+	modelReasoningEffort?: ModelReasoningEffort;
 	/** Sandbox mode for Codex shell/tool execution */
-	sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+	sandbox?: SandboxMode;
 	/** Approval policy for Codex tool/shell execution */
-	askForApproval?: "untrusted" | "on-failure" | "on-request" | "never";
+	askForApproval?: ApprovalMode;
 	/** Enable Codex web search tool */
 	includeWebSearch?: boolean;
+	/** Explicit Codex web search mode (takes precedence over includeWebSearch) */
+	webSearchMode?: WebSearchMode;
 	/** Allow execution outside git repo (defaults to true) */
 	skipGitRepoCheck?: boolean;
+	/** Additional global Codex config overrides passed through SDK `config` */
+	configOverrides?: CodexConfigOverrides;
 }
 
 /**

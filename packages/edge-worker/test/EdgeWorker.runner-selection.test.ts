@@ -68,12 +68,15 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 		allowedTools: ["Read", "Edit"],
 	};
 
-	function createMockIssueWithLabels(labels: string[]) {
+	function createMockIssueWithLabels(
+		labels: string[],
+		description: string = "Test description",
+	) {
 		return {
 			id: "issue-123",
 			identifier: "TEST-123",
 			title: "Test Issue",
-			description: "Test description",
+			description,
 			url: "https://linear.app/test/issue/TEST-123",
 			branchName: "test-branch",
 			state: { name: "Todo" },
@@ -433,6 +436,128 @@ Issue: {{issue_identifier}}`;
 			expect(CodexRunner).toHaveBeenCalled();
 			expect(capturedRunnerConfig.model).toBe("gpt-5-codex");
 		});
+
+		it("should select Codex runner with gpt-5.2-codex model when both agent and model labels are present", async () => {
+			const mockIssue = createMockIssueWithLabels(["codex", "gpt-5.2-codex"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			expect(capturedRunnerType).toBe("codex");
+			expect(CodexRunner).toHaveBeenCalled();
+			expect(capturedRunnerConfig.model).toBe("gpt-5.2-codex");
+		});
+	});
+
+	describe("Description Tag Selection", () => {
+		it("should select agent from [agent=...] description tag", async () => {
+			const mockIssue = createMockIssueWithLabels(
+				["bug"],
+				"Work item\\n\\n[agent=codex]",
+			);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			expect(capturedRunnerType).toBe("codex");
+			expect(CodexRunner).toHaveBeenCalled();
+		});
+
+		it("should select model from [model=...] description tag and infer runner", async () => {
+			const mockIssue = createMockIssueWithLabels(
+				["bug"],
+				"Work item\\n\\n[model=gpt-5.2-codex]",
+			);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			expect(capturedRunnerType).toBe("codex");
+			expect(CodexRunner).toHaveBeenCalled();
+			expect(capturedRunnerConfig.model).toBe("gpt-5.2-codex");
+		});
+
+		it("should let description tags override labels", async () => {
+			const mockIssue = createMockIssueWithLabels(
+				["claude", "sonnet"],
+				"Work item\\n\\n[agent=gemini]\\n[model=gemini-2.5-flash]",
+			);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			await (edgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			expect(capturedRunnerType).toBe("gemini");
+			expect(GeminiRunner).toHaveBeenCalled();
+			expect(capturedRunnerConfig.model).toBe("gemini-2.5-flash");
+		});
 	});
 
 	describe("Claude Runner Selection", () => {
@@ -709,6 +834,16 @@ Issue: {{issue_identifier}}`;
 			expect(labelRunnerType).not.toBe(actualRunnerType);
 
 			// This mismatch would trigger the warning in resumeAgentSession
+		});
+
+		it("should preserve explicit agent and ignore conflicting model", () => {
+			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels([
+				"claude",
+				"gpt-5-codex",
+			]);
+
+			expect(runnerSelection.runnerType).toBe("claude");
+			expect(runnerSelection.modelOverride).toBe("opus");
 		});
 	});
 });

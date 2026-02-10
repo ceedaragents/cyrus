@@ -1,11 +1,11 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { cwd } from "node:process";
-import { createInterface } from "node:readline";
+import type { Thread, ThreadOptions, Usage } from "@openai/codex-sdk";
+import { Codex } from "@openai/codex-sdk";
 import { ClaudeMessageFormatter } from "cyrus-claude-runner";
 import type {
 	IAgentRunner,
@@ -15,6 +15,7 @@ import type {
 	SDKResultMessage,
 } from "cyrus-core";
 import type {
+	CodexConfigOverrides,
 	CodexJsonEvent,
 	CodexRunnerConfig,
 	CodexRunnerEvents,
@@ -32,7 +33,7 @@ interface ParsedUsage {
 	cachedInputTokens: number;
 }
 
-function asNumber(value: unknown): number {
+function toFiniteNumber(value: number | undefined): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
@@ -66,49 +67,8 @@ function createAssistantBetaMessage(
 	};
 }
 
-function extractTextFromOutput(output: unknown): string | null {
-	if (!Array.isArray(output)) {
-		return null;
-	}
-
-	const chunks: string[] = [];
-	for (const item of output) {
-		if (!item || typeof item !== "object") {
-			continue;
-		}
-		const outputRecord = item as Record<string, unknown>;
-		if (typeof outputRecord.text === "string") {
-			chunks.push(outputRecord.text);
-			continue;
-		}
-
-		const content = outputRecord.content;
-		if (typeof content === "string") {
-			chunks.push(content);
-			continue;
-		}
-		if (Array.isArray(content)) {
-			for (const part of content) {
-				if (!part || typeof part !== "object") {
-					continue;
-				}
-				const partRecord = part as Record<string, unknown>;
-				if (typeof partRecord.text === "string") {
-					chunks.push(partRecord.text);
-				}
-			}
-		}
-	}
-
-	if (chunks.length === 0) {
-		return null;
-	}
-
-	return chunks.join("\n").trim() || null;
-}
-
-function parseUsage(usage: unknown): ParsedUsage {
-	if (!usage || typeof usage !== "object") {
+function parseUsage(usage: Usage | null | undefined): ParsedUsage {
+	if (!usage) {
 		return {
 			inputTokens: 0,
 			outputTokens: 0,
@@ -116,15 +76,10 @@ function parseUsage(usage: unknown): ParsedUsage {
 		};
 	}
 
-	const usageRecord = usage as Record<string, unknown>;
 	return {
-		inputTokens: asNumber(usageRecord.input_tokens ?? usageRecord.inputTokens),
-		outputTokens: asNumber(
-			usageRecord.output_tokens ?? usageRecord.outputTokens,
-		),
-		cachedInputTokens: asNumber(
-			usageRecord.cached_input_tokens ?? usageRecord.cachedInputTokens,
-		),
+		inputTokens: toFiniteNumber(usage.input_tokens),
+		outputTokens: toFiniteNumber(usage.output_tokens),
+		cachedInputTokens: toFiniteNumber(usage.cached_input_tokens),
 	};
 }
 
@@ -146,9 +101,21 @@ function createResultUsage(parsed: ParsedUsage): SDKResultMessage["usage"] {
 	};
 }
 
-function getDefaultReasoningEffortForModel(model?: string): "high" | null {
+function getDefaultReasoningEffortForModel(
+	model?: string,
+): CodexRunnerConfig["modelReasoningEffort"] | undefined {
 	// gpt-5-codex rejects xhigh in some environments; pin a compatible default.
-	return model?.toLowerCase() === "gpt-5-codex" ? "high" : null;
+	return model?.toLowerCase() === "gpt-5-codex" ? "high" : undefined;
+}
+
+function normalizeError(error: unknown): string {
+	if (error instanceof Error) {
+		return error.message;
+	}
+	if (typeof error === "string") {
+		return error;
+	}
+	return "Codex execution failed";
 }
 
 export declare interface CodexRunner {
@@ -163,17 +130,15 @@ export declare interface CodexRunner {
 }
 
 /**
- * Runner that adapts `codex exec --json` output to Cyrus SDK message types.
+ * Runner that adapts Codex SDK streaming output to Cyrus SDK message types.
  */
 export class CodexRunner extends EventEmitter implements IAgentRunner {
 	readonly supportsStreamingInput = false;
 
 	private config: CodexRunnerConfig;
-	private process: ChildProcess | null = null;
 	private sessionInfo: CodexSessionInfo | null = null;
 	private messages: SDKMessage[] = [];
 	private formatter: IMessageFormatter;
-	private cyrusHome: string;
 	private hasInitMessage = false;
 	private pendingResultMessage: SDKResultMessage | null = null;
 	private lastAssistantText: string | null = null;
@@ -183,17 +148,13 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		cachedInputTokens: 0,
 	};
 	private errorMessages: string[] = [];
-	private stderrLines: string[] = [];
 	private startTimestampMs = 0;
 	private wasStopped = false;
-	private outputFilePath: string | null = null;
-	private stdoutReadline: ReturnType<typeof createInterface> | null = null;
-	private stderrReadline: ReturnType<typeof createInterface> | null = null;
+	private abortController: AbortController | null = null;
 
 	constructor(config: CodexRunnerConfig) {
 		super();
 		this.config = config;
-		this.cyrusHome = config.cyrusHome;
 		this.formatter = new ClaudeMessageFormatter();
 
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -242,194 +203,167 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			cachedInputTokens: 0,
 		};
 		this.errorMessages = [];
-		this.stderrLines = [];
 		this.wasStopped = false;
 		this.startTimestampMs = Date.now();
-		this.cleanupOutputFile();
 
-		const prompt = this.buildPrompt(stringPrompt, streamingInitialPrompt);
-		const { command, args, env } = this.buildCommand(prompt);
+		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
+		const threadOptions = this.buildThreadOptions();
+		const codex = this.createCodexClient();
+		const thread = this.config.resumeSessionId
+			? codex.resumeThread(this.config.resumeSessionId, threadOptions)
+			: codex.startThread(threadOptions);
+		const abortController = new AbortController();
+		this.abortController = abortController;
 
 		this.emitSystemInitMessage(sessionId);
 
-		await new Promise<void>((resolve) => {
-			this.process = spawn(command, args, {
-				cwd: this.config.workingDirectory,
-				env,
-				stdio: ["ignore", "pipe", "pipe"],
-			});
-
-			this.stdoutReadline = this.process.stdout
-				? createInterface({ input: this.process.stdout })
-				: null;
-			this.stderrReadline = this.process.stderr
-				? createInterface({ input: this.process.stderr })
-				: null;
-
-			this.stdoutReadline?.on("line", (line) => this.handleStdoutLine(line));
-			this.stderrReadline?.on("line", (line) => this.handleStderrLine(line));
-
-			this.process.once("error", (error) => {
-				this.errorMessages.push(error.message);
-			});
-
-			this.process.once("close", (code, signal) => {
-				this.handleClose(code, signal);
-				resolve();
-			});
-		});
+		let caughtError: unknown;
+		try {
+			await this.runTurn(thread, prompt, abortController.signal);
+		} catch (error) {
+			caughtError = error;
+		} finally {
+			this.finalizeSession(caughtError);
+		}
 
 		return this.sessionInfo;
 	}
 
-	private buildPrompt(
-		stringPrompt?: string | null,
-		streamingInitialPrompt?: string,
-	): string {
-		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
-		const appendSystemPrompt = (this.config.appendSystemPrompt ?? "").trim();
+	private createCodexClient(): Codex {
+		const codexHome = this.resolveCodexHome();
+		const envOverride = this.buildEnvOverride(codexHome);
+		const configOverrides = this.buildConfigOverrides();
 
-		if (appendSystemPrompt && prompt) {
-			return `${appendSystemPrompt}\n\n${prompt}`;
-		}
-		if (appendSystemPrompt) {
-			return appendSystemPrompt;
-		}
-		return prompt;
+		return new Codex({
+			...(this.config.codexPath
+				? { codexPathOverride: this.config.codexPath }
+				: {}),
+			...(envOverride ? { env: envOverride } : {}),
+			...(configOverrides ? { config: configOverrides } : {}),
+		});
 	}
 
-	private buildCommand(prompt: string): {
-		command: string;
-		args: string[];
-		env: NodeJS.ProcessEnv;
-	} {
-		const command = this.config.codexPath || "codex";
-		const args: string[] = [];
-
-		args.push("--ask-for-approval", this.config.askForApproval || "never");
-		args.push("--sandbox", this.config.sandbox || "workspace-write");
-
+	private buildThreadOptions(): ThreadOptions {
+		const additionalDirectories = this.getAdditionalDirectories();
 		const reasoningEffort =
 			this.config.modelReasoningEffort ??
 			getDefaultReasoningEffortForModel(this.config.model);
-		if (reasoningEffort) {
-			args.push("-c", `model_reasoning_effort="${reasoningEffort}"`);
-		}
+		const webSearchMode =
+			this.config.webSearchMode ??
+			(this.config.includeWebSearch ? "live" : undefined);
 
-		if (this.config.workingDirectory) {
-			args.push("--cd", this.config.workingDirectory);
-		}
+		const threadOptions: ThreadOptions = {
+			model: this.config.model,
+			sandboxMode: this.config.sandbox || "workspace-write",
+			workingDirectory: this.config.workingDirectory,
+			skipGitRepoCheck: this.config.skipGitRepoCheck ?? true,
+			approvalPolicy: this.config.askForApproval || "never",
+			...(reasoningEffort ? { modelReasoningEffort: reasoningEffort } : {}),
+			...(webSearchMode ? { webSearchMode } : {}),
+			...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+		};
+
+		return threadOptions;
+	}
+
+	private getAdditionalDirectories(): string[] {
+		const workingDirectory = this.config.workingDirectory;
+		const uniqueDirectories = new Set<string>();
 
 		for (const directory of this.config.allowedDirectories || []) {
-			if (!directory || directory === this.config.workingDirectory) {
+			if (!directory || directory === workingDirectory) {
 				continue;
 			}
-			args.push("--add-dir", directory);
+			uniqueDirectories.add(directory);
 		}
 
-		if (this.config.includeWebSearch) {
-			args.push("--search");
-		}
+		return [...uniqueDirectories];
+	}
 
-		args.push("exec");
-
-		if (this.config.resumeSessionId) {
-			args.push("resume");
-		}
-
-		args.push("--json");
-		if (this.config.skipGitRepoCheck !== false) {
-			args.push("--skip-git-repo-check");
-		}
-
-		// `-o` is not currently available on `codex exec resume`.
-		if (!this.config.resumeSessionId) {
-			const outputFilePath = join(
-				this.cyrusHome,
-				"tmp",
-				`codex-last-message-${Date.now()}-${crypto.randomUUID()}.txt`,
-			);
-			this.outputFilePath = outputFilePath;
-			args.push("--output-last-message", outputFilePath);
-		}
-
-		if (this.config.model) {
-			args.push("--model", this.config.model);
-		}
-
-		if (this.config.resumeSessionId) {
-			args.push(this.config.resumeSessionId);
-		}
-
-		if (prompt) {
-			args.push(prompt);
-		}
-
+	private resolveCodexHome(): string {
 		const codexHome =
 			this.config.codexHome ||
 			process.env.CODEX_HOME ||
 			join(homedir(), ".codex");
 		mkdirSync(codexHome, { recursive: true });
-		mkdirSync(join(this.cyrusHome, "tmp"), { recursive: true });
-
-		const env = {
-			...process.env,
-			CODEX_HOME: codexHome,
-		};
-
-		return { command, args, env };
+		return codexHome;
 	}
 
-	private handleStdoutLine(line: string): void {
-		const trimmed = line.trim();
-		if (!trimmed) {
-			return;
-		}
-		if (!trimmed.startsWith("{")) {
-			return;
+	private buildEnvOverride(
+		codexHome: string,
+	): Record<string, string> | undefined {
+		if (!this.config.codexHome) {
+			return undefined;
 		}
 
-		let event: CodexJsonEvent;
-		try {
-			event = JSON.parse(trimmed) as CodexJsonEvent;
-		} catch {
-			return;
+		const env: Record<string, string> = {};
+		for (const [key, value] of Object.entries(process.env)) {
+			if (typeof value === "string") {
+				env[key] = value;
+			}
+		}
+		env.CODEX_HOME = codexHome;
+		return env;
+	}
+
+	private buildConfigOverrides(): CodexConfigOverrides | undefined {
+		const appendSystemPrompt = (this.config.appendSystemPrompt ?? "").trim();
+		const configOverrides = this.config.configOverrides
+			? { ...this.config.configOverrides }
+			: undefined;
+
+		if (!appendSystemPrompt) {
+			return configOverrides;
 		}
 
+		return {
+			...(configOverrides ?? {}),
+			developer_instructions: appendSystemPrompt,
+		};
+	}
+
+	private async runTurn(
+		thread: Thread,
+		prompt: string,
+		signal: AbortSignal,
+	): Promise<void> {
+		const streamedTurn = await thread.runStreamed(prompt, { signal });
+		for await (const event of streamedTurn.events) {
+			this.handleEvent(event);
+		}
+	}
+
+	private handleEvent(event: CodexJsonEvent): void {
 		this.emit("streamEvent", event);
 
 		switch (event.type) {
 			case "thread.started": {
-				const threadId =
-					typeof event.thread_id === "string" ? event.thread_id : null;
-				if (threadId && this.sessionInfo) {
-					this.sessionInfo.sessionId = threadId;
+				if (this.sessionInfo) {
+					this.sessionInfo.sessionId = event.thread_id;
 				}
 				break;
 			}
 			case "item.completed": {
-				this.handleItemCompleted(event);
+				if (event.item.type === "agent_message") {
+					this.emitAssistantMessage(event.item.text);
+				}
 				break;
 			}
 			case "turn.completed": {
-				this.handleTurnCompleted(event);
+				this.lastUsage = parseUsage(event.usage);
+				this.pendingResultMessage = this.createSuccessResultMessage(
+					this.lastAssistantText || "Codex session completed successfully",
+				);
 				break;
 			}
 			case "turn.failed": {
-				this.handleTurnFailed(event);
+				const message = event.error.message || "Codex execution failed";
+				this.errorMessages.push(message);
+				this.pendingResultMessage = this.createErrorResultMessage(message);
 				break;
 			}
 			case "error": {
-				if (typeof event.message === "string") {
-					this.errorMessages.push(event.message);
-				}
-				break;
-			}
-			case "response.failed": {
-				const message = this.extractEventErrorMessage(event);
-				if (message) {
-					this.errorMessages.push(message);
-				}
+				this.errorMessages.push(event.message);
 				break;
 			}
 			default:
@@ -437,73 +371,40 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 	}
 
-	private handleStderrLine(line: string): void {
-		const trimmed = line.trim();
-		if (!trimmed) {
-			return;
-		}
-		this.stderrLines.push(trimmed);
-		if (this.stderrLines.length > 25) {
-			this.stderrLines.shift();
-		}
-	}
-
-	private handleItemCompleted(event: CodexJsonEvent): void {
-		if (!event.item || typeof event.item !== "object") {
-			return;
-		}
-		const item = event.item as Record<string, unknown>;
-		const itemType = typeof item.type === "string" ? item.type : "";
-		if (itemType !== "agent_message") {
+	private finalizeSession(caughtError?: unknown): void {
+		if (!this.sessionInfo) {
+			this.cleanupRuntimeState();
 			return;
 		}
 
-		const text =
-			typeof item.text === "string"
-				? item.text
-				: extractTextFromOutput(item.content ?? item.output);
-		if (!text) {
-			return;
+		this.sessionInfo.isRunning = false;
+
+		if (caughtError && !this.wasStopped) {
+			const errorMessage = normalizeError(caughtError);
+			this.errorMessages.push(errorMessage);
 		}
 
-		this.emitAssistantMessage(text);
-	}
-
-	private handleTurnCompleted(event: CodexJsonEvent): void {
-		const turn =
-			event.turn && typeof event.turn === "object"
-				? (event.turn as Record<string, unknown>)
-				: null;
-		const text = extractTextFromOutput(turn?.output);
-		if (text && text !== this.lastAssistantText) {
-			this.emitAssistantMessage(text);
-		}
-
-		this.lastUsage = parseUsage(turn?.usage);
-		this.pendingResultMessage = this.createSuccessResultMessage(
-			this.lastAssistantText || "Codex session completed successfully",
-		);
-	}
-
-	private handleTurnFailed(event: CodexJsonEvent): void {
-		const message =
-			this.extractEventErrorMessage(event) ||
-			this.errorMessages.at(-1) ||
-			"Codex execution failed";
-		this.pendingResultMessage = this.createErrorResultMessage(message);
-	}
-
-	private extractEventErrorMessage(event: CodexJsonEvent): string | null {
-		if (typeof event.message === "string") {
-			return event.message;
-		}
-		if (event.error && typeof event.error === "object") {
-			const message = (event.error as Record<string, unknown>).message;
-			if (typeof message === "string") {
-				return message;
+		if (!this.pendingResultMessage && !this.wasStopped) {
+			if (caughtError) {
+				this.pendingResultMessage = this.createErrorResultMessage(
+					this.errorMessages.at(-1) || "Codex execution failed",
+				);
+			} else {
+				this.pendingResultMessage = this.createSuccessResultMessage(
+					this.lastAssistantText || "Codex session completed successfully",
+				);
 			}
 		}
-		return null;
+
+		if (this.pendingResultMessage) {
+			this.messages.push(this.pendingResultMessage);
+			this.emit("message", this.pendingResultMessage);
+			this.pendingResultMessage = null;
+		}
+
+		this.emit("complete", [...this.messages]);
+
+		this.cleanupRuntimeState();
 	}
 
 	private emitAssistantMessage(text: string): void {
@@ -591,89 +492,16 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		};
 	}
 
-	private readOutputLastMessage(): string | null {
-		if (!this.outputFilePath || !existsSync(this.outputFilePath)) {
-			return null;
-		}
-		try {
-			const content = readFileSync(this.outputFilePath, "utf-8");
-			return content.trim() || null;
-		} catch {
-			return null;
-		}
-	}
-
-	private handleClose(
-		code: number | null,
-		signal: NodeJS.Signals | null,
-	): void {
-		if (!this.sessionInfo) {
-			return;
-		}
-
-		this.sessionInfo.isRunning = false;
-
-		const outputLastMessage = this.readOutputLastMessage();
-		if (
-			outputLastMessage &&
-			outputLastMessage !== this.lastAssistantText &&
-			!this.wasStopped
-		) {
-			this.emitAssistantMessage(outputLastMessage);
-		}
-
-		if (!this.pendingResultMessage && !this.wasStopped) {
-			if ((code ?? 0) === 0) {
-				this.pendingResultMessage = this.createSuccessResultMessage(
-					this.lastAssistantText || "Codex session completed successfully",
-				);
-			} else {
-				const signalText = signal ? ` (signal: ${signal})` : "";
-				const stderrText = this.stderrLines.at(-1);
-				const defaultMessage = `Codex process exited with code ${code ?? "unknown"}${signalText}`;
-				this.pendingResultMessage = this.createErrorResultMessage(
-					this.errorMessages.at(-1) || stderrText || defaultMessage,
-				);
-			}
-		}
-
-		if (this.pendingResultMessage) {
-			this.messages.push(this.pendingResultMessage);
-			this.emit("message", this.pendingResultMessage);
-			this.pendingResultMessage = null;
-		}
-
-		this.emit("complete", [...this.messages]);
-
-		this.cleanupProcessState();
-	}
-
-	private cleanupProcessState(): void {
-		this.stdoutReadline?.close();
-		this.stderrReadline?.close();
-		this.stdoutReadline = null;
-		this.stderrReadline = null;
-		this.process = null;
-		this.cleanupOutputFile();
-	}
-
-	private cleanupOutputFile(): void {
-		if (this.outputFilePath && existsSync(this.outputFilePath)) {
-			try {
-				rmSync(this.outputFilePath, { force: true });
-			} catch {
-				// Best effort cleanup only.
-			}
-		}
-		this.outputFilePath = null;
+	private cleanupRuntimeState(): void {
+		this.abortController = null;
 	}
 
 	stop(): void {
-		if (!this.process || !this.sessionInfo?.isRunning) {
+		if (!this.sessionInfo?.isRunning) {
 			return;
 		}
 		this.wasStopped = true;
-		this.process.kill("SIGTERM");
+		this.abortController?.abort();
 	}
 
 	isRunning(): boolean {
