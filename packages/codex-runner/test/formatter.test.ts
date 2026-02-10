@@ -35,6 +35,22 @@ describe("CodexMessageFormatter", () => {
 		expect(formatted).toBe("List all tasks");
 	});
 
+	it("formats todo items as markdown checklist lines", () => {
+		const formatted = formatter.formatTodoWriteParameter(
+			JSON.stringify({
+				todos: [
+					{ content: "Finished step", status: "completed" },
+					{ content: "Pending step", status: "pending" },
+					{ content: "Active step", status: "in_progress" },
+				],
+			}),
+		);
+
+		expect(formatted).toBe(
+			"- [x] Finished step\n- [ ] Pending step\n- [ ] Active step (in progress)",
+		);
+	});
+
 	it("wraps error results in code fences", () => {
 		const formatted = formatter.formatToolResult(
 			"Bash",

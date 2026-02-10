@@ -72,13 +72,9 @@ export class CodexMessageFormatter implements IMessageFormatter {
 						: typeof todo.description === "string"
 							? todo.description
 							: "";
-				const marker =
-					status === "completed"
-						? "[x]"
-						: status === "in_progress"
-							? "[~]"
-							: "[ ]";
-				return `${marker} ${content}`.trim();
+				const marker = status === "completed" ? "[x]" : "[ ]";
+				const suffix = status === "in_progress" ? " (in progress)" : "";
+				return `- ${marker} ${content}${suffix}`.trim();
 			});
 
 			return lines.join("\n");
