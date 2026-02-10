@@ -3008,7 +3008,7 @@ export class EdgeWorker extends EventEmitter {
 	 * - Agent selection and model selection are independent.
 	 * - If agent is not explicit, model can infer runner type.
 	 */
-	private determineRunnerFromLabels(
+	private determineRunnerSelection(
 		labels: string[],
 		issueDescription?: string,
 	): {
@@ -5603,8 +5603,8 @@ ${input.userComment}
 			],
 		};
 
-		// Determine runner type and model override from labels
-		const runnerSelection = this.determineRunnerFromLabels(
+		// Determine runner type and model override from selectors
+		const runnerSelection = this.determineRunnerSelection(
 			labels || [],
 			issueDescription,
 		);

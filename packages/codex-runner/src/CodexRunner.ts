@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { cwd } from "node:process";
 import type { Thread, ThreadOptions, Usage } from "@openai/codex-sdk";
 import { Codex } from "@openai/codex-sdk";
-import { ClaudeMessageFormatter } from "cyrus-claude-runner";
 import type {
 	IAgentRunner,
 	IMessageFormatter,
@@ -14,6 +13,7 @@ import type {
 	SDKMessage,
 	SDKResultMessage,
 } from "cyrus-core";
+import { CodexMessageFormatter } from "./formatter.js";
 import type {
 	CodexConfigOverrides,
 	CodexJsonEvent,
@@ -59,6 +59,8 @@ function createAssistantBetaMessage(
 			cache_creation_input_tokens: 0,
 			cache_read_input_tokens: 0,
 			cache_creation: null,
+			inference_geo: null,
+			iterations: null,
 			server_tool_use: null,
 			service_tier: null,
 		},
@@ -93,6 +95,8 @@ function createResultUsage(parsed: ParsedUsage): SDKResultMessage["usage"] {
 			ephemeral_1h_input_tokens: 0,
 			ephemeral_5m_input_tokens: 0,
 		},
+		inference_geo: "unknown",
+		iterations: [],
 		server_tool_use: {
 			web_fetch_requests: 0,
 			web_search_requests: 0,
@@ -155,7 +159,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	constructor(config: CodexRunnerConfig) {
 		super();
 		this.config = config;
-		this.formatter = new ClaudeMessageFormatter();
+		this.formatter = new CodexMessageFormatter();
 
 		if (config.onMessage) this.on("message", config.onMessage);
 		if (config.onError) this.on("error", config.onError);
@@ -470,6 +474,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			is_error: false,
 			num_turns: 1,
 			result,
+			stop_reason: null,
 			total_cost_usd: 0,
 			usage: createResultUsage(this.lastUsage),
 			modelUsage: {},
@@ -488,6 +493,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			duration_api_ms: 0,
 			is_error: true,
 			num_turns: 1,
+			stop_reason: null,
 			errors: [errorMessage],
 			total_cost_usd: 0,
 			usage: createResultUsage(this.lastUsage),

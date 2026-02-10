@@ -788,7 +788,7 @@ Issue: {{issue_identifier}}`;
 			const labels = ["opus"]; // Claude model label
 
 			// Act
-			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
 				labels,
 			);
 
@@ -805,7 +805,7 @@ Issue: {{issue_identifier}}`;
 			const labels = ["gemini-3-pro"];
 
 			// Act
-			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
 				labels,
 			);
 
@@ -819,7 +819,7 @@ Issue: {{issue_identifier}}`;
 		it("should correctly identify runner type mismatch between label and session", () => {
 			// This test verifies the logic that would run in resumeAgentSession
 			const labels = ["sonnet"]; // Claude label
-			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels(
+			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
 				labels,
 			);
 
@@ -837,7 +837,7 @@ Issue: {{issue_identifier}}`;
 		});
 
 		it("should preserve explicit agent and ignore conflicting model", () => {
-			const runnerSelection = (edgeWorker as any).determineRunnerFromLabels([
+			const runnerSelection = (edgeWorker as any).determineRunnerSelection([
 				"claude",
 				"gpt-5-codex",
 			]);

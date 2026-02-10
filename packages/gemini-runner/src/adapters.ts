@@ -44,6 +44,8 @@ function createBetaMessage(
 			cache_creation_input_tokens: 0,
 			cache_read_input_tokens: 0,
 			cache_creation: null,
+			inference_geo: null,
+			iterations: null,
 			server_tool_use: null,
 			service_tier: null,
 		},
@@ -214,6 +216,7 @@ export function geminiEventToSDKMessage(
 					is_error: false,
 					num_turns: stats.tool_calls || 0, // Use tool calls as proxy for turns
 					result: resultContent,
+					stop_reason: null,
 					total_cost_usd: 0, // Gemini doesn't provide cost info
 					usage: {
 						input_tokens: stats.input_tokens || 0,
@@ -224,6 +227,8 @@ export function geminiEventToSDKMessage(
 							ephemeral_1h_input_tokens: 0,
 							ephemeral_5m_input_tokens: 0,
 						},
+						inference_geo: "unknown",
+						iterations: [],
 						server_tool_use: {
 							web_fetch_requests: 0,
 							web_search_requests: 0,
@@ -245,6 +250,7 @@ export function geminiEventToSDKMessage(
 					duration_api_ms: 0,
 					is_error: true,
 					num_turns: stats.tool_calls || 0,
+					stop_reason: null,
 					errors: [event.error?.message || "Unknown error"],
 					total_cost_usd: 0,
 					usage: {
@@ -256,6 +262,8 @@ export function geminiEventToSDKMessage(
 							ephemeral_1h_input_tokens: 0,
 							ephemeral_5m_input_tokens: 0,
 						},
+						inference_geo: "unknown",
+						iterations: [],
 						server_tool_use: {
 							web_fetch_requests: 0,
 							web_search_requests: 0,
@@ -280,6 +288,7 @@ export function geminiEventToSDKMessage(
 				duration_api_ms: 0,
 				is_error: true,
 				num_turns: 0,
+				stop_reason: null,
 				errors: [event.message],
 				total_cost_usd: 0,
 				usage: {
@@ -291,6 +300,8 @@ export function geminiEventToSDKMessage(
 						ephemeral_1h_input_tokens: 0,
 						ephemeral_5m_input_tokens: 0,
 					},
+					inference_geo: "unknown",
+					iterations: [],
 					server_tool_use: {
 						web_fetch_requests: 0,
 						web_search_requests: 0,

@@ -17,7 +17,6 @@
 	},
 	"dependencies": {
 		"@openai/codex-sdk": "^0.98.0",
-		"cyrus-claude-runner": "workspace:*",
 		"cyrus-core": "workspace:*"
 	},
 	"devDependencies": {

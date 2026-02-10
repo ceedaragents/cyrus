@@ -185,9 +185,6 @@ importers:
       '@openai/codex-sdk':
         specifier: ^0.98.0
         version: 0.98.0
-      cyrus-claude-runner:
-        specifier: workspace:*
-        version: link:../claude-runner
       cyrus-core:
         specifier: workspace:*
         version: link:../core

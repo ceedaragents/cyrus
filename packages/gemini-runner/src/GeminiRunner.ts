@@ -446,6 +446,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 				duration_api_ms: 0,
 				is_error: true,
 				num_turns: 0,
+				stop_reason: null,
 				errors: [errorMessage],
 				total_cost_usd: 0,
 				usage: {
@@ -457,6 +458,8 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 						ephemeral_1h_input_tokens: 0,
 						ephemeral_5m_input_tokens: 0,
 					},
+					inference_geo: "unknown",
+					iterations: [],
 					server_tool_use: {
 						web_fetch_requests: 0,
 						web_search_requests: 0,
