@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated gemini-runner adapters and GeminiRunner to include required `speed` field in BetaUsage and NonNullableUsage objects for compatibility with @anthropic-ai/sdk v0.74.0. Set `speed: null` for BetaUsage objects and `speed: "standard"` for NonNullableUsage objects. ([CYPACK-799](https://linear.app/ceedar/issue/CYPACK-799), [#849](https://github.com/ceedaragents/cyrus/pull/849))
+
 ## [0.2.21] - 2026-02-09
 
 ### Changed
