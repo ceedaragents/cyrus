@@ -72,6 +72,12 @@ export interface ClaudeRunnerEvents {
 	"end-turn": (lastText: string) => void;
 	error: (error: Error) => void | Promise<void>;
 	complete: (messages: SDKMessage[]) => void | Promise<void>;
+	/**
+	 * Emitted when a session resume fails because the session no longer exists.
+	 * This typically happens when a pod is restarted and the persisted session ID becomes stale.
+	 * The listener should handle recovery by clearing the stale session ID and retrying with context.
+	 */
+	"resume-failed": (staleSessionId: string) => void;
 }
 
 // Re-export SDK types for convenience
