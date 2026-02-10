@@ -1888,6 +1888,89 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Build a conversation summary from stored entries for session recovery.
+	 * Used when a session resume fails and we need to reconstruct context.
+	 *
+	 * @param linearAgentActivitySessionId The session ID to build summary for
+	 * @returns Summary string or undefined if no entries exist
+	 */
+	buildConversationSummary(
+		linearAgentActivitySessionId: string,
+	): string | undefined {
+		const entries = this.entries.get(linearAgentActivitySessionId);
+		if (!entries || entries.length === 0) {
+			return undefined;
+		}
+
+		const summaryLines: string[] = [
+			"Previous context (session was interrupted):",
+		];
+
+		// Keep track of total characters to stay under ~2000 chars (~500 tokens)
+		const maxSummaryChars = 2000;
+		let currentChars = summaryLines[0]!.length;
+
+		for (const entry of entries) {
+			let line: string | undefined;
+
+			if (entry.type === "user" && !entry.metadata?.toolUseId) {
+				// Include user messages (not tool results), truncated if long
+				const content =
+					entry.content.length > 200
+						? entry.content.slice(0, 200) + "..."
+						: entry.content;
+				line = `- User: "${content}"`;
+			} else if (
+				entry.type === "assistant" &&
+				entry.metadata?.toolName &&
+				entry.metadata.toolName !== "TodoWrite" // Skip noisy TodoWrite
+			) {
+				// Summarize tool usage
+				line = `- You used: ${entry.metadata.toolName}`;
+			}
+
+			if (line) {
+				// Check if adding this line would exceed limit
+				if (currentChars + line.length + 1 > maxSummaryChars) {
+					summaryLines.push("- ... (earlier context truncated)");
+					break;
+				}
+				summaryLines.push(line);
+				currentChars += line.length + 1;
+			}
+		}
+
+		// Only return summary if we have meaningful content beyond the header
+		if (summaryLines.length <= 1) {
+			return undefined;
+		}
+
+		const summary = summaryLines.join("\n");
+		console.log(
+			`[AgentSessionManager] Built conversation summary for ${linearAgentActivitySessionId}: ${summaryLines.length - 1} entries, ${summary.length} chars`,
+		);
+		return summary;
+	}
+
+	/**
+	 * Clear the Claude session ID from a session to allow recovery from stale state.
+	 * Used when a session resume fails because the session no longer exists.
+	 *
+	 * @param linearAgentActivitySessionId The session ID to clear
+	 */
+	clearClaudeSessionId(linearAgentActivitySessionId: string): void {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (session) {
+			const oldSessionId = session.claudeSessionId;
+			session.claudeSessionId = undefined;
+			session.updatedAt = Date.now();
+			console.log(
+				`[AgentSessionManager] Cleared stale Claude session ID for ${linearAgentActivitySessionId} (was: ${oldSessionId})`,
+			);
+		}
+	}
+
+	/**
 	 * Post a thought about the model being used
 	 */
 	private async postModelNotificationThought(
