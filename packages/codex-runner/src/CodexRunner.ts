@@ -215,8 +215,6 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		const abortController = new AbortController();
 		this.abortController = abortController;
 
-		this.emitSystemInitMessage(sessionId);
-
 		let caughtError: unknown;
 		try {
 			await this.runTurn(thread, prompt, abortController.signal);
@@ -341,6 +339,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 				if (this.sessionInfo) {
 					this.sessionInfo.sessionId = event.thread_id;
 				}
+				this.emitSystemInitMessage(event.thread_id);
 				break;
 			}
 			case "item.completed": {
@@ -378,6 +377,13 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		this.sessionInfo.isRunning = false;
+
+		// Ensure init is emitted even if stream fails before thread.started.
+		if (!this.hasInitMessage) {
+			this.emitSystemInitMessage(
+				this.sessionInfo.sessionId || this.config.resumeSessionId || "pending",
+			);
+		}
 
 		if (caughtError && !this.wasStopped) {
 			const errorMessage = normalizeError(caughtError);

@@ -1020,6 +1020,21 @@ export class EdgeWorker extends EventEmitter {
 					parsedConfig.ngrokAuthToken || this.config.ngrokAuthToken,
 				linearWorkspaceSlug:
 					parsedConfig.linearWorkspaceSlug || this.config.linearWorkspaceSlug,
+				claudeDefaultModel:
+					parsedConfig.claudeDefaultModel ||
+					parsedConfig.defaultModel ||
+					this.config.claudeDefaultModel ||
+					this.config.defaultModel,
+				claudeDefaultFallbackModel:
+					parsedConfig.claudeDefaultFallbackModel ||
+					parsedConfig.defaultFallbackModel ||
+					this.config.claudeDefaultFallbackModel ||
+					this.config.defaultFallbackModel,
+				geminiDefaultModel:
+					parsedConfig.geminiDefaultModel || this.config.geminiDefaultModel,
+				codexDefaultModel:
+					parsedConfig.codexDefaultModel || this.config.codexDefaultModel,
+				// Preserve legacy fields while rolling out new config keys.
 				defaultModel: parsedConfig.defaultModel || this.config.defaultModel,
 				defaultFallbackModel:
 					parsedConfig.defaultFallbackModel || this.config.defaultFallbackModel,
@@ -2926,6 +2941,44 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Resolve default model for a given runner from config with sensible built-in defaults.
+	 * Supports legacy config keys for backwards compatibility.
+	 */
+	private getDefaultModelForRunner(
+		runnerType: "claude" | "gemini" | "codex",
+	): string {
+		if (runnerType === "claude") {
+			return (
+				this.config.claudeDefaultModel || this.config.defaultModel || "opus"
+			);
+		}
+		if (runnerType === "gemini") {
+			return this.config.geminiDefaultModel || "gemini-2.5-pro";
+		}
+		return this.config.codexDefaultModel || "gpt-5-codex";
+	}
+
+	/**
+	 * Resolve default fallback model for a given runner from config with sensible built-in defaults.
+	 * Supports legacy Claude fallback key for backwards compatibility.
+	 */
+	private getDefaultFallbackModelForRunner(
+		runnerType: "claude" | "gemini" | "codex",
+	): string {
+		if (runnerType === "claude") {
+			return (
+				this.config.claudeDefaultFallbackModel ||
+				this.config.defaultFallbackModel ||
+				"sonnet"
+			);
+		}
+		if (runnerType === "gemini") {
+			return "gemini-2.5-flash";
+		}
+		return "gpt-5";
+	}
+
+	/**
 	 * Parse a bracketed tag from issue description.
 	 *
 	 * Supports escaped brackets (`\\[tag=value\\]`) which Linear can emit.
@@ -2976,17 +3029,17 @@ export class EdgeWorker extends EventEmitter {
 
 		const defaultModelByRunner: Record<"claude" | "gemini" | "codex", string> =
 			{
-				claude: "opus",
-				gemini: "gemini-2.5-pro",
-				codex: "gpt-5-codex",
+				claude: this.getDefaultModelForRunner("claude"),
+				gemini: this.getDefaultModelForRunner("gemini"),
+				codex: this.getDefaultModelForRunner("codex"),
 			};
 		const defaultFallbackByRunner: Record<
 			"claude" | "gemini" | "codex",
 			string
 		> = {
-			claude: "sonnet",
-			gemini: "gemini-2.5-flash",
-			codex: "gpt-5",
+			claude: this.getDefaultFallbackModelForRunner("claude"),
+			gemini: this.getDefaultFallbackModelForRunner("gemini"),
+			codex: this.getDefaultFallbackModelForRunner("codex"),
 		};
 
 		const isCodexModel = (model: string): boolean =>
@@ -5562,16 +5615,16 @@ ${input.userComment}
 		// If the labels have changed, and we are resuming a session. Use the existing runner for the session.
 		if (session.claudeSessionId && runnerType !== "claude") {
 			runnerType = "claude";
-			modelOverride = "sonnet";
-			fallbackModelOverride = "haiku";
+			modelOverride = this.getDefaultModelForRunner("claude");
+			fallbackModelOverride = this.getDefaultFallbackModelForRunner("claude");
 		} else if (session.geminiSessionId && runnerType !== "gemini") {
 			runnerType = "gemini";
-			modelOverride = "gemini-2.5-pro";
-			fallbackModelOverride = "gemini-2.5-flash";
+			modelOverride = this.getDefaultModelForRunner("gemini");
+			fallbackModelOverride = this.getDefaultFallbackModelForRunner("gemini");
 		} else if (session.codexSessionId && runnerType !== "codex") {
 			runnerType = "codex";
-			modelOverride = "gpt-5-codex";
-			fallbackModelOverride = "gpt-5";
+			modelOverride = this.getDefaultModelForRunner("codex");
+			fallbackModelOverride = this.getDefaultFallbackModelForRunner("codex");
 		}
 
 		// Log model override if found
@@ -5584,9 +5637,11 @@ ${input.userComment}
 		// Convert singleTurn flag to effective maxTurns value
 		const effectiveMaxTurns = singleTurn ? 1 : maxTurns;
 
-		// Determine final model name with singleTurn suffix for Gemini
+		// Determine final model from selectors, repository override, then runner-specific defaults
 		const finalModel =
-			modelOverride || repository.model || this.config.defaultModel;
+			modelOverride ||
+			repository.model ||
+			this.getDefaultModelForRunner(runnerType);
 
 		const config = {
 			workingDirectory: session.workspace.path,
@@ -5606,7 +5661,7 @@ ${input.userComment}
 			fallbackModel:
 				fallbackModelOverride ||
 				repository.fallbackModel ||
-				this.config.defaultFallbackModel,
+				this.getDefaultFallbackModelForRunner(runnerType),
 			hooks,
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),

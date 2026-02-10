@@ -184,10 +184,28 @@ export const EdgeConfigSchema = z.object({
 	/** Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...") */
 	linearWorkspaceSlug: z.string().optional(),
 
-	/** Default model to use across all repositories (e.g., "opus", "gemini-2.5-pro", "gpt-5-codex") */
+	/** Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku") */
+	claudeDefaultModel: z.string().optional(),
+
+	/** Default Claude fallback model if primary Claude model is unavailable */
+	claudeDefaultFallbackModel: z.string().optional(),
+
+	/** Default Gemini model to use across all repositories (e.g., "gemini-2.5-pro") */
+	geminiDefaultModel: z.string().optional(),
+
+	/** Default Codex model to use across all repositories (e.g., "gpt-5-codex", "gpt-5.2-codex") */
+	codexDefaultModel: z.string().optional(),
+
+	/**
+	 * @deprecated Use claudeDefaultModel instead.
+	 * Legacy field retained for backwards compatibility and migrated on load.
+	 */
 	defaultModel: z.string().optional(),
 
-	/** Default fallback model if primary model is unavailable */
+	/**
+	 * @deprecated Use claudeDefaultFallbackModel instead.
+	 * Legacy field retained for backwards compatibility and migrated on load.
+	 */
 	defaultFallbackModel: z.string().optional(),
 
 	/** Optional path to global setup script that runs for all repositories */
