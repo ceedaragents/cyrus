@@ -1,7 +1,7 @@
 {
-	"name": "cyrus-linear-event-transport",
+	"name": "cyrus-github-event-transport",
 	"version": "0.2.19",
-	"description": "Linear event transport for receiving and verifying Linear webhooks",
+	"description": "GitHub event transport for receiving and verifying forwarded GitHub webhooks",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -11,19 +11,18 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
 		"test": "vitest",
-		"test:run": "vitest run",
-		"typecheck": "tsc --noEmit"
+		"test:run": "vitest run"
 	},
 	"dependencies": {
-		"@linear/sdk": "^64.0.0",
 		"cyrus-core": "workspace:*",
 		"fastify": "^5.2.0"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
 		"typescript": "^5.3.3",
-		"vitest": "^3.2.4"
+		"vitest": "^3.1.4"
 	},
 	"publishConfig": {
 		"access": "public"

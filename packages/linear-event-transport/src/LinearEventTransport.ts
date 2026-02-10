@@ -3,9 +3,10 @@ import {
 	LinearWebhookClient,
 	type LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
-import type { IAgentEventTransport } from "cyrus-core";
+import type { IAgentEventTransport, TranslationContext } from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { LinearMessageTranslator } from "./LinearMessageTranslator.js";
 import type {
 	LinearEventTransportConfig,
 	LinearEventTransportEvents,
@@ -42,16 +43,32 @@ export class LinearEventTransport
 	private config: LinearEventTransportConfig;
 	private linearWebhookClient: LinearWebhookClient | null = null;
 	private logger: ILogger;
+	private messageTranslator: LinearMessageTranslator;
+	private translationContext: TranslationContext;
 
-	constructor(config: LinearEventTransportConfig, logger?: ILogger) {
+	constructor(
+		config: LinearEventTransportConfig,
+		logger?: ILogger,
+		translationContext?: TranslationContext,
+	) {
 		super();
 		this.config = config;
 		this.logger = logger ?? createLogger({ component: "LinearEventTransport" });
+		this.messageTranslator = new LinearMessageTranslator();
+		this.translationContext = translationContext ?? {};
 
 		// Initialize Linear webhook client for direct mode
 		if (config.verificationMode === "direct") {
 			this.linearWebhookClient = new LinearWebhookClient(config.secret);
 		}
+	}
+
+	/**
+	 * Set the translation context for message translation.
+	 * This allows setting Linear API tokens and other context after construction.
+	 */
+	setTranslationContext(context: TranslationContext): void {
+		this.translationContext = { ...this.translationContext, ...context };
 	}
 
 	/**
@@ -114,8 +131,13 @@ export class LinearEventTransport
 				return;
 			}
 
-			// Emit "event" for IAgentEventTransport compatibility
-			this.emit("event", request.body as LinearWebhookPayload);
+			const payload = request.body as LinearWebhookPayload;
+
+			// Emit "event" for legacy IAgentEventTransport compatibility
+			this.emit("event", payload);
+
+			// Emit "message" with translated internal message
+			this.emitMessage(payload);
 
 			// Send success response
 			reply.code(200).send({ success: true });
@@ -151,8 +173,13 @@ export class LinearEventTransport
 		}
 
 		try {
-			// Emit "event" for IAgentEventTransport compatibility
-			this.emit("event", request.body as LinearWebhookPayload);
+			const payload = request.body as LinearWebhookPayload;
+
+			// Emit "event" for legacy IAgentEventTransport compatibility
+			this.emit("event", payload);
+
+			// Emit "message" with translated internal message
+			this.emitMessage(payload);
 
 			// Send success response
 			reply.code(200).send({ success: true });
@@ -163,6 +190,23 @@ export class LinearEventTransport
 			}
 			this.logger.error("Proxy webhook processing failed", err);
 			reply.code(500).send({ error: "Failed to process webhook" });
+		}
+	}
+
+	/**
+	 * Translate and emit an internal message from a webhook payload.
+	 * Only emits if translation succeeds; logs debug message on failure.
+	 */
+	private emitMessage(payload: LinearWebhookPayload): void {
+		const result = this.messageTranslator.translate(
+			payload,
+			this.translationContext,
+		);
+
+		if (result.success) {
+			this.emit("message", result.message);
+		} else {
+			this.logger.debug(`Message translation skipped: ${result.reason}`);
 		}
 	}
 }

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- GitHub PR comment support: Cyrus can now be triggered by `@cyrusagent` mentions on GitHub pull request comments, creating sessions and posting replies directly on PRs. ([CYPACK-772](https://linear.app/ceedar/issue/CYPACK-772), [#820](https://github.com/ceedaragents/cyrus/pull/820))
+
 ### Fixed
 - Summary subroutines now properly disable all tools including MCP tools like Linear's create_comment ([#808](https://github.com/ceedaragents/cyrus/pull/808))
 - Procedures no longer fail when a subroutine exits with an error (e.g., hitting the max turns limit). Cyrus now recovers by using the last successful subroutine's result, allowing the workflow to continue to completion instead of stopping mid-procedure ([#818](https://github.com/ceedaragents/cyrus/pull/818))

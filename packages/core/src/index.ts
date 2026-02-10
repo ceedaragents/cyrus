@@ -132,7 +132,48 @@ export {
 	isIssueUnassignedWebhook,
 	isNewCommentEvent,
 } from "./issue-tracker/index.js";
-
+// Internal Message Bus
+export type {
+	ContentChanges,
+	ContentUpdateMessage,
+	GitHubPlatformRef,
+	GitHubSessionStartPlatformData,
+	GitHubUserPromptPlatformData,
+	GuidanceItem,
+	IMessageTranslator,
+	InternalMessage,
+	InternalMessageBase,
+	LinearContentUpdatePlatformData,
+	LinearPlatformRef,
+	LinearSessionStartPlatformData,
+	LinearStopSignalPlatformData,
+	LinearUnassignPlatformData,
+	LinearUserPromptPlatformData,
+	MessageAction,
+	MessageAuthor,
+	MessageSource,
+	SessionStartMessage,
+	SlackPlatformRef,
+	StopSignalMessage,
+	TranslationContext,
+	TranslationResult,
+	UnassignMessage,
+	UserPromptMessage,
+} from "./messages/index.js";
+export {
+	hasGitHubSessionStartPlatformData,
+	hasGitHubUserPromptPlatformData,
+	hasLinearSessionStartPlatformData,
+	hasLinearUserPromptPlatformData,
+	isContentUpdateMessage,
+	isGitHubMessage,
+	isLinearMessage,
+	isSessionStartMessage,
+	isSlackMessage,
+	isStopSignalMessage,
+	isUnassignMessage,
+	isUserPromptMessage,
+} from "./messages/index.js";
 // Linear adapters have been moved to cyrus-linear-event-transport package
 // Import them directly from that package instead of from cyrus-core
 export type {
@@ -145,6 +186,7 @@ export {
 	PersistenceManager,
 } from "./PersistenceManager.js";
 export { StreamingPrompt } from "./StreamingPrompt.js";
+
 // Simple Agent Runner types
 export type {
 	IAgentProgressEvent,

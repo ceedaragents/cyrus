@@ -28,12 +28,14 @@ import type {
 	AgentSessionCreatedWebhook,
 	AgentSessionPromptedWebhook,
 	Comment,
+	ContentUpdateMessage,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
 	GuidanceRule,
 	IAgentRunner,
 	IIssueTrackerService,
 	ILogger,
+	InternalMessage,
 	Issue,
 	IssueMinimal,
 	IssueUnassignedWebhook,
@@ -42,6 +44,10 @@ import type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	SessionStartMessage,
+	StopSignalMessage,
+	UnassignMessage,
+	UserPromptMessage,
 	Webhook,
 	WebhookAgentSession,
 	WebhookComment,
@@ -54,15 +60,39 @@ import {
 	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
+	isContentUpdateMessage,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
+	isSessionStartMessage,
+	isStopSignalMessage,
+	isUnassignMessage,
+	isUserPromptMessage,
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
 import { GeminiRunner } from "cyrus-gemini-runner";
+import {
+	extractCommentAuthor,
+	extractCommentBody,
+	extractCommentId,
+	extractCommentUrl,
+	extractPRBranchRef,
+	extractPRNumber,
+	extractPRTitle,
+	extractRepoFullName,
+	extractRepoName,
+	extractRepoOwner,
+	extractSessionKey,
+	GitHubCommentService,
+	GitHubEventTransport,
+	type GitHubWebhookEvent,
+	isCommentOnPullRequest,
+	isIssueCommentPayload,
+	stripMention,
+} from "cyrus-github-event-transport";
 import {
 	LinearEventTransport,
 	LinearIssueTrackerService,
@@ -117,6 +147,8 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
+	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
+	private gitHubCommentService: GitHubCommentService; // Service for posting comments back to GitHub PRs
 	private cliRPCServer: CLIRPCServer | null = null; // CLI RPC server for CLI platform mode
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
@@ -145,6 +177,9 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Initialize GitHub comment service for posting replies to GitHub PRs
+		this.gitHubCommentService = new GitHubCommentService();
 
 		// Initialize global session registry (centralized session storage)
 		this.globalSessionRegistry = new GlobalSessionRegistry();
@@ -479,11 +514,16 @@ export class EdgeWorker extends EventEmitter {
 				secret,
 			});
 
-			// Listen for webhook events
+			// Listen for legacy webhook events (deprecated, kept for backward compatibility)
 			this.linearEventTransport.on("event", (event: AgentEvent) => {
 				// Get all active repositories for webhook handling
 				const repos = Array.from(this.repositories.values());
 				this.handleWebhook(event as unknown as Webhook, repos);
+			});
+
+			// Listen for unified internal messages (new message bus)
+			this.linearEventTransport.on("message", (message: InternalMessage) => {
+				this.handleMessage(message);
 			});
 
 			// Listen for errors
@@ -502,7 +542,11 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		// 2. Create and register ConfigUpdater (both platforms)
+		// 2. Register GitHub event transport (for forwarded GitHub webhooks from CYHOST)
+		// This is registered regardless of platform mode since GitHub webhooks can come from CYHOST
+		this.registerGitHubEventTransport();
+
+		// 3. Create and register ConfigUpdater (both platforms)
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
@@ -520,10 +564,10 @@ export class EdgeWorker extends EventEmitter {
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
 
-		// 3. Register /status endpoint for process activity monitoring
+		// 4. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
 
-		// 4. Register /version endpoint for CLI version info
+		// 5. Register /version endpoint for CLI version info
 		this.registerVersionEndpoint();
 	}
 
@@ -558,6 +602,491 @@ export class EdgeWorker extends EventEmitter {
 
 		this.logger.info("✅ Version endpoint registered");
 		this.logger.info("   Route: GET /version");
+	}
+
+	/**
+	 * Register the GitHub event transport for receiving forwarded GitHub webhooks from CYHOST.
+	 * This creates a /github-webhook endpoint that handles @cyrusagent mentions on GitHub PRs.
+	 */
+	private registerGitHubEventTransport(): void {
+		// Use the same verification approach as Linear webhooks
+		// In proxy mode: Bearer token (CYRUS_API_KEY)
+		// In direct/cloud mode: GitHub HMAC-SHA256 signature
+		const useSignatureVerification =
+			process.env.GITHUB_WEBHOOK_SECRET != null &&
+			process.env.GITHUB_WEBHOOK_SECRET !== "";
+		const verificationMode = useSignatureVerification ? "signature" : "proxy";
+		const secret = useSignatureVerification
+			? process.env.GITHUB_WEBHOOK_SECRET!
+			: process.env.CYRUS_API_KEY || "";
+
+		this.gitHubEventTransport = new GitHubEventTransport({
+			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+			verificationMode,
+			secret,
+		});
+
+		// Listen for legacy GitHub webhook events (deprecated, kept for backward compatibility)
+		this.gitHubEventTransport.on("event", (event: GitHubWebhookEvent) => {
+			this.handleGitHubWebhook(event).catch((error) => {
+				this.logger.error(
+					"Failed to handle GitHub webhook",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			});
+		});
+
+		// Listen for unified internal messages (new message bus)
+		this.gitHubEventTransport.on("message", (message: InternalMessage) => {
+			this.handleMessage(message);
+		});
+
+		// Listen for errors
+		this.gitHubEventTransport.on("error", (error: Error) => {
+			this.handleError(error);
+		});
+
+		// Register the /github-webhook endpoint
+		this.gitHubEventTransport.register();
+
+		this.logger.info(
+			`GitHub event transport registered (${verificationMode} mode)`,
+		);
+		this.logger.info("Webhook endpoint: POST /github-webhook");
+	}
+
+	/**
+	 * Handle a GitHub webhook event (forwarded from CYHOST).
+	 *
+	 * This creates a new session for the GitHub PR comment, checks out the PR branch
+	 * via git worktree, and processes the comment as a task prompt.
+	 */
+	private async handleGitHubWebhook(event: GitHubWebhookEvent): Promise<void> {
+		this.activeWebhookCount++;
+
+		try {
+			// Only handle comments on pull requests
+			if (!isCommentOnPullRequest(event)) {
+				this.logger.debug("Ignoring GitHub comment on non-PR issue");
+				return;
+			}
+
+			const repoFullName = extractRepoFullName(event);
+			const prNumber = extractPRNumber(event);
+			const commentBody = extractCommentBody(event);
+			const commentAuthor = extractCommentAuthor(event);
+			const prTitle = extractPRTitle(event);
+			const sessionKey = extractSessionKey(event);
+
+			this.logger.info(
+				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}`,
+			);
+
+			// Find the repository configuration that matches this GitHub repo
+			const repository = this.findRepositoryByGitHubUrl(repoFullName);
+			if (!repository) {
+				this.logger.warn(
+					`No repository configured for GitHub repo: ${repoFullName}`,
+				);
+				return;
+			}
+
+			// Get the agent session manager for this repository
+			const agentSessionManager = this.agentSessionManagers.get(repository.id);
+			if (!agentSessionManager) {
+				this.logger.error(
+					`No AgentSessionManager for repository ${repository.name}`,
+				);
+				return;
+			}
+
+			// Determine the PR branch
+			let branchRef = extractPRBranchRef(event);
+
+			// For issue_comment events, the branch ref is not in the payload
+			// We need to fetch it from the GitHub API
+			if (!branchRef && isIssueCommentPayload(event.payload)) {
+				branchRef = await this.fetchPRBranchRef(event, repository);
+			}
+
+			if (!branchRef) {
+				this.logger.error(
+					`Could not determine branch for ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			// Strip the @cyrusagent mention to get the task instructions
+			const taskInstructions = stripMention(commentBody);
+
+			// Create workspace (git worktree) for the PR branch
+			const workspace = await this.createGitHubWorkspace(
+				repository,
+				branchRef,
+				prNumber!,
+			);
+
+			if (!workspace) {
+				this.logger.error(
+					`Failed to create workspace for ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			this.logger.info(`GitHub workspace created at: ${workspace.path}`);
+
+			// Create a synthetic session for this GitHub PR comment
+			const issueMinimal: IssueMinimal = {
+				id: sessionKey,
+				identifier: `${extractRepoName(event)}#${prNumber}`,
+				title: prTitle || `PR #${prNumber}`,
+				branchName: branchRef,
+			};
+
+			// Create an internal agent session (no Linear session for GitHub)
+			const githubSessionId = `github-${event.deliveryId}`;
+			agentSessionManager.createLinearAgentSession(
+				githubSessionId,
+				sessionKey,
+				issueMinimal,
+				workspace,
+				"github", // Don't stream activities to Linear for GitHub sources
+			);
+
+			const session = agentSessionManager.getSession(githubSessionId);
+			if (!session) {
+				this.logger.error(
+					`Failed to create session for GitHub webhook ${event.deliveryId}`,
+				);
+				return;
+			}
+
+			// Initialize procedure metadata
+			if (!session.metadata) {
+				session.metadata = {};
+			}
+
+			// Store GitHub-specific metadata for reply posting
+			session.metadata.commentId = String(extractCommentId(event));
+
+			// Build the system prompt for this GitHub PR session
+			const systemPrompt = this.buildGitHubSystemPrompt(
+				event,
+				branchRef,
+				taskInstructions,
+			);
+
+			// Build allowed tools and directories
+			const allowedTools = this.buildAllowedTools(repository);
+			const disallowedTools = this.buildDisallowedTools(repository);
+			const allowedDirectories: string[] = [repository.repositoryPath];
+
+			// Create agent runner using the standard config builder
+			const { config: runnerConfig } = this.buildAgentRunnerConfig(
+				session,
+				repository,
+				githubSessionId,
+				systemPrompt,
+				allowedTools,
+				allowedDirectories,
+				disallowedTools,
+				undefined, // resumeSessionId
+				undefined, // labels
+				200, // maxTurns
+				false, // singleTurn
+			);
+
+			const runner = new ClaudeRunner(runnerConfig);
+
+			// Store the runner in the session manager
+			agentSessionManager.addAgentRunner(githubSessionId, runner);
+
+			// Save persisted state
+			await this.savePersistedState();
+
+			this.emit(
+				"session:started",
+				sessionKey,
+				issueMinimal as unknown as Issue,
+				repository.id,
+			);
+
+			this.logger.info(
+				`Starting Claude runner for GitHub PR ${repoFullName}#${prNumber}`,
+			);
+
+			// Start the session and handle completion
+			try {
+				const sessionInfo = await runner.start(taskInstructions);
+				this.logger.info(`GitHub session started: ${sessionInfo.sessionId}`);
+
+				// When session completes, post the reply back to GitHub
+				await this.postGitHubReply(event, runner, repository);
+			} catch (error) {
+				this.logger.error(
+					`GitHub session error for ${repoFullName}#${prNumber}`,
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			} finally {
+				await this.savePersistedState();
+			}
+		} catch (error) {
+			this.logger.error(
+				"Failed to process GitHub webhook",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		} finally {
+			this.activeWebhookCount--;
+		}
+	}
+
+	/**
+	 * Find a repository configuration that matches a GitHub repository URL.
+	 * Matches against the githubUrl field in repository config.
+	 */
+	private findRepositoryByGitHubUrl(
+		repoFullName: string,
+	): RepositoryConfig | null {
+		for (const repo of this.repositories.values()) {
+			if (!repo.githubUrl) continue;
+			// Match against full name (owner/repo) or URL containing it
+			if (
+				repo.githubUrl.includes(repoFullName) ||
+				repo.githubUrl.endsWith(`/${repoFullName}`)
+			) {
+				return repo;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Fetch the PR branch ref for an issue_comment webhook.
+	 * For issue_comment events, the branch ref is not in the payload
+	 * and must be fetched from the GitHub API.
+	 */
+	private async fetchPRBranchRef(
+		event: GitHubWebhookEvent,
+		_repository: RepositoryConfig,
+	): Promise<string | null> {
+		if (!isIssueCommentPayload(event.payload)) return null;
+
+		const prUrl = event.payload.issue.pull_request?.url;
+		if (!prUrl) return null;
+
+		try {
+			const owner = extractRepoOwner(event);
+			const repo = extractRepoName(event);
+			const prNumber = event.payload.issue.number;
+
+			const headers: Record<string, string> = {
+				Accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28",
+			};
+
+			// Prefer forwarded installation token, fall back to GITHUB_TOKEN
+			const token = event.installationToken || process.env.GITHUB_TOKEN;
+			if (token) {
+				headers.Authorization = `Bearer ${token}`;
+			}
+
+			const response = await fetch(
+				`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+				{ headers },
+			);
+
+			if (!response.ok) {
+				this.logger.warn(
+					`Failed to fetch PR details from GitHub API: ${response.status}`,
+				);
+				return null;
+			}
+
+			const prData = (await response.json()) as { head?: { ref?: string } };
+			return prData.head?.ref ?? null;
+		} catch (error) {
+			this.logger.error(
+				"Failed to fetch PR branch ref",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Create a git worktree for a GitHub PR branch.
+	 * If the worktree already exists for this branch, reuse it.
+	 */
+	private async createGitHubWorkspace(
+		repository: RepositoryConfig,
+		branchRef: string,
+		prNumber: number,
+	): Promise<{ path: string; isGitWorktree: boolean } | null> {
+		try {
+			// Use the GitService to create the worktree
+			// Create a synthetic issue-like object for the git service
+			const syntheticIssue = {
+				id: `github-pr-${prNumber}`,
+				identifier: `PR-${prNumber}`,
+				title: `PR #${prNumber}`,
+				description: null,
+				url: "",
+				branchName: branchRef,
+				assigneeId: null,
+				stateId: null,
+				teamId: null,
+				labelIds: [],
+				priority: 0,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				archivedAt: null,
+				state: Promise.resolve(undefined),
+				assignee: Promise.resolve(undefined),
+				team: Promise.resolve(undefined),
+				parent: Promise.resolve(undefined),
+				project: Promise.resolve(undefined),
+				labels: () => Promise.resolve({ nodes: [] }),
+				comments: () => Promise.resolve({ nodes: [] }),
+				attachments: () => Promise.resolve({ nodes: [] }),
+				children: () => Promise.resolve({ nodes: [] }),
+				inverseRelations: () => Promise.resolve({ nodes: [] }),
+				update: () =>
+					Promise.resolve({
+						success: true,
+						issue: undefined,
+						lastSyncId: 0,
+					}),
+			} as unknown as Issue;
+
+			return await this.gitService.createGitWorktree(
+				syntheticIssue,
+				repository,
+			);
+		} catch (error) {
+			this.logger.error(
+				`Failed to create GitHub workspace for PR #${prNumber}`,
+				error instanceof Error ? error : new Error(String(error)),
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Build a system prompt for a GitHub PR comment session.
+	 */
+	private buildGitHubSystemPrompt(
+		event: GitHubWebhookEvent,
+		branchRef: string,
+		taskInstructions: string,
+	): string {
+		const repoFullName = extractRepoFullName(event);
+		const prNumber = extractPRNumber(event);
+		const prTitle = extractPRTitle(event);
+		const commentAuthor = extractCommentAuthor(event);
+		const commentUrl = extractCommentUrl(event);
+
+		return `You are working on a GitHub Pull Request.
+
+## Context
+- **Repository**: ${repoFullName}
+- **PR**: #${prNumber} - ${prTitle || "Untitled"}
+- **Branch**: ${branchRef}
+- **Requested by**: @${commentAuthor}
+- **Comment URL**: ${commentUrl}
+
+## Task
+${taskInstructions}
+
+## Instructions
+- You are already checked out on the PR branch \`${branchRef}\`
+- Make changes directly to the code on this branch
+- After making changes, commit and push them to the branch
+- Be concise in your responses as they will be posted back to the GitHub PR`;
+	}
+
+	/**
+	 * Post a reply back to the GitHub PR comment after the session completes.
+	 */
+	private async postGitHubReply(
+		event: GitHubWebhookEvent,
+		runner: IAgentRunner,
+		_repository: RepositoryConfig,
+	): Promise<void> {
+		try {
+			// Get the last assistant message from the runner as the summary
+			const messages = runner.getMessages();
+			const lastAssistantMessage = [...messages]
+				.reverse()
+				.find((m) => m.type === "assistant");
+
+			let summary = "Task completed. Please review the changes on this branch.";
+			if (
+				lastAssistantMessage &&
+				lastAssistantMessage.type === "assistant" &&
+				"message" in lastAssistantMessage
+			) {
+				const msg = lastAssistantMessage as {
+					message: { content: Array<{ type: string; text?: string }> };
+				};
+				const textBlock = msg.message.content?.find(
+					(block) => block.type === "text" && block.text,
+				);
+				if (textBlock?.text) {
+					summary = textBlock.text;
+				}
+			}
+
+			const owner = extractRepoOwner(event);
+			const repo = extractRepoName(event);
+			const prNumber = extractPRNumber(event);
+			const commentId = extractCommentId(event);
+
+			if (!prNumber) {
+				this.logger.warn("Cannot post GitHub reply: no PR number");
+				return;
+			}
+
+			// Prefer the forwarded installation token from CYHOST (1-hour expiry)
+			// Fall back to process.env.GITHUB_TOKEN if not provided
+			const token = event.installationToken || process.env.GITHUB_TOKEN;
+			if (!token) {
+				this.logger.warn(
+					"Cannot post GitHub reply: no installation token or GITHUB_TOKEN configured",
+				);
+				this.logger.debug(
+					`Would have posted reply to ${owner}/${repo}#${prNumber} (comment ${commentId}): ${summary}`,
+				);
+				return;
+			}
+
+			if (event.eventType === "pull_request_review_comment") {
+				// Reply to the specific review comment thread
+				await this.gitHubCommentService.postReviewCommentReply({
+					token,
+					owner,
+					repo,
+					pullNumber: prNumber,
+					commentId,
+					body: summary,
+				});
+			} else {
+				// Post as a regular issue comment on the PR
+				await this.gitHubCommentService.postIssueComment({
+					token,
+					owner,
+					repo,
+					issueNumber: prNumber,
+					body: summary,
+				});
+			}
+
+			this.logger.info(`Posted GitHub reply to ${owner}/${repo}#${prNumber}`);
+		} catch (error) {
+			this.logger.error(
+				"Failed to post GitHub reply",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		}
 	}
 
 	/**
@@ -1441,6 +1970,154 @@ export class EdgeWorker extends EventEmitter {
 			this.activeWebhookCount--;
 		}
 	}
+
+	// ============================================================================
+	// INTERNAL MESSAGE BUS HANDLERS
+	// ============================================================================
+	// These handlers process unified InternalMessage types from the message bus.
+	// They provide a platform-agnostic interface for handling events from
+	// Linear, GitHub, Slack, and other platforms.
+	// ============================================================================
+
+	/**
+	 * Handle unified internal messages from the message bus.
+	 * This is the new entry point for processing events from all platforms.
+	 *
+	 * Note: For now, this runs in parallel with legacy webhook handlers.
+	 * Once migration is complete, legacy handlers will be removed.
+	 */
+	private async handleMessage(message: InternalMessage): Promise<void> {
+		// NOTE: activeWebhookCount is NOT tracked here because legacy webhook handlers
+		// already increment/decrement it for every event. Counting here would double-count.
+		// TODO: When legacy handlers are removed, restore activeWebhookCount tracking here.
+
+		// Log verbose message info if enabled
+		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+			this.logger.debug(
+				`Internal message received: ${message.source}/${message.action}`,
+				JSON.stringify(message, null, 2),
+			);
+		}
+
+		try {
+			// Route to specific message handlers based on action type
+			if (isSessionStartMessage(message)) {
+				await this.handleSessionStartMessage(message);
+			} else if (isUserPromptMessage(message)) {
+				await this.handleUserPromptMessage(message);
+			} else if (isStopSignalMessage(message)) {
+				await this.handleStopSignalMessage(message);
+			} else if (isContentUpdateMessage(message)) {
+				await this.handleContentUpdateMessage(message);
+			} else if (isUnassignMessage(message)) {
+				await this.handleUnassignMessage(message);
+			} else {
+				// This branch should never be reached due to exhaustive type checking
+				// If it is reached, log the unexpected message for debugging
+				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+					const unexpectedMessage = message as InternalMessage;
+					this.logger.debug(
+						`Unhandled message action: ${unexpectedMessage.action}`,
+					);
+				}
+			}
+		} catch (error) {
+			this.logger.error(
+				`Failed to process message: ${message.source}/${message.action}`,
+				error,
+			);
+			// Don't re-throw message processing errors to prevent application crashes
+		} finally {
+			// No-op: see activeWebhookCount comment at top of handleMessage()
+		}
+	}
+
+	/**
+	 * Handle session start message (unified handler for session creation).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleAgentSessionCreatedWebhook and handleGitHubWebhook.
+	 */
+	private async handleSessionStartMessage(
+		message: SessionStartMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Session start: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified session start handling
+		// For now, the legacy handlers (handleAgentSessionCreatedWebhook, handleGitHubWebhook)
+		// continue to process the actual session creation via the 'event' emitter.
+	}
+
+	/**
+	 * Handle user prompt message (unified handler for mid-session prompts).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleUserPromptedAgentActivity (branch 3).
+	 */
+	private async handleUserPromptMessage(
+		message: UserPromptMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] User prompt: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified user prompt handling
+		// For now, the legacy handler (handleUserPromptedAgentActivity)
+		// continues to process the actual prompt via the 'event' emitter.
+	}
+
+	/**
+	 * Handle stop signal message (unified handler for session termination).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleUserPromptedAgentActivity (branch 1).
+	 */
+	private async handleStopSignalMessage(
+		message: StopSignalMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Stop signal: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified stop signal handling
+		// For now, the legacy handler (handleUserPromptedAgentActivity)
+		// continues to process the actual stop via the 'event' emitter.
+	}
+
+	/**
+	 * Handle content update message (unified handler for issue/PR content changes).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleIssueContentUpdate.
+	 */
+	private async handleContentUpdateMessage(
+		message: ContentUpdateMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Content update: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified content update handling
+		// For now, the legacy handler (handleIssueContentUpdate)
+		// continues to process the actual update via the 'event' emitter.
+	}
+
+	/**
+	 * Handle unassign message (unified handler for task unassignment).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleIssueUnassignedWebhook.
+	 */
+	private async handleUnassignMessage(message: UnassignMessage): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Unassign: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified unassign handling
+		// For now, the legacy handler (handleIssueUnassignedWebhook)
+		// continues to process the actual unassignment via the 'event' emitter.
+	}
+
+	// ============================================================================
+	// LEGACY WEBHOOK HANDLERS
+	// ============================================================================
 
 	/**
 	 * Handle issue unassignment webhook

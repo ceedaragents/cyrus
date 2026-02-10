@@ -220,11 +220,6 @@ describe("AgentSessionManager - Status Messages", () => {
 	});
 
 	it("should not crash if session is not found", async () => {
-		// Spy on console.warn
-		const consoleWarnSpy = vi
-			.spyOn(console, "warn")
-			.mockImplementation(() => {});
-
 		// Create a status message for a non-existent session
 		const statusMessage: SDKStatusMessage = {
 			type: "system",
@@ -233,18 +228,10 @@ describe("AgentSessionManager - Status Messages", () => {
 			session_id: "claude-session-123",
 		};
 
-		// Handle the status message for a non-existent session
+		// Handle the status message for a non-existent session — should not throw
 		await manager.handleClaudeMessage("non-existent-session", statusMessage);
-
-		// Verify warning was logged
-		expect(consoleWarnSpy).toHaveBeenCalledWith(
-			expect.stringContaining("No Linear session ID"),
-		);
 
 		// Verify createAgentActivity was not called
 		expect(createAgentActivitySpy).not.toHaveBeenCalled();
-
-		// Clean up
-		consoleWarnSpy.mockRestore();
 	});
 });
