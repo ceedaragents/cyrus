@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated Claude SDK dependencies** - Updated `@anthropic-ai/claude-agent-sdk` to v0.2.38 and `@anthropic-ai/sdk` to v0.74.0, adding support for fast-mode in Claude Opus 4.6. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#v0238) for details. ([CYPACK-799](https://linear.app/ceedar/issue/CYPACK-799), [#849](https://github.com/ceedaragents/cyrus/pull/849))
+
 ## [0.2.21] - 2026-02-09
 
 ### Changed
