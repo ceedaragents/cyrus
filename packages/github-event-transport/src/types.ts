@@ -2,6 +2,7 @@
  * Types for GitHub event transport
  */
 
+import type { InternalMessage } from "cyrus-core";
 import type { FastifyInstance } from "fastify";
 
 /**
@@ -27,8 +28,10 @@ export interface GitHubEventTransportConfig {
  * Events emitted by GitHubEventTransport
  */
 export interface GitHubEventTransportEvents {
-	/** Emitted when a GitHub webhook is received and verified */
+	/** Emitted when a GitHub webhook is received and verified (legacy) */
 	event: (event: GitHubWebhookEvent) => void;
+	/** Emitted when a unified internal message is received */
+	message: (message: InternalMessage) => void;
 	/** Emitted when an error occurs */
 	error: (error: Error) => void;
 }

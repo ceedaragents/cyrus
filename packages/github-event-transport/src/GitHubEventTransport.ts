@@ -1,7 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { EventEmitter } from "node:events";
+import type { TranslationContext } from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { GitHubMessageTranslator } from "./GitHubMessageTranslator.js";
 import type {
 	GitHubEventTransportConfig,
 	GitHubEventTransportEvents,
@@ -40,11 +42,26 @@ export declare interface GitHubEventTransport {
 export class GitHubEventTransport extends EventEmitter {
 	private config: GitHubEventTransportConfig;
 	private logger: ILogger;
+	private messageTranslator: GitHubMessageTranslator;
+	private translationContext: TranslationContext;
 
-	constructor(config: GitHubEventTransportConfig, logger?: ILogger) {
+	constructor(
+		config: GitHubEventTransportConfig,
+		logger?: ILogger,
+		translationContext?: TranslationContext,
+	) {
 		super();
 		this.config = config;
 		this.logger = logger ?? createLogger({ component: "GitHubEventTransport" });
+		this.messageTranslator = new GitHubMessageTranslator();
+		this.translationContext = translationContext ?? {};
+	}
+
+	/**
+	 * Set the translation context for message translation.
+	 */
+	setTranslationContext(context: TranslationContext): void {
+		this.translationContext = { ...this.translationContext, ...context };
 	}
 
 	/**
@@ -198,8 +215,30 @@ export class GitHubEventTransport extends EventEmitter {
 
 		this.logger.info(`Received ${eventType} webhook (delivery: ${deliveryId})`);
 
+		// Emit "event" for legacy compatibility
 		this.emit("event", webhookEvent);
+
+		// Emit "message" with translated internal message
+		this.emitMessage(webhookEvent);
+
 		reply.code(200).send({ success: true });
+	}
+
+	/**
+	 * Translate and emit an internal message from a webhook event.
+	 * Only emits if translation succeeds; logs debug message on failure.
+	 */
+	private emitMessage(event: GitHubWebhookEvent): void {
+		const result = this.messageTranslator.translate(
+			event,
+			this.translationContext,
+		);
+
+		if (result.success) {
+			this.emit("message", result.message);
+		} else {
+			this.logger.debug(`Message translation skipped: ${result.reason}`);
+		}
 	}
 
 	/**
