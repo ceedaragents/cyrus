@@ -40,6 +40,7 @@ export interface CyrusAgentSession {
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)
 	geminiSessionId?: string; // Gemini-specific session ID (assigned once it initializes)
 	agentRunner?: IAgentRunner;
+	wasRunning?: boolean; // Track if session had active runner when last persisted (for crash recovery)
 	metadata?: {
 		model?: string;
 		tools?: string[];
@@ -48,6 +49,8 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		/** Tracks crash recovery attempts to prevent infinite retry loops */
+		crashRetryCount?: number;
 		procedure?: {
 			procedureName: string;
 			currentSubroutineIndex: number;
