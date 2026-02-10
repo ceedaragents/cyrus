@@ -21,6 +21,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	AgentEvent,
@@ -2299,7 +2300,9 @@ export class EdgeWorker extends EventEmitter {
 			const runner =
 				runnerType === "claude"
 					? new ClaudeRunner(runnerConfig)
-					: new GeminiRunner(runnerConfig);
+					: runnerType === "gemini"
+						? new GeminiRunner(runnerConfig)
+						: new CodexRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -2922,16 +2925,17 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Determine runner type and model from issue labels.
-	 * Returns the runner type ("claude" or "gemini"), optional model override, and fallback model.
+	 * Returns the runner type ("claude", "gemini", or "codex"), optional model override, and fallback model.
 	 *
 	 * Label priority (case-insensitive):
+	 * - Codex labels: codex, openai, gpt-5-codex
 	 * - Gemini labels: gemini, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-pro, gemini-3-pro-preview
 	 * - Claude labels: claude, sonnet, opus
 	 *
 	 * If no runner label is found, defaults to claude.
 	 */
 	private determineRunnerFromLabels(labels: string[]): {
-		runnerType: "claude" | "gemini";
+		runnerType: "claude" | "gemini" | "codex";
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
@@ -2944,6 +2948,25 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
+		// Check for Codex labels first
+		if (lowercaseLabels.includes("gpt-5-codex")) {
+			return {
+				runnerType: "codex",
+				modelOverride: "gpt-5-codex",
+				fallbackModelOverride: "gpt-5",
+			};
+		}
+		if (
+			lowercaseLabels.includes("codex") ||
+			lowercaseLabels.includes("openai")
+		) {
+			return {
+				runnerType: "codex",
+				modelOverride: "gpt-5-codex",
+				fallbackModelOverride: "gpt-5",
+			};
+		}
 
 		// Check for Gemini labels first
 		if (
@@ -5329,7 +5352,7 @@ ${input.userComment}
 		labels?: string[],
 		maxTurns?: number,
 		singleTurn?: boolean,
-	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" | "codex" } {
 		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
 		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -5432,6 +5455,10 @@ ${input.userComment}
 			runnerType = "gemini";
 			modelOverride = "gemini-2.5-pro";
 			fallbackModelOverride = "gemini-2.5-flash";
+		} else if (session.codexSessionId && runnerType !== "codex") {
+			runnerType = "codex";
+			modelOverride = "gpt-5-codex";
+			fallbackModelOverride = "gpt-5";
 		}
 
 		// Log model override if found
@@ -6444,8 +6471,10 @@ ${input.userComment}
 		// Determine which runner to use based on existing session IDs
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
+		const hasCodexSession = !isNewSession && Boolean(session.codexSessionId);
 		const needsNewSession =
-			isNewSession || (!hasClaudeSession && !hasGeminiSession);
+			isNewSession ||
+			(!hasClaudeSession && !hasGeminiSession && !hasCodexSession);
 
 		// Fetch system prompt based on labels
 
@@ -6502,7 +6531,9 @@ ${input.userComment}
 			? undefined
 			: session.claudeSessionId
 				? session.claudeSessionId
-				: session.geminiSessionId;
+				: session.geminiSessionId
+					? session.geminiSessionId
+					: session.codexSessionId;
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
@@ -6525,7 +6556,9 @@ ${input.userComment}
 		const runner =
 			runnerType === "claude"
 				? new ClaudeRunner(runnerConfig)
-				: new GeminiRunner(runnerConfig);
+				: runnerType === "gemini"
+					? new GeminiRunner(runnerConfig)
+					: new CodexRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);

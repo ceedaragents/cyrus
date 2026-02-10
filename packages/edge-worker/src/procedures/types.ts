@@ -93,6 +93,7 @@ export interface ProcedureMetadata {
 		completedAt: number;
 		claudeSessionId: string | null;
 		geminiSessionId: string | null;
+		codexSessionId?: string | null;
 	}>;
 
 	/** State for validation loop (when current subroutine uses usesValidationLoop) */
