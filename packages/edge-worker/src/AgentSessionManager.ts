@@ -93,6 +93,8 @@ export class AgentSessionManager extends EventEmitter {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private taskSubjectsByToolUseId: Map<string, string> = new Map(); // Cache TaskCreate subjects by toolUseId until result arrives with task ID
+	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
@@ -1014,8 +1016,91 @@ export class AgentSessionManager extends EventEmitter {
 								this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
 							}
 
+							// Handle TaskCreate results: cache the task ID → subject mapping
+							const baseToolName = toolName.replace("↪ ", "");
+							if (baseToolName === "TaskCreate" && entry.metadata?.toolUseId) {
+								const cachedSubject = this.taskSubjectsByToolUseId.get(
+									entry.metadata.toolUseId,
+								);
+								if (cachedSubject) {
+									// Parse task ID from result like "Task #1 created successfully: ..."
+									const taskIdMatch = toolResult.content?.match(/Task #(\d+)/);
+									if (taskIdMatch?.[1]) {
+										this.taskSubjectsById.set(taskIdMatch[1], cachedSubject);
+									}
+									this.taskSubjectsByToolUseId.delete(
+										entry.metadata.toolUseId!,
+									);
+								}
+							}
+
+							// Handle TaskUpdate/TaskGet results: post enriched thought with subject
+							if (baseToolName === "TaskUpdate" || baseToolName === "TaskGet") {
+								const formatter = session.agentRunner?.getFormatter();
+								if (!formatter) {
+									console.warn(
+										`[AgentSessionManager] No formatter available for session ${linearAgentActivitySessionId}`,
+									);
+									return;
+								}
+
+								// Try to enrich toolInput with subject from cache or result
+								const enrichedInput = { ...toolInput };
+								if (!enrichedInput.subject) {
+									const taskId = enrichedInput.taskId || "";
+									// First try: look up subject from our cache
+									const cachedSubject = this.taskSubjectsById.get(taskId);
+									if (cachedSubject) {
+										enrichedInput.subject = cachedSubject;
+									} else if (baseToolName === "TaskGet" && toolResult.content) {
+										// Second try: parse subject from TaskGet result content
+										// Format: "ID: 123\nSubject: Fix bug\nStatus: ..."
+										const subjectMatch =
+											toolResult.content.match(/^Subject:\s*(.+)$/m);
+										if (subjectMatch?.[1]) {
+											enrichedInput.subject = subjectMatch[1].trim();
+											// Also cache it for future TaskUpdate calls
+											if (taskId) {
+												this.taskSubjectsById.set(
+													taskId,
+													enrichedInput.subject,
+												);
+											}
+										}
+									} else if (
+										baseToolName === "TaskUpdate" &&
+										toolResult.content
+									) {
+										// Try to parse subject from TaskUpdate result content
+										// Format: "Updated task #3 subject" or may contain task details
+										const subjectMatch =
+											toolResult.content.match(/^Subject:\s*(.+)$/m);
+										if (subjectMatch?.[1]) {
+											enrichedInput.subject = subjectMatch[1].trim();
+											if (taskId) {
+												this.taskSubjectsById.set(
+													taskId,
+													enrichedInput.subject,
+												);
+											}
+										}
+									}
+								}
+
+								const formattedTask = formatter.formatTaskParameter(
+									baseToolName,
+									enrichedInput,
+								);
+								content = {
+									type: "thought",
+									body: formattedTask,
+								};
+								ephemeral = false;
+								break;
+							}
+
 							// Skip creating activity for TodoWrite/write_todos results since they already created a non-ephemeral thought
-							// Skip Task tool results (TaskCreate, TaskUpdate, etc.) since they already created a non-ephemeral thought
+							// Skip TaskCreate/TaskList results since they already created a non-ephemeral thought
 							// Skip ToolSearch results since they already created a non-ephemeral thought
 							// Skip AskUserQuestion results since it's custom handled via Linear's select signal elicitation
 							if (
@@ -1024,12 +1109,8 @@ export class AgentSessionManager extends EventEmitter {
 								toolName === "write_todos" ||
 								toolName === "TaskCreate" ||
 								toolName === "↪ TaskCreate" ||
-								toolName === "TaskUpdate" ||
-								toolName === "↪ TaskUpdate" ||
 								toolName === "TaskList" ||
 								toolName === "↪ TaskList" ||
-								toolName === "TaskGet" ||
-								toolName === "↪ TaskGet" ||
 								toolName === "ToolSearch" ||
 								toolName === "↪ ToolSearch" ||
 								toolName === "AskUserQuestion" ||
@@ -1129,12 +1210,7 @@ export class AgentSessionManager extends EventEmitter {
 							};
 							// TodoWrite/write_todos is not ephemeral
 							ephemeral = false;
-						} else if (
-							toolName === "TaskCreate" ||
-							toolName === "TaskUpdate" ||
-							toolName === "TaskList" ||
-							toolName === "TaskGet"
-						) {
+						} else if (toolName === "TaskCreate" || toolName === "TaskList") {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
@@ -1156,6 +1232,22 @@ export class AgentSessionManager extends EventEmitter {
 							};
 							// Task tools are not ephemeral
 							ephemeral = false;
+
+							// Cache TaskCreate subject by toolUseId so we can map it to task ID when result arrives
+							if (
+								toolName === "TaskCreate" &&
+								toolInput?.subject &&
+								entry.metadata.toolUseId
+							) {
+								this.taskSubjectsByToolUseId.set(
+									entry.metadata.toolUseId,
+									toolInput.subject,
+								);
+							}
+						} else if (toolName === "TaskUpdate" || toolName === "TaskGet") {
+							// Skip posting at tool_use time — defer to tool_result time
+							// so we can enrich with subject from result or cache
+							return;
 						} else if (toolName === "ToolSearch") {
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
