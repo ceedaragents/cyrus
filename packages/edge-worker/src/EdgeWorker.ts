@@ -28,12 +28,14 @@ import type {
 	AgentSessionCreatedWebhook,
 	AgentSessionPromptedWebhook,
 	Comment,
+	ContentUpdateMessage,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
 	GuidanceRule,
 	IAgentRunner,
 	IIssueTrackerService,
 	ILogger,
+	InternalMessage,
 	Issue,
 	IssueMinimal,
 	IssueUnassignedWebhook,
@@ -42,6 +44,10 @@ import type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	SessionStartMessage,
+	StopSignalMessage,
+	UnassignMessage,
+	UserPromptMessage,
 	Webhook,
 	WebhookAgentSession,
 	WebhookComment,
@@ -54,11 +60,16 @@ import {
 	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
+	isContentUpdateMessage,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
+	isSessionStartMessage,
+	isStopSignalMessage,
+	isUnassignMessage,
+	isUserPromptMessage,
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
@@ -503,11 +514,16 @@ export class EdgeWorker extends EventEmitter {
 				secret,
 			});
 
-			// Listen for webhook events
+			// Listen for legacy webhook events (deprecated, kept for backward compatibility)
 			this.linearEventTransport.on("event", (event: AgentEvent) => {
 				// Get all active repositories for webhook handling
 				const repos = Array.from(this.repositories.values());
 				this.handleWebhook(event as unknown as Webhook, repos);
+			});
+
+			// Listen for unified internal messages (new message bus)
+			this.linearEventTransport.on("message", (message: InternalMessage) => {
+				this.handleMessage(message);
 			});
 
 			// Listen for errors
@@ -610,7 +626,7 @@ export class EdgeWorker extends EventEmitter {
 			secret,
 		});
 
-		// Listen for GitHub webhook events
+		// Listen for legacy GitHub webhook events (deprecated, kept for backward compatibility)
 		this.gitHubEventTransport.on("event", (event: GitHubWebhookEvent) => {
 			this.handleGitHubWebhook(event).catch((error) => {
 				this.logger.error(
@@ -618,6 +634,11 @@ export class EdgeWorker extends EventEmitter {
 					error instanceof Error ? error : new Error(String(error)),
 				);
 			});
+		});
+
+		// Listen for unified internal messages (new message bus)
+		this.gitHubEventTransport.on("message", (message: InternalMessage) => {
+			this.handleMessage(message);
 		});
 
 		// Listen for errors
@@ -729,6 +750,7 @@ export class EdgeWorker extends EventEmitter {
 				sessionKey,
 				issueMinimal,
 				workspace,
+				"github", // Don't stream activities to Linear for GitHub sources
 			);
 
 			const session = agentSessionManager.getSession(githubSessionId);
@@ -1948,6 +1970,154 @@ ${taskInstructions}
 			this.activeWebhookCount--;
 		}
 	}
+
+	// ============================================================================
+	// INTERNAL MESSAGE BUS HANDLERS
+	// ============================================================================
+	// These handlers process unified InternalMessage types from the message bus.
+	// They provide a platform-agnostic interface for handling events from
+	// Linear, GitHub, Slack, and other platforms.
+	// ============================================================================
+
+	/**
+	 * Handle unified internal messages from the message bus.
+	 * This is the new entry point for processing events from all platforms.
+	 *
+	 * Note: For now, this runs in parallel with legacy webhook handlers.
+	 * Once migration is complete, legacy handlers will be removed.
+	 */
+	private async handleMessage(message: InternalMessage): Promise<void> {
+		// NOTE: activeWebhookCount is NOT tracked here because legacy webhook handlers
+		// already increment/decrement it for every event. Counting here would double-count.
+		// TODO: When legacy handlers are removed, restore activeWebhookCount tracking here.
+
+		// Log verbose message info if enabled
+		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+			this.logger.debug(
+				`Internal message received: ${message.source}/${message.action}`,
+				JSON.stringify(message, null, 2),
+			);
+		}
+
+		try {
+			// Route to specific message handlers based on action type
+			if (isSessionStartMessage(message)) {
+				await this.handleSessionStartMessage(message);
+			} else if (isUserPromptMessage(message)) {
+				await this.handleUserPromptMessage(message);
+			} else if (isStopSignalMessage(message)) {
+				await this.handleStopSignalMessage(message);
+			} else if (isContentUpdateMessage(message)) {
+				await this.handleContentUpdateMessage(message);
+			} else if (isUnassignMessage(message)) {
+				await this.handleUnassignMessage(message);
+			} else {
+				// This branch should never be reached due to exhaustive type checking
+				// If it is reached, log the unexpected message for debugging
+				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+					const unexpectedMessage = message as InternalMessage;
+					this.logger.debug(
+						`Unhandled message action: ${unexpectedMessage.action}`,
+					);
+				}
+			}
+		} catch (error) {
+			this.logger.error(
+				`Failed to process message: ${message.source}/${message.action}`,
+				error,
+			);
+			// Don't re-throw message processing errors to prevent application crashes
+		} finally {
+			// No-op: see activeWebhookCount comment at top of handleMessage()
+		}
+	}
+
+	/**
+	 * Handle session start message (unified handler for session creation).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleAgentSessionCreatedWebhook and handleGitHubWebhook.
+	 */
+	private async handleSessionStartMessage(
+		message: SessionStartMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Session start: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified session start handling
+		// For now, the legacy handlers (handleAgentSessionCreatedWebhook, handleGitHubWebhook)
+		// continue to process the actual session creation via the 'event' emitter.
+	}
+
+	/**
+	 * Handle user prompt message (unified handler for mid-session prompts).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleUserPromptedAgentActivity (branch 3).
+	 */
+	private async handleUserPromptMessage(
+		message: UserPromptMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] User prompt: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified user prompt handling
+		// For now, the legacy handler (handleUserPromptedAgentActivity)
+		// continues to process the actual prompt via the 'event' emitter.
+	}
+
+	/**
+	 * Handle stop signal message (unified handler for session termination).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleUserPromptedAgentActivity (branch 1).
+	 */
+	private async handleStopSignalMessage(
+		message: StopSignalMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Stop signal: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified stop signal handling
+		// For now, the legacy handler (handleUserPromptedAgentActivity)
+		// continues to process the actual stop via the 'event' emitter.
+	}
+
+	/**
+	 * Handle content update message (unified handler for issue/PR content changes).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleIssueContentUpdate.
+	 */
+	private async handleContentUpdateMessage(
+		message: ContentUpdateMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Content update: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified content update handling
+		// For now, the legacy handler (handleIssueContentUpdate)
+		// continues to process the actual update via the 'event' emitter.
+	}
+
+	/**
+	 * Handle unassign message (unified handler for task unassignment).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleIssueUnassignedWebhook.
+	 */
+	private async handleUnassignMessage(message: UnassignMessage): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Unassign: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified unassign handling
+		// For now, the legacy handler (handleIssueUnassignedWebhook)
+		// continues to process the actual unassignment via the 'event' emitter.
+	}
+
+	// ============================================================================
+	// LEGACY WEBHOOK HANDLERS
+	// ============================================================================
 
 	/**
 	 * Handle issue unassignment webhook

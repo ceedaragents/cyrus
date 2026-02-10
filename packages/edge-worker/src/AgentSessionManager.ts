@@ -146,32 +146,41 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Initialize a Linear agent session from webhook
-	 * The session is already created by Linear, we just need to track it
+	 * Initialize an agent session from webhook
+	 * The session is already created by the platform, we just need to track it
+	 *
+	 * @param sessionId - Internal session ID
+	 * @param issueId - Issue/PR identifier
+	 * @param issueMinimal - Minimal issue data
+	 * @param workspace - Workspace configuration
+	 * @param platform - Source platform ("linear", "github", "slack"). Defaults to "linear".
+	 *                   Only "linear" sessions will have activities streamed to Linear.
 	 */
 	createLinearAgentSession(
 		sessionId: string,
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
+		platform: "linear" | "github" | "slack" = "linear",
 	): CyrusAgentSession {
 		const log = this.logger.withContext({
 			sessionId,
-			platform: "linear",
+			platform,
 			issueIdentifier: issueMinimal.identifier,
 		});
 		log.info(`Tracking session for issue ${issueId}`);
 
 		const agentSession: CyrusAgentSession = {
 			id: sessionId,
-			externalSessionId: sessionId, // For Linear sessions, the external ID is the same as our internal ID
+			// Only Linear sessions have a valid external session ID for posting activities
+			externalSessionId: platform === "linear" ? sessionId : undefined,
 			type: AgentSessionType.CommentThread,
 			status: AgentSessionStatus.Active,
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
 			issueContext: {
-				trackerId: "linear",
+				trackerId: platform,
 				issueId: issueId,
 				issueIdentifier: issueMinimal.identifier,
 			},
@@ -1221,9 +1230,11 @@ export class AgentSessionManager extends EventEmitter {
 				}
 			}
 
-			// Ensure we have an external session ID for Linear API
+			// Ensure we have an external session ID for activity posting
 			if (!session.externalSessionId) {
-				log.warn(`No external session ID, skipping Linear activity`);
+				log.debug(
+					`Skipping activity sync - no external session ID (platform: ${session.issueContext?.trackerId || "unknown"})`,
+				);
 				return;
 			}
 
@@ -1370,7 +1381,9 @@ export class AgentSessionManager extends EventEmitter {
 		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			log.warn(`No Linear session ID`);
+			log.debug(
+				`Skipping thought activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
 			return;
 		}
 
@@ -1405,7 +1418,9 @@ export class AgentSessionManager extends EventEmitter {
 		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			log.warn(`No Linear session ID`);
+			log.debug(
+				`Skipping action activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
 			return;
 		}
 
@@ -1442,7 +1457,9 @@ export class AgentSessionManager extends EventEmitter {
 		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			log.warn(`No Linear session ID`);
+			log.debug(
+				`Skipping response activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
 			return;
 		}
 
@@ -1472,7 +1489,9 @@ export class AgentSessionManager extends EventEmitter {
 		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			log.warn(`No Linear session ID`);
+			log.debug(
+				`Skipping error activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
 			return;
 		}
 
@@ -1505,7 +1524,9 @@ export class AgentSessionManager extends EventEmitter {
 		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			log.warn(`No Linear session ID`);
+			log.debug(
+				`Skipping elicitation activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
 			return;
 		}
 
@@ -1539,7 +1560,9 @@ export class AgentSessionManager extends EventEmitter {
 		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			log.warn(`No Linear session ID`);
+			log.debug(
+				`Skipping approval elicitation - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
 			return;
 		}
 
@@ -1654,9 +1677,19 @@ export class AgentSessionManager extends EventEmitter {
 		model: string,
 	): Promise<void> {
 		const log = this.sessionLog(sessionId);
+		const session = this.sessions.get(sessionId);
+
+		// Skip posting for non-Linear sessions (GitHub, Slack, etc.)
+		if (!session || !session.externalSessionId) {
+			log.debug(
+				`Skipping model notification - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
+			return;
+		}
+
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: sessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "thought",
 					body: `Using model: ${model}`,
@@ -1678,9 +1711,19 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	async postAnalyzingThought(sessionId: string): Promise<string | null> {
 		const log = this.sessionLog(sessionId);
+		const session = this.sessions.get(sessionId);
+
+		// Skip posting for non-Linear sessions (GitHub, Slack, etc.)
+		if (!session || !session.externalSessionId) {
+			log.debug(
+				`Skipping analyzing thought - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
+			return null;
+		}
+
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: sessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "thought",
 					body: "Analyzing your request…",
@@ -1711,9 +1754,19 @@ export class AgentSessionManager extends EventEmitter {
 		classification: string,
 	): Promise<void> {
 		const log = this.sessionLog(sessionId);
+		const session = this.sessions.get(sessionId);
+
+		// Skip posting for non-Linear sessions (GitHub, Slack, etc.)
+		if (!session || !session.externalSessionId) {
+			log.debug(
+				`Skipping procedure selection thought - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
+			return;
+		}
+
 		try {
 			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: sessionId,
+				agentSessionId: session.externalSessionId,
 				content: {
 					type: "thought",
 					body: `Selected procedure: **${procedureName}** (classified as: ${classification})`,
@@ -1741,7 +1794,9 @@ export class AgentSessionManager extends EventEmitter {
 		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
-			log.warn(`No Linear session ID`);
+			log.debug(
+				`Skipping status message - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+			);
 			return;
 		}
 
