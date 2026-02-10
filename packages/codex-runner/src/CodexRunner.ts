@@ -2,9 +2,19 @@ import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, relative as pathRelative } from "node:path";
 import { cwd } from "node:process";
-import type { Thread, ThreadOptions, Usage } from "@openai/codex-sdk";
+import type {
+	CommandExecutionItem,
+	FileChangeItem,
+	McpToolCallItem,
+	Thread,
+	ThreadItem,
+	ThreadOptions,
+	TodoListItem,
+	Usage,
+	WebSearchItem,
+} from "@openai/codex-sdk";
 import { Codex } from "@openai/codex-sdk";
 import type {
 	IAgentRunner,
@@ -12,6 +22,7 @@ import type {
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
+	SDKUserMessage,
 } from "cyrus-core";
 import { CodexMessageFormatter } from "./formatter.js";
 import type {
@@ -33,8 +44,85 @@ interface ParsedUsage {
 	cachedInputTokens: number;
 }
 
+type ToolInput = Record<string, unknown>;
+
+interface ToolProjection {
+	toolUseId: string;
+	toolName: string;
+	toolInput: ToolInput;
+	result: string;
+	isError: boolean;
+}
+
 function toFiniteNumber(value: number | undefined): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function safeStringify(value: unknown): string {
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
+function createAssistantToolUseMessage(
+	toolUseId: string,
+	toolName: string,
+	toolInput: ToolInput,
+	messageId: string = crypto.randomUUID(),
+): SDKAssistantMessage["message"] {
+	const contentBlocks = [
+		{
+			type: "tool_use",
+			id: toolUseId,
+			name: toolName,
+			input: toolInput,
+		},
+	] as unknown as SDKAssistantMessage["message"]["content"];
+
+	return {
+		id: messageId,
+		type: "message",
+		role: "assistant",
+		content: contentBlocks,
+		model: "gpt-5-codex",
+		stop_reason: null,
+		stop_sequence: null,
+		usage: {
+			input_tokens: 0,
+			output_tokens: 0,
+			cache_creation_input_tokens: 0,
+			cache_read_input_tokens: 0,
+			cache_creation: null,
+			inference_geo: null,
+			iterations: null,
+			server_tool_use: null,
+			service_tier: null,
+		},
+		container: null,
+		context_management: null,
+	};
+}
+
+function createUserToolResultMessage(
+	toolUseId: string,
+	result: string,
+	isError: boolean,
+): SDKUserMessage["message"] {
+	const contentBlocks = [
+		{
+			type: "tool_result",
+			tool_use_id: toolUseId,
+			content: result,
+			is_error: isError,
+		},
+	] as unknown as SDKUserMessage["message"]["content"];
+
+	return {
+		role: "user",
+		content: contentBlocks,
+	};
 }
 
 function createAssistantBetaMessage(
@@ -122,6 +210,98 @@ function normalizeError(error: unknown): string {
 	return "Codex execution failed";
 }
 
+function inferCommandToolName(command: string): string {
+	const normalized = command.toLowerCase();
+	if (/\brg\b|\bgrep\b/.test(normalized)) {
+		return "Grep";
+	}
+	if (/\bglob\.glob\b|\bfind\b.+\s-name\s/.test(normalized)) {
+		return "Glob";
+	}
+	if (/\bcat\b/.test(normalized) && !/>/.test(normalized)) {
+		return "Read";
+	}
+	if (
+		/<<\s*['"]?eof['"]?\s*>/i.test(command) ||
+		/\becho\b.+>/.test(normalized)
+	) {
+		return "Write";
+	}
+	return "Bash";
+}
+
+function normalizeFilePath(path: string, workingDirectory?: string): string {
+	if (!path) {
+		return path;
+	}
+
+	if (workingDirectory && path.startsWith(workingDirectory)) {
+		const relativePath = pathRelative(workingDirectory, path);
+		if (relativePath && relativePath !== ".") {
+			return relativePath;
+		}
+	}
+
+	return path;
+}
+
+function summarizeFileChanges(
+	item: FileChangeItem,
+	workingDirectory?: string,
+): string {
+	if (!item.changes.length) {
+		return item.status === "failed" ? "Patch failed" : "No file changes";
+	}
+
+	return item.changes
+		.map((change) => {
+			const filePath = normalizeFilePath(change.path, workingDirectory);
+			return `${change.kind} ${filePath}`;
+		})
+		.join("\n");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	if (value && typeof value === "object") {
+		return value as Record<string, unknown>;
+	}
+	return null;
+}
+
+function toMcpResultString(item: McpToolCallItem): string {
+	if (item.error?.message) {
+		return item.error.message;
+	}
+
+	const textBlocks: string[] = [];
+	for (const block of item.result?.content || []) {
+		const text = asRecord(block)?.text;
+		if (typeof text === "string" && text.trim().length > 0) {
+			textBlocks.push(text);
+		}
+	}
+
+	if (textBlocks.length > 0) {
+		return textBlocks.join("\n");
+	}
+
+	if (item.result?.structured_content !== undefined) {
+		return safeStringify(item.result.structured_content);
+	}
+
+	return item.status === "failed"
+		? "MCP tool call failed"
+		: "MCP tool call completed";
+}
+
+function normalizeMcpIdentifier(value: string): string {
+	const normalized = value
+		.toLowerCase()
+		.replace(/[^a-z0-9_]+/g, "_")
+		.replace(/^_+|_+$/g, "");
+	return normalized || "unknown";
+}
+
 export declare interface CodexRunner {
 	on<K extends keyof CodexRunnerEvents>(
 		event: K,
@@ -155,6 +335,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	private startTimestampMs = 0;
 	private wasStopped = false;
 	private abortController: AbortController | null = null;
+	private emittedToolUseIds: Set<string> = new Set();
 
 	constructor(config: CodexRunnerConfig) {
 		super();
@@ -209,6 +390,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		this.errorMessages = [];
 		this.wasStopped = false;
 		this.startTimestampMs = Date.now();
+		this.emittedToolUseIds.clear();
 
 		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
 		const threadOptions = this.buildThreadOptions();
@@ -349,7 +531,13 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			case "item.completed": {
 				if (event.item.type === "agent_message") {
 					this.emitAssistantMessage(event.item.text);
+				} else {
+					this.emitToolMessagesForItem(event.item, true);
 				}
+				break;
+			}
+			case "item.started": {
+				this.emitToolMessagesForItem(event.item, false);
 				break;
 			}
 			case "turn.completed": {
@@ -372,6 +560,171 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			default:
 				break;
 		}
+	}
+
+	private projectItemToTool(item: ThreadItem): ToolProjection | null {
+		switch (item.type) {
+			case "command_execution": {
+				const commandItem = item as CommandExecutionItem;
+				const isError =
+					commandItem.status === "failed" ||
+					(typeof commandItem.exit_code === "number" &&
+						commandItem.exit_code !== 0);
+				const result =
+					commandItem.aggregated_output?.trim() ||
+					(isError
+						? `Command failed (exit code ${commandItem.exit_code ?? "unknown"})`
+						: "Command completed with no output");
+
+				return {
+					toolUseId: commandItem.id,
+					toolName: inferCommandToolName(commandItem.command),
+					toolInput: { command: commandItem.command },
+					result,
+					isError,
+				};
+			}
+			case "file_change": {
+				const fileChangeItem = item as FileChangeItem;
+				const primaryPath =
+					fileChangeItem.changes[0]?.path &&
+					normalizeFilePath(
+						fileChangeItem.changes[0].path,
+						this.config.workingDirectory,
+					);
+				return {
+					toolUseId: fileChangeItem.id,
+					toolName: "Edit",
+					toolInput: {
+						...(primaryPath ? { file_path: primaryPath } : {}),
+						changes: fileChangeItem.changes.map((change) => ({
+							kind: change.kind,
+							path: normalizeFilePath(
+								change.path,
+								this.config.workingDirectory,
+							),
+						})),
+					},
+					result: summarizeFileChanges(
+						fileChangeItem,
+						this.config.workingDirectory,
+					),
+					isError: fileChangeItem.status === "failed",
+				};
+			}
+			case "web_search": {
+				const webSearchItem = item as WebSearchItem;
+				const extendedItem = item as unknown as Record<string, unknown>;
+				const action = asRecord(extendedItem.action);
+				const actionType =
+					typeof action?.type === "string" ? action.type : undefined;
+				const isFetch = actionType === "open_page";
+				const url =
+					typeof action?.url === "string"
+						? action.url
+						: typeof extendedItem.url === "string"
+							? extendedItem.url
+							: undefined;
+				const pattern =
+					typeof action?.pattern === "string"
+						? action.pattern
+						: typeof extendedItem.pattern === "string"
+							? extendedItem.pattern
+							: undefined;
+
+				return {
+					toolUseId: webSearchItem.id,
+					toolName: isFetch ? "WebFetch" : "WebSearch",
+					toolInput: isFetch
+						? {
+								url: url || webSearchItem.query,
+								...(pattern ? { pattern } : {}),
+							}
+						: { query: webSearchItem.query },
+					result:
+						action && Object.keys(action).length > 0
+							? safeStringify(action)
+							: `Search completed for query: ${webSearchItem.query}`,
+					isError: false,
+				};
+			}
+			case "mcp_tool_call": {
+				const mcpItem = item as McpToolCallItem;
+				return {
+					toolUseId: mcpItem.id,
+					toolName: `mcp__${normalizeMcpIdentifier(mcpItem.server)}__${normalizeMcpIdentifier(mcpItem.tool)}`,
+					toolInput: asRecord(mcpItem.arguments) || {
+						arguments: mcpItem.arguments,
+					},
+					result: toMcpResultString(mcpItem),
+					isError: mcpItem.status === "failed" || Boolean(mcpItem.error),
+				};
+			}
+			case "todo_list": {
+				const todoItem = item as TodoListItem;
+				return {
+					toolUseId: todoItem.id,
+					toolName: "TodoWrite",
+					toolInput: {
+						todos: todoItem.items.map((todo) => ({
+							content: todo.text,
+							status: todo.completed ? "completed" : "pending",
+						})),
+					},
+					result: `Updated todo list (${todoItem.items.length} items)`,
+					isError: false,
+				};
+			}
+			default:
+				return null;
+		}
+	}
+
+	private emitToolMessagesForItem(
+		item: ThreadItem,
+		includeResult: boolean,
+	): void {
+		const projection = this.projectItemToTool(item);
+		if (!projection) {
+			return;
+		}
+
+		if (!this.emittedToolUseIds.has(projection.toolUseId)) {
+			const assistantMessage: SDKAssistantMessage = {
+				type: "assistant",
+				message: createAssistantToolUseMessage(
+					projection.toolUseId,
+					projection.toolName,
+					projection.toolInput,
+				),
+				parent_tool_use_id: null,
+				uuid: crypto.randomUUID(),
+				session_id: this.sessionInfo?.sessionId || "pending",
+			};
+			this.messages.push(assistantMessage);
+			this.emit("message", assistantMessage);
+			this.emittedToolUseIds.add(projection.toolUseId);
+		}
+
+		if (!includeResult) {
+			return;
+		}
+
+		const userMessage: SDKUserMessage = {
+			type: "user",
+			message: createUserToolResultMessage(
+				projection.toolUseId,
+				projection.result,
+				projection.isError,
+			),
+			parent_tool_use_id: null,
+			uuid: crypto.randomUUID(),
+			session_id: this.sessionInfo?.sessionId || "pending",
+		};
+
+		this.messages.push(userMessage);
+		this.emit("message", userMessage);
+		this.emittedToolUseIds.delete(projection.toolUseId);
 	}
 
 	private finalizeSession(caughtError?: unknown): void {
