@@ -550,7 +550,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				error.message.includes("Claude Code process exited with code 143");
 
 			// Check for stale session error - occurs when resuming a session that no longer exists
-			// This typically happens after a pod restart when the persisted session ID is stale
+			// This typically happens after a process restart when the persisted session ID is stale
 			// Detection methods:
 			// 1. Error message contains "No conversation found with session ID" (from SDK stderr)
 			// 2. Exit code 1 + resumeSessionId set + only init message received (Claude crashed immediately)
