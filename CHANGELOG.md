@@ -4,60 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.2.27] - 2026-03-04
-
-### Added
-- **PR change request handling** - When a reviewer requests changes on a PR created by Cyrus, the agent now automatically acknowledges the review and starts working on the requested changes. Supports both summary-level and line-level review comments. ([CYPACK-842](https://linear.app/ceedar/issue/CYPACK-842), [#896](https://github.com/ceedaragents/cyrus/pull/896))
-- **Direct Slack webhook verification for self-hosted deployments** - Cyrus can now verify Slack webhooks directly using HMAC-SHA256 signature verification when `SLACK_SIGNING_SECRET` is set, removing the need for the CYHOST proxy in self-hosted environments. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
-- **GitHub bot mention filtering** - GitHub webhook handler now respects `GITHUB_BOT_USERNAME` to only trigger on `@bot` mentions and ignore its own comments, preventing infinite loops in self-hosted setups. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
-- **Smarter Slack thread context** - Other bots' messages (Sentry, CI, GitHub notifications) are now preserved in Slack thread context instead of being filtered out. Only the bot's own messages are excluded. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
-
 ### Fixed
-- **Slack bot token availability after runtime switch** - Fixed Slack bot token not being available when switching from cloud to self-host runtime. The token is now resolved at usage time with a fallback to `process.env`, handling cases where the env update arrives after the first webhook. ([CYPACK-842](https://linear.app/ceedar/issue/CYPACK-842), [#896](https://github.com/ceedaragents/cyrus/pull/896))
-
-### Packages
-
-#### cyrus-cloudflare-tunnel-client
-- cyrus-cloudflare-tunnel-client@0.2.27
-
-#### cyrus-mcp-tools
-- cyrus-mcp-tools@0.2.27
-
-#### cyrus-claude-runner
-- cyrus-claude-runner@0.2.27
-
-#### cyrus-core
-- cyrus-core@0.2.27
-
-#### cyrus-simple-agent-runner
-- cyrus-simple-agent-runner@0.2.27
-
-#### cyrus-codex-runner
-- cyrus-codex-runner@0.2.27
-
-#### cyrus-cursor-runner
-- cyrus-cursor-runner@0.2.27
-
-#### cyrus-config-updater
-- cyrus-config-updater@0.2.27
-
-#### cyrus-linear-event-transport
-- cyrus-linear-event-transport@0.2.27
-
-#### cyrus-github-event-transport
-- cyrus-github-event-transport@0.2.27
-
-#### cyrus-slack-event-transport
-- cyrus-slack-event-transport@0.2.27
-
-#### cyrus-gemini-runner
-- cyrus-gemini-runner@0.2.27
-
-#### cyrus-edge-worker
-- cyrus-edge-worker@0.2.27
-
-#### cyrus-ai (CLI)
-- cyrus-ai@0.2.27
+- **Stale session recovery on resume** - When resuming a session with a persisted session ID that no longer exists (e.g., after a process restart), Cyrus now detects the failure, clears the stale ID, and retries with a fresh session that includes a conversation summary for context continuity.
 
 ## [0.2.26] - 2026-02-28 ([#918](https://github.com/ceedaragents/cyrus/pull/918))
 
