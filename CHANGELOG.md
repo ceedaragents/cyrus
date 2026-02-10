@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Stale session recovery on resume** - When resuming a session with a persisted session ID that no longer exists (e.g., after a process restart), Cyrus now detects the failure, clears the stale ID, and retries with a fresh session that includes a conversation summary for context continuity.
+
 ## [0.2.25] - 2026-02-27
 
 ### Fixed
