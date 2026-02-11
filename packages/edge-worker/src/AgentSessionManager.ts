@@ -207,7 +207,7 @@ export class AgentSessionManager extends EventEmitter {
 		const linearSession = this.sessions.get(sessionId);
 		if (!linearSession) {
 			const log = this.sessionLog(sessionId);
-			log.warn(`No Linear session found`);
+			log.warn(`No session found`);
 			return;
 		}
 
@@ -958,7 +958,7 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Sync Agent Session Entry to Linear (create AgentActivity)
+	 * Sync session entry to external tracker (create AgentActivity)
 	 */
 	private async syncEntryToLinear(
 		entry: CyrusAgentSessionEntry,
@@ -968,7 +968,7 @@ export class AgentSessionManager extends EventEmitter {
 		try {
 			const session = this.sessions.get(sessionId);
 			if (!session) {
-				log.warn(`No Linear session found`);
+				log.warn(`No session found`);
 				return;
 			}
 
@@ -1226,7 +1226,7 @@ export class AgentSessionManager extends EventEmitter {
 					log.debug(
 						`Suppressing ${content.type} posting for subroutine "${currentSubroutine.name}"`,
 					);
-					return; // Don't post to Linear
+					return; // Don't post to tracker
 				}
 			}
 
@@ -1239,7 +1239,7 @@ export class AgentSessionManager extends EventEmitter {
 			}
 
 			const activityInput: AgentActivityCreateInput = {
-				agentSessionId: session.externalSessionId, // Use the Linear session ID
+				agentSessionId: session.externalSessionId, // Use the external session ID
 				content,
 				...(ephemeral && { ephemeral: true }),
 			};
@@ -1375,35 +1375,58 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Create a thought activity
+	 * Post an activity to the external issue tracker for a session.
+	 * Consolidates session lookup, externalSessionId guard, try/catch, and logging.
+	 *
+	 * @returns The activity ID when resolved, `null` otherwise.
 	 */
-	async createThoughtActivity(sessionId: string, body: string): Promise<void> {
+	private async postActivity(
+		sessionId: string,
+		input: Omit<AgentActivityCreateInput, "agentSessionId">,
+		label: string,
+	): Promise<string | null> {
 		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
+
 		if (!session || !session.externalSessionId) {
 			log.debug(
-				`Skipping thought activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
+				`Skipping ${label} - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
 			);
-			return;
+			return null;
 		}
 
 		try {
 			const result = await this.issueTracker.createAgentActivity({
 				agentSessionId: session.externalSessionId,
-				content: {
-					type: "thought",
-					body,
-				},
+				...input,
 			});
 
 			if (result.success) {
-				log.debug(`Created thought activity`);
-			} else {
-				log.error(`Failed to create thought activity:`, result);
+				if (result.agentActivity) {
+					const activity = await result.agentActivity;
+					log.debug(`Created ${label} activity ${activity.id}`);
+					return activity.id;
+				}
+				log.debug(`Created ${label}`);
+				return null;
 			}
+			log.error(`Failed to create ${label}:`, result);
+			return null;
 		} catch (error) {
-			log.error(`Error creating thought activity:`, error);
+			log.error(`Error creating ${label}:`, error);
+			return null;
 		}
+	}
+
+	/**
+	 * Create a thought activity
+	 */
+	async createThoughtActivity(sessionId: string, body: string): Promise<void> {
+		await this.postActivity(
+			sessionId,
+			{ content: { type: "thought", body } },
+			"thought",
+		);
 	}
 
 	/**
@@ -1415,103 +1438,33 @@ export class AgentSessionManager extends EventEmitter {
 		parameter: string,
 		result?: string,
 	): Promise<void> {
-		const log = this.sessionLog(sessionId);
-		const session = this.sessions.get(sessionId);
-		if (!session || !session.externalSessionId) {
-			log.debug(
-				`Skipping action activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
-			);
-			return;
+		const content: any = { type: "action", action, parameter };
+		if (result !== undefined) {
+			content.result = result;
 		}
-
-		try {
-			const content: any = {
-				type: "action",
-				action,
-				parameter,
-			};
-
-			if (result !== undefined) {
-				content.result = result;
-			}
-
-			const response = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
-				content,
-			});
-
-			if (response.success) {
-				log.debug(`Created action activity`);
-			} else {
-				log.error(`Failed to create action activity:`, response);
-			}
-		} catch (error) {
-			log.error(`Error creating action activity:`, error);
-		}
+		await this.postActivity(sessionId, { content }, "action");
 	}
 
 	/**
 	 * Create a response activity
 	 */
 	async createResponseActivity(sessionId: string, body: string): Promise<void> {
-		const log = this.sessionLog(sessionId);
-		const session = this.sessions.get(sessionId);
-		if (!session || !session.externalSessionId) {
-			log.debug(
-				`Skipping response activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
-			);
-			return;
-		}
-
-		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
-				content: {
-					type: "response",
-					body,
-				},
-			});
-
-			if (result.success) {
-				log.debug(`Created response activity`);
-			} else {
-				log.error(`Failed to create response activity:`, result);
-			}
-		} catch (error) {
-			log.error(`Error creating response activity:`, error);
-		}
+		await this.postActivity(
+			sessionId,
+			{ content: { type: "response", body } },
+			"response",
+		);
 	}
 
 	/**
 	 * Create an error activity
 	 */
 	async createErrorActivity(sessionId: string, body: string): Promise<void> {
-		const log = this.sessionLog(sessionId);
-		const session = this.sessions.get(sessionId);
-		if (!session || !session.externalSessionId) {
-			log.debug(
-				`Skipping error activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
-			);
-			return;
-		}
-
-		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
-				content: {
-					type: "error",
-					body,
-				},
-			});
-
-			if (result.success) {
-				log.debug(`Created error activity`);
-			} else {
-				log.error(`Failed to create error activity:`, result);
-			}
-		} catch (error) {
-			log.error(`Error creating error activity:`, error);
-		}
+		await this.postActivity(
+			sessionId,
+			{ content: { type: "error", body } },
+			"error",
+		);
 	}
 
 	/**
@@ -1521,32 +1474,11 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		body: string,
 	): Promise<void> {
-		const log = this.sessionLog(sessionId);
-		const session = this.sessions.get(sessionId);
-		if (!session || !session.externalSessionId) {
-			log.debug(
-				`Skipping elicitation activity - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
-			);
-			return;
-		}
-
-		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
-				content: {
-					type: "elicitation",
-					body,
-				},
-			});
-
-			if (result.success) {
-				log.debug(`Created elicitation activity`);
-			} else {
-				log.error(`Failed to create elicitation activity:`, result);
-			}
-		} catch (error) {
-			log.error(`Error creating elicitation activity:`, error);
-		}
+		await this.postActivity(
+			sessionId,
+			{ content: { type: "elicitation", body } },
+			"elicitation",
+		);
 	}
 
 	/**
@@ -1557,36 +1489,15 @@ export class AgentSessionManager extends EventEmitter {
 		body: string,
 		approvalUrl: string,
 	): Promise<void> {
-		const log = this.sessionLog(sessionId);
-		const session = this.sessions.get(sessionId);
-		if (!session || !session.externalSessionId) {
-			log.debug(
-				`Skipping approval elicitation - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
-			);
-			return;
-		}
-
-		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
-				content: {
-					type: "elicitation",
-					body,
-				},
+		await this.postActivity(
+			sessionId,
+			{
+				content: { type: "elicitation", body },
 				signal: AgentActivitySignal.Auth,
-				signalMetadata: {
-					url: approvalUrl,
-				},
-			});
-
-			if (result.success) {
-				log.debug(`Created approval elicitation with URL: ${approvalUrl}`);
-			} else {
-				log.error(`Failed to create approval elicitation:`, result);
-			}
-		} catch (error) {
-			log.error(`Error creating approval elicitation:`, error);
-		}
+				signalMetadata: { url: approvalUrl },
+			},
+			"approval elicitation",
+		);
 	}
 
 	/**
@@ -1676,73 +1587,25 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		model: string,
 	): Promise<void> {
-		const log = this.sessionLog(sessionId);
-		const session = this.sessions.get(sessionId);
-
-		// Skip posting for non-Linear sessions (GitHub, Slack, etc.)
-		if (!session || !session.externalSessionId) {
-			log.debug(
-				`Skipping model notification - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
-			);
-			return;
-		}
-
-		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
-				content: {
-					type: "thought",
-					body: `Using model: ${model}`,
-				},
-			});
-
-			if (result.success) {
-				log.debug(`Posted model notification (model: ${model})`);
-			} else {
-				log.error(`Failed to post model notification:`, result);
-			}
-		} catch (error) {
-			log.error(`Error posting model notification:`, error);
-		}
+		await this.postActivity(
+			sessionId,
+			{ content: { type: "thought", body: `Using model: ${model}` } },
+			"model notification",
+		);
 	}
 
 	/**
 	 * Post an ephemeral "Analyzing your request..." thought and return the activity ID
 	 */
 	async postAnalyzingThought(sessionId: string): Promise<string | null> {
-		const log = this.sessionLog(sessionId);
-		const session = this.sessions.get(sessionId);
-
-		// Skip posting for non-Linear sessions (GitHub, Slack, etc.)
-		if (!session || !session.externalSessionId) {
-			log.debug(
-				`Skipping analyzing thought - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
-			);
-			return null;
-		}
-
-		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
-				content: {
-					type: "thought",
-					body: "Analyzing your request…",
-				},
+		return this.postActivity(
+			sessionId,
+			{
+				content: { type: "thought", body: "Analyzing your request…" },
 				ephemeral: true,
-			});
-
-			if (result.success && result.agentActivity) {
-				const activity = await result.agentActivity;
-				log.debug(`Posted analyzing thought`);
-				return activity.id;
-			} else {
-				log.error(`Failed to post analyzing thought:`, result);
-				return null;
-			}
-		} catch (error) {
-			log.error(`Error posting analyzing thought:`, error);
-			return null;
-		}
+			},
+			"analyzing thought",
+		);
 	}
 
 	/**
@@ -1753,35 +1616,17 @@ export class AgentSessionManager extends EventEmitter {
 		procedureName: string,
 		classification: string,
 	): Promise<void> {
-		const log = this.sessionLog(sessionId);
-		const session = this.sessions.get(sessionId);
-
-		// Skip posting for non-Linear sessions (GitHub, Slack, etc.)
-		if (!session || !session.externalSessionId) {
-			log.debug(
-				`Skipping procedure selection thought - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
-			);
-			return;
-		}
-
-		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
+		await this.postActivity(
+			sessionId,
+			{
 				content: {
 					type: "thought",
 					body: `Selected procedure: **${procedureName}** (classified as: ${classification})`,
 				},
 				ephemeral: false,
-			});
-
-			if (result.success) {
-				log.debug(`Posted procedure selection: ${procedureName}`);
-			} else {
-				log.error(`Failed to post procedure selection:`, result);
-			}
-		} catch (error) {
-			log.error(`Error posting procedure selection:`, error);
-		}
+			},
+			"procedure selection",
+		);
 	}
 
 	/**
@@ -1791,56 +1636,42 @@ export class AgentSessionManager extends EventEmitter {
 		sessionId: string,
 		message: SDKStatusMessage,
 	): Promise<void> {
-		const log = this.sessionLog(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.externalSessionId) {
+			const log = this.sessionLog(sessionId);
 			log.debug(
 				`Skipping status message - no external session ID (platform: ${session?.issueContext?.trackerId || "unknown"})`,
 			);
 			return;
 		}
 
-		try {
-			if (message.status === "compacting") {
-				// Create an ephemeral thought for the compacting status
-				const result = await this.issueTracker.createAgentActivity({
-					agentSessionId: session.externalSessionId,
+		if (message.status === "compacting") {
+			const activityId = await this.postActivity(
+				sessionId,
+				{
 					content: {
 						type: "thought",
 						body: "Compacting conversation history…",
 					},
 					ephemeral: true,
-				});
-
-				if (result.success && result.agentActivity) {
-					const activity = await result.agentActivity;
-					// Store the activity ID so we can replace it later
-					this.activeStatusActivitiesBySession.set(sessionId, activity.id);
-					log.debug(`Posted ephemeral compacting status`);
-				} else {
-					log.error(`Failed to post compacting status:`, result);
-				}
-			} else if (message.status === null) {
-				// Clear the status - post a non-ephemeral thought to replace the ephemeral one
-				const result = await this.issueTracker.createAgentActivity({
-					agentSessionId: session.externalSessionId,
-					content: {
-						type: "thought",
-						body: "Conversation history compacted",
-					},
-					ephemeral: false,
-				});
-
-				if (result.success) {
-					// Clean up the stored activity ID
-					this.activeStatusActivitiesBySession.delete(sessionId);
-					log.debug(`Posted non-ephemeral status clear`);
-				} else {
-					log.error(`Failed to post status clear:`, result);
-				}
+				},
+				"compacting status",
+			);
+			if (activityId) {
+				this.activeStatusActivitiesBySession.set(sessionId, activityId);
 			}
-		} catch (error) {
-			log.error(`Error handling status message:`, error);
+		} else if (message.status === null) {
+			// Clear the status - post a non-ephemeral thought to replace the ephemeral one
+			await this.postActivity(
+				sessionId,
+				{
+					content: { type: "thought", body: "Conversation history compacted" },
+					ephemeral: false,
+				},
+				"status clear",
+			);
+			// Clean up the stored activity ID regardless — stale IDs do no harm
+			this.activeStatusActivitiesBySession.delete(sessionId);
 		}
 	}
 }
