@@ -736,6 +736,16 @@ export class EdgeWorker extends EventEmitter {
 
 			this.logger.info(`GitHub workspace created at: ${workspace.path}`);
 
+			// Check if another active session is already using this branch/workspace
+			const existingSessions =
+				agentSessionManager.getActiveSessionsByBranchName(branchRef);
+			const firstExisting = existingSessions[0];
+			if (firstExisting) {
+				this.logger.warn(
+					`Reusing workspace from active session ${firstExisting.id} — concurrent writes possible`,
+				);
+			}
+
 			// Create a synthetic session for this GitHub PR comment
 			const issueMinimal: IssueMinimal = {
 				id: sessionKey,

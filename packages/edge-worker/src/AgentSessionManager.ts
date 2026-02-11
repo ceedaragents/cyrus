@@ -1499,6 +1499,18 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Get active sessions where the issue's branch name matches the given branch.
+	 * Useful for detecting when multiple sessions share the same worktree.
+	 */
+	getActiveSessionsByBranchName(branchName: string): CyrusAgentSession[] {
+		return Array.from(this.sessions.values()).filter(
+			(session) =>
+				session.status === AgentSessionStatus.Active &&
+				session.issue?.branchName === branchName,
+		);
+	}
+
+	/**
 	 * Get all sessions
 	 */
 	getAllSessions(): CyrusAgentSession[] {

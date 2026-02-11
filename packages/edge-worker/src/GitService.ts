@@ -149,6 +149,43 @@ export class GitService {
 	}
 
 	/**
+	 * Find an existing worktree by its checked-out branch name.
+	 * Parses `git worktree list --porcelain` output and returns the worktree path
+	 * if a worktree is found with the given branch checked out, or null otherwise.
+	 */
+	findWorktreeByBranch(branchName: string, repoPath: string): string | null {
+		try {
+			const output = execSync("git worktree list --porcelain", {
+				cwd: repoPath,
+				encoding: "utf-8",
+			});
+
+			const blocks = output.split("\n\n");
+			for (const block of blocks) {
+				const lines = block.split("\n");
+				let worktreePath: string | null = null;
+				let branchRef: string | null = null;
+
+				for (const line of lines) {
+					if (line.startsWith("worktree ")) {
+						worktreePath = line.slice("worktree ".length);
+					} else if (line.startsWith("branch ")) {
+						branchRef = line.slice("branch refs/heads/".length);
+					}
+				}
+
+				if (worktreePath && branchRef === branchName) {
+					return worktreePath;
+				}
+			}
+
+			return null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
 	 * Create a git worktree for an issue
 	 */
 	async createGitWorktree(
@@ -213,6 +250,23 @@ export class GitService {
 				createBranch = false;
 			} catch (_e) {
 				// Branch doesn't exist, we'll create it
+			}
+
+			// If the branch already exists, check if it's already checked out in another worktree
+			if (!createBranch) {
+				const existingWorktreePath = this.findWorktreeByBranch(
+					branchName,
+					repository.repositoryPath,
+				);
+				if (existingWorktreePath && existingWorktreePath !== workspacePath) {
+					this.logger.info(
+						`Branch "${branchName}" is already checked out in worktree at ${existingWorktreePath}, reusing existing worktree`,
+					);
+					return {
+						path: existingWorktreePath,
+						isGitWorktree: true,
+					};
+				}
 			}
 
 			// Determine base branch for this issue
@@ -425,10 +479,24 @@ export class GitService {
 				isGitWorktree: true,
 			};
 		} catch (error) {
-			this.logger.error(
-				"Failed to create git worktree:",
-				(error as Error).message,
+			const errorMessage = (error as Error).message;
+			this.logger.error("Failed to create git worktree:", errorMessage);
+
+			// Check if the error is "branch already checked out in another worktree"
+			// Git error format: "fatal: 'branch-name' is already used by worktree at '/path/to/worktree'"
+			const worktreeMatch = errorMessage.match(
+				/already used by worktree at '([^']+)'/,
 			);
+			if (worktreeMatch?.[1] && existsSync(worktreeMatch[1])) {
+				this.logger.info(
+					`Reusing existing worktree at ${worktreeMatch[1]} (branch already checked out)`,
+				);
+				return {
+					path: worktreeMatch[1],
+					isGitWorktree: true,
+				};
+			}
+
 			// Fall back to regular directory if git worktree fails
 			const fallbackPath = join(repository.workspaceBaseDir, issue.identifier);
 			mkdirSync(fallbackPath, { recursive: true });
