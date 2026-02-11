@@ -160,6 +160,9 @@ export class GitHubEventTransport extends EventEmitter {
 		const eventType = request.headers["x-github-event"] as string;
 		const deliveryId =
 			(request.headers["x-github-delivery"] as string) || "unknown";
+		const installationToken = request.headers["x-github-installation-token"] as
+			| string
+			| undefined;
 
 		if (!eventType) {
 			reply.code(400).send({ error: "Missing x-github-event header" });
@@ -190,6 +193,7 @@ export class GitHubEventTransport extends EventEmitter {
 			eventType: eventType as GitHubEventType,
 			deliveryId,
 			payload,
+			installationToken,
 		};
 
 		this.logger.info(`Received ${eventType} webhook (delivery: ${deliveryId})`);

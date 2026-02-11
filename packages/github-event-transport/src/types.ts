@@ -43,6 +43,8 @@ export interface GitHubWebhookEvent {
 	deliveryId: string;
 	/** The full GitHub webhook payload */
 	payload: GitHubIssueCommentPayload | GitHubPullRequestReviewCommentPayload;
+	/** GitHub installation token forwarded from CYHOST (1-hour expiry) */
+	installationToken?: string;
 }
 
 /**

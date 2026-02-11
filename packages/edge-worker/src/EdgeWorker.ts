@@ -862,8 +862,8 @@ export class EdgeWorker extends EventEmitter {
 				"X-GitHub-Api-Version": "2022-11-28",
 			};
 
-			// Use GITHUB_TOKEN for authenticated requests if available
-			const token = process.env.GITHUB_TOKEN;
+			// Prefer forwarded installation token, fall back to GITHUB_TOKEN
+			const token = event.installationToken || process.env.GITHUB_TOKEN;
 			if (token) {
 				headers.Authorization = `Bearer ${token}`;
 			}
@@ -1024,12 +1024,12 @@ ${taskInstructions}
 				return;
 			}
 
-			// For now, we need an installation access token from CYHOST
-			// The token should be provided via environment or forwarded with the webhook
-			const token = process.env.GITHUB_TOKEN;
+			// Prefer the forwarded installation token from CYHOST (1-hour expiry)
+			// Fall back to process.env.GITHUB_TOKEN if not provided
+			const token = event.installationToken || process.env.GITHUB_TOKEN;
 			if (!token) {
 				this.logger.warn(
-					"Cannot post GitHub reply: no GITHUB_TOKEN configured",
+					"Cannot post GitHub reply: no installation token or GITHUB_TOKEN configured",
 				);
 				this.logger.debug(
 					`Would have posted reply to ${owner}/${repo}#${prNumber} (comment ${commentId}): ${summary}`,
