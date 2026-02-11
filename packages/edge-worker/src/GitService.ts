@@ -305,12 +305,12 @@ export class GitService {
 					}
 
 					if (useRemoteBranch) {
-						// Use remote version of base branch
+						// Use remote version of base branch with --track to set upstream
 						const remoteBranch = `origin/${baseBranch}`;
 						this.logger.info(
-							`Creating git worktree at ${workspacePath} from ${remoteBranch}`,
+							`Creating git worktree at ${workspacePath} from ${remoteBranch} (tracking ${baseBranch})`,
 						);
-						worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`;
+						worktreeCmd = `git worktree add --track -b "${branchName}" "${workspacePath}" "${remoteBranch}"`;
 					} else {
 						// Check if base branch exists locally
 						try {
@@ -318,26 +318,26 @@ export class GitService {
 								cwd: repository.repositoryPath,
 								stdio: "pipe",
 							});
-							// Use local base branch
+							// Use local base branch (can't track since remote doesn't have it)
 							this.logger.info(
 								`Creating git worktree at ${workspacePath} from local ${baseBranch}`,
 							);
-							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
+							worktreeCmd = `git worktree add -b "${branchName}" "${workspacePath}" "${baseBranch}"`;
 						} catch {
-							// Base branch doesn't exist locally either, fall back to remote default
+							// Base branch doesn't exist locally either, fall back to remote default with --track
 							this.logger.info(
-								`Base branch '${baseBranch}' not found locally, falling back to remote ${repository.baseBranch}`,
+								`Base branch '${baseBranch}' not found locally, falling back to remote ${repository.baseBranch} (tracking ${repository.baseBranch})`,
 							);
 							const defaultRemoteBranch = `origin/${repository.baseBranch}`;
-							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${defaultRemoteBranch}"`;
+							worktreeCmd = `git worktree add --track -b "${branchName}" "${workspacePath}" "${defaultRemoteBranch}"`;
 						}
 					}
 				} else {
-					// No remote, use local branch
+					// No remote, use local branch (no tracking since no remote)
 					this.logger.info(
 						`Creating git worktree at ${workspacePath} from local ${baseBranch}`,
 					);
-					worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
+					worktreeCmd = `git worktree add -b "${branchName}" "${workspacePath}" "${baseBranch}"`;
 				}
 			} else {
 				// Branch already exists, just check it out
