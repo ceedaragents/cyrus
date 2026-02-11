@@ -113,7 +113,7 @@ export class GitHubEventTransport extends EventEmitter {
 		}
 
 		try {
-			const body = JSON.stringify(request.body);
+			const body = (request as FastifyRequest & { rawBody: string }).rawBody;
 			const isValid = this.verifyGitHubSignature(
 				body,
 				signature,

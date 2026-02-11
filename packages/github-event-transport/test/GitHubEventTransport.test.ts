@@ -32,8 +32,10 @@ function createMockRequest(
 	body: unknown,
 	headers: Record<string, string> = {},
 ) {
+	const rawBody = JSON.stringify(body);
 	return {
 		body,
+		rawBody,
 		headers,
 	};
 }
@@ -191,14 +193,12 @@ describe("GitHubEventTransport", () => {
 			const eventListener = vi.fn();
 			transport.on("event", eventListener);
 
-			const bodyStr = JSON.stringify(issueCommentPayload);
-			const signature = `sha256=${createHmac("sha256", testSecret).update(bodyStr).digest("hex")}`;
-
 			const request = createMockRequest(issueCommentPayload, {
-				"x-hub-signature-256": signature,
 				"x-github-event": "issue_comment",
 				"x-github-delivery": "delivery-456",
 			});
+			const signature = `sha256=${createHmac("sha256", testSecret).update(request.rawBody).digest("hex")}`;
+			request.headers["x-hub-signature-256"] = signature;
 			const reply = createMockReply();
 
 			const handler = mockFastify.routes["/github-webhook"]!;
