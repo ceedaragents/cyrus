@@ -539,7 +539,7 @@ export class AgentSessionManager extends EventEmitter {
 		session: CyrusAgentSession,
 		sessionId: string,
 		resultMessage: SDKResultMessage,
-		_sessionId: string,
+		_runnerSessionId: string,
 		_nextSubroutine: { name: string } | null,
 	): Promise<boolean> {
 		const log = this.sessionLog(sessionId);
