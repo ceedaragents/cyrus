@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` to v0.2.39 and `@anthropic-ai/sdk` to v0.74.0. Added `speed: "standard"` field to all BetaUsage objects in gemini-runner to handle breaking change introduced in SDK v0.74.0 for fast-mode inference support. ([CYPACK-800](https://linear.app/ceedar/issue/CYPACK-800), [#852](https://github.com/ceedaragents/cyrus/pull/852))
+
 ## [0.2.21] - 2026-02-09
 
 ### Changed
