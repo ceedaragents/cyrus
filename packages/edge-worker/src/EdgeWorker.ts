@@ -23,6 +23,7 @@ import {
 } from "cyrus-claude-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
+	AgentActivityCreateInput,
 	AgentEvent,
 	AgentRunnerConfig,
 	AgentSessionCreatedWebhook,
@@ -1234,33 +1235,22 @@ ${taskInstructions}
 
 		await this.postParentResumeAcknowledgment(parentSessionId, parentRepo.id);
 
-		// Post thought to Linear showing child result receipt
-		// Use parent's issue tracker since we're posting to the parent's Linear session
+		// Post thought showing child result receipt
+		// Use parent's issue tracker since we're posting to the parent's session
 		const issueTracker = this.issueTrackers.get(parentRepo.id);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
 			const resultThought = `Received result from sub-issue ${childIssueIdentifier}:\n\n---\n\n${prompt}\n\n---`;
 
-			try {
-				const result = await issueTracker.createAgentActivity({
+			await this.postActivityDirect(
+				issueTracker,
+				{
 					agentSessionId: parentSessionId,
-					content: {
-						type: "thought",
-						body: resultThought,
-					},
-				});
-
-				if (result.success) {
-					log.debug(
-						`Posted child result receipt thought for parent session ${parentSessionId}`,
-					);
-				} else {
-					log.error(`Failed to post child result receipt thought:`, result);
-				}
-			} catch (error) {
-				log.error(`Error posting child result receipt thought:`, error);
-			}
+					content: { type: "thought", body: resultThought },
+				},
+				"child result receipt",
+			);
 		}
 
 		// Use centralized streaming check and routing logic
@@ -1858,18 +1848,19 @@ ${taskInstructions}
 								);
 							}
 
-							// Post cancellation message to Linear
+							// Post cancellation message to tracker
 							const issueTracker = this.issueTrackers.get(repo.id);
 							if (issueTracker && session.externalSessionId) {
-								await issueTracker.createAgentActivity({
-									agentSessionId: session.externalSessionId,
-									content: {
-										type: "response",
-										body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
+								await this.postActivityDirect(
+									issueTracker,
+									{
+										agentSessionId: session.externalSessionId,
+										content: {
+											type: "response",
+											body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
+										},
 									},
-								});
-								this.logger.debug(
-									`  📤 Posted cancellation message to Linear for issue ${session.issueId}`,
+									"repository removal",
 								);
 							}
 						} catch (error) {
@@ -2027,8 +2018,6 @@ ${taskInstructions}
 				error,
 			);
 			// Don't re-throw message processing errors to prevent application crashes
-		} finally {
-			// No-op: see activeWebhookCount comment at top of handleMessage()
 		}
 	}
 
@@ -5421,38 +5410,21 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						}
 					}
 
-					// Post thought to Linear showing feedback receipt
+					// Post thought showing feedback receipt
 					const issueTracker = this.issueTrackers.get(childRepo.id);
 					if (issueTracker) {
 						const feedbackThought = parentIssueId
 							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
 							: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
 
-						try {
-							const result = await issueTracker.createAgentActivity({
+						await this.postActivityDirect(
+							issueTracker,
+							{
 								agentSessionId: childSessionId,
-								content: {
-									type: "thought",
-									body: feedbackThought,
-								},
-							});
-
-							if (result.success) {
-								this.logger.debug(
-									`Posted feedback receipt thought for child session ${childSessionId}`,
-								);
-							} else {
-								this.logger.error(
-									`Failed to post feedback receipt thought:`,
-									result,
-								);
-							}
-						} catch (error) {
-							this.logger.error(
-								`Error posting feedback receipt thought:`,
-								error,
-							);
-						}
+								content: { type: "thought", body: feedbackThought },
+							},
+							"feedback receipt",
+						);
 					}
 
 					// Format the feedback as a prompt for the child session with enhanced markdown formatting
@@ -6412,17 +6384,14 @@ ${input.userComment}
 				.replace(/\{\{userName\}\}/g, userName)
 				.replace(/\{\{userId\}\}/g, userId);
 
-			try {
-				await issueTracker.createAgentActivity({
+			await this.postActivityDirect(
+				issueTracker,
+				{
 					agentSessionId,
-					content: {
-						type: "response",
-						body: message,
-					},
-				});
-			} catch (error) {
-				this.logger.error("Failed to post blocked user message:", error);
-			}
+					content: { type: "response", body: message },
+				},
+				"blocked user message",
+			);
 		}
 		// For "silent" behavior, we don't post any activity.
 		// The session will remain in "Working" state until manually stopped or timed out.
@@ -6548,40 +6517,60 @@ ${input.userComment}
 	}
 
 	/**
+	 * Post an activity directly via an issue tracker instance.
+	 * Consolidates try/catch and success/error logging for EdgeWorker call sites
+	 * that already have the issueTracker and agentSessionId resolved.
+	 *
+	 * @returns The activity ID when resolved, `null` otherwise.
+	 */
+	private async postActivityDirect(
+		issueTracker: IIssueTrackerService,
+		input: AgentActivityCreateInput,
+		label: string,
+	): Promise<string | null> {
+		try {
+			const result = await issueTracker.createAgentActivity(input);
+			if (result.success) {
+				if (result.agentActivity) {
+					const activity = await result.agentActivity;
+					this.logger.debug(`Created ${label} activity ${activity.id}`);
+					return activity.id;
+				}
+				this.logger.debug(`Created ${label}`);
+				return null;
+			}
+			this.logger.error(`Failed to create ${label}:`, result);
+			return null;
+		} catch (error) {
+			this.logger.error(`Error creating ${label}:`, error);
+			return null;
+		}
+	}
+
+	/**
 	 * Post instant acknowledgment thought when agent session is created
 	 */
 	private async postInstantAcknowledgment(
 		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				this.logger.warn(
-					`No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
+		}
 
-			const activityInput = {
+		await this.postActivityDirect(
+			issueTracker,
+			{
 				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
 				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				this.logger.debug(
-					`Posted instant acknowledgment thought for session ${sessionId}`,
-				);
-			} else {
-				this.logger.error(`Failed to post instant acknowledgment:`, result);
-			}
-		} catch (error) {
-			this.logger.error(`Error posting instant acknowledgment:`, error);
-		}
+			},
+			"instant acknowledgment",
+		);
 	}
 
 	/**
@@ -6591,44 +6580,24 @@ ${input.userComment}
 		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				this.logger.warn(
-					`No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
-
-			const activityInput = {
-				agentSessionId: sessionId,
-				content: {
-					type: "thought",
-					body: "Resuming from child session",
-				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				this.logger.debug(
-					`Posted parent resumption acknowledgment thought for session ${sessionId}`,
-				);
-			} else {
-				this.logger.error(
-					`Failed to post parent resumption acknowledgment:`,
-					result,
-				);
-			}
-		} catch (error) {
-			this.logger.error(
-				`Error posting parent resumption acknowledgment:`,
-				error,
-			);
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
 		}
+
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
+				content: { type: "thought", body: "Resuming from child session" },
+			},
+			"parent resume acknowledgment",
+		);
 	}
 
 	/**
-	 * Post repository selection activity to Linear
+	 * Post repository selection activity
 	 * Shows which method was used to select the repository (auto-routing or user selection)
 	 */
 	private async postRepositorySelectionActivity(
@@ -6645,56 +6614,42 @@ ${input.userComment}
 			| "workspace-fallback"
 			| "user-selected",
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				this.logger.warn(
-					`No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
+		}
 
-			let methodDisplay: string;
-			if (selectionMethod === "user-selected") {
-				methodDisplay = "selected by user";
-			} else if (selectionMethod === "description-tag") {
-				methodDisplay = "matched via [repo=...] tag in issue description";
-			} else if (selectionMethod === "label-based") {
-				methodDisplay = "matched via label-based routing";
-			} else if (selectionMethod === "project-based") {
-				methodDisplay = "matched via project-based routing";
-			} else if (selectionMethod === "team-based") {
-				methodDisplay = "matched via team-based routing";
-			} else if (selectionMethod === "team-prefix") {
-				methodDisplay = "matched via team prefix routing";
-			} else if (selectionMethod === "catch-all") {
-				methodDisplay = "matched via catch-all routing";
-			} else {
-				methodDisplay = "matched via workspace fallback";
-			}
+		let methodDisplay: string;
+		if (selectionMethod === "user-selected") {
+			methodDisplay = "selected by user";
+		} else if (selectionMethod === "description-tag") {
+			methodDisplay = "matched via [repo=...] tag in issue description";
+		} else if (selectionMethod === "label-based") {
+			methodDisplay = "matched via label-based routing";
+		} else if (selectionMethod === "project-based") {
+			methodDisplay = "matched via project-based routing";
+		} else if (selectionMethod === "team-based") {
+			methodDisplay = "matched via team-based routing";
+		} else if (selectionMethod === "team-prefix") {
+			methodDisplay = "matched via team prefix routing";
+		} else if (selectionMethod === "catch-all") {
+			methodDisplay = "matched via catch-all routing";
+		} else {
+			methodDisplay = "matched via workspace fallback";
+		}
 
-			const activityInput = {
+		await this.postActivityDirect(
+			issueTracker,
+			{
 				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Repository "${repositoryName}" has been ${methodDisplay}.`,
 				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				this.logger.debug(
-					`Posted repository selection activity for session ${sessionId} (${selectionMethod})`,
-				);
-			} else {
-				this.logger.error(
-					`Failed to post repository selection activity:`,
-					result,
-				);
-			}
-		} catch (error) {
-			this.logger.error(`Error posting repository selection activity:`, error);
-		}
+			},
+			"repository selection",
+		);
 	}
 
 	/**
@@ -6897,106 +6852,89 @@ ${input.userComment}
 		labels: string[],
 		repositoryId: string,
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				this.logger.warn(
-					`No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
+		}
 
-			// Determine which prompt type was selected and which label triggered it
-			let selectedPromptType: string | null = null;
-			let triggerLabel: string | null = null;
-			const repository = Array.from(this.repositories.values()).find(
-				(r) => r.id === repositoryId,
+		// Determine which prompt type was selected and which label triggered it
+		let selectedPromptType: string | null = null;
+		let triggerLabel: string | null = null;
+		const repository = Array.from(this.repositories.values()).find(
+			(r) => r.id === repositoryId,
+		);
+
+		if (repository?.labelPrompts) {
+			// Check debugger labels
+			const debuggerConfig = repository.labelPrompts.debugger;
+			const debuggerLabels = Array.isArray(debuggerConfig)
+				? debuggerConfig
+				: debuggerConfig?.labels;
+			const debuggerLabel = debuggerLabels?.find((label) =>
+				labels.includes(label),
 			);
-
-			if (repository?.labelPrompts) {
-				// Check debugger labels
-				const debuggerConfig = repository.labelPrompts.debugger;
-				const debuggerLabels = Array.isArray(debuggerConfig)
-					? debuggerConfig
-					: debuggerConfig?.labels;
-				const debuggerLabel = debuggerLabels?.find((label) =>
+			if (debuggerLabel) {
+				selectedPromptType = "debugger";
+				triggerLabel = debuggerLabel;
+			} else {
+				// Check builder labels
+				const builderConfig = repository.labelPrompts.builder;
+				const builderLabels = Array.isArray(builderConfig)
+					? builderConfig
+					: builderConfig?.labels;
+				const builderLabel = builderLabels?.find((label) =>
 					labels.includes(label),
 				);
-				if (debuggerLabel) {
-					selectedPromptType = "debugger";
-					triggerLabel = debuggerLabel;
+				if (builderLabel) {
+					selectedPromptType = "builder";
+					triggerLabel = builderLabel;
 				} else {
-					// Check builder labels
-					const builderConfig = repository.labelPrompts.builder;
-					const builderLabels = Array.isArray(builderConfig)
-						? builderConfig
-						: builderConfig?.labels;
-					const builderLabel = builderLabels?.find((label) =>
+					// Check scoper labels
+					const scoperConfig = repository.labelPrompts.scoper;
+					const scoperLabels = Array.isArray(scoperConfig)
+						? scoperConfig
+						: scoperConfig?.labels;
+					const scoperLabel = scoperLabels?.find((label) =>
 						labels.includes(label),
 					);
-					if (builderLabel) {
-						selectedPromptType = "builder";
-						triggerLabel = builderLabel;
+					if (scoperLabel) {
+						selectedPromptType = "scoper";
+						triggerLabel = scoperLabel;
 					} else {
-						// Check scoper labels
-						const scoperConfig = repository.labelPrompts.scoper;
-						const scoperLabels = Array.isArray(scoperConfig)
-							? scoperConfig
-							: scoperConfig?.labels;
-						const scoperLabel = scoperLabels?.find((label) =>
+						// Check orchestrator labels
+						const orchestratorConfig = repository.labelPrompts.orchestrator;
+						const orchestratorLabels = Array.isArray(orchestratorConfig)
+							? orchestratorConfig
+							: (orchestratorConfig?.labels ?? ["orchestrator"]);
+						const orchestratorLabel = orchestratorLabels?.find((label) =>
 							labels.includes(label),
 						);
-						if (scoperLabel) {
-							selectedPromptType = "scoper";
-							triggerLabel = scoperLabel;
-						} else {
-							// Check orchestrator labels
-							const orchestratorConfig = repository.labelPrompts.orchestrator;
-							const orchestratorLabels = Array.isArray(orchestratorConfig)
-								? orchestratorConfig
-								: (orchestratorConfig?.labels ?? ["orchestrator"]);
-							const orchestratorLabel = orchestratorLabels?.find((label) =>
-								labels.includes(label),
-							);
-							if (orchestratorLabel) {
-								selectedPromptType = "orchestrator";
-								triggerLabel = orchestratorLabel;
-							}
+						if (orchestratorLabel) {
+							selectedPromptType = "orchestrator";
+							triggerLabel = orchestratorLabel;
 						}
 					}
 				}
 			}
+		}
 
-			// Only post if a role was actually triggered
-			if (!selectedPromptType || !triggerLabel) {
-				return;
-			}
+		// Only post if a role was actually triggered
+		if (!selectedPromptType || !triggerLabel) {
+			return;
+		}
 
-			const activityInput = {
+		await this.postActivityDirect(
+			issueTracker,
+			{
 				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Entering '${selectedPromptType}' mode because of the '${triggerLabel}' label. I'll follow the ${selectedPromptType} process...`,
 				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				this.logger.debug(
-					`Posted system prompt selection thought for session ${sessionId} (${selectedPromptType} mode)`,
-				);
-			} else {
-				this.logger.error(
-					`Failed to post system prompt selection thought:`,
-					result,
-				);
-			}
-		} catch (error) {
-			this.logger.error(
-				`Error posting system prompt selection thought:`,
-				error,
-			);
-		}
+			},
+			"system prompt selection",
+		);
 	}
 
 	/**
@@ -7192,44 +7130,24 @@ ${input.userComment}
 		repositoryId: string,
 		isStreaming: boolean,
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				this.logger.warn(
-					`No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
-
-			const message = isStreaming
-				? "I've queued up your message as guidance"
-				: "Getting started on that...";
-
-			const activityInput = {
-				agentSessionId: sessionId,
-				content: {
-					type: "thought",
-					body: message,
-				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				this.logger.debug(
-					`Posted instant prompted acknowledgment thought for session ${sessionId} (streaming: ${isStreaming})`,
-				);
-			} else {
-				this.logger.error(
-					`Failed to post instant prompted acknowledgment:`,
-					result,
-				);
-			}
-		} catch (error) {
-			this.logger.error(
-				`Error posting instant prompted acknowledgment:`,
-				error,
-			);
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
 		}
+
+		const message = isStreaming
+			? "I've queued up your message as guidance"
+			: "Getting started on that...";
+
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
+				content: { type: "thought", body: message },
+			},
+			"prompted acknowledgment",
+		);
 	}
 
 	/**

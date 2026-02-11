@@ -169,7 +169,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		// Verify error was logged
 		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			expect.stringContaining("Failed to post compacting status:"),
+			expect.stringContaining("Failed to create compacting status:"),
 			expect.objectContaining({ success: false }),
 		);
 
@@ -211,7 +211,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		// Verify error was logged
 		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			expect.stringContaining("Failed to post status clear:"),
+			expect.stringContaining("Failed to create status clear:"),
 			expect.objectContaining({ success: false }),
 		);
 
