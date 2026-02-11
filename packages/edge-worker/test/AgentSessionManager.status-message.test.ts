@@ -169,7 +169,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		// Verify error was logged
 		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			"[AgentSessionManager] Failed to post compacting status:",
+			expect.stringContaining("Failed to create compacting status:"),
 			expect.objectContaining({ success: false }),
 		);
 
@@ -211,7 +211,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		// Verify error was logged
 		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			"[AgentSessionManager] Failed to post status clear:",
+			expect.stringContaining("Failed to create status clear:"),
 			expect.objectContaining({ success: false }),
 		);
 
@@ -220,11 +220,6 @@ describe("AgentSessionManager - Status Messages", () => {
 	});
 
 	it("should not crash if session is not found", async () => {
-		// Spy on console.warn
-		const consoleWarnSpy = vi
-			.spyOn(console, "warn")
-			.mockImplementation(() => {});
-
 		// Create a status message for a non-existent session
 		const statusMessage: SDKStatusMessage = {
 			type: "system",
@@ -233,18 +228,10 @@ describe("AgentSessionManager - Status Messages", () => {
 			session_id: "claude-session-123",
 		};
 
-		// Handle the status message for a non-existent session
+		// Handle the status message for a non-existent session — should not throw
 		await manager.handleClaudeMessage("non-existent-session", statusMessage);
-
-		// Verify warning was logged
-		expect(consoleWarnSpy).toHaveBeenCalledWith(
-			"[AgentSessionManager] No Linear session ID for session non-existent-session",
-		);
 
 		// Verify createAgentActivity was not called
 		expect(createAgentActivitySpy).not.toHaveBeenCalled();
-
-		// Clean up
-		consoleWarnSpy.mockRestore();
 	});
 });

@@ -23,16 +23,20 @@ import {
 } from "cyrus-claude-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
+	AgentActivityCreateInput,
 	AgentEvent,
 	AgentRunnerConfig,
 	AgentSessionCreatedWebhook,
 	AgentSessionPromptedWebhook,
 	Comment,
+	ContentUpdateMessage,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
 	GuidanceRule,
 	IAgentRunner,
 	IIssueTrackerService,
+	ILogger,
+	InternalMessage,
 	Issue,
 	IssueMinimal,
 	IssueUnassignedWebhook,
@@ -41,6 +45,10 @@ import type {
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
+	SessionStartMessage,
+	StopSignalMessage,
+	UnassignMessage,
+	UserPromptMessage,
 	Webhook,
 	WebhookAgentSession,
 	WebhookComment,
@@ -49,18 +57,43 @@ import type {
 import {
 	CLIIssueTrackerService,
 	CLIRPCServer,
+	createLogger,
 	DEFAULT_PROXY_URL,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
+	isContentUpdateMessage,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
+	isSessionStartMessage,
+	isStopSignalMessage,
+	isUnassignMessage,
+	isUserPromptMessage,
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
 import { GeminiRunner } from "cyrus-gemini-runner";
+import {
+	extractCommentAuthor,
+	extractCommentBody,
+	extractCommentId,
+	extractCommentUrl,
+	extractPRBranchRef,
+	extractPRNumber,
+	extractPRTitle,
+	extractRepoFullName,
+	extractRepoName,
+	extractRepoOwner,
+	extractSessionKey,
+	GitHubCommentService,
+	GitHubEventTransport,
+	type GitHubWebhookEvent,
+	isCommentOnPullRequest,
+	isIssueCommentPayload,
+	stripMention,
+} from "cyrus-github-event-transport";
 import {
 	LinearEventTransport,
 	LinearIssueTrackerService,
@@ -70,6 +103,7 @@ import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { GitService } from "./GitService.js";
+import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import {
 	ProcedureAnalyzer,
 	type ProcedureDefinition,
@@ -114,11 +148,14 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
+	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
+	private gitHubCommentService: GitHubCommentService; // Service for posting comments back to GitHub PRs
 	private cliRPCServer: CLIRPCServer | null = null; // CLI RPC server for CLI platform mode
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
+	private globalSessionRegistry: GlobalSessionRegistry; // Centralized session storage across all repositories
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
 	private configWatcher?: FSWatcher; // File watcher for config.json
@@ -131,14 +168,22 @@ export class EdgeWorker extends EventEmitter {
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
 	private userAccessControl: UserAccessControl;
+	private logger: ILogger;
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
 		this.config = config;
 		this.cyrusHome = config.cyrusHome;
+		this.logger = createLogger({ component: "EdgeWorker" });
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Initialize GitHub comment service for posting replies to GitHub PRs
+		this.gitHubCommentService = new GitHubCommentService();
+
+		// Initialize global session registry (centralized session storage)
+		this.globalSessionRegistry = new GlobalSessionRegistry();
 
 		// Initialize procedure router with haiku for fast classification
 		// Default to claude runner
@@ -184,8 +229,8 @@ export class EdgeWorker extends EventEmitter {
 					const issue = await issueTracker.fetchIssue(issueId);
 					return issue?.description ?? undefined;
 				} catch (error) {
-					console.error(
-						`[EdgeWorker] Failed to fetch issue description for routing:`,
+					this.logger.error(
+						`Failed to fetch issue description for routing:`,
 						error,
 					);
 					return undefined;
@@ -211,13 +256,6 @@ export class EdgeWorker extends EventEmitter {
 				return this.getIssueTrackerForWorkspace(workspaceId) ?? null;
 			},
 		});
-
-		console.log(
-			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
-		);
-		console.log(
-			`[EdgeWorker Constructor] Parent-child mapping initialized with 0 entries`,
-		);
 
 		// Initialize shared application server
 		const serverPort = config.serverPort || config.webhookPort || 3456;
@@ -281,12 +319,13 @@ export class EdgeWorker extends EventEmitter {
 				const agentSessionManager = new AgentSessionManager(
 					issueTracker,
 					(childSessionId: string) => {
-						console.log(
-							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
+						this.logger.debug(
+							`Looking up parent session for child ${childSessionId}`,
 						);
-						const parentId = this.childToParentAgentSession.get(childSessionId);
-						console.log(
-							`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || "not found"}`,
+						const parentId =
+							this.globalSessionRegistry.getParentSessionId(childSessionId);
+						this.logger.debug(
+							`Child ${childSessionId} -> Parent ${parentId || "not found"}`,
 						);
 						return parentId;
 					},
@@ -301,14 +340,15 @@ export class EdgeWorker extends EventEmitter {
 					},
 					this.procedureAnalyzer,
 					this.sharedApplicationServer,
+					this.globalSessionRegistry,
 				);
 
 				// Subscribe to subroutine completion events
 				agentSessionManager.on(
 					"subroutineComplete",
-					async ({ linearAgentActivitySessionId, session }) => {
+					async ({ sessionId, session }) => {
 						await this.handleSubroutineTransition(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -320,17 +360,17 @@ export class EdgeWorker extends EventEmitter {
 				agentSessionManager.on(
 					"validationLoopIteration",
 					async ({
-						linearAgentActivitySessionId,
+						sessionId,
 						session,
 						fixerPrompt,
 						iteration,
 						maxIterations,
 					}) => {
-						console.log(
-							`[EdgeWorker] Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
+						this.logger.info(
+							`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
 						);
 						await this.handleValidationLoopFixer(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -342,12 +382,12 @@ export class EdgeWorker extends EventEmitter {
 
 				agentSessionManager.on(
 					"validationLoopRerun",
-					async ({ linearAgentActivitySessionId, session, iteration }) => {
-						console.log(
-							`[EdgeWorker] Validation loop re-running verifications (iteration ${iteration})`,
+					async ({ sessionId, session, iteration }) => {
+						this.logger.info(
+							`Validation loop re-running verifications (iteration ${iteration})`,
 						);
 						await this.handleValidationLoopRerun(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -430,8 +470,8 @@ export class EdgeWorker extends EventEmitter {
 			// Register the /cli/rpc endpoint
 			this.cliRPCServer.register();
 
-			console.log("✅ CLI RPC server registered");
-			console.log("   RPC endpoint: /cli/rpc");
+			this.logger.info("✅ CLI RPC server registered");
+			this.logger.info("   RPC endpoint: /cli/rpc");
 
 			// Create CLI event transport and register listener
 			const cliEventTransport = firstIssueTracker.createEventTransport({
@@ -454,8 +494,8 @@ export class EdgeWorker extends EventEmitter {
 			// Register the CLI event transport endpoints
 			cliEventTransport.register();
 
-			console.log("✅ CLI event transport registered");
-			console.log(
+			this.logger.info("✅ CLI event transport registered");
+			this.logger.info(
 				"   Event listener: listening for AgentSessionCreated events",
 			);
 		} else {
@@ -475,11 +515,16 @@ export class EdgeWorker extends EventEmitter {
 				secret,
 			});
 
-			// Listen for webhook events
+			// Listen for legacy webhook events (deprecated, kept for backward compatibility)
 			this.linearEventTransport.on("event", (event: AgentEvent) => {
 				// Get all active repositories for webhook handling
 				const repos = Array.from(this.repositories.values());
 				this.handleWebhook(event as unknown as Webhook, repos);
+			});
+
+			// Listen for unified internal messages (new message bus)
+			this.linearEventTransport.on("message", (message: InternalMessage) => {
+				this.handleMessage(message);
 			});
 
 			// Listen for errors
@@ -490,15 +535,19 @@ export class EdgeWorker extends EventEmitter {
 			// Register the /webhook endpoint
 			this.linearEventTransport.register();
 
-			console.log(
+			this.logger.info(
 				`✅ Linear event transport registered (${verificationMode} mode)`,
 			);
-			console.log(
+			this.logger.info(
 				`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
 			);
 		}
 
-		// 2. Create and register ConfigUpdater (both platforms)
+		// 2. Register GitHub event transport (for forwarded GitHub webhooks from CYHOST)
+		// This is registered regardless of platform mode since GitHub webhooks can come from CYHOST
+		this.registerGitHubEventTransport();
+
+		// 3. Create and register ConfigUpdater (both platforms)
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
@@ -508,16 +557,18 @@ export class EdgeWorker extends EventEmitter {
 		// Register config update routes
 		this.configUpdater.register();
 
-		console.log("✅ Config updater registered");
-		console.log("   Routes: /api/update/cyrus-config, /api/update/cyrus-env,");
-		console.log(
+		this.logger.info("✅ Config updater registered");
+		this.logger.info(
+			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
+		);
+		this.logger.info(
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
 
-		// 3. Register /status endpoint for process activity monitoring
+		// 4. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
 
-		// 4. Register /version endpoint for CLI version info
+		// 5. Register /version endpoint for CLI version info
 		this.registerVersionEndpoint();
 	}
 
@@ -533,8 +584,8 @@ export class EdgeWorker extends EventEmitter {
 			return reply.status(200).send({ status });
 		});
 
-		console.log("✅ Status endpoint registered");
-		console.log("   Route: GET /status");
+		this.logger.info("✅ Status endpoint registered");
+		this.logger.info("   Route: GET /status");
 	}
 
 	/**
@@ -550,8 +601,503 @@ export class EdgeWorker extends EventEmitter {
 			});
 		});
 
-		console.log("✅ Version endpoint registered");
-		console.log("   Route: GET /version");
+		this.logger.info("✅ Version endpoint registered");
+		this.logger.info("   Route: GET /version");
+	}
+
+	/**
+	 * Register the GitHub event transport for receiving forwarded GitHub webhooks from CYHOST.
+	 * This creates a /github-webhook endpoint that handles @cyrusagent mentions on GitHub PRs.
+	 */
+	private registerGitHubEventTransport(): void {
+		// Use the same verification approach as Linear webhooks
+		// In proxy mode: Bearer token (CYRUS_API_KEY)
+		// In direct/cloud mode: GitHub HMAC-SHA256 signature
+		const useSignatureVerification =
+			process.env.GITHUB_WEBHOOK_SECRET != null &&
+			process.env.GITHUB_WEBHOOK_SECRET !== "";
+		const verificationMode = useSignatureVerification ? "signature" : "proxy";
+		const secret = useSignatureVerification
+			? process.env.GITHUB_WEBHOOK_SECRET!
+			: process.env.CYRUS_API_KEY || "";
+
+		this.gitHubEventTransport = new GitHubEventTransport({
+			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+			verificationMode,
+			secret,
+		});
+
+		// Listen for legacy GitHub webhook events (deprecated, kept for backward compatibility)
+		this.gitHubEventTransport.on("event", (event: GitHubWebhookEvent) => {
+			this.handleGitHubWebhook(event).catch((error) => {
+				this.logger.error(
+					"Failed to handle GitHub webhook",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			});
+		});
+
+		// Listen for unified internal messages (new message bus)
+		this.gitHubEventTransport.on("message", (message: InternalMessage) => {
+			this.handleMessage(message);
+		});
+
+		// Listen for errors
+		this.gitHubEventTransport.on("error", (error: Error) => {
+			this.handleError(error);
+		});
+
+		// Register the /github-webhook endpoint
+		this.gitHubEventTransport.register();
+
+		this.logger.info(
+			`GitHub event transport registered (${verificationMode} mode)`,
+		);
+		this.logger.info("Webhook endpoint: POST /github-webhook");
+	}
+
+	/**
+	 * Handle a GitHub webhook event (forwarded from CYHOST).
+	 *
+	 * This creates a new session for the GitHub PR comment, checks out the PR branch
+	 * via git worktree, and processes the comment as a task prompt.
+	 */
+	private async handleGitHubWebhook(event: GitHubWebhookEvent): Promise<void> {
+		this.activeWebhookCount++;
+
+		try {
+			// Only handle comments on pull requests
+			if (!isCommentOnPullRequest(event)) {
+				this.logger.debug("Ignoring GitHub comment on non-PR issue");
+				return;
+			}
+
+			const repoFullName = extractRepoFullName(event);
+			const prNumber = extractPRNumber(event);
+			const commentBody = extractCommentBody(event);
+			const commentAuthor = extractCommentAuthor(event);
+			const prTitle = extractPRTitle(event);
+			const sessionKey = extractSessionKey(event);
+
+			this.logger.info(
+				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}`,
+			);
+
+			// Find the repository configuration that matches this GitHub repo
+			const repository = this.findRepositoryByGitHubUrl(repoFullName);
+			if (!repository) {
+				this.logger.warn(
+					`No repository configured for GitHub repo: ${repoFullName}`,
+				);
+				return;
+			}
+
+			// Get the agent session manager for this repository
+			const agentSessionManager = this.agentSessionManagers.get(repository.id);
+			if (!agentSessionManager) {
+				this.logger.error(
+					`No AgentSessionManager for repository ${repository.name}`,
+				);
+				return;
+			}
+
+			// Determine the PR branch
+			let branchRef = extractPRBranchRef(event);
+
+			// For issue_comment events, the branch ref is not in the payload
+			// We need to fetch it from the GitHub API
+			if (!branchRef && isIssueCommentPayload(event.payload)) {
+				branchRef = await this.fetchPRBranchRef(event, repository);
+			}
+
+			if (!branchRef) {
+				this.logger.error(
+					`Could not determine branch for ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			// Strip the @cyrusagent mention to get the task instructions
+			const taskInstructions = stripMention(commentBody);
+
+			// Create workspace (git worktree) for the PR branch
+			const workspace = await this.createGitHubWorkspace(
+				repository,
+				branchRef,
+				prNumber!,
+			);
+
+			if (!workspace) {
+				this.logger.error(
+					`Failed to create workspace for ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			this.logger.info(`GitHub workspace created at: ${workspace.path}`);
+
+			// Check if another active session is already using this branch/workspace
+			const existingSessions =
+				agentSessionManager.getActiveSessionsByBranchName(branchRef);
+			const firstExisting = existingSessions[0];
+			if (firstExisting) {
+				this.logger.warn(
+					`Reusing workspace from active session ${firstExisting.id} — concurrent writes possible`,
+				);
+			}
+
+			// Create a synthetic session for this GitHub PR comment
+			const issueMinimal: IssueMinimal = {
+				id: sessionKey,
+				identifier: `${extractRepoName(event)}#${prNumber}`,
+				title: prTitle || `PR #${prNumber}`,
+				branchName: branchRef,
+			};
+
+			// Create an internal agent session (no Linear session for GitHub)
+			const githubSessionId = `github-${event.deliveryId}`;
+			agentSessionManager.createLinearAgentSession(
+				githubSessionId,
+				sessionKey,
+				issueMinimal,
+				workspace,
+				"github", // Don't stream activities to Linear for GitHub sources
+			);
+
+			const session = agentSessionManager.getSession(githubSessionId);
+			if (!session) {
+				this.logger.error(
+					`Failed to create session for GitHub webhook ${event.deliveryId}`,
+				);
+				return;
+			}
+
+			// Initialize procedure metadata
+			if (!session.metadata) {
+				session.metadata = {};
+			}
+
+			// Store GitHub-specific metadata for reply posting
+			session.metadata.commentId = String(extractCommentId(event));
+
+			// Build the system prompt for this GitHub PR session
+			const systemPrompt = this.buildGitHubSystemPrompt(
+				event,
+				branchRef,
+				taskInstructions,
+			);
+
+			// Build allowed tools and directories
+			const allowedTools = this.buildAllowedTools(repository);
+			const disallowedTools = this.buildDisallowedTools(repository);
+			const allowedDirectories: string[] = [repository.repositoryPath];
+
+			// Create agent runner using the standard config builder
+			const { config: runnerConfig } = this.buildAgentRunnerConfig(
+				session,
+				repository,
+				githubSessionId,
+				systemPrompt,
+				allowedTools,
+				allowedDirectories,
+				disallowedTools,
+				undefined, // resumeSessionId
+				undefined, // labels
+				200, // maxTurns
+				false, // singleTurn
+			);
+
+			const runner = new ClaudeRunner(runnerConfig);
+
+			// Store the runner in the session manager
+			agentSessionManager.addAgentRunner(githubSessionId, runner);
+
+			// Save persisted state
+			await this.savePersistedState();
+
+			this.emit(
+				"session:started",
+				sessionKey,
+				issueMinimal as unknown as Issue,
+				repository.id,
+			);
+
+			this.logger.info(
+				`Starting Claude runner for GitHub PR ${repoFullName}#${prNumber}`,
+			);
+
+			// Start the session and handle completion
+			try {
+				const sessionInfo = await runner.start(taskInstructions);
+				this.logger.info(`GitHub session started: ${sessionInfo.sessionId}`);
+
+				// When session completes, post the reply back to GitHub
+				await this.postGitHubReply(event, runner, repository);
+			} catch (error) {
+				this.logger.error(
+					`GitHub session error for ${repoFullName}#${prNumber}`,
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			} finally {
+				await this.savePersistedState();
+			}
+		} catch (error) {
+			this.logger.error(
+				"Failed to process GitHub webhook",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		} finally {
+			this.activeWebhookCount--;
+		}
+	}
+
+	/**
+	 * Find a repository configuration that matches a GitHub repository URL.
+	 * Matches against the githubUrl field in repository config.
+	 */
+	private findRepositoryByGitHubUrl(
+		repoFullName: string,
+	): RepositoryConfig | null {
+		for (const repo of this.repositories.values()) {
+			if (!repo.githubUrl) continue;
+			// Match against full name (owner/repo) or URL containing it
+			if (
+				repo.githubUrl.includes(repoFullName) ||
+				repo.githubUrl.endsWith(`/${repoFullName}`)
+			) {
+				return repo;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Fetch the PR branch ref for an issue_comment webhook.
+	 * For issue_comment events, the branch ref is not in the payload
+	 * and must be fetched from the GitHub API.
+	 */
+	private async fetchPRBranchRef(
+		event: GitHubWebhookEvent,
+		_repository: RepositoryConfig,
+	): Promise<string | null> {
+		if (!isIssueCommentPayload(event.payload)) return null;
+
+		const prUrl = event.payload.issue.pull_request?.url;
+		if (!prUrl) return null;
+
+		try {
+			const owner = extractRepoOwner(event);
+			const repo = extractRepoName(event);
+			const prNumber = event.payload.issue.number;
+
+			const headers: Record<string, string> = {
+				Accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28",
+			};
+
+			// Prefer forwarded installation token, fall back to GITHUB_TOKEN
+			const token = event.installationToken || process.env.GITHUB_TOKEN;
+			if (token) {
+				headers.Authorization = `Bearer ${token}`;
+			}
+
+			const response = await fetch(
+				`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+				{ headers },
+			);
+
+			if (!response.ok) {
+				this.logger.warn(
+					`Failed to fetch PR details from GitHub API: ${response.status}`,
+				);
+				return null;
+			}
+
+			const prData = (await response.json()) as { head?: { ref?: string } };
+			return prData.head?.ref ?? null;
+		} catch (error) {
+			this.logger.error(
+				"Failed to fetch PR branch ref",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Create a git worktree for a GitHub PR branch.
+	 * If the worktree already exists for this branch, reuse it.
+	 */
+	private async createGitHubWorkspace(
+		repository: RepositoryConfig,
+		branchRef: string,
+		prNumber: number,
+	): Promise<{ path: string; isGitWorktree: boolean } | null> {
+		try {
+			// Use the GitService to create the worktree
+			// Create a synthetic issue-like object for the git service
+			const syntheticIssue = {
+				id: `github-pr-${prNumber}`,
+				identifier: `PR-${prNumber}`,
+				title: `PR #${prNumber}`,
+				description: null,
+				url: "",
+				branchName: branchRef,
+				assigneeId: null,
+				stateId: null,
+				teamId: null,
+				labelIds: [],
+				priority: 0,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				archivedAt: null,
+				state: Promise.resolve(undefined),
+				assignee: Promise.resolve(undefined),
+				team: Promise.resolve(undefined),
+				parent: Promise.resolve(undefined),
+				project: Promise.resolve(undefined),
+				labels: () => Promise.resolve({ nodes: [] }),
+				comments: () => Promise.resolve({ nodes: [] }),
+				attachments: () => Promise.resolve({ nodes: [] }),
+				children: () => Promise.resolve({ nodes: [] }),
+				inverseRelations: () => Promise.resolve({ nodes: [] }),
+				update: () =>
+					Promise.resolve({
+						success: true,
+						issue: undefined,
+						lastSyncId: 0,
+					}),
+			} as unknown as Issue;
+
+			return await this.gitService.createGitWorktree(
+				syntheticIssue,
+				repository,
+			);
+		} catch (error) {
+			this.logger.error(
+				`Failed to create GitHub workspace for PR #${prNumber}`,
+				error instanceof Error ? error : new Error(String(error)),
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Build a system prompt for a GitHub PR comment session.
+	 */
+	private buildGitHubSystemPrompt(
+		event: GitHubWebhookEvent,
+		branchRef: string,
+		taskInstructions: string,
+	): string {
+		const repoFullName = extractRepoFullName(event);
+		const prNumber = extractPRNumber(event);
+		const prTitle = extractPRTitle(event);
+		const commentAuthor = extractCommentAuthor(event);
+		const commentUrl = extractCommentUrl(event);
+
+		return `You are working on a GitHub Pull Request.
+
+## Context
+- **Repository**: ${repoFullName}
+- **PR**: #${prNumber} - ${prTitle || "Untitled"}
+- **Branch**: ${branchRef}
+- **Requested by**: @${commentAuthor}
+- **Comment URL**: ${commentUrl}
+
+## Task
+${taskInstructions}
+
+## Instructions
+- You are already checked out on the PR branch \`${branchRef}\`
+- Make changes directly to the code on this branch
+- After making changes, commit and push them to the branch
+- Be concise in your responses as they will be posted back to the GitHub PR`;
+	}
+
+	/**
+	 * Post a reply back to the GitHub PR comment after the session completes.
+	 */
+	private async postGitHubReply(
+		event: GitHubWebhookEvent,
+		runner: IAgentRunner,
+		_repository: RepositoryConfig,
+	): Promise<void> {
+		try {
+			// Get the last assistant message from the runner as the summary
+			const messages = runner.getMessages();
+			const lastAssistantMessage = [...messages]
+				.reverse()
+				.find((m) => m.type === "assistant");
+
+			let summary = "Task completed. Please review the changes on this branch.";
+			if (
+				lastAssistantMessage &&
+				lastAssistantMessage.type === "assistant" &&
+				"message" in lastAssistantMessage
+			) {
+				const msg = lastAssistantMessage as {
+					message: { content: Array<{ type: string; text?: string }> };
+				};
+				const textBlock = msg.message.content?.find(
+					(block) => block.type === "text" && block.text,
+				);
+				if (textBlock?.text) {
+					summary = textBlock.text;
+				}
+			}
+
+			const owner = extractRepoOwner(event);
+			const repo = extractRepoName(event);
+			const prNumber = extractPRNumber(event);
+			const commentId = extractCommentId(event);
+
+			if (!prNumber) {
+				this.logger.warn("Cannot post GitHub reply: no PR number");
+				return;
+			}
+
+			// Prefer the forwarded installation token from CYHOST (1-hour expiry)
+			// Fall back to process.env.GITHUB_TOKEN if not provided
+			const token = event.installationToken || process.env.GITHUB_TOKEN;
+			if (!token) {
+				this.logger.warn(
+					"Cannot post GitHub reply: no installation token or GITHUB_TOKEN configured",
+				);
+				this.logger.debug(
+					`Would have posted reply to ${owner}/${repo}#${prNumber} (comment ${commentId}): ${summary}`,
+				);
+				return;
+			}
+
+			if (event.eventType === "pull_request_review_comment") {
+				// Reply to the specific review comment thread
+				await this.gitHubCommentService.postReviewCommentReply({
+					token,
+					owner,
+					repo,
+					pullNumber: prNumber,
+					commentId,
+					body: summary,
+				});
+			} else {
+				// Post as a regular issue comment on the PR
+				await this.gitHubCommentService.postIssueComment({
+					token,
+					owner,
+					repo,
+					issueNumber: prNumber,
+					body: summary,
+				});
+			}
+
+			this.logger.info(`Posted GitHub reply to ${owner}/${repo}#${prNumber}`);
+		} catch (error) {
+			this.logger.error(
+				"Failed to post GitHub reply",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		}
 	}
 
 	/**
@@ -585,14 +1131,14 @@ export class EdgeWorker extends EventEmitter {
 		if (this.configWatcher) {
 			await this.configWatcher.close();
 			this.configWatcher = undefined;
-			console.log("✅ Config file watcher stopped");
+			this.logger.info("✅ Config file watcher stopped");
 		}
 
 		try {
 			await this.savePersistedState();
-			console.log("✅ EdgeWorker state saved successfully");
+			this.logger.info("✅ EdgeWorker state saved successfully");
 		} catch (error) {
-			console.error(
+			this.logger.error(
 				"❌ Failed to save EdgeWorker state during shutdown:",
 				error,
 			);
@@ -610,7 +1156,7 @@ export class EdgeWorker extends EventEmitter {
 				try {
 					runner.stop();
 				} catch (error) {
-					console.error("Error stopping Claude runner:", error);
+					this.logger.error("Error stopping Claude runner:", error);
 				}
 			}
 		}
@@ -642,16 +1188,17 @@ export class EdgeWorker extends EventEmitter {
 		_childRepo: RepositoryConfig,
 		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
-		console.log(
-			`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
+		const log = this.logger.withContext({ sessionId: parentSessionId });
+		log.info(
+			`Child session completed, resuming parent session ${parentSessionId}`,
 		);
 
 		// Find parent session across all repositories
 		// This is critical for cross-repository orchestration where parent and child
 		// may be in different repositories with different AgentSessionManagers
 		// See also: feedback delivery code at line ~4413 which uses same pattern
-		console.log(
-			`[Parent Session Resume] Searching for parent session ${parentSessionId} across all repositories`,
+		log.debug(
+			`Searching for parent session ${parentSessionId} across all repositories`,
 		);
 		let parentSession: CyrusAgentSession | undefined;
 		let parentRepo: RepositoryConfig | undefined;
@@ -663,22 +1210,22 @@ export class EdgeWorker extends EventEmitter {
 				parentSession = candidate;
 				parentRepo = this.repositories.get(repoId);
 				parentAgentSessionManager = manager;
-				console.log(
-					`[Parent Session Resume] Found parent session in repository: ${parentRepo?.name || repoId}`,
+				log.debug(
+					`Found parent session in repository: ${parentRepo?.name || repoId}`,
 				);
 				break;
 			}
 		}
 
 		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
-			console.error(
-				`[Parent Session Resume] Parent session ${parentSessionId} not found in any repository's agent session manager`,
+			log.error(
+				`Parent session ${parentSessionId} not found in any repository's agent session manager`,
 			);
 			return;
 		}
 
-		console.log(
-			`[Parent Session Resume] Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
+		log.debug(
+			`Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
 		);
 
 		// Get the child session to access its workspace path
@@ -687,56 +1234,37 @@ export class EdgeWorker extends EventEmitter {
 		const childWorkspaceDirs: string[] = [];
 		if (childSession) {
 			childWorkspaceDirs.push(childSession.workspace.path);
-			console.log(
-				`[Parent Session Resume] Adding child workspace to parent allowed directories: ${childSession.workspace.path}`,
+			log.debug(
+				`Adding child workspace to parent allowed directories: ${childSession.workspace.path}`,
 			);
 		} else {
-			console.warn(
-				`[Parent Session Resume] Could not find child session ${childSessionId} to add workspace to parent allowed directories`,
+			log.warn(
+				`Could not find child session ${childSessionId} to add workspace to parent allowed directories`,
 			);
 		}
 
 		await this.postParentResumeAcknowledgment(parentSessionId, parentRepo.id);
 
-		// Post thought to Linear showing child result receipt
-		// Use parent's issue tracker since we're posting to the parent's Linear session
+		// Post thought showing child result receipt
+		// Use parent's issue tracker since we're posting to the parent's session
 		const issueTracker = this.issueTrackers.get(parentRepo.id);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
 			const resultThought = `Received result from sub-issue ${childIssueIdentifier}:\n\n---\n\n${prompt}\n\n---`;
 
-			try {
-				const result = await issueTracker.createAgentActivity({
+			await this.postActivityDirect(
+				issueTracker,
+				{
 					agentSessionId: parentSessionId,
-					content: {
-						type: "thought",
-						body: resultThought,
-					},
-				});
-
-				if (result.success) {
-					console.log(
-						`[Parent Session Resume] Posted child result receipt thought for parent session ${parentSessionId}`,
-					);
-				} else {
-					console.error(
-						`[Parent Session Resume] Failed to post child result receipt thought:`,
-						result,
-					);
-				}
-			} catch (error) {
-				console.error(
-					`[Parent Session Resume] Error posting child result receipt thought:`,
-					error,
-				);
-			}
+					content: { type: "thought", body: resultThought },
+				},
+				"child result receipt",
+			);
 		}
 
 		// Use centralized streaming check and routing logic
-		console.log(
-			`[Parent Session Resume] Handling child result for parent session ${parentSessionId}`,
-		);
+		log.info(`Handling child result for parent session ${parentSessionId}`);
 		try {
 			await this.handlePromptWithStreamingCheck(
 				parentSession,
@@ -749,16 +1277,13 @@ export class EdgeWorker extends EventEmitter {
 				childWorkspaceDirs, // Add child workspace directories to parent's allowed directories
 				"parent resume from child",
 			);
-			console.log(
-				`[Parent Session Resume] Successfully handled child result for parent session ${parentSessionId}`,
+			log.info(
+				`Successfully handled child result for parent session ${parentSessionId}`,
 			);
 		} catch (error) {
-			console.error(
-				`[Parent Session Resume] Failed to resume parent session ${parentSessionId}:`,
-				error,
-			);
-			console.error(
-				`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${parentRepo.name}`,
+			log.error(`Failed to resume parent session ${parentSessionId}:`, error);
+			log.error(
+				`Error context - Parent issue: ${parentSession.issueId}, Repository: ${parentRepo.name}`,
 			);
 		}
 	}
@@ -768,28 +1293,23 @@ export class EdgeWorker extends EventEmitter {
 	 * This is triggered by the AgentSessionManager's 'subroutineComplete' event
 	 */
 	private async handleSubroutineTransition(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		session: CyrusAgentSession,
 		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
-		console.log(
-			`[Subroutine Transition] Handling subroutine completion for session ${linearAgentActivitySessionId}`,
-		);
+		const log = this.logger.withContext({ sessionId });
+		log.info(`Handling subroutine completion for session ${sessionId}`);
 
 		// Get next subroutine (advancement already handled by AgentSessionManager)
 		const nextSubroutine = this.procedureAnalyzer.getCurrentSubroutine(session);
 
 		if (!nextSubroutine) {
-			console.log(
-				`[Subroutine Transition] Procedure complete for session ${linearAgentActivitySessionId}`,
-			);
+			log.info(`Procedure complete for session ${sessionId}`);
 			return;
 		}
 
-		console.log(
-			`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
-		);
+		log.info(`Next subroutine: ${nextSubroutine.name}`);
 
 		// Load subroutine prompt
 		let subroutinePrompt: string | null;
@@ -803,10 +1323,7 @@ export class EdgeWorker extends EventEmitter {
 				subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
 			}
 		} catch (error) {
-			console.error(
-				`[Subroutine Transition] Failed to load subroutine prompt:`,
-				error,
-			);
+			log.error(`Failed to load subroutine prompt:`, error);
 			// Fallback to simple prompt
 			subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
 		}
@@ -816,7 +1333,7 @@ export class EdgeWorker extends EventEmitter {
 			await this.resumeAgentSession(
 				session,
 				repo,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				subroutinePrompt,
 				"", // No attachment manifest
@@ -824,12 +1341,12 @@ export class EdgeWorker extends EventEmitter {
 				[], // No additional allowed directories
 				nextSubroutine?.singleTurn ? 1 : undefined, // singleTurn mode
 			);
-			console.log(
-				`[Subroutine Transition] Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.singleTurn ? " (singleTurn)" : ""}`,
+			log.info(
+				`Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.singleTurn ? " (singleTurn)" : ""}`,
 			);
 		} catch (error) {
-			console.error(
-				`[Subroutine Transition] Failed to resume session for ${nextSubroutine.name} subroutine:`,
+			log.error(
+				`Failed to resume session for ${nextSubroutine.name} subroutine:`,
 				error,
 			);
 		}
@@ -839,22 +1356,22 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle validation loop fixer - run the fixer prompt
 	 */
 	private async handleValidationLoopFixer(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		session: CyrusAgentSession,
 		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
 		fixerPrompt: string,
 		iteration: number,
 	): Promise<void> {
-		console.log(
-			`[Validation Loop] Running fixer for session ${linearAgentActivitySessionId}, iteration ${iteration}`,
+		this.logger.info(
+			`Running fixer for session ${sessionId}, iteration ${iteration}`,
 		);
 
 		try {
 			await this.resumeAgentSession(
 				session,
 				repo,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				fixerPrompt,
 				"", // No attachment manifest
@@ -862,12 +1379,10 @@ export class EdgeWorker extends EventEmitter {
 				[], // No additional allowed directories
 				undefined, // No maxTurns limit for fixer
 			);
-			console.log(
-				`[Validation Loop] Successfully started fixer for iteration ${iteration}`,
-			);
+			this.logger.info(`Successfully started fixer for iteration ${iteration}`);
 		} catch (error) {
-			console.error(
-				`[Validation Loop] Failed to run fixer for iteration ${iteration}:`,
+			this.logger.error(
+				`Failed to run fixer for iteration ${iteration}:`,
 				error,
 			);
 		}
@@ -877,14 +1392,12 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle validation loop rerun - re-run the verifications subroutine
 	 */
 	private async handleValidationLoopRerun(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		session: CyrusAgentSession,
 		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
-		console.log(
-			`[Validation Loop] Re-running verifications for session ${linearAgentActivitySessionId}`,
-		);
+		this.logger.info(`Re-running verifications for session ${sessionId}`);
 
 		// Get the verifications subroutine definition
 		const verificationsSubroutine =
@@ -894,8 +1407,8 @@ export class EdgeWorker extends EventEmitter {
 			!verificationsSubroutine ||
 			verificationsSubroutine.name !== "verifications"
 		) {
-			console.error(
-				`[Validation Loop] Expected verifications subroutine, got: ${verificationsSubroutine?.name}`,
+			this.logger.error(
+				`Expected verifications subroutine, got: ${verificationsSubroutine?.name}`,
 			);
 			return;
 		}
@@ -908,14 +1421,14 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			if (!subroutinePrompt) {
-				console.error(`[Validation Loop] Failed to load verifications prompt`);
+				this.logger.error(`Failed to load verifications prompt`);
 				return;
 			}
 
 			await this.resumeAgentSession(
 				session,
 				repo,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				subroutinePrompt,
 				"", // No attachment manifest
@@ -923,9 +1436,9 @@ export class EdgeWorker extends EventEmitter {
 				[], // No additional allowed directories
 				undefined, // No maxTurns limit
 			);
-			console.log(`[Validation Loop] Successfully re-started verifications`);
+			this.logger.info(`Successfully re-started verifications`);
 		} catch (error) {
-			console.error(`[Validation Loop] Failed to re-run verifications:`, error);
+			this.logger.error(`Failed to re-run verifications:`, error);
 		}
 	}
 
@@ -934,11 +1447,11 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private startConfigWatcher(): void {
 		if (!this.configPath) {
-			console.warn("⚠️  No config path set, skipping config file watcher");
+			this.logger.warn("⚠️  No config path set, skipping config file watcher");
 			return;
 		}
 
-		console.log(`👀 Watching config file for changes: ${this.configPath}`);
+		this.logger.info(`👀 Watching config file for changes: ${this.configPath}`);
 
 		this.configWatcher = chokidarWatch(this.configPath, {
 			persistent: true,
@@ -950,12 +1463,12 @@ export class EdgeWorker extends EventEmitter {
 		});
 
 		this.configWatcher.on("change", async () => {
-			console.log("🔄 Config file changed, reloading...");
+			this.logger.info("🔄 Config file changed, reloading...");
 			await this.handleConfigChange();
 		});
 
 		this.configWatcher.on("error", (error: unknown) => {
-			console.error("❌ Config watcher error:", error);
+			this.logger.error("❌ Config watcher error:", error);
 		});
 	}
 
@@ -976,11 +1489,11 @@ export class EdgeWorker extends EventEmitter {
 				changes.modified.length === 0 &&
 				changes.removed.length === 0
 			) {
-				console.log("ℹ️  No repository changes detected");
+				this.logger.info("ℹ️  No repository changes detected");
 				return;
 			}
 
-			console.log(
+			this.logger.info(
 				`📊 Repository changes detected: ${changes.added.length} added, ${changes.modified.length} modified, ${changes.removed.length} removed`,
 			);
 
@@ -992,9 +1505,9 @@ export class EdgeWorker extends EventEmitter {
 			// Update config reference
 			this.config = newConfig;
 
-			console.log("✅ Configuration reloaded successfully");
+			this.logger.info("✅ Configuration reloaded successfully");
 		} catch (error) {
-			console.error("❌ Failed to reload configuration:", error);
+			this.logger.error("❌ Failed to reload configuration:", error);
 		}
 	}
 
@@ -1004,7 +1517,7 @@ export class EdgeWorker extends EventEmitter {
 	private async loadConfigSafely(): Promise<EdgeWorkerConfig | null> {
 		try {
 			if (!this.configPath) {
-				console.error("❌ No config path set");
+				this.logger.error("❌ No config path set");
 				return null;
 			}
 
@@ -1034,7 +1547,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Basic validation
 			if (!Array.isArray(newConfig.repositories)) {
-				console.error("❌ Invalid config: repositories must be an array");
+				this.logger.error("❌ Invalid config: repositories must be an array");
 				return null;
 			}
 
@@ -1046,7 +1559,7 @@ export class EdgeWorker extends EventEmitter {
 					!repo.repositoryPath ||
 					!repo.baseBranch
 				) {
-					console.error(
+					this.logger.error(
 						`❌ Invalid repository config: missing required fields (id, name, repositoryPath, baseBranch)`,
 						repo,
 					);
@@ -1056,7 +1569,7 @@ export class EdgeWorker extends EventEmitter {
 
 			return newConfig;
 		} catch (error) {
-			console.error("❌ Failed to load config file:", error);
+			this.logger.error("❌ Failed to load config file:", error);
 			return null;
 		}
 	}
@@ -1111,12 +1624,12 @@ export class EdgeWorker extends EventEmitter {
 	private async addNewRepositories(repos: RepositoryConfig[]): Promise<void> {
 		for (const repo of repos) {
 			if (repo.isActive === false) {
-				console.log(`⏭️  Skipping inactive repository: ${repo.name}`);
+				this.logger.info(`⏭️  Skipping inactive repository: ${repo.name}`);
 				continue;
 			}
 
 			try {
-				console.log(`➕ Adding repository: ${repo.name} (${repo.id})`);
+				this.logger.info(`➕ Adding repository: ${repo.name} (${repo.id})`);
 
 				// Resolve paths that may contain tilde (~) prefix
 				const resolvedRepo: RepositoryConfig = {
@@ -1159,7 +1672,9 @@ export class EdgeWorker extends EventEmitter {
 				const agentSessionManager = new AgentSessionManager(
 					issueTracker,
 					(childSessionId: string) => {
-						return this.childToParentAgentSession.get(childSessionId);
+						return this.globalSessionRegistry.getParentSessionId(
+							childSessionId,
+						);
 					},
 					async (parentSessionId, prompt, childSessionId) => {
 						await this.handleResumeParentSession(
@@ -1172,14 +1687,15 @@ export class EdgeWorker extends EventEmitter {
 					},
 					this.procedureAnalyzer,
 					this.sharedApplicationServer,
+					this.globalSessionRegistry,
 				);
 
 				// Subscribe to subroutine completion events
 				agentSessionManager.on(
 					"subroutineComplete",
-					async ({ linearAgentActivitySessionId, session }) => {
+					async ({ sessionId, session }) => {
 						await this.handleSubroutineTransition(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -1191,17 +1707,17 @@ export class EdgeWorker extends EventEmitter {
 				agentSessionManager.on(
 					"validationLoopIteration",
 					async ({
-						linearAgentActivitySessionId,
+						sessionId,
 						session,
 						fixerPrompt,
 						iteration,
 						maxIterations,
 					}) => {
-						console.log(
-							`[EdgeWorker] Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
+						this.logger.info(
+							`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
 						);
 						await this.handleValidationLoopFixer(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -1213,12 +1729,12 @@ export class EdgeWorker extends EventEmitter {
 
 				agentSessionManager.on(
 					"validationLoopRerun",
-					async ({ linearAgentActivitySessionId, session, iteration }) => {
-						console.log(
-							`[EdgeWorker] Validation loop re-running verifications (iteration ${iteration})`,
+					async ({ sessionId, session, iteration }) => {
+						this.logger.info(
+							`Validation loop re-running verifications (iteration ${iteration})`,
 						);
 						await this.handleValidationLoopRerun(
-							linearAgentActivitySessionId,
+							sessionId,
 							session,
 							repo,
 							agentSessionManager,
@@ -1228,9 +1744,9 @@ export class EdgeWorker extends EventEmitter {
 
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 
-				console.log(`✅ Repository added successfully: ${repo.name}`);
+				this.logger.info(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
-				console.error(`❌ Failed to add repository ${repo.name}:`, error);
+				this.logger.error(`❌ Failed to add repository ${repo.name}:`, error);
 			}
 		}
 	}
@@ -1245,13 +1761,13 @@ export class EdgeWorker extends EventEmitter {
 			try {
 				const oldRepo = this.repositories.get(repo.id);
 				if (!oldRepo) {
-					console.warn(
+					this.logger.warn(
 						`⚠️  Repository ${repo.id} not found for update, skipping`,
 					);
 					continue;
 				}
 
-				console.log(`🔄 Updating repository: ${repo.name} (${repo.id})`);
+				this.logger.info(`🔄 Updating repository: ${repo.name} (${repo.id})`);
 
 				// Resolve paths that may contain tilde (~) prefix
 				const resolvedRepo: RepositoryConfig = {
@@ -1276,7 +1792,7 @@ export class EdgeWorker extends EventEmitter {
 
 				// If token changed, update the issue tracker's client
 				if (oldRepo.linearToken !== repo.linearToken) {
-					console.log(`  🔑 Token changed, updating client`);
+					this.logger.info(`  🔑 Token changed, updating client`);
 					const issueTracker = this.issueTrackers.get(repo.id);
 					if (issueTracker) {
 						(issueTracker as LinearIssueTrackerService).setAccessToken(
@@ -1288,17 +1804,20 @@ export class EdgeWorker extends EventEmitter {
 				// If active status changed
 				if (oldRepo.isActive !== repo.isActive) {
 					if (repo.isActive === false) {
-						console.log(
+						this.logger.info(
 							`  ⏸️  Repository set to inactive - existing sessions will continue`,
 						);
 					} else {
-						console.log(`  ▶️  Repository reactivated`);
+						this.logger.info(`  ▶️  Repository reactivated`);
 					}
 				}
 
-				console.log(`✅ Repository updated successfully: ${repo.name}`);
+				this.logger.info(`✅ Repository updated successfully: ${repo.name}`);
 			} catch (error) {
-				console.error(`❌ Failed to update repository ${repo.name}:`, error);
+				this.logger.error(
+					`❌ Failed to update repository ${repo.name}:`,
+					error,
+				);
 			}
 		}
 	}
@@ -1311,51 +1830,52 @@ export class EdgeWorker extends EventEmitter {
 	): Promise<void> {
 		for (const repo of repos) {
 			try {
-				console.log(`🗑️  Removing repository: ${repo.name} (${repo.id})`);
+				this.logger.info(`🗑️  Removing repository: ${repo.name} (${repo.id})`);
 
 				// Check for active sessions
 				const manager = this.agentSessionManagers.get(repo.id);
 				const activeSessions = manager?.getActiveSessions() || [];
 
 				if (activeSessions.length > 0) {
-					console.warn(
+					this.logger.warn(
 						`  ⚠️  Repository has ${activeSessions.length} active sessions - stopping them`,
 					);
 
 					// Stop all active sessions and notify Linear
 					for (const session of activeSessions) {
 						try {
-							console.log(`  🛑 Stopping session for issue ${session.issueId}`);
+							this.logger.debug(
+								`  🛑 Stopping session for issue ${session.issueId}`,
+							);
 
 							// Get the agent runner for this session
-							const runner = manager?.getAgentRunner(
-								session.linearAgentActivitySessionId,
-							);
+							const runner = manager?.getAgentRunner(session.id);
 							if (runner) {
 								// Stop the agent process
 								runner.stop();
-								console.log(
-									`  ✅ Stopped Claude runner for session ${session.linearAgentActivitySessionId}`,
+								this.logger.debug(
+									`  ✅ Stopped Claude runner for session ${session.id}`,
 								);
 							}
 
-							// Post cancellation message to Linear
+							// Post cancellation message to tracker
 							const issueTracker = this.issueTrackers.get(repo.id);
-							if (issueTracker) {
-								await issueTracker.createAgentActivity({
-									agentSessionId: session.linearAgentActivitySessionId,
-									content: {
-										type: "response",
-										body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
+							if (issueTracker && session.externalSessionId) {
+								await this.postActivityDirect(
+									issueTracker,
+									{
+										agentSessionId: session.externalSessionId,
+										content: {
+											type: "response",
+											body: `**Repository Removed from Configuration**\n\nThis repository (\`${repo.name}\`) has been removed from the Cyrus configuration. All active sessions for this repository have been stopped.\n\nIf you need to continue working on this issue, please contact your administrator to restore the repository configuration.`,
+										},
 									},
-								});
-								console.log(
-									`  📤 Posted cancellation message to Linear for issue ${session.issueId}`,
+									"repository removal",
 								);
 							}
 						} catch (error) {
-							console.error(
-								`  ❌ Failed to stop session ${session.linearAgentActivitySessionId}:`,
+							this.logger.error(
+								`  ❌ Failed to stop session ${session.id}:`,
 								error,
 							);
 						}
@@ -1367,9 +1887,12 @@ export class EdgeWorker extends EventEmitter {
 				this.issueTrackers.delete(repo.id);
 				this.agentSessionManagers.delete(repo.id);
 
-				console.log(`✅ Repository removed successfully: ${repo.name}`);
+				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
-				console.error(`❌ Failed to remove repository ${repo.name}:`, error);
+				this.logger.error(
+					`❌ Failed to remove repository ${repo.name}:`,
+					error,
+				);
 			}
 		}
 	}
@@ -1404,8 +1927,8 @@ export class EdgeWorker extends EventEmitter {
 
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-			console.log(
-				`[handleWebhook] Full webhook payload:`,
+			this.logger.debug(
+				`Full webhook payload:`,
 				JSON.stringify(webhook, null, 2),
 			);
 		}
@@ -1431,14 +1954,14 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleIssueContentUpdate(webhook);
 			} else {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-					console.log(
-						`[handleWebhook] Unhandled webhook type: ${(webhook as any).action}`,
+					this.logger.debug(
+						`Unhandled webhook type: ${(webhook as any).action}`,
 					);
 				}
 			}
 		} catch (error) {
-			console.error(
-				`[handleWebhook] Failed to process webhook: ${(webhook as any).action}`,
+			this.logger.error(
+				`Failed to process webhook: ${(webhook as any).action}`,
 				error,
 			);
 			// Don't re-throw webhook processing errors to prevent application crashes
@@ -1449,6 +1972,152 @@ export class EdgeWorker extends EventEmitter {
 		}
 	}
 
+	// ============================================================================
+	// INTERNAL MESSAGE BUS HANDLERS
+	// ============================================================================
+	// These handlers process unified InternalMessage types from the message bus.
+	// They provide a platform-agnostic interface for handling events from
+	// Linear, GitHub, Slack, and other platforms.
+	// ============================================================================
+
+	/**
+	 * Handle unified internal messages from the message bus.
+	 * This is the new entry point for processing events from all platforms.
+	 *
+	 * Note: For now, this runs in parallel with legacy webhook handlers.
+	 * Once migration is complete, legacy handlers will be removed.
+	 */
+	private async handleMessage(message: InternalMessage): Promise<void> {
+		// NOTE: activeWebhookCount is NOT tracked here because legacy webhook handlers
+		// already increment/decrement it for every event. Counting here would double-count.
+		// TODO: When legacy handlers are removed, restore activeWebhookCount tracking here.
+
+		// Log verbose message info if enabled
+		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+			this.logger.debug(
+				`Internal message received: ${message.source}/${message.action}`,
+				JSON.stringify(message, null, 2),
+			);
+		}
+
+		try {
+			// Route to specific message handlers based on action type
+			if (isSessionStartMessage(message)) {
+				await this.handleSessionStartMessage(message);
+			} else if (isUserPromptMessage(message)) {
+				await this.handleUserPromptMessage(message);
+			} else if (isStopSignalMessage(message)) {
+				await this.handleStopSignalMessage(message);
+			} else if (isContentUpdateMessage(message)) {
+				await this.handleContentUpdateMessage(message);
+			} else if (isUnassignMessage(message)) {
+				await this.handleUnassignMessage(message);
+			} else {
+				// This branch should never be reached due to exhaustive type checking
+				// If it is reached, log the unexpected message for debugging
+				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+					const unexpectedMessage = message as InternalMessage;
+					this.logger.debug(
+						`Unhandled message action: ${unexpectedMessage.action}`,
+					);
+				}
+			}
+		} catch (error) {
+			this.logger.error(
+				`Failed to process message: ${message.source}/${message.action}`,
+				error,
+			);
+			// Don't re-throw message processing errors to prevent application crashes
+		}
+	}
+
+	/**
+	 * Handle session start message (unified handler for session creation).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleAgentSessionCreatedWebhook and handleGitHubWebhook.
+	 */
+	private async handleSessionStartMessage(
+		message: SessionStartMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Session start: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified session start handling
+		// For now, the legacy handlers (handleAgentSessionCreatedWebhook, handleGitHubWebhook)
+		// continue to process the actual session creation via the 'event' emitter.
+	}
+
+	/**
+	 * Handle user prompt message (unified handler for mid-session prompts).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleUserPromptedAgentActivity (branch 3).
+	 */
+	private async handleUserPromptMessage(
+		message: UserPromptMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] User prompt: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified user prompt handling
+		// For now, the legacy handler (handleUserPromptedAgentActivity)
+		// continues to process the actual prompt via the 'event' emitter.
+	}
+
+	/**
+	 * Handle stop signal message (unified handler for session termination).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleUserPromptedAgentActivity (branch 1).
+	 */
+	private async handleStopSignalMessage(
+		message: StopSignalMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Stop signal: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified stop signal handling
+		// For now, the legacy handler (handleUserPromptedAgentActivity)
+		// continues to process the actual stop via the 'event' emitter.
+	}
+
+	/**
+	 * Handle content update message (unified handler for issue/PR content changes).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleIssueContentUpdate.
+	 */
+	private async handleContentUpdateMessage(
+		message: ContentUpdateMessage,
+	): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Content update: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified content update handling
+		// For now, the legacy handler (handleIssueContentUpdate)
+		// continues to process the actual update via the 'event' emitter.
+	}
+
+	/**
+	 * Handle unassign message (unified handler for task unassignment).
+	 *
+	 * This is a placeholder that logs the message for now.
+	 * TODO: Migrate logic from handleIssueUnassignedWebhook.
+	 */
+	private async handleUnassignMessage(message: UnassignMessage): Promise<void> {
+		this.logger.debug(
+			`[MessageBus] Unassign: ${message.workItemIdentifier} from ${message.source}`,
+		);
+		// TODO: Implement unified unassign handling
+		// For now, the legacy handler (handleIssueUnassignedWebhook)
+		// continues to process the actual unassignment via the 'event' emitter.
+	}
+
+	// ============================================================================
+	// LEGACY WEBHOOK HANDLERS
+	// ============================================================================
+
 	/**
 	 * Handle issue unassignment webhook
 	 */
@@ -1456,9 +2125,7 @@ export class EdgeWorker extends EventEmitter {
 		webhook: IssueUnassignedWebhook,
 	): Promise<void> {
 		if (!webhook.notification.issue) {
-			console.warn(
-				"[EdgeWorker] Received issue unassignment webhook without issue",
-			);
+			this.logger.warn("Received issue unassignment webhook without issue");
 			return;
 		}
 
@@ -1467,14 +2134,14 @@ export class EdgeWorker extends EventEmitter {
 		// Get cached repository (unassignment should only happen on issues with active sessions)
 		const repository = this.getCachedRepository(issueId);
 		if (!repository) {
-			console.log(
-				`[EdgeWorker] No cached repository for issue unassignment webhook ${webhook.notification.issue.identifier} (no active sessions to stop)`,
+			this.logger.debug(
+				`No cached repository for issue unassignment webhook ${webhook.notification.issue.identifier} (no active sessions to stop)`,
 			);
 			return;
 		}
 
-		console.log(
-			`[EdgeWorker] Handling issue unassignment: ${webhook.notification.issue.identifier}`,
+		this.logger.info(
+			`Handling issue unassignment: ${webhook.notification.issue.identifier}`,
 		);
 
 		// Log the complete webhook payload for TypeScript type definition
@@ -1509,8 +2176,8 @@ export class EdgeWorker extends EventEmitter {
 		// Check if issue update trigger is enabled (defaults to true if not set)
 		if (this.config.issueUpdateTrigger === false) {
 			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-				console.log(
-					"[EdgeWorker] Issue update trigger is disabled, skipping issue content update",
+				this.logger.debug(
+					"Issue update trigger is disabled, skipping issue content update",
 				);
 			}
 			return;
@@ -1522,8 +2189,8 @@ export class EdgeWorker extends EventEmitter {
 		const updatedFrom = webhook.updatedFrom;
 
 		if (!updatedFrom) {
-			console.warn(
-				`[EdgeWorker] Issue update webhook for ${issueIdentifier} has no updatedFrom data`,
+			this.logger.warn(
+				`Issue update webhook for ${issueIdentifier} has no updatedFrom data`,
 			);
 			return;
 		}
@@ -1532,8 +2199,8 @@ export class EdgeWorker extends EventEmitter {
 		const repository = this.getCachedRepository(issueId);
 		if (!repository) {
 			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-				console.log(
-					`[EdgeWorker] No cached repository for issue update webhook ${issueIdentifier} (no active sessions to notify)`,
+				this.logger.debug(
+					`No cached repository for issue update webhook ${issueIdentifier} (no active sessions to notify)`,
 				);
 			}
 			return;
@@ -1545,15 +2212,15 @@ export class EdgeWorker extends EventEmitter {
 		if ("description" in updatedFrom) changedFields.push("description");
 		if ("attachments" in updatedFrom) changedFields.push("attachments");
 
-		console.log(
-			`[EdgeWorker] Handling issue content update: ${issueIdentifier} (changed: ${changedFields.join(", ")})`,
+		this.logger.info(
+			`Handling issue content update: ${issueIdentifier} (changed: ${changedFields.join(", ")})`,
 		);
 
 		// Get agent session manager for this repository
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
 		if (!agentSessionManager) {
-			console.log(
-				`[EdgeWorker] No agent session manager for repository ${repository.id}`,
+			this.logger.debug(
+				`No agent session manager for repository ${repository.id}`,
 			);
 			return;
 		}
@@ -1562,8 +2229,8 @@ export class EdgeWorker extends EventEmitter {
 		const sessions = agentSessionManager.getSessionsByIssueId(issueId);
 		if (sessions.length === 0) {
 			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-				console.log(
-					`[EdgeWorker] No sessions found for issue ${issueIdentifier} to receive update`,
+				this.logger.debug(
+					`No sessions found for issue ${issueIdentifier} to receive update`,
 				);
 			}
 			return;
@@ -1574,9 +2241,7 @@ export class EdgeWorker extends EventEmitter {
 		if ("description" in updatedFrom && issueData.description) {
 			const firstSession = sessions[0];
 			if (!firstSession) {
-				console.log(
-					`[EdgeWorker] No sessions found for issue ${issueIdentifier}`,
-				);
+				this.logger.debug(`No sessions found for issue ${issueIdentifier}`);
 				return;
 			}
 			const workspaceFolderName = basename(firstSession.workspace.path);
@@ -1607,13 +2272,13 @@ export class EdgeWorker extends EventEmitter {
 				if (downloadResult.totalNewAttachments > 0) {
 					attachmentManifest =
 						this.generateNewAttachmentManifest(downloadResult);
-					console.log(
-						`[EdgeWorker] Downloaded ${downloadResult.totalNewAttachments} attachments from updated description`,
+					this.logger.debug(
+						`Downloaded ${downloadResult.totalNewAttachments} attachments from updated description`,
 					);
 				}
 			} catch (error) {
-				console.error(
-					"[EdgeWorker] Failed to process attachments from updated description:",
+				this.logger.error(
+					"Failed to process attachments from updated description:",
 					error,
 				);
 			}
@@ -1628,7 +2293,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Feed the update into each active session
 		for (const session of sessions) {
-			const linearAgentActivitySessionId = session.linearAgentActivitySessionId;
+			const linearAgentActivitySessionId = session.id;
 
 			// Check if runner is actively running and supports streaming input
 			const existingRunner = session.agentRunner;
@@ -1646,19 +2311,19 @@ export class EdgeWorker extends EventEmitter {
 				existingRunner.addStreamMessage
 			) {
 				// Add to existing stream
-				console.log(
-					`[EdgeWorker] Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
+				this.logger.debug(
+					`Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
 				);
 				existingRunner.addStreamMessage(fullPrompt);
 			} else if (isRunning) {
 				// Runner is running but doesn't support streaming input - log and skip
-				console.log(
-					`[EdgeWorker] Session ${linearAgentActivitySessionId} is running but doesn't support streaming input, skipping issue update`,
+				this.logger.debug(
+					`Session ${linearAgentActivitySessionId} is running but doesn't support streaming input, skipping issue update`,
 				);
 			} else {
 				// Session exists but runner is not running - resume with the update
-				console.log(
-					`[EdgeWorker] Resuming session ${linearAgentActivitySessionId} with issue update`,
+				this.logger.debug(
+					`Resuming session ${linearAgentActivitySessionId} with issue update`,
 				);
 
 				await this.handlePromptWithStreamingCheck(
@@ -1781,14 +2446,14 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Create a new Linear agent session with all necessary setup
-	 * @param linearAgentActivitySessionId The Linear agent activity session ID
+	 * @param sessionId The Linear agent activity session ID
 	 * @param issue Linear issue object
 	 * @param repository Repository configuration
 	 * @param agentSessionManager Agent session manager instance
 	 * @returns Object containing session details and setup information
 	 */
 	private async createLinearAgentSession(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		issue: { id: string; identifier: string },
 		repository: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
@@ -1808,23 +2473,21 @@ export class EdgeWorker extends EventEmitter {
 			? await this.config.handlers.createWorkspace(fullIssue, repository)
 			: await this.gitService.createGitWorktree(fullIssue, repository);
 
-		console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`);
+		this.logger.debug(`Workspace created at: ${workspace.path}`);
 
 		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
 		agentSessionManager.createLinearAgentSession(
-			linearAgentActivitySessionId,
+			sessionId,
 			issue.id,
 			issueMinimal,
 			workspace,
 		);
 
 		// Get the newly created session
-		const session = agentSessionManager.getSession(
-			linearAgentActivitySessionId,
-		);
+		const session = agentSessionManager.getSession(sessionId);
 		if (!session) {
 			throw new Error(
-				`Failed to create session for agent activity session ${linearAgentActivitySessionId}`,
+				`Failed to create session for agent activity session ${sessionId}`,
 			);
 		}
 
@@ -1850,8 +2513,8 @@ export class EdgeWorker extends EventEmitter {
 			repository.repositoryPath,
 		];
 
-		console.log(
-			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
+		this.logger.debug(
+			`Configured allowed directories for ${fullIssue.identifier}:`,
 			allowedDirectories,
 		);
 
@@ -1889,8 +2552,8 @@ export class EdgeWorker extends EventEmitter {
 		if (issueId) {
 			repository = this.getCachedRepository(issueId);
 			if (repository) {
-				console.log(
-					`[EdgeWorker] Using cached repository ${repository.name} for issue ${issueId}`,
+				this.logger.debug(
+					`Using cached repository ${repository.name} for issue ${issueId}`,
 				);
 			}
 		}
@@ -1905,8 +2568,8 @@ export class EdgeWorker extends EventEmitter {
 
 			if (routingResult.type === "none") {
 				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-					console.log(
-						`[EdgeWorker] No repository configured for webhook from workspace ${webhook.organizationId}`,
+					this.logger.info(
+						`No repository configured for webhook from workspace ${webhook.organizationId}`,
 					);
 				}
 				return;
@@ -1943,23 +2606,26 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		if (!webhook.agentSession.issue) {
-			console.warn("[EdgeWorker] Agent session created webhook missing issue");
+			this.logger.warn("Agent session created webhook missing issue");
 			return;
 		}
 
 		// User access control check
 		const accessResult = this.checkUserAccess(webhook, repository);
 		if (!accessResult.allowed) {
-			console.log(
-				`[EdgeWorker] User ${accessResult.userName} blocked from delegating: ${accessResult.reason}`,
+			this.logger.info(
+				`User ${accessResult.userName} blocked from delegating: ${accessResult.reason}`,
 			);
 			await this.handleBlockedUser(webhook, repository, accessResult.reason);
 			return;
 		}
 
-		console.log(
-			`[EdgeWorker] Handling agent session created: ${webhook.agentSession.issue.identifier}`,
-		);
+		const log = this.logger.withContext({
+			sessionId: webhook.agentSession.id,
+			platform: this.getRepositoryPlatform(repository.id),
+			issueIdentifier: webhook.agentSession.issue.identifier,
+		});
+		log.info(`Handling agent session created`);
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
 
@@ -1990,21 +2656,22 @@ export class EdgeWorker extends EventEmitter {
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 	): Promise<void> {
-		const linearAgentActivitySessionId = agentSession.id;
+		const sessionId = agentSession.id;
 		const { issue } = agentSession;
 
 		if (!issue) {
-			console.warn(
-				"[EdgeWorker] Cannot initialize Claude runner without issue",
-			);
+			this.logger.warn("Cannot initialize Claude runner without issue");
 			return;
 		}
 
+		const log = this.logger.withContext({
+			sessionId,
+			issueIdentifier: issue.identifier,
+		});
+
 		// Log guidance if present
 		if (guidance && guidance.length > 0) {
-			console.log(
-				`[EdgeWorker] Agent guidance received: ${guidance.length} rule(s)`,
-			);
+			log.debug(`Agent guidance received: ${guidance.length} rule(s)`);
 			for (const rule of guidance) {
 				let origin = "Unknown";
 				if (rule.origin) {
@@ -2014,9 +2681,7 @@ export class EdgeWorker extends EventEmitter {
 						origin = "Organization";
 					}
 				}
-				console.log(
-					`[EdgeWorker]   - ${origin}: ${rule.body.substring(0, 100)}...`,
-				);
+				log.info(`- ${origin}: ${rule.body.substring(0, 100)}...`);
 			}
 		}
 
@@ -2032,7 +2697,7 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
 		if (!agentSessionManager) {
-			console.error(
+			log.error(
 				"There was no agentSessionManage for the repository with id",
 				repository.id,
 			);
@@ -2040,14 +2705,11 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Post instant acknowledgment thought
-		await this.postInstantAcknowledgment(
-			linearAgentActivitySessionId,
-			repository.id,
-		);
+		await this.postInstantAcknowledgment(sessionId, repository.id);
 
 		// Create the session using the shared method
 		const sessionData = await this.createLinearAgentSession(
-			linearAgentActivitySessionId,
+			sessionId,
 			issue,
 			repository,
 			agentSessionManager,
@@ -2069,9 +2731,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postAnalyzingThought(
-			linearAgentActivitySessionId,
-		);
+		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch labels early (needed for label override check)
 		const labels = await this.fetchIssueLabels(fullIssue);
@@ -2131,8 +2791,8 @@ export class EdgeWorker extends EventEmitter {
 			}
 			finalProcedure = debuggerProcedure;
 			finalClassification = "debugger";
-			console.log(
-				`[EdgeWorker] Using debugger-full procedure due to debugger label (skipping AI routing)`,
+			log.info(
+				`Using debugger-full procedure due to debugger label (skipping AI routing)`,
 			);
 		} else if (hasGraphiteOrchestratorLabels) {
 			// Graphite-orchestrator takes precedence over regular orchestrator when both labels present
@@ -2144,8 +2804,8 @@ export class EdgeWorker extends EventEmitter {
 			finalProcedure = orchestratorProcedure;
 			// Use orchestrator classification but the system prompt will be graphite-orchestrator
 			finalClassification = "orchestrator";
-			console.log(
-				`[EdgeWorker] Using orchestrator-full procedure with graphite-orchestrator prompt (graphite + orchestrator labels)`,
+			log.info(
+				`Using orchestrator-full procedure with graphite-orchestrator prompt (graphite + orchestrator labels)`,
 			);
 		} else if (hasOrchestratorLabel) {
 			const orchestratorProcedure =
@@ -2155,8 +2815,8 @@ export class EdgeWorker extends EventEmitter {
 			}
 			finalProcedure = orchestratorProcedure;
 			finalClassification = "orchestrator";
-			console.log(
-				`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
+			log.info(
+				`Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
 			);
 		} else {
 			// No label override - use AI routing
@@ -2168,12 +2828,10 @@ export class EdgeWorker extends EventEmitter {
 			finalClassification = routingDecision.classification;
 
 			// Log AI routing decision
-			console.log(
-				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
-			);
-			console.log(`  Classification: ${routingDecision.classification}`);
-			console.log(`  Procedure: ${finalProcedure.name}`);
-			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+			log.info(`AI routing decision for ${sessionId}:`);
+			log.info(`  Classification: ${routingDecision.classification}`);
+			log.info(`  Procedure: ${finalProcedure.name}`);
+			log.info(`  Reasoning: ${routingDecision.reasoning}`);
 		}
 
 		// Initialize procedure metadata in session with final decision
@@ -2181,15 +2839,13 @@ export class EdgeWorker extends EventEmitter {
 
 		// Post single procedure selection result (replaces ephemeral routing thought)
 		await agentSessionManager.postProcedureSelectionThought(
-			linearAgentActivitySessionId,
+			sessionId,
 			finalProcedure.name,
 			finalClassification,
 		);
 
 		// Build and start Claude with initial prompt using full issue (streaming mode)
-		console.log(
-			`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`,
-		);
+		log.info(`Building initial prompt for issue ${fullIssue.identifier}`);
 		try {
 			// Create input for unified prompt assembly
 			const input: PromptAssemblyInput = {
@@ -2231,7 +2887,7 @@ export class EdgeWorker extends EventEmitter {
 				// Post thought about system prompt selection
 				if (assembly.systemPrompt) {
 					await this.postSystemPromptSelectionThought(
-						linearAgentActivitySessionId,
+						sessionId,
 						labels,
 						repository.id,
 					);
@@ -2260,18 +2916,18 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			if (currentSubroutine?.disallowAllTools) {
-				console.log(
-					`[EdgeWorker] All tools disabled for ${fullIssue.identifier} (subroutine: ${currentSubroutine.name})`,
+				log.debug(
+					`All tools disabled for ${fullIssue.identifier} (subroutine: ${currentSubroutine.name})`,
 				);
 			} else {
-				console.log(
-					`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
+				log.debug(
+					`Configured allowed tools for ${fullIssue.identifier}:`,
 					allowedTools,
 				);
 			}
 			if (disallowedTools.length > 0) {
-				console.log(
-					`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
+				log.debug(
+					`Configured disallowed tools for ${fullIssue.identifier}:`,
 					disallowedTools,
 				);
 			}
@@ -2281,7 +2937,7 @@ export class EdgeWorker extends EventEmitter {
 			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 				session,
 				repository,
-				linearAgentActivitySessionId,
+				sessionId,
 				assembly.systemPrompt,
 				allowedTools,
 				allowedDirectories,
@@ -2290,11 +2946,11 @@ export class EdgeWorker extends EventEmitter {
 				labels, // Pass labels for runner selection and model override
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
-				currentSubroutine?.disallowAllTools, // disallowAllTools flag
+				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
 			);
 
-			console.log(
-				`[EdgeWorker] Label-based runner selection for new session: ${runnerType} (session ${linearAgentActivitySessionId})`,
+			log.debug(
+				`Label-based runner selection for new session: ${runnerType} (session ${sessionId})`,
 			);
 
 			const runner =
@@ -2303,7 +2959,7 @@ export class EdgeWorker extends EventEmitter {
 					: new GeminiRunner(runnerConfig);
 
 			// Store runner by comment ID
-			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
+			agentSessionManager.addAgentRunner(sessionId, runner);
 
 			// Save state after mapping changes
 			await this.savePersistedState();
@@ -2329,28 +2985,24 @@ export class EdgeWorker extends EventEmitter {
 			}
 
 			// Log metadata for debugging
-			console.log(
-				`[EdgeWorker] Initial prompt built successfully - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}, length: ${assembly.userPrompt.length} characters`,
+			log.debug(
+				`Initial prompt built successfully - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}, length: ${assembly.userPrompt.length} characters`,
 			);
 
 			// Start session - use streaming mode if supported for ability to add messages later
 			if (runner.supportsStreamingInput && runner.startStreaming) {
-				console.log(`[EdgeWorker] Starting streaming session`);
+				log.debug(`Starting streaming session`);
 				const sessionInfo = await runner.startStreaming(assembly.userPrompt);
-				console.log(
-					`[EdgeWorker] Streaming session started: ${sessionInfo.sessionId}`,
-				);
+				log.debug(`Streaming session started: ${sessionInfo.sessionId}`);
 			} else {
-				console.log(`[EdgeWorker] Starting non-streaming session`);
+				log.debug(`Starting non-streaming session`);
 				const sessionInfo = await runner.start(assembly.userPrompt);
-				console.log(
-					`[EdgeWorker] Non-streaming session started: ${sessionInfo.sessionId}`,
-				);
+				log.debug(`Non-streaming session started: ${sessionInfo.sessionId}`);
 			}
 			// Note: AgentSessionManager will be initialized automatically when the first system message
 			// is received via handleClaudeMessage() callback
 		} catch (error) {
-			console.error(`[EdgeWorker] Error in prompt building/starting:`, error);
+			log.error(`Error in prompt building/starting:`, error);
 			throw error;
 		}
 	}
@@ -2368,9 +3020,10 @@ export class EdgeWorker extends EventEmitter {
 	): Promise<void> {
 		const agentSessionId = webhook.agentSession.id;
 		const { issue } = webhook.agentSession;
+		const log = this.logger.withContext({ sessionId: agentSessionId });
 
-		console.log(
-			`[EdgeWorker] Received stop signal for agent activity session ${agentSessionId}`,
+		log.info(
+			`Received stop signal for agent activity session ${agentSessionId}`,
 		);
 
 		// Find the agent session manager that contains this session
@@ -2388,9 +3041,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		if (!foundManager || !foundSession) {
-			console.warn(
-				`[EdgeWorker] No session found for stop signal: ${agentSessionId}`,
-			);
+			log.warn(`No session found for stop signal: ${agentSessionId}`);
 			return;
 		}
 
@@ -2398,8 +3049,8 @@ export class EdgeWorker extends EventEmitter {
 		const existingRunner = foundSession.agentRunner;
 		if (existingRunner) {
 			existingRunner.stop();
-			console.log(
-				`[EdgeWorker] Stopped agent session for agent activity session ${agentSessionId}`,
+			log.info(
+				`Stopped agent session for agent activity session ${agentSessionId}`,
 			);
 		}
 
@@ -2424,26 +3075,21 @@ export class EdgeWorker extends EventEmitter {
 		const { agentSession, agentActivity, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
 		const agentSessionId = agentSession.id;
+		const log = this.logger.withContext({ sessionId: agentSessionId });
 
 		if (!agentActivity) {
-			console.warn(
-				"[EdgeWorker] Cannot handle repository selection without agentActivity",
-			);
+			log.warn("Cannot handle repository selection without agentActivity");
 			return;
 		}
 
 		if (!agentSession.issue) {
-			console.warn(
-				"[EdgeWorker] Cannot handle repository selection without issue",
-			);
+			log.warn("Cannot handle repository selection without issue");
 			return;
 		}
 
 		const userMessage = agentActivity.content.body;
 
-		console.log(
-			`[EdgeWorker] Processing repository selection response: "${userMessage}"`,
-		);
+		log.debug(`Processing repository selection response: "${userMessage}"`);
 
 		// Get the selected repository (or fallback)
 		const repository = await this.repositoryRouter.selectRepositoryFromResponse(
@@ -2452,8 +3098,8 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		if (!repository) {
-			console.error(
-				`[EdgeWorker] Failed to select repository for agent session ${agentSessionId}`,
+			log.error(
+				`Failed to select repository for agent session ${agentSessionId}`,
 			);
 			return;
 		}
@@ -2470,8 +3116,8 @@ export class EdgeWorker extends EventEmitter {
 			"user-selected",
 		);
 
-		console.log(
-			`[EdgeWorker] Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
+		log.debug(
+			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
 		);
 
 		// Initialize agent runner with the selected repository
@@ -2496,8 +3142,8 @@ export class EdgeWorker extends EventEmitter {
 		const agentSessionId = agentSession.id;
 
 		if (!agentActivity) {
-			console.warn(
-				"[EdgeWorker] Cannot handle AskUserQuestion response without agentActivity",
+			this.logger.warn(
+				"Cannot handle AskUserQuestion response without agentActivity",
 			);
 			// Resolve with a denial to unblock the waiting promise
 			this.askUserQuestionHandler.cancelPendingQuestion(
@@ -2510,8 +3156,8 @@ export class EdgeWorker extends EventEmitter {
 		// Extract the user's response from the activity body
 		const userResponse = agentActivity.content?.body || "";
 
-		console.log(
-			`[EdgeWorker] Processing AskUserQuestion response for session ${agentSessionId}: "${userResponse}"`,
+		this.logger.debug(
+			`Processing AskUserQuestion response for session ${agentSessionId}: "${userResponse}"`,
 		);
 
 		// Pass the response to the handler to resolve the waiting promise
@@ -2521,12 +3167,12 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		if (!handled) {
-			console.warn(
-				`[EdgeWorker] AskUserQuestion response not handled for session ${agentSessionId} (no pending question)`,
+			this.logger.warn(
+				`AskUserQuestion response not handled for session ${agentSessionId} (no pending question)`,
 			);
 		} else {
-			console.log(
-				`[EdgeWorker] AskUserQuestion response handled for session ${agentSessionId}`,
+			this.logger.debug(
+				`AskUserQuestion response handled for session ${agentSessionId}`,
 			);
 		}
 	}
@@ -2540,20 +3186,16 @@ export class EdgeWorker extends EventEmitter {
 		repository: RepositoryConfig,
 	): Promise<void> {
 		const { agentSession } = webhook;
-		const linearAgentActivitySessionId = agentSession.id;
+		const sessionId = agentSession.id;
 		const { issue } = agentSession;
 
 		if (!issue) {
-			console.warn(
-				"[EdgeWorker] Cannot handle prompted activity without issue",
-			);
+			this.logger.warn("Cannot handle prompted activity without issue");
 			return;
 		}
 
 		if (!webhook.agentActivity) {
-			console.warn(
-				"[EdgeWorker] Cannot handle prompted activity without agentActivity",
-			);
+			this.logger.warn("Cannot handle prompted activity without agentActivity");
 			return;
 		}
 
@@ -2562,33 +3204,33 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
 		if (!agentSessionManager) {
-			console.error(
+			this.logger.error(
 				"Unexpected: There was no agentSessionManage for the repository with id",
 				repository.id,
 			);
 			return;
 		}
 
-		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
+		let session = agentSessionManager.getSession(sessionId);
 		let isNewSession = false;
 		let fullIssue: Issue | null = null;
 
 		if (!session) {
-			console.log(
-				`[EdgeWorker] No existing session found for agent activity session ${linearAgentActivitySessionId}, creating new session`,
+			this.logger.debug(
+				`No existing session found for agent activity session ${sessionId}, creating new session`,
 			);
 			isNewSession = true;
 
 			// Post instant acknowledgment for new session creation
 			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
+				sessionId,
 				repository.id,
 				false,
 			);
 
 			// Create the session using the shared method
 			const sessionData = await this.createLinearAgentSession(
-				linearAgentActivitySessionId,
+				sessionId,
 				issue,
 				repository,
 				agentSessionManager,
@@ -2598,9 +3240,7 @@ export class EdgeWorker extends EventEmitter {
 			fullIssue = sessionData.fullIssue;
 			session = sessionData.session;
 
-			console.log(
-				`[EdgeWorker] Created new session ${linearAgentActivitySessionId} (prompted webhook)`,
-			);
+			this.logger.debug(`Created new session ${sessionId} (prompted webhook)`);
 
 			// Save state and emit events for new session
 			await this.savePersistedState();
@@ -2612,8 +3252,8 @@ export class EdgeWorker extends EventEmitter {
 				repository.id,
 			);
 		} else {
-			console.log(
-				`[EdgeWorker] Found existing session ${linearAgentActivitySessionId} for new user prompt`,
+			this.logger.debug(
+				`Found existing session ${sessionId} for new user prompt`,
 			);
 
 			// Post instant acknowledgment for existing session BEFORE any async work
@@ -2621,7 +3261,7 @@ export class EdgeWorker extends EventEmitter {
 			const isCurrentlyStreaming = session?.agentRunner?.isRunning() || false;
 
 			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
+				sessionId,
 				repository.id,
 				isCurrentlyStreaming,
 			);
@@ -2632,8 +3272,8 @@ export class EdgeWorker extends EventEmitter {
 				try {
 					fullIssue = await issueTracker.fetchIssue(issue.id);
 				} catch (error) {
-					console.warn(
-						`[EdgeWorker] Failed to fetch full issue for routing: ${issue.id}`,
+					this.logger.warn(
+						`Failed to fetch full issue for routing: ${issue.id}`,
 						error,
 					);
 					// Continue with degraded routing context
@@ -2647,7 +3287,7 @@ export class EdgeWorker extends EventEmitter {
 		// Ensure session is not null after creation/retrieval
 		if (!session) {
 			throw new Error(
-				`Failed to get or create session for agent activity session ${linearAgentActivitySessionId}`,
+				`Failed to get or create session for agent activity session ${sessionId}`,
 			);
 		}
 
@@ -2657,7 +3297,7 @@ export class EdgeWorker extends EventEmitter {
 		// Get issue tracker for this repository
 		const issueTracker = this.issueTrackers.get(repository.id);
 		if (!issueTracker) {
-			console.error(
+			this.logger.error(
 				"Unexpected: There was no IssueTrackerService for the repository with id",
 				repository.id,
 			);
@@ -2679,9 +3319,7 @@ export class EdgeWorker extends EventEmitter {
 		let commentTimestamp: string | undefined;
 
 		if (!commentId) {
-			console.warn(
-				"[EdgeWorker] No comment ID provided for attachment handling",
-			);
+			this.logger.warn("No comment ID provided for attachment handling");
 		}
 
 		try {
@@ -2724,7 +3362,7 @@ export class EdgeWorker extends EventEmitter {
 				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
 			}
 		} catch (error) {
-			console.error("Failed to fetch comments for attachments:", error);
+			this.logger.error("Failed to fetch comments for attachments:", error);
 		}
 
 		const promptBody = webhook.agentActivity.content.body;
@@ -2734,7 +3372,7 @@ export class EdgeWorker extends EventEmitter {
 			await this.handlePromptWithStreamingCheck(
 				session,
 				repository,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				promptBody,
 				attachmentManifest,
@@ -2745,7 +3383,7 @@ export class EdgeWorker extends EventEmitter {
 				commentTimestamp,
 			);
 		} catch (error) {
-			console.error("Failed to handle prompted webhook:", error);
+			this.logger.error("Failed to handle prompted webhook:", error);
 		}
 	}
 
@@ -2794,16 +3432,16 @@ export class EdgeWorker extends EventEmitter {
 		// the issue-to-repository cache - no new routing logic is performed."
 		const issueId = webhook.agentSession?.issue?.id;
 		if (!issueId) {
-			console.error(
-				`[EdgeWorker] No issue ID found in prompted webhook ${agentSessionId}`,
+			this.logger.error(
+				`No issue ID found in prompted webhook ${agentSessionId}`,
 			);
 			return;
 		}
 
 		const repository = this.getCachedRepository(issueId);
 		if (!repository) {
-			console.warn(
-				`[EdgeWorker] No cached repository found for prompted webhook ${agentSessionId}`,
+			this.logger.warn(
+				`No cached repository found for prompted webhook ${agentSessionId}`,
 			);
 			return;
 		}
@@ -2811,8 +3449,8 @@ export class EdgeWorker extends EventEmitter {
 		// User access control check for mid-session prompts
 		const accessResult = this.checkUserAccess(webhook, repository);
 		if (!accessResult.allowed) {
-			console.log(
-				`[EdgeWorker] User ${accessResult.userName} blocked from prompting: ${accessResult.reason}`,
+			this.logger.info(
+				`User ${accessResult.userName} blocked from prompting: ${accessResult.reason}`,
 			);
 			await this.handleBlockedUser(webhook, repository, accessResult.reason);
 			return;
@@ -2832,7 +3470,7 @@ export class EdgeWorker extends EventEmitter {
 	): Promise<void> {
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
 		if (!agentSessionManager) {
-			console.log(
+			this.logger.info(
 				"No agentSessionManager for unassigned issue, so no sessions to stop",
 			);
 			return;
@@ -2844,9 +3482,7 @@ export class EdgeWorker extends EventEmitter {
 		// Stop all agent runners for this issue
 		const activeThreadCount = agentRunners.length;
 		for (const runner of agentRunners) {
-			console.log(
-				`[EdgeWorker] Stopping agent runner for issue ${issue.identifier}`,
-			);
+			this.logger.info(`Stopping agent runner for issue ${issue.identifier}`);
 			runner.stop();
 		}
 
@@ -2861,8 +3497,8 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Emit events
-		console.log(
-			`[EdgeWorker] Stopped ${activeThreadCount} sessions for unassigned issue ${issue.identifier}`,
+		this.logger.info(
+			`Stopped ${activeThreadCount} sessions for unassigned issue ${issue.identifier}`,
 		);
 	}
 
@@ -2870,17 +3506,14 @@ export class EdgeWorker extends EventEmitter {
 	 * Handle Claude messages
 	 */
 	private async handleClaudeMessage(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		message: SDKMessage,
 		repositoryId: string,
 	): Promise<void> {
 		const agentSessionManager = this.agentSessionManagers.get(repositoryId);
 		// Integrate with AgentSessionManager to capture streaming messages
 		if (agentSessionManager) {
-			await agentSessionManager.handleClaudeMessage(
-				linearAgentActivitySessionId,
-				message,
-			);
+			await agentSessionManager.handleClaudeMessage(sessionId, message);
 		}
 	}
 
@@ -2902,7 +3535,7 @@ export class EdgeWorker extends EventEmitter {
 		if (isAbortError || isSigterm) {
 			return;
 		}
-		console.error("Unhandled claude error:", error);
+		this.logger.error("Unhandled claude error:", error);
 	}
 
 	/**
@@ -2913,10 +3546,7 @@ export class EdgeWorker extends EventEmitter {
 			const labels = await issue.labels();
 			return labels.nodes.map((label) => label.name);
 		} catch (error) {
-			console.error(
-				`[EdgeWorker] Failed to fetch labels for issue ${issue.id}:`,
-				error,
-			);
+			this.logger.error(`Failed to fetch labels for issue ${issue.id}:`, error);
 			return [];
 		}
 	}
@@ -3062,14 +3692,14 @@ export class EdgeWorker extends EventEmitter {
 				const __dirname = dirname(__filename);
 				const promptPath = join(__dirname, "..", "prompts", "orchestrator.md");
 				const promptContent = await readFile(promptPath, "utf-8");
-				console.log(
-					`[EdgeWorker] Using orchestrator system prompt (hardcoded rule) for labels: ${labels.join(", ")}`,
+				this.logger.debug(
+					`Using orchestrator system prompt (hardcoded rule) for labels: ${labels.join(", ")}`,
 				);
 
 				const promptVersion = this.extractVersionTag(promptContent);
 				if (promptVersion) {
-					console.log(
-						`[EdgeWorker] orchestrator system prompt version: ${promptVersion}`,
+					this.logger.debug(
+						`orchestrator system prompt version: ${promptVersion}`,
 					);
 				}
 
@@ -3079,8 +3709,8 @@ export class EdgeWorker extends EventEmitter {
 					type: "orchestrator",
 				};
 			} catch (error) {
-				console.error(
-					`[EdgeWorker] Failed to load orchestrator prompt template:`,
+				this.logger.error(
+					`Failed to load orchestrator prompt template:`,
 					error,
 				);
 				return undefined;
@@ -3124,14 +3754,14 @@ export class EdgeWorker extends EventEmitter {
 					"graphite-orchestrator.md",
 				);
 				const promptContent = await readFile(promptPath, "utf-8");
-				console.log(
-					`[EdgeWorker] Using graphite-orchestrator system prompt for labels: ${labels.join(", ")}`,
+				this.logger.debug(
+					`Using graphite-orchestrator system prompt for labels: ${labels.join(", ")}`,
 				);
 
 				const promptVersion = this.extractVersionTag(promptContent);
 				if (promptVersion) {
-					console.log(
-						`[EdgeWorker] graphite-orchestrator system prompt version: ${promptVersion}`,
+					this.logger.debug(
+						`graphite-orchestrator system prompt version: ${promptVersion}`,
 					);
 				}
 
@@ -3141,8 +3771,8 @@ export class EdgeWorker extends EventEmitter {
 					type: "graphite-orchestrator",
 				};
 			} catch (error) {
-				console.error(
-					`[EdgeWorker] Failed to load graphite-orchestrator prompt template:`,
+				this.logger.error(
+					`Failed to load graphite-orchestrator prompt template:`,
 					error,
 				);
 				// Fall through to regular orchestrator if graphite-orchestrator prompt fails
@@ -3188,15 +3818,15 @@ export class EdgeWorker extends EventEmitter {
 						`${promptType}.md`,
 					);
 					const promptContent = await readFile(promptPath, "utf-8");
-					console.log(
-						`[EdgeWorker] Using ${promptType} system prompt for labels: ${labels.join(", ")}`,
+					this.logger.debug(
+						`Using ${promptType} system prompt for labels: ${labels.join(", ")}`,
 					);
 
 					// Extract and log version tag if present
 					const promptVersion = this.extractVersionTag(promptContent);
 					if (promptVersion) {
-						console.log(
-							`[EdgeWorker] ${promptType} system prompt version: ${promptVersion}`,
+						this.logger.debug(
+							`${promptType} system prompt version: ${promptVersion}`,
 						);
 					}
 
@@ -3206,8 +3836,8 @@ export class EdgeWorker extends EventEmitter {
 						type: promptType,
 					};
 				} catch (error) {
-					console.error(
-						`[EdgeWorker] Failed to load ${promptType} prompt template:`,
+					this.logger.error(
+						`Failed to load ${promptType} prompt template:`,
 						error,
 					);
 					return undefined;
@@ -3232,8 +3862,8 @@ export class EdgeWorker extends EventEmitter {
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
-		console.log(
-			`[EdgeWorker] buildLabelBasedPrompt called for issue ${issue.identifier}`,
+		this.logger.debug(
+			`buildLabelBasedPrompt called for issue ${issue.identifier}`,
 		);
 
 		try {
@@ -3242,20 +3872,16 @@ export class EdgeWorker extends EventEmitter {
 			const __dirname = dirname(__filename);
 			const templatePath = resolve(__dirname, "../label-prompt-template.md");
 
-			console.log(
-				`[EdgeWorker] Loading label prompt template from: ${templatePath}`,
-			);
+			this.logger.debug(`Loading label prompt template from: ${templatePath}`);
 			const template = await readFile(templatePath, "utf-8");
-			console.log(
-				`[EdgeWorker] Template loaded, length: ${template.length} characters`,
+			this.logger.debug(
+				`Template loaded, length: ${template.length} characters`,
 			);
 
 			// Extract and log version tag if present
 			const templateVersion = this.extractVersionTag(template);
 			if (templateVersion) {
-				console.log(
-					`[EdgeWorker] Label prompt template version: ${templateVersion}`,
-				);
+				this.logger.debug(`Label prompt template version: ${templateVersion}`);
 			}
 
 			// Determine the base branch considering parent issues
@@ -3274,13 +3900,13 @@ export class EdgeWorker extends EventEmitter {
 					}
 				}
 			} catch (error) {
-				console.warn(`[EdgeWorker] Failed to fetch assignee details:`, error);
+				this.logger.warn(`Failed to fetch assignee details:`, error);
 			}
 
 			// Get LinearClient for this repository
 			const issueTracker = this.issueTrackers.get(repository.id);
 			if (!issueTracker) {
-				console.error(
+				this.logger.error(
 					`No IssueTrackerService found for repository ${repository.id}`,
 				);
 				throw new Error(
@@ -3292,8 +3918,8 @@ export class EdgeWorker extends EventEmitter {
 			let workspaceTeams = "";
 			let workspaceLabels = "";
 			try {
-				console.log(
-					`[EdgeWorker] Fetching workspace teams and labels for repository ${repository.id}`,
+				this.logger.debug(
+					`Fetching workspace teams and labels for repository ${repository.id}`,
 				);
 
 				// Fetch teams
@@ -3333,14 +3959,11 @@ export class EdgeWorker extends EventEmitter {
 					)
 					.join("\n");
 
-				console.log(
-					`[EdgeWorker] Fetched ${teamsArray.length} teams and ${labelsArray.length} labels`,
+				this.logger.debug(
+					`Fetched ${teamsArray.length} teams and ${labelsArray.length} labels`,
 				);
 			} catch (error) {
-				console.warn(
-					`[EdgeWorker] Failed to fetch workspace teams and labels:`,
-					error,
-				);
+				this.logger.warn(`Failed to fetch workspace teams and labels:`, error);
 			}
 
 			// Generate routing context for orchestrator mode
@@ -3372,18 +3995,18 @@ export class EdgeWorker extends EventEmitter {
 			prompt += this.formatAgentGuidance(guidance);
 
 			if (attachmentManifest) {
-				console.log(
-					`[EdgeWorker] Adding attachment manifest to label-based prompt, length: ${attachmentManifest.length} characters`,
+				this.logger.debug(
+					`Adding attachment manifest to label-based prompt, length: ${attachmentManifest.length} characters`,
 				);
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
-			console.log(
-				`[EdgeWorker] Label-based prompt built successfully, length: ${prompt.length} characters`,
+			this.logger.debug(
+				`Label-based prompt built successfully, length: ${prompt.length} characters`,
 			);
 			return { prompt, version: templateVersion };
 		} catch (error) {
-			console.error(`[EdgeWorker] Error building label-based prompt:`, error);
+			this.logger.error(`Error building label-based prompt:`, error);
 			throw error;
 		}
 	}
@@ -3493,8 +4116,8 @@ ${repoDescriptions.join("\n")}
 		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
 		try {
-			console.log(
-				`[EdgeWorker] Building mention prompt for issue ${issue.identifier}`,
+			this.logger.debug(
+				`Building mention prompt for issue ${issue.identifier}`,
 			);
 
 			// Get the mention comment metadata
@@ -3533,7 +4156,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 			return { prompt };
 		} catch (error) {
-			console.error(`[EdgeWorker] Error building mention prompt:`, error);
+			this.logger.error(`Error building mention prompt:`, error);
 			throw error;
 		}
 	}
@@ -3608,8 +4231,8 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			if (blockingIssues.length > 0) {
 				// Use the first blocking issue's branch (typically there's only one in a stack)
 				const blockingIssue = blockingIssues[0]!;
-				console.log(
-					`[EdgeWorker] Issue ${issue.identifier} has graphite label and is blocked by ${blockingIssue.identifier}`,
+				this.logger.debug(
+					`Issue ${issue.identifier} has graphite label and is blocked by ${blockingIssue.identifier}`,
 				);
 
 				// Get blocking issue's branch name
@@ -3631,13 +4254,13 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 				if (blockingBranchExists) {
 					baseBranch = blockingBranchName;
-					console.log(
-						`[EdgeWorker] Using blocking issue branch '${blockingBranchName}' as base for Graphite-stacked issue ${issue.identifier}`,
+					this.logger.debug(
+						`Using blocking issue branch '${blockingBranchName}' as base for Graphite-stacked issue ${issue.identifier}`,
 					);
 					return baseBranch;
 				}
-				console.log(
-					`[EdgeWorker] Blocking issue branch '${blockingBranchName}' not found, falling back to parent/default`,
+				this.logger.debug(
+					`Blocking issue branch '${blockingBranchName}' not found, falling back to parent/default`,
 				);
 			}
 		}
@@ -3646,8 +4269,8 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		try {
 			const parent = await issue.parent;
 			if (parent) {
-				console.log(
-					`[EdgeWorker] Issue ${issue.identifier} has parent: ${parent.identifier}`,
+				this.logger.debug(
+					`Issue ${issue.identifier} has parent: ${parent.identifier}`,
 				);
 
 				// Get parent's branch name
@@ -3668,19 +4291,19 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 
 				if (parentBranchExists) {
 					baseBranch = parentBranchName;
-					console.log(
-						`[EdgeWorker] Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
+					this.logger.debug(
+						`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
 					);
 				} else {
-					console.log(
-						`[EdgeWorker] Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
+					this.logger.debug(
+						`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
 					);
 				}
 			}
 		} catch (_error) {
 			// Parent field might not exist or couldn't be fetched, use default base branch
-			console.log(
-				`[EdgeWorker] No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,
+			this.logger.debug(
+				`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,
 			);
 		}
 
@@ -3738,14 +4361,14 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				}
 			}
 
-			console.log(
-				`[EdgeWorker] Issue ${issue.identifier} is blocked by ${blockingIssues.length} issue(s): ${blockingIssues.map((i) => i.identifier).join(", ") || "none"}`,
+			this.logger.debug(
+				`Issue ${issue.identifier} is blocked by ${blockingIssues.length} issue(s): ${blockingIssues.map((i) => i.identifier).join(", ") || "none"}`,
 			);
 
 			return blockingIssues;
 		} catch (error) {
-			console.error(
-				`[EdgeWorker] Failed to fetch blocking issues for ${issue.identifier}:`,
+			this.logger.error(
+				`Failed to fetch blocking issues for ${issue.identifier}:`,
 				error,
 			);
 			return [];
@@ -3876,8 +4499,8 @@ ${reply.body}
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
 	): Promise<{ prompt: string; version?: string }> {
-		console.log(
-			`[EdgeWorker] buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
+		this.logger.debug(
+			`buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
 		);
 
 		try {
@@ -3895,16 +4518,16 @@ ${reply.body}
 			}
 
 			// Load the template
-			console.log(`[EdgeWorker] Loading prompt template from: ${templatePath}`);
+			this.logger.debug(`Loading prompt template from: ${templatePath}`);
 			const template = await readFile(templatePath, "utf-8");
-			console.log(
-				`[EdgeWorker] Template loaded, length: ${template.length} characters`,
+			this.logger.debug(
+				`Template loaded, length: ${template.length} characters`,
 			);
 
 			// Extract and log version tag if present
 			const templateVersion = this.extractVersionTag(template);
 			if (templateVersion) {
-				console.log(`[EdgeWorker] Prompt template version: ${templateVersion}`);
+				this.logger.debug(`Prompt template version: ${templateVersion}`);
 			}
 
 			// Get state name from Linear API
@@ -3920,20 +4543,18 @@ ${reply.body}
 
 			if (issueTracker && issue.id) {
 				try {
-					console.log(
-						`[EdgeWorker] Fetching comments for issue ${issue.identifier}`,
-					);
+					this.logger.debug(`Fetching comments for issue ${issue.identifier}`);
 					const comments = await issueTracker.fetchComments(issue.id);
 
 					const commentNodes = comments.nodes;
 					if (commentNodes.length > 0) {
 						commentThreads = await this.formatCommentThreads(commentNodes);
-						console.log(
-							`[EdgeWorker] Formatted ${commentNodes.length} comments into threads`,
+						this.logger.debug(
+							`Formatted ${commentNodes.length} comments into threads`,
 						);
 					}
 				} catch (error) {
-					console.error("Failed to fetch comments:", error);
+					this.logger.error("Failed to fetch comments:", error);
 				}
 			}
 
@@ -3991,7 +4612,7 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 						authorName =
 							user?.displayName || user?.name || user?.email || "Unknown";
 					} catch (error) {
-						console.error("Failed to fetch comment author:", error);
+						this.logger.error("Failed to fetch comment author:", error);
 					}
 				}
 
@@ -4009,24 +4630,22 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 
 			// Append attachment manifest if provided
 			if (attachmentManifest) {
-				console.log(
-					`[EdgeWorker] Adding attachment manifest, length: ${attachmentManifest.length} characters`,
+				this.logger.debug(
+					`Adding attachment manifest, length: ${attachmentManifest.length} characters`,
 				);
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
 			// Append repository-specific instruction if provided
 			if (repository.appendInstruction) {
-				console.log(`[EdgeWorker] Adding repository-specific instruction`);
+				this.logger.debug(`Adding repository-specific instruction`);
 				prompt = `${prompt}\n\n<repository-specific-instruction>\n${repository.appendInstruction}\n</repository-specific-instruction>`;
 			}
 
-			console.log(
-				`[EdgeWorker] Final prompt length: ${prompt.length} characters`,
-			);
+			this.logger.debug(`Final prompt length: ${prompt.length} characters`);
 			return { prompt, version: templateVersion };
 		} catch (error) {
-			console.error("[EdgeWorker] Failed to load prompt template:", error);
+			this.logger.error("Failed to load prompt template:", error);
 
 			// Fallback to simple prompt
 			const state = await issue.state;
@@ -4117,7 +4736,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		try {
 			const issueTracker = this.issueTrackers.get(repositoryId);
 			if (!issueTracker) {
-				console.warn(
+				this.logger.warn(
 					`No issue tracker found for repository ${repositoryId}, skipping state update`,
 				);
 				return;
@@ -4126,7 +4745,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			// Check if issue is already in a started state
 			const currentState = await issue.state;
 			if (currentState?.type === "started") {
-				console.log(
+				this.logger.debug(
 					`Issue ${issue.identifier} is already in started state (${currentState.name})`,
 				);
 				return;
@@ -4135,7 +4754,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			// Get team for the issue
 			const team = await issue.team;
 			if (!team) {
-				console.warn(
+				this.logger.warn(
 					`No team found for issue ${issue.identifier}, skipping state update`,
 				);
 				return;
@@ -4163,11 +4782,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}
 
 			// Update the issue state
-			console.log(
+			this.logger.debug(
 				`Moving issue ${issue.identifier} to started state: ${startedState.name}`,
 			);
 			if (!issue.id) {
-				console.warn(
+				this.logger.warn(
 					`Issue ${issue.identifier} has no ID, skipping state update`,
 				);
 				return;
@@ -4177,11 +4796,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				stateId: startedState.id,
 			});
 
-			console.log(
+			this.logger.debug(
 				`✅ Successfully moved issue ${issue.identifier} to ${startedState.name} state`,
 			);
 		} catch (error) {
-			console.error(
+			this.logger.error(
 				`Failed to move issue ${issue.identifier} to started state:`,
 				error,
 			);
@@ -4301,8 +4920,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			if (issueTracker && issue.id) {
 				try {
 					// Fetch native attachments using Linear SDK
-					console.log(
-						`[EdgeWorker] Fetching native attachments for issue ${issue.identifier}`,
+					this.logger.debug(
+						`Fetching native attachments for issue ${issue.identifier}`,
 					);
 					const attachments = await issue.attachments();
 					if (attachments?.nodes) {
@@ -4312,12 +4931,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 								url: attachment.url,
 							});
 						}
-						console.log(
-							`[EdgeWorker] Found ${nativeAttachments.length} native attachments`,
+						this.logger.debug(
+							`Found ${nativeAttachments.length} native attachments`,
 						);
 					}
 				} catch (error) {
-					console.error("Failed to fetch native attachments:", error);
+					this.logger.error("Failed to fetch native attachments:", error);
 				}
 
 				try {
@@ -4328,19 +4947,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						commentUrls.push(...urls);
 					}
 				} catch (error) {
-					console.error("Failed to fetch comments for attachments:", error);
+					this.logger.error("Failed to fetch comments for attachments:", error);
 				}
 			}
 
 			// Combine and deduplicate all URLs
 			const allUrls = [...new Set([...descriptionUrls, ...commentUrls])];
 
-			console.log(
+			this.logger.debug(
 				`Found ${allUrls.length} unique attachment URLs in issue ${issue.identifier}`,
 			);
 
 			if (allUrls.length > maxAttachments) {
-				console.warn(
+				this.logger.warn(
 					`Warning: Found ${allUrls.length} attachments but limiting to ${maxAttachments}. Skipping ${allUrls.length - maxAttachments} attachments.`,
 				);
 			}
@@ -4386,7 +5005,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					attachmentCount++;
 				} else {
 					failedCount++;
-					console.warn(`Failed to download attachment: ${url}`);
+					this.logger.warn(`Failed to download attachment: ${url}`);
 				}
 			}
 
@@ -4408,7 +5027,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				attachmentsDir: attachmentsDir,
 			};
 		} catch (error) {
-			console.error("Error downloading attachments:", error);
+			this.logger.error("Error downloading attachments:", error);
 			// Still return the attachments directory even on error
 			return { manifest: "", attachmentsDir: attachmentsDir };
 		}
@@ -4423,7 +5042,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		linearToken: string,
 	): Promise<{ success: boolean; fileType?: string; isImage?: boolean }> {
 		try {
-			console.log(`Downloading attachment from: ${attachmentUrl}`);
+			this.logger.debug(`Downloading attachment from: ${attachmentUrl}`);
 
 			const response = await fetch(attachmentUrl, {
 				headers: {
@@ -4432,7 +5051,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			});
 
 			if (!response.ok) {
-				console.error(
+				this.logger.error(
 					`Attachment download failed: ${response.status} ${response.statusText}`,
 				);
 				return { success: false };
@@ -4448,7 +5067,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			if (fileType) {
 				detectedExtension = `.${fileType.ext}`;
 				isImage = fileType.mime.startsWith("image/");
-				console.log(
+				this.logger.debug(
 					`Detected file type: ${fileType.mime} (${fileType.ext}), is image: ${isImage}`,
 				);
 			} else {
@@ -4457,17 +5076,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				const urlExt = extname(urlPath);
 				if (urlExt) {
 					detectedExtension = urlExt;
-					console.log(`Using extension from URL: ${detectedExtension}`);
+					this.logger.debug(`Using extension from URL: ${detectedExtension}`);
 				}
 			}
 
 			// Write the attachment to disk
 			await writeFile(destinationPath, buffer);
 
-			console.log(`Successfully downloaded attachment to: ${destinationPath}`);
+			this.logger.debug(
+				`Successfully downloaded attachment to: ${destinationPath}`,
+			);
 			return { success: true, fileType: detectedExtension, isImage };
 		} catch (error) {
-			console.error(`Error downloading attachment:`, error);
+			this.logger.error(`Error downloading attachment:`, error);
 			return { success: false };
 		}
 	}
@@ -4509,13 +5130,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			};
 		}
 
-		console.log(`Found ${urls.length} attachment URLs in new comment`);
+		this.logger.debug(`Found ${urls.length} attachment URLs in new comment`);
 
 		// Download new attachments
 		for (const url of urls) {
 			// Skip if we've already reached the total attachment limit
 			if (existingAttachmentCount + newAttachmentCount >= maxAttachments) {
-				console.warn(
+				this.logger.warn(
 					`Skipping attachment due to ${maxAttachments} total attachment limit`,
 				);
 				break;
@@ -4555,7 +5176,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				newAttachmentCount++;
 			} else {
 				failedCount++;
-				console.warn(`Failed to download attachment: ${url}`);
+				this.logger.warn(`Failed to download attachment: ${url}`);
 			}
 		}
 
@@ -4735,23 +5356,23 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			"cyrus-tools": createCyrusToolsServer(repository.linearToken, {
 				parentSessionId,
 				onSessionCreated: (childSessionId, parentId) => {
-					console.log(
-						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
+					this.logger.debug(
+						`Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
 					);
 					// Map child to parent session
-					this.childToParentAgentSession.set(childSessionId, parentId);
-					console.log(
-						`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+					this.globalSessionRegistry.setParentSession(childSessionId, parentId);
+					this.logger.debug(
+						`Parent-child mapping updated via GlobalSessionRegistry`,
 					);
 				},
 				onFeedbackDelivery: async (childSessionId, message) => {
-					console.log(
-						`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
+					this.logger.debug(
+						`Processing feedback delivery to child session ${childSessionId}`,
 					);
 
 					// Find the parent session ID for context
 					const parentSessionId =
-						this.childToParentAgentSession.get(childSessionId);
+						this.globalSessionRegistry.getParentSessionId(childSessionId);
 
 					// Find the repository containing the child session
 					// We need to search all repositories for this child session
@@ -4767,8 +5388,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					}
 
 					if (!childRepo || !childAgentSessionManager) {
-						console.error(
-							`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
+						this.logger.error(
+							`Child session ${childSessionId} not found in any repository`,
 						);
 						return false;
 					}
@@ -4777,14 +5398,12 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					const childSession =
 						childAgentSessionManager.getSession(childSessionId);
 					if (!childSession) {
-						console.error(
-							`[EdgeWorker] Child session ${childSessionId} not found`,
-						);
+						this.logger.error(`Child session ${childSessionId} not found`);
 						return false;
 					}
 
-					console.log(
-						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
+					this.logger.debug(
+						`Found child session - Issue: ${childSession.issueId}`,
 					);
 
 					// Get parent session info for better context in the thought
@@ -4801,38 +5420,21 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						}
 					}
 
-					// Post thought to Linear showing feedback receipt
+					// Post thought showing feedback receipt
 					const issueTracker = this.issueTrackers.get(childRepo.id);
 					if (issueTracker) {
 						const feedbackThought = parentIssueId
 							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
 							: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
 
-						try {
-							const result = await issueTracker.createAgentActivity({
+						await this.postActivityDirect(
+							issueTracker,
+							{
 								agentSessionId: childSessionId,
-								content: {
-									type: "thought",
-									body: feedbackThought,
-								},
-							});
-
-							if (result.success) {
-								console.log(
-									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
-								);
-							} else {
-								console.error(
-									`[EdgeWorker] Failed to post feedback receipt thought:`,
-									result,
-								);
-							}
-						} catch (error) {
-							console.error(
-								`[EdgeWorker] Error posting feedback receipt thought:`,
-								error,
-							);
-						}
+								content: { type: "thought", body: feedbackThought },
+							},
+							"feedback receipt",
+						);
 					}
 
 					// Format the feedback as a prompt for the child session with enhanced markdown formatting
@@ -4842,8 +5444,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					// Important: We don't await the full session completion to avoid timeouts.
 					// The feedback is delivered immediately when the session starts, so we can
 					// return success right away while the session continues in the background.
-					console.log(
-						`[EdgeWorker] Handling feedback delivery to child session ${childSessionId}`,
+					this.logger.debug(
+						`Handling feedback delivery to child session ${childSessionId}`,
 					);
 
 					this.handlePromptWithStreamingCheck(
@@ -4858,20 +5460,20 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						"give feedback to child",
 					)
 						.then(() => {
-							console.log(
-								`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
+							this.logger.debug(
+								`Child session ${childSessionId} completed processing feedback`,
 							);
 						})
 						.catch((error) => {
-							console.error(
-								`[EdgeWorker] Failed to process feedback in child session:`,
+							this.logger.error(
+								`Failed to process feedback in child session:`,
 								error,
 							);
 						});
 
 					// Return success immediately after initiating the handling
-					console.log(
-						`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
+					this.logger.debug(
+						`Feedback delivered successfully to child session ${childSessionId}`,
 					);
 					return true;
 				},
@@ -4892,8 +5494,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				outputDirectory: repository.openaiOutputDirectory,
 			});
 
-			console.log(
-				`[EdgeWorker] Configured OpenAI MCP servers (Sora + GPT Image) for repository: ${repository.name}`,
+			this.logger.debug(
+				`Configured OpenAI MCP servers (Sora + GPT Image) for repository: ${repository.name}`,
 			);
 		}
 
@@ -4966,8 +5568,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const assembly = await this.assemblePrompt(input);
 
 		// Log metadata for debugging
-		console.log(
-			`[EdgeWorker] Built prompt - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}`,
+		this.logger.debug(
+			`Built prompt - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}`,
 		);
 
 		return assembly.userPrompt;
@@ -5206,8 +5808,8 @@ ${input.userComment}
 
 		try {
 			let prompt = await readFile(subroutinePromptPath, "utf-8");
-			console.log(
-				`[EdgeWorker] Loaded ${subroutine.name} subroutine prompt (${prompt.length} characters)`,
+			this.logger.debug(
+				`Loaded ${subroutine.name} subroutine prompt (${prompt.length} characters)`,
 			);
 
 			// Perform template substitution if workspace slug is provided
@@ -5220,8 +5822,8 @@ ${input.userComment}
 
 			return prompt;
 		} catch (error) {
-			console.warn(
-				`[EdgeWorker] Failed to load subroutine prompt from ${subroutinePromptPath}:`,
+			this.logger.warn(
+				`Failed to load subroutine prompt from ${subroutinePromptPath}:`,
 				error,
 			);
 			return null;
@@ -5245,8 +5847,8 @@ ${input.userComment}
 			const instructions = await readFile(instructionsPath, "utf-8");
 			return instructions;
 		} catch (error) {
-			console.error(
-				`[EdgeWorker] Failed to load shared instructions from ${instructionsPath}:`,
+			this.logger.error(
+				`Failed to load shared instructions from ${instructionsPath}:`,
 				error,
 			);
 			return ""; // Return empty string if file can't be loaded
@@ -5321,7 +5923,7 @@ ${input.userComment}
 	private buildAgentRunnerConfig(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		systemPrompt: string | undefined,
 		allowedTools: string[],
 		allowedDirectories: string[],
@@ -5332,6 +5934,12 @@ ${input.userComment}
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
 	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+		const log = this.logger.withContext({
+			sessionId,
+			platform: session.issueContext?.trackerId,
+			issueIdentifier: session.issueContext?.issueIdentifier,
+		});
+
 		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
 		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -5341,7 +5949,7 @@ ${input.userComment}
 					hooks: [
 						async (input, _toolUseID, { signal: _signal }) => {
 							const postToolUseInput = input as PostToolUseHookInput;
-							console.log(
+							log.debug(
 								`Tool ${postToolUseInput.tool_name} completed with response:`,
 								postToolUseInput.tool_response,
 							);
@@ -5438,9 +6046,7 @@ ${input.userComment}
 
 		// Log model override if found
 		if (modelOverride) {
-			console.log(
-				`[EdgeWorker] Model override via label: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
-			);
+			log.debug(`Model override via label: ${modelOverride}`);
 		}
 
 		// Convert singleTurn flag to effective maxTurns value
@@ -5450,6 +6056,21 @@ ${input.userComment}
 		const finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
 
+		// When disallowAllTools is true, don't provide any MCP servers to ensure
+		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
+		const mcpConfig = disallowAllTools
+			? undefined
+			: this.buildMcpConfig(repository, sessionId);
+		const mcpConfigPath = disallowAllTools
+			? undefined
+			: repository.mcpConfigPath;
+
+		if (disallowAllTools) {
+			log.info(
+				`MCP tools disabled for session ${sessionId} (disallowAllTools=true)`,
+			);
+		}
+
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -5457,8 +6078,8 @@ ${input.userComment}
 			allowedDirectories,
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
-			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
+			mcpConfigPath,
+			mcpConfig,
 			appendSystemPrompt: systemPrompt || "",
 			// When disallowAllTools is true, remove all built-in tools from model context
 			// so Claude cannot see or attempt tool use (distinct from allowedTools which only controls permissions)
@@ -5469,22 +6090,19 @@ ${input.userComment}
 				fallbackModelOverride ||
 				repository.fallbackModel ||
 				this.config.defaultFallbackModel,
+			logger: log,
 			hooks,
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner
 			...(runnerType === "claude" && {
 				onAskUserQuestion: this.createAskUserQuestionCallback(
-					linearAgentActivitySessionId,
+					sessionId,
 					repository.linearWorkspaceId,
 				),
 			}),
 			onMessage: (message: SDKMessage) => {
-				this.handleClaudeMessage(
-					linearAgentActivitySessionId,
-					message,
-					repository.id,
-				);
+				this.handleClaudeMessage(sessionId, message, repository.id);
 			},
 			onError: (error: Error) => this.handleClaudeError(error),
 		};
@@ -5496,9 +6114,7 @@ ${input.userComment}
 		if (effectiveMaxTurns !== undefined) {
 			(config as any).maxTurns = effectiveMaxTurns;
 			if (singleTurn) {
-				console.log(
-					`[EdgeWorker] Applied singleTurn maxTurns=1 (for session ${linearAgentActivitySessionId})`,
-				);
+				log.debug(`Applied singleTurn maxTurns=1`);
 			}
 		}
 
@@ -5587,8 +6203,8 @@ ${input.userComment}
 		}
 
 		if (disallowedTools.length > 0) {
-			console.log(
-				`[EdgeWorker] Disallowed tools for ${repository.name}: ${disallowedTools.length} tools from ${toolSource}`,
+			this.logger.debug(
+				`Disallowed tools for ${repository.name}: ${disallowedTools.length} tools from ${toolSource}`,
 			);
 		}
 
@@ -5616,7 +6232,7 @@ ${input.userComment}
 					...currentSubroutine.disallowedTools,
 				]),
 			];
-			console.log(
+			this.logger.debug(
 				`[${logContext}] Merged subroutine-level disallowedTools for ${currentSubroutine.name}:`,
 				currentSubroutine.disallowedTools,
 			);
@@ -5690,8 +6306,8 @@ ${input.userComment}
 		// Combine and deduplicate
 		const allTools = [...new Set([...baseTools, ...linearMcpTools])];
 
-		console.log(
-			`[EdgeWorker] Tool selection for ${repository.name}: ${allTools.length} tools from ${toolSource}`,
+		this.logger.debug(
+			`Tool selection for ${repository.name}: ${allTools.length} tools from ${toolSource}`,
 		);
 
 		return allTools;
@@ -5778,20 +6394,14 @@ ${input.userComment}
 				.replace(/\{\{userName\}\}/g, userName)
 				.replace(/\{\{userId\}\}/g, userId);
 
-			try {
-				await issueTracker.createAgentActivity({
+			await this.postActivityDirect(
+				issueTracker,
+				{
 					agentSessionId,
-					content: {
-						type: "response",
-						body: message,
-					},
-				});
-			} catch (error) {
-				console.error(
-					"[EdgeWorker] Failed to post blocked user message:",
-					error,
-				);
-			}
+					content: { type: "response", body: message },
+				},
+				"blocked user message",
+			);
 		}
 		// For "silent" behavior, we don't post any activity.
 		// The session will remain in "Working" state until manually stopped or timed out.
@@ -5805,12 +6415,12 @@ ${input.userComment}
 			const state = await this.persistenceManager.loadEdgeWorkerState();
 			if (state) {
 				this.restoreMappings(state);
-				console.log(
+				this.logger.debug(
 					`✅ Loaded persisted EdgeWorker state with ${Object.keys(state.agentSessions || {}).length} repositories`,
 				);
 			}
 		} catch (error) {
-			console.error(`Failed to load persisted EdgeWorker state:`, error);
+			this.logger.error(`Failed to load persisted EdgeWorker state:`, error);
 		}
 	}
 
@@ -5821,11 +6431,11 @@ ${input.userComment}
 		try {
 			const state = this.serializeMappings();
 			await this.persistenceManager.saveEdgeWorkerState(state);
-			console.log(
+			this.logger.debug(
 				`✅ Saved EdgeWorker state for ${Object.keys(state.agentSessions || {}).length} repositories`,
 			);
 		} catch (error) {
-			console.error(`Failed to save persisted EdgeWorker state:`, error);
+			this.logger.error(`Failed to save persisted EdgeWorker state:`, error);
 		}
 	}
 
@@ -5889,8 +6499,8 @@ ${input.userComment}
 						repositorySessions,
 						repositoryEntries,
 					);
-					console.log(
-						`[EdgeWorker] Restored Agent Session state for repository ${repositoryId}`,
+					this.logger.debug(
+						`Restored Agent Session state for repository ${repositoryId}`,
 					);
 				}
 			}
@@ -5901,8 +6511,8 @@ ${input.userComment}
 			this.childToParentAgentSession = new Map(
 				Object.entries(state.childToParentAgentSession),
 			);
-			console.log(
-				`[EdgeWorker] Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
+			this.logger.debug(
+				`Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
 			);
 		}
 
@@ -5910,9 +6520,40 @@ ${input.userComment}
 		if (state.issueRepositoryCache) {
 			const cache = new Map(Object.entries(state.issueRepositoryCache));
 			this.repositoryRouter.restoreIssueRepositoryCache(cache);
-			console.log(
-				`[EdgeWorker] Restored ${cache.size} issue-to-repository cache mappings`,
+			this.logger.debug(
+				`Restored ${cache.size} issue-to-repository cache mappings`,
 			);
+		}
+	}
+
+	/**
+	 * Post an activity directly via an issue tracker instance.
+	 * Consolidates try/catch and success/error logging for EdgeWorker call sites
+	 * that already have the issueTracker and agentSessionId resolved.
+	 *
+	 * @returns The activity ID when resolved, `null` otherwise.
+	 */
+	private async postActivityDirect(
+		issueTracker: IIssueTrackerService,
+		input: AgentActivityCreateInput,
+		label: string,
+	): Promise<string | null> {
+		try {
+			const result = await issueTracker.createAgentActivity(input);
+			if (result.success) {
+				if (result.agentActivity) {
+					const activity = await result.agentActivity;
+					this.logger.debug(`Created ${label} activity ${activity.id}`);
+					return activity.id;
+				}
+				this.logger.debug(`Created ${label}`);
+				return null;
+			}
+			this.logger.error(`Failed to create ${label}:`, result);
+			return null;
+		} catch (error) {
+			this.logger.error(`Error creating ${label}:`, error);
+			return null;
 		}
 	}
 
@@ -5920,94 +6561,57 @@ ${input.userComment}
 	 * Post instant acknowledgment thought when agent session is created
 	 */
 	private async postInstantAcknowledgment(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				console.warn(
-					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
+		}
 
-			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: "I've received your request and I'm starting to work on it. Let me analyze the issue and prepare my approach.",
 				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				console.log(
-					`[EdgeWorker] Posted instant acknowledgment thought for session ${linearAgentActivitySessionId}`,
-				);
-			} else {
-				console.error(
-					`[EdgeWorker] Failed to post instant acknowledgment:`,
-					result,
-				);
-			}
-		} catch (error) {
-			console.error(
-				`[EdgeWorker] Error posting instant acknowledgment:`,
-				error,
-			);
-		}
+			},
+			"instant acknowledgment",
+		);
 	}
 
 	/**
 	 * Post parent resume acknowledgment thought when parent session is resumed from child
 	 */
 	private async postParentResumeAcknowledgment(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				console.warn(
-					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
-
-			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
-				content: {
-					type: "thought",
-					body: "Resuming from child session",
-				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				console.log(
-					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
-				);
-			} else {
-				console.error(
-					`[EdgeWorker] Failed to post parent resumption acknowledgment:`,
-					result,
-				);
-			}
-		} catch (error) {
-			console.error(
-				`[EdgeWorker] Error posting parent resumption acknowledgment:`,
-				error,
-			);
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
 		}
+
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
+				content: { type: "thought", body: "Resuming from child session" },
+			},
+			"parent resume acknowledgment",
+		);
 	}
 
 	/**
-	 * Post repository selection activity to Linear
+	 * Post repository selection activity
 	 * Shows which method was used to select the repository (auto-routing or user selection)
 	 */
 	private async postRepositorySelectionActivity(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		repositoryId: string,
 		repositoryName: string,
 		selectionMethod:
@@ -6020,59 +6624,42 @@ ${input.userComment}
 			| "workspace-fallback"
 			| "user-selected",
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				console.warn(
-					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
+		}
 
-			let methodDisplay: string;
-			if (selectionMethod === "user-selected") {
-				methodDisplay = "selected by user";
-			} else if (selectionMethod === "description-tag") {
-				methodDisplay = "matched via [repo=...] tag in issue description";
-			} else if (selectionMethod === "label-based") {
-				methodDisplay = "matched via label-based routing";
-			} else if (selectionMethod === "project-based") {
-				methodDisplay = "matched via project-based routing";
-			} else if (selectionMethod === "team-based") {
-				methodDisplay = "matched via team-based routing";
-			} else if (selectionMethod === "team-prefix") {
-				methodDisplay = "matched via team prefix routing";
-			} else if (selectionMethod === "catch-all") {
-				methodDisplay = "matched via catch-all routing";
-			} else {
-				methodDisplay = "matched via workspace fallback";
-			}
+		let methodDisplay: string;
+		if (selectionMethod === "user-selected") {
+			methodDisplay = "selected by user";
+		} else if (selectionMethod === "description-tag") {
+			methodDisplay = "matched via [repo=...] tag in issue description";
+		} else if (selectionMethod === "label-based") {
+			methodDisplay = "matched via label-based routing";
+		} else if (selectionMethod === "project-based") {
+			methodDisplay = "matched via project-based routing";
+		} else if (selectionMethod === "team-based") {
+			methodDisplay = "matched via team-based routing";
+		} else if (selectionMethod === "team-prefix") {
+			methodDisplay = "matched via team prefix routing";
+		} else if (selectionMethod === "catch-all") {
+			methodDisplay = "matched via catch-all routing";
+		} else {
+			methodDisplay = "matched via workspace fallback";
+		}
 
-			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Repository "${repositoryName}" has been ${methodDisplay}.`,
 				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				console.log(
-					`[EdgeWorker] Posted repository selection activity for session ${linearAgentActivitySessionId} (${selectionMethod})`,
-				);
-			} else {
-				console.error(
-					`[EdgeWorker] Failed to post repository selection activity:`,
-					result,
-				);
-			}
-		} catch (error) {
-			console.error(
-				`[EdgeWorker] Error posting repository selection activity:`,
-				error,
-			);
-		}
+			},
+			"repository selection",
+		);
 	}
 
 	/**
@@ -6081,7 +6668,7 @@ ${input.userComment}
 	 */
 	private async rerouteProcedureForSession(
 		session: CyrusAgentSession,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
 		repository: RepositoryConfig,
@@ -6092,17 +6679,17 @@ ${input.userComment}
 		}
 
 		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postAnalyzingThought(
-			linearAgentActivitySessionId,
-		);
+		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch full issue and labels to check for Orchestrator label override
 		const issueTracker = this.issueTrackers.get(repository.id);
 		let hasOrchestratorLabel = false;
 
-		if (issueTracker) {
+		// Get issueId from issueContext (preferred) or deprecated issueId field
+		const issueId = session.issueContext?.issueId ?? session.issueId;
+		if (issueTracker && issueId) {
 			try {
-				const fullIssue = await issueTracker.fetchIssue(session.issueId);
+				const fullIssue = await issueTracker.fetchIssue(issueId);
 				const labels = await this.fetchIssueLabels(fullIssue);
 
 				// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
@@ -6125,10 +6712,7 @@ ${input.userComment}
 				hasOrchestratorLabel =
 					hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
 			} catch (error) {
-				console.error(
-					`[EdgeWorker] Failed to fetch issue labels for routing:`,
-					error,
-				);
+				this.logger.error(`Failed to fetch issue labels for routing:`, error);
 				// Continue with AI routing if label fetch fails
 			}
 		}
@@ -6145,8 +6729,8 @@ ${input.userComment}
 			}
 			selectedProcedure = orchestratorProcedure;
 			finalClassification = "orchestrator";
-			console.log(
-				`[EdgeWorker] Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)`,
+			this.logger.info(
+				`Using orchestrator-full procedure due to Orchestrator label (skipping AI routing)`,
 			);
 		} else {
 			// No Orchestrator label - use AI routing based on prompt content
@@ -6157,12 +6741,10 @@ ${input.userComment}
 			finalClassification = routingDecision.classification;
 
 			// Log AI routing decision
-			console.log(
-				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
-			);
-			console.log(`  Classification: ${routingDecision.classification}`);
-			console.log(`  Procedure: ${selectedProcedure.name}`);
-			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+			this.logger.info(`AI routing decision for ${sessionId}:`);
+			this.logger.info(`  Classification: ${routingDecision.classification}`);
+			this.logger.info(`  Procedure: ${selectedProcedure.name}`);
+			this.logger.info(`  Reasoning: ${routingDecision.reasoning}`);
 		}
 
 		// Initialize procedure metadata in session (resets currentSubroutine)
@@ -6173,7 +6755,7 @@ ${input.userComment}
 
 		// Post procedure selection result (replaces ephemeral routing thought)
 		await agentSessionManager.postProcedureSelectionThought(
-			linearAgentActivitySessionId,
+			sessionId,
 			selectedProcedure.name,
 			finalClassification,
 		);
@@ -6189,7 +6771,7 @@ ${input.userComment}
 	 *
 	 * @param session The Cyrus agent session
 	 * @param repository Repository configuration
-	 * @param linearAgentActivitySessionId Linear agent activity session ID
+	 * @param sessionId Linear agent activity session ID
 	 * @param agentSessionManager Agent session manager instance
 	 * @param promptBody The prompt text to send
 	 * @param attachmentManifest Optional attachment manifest to append
@@ -6201,7 +6783,7 @@ ${input.userComment}
 	private async handlePromptWithStreamingCheck(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
 		attachmentManifest: string,
@@ -6211,6 +6793,7 @@ ${input.userComment}
 		commentAuthor?: string,
 		commentTimestamp?: string,
 	): Promise<boolean> {
+		const log = this.logger.withContext({ sessionId });
 		// Check if runner is actively running before routing
 		const existingRunner = session.agentRunner;
 		const isRunning = existingRunner?.isRunning() || false;
@@ -6219,15 +6802,15 @@ ${input.userComment}
 		if (!isRunning) {
 			await this.rerouteProcedureForSession(
 				session,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 				promptBody,
 				repository,
 			);
-			console.log(`[EdgeWorker] Routed procedure for ${logContext}`);
+			log.debug(`Routed procedure for ${logContext}`);
 		} else {
-			console.log(
-				`[EdgeWorker] Skipping routing for ${linearAgentActivitySessionId} (${logContext}) - runner is actively running`,
+			log.debug(
+				`Skipping routing for ${sessionId} (${logContext}) - runner is actively running`,
 			);
 		}
 
@@ -6237,8 +6820,8 @@ ${input.userComment}
 			existingRunner.supportsStreamingInput &&
 			existingRunner.addStreamMessage
 		) {
-			console.log(
-				`[EdgeWorker] Adding prompt to existing stream for ${linearAgentActivitySessionId} (${logContext})`,
+			log.debug(
+				`Adding prompt to existing stream for ${sessionId} (${logContext})`,
 			);
 
 			// Append attachment manifest to the prompt if we have one
@@ -6252,14 +6835,12 @@ ${input.userComment}
 		}
 
 		// Not streaming - resume/start session
-		console.log(
-			`[EdgeWorker] Resuming Claude session for ${linearAgentActivitySessionId} (${logContext})`,
-		);
+		log.debug(`Resuming Claude session for ${sessionId} (${logContext})`);
 
 		await this.resumeAgentSession(
 			session,
 			repository,
-			linearAgentActivitySessionId,
+			sessionId,
 			agentSessionManager,
 			promptBody,
 			attachmentManifest,
@@ -6277,110 +6858,93 @@ ${input.userComment}
 	 * Post thought about system prompt selection based on labels
 	 */
 	private async postSystemPromptSelectionThought(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		labels: string[],
 		repositoryId: string,
 	): Promise<void> {
-		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				console.warn(
-					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
+		}
 
-			// Determine which prompt type was selected and which label triggered it
-			let selectedPromptType: string | null = null;
-			let triggerLabel: string | null = null;
-			const repository = Array.from(this.repositories.values()).find(
-				(r) => r.id === repositoryId,
+		// Determine which prompt type was selected and which label triggered it
+		let selectedPromptType: string | null = null;
+		let triggerLabel: string | null = null;
+		const repository = Array.from(this.repositories.values()).find(
+			(r) => r.id === repositoryId,
+		);
+
+		if (repository?.labelPrompts) {
+			// Check debugger labels
+			const debuggerConfig = repository.labelPrompts.debugger;
+			const debuggerLabels = Array.isArray(debuggerConfig)
+				? debuggerConfig
+				: debuggerConfig?.labels;
+			const debuggerLabel = debuggerLabels?.find((label) =>
+				labels.includes(label),
 			);
-
-			if (repository?.labelPrompts) {
-				// Check debugger labels
-				const debuggerConfig = repository.labelPrompts.debugger;
-				const debuggerLabels = Array.isArray(debuggerConfig)
-					? debuggerConfig
-					: debuggerConfig?.labels;
-				const debuggerLabel = debuggerLabels?.find((label) =>
+			if (debuggerLabel) {
+				selectedPromptType = "debugger";
+				triggerLabel = debuggerLabel;
+			} else {
+				// Check builder labels
+				const builderConfig = repository.labelPrompts.builder;
+				const builderLabels = Array.isArray(builderConfig)
+					? builderConfig
+					: builderConfig?.labels;
+				const builderLabel = builderLabels?.find((label) =>
 					labels.includes(label),
 				);
-				if (debuggerLabel) {
-					selectedPromptType = "debugger";
-					triggerLabel = debuggerLabel;
+				if (builderLabel) {
+					selectedPromptType = "builder";
+					triggerLabel = builderLabel;
 				} else {
-					// Check builder labels
-					const builderConfig = repository.labelPrompts.builder;
-					const builderLabels = Array.isArray(builderConfig)
-						? builderConfig
-						: builderConfig?.labels;
-					const builderLabel = builderLabels?.find((label) =>
+					// Check scoper labels
+					const scoperConfig = repository.labelPrompts.scoper;
+					const scoperLabels = Array.isArray(scoperConfig)
+						? scoperConfig
+						: scoperConfig?.labels;
+					const scoperLabel = scoperLabels?.find((label) =>
 						labels.includes(label),
 					);
-					if (builderLabel) {
-						selectedPromptType = "builder";
-						triggerLabel = builderLabel;
+					if (scoperLabel) {
+						selectedPromptType = "scoper";
+						triggerLabel = scoperLabel;
 					} else {
-						// Check scoper labels
-						const scoperConfig = repository.labelPrompts.scoper;
-						const scoperLabels = Array.isArray(scoperConfig)
-							? scoperConfig
-							: scoperConfig?.labels;
-						const scoperLabel = scoperLabels?.find((label) =>
+						// Check orchestrator labels
+						const orchestratorConfig = repository.labelPrompts.orchestrator;
+						const orchestratorLabels = Array.isArray(orchestratorConfig)
+							? orchestratorConfig
+							: (orchestratorConfig?.labels ?? ["orchestrator"]);
+						const orchestratorLabel = orchestratorLabels?.find((label) =>
 							labels.includes(label),
 						);
-						if (scoperLabel) {
-							selectedPromptType = "scoper";
-							triggerLabel = scoperLabel;
-						} else {
-							// Check orchestrator labels
-							const orchestratorConfig = repository.labelPrompts.orchestrator;
-							const orchestratorLabels = Array.isArray(orchestratorConfig)
-								? orchestratorConfig
-								: (orchestratorConfig?.labels ?? ["orchestrator"]);
-							const orchestratorLabel = orchestratorLabels?.find((label) =>
-								labels.includes(label),
-							);
-							if (orchestratorLabel) {
-								selectedPromptType = "orchestrator";
-								triggerLabel = orchestratorLabel;
-							}
+						if (orchestratorLabel) {
+							selectedPromptType = "orchestrator";
+							triggerLabel = orchestratorLabel;
 						}
 					}
 				}
 			}
+		}
 
-			// Only post if a role was actually triggered
-			if (!selectedPromptType || !triggerLabel) {
-				return;
-			}
+		// Only post if a role was actually triggered
+		if (!selectedPromptType || !triggerLabel) {
+			return;
+		}
 
-			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
 				content: {
 					type: "thought",
 					body: `Entering '${selectedPromptType}' mode because of the '${triggerLabel}' label. I'll follow the ${selectedPromptType} process...`,
 				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				console.log(
-					`[EdgeWorker] Posted system prompt selection thought for session ${linearAgentActivitySessionId} (${selectedPromptType} mode)`,
-				);
-			} else {
-				console.error(
-					`[EdgeWorker] Failed to post system prompt selection thought:`,
-					result,
-				);
-			}
-		} catch (error) {
-			console.error(
-				`[EdgeWorker] Error posting system prompt selection thought:`,
-				error,
-			);
-		}
+			},
+			"system prompt selection",
+		);
 	}
 
 	/**
@@ -6388,7 +6952,7 @@ ${input.userComment}
 	 * This is the core logic for handling prompted agent activities
 	 * @param session The Cyrus agent session
 	 * @param repository The repository configuration
-	 * @param linearAgentActivitySessionId The Linear agent session ID
+	 * @param sessionId The Linear agent session ID
 	 * @param agentSessionManager The agent session manager
 	 * @param promptBody The prompt text to send
 	 * @param attachmentManifest Optional attachment manifest
@@ -6397,7 +6961,7 @@ ${input.userComment}
 	async resumeAgentSession(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
 		attachmentManifest: string = "",
@@ -6407,6 +6971,7 @@ ${input.userComment}
 		commentAuthor?: string,
 		commentTimestamp?: string,
 	): Promise<void> {
+		const log = this.logger.withContext({ sessionId });
 		// Check for existing runner
 		const existingRunner = session.agentRunner;
 
@@ -6429,17 +6994,22 @@ ${input.userComment}
 			existingRunner.stop();
 		}
 
+		// Get issueId from issueContext (preferred) or deprecated issueId field
+		const issueIdForResume = session.issueContext?.issueId ?? session.issueId;
+		if (!issueIdForResume) {
+			log.error(`No issue ID found for session ${session.id}`);
+			throw new Error(`No issue ID found for session ${session.id}`);
+		}
+
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
-			session.issueId,
+			issueIdForResume,
 			repository.id,
 		);
 		if (!fullIssue) {
-			console.error(
-				`[resumeAgentSession] Failed to fetch full issue details for ${session.issueId}`,
-			);
+			log.error(`Failed to fetch full issue details for ${issueIdForResume}`);
 			throw new Error(
-				`Failed to fetch full issue details for ${session.issueId}`,
+				`Failed to fetch full issue details for ${issueIdForResume}`,
 			);
 		}
 
@@ -6483,9 +7053,7 @@ ${input.userComment}
 		);
 
 		if (currentSubroutine?.disallowAllTools) {
-			console.log(
-				`[resumeClaudeSession] All tools disabled for subroutine: ${currentSubroutine.name}`,
-			);
+			log.debug(`All tools disabled for subroutine: ${currentSubroutine.name}`);
 		}
 
 		// Set up attachments directory
@@ -6515,7 +7083,7 @@ ${input.userComment}
 		const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 			session,
 			repository,
-			linearAgentActivitySessionId,
+			sessionId,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
@@ -6524,7 +7092,7 @@ ${input.userComment}
 			labels, // Always pass labels to preserve model override
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
-			currentSubroutine?.disallowAllTools, // disallowAllTools flag
+			currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
 		);
 
 		// Create the appropriate runner based on session state
@@ -6534,7 +7102,7 @@ ${input.userComment}
 				: new GeminiRunner(runnerConfig);
 
 		// Store runner
-		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
+		agentSessionManager.addAgentRunner(sessionId, runner);
 
 		// Save state
 		await this.savePersistedState();
@@ -6559,10 +7127,7 @@ ${input.userComment}
 				await runner.start(fullPrompt);
 			}
 		} catch (error) {
-			console.error(
-				`[resumeAgentSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
-				error,
-			);
+			log.error(`Failed to start streaming session for ${sessionId}:`, error);
 			throw error;
 		}
 	}
@@ -6571,47 +7136,38 @@ ${input.userComment}
 	 * Post instant acknowledgment thought when receiving prompted webhook
 	 */
 	private async postInstantPromptedAcknowledgment(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		repositoryId: string,
 		isStreaming: boolean,
 	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			return;
+		}
+
+		const message = isStreaming
+			? "I've queued up your message as guidance"
+			: "Getting started on that...";
+
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
+				content: { type: "thought", body: message },
+			},
+			"prompted acknowledgment",
+		);
+	}
+
+	/**
+	 * Get the platform type for a repository's issue tracker.
+	 */
+	private getRepositoryPlatform(repositoryId: string): string | undefined {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
-			if (!issueTracker) {
-				console.warn(
-					`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
-				);
-				return;
-			}
-
-			const message = isStreaming
-				? "I've queued up your message as guidance"
-				: "Getting started on that...";
-
-			const activityInput = {
-				agentSessionId: linearAgentActivitySessionId,
-				content: {
-					type: "thought",
-					body: message,
-				},
-			};
-
-			const result = await issueTracker.createAgentActivity(activityInput);
-			if (result.success) {
-				console.log(
-					`[EdgeWorker] Posted instant prompted acknowledgment thought for session ${linearAgentActivitySessionId} (streaming: ${isStreaming})`,
-				);
-			} else {
-				console.error(
-					`[EdgeWorker] Failed to post instant prompted acknowledgment:`,
-					result,
-				);
-			}
-		} catch (error) {
-			console.error(
-				`[EdgeWorker] Error posting instant prompted acknowledgment:`,
-				error,
-			);
+			return this.issueTrackers.get(repositoryId)?.getPlatformType();
+		} catch {
+			return undefined;
 		}
 	}
 
@@ -6624,25 +7180,21 @@ ${input.userComment}
 	): Promise<Issue | null> {
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {
-			console.warn(
-				`[EdgeWorker] No issue tracker found for repository ${repositoryId}`,
-			);
+			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
 			return null;
 		}
 
 		try {
-			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`);
+			this.logger.debug(`Fetching full issue details for ${issueId}`);
 			const fullIssue = await issueTracker.fetchIssue(issueId);
-			console.log(
-				`[EdgeWorker] Successfully fetched issue details for ${issueId}`,
-			);
+			this.logger.debug(`Successfully fetched issue details for ${issueId}`);
 
 			// Check if issue has a parent
 			try {
 				const parent = await fullIssue.parent;
 				if (parent) {
-					console.log(
-						`[EdgeWorker] Issue ${issueId} has parent: ${parent.identifier}`,
+					this.logger.debug(
+						`Issue ${issueId} has parent: ${parent.identifier}`,
 					);
 				}
 			} catch (_error) {
@@ -6651,10 +7203,7 @@ ${input.userComment}
 
 			return fullIssue;
 		} catch (error) {
-			console.error(
-				`[EdgeWorker] Failed to fetch issue details for ${issueId}:`,
-				error,
-			);
+			this.logger.error(`Failed to fetch issue details for ${issueId}:`, error);
 			return null;
 		}
 	}
@@ -6674,15 +7223,15 @@ ${input.userComment}
 		const clientSecret = process.env.LINEAR_CLIENT_SECRET;
 
 		if (!clientId || !clientSecret) {
-			console.warn(
-				"[EdgeWorker] LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET not set, token refresh disabled",
+			this.logger.warn(
+				"LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET not set, token refresh disabled",
 			);
 			return undefined;
 		}
 
 		if (!repo.linearRefreshToken) {
-			console.warn(
-				`[EdgeWorker] No refresh token for repository ${repo.id}, token refresh disabled`,
+			this.logger.warn(
+				`No refresh token for repository ${repo.id}, token refresh disabled`,
 			);
 			return undefined;
 		}
@@ -6725,7 +7274,7 @@ ${input.userComment}
 		linearWorkspaceName?: string;
 	}): Promise<void> {
 		if (!this.configPath) {
-			console.warn("[EdgeWorker] No config path set, cannot save OAuth tokens");
+			this.logger.warn("No config path set, cannot save OAuth tokens");
 			return;
 		}
 
@@ -6749,11 +7298,11 @@ ${input.userComment}
 			}
 
 			await writeFile(this.configPath, JSON.stringify(config, null, "\t"));
-			console.log(
-				`[EdgeWorker] OAuth tokens saved to config for workspace ${tokens.linearWorkspaceId}`,
+			this.logger.debug(
+				`OAuth tokens saved to config for workspace ${tokens.linearWorkspaceId}`,
 			);
 		} catch (error) {
-			console.error("[EdgeWorker] Failed to save OAuth tokens:", error);
+			this.logger.error("Failed to save OAuth tokens:", error);
 		}
 	}
 }

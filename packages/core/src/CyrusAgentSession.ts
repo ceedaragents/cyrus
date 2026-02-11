@@ -20,6 +20,19 @@ export interface IssueMinimal {
 	branchName: string;
 }
 
+/**
+ * Issue context for sessions attached to a specific issue.
+ * Standalone sessions (e.g., direct agent invocation without an issue) will not have this.
+ */
+export interface IssueContext {
+	/** The issue tracker identifier (e.g., "linear", "github") */
+	trackerId: string;
+	/** The unique issue ID from the tracker */
+	issueId: string;
+	/** The human-readable issue identifier (e.g., "CYPACK-123") */
+	issueIdentifier: string;
+}
+
 export interface Workspace {
 	path: string;
 	isGitWorktree: boolean;
@@ -27,14 +40,24 @@ export interface Workspace {
 }
 
 export interface CyrusAgentSession {
-	linearAgentActivitySessionId: string;
+	/** Unique session identifier (was linearAgentActivitySessionId in v2.0) */
+	id: string;
+	/** External session ID from the issue tracker (e.g., Linear's AgentSession ID) */
+	externalSessionId?: string;
 	type: AgentSessionType.CommentThread;
 	status: AgentSessionStatus;
 	context: AgentSessionType.CommentThread;
 	createdAt: number; // e.g. Date.now()
 	updatedAt: number; // e.g. Date.now()
-	issueId: string;
-	issue: IssueMinimal;
+	/** Issue context - optional for standalone sessions */
+	issueContext?: IssueContext;
+	/**
+	 * Issue ID - kept for backwards compatibility during transition
+	 * @deprecated Use issueContext.issueId instead
+	 */
+	issueId?: string;
+	/** Minimal issue data - optional for standalone sessions */
+	issue?: IssueMinimal;
 	workspace: Workspace;
 	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)
