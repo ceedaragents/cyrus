@@ -1,4 +1,18 @@
 /**
+ * Default Cyrus app base URL
+ * Can be overridden via CYRUS_APP_URL environment variable for preview environments
+ */
+export const DEFAULT_CYRUS_APP_URL = "https://app.atcyrus.com";
+
+/**
+ * Get the Cyrus app base URL from environment variable or use default
+ * @returns The Cyrus app base URL (e.g., "https://app.atcyrus.com")
+ */
+export function getCyrusAppUrl(): string {
+	return process.env.CYRUS_APP_URL || DEFAULT_CYRUS_APP_URL;
+}
+
+/**
  * Config API response from cyrus-hosted
  */
 export interface ConfigApiResponse {
@@ -15,7 +29,12 @@ export interface ConfigApiResponse {
  * Authenticates using auth keys provided during onboarding
  */
 export class ConfigApiClient {
-	private static readonly CONFIG_API_URL = "https://app.atcyrus.com/api/config";
+	/**
+	 * Get the config API URL, respecting CYRUS_APP_URL environment variable
+	 */
+	private static getConfigApiUrl(): string {
+		return `${getCyrusAppUrl()}/api/config`;
+	}
 
 	/**
 	 * Retrieve configuration using an auth key
@@ -37,7 +56,7 @@ export class ConfigApiClient {
 			}
 
 			// Call config API with auth key
-			const url = `${ConfigApiClient.CONFIG_API_URL}?auth_key=${encodeURIComponent(authKey)}`;
+			const url = `${ConfigApiClient.getConfigApiUrl()}?auth_key=${encodeURIComponent(authKey)}`;
 			const response = await fetch(url);
 
 			if (!response.ok) {
