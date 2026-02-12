@@ -96,6 +96,7 @@ const LabelPromptsSchema = z.object({
 	scoper: LabelPromptConfigSchema.optional(),
 	orchestrator: LabelPromptConfigSchema.optional(),
 	"graphite-orchestrator": LabelPromptConfigSchema.optional(),
+	team: LabelPromptConfigSchema.optional(),
 	graphite: GraphiteLabelConfigSchema.optional(),
 });
 
@@ -116,6 +117,65 @@ const PromptDefaultsSchema = z.object({
 	scoper: PromptTypeDefaultsSchema.optional(),
 	orchestrator: PromptTypeDefaultsSchema.optional(),
 	"graphite-orchestrator": PromptTypeDefaultsSchema.optional(),
+	team: PromptTypeDefaultsSchema.optional(),
+});
+
+/**
+ * Execution pattern for team-based routing
+ */
+const ExecutionPatternSchema = z.enum([
+	"single",
+	"subagents",
+	"agent-team",
+	"orchestrator",
+]);
+
+/**
+ * Routing rule: match labels/complexity -> execution pattern
+ */
+const RoutingRuleSchema = z.object({
+	match: z.object({
+		labels: z.array(z.string()).optional(),
+		complexity: z.array(z.enum(["S", "M", "L", "XL"])).optional(),
+	}),
+	pattern: ExecutionPatternSchema,
+	agents: z.array(z.string()).optional(),
+	description: z.string().optional(),
+	readOnly: z.boolean().optional(),
+});
+
+/**
+ * Model assignments by agent role
+ */
+const ModelByRoleSchema = z.record(z.string(), z.string());
+
+/**
+ * Quality gate checks to run before merge
+ */
+const QualityGatesSchema = z.object({
+	beforeMerge: z.array(z.string()).optional(),
+	requiredChecks: z.array(z.string()).optional(),
+});
+
+/**
+ * Team configuration for multi-agent routing and execution
+ */
+const TeamConfigSchema = z.object({
+	routing: z
+		.object({
+			rules: z.array(RoutingRuleSchema).optional(),
+			defaultPattern: ExecutionPatternSchema.optional(),
+			defaultAgents: z.array(z.string()).optional(),
+		})
+		.optional(),
+	optimization: z
+		.object({
+			modelByRole: ModelByRoleSchema.optional(),
+			maxAgents: z.number().min(2).max(10).optional(),
+			parallelizeWhenPossible: z.boolean().optional(),
+		})
+		.optional(),
+	qualityGates: QualityGatesSchema.optional(),
 });
 
 /**
@@ -152,6 +212,9 @@ export const RepositoryConfigSchema = z.object({
 	appendInstruction: z.string().optional(),
 	model: z.string().optional(),
 	fallbackModel: z.string().optional(),
+
+	// Team configuration
+	teamConfig: TeamConfigSchema.optional(),
 
 	// OpenAI configuration
 	openaiApiKey: z.string().optional(),
@@ -243,3 +306,4 @@ export type RepositoryConfigPayload = z.infer<
 	typeof RepositoryConfigPayloadSchema
 >;
 export type EdgeConfigPayload = z.infer<typeof EdgeConfigPayloadSchema>;
+export type TeamConfig = z.infer<typeof TeamConfigSchema>;

@@ -48,6 +48,14 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		/** Team routing decision (populated when team-development procedure is used) */
+		teamRouting?: {
+			pattern: string;
+			agents: string[];
+			modelByRole: Record<string, string>;
+			qualityGates?: { beforeMerge?: string[]; requiredChecks?: string[] };
+			reasoning: string;
+		};
 		procedure?: {
 			procedureName: string;
 			currentSubroutineIndex: number;

@@ -131,6 +131,12 @@ export const SUBROUTINES = {
 		suppressThoughtPosting: true,
 		disallowAllTools: true,
 	},
+	teamDevelopment: {
+		name: "team-development",
+		promptPath: "subroutines/team-development.md",
+		description:
+			"Parallel team-based development using Claude Code Agent Teams",
+	},
 } as const;
 
 /**
@@ -212,6 +218,20 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			"Release workflow that invokes project release skill or asks user for release info",
 		subroutines: [SUBROUTINES.releaseExecution, SUBROUTINES.releaseSummary],
 	},
+
+	"team-development": {
+		name: "team-development",
+		description:
+			"Complex tasks executed by a coordinated team of specialized agents",
+		subroutines: [
+			SUBROUTINES.teamDevelopment,
+			SUBROUTINES.verifications,
+			SUBROUTINES.changelogUpdate,
+			SUBROUTINES.gitCommit,
+			SUBROUTINES.ghPr,
+			SUBROUTINES.conciseSummary,
+		],
+	},
 };
 
 /**
@@ -228,6 +248,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	code: "full-development",
 	debugger: "debugger-full",
 	orchestrator: "orchestrator-full",
+	team: "team-development",
 	"user-testing": "user-testing",
 	release: "release",
 };

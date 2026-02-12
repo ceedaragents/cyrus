@@ -122,6 +122,44 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 			graphite: {
 				labels: ["graphite", "Graphite"],
 			},
+			team: {
+				labels: ["team", "Team"],
+			},
+		},
+		// Team configuration for multi-agent routing
+		teamConfig: {
+			routing: {
+				rules: [
+					{
+						match: { labels: ["Team"], complexity: ["L", "XL"] },
+						pattern: "agent-team",
+						agents: ["dev-frontend", "dev-backend", "qa"],
+						description: "Full team for complex Team-labeled issues",
+					},
+					{
+						match: { labels: ["Team"] },
+						pattern: "subagents",
+						agents: ["dev"],
+						description: "Subagent pattern for simpler Team-labeled issues",
+					},
+				],
+				defaultPattern: "single",
+				defaultAgents: ["dev"],
+			},
+			optimization: {
+				modelByRole: {
+					"team-lead": "sonnet",
+					dev: "sonnet",
+					"dev-frontend": "sonnet",
+					"dev-backend": "sonnet",
+					qa: "haiku",
+				},
+				maxAgents: 4,
+				parallelizeWhenPossible: true,
+			},
+			qualityGates: {
+				beforeMerge: ["pnpm typecheck", "pnpm test:run"],
+			},
 		},
 	};
 
