@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
 import { ProcedureAnalyzer } from "../src/procedures/ProcedureAnalyzer";
 import { PROCEDURES } from "../src/procedures/registry";
+import type { IActivitySink } from "../src/sinks/IActivitySink";
 
 /**
  * Integration tests for procedure routing as used by EdgeWorker and AgentSessionManager
@@ -12,7 +13,7 @@ import { PROCEDURES } from "../src/procedures/registry";
 describe("EdgeWorker - Procedure Routing Integration", () => {
 	let procedureAnalyzer: ProcedureAnalyzer;
 	let agentSessionManager: AgentSessionManager;
-	let mockLinearClient: any;
+	let mockActivitySink: IActivitySink;
 
 	beforeEach(() => {
 		// Create ProcedureAnalyzer
@@ -20,17 +21,16 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			cyrusHome: "/test/.cyrus",
 		});
 
-		// Create minimal mock Linear client
-		mockLinearClient = {
-			createAgentActivity: vi.fn().mockResolvedValue({
-				success: true,
-				agentActivity: Promise.resolve({ id: "activity-123" }),
-			}),
+		// Create minimal mock activity sink
+		mockActivitySink = {
+			id: "test-workspace",
+			postActivity: vi.fn().mockResolvedValue({ activityId: "activity-123" }),
+			createAgentSession: vi.fn().mockResolvedValue("session-123"),
 		};
 
 		// Create AgentSessionManager with procedure router
 		agentSessionManager = new AgentSessionManager(
-			mockLinearClient,
+			mockActivitySink,
 			undefined, // getParentSessionId
 			undefined, // resumeParentSession
 			procedureAnalyzer,

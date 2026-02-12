@@ -3,38 +3,33 @@ import type {
 	SDKStatusMessage,
 	SDKSystemMessage,
 } from "cyrus-claude-runner";
-import type { IIssueTrackerService } from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
+import type { IActivitySink } from "../src/sinks/IActivitySink";
 
 /**
  * Tests that GitHub (non-Linear) sessions skip all Linear activity posting.
  *
  * When `platform: "github"` is passed to createLinearAgentSession, the session
- * has no externalSessionId, so all createAgentActivity calls should be skipped.
+ * has no externalSessionId, so all postActivity calls should be skipped.
  */
 describe("AgentSessionManager - GitHub Session", () => {
 	let manager: AgentSessionManager;
-	let mockIssueTracker: IIssueTrackerService;
-	let createAgentActivitySpy: ReturnType<typeof vi.fn>;
+	let mockActivitySink: IActivitySink;
+	let postActivitySpy: ReturnType<typeof vi.fn>;
 	const sessionId = "github-session-123";
 	const issueId = "issue-456";
 
 	beforeEach(() => {
-		mockIssueTracker = {
-			createAgentActivity: vi.fn().mockResolvedValue({
-				success: true,
-				agentActivity: Promise.resolve({ id: "activity-123" }),
-			}),
-			fetchIssue: vi.fn(),
-			getIssueLabels: vi.fn().mockResolvedValue([]),
-		} as any;
+		mockActivitySink = {
+			id: "test-workspace",
+			postActivity: vi.fn().mockResolvedValue({ activityId: "activity-123" }),
+			createAgentSession: vi.fn().mockResolvedValue("session-123"),
+		};
 
-		createAgentActivitySpy = mockIssueTracker.createAgentActivity as ReturnType<
-			typeof vi.fn
-		>;
+		postActivitySpy = mockActivitySink.postActivity as ReturnType<typeof vi.fn>;
 
-		manager = new AgentSessionManager(mockIssueTracker);
+		manager = new AgentSessionManager(mockActivitySink);
 	});
 
 	function createGitHubSession() {
@@ -71,7 +66,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 
 	// ── GitHub session tests ──────────────────────────────────────────────
 
-	it("should skip createAgentActivity for assistant messages in GitHub sessions", async () => {
+	it("should skip postActivity for assistant messages in GitHub sessions", async () => {
 		createGitHubSession();
 
 		const assistantMessage: SDKAssistantMessage = {
@@ -93,7 +88,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 
 		await manager.handleClaudeMessage(sessionId, assistantMessage);
 
-		expect(createAgentActivitySpy).not.toHaveBeenCalled();
+		expect(postActivitySpy).not.toHaveBeenCalled();
 	});
 
 	it("should skip model notification for GitHub sessions", async () => {
@@ -111,10 +106,9 @@ describe("AgentSessionManager - GitHub Session", () => {
 
 		await manager.handleClaudeMessage(sessionId, systemMessage);
 
-		const modelNotificationCall = createAgentActivitySpy.mock.calls.find(
+		const modelNotificationCall = postActivitySpy.mock.calls.find(
 			(call: any) =>
-				call[0].content?.type === "thought" &&
-				call[0].content?.body?.includes("Using model:"),
+				call[1]?.type === "thought" && call[1]?.body?.includes("Using model:"),
 		);
 
 		expect(modelNotificationCall).toBeFalsy();
@@ -133,7 +127,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 
 		await manager.handleClaudeMessage(sessionId, statusMessage);
 
-		expect(createAgentActivitySpy).not.toHaveBeenCalled();
+		expect(postActivitySpy).not.toHaveBeenCalled();
 	});
 
 	// ── Linear session regression tests ───────────────────────────────────
@@ -160,7 +154,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 
 		await manager.handleClaudeMessage(sessionId, assistantMessage);
 
-		expect(createAgentActivitySpy).toHaveBeenCalled();
+		expect(postActivitySpy).toHaveBeenCalled();
 	});
 
 	it("should still post model notifications for Linear sessions", async () => {
@@ -178,19 +172,16 @@ describe("AgentSessionManager - GitHub Session", () => {
 
 		await manager.handleClaudeMessage(sessionId, systemMessage);
 
-		const modelNotificationCall = createAgentActivitySpy.mock.calls.find(
+		const modelNotificationCall = postActivitySpy.mock.calls.find(
 			(call: any) =>
-				call[0].content?.type === "thought" &&
-				call[0].content?.body?.includes("Using model:"),
+				call[1]?.type === "thought" && call[1]?.body?.includes("Using model:"),
 		);
 
 		expect(modelNotificationCall).toBeTruthy();
-		expect(modelNotificationCall![0]).toEqual({
-			agentSessionId: sessionId,
-			content: {
-				type: "thought",
-				body: "Using model: claude-sonnet-4-5-20250514",
-			},
+		expect(modelNotificationCall![0]).toBe(sessionId);
+		expect(modelNotificationCall![1]).toEqual({
+			type: "thought",
+			body: "Using model: claude-sonnet-4-5-20250514",
 		});
 	});
 });

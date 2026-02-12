@@ -4,5 +4,10 @@
  * @module sinks
  */
 
-export { IActivitySink } from "./IActivitySink.js";
+export type {
+	ActivityPostOptions,
+	ActivityPostResult,
+	ActivitySignal,
+	IActivitySink,
+} from "./IActivitySink.js";
 export { LinearActivitySink } from "./LinearActivitySink.js";
