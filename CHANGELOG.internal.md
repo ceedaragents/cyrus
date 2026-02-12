@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.2.34 to v0.2.39 and `@anthropic-ai/sdk` from v0.73.0 to v0.74.0. Added required `speed` property to all BetaUsage type objects in gemini-runner adapters to satisfy new SDK type requirements. ([CYPACK-802](https://linear.app/ceedar/issue/CYPACK-802), [#856](https://github.com/ceedaragents/cyrus/pull/856))
+
 ## [0.2.21] - 2026-02-09
 
 ### Changed
