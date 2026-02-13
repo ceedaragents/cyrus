@@ -118,6 +118,11 @@ export type OnAskUserQuestion = (
  * Message Formatter Interface
  *
  * Forward declaration - implemented by each runner (e.g., ClaudeMessageFormatter, GeminiMessageFormatter)
+ *
+ * Formatter output is UI-facing activity content, not model input. These strings
+ * are consumed by the edge worker session pipeline (AgentSessionManager) and then
+ * posted to the issue tracker via `createAgentActivity` for timeline rendering
+ * (for example in Linear agent activity entries).
  */
 export interface IMessageFormatter {
 	/**

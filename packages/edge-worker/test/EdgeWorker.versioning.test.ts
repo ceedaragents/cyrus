@@ -13,6 +13,7 @@ vi.mock("fs/promises", () => ({
 
 // Mock other dependencies
 vi.mock("cyrus-claude-runner");
+vi.mock("cyrus-codex-runner");
 vi.mock("@linear/sdk", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@linear/sdk")>();
 	return {

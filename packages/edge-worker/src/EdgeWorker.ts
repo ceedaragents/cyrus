@@ -21,6 +21,7 @@ import {
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
+import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
 	AgentEvent,
@@ -1019,6 +1020,21 @@ export class EdgeWorker extends EventEmitter {
 					parsedConfig.ngrokAuthToken || this.config.ngrokAuthToken,
 				linearWorkspaceSlug:
 					parsedConfig.linearWorkspaceSlug || this.config.linearWorkspaceSlug,
+				claudeDefaultModel:
+					parsedConfig.claudeDefaultModel ||
+					parsedConfig.defaultModel ||
+					this.config.claudeDefaultModel ||
+					this.config.defaultModel,
+				claudeDefaultFallbackModel:
+					parsedConfig.claudeDefaultFallbackModel ||
+					parsedConfig.defaultFallbackModel ||
+					this.config.claudeDefaultFallbackModel ||
+					this.config.defaultFallbackModel,
+				geminiDefaultModel:
+					parsedConfig.geminiDefaultModel || this.config.geminiDefaultModel,
+				codexDefaultModel:
+					parsedConfig.codexDefaultModel || this.config.codexDefaultModel,
+				// Preserve legacy fields while rolling out new config keys.
 				defaultModel: parsedConfig.defaultModel || this.config.defaultModel,
 				defaultFallbackModel:
 					parsedConfig.defaultFallbackModel || this.config.defaultFallbackModel,
@@ -1846,8 +1862,11 @@ export class EdgeWorker extends EventEmitter {
 
 		// Build allowed directories list - always include attachments directory
 		const allowedDirectories: string[] = [
-			attachmentsDir,
-			repository.repositoryPath,
+			...new Set([
+				attachmentsDir,
+				repository.repositoryPath,
+				...this.gitService.getGitMetadataDirectories(workspace.path),
+			]),
 		];
 
 		console.log(
@@ -2288,6 +2307,7 @@ export class EdgeWorker extends EventEmitter {
 				disallowedTools,
 				undefined, // resumeSessionId
 				labels, // Pass labels for runner selection and model override
+				fullIssue.description || undefined, // Description tags can override label selectors
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 				currentSubroutine?.disallowAllTools, // disallowAllTools flag
@@ -2300,7 +2320,9 @@ export class EdgeWorker extends EventEmitter {
 			const runner =
 				runnerType === "claude"
 					? new ClaudeRunner(runnerConfig)
-					: new GeminiRunner(runnerConfig);
+					: runnerType === "gemini"
+						? new GeminiRunner(runnerConfig)
+						: new CodexRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -2922,103 +2944,267 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Determine runner type and model from issue labels.
-	 * Returns the runner type ("claude" or "gemini"), optional model override, and fallback model.
-	 *
-	 * Label priority (case-insensitive):
-	 * - Gemini labels: gemini, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-pro, gemini-3-pro-preview
-	 * - Claude labels: claude, sonnet, opus
-	 *
-	 * If no runner label is found, defaults to claude.
+	 * Resolve default model for a given runner from config with sensible built-in defaults.
+	 * Supports legacy config keys for backwards compatibility.
 	 */
-	private determineRunnerFromLabels(labels: string[]): {
-		runnerType: "claude" | "gemini";
+	private getDefaultModelForRunner(
+		runnerType: "claude" | "gemini" | "codex",
+	): string {
+		if (runnerType === "claude") {
+			return (
+				this.config.claudeDefaultModel || this.config.defaultModel || "opus"
+			);
+		}
+		if (runnerType === "gemini") {
+			return this.config.geminiDefaultModel || "gemini-2.5-pro";
+		}
+		return this.config.codexDefaultModel || "gpt-5-codex";
+	}
+
+	/**
+	 * Resolve default fallback model for a given runner from config with sensible built-in defaults.
+	 * Supports legacy Claude fallback key for backwards compatibility.
+	 */
+	private getDefaultFallbackModelForRunner(
+		runnerType: "claude" | "gemini" | "codex",
+	): string {
+		if (runnerType === "claude") {
+			return (
+				this.config.claudeDefaultFallbackModel ||
+				this.config.defaultFallbackModel ||
+				"sonnet"
+			);
+		}
+		if (runnerType === "gemini") {
+			return "gemini-2.5-flash";
+		}
+		return "gpt-5";
+	}
+
+	/**
+	 * Parse a bracketed tag from issue description.
+	 *
+	 * Supports escaped brackets (`\\[tag=value\\]`) which Linear can emit.
+	 */
+	private parseDescriptionTag(
+		description: string,
+		tagName: string,
+	): string | undefined {
+		const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const pattern = new RegExp(
+			`\\\\?\\[${escapedTag}=([a-zA-Z0-9_.:/-]+)\\\\?\\]`,
+			"i",
+		);
+		const match = description.match(pattern);
+		return match?.[1];
+	}
+
+	/**
+	 * Determine runner type and model using labels + issue description tags.
+	 *
+	 * Supported description tags:
+	 * - [agent=claude|gemini|codex]
+	 * - [model=<model-name>]
+	 *
+	 * Precedence:
+	 * - Description tags override labels.
+	 * - Agent selection and model selection are independent.
+	 * - If agent is not explicit, model can infer runner type.
+	 */
+	private determineRunnerSelection(
+		labels: string[],
+		issueDescription?: string,
+	): {
+		runnerType: "claude" | "gemini" | "codex";
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
-		if (!labels || labels.length === 0) {
-			return {
-				runnerType: "claude",
-				modelOverride: "opus",
-				fallbackModelOverride: "sonnet",
+		const normalizedLabels = (labels || []).map((label) => label.toLowerCase());
+		const normalizedDescription = issueDescription || "";
+		const descriptionAgentTagRaw = this.parseDescriptionTag(
+			normalizedDescription,
+			"agent",
+		);
+		const descriptionModelTagRaw = this.parseDescriptionTag(
+			normalizedDescription,
+			"model",
+		);
+
+		const defaultModelByRunner: Record<"claude" | "gemini" | "codex", string> =
+			{
+				claude: this.getDefaultModelForRunner("claude"),
+				gemini: this.getDefaultModelForRunner("gemini"),
+				codex: this.getDefaultModelForRunner("codex"),
 			};
+		const defaultFallbackByRunner: Record<
+			"claude" | "gemini" | "codex",
+			string
+		> = {
+			claude: this.getDefaultFallbackModelForRunner("claude"),
+			gemini: this.getDefaultFallbackModelForRunner("gemini"),
+			codex: this.getDefaultFallbackModelForRunner("codex"),
+		};
+
+		const isCodexModel = (model: string): boolean =>
+			/gpt-[a-z0-9.-]*codex$/i.test(model) || /^gpt-[a-z0-9.-]+$/i.test(model);
+
+		const inferRunnerFromModel = (
+			model?: string,
+		): "claude" | "gemini" | "codex" | undefined => {
+			if (!model) return undefined;
+			const normalizedModel = model.toLowerCase();
+			if (normalizedModel.startsWith("gemini")) return "gemini";
+			if (
+				normalizedModel === "opus" ||
+				normalizedModel === "sonnet" ||
+				normalizedModel === "haiku" ||
+				normalizedModel.startsWith("claude")
+			) {
+				return "claude";
+			}
+			if (isCodexModel(normalizedModel)) return "codex";
+			return undefined;
+		};
+
+		const inferFallbackModel = (
+			model: string,
+			runnerType: "claude" | "gemini" | "codex",
+		): string | undefined => {
+			const normalizedModel = model.toLowerCase();
+			if (runnerType === "claude") {
+				if (normalizedModel === "opus") return "sonnet";
+				if (normalizedModel === "sonnet") return "haiku";
+				// Keep haiku fallback on sonnet for retry behavior
+				if (normalizedModel === "haiku") return "sonnet";
+				return "sonnet";
+			}
+			if (runnerType === "gemini") {
+				if (
+					normalizedModel === "gemini-3" ||
+					normalizedModel === "gemini-3-pro" ||
+					normalizedModel === "gemini-3-pro-preview"
+				) {
+					return "gemini-2.5-pro";
+				}
+				if (
+					normalizedModel === "gemini-2.5-pro" ||
+					normalizedModel === "gemini-2.5"
+				) {
+					return "gemini-2.5-flash";
+				}
+				if (normalizedModel === "gemini-2.5-flash") {
+					return "gemini-2.5-flash-lite";
+				}
+				if (normalizedModel === "gemini-2.5-flash-lite") {
+					return "gemini-2.5-flash-lite";
+				}
+				return "gemini-2.5-flash";
+			}
+			if (isCodexModel(normalizedModel)) {
+				if (normalizedModel.endsWith("-codex")) {
+					return model.slice(0, -"-codex".length);
+				}
+				return "gpt-5";
+			}
+			return "gpt-5";
+		};
+
+		const resolveAgentFromLabel = (
+			lowercaseLabels: string[],
+		): "claude" | "gemini" | "codex" | undefined => {
+			if (
+				lowercaseLabels.includes("codex") ||
+				lowercaseLabels.includes("openai")
+			) {
+				return "codex";
+			}
+			if (lowercaseLabels.includes("gemini")) {
+				return "gemini";
+			}
+			if (lowercaseLabels.includes("claude")) {
+				return "claude";
+			}
+			return undefined;
+		};
+
+		const resolveModelFromLabel = (
+			lowercaseLabels: string[],
+		): string | undefined => {
+			const codexModelLabel = lowercaseLabels.find((label) =>
+				/gpt-[a-z0-9.-]*codex$/i.test(label),
+			);
+			if (codexModelLabel) {
+				return codexModelLabel;
+			}
+
+			if (
+				lowercaseLabels.includes("gemini-2.5-pro") ||
+				lowercaseLabels.includes("gemini-2.5")
+			) {
+				return "gemini-2.5-pro";
+			}
+			if (lowercaseLabels.includes("gemini-2.5-flash")) {
+				return "gemini-2.5-flash";
+			}
+			if (lowercaseLabels.includes("gemini-2.5-flash-lite")) {
+				return "gemini-2.5-flash-lite";
+			}
+			if (
+				lowercaseLabels.includes("gemini-3") ||
+				lowercaseLabels.includes("gemini-3-pro") ||
+				lowercaseLabels.includes("gemini-3-pro-preview")
+			) {
+				return "gemini-3-pro-preview";
+			}
+
+			if (lowercaseLabels.includes("opus")) return "opus";
+			if (lowercaseLabels.includes("sonnet")) return "sonnet";
+			if (lowercaseLabels.includes("haiku")) return "haiku";
+
+			return undefined;
+		};
+
+		const agentFromDescription = descriptionAgentTagRaw?.toLowerCase();
+		const resolvedAgentFromDescription =
+			agentFromDescription === "codex" || agentFromDescription === "openai"
+				? "codex"
+				: agentFromDescription === "gemini"
+					? "gemini"
+					: agentFromDescription === "claude"
+						? "claude"
+						: undefined;
+		const resolvedAgentFromLabels = resolveAgentFromLabel(normalizedLabels);
+
+		const modelFromDescription = descriptionModelTagRaw;
+		const modelFromLabels = resolveModelFromLabel(normalizedLabels);
+		const explicitModel = modelFromDescription || modelFromLabels;
+
+		const runnerType: "claude" | "gemini" | "codex" =
+			resolvedAgentFromDescription ||
+			resolvedAgentFromLabels ||
+			inferRunnerFromModel(explicitModel) ||
+			"claude";
+
+		// If an explicit agent conflicts with model's implied runner, keep the agent and reset model.
+		const modelRunner = inferRunnerFromModel(explicitModel);
+		let modelOverride = explicitModel;
+		if (modelOverride && modelRunner && modelRunner !== runnerType) {
+			modelOverride = undefined;
 		}
 
-		const lowercaseLabels = labels.map((label) => label.toLowerCase());
-
-		// Check for Gemini labels first
-		if (
-			lowercaseLabels.includes("gemini-2.5-pro") ||
-			lowercaseLabels.includes("gemini-2.5")
-		) {
-			return {
-				runnerType: "gemini",
-				modelOverride: "gemini-2.5-pro",
-				fallbackModelOverride: "gemini-2.5-flash",
-			};
-		}
-		if (lowercaseLabels.includes("gemini-2.5-flash")) {
-			return {
-				runnerType: "gemini",
-				modelOverride: "gemini-2.5-flash",
-				fallbackModelOverride: "gemini-2.5-flash-lite",
-			};
-		}
-		if (lowercaseLabels.includes("gemini-2.5-flash-lite")) {
-			return {
-				runnerType: "gemini",
-				modelOverride: "gemini-2.5-flash-lite",
-				fallbackModelOverride: "gemini-2.5-flash-lite",
-			};
-		}
-		if (
-			lowercaseLabels.includes("gemini-3") ||
-			lowercaseLabels.includes("gemini-3-pro") ||
-			lowercaseLabels.includes("gemini-3-pro-preview")
-		) {
-			return {
-				runnerType: "gemini",
-				modelOverride: "gemini-3-pro-preview",
-				fallbackModelOverride: "gemini-2.5-pro",
-			};
-		}
-		if (lowercaseLabels.includes("gemini")) {
-			return {
-				runnerType: "gemini",
-				modelOverride: "gemini-2.5-pro",
-				fallbackModelOverride: "gemini-2.5-flash",
-			};
+		if (!modelOverride) {
+			modelOverride = defaultModelByRunner[runnerType];
 		}
 
-		// Check for Claude labels
-		if (lowercaseLabels.includes("opus")) {
-			return {
-				runnerType: "claude",
-				modelOverride: "opus",
-				fallbackModelOverride: "sonnet",
-			};
+		let fallbackModelOverride = inferFallbackModel(modelOverride, runnerType);
+		if (!fallbackModelOverride) {
+			fallbackModelOverride = defaultFallbackByRunner[runnerType];
 		}
-		if (lowercaseLabels.includes("sonnet")) {
-			return {
-				runnerType: "claude",
-				modelOverride: "sonnet",
-				fallbackModelOverride: "haiku",
-			};
-		}
-		if (lowercaseLabels.includes("haiku")) {
-			// fallbackModelOverride must be different from modelOverride
-			// (haiku falls back to sonnet for retry scenarios)
-			return {
-				runnerType: "claude",
-				modelOverride: "haiku",
-				fallbackModelOverride: "sonnet",
-			};
-		}
-		// Default to claude if no runner labels found
+
 		return {
-			runnerType: "claude",
-			modelOverride: "opus",
-			fallbackModelOverride: "sonnet",
+			runnerType,
+			modelOverride,
+			fallbackModelOverride,
 		};
 	}
 
@@ -5328,10 +5514,11 @@ ${input.userComment}
 		disallowedTools: string[],
 		resumeSessionId?: string,
 		labels?: string[],
+		issueDescription?: string,
 		maxTurns?: number,
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
-	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" } {
+	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" | "codex" } {
 		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
 		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -5419,8 +5606,11 @@ ${input.userComment}
 			],
 		};
 
-		// Determine runner type and model override from labels
-		const runnerSelection = this.determineRunnerFromLabels(labels || []);
+		// Determine runner type and model override from selectors
+		const runnerSelection = this.determineRunnerSelection(
+			labels || [],
+			issueDescription,
+		);
 		let runnerType = runnerSelection.runnerType;
 		let modelOverride = runnerSelection.modelOverride;
 		let fallbackModelOverride = runnerSelection.fallbackModelOverride;
@@ -5428,27 +5618,33 @@ ${input.userComment}
 		// If the labels have changed, and we are resuming a session. Use the existing runner for the session.
 		if (session.claudeSessionId && runnerType !== "claude") {
 			runnerType = "claude";
-			modelOverride = "sonnet";
-			fallbackModelOverride = "haiku";
+			modelOverride = this.getDefaultModelForRunner("claude");
+			fallbackModelOverride = this.getDefaultFallbackModelForRunner("claude");
 		} else if (session.geminiSessionId && runnerType !== "gemini") {
 			runnerType = "gemini";
-			modelOverride = "gemini-2.5-pro";
-			fallbackModelOverride = "gemini-2.5-flash";
+			modelOverride = this.getDefaultModelForRunner("gemini");
+			fallbackModelOverride = this.getDefaultFallbackModelForRunner("gemini");
+		} else if (session.codexSessionId && runnerType !== "codex") {
+			runnerType = "codex";
+			modelOverride = this.getDefaultModelForRunner("codex");
+			fallbackModelOverride = this.getDefaultFallbackModelForRunner("codex");
 		}
 
 		// Log model override if found
 		if (modelOverride) {
 			console.log(
-				`[EdgeWorker] Model override via label: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
+				`[EdgeWorker] Model override via selector: ${modelOverride} (for session ${linearAgentActivitySessionId})`,
 			);
 		}
 
 		// Convert singleTurn flag to effective maxTurns value
 		const effectiveMaxTurns = singleTurn ? 1 : maxTurns;
 
-		// Determine final model name with singleTurn suffix for Gemini
+		// Determine final model from selectors, repository override, then runner-specific defaults
 		const finalModel =
-			modelOverride || repository.model || this.config.defaultModel;
+			modelOverride ||
+			repository.model ||
+			this.getDefaultModelForRunner(runnerType);
 
 		const config = {
 			workingDirectory: session.workspace.path,
@@ -5468,7 +5664,7 @@ ${input.userComment}
 			fallbackModel:
 				fallbackModelOverride ||
 				repository.fallbackModel ||
-				this.config.defaultFallbackModel,
+				this.getDefaultFallbackModelForRunner(runnerType),
 			hooks,
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
@@ -6449,8 +6645,10 @@ ${input.userComment}
 		// Determine which runner to use based on existing session IDs
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
+		const hasCodexSession = !isNewSession && Boolean(session.codexSessionId);
 		const needsNewSession =
-			isNewSession || (!hasClaudeSession && !hasGeminiSession);
+			isNewSession ||
+			(!hasClaudeSession && !hasGeminiSession && !hasCodexSession);
 
 		// Fetch system prompt based on labels
 
@@ -6498,16 +6696,21 @@ ${input.userComment}
 		await mkdir(attachmentsDir, { recursive: true });
 
 		const allowedDirectories = [
-			attachmentsDir,
-			repository.repositoryPath,
-			...additionalAllowedDirectories,
+			...new Set([
+				attachmentsDir,
+				repository.repositoryPath,
+				...additionalAllowedDirectories,
+				...this.gitService.getGitMetadataDirectories(session.workspace.path),
+			]),
 		];
 
 		const resumeSessionId = needsNewSession
 			? undefined
 			: session.claudeSessionId
 				? session.claudeSessionId
-				: session.geminiSessionId;
+				: session.geminiSessionId
+					? session.geminiSessionId
+					: session.codexSessionId;
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
@@ -6522,6 +6725,7 @@ ${input.userComment}
 			disallowedTools,
 			resumeSessionId,
 			labels, // Always pass labels to preserve model override
+			fullIssue.description || undefined, // Description tags can override label selectors
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 			currentSubroutine?.disallowAllTools, // disallowAllTools flag
@@ -6531,7 +6735,9 @@ ${input.userComment}
 		const runner =
 			runnerType === "claude"
 				? new ClaudeRunner(runnerConfig)
-				: new GeminiRunner(runnerConfig);
+				: runnerType === "gemini"
+					? new GeminiRunner(runnerConfig)
+					: new CodexRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);

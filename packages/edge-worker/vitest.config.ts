@@ -25,6 +25,10 @@ export default defineConfig({
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
 			"@test": path.resolve(__dirname, "./test"),
+			"cyrus-codex-runner": path.resolve(
+				__dirname,
+				"../codex-runner/src/index.ts",
+			),
 		},
 	},
 });

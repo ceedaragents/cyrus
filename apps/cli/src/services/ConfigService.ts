@@ -67,6 +67,31 @@ export class ConfigService {
 	private migrateConfig(config: EdgeConfig): EdgeConfig {
 		let configModified = false;
 
+		// Migration: Rename legacy global model fields to Claude-specific names
+		// Keep old values but move them to the new keys and remove deprecated fields.
+		if (config.defaultModel !== undefined) {
+			if (!config.claudeDefaultModel) {
+				config.claudeDefaultModel = config.defaultModel;
+				this.logger.info(
+					`[Migration] Moved "defaultModel" to "claudeDefaultModel"`,
+				);
+			}
+			delete (config as EdgeConfig & { defaultModel?: string }).defaultModel;
+			configModified = true;
+		}
+
+		if (config.defaultFallbackModel !== undefined) {
+			if (!config.claudeDefaultFallbackModel) {
+				config.claudeDefaultFallbackModel = config.defaultFallbackModel;
+				this.logger.info(
+					`[Migration] Moved "defaultFallbackModel" to "claudeDefaultFallbackModel"`,
+				);
+			}
+			delete (config as EdgeConfig & { defaultFallbackModel?: string })
+				.defaultFallbackModel;
+			configModified = true;
+		}
+
 		// Migration: Add "Skill" to allowedTools arrays that don't have it
 		// This enables Claude Skills functionality for existing configurations
 		// See: https://code.claude.com/docs/en/skills

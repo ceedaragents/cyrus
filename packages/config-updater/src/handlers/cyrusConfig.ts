@@ -61,9 +61,24 @@ export async function handleCyrusConfig(
 			};
 		});
 
+		// Backwards compatibility: migrate legacy global model keys to Claude-specific keys
+		const normalizedEdgeConfig = {
+			...edgeConfig,
+			claudeDefaultModel:
+				edgeConfig.claudeDefaultModel || edgeConfig.defaultModel,
+			claudeDefaultFallbackModel:
+				edgeConfig.claudeDefaultFallbackModel ||
+				edgeConfig.defaultFallbackModel,
+		} as EdgeConfig & {
+			defaultModel?: string;
+			defaultFallbackModel?: string;
+		};
+		delete normalizedEdgeConfig.defaultModel;
+		delete normalizedEdgeConfig.defaultFallbackModel;
+
 		// Build complete config by spreading EdgeConfig fields and overriding repositories
 		const config: EdgeConfig = {
-			...edgeConfig,
+			...normalizedEdgeConfig,
 			repositories,
 		};
 
