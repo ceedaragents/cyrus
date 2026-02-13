@@ -105,4 +105,52 @@ describe("CursorRunner tool event mapping", () => {
 			.find((message) => message.type === "assistant");
 		expect(assistantMessage).toBeDefined();
 	});
+
+	it("maps tool_call started/completed events to tool_use + tool_result", () => {
+		const runner = createRunner();
+		(runner as any).sessionInfo = {
+			sessionId: "session-1",
+			startedAt: new Date(),
+			isRunning: true,
+		};
+
+		(runner as any).handleEvent({
+			type: "tool_call",
+			subtype: "started",
+			call_id: "tool-1",
+			tool_call: {
+				shellToolCall: {
+					args: {
+						command: "git status",
+					},
+				},
+			},
+		});
+		(runner as any).handleEvent({
+			type: "tool_call",
+			subtype: "completed",
+			call_id: "tool-1",
+			tool_call: {
+				shellToolCall: {
+					args: {
+						command: "git status",
+					},
+					result: {
+						success: {
+							stdout: "On branch cypack-804",
+						},
+					},
+				},
+			},
+		});
+
+		const messages = runner.getMessages();
+		const assistantMessages = messages.filter(
+			(message) => message.type === "assistant",
+		);
+		const userMessages = messages.filter((message) => message.type === "user");
+
+		expect(assistantMessages).toHaveLength(1);
+		expect(userMessages).toHaveLength(1);
+	});
 });

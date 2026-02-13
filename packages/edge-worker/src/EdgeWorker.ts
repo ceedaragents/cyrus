@@ -2423,6 +2423,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Stop the existing runner if it's active
 		const existingRunner = foundSession.agentRunner;
+		foundManager.requestSessionStop(agentSessionId);
 		if (existingRunner) {
 			existingRunner.stop();
 			console.log(
@@ -2789,11 +2790,16 @@ export class EdgeWorker extends EventEmitter {
 		webhook: AgentSessionPromptedWebhook,
 	): Promise<void> {
 		const agentSessionId = webhook.agentSession.id;
+		const activityBody = webhook.agentActivity?.content?.body || "";
+		const signal = (webhook.agentActivity as any)?.signal;
+		const isTextStopRequest = /^\s*stop(\s+session|\s+working)?[\s.!?]*$/i.test(
+			activityBody,
+		);
 
 		// Branch 1: Handle stop signal (checked FIRST, before any routing work)
 		// Per CLAUDE.md: "an agentSession MUST already exist" for stop signals
 		// IMPORTANT: Stop signals do NOT require repository lookup
-		if (webhook.agentActivity?.signal === "stop") {
+		if (signal === "stop" || isTextStopRequest) {
 			await this.handleStopSignal(webhook);
 			return;
 		}
@@ -2865,16 +2871,18 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Get all agent runners for this specific issue
-		const agentRunners = agentSessionManager.getAgentRunnersForIssue(issue.id);
+		const sessions = agentSessionManager.getSessionsByIssueId(issue.id);
+		const activeThreadCount = sessions.length;
 
 		// Stop all agent runners for this issue
-		const activeThreadCount = agentRunners.length;
-		for (const runner of agentRunners) {
+		for (const session of sessions) {
 			console.log(
 				`[EdgeWorker] Stopping agent runner for issue ${issue.identifier}`,
 			);
-			runner.stop();
+			agentSessionManager.requestSessionStop(
+				session.linearAgentActivitySessionId,
+			);
+			session.agentRunner?.stop();
 		}
 
 		// Post ONE farewell comment on the issue (not in any thread) if there were active sessions

@@ -96,6 +96,7 @@ export class AgentSessionManager extends EventEmitter {
 	private taskSubjectsByToolUseId: Map<string, string> = new Map(); // Cache TaskCreate subjects by toolUseId until result arrives with task ID
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
+	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -293,8 +294,12 @@ export class AgentSessionManager extends EventEmitter {
 		// Note: We should ideally track by session, but for now clearing all is safer
 		// to prevent memory leaks
 
-		const status =
-			resultMessage.subtype === "success"
+		const wasStopRequested = this.consumeStopRequest(
+			linearAgentActivitySessionId,
+		);
+		const status = wasStopRequested
+			? AgentSessionStatus.Error
+			: resultMessage.subtype === "success"
 				? AgentSessionStatus.Complete
 				: AgentSessionStatus.Error;
 
@@ -304,6 +309,13 @@ export class AgentSessionManager extends EventEmitter {
 			usage: resultMessage.usage,
 		});
 
+		if (wasStopRequested) {
+			console.log(
+				`[AgentSessionManager] Session ${linearAgentActivitySessionId} was stopped by user; skipping procedure continuation`,
+			);
+			return;
+		}
+
 		// Handle result using procedure routing system
 		if ("result" in resultMessage && resultMessage.result) {
 			await this.handleProcedureCompletion(
@@ -311,7 +323,10 @@ export class AgentSessionManager extends EventEmitter {
 				linearAgentActivitySessionId,
 				resultMessage,
 			);
-		} else if (resultMessage.subtype !== "success") {
+		} else if (
+			resultMessage.subtype !== "success" &&
+			this.shouldRecoverFromPreviousSubroutine(resultMessage)
+		) {
 			// Error result (e.g. error_max_turns from singleTurn subroutines) — try to
 			// recover from the last completed subroutine's result so the procedure can still complete.
 			const recoveredText =
@@ -338,7 +353,49 @@ export class AgentSessionManager extends EventEmitter {
 				);
 				await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 			}
+		} else if (resultMessage.subtype !== "success") {
+			// Non-recoverable errors (e.g. stop/abort) should not advance procedures.
+			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 		}
+	}
+
+	private shouldRecoverFromPreviousSubroutine(
+		resultMessage: SDKResultMessage,
+	): boolean {
+		if (resultMessage.subtype === "error_max_turns") {
+			return true;
+		}
+
+		const errorText = [
+			resultMessage.subtype,
+			...("errors" in resultMessage && Array.isArray(resultMessage.errors)
+				? resultMessage.errors
+				: []),
+			"result" in resultMessage && typeof resultMessage.result === "string"
+				? resultMessage.result
+				: "",
+		]
+			.join(" ")
+			.toLowerCase();
+
+		return (
+			errorText.includes("max turn") ||
+			errorText.includes("turn limit") ||
+			errorText.includes("turns limit")
+		);
+	}
+
+	private consumeStopRequest(linearAgentActivitySessionId: string): boolean {
+		if (!this.stopRequestedSessions.has(linearAgentActivitySessionId)) {
+			return false;
+		}
+
+		this.stopRequestedSessions.delete(linearAgentActivitySessionId);
+		return true;
+	}
+
+	requestSessionStop(linearAgentActivitySessionId: string): void {
+		this.stopRequestedSessions.add(linearAgentActivitySessionId);
 	}
 
 	/**

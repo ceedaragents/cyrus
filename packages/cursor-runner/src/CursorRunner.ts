@@ -396,6 +396,171 @@ function getProjectionForItem(
 	return null;
 }
 
+function extractToolResultFromPayload(payload: Record<string, unknown>): {
+	text: string;
+	isError: boolean;
+} {
+	const resultValue =
+		payload.result && typeof payload.result === "object"
+			? (payload.result as Record<string, unknown>)
+			: null;
+	if (!resultValue) {
+		return { text: "Tool completed", isError: false };
+	}
+
+	if (resultValue.success && typeof resultValue.success === "object") {
+		const success = resultValue.success as Record<string, unknown>;
+		const output =
+			getStringValue(
+				success,
+				"interleavedOutput",
+				"stdout",
+				"markdown",
+				"text",
+			) || safeStringify(success);
+		return { text: output, isError: false };
+	}
+
+	const failure =
+		resultValue.failure && typeof resultValue.failure === "object"
+			? (resultValue.failure as Record<string, unknown>)
+			: null;
+	if (failure) {
+		return {
+			text:
+				getStringValue(failure, "message", "stderr") || safeStringify(failure),
+			isError: true,
+		};
+	}
+
+	return { text: safeStringify(resultValue), isError: false };
+}
+
+function getProjectionForToolCallEvent(
+	event: Record<string, unknown>,
+	workingDirectory?: string,
+): ToolProjection | null {
+	const toolUseId = getStringValue(event, "call_id");
+	if (!toolUseId) {
+		return null;
+	}
+
+	const toolCallRaw =
+		event.tool_call && typeof event.tool_call === "object"
+			? (event.tool_call as Record<string, unknown>)
+			: null;
+	if (!toolCallRaw) {
+		return null;
+	}
+
+	const variantKey = Object.keys(toolCallRaw)[0];
+	if (!variantKey) {
+		return null;
+	}
+	const payloadValue = toolCallRaw[variantKey];
+	if (!payloadValue || typeof payloadValue !== "object") {
+		return null;
+	}
+	const payload = payloadValue as Record<string, unknown>;
+	const args =
+		payload.args && typeof payload.args === "object"
+			? (payload.args as Record<string, unknown>)
+			: {};
+
+	let toolName = "Tool";
+	let toolInput: ToolInput = {};
+	let resultText = "Tool completed";
+
+	if (variantKey === "shellToolCall") {
+		const command = getStringValue(args, "command") || "";
+		toolName = inferCommandToolName(command);
+		toolInput = { command, description: command };
+	} else if (variantKey === "readToolCall") {
+		toolName = "Read";
+		toolInput = {
+			path: normalizeFilePath(
+				getStringValue(args, "path") || "",
+				workingDirectory,
+			),
+			limit: args.limit,
+		};
+	} else if (variantKey === "grepToolCall") {
+		toolName = "Grep";
+		toolInput = {
+			pattern: getStringValue(args, "pattern") || "",
+			path: normalizeFilePath(
+				getStringValue(args, "path") || "",
+				workingDirectory,
+			),
+		};
+	} else if (variantKey === "globToolCall") {
+		toolName = "Glob";
+		toolInput = {
+			glob: getStringValue(args, "globPattern") || "",
+			path: normalizeFilePath(
+				getStringValue(args, "targetDirectory") || "",
+				workingDirectory,
+			),
+		};
+	} else if (variantKey === "editToolCall") {
+		toolName = "Edit";
+		toolInput = {
+			path: normalizeFilePath(
+				getStringValue(args, "path") || "",
+				workingDirectory,
+			),
+		};
+	} else if (variantKey === "deleteToolCall") {
+		toolName = "Edit";
+		toolInput = {
+			description: `delete ${normalizeFilePath(getStringValue(args, "path") || "", workingDirectory)}`,
+		};
+	} else if (variantKey === "semSearchToolCall") {
+		toolName = "ToolSearch";
+		toolInput = { query: getStringValue(args, "query") || "" };
+	} else if (variantKey === "readLintsToolCall") {
+		toolName = "Read";
+		toolInput = { paths: args.paths };
+	} else if (variantKey === "mcpToolCall") {
+		const provider = getStringValue(args, "providerIdentifier") || "mcp";
+		const namedTool =
+			getStringValue(args, "toolName") ||
+			getStringValue(args, "name") ||
+			"tool";
+		toolName = `mcp__${provider}__${namedTool}`;
+		toolInput =
+			args.args && typeof args.args === "object"
+				? (args.args as ToolInput)
+				: {};
+	} else if (variantKey === "listMcpResourcesToolCall") {
+		toolName = "mcp__list_resources";
+		toolInput = {};
+	} else if (variantKey === "webFetchToolCall") {
+		toolName = "WebFetch";
+		toolInput = { url: getStringValue(args, "url") || "" };
+	} else if (variantKey === "updateTodosToolCall") {
+		toolName = "TodoWrite";
+		toolInput = { todos: args.todos };
+		resultText = summarizeTodoList({ items: args.todos });
+	} else {
+		toolName = variantKey.replace(/ToolCall$/, "");
+		toolInput = args as ToolInput;
+	}
+
+	const extracted = extractToolResultFromPayload(payload);
+	if (resultText === "Tool completed" || extracted.isError) {
+		resultText = extracted.text;
+	}
+
+	return {
+		toolUseId,
+		toolName,
+		toolInput,
+		result: resultText,
+		isError: extracted.isError,
+	};
+}
+
 function extractUsageFromEvent(
 	event: Record<string, unknown>,
 ): ParsedUsage | null {
@@ -702,6 +867,12 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			return;
 		}
 
+		if (type === "tool_call") {
+			this.emitInitMessage();
+			this.handleToolCallEvent(eventObj);
+			return;
+		}
+
 		if (type === "turn.completed" || type === "result") {
 			const usage = extractUsageFromEvent(eventObj);
 			if (usage) {
@@ -772,6 +943,30 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 
 		this.emitToolUse(projection);
 		this.emitToolResult(projection);
+	}
+
+	private handleToolCallEvent(event: Record<string, unknown>): void {
+		const projection = getProjectionForToolCallEvent(
+			event,
+			this.config.workingDirectory,
+		);
+		if (!projection) {
+			return;
+		}
+
+		const subtype = getStringValue(event, "subtype") || "started";
+		if (subtype === "started") {
+			this.emitToolUse(projection);
+			return;
+		}
+
+		if (subtype === "completed" || subtype === "failed") {
+			this.emitToolUse(projection);
+			this.emitToolResult({
+				...projection,
+				isError: projection.isError || subtype === "failed",
+			});
+		}
 	}
 
 	private emitToolUse(projection: ToolProjection): void {
