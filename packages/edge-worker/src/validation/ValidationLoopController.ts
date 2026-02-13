@@ -108,7 +108,8 @@ export function parseValidationResult(
 		if (
 			lowerResponse.includes("all verifications passed") ||
 			lowerResponse.includes("all tests pass") ||
-			lowerResponse.includes("verifications successful")
+			lowerResponse.includes("verifications successful") ||
+			lowerResponse.includes("session completed successfully")
 		) {
 			return {
 				pass: true,
@@ -125,6 +126,24 @@ export function parseValidationResult(
 			return {
 				pass: false,
 				reason: response.substring(0, 500),
+			};
+		}
+
+		// Detect "in progress" / "preparing" responses - agent may not have completed
+		const inProgressPatterns = [
+			(lowerResponse.includes("performing verification") ||
+				lowerResponse.includes("performing quality checks")) &&
+				(lowerResponse.includes("gathering") ||
+					lowerResponse.includes("gathering the")),
+			lowerResponse.includes("running tests and checks"),
+			lowerResponse.includes("running tests") &&
+				lowerResponse.includes("installing dependencies"),
+		];
+		if (inProgressPatterns.some(Boolean)) {
+			return {
+				pass: false,
+				reason:
+					'Agent did not complete verification - response appears to be in progress. The agent must run all verification steps and output the final JSON result: {"pass": true/false, "reason": "..."}.',
 			};
 		}
 	}

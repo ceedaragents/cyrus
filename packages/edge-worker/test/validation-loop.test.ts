@@ -94,6 +94,13 @@ describe("Validation Loop", () => {
 				expect(result.pass).toBe(true);
 			});
 
+			it("should infer pass from session completed successfully", () => {
+				const response = "Cursor session completed successfully";
+				const result = parseValidationResult(response);
+				expect(result.pass).toBe(true);
+				expect(result.reason).toBe("Cursor session completed successfully");
+			});
+
 			it("should infer fail from natural language failure indicators", () => {
 				const response = "Verification failed: 3 tests not passing";
 				const result = parseValidationResult(response);
@@ -105,6 +112,28 @@ describe("Validation Loop", () => {
 				const result = parseValidationResult(response);
 				expect(result.pass).toBe(false);
 				expect(result.reason).toContain("Could not parse validation result");
+			});
+
+			it("should detect in-progress/preparing responses with actionable reason", () => {
+				const response =
+					"Performing verification and quality checks. Gathering the issue context and recent changes.";
+				const result = parseValidationResult(response);
+				expect(result.pass).toBe(false);
+				expect(result.reason).toContain(
+					"Agent did not complete verification - response appears to be in progress",
+				);
+				expect(result.reason).toContain('{"pass": true/false');
+			});
+
+			it("should detect running tests/installing dependencies as in-progress", () => {
+				const response =
+					"Running tests and checks after installing dependencies:";
+				const result = parseValidationResult(response);
+				expect(result.pass).toBe(false);
+				expect(result.reason).toContain(
+					"Agent did not complete verification - response appears to be in progress",
+				);
+				expect(result.reason).toContain('{"pass": true/false');
 			});
 
 			it("should handle empty response", () => {
