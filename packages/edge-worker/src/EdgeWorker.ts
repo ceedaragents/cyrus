@@ -1862,8 +1862,11 @@ export class EdgeWorker extends EventEmitter {
 
 		// Build allowed directories list - always include attachments directory
 		const allowedDirectories: string[] = [
-			attachmentsDir,
-			repository.repositoryPath,
+			...new Set([
+				attachmentsDir,
+				repository.repositoryPath,
+				...this.gitService.getGitMetadataDirectories(workspace.path),
+			]),
 		];
 
 		console.log(
@@ -6693,9 +6696,12 @@ ${input.userComment}
 		await mkdir(attachmentsDir, { recursive: true });
 
 		const allowedDirectories = [
-			attachmentsDir,
-			repository.repositoryPath,
-			...additionalAllowedDirectories,
+			...new Set([
+				attachmentsDir,
+				repository.repositoryPath,
+				...additionalAllowedDirectories,
+				...this.gitService.getGitMetadataDirectories(session.workspace.path),
+			]),
 		];
 
 		const resumeSessionId = needsNewSession
