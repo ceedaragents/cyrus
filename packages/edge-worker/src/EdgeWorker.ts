@@ -749,6 +749,33 @@ export class EdgeWorker extends EventEmitter {
 			// Strip the @cyrusagent mention to get the task instructions
 			const taskInstructions = stripMention(commentBody);
 
+			// Check if there's an active session with a running runner on this PR
+			const activeSessions =
+				agentSessionManager.getActiveSessionsByIssueId(sessionKey);
+			const activeSession = activeSessions[0];
+			if (activeSession?.agentRunner?.isRunning()) {
+				const activeRunner = activeSession.agentRunner;
+				if (
+					activeRunner.supportsStreamingInput &&
+					activeRunner.addStreamMessage
+				) {
+					this.logger.info(
+						`Adding comment to active GitHub stream for ${repoFullName}#${prNumber} (session ${activeSession.id})`,
+					);
+					activeRunner.addStreamMessage(taskInstructions);
+					return;
+				}
+				this.logger.warn(
+					`Active session ${activeSession.id} for ${repoFullName}#${prNumber} doesn't support streaming. Creating new session.`,
+				);
+			}
+
+			// Look up previous completed session for resume (--continue)
+			const previousSession =
+				agentSessionManager.findResumableSession(sessionKey);
+			const resumableClaudeSessionId = previousSession?.claudeSessionId;
+			const isNewSession = !resumableClaudeSessionId;
+
 			// Create workspace (git worktree) for the PR branch
 			const workspace = await this.createGitHubWorkspace(
 				repository,
@@ -816,6 +843,21 @@ export class EdgeWorker extends EventEmitter {
 				taskInstructions,
 			);
 
+			// Build user prompt: full instructions for new session, <new_comment> XML for continuation
+			let userPrompt: string;
+			if (isNewSession) {
+				userPrompt = taskInstructions;
+			} else {
+				const timestamp = new Date().toISOString();
+				userPrompt = `<new_comment>
+  <author>${commentAuthor}</author>
+  <timestamp>${timestamp}</timestamp>
+  <content>
+${taskInstructions}
+  </content>
+</new_comment>`;
+			}
+
 			// Build allowed tools and directories
 			const allowedTools = this.buildAllowedTools(repository);
 			const disallowedTools = this.buildDisallowedTools(repository);
@@ -830,7 +872,7 @@ export class EdgeWorker extends EventEmitter {
 				allowedTools,
 				allowedDirectories,
 				disallowedTools,
-				undefined, // resumeSessionId
+				resumableClaudeSessionId, // resumeSessionId — from previous completed session on this PR
 				undefined, // labels
 				200, // maxTurns
 				false, // singleTurn
@@ -851,13 +893,19 @@ export class EdgeWorker extends EventEmitter {
 				repository.id,
 			);
 
+			if (!isNewSession) {
+				this.logger.info(
+					`Resuming GitHub session for ${repoFullName}#${prNumber} from Claude session ${resumableClaudeSessionId}`,
+				);
+			}
+
 			this.logger.info(
 				`Starting Claude runner for GitHub PR ${repoFullName}#${prNumber}`,
 			);
 
 			// Start the session and handle completion
 			try {
-				const sessionInfo = await runner.start(taskInstructions);
+				const sessionInfo = await runner.start(userPrompt);
 				this.logger.info(`GitHub session started: ${sessionInfo.sessionId}`);
 
 				// When session completes, post the reply back to GitHub

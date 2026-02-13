@@ -3,6 +3,7 @@ import type {
 	SDKStatusMessage,
 	SDKSystemMessage,
 } from "cyrus-claude-runner";
+import { AgentSessionStatus } from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
 import type { IActivitySink } from "../src/sinks/IActivitySink";
@@ -183,5 +184,51 @@ describe("AgentSessionManager - GitHub Session", () => {
 			type: "thought",
 			body: "Using model: claude-sonnet-4-5-20250514",
 		});
+	});
+
+	// ── Session resume tests ─────────────────────────────────────────────
+
+	it("should capture claudeSessionId via handleClaudeMessage init", async () => {
+		createGitHubSession();
+
+		const systemMessage = {
+			type: "system",
+			subtype: "init",
+			session_id: "claude-session-captured",
+			model: "claude-sonnet-4-5-20250514",
+			tools: ["bash", "grep", "edit"],
+			permissionMode: "default",
+			apiKeySource: "user",
+		} as SDKSystemMessage;
+
+		await manager.handleClaudeMessage(sessionId, systemMessage);
+
+		const session = manager.getSession(sessionId)!;
+		expect(session.claudeSessionId).toBe("claude-session-captured");
+	});
+
+	it("findResumableSession returns completed GitHub session with claudeSessionId", () => {
+		createGitHubSession();
+
+		const session = manager.getSession(sessionId)!;
+		session.claudeSessionId = "claude-session-for-resume";
+		session.status = AgentSessionStatus.Complete;
+		session.updatedAt = Date.now();
+
+		const result = manager.findResumableSession(issueId);
+		expect(result).toBeDefined();
+		expect(result!.id).toBe(sessionId);
+		expect(result!.claudeSessionId).toBe("claude-session-for-resume");
+	});
+
+	it("findResumableSession returns undefined for active GitHub session", () => {
+		createGitHubSession();
+
+		const session = manager.getSession(sessionId)!;
+		session.claudeSessionId = "claude-session-active";
+		// Status is Active by default
+
+		const result = manager.findResumableSession(issueId);
+		expect(result).toBeUndefined();
 	});
 });

@@ -1507,6 +1507,21 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Find the most recent completed session with a captured claudeSessionId for a given issueId.
+	 * Used to support session resume (--continue) for subsequent comments on the same PR/issue.
+	 */
+	findResumableSession(issueId: string): CyrusAgentSession | undefined {
+		return Array.from(this.sessions.values())
+			.filter(
+				(session) =>
+					this.getSessionIssueId(session) === issueId &&
+					session.status === AgentSessionStatus.Complete &&
+					Boolean(session.claudeSessionId),
+			)
+			.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+	}
+
+	/**
 	 * Get all sessions
 	 */
 	getAllSessions(): CyrusAgentSession[] {
