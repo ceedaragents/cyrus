@@ -288,6 +288,9 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+      cyrus-cursor-runner:
+        specifier: workspace:*
+        version: link:../cursor-runner
       cyrus-gemini-runner:
         specifier: workspace:*
         version: link:../gemini-runner

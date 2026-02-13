@@ -3,13 +3,7 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"module": "NodeNext",
-		"moduleResolution": "NodeNext",
-		"baseUrl": "../../",
-		"paths": {
-			"cyrus-core": ["packages/core/src/index.ts"],
-			"cyrus-gemini-runner": ["packages/gemini-runner/src/index.ts"],
-			"cyrus-simple-agent-runner": ["packages/simple-agent-runner/src/index.ts"]
-		}
+		"moduleResolution": "NodeNext"
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts"]
