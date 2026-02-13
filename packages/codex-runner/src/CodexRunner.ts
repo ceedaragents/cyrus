@@ -494,14 +494,35 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		const appendSystemPrompt = (this.config.appendSystemPrompt ?? "").trim();
 		const configOverrides = this.config.configOverrides
 			? { ...this.config.configOverrides }
-			: undefined;
+			: {};
+
+		const sandboxWorkspaceWrite = configOverrides.sandbox_workspace_write;
+		// Keep workspace-write as the default sandbox, but enable outbound network so
+		// common remote workflows (for example `git`/`gh` against GitHub) work without
+		// requiring danger-full-access.
+		if (
+			sandboxWorkspaceWrite &&
+			typeof sandboxWorkspaceWrite === "object" &&
+			!Array.isArray(sandboxWorkspaceWrite)
+		) {
+			configOverrides.sandbox_workspace_write = {
+				...sandboxWorkspaceWrite,
+				network_access:
+					(sandboxWorkspaceWrite as { network_access?: boolean })
+						.network_access ?? true,
+			};
+		} else if (!sandboxWorkspaceWrite) {
+			configOverrides.sandbox_workspace_write = { network_access: true };
+		}
 
 		if (!appendSystemPrompt) {
-			return configOverrides;
+			return Object.keys(configOverrides).length > 0
+				? configOverrides
+				: undefined;
 		}
 
 		return {
-			...(configOverrides ?? {}),
+			...configOverrides,
 			developer_instructions: appendSystemPrompt,
 		};
 	}
