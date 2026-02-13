@@ -12,7 +12,8 @@ First, push the current branch (even if there are no new commits) and create a d
 git push -u origin HEAD
 
 # Check if PR already exists, if not create a draft PR
-gh pr view --json url,number 2>/dev/null || gh pr create --draft --title "WIP: [brief description]" --body "Work in progress for [ISSUE-ID]. Full description to follow."
+# IMPORTANT: The --base flag MUST match the base_branch from the issue context
+gh pr view --json url,number 2>/dev/null || gh pr create --draft --base [base_branch from context] --title "WIP: [brief description]" --body "Work in progress for [ISSUE-ID]. Full description to follow."
 ```
 
 Record the PR URL and number for use in the changelog entry.
@@ -47,6 +48,7 @@ If changelog files exist and no entry exists (or entry needs PR link):
 ## Important Notes
 
 - **Create draft PR first** - this gives you the PR number to include in the changelog
+- **Always specify `--base`** - use the base branch from the `<base_branch>` tag in the issue context. Do NOT rely on the repository's default branch setting.
 - **Only update changelogs if they exist** - not all projects use changelogs
 - **Avoid duplicate entries** - check if an entry already exists for this issue before adding
 - **Follow Keep a Changelog format** - https://keepachangelog.com/

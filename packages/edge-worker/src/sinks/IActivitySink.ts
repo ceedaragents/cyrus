@@ -1,6 +1,32 @@
 import type { AgentActivityContent } from "cyrus-core";
 
 /**
+ * String literal type for activity signals.
+ * Maps to platform-specific signal enums (e.g., Linear's AgentActivitySignal).
+ */
+export type ActivitySignal = "auth" | "select" | "stop" | "continue";
+
+/**
+ * Options for posting an activity.
+ */
+export interface ActivityPostOptions {
+	/** Whether the activity is ephemeral (disappears when replaced by next activity) */
+	ephemeral?: boolean;
+	/** Signal modifier for how the activity should be interpreted */
+	signal?: ActivitySignal;
+	/** Additional metadata for the signal */
+	signalMetadata?: Record<string, unknown>;
+}
+
+/**
+ * Result of posting an activity.
+ */
+export interface ActivityPostResult {
+	/** The ID of the created activity, if available */
+	activityId?: string;
+}
+
+/**
  * Interface for activity sinks that receive and process agent session activities.
  *
  * IActivitySink decouples activity posting from IIssueTrackerService, enabling
@@ -24,12 +50,14 @@ export interface IActivitySink {
 	 *
 	 * @param sessionId - The agent session ID to post to
 	 * @param activity - The activity content (thought, action, response, error, etc.)
-	 * @returns Promise that resolves when the activity is posted
+	 * @param options - Optional settings for ephemeral, signal, signalMetadata
+	 * @returns Promise that resolves with the result of the activity post
 	 */
 	postActivity(
 		sessionId: string,
 		activity: AgentActivityContent,
-	): Promise<void>;
+		options?: ActivityPostOptions,
+	): Promise<ActivityPostResult>;
 
 	/**
 	 * Create a new agent session on an issue.
