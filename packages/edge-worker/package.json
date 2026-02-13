@@ -14,7 +14,7 @@
 	],
 	"scripts": {
 		"build": "tsc && npm run copy-prompts",
-		"copy-prompts": "mkdir -p dist/prompts/subroutines && cp -r src/prompts/subroutines/*.md dist/prompts/subroutines/ && cp label-prompt-template.md dist/ && cp -r prompts dist/",
+		"copy-prompts": "mkdir -p dist/prompts/subroutines dist/edge-worker/prompts/subroutines dist/edge-worker/src/prompts/subroutines && cp -r src/prompts/subroutines/*.md dist/prompts/subroutines/ && cp -r src/prompts/subroutines/*.md dist/edge-worker/src/prompts/subroutines/ && cp label-prompt-template.md dist/ && cp -r prompts dist/ && cp -r prompts/* dist/edge-worker/prompts/",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run",
