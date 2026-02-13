@@ -49,7 +49,7 @@ export async function handleCyrusConfig(
 
 		// Process repositories to apply defaults
 		const repositories = edgeConfig.repositories.map(
-			(repo: EdgeConfig["repositories"][number]) => {
+			(repo: CyrusConfigPayload["repositories"][number]) => {
 				return {
 					...repo,
 					// Set workspaceBaseDir (use provided or default to ~/.cyrus/workspaces)
