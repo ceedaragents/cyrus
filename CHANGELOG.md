@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Agent and model selectors now work across Claude, Gemini, and Codex** - You can now set runner and model directly in issue descriptions using `[agent=claude|gemini|codex]` and `[model=<model-name>]`. This is not Codex-only: selectors apply to all supported runners. `[agent=...]` explicitly selects the runner, `[model=...]` selects the model and can infer runner family, and description tags take precedence over labels. ([#850](https://github.com/ceedaragents/cyrus/pull/850))
+- **Codex tool activity is now visible in Linear sessions** - Codex runs now emit tool lifecycle activity (including command execution, file edits, web fetch/search, MCP tool calls, and todo updates) so activity streams show execution details instead of only final output. ([#850](https://github.com/ceedaragents/cyrus/pull/850))
+- **Codex todo output now renders as proper checklists** - Todo items are now formatted as markdown task lists (`- [ ]` and `- [x]`) for correct checklist rendering in Linear. ([#850](https://github.com/ceedaragents/cyrus/pull/850))
+- **Cursor agent selection now runs through end-to-end workflows** - Issues tagged with `[agent=cursor]` now execute with the Cursor runner in F1 validation flows and complete with final response activity posting. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
+
 ## [0.2.21] - 2026-02-09
 
 ### Changed

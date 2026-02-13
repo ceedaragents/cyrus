@@ -93,6 +93,8 @@ export interface ProcedureMetadata {
 		completedAt: number;
 		claudeSessionId: string | null;
 		geminiSessionId: string | null;
+		codexSessionId?: string | null;
+		cursorSessionId?: string | null;
 		/** The result text from the completed subroutine (if available) */
 		result?: string;
 	}>;

@@ -175,11 +175,22 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Determine which runner is being used
 		const runner = linearSession.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerType =
+			runner?.constructor.name === "GeminiRunner"
+				? "gemini"
+				: runner?.constructor.name === "CodexRunner"
+					? "codex"
+					: runner?.constructor.name === "CursorRunner"
+						? "cursor"
+						: "claude";
 
 		// Update the appropriate session ID based on runner type
-		if (isGeminiRunner) {
+		if (runnerType === "gemini") {
 			linearSession.geminiSessionId = claudeSystemMessage.session_id;
+		} else if (runnerType === "codex") {
+			linearSession.codexSessionId = claudeSystemMessage.session_id;
+		} else if (runnerType === "cursor") {
+			linearSession.cursorSessionId = claudeSystemMessage.session_id;
 		} else {
 			linearSession.claudeSessionId = claudeSystemMessage.session_id;
 		}
@@ -220,13 +231,24 @@ export class AgentSessionManager extends EventEmitter {
 		// Determine which runner is being used
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		const runner = session?.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerType =
+			runner?.constructor.name === "GeminiRunner"
+				? "gemini"
+				: runner?.constructor.name === "CodexRunner"
+					? "codex"
+					: runner?.constructor.name === "CursorRunner"
+						? "cursor"
+						: "claude";
 
 		const sessionEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
-			...(isGeminiRunner
+			...(runnerType === "gemini"
 				? { geminiSessionId: sdkMessage.session_id }
-				: { claudeSessionId: sdkMessage.session_id }),
+				: runnerType === "codex"
+					? { codexSessionId: sdkMessage.session_id }
+					: runnerType === "cursor"
+						? { cursorSessionId: sdkMessage.session_id }
+						: { claudeSessionId: sdkMessage.session_id }),
 			type: sdkMessage.type,
 			content: this.extractContent(sdkMessage),
 			metadata: {
@@ -339,8 +361,12 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
-		// Get the session ID (either Claude or Gemini)
-		const sessionId = session.claudeSessionId || session.geminiSessionId;
+		// Get the session ID (Claude, Gemini, or Codex)
+		const sessionId =
+			session.claudeSessionId ||
+			session.geminiSessionId ||
+			session.codexSessionId ||
+			session.cursorSessionId;
 		if (!sessionId) {
 			console.error(
 				`[AgentSessionManager] No session ID found for procedure session`,
@@ -830,13 +856,24 @@ export class AgentSessionManager extends EventEmitter {
 		// Determine which runner is being used
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		const runner = session?.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerType =
+			runner?.constructor.name === "GeminiRunner"
+				? "gemini"
+				: runner?.constructor.name === "CodexRunner"
+					? "codex"
+					: runner?.constructor.name === "CursorRunner"
+						? "cursor"
+						: "claude";
 
 		const resultEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
-			...(isGeminiRunner
+			...(runnerType === "gemini"
 				? { geminiSessionId: resultMessage.session_id }
-				: { claudeSessionId: resultMessage.session_id }),
+				: runnerType === "codex"
+					? { codexSessionId: resultMessage.session_id }
+					: runnerType === "cursor"
+						? { cursorSessionId: resultMessage.session_id }
+						: { claudeSessionId: resultMessage.session_id }),
 			type: "result",
 			content: "result" in resultMessage ? resultMessage.result : "",
 			metadata: {
@@ -1087,10 +1124,9 @@ export class AgentSessionManager extends EventEmitter {
 									}
 								}
 
-								const formattedTask = formatter.formatTaskParameter(
-									baseToolName,
-									enrichedInput,
-								);
+								const formattedTask = formatter.formatTaskParameter
+									? formatter.formatTaskParameter(baseToolName, enrichedInput)
+									: formatter.formatToolParameter(baseToolName, enrichedInput);
 								content = {
 									type: "thought",
 									body: formattedTask,
@@ -1222,10 +1258,9 @@ export class AgentSessionManager extends EventEmitter {
 
 							// Special handling for Task tools - format as thought instead of action
 							const toolInput = entry.metadata.toolInput || entry.content;
-							const formattedTask = formatter.formatTaskParameter(
-								toolName,
-								toolInput,
-							);
+							const formattedTask = formatter.formatTaskParameter
+								? formatter.formatTaskParameter(toolName, toolInput)
+								: formatter.formatToolParameter(toolName, toolInput);
 							content = {
 								type: "thought",
 								body: formattedTask,
