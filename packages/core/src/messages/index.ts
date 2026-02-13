@@ -28,6 +28,8 @@ export {
 	hasGitHubUserPromptPlatformData,
 	hasLinearSessionStartPlatformData,
 	hasLinearUserPromptPlatformData,
+	hasSlackSessionStartPlatformData,
+	hasSlackUserPromptPlatformData,
 	isContentUpdateMessage,
 	isGitHubMessage,
 	isLinearMessage,
@@ -56,6 +58,9 @@ export type {
 	MessageAuthor,
 	MessageSource,
 	SessionStartMessage,
+	// Slack platform data types
+	SlackSessionStartPlatformData,
+	SlackUserPromptPlatformData,
 	StopSignalMessage,
 	UnassignMessage,
 	UserPromptMessage,

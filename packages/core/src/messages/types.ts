@@ -8,7 +8,11 @@
  * @module messages/types
  */
 
-import type { GitHubPlatformRef, LinearPlatformRef } from "./platform-refs.js";
+import type {
+	GitHubPlatformRef,
+	LinearPlatformRef,
+	SlackPlatformRef,
+} from "./platform-refs.js";
 
 // ============================================================================
 // MESSAGE ACTION TYPES
@@ -130,6 +134,20 @@ export interface GitHubSessionStartPlatformData {
 }
 
 /**
+ * Slack-specific platform data for session start.
+ */
+export interface SlackSessionStartPlatformData {
+	/** Channel where the mention occurred */
+	channel: SlackPlatformRef["channel"];
+	/** Thread information */
+	thread: SlackPlatformRef["thread"];
+	/** The message that triggered this session */
+	message: SlackPlatformRef["message"];
+	/** Slack Bot token for API access */
+	slackBotToken?: string;
+}
+
+/**
  * Session start message - initiates a new agent session.
  * Triggered by: Linear delegation, PR mention, thread start, etc.
  */
@@ -144,7 +162,10 @@ export interface SessionStartMessage extends InternalMessageBase {
 	/** Labels attached to the work item */
 	labels?: string[];
 	/** Platform-specific data preserved for handlers that need it */
-	platformData: LinearSessionStartPlatformData | GitHubSessionStartPlatformData;
+	platformData:
+		| LinearSessionStartPlatformData
+		| GitHubSessionStartPlatformData
+		| SlackSessionStartPlatformData;
 }
 
 // ============================================================================
@@ -176,6 +197,20 @@ export interface GitHubUserPromptPlatformData {
 }
 
 /**
+ * Slack-specific platform data for user prompt.
+ */
+export interface SlackUserPromptPlatformData {
+	/** Channel where the message was sent */
+	channel: SlackPlatformRef["channel"];
+	/** Thread information */
+	thread: SlackPlatformRef["thread"];
+	/** The message containing the prompt */
+	message: SlackPlatformRef["message"];
+	/** Slack Bot token for API access */
+	slackBotToken?: string;
+}
+
+/**
  * User prompt message - a user message during an active session.
  * Triggered by: Mid-session comments, follow-up questions, etc.
  */
@@ -184,7 +219,10 @@ export interface UserPromptMessage extends InternalMessageBase {
 	/** The user's message content */
 	content: string;
 	/** Platform-specific data */
-	platformData: LinearUserPromptPlatformData | GitHubUserPromptPlatformData;
+	platformData:
+		| LinearUserPromptPlatformData
+		| GitHubUserPromptPlatformData
+		| SlackUserPromptPlatformData;
 }
 
 // ============================================================================
