@@ -927,4 +927,40 @@ Issue: {{issue_identifier}}`;
 			expect(runnerSelection.modelOverride).toBe("opus");
 		});
 	});
+
+	describe("Session Continuation", () => {
+		it("should pass cursorSessionId as resumeSessionId for cursor continuations", async () => {
+			const mockIssue = createMockIssueWithLabels(["cursor"]);
+			vi.spyOn(edgeWorker as any, "fetchFullIssueDetails").mockResolvedValue(
+				mockIssue,
+			);
+			vi.spyOn(edgeWorker as any, "buildSessionPrompt").mockResolvedValue(
+				"Resume this session",
+			);
+			vi.spyOn(edgeWorker as any, "savePersistedState").mockResolvedValue(
+				undefined,
+			);
+
+			const session: any = {
+				issueId: "issue-123",
+				workspace: { path: "/test/workspaces/TEST-123" },
+				issue: { identifier: "TEST-123" },
+				cursorSessionId: "cursor-session-existing",
+			};
+
+			await (edgeWorker as any).resumeAgentSession(
+				session,
+				mockRepository,
+				"agent-session-123",
+				mockAgentSessionManager,
+				"follow-up prompt",
+			);
+
+			expect(capturedRunnerType).toBe("cursor");
+			expect(capturedRunnerConfig.resumeSessionId).toBe(
+				"cursor-session-existing",
+			);
+			expect(mockCursorRunner.start).toHaveBeenCalledOnce();
+		});
+	});
 });

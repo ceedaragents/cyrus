@@ -6703,9 +6703,13 @@ ${input.userComment}
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
 		const hasCodexSession = !isNewSession && Boolean(session.codexSessionId);
+		const hasCursorSession = !isNewSession && Boolean(session.cursorSessionId);
 		const needsNewSession =
 			isNewSession ||
-			(!hasClaudeSession && !hasGeminiSession && !hasCodexSession);
+			(!hasClaudeSession &&
+				!hasGeminiSession &&
+				!hasCodexSession &&
+				!hasCursorSession);
 
 		// Fetch system prompt based on labels
 
@@ -6770,6 +6774,10 @@ ${input.userComment}
 					: session.codexSessionId
 						? session.codexSessionId
 						: session.cursorSessionId;
+
+		console.log(
+			`[resumeAgentSession] needsNewSession=${needsNewSession}, resumeSessionId=${resumeSessionId ?? "none"}`,
+		);
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
