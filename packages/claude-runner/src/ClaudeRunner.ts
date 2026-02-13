@@ -564,6 +564,21 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				error instanceof Error &&
 				error.message.includes("Claude Code process exited with code 143");
 
+			// Check for stale session error - occurs when resuming a session that no longer exists
+			// This typically happens after a process restart when the persisted session ID is stale
+			// Detection methods:
+			// 1. Error message contains "No conversation found with session ID" (from SDK stderr)
+			// 2. Exit code 1 + resumeSessionId set + only init message received (Claude crashed immediately)
+			const hasStaleSessionText =
+				error instanceof Error &&
+				error.message.includes("No conversation found with session ID");
+			const isExitCode1WithResume =
+				error instanceof Error &&
+				error.message.includes("Claude Code process exited with code 1") &&
+				this.config.resumeSessionId &&
+				this.messages.length <= 1; // Only init message received before crash
+			const isStaleSessionError = hasStaleSessionText || isExitCode1WithResume;
+
 			if (isAbortError) {
 				// User-initiated stop - log at info level, not error
 				console.log("[ClaudeRunner] Session stopped by user");
@@ -571,6 +586,13 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				console.log(
 					"[ClaudeRunner] Session was terminated gracefully (SIGTERM)",
 				);
+			} else if (isStaleSessionError && this.config.resumeSessionId) {
+				// Stale session - emit resume-failed event so caller can retry with context
+				console.log(
+					`[ClaudeRunner] Resume failed - session no longer exists: ${this.config.resumeSessionId}`,
+				);
+				this.emit("resume-failed", this.config.resumeSessionId);
+				// Don't emit generic error - the resume-failed handler will handle recovery
 			} else {
 				// Actual error - log and emit
 				console.error("[ClaudeRunner] Session error:", error);
