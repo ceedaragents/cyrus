@@ -1,4 +1,5 @@
 export type {
+	AddReactionParams,
 	GitHubCommentResponse,
 	GitHubCommentServiceConfig,
 	PostCommentParams,

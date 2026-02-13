@@ -10,25 +10,26 @@ import type {
 	SDKUserMessage,
 } from "cyrus-claude-runner";
 import {
-	type AgentActivityCreateInput,
-	AgentActivitySignal,
 	AgentSessionStatus,
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
 	createLogger,
 	type IAgentRunner,
-	type IIssueTrackerService,
 	type ILogger,
 	type IssueMinimal,
 	type SerializedCyrusAgentSession,
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
 } from "cyrus-core";
-import type { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
 import type { ValidationLoopMetadata } from "./procedures/types.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
+import type {
+	ActivityPostOptions,
+	ActivitySignal,
+	IActivitySink,
+} from "./sinks/index.js";
 import {
 	DEFAULT_VALIDATION_LOOP_CONFIG,
 	parseValidationResult,
@@ -91,7 +92,7 @@ export declare interface AgentSessionManager {
  */
 export class AgentSessionManager extends EventEmitter {
 	private logger: ILogger;
-	private issueTracker: IIssueTrackerService;
+	private activitySink: IActivitySink;
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its id
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
@@ -110,7 +111,7 @@ export class AgentSessionManager extends EventEmitter {
 	) => Promise<void>;
 
 	constructor(
-		issueTracker: IIssueTrackerService,
+		activitySink: IActivitySink,
 		getParentSessionId?: (childSessionId: string) => string | undefined,
 		resumeParentSession?: (
 			parentSessionId: string,
@@ -119,20 +120,15 @@ export class AgentSessionManager extends EventEmitter {
 		) => Promise<void>,
 		procedureAnalyzer?: ProcedureAnalyzer,
 		sharedApplicationServer?: SharedApplicationServer,
-		_globalSessionRegistry?: GlobalSessionRegistry,
 		logger?: ILogger,
 	) {
 		super();
 		this.logger = logger ?? createLogger({ component: "AgentSessionManager" });
-		this.issueTracker = issueTracker;
+		this.activitySink = activitySink;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.procedureAnalyzer = procedureAnalyzer;
 		this.sharedApplicationServer = sharedApplicationServer;
-		// GlobalSessionRegistry parameter added for future migration (Phase 4)
-		// Currently unused but prepared for when AgentSessionManager is refactored
-		// to use centralized session storage instead of local Maps
-		// Prefixed with _ to indicate intentionally unused for now
 	}
 
 	/**
@@ -539,7 +535,7 @@ export class AgentSessionManager extends EventEmitter {
 		session: CyrusAgentSession,
 		sessionId: string,
 		resultMessage: SDKResultMessage,
-		_sessionId: string,
+		_runnerSessionId: string,
 		_nextSubroutine: { name: string } | null,
 	): Promise<boolean> {
 		const log = this.sessionLog(sessionId);
@@ -766,7 +762,7 @@ export class AgentSessionManager extends EventEmitter {
 						sessionId,
 						message as SDKUserMessage,
 					);
-					await this.syncEntryToLinear(userEntry, sessionId);
+					await this.syncEntryToActivitySink(userEntry, sessionId);
 					break;
 				}
 
@@ -775,7 +771,7 @@ export class AgentSessionManager extends EventEmitter {
 						sessionId,
 						message as SDKAssistantMessage,
 					);
-					await this.syncEntryToLinear(assistantEntry, sessionId);
+					await this.syncEntryToActivitySink(assistantEntry, sessionId);
 					break;
 				}
 
@@ -840,9 +836,9 @@ export class AgentSessionManager extends EventEmitter {
 			},
 		};
 
-		// DON'T store locally - syncEntryToLinear will do it
+		// DON'T store locally - syncEntryToActivitySink will do it
 		// Sync to Linear
-		await this.syncEntryToLinear(resultEntry, sessionId);
+		await this.syncEntryToActivitySink(resultEntry, sessionId);
 	}
 
 	/**
@@ -962,7 +958,7 @@ export class AgentSessionManager extends EventEmitter {
 	/**
 	 * Sync session entry to external tracker (create AgentActivity)
 	 */
-	private async syncEntryToLinear(
+	private async syncEntryToActivitySink(
 		entry: CyrusAgentSessionEntry,
 		sessionId: string,
 	): Promise<void> {
@@ -1385,17 +1381,19 @@ export class AgentSessionManager extends EventEmitter {
 				return;
 			}
 
-			const activityInput: AgentActivityCreateInput = {
-				agentSessionId: session.externalSessionId, // Use the external session ID
+			const options: ActivityPostOptions = {};
+			if (ephemeral) {
+				options.ephemeral = true;
+			}
+
+			const result = await this.activitySink.postActivity(
+				session.externalSessionId,
 				content,
-				...(ephemeral && { ephemeral: true }),
-			};
+				options,
+			);
 
-			const result = await this.issueTracker.createAgentActivity(activityInput);
-
-			if (result.success && result.agentActivity) {
-				const agentActivity = await result.agentActivity;
-				entry.linearAgentActivityId = agentActivity.id;
+			if (result.activityId) {
+				entry.linearAgentActivityId = result.activityId;
 				if (entry.type === "result") {
 					log.info(
 						`Result message emitted to Linear (activity ${entry.linearAgentActivityId})`,
@@ -1405,11 +1403,9 @@ export class AgentSessionManager extends EventEmitter {
 						`Created ${content.type} activity ${entry.linearAgentActivityId}`,
 					);
 				}
-			} else {
-				log.error(`Failed to create Linear activity:`, result);
 			}
 		} catch (error) {
-			log.error(`Failed to sync entry to Linear:`, error);
+			log.error(`Failed to sync entry to activity sink:`, error);
 		}
 	}
 
@@ -1534,14 +1530,19 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Post an activity to the external issue tracker for a session.
+	 * Post an activity to the activity sink for a session.
 	 * Consolidates session lookup, externalSessionId guard, try/catch, and logging.
 	 *
 	 * @returns The activity ID when resolved, `null` otherwise.
 	 */
 	private async postActivity(
 		sessionId: string,
-		input: Omit<AgentActivityCreateInput, "agentSessionId">,
+		input: {
+			content: any;
+			ephemeral?: boolean;
+			signal?: ActivitySignal;
+			signalMetadata?: Record<string, unknown>;
+		},
 		label: string,
 	): Promise<string | null> {
 		const log = this.sessionLog(sessionId);
@@ -1555,21 +1556,28 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.externalSessionId,
-				...input,
-			});
-
-			if (result.success) {
-				if (result.agentActivity) {
-					const activity = await result.agentActivity;
-					log.debug(`Created ${label} activity ${activity.id}`);
-					return activity.id;
-				}
-				log.debug(`Created ${label}`);
-				return null;
+			const options: ActivityPostOptions = {};
+			if (input.ephemeral !== undefined) {
+				options.ephemeral = input.ephemeral;
 			}
-			log.error(`Failed to create ${label}:`, result);
+			if (input.signal) {
+				options.signal = input.signal;
+			}
+			if (input.signalMetadata) {
+				options.signalMetadata = input.signalMetadata;
+			}
+
+			const result = await this.activitySink.postActivity(
+				session.externalSessionId,
+				input.content,
+				options,
+			);
+
+			if (result.activityId) {
+				log.debug(`Created ${label} activity ${result.activityId}`);
+				return result.activityId;
+			}
+			log.debug(`Created ${label}`);
 			return null;
 		} catch (error) {
 			log.error(`Error creating ${label}:`, error);
@@ -1652,7 +1660,7 @@ export class AgentSessionManager extends EventEmitter {
 			sessionId,
 			{
 				content: { type: "elicitation", body },
-				signal: AgentActivitySignal.Auth,
+				signal: "auth",
 				signalMetadata: { url: approvalUrl },
 			},
 			"approval elicitation",

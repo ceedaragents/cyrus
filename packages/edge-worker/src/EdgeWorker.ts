@@ -92,6 +92,7 @@ import {
 	type GitHubWebhookEvent,
 	isCommentOnPullRequest,
 	isIssueCommentPayload,
+	isPullRequestReviewCommentPayload,
 	stripMention,
 } from "cyrus-github-event-transport";
 import {
@@ -122,6 +123,7 @@ import {
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -316,8 +318,12 @@ export class EdgeWorker extends EventEmitter {
 				//
 				// This allows the AgentSessionManager to call back into itself to access its own sessions,
 				// enabling child sessions to trigger parent session resumption using the same manager instance.
-				const agentSessionManager = new AgentSessionManager(
+				const activitySink = new LinearActivitySink(
 					issueTracker,
+					repo.linearWorkspaceId,
+				);
+				const agentSessionManager = new AgentSessionManager(
+					activitySink,
 					(childSessionId: string) => {
 						this.logger.debug(
 							`Looking up parent session for child ${childSessionId}`,
@@ -340,7 +346,6 @@ export class EdgeWorker extends EventEmitter {
 					},
 					this.procedureAnalyzer,
 					this.sharedApplicationServer,
-					this.globalSessionRegistry,
 				);
 
 				// Subscribe to subroutine completion events
@@ -682,6 +687,30 @@ export class EdgeWorker extends EventEmitter {
 			this.logger.info(
 				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}`,
 			);
+
+			// Add "eyes" reaction to acknowledge receipt
+			const reactionToken = event.installationToken || process.env.GITHUB_TOKEN;
+			if (reactionToken) {
+				const commentId = extractCommentId(event);
+				if (commentId) {
+					this.gitHubCommentService
+						.addReaction({
+							token: reactionToken,
+							owner: extractRepoOwner(event),
+							repo: extractRepoName(event),
+							commentId,
+							isPullRequestReviewComment: isPullRequestReviewCommentPayload(
+								event.payload,
+							),
+							content: "eyes",
+						})
+						.catch((err: unknown) => {
+							this.logger.warn(
+								`Failed to add reaction: ${err instanceof Error ? err.message : err}`,
+							);
+						});
+				}
+			}
 
 			// Find the repository configuration that matches this GitHub repo
 			const repository = this.findRepositoryByGitHubUrl(repoFullName);
@@ -1669,8 +1698,12 @@ ${taskInstructions}
 				this.issueTrackers.set(repo.id, issueTracker);
 
 				// Create AgentSessionManager with same pattern as constructor
-				const agentSessionManager = new AgentSessionManager(
+				const activitySink = new LinearActivitySink(
 					issueTracker,
+					repo.linearWorkspaceId,
+				);
+				const agentSessionManager = new AgentSessionManager(
+					activitySink,
 					(childSessionId: string) => {
 						return this.globalSessionRegistry.getParentSessionId(
 							childSessionId,
@@ -1687,7 +1720,6 @@ ${taskInstructions}
 					},
 					this.procedureAnalyzer,
 					this.sharedApplicationServer,
-					this.globalSessionRegistry,
 				);
 
 				// Subscribe to subroutine completion events

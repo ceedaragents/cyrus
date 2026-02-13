@@ -1,5 +1,14 @@
-import type { AgentActivityContent, IIssueTrackerService } from "cyrus-core";
-import type { IActivitySink } from "./IActivitySink.js";
+import {
+	type AgentActivityContent,
+	AgentActivitySignal,
+	type IIssueTrackerService,
+} from "cyrus-core";
+import type {
+	ActivityPostOptions,
+	ActivityPostResult,
+	ActivitySignal,
+	IActivitySink,
+} from "./IActivitySink.js";
 
 /**
  * Linear-specific implementation of IActivitySink.
@@ -21,7 +30,7 @@ import type { IActivitySink } from "./IActivitySink.js";
  * const sessionId = await sink.createAgentSession('issue-id-456');
  *
  * // Post activities
- * await sink.postActivity(sessionId, {
+ * const result = await sink.postActivity(sessionId, {
  *   type: 'thought',
  *   body: 'Analyzing the issue...'
  * });
@@ -47,6 +56,22 @@ export class LinearActivitySink implements IActivitySink {
 	}
 
 	/**
+	 * Map a platform-agnostic ActivitySignal string to Linear's AgentActivitySignal enum.
+	 */
+	private mapSignal(signal: ActivitySignal): AgentActivitySignal {
+		switch (signal) {
+			case "auth":
+				return AgentActivitySignal.Auth;
+			case "select":
+				return AgentActivitySignal.Select;
+			case "stop":
+				return AgentActivitySignal.Stop;
+			case "continue":
+				return AgentActivitySignal.Continue;
+		}
+	}
+
+	/**
 	 * Post an activity to an existing agent session.
 	 *
 	 * Wraps IIssueTrackerService.createAgentActivity() to provide a simplified
@@ -54,33 +79,30 @@ export class LinearActivitySink implements IActivitySink {
 	 *
 	 * @param sessionId - The agent session ID to post to
 	 * @param activity - The activity content (thought, action, response, error, etc.)
-	 * @returns Promise that resolves when the activity is posted
-	 *
-	 * @example
-	 * ```typescript
-	 * // Post a thought activity
-	 * await sink.postActivity(sessionId, {
-	 *   type: 'thought',
-	 *   body: 'Analyzing the codebase...'
-	 * });
-	 *
-	 * // Post an action activity
-	 * await sink.postActivity(sessionId, {
-	 *   type: 'action',
-	 *   action: 'read_file',
-	 *   parameter: 'src/index.ts',
-	 *   result: 'File contents...'
-	 * });
-	 * ```
+	 * @param options - Optional settings for ephemeral, signal, signalMetadata
+	 * @returns Promise that resolves with the activity post result
 	 */
 	async postActivity(
 		sessionId: string,
 		activity: AgentActivityContent,
-	): Promise<void> {
-		await this.issueTracker.createAgentActivity({
+		options?: ActivityPostOptions,
+	): Promise<ActivityPostResult> {
+		const result = await this.issueTracker.createAgentActivity({
 			agentSessionId: sessionId,
 			content: activity,
+			...(options?.ephemeral !== undefined && { ephemeral: options.ephemeral }),
+			...(options?.signal && { signal: this.mapSignal(options.signal) }),
+			...(options?.signalMetadata && {
+				signalMetadata: options.signalMetadata,
+			}),
 		});
+
+		if (result.success && result.agentActivity) {
+			const agentActivity = await result.agentActivity;
+			return { activityId: agentActivity.id };
+		}
+
+		return {};
 	}
 
 	/**
@@ -91,12 +113,6 @@ export class LinearActivitySink implements IActivitySink {
 	 *
 	 * @param issueId - The issue ID to attach the session to
 	 * @returns Promise that resolves with the created session ID
-	 *
-	 * @example
-	 * ```typescript
-	 * const sessionId = await sink.createAgentSession('issue-uuid-123');
-	 * console.log(`Created session: ${sessionId}`);
-	 * ```
 	 */
 	async createAgentSession(issueId: string): Promise<string> {
 		const result = await this.issueTracker.createAgentSessionOnIssue({
