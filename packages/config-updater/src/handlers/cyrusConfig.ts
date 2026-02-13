@@ -50,17 +50,17 @@ export async function handleCyrusConfig(
 		// Process repositories to apply defaults
 		const repositories = edgeConfig.repositories.map(
 			(repo: EdgeConfig["repositories"][number]) => {
-			return {
-				...repo,
-				// Set workspaceBaseDir (use provided or default to ~/.cyrus/workspaces)
-				workspaceBaseDir:
-					repo.workspaceBaseDir || join(cyrusHome, "workspaces"),
-				// Set isActive (defaults to true)
-				isActive: repo.isActive !== false,
-				// Ensure teamKeys is always an array
-				teamKeys: repo.teamKeys || [],
-			};
-		},
+				return {
+					...repo,
+					// Set workspaceBaseDir (use provided or default to ~/.cyrus/workspaces)
+					workspaceBaseDir:
+						repo.workspaceBaseDir || join(cyrusHome, "workspaces"),
+					// Set isActive (defaults to true)
+					isActive: repo.isActive !== false,
+					// Ensure teamKeys is always an array
+					teamKeys: repo.teamKeys || [],
+				};
+			},
 		);
 
 		// Backwards compatibility: migrate legacy global model keys to Claude-specific keys

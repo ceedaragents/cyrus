@@ -43,15 +43,17 @@ export class ConfigService {
 
 		// Strip promptTemplatePath from all repositories to ensure built-in template is used
 		if (config.repositories) {
-			config.repositories = config.repositories.map((repo) => {
-				const { promptTemplatePath, ...repoWithoutTemplate } = repo;
-				if (promptTemplatePath) {
-					this.logger.info(
-						`Ignoring custom prompt template for repository: ${repo.name} (using built-in template)`,
-					);
-				}
-				return repoWithoutTemplate;
-			});
+			config.repositories = config.repositories.map(
+				(repo: EdgeConfig["repositories"][number]) => {
+					const { promptTemplatePath, ...repoWithoutTemplate } = repo;
+					if (promptTemplatePath) {
+						this.logger.info(
+							`Ignoring custom prompt template for repository: ${repo.name} (using built-in template)`,
+						);
+					}
+					return repoWithoutTemplate;
+				},
+			);
 		}
 
 		// Run migrations on loaded config

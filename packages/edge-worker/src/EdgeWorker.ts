@@ -1086,7 +1086,9 @@ export class EdgeWorker extends EventEmitter {
 		removed: RepositoryConfig[];
 	} {
 		const currentRepos = new Map(this.repositories);
-		const newRepos = new Map(newConfig.repositories.map((r) => [r.id, r]));
+		const newRepos = new Map<string, RepositoryConfig>(
+			newConfig.repositories.map((r: RepositoryConfig) => [r.id, r]),
+		);
 
 		const added: RepositoryConfig[] = [];
 		const modified: RepositoryConfig[] = [];
@@ -2099,7 +2101,7 @@ export class EdgeWorker extends EventEmitter {
 		const debuggerLabels = Array.isArray(debuggerConfig)
 			? debuggerConfig
 			: debuggerConfig?.labels;
-		const hasDebuggerLabel = debuggerLabels?.some((label) =>
+		const hasDebuggerLabel = debuggerLabels?.some((label: string) =>
 			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
@@ -2115,7 +2117,7 @@ export class EdgeWorker extends EventEmitter {
 			? orchestratorConfig
 			: orchestratorConfig?.labels;
 		const hasConfiguredOrchestratorLabel =
-			orchestratorLabels?.some((label) =>
+			orchestratorLabels?.some((label: string) =>
 				lowercaseLabels.includes(label.toLowerCase()),
 			) ?? false;
 
@@ -3291,7 +3293,7 @@ export class EdgeWorker extends EventEmitter {
 		// Use hardcoded check OR config-based check for orchestrator
 		const hasOrchestratorLabel =
 			hasHardcodedOrchestratorLabel ||
-			orchestratorLabels?.some((label) =>
+			orchestratorLabels?.some((label: string) =>
 				lowercaseLabels.includes(label.toLowerCase()),
 			);
 
@@ -3352,10 +3354,10 @@ export class EdgeWorker extends EventEmitter {
 			const matchesLabel =
 				promptType === "orchestrator"
 					? hasHardcodedOrchestratorLabel ||
-						configuredLabels?.some((label) =>
+						configuredLabels?.some((label: string) =>
 							lowercaseLabels.includes(label.toLowerCase()),
 						)
-					: configuredLabels?.some((label) =>
+					: configuredLabels?.some((label: string) =>
 							lowercaseLabels.includes(label.toLowerCase()),
 						);
 
@@ -3610,21 +3612,21 @@ export class EdgeWorker extends EventEmitter {
 			// Label-based routing
 			if (repo.routingLabels && repo.routingLabels.length > 0) {
 				routingMethods.push(
-					`    - Routing labels: ${repo.routingLabels.map((l) => `"${l}"`).join(", ")}`,
+					`    - Routing labels: ${repo.routingLabels.map((l: string) => `"${l}"`).join(", ")}`,
 				);
 			}
 
 			// Team-based routing
 			if (repo.teamKeys && repo.teamKeys.length > 0) {
 				routingMethods.push(
-					`    - Team keys: ${repo.teamKeys.map((t) => `"${t}"`).join(", ")} (create issue in this team)`,
+					`    - Team keys: ${repo.teamKeys.map((t: string) => `"${t}"`).join(", ")} (create issue in this team)`,
 				);
 			}
 
 			// Project-based routing
 			if (repo.projectKeys && repo.projectKeys.length > 0) {
 				routingMethods.push(
-					`    - Project keys: ${repo.projectKeys.map((p) => `"${p}"`).join(", ")} (add issue to this project)`,
+					`    - Project keys: ${repo.projectKeys.map((p: string) => `"${p}"`).join(", ")} (add issue to this project)`,
 				);
 			}
 
@@ -6311,7 +6313,7 @@ ${input.userComment}
 					? orchestratorConfig
 					: orchestratorConfig?.labels;
 				const hasConfiguredOrchestratorLabel =
-					orchestratorLabels?.some((label) =>
+					orchestratorLabels?.some((label: string) =>
 						lowercaseLabels.includes(label.toLowerCase()),
 					) ?? false;
 
@@ -6487,7 +6489,7 @@ ${input.userComment}
 			let selectedPromptType: string | null = null;
 			let triggerLabel: string | null = null;
 			const repository = Array.from(this.repositories.values()).find(
-				(r) => r.id === repositoryId,
+				(r: RepositoryConfig) => r.id === repositoryId,
 			);
 
 			if (repository?.labelPrompts) {
@@ -6496,7 +6498,7 @@ ${input.userComment}
 				const debuggerLabels = Array.isArray(debuggerConfig)
 					? debuggerConfig
 					: debuggerConfig?.labels;
-				const debuggerLabel = debuggerLabels?.find((label) =>
+				const debuggerLabel = debuggerLabels?.find((label: string) =>
 					labels.includes(label),
 				);
 				if (debuggerLabel) {
@@ -6508,7 +6510,7 @@ ${input.userComment}
 					const builderLabels = Array.isArray(builderConfig)
 						? builderConfig
 						: builderConfig?.labels;
-					const builderLabel = builderLabels?.find((label) =>
+					const builderLabel = builderLabels?.find((label: string) =>
 						labels.includes(label),
 					);
 					if (builderLabel) {
@@ -6520,7 +6522,7 @@ ${input.userComment}
 						const scoperLabels = Array.isArray(scoperConfig)
 							? scoperConfig
 							: scoperConfig?.labels;
-						const scoperLabel = scoperLabels?.find((label) =>
+						const scoperLabel = scoperLabels?.find((label: string) =>
 							labels.includes(label),
 						);
 						if (scoperLabel) {
@@ -6532,8 +6534,8 @@ ${input.userComment}
 							const orchestratorLabels = Array.isArray(orchestratorConfig)
 								? orchestratorConfig
 								: (orchestratorConfig?.labels ?? ["orchestrator"]);
-							const orchestratorLabel = orchestratorLabels?.find((label) =>
-								labels.includes(label),
+							const orchestratorLabel = orchestratorLabels?.find(
+								(label: string) => labels.includes(label),
 							);
 							if (orchestratorLabel) {
 								selectedPromptType = "orchestrator";
