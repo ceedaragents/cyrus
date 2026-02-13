@@ -92,6 +92,7 @@ import {
 	type GitHubWebhookEvent,
 	isCommentOnPullRequest,
 	isIssueCommentPayload,
+	isPullRequestReviewCommentPayload,
 	stripMention,
 } from "cyrus-github-event-transport";
 import {
@@ -686,6 +687,30 @@ export class EdgeWorker extends EventEmitter {
 			this.logger.info(
 				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}`,
 			);
+
+			// Add "eyes" reaction to acknowledge receipt
+			const reactionToken = event.installationToken || process.env.GITHUB_TOKEN;
+			if (reactionToken) {
+				const commentId = extractCommentId(event);
+				if (commentId) {
+					this.gitHubCommentService
+						.addReaction({
+							token: reactionToken,
+							owner: extractRepoOwner(event),
+							repo: extractRepoName(event),
+							commentId,
+							isPullRequestReviewComment: isPullRequestReviewCommentPayload(
+								event.payload,
+							),
+							content: "eyes",
+						})
+						.catch((err: unknown) => {
+							this.logger.warn(
+								`Failed to add reaction: ${err instanceof Error ? err.message : err}`,
+							);
+						});
+				}
+			}
 
 			// Find the repository configuration that matches this GitHub repo
 			const repository = this.findRepositoryByGitHubUrl(repoFullName);
