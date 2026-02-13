@@ -26,8 +26,7 @@
 			"cyrus-history-stream": ["packages/history-stream"],
 			"cyrus-edge-worker": ["packages/edge-worker"],
 			"cyrus-claude-runner": ["packages/claude-runner"],
-			"cyrus-codex-runner": ["packages/codex-runner"],
-			"cyrus-cursor-runner": ["packages/cursor-runner"]
+			"cyrus-codex-runner": ["packages/codex-runner"]
 		}
 	},
 	"exclude": ["node_modules", "dist", "build"]

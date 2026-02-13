@@ -48,7 +48,8 @@ export async function handleCyrusConfig(
 		const { restartCyrus, backupConfig, ...edgeConfig } = payload;
 
 		// Process repositories to apply defaults
-		const repositories = edgeConfig.repositories.map((repo) => {
+		const repositories = edgeConfig.repositories.map(
+			(repo: EdgeConfig["repositories"][number]) => {
 			return {
 				...repo,
 				// Set workspaceBaseDir (use provided or default to ~/.cyrus/workspaces)
@@ -59,7 +60,8 @@ export async function handleCyrusConfig(
 				// Ensure teamKeys is always an array
 				teamKeys: repo.teamKeys || [],
 			};
-		});
+		},
+		);
 
 		// Backwards compatibility: migrate legacy global model keys to Claude-specific keys
 		const normalizedEdgeConfig = {

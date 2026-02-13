@@ -280,25 +280,17 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 
 		if (currentSubroutine) {
 			// Determine which type of session ID this is
-			const isCursorSession = session.cursorSessionId !== undefined;
-			const isCodexSession =
-				!isCursorSession && session.codexSessionId !== undefined;
+			const isCodexSession = session.codexSessionId !== undefined;
 			const isGeminiSession =
-				!isCursorSession &&
-				!isCodexSession &&
-				session.geminiSessionId !== undefined;
+				!isCodexSession && session.geminiSessionId !== undefined;
 
 			// Record completion with the appropriate session ID
 			procedureMetadata.subroutineHistory.push({
 				subroutine: currentSubroutine.name,
 				completedAt: Date.now(),
-				claudeSessionId:
-					isGeminiSession || isCodexSession || isCursorSession
-						? null
-						: sessionId,
+				claudeSessionId: isGeminiSession || isCodexSession ? null : sessionId,
 				geminiSessionId: isGeminiSession ? sessionId : null,
 				codexSessionId: isCodexSession ? sessionId : null,
-				cursorSessionId: isCursorSession ? sessionId : null,
 				...(result !== undefined && { result }),
 			});
 		}
