@@ -160,6 +160,38 @@ function normalizeError(error: unknown): string {
 	return "Cursor execution failed";
 }
 
+function normalizeCursorModel(model?: string): string | undefined {
+	if (!model) {
+		return model;
+	}
+
+	// Preserve backward compatibility for selector aliases that Cursor CLI no longer accepts.
+	if (model.toLowerCase() === "gpt-5") {
+		return "auto";
+	}
+
+	return model;
+}
+
+function extractTextFromMessageContent(content: unknown): string {
+	if (!Array.isArray(content)) {
+		return "";
+	}
+
+	const text = content
+		.map((block) => {
+			if (!block || typeof block !== "object") {
+				return "";
+			}
+			const blockObj = block as Record<string, unknown>;
+			return getStringValue(blockObj, "text") || "";
+		})
+		.join("")
+		.trim();
+
+	return text;
+}
+
 function inferCommandToolName(command: string): string {
 	const normalized = command.toLowerCase();
 	if (/\brg\b|\bgrep\b/.test(normalized)) {
@@ -535,9 +567,10 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 
 	private buildArgs(prompt: string): string[] {
 		const args: string[] = ["--print", "--output-format", "stream-json"];
+		const normalizedModel = normalizeCursorModel(this.config.model);
 
-		if (this.config.model) {
-			args.push("--model", this.config.model);
+		if (normalizedModel) {
+			args.push("--model", normalizedModel);
 		}
 
 		if (this.config.resumeSessionId) {
@@ -623,7 +656,10 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			return;
 		}
 
-		if (type === "init") {
+		if (
+			type === "init" ||
+			(type === "system" && getStringValue(eventObj, "subtype") === "init")
+		) {
 			const sessionId =
 				getStringValue(eventObj, "session_id") || this.sessionInfo?.sessionId;
 			if (sessionId && this.sessionInfo) {
@@ -636,6 +672,24 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		if (type === "message") {
 			this.emitInitMessage();
 			this.handleMessageEvent(eventObj);
+			return;
+		}
+
+		if (type === "assistant") {
+			this.emitInitMessage();
+			const messageObj = eventObj.message;
+			const content =
+				messageObj && typeof messageObj === "object"
+					? extractTextFromMessageContent(
+							(messageObj as Record<string, unknown>).content,
+						)
+					: "";
+			if (content) {
+				this.handleMessageEvent({
+					role: "assistant",
+					content,
+				});
+			}
 			return;
 		}
 

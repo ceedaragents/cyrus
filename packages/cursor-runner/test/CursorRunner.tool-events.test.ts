@@ -9,6 +9,19 @@ function createRunner(): CursorRunner {
 }
 
 describe("CursorRunner tool event mapping", () => {
+	it("maps legacy gpt-5 model alias to a Cursor-supported model argument", () => {
+		const runner = new CursorRunner({
+			cyrusHome: "/tmp/cyrus",
+			workingDirectory: "/tmp/repo",
+			model: "gpt-5",
+		});
+		const args = (runner as any).buildArgs("hello");
+		const modelFlagIndex = args.indexOf("--model");
+
+		expect(modelFlagIndex).toBeGreaterThan(-1);
+		expect(args[modelFlagIndex + 1]).toBe("auto");
+	});
+
 	it("maps command_execution item.completed to assistant tool_use + user tool_result", () => {
 		const runner = createRunner();
 		(runner as any).sessionInfo = {
@@ -69,5 +82,27 @@ describe("CursorRunner tool event mapping", () => {
 			.getMessages()
 			.filter((message) => message.type === "assistant");
 		expect(assistantMessages).toHaveLength(1);
+	});
+
+	it("maps assistant event schema to an assistant message", () => {
+		const runner = createRunner();
+		(runner as any).sessionInfo = {
+			sessionId: "session-1",
+			startedAt: new Date(),
+			isRunning: true,
+		};
+
+		(runner as any).handleEvent({
+			type: "assistant",
+			message: {
+				role: "assistant",
+				content: [{ type: "text", text: "cursor runner works" }],
+			},
+		});
+
+		const assistantMessage = runner
+			.getMessages()
+			.find((message) => message.type === "assistant");
+		expect(assistantMessage).toBeDefined();
 	});
 });
