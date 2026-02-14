@@ -2974,7 +2974,7 @@ export class EdgeWorker extends EventEmitter {
 		if (runnerType === "cursor") {
 			return "gpt-5";
 		}
-		return this.config.codexDefaultModel || "gpt-5-codex";
+		return this.config.codexDefaultModel || "gpt-5.3-codex";
 	}
 
 	/**

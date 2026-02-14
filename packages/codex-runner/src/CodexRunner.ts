@@ -54,6 +54,8 @@ interface ToolProjection {
 	isError: boolean;
 }
 
+const DEFAULT_CODEX_MODEL = "gpt-5.3-codex";
+
 function toFiniteNumber(value: number | undefined): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -86,7 +88,7 @@ function createAssistantToolUseMessage(
 		type: "message",
 		role: "assistant",
 		content: contentBlocks,
-		model: "gpt-5-codex",
+		model: DEFAULT_CODEX_MODEL,
 		stop_reason: null,
 		stop_sequence: null,
 		usage: {
@@ -138,7 +140,7 @@ function createAssistantBetaMessage(
 		type: "message",
 		role: "assistant",
 		content: contentBlocks,
-		model: "gpt-5-codex",
+		model: DEFAULT_CODEX_MODEL,
 		stop_reason: null,
 		stop_sequence: null,
 		usage: {
@@ -196,8 +198,8 @@ function createResultUsage(parsed: ParsedUsage): SDKResultMessage["usage"] {
 function getDefaultReasoningEffortForModel(
 	model?: string,
 ): CodexRunnerConfig["modelReasoningEffort"] | undefined {
-	// gpt-5-codex rejects xhigh in some environments; pin a compatible default.
-	return model?.toLowerCase() === "gpt-5-codex" ? "high" : undefined;
+	// gpt-5 codex variants reject xhigh in some environments; pin a compatible default.
+	return /gpt-5[a-z0-9.-]*codex$/i.test(model || "") ? "high" : undefined;
 }
 
 function normalizeError(error: unknown): string {
@@ -824,7 +826,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			cwd: this.config.workingDirectory || cwd(),
 			tools: [],
 			mcp_servers: [],
-			model: this.config.model || "gpt-5-codex",
+			model: this.config.model || DEFAULT_CODEX_MODEL,
 			permissionMode: "default",
 			slash_commands: [],
 			output_style: "default",
