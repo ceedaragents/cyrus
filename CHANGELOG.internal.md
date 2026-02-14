@@ -5,6 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Fixed
+- Improved validation loop parsing for in-progress and session-complete responses: added "session completed successfully" as pass indicator, detect in-progress/preparing responses with actionable guidance, and added tests for new patterns. ([CYPACK-806](https://linear.app/ceedar/issue/CYPACK-806), [#862](https://github.com/ceedaragents/cyrus/pull/862))
 - Updated orchestrator system prompts to explicitly require `state: "To Do"` when creating issues via `mcp__linear__create_issue`, preventing issues from being created in "Triage" status. ([CYPACK-761](https://linear.app/ceedar/issue/CYPACK-761), [#815](https://github.com/ceedaragents/cyrus/pull/815))
 
 ## [0.2.21] - 2026-02-09
