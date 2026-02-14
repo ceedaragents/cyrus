@@ -922,6 +922,17 @@ export class AgentSessionManager extends EventEmitter {
 						? "cursor"
 						: "claude";
 
+		// For error results, content may be in errors[] rather than result
+		const content =
+			"result" in resultMessage && typeof resultMessage.result === "string"
+				? resultMessage.result
+				: resultMessage.is_error &&
+						"errors" in resultMessage &&
+						Array.isArray(resultMessage.errors) &&
+						resultMessage.errors.length > 0
+					? resultMessage.errors.join("\n")
+					: "";
+
 		const resultEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
 			...(runnerType === "gemini"
@@ -932,7 +943,7 @@ export class AgentSessionManager extends EventEmitter {
 						? { cursorSessionId: resultMessage.session_id }
 						: { claudeSessionId: resultMessage.session_id }),
 			type: "result",
-			content: "result" in resultMessage ? resultMessage.result : "",
+			content,
 			metadata: {
 				timestamp: Date.now(),
 				durationMs: resultMessage.duration_ms,

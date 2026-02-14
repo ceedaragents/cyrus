@@ -124,4 +124,41 @@ describe("AgentSessionManager stop-session behavior", () => {
 			mockProcedureAnalyzer.advanceToNextSubroutine,
 		).not.toHaveBeenCalled();
 	});
+
+	it("posts actual error message to Linear for usage limit errors (not generic)", async () => {
+		const usageLimitError =
+			"You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Feb 16th, 2026 8:09 PM.";
+
+		await manager.completeSession(sessionId, {
+			type: "result",
+			subtype: "error_during_execution",
+			duration_ms: 1,
+			duration_api_ms: 1,
+			is_error: true,
+			num_turns: 1,
+			errors: [usageLimitError],
+			stop_reason: null,
+			total_cost_usd: 0,
+			usage: {
+				input_tokens: 1,
+				output_tokens: 1,
+				cache_creation_input_tokens: 0,
+				cache_read_input_tokens: 0,
+				cache_creation: null,
+			},
+			modelUsage: {},
+			permission_denials: [],
+			uuid: "result-3",
+			session_id: "sdk-session",
+		} as any);
+
+		const createAgentActivityCalls = (
+			mockIssueTracker.createAgentActivity as ReturnType<typeof vi.fn>
+		).mock.calls;
+		const errorActivity = createAgentActivityCalls.find(
+			(call) => call[0]?.content?.type === "error",
+		);
+		expect(errorActivity).toBeDefined();
+		expect(errorActivity![0].content.body).toBe(usageLimitError);
+	});
 });

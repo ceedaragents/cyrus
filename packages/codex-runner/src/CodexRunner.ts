@@ -571,7 +571,11 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 				break;
 			}
 			case "turn.failed": {
-				const message = event.error.message || "Codex execution failed";
+				// Prefer event.error.message; fallback to last standalone "error" event
+				const message =
+					event.error?.message ||
+					this.errorMessages.at(-1) ||
+					"Codex execution failed";
 				this.errorMessages.push(message);
 				this.pendingResultMessage = this.createErrorResultMessage(message);
 				break;
