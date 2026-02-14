@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
@@ -408,6 +408,18 @@ function mapClaudeToolPatternToCursorPermission(
 	return null;
 }
 
+function parseMcpServersFromCursorListOutput(output: string): string[] {
+	const servers = new Set<string>();
+	for (const line of output.split(/\r?\n/)) {
+		const match = line.match(/^\s*([A-Za-z0-9._-]+)\s*:/);
+		const serverName = match?.[1]?.trim();
+		if (serverName) {
+			servers.add(serverName);
+		}
+	}
+	return [...servers];
+}
+
 function getProjectionForItem(
 	item: Record<string, unknown>,
 	workingDirectory?: string,
@@ -784,6 +796,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.emittedToolUseIds.clear();
 		this.fallbackOutputLines = [];
 		this.setupLogging(sessionId);
+		this.enableCursorMcpServers();
 		this.syncProjectPermissionsConfig();
 
 		// Test/CI fallback: allow deterministic mock runs when cursor-agent cannot execute.
@@ -868,6 +881,91 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		return {
 			permissions: { allow, deny },
 		};
+	}
+
+	private enableCursorMcpServers(): void {
+		const workspacePath = this.config.workingDirectory;
+		if (!workspacePath) {
+			return;
+		}
+
+		const mcpCommand = process.env.CURSOR_MCP_COMMAND || "agent";
+		const listResult = spawnSync(mcpCommand, ["mcp", "list"], {
+			cwd: workspacePath,
+			env: this.buildEnv(),
+			encoding: "utf8",
+		});
+
+		if (
+			(listResult.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
+		) {
+			console.warn(
+				`[CursorRunner] Skipping MCP enable preflight: '${mcpCommand}' command not found`,
+			);
+			return;
+		}
+
+		const discoveredServers =
+			(listResult.status ?? 1) === 0
+				? parseMcpServersFromCursorListOutput(
+						typeof listResult.stdout === "string" ? listResult.stdout : "",
+					)
+				: [];
+
+		if ((listResult.status ?? 1) !== 0 && !listResult.error) {
+			const detail =
+				typeof listResult.stderr === "string" && listResult.stderr.trim()
+					? listResult.stderr.trim()
+					: `exit ${listResult.status ?? "unknown"}`;
+			console.warn(
+				`[CursorRunner] MCP list preflight failed: '${mcpCommand} mcp list' (${detail})`,
+			);
+		}
+
+		// TODO: Include internal-tool MCP servers once EdgeWorker passes them in runner mcpConfig.
+		const inlineServers = Object.keys(this.config.mcpConfig || {});
+		const allServers = [
+			...new Set([...discoveredServers, ...inlineServers]),
+		].sort((a, b) => a.localeCompare(b));
+
+		for (const serverName of allServers) {
+			const enableResult = spawnSync(
+				mcpCommand,
+				["mcp", "enable", serverName],
+				{
+					cwd: workspacePath,
+					env: this.buildEnv(),
+					encoding: "utf8",
+				},
+			);
+
+			if (
+				(enableResult.error as NodeJS.ErrnoException | undefined)?.code ===
+				"ENOENT"
+			) {
+				console.warn(
+					`[CursorRunner] Failed enabling MCP server '${serverName}': '${mcpCommand}' command not found`,
+				);
+				return;
+			}
+
+			if ((enableResult.status ?? 1) !== 0 || enableResult.error) {
+				const detail = enableResult.error
+					? enableResult.error.message
+					: typeof enableResult.stderr === "string" &&
+							enableResult.stderr.trim()
+						? enableResult.stderr.trim()
+						: `exit ${enableResult.status ?? "unknown"}`;
+				console.warn(
+					`[CursorRunner] Failed enabling MCP server '${serverName}' via '${mcpCommand} mcp enable ${serverName}': ${detail}`,
+				);
+				continue;
+			}
+
+			console.log(
+				`[CursorRunner] Enabled MCP server '${serverName}' via '${mcpCommand} mcp enable ${serverName}'`,
+			);
+		}
 	}
 
 	private syncProjectPermissionsConfig(): void {

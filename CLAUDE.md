@@ -150,7 +150,7 @@ When implementing a new runner/harness (for example Codex, Gemini, OpenCode, or 
 - Validate `tools`, `allowedTools`, and `disallowedTools` semantics for the SDK.
 - Validate approval/sandbox behavior for tool execution.
 - Verify tool calls produce both start and completion signals.
-- For providers that rely on static/project config files (for example Cursor CLI), implement a permission translation layer from Cyrus/Claude tool names to provider-native permission tokens and write that config before session start. This must support subroutine-time updates when allowed/disallowed tools change. Reference: https://cursor.com/docs/cli/reference/permissions
+- For providers that rely on static/project config files (for example Cursor CLI), implement a permission translation layer from Cyrus/Claude tool names to provider-native permission tokens and write that config before session start. This must support subroutine-time updates when allowed/disallowed tools change. For Cursor MCP servers, pre-enable them before session start (`agent mcp list` + `agent mcp enable <server>` per server) so tools are available in headless runs. Reference: https://cursor.com/docs/cli/reference/permissions
 
 ### 6) Prompt Streaming Input
 
@@ -205,7 +205,7 @@ Codex emitted tool activity at `item.started`/`item.completed` events, but those
 
 ### Cursor Integration Lesson Learned
 
-Cursor CLI permissions are enforced from config (`~/.cursor/cli-config.json` or `<project>/.cursor/cli.json`) instead of dynamic per-request tool allowlists. For Cursor-like providers, do not rely on dynamic SDK tool constraints alone—add a translation layer (for example `mcp__server__tool` -> `Mcp(server:tool)`, `Bash(...)` -> `Shell(...)`) and sync project permissions before each run and between subroutines. Reference: https://cursor.com/docs/cli/reference/permissions
+Cursor CLI permissions are enforced from config (`~/.cursor/cli-config.json` or `<project>/.cursor/cli.json`) instead of dynamic per-request tool allowlists. For Cursor-like providers, do not rely on dynamic SDK tool constraints alone—add a translation layer (for example `mcp__server__tool` -> `Mcp(server:tool)`, `Bash(...)` -> `Shell(...)`) and sync project permissions before each run and between subroutines. Also pre-enable MCP servers via `agent mcp list` + `agent mcp enable <server>` using both project-listed and runner-configured server names so headless sessions can invoke MCP tools immediately. Reference: https://cursor.com/docs/cli/reference/permissions
 
 ## Navigating GitHub Repositories
 

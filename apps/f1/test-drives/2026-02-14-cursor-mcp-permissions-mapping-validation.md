@@ -16,6 +16,7 @@
 - [x] Session routed with `cursor` agent selection (`[agent=cursor]`)
 - [x] Allowed tools include MCP entries (`mcp__linear`, `mcp__cyrus-tools`)
 - [x] Cursor runner synced project permissions before session execution
+- [x] MCP preflight enable flow added for project-listed + inline MCP servers
 
 ### Renderer
 - [x] Session activities were emitted during run
@@ -44,7 +45,12 @@
     - `mcp__trigger__search_docs` -> `Mcp(trigger:search_docs)`
     - `mcp__linear` -> `Mcp(linear:*)`
     - `mcp__linear__create_issue` -> `Mcp(linear:create_issue)`
+- `pnpm --filter cyrus-cursor-runner test:run -- CursorRunner.mcp-enable.test.ts`
+  - Confirms pre-run MCP enable commands use both sources:
+    - project/server list output from `agent mcp list`
+    - inline runner `mcpConfig` server names
+  - Confirms fallback behavior when `agent` is unavailable (warn + continue)
 
 ## Final Retrospective
 
-F1 confirms end-to-end `cursor` session routing and pre-run permission sync behavior. Unit tests confirm MCP permission token mapping from Claude tool names into Cursor `Mcp(server:tool)` permission syntax, including server-wide and tool-specific cases.
+F1 confirms end-to-end `cursor` session routing and pre-run permission sync behavior. Unit tests confirm both MCP permission-token translation (`mcp__server__tool` -> `Mcp(server:tool)`) and MCP preflight enable behavior (`agent mcp list` + `agent mcp enable <server>`) for project-listed and inline-configured servers.
