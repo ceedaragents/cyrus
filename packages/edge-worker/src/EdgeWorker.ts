@@ -61,6 +61,7 @@ import {
 	PersistenceManager,
 	resolvePath,
 } from "cyrus-core";
+import { CursorRunner } from "cyrus-cursor-runner";
 import { GeminiRunner } from "cyrus-gemini-runner";
 import {
 	LinearEventTransport,
@@ -1086,7 +1087,9 @@ export class EdgeWorker extends EventEmitter {
 		removed: RepositoryConfig[];
 	} {
 		const currentRepos = new Map(this.repositories);
-		const newRepos = new Map(newConfig.repositories.map((r) => [r.id, r]));
+		const newRepos = new Map<string, RepositoryConfig>(
+			newConfig.repositories.map((r: RepositoryConfig) => [r.id, r]),
+		);
 
 		const added: RepositoryConfig[] = [];
 		const modified: RepositoryConfig[] = [];
@@ -2102,7 +2105,7 @@ export class EdgeWorker extends EventEmitter {
 		const debuggerLabels = Array.isArray(debuggerConfig)
 			? debuggerConfig
 			: debuggerConfig?.labels;
-		const hasDebuggerLabel = debuggerLabels?.some((label) =>
+		const hasDebuggerLabel = debuggerLabels?.some((label: string) =>
 			lowercaseLabels.includes(label.toLowerCase()),
 		);
 
@@ -2118,7 +2121,7 @@ export class EdgeWorker extends EventEmitter {
 			? orchestratorConfig
 			: orchestratorConfig?.labels;
 		const hasConfiguredOrchestratorLabel =
-			orchestratorLabels?.some((label) =>
+			orchestratorLabels?.some((label: string) =>
 				lowercaseLabels.includes(label.toLowerCase()),
 			) ?? false;
 
@@ -2322,7 +2325,9 @@ export class EdgeWorker extends EventEmitter {
 					? new ClaudeRunner(runnerConfig)
 					: runnerType === "gemini"
 						? new GeminiRunner(runnerConfig)
-						: new CodexRunner(runnerConfig);
+						: runnerType === "codex"
+							? new CodexRunner(runnerConfig)
+							: new CursorRunner(runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
@@ -2418,6 +2423,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Stop the existing runner if it's active
 		const existingRunner = foundSession.agentRunner;
+		foundManager.requestSessionStop(agentSessionId);
 		if (existingRunner) {
 			existingRunner.stop();
 			console.log(
@@ -2784,11 +2790,16 @@ export class EdgeWorker extends EventEmitter {
 		webhook: AgentSessionPromptedWebhook,
 	): Promise<void> {
 		const agentSessionId = webhook.agentSession.id;
+		const activityBody = webhook.agentActivity?.content?.body || "";
+		const signal = (webhook.agentActivity as any)?.signal;
+		const isTextStopRequest = /^\s*stop(\s+session|\s+working)?[\s.!?]*$/i.test(
+			activityBody,
+		);
 
 		// Branch 1: Handle stop signal (checked FIRST, before any routing work)
 		// Per CLAUDE.md: "an agentSession MUST already exist" for stop signals
 		// IMPORTANT: Stop signals do NOT require repository lookup
-		if (webhook.agentActivity?.signal === "stop") {
+		if (signal === "stop" || isTextStopRequest) {
 			await this.handleStopSignal(webhook);
 			return;
 		}
@@ -2860,16 +2871,18 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Get all agent runners for this specific issue
-		const agentRunners = agentSessionManager.getAgentRunnersForIssue(issue.id);
+		const sessions = agentSessionManager.getSessionsByIssueId(issue.id);
+		const activeThreadCount = sessions.length;
 
 		// Stop all agent runners for this issue
-		const activeThreadCount = agentRunners.length;
-		for (const runner of agentRunners) {
+		for (const session of sessions) {
 			console.log(
 				`[EdgeWorker] Stopping agent runner for issue ${issue.identifier}`,
 			);
-			runner.stop();
+			agentSessionManager.requestSessionStop(
+				session.linearAgentActivitySessionId,
+			);
+			session.agentRunner?.stop();
 		}
 
 		// Post ONE farewell comment on the issue (not in any thread) if there were active sessions
@@ -2948,7 +2961,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Supports legacy config keys for backwards compatibility.
 	 */
 	private getDefaultModelForRunner(
-		runnerType: "claude" | "gemini" | "codex",
+		runnerType: "claude" | "gemini" | "codex" | "cursor",
 	): string {
 		if (runnerType === "claude") {
 			return (
@@ -2958,7 +2971,10 @@ export class EdgeWorker extends EventEmitter {
 		if (runnerType === "gemini") {
 			return this.config.geminiDefaultModel || "gemini-2.5-pro";
 		}
-		return this.config.codexDefaultModel || "gpt-5-codex";
+		if (runnerType === "cursor") {
+			return "gpt-5";
+		}
+		return this.config.codexDefaultModel || "gpt-5.3-codex";
 	}
 
 	/**
@@ -2966,7 +2982,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Supports legacy Claude fallback key for backwards compatibility.
 	 */
 	private getDefaultFallbackModelForRunner(
-		runnerType: "claude" | "gemini" | "codex",
+		runnerType: "claude" | "gemini" | "codex" | "cursor",
 	): string {
 		if (runnerType === "claude") {
 			return (
@@ -2977,6 +2993,9 @@ export class EdgeWorker extends EventEmitter {
 		}
 		if (runnerType === "gemini") {
 			return "gemini-2.5-flash";
+		}
+		if (runnerType === "cursor") {
+			return "gpt-5";
 		}
 		return "gpt-5";
 	}
@@ -3003,7 +3022,7 @@ export class EdgeWorker extends EventEmitter {
 	 * Determine runner type and model using labels + issue description tags.
 	 *
 	 * Supported description tags:
-	 * - [agent=claude|gemini|codex]
+	 * - [agent=claude|gemini|codex|cursor]
 	 * - [model=<model-name>]
 	 *
 	 * Precedence:
@@ -3015,7 +3034,7 @@ export class EdgeWorker extends EventEmitter {
 		labels: string[],
 		issueDescription?: string,
 	): {
-		runnerType: "claude" | "gemini" | "codex";
+		runnerType: "claude" | "gemini" | "codex" | "cursor";
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
@@ -3030,19 +3049,23 @@ export class EdgeWorker extends EventEmitter {
 			"model",
 		);
 
-		const defaultModelByRunner: Record<"claude" | "gemini" | "codex", string> =
-			{
-				claude: this.getDefaultModelForRunner("claude"),
-				gemini: this.getDefaultModelForRunner("gemini"),
-				codex: this.getDefaultModelForRunner("codex"),
-			};
+		const defaultModelByRunner: Record<
+			"claude" | "gemini" | "codex" | "cursor",
+			string
+		> = {
+			claude: this.getDefaultModelForRunner("claude"),
+			gemini: this.getDefaultModelForRunner("gemini"),
+			codex: this.getDefaultModelForRunner("codex"),
+			cursor: this.getDefaultModelForRunner("cursor"),
+		};
 		const defaultFallbackByRunner: Record<
-			"claude" | "gemini" | "codex",
+			"claude" | "gemini" | "codex" | "cursor",
 			string
 		> = {
 			claude: this.getDefaultFallbackModelForRunner("claude"),
 			gemini: this.getDefaultFallbackModelForRunner("gemini"),
 			codex: this.getDefaultFallbackModelForRunner("codex"),
+			cursor: this.getDefaultFallbackModelForRunner("cursor"),
 		};
 
 		const isCodexModel = (model: string): boolean =>
@@ -3050,7 +3073,7 @@ export class EdgeWorker extends EventEmitter {
 
 		const inferRunnerFromModel = (
 			model?: string,
-		): "claude" | "gemini" | "codex" | undefined => {
+		): "claude" | "gemini" | "codex" | "cursor" | undefined => {
 			if (!model) return undefined;
 			const normalizedModel = model.toLowerCase();
 			if (normalizedModel.startsWith("gemini")) return "gemini";
@@ -3068,7 +3091,7 @@ export class EdgeWorker extends EventEmitter {
 
 		const inferFallbackModel = (
 			model: string,
-			runnerType: "claude" | "gemini" | "codex",
+			runnerType: "claude" | "gemini" | "codex" | "cursor",
 		): string | undefined => {
 			const normalizedModel = model.toLowerCase();
 			if (runnerType === "claude") {
@@ -3111,7 +3134,10 @@ export class EdgeWorker extends EventEmitter {
 
 		const resolveAgentFromLabel = (
 			lowercaseLabels: string[],
-		): "claude" | "gemini" | "codex" | undefined => {
+		): "claude" | "gemini" | "codex" | "cursor" | undefined => {
+			if (lowercaseLabels.includes("cursor")) {
+				return "cursor";
+			}
 			if (
 				lowercaseLabels.includes("codex") ||
 				lowercaseLabels.includes("openai")
@@ -3166,20 +3192,22 @@ export class EdgeWorker extends EventEmitter {
 
 		const agentFromDescription = descriptionAgentTagRaw?.toLowerCase();
 		const resolvedAgentFromDescription =
-			agentFromDescription === "codex" || agentFromDescription === "openai"
-				? "codex"
-				: agentFromDescription === "gemini"
-					? "gemini"
-					: agentFromDescription === "claude"
-						? "claude"
-						: undefined;
+			agentFromDescription === "cursor"
+				? "cursor"
+				: agentFromDescription === "codex" || agentFromDescription === "openai"
+					? "codex"
+					: agentFromDescription === "gemini"
+						? "gemini"
+						: agentFromDescription === "claude"
+							? "claude"
+							: undefined;
 		const resolvedAgentFromLabels = resolveAgentFromLabel(normalizedLabels);
 
 		const modelFromDescription = descriptionModelTagRaw;
 		const modelFromLabels = resolveModelFromLabel(normalizedLabels);
 		const explicitModel = modelFromDescription || modelFromLabels;
 
-		const runnerType: "claude" | "gemini" | "codex" =
+		const runnerType: "claude" | "gemini" | "codex" | "cursor" =
 			resolvedAgentFromDescription ||
 			resolvedAgentFromLabels ||
 			inferRunnerFromModel(explicitModel) ||
@@ -3294,7 +3322,7 @@ export class EdgeWorker extends EventEmitter {
 		// Use hardcoded check OR config-based check for orchestrator
 		const hasOrchestratorLabel =
 			hasHardcodedOrchestratorLabel ||
-			orchestratorLabels?.some((label) =>
+			orchestratorLabels?.some((label: string) =>
 				lowercaseLabels.includes(label.toLowerCase()),
 			);
 
@@ -3355,10 +3383,10 @@ export class EdgeWorker extends EventEmitter {
 			const matchesLabel =
 				promptType === "orchestrator"
 					? hasHardcodedOrchestratorLabel ||
-						configuredLabels?.some((label) =>
+						configuredLabels?.some((label: string) =>
 							lowercaseLabels.includes(label.toLowerCase()),
 						)
-					: configuredLabels?.some((label) =>
+					: configuredLabels?.some((label: string) =>
 							lowercaseLabels.includes(label.toLowerCase()),
 						);
 
@@ -3613,21 +3641,21 @@ export class EdgeWorker extends EventEmitter {
 			// Label-based routing
 			if (repo.routingLabels && repo.routingLabels.length > 0) {
 				routingMethods.push(
-					`    - Routing labels: ${repo.routingLabels.map((l) => `"${l}"`).join(", ")}`,
+					`    - Routing labels: ${repo.routingLabels.map((l: string) => `"${l}"`).join(", ")}`,
 				);
 			}
 
 			// Team-based routing
 			if (repo.teamKeys && repo.teamKeys.length > 0) {
 				routingMethods.push(
-					`    - Team keys: ${repo.teamKeys.map((t) => `"${t}"`).join(", ")} (create issue in this team)`,
+					`    - Team keys: ${repo.teamKeys.map((t: string) => `"${t}"`).join(", ")} (create issue in this team)`,
 				);
 			}
 
 			// Project-based routing
 			if (repo.projectKeys && repo.projectKeys.length > 0) {
 				routingMethods.push(
-					`    - Project keys: ${repo.projectKeys.map((p) => `"${p}"`).join(", ")} (add issue to this project)`,
+					`    - Project keys: ${repo.projectKeys.map((p: string) => `"${p}"`).join(", ")} (add issue to this project)`,
 				);
 			}
 
@@ -5518,7 +5546,10 @@ ${input.userComment}
 		maxTurns?: number,
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
-	): { config: AgentRunnerConfig; runnerType: "claude" | "gemini" | "codex" } {
+	): {
+		config: AgentRunnerConfig;
+		runnerType: "claude" | "gemini" | "codex" | "cursor";
+	} {
 		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
 		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -5628,6 +5659,10 @@ ${input.userComment}
 			runnerType = "codex";
 			modelOverride = this.getDefaultModelForRunner("codex");
 			fallbackModelOverride = this.getDefaultFallbackModelForRunner("codex");
+		} else if (session.cursorSessionId && runnerType !== "cursor") {
+			runnerType = "cursor";
+			modelOverride = this.getDefaultModelForRunner("cursor");
+			fallbackModelOverride = this.getDefaultFallbackModelForRunner("cursor");
 		}
 
 		// Log model override if found
@@ -5684,6 +5719,31 @@ ${input.userComment}
 			},
 			onError: (error: Error) => this.handleClaudeError(error),
 		};
+
+		// Cursor runner-specific wiring for offline/headless harness
+		// We pass these as loose fields to avoid widening core runner types.
+		if (runnerType === "cursor") {
+			const approvalPolicy = (process.env.CYRUS_APPROVAL_POLICY || "never") as
+				| "never"
+				| "on-request"
+				| "on-failure"
+				| "untrusted";
+			// Cursor CLI binary path (defaults to relying on PATH)
+			(config as any).cursorPath =
+				process.env.CURSOR_AGENT_PATH || process.env.CURSOR_PATH || undefined;
+			// API key for headless auth (optional; CLI may also read CURSOR_API_KEY directly)
+			(config as any).cursorApiKey = process.env.CURSOR_API_KEY || undefined;
+			// Keep headless runs non-interactive by default in F1/CLI environments
+			(config as any).askForApproval = approvalPolicy;
+			(config as any).approveMcps = true;
+			// Default to enabled sandbox for tool execution isolation; set CYRUS_SANDBOX=disabled to disable
+			(config as any).sandbox = (process.env.CYRUS_SANDBOX || "enabled") as
+				| "enabled"
+				| "disabled";
+			// Expected cursor-agent version for pre-run validation; mismatch posts error to Linear
+			(config as any).cursorAgentVersion =
+				process.env.CYRUS_CURSOR_AGENT_VERSION || undefined;
+		}
 
 		if (resumeSessionId) {
 			(config as any).resumeSessionId = resumeSessionId;
@@ -6314,7 +6374,7 @@ ${input.userComment}
 					? orchestratorConfig
 					: orchestratorConfig?.labels;
 				const hasConfiguredOrchestratorLabel =
-					orchestratorLabels?.some((label) =>
+					orchestratorLabels?.some((label: string) =>
 						lowercaseLabels.includes(label.toLowerCase()),
 					) ?? false;
 
@@ -6490,7 +6550,7 @@ ${input.userComment}
 			let selectedPromptType: string | null = null;
 			let triggerLabel: string | null = null;
 			const repository = Array.from(this.repositories.values()).find(
-				(r) => r.id === repositoryId,
+				(r: RepositoryConfig) => r.id === repositoryId,
 			);
 
 			if (repository?.labelPrompts) {
@@ -6499,7 +6559,7 @@ ${input.userComment}
 				const debuggerLabels = Array.isArray(debuggerConfig)
 					? debuggerConfig
 					: debuggerConfig?.labels;
-				const debuggerLabel = debuggerLabels?.find((label) =>
+				const debuggerLabel = debuggerLabels?.find((label: string) =>
 					labels.includes(label),
 				);
 				if (debuggerLabel) {
@@ -6511,7 +6571,7 @@ ${input.userComment}
 					const builderLabels = Array.isArray(builderConfig)
 						? builderConfig
 						: builderConfig?.labels;
-					const builderLabel = builderLabels?.find((label) =>
+					const builderLabel = builderLabels?.find((label: string) =>
 						labels.includes(label),
 					);
 					if (builderLabel) {
@@ -6523,7 +6583,7 @@ ${input.userComment}
 						const scoperLabels = Array.isArray(scoperConfig)
 							? scoperConfig
 							: scoperConfig?.labels;
-						const scoperLabel = scoperLabels?.find((label) =>
+						const scoperLabel = scoperLabels?.find((label: string) =>
 							labels.includes(label),
 						);
 						if (scoperLabel) {
@@ -6535,8 +6595,8 @@ ${input.userComment}
 							const orchestratorLabels = Array.isArray(orchestratorConfig)
 								? orchestratorConfig
 								: (orchestratorConfig?.labels ?? ["orchestrator"]);
-							const orchestratorLabel = orchestratorLabels?.find((label) =>
-								labels.includes(label),
+							const orchestratorLabel = orchestratorLabels?.find(
+								(label: string) => labels.includes(label),
 							);
 							if (orchestratorLabel) {
 								selectedPromptType = "orchestrator";
@@ -6646,9 +6706,13 @@ ${input.userComment}
 		const hasClaudeSession = !isNewSession && Boolean(session.claudeSessionId);
 		const hasGeminiSession = !isNewSession && Boolean(session.geminiSessionId);
 		const hasCodexSession = !isNewSession && Boolean(session.codexSessionId);
+		const hasCursorSession = !isNewSession && Boolean(session.cursorSessionId);
 		const needsNewSession =
 			isNewSession ||
-			(!hasClaudeSession && !hasGeminiSession && !hasCodexSession);
+			(!hasClaudeSession &&
+				!hasGeminiSession &&
+				!hasCodexSession &&
+				!hasCursorSession);
 
 		// Fetch system prompt based on labels
 
@@ -6710,7 +6774,13 @@ ${input.userComment}
 				? session.claudeSessionId
 				: session.geminiSessionId
 					? session.geminiSessionId
-					: session.codexSessionId;
+					: session.codexSessionId
+						? session.codexSessionId
+						: session.cursorSessionId;
+
+		console.log(
+			`[resumeAgentSession] needsNewSession=${needsNewSession}, resumeSessionId=${resumeSessionId ?? "none"}`,
+		);
 
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
@@ -6737,7 +6807,9 @@ ${input.userComment}
 				? new ClaudeRunner(runnerConfig)
 				: runnerType === "gemini"
 					? new GeminiRunner(runnerConfig)
-					: new CodexRunner(runnerConfig);
+					: runnerType === "codex"
+						? new CodexRunner(runnerConfig)
+						: new CursorRunner(runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(linearAgentActivitySessionId, runner);
