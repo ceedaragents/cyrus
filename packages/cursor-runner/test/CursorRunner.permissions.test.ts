@@ -24,16 +24,30 @@ describe("CursorRunner permissions mapping", () => {
 		const runner = new CursorRunner({
 			cyrusHome: "/tmp/cyrus",
 			workingDirectory: "/tmp/repo",
-			allowedTools: ["Read(src/**)", "Edit(src/**)", "Bash(git:*)", "Bash"],
-			disallowedTools: ["Read(.env*)", "Bash(rm:*)"],
+			allowedTools: [
+				"Read(src/**)",
+				"Edit(src/**)",
+				"Bash(git:*)",
+				"Bash",
+				"mcp__trigger__search_docs",
+				"mcp__linear",
+			],
+			disallowedTools: ["Read(.env*)", "Bash(rm:*)", "mcp__trigger__delete"],
 		});
 
 		const config = (runner as any).buildCursorPermissionsConfig();
 
 		expect(config).toEqual({
 			permissions: {
-				allow: ["Read(src/**)", "Write(src/**)", "Shell(git)", "Shell(*)"],
-				deny: ["Read(.env*)", "Shell(rm)"],
+				allow: [
+					"Read(src/**)",
+					"Write(src/**)",
+					"Shell(git)",
+					"Shell(*)",
+					"Mcp(trigger:search_docs)",
+					"Mcp(linear:*)",
+				],
+				deny: ["Read(.env*)", "Shell(rm)", "Mcp(trigger:delete)"],
 			},
 		});
 	});
@@ -45,8 +59,13 @@ describe("CursorRunner permissions mapping", () => {
 		const runner = new CursorRunner({
 			cyrusHome: "/tmp/cyrus",
 			workingDirectory,
-			allowedTools: ["Read(src/**)", "Edit(src/**)", "Bash(git:*)"],
-			disallowedTools: ["Bash(rm:*)"],
+			allowedTools: [
+				"Read(src/**)",
+				"Edit(src/**)",
+				"Bash(git:*)",
+				"mcp__trigger__search_docs",
+			],
+			disallowedTools: ["Bash(rm:*)", "mcp__trigger__delete"],
 		});
 
 		await runner.start("test permissions sync");
@@ -58,8 +77,12 @@ describe("CursorRunner permissions mapping", () => {
 			"Read(src/**)",
 			"Write(src/**)",
 			"Shell(git)",
+			"Mcp(trigger:search_docs)",
 		]);
-		expect(config.permissions.deny).toEqual(["Shell(rm)"]);
+		expect(config.permissions.deny).toEqual([
+			"Shell(rm)",
+			"Mcp(trigger:delete)",
+		]);
 	});
 
 	it("rewrites .cursor/cli.json between runs when tool permissions change", async () => {
@@ -78,7 +101,11 @@ describe("CursorRunner permissions mapping", () => {
 			cyrusHome: "/tmp/cyrus",
 			workingDirectory,
 			allowedTools: [],
-			disallowedTools: ["Bash(rm:*)", "Edit(secrets/**)"],
+			disallowedTools: [
+				"Bash(rm:*)",
+				"Edit(secrets/**)",
+				"mcp__linear__create_issue",
+			],
 		});
 		await secondRun.start("second run");
 
@@ -86,6 +113,10 @@ describe("CursorRunner permissions mapping", () => {
 		const config = JSON.parse(readFileSync(configPath, "utf8"));
 
 		expect(config.permissions.allow).toEqual([]);
-		expect(config.permissions.deny).toEqual(["Shell(rm)", "Write(secrets/**)"]);
+		expect(config.permissions.deny).toEqual([
+			"Shell(rm)",
+			"Write(secrets/**)",
+			"Mcp(linear:create_issue)",
+		]);
 	});
 });

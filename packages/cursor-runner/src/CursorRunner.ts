@@ -344,9 +344,45 @@ function normalizePathPattern(argument: string | null): string {
 	return argument.trim() || "**";
 }
 
+function normalizeMcpPermissionPart(value: string | null): string {
+	if (!value) {
+		return "*";
+	}
+	const trimmed = value.trim();
+	return trimmed || "*";
+}
+
+function mapClaudeMcpToolPatternToCursorPermission(
+	toolPattern: string,
+): string | null {
+	const trimmed = toolPattern.trim();
+	if (!trimmed.toLowerCase().startsWith("mcp__")) {
+		return null;
+	}
+
+	const parts = trimmed.split("__");
+	if (parts.length < 2) {
+		return null;
+	}
+
+	const server = normalizeMcpPermissionPart(parts[1] || null);
+	const tool =
+		parts.length >= 3
+			? normalizeMcpPermissionPart(parts.slice(2).join("__"))
+			: "*";
+
+	return `Mcp(${server}:${tool})`;
+}
+
 function mapClaudeToolPatternToCursorPermission(
 	toolPattern: string,
 ): string | null {
+	const mappedMcpPermission =
+		mapClaudeMcpToolPatternToCursorPermission(toolPattern);
+	if (mappedMcpPermission) {
+		return mappedMcpPermission;
+	}
+
 	const parsed = parseToolPattern(toolPattern);
 	if (!parsed) {
 		return null;
