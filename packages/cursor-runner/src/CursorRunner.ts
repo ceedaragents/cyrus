@@ -850,6 +850,11 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 
 		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
 		const args = this.buildArgs(prompt);
+		const spawnLine = `[CursorRunner] Spawn: ${cursorPath} ${args.join(" ")}`;
+		console.log(spawnLine);
+		if (this.logStream) {
+			this.logStream.write(`${spawnLine}\n`);
+		}
 		const child = spawn(cursorPath, args, {
 			cwd: this.config.workingDirectory || cwd(),
 			env: this.buildEnv(),
