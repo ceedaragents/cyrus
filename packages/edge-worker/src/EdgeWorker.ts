@@ -71,6 +71,11 @@ import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { GitService } from "./GitService.js";
 import {
+	formatValidationErrorsForLinear,
+	loadAndValidateMcpConfigs,
+	type McpServerValidationResult,
+} from "./mcp-validation/index.js";
+import {
 	ProcedureAnalyzer,
 	type ProcedureDefinition,
 	type RequestClassification,
@@ -5450,6 +5455,58 @@ ${input.userComment}
 		const finalModel =
 			modelOverride || repository.model || this.config.defaultModel;
 
+		// Validate user MCP configs before passing to runner
+		// This prevents opaque SDK crashes from invalid configurations
+		const userMcpValidation = loadAndValidateMcpConfigs(
+			session.workspace.path,
+			repository.mcpConfigPath,
+		);
+
+		// Report invalid MCP configs to Linear (async, non-blocking)
+		if (
+			userMcpValidation.allInvalidServers.length > 0 ||
+			userMcpValidation.parseErrors.length > 0
+		) {
+			console.log(
+				`[EdgeWorker] Found ${userMcpValidation.allInvalidServers.length} invalid MCP server configs and ${userMcpValidation.parseErrors.length} parse errors for session ${linearAgentActivitySessionId}`,
+			);
+
+			// Report to Linear asynchronously (don't block session start)
+			this.reportMcpValidationErrors(
+				linearAgentActivitySessionId,
+				repository.id,
+				userMcpValidation.allInvalidServers,
+				userMcpValidation.parseErrors,
+			).catch((error) => {
+				console.error(
+					`[EdgeWorker] Failed to report MCP validation errors:`,
+					error,
+				);
+			});
+		}
+
+		// Merge valid user MCP servers with Cyrus's programmatic MCP servers
+		// Cyrus servers (Linear, cyrus-tools) override user configs for same server names
+		const programmaticMcpServers = this.buildMcpConfig(
+			repository,
+			linearAgentActivitySessionId,
+		);
+		// Cast is safe because we've already validated the user configs
+		const mergedMcpConfig: Record<string, McpServerConfig> = {
+			...(userMcpValidation.validServers as Record<string, McpServerConfig>),
+			...programmaticMcpServers,
+		};
+
+		// Log merged MCP config
+		const validUserServerCount = Object.keys(
+			userMcpValidation.validServers,
+		).length;
+		if (validUserServerCount > 0) {
+			console.log(
+				`[EdgeWorker] Loaded ${validUserServerCount} valid user MCP servers: ${Object.keys(userMcpValidation.validServers).join(", ")}`,
+			);
+		}
+
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -5457,8 +5514,10 @@ ${input.userComment}
 			allowedDirectories,
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
-			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
+			// Don't pass mcpConfigPath - we've already validated and loaded configs
+			// Passing both mcpConfigPath and mcpConfig would cause double-loading and potentially
+			// include invalid servers that we've filtered out
+			mcpConfig: mergedMcpConfig,
 			appendSystemPrompt: systemPrompt || "",
 			// When disallowAllTools is true, remove all built-in tools from model context
 			// so Claude cannot see or attempt tool use (distinct from allowedTools which only controls permissions)
@@ -5503,6 +5562,61 @@ ${input.userComment}
 		}
 
 		return { config, runnerType };
+	}
+
+	/**
+	 * Report MCP validation errors to Linear as an agent activity.
+	 * This is called asynchronously and should not block session startup.
+	 *
+	 * @param linearAgentSessionId - Linear agent session ID
+	 * @param repositoryId - Repository ID for getting issue tracker
+	 * @param invalidServers - List of invalid server validation results
+	 * @param parseErrors - List of file parse errors
+	 */
+	private async reportMcpValidationErrors(
+		linearAgentSessionId: string,
+		repositoryId: string,
+		invalidServers: McpServerValidationResult[],
+		parseErrors: { path: string; error: string }[],
+	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			console.warn(
+				`[EdgeWorker] Cannot report MCP validation errors: no issue tracker for repository ${repositoryId}`,
+			);
+			return;
+		}
+
+		const errorMessage = formatValidationErrorsForLinear(
+			invalidServers,
+			parseErrors,
+		);
+
+		try {
+			const result = await issueTracker.createAgentActivity({
+				agentSessionId: linearAgentSessionId,
+				content: {
+					type: "thought",
+					body: errorMessage,
+				},
+			});
+
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted MCP validation error thought for session ${linearAgentSessionId}`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post MCP validation error thought:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Error posting MCP validation error thought:`,
+				error,
+			);
+		}
 	}
 
 	/**
