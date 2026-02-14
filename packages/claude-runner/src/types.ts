@@ -11,6 +11,7 @@ import type {
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { OnAskUserQuestion } from "cyrus-core";
+import type { ClaudeRunnerError } from "./errors.js";
 
 export type { OnAskUserQuestion } from "cyrus-core";
 
@@ -69,7 +70,7 @@ export interface ClaudeRunnerEvents {
 	"tool-use": (toolName: string, input: any) => void;
 	text: (text: string) => void;
 	"end-turn": (lastText: string) => void;
-	error: (error: Error) => void | Promise<void>;
+	error: (error: ClaudeRunnerError) => void | Promise<void>;
 	complete: (messages: SDKMessage[]) => void | Promise<void>;
 }
 

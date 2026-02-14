@@ -350,6 +350,36 @@ export interface IAgentRunner {
 	 * ```
 	 */
 	getFormatter(): IMessageFormatter;
+
+	/**
+	 * Subscribe to runner events
+	 *
+	 * Allows listening to runtime events from the agent runner, such as errors
+	 * that occur during execution. This method is optional as not all runners
+	 * may support event-based error handling.
+	 *
+	 * Supported events:
+	 * - "error": Emitted when an unhandled error occurs during execution
+	 * - "message": Emitted for each SDK message during the session
+	 * - "complete": Emitted when the session completes successfully
+	 *
+	 * @param event - The event name to subscribe to
+	 * @param listener - The callback function to invoke when the event occurs
+	 * @returns The runner instance for chaining
+	 *
+	 * @example
+	 * ```typescript
+	 * runner.on("error", (error: Error) => {
+	 *   console.error("Runner error:", error.message);
+	 *   // Post error to Linear or other issue tracker
+	 * });
+	 *
+	 * runner.on("complete", (messages) => {
+	 *   console.log(`Session completed with ${messages.length} messages`);
+	 * });
+	 * ```
+	 */
+	on?(event: string, listener: (...args: unknown[]) => void): this;
 }
 
 /**

@@ -25,6 +25,7 @@ vi.mock("os", () => ({
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { AbortError, ClaudeRunner } from "../src/ClaudeRunner";
+import { ClaudeRunnerErrorCode, SessionError } from "../src/errors";
 import type { ClaudeRunnerConfig, SDKMessage } from "../src/types";
 
 describe("ClaudeRunner", () => {
@@ -447,7 +448,13 @@ describe("ClaudeRunner", () => {
 
 			const sessionInfo = await runner.start("test");
 
-			expect(errorHandler).toHaveBeenCalledWith(testError);
+			// Should emit a typed SessionError wrapping the original error
+			expect(errorHandler).toHaveBeenCalledTimes(1);
+			const emittedError = errorHandler.mock.calls[0][0];
+			expect(emittedError).toBeInstanceOf(SessionError);
+			expect(emittedError.code).toBe(ClaudeRunnerErrorCode.SESSION_ERROR);
+			expect(emittedError.message).toBe("Query failed");
+			expect(emittedError.cause).toBe(testError);
 			expect(runner.isRunning()).toBe(false);
 			expect(sessionInfo).toBeDefined();
 		});

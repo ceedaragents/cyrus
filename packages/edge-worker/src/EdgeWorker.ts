@@ -1963,16 +1963,105 @@ export class EdgeWorker extends EventEmitter {
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
 
-		// Initialize agent runner using shared logic
-		await this.initializeAgentRunner(
-			agentSession,
-			repository,
-			guidance,
-			commentBody,
-		);
+		// Initialize agent runner using shared logic, catching errors to post to Linear
+		try {
+			await this.initializeAgentRunner(
+				agentSession,
+				repository,
+				guidance,
+				commentBody,
+			);
+		} catch (error) {
+			// Post error to Linear so the user knows something went wrong
+			await this.postInitializationError(
+				agentSession.id,
+				repository.id,
+				error instanceof Error ? error : new Error(String(error)),
+			);
+			throw error; // Re-throw to let the webhook handler log it
+		}
 	}
 
 	/**
+	 * Post an error activity to Linear when agent initialization fails
+	 * This ensures users see feedback when the agent crashes during startup
+	 */
+	private async postInitializationError(
+		agentSessionId: string,
+		repositoryId: string,
+		error: Error,
+	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(repositoryId);
+		if (!issueTracker) {
+			console.error(
+				`[EdgeWorker] Cannot post initialization error: no issue tracker for repository ${repositoryId}`,
+			);
+			return;
+		}
+
+		// Sanitize the error message to remove sensitive information
+		const sanitizedMessage = this.sanitizeErrorForLinear(error);
+
+		const errorBody = `An error occurred while starting to work on this request:\n\n${sanitizedMessage}\n\nPlease check your repository configuration (including \`.mcp.json\` if present) and try again. If the problem persists, contact support.`;
+
+		try {
+			const result = await issueTracker.createAgentActivity({
+				agentSessionId,
+				content: {
+					type: "error",
+					body: errorBody,
+				},
+			});
+
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted initialization error to Linear for session ${agentSessionId}`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post initialization error:`,
+					result,
+				);
+			}
+		} catch (postError) {
+			console.error(
+				`[EdgeWorker] Error posting initialization error to Linear:`,
+				postError,
+			);
+		}
+	}
+
+	/**
+	 * Sanitize error message for display in Linear
+	 * Removes potentially sensitive information like file paths and API keys
+	 */
+	private sanitizeErrorForLinear(error: Error): string {
+		let message = error.message || "Unknown error";
+
+		// Remove absolute file paths (keep just the filename/relative part)
+		message = message.replace(/\/[^\s:]+\//g, (match) => {
+			// Keep only the last component of the path
+			const parts = match.split("/").filter(Boolean);
+			return parts.length > 0 ? `.../${parts[parts.length - 1]}/` : match;
+		});
+
+		// Remove potential API keys or tokens (alphanumeric strings > 20 chars)
+		message = message.replace(/[A-Za-z0-9_-]{20,}/g, "[REDACTED]");
+
+		// Remove stack traces (anything after "at " with file paths)
+		const stackTraceIndex = message.indexOf("\n    at ");
+		if (stackTraceIndex !== -1) {
+			message = message.substring(0, stackTraceIndex);
+		}
+
+		// Truncate very long messages
+		const maxLength = 500;
+		if (message.length > maxLength) {
+			message = `${message.substring(0, maxLength)}...`;
+		}
+
+		return message;
+	}
 
 	/**
 	 * Initialize and start agent runner for an agent session
@@ -2474,13 +2563,23 @@ export class EdgeWorker extends EventEmitter {
 			`[EdgeWorker] Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
 		);
 
-		// Initialize agent runner with the selected repository
-		await this.initializeAgentRunner(
-			agentSession,
-			repository,
-			guidance,
-			commentBody,
-		);
+		// Initialize agent runner with the selected repository, catching errors to post to Linear
+		try {
+			await this.initializeAgentRunner(
+				agentSession,
+				repository,
+				guidance,
+				commentBody,
+			);
+		} catch (error) {
+			// Post error to Linear so the user knows something went wrong
+			await this.postInitializationError(
+				agentSessionId,
+				repository.id,
+				error instanceof Error ? error : new Error(String(error)),
+			);
+			throw error; // Re-throw to let the webhook handler log it
+		}
 	}
 
 	/**

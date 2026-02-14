@@ -18,6 +18,17 @@ export {
 	writeTools,
 } from "./config.js";
 export {
+	ClaudeRunnerError,
+	ClaudeRunnerErrorCode,
+	classifyError,
+	InitializationError,
+	McpConfigError,
+	ProcessExitError,
+	SessionAbortedError,
+	SessionError,
+	SessionTerminatedError,
+} from "./errors.js";
+export {
 	ClaudeMessageFormatter,
 	type IMessageFormatter,
 } from "./formatter.js";
