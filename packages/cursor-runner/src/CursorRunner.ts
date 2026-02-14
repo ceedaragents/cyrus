@@ -1095,6 +1095,9 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			args.push(prompt);
 		}
 
+		// needed or else it errors
+		args.push("--trust");
+
 		return args;
 	}
 
