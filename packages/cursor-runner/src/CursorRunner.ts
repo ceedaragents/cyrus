@@ -1010,7 +1010,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		mkdirSync(cursorDir, { recursive: true });
 		writeFileSync(
 			configPath,
-			`${JSON.stringify(nextConfig, null, 2)}\n`,
+			`${JSON.stringify(nextConfig, null, "\t")}\n`,
 			"utf8",
 		);
 		console.log(

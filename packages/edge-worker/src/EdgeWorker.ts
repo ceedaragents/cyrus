@@ -5736,8 +5736,8 @@ ${input.userComment}
 			// Keep headless runs non-interactive by default in F1/CLI environments
 			(config as any).askForApproval = approvalPolicy;
 			(config as any).approveMcps = true;
-			// Default to disabled sandbox so file edits in worktrees succeed unless explicitly enabled
-			(config as any).sandbox = (process.env.CYRUS_SANDBOX || "disabled") as
+			// Default to enabled sandbox for tool execution isolation; set CYRUS_SANDBOX=disabled to disable
+			(config as any).sandbox = (process.env.CYRUS_SANDBOX || "enabled") as
 				| "enabled"
 				| "disabled";
 		}
