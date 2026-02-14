@@ -5,7 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Changed
-- Added Cursor harness validation coverage for `[agent=cursor]`, including an offline F1 drive and runner wiring verification, and aligned edge-worker Vitest module resolution to use local `cyrus-claude-runner` sources during tests. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
+- Added Cursor harness validation coverage for `[agent=cursor]`, including offline F1 drives for stop/tool activity, resume continuation, and permission synchronization behavior. Also added project-level Cursor CLI permissions mapping from Cyrus tool permissions (including subroutine-time updates) and aligned edge-worker Vitest module resolution to use local `cyrus-claude-runner` sources during tests. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 
 ## [0.2.21] - 2026-02-09
 

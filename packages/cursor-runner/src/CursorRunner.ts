@@ -1,7 +1,14 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
-import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
+import {
+	createWriteStream,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	type WriteStream,
+	writeFileSync,
+} from "node:fs";
 import { join, relative as pathRelative } from "node:path";
 import { cwd } from "node:process";
 import { createInterface } from "node:readline";
@@ -35,6 +42,14 @@ interface ToolProjection {
 	toolInput: ToolInput;
 	result: string;
 	isError: boolean;
+}
+
+interface CursorPermissionsConfig {
+	permissions: {
+		allow: string[];
+		deny: string[];
+	};
+	[key: string]: unknown;
 }
 
 type SDKSystemInitMessage = Extract<
@@ -291,6 +306,70 @@ function getStringValue(
 		}
 	}
 	return undefined;
+}
+
+function parseToolPattern(
+	toolPattern: string,
+): { name: string; argument: string | null } | null {
+	const trimmed = toolPattern.trim();
+	if (!trimmed) {
+		return null;
+	}
+	const match = trimmed.match(/^([A-Za-z]+)(?:\((.*)\))?$/);
+	if (!match) {
+		return null;
+	}
+	return {
+		name: match[1] || "",
+		argument: match[2]?.trim() ?? null,
+	};
+}
+
+function normalizeShellCommandBase(argument: string | null): string {
+	if (!argument || argument === "*" || argument === "**") {
+		return "*";
+	}
+	const firstRule = argument.split(",")[0]?.trim();
+	if (!firstRule) {
+		return "*";
+	}
+	const beforeColon = firstRule.split(":")[0]?.trim();
+	return beforeColon || "*";
+}
+
+function normalizePathPattern(argument: string | null): string {
+	if (!argument) {
+		return "**";
+	}
+	return argument.trim() || "**";
+}
+
+function mapClaudeToolPatternToCursorPermission(
+	toolPattern: string,
+): string | null {
+	const parsed = parseToolPattern(toolPattern);
+	if (!parsed) {
+		return null;
+	}
+
+	const toolName = parsed.name.toLowerCase();
+	if (toolName === "bash" || toolName === "shell") {
+		return `Shell(${normalizeShellCommandBase(parsed.argument)})`;
+	}
+	if (toolName === "read" || toolName === "glob" || toolName === "grep") {
+		return `Read(${normalizePathPattern(parsed.argument)})`;
+	}
+	if (
+		toolName === "edit" ||
+		toolName === "write" ||
+		toolName === "multiedit" ||
+		toolName === "notebookedit" ||
+		toolName === "todowrite"
+	) {
+		return `Write(${normalizePathPattern(parsed.argument)})`;
+	}
+
+	return null;
 }
 
 function getProjectionForItem(
@@ -669,6 +748,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.emittedToolUseIds.clear();
 		this.fallbackOutputLines = [];
 		this.setupLogging(sessionId);
+		this.syncProjectPermissionsConfig();
 
 		// Test/CI fallback: allow deterministic mock runs when cursor-agent cannot execute.
 		if (process.env.CYRUS_CURSOR_MOCK === "1") {
@@ -728,6 +808,71 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		return this.sessionInfo;
+	}
+
+	private buildCursorPermissionsConfig(): CursorPermissionsConfig {
+		const allowedTools = this.config.allowedTools || [];
+		const disallowedTools = this.config.disallowedTools || [];
+
+		const allow = [
+			...new Set(
+				allowedTools
+					.map(mapClaudeToolPatternToCursorPermission)
+					.filter((value): value is string => Boolean(value)),
+			),
+		];
+		const deny = [
+			...new Set(
+				disallowedTools
+					.map(mapClaudeToolPatternToCursorPermission)
+					.filter((value): value is string => Boolean(value)),
+			),
+		];
+
+		return {
+			permissions: { allow, deny },
+		};
+	}
+
+	private syncProjectPermissionsConfig(): void {
+		const workspacePath = this.config.workingDirectory;
+		if (!workspacePath) {
+			return;
+		}
+
+		const mappedPermissions = this.buildCursorPermissionsConfig();
+
+		const cursorDir = join(workspacePath, ".cursor");
+		const configPath = join(cursorDir, "cli.json");
+
+		let existingConfig: CursorPermissionsConfig = {
+			permissions: { allow: [], deny: [] },
+		};
+		try {
+			if (existsSync(configPath)) {
+				const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+				if (parsed && typeof parsed === "object") {
+					existingConfig = parsed as CursorPermissionsConfig;
+				}
+			}
+		} catch {
+			// If existing config is malformed, overwrite with a valid permissions object.
+		}
+
+		const nextConfig: CursorPermissionsConfig = {
+			...existingConfig,
+			permissions: mappedPermissions.permissions,
+		};
+
+		mkdirSync(cursorDir, { recursive: true });
+		writeFileSync(
+			configPath,
+			`${JSON.stringify(nextConfig, null, 2)}\n`,
+			"utf8",
+		);
+		console.log(
+			`[CursorRunner] Synced project permissions at ${configPath} (allow=${nextConfig.permissions.allow.length}, deny=${nextConfig.permissions.deny.length})`,
+		);
 	}
 
 	private buildArgs(prompt: string): string[] {
