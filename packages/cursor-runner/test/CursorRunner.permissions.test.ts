@@ -52,6 +52,23 @@ describe("CursorRunner permissions mapping", () => {
 		});
 	});
 
+	it("scopes wildcard read/write permissions to workspace paths", () => {
+		const runner = new CursorRunner({
+			cyrusHome: "/tmp/cyrus",
+			workingDirectory: "/tmp/repo",
+			allowedTools: ["Read", "Edit", "Write", "TodoWrite"],
+		});
+
+		const config = (runner as any).buildCursorPermissionsConfig();
+
+		expect(config).toEqual({
+			permissions: {
+				allow: ["Read(./**)", "Write(./**)"],
+				deny: [],
+			},
+		});
+	});
+
 	it("writes .cursor/cli.json before execution and updates mapped permissions", async () => {
 		const workingDirectory = createTempDir();
 		process.env.CYRUS_CURSOR_MOCK = "1";

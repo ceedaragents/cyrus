@@ -339,9 +339,18 @@ function normalizeShellCommandBase(argument: string | null): string {
 
 function normalizePathPattern(argument: string | null): string {
 	if (!argument) {
-		return "**";
+		// Keep file access scoped to workspace paths by default.
+		return "./**";
 	}
-	return argument.trim() || "**";
+	const trimmed = argument.trim();
+	if (!trimmed) {
+		return "./**";
+	}
+	// Cursor treats broad globs as permissive; anchor wildcard defaults to workspace.
+	if (trimmed === "**") {
+		return "./**";
+	}
+	return trimmed;
 }
 
 function normalizeMcpPermissionPart(value: string | null): string {
