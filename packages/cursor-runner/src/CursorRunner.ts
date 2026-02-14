@@ -1071,6 +1071,9 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		const args: string[] = ["--print", "--output-format", "stream-json"];
 		const normalizedModel = normalizeCursorModel(this.config.model);
 
+		// needed or else it errors
+		args.push("--trust");
+
 		if (normalizedModel) {
 			args.push("--model", normalizedModel);
 		}
@@ -1094,9 +1097,6 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		if (prompt) {
 			args.push(prompt);
 		}
-
-		// needed or else it errors
-		args.push("--trust");
 
 		return args;
 	}
