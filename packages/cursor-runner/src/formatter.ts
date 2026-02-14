@@ -68,8 +68,12 @@ export class CursorMessageFormatter implements IMessageFormatter {
 						: typeof todo.description === "string"
 							? todo.description
 							: "";
-				const marker = status === "completed" ? "[x]" : "[ ]";
-				const suffix = status === "in_progress" ? " (in progress)" : "";
+				const isCompleted =
+					status === "completed" || status === "todo_status_completed";
+				const isInProgress =
+					status === "in_progress" || status === "todo_status_in_progress";
+				const marker = isCompleted ? "[x]" : "[ ]";
+				const suffix = isInProgress ? " (in progress)" : "";
 				return `- ${marker} ${content}${suffix}`.trim();
 			});
 

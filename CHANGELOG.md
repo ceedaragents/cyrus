@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Codex usage limit errors now display full message in Linear** - When Codex hits usage limits or other turn.failed errors, the actual error message is now posted to Linear agent activity instead of a generic message. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
+- **Cursor completed todos now display as checked in Linear** - Cursor API uses `TODO_STATUS_COMPLETED` for completed todo items; the formatter now recognizes this so completed items render as `- [x]` instead of `- [ ]` in Linear activity. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 
 ### Changed
 - **Agent and model selectors now work across Claude, Gemini, and Codex** - You can now set runner and model directly in issue descriptions using `[agent=claude|gemini|codex]` and `[model=<model-name>]`. This is not Codex-only: selectors apply to all supported runners. `[agent=...]` explicitly selects the runner, `[model=...]` selects the model and can infer runner family, and description tags take precedence over labels. ([#850](https://github.com/ceedaragents/cyrus/pull/850))

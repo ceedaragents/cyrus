@@ -269,6 +269,16 @@ function summarizeFileChanges(
 		.join("\n");
 }
 
+function isTodoCompleted(status: string): boolean {
+	const s = status.toLowerCase();
+	return s === "completed" || s === "todo_status_completed";
+}
+
+function isTodoInProgress(status: string): boolean {
+	const s = status.toLowerCase();
+	return s === "in_progress" || s === "todo_status_in_progress";
+}
+
 function summarizeTodoList(item: Record<string, unknown>): string {
 	const todos = Array.isArray(item.items) ? item.items : [];
 	if (!todos.length) {
@@ -291,8 +301,8 @@ function summarizeTodoList(item: Record<string, unknown>): string {
 				typeof mapped.status === "string"
 					? mapped.status.toLowerCase()
 					: "pending";
-			const marker = status === "completed" ? "[x]" : "[ ]";
-			const suffix = status === "in_progress" ? " (in progress)" : "";
+			const marker = isTodoCompleted(status) ? "[x]" : "[ ]";
+			const suffix = isTodoInProgress(status) ? " (in progress)" : "";
 			return `- ${marker} ${text}${suffix}`;
 		})
 		.join("\n");
