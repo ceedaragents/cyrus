@@ -28,6 +28,9 @@ import type {
 	CursorSessionInfo,
 } from "./types.js";
 
+/** cursor-agent version we have tested against; set cursorAgentVersion in config to override */
+const TESTED_CURSOR_AGENT_VERSION = "2026.02.13-41ac335";
+
 type ToolInput = Record<string, unknown>;
 
 interface ParsedUsage {
@@ -823,8 +826,19 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			return this.sessionInfo;
 		}
 
-		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
 		const cursorPath = this.config.cursorPath || "cursor-agent";
+		const expectedVersion =
+			this.config.cursorAgentVersion ?? TESTED_CURSOR_AGENT_VERSION;
+		const versionError = this.checkCursorAgentVersion(
+			cursorPath,
+			expectedVersion,
+		);
+		if (versionError) {
+			this.finalizeSession(new Error(versionError));
+			return this.sessionInfo;
+		}
+
+		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
 		const args = this.buildArgs(prompt);
 		const child = spawn(cursorPath, args, {
 			cwd: this.config.workingDirectory || cwd(),
@@ -1016,6 +1030,26 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		console.log(
 			`[CursorRunner] Synced project permissions at ${configPath} (allow=${nextConfig.permissions.allow.length}, deny=${nextConfig.permissions.deny.length})`,
 		);
+	}
+
+	private checkCursorAgentVersion(
+		cursorPath: string,
+		expectedVersion: string,
+	): string | null {
+		const result = spawnSync(cursorPath, ["--version"], {
+			encoding: "utf8",
+			env: this.buildEnv(),
+		});
+		const actualVersion = result.stdout?.trim() || result.stderr?.trim() || "";
+		if (!actualVersion) {
+			return `cursor-agent version check failed: no output from \`${cursorPath} --version\``;
+		}
+		const normalizedActual = actualVersion.trim();
+		const normalizedExpected = expectedVersion.trim();
+		if (normalizedActual !== normalizedExpected) {
+			return `cursor-agent version mismatch: expected \`${normalizedExpected}\` (tested), got \`${normalizedActual}\`. Set CYRUS_CURSOR_AGENT_VERSION to your version to skip this check, or upgrade cursor-agent to the tested version.`;
+		}
+		return null;
 	}
 
 	private buildArgs(prompt: string): string[] {

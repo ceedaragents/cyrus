@@ -17,6 +17,8 @@ export interface CursorRunnerConfig extends AgentRunnerConfig {
 	askForApproval?: "never" | "on-request" | "on-failure" | "untrusted";
 	/** Automatically approve all MCP servers when running headless */
 	approveMcps?: boolean;
+	/** Expected cursor-agent version (validated before run; mismatch posts error to Linear) */
+	cursorAgentVersion?: string;
 }
 
 export interface CursorSessionInfo extends AgentSessionInfo {
