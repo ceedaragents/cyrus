@@ -1087,16 +1087,8 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			args.push("--sandbox", this.config.sandbox);
 		}
 
-		if (this.config.askForApproval === "never") {
-			args.push("--force");
-		}
-
 		if (this.config.approveMcps ?? true) {
 			args.push("--approve-mcps");
-		}
-
-		if (this.config.cursorApiKey) {
-			args.push("--api-key", this.config.cursorApiKey);
 		}
 
 		if (prompt) {
