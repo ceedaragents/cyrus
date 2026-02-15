@@ -283,7 +283,9 @@ export class AgentSessionManager extends EventEmitter {
 		});
 
 		// Handle result using procedure routing system
-		if ("result" in resultMessage && resultMessage.result) {
+		// Note: We only check for field presence, not truthiness, because empty strings
+		// are valid results that should still trigger procedure completion and posting
+		if ("result" in resultMessage) {
 			await this.handleProcedureCompletion(
 				session,
 				linearAgentActivitySessionId,
