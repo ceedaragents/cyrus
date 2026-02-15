@@ -131,7 +131,8 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				document: string,
 				variables?: Variables,
 				requestHeaders?: RequestInit["headers"],
-				isRetry = false,
+				isAuthRetry = false,
+				isRateLimitRetry = false,
 			): Promise<Data> => {
 				try {
 					return (await originalRequest(
@@ -140,23 +141,27 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 						requestHeaders,
 					)) as Data;
 				} catch (error) {
-					// Handle rate limit (429) - wait for retryAfter then retry once
-					if (!isRetry && this.isRateLimitError(error)) {
+					// Handle rate limit (429) - wait for retryAfter then retry once.
+					// Routes through the interceptor (not originalRequest) so that
+					// 401 token refresh still works if the token expired during the wait.
+					if (!isRateLimitRetry && this.isRateLimitError(error)) {
 						const retryMs = this.extractRetryAfterMs(error);
 						console.warn(
 							`[LinearIssueTrackerService] Rate limited by Linear API. Retrying after ${Math.round(retryMs / 1000)}s`,
 						);
 						await new Promise((resolve) => setTimeout(resolve, retryMs));
-						return (await originalRequest(
+						return (await (client.request as any)(
 							document,
 							variables,
 							requestHeaders,
+							false, // isAuthRetry - allow 401 handling if token expired during wait
+							true, // isRateLimitRetry - prevent infinite 429 loops
 						)) as Data;
 					}
 
 					// Don't retry if this is already a retry attempt (prevents infinite loops)
 					// or if it's not a token expiration error
-					if (isRetry || !this.isTokenExpiredError(error)) throw error;
+					if (isAuthRetry || !this.isTokenExpiredError(error)) throw error;
 
 					// Coalesce ALL concurrent refresh attempts - everyone shares the same promise.
 					// The promise persists after resolution so late-arriving 401s still get
@@ -179,7 +184,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 							document,
 							variables,
 							requestHeaders,
-							true, // isRetry flag
+							true, // isAuthRetry - prevent infinite 401 loops
 						)) as Data;
 					} catch (_refreshError) {
 						// If refresh failed, throw the original 401 error for clarity
