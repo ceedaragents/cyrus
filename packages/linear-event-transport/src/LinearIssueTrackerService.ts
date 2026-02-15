@@ -140,6 +140,20 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 						requestHeaders,
 					)) as Data;
 				} catch (error) {
+					// Handle rate limit (429) - wait for retryAfter then retry once
+					if (!isRetry && this.isRateLimitError(error)) {
+						const retryMs = this.extractRetryAfterMs(error);
+						console.warn(
+							`[LinearIssueTrackerService] Rate limited by Linear API. Retrying after ${Math.round(retryMs / 1000)}s`,
+						);
+						await new Promise((resolve) => setTimeout(resolve, retryMs));
+						return (await originalRequest(
+							document,
+							variables,
+							requestHeaders,
+						)) as Data;
+					}
+
 					// Don't retry if this is already a retry attempt (prevents infinite loops)
 					// or if it's not a token expiration error
 					if (isRetry || !this.isTokenExpiredError(error)) throw error;
@@ -281,6 +295,34 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	private isTokenExpiredError(error: unknown): boolean {
 		const err = error as { status?: number; response?: { status?: number } };
 		return err?.status === 401 || err?.response?.status === 401;
+	}
+
+	/**
+	 * Detect Linear API rate limit errors (HTTP 429).
+	 * The Linear SDK throws errors containing "Rate limit exceeded" in the message.
+	 */
+	private isRateLimitError(error: unknown): boolean {
+		if (error && typeof error === "object") {
+			const err = error as { status?: number; response?: { status?: number } };
+			if (err?.status === 429 || err?.response?.status === 429) return true;
+		}
+		const message = error instanceof Error ? error.message : String(error);
+		return message.includes("Rate limit exceeded");
+	}
+
+	/**
+	 * Extract retry delay from a rate limit error.
+	 * The Linear SDK error may include a retryAfter field (in seconds).
+	 * Falls back to 60 seconds if not present.
+	 */
+	private extractRetryAfterMs(error: unknown): number {
+		if (error && typeof error === "object" && "retryAfter" in error) {
+			const seconds = (error as { retryAfter: number }).retryAfter;
+			if (typeof seconds === "number" && seconds > 0) {
+				return seconds * 1000;
+			}
+		}
+		return 60_000;
 	}
 
 	/**
