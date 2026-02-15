@@ -350,6 +350,28 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
+  packages/opencode-runner:
+    dependencies:
+      '@opencode-ai/sdk':
+        specifier: 1.0.167
+        version: 1.0.167
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.1.0
+        version: 1.6.1(@types/node@20.19.21)
+
   packages/simple-agent-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
@@ -1159,6 +1181,9 @@ packages:
   '@ngrok/ngrok@1.5.2':
     resolution: {integrity: sha512-gN7KKdLTKer+wBSk9s9eDx53MUFdcnXNHsXxiC5sJLLD5HY9JRMSn6UzcCqnk7IgeIgCgw5h1k6YDqhjx6lmtg==}
     engines: {node: '>= 10'}
+
+  '@opencode-ai/sdk@1.0.167':
+    resolution: {integrity: sha512-zUeAg+s/lddSyJ4noeKxUclT35huyOK0hHRBJn3bKL6LzBTxlRXxKVsSBaqT3JaX/xL+kJeLqzV2W4IetAzlUA==}
 
   '@opentelemetry/api-logs@0.203.0':
     resolution: {integrity: sha512-9B9RU0H7Ya1Dx/Rkyc4stuBZSGVQF27WigitInx2QQoj6KUpEFYPKoWjdFTunJYxmXmh17HeBvbMa1EhGyPmqQ==}
@@ -4233,6 +4258,8 @@ snapshots:
       '@ngrok/ngrok-win32-arm64-msvc': 1.5.2
       '@ngrok/ngrok-win32-ia32-msvc': 1.5.2
       '@ngrok/ngrok-win32-x64-msvc': 1.5.2
+
+  '@opencode-ai/sdk@1.0.167': {}
 
   '@opentelemetry/api-logs@0.203.0':
     dependencies:
