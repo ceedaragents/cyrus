@@ -131,6 +131,7 @@ import {
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { NoopActivitySink } from "./sinks/NoopActivitySink.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -174,6 +175,10 @@ export class EdgeWorker extends EventEmitter {
 	public repositoryRouter: RepositoryRouter; // Repository routing and selection
 	private gitService: GitService;
 	private activeWebhookCount = 0; // Track number of webhooks currently being processed
+	/** Dedicated AgentSessionManager for Slack sessions (not tied to any repository) */
+	private slackSessionManager: AgentSessionManager | null = null;
+	/** Maps Slack thread key (channel:thread_ts) to session ID for thread-based session reuse */
+	private slackThreadSessions: Map<string, string> = new Map();
 	/** Handler for AskUserQuestion tool invocations via Linear select signal */
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
@@ -684,6 +689,16 @@ export class EdgeWorker extends EventEmitter {
 			verificationMode: "proxy",
 			secret,
 		});
+
+		// Initialize a dedicated AgentSessionManager for Slack (not tied to any repository)
+		const slackActivitySink = new NoopActivitySink("slack");
+		this.slackSessionManager = new AgentSessionManager(
+			slackActivitySink,
+			undefined, // No parent session lookup for Slack
+			undefined, // No resume parent session for Slack
+			undefined, // No procedure analyzer for Slack
+			undefined, // No shared application server for Slack
+		);
 
 		// Add "eyes" reaction to acknowledge receipt of Slack @mentions,
 		// then process the event as an agent session
@@ -1204,49 +1219,103 @@ ${taskInstructions}
 	/**
 	 * Handle a Slack webhook event (forwarded from CYHOST).
 	 *
-	 * This creates a new session for the Slack @mention, checks out origin/main
-	 * via git worktree, and processes the message as a task prompt.
+	 * Slack sessions are transient and not associated with any repository.
+	 * They run in an empty working directory keyed by the Slack thread,
+	 * so subsequent @mentions in the same thread share context.
 	 */
 	private async handleSlackWebhook(event: SlackWebhookEvent): Promise<void> {
 		this.activeWebhookCount++;
 
 		try {
-			// Pick the first configured repository (Slack has no native repo context)
-			const firstRepo = this.repositories.values().next().value;
-			if (!firstRepo) {
-				this.logger.warn(
-					"Cannot handle Slack webhook: no repositories configured",
+			if (!this.slackSessionManager) {
+				this.logger.error(
+					"Cannot handle Slack webhook: Slack session manager not initialized",
 				);
 				return;
 			}
-
-			const repository = firstRepo as RepositoryConfig;
 
 			this.logger.info(
 				`Processing Slack webhook: ${event.eventId} in channel ${event.payload.channel} by ${event.payload.user}`,
 			);
 
-			// Get the agent session manager for this repository
-			const agentSessionManager = this.agentSessionManagers.get(repository.id);
-			if (!agentSessionManager) {
-				this.logger.error(
-					`No AgentSessionManager for repository ${repository.name}`,
-				);
-				return;
-			}
-
 			// Strip the @mention from the text to get the task instructions
 			const taskInstructions = stripSlackMention(event.payload.text);
 
-			// Create workspace (git worktree) off origin/main
-			const workspace = await this.createSlackWorkspace(
-				repository,
-				event.eventId,
-			);
+			// Thread key: channel:thread_ts — used to associate sessions with a thread
+			const threadTs = event.payload.thread_ts || event.payload.ts;
+			const threadKey = `${event.payload.channel}:${threadTs}`;
 
+			// Check if there's already an active session for this thread
+			const existingSessionId = this.slackThreadSessions.get(threadKey);
+			if (existingSessionId) {
+				const existingSession =
+					this.slackSessionManager.getSession(existingSessionId);
+				const existingRunner =
+					this.slackSessionManager.getAgentRunner(existingSessionId);
+
+				if (existingSession && existingRunner?.isRunning()) {
+					// Session is actively running — inject the follow-up via streaming input
+					if (existingRunner.addStreamMessage) {
+						this.logger.info(
+							`Injecting follow-up prompt into running session ${existingSessionId} (thread ${threadKey})`,
+						);
+						existingRunner.addStreamMessage(taskInstructions);
+					} else {
+						// Runner doesn't support streaming input — notify user
+						this.logger.info(
+							`Session ${existingSessionId} is still running, notifying user (thread ${threadKey})`,
+						);
+						if (event.slackBotToken) {
+							await new SlackMessageService().postMessage({
+								token: event.slackBotToken,
+								channel: event.payload.channel,
+								text: "I'm still working on the previous request in this thread. I'll pick up your new message once I'm done.",
+								thread_ts: threadTs,
+							});
+						}
+					}
+					return;
+				}
+
+				if (existingSession && existingRunner) {
+					// Session exists but is not running — resume with --continue
+					this.logger.info(
+						`Resuming completed Slack session ${existingSessionId} (thread ${threadKey})`,
+					);
+
+					const resumeSessionId =
+						existingSession.claudeSessionId || existingSession.geminiSessionId;
+
+					if (resumeSessionId) {
+						try {
+							await this.resumeSlackSession(
+								event,
+								existingSession,
+								existingSessionId,
+								resumeSessionId,
+								taskInstructions,
+							);
+						} catch (error) {
+							this.logger.error(
+								`Failed to resume Slack session ${existingSessionId}`,
+								error instanceof Error ? error : new Error(String(error)),
+							);
+						}
+						return;
+					}
+				}
+
+				// Session exists but runner was lost — fall through to create a new session
+				this.logger.info(
+					`Previous session ${existingSessionId} for thread ${threadKey} has no runner, creating new session`,
+				);
+			}
+
+			// Create an empty workspace directory for this thread
+			const workspace = await this.createSlackWorkspace(threadKey);
 			if (!workspace) {
 				this.logger.error(
-					`Failed to create workspace for Slack event ${event.eventId}`,
+					`Failed to create workspace for Slack thread ${threadKey}`,
 				);
 				return;
 			}
@@ -1254,27 +1323,27 @@ ${taskInstructions}
 			this.logger.info(`Slack workspace created at: ${workspace.path}`);
 
 			// Create a synthetic session for this Slack mention
-			const sessionKey = `slack:${event.payload.channel}:${event.payload.thread_ts || event.payload.ts}`;
+			const sessionKey = `slack:${threadKey}`;
 			const issueMinimal: IssueMinimal = {
 				id: sessionKey,
 				identifier: `slack-${event.eventId}`,
 				title:
 					taskInstructions.slice(0, 100) +
 					(taskInstructions.length > 100 ? "..." : ""),
-				branchName: "origin/main",
+				branchName: "",
 			};
 
-			// Create an internal agent session (no Linear session for Slack)
+			// Create an internal agent session (not tied to any repository)
 			const slackSessionId = `slack-${event.eventId}`;
-			agentSessionManager.createLinearAgentSession(
+			this.slackSessionManager.createLinearAgentSession(
 				slackSessionId,
 				sessionKey,
 				issueMinimal,
 				workspace,
-				"slack", // Don't stream activities to Linear for Slack sources
+				"slack",
 			);
 
-			const session = agentSessionManager.getSession(slackSessionId);
+			const session = this.slackSessionManager.getSession(slackSessionId);
 			if (!session) {
 				this.logger.error(
 					`Failed to create session for Slack webhook ${event.eventId}`,
@@ -1282,52 +1351,46 @@ ${taskInstructions}
 				return;
 			}
 
+			// Track this thread → session mapping for follow-up messages
+			this.slackThreadSessions.set(threadKey, slackSessionId);
+
 			// Initialize procedure metadata
 			if (!session.metadata) {
 				session.metadata = {};
 			}
 
 			// Build the system prompt for this Slack session
-			const systemPrompt = this.buildSlackSystemPrompt(
-				event,
-				repository,
-				taskInstructions,
-			);
+			const systemPrompt = this.buildSlackSystemPrompt(event);
 
-			// Build allowed tools and directories
-			const allowedTools = this.buildAllowedTools(repository);
-			const disallowedTools = this.buildDisallowedTools(repository);
-			const allowedDirectories: string[] = [repository.repositoryPath];
-
-			// Create agent runner using the standard config builder
-			const { config: runnerConfig } = this.buildAgentRunnerConfig(
-				session,
-				repository,
-				slackSessionId,
-				systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				undefined, // labels
-				200, // maxTurns
-				false, // singleTurn
-			);
+			// Build runner config directly for Slack (no repository dependency)
+			const runnerConfig = {
+				workingDirectory: session.workspace.path,
+				allowedTools: getAllTools(),
+				disallowedTools: [] as string[],
+				allowedDirectories: [session.workspace.path],
+				workspaceName: session.issue?.identifier || session.issueId,
+				cyrusHome: this.cyrusHome,
+				appendSystemPrompt: systemPrompt,
+				model: this.config.defaultModel,
+				fallbackModel: this.config.defaultFallbackModel,
+				logger: this.logger.withContext({
+					sessionId: slackSessionId,
+					platform: "slack",
+				}),
+				maxTurns: 200,
+				onMessage: (message: SDKMessage) => {
+					this.handleSlackClaudeMessage(slackSessionId, message);
+				},
+				onError: (error: Error) => this.handleClaudeError(error),
+			};
 
 			const runner = new ClaudeRunner(runnerConfig);
 
-			// Store the runner in the session manager
-			agentSessionManager.addAgentRunner(slackSessionId, runner);
+			// Store the runner in the Slack session manager
+			this.slackSessionManager.addAgentRunner(slackSessionId, runner);
 
 			// Save persisted state
 			await this.savePersistedState();
-
-			this.emit(
-				"session:started",
-				sessionKey,
-				issueMinimal as unknown as Issue,
-				repository.id,
-			);
 
 			this.logger.info(
 				`Starting Claude runner for Slack event ${event.eventId}`,
@@ -1359,53 +1422,95 @@ ${taskInstructions}
 	}
 
 	/**
-	 * Create a workspace (git worktree) for a Slack event.
+	 * Resume an existing Slack session with a new prompt (--continue behavior).
 	 */
-	private async createSlackWorkspace(
-		repository: RepositoryConfig,
-		eventId: string,
-	): Promise<{ path: string; isGitWorktree: boolean } | null> {
-		try {
-			const syntheticIssue = {
-				id: `slack-${eventId}`,
-				identifier: `slack-${eventId}`,
-				title: `Slack event ${eventId}`,
-				description: null,
-				url: "",
-				branchName: "origin/main",
-				assigneeId: null,
-				stateId: null,
-				teamId: null,
-				labelIds: [],
-				priority: 0,
-				createdAt: new Date(),
-				updatedAt: new Date(),
-				archivedAt: null,
-				state: Promise.resolve(undefined),
-				assignee: Promise.resolve(undefined),
-				team: Promise.resolve(undefined),
-				parent: Promise.resolve(undefined),
-				project: Promise.resolve(undefined),
-				labels: () => Promise.resolve({ nodes: [] }),
-				comments: () => Promise.resolve({ nodes: [] }),
-				attachments: () => Promise.resolve({ nodes: [] }),
-				children: () => Promise.resolve({ nodes: [] }),
-				inverseRelations: () => Promise.resolve({ nodes: [] }),
-				update: () =>
-					Promise.resolve({
-						success: true,
-						issue: undefined,
-						lastSyncId: 0,
-					}),
-			} as unknown as Issue;
+	private async resumeSlackSession(
+		event: SlackWebhookEvent,
+		existingSession: CyrusAgentSession,
+		sessionId: string,
+		resumeSessionId: string,
+		taskInstructions: string,
+	): Promise<void> {
+		if (!this.slackSessionManager) {
+			return;
+		}
 
-			return await this.gitService.createGitWorktree(
-				syntheticIssue,
-				repository,
+		const runnerConfig = {
+			workingDirectory: existingSession.workspace.path,
+			allowedTools: getAllTools(),
+			disallowedTools: [] as string[],
+			allowedDirectories: [existingSession.workspace.path],
+			workspaceName:
+				existingSession.issue?.identifier || existingSession.issueId,
+			cyrusHome: this.cyrusHome,
+			appendSystemPrompt: this.buildSlackSystemPrompt(event),
+			model: this.config.defaultModel,
+			fallbackModel: this.config.defaultFallbackModel,
+			resumeSessionId,
+			logger: this.logger.withContext({
+				sessionId,
+				platform: "slack",
+			}),
+			maxTurns: 200,
+			onMessage: (message: SDKMessage) => {
+				this.handleSlackClaudeMessage(sessionId, message);
+			},
+			onError: (error: Error) => this.handleClaudeError(error),
+		};
+
+		const runner = new ClaudeRunner(runnerConfig);
+		this.slackSessionManager.addAgentRunner(sessionId, runner);
+
+		try {
+			const sessionInfo = await runner.start(taskInstructions);
+			this.logger.info(
+				`Slack session resumed: ${sessionInfo.sessionId} (was ${resumeSessionId})`,
 			);
+
+			await this.postSlackReply(event, runner);
 		} catch (error) {
 			this.logger.error(
-				`Failed to create Slack workspace for event ${eventId}`,
+				`Slack resume session error for ${sessionId}`,
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		}
+	}
+
+	/**
+	 * Handle Claude messages for Slack sessions.
+	 * Routes to the dedicated Slack AgentSessionManager.
+	 */
+	private async handleSlackClaudeMessage(
+		sessionId: string,
+		message: SDKMessage,
+	): Promise<void> {
+		if (this.slackSessionManager) {
+			await this.slackSessionManager.handleClaudeMessage(sessionId, message);
+		}
+	}
+
+	/**
+	 * Create an empty workspace directory for a Slack thread.
+	 * Unlike repository-associated sessions, Slack sessions use plain directories (not git worktrees).
+	 */
+	private async createSlackWorkspace(
+		threadKey: string,
+	): Promise<{ path: string; isGitWorktree: boolean } | null> {
+		try {
+			// Create a sanitized directory name from the thread key
+			const sanitizedKey = threadKey.replace(/[^a-zA-Z0-9.-]/g, "_");
+			const workspacePath = join(
+				this.cyrusHome,
+				"slack-workspaces",
+				sanitizedKey,
+			);
+
+			await mkdir(workspacePath, { recursive: true });
+
+			return { path: workspacePath, isGitWorktree: false };
+		} catch (error) {
+			this.logger.error(
+				`Failed to create Slack workspace for thread ${threadKey}`,
 				error instanceof Error ? error : new Error(String(error)),
 			);
 			return null;
@@ -1414,27 +1519,21 @@ ${taskInstructions}
 
 	/**
 	 * Build a system prompt for a Slack @mention session.
+	 * Slack sessions are transient and not associated with any repository.
 	 */
-	private buildSlackSystemPrompt(
-		event: SlackWebhookEvent,
-		repository: RepositoryConfig,
-		taskInstructions: string,
-	): string {
-		return `You are responding to a Slack message.
+	private buildSlackSystemPrompt(event: SlackWebhookEvent): string {
+		return `You are responding to a Slack @mention.
 
 ## Context
-- **Repository**: ${repository.name}
 - **Requested by**: ${event.payload.user}
 - **Channel**: ${event.payload.channel}
 
-## Task
-${taskInstructions}
-
 ## Instructions
-- You are checked out on the main branch
-- Make changes directly to the code
-- After making changes, commit and push them
-- Be concise in your responses as they will be posted back to Slack`;
+- You are running in a transient workspace, not associated with any code repository
+- Be concise in your responses as they will be posted back to Slack
+- If the user's request involves code changes, help them plan the work and suggest creating an issue in their project tracker (Linear, Jira, or GitHub Issues)
+- You can answer questions, provide analysis, help with planning, and assist with research
+- If files need to be created or examined, they will be in your working directory`;
 	}
 
 	/**
@@ -1451,7 +1550,7 @@ ${taskInstructions}
 				.reverse()
 				.find((m) => m.type === "assistant");
 
-			let summary = "Task completed. Please review the changes on this branch.";
+			let summary = "Task completed.";
 			if (
 				lastAssistantMessage &&
 				lastAssistantMessage.type === "assistant" &&
@@ -1506,10 +1605,20 @@ ${taskInstructions}
 			return "busy";
 		}
 
-		// Busy if any runner is actively running
+		// Busy if any runner is actively running (repository-tied sessions)
 		for (const manager of this.agentSessionManagers.values()) {
 			const runners = manager.getAllAgentRunners();
 			for (const runner of runners) {
+				if (runner.isRunning()) {
+					return "busy";
+				}
+			}
+		}
+
+		// Busy if any Slack runner is actively running
+		if (this.slackSessionManager) {
+			const slackRunners = this.slackSessionManager.getAllAgentRunners();
+			for (const runner of slackRunners) {
 				if (runner.isRunning()) {
 					return "busy";
 				}
@@ -1540,10 +1649,13 @@ ${taskInstructions}
 			);
 		}
 
-		// get all agent runners
+		// get all agent runners (including Slack sessions)
 		const agentRunners: IAgentRunner[] = [];
 		for (const agentSessionManager of this.agentSessionManagers.values()) {
 			agentRunners.push(...agentSessionManager.getAllAgentRunners());
+		}
+		if (this.slackSessionManager) {
+			agentRunners.push(...this.slackSessionManager.getAllAgentRunners());
 		}
 
 		// Kill all agent processes with null checking

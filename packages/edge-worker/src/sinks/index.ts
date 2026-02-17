@@ -11,3 +11,4 @@ export type {
 	IActivitySink,
 } from "./IActivitySink.js";
 export { LinearActivitySink } from "./LinearActivitySink.js";
+export { NoopActivitySink } from "./NoopActivitySink.js";
