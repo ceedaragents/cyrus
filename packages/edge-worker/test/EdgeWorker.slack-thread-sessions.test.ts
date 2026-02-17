@@ -28,7 +28,7 @@ vi.mock(
 			getAllTools: vi.fn(() => []),
 			getCoordinatorTools: vi.fn(() => []),
 			getReadOnlyTools: vi.fn(() => []),
-			getSafeTools: vi.fn(() => []),
+			getSafeTools: vi.fn(() => ["Read(**)", "AskUserQuestion", "Edit(**)"]),
 		};
 	},
 	{ virtual: true },
@@ -118,6 +118,8 @@ describe("EdgeWorker Slack thread sessions", () => {
 					baseBranch: "main",
 					linearToken: "linear-token",
 					linearWorkspaceId: "workspace-1",
+					model: "sonnet",
+					fallbackModel: "haiku",
 					isActive: true,
 				},
 			],
@@ -298,5 +300,31 @@ describe("EdgeWorker Slack thread sessions", () => {
 		expect(resumedRunner.start).toHaveBeenCalledWith(
 			"Add a status section too",
 		);
+	});
+
+	it("uses safe model defaults and excludes AskUserQuestion for Slack runner config", () => {
+		(edgeWorker as any).buildSlackRunnerConfig = (
+			EdgeWorker.prototype as any
+		).buildSlackRunnerConfig;
+
+		const config = (edgeWorker as any).buildSlackRunnerConfig(
+			{
+				workspace: {
+					path: "/tmp/slack-workspace",
+					isGitWorktree: false,
+				},
+				issueId: "slack:test",
+				issue: { identifier: "slack-test" },
+			},
+			"slack-session-id",
+			"system prompt",
+			["/tmp/slack-workspace"],
+		);
+
+		expect(config.model).toBe("sonnet");
+		expect(config.fallbackModel).toBe("haiku");
+		expect(config.allowedTools).toContain("Read(**)");
+		expect(config.allowedTools).toContain("Edit(**)");
+		expect(config.allowedTools).not.toContain("AskUserQuestion");
 	});
 });

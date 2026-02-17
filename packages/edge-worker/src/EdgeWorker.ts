@@ -1566,16 +1566,34 @@ ${taskInstructions}
 		allowedDirectories: string[],
 		resumeSessionId?: string,
 	): AgentRunnerConfig {
+		// Prefer global defaults; fall back to first configured repository model to
+		// avoid implicit "opus" fallback in environments without opus access.
+		const firstRepository = this.repositories.values().next().value as
+			| RepositoryConfig
+			| undefined;
+		const model =
+			this.config.defaultModel || firstRepository?.model || "sonnet";
+		const fallbackModel =
+			this.config.defaultFallbackModel ||
+			firstRepository?.fallbackModel ||
+			"haiku";
+
+		// Slack transport currently has no AskUserQuestion callback wiring;
+		// exclude AskUserQuestion to avoid runtime exits when that tool is invoked.
+		const allowedTools = getSafeTools().filter(
+			(tool) => tool !== "AskUserQuestion",
+		);
+
 		const config: AgentRunnerConfig = {
 			workingDirectory: session.workspace.path,
-			allowedTools: getSafeTools(),
+			allowedTools,
 			disallowedTools: [],
 			allowedDirectories,
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
 			appendSystemPrompt: systemPrompt || "",
-			model: this.config.defaultModel,
-			fallbackModel: this.config.defaultFallbackModel,
+			model,
+			fallbackModel,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, SLACK_SESSION_MANAGER_ID);
 			},
