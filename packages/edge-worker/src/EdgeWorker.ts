@@ -104,6 +104,7 @@ import {
 	SlackEventTransport,
 	SlackMessageService,
 	SlackReactionService,
+	type SlackThreadMessage,
 	type SlackWebhookEvent,
 	stripMention as stripSlackMention,
 } from "cyrus-slack-event-transport";
@@ -1396,13 +1397,19 @@ ${taskInstructions}
 			// Save persisted state
 			await this.savePersistedState();
 
+			// Fetch thread context for threaded @mentions
+			const threadContext = await this.fetchSlackThreadContext(event);
+			const userPrompt = threadContext
+				? `${threadContext}\n\n${taskInstructions}`
+				: taskInstructions;
+
 			this.logger.info(
 				`Starting Claude runner for Slack event ${event.eventId}`,
 			);
 
 			// Start the session and handle completion
 			try {
-				const sessionInfo = await runner.start(taskInstructions);
+				const sessionInfo = await runner.start(userPrompt);
 				this.logger.info(`Slack session started: ${sessionInfo.sessionId}`);
 
 				// When session completes, post the reply back to Slack
@@ -1538,6 +1545,75 @@ ${taskInstructions}
 - If the user's request involves code changes, help them plan the work and suggest creating an issue in their project tracker (Linear, Jira, or GitHub Issues)
 - You can answer questions, provide analysis, help with planning, and assist with research
 - If files need to be created or examined, they will be in your working directory`;
+	}
+
+	/**
+	 * Fetch thread context from Slack for a threaded @mention.
+	 * Returns formatted XML string, or empty string if not applicable.
+	 */
+	private async fetchSlackThreadContext(
+		event: SlackWebhookEvent,
+	): Promise<string> {
+		// Only fetch context for threaded messages
+		if (!event.payload.thread_ts) {
+			return "";
+		}
+
+		if (!event.slackBotToken) {
+			this.logger.warn(
+				"Cannot fetch Slack thread context: no slackBotToken available",
+			);
+			return "";
+		}
+
+		try {
+			const slackService = new SlackMessageService();
+			const messages = await slackService.fetchThreadMessages({
+				token: event.slackBotToken,
+				channel: event.payload.channel,
+				thread_ts: event.payload.thread_ts,
+				limit: 50,
+			});
+
+			// Filter out the @mention message itself and bot messages
+			const contextMessages = messages.filter(
+				(msg) =>
+					msg.ts !== event.payload.ts &&
+					!msg.bot_id &&
+					msg.subtype !== "bot_message",
+			);
+
+			if (contextMessages.length === 0) {
+				return "";
+			}
+
+			return this.formatSlackThreadContext(contextMessages);
+		} catch (error) {
+			this.logger.warn(
+				`Failed to fetch Slack thread context: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return "";
+		}
+	}
+
+	/**
+	 * Format Slack thread messages into XML context block.
+	 */
+	private formatSlackThreadContext(messages: SlackThreadMessage[]): string {
+		const formattedMessages = messages
+			.map(
+				(msg) =>
+					`  <message>
+    <author>${msg.user ?? "unknown"}</author>
+    <timestamp>${msg.ts}</timestamp>
+    <content>
+${msg.text}
+    </content>
+  </message>`,
+			)
+			.join("\n");
+
+		return `<slack_thread_context>\n${formattedMessages}\n</slack_thread_context>`;
 	}
 
 	/**
