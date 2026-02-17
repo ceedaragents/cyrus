@@ -195,6 +195,38 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Create an agent session for chat-style platforms (Slack, etc.) that are
+	 * not tied to a specific issue or repository.
+	 *
+	 * Unlike {@link createLinearAgentSession}, this does NOT require issue
+	 * context — the session lives in a standalone workspace with no issue
+	 * tracker linkage.
+	 */
+	createChatSession(
+		sessionId: string,
+		workspace: Workspace,
+		platform: string,
+	): CyrusAgentSession {
+		const log = this.logger.withContext({ sessionId, platform });
+		log.info("Creating chat session");
+
+		const agentSession: CyrusAgentSession = {
+			id: sessionId,
+			type: AgentSessionType.CommentThread,
+			status: AgentSessionStatus.Active,
+			context: AgentSessionType.CommentThread,
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+			workspace,
+		};
+
+		this.sessions.set(sessionId, agentSession);
+		this.entries.set(sessionId, []);
+
+		return agentSession;
+	}
+
+	/**
 	 * Update Agent Session with session ID from system initialization
 	 * Automatically detects whether it's Claude or Gemini based on the runner
 	 */

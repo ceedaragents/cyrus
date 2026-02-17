@@ -2,12 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { SDKMessage } from "cyrus-claude-runner";
 import { ClaudeRunner, getAllTools } from "cyrus-claude-runner";
-import type {
-	CyrusAgentSession,
-	IAgentRunner,
-	ILogger,
-	IssueMinimal,
-} from "cyrus-core";
+import type { CyrusAgentSession, IAgentRunner, ILogger } from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { NoopActivitySink } from "./sinks/NoopActivitySink.js";
@@ -191,24 +186,11 @@ export class ChatSessionHandler<TEvent> {
 				`${this.adapter.platformName} workspace created at: ${workspace.path}`,
 			);
 
-			// Create a synthetic session for this mention
+			// Create a chat session (not tied to any issue or repository)
 			const eventId = this.adapter.getEventId(event);
-			const sessionKey = `${this.adapter.platformName}:${threadKey}`;
-			const issueMinimal: IssueMinimal = {
-				id: sessionKey,
-				identifier: `${this.adapter.platformName}-${eventId}`,
-				title:
-					taskInstructions.slice(0, 100) +
-					(taskInstructions.length > 100 ? "..." : ""),
-				branchName: "",
-			};
-
-			// Create an internal agent session (not tied to any repository)
 			const sessionId = `${this.adapter.platformName}-${eventId}`;
-			this.sessionManager.createLinearAgentSession(
+			this.sessionManager.createChatSession(
 				sessionId,
-				sessionKey,
-				issueMinimal,
 				workspace,
 				this.adapter.platformName,
 			);
@@ -235,7 +217,7 @@ export class ChatSessionHandler<TEvent> {
 			// Build runner config
 			const runnerConfig = this.buildRunnerConfig(
 				session.workspace.path,
-				session.issue?.identifier || session.issueId,
+				sessionId,
 				systemPrompt,
 				sessionId,
 			);
@@ -314,7 +296,7 @@ export class ChatSessionHandler<TEvent> {
 
 		const runnerConfig = this.buildRunnerConfig(
 			existingSession.workspace.path,
-			existingSession.issue?.identifier || existingSession.issueId,
+			sessionId,
 			systemPrompt,
 			sessionId,
 			resumeSessionId,
@@ -393,7 +375,7 @@ export class ChatSessionHandler<TEvent> {
 		allowedDirectories: string[];
 		workspaceName: string | undefined;
 		cyrusHome: string;
-		appendSystemPrompt: string;
+		systemPrompt: string;
 		model: string | undefined;
 		fallbackModel: string | undefined;
 		resumeSessionId?: string;
@@ -409,7 +391,7 @@ export class ChatSessionHandler<TEvent> {
 			allowedDirectories: [workspacePath],
 			workspaceName,
 			cyrusHome: this.deps.cyrusHome,
-			appendSystemPrompt: systemPrompt,
+			systemPrompt,
 			model: this.deps.defaultModel,
 			fallbackModel: this.deps.defaultFallbackModel,
 			...(resumeSessionId ? { resumeSessionId } : {}),
