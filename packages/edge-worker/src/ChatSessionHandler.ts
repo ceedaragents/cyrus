@@ -375,7 +375,7 @@ export class ChatSessionHandler<TEvent> {
 		allowedDirectories: string[];
 		workspaceName: string | undefined;
 		cyrusHome: string;
-		systemPrompt: string;
+		appendSystemPrompt: string;
 		model: string | undefined;
 		fallbackModel: string | undefined;
 		resumeSessionId?: string;
@@ -391,7 +391,7 @@ export class ChatSessionHandler<TEvent> {
 			allowedDirectories: [workspacePath],
 			workspaceName,
 			cyrusHome: this.deps.cyrusHome,
-			systemPrompt,
+			appendSystemPrompt: systemPrompt,
 			model: this.deps.defaultModel,
 			fallbackModel: this.deps.defaultFallbackModel,
 			...(resumeSessionId ? { resumeSessionId } : {}),
