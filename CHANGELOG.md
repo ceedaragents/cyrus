@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - GitHub PR comment support: Cyrus can now be triggered by `@cyrusagent` mentions on GitHub pull request comments, creating sessions and posting replies directly on PRs. ([CYPACK-772](https://linear.app/ceedar/issue/CYPACK-772), [#820](https://github.com/ceedaragents/cyrus/pull/820))
 - Slack integration: Cyrus can now receive `@mention` webhooks from Slack channels and threads, enabling Slack as a new platform for triggering agent sessions. ([CYPACK-807](https://linear.app/ceedar/issue/CYPACK-807), [#861](https://github.com/ceedaragents/cyrus/pull/861))
+- Slack thread sessions now run in transient, thread-scoped local workspaces (not repository checkouts), reuse context across follow-up mentions in the same thread, and acknowledge each mention with an eyes reaction when a Slack bot token is available. ([CYPACK-814](https://linear.app/ceedar/issue/CYPACK-814), [#867](https://github.com/ceedaragents/cyrus/pull/867))
 
 ### Fixed
 - Summary subroutines now properly disable all tools including MCP tools like Linear's create_comment ([#808](https://github.com/ceedaragents/cyrus/pull/808))

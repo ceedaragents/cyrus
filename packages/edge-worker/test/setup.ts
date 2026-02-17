@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { SDKMessage } from "cyrus-claude-runner";
 import { vi } from "vitest";
 
@@ -10,6 +13,14 @@ global.console = {
 	warn: vi.fn(),
 	error: vi.fn(),
 };
+
+// Keep Claude SDK debug logs inside a writable temp directory in tests.
+const claudeDebugDir = mkdtempSync(join(tmpdir(), "cyrus-claude-debug-"));
+mkdirSync(claudeDebugDir, { recursive: true });
+process.env.CLAUDE_CODE_DEBUG_LOGS_DIR = join(
+	claudeDebugDir,
+	"claude-sdk-debug.txt",
+);
 
 // Mock webhook event helpers - updated to match native webhook format
 export const mockIssueAssignedWebhook = (issue: any = {}) => ({
