@@ -1370,7 +1370,7 @@ ${taskInstructions}
 				allowedDirectories: [session.workspace.path],
 				workspaceName: session.issue?.identifier || session.issueId,
 				cyrusHome: this.cyrusHome,
-				appendSystemPrompt: systemPrompt,
+				systemPrompt,
 				model: this.config.defaultModel,
 				fallbackModel: this.config.defaultFallbackModel,
 				logger: this.logger.withContext({
@@ -1443,7 +1443,7 @@ ${taskInstructions}
 			workspaceName:
 				existingSession.issue?.identifier || existingSession.issueId,
 			cyrusHome: this.cyrusHome,
-			appendSystemPrompt: this.buildSlackSystemPrompt(event),
+			systemPrompt: this.buildSlackSystemPrompt(event),
 			model: this.config.defaultModel,
 			fallbackModel: this.config.defaultFallbackModel,
 			resumeSessionId,
