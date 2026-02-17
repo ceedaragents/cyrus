@@ -465,6 +465,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 					service_tier: "standard",
 					inference_geo: "",
 					iterations: [],
+					speed: "standard" as const,
 				},
 				modelUsage: {},
 				permission_denials: [],
