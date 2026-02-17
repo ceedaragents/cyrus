@@ -1238,8 +1238,12 @@ ${taskInstructions}
 				`Processing Slack webhook: ${event.eventId} in channel ${event.payload.channel} by ${event.payload.user}`,
 			);
 
-			// Strip the @mention from the text to get the task instructions
-			const taskInstructions = stripSlackMention(event.payload.text);
+			// Strip the @mention from the text to get the task instructions.
+			// If the message was just "@cyrus" with no other text, provide a default
+			// prompt to avoid sending an empty text block to the Claude API.
+			const taskInstructions =
+				stripSlackMention(event.payload.text) ||
+				"Ask the user for more context";
 
 			// Thread key: channel:thread_ts — used to associate sessions with a thread
 			const threadTs = event.payload.thread_ts || event.payload.ts;
@@ -1370,7 +1374,7 @@ ${taskInstructions}
 				allowedDirectories: [session.workspace.path],
 				workspaceName: session.issue?.identifier || session.issueId,
 				cyrusHome: this.cyrusHome,
-				systemPrompt,
+				appendSystemPrompt: systemPrompt,
 				model: this.config.defaultModel,
 				fallbackModel: this.config.defaultFallbackModel,
 				logger: this.logger.withContext({
@@ -1443,7 +1447,7 @@ ${taskInstructions}
 			workspaceName:
 				existingSession.issue?.identifier || existingSession.issueId,
 			cyrusHome: this.cyrusHome,
-			systemPrompt: this.buildSlackSystemPrompt(event),
+			appendSystemPrompt: this.buildSlackSystemPrompt(event),
 			model: this.config.defaultModel,
 			fallbackModel: this.config.defaultFallbackModel,
 			resumeSessionId,
