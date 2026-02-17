@@ -3,15 +3,22 @@ import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
 	createWriteStream,
+	type Dirent,
 	existsSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	renameSync,
 	unlinkSync,
 	type WriteStream,
 	writeFileSync,
 } from "node:fs";
-import { join, relative as pathRelative } from "node:path";
+import {
+	join,
+	parse as pathParse,
+	relative as pathRelative,
+	resolve,
+} from "node:path";
 import { cwd } from "node:process";
 import { createInterface } from "node:readline";
 import type {
@@ -371,6 +378,124 @@ function normalizePathPattern(argument: string | null): string {
 		return "./**";
 	}
 	return trimmed;
+}
+
+function toCursorPath(path: string): string {
+	return path.replace(/\\/g, "/");
+}
+
+function isWildcardPathArgument(argument: string | null): boolean {
+	if (!argument) {
+		return true;
+	}
+	const trimmed = argument.trim();
+	return trimmed.length === 0 || trimmed === "**";
+}
+
+function isBroadReadToolPattern(toolPattern: string): boolean {
+	const parsed = parseToolPattern(toolPattern);
+	if (!parsed) {
+		return false;
+	}
+	const toolName = parsed.name.toLowerCase();
+	if (!(toolName === "read" || toolName === "glob" || toolName === "grep")) {
+		return false;
+	}
+	return isWildcardPathArgument(parsed.argument);
+}
+
+function isBroadWriteToolPattern(toolPattern: string): boolean {
+	const parsed = parseToolPattern(toolPattern);
+	if (!parsed) {
+		return false;
+	}
+	const toolName = parsed.name.toLowerCase();
+	if (
+		!(
+			toolName === "edit" ||
+			toolName === "write" ||
+			toolName === "multiedit" ||
+			toolName === "notebookedit" ||
+			toolName === "todowrite"
+		)
+	) {
+		return false;
+	}
+	return isWildcardPathArgument(parsed.argument);
+}
+
+function buildWorkspaceSiblingDenyPermissions(
+	workspacePath: string,
+	permission: "Read" | "Write",
+): string[] {
+	const resolvedWorkspacePath = resolve(workspacePath);
+	const parsed = pathParse(resolvedWorkspacePath);
+	if (!parsed.root) {
+		return [];
+	}
+
+	const segments = resolvedWorkspacePath
+		.slice(parsed.root.length)
+		.split(/[\\/]+/)
+		.filter(Boolean);
+	if (segments.length === 0) {
+		return [];
+	}
+
+	const denyPermissions = new Set<string>();
+	let parentPath = parsed.root;
+
+	for (const segment of segments) {
+		let siblingEntries: Dirent[];
+		try {
+			siblingEntries = readdirSync(parentPath, { withFileTypes: true });
+		} catch {
+			break;
+		}
+
+		for (const sibling of siblingEntries) {
+			if (!sibling.isDirectory() || sibling.name === segment) {
+				continue;
+			}
+			const siblingPath = join(parentPath, sibling.name);
+			denyPermissions.add(`${permission}(${toCursorPath(siblingPath)}/**)`);
+		}
+
+		parentPath = join(parentPath, segment);
+	}
+
+	return [...denyPermissions];
+}
+
+function buildSystemRootDenyPermissions(
+	workspacePath: string,
+	permission: "Read" | "Write",
+): string[] {
+	const workspace = toCursorPath(resolve(workspacePath));
+	const rootCandidates = [
+		"/etc",
+		"/bin",
+		"/sbin",
+		"/usr",
+		"/opt",
+		"/System",
+		"/Library",
+		"/Applications",
+		"/dev",
+		"/proc",
+		"/sys",
+		"/Volumes",
+		"/home",
+	];
+
+	const denies: string[] = [];
+	for (const rootPath of rootCandidates) {
+		if (workspace === rootPath || workspace.startsWith(`${rootPath}/`)) {
+			continue;
+		}
+		denies.push(`${permission}(${rootPath}/**)`);
+	}
+	return denies;
 }
 
 function normalizeMcpPermissionPart(value: string | null): string {
@@ -909,6 +1034,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private buildCursorPermissionsConfig(): CursorPermissionsConfig {
 		const allowedTools = this.config.allowedTools || [];
 		const disallowedTools = this.config.disallowedTools || [];
+		const workspacePath = this.config.workingDirectory;
 
 		const allow = [
 			...new Set(
@@ -917,11 +1043,44 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 					.filter((value): value is string => Boolean(value)),
 			),
 		];
+		const autoScopeDenyPermissions = new Set<string>();
+		if (workspacePath) {
+			if (allowedTools.some(isBroadReadToolPattern)) {
+				for (const permission of buildWorkspaceSiblingDenyPermissions(
+					workspacePath,
+					"Read",
+				)) {
+					autoScopeDenyPermissions.add(permission);
+				}
+				for (const permission of buildSystemRootDenyPermissions(
+					workspacePath,
+					"Read",
+				)) {
+					autoScopeDenyPermissions.add(permission);
+				}
+			}
+			if (allowedTools.some(isBroadWriteToolPattern)) {
+				for (const permission of buildWorkspaceSiblingDenyPermissions(
+					workspacePath,
+					"Write",
+				)) {
+					autoScopeDenyPermissions.add(permission);
+				}
+				for (const permission of buildSystemRootDenyPermissions(
+					workspacePath,
+					"Write",
+				)) {
+					autoScopeDenyPermissions.add(permission);
+				}
+			}
+		}
+
+		const mappedDisallowedPermissions = disallowedTools
+			.map(mapClaudeToolPatternToCursorPermission)
+			.filter((value): value is string => Boolean(value));
 		const deny = [
 			...new Set(
-				disallowedTools
-					.map(mapClaudeToolPatternToCursorPermission)
-					.filter((value): value is string => Boolean(value)),
+				[...mappedDisallowedPermissions, ...autoScopeDenyPermissions].flat(),
 			),
 		];
 

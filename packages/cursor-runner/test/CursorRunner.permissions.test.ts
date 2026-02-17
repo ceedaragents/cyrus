@@ -68,12 +68,10 @@ describe("CursorRunner permissions mapping", () => {
 
 		const config = (runner as any).buildCursorPermissionsConfig();
 
-		expect(config).toEqual({
-			permissions: {
-				allow: ["Read(./**)", "Write(./**)"],
-				deny: [],
-			},
-		});
+		expect(config.permissions.allow).toEqual(["Read(./**)", "Write(./**)"]);
+		expect(config.permissions.deny.length).toBeGreaterThan(0);
+		expect(config.permissions.deny).toContain("Read(/etc/**)");
+		expect(config.permissions.deny).toContain("Write(/etc/**)");
 	});
 
 	it("temporarily writes mapped permissions and restores existing .cursor/cli.json", () => {
@@ -123,6 +121,66 @@ describe("CursorRunner permissions mapping", () => {
 
 		const restoredConfig = JSON.parse(readFileSync(configPath, "utf8"));
 		expect(restoredConfig).toEqual(originalConfig);
+	});
+
+	it("only mutates project .cursor/cli.json and leaves non-project configs unchanged", () => {
+		const workingDirectory = createTempDir();
+		const homeDirectory = createTempDir();
+		const projectCursorDir = join(workingDirectory, ".cursor");
+		const homeCursorDir = join(homeDirectory, ".cursor");
+		mkdirSync(projectCursorDir, { recursive: true });
+		mkdirSync(homeCursorDir, { recursive: true });
+
+		const projectConfigPath = join(projectCursorDir, "cli.json");
+		const homeConfigPath = join(homeCursorDir, "cli.json");
+		const originalProjectConfig = {
+			permissions: { allow: ["Read(project/**)"], deny: ["Shell(rm)"] },
+		};
+		const originalHomeConfig = {
+			permissions: { allow: ["Read(home/**)"], deny: ["Shell(*)"] },
+		};
+		writeFileSync(
+			projectConfigPath,
+			`${JSON.stringify(originalProjectConfig, null, "\t")}\n`,
+		);
+		writeFileSync(
+			homeConfigPath,
+			`${JSON.stringify(originalHomeConfig, null, "\t")}\n`,
+		);
+
+		const runner = new CursorRunner({
+			cyrusHome: homeDirectory,
+			workingDirectory,
+			allowedTools: ["Read(src/**)", "Bash(git:*)"],
+			disallowedTools: ["Bash(rm:*)"],
+		});
+
+		(runner as any).syncProjectPermissionsConfig();
+
+		const syncedProjectConfig = JSON.parse(
+			readFileSync(projectConfigPath, "utf8"),
+		);
+		expect(syncedProjectConfig.permissions.allow).toEqual([
+			"Read(src/**)",
+			"Shell(git)",
+		]);
+		expect(syncedProjectConfig.permissions.deny).toEqual(["Shell(rm)"]);
+
+		const unchangedHomeConfig = JSON.parse(
+			readFileSync(homeConfigPath, "utf8"),
+		);
+		expect(unchangedHomeConfig).toEqual(originalHomeConfig);
+
+		(runner as any).restoreProjectPermissionsConfig();
+
+		const restoredProjectConfig = JSON.parse(
+			readFileSync(projectConfigPath, "utf8"),
+		);
+		expect(restoredProjectConfig).toEqual(originalProjectConfig);
+		const stillUnchangedHomeConfig = JSON.parse(
+			readFileSync(homeConfigPath, "utf8"),
+		);
+		expect(stillUnchangedHomeConfig).toEqual(originalHomeConfig);
 	});
 
 	it("removes temporary .cursor/cli.json after run when no original file exists", async () => {
