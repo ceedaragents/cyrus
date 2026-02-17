@@ -319,7 +319,12 @@ export class AgentSessionManager extends EventEmitter {
 			usage: resultMessage.usage,
 		});
 
-		// Handle result using procedure routing system
+		// Handle result using procedure routing system (skip for sessions without procedures, e.g. Slack)
+		if (!this.procedureAnalyzer) {
+			log.info(`Session completed (no procedure routing)`);
+			return;
+		}
+
 		if ("result" in resultMessage && resultMessage.result) {
 			await this.handleProcedureCompletion(session, sessionId, resultMessage);
 		} else if (resultMessage.subtype !== "success") {
