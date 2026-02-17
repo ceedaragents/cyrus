@@ -6,6 +6,8 @@ import {
 	existsSync,
 	mkdirSync,
 	readFileSync,
+	renameSync,
+	unlinkSync,
 	type WriteStream,
 	writeFileSync,
 } from "node:fs";
@@ -53,6 +55,11 @@ interface CursorPermissionsConfig {
 		deny: string[];
 	};
 	[key: string]: unknown;
+}
+
+interface CursorPermissionsRestoreState {
+	configPath: string;
+	backupPath: string | null;
 }
 
 type SDKSystemInitMessage = Extract<
@@ -761,6 +768,8 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private emittedToolUseIds = new Set<string>();
 	private fallbackOutputLines: string[] = [];
 	private logStream: WriteStream | null = null;
+	private permissionsConfigRestoreState: CursorPermissionsRestoreState | null =
+		null;
 
 	constructor(config: CursorRunnerConfig) {
 		super();
@@ -1037,14 +1046,70 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		};
 
 		mkdirSync(cursorDir, { recursive: true });
-		writeFileSync(
-			configPath,
-			`${JSON.stringify(nextConfig, null, "\t")}\n`,
-			"utf8",
-		);
+		const backupPath = existsSync(configPath)
+			? `${configPath}.cyrus-backup-${Date.now()}-${process.pid}`
+			: null;
+
+		try {
+			if (backupPath) {
+				renameSync(configPath, backupPath);
+			}
+			writeFileSync(
+				configPath,
+				`${JSON.stringify(nextConfig, null, "\t")}\n`,
+				"utf8",
+			);
+			this.permissionsConfigRestoreState = {
+				configPath,
+				backupPath,
+			};
+		} catch (error) {
+			if (backupPath && existsSync(backupPath)) {
+				try {
+					renameSync(backupPath, configPath);
+				} catch {
+					// Best effort rollback; start() will surface the original failure.
+				}
+			}
+			throw error;
+		}
+
 		console.log(
-			`[CursorRunner] Synced project permissions at ${configPath} (allow=${nextConfig.permissions.allow.length}, deny=${nextConfig.permissions.deny.length})`,
+			`[CursorRunner] Synced project permissions at ${configPath} (allow=${nextConfig.permissions.allow.length}, deny=${nextConfig.permissions.deny.length}, backup=${backupPath ? "yes" : "no"})`,
 		);
+	}
+
+	private restoreProjectPermissionsConfig(): void {
+		const restoreState = this.permissionsConfigRestoreState;
+		if (!restoreState) {
+			return;
+		}
+
+		try {
+			if (restoreState.backupPath) {
+				if (existsSync(restoreState.configPath)) {
+					unlinkSync(restoreState.configPath);
+				}
+				if (existsSync(restoreState.backupPath)) {
+					renameSync(restoreState.backupPath, restoreState.configPath);
+					console.log(
+						`[CursorRunner] Restored original project permissions at ${restoreState.configPath}`,
+					);
+				}
+				return;
+			}
+
+			if (existsSync(restoreState.configPath)) {
+				unlinkSync(restoreState.configPath);
+			}
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			console.warn(
+				`[CursorRunner] Failed to restore project permissions config at ${restoreState.configPath}: ${detail}`,
+			);
+		} finally {
+			this.permissionsConfigRestoreState = null;
+		}
 	}
 
 	private checkCursorAgentVersion(
@@ -1437,6 +1502,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 
 		this.emitInitMessage();
 		this.sessionInfo.isRunning = false;
+		this.restoreProjectPermissionsConfig();
 
 		let resultMessage: SDKResultMessage;
 		if (this.pendingResultMessage) {

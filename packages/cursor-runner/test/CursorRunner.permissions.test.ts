@@ -1,4 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -69,9 +76,22 @@ describe("CursorRunner permissions mapping", () => {
 		});
 	});
 
-	it("writes .cursor/cli.json before execution and updates mapped permissions", async () => {
+	it("temporarily writes mapped permissions and restores existing .cursor/cli.json", () => {
 		const workingDirectory = createTempDir();
-		process.env.CYRUS_CURSOR_MOCK = "1";
+		const cursorDir = join(workingDirectory, ".cursor");
+		mkdirSync(cursorDir, { recursive: true });
+		const configPath = join(cursorDir, "cli.json");
+		const originalConfig = {
+			permissions: {
+				allow: ["Read(custom/**)"],
+				deny: ["Shell(rm)"],
+			},
+			custom: true,
+		};
+		writeFileSync(
+			configPath,
+			`${JSON.stringify(originalConfig, null, "\t")}\n`,
+		);
 
 		const runner = new CursorRunner({
 			cyrusHome: "/tmp/cyrus",
@@ -85,55 +105,38 @@ describe("CursorRunner permissions mapping", () => {
 			disallowedTools: ["Bash(rm:*)", "mcp__trigger__delete"],
 		});
 
-		await runner.start("test permissions sync");
+		(runner as any).syncProjectPermissionsConfig();
 
-		const configPath = join(workingDirectory, ".cursor", "cli.json");
-		const config = JSON.parse(readFileSync(configPath, "utf8"));
-
-		expect(config.permissions.allow).toEqual([
+		const syncedConfig = JSON.parse(readFileSync(configPath, "utf8"));
+		expect(syncedConfig.permissions.allow).toEqual([
 			"Read(src/**)",
 			"Write(src/**)",
 			"Shell(git)",
 			"Mcp(trigger:search_docs)",
 		]);
-		expect(config.permissions.deny).toEqual([
+		expect(syncedConfig.permissions.deny).toEqual([
 			"Shell(rm)",
 			"Mcp(trigger:delete)",
 		]);
+
+		(runner as any).restoreProjectPermissionsConfig();
+
+		const restoredConfig = JSON.parse(readFileSync(configPath, "utf8"));
+		expect(restoredConfig).toEqual(originalConfig);
 	});
 
-	it("rewrites .cursor/cli.json between runs when tool permissions change", async () => {
+	it("removes temporary .cursor/cli.json after run when no original file exists", async () => {
 		const workingDirectory = createTempDir();
 		process.env.CYRUS_CURSOR_MOCK = "1";
-
-		const firstRun = new CursorRunner({
+		const runner = new CursorRunner({
 			cyrusHome: "/tmp/cyrus",
 			workingDirectory,
 			allowedTools: ["Read(src/**)", "Bash(git:*)"],
-			disallowedTools: [],
+			disallowedTools: ["Bash(rm:*)"],
 		});
-		await firstRun.start("first run");
-
-		const secondRun = new CursorRunner({
-			cyrusHome: "/tmp/cyrus",
-			workingDirectory,
-			allowedTools: [],
-			disallowedTools: [
-				"Bash(rm:*)",
-				"Edit(secrets/**)",
-				"mcp__linear__create_issue",
-			],
-		});
-		await secondRun.start("second run");
+		await runner.start("run with temporary permissions file");
 
 		const configPath = join(workingDirectory, ".cursor", "cli.json");
-		const config = JSON.parse(readFileSync(configPath, "utf8"));
-
-		expect(config.permissions.allow).toEqual([]);
-		expect(config.permissions.deny).toEqual([
-			"Shell(rm)",
-			"Write(secrets/**)",
-			"Mcp(linear:create_issue)",
-		]);
+		expect(existsSync(configPath)).toBe(false);
 	});
 });
