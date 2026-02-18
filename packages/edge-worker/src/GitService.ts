@@ -1,7 +1,8 @@
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve as pathResolve } from "node:path";
+
 import type { Issue, RepositoryConfig, Workspace } from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
@@ -51,6 +52,41 @@ export class GitService {
 	 */
 	public sanitizeBranchName(name: string): string {
 		return name ? name.replace(/`/g, "") : name;
+	}
+
+	/**
+	 * Resolve mutable Git metadata directories for a repository/worktree.
+	 * This includes linked worktree metadata paths (for example
+	 * `.git/worktrees/<name>/FETCH_HEAD`) that must be writable by sandboxes.
+	 */
+	public getGitMetadataDirectories(workingDirectory: string): string[] {
+		const resolvedDirectories = new Set<string>();
+		const revParse = (
+			flag: "--git-dir" | "--git-common-dir",
+		): string | null => {
+			try {
+				const output = execSync(`git rev-parse ${flag}`, {
+					cwd: workingDirectory,
+					encoding: "utf8",
+					stdio: "pipe",
+				}).trim();
+				return output ? pathResolve(workingDirectory, output) : null;
+			} catch {
+				return null;
+			}
+		};
+
+		const gitDir = revParse("--git-dir");
+		if (gitDir) {
+			resolvedDirectories.add(gitDir);
+		}
+
+		const gitCommonDir = revParse("--git-common-dir");
+		if (gitCommonDir) {
+			resolvedDirectories.add(gitCommonDir);
+		}
+
+		return [...resolvedDirectories];
 	}
 
 	/**
