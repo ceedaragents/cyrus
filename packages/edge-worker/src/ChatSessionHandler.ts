@@ -124,13 +124,16 @@ export class ChatSessionHandler<TEvent> {
 
 				if (existingSession && existingRunner?.isRunning()) {
 					// Session is actively running — inject the follow-up via streaming input
-					if (existingRunner.addStreamMessage) {
+					if (
+						existingRunner.addStreamMessage &&
+						existingRunner.isStreaming?.()
+					) {
 						this.logger.info(
 							`Injecting follow-up prompt into running session ${existingSessionId} (thread ${threadKey})`,
 						);
 						existingRunner.addStreamMessage(taskInstructions);
 					} else {
-						// Runner doesn't support streaming input — notify user
+						// Runner doesn't support streaming input or isn't in streaming mode — notify user
 						this.logger.info(
 							`Session ${existingSessionId} is still running, notifying user (thread ${threadKey})`,
 						);
@@ -240,9 +243,10 @@ export class ChatSessionHandler<TEvent> {
 				`Starting Claude runner for ${this.adapter.platformName} event ${eventId}`,
 			);
 
-			// Start the session and handle completion
+			// Start in streaming mode so follow-up messages in the same thread
+			// can be injected via addStreamMessage() while the session is running
 			try {
-				const sessionInfo = await runner.start(userPrompt);
+				const sessionInfo = await runner.startStreaming!(userPrompt);
 				this.logger.info(
 					`${this.adapter.platformName} session started: ${sessionInfo.sessionId}`,
 				);
@@ -306,7 +310,7 @@ export class ChatSessionHandler<TEvent> {
 		this.sessionManager.addAgentRunner(sessionId, runner);
 
 		try {
-			const sessionInfo = await runner.start(taskInstructions);
+			const sessionInfo = await runner.startStreaming!(taskInstructions);
 			this.logger.info(
 				`${this.adapter.platformName} session resumed: ${sessionInfo.sessionId} (was ${resumeSessionId})`,
 			);
