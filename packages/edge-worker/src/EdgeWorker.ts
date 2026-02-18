@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -5,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { LinearClient } from "@linear/sdk";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
+	CyrusToolsOptions,
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
@@ -68,6 +70,7 @@ import {
 	LinearIssueTrackerService,
 	type LinearOAuthConfig,
 } from "cyrus-linear-event-transport";
+import { Sessions, streamableHttp } from "fastify-mcp";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
@@ -104,6 +107,18 @@ export declare interface EdgeWorker {
 	): boolean;
 }
 
+type CyrusToolsMcpContext = {
+	contextId?: string;
+};
+
+type CyrusToolsMcpContextEntry = {
+	contextId: string;
+	linearToken: string;
+	parentSessionId?: string;
+	prebuiltServer?: ReturnType<typeof createCyrusToolsServer>;
+	createdAt: number;
+};
+
 /**
  * Unified edge worker that **orchestrates**
  *   capturing Linear webhooks,
@@ -133,6 +148,12 @@ export class EdgeWorker extends EventEmitter {
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
 	private userAccessControl: UserAccessControl;
+	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
+	private cyrusToolsMcpRegistered = false;
+	private cyrusToolsMcpContexts = new Map<string, CyrusToolsMcpContextEntry>();
+	private cyrusToolsMcpRequestContext =
+		new AsyncLocalStorage<CyrusToolsMcpContext>();
+	private cyrusToolsMcpSessions = new Sessions<any>();
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -516,10 +537,13 @@ export class EdgeWorker extends EventEmitter {
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
 
-		// 3. Register /status endpoint for process activity monitoring
+		// 3. Register MCP endpoint for cyrus-tools on the same Fastify server/port
+		await this.registerCyrusToolsMcpEndpoint();
+
+		// 4. Register /status endpoint for process activity monitoring
 		this.registerStatusEndpoint();
 
-		// 4. Register /version endpoint for CLI version info
+		// 5. Register /version endpoint for CLI version info
 		this.registerVersionEndpoint();
 	}
 
@@ -620,6 +644,9 @@ export class EdgeWorker extends EventEmitter {
 		// Clear event transport (no explicit cleanup needed, routes are removed when server stops)
 		this.linearEventTransport = null;
 		this.configUpdater = null;
+		this.cyrusToolsMcpContexts.clear();
+		this.cyrusToolsMcpSessions.removeAllListeners();
+		this.cyrusToolsMcpRegistered = false;
 
 		// Stop shared application server (this also stops Cloudflare tunnel if running)
 		await this.sharedApplicationServer.stop();
@@ -4929,13 +4956,321 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		return manifest;
 	}
 
+	private async registerCyrusToolsMcpEndpoint(): Promise<void> {
+		if (this.cyrusToolsMcpRegistered) {
+			return;
+		}
+
+		const fastify = this.sharedApplicationServer.getFastifyInstance() as any;
+		if (
+			typeof fastify.register !== "function" ||
+			typeof fastify.addHook !== "function"
+		) {
+			console.warn(
+				"[EdgeWorker] Skipping cyrus-tools MCP endpoint registration: Fastify instance does not support register/addHook",
+			);
+			return;
+		}
+
+		fastify.addHook("onRequest", (request: any, _reply: any, done: any) => {
+			const rawUrl =
+				typeof request?.raw?.url === "string"
+					? request.raw.url
+					: typeof request?.url === "string"
+						? request.url
+						: "";
+			const requestPath = rawUrl.split("?")[0];
+
+			if (requestPath !== this.cyrusToolsMcpEndpoint) {
+				done();
+				return;
+			}
+
+			const rawContextHeader = request.headers?.["x-cyrus-mcp-context-id"];
+			const contextId = Array.isArray(rawContextHeader)
+				? rawContextHeader[0]
+				: rawContextHeader;
+
+			this.cyrusToolsMcpRequestContext.run({ contextId }, () => {
+				done();
+			});
+		});
+
+		this.cyrusToolsMcpSessions.on("connected", (sessionId) => {
+			console.log(
+				`[EdgeWorker] cyrus-tools MCP session connected: ${sessionId}`,
+			);
+		});
+
+		this.cyrusToolsMcpSessions.on("terminated", (sessionId) => {
+			console.log(
+				`[EdgeWorker] cyrus-tools MCP session terminated: ${sessionId}`,
+			);
+		});
+
+		this.cyrusToolsMcpSessions.on("error", (error) => {
+			console.error("[EdgeWorker] cyrus-tools MCP session error:", error);
+		});
+
+		await fastify.register(streamableHttp, {
+			stateful: true,
+			mcpEndpoint: this.cyrusToolsMcpEndpoint,
+			sessions: this.cyrusToolsMcpSessions,
+			createServer: async () => {
+				const contextId =
+					this.cyrusToolsMcpRequestContext.getStore()?.contextId;
+				if (!contextId) {
+					throw new Error(
+						"Missing x-cyrus-mcp-context-id header for cyrus-tools MCP request",
+					);
+				}
+
+				const context = this.cyrusToolsMcpContexts.get(contextId);
+				if (!context) {
+					throw new Error(
+						`Unknown cyrus-tools MCP context '${contextId}'. Build MCP config before connecting.`,
+					);
+				}
+
+				const sdkServer =
+					context.prebuiltServer ||
+					createCyrusToolsServer(
+						context.linearToken,
+						this.createCyrusToolsOptions(context.parentSessionId),
+					);
+				context.prebuiltServer = undefined;
+
+				return sdkServer.instance.server;
+			},
+		});
+
+		this.cyrusToolsMcpRegistered = true;
+		console.log(
+			`✅ Cyrus tools MCP endpoint registered at ${this.cyrusToolsMcpEndpoint}`,
+		);
+	}
+
+	private createCyrusToolsOptions(parentSessionId?: string): CyrusToolsOptions {
+		return {
+			parentSessionId,
+			onSessionCreated: (childSessionId, parentId) => {
+				this.handleChildSessionMapping(childSessionId, parentId);
+			},
+			onFeedbackDelivery: async (childSessionId, message) => {
+				return this.handleFeedbackDeliveryToChildSession(
+					childSessionId,
+					message,
+				);
+			},
+		};
+	}
+
+	private handleChildSessionMapping(
+		childSessionId: string,
+		parentSessionId: string,
+	): void {
+		console.log(
+			`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentSessionId}`,
+		);
+		this.childToParentAgentSession.set(childSessionId, parentSessionId);
+		console.log(
+			`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+		);
+	}
+
+	private async handleFeedbackDeliveryToChildSession(
+		childSessionId: string,
+		message: string,
+	): Promise<boolean> {
+		console.log(
+			`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
+		);
+
+		// Find the parent session ID for context
+		const parentSessionId = this.childToParentAgentSession.get(childSessionId);
+
+		// Find the repository containing the child session
+		let childRepo: RepositoryConfig | undefined;
+		let childAgentSessionManager: AgentSessionManager | undefined;
+
+		for (const [repoId, manager] of this.agentSessionManagers) {
+			if (manager.hasAgentRunner(childSessionId)) {
+				childRepo = this.repositories.get(repoId);
+				childAgentSessionManager = manager;
+				break;
+			}
+		}
+
+		if (!childRepo || !childAgentSessionManager) {
+			console.error(
+				`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
+			);
+			return false;
+		}
+
+		// Get the child session
+		const childSession = childAgentSessionManager.getSession(childSessionId);
+		if (!childSession) {
+			console.error(`[EdgeWorker] Child session ${childSessionId} not found`);
+			return false;
+		}
+
+		console.log(
+			`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
+		);
+
+		// Get parent session info for better context in the thought
+		let parentIssueId: string | undefined;
+		if (parentSessionId) {
+			for (const manager of this.agentSessionManagers.values()) {
+				const parentSession = manager.getSession(parentSessionId);
+				if (parentSession) {
+					parentIssueId =
+						parentSession.issue?.identifier || parentSession.issueId;
+					break;
+				}
+			}
+		}
+
+		// Post thought to Linear showing feedback receipt
+		const issueTracker = this.issueTrackers.get(childRepo.id);
+		if (issueTracker) {
+			const feedbackThought = parentIssueId
+				? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
+				: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
+
+			try {
+				const result = await issueTracker.createAgentActivity({
+					agentSessionId: childSessionId,
+					content: {
+						type: "thought",
+						body: feedbackThought,
+					},
+				});
+
+				if (result.success) {
+					console.log(
+						`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
+					);
+				} else {
+					console.error(
+						`[EdgeWorker] Failed to post feedback receipt thought:`,
+						result,
+					);
+				}
+			} catch (error) {
+				console.error(
+					`[EdgeWorker] Error posting feedback receipt thought:`,
+					error,
+				);
+			}
+		}
+
+		const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
+
+		console.log(
+			`[EdgeWorker] Handling feedback delivery to child session ${childSessionId}`,
+		);
+
+		this.handlePromptWithStreamingCheck(
+			childSession,
+			childRepo,
+			childSessionId,
+			childAgentSessionManager,
+			feedbackPrompt,
+			"",
+			false,
+			[],
+			"give feedback to child",
+		)
+			.then(() => {
+				console.log(
+					`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
+				);
+			})
+			.catch((error) => {
+				console.error(
+					`[EdgeWorker] Failed to process feedback in child session:`,
+					error,
+				);
+			});
+
+		console.log(
+			`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
+		);
+		return true;
+	}
+
+	private buildCyrusToolsMcpContextId(
+		repository: RepositoryConfig,
+		parentSessionId?: string,
+	): string {
+		if (parentSessionId) {
+			return `${repository.id}:${parentSessionId}`;
+		}
+
+		return `${repository.id}:anon:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+	}
+
+	private getCyrusToolsMcpUrl(): string {
+		const server = this.sharedApplicationServer as {
+			getPort?: () => number;
+		};
+		const port =
+			typeof server.getPort === "function"
+				? server.getPort()
+				: this.config.serverPort || this.config.webhookPort || 3456;
+		return `http://127.0.0.1:${port}${this.cyrusToolsMcpEndpoint}`;
+	}
+
+	private pruneCyrusToolsMcpContexts(maxEntries: number = 500): void {
+		if (this.cyrusToolsMcpContexts.size <= maxEntries) {
+			return;
+		}
+
+		const entriesByAge = Array.from(this.cyrusToolsMcpContexts.entries()).sort(
+			(a, b) => a[1].createdAt - b[1].createdAt,
+		);
+
+		const pruneCount = this.cyrusToolsMcpContexts.size - maxEntries;
+		for (let i = 0; i < pruneCount; i++) {
+			const entry = entriesByAge[i];
+			if (!entry) {
+				break;
+			}
+			const [contextId] = entry;
+			this.cyrusToolsMcpContexts.delete(contextId);
+		}
+	}
+
 	/**
-	 * Build MCP configuration with automatic Linear server injection and inline cyrus tools
+	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
 		parentSessionId?: string,
 	): Record<string, McpServerConfig> {
+		const contextId = this.buildCyrusToolsMcpContextId(
+			repository,
+			parentSessionId,
+		);
+
+		// Prebuild one SDK server for this context so callback wiring remains deterministic.
+		// If the client reconnects and needs another server, the endpoint creates a fresh one.
+		const prebuiltServer = createCyrusToolsServer(
+			repository.linearToken,
+			this.createCyrusToolsOptions(parentSessionId),
+		);
+
+		this.cyrusToolsMcpContexts.set(contextId, {
+			contextId,
+			linearToken: repository.linearToken,
+			parentSessionId,
+			prebuiltServer,
+			createdAt: Date.now(),
+		});
+		this.pruneCyrusToolsMcpContexts();
+
 		// Always inject the Linear MCP servers with the repository's token
 		// https://linear.app/docs/mcp
 		const mcpConfig: Record<string, McpServerConfig> = {
@@ -4946,150 +5281,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					Authorization: `Bearer ${repository.linearToken}`,
 				},
 			},
-			"cyrus-tools": createCyrusToolsServer(repository.linearToken, {
-				parentSessionId,
-				onSessionCreated: (childSessionId, parentId) => {
-					console.log(
-						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
-					);
-					// Map child to parent session
-					this.childToParentAgentSession.set(childSessionId, parentId);
-					console.log(
-						`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
-					);
+			"cyrus-tools": {
+				type: "http",
+				url: this.getCyrusToolsMcpUrl(),
+				headers: {
+					"x-cyrus-mcp-context-id": contextId,
 				},
-				onFeedbackDelivery: async (childSessionId, message) => {
-					console.log(
-						`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
-					);
-
-					// Find the parent session ID for context
-					const parentSessionId =
-						this.childToParentAgentSession.get(childSessionId);
-
-					// Find the repository containing the child session
-					// We need to search all repositories for this child session
-					let childRepo: RepositoryConfig | undefined;
-					let childAgentSessionManager: AgentSessionManager | undefined;
-
-					for (const [repoId, manager] of this.agentSessionManagers) {
-						if (manager.hasAgentRunner(childSessionId)) {
-							childRepo = this.repositories.get(repoId);
-							childAgentSessionManager = manager;
-							break;
-						}
-					}
-
-					if (!childRepo || !childAgentSessionManager) {
-						console.error(
-							`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
-						);
-						return false;
-					}
-
-					// Get the child session
-					const childSession =
-						childAgentSessionManager.getSession(childSessionId);
-					if (!childSession) {
-						console.error(
-							`[EdgeWorker] Child session ${childSessionId} not found`,
-						);
-						return false;
-					}
-
-					console.log(
-						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
-					);
-
-					// Get parent session info for better context in the thought
-					let parentIssueId: string | undefined;
-					if (parentSessionId) {
-						// Find parent session across all repositories
-						for (const manager of this.agentSessionManagers.values()) {
-							const parentSession = manager.getSession(parentSessionId);
-							if (parentSession) {
-								parentIssueId =
-									parentSession.issue?.identifier || parentSession.issueId;
-								break;
-							}
-						}
-					}
-
-					// Post thought to Linear showing feedback receipt
-					const issueTracker = this.issueTrackers.get(childRepo.id);
-					if (issueTracker) {
-						const feedbackThought = parentIssueId
-							? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
-							: `Received feedback from orchestrator:\n\n---\n\n${message}\n\n---`;
-
-						try {
-							const result = await issueTracker.createAgentActivity({
-								agentSessionId: childSessionId,
-								content: {
-									type: "thought",
-									body: feedbackThought,
-								},
-							});
-
-							if (result.success) {
-								console.log(
-									`[EdgeWorker] Posted feedback receipt thought for child session ${childSessionId}`,
-								);
-							} else {
-								console.error(
-									`[EdgeWorker] Failed to post feedback receipt thought:`,
-									result,
-								);
-							}
-						} catch (error) {
-							console.error(
-								`[EdgeWorker] Error posting feedback receipt thought:`,
-								error,
-							);
-						}
-					}
-
-					// Format the feedback as a prompt for the child session with enhanced markdown formatting
-					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
-
-					// Use centralized streaming check and routing logic
-					// Important: We don't await the full session completion to avoid timeouts.
-					// The feedback is delivered immediately when the session starts, so we can
-					// return success right away while the session continues in the background.
-					console.log(
-						`[EdgeWorker] Handling feedback delivery to child session ${childSessionId}`,
-					);
-
-					this.handlePromptWithStreamingCheck(
-						childSession,
-						childRepo,
-						childSessionId,
-						childAgentSessionManager,
-						feedbackPrompt,
-						"", // No attachment manifest for feedback
-						false, // Not a new session
-						[], // No additional allowed directories for feedback
-						"give feedback to child",
-					)
-						.then(() => {
-							console.log(
-								`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
-							);
-						})
-						.catch((error) => {
-							console.error(
-								`[EdgeWorker] Failed to process feedback in child session:`,
-								error,
-							);
-						});
-
-					// Return success immediately after initiating the handling
-					console.log(
-						`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
-					);
-					return true;
-				},
-			}),
+			},
 		};
 
 		// Add OpenAI-based MCP servers if API key is configured
