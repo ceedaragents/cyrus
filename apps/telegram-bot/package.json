@@ -1,0 +1,46 @@
+{
+	"name": "cyrus-telegram-bot",
+	"version": "0.1.0",
+	"description": "Conversational Telegram bot bridge for Cyrus agent",
+	"type": "module",
+	"main": "dist/src/index.js",
+	"types": "dist/src/index.d.ts",
+	"scripts": {
+		"build": "tsc",
+		"start": "node dist/src/index.js",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run --passWithNoTests",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"prepublishOnly": "cd ../.. && pnpm build"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ceedaragents/cyrus.git",
+		"directory": "apps/telegram-bot"
+	},
+	"license": "MIT",
+	"dependencies": {
+		"@linear/sdk": "^64.0.0",
+		"cyrus-core": "workspace:*",
+		"dotenv": "^16.5.0",
+		"grammy": "^1.35.0",
+		"zod": "^4.3.5"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^3.1.4"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	}
+}
