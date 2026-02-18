@@ -246,7 +246,11 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 
 		// Only setup settings if we have something to configure
 		if (Object.keys(settingsOptions).length > 0) {
-			this.settingsCleanup = setupGeminiSettings(settingsOptions);
+			// Use project-scoped .gemini/settings.json when a working directory is set.
+			this.settingsCleanup = setupGeminiSettings(
+				settingsOptions,
+				this.config.workingDirectory,
+			);
 		}
 
 		try {

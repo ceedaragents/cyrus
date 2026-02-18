@@ -39,6 +39,10 @@ import type {
 
 /** cursor-agent version we have tested against; set cursorAgentVersion in config to override */
 const TESTED_CURSOR_AGENT_VERSION = "2026.02.13-41ac335";
+const CURSOR_MCP_CONFIG_DOCS_URL =
+	"https://cursor.com/docs/context/mcp#configuration-locations";
+const CURSOR_CLI_PERMISSIONS_DOCS_URL =
+	"https://cursor.com/docs/cli/reference/permissions";
 
 type ToolInput = Record<string, unknown>;
 
@@ -65,6 +69,18 @@ interface CursorPermissionsConfig {
 }
 
 interface CursorPermissionsRestoreState {
+	configPath: string;
+	backupPath: string | null;
+}
+
+type CursorMcpServerConfig = Record<string, unknown>;
+
+interface CursorMcpConfig {
+	mcpServers: Record<string, CursorMcpServerConfig>;
+	[key: string]: unknown;
+}
+
+interface CursorMcpRestoreState {
 	configPath: string;
 	backupPath: string | null;
 }
@@ -893,6 +909,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private emittedToolUseIds = new Set<string>();
 	private fallbackOutputLines: string[] = [];
 	private logStream: WriteStream | null = null;
+	private mcpConfigRestoreState: CursorMcpRestoreState | null = null;
 	private permissionsConfigRestoreState: CursorPermissionsRestoreState | null =
 		null;
 
@@ -952,6 +969,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.emittedToolUseIds.clear();
 		this.fallbackOutputLines = [];
 		this.setupLogging(sessionId);
+		this.syncProjectMcpConfig();
 		this.enableCursorMcpServers();
 		this.syncProjectPermissionsConfig();
 
@@ -1032,6 +1050,8 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	private buildCursorPermissionsConfig(): CursorPermissionsConfig {
+		// Cursor CLI permission tokens reference:
+		// https://cursor.com/docs/cli/reference/permissions
 		const allowedTools = this.config.allowedTools || [];
 		const disallowedTools = this.config.disallowedTools || [];
 		const workspacePath = this.config.workingDirectory;
@@ -1089,6 +1109,141 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		};
 	}
 
+	private buildCursorMcpServersConfig(): Record<string, CursorMcpServerConfig> {
+		const servers: Record<string, CursorMcpServerConfig> = {};
+		for (const [serverName, rawConfig] of Object.entries(
+			this.config.mcpConfig || {},
+		)) {
+			const configAny = rawConfig as Record<string, unknown>;
+			if (
+				typeof configAny.listTools === "function" ||
+				typeof configAny.callTool === "function"
+			) {
+				console.warn(
+					`[CursorRunner] Skipping MCP server '${serverName}' because in-process SDK server instances cannot be serialized to .cursor/mcp.json`,
+				);
+				continue;
+			}
+
+			const mapped: CursorMcpServerConfig = {};
+			if (typeof configAny.command === "string") {
+				mapped.command = configAny.command;
+			}
+			if (Array.isArray(configAny.args)) {
+				mapped.args = configAny.args;
+			}
+			if (
+				configAny.env &&
+				typeof configAny.env === "object" &&
+				!Array.isArray(configAny.env)
+			) {
+				mapped.env = configAny.env;
+			}
+			if (typeof configAny.cwd === "string") {
+				mapped.cwd = configAny.cwd;
+			}
+			if (typeof configAny.url === "string") {
+				mapped.url = configAny.url;
+			}
+			if (
+				configAny.headers &&
+				typeof configAny.headers === "object" &&
+				!Array.isArray(configAny.headers)
+			) {
+				mapped.headers = configAny.headers;
+			}
+			if (typeof configAny.timeout === "number") {
+				mapped.timeout = configAny.timeout;
+			}
+
+			if (!mapped.command && !mapped.url) {
+				console.warn(
+					`[CursorRunner] Skipping MCP server '${serverName}' because it has no serializable command/url transport`,
+				);
+				continue;
+			}
+
+			servers[serverName] = mapped;
+		}
+
+		return servers;
+	}
+
+	private syncProjectMcpConfig(): void {
+		const workspacePath = this.config.workingDirectory;
+		if (!workspacePath) {
+			return;
+		}
+
+		const inlineServers = this.buildCursorMcpServersConfig();
+		if (Object.keys(inlineServers).length === 0) {
+			return;
+		}
+
+		const cursorDir = join(workspacePath, ".cursor");
+		const configPath = join(cursorDir, "mcp.json");
+
+		let existingConfig: CursorMcpConfig = { mcpServers: {} };
+		try {
+			if (existsSync(configPath)) {
+				const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+				if (parsed && typeof parsed === "object") {
+					existingConfig = parsed as CursorMcpConfig;
+				}
+			}
+		} catch {
+			// If existing config is malformed, overwrite with a valid mcpServers object.
+		}
+
+		const existingServers =
+			existingConfig.mcpServers &&
+			typeof existingConfig.mcpServers === "object" &&
+			!Array.isArray(existingConfig.mcpServers)
+				? (existingConfig.mcpServers as Record<string, CursorMcpServerConfig>)
+				: {};
+
+		const nextConfig: CursorMcpConfig = {
+			...existingConfig,
+			mcpServers: {
+				...existingServers,
+				...inlineServers,
+			},
+		};
+
+		mkdirSync(cursorDir, { recursive: true });
+		const backupPath = existsSync(configPath)
+			? `${configPath}.cyrus-backup-${Date.now()}-${process.pid}`
+			: null;
+
+		try {
+			if (backupPath) {
+				renameSync(configPath, backupPath);
+			}
+			writeFileSync(
+				configPath,
+				`${JSON.stringify(nextConfig, null, "\t")}\n`,
+				"utf8",
+			);
+			this.mcpConfigRestoreState = {
+				configPath,
+				backupPath,
+			};
+		} catch (error) {
+			if (backupPath && existsSync(backupPath)) {
+				try {
+					renameSync(backupPath, configPath);
+				} catch {
+					// Best effort rollback; start() will surface the original failure.
+				}
+			}
+			throw error;
+		}
+
+		console.log(
+			`[CursorRunner] Synced project MCP servers at ${configPath} (servers=${Object.keys(nextConfig.mcpServers).length}, backup=${backupPath ? "yes" : "no"}; docs: ${CURSOR_MCP_CONFIG_DOCS_URL})`,
+		);
+	}
+
 	private enableCursorMcpServers(): void {
 		const workspacePath = this.config.workingDirectory;
 		if (!workspacePath) {
@@ -1128,7 +1283,8 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			);
 		}
 
-		// TODO: Include internal-tool MCP servers once EdgeWorker passes them in runner mcpConfig.
+		// Cursor MCP enable preflight combines discovered servers and run-time inline config names.
+		// MCP location/reference: https://cursor.com/docs/context/mcp#configuration-locations
 		const inlineServers = Object.keys(this.config.mcpConfig || {});
 		const allServers = [
 			...new Set([...discoveredServers, ...inlineServers]),
@@ -1234,7 +1390,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		console.log(
-			`[CursorRunner] Synced project permissions at ${configPath} (allow=${nextConfig.permissions.allow.length}, deny=${nextConfig.permissions.deny.length}, backup=${backupPath ? "yes" : "no"})`,
+			`[CursorRunner] Synced project permissions at ${configPath} (allow=${nextConfig.permissions.allow.length}, deny=${nextConfig.permissions.deny.length}, backup=${backupPath ? "yes" : "no"}; docs: ${CURSOR_CLI_PERMISSIONS_DOCS_URL})`,
 		);
 	}
 
@@ -1268,6 +1424,39 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			);
 		} finally {
 			this.permissionsConfigRestoreState = null;
+		}
+	}
+
+	private restoreProjectMcpConfig(): void {
+		const restoreState = this.mcpConfigRestoreState;
+		if (!restoreState) {
+			return;
+		}
+
+		try {
+			if (restoreState.backupPath) {
+				if (existsSync(restoreState.configPath)) {
+					unlinkSync(restoreState.configPath);
+				}
+				if (existsSync(restoreState.backupPath)) {
+					renameSync(restoreState.backupPath, restoreState.configPath);
+					console.log(
+						`[CursorRunner] Restored original project MCP config at ${restoreState.configPath}`,
+					);
+				}
+				return;
+			}
+
+			if (existsSync(restoreState.configPath)) {
+				unlinkSync(restoreState.configPath);
+			}
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			console.warn(
+				`[CursorRunner] Failed to restore project MCP config at ${restoreState.configPath}: ${detail}`,
+			);
+		} finally {
+			this.mcpConfigRestoreState = null;
 		}
 	}
 
@@ -1661,6 +1850,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 
 		this.emitInitMessage();
 		this.sessionInfo.isRunning = false;
+		this.restoreProjectMcpConfig();
 		this.restoreProjectPermissionsConfig();
 
 		let resultMessage: SDKResultMessage;
