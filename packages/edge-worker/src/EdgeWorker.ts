@@ -102,14 +102,12 @@ import {
 } from "cyrus-linear-event-transport";
 import {
 	SlackEventTransport,
-	SlackMessageService,
-	SlackReactionService,
 	type SlackWebhookEvent,
-	stripMention as stripSlackMention,
 } from "cyrus-slack-event-transport";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
+import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import {
@@ -130,6 +128,7 @@ import {
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
@@ -158,7 +157,9 @@ export class EdgeWorker extends EventEmitter {
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
-	private slackEventTransport: SlackEventTransport | null = null; // Slack event transport for forwarded Slack webhooks
+	private slackEventTransport: SlackEventTransport | null = null;
+	private chatSessionHandler: ChatSessionHandler<SlackWebhookEvent> | null =
+		null;
 	private gitHubCommentService: GitHubCommentService; // Service for posting comments back to GitHub PRs
 	private cliRPCServer: CLIRPCServer | null = null; // CLI RPC server for CLI platform mode
 	private configUpdater: ConfigUpdater | null = null; // Single config updater for configuration updates
@@ -677,60 +678,49 @@ export class EdgeWorker extends EventEmitter {
 	 * This creates a /slack-webhook endpoint that handles @mention events from Slack.
 	 */
 	private registerSlackEventTransport(): void {
-		const secret = process.env.CYRUS_API_KEY || "";
+		const slackAdapter = new SlackChatAdapter(this.logger);
+		this.chatSessionHandler = new ChatSessionHandler(
+			slackAdapter,
+			{
+				cyrusHome: this.cyrusHome,
+				defaultModel: this.config.defaultModel,
+				defaultFallbackModel: this.config.defaultFallbackModel,
+				onWebhookStart: () => {
+					this.activeWebhookCount++;
+				},
+				onWebhookEnd: () => {
+					this.activeWebhookCount--;
+				},
+				onStateChange: () => this.savePersistedState(),
+				onClaudeError: (error) => this.handleClaudeError(error),
+			},
+			this.logger,
+		);
 
 		this.slackEventTransport = new SlackEventTransport({
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 			verificationMode: "proxy",
-			secret,
+			secret: process.env.CYRUS_API_KEY || "",
 		});
 
-		// Add "eyes" reaction to acknowledge receipt of Slack @mentions,
-		// then process the event as an agent session
 		this.slackEventTransport.on("event", (event: SlackWebhookEvent) => {
-			if (!event.slackBotToken) {
-				this.logger.warn(
-					"Cannot add Slack reaction: no slackBotToken available (x-slack-bot-token header missing)",
-				);
-				return;
-			}
-			new SlackReactionService()
-				.addReaction({
-					token: event.slackBotToken,
-					channel: event.payload.channel,
-					timestamp: event.payload.ts,
-					name: "eyes",
-				})
-				.catch((err: unknown) => {
-					this.logger.warn(
-						`Failed to add Slack reaction: ${err instanceof Error ? err.message : err}`,
-					);
-				});
-
-			// Process as agent session (fire-and-forget with error logging)
-			this.handleSlackWebhook(event).catch((error) => {
+			this.chatSessionHandler!.handleEvent(event).catch((error) => {
 				this.logger.error(
 					"Failed to handle Slack webhook",
 					error instanceof Error ? error : new Error(String(error)),
 				);
 			});
 		});
-
-		// Listen for unified internal messages (new message bus)
 		this.slackEventTransport.on("message", (message: InternalMessage) => {
 			this.handleMessage(message);
 		});
-
-		// Listen for errors
 		this.slackEventTransport.on("error", (error: Error) => {
 			this.handleError(error);
 		});
 
-		// Register the /slack-webhook endpoint
 		this.slackEventTransport.register();
 
 		this.logger.info("Slack event transport registered");
-		this.logger.info("Webhook endpoint: POST /slack-webhook");
 	}
 
 	/**
@@ -1202,301 +1192,6 @@ ${taskInstructions}
 	}
 
 	/**
-	 * Handle a Slack webhook event (forwarded from CYHOST).
-	 *
-	 * This creates a new session for the Slack @mention, checks out origin/main
-	 * via git worktree, and processes the message as a task prompt.
-	 */
-	private async handleSlackWebhook(event: SlackWebhookEvent): Promise<void> {
-		this.activeWebhookCount++;
-
-		try {
-			// Pick the first configured repository (Slack has no native repo context)
-			const firstRepo = this.repositories.values().next().value;
-			if (!firstRepo) {
-				this.logger.warn(
-					"Cannot handle Slack webhook: no repositories configured",
-				);
-				return;
-			}
-
-			const repository = firstRepo as RepositoryConfig;
-
-			this.logger.info(
-				`Processing Slack webhook: ${event.eventId} in channel ${event.payload.channel} by ${event.payload.user}`,
-			);
-
-			// Get the agent session manager for this repository
-			const agentSessionManager = this.agentSessionManagers.get(repository.id);
-			if (!agentSessionManager) {
-				this.logger.error(
-					`No AgentSessionManager for repository ${repository.name}`,
-				);
-				return;
-			}
-
-			// Strip the @mention from the text to get the task instructions
-			const taskInstructions = stripSlackMention(event.payload.text);
-
-			// Create workspace (git worktree) off origin/main
-			const workspace = await this.createSlackWorkspace(
-				repository,
-				event.eventId,
-			);
-
-			if (!workspace) {
-				this.logger.error(
-					`Failed to create workspace for Slack event ${event.eventId}`,
-				);
-				return;
-			}
-
-			this.logger.info(`Slack workspace created at: ${workspace.path}`);
-
-			// Create a synthetic session for this Slack mention
-			const sessionKey = `slack:${event.payload.channel}:${event.payload.thread_ts || event.payload.ts}`;
-			const issueMinimal: IssueMinimal = {
-				id: sessionKey,
-				identifier: `slack-${event.eventId}`,
-				title:
-					taskInstructions.slice(0, 100) +
-					(taskInstructions.length > 100 ? "..." : ""),
-				branchName: "origin/main",
-			};
-
-			// Create an internal agent session (no Linear session for Slack)
-			const slackSessionId = `slack-${event.eventId}`;
-			agentSessionManager.createLinearAgentSession(
-				slackSessionId,
-				sessionKey,
-				issueMinimal,
-				workspace,
-				"slack", // Don't stream activities to Linear for Slack sources
-			);
-
-			const session = agentSessionManager.getSession(slackSessionId);
-			if (!session) {
-				this.logger.error(
-					`Failed to create session for Slack webhook ${event.eventId}`,
-				);
-				return;
-			}
-
-			// Initialize procedure metadata
-			if (!session.metadata) {
-				session.metadata = {};
-			}
-
-			// Build the system prompt for this Slack session
-			const systemPrompt = this.buildSlackSystemPrompt(
-				event,
-				repository,
-				taskInstructions,
-			);
-
-			// Build allowed tools and directories
-			const allowedTools = this.buildAllowedTools(repository);
-			const disallowedTools = this.buildDisallowedTools(repository);
-			const allowedDirectories: string[] = [repository.repositoryPath];
-
-			// Create agent runner using the standard config builder
-			const { config: runnerConfig } = this.buildAgentRunnerConfig(
-				session,
-				repository,
-				slackSessionId,
-				systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				undefined, // labels
-				200, // maxTurns
-				false, // singleTurn
-			);
-
-			const runner = new ClaudeRunner(runnerConfig);
-
-			// Store the runner in the session manager
-			agentSessionManager.addAgentRunner(slackSessionId, runner);
-
-			// Save persisted state
-			await this.savePersistedState();
-
-			this.emit(
-				"session:started",
-				sessionKey,
-				issueMinimal as unknown as Issue,
-				repository.id,
-			);
-
-			this.logger.info(
-				`Starting Claude runner for Slack event ${event.eventId}`,
-			);
-
-			// Start the session and handle completion
-			try {
-				const sessionInfo = await runner.start(taskInstructions);
-				this.logger.info(`Slack session started: ${sessionInfo.sessionId}`);
-
-				// When session completes, post the reply back to Slack
-				await this.postSlackReply(event, runner);
-			} catch (error) {
-				this.logger.error(
-					`Slack session error for event ${event.eventId}`,
-					error instanceof Error ? error : new Error(String(error)),
-				);
-			} finally {
-				await this.savePersistedState();
-			}
-		} catch (error) {
-			this.logger.error(
-				"Failed to process Slack webhook",
-				error instanceof Error ? error : new Error(String(error)),
-			);
-		} finally {
-			this.activeWebhookCount--;
-		}
-	}
-
-	/**
-	 * Create a workspace (git worktree) for a Slack event.
-	 */
-	private async createSlackWorkspace(
-		repository: RepositoryConfig,
-		eventId: string,
-	): Promise<{ path: string; isGitWorktree: boolean } | null> {
-		try {
-			const syntheticIssue = {
-				id: `slack-${eventId}`,
-				identifier: `slack-${eventId}`,
-				title: `Slack event ${eventId}`,
-				description: null,
-				url: "",
-				branchName: "origin/main",
-				assigneeId: null,
-				stateId: null,
-				teamId: null,
-				labelIds: [],
-				priority: 0,
-				createdAt: new Date(),
-				updatedAt: new Date(),
-				archivedAt: null,
-				state: Promise.resolve(undefined),
-				assignee: Promise.resolve(undefined),
-				team: Promise.resolve(undefined),
-				parent: Promise.resolve(undefined),
-				project: Promise.resolve(undefined),
-				labels: () => Promise.resolve({ nodes: [] }),
-				comments: () => Promise.resolve({ nodes: [] }),
-				attachments: () => Promise.resolve({ nodes: [] }),
-				children: () => Promise.resolve({ nodes: [] }),
-				inverseRelations: () => Promise.resolve({ nodes: [] }),
-				update: () =>
-					Promise.resolve({
-						success: true,
-						issue: undefined,
-						lastSyncId: 0,
-					}),
-			} as unknown as Issue;
-
-			return await this.gitService.createGitWorktree(
-				syntheticIssue,
-				repository,
-			);
-		} catch (error) {
-			this.logger.error(
-				`Failed to create Slack workspace for event ${eventId}`,
-				error instanceof Error ? error : new Error(String(error)),
-			);
-			return null;
-		}
-	}
-
-	/**
-	 * Build a system prompt for a Slack @mention session.
-	 */
-	private buildSlackSystemPrompt(
-		event: SlackWebhookEvent,
-		repository: RepositoryConfig,
-		taskInstructions: string,
-	): string {
-		return `You are responding to a Slack message.
-
-## Context
-- **Repository**: ${repository.name}
-- **Requested by**: ${event.payload.user}
-- **Channel**: ${event.payload.channel}
-
-## Task
-${taskInstructions}
-
-## Instructions
-- You are checked out on the main branch
-- Make changes directly to the code
-- After making changes, commit and push them
-- Be concise in your responses as they will be posted back to Slack`;
-	}
-
-	/**
-	 * Post a reply back to Slack after the session completes.
-	 */
-	private async postSlackReply(
-		event: SlackWebhookEvent,
-		runner: IAgentRunner,
-	): Promise<void> {
-		try {
-			// Get the last assistant message from the runner as the summary
-			const messages = runner.getMessages();
-			const lastAssistantMessage = [...messages]
-				.reverse()
-				.find((m) => m.type === "assistant");
-
-			let summary = "Task completed. Please review the changes on this branch.";
-			if (
-				lastAssistantMessage &&
-				lastAssistantMessage.type === "assistant" &&
-				"message" in lastAssistantMessage
-			) {
-				const msg = lastAssistantMessage as {
-					message: {
-						content: Array<{ type: string; text?: string }>;
-					};
-				};
-				const textBlock = msg.message.content?.find(
-					(block) => block.type === "text" && block.text,
-				);
-				if (textBlock?.text) {
-					summary = textBlock.text;
-				}
-			}
-
-			if (!event.slackBotToken) {
-				this.logger.warn("Cannot post Slack reply: no slackBotToken available");
-				return;
-			}
-
-			// Thread the reply under the original message
-			const threadTs = event.payload.thread_ts || event.payload.ts;
-
-			await new SlackMessageService().postMessage({
-				token: event.slackBotToken,
-				channel: event.payload.channel,
-				text: summary,
-				thread_ts: threadTs,
-			});
-
-			this.logger.info(
-				`Posted Slack reply to channel ${event.payload.channel} (thread ${threadTs})`,
-			);
-		} catch (error) {
-			this.logger.error(
-				"Failed to post Slack reply",
-				error instanceof Error ? error : new Error(String(error)),
-			);
-		}
-	}
-
-	/**
 	 * Compute the current status of the Cyrus process
 	 * @returns "idle" if the process can be safely restarted, "busy" if work is in progress
 	 */
@@ -1506,7 +1201,7 @@ ${taskInstructions}
 			return "busy";
 		}
 
-		// Busy if any runner is actively running
+		// Busy if any runner is actively running (repository-tied sessions)
 		for (const manager of this.agentSessionManagers.values()) {
 			const runners = manager.getAllAgentRunners();
 			for (const runner of runners) {
@@ -1514,6 +1209,11 @@ ${taskInstructions}
 					return "busy";
 				}
 			}
+		}
+
+		// Busy if any chat platform runner is actively running
+		if (this.chatSessionHandler?.isAnyRunnerBusy()) {
+			return "busy";
 		}
 
 		return "idle";
@@ -1540,10 +1240,13 @@ ${taskInstructions}
 			);
 		}
 
-		// get all agent runners
+		// get all agent runners (including chat platform sessions)
 		const agentRunners: IAgentRunner[] = [];
 		for (const agentSessionManager of this.agentSessionManagers.values()) {
 			agentRunners.push(...agentSessionManager.getAllAgentRunners());
+		}
+		if (this.chatSessionHandler) {
+			agentRunners.push(...this.chatSessionHandler.getAllRunners());
 		}
 
 		// Kill all agent processes with null checking

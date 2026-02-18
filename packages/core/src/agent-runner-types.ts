@@ -283,6 +283,17 @@ export interface IAgentRunner {
 	completeStream?(): void;
 
 	/**
+	 * Check if the session is in streaming mode and still accepting messages
+	 *
+	 * Returns true only when the session was started with `startStreaming()`,
+	 * the stream has not been completed, and the session is running.
+	 * Use this to guard calls to `addStreamMessage()`.
+	 *
+	 * Only available when `supportsStreamingInput` is true.
+	 */
+	isStreaming?(): boolean;
+
+	/**
 	 * Stop the current agent session
 	 *
 	 * Gracefully terminates the running session. Any in-progress operations
