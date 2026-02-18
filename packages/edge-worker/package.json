@@ -28,6 +28,8 @@
 		"chokidar": "^4.0.3",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-cloudflare-tunnel-client": "workspace:*",
+		"cyrus-codex-runner": "workspace:*",
+		"cyrus-cursor-runner": "workspace:*",
 		"cyrus-config-updater": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-gemini-runner": "workspace:*",
@@ -35,7 +37,7 @@
 		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-slack-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
-		"fastify": "^5.2.0",
+		"fastify": "^5.7.3",
 		"file-type": "^18.7.0",
 		"ignore": "^7.0.5",
 		"zod": "4.3.5"
