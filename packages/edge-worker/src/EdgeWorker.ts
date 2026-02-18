@@ -4988,6 +4988,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return;
 			}
 
+			if (
+				!this.isCyrusToolsMcpAuthorizationValid(request.headers?.authorization)
+			) {
+				_reply.code(401).send({
+					error: "Unauthorized cyrus-tools MCP request",
+				});
+				done();
+				return;
+			}
+
 			const rawContextHeader = request.headers?.["x-cyrus-mcp-context-id"];
 			const contextId = Array.isArray(rawContextHeader)
 				? rawContextHeader[0]
@@ -5273,6 +5283,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		});
 		this.pruneCyrusToolsMcpContexts();
 
+		const cyrusToolsAuthorizationHeader =
+			this.getCyrusToolsMcpAuthorizationHeaderValue();
+
 		// Always inject the Linear MCP servers with the repository's token
 		// https://linear.app/docs/mcp
 		const mcpConfig: Record<string, McpServerConfig> = {
@@ -5288,6 +5301,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				url: this.getCyrusToolsMcpUrl(),
 				headers: {
 					"x-cyrus-mcp-context-id": contextId,
+					...(cyrusToolsAuthorizationHeader
+						? {
+								Authorization: cyrusToolsAuthorizationHeader,
+							}
+						: {}),
 				},
 			},
 		};
@@ -5312,6 +5330,28 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		return mcpConfig;
+	}
+
+	private getCyrusToolsMcpAuthorizationHeaderValue(): string | undefined {
+		const apiKey = process.env.CYRUS_API_KEY?.trim();
+		if (!apiKey) {
+			return undefined;
+		}
+		return `Bearer ${apiKey}`;
+	}
+
+	private isCyrusToolsMcpAuthorizationValid(
+		rawAuthorizationHeader: unknown,
+	): boolean {
+		const expectedHeader = this.getCyrusToolsMcpAuthorizationHeaderValue();
+		if (!expectedHeader) {
+			return true;
+		}
+
+		const authorizationHeader = Array.isArray(rawAuthorizationHeader)
+			? rawAuthorizationHeader[0]
+			: rawAuthorizationHeader;
+		return authorizationHeader === expectedHeader;
 	}
 
 	/**

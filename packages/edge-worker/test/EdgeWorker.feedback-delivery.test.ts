@@ -460,5 +460,57 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(mockOnFeedbackDelivery).toBeDefined();
 			expect(mockOnSessionCreated).toBeDefined();
 		});
+
+		it("should include CYRUS_API_KEY as Authorization header for cyrus-tools MCP config", () => {
+			const previousApiKey = process.env.CYRUS_API_KEY;
+			process.env.CYRUS_API_KEY = "test-cyrus-api-key";
+
+			try {
+				const mcpConfig = (edgeWorker as any).buildMcpConfig(
+					mockRepository,
+					"parent-session-123",
+				);
+				const cyrusToolsConfig = mcpConfig["cyrus-tools"] as {
+					headers?: Record<string, string>;
+				};
+
+				expect(cyrusToolsConfig.headers?.Authorization).toBe(
+					"Bearer test-cyrus-api-key",
+				);
+			} finally {
+				if (previousApiKey === undefined) {
+					delete process.env.CYRUS_API_KEY;
+				} else {
+					process.env.CYRUS_API_KEY = previousApiKey;
+				}
+			}
+		});
+
+		it("should validate cyrus-tools MCP Authorization header against CYRUS_API_KEY", () => {
+			const previousApiKey = process.env.CYRUS_API_KEY;
+			process.env.CYRUS_API_KEY = "test-cyrus-api-key";
+
+			try {
+				expect(
+					(edgeWorker as any).isCyrusToolsMcpAuthorizationValid(
+						"Bearer test-cyrus-api-key",
+					),
+				).toBe(true);
+				expect(
+					(edgeWorker as any).isCyrusToolsMcpAuthorizationValid(
+						"Bearer wrong-key",
+					),
+				).toBe(false);
+				expect(
+					(edgeWorker as any).isCyrusToolsMcpAuthorizationValid(undefined),
+				).toBe(false);
+			} finally {
+				if (previousApiKey === undefined) {
+					delete process.env.CYRUS_API_KEY;
+				} else {
+					process.env.CYRUS_API_KEY = previousApiKey;
+				}
+			}
+		});
 	});
 });
