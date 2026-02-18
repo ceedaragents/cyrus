@@ -99,9 +99,9 @@ Issue: {{issue_identifier}} - {{issue_title}}
 		vi.mocked(readFile).mockResolvedValue(templateWithVersion);
 
 		// Use reflection to test private method
-		const extractVersionTag = (edgeWorker as any).extractVersionTag.bind(
-			edgeWorker,
-		);
+		const extractVersionTag = (
+			edgeWorker as any
+		).promptBuilder.extractVersionTag.bind(edgeWorker);
 		const version = extractVersionTag(templateWithVersion);
 
 		expect(version).toBe("builder-v1.0.0");
@@ -119,9 +119,9 @@ Issue: {{issue_identifier}} - {{issue_title}}
 		vi.mocked(readFile).mockResolvedValue(templateWithoutVersion);
 
 		// Use reflection to test private method
-		const extractVersionTag = (edgeWorker as any).extractVersionTag.bind(
-			edgeWorker,
-		);
+		const extractVersionTag = (
+			edgeWorker as any
+		).promptBuilder.extractVersionTag.bind(edgeWorker);
 		const version = extractVersionTag(templateWithoutVersion);
 
 		expect(version).toBeUndefined();
