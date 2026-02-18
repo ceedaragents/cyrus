@@ -101,6 +101,7 @@ function createAssistantToolUseMessage(
 			iterations: null,
 			server_tool_use: null,
 			service_tier: null,
+			speed: null,
 		},
 		container: null,
 		context_management: null,
@@ -153,6 +154,7 @@ function createAssistantBetaMessage(
 			iterations: null,
 			server_tool_use: null,
 			service_tier: null,
+			speed: null,
 		},
 		container: null,
 		context_management: null,
@@ -192,6 +194,7 @@ function createResultUsage(parsed: ParsedUsage): SDKResultMessage["usage"] {
 			web_search_requests: 0,
 		},
 		service_tier: "standard",
+		speed: "standard",
 	};
 }
 
