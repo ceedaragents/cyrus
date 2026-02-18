@@ -193,7 +193,7 @@ export const EdgeConfigSchema = z.object({
 	/** Default Gemini model to use across all repositories (e.g., "gemini-2.5-pro") */
 	geminiDefaultModel: z.string().optional(),
 
-	/** Default Codex model to use across all repositories (e.g., "gpt-5-codex", "gpt-5.2-codex") */
+	/** Default Codex model to use across all repositories (e.g., "gpt-5.3-codex", "gpt-5.2-codex") */
 	codexDefaultModel: z.string().optional(),
 
 	/**

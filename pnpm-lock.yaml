@@ -246,6 +246,22 @@ importers:
         specifier: ^3.1.4
         version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
 
+  packages/cursor-runner:
+    dependencies:
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
+
   packages/edge-worker:
     dependencies:
       '@linear/sdk':
@@ -272,6 +288,9 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+      cyrus-cursor-runner:
+        specifier: workspace:*
+        version: link:../cursor-runner
       cyrus-gemini-runner:
         specifier: workspace:*
         version: link:../gemini-runner

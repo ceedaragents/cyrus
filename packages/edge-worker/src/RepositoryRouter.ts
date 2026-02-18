@@ -317,7 +317,7 @@ export class RepositoryRouter {
 
 			for (const repo of reposWithRoutingLabels) {
 				if (
-					repo.routingLabels?.some((routingLabel) =>
+					repo.routingLabels?.some((routingLabel: string) =>
 						labels.includes(routingLabel),
 					)
 				) {

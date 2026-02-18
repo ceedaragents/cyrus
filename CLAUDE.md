@@ -150,6 +150,7 @@ When implementing a new runner/harness (for example Codex, Gemini, OpenCode, or 
 - Validate `tools`, `allowedTools`, and `disallowedTools` semantics for the SDK.
 - Validate approval/sandbox behavior for tool execution.
 - Verify tool calls produce both start and completion signals.
+- For providers that rely on static/project config files (for example Cursor CLI), implement a permission translation layer from Cyrus/Claude tool names to provider-native permission tokens and write that config before session start. This must support subroutine-time updates when allowed/disallowed tools change. For Cursor MCP servers, pre-enable them before session start (`agent mcp list` + `agent mcp enable <server>` per server) so tools are available in headless runs. When using Cursor in Cyrus, only MCP servers configured in `.cursor/mcp.json` should be treated as project MCP config; use Cursor's MCP config-location and file-format docs as the source of truth: https://cursor.com/docs/context/mcp#configuration-locations. For broad file permissions, map wildcard `Read(**)` / `Write(**)` to workspace-scoped patterns (for example `Read(./**)` / `Write(./**)`) to avoid unintentionally permitting absolute system paths. Reference: https://cursor.com/docs/cli/reference/permissions
 
 ### 6) Prompt Streaming Input
 
@@ -201,6 +202,10 @@ When implementing a new runner/harness (for example Codex, Gemini, OpenCode, or 
 ### Codex Integration Lesson Learned
 
 Codex emitted tool activity at `item.started`/`item.completed` events, but those were initially not mapped to `tool_use`/`tool_result`. The result was missing action/file-edit visibility in Linear. For any new harness, treat tool lifecycle mapping as a first-class acceptance criterion, not a formatter-only concern.
+
+### Cursor Integration Lesson Learned
+
+Cursor CLI permissions are enforced from config (`~/.cursor/cli-config.json` or `<project>/.cursor/cli.json`) instead of dynamic per-request tool allowlists. For Cursor-like providers, do not rely on dynamic SDK tool constraints alone—add a translation layer (for example `mcp__server__tool` -> `Mcp(server:tool)`, `Bash(...)` -> `Shell(...)`) and sync project permissions before each run and between subroutines. Also pre-enable MCP servers via `agent mcp list` + `agent mcp enable <server>` using both project-listed and runner-configured server names so headless sessions can invoke MCP tools immediately. In Cyrus Cursor runs, treat `.cursor/mcp.json` as the project MCP source and follow Cursor's configuration-location and file-syntax docs (these differ from Claude's MCP interpretation): https://cursor.com/docs/context/mcp#configuration-locations. Use workspace-scoped wildcard file permissions (`Read(./**)`, `Write(./**)`) rather than unscoped `Read(**)` / `Write(**)` in translation defaults. Reference: https://cursor.com/docs/cli/reference/permissions
 
 ## Navigating GitHub Repositories
 
