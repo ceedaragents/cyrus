@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { LinearClient } from "@linear/sdk";
 import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import type {
-	CyrusToolsOptions,
 	HookCallbackMatcher,
 	HookEvent,
 	McpServerConfig,
@@ -15,7 +14,6 @@ import type {
 } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
-	createCyrusToolsServer,
 	createImageToolsServer,
 	createSoraToolsServer,
 	getAllTools,
@@ -70,6 +68,10 @@ import {
 	LinearIssueTrackerService,
 	type LinearOAuthConfig,
 } from "cyrus-linear-event-transport";
+import {
+	type CyrusToolsOptions,
+	createCyrusToolsServer,
+} from "cyrus-mcp-tools";
 import { Sessions, streamableHttp } from "fastify-mcp";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
@@ -5040,7 +5042,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					);
 				context.prebuiltServer = undefined;
 
-				return sdkServer.instance.server;
+				return sdkServer.server;
 			},
 		});
 
