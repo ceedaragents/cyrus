@@ -180,6 +180,25 @@ importers:
         specifier: ^3.1.4
         version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
 
+  packages/codex-runner:
+    dependencies:
+      '@openai/codex-sdk':
+        specifier: ^0.98.0
+        version: 0.98.0
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
+
   packages/config-updater:
     dependencies:
       cyrus-core:
@@ -227,6 +246,22 @@ importers:
         specifier: ^3.1.4
         version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
 
+  packages/cursor-runner:
+    dependencies:
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
+
   packages/edge-worker:
     dependencies:
       '@linear/sdk':
@@ -244,12 +279,18 @@ importers:
       cyrus-cloudflare-tunnel-client:
         specifier: workspace:*
         version: link:../cloudflare-tunnel-client
+      cyrus-codex-runner:
+        specifier: workspace:*
+        version: link:../codex-runner
       cyrus-config-updater:
         specifier: workspace:*
         version: link:../config-updater
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+      cyrus-cursor-runner:
+        specifier: workspace:*
+        version: link:../cursor-runner
       cyrus-gemini-runner:
         specifier: workspace:*
         version: link:../gemini-runner
@@ -1159,6 +1200,10 @@ packages:
   '@ngrok/ngrok@1.5.2':
     resolution: {integrity: sha512-gN7KKdLTKer+wBSk9s9eDx53MUFdcnXNHsXxiC5sJLLD5HY9JRMSn6UzcCqnk7IgeIgCgw5h1k6YDqhjx6lmtg==}
     engines: {node: '>= 10'}
+
+  '@openai/codex-sdk@0.98.0':
+    resolution: {integrity: sha512-TbPgrBpuSNMJyOXys0HNsh6UoP5VIHu1fVh2KDdACi5XyB0vuPtzBZC+qOsxHz7WXEQPFlomPLyxS6JnE5Okmg==}
+    engines: {node: '>=18'}
 
   '@opentelemetry/api-logs@0.203.0':
     resolution: {integrity: sha512-9B9RU0H7Ya1Dx/Rkyc4stuBZSGVQF27WigitInx2QQoj6KUpEFYPKoWjdFTunJYxmXmh17HeBvbMa1EhGyPmqQ==}
@@ -4233,6 +4278,8 @@ snapshots:
       '@ngrok/ngrok-win32-arm64-msvc': 1.5.2
       '@ngrok/ngrok-win32-ia32-msvc': 1.5.2
       '@ngrok/ngrok-win32-x64-msvc': 1.5.2
+
+  '@openai/codex-sdk@0.98.0': {}
 
   '@opentelemetry/api-logs@0.203.0':
     dependencies:
