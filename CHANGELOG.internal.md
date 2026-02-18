@@ -8,6 +8,9 @@ This changelog documents internal development changes, refactors, tooling update
 ### Added
 - Added Cursor harness `[agent=cursor]`, including offline F1 drives for stop/tool activity, resume continuation, and permission synchronization behavior. Also added project-level Cursor CLI permissions mapping from Cyrus tool permissions (including subroutine-time updates), pre-run MCP server enablement (`agent mcp list` + `agent mcp enable <server>`), switched the default Codex runner model to `gpt-5.3-codex`, and aligned edge-worker Vitest module resolution to use local `cyrus-claude-runner` sources during tests. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 
+### Changed
+- Updated root verification scripts so `pnpm test:packages:run` and `pnpm typecheck` build all `packages/*` first, preventing workspace package entry resolution failures during validation runs; also ignore local `.pnpm-store/` to avoid lint noise from pnpm cache metadata. ([CYPACK-823](https://linear.app/ceedar/issue/CYPACK-823), [#875](https://github.com/ceedaragents/cyrus/pull/875))
+
 ### Fixed
 - Updated orchestrator system prompts to explicitly require `state: "To Do"` when creating issues via `mcp__linear__create_issue`, preventing issues from being created in "Triage" status. ([CYPACK-761](https://linear.app/ceedar/issue/CYPACK-761), [#815](https://github.com/ceedaragents/cyrus/pull/815))
 
