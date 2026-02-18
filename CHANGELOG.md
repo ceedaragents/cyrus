@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Telegram bot for conversational Cyrus interaction** - New `apps/telegram-bot` package lets you talk to Cyrus from Telegram in plain text. Messages become Linear issues, follow-up replies become mid-implementation comments, and progress updates are relayed back to your chat. ([CYPACK-820](https://linear.app/ceedar/issue/CYPACK-820), [#872](https://github.com/ceedaragents/cyrus/pull/872))
+
 ### Fixed
 - **Codex usage limit errors now display full message in Linear** - When Codex hits usage limits or other turn.failed errors, the actual error message is now posted to Linear agent activity instead of a generic message. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 - **Cursor project .cursor/cli.json is now backed up and restored** - CursorRunner no longer overwrites the project's `.cursor/cli.json`. It temporarily renames the existing file before writing Cyrus permissions, then restores the original when the session ends. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))

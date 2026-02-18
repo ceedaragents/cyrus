@@ -4,8 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
-
 ### Added
+- Added `apps/telegram-bot` package using grammY framework with long-polling mode. Includes `LinearService` (issue creation, comments, status polling via `@linear/sdk`), `ConversationStore` (in-memory Telegram-to-Linear mapping with dual-index lookup), `IntentClassifier` (reply-to based follow-up detection), `ProgressPoller` (15s interval status/comment polling), and `titleExtractor` utility. Reads Linear credentials from existing `~/.cyrus/config.json`. 25 unit tests across 4 test files. ([CYPACK-820](https://linear.app/ceedar/issue/CYPACK-820), [#872](https://github.com/ceedaragents/cyrus/pull/872))
+
 - Added Cursor harness `[agent=cursor]`, including offline F1 drives for stop/tool activity, resume continuation, and permission synchronization behavior. Also added project-level Cursor CLI permissions mapping from Cyrus tool permissions (including subroutine-time updates), pre-run MCP server enablement (`agent mcp list` + `agent mcp enable <server>`), switched the default Codex runner model to `gpt-5.3-codex`, and aligned edge-worker Vitest module resolution to use local `cyrus-claude-runner` sources during tests. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 
 ### Fixed
