@@ -617,12 +617,31 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 				mapped.url = configAny.url;
 			}
 			if (
+				configAny.http_headers &&
+				typeof configAny.http_headers === "object" &&
+				!Array.isArray(configAny.http_headers)
+			) {
+				mapped.http_headers =
+					configAny.http_headers as unknown as CodexConfigOverrides[keyof CodexConfigOverrides];
+			}
+			if (
 				configAny.headers &&
 				typeof configAny.headers === "object" &&
 				!Array.isArray(configAny.headers)
 			) {
-				mapped.headers =
+				mapped.http_headers =
 					configAny.headers as unknown as CodexConfigOverrides[keyof CodexConfigOverrides];
+			}
+			if (
+				configAny.env_http_headers &&
+				typeof configAny.env_http_headers === "object" &&
+				!Array.isArray(configAny.env_http_headers)
+			) {
+				mapped.env_http_headers =
+					configAny.env_http_headers as unknown as CodexConfigOverrides[keyof CodexConfigOverrides];
+			}
+			if (typeof configAny.bearer_token_env_var === "string") {
+				mapped.bearer_token_env_var = configAny.bearer_token_env_var;
 			}
 			if (typeof configAny.timeout === "number") {
 				mapped.timeout = configAny.timeout;
