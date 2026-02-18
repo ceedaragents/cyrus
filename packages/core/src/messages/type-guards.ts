@@ -15,6 +15,8 @@ import type {
 	LinearSessionStartPlatformData,
 	LinearUserPromptPlatformData,
 	SessionStartMessage,
+	SlackSessionStartPlatformData,
+	SlackUserPromptPlatformData,
 	StopSignalMessage,
 	UnassignMessage,
 	UserPromptMessage,
@@ -140,4 +142,26 @@ export function hasGitHubUserPromptPlatformData(
 	platformData: GitHubUserPromptPlatformData;
 } {
 	return message.source === "github";
+}
+
+/**
+ * Type guard for Slack platform data in SessionStartMessage.
+ */
+export function hasSlackSessionStartPlatformData(
+	message: SessionStartMessage,
+): message is SessionStartMessage & {
+	platformData: SlackSessionStartPlatformData;
+} {
+	return message.source === "slack";
+}
+
+/**
+ * Type guard for Slack platform data in UserPromptMessage.
+ */
+export function hasSlackUserPromptPlatformData(
+	message: UserPromptMessage,
+): message is UserPromptMessage & {
+	platformData: SlackUserPromptPlatformData;
+} {
+	return message.source === "slack";
 }

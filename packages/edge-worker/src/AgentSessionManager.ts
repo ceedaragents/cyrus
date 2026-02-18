@@ -101,6 +101,7 @@ export class AgentSessionManager extends EventEmitter {
 	private taskSubjectsByToolUseId: Map<string, string> = new Map(); // Cache TaskCreate subjects by toolUseId until result arrives with task ID
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
+	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -195,6 +196,38 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Create an agent session for chat-style platforms (Slack, etc.) that are
+	 * not tied to a specific issue or repository.
+	 *
+	 * Unlike {@link createLinearAgentSession}, this does NOT require issue
+	 * context — the session lives in a standalone workspace with no issue
+	 * tracker linkage.
+	 */
+	createChatSession(
+		sessionId: string,
+		workspace: Workspace,
+		platform: string,
+	): CyrusAgentSession {
+		const log = this.logger.withContext({ sessionId, platform });
+		log.info("Creating chat session");
+
+		const agentSession: CyrusAgentSession = {
+			id: sessionId,
+			type: AgentSessionType.CommentThread,
+			status: AgentSessionStatus.Active,
+			context: AgentSessionType.CommentThread,
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+			workspace,
+		};
+
+		this.sessions.set(sessionId, agentSession);
+		this.entries.set(sessionId, []);
+
+		return agentSession;
+	}
+
+	/**
 	 * Update Agent Session with session ID from system initialization
 	 * Automatically detects whether it's Claude or Gemini based on the runner
 	 */
@@ -211,11 +244,22 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Determine which runner is being used
 		const runner = linearSession.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerType =
+			runner?.constructor.name === "GeminiRunner"
+				? "gemini"
+				: runner?.constructor.name === "CodexRunner"
+					? "codex"
+					: runner?.constructor.name === "CursorRunner"
+						? "cursor"
+						: "claude";
 
 		// Update the appropriate session ID based on runner type
-		if (isGeminiRunner) {
+		if (runnerType === "gemini") {
 			linearSession.geminiSessionId = claudeSystemMessage.session_id;
+		} else if (runnerType === "codex") {
+			linearSession.codexSessionId = claudeSystemMessage.session_id;
+		} else if (runnerType === "cursor") {
+			linearSession.cursorSessionId = claudeSystemMessage.session_id;
 		} else {
 			linearSession.claudeSessionId = claudeSystemMessage.session_id;
 		}
@@ -256,13 +300,24 @@ export class AgentSessionManager extends EventEmitter {
 		// Determine which runner is being used
 		const session = this.sessions.get(sessionId);
 		const runner = session?.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerType =
+			runner?.constructor.name === "GeminiRunner"
+				? "gemini"
+				: runner?.constructor.name === "CodexRunner"
+					? "codex"
+					: runner?.constructor.name === "CursorRunner"
+						? "cursor"
+						: "claude";
 
 		const sessionEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
-			...(isGeminiRunner
+			...(runnerType === "gemini"
 				? { geminiSessionId: sdkMessage.session_id }
-				: { claudeSessionId: sdkMessage.session_id }),
+				: runnerType === "codex"
+					? { codexSessionId: sdkMessage.session_id }
+					: runnerType === "cursor"
+						? { cursorSessionId: sdkMessage.session_id }
+						: { claudeSessionId: sdkMessage.session_id }),
 			type: sdkMessage.type,
 			content: this.extractContent(sdkMessage),
 			metadata: {
@@ -308,8 +363,10 @@ export class AgentSessionManager extends EventEmitter {
 		// Note: We should ideally track by session, but for now clearing all is safer
 		// to prevent memory leaks
 
-		const status =
-			resultMessage.subtype === "success"
+		const wasStopRequested = this.consumeStopRequest(sessionId);
+		const status = wasStopRequested
+			? AgentSessionStatus.Error
+			: resultMessage.subtype === "success"
 				? AgentSessionStatus.Complete
 				: AgentSessionStatus.Error;
 
@@ -319,10 +376,25 @@ export class AgentSessionManager extends EventEmitter {
 			usage: resultMessage.usage,
 		});
 
-		// Handle result using procedure routing system
+		// Handle result using procedure routing system (skip for sessions without procedures, e.g. Slack)
+		if (!this.procedureAnalyzer) {
+			log.info(`Session completed (no procedure routing)`);
+			return;
+		}
+
+		if (wasStopRequested) {
+			log.info(
+				`Session ${sessionId} was stopped by user; skipping procedure continuation`,
+			);
+			return;
+		}
+
 		if ("result" in resultMessage && resultMessage.result) {
 			await this.handleProcedureCompletion(session, sessionId, resultMessage);
-		} else if (resultMessage.subtype !== "success") {
+		} else if (
+			resultMessage.subtype !== "success" &&
+			this.shouldRecoverFromPreviousSubroutine(resultMessage)
+		) {
 			// Error result (e.g. error_max_turns from singleTurn subroutines) — try to
 			// recover from the last completed subroutine's result so the procedure can still complete.
 			const recoveredText =
@@ -349,7 +421,49 @@ export class AgentSessionManager extends EventEmitter {
 				);
 				await this.addResultEntry(sessionId, resultMessage);
 			}
+		} else if (resultMessage.subtype !== "success") {
+			// Non-recoverable errors (e.g. stop/abort) should not advance procedures.
+			await this.addResultEntry(sessionId, resultMessage);
 		}
+	}
+
+	private shouldRecoverFromPreviousSubroutine(
+		resultMessage: SDKResultMessage,
+	): boolean {
+		if (resultMessage.subtype === "error_max_turns") {
+			return true;
+		}
+
+		const errorText = [
+			resultMessage.subtype,
+			...("errors" in resultMessage && Array.isArray(resultMessage.errors)
+				? resultMessage.errors
+				: []),
+			"result" in resultMessage && typeof resultMessage.result === "string"
+				? resultMessage.result
+				: "",
+		]
+			.join(" ")
+			.toLowerCase();
+
+		return (
+			errorText.includes("max turn") ||
+			errorText.includes("turn limit") ||
+			errorText.includes("turns limit")
+		);
+	}
+
+	private consumeStopRequest(linearAgentActivitySessionId: string): boolean {
+		if (!this.stopRequestedSessions.has(linearAgentActivitySessionId)) {
+			return false;
+		}
+
+		this.stopRequestedSessions.delete(linearAgentActivitySessionId);
+		return true;
+	}
+
+	requestSessionStop(linearAgentActivitySessionId: string): void {
+		this.stopRequestedSessions.add(linearAgentActivitySessionId);
 	}
 
 	/**
@@ -373,8 +487,12 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
-		// Get the runner session ID (either Claude or Gemini)
-		const runnerSessionId = session.claudeSessionId || session.geminiSessionId;
+		// Get the runner session ID (Claude, Gemini, Codex, or Cursor)
+		const runnerSessionId =
+			session.claudeSessionId ||
+			session.geminiSessionId ||
+			session.codexSessionId ||
+			session.cursorSessionId;
 		if (!runnerSessionId) {
 			log.error(`No runner session ID found for procedure session`);
 			return;
@@ -820,15 +938,37 @@ export class AgentSessionManager extends EventEmitter {
 		// Determine which runner is being used
 		const session = this.sessions.get(sessionId);
 		const runner = session?.agentRunner;
-		const isGeminiRunner = runner?.constructor.name === "GeminiRunner";
+		const runnerType =
+			runner?.constructor.name === "GeminiRunner"
+				? "gemini"
+				: runner?.constructor.name === "CodexRunner"
+					? "codex"
+					: runner?.constructor.name === "CursorRunner"
+						? "cursor"
+						: "claude";
+
+		// For error results, content may be in errors[] rather than result
+		const content =
+			"result" in resultMessage && typeof resultMessage.result === "string"
+				? resultMessage.result
+				: resultMessage.is_error &&
+						"errors" in resultMessage &&
+						Array.isArray(resultMessage.errors) &&
+						resultMessage.errors.length > 0
+					? resultMessage.errors.join("\n")
+					: "";
 
 		const resultEntry: CyrusAgentSessionEntry = {
 			// Set the appropriate session ID based on runner type
-			...(isGeminiRunner
+			...(runnerType === "gemini"
 				? { geminiSessionId: resultMessage.session_id }
-				: { claudeSessionId: resultMessage.session_id }),
+				: runnerType === "codex"
+					? { codexSessionId: resultMessage.session_id }
+					: runnerType === "cursor"
+						? { cursorSessionId: resultMessage.session_id }
+						: { claudeSessionId: resultMessage.session_id }),
 			type: "result",
-			content: "result" in resultMessage ? resultMessage.result : "",
+			content,
 			metadata: {
 				timestamp: Date.now(),
 				durationMs: resultMessage.duration_ms,

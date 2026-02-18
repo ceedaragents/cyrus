@@ -33,7 +33,7 @@ export function createTestWorker(
 
 	const config: EdgeWorkerConfig = {
 		cyrusHome: "/tmp/test-cyrus-home",
-		defaultModel: "sonnet",
+		claudeDefaultModel: "sonnet",
 		linearWorkspaceSlug,
 		repositories,
 		issueTrackers,
