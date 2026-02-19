@@ -59,29 +59,10 @@ export class SlackEventTransport extends EventEmitter {
 	}
 
 	/**
-	 * Get Slack bot token from environment variable or fallback to request header.
-	 * Logs a warning when falling back to header for backwards compatibility.
+	 * Get Slack bot token from the SLACK_BOT_TOKEN environment variable.
 	 */
-	private getSlackBotToken(request: FastifyRequest): string | undefined {
-		// Primary: Read from environment variable
-		const envToken = process.env.SLACK_BOT_TOKEN;
-		if (envToken) {
-			return envToken;
-		}
-
-		// Fallback: Read from X-Slack-Bot-Token header (backwards compatibility)
-		const headerToken = request.headers["x-slack-bot-token"] as
-			| string
-			| undefined;
-
-		if (headerToken) {
-			this.logger.warn(
-				"Using Slack bot token from X-Slack-Bot-Token header (fallback mode). " +
-					"Please set SLACK_BOT_TOKEN environment variable for improved security.",
-			);
-		}
-
-		return headerToken;
+	private getSlackBotToken(): string | undefined {
+		return process.env.SLACK_BOT_TOKEN;
 	}
 
 	/**
@@ -173,8 +154,7 @@ export class SlackEventTransport extends EventEmitter {
 			return;
 		}
 
-		// Extract Slack Bot token - prefer environment variable, fall back to header
-		const slackBotToken = this.getSlackBotToken(request);
+		const slackBotToken = this.getSlackBotToken();
 
 		const webhookEvent: SlackWebhookEvent = {
 			eventType: "app_mention",

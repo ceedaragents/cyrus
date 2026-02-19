@@ -234,8 +234,6 @@ describe("SlackEventTransport", () => {
 			try {
 				const request = createMockRequest(testEventEnvelope, {
 					authorization: `Bearer ${testSecret}`,
-					// Header token should be ignored when env var is set
-					"x-slack-bot-token": "xoxb-header-token-should-be-ignored",
 				});
 				const reply = createMockReply();
 
@@ -253,118 +251,14 @@ describe("SlackEventTransport", () => {
 			}
 		});
 
-		it("falls back to X-Slack-Bot-Token header when env var not set", async () => {
+		it("sets slackBotToken to undefined when SLACK_BOT_TOKEN env var is not set", async () => {
 			const eventListener = vi.fn();
 			transport.on("event", eventListener);
 
-			// Ensure env var is not set
-			delete process.env.SLACK_BOT_TOKEN;
-
-			const headerBotToken = "xoxb-header-token-12345";
-			const request = createMockRequest(testEventEnvelope, {
-				authorization: `Bearer ${testSecret}`,
-				"x-slack-bot-token": headerBotToken,
-			});
-			const reply = createMockReply();
-
-			const handler = mockFastify.routes["/slack-webhook"]!;
-			await handler(request, reply);
-
-			expect(reply.code).toHaveBeenCalledWith(200);
-			expect(eventListener).toHaveBeenCalledWith(
-				expect.objectContaining({
-					slackBotToken: headerBotToken,
-				}),
-			);
-		});
-
-		it("logs warning when falling back to header token", async () => {
-			const warnSpy = vi.fn();
-			const config: SlackEventTransportConfig = {
-				fastifyServer:
-					mockFastify as unknown as SlackEventTransportConfig["fastifyServer"],
-				verificationMode: "proxy",
-				secret: testSecret,
-			};
-			const customLogger = {
-				info: vi.fn(),
-				warn: warnSpy,
-				error: vi.fn(),
-				debug: vi.fn(),
-			};
-			const transportWithLogger = new SlackEventTransport(config, customLogger);
-			transportWithLogger.register();
-
-			// Ensure env var is not set
-			delete process.env.SLACK_BOT_TOKEN;
-
-			const headerBotToken = "xoxb-header-token-12345";
-			const request = createMockRequest(testEventEnvelope, {
-				authorization: `Bearer ${testSecret}`,
-				"x-slack-bot-token": headerBotToken,
-			});
-			const reply = createMockReply();
-
-			const handler = mockFastify.routes["/slack-webhook"]!;
-			await handler(request, reply);
-
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining(
-					"Using Slack bot token from X-Slack-Bot-Token header (fallback mode)",
-				),
-			);
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining(
-					"Please set SLACK_BOT_TOKEN environment variable",
-				),
-			);
-		});
-
-		it("does not log warning when using env var token", async () => {
-			const warnSpy = vi.fn();
-			const config: SlackEventTransportConfig = {
-				fastifyServer:
-					mockFastify as unknown as SlackEventTransportConfig["fastifyServer"],
-				verificationMode: "proxy",
-				secret: testSecret,
-			};
-			const customLogger = {
-				info: vi.fn(),
-				warn: warnSpy,
-				error: vi.fn(),
-				debug: vi.fn(),
-			};
-			const transportWithLogger = new SlackEventTransport(config, customLogger);
-			transportWithLogger.register();
-
-			const envBotToken = "xoxb-env-token-98765";
-			process.env.SLACK_BOT_TOKEN = envBotToken;
-
-			try {
-				const request = createMockRequest(testEventEnvelope, {
-					authorization: `Bearer ${testSecret}`,
-				});
-				const reply = createMockReply();
-
-				const handler = mockFastify.routes["/slack-webhook"]!;
-				await handler(request, reply);
-
-				expect(warnSpy).not.toHaveBeenCalled();
-			} finally {
-				delete process.env.SLACK_BOT_TOKEN;
-			}
-		});
-
-		it("handles missing bot token gracefully (no env var, no header)", async () => {
-			const eventListener = vi.fn();
-			transport.on("event", eventListener);
-
-			// Ensure env var is not set
 			delete process.env.SLACK_BOT_TOKEN;
 
 			const request = createMockRequest(testEventEnvelope, {
 				authorization: `Bearer ${testSecret}`,
-				// No X-Slack-Bot-Token header
 			});
 			const reply = createMockReply();
 
