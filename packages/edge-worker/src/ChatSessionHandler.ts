@@ -390,9 +390,14 @@ export class ChatSessionHandler<TEvent> {
 		onMessage: (message: SDKMessage) => void;
 		onError: (error: Error) => void;
 	} {
+		// When MCP servers are configured, include their tool permissions
+		const mcpToolPermissions = this.deps.mcpConfig
+			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
+			: [];
+
 		return {
 			workingDirectory: workspacePath,
-			allowedTools: getAllTools(),
+			allowedTools: [...getAllTools(), ...mcpToolPermissions],
 			disallowedTools: [] as string[],
 			allowedDirectories: [workspacePath],
 			workspaceName,
