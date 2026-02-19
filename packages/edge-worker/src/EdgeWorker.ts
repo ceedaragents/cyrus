@@ -742,12 +742,24 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private registerSlackEventTransport(): void {
 		const slackAdapter = new SlackChatAdapter(this.logger);
+
+		// Build MCP config for Slack sessions using the first repository's Linear token
+		const firstRepo = Array.from(this.repositories.values())[0];
+		const mcpConfig = firstRepo ? this.buildMcpConfig(firstRepo) : undefined;
+
+		if (!firstRepo) {
+			this.logger.warn(
+				"No repositories configured — Slack sessions will not have access to Linear MCP tools",
+			);
+		}
+
 		this.chatSessionHandler = new ChatSessionHandler(
 			slackAdapter,
 			{
 				cyrusHome: this.cyrusHome,
 				defaultModel: this.config.defaultModel,
 				defaultFallbackModel: this.config.defaultFallbackModel,
+				mcpConfig,
 				onWebhookStart: () => {
 					this.activeWebhookCount++;
 				},
