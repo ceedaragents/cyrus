@@ -224,14 +224,41 @@ describe("SlackEventTransport", () => {
 			);
 		});
 
-		it("extracts Slack Bot token from X-Slack-Bot-Token header", async () => {
+		it("reads Slack Bot token from SLACK_BOT_TOKEN environment variable", async () => {
 			const eventListener = vi.fn();
 			transport.on("event", eventListener);
 
-			const slackBotToken = "xoxb-test-bot-token-12345";
+			const envBotToken = "xoxb-env-token-98765";
+			process.env.SLACK_BOT_TOKEN = envBotToken;
+
+			try {
+				const request = createMockRequest(testEventEnvelope, {
+					authorization: `Bearer ${testSecret}`,
+				});
+				const reply = createMockReply();
+
+				const handler = mockFastify.routes["/slack-webhook"]!;
+				await handler(request, reply);
+
+				expect(reply.code).toHaveBeenCalledWith(200);
+				expect(eventListener).toHaveBeenCalledWith(
+					expect.objectContaining({
+						slackBotToken: envBotToken,
+					}),
+				);
+			} finally {
+				delete process.env.SLACK_BOT_TOKEN;
+			}
+		});
+
+		it("sets slackBotToken to undefined when SLACK_BOT_TOKEN env var is not set", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			delete process.env.SLACK_BOT_TOKEN;
+
 			const request = createMockRequest(testEventEnvelope, {
 				authorization: `Bearer ${testSecret}`,
-				"x-slack-bot-token": slackBotToken,
 			});
 			const reply = createMockReply();
 
@@ -241,7 +268,7 @@ describe("SlackEventTransport", () => {
 			expect(reply.code).toHaveBeenCalledWith(200);
 			expect(eventListener).toHaveBeenCalledWith(
 				expect.objectContaining({
-					slackBotToken,
+					slackBotToken: undefined,
 				}),
 			);
 		});
