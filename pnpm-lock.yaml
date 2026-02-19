@@ -294,6 +294,9 @@ importers:
       cyrus-gemini-runner:
         specifier: workspace:*
         version: link:../gemini-runner
+      cyrus-github-event-transport:
+        specifier: workspace:*
+        version: link:../github-event-transport
       cyrus-linear-event-transport:
         specifier: workspace:*
         version: link:../linear-event-transport
@@ -303,6 +306,9 @@ importers:
       cyrus-simple-agent-runner:
         specifier: workspace:*
         version: link:../simple-agent-runner
+      cyrus-slack-event-transport:
+        specifier: workspace:*
+        version: link:../slack-event-transport
       fastify:
         specifier: ^5.7.3
         version: 5.7.3
@@ -378,6 +384,25 @@ importers:
         specifier: ^3.1.4
         version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
 
+  packages/github-event-transport:
+    dependencies:
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+      fastify:
+        specifier: ^5.2.0
+        version: 5.7.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
+
   packages/linear-event-transport:
     dependencies:
       '@linear/sdk':
@@ -396,6 +421,9 @@ importers:
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
 
   packages/mcp-tools:
     dependencies:
@@ -436,6 +464,25 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
+
+  packages/slack-event-transport:
+    dependencies:
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+      fastify:
+        specifier: ^5.2.0
+        version: 5.7.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

@@ -1,23 +1,24 @@
-import { AgentSessionStatus, type IIssueTrackerService } from "cyrus-core";
+import { AgentSessionStatus } from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
+import type { IActivitySink } from "../src/sinks/IActivitySink";
 
 describe("AgentSessionManager stop-session behavior", () => {
 	let manager: AgentSessionManager;
-	let mockIssueTracker: IIssueTrackerService;
+	let mockActivitySink: IActivitySink;
+	let postActivitySpy: any;
 	const sessionId = "test-session-stop";
 	const issueId = "issue-stop";
 	let mockProcedureAnalyzer: any;
 
 	beforeEach(() => {
-		mockIssueTracker = {
-			createAgentActivity: vi.fn().mockResolvedValue({
-				success: true,
-				agentActivity: Promise.resolve({ id: "activity-1" }),
-			}),
-			fetchIssue: vi.fn(),
-			getIssueLabels: vi.fn().mockResolvedValue([]),
-		} as any;
+		mockActivitySink = {
+			id: "test-workspace",
+			postActivity: vi.fn().mockResolvedValue({ activityId: "activity-1" }),
+			createAgentSession: vi.fn().mockResolvedValue("session-1"),
+		};
+
+		postActivitySpy = vi.spyOn(mockActivitySink, "postActivity");
 
 		mockProcedureAnalyzer = {
 			getNextSubroutine: vi.fn().mockReturnValue({ name: "verifications" }),
@@ -31,7 +32,7 @@ describe("AgentSessionManager stop-session behavior", () => {
 		};
 
 		manager = new AgentSessionManager(
-			mockIssueTracker,
+			mockActivitySink,
 			undefined,
 			undefined,
 			mockProcedureAnalyzer,
@@ -152,13 +153,11 @@ describe("AgentSessionManager stop-session behavior", () => {
 			session_id: "sdk-session",
 		} as any);
 
-		const createAgentActivityCalls = (
-			mockIssueTracker.createAgentActivity as ReturnType<typeof vi.fn>
-		).mock.calls;
-		const errorActivity = createAgentActivityCalls.find(
-			(call) => call[0]?.content?.type === "error",
+		const postActivityCalls = postActivitySpy.mock.calls;
+		const errorActivity = postActivityCalls.find(
+			(call: any[]) => call[1]?.type === "error",
 		);
 		expect(errorActivity).toBeDefined();
-		expect(errorActivity![0].content.body).toBe(usageLimitError);
+		expect(errorActivity![1].body).toBe(usageLimitError);
 	});
 });

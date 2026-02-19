@@ -1,28 +1,25 @@
 import { CodexRunner } from "cyrus-codex-runner";
-import type { IIssueTrackerService } from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
+import type { IActivitySink } from "../src/sinks/IActivitySink";
 
 describe("AgentSessionManager - Codex tool activity mapping", () => {
 	let manager: AgentSessionManager;
 	let runner: CodexRunner;
-	let mockIssueTracker: IIssueTrackerService;
-	let createAgentActivitySpy: ReturnType<typeof vi.fn>;
+	let mockActivitySink: IActivitySink;
+	let postActivitySpy: ReturnType<typeof vi.fn>;
 	const sessionId = "test-session-codex";
 	const issueId = "issue-codex";
 
 	beforeEach(() => {
-		mockIssueTracker = {
-			createAgentActivity: vi.fn().mockResolvedValue({
-				success: true,
-				agentActivity: Promise.resolve({ id: "activity-123" }),
-			}),
-			fetchIssue: vi.fn(),
-			getIssueLabels: vi.fn().mockResolvedValue([]),
-		} as any;
+		mockActivitySink = {
+			id: "test-workspace",
+			postActivity: vi.fn().mockResolvedValue({ activityId: "activity-123" }),
+			createAgentSession: vi.fn().mockResolvedValue("session-123"),
+		};
 
-		createAgentActivitySpy = vi.spyOn(mockIssueTracker, "createAgentActivity");
-		manager = new AgentSessionManager(mockIssueTracker);
+		postActivitySpy = vi.spyOn(mockActivitySink, "postActivity");
+		manager = new AgentSessionManager(mockActivitySink);
 		runner = new CodexRunner({
 			workingDirectory: "/Users/connor/code/cyrus",
 		});
@@ -71,28 +68,28 @@ describe("AgentSessionManager - Codex tool activity mapping", () => {
 			await manager.handleClaudeMessage(sessionId, message);
 		}
 
-		const calls = createAgentActivitySpy.mock.calls.map((call) => call[0]);
+		const calls = postActivitySpy.mock.calls;
 		expect(calls).toHaveLength(2);
 
 		const actionWithParameter = calls.find(
-			(call) =>
-				call.content?.type === "action" &&
-				call.content?.action === "Edit" &&
-				typeof call.content?.parameter === "string",
+			(call: any[]) =>
+				call[1]?.type === "action" &&
+				call[1]?.action === "Edit" &&
+				typeof call[1]?.parameter === "string",
 		);
 		expect(actionWithParameter).toBeDefined();
-		expect(actionWithParameter?.content?.parameter).toContain(
+		expect(actionWithParameter![1]?.parameter).toContain(
 			"packages/core/src/index.ts",
 		);
 
 		const actionWithResult = calls.find(
-			(call) =>
-				call.content?.type === "action" &&
-				call.content?.action === "Edit" &&
-				typeof call.content?.result === "string",
+			(call: any[]) =>
+				call[1]?.type === "action" &&
+				call[1]?.action === "Edit" &&
+				typeof call[1]?.result === "string",
 		);
 		expect(actionWithResult).toBeDefined();
-		expect(actionWithResult?.content?.result).toContain(
+		expect(actionWithResult![1]?.result).toContain(
 			"update packages/core/src/index.ts",
 		);
 	});
