@@ -158,7 +158,7 @@ export class SlackChatAdapter
 	async acknowledgeReceipt(event: SlackWebhookEvent): Promise<void> {
 		if (!event.slackBotToken) {
 			this.logger.warn(
-				"Cannot add Slack reaction: no slackBotToken available (x-slack-bot-token header missing)",
+				"Cannot add Slack reaction: no slackBotToken available (SLACK_BOT_TOKEN env var not set)",
 			);
 			return;
 		}
