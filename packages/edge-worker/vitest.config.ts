@@ -53,6 +53,7 @@ export default defineConfig({
 				__dirname,
 				"../linear-event-transport/src/index.ts",
 			),
+			"cyrus-mcp-tools": path.resolve(__dirname, "../mcp-tools/src/index.ts"),
 			"cyrus-cloudflare-tunnel-client": path.resolve(
 				__dirname,
 				"../cloudflare-tunnel-client/src/index.ts",
