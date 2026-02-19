@@ -26,14 +26,6 @@ All notable changes to this project will be documented in this file.
 - **Cursor API key no longer in CLI args or logs** - The Cursor API key is now passed only via the `CURSOR_API_KEY` environment variable, so it never appears in spawn logs or terminal output. The `--force` option has also been removed from cursor-agent invocations. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 - **Cursor completed todos now display as checked in Linear** - Cursor API uses `TODO_STATUS_COMPLETED` for completed todo items; the formatter now recognizes this so completed items render as `- [x]` instead of `- [ ]` in Linear activity. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 
-### Fixed
-- Summary subroutines now properly disable all tools including MCP tools like Linear's create_comment ([#808](https://github.com/ceedaragents/cyrus/pull/808))
-- Procedures no longer fail when a subroutine exits with an error (e.g., hitting the max turns limit). Cyrus now recovers by using the last successful subroutine's result, allowing the workflow to continue to completion instead of stopping mid-procedure ([#818](https://github.com/ceedaragents/cyrus/pull/818))
-- **Codex usage limit errors now display full message in Linear** - When Codex hits usage limits or other turn.failed errors, the actual error message is now posted to Linear agent activity instead of a generic message. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
-- **Cursor project .cursor/cli.json is now backed up and restored** - CursorRunner no longer overwrites the project's `.cursor/cli.json`. It temporarily renames the existing file before writing Cyrus permissions, then restores the original when the session ends. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
-- **Cursor API key no longer in CLI args or logs** - The Cursor API key is now passed only via the `CURSOR_API_KEY` environment variable, so it never appears in spawn logs or terminal output. The `--force` option has also been removed from cursor-agent invocations. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
-- **Cursor completed todos now display as checked in Linear** - Cursor API uses `TODO_STATUS_COMPLETED` for completed todo items; the formatter now recognizes this so completed items render as `- [x]` instead of `- [ ]` in Linear activity. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
-
 ## [0.2.21] - 2026-02-09
 
 ### Changed

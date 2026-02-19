@@ -30,7 +30,7 @@ export interface ProcedureAnalyzerConfig {
 	cyrusHome: string;
 	model?: string;
 	timeoutMs?: number;
-	runnerType?: SimpleRunnerType; // Default: "gemini"
+	runnerType?: SimpleRunnerType; // Default: "claude"
 	logger?: ILogger;
 }
 
@@ -44,7 +44,7 @@ export class ProcedureAnalyzer {
 			config.logger ?? createLogger({ component: "ProcedureAnalyzer" });
 
 		// Determine which runner to use
-		const runnerType = config.runnerType || "gemini";
+		const runnerType = config.runnerType || "claude";
 
 		// Use runner-specific default models if not provided
 		const defaultModels: Record<
