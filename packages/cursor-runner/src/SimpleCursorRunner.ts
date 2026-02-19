@@ -1,18 +1,24 @@
-import { ClaudeRunner } from "cyrus-claude-runner";
 import type { SDKMessage } from "cyrus-core";
-import { NoResponseError, SessionError } from "./errors.js";
-import { SimpleAgentRunner } from "./SimpleAgentRunner.js";
-import type { SimpleAgentQueryOptions } from "./types.js";
+import {
+	NoResponseError,
+	SessionError,
+	type SimpleAgentQueryOptions,
+	SimpleAgentRunner,
+} from "cyrus-simple-agent-runner";
+import { CursorRunner } from "./CursorRunner.js";
 
 /**
- * Concrete implementation using ClaudeRunner from cyrus-claude-runner package.
+ * Concrete implementation using CursorRunner from cyrus-cursor-runner package.
  *
- * This implementation uses the Claude Agent SDK to execute queries and
+ * This implementation uses the Cursor CLI to execute queries and
  * constrains the responses to an enumerated set.
+ *
+ * Note: CursorRunner does not natively support a separate system prompt field,
+ * so the constraint instructions are prepended to the user prompt.
  */
-export class SimpleClaudeRunner<T extends string> extends SimpleAgentRunner<T> {
+export class SimpleCursorRunner<T extends string> extends SimpleAgentRunner<T> {
 	/**
-	 * Execute the agent using ClaudeRunner
+	 * Execute the agent using CursorRunner
 	 */
 	protected async executeAgent(
 		prompt: string,
@@ -22,34 +28,35 @@ export class SimpleClaudeRunner<T extends string> extends SimpleAgentRunner<T> {
 		let sessionError: Error | null = null;
 
 		// Build the full prompt with context if provided
-		const fullPrompt = options?.context
+		let fullPrompt = options?.context
 			? `${options.context}\n\n${prompt}`
 			: prompt;
 
-		// Create ClaudeRunner with configuration
-		const runner = new ClaudeRunner({
+		// CursorRunner doesn't support appendSystemPrompt, so prepend constraint to the prompt
+		const systemPrompt = this.buildSystemPrompt();
+		fullPrompt = `${systemPrompt}\n\n${fullPrompt}`;
+
+		// Create CursorRunner with configuration
+		const runner = new CursorRunner({
 			workingDirectory: this.config.workingDirectory,
 			cyrusHome: this.config.cyrusHome,
 			model: this.config.model,
 			fallbackModel: this.config.fallbackModel,
 			maxTurns: this.config.maxTurns,
-			systemPrompt: this.buildSystemPrompt(),
 			// Limit tools for simple queries
 			disallowedTools: options?.allowFileReading
 				? []
 				: ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
 			allowedDirectories: options?.allowedDirectories,
-			// Explicitly disable Chrome integration for simple queries
-			extraArgs: {},
 		});
 
 		// Set up event handlers
-		runner.on("message", (message: SDKMessage) => {
+		runner.on("message", (message) => {
 			messages.push(message);
 			this.handleMessage(message);
 		});
 
-		runner.on("error", (error: Error) => {
+		runner.on("error", (error) => {
 			sessionError = error;
 		});
 

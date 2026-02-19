@@ -10,6 +10,7 @@ overrides:
   semver: '>=7.5.2'
   qs: '>=6.14.1'
   vite: '>=7.1.11'
+  zod: 4.3.6
 
 importers:
 
@@ -77,8 +78,8 @@ importers:
         specifier: ^10.0.0
         version: 10.2.0
       zod:
-        specifier: ^4.3.5
-        version: 4.3.5
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -125,10 +126,10 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.2.47
-        version: 0.2.47(zod@4.3.5)
+        version: 0.2.47(zod@4.3.6)
       '@anthropic-ai/sdk':
         specifier: ^0.77.0
-        version: 0.77.0(zod@4.3.5)
+        version: 0.77.0(zod@4.3.6)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
@@ -143,10 +144,10 @@ importers:
         version: 11.3.2
       openai:
         specifier: ^6.9.1
-        version: 6.9.1(ws@8.18.3)(zod@4.3.5)
+        version: 6.9.1(ws@8.18.3)(zod@4.3.6)
       zod:
-        specifier: ^4.3.5
-        version: 4.3.5
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/fs-extra':
         specifier: ^11.0.4
@@ -188,6 +189,9 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+      cyrus-simple-agent-runner:
+        specifier: workspace:*
+        version: link:../simple-agent-runner
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -208,7 +212,7 @@ importers:
         specifier: ^5.7.3
         version: 5.7.3
       zod:
-        specifier: ^4.3.6
+        specifier: 4.3.6
         version: 4.3.6
     devDependencies:
       '@types/node':
@@ -230,7 +234,7 @@ importers:
         specifier: ^64.0.0
         version: 64.0.0
       zod:
-        specifier: ^4.3.6
+        specifier: 4.3.6
         version: 4.3.6
     devDependencies:
       '@types/node':
@@ -251,6 +255,9 @@ importers:
       cyrus-core:
         specifier: workspace:*
         version: link:../core
+      cyrus-simple-agent-runner:
+        specifier: workspace:*
+        version: link:../simple-agent-runner
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -314,7 +321,7 @@ importers:
         version: 5.7.3
       fastify-mcp:
         specifier: ^2.1.0
-        version: 2.1.0(zod@4.3.5)
+        version: 2.1.0(zod@4.3.6)
       file-type:
         specifier: ^18.7.0
         version: 18.7.0
@@ -322,8 +329,8 @@ importers:
         specifier: ^7.0.5
         version: 7.0.5
       zod:
-        specifier: 4.3.5
-        version: 4.3.5
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -365,8 +372,8 @@ importers:
         specifier: ^11.3.0
         version: 11.3.2
       zod:
-        specifier: ^4.3.5
-        version: 4.3.5
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@google/gemini-cli-core':
         specifier: 0.17.0
@@ -437,7 +444,7 @@ importers:
         specifier: ^11.3.2
         version: 11.3.2
       zod:
-        specifier: ^4.3.5
+        specifier: 4.3.6
         version: 4.3.6
     devDependencies:
       '@types/fs-extra':
@@ -504,13 +511,13 @@ packages:
     resolution: {integrity: sha512-tcptBQwLnaUv6f5KiiUUtGduiLUhwV/xT0kPxVG+K2Wws1T/2MLViwIoti3AkJuNJ2qZ5FOwl1YQLHPMeHlYVQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      zod: ^4.0.0
+      zod: 4.3.6
 
   '@anthropic-ai/sdk@0.77.0':
     resolution: {integrity: sha512-TivlT6nfidz3sOyMF72T2x5AkmHrpT7JgL2e/0HNdh7b24v7JC8cR+rCY/42jA68xIsjmiGQ5IKMsH9feEKh3A==}
     hasBin: true
     peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
+      zod: 4.3.6
     peerDependenciesMeta:
       zod:
         optional: true
@@ -1202,7 +1209,7 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
-      zod: ^3.25 || ^4.0
+      zod: 4.3.6
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
@@ -2878,7 +2885,7 @@ packages:
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
-      zod: ^3.25 || ^4.0
+      zod: 4.3.6
     peerDependenciesMeta:
       ws:
         optional: true
@@ -3645,13 +3652,7 @@ packages:
   zod-to-json-schema@3.25.1:
     resolution: {integrity: sha512-pM/SU9d3YAggzi6MtR4h7ruuQlqKtad8e9S0fmxcMi+ueAK5Korys/aWcV9LIIHTVbj01NdzxcnXSN+O74ZIVA==}
     peerDependencies:
-      zod: ^3.25 || ^4
-
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
-  zod@4.3.5:
-    resolution: {integrity: sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g==}
+      zod: 4.3.6
 
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
@@ -3662,20 +3663,6 @@ snapshots:
     dependencies:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
-
-  '@anthropic-ai/claude-agent-sdk@0.2.47(zod@4.3.5)':
-    dependencies:
-      zod: 4.3.5
-    optionalDependencies:
-      '@img/sharp-darwin-arm64': 0.34.5
-      '@img/sharp-darwin-x64': 0.34.5
-      '@img/sharp-linux-arm': 0.34.5
-      '@img/sharp-linux-arm64': 0.34.5
-      '@img/sharp-linux-x64': 0.34.5
-      '@img/sharp-linuxmusl-arm64': 0.34.5
-      '@img/sharp-linuxmusl-x64': 0.34.5
-      '@img/sharp-win32-arm64': 0.34.5
-      '@img/sharp-win32-x64': 0.34.5
 
   '@anthropic-ai/claude-agent-sdk@0.2.47(zod@4.3.6)':
     dependencies:
@@ -3691,11 +3678,11 @@ snapshots:
       '@img/sharp-win32-arm64': 0.34.5
       '@img/sharp-win32-x64': 0.34.5
 
-  '@anthropic-ai/sdk@0.77.0(zod@4.3.5)':
+  '@anthropic-ai/sdk@0.77.0(zod@4.3.6)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 4.3.5
+      zod: 4.3.6
 
   '@babel/code-frame@7.27.1':
     dependencies:
@@ -4027,10 +4014,10 @@ snapshots:
       '@google-cloud/logging': 11.2.1
       '@google-cloud/opentelemetry-cloud-monitoring-exporter': 0.21.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.0.1(@opentelemetry/api@1.9.0))
       '@google-cloud/opentelemetry-cloud-trace-exporter': 3.0.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.0.1(@opentelemetry/api@1.9.0))
-      '@google/genai': 1.16.0(@modelcontextprotocol/sdk@1.25.2(zod@4.3.5))
+      '@google/genai': 1.16.0(@modelcontextprotocol/sdk@1.25.2(zod@4.3.6))
       '@iarna/toml': 2.2.5
       '@joshua.litt/get-ripgrep': 0.0.3
-      '@modelcontextprotocol/sdk': 1.25.2(zod@3.25.76)
+      '@modelcontextprotocol/sdk': 1.25.2(hono@4.11.3)(zod@4.3.6)
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/exporter-logs-otlp-grpc': 0.203.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/exporter-logs-otlp-http': 0.203.0(@opentelemetry/api@1.9.0)
@@ -4071,7 +4058,7 @@ snapshots:
       undici: 7.16.0
       web-tree-sitter: 0.25.10
       ws: 8.18.3
-      zod: 3.25.76
+      zod: 4.3.6
     optionalDependencies:
       '@lydell/node-pty': 1.1.0
       '@lydell/node-pty-darwin-arm64': 1.1.0
@@ -4094,12 +4081,12 @@ snapshots:
       - tree-sitter
       - utf-8-validate
 
-  '@google/genai@1.16.0(@modelcontextprotocol/sdk@1.25.2(zod@4.3.5))':
+  '@google/genai@1.16.0(@modelcontextprotocol/sdk@1.25.2(zod@4.3.6))':
     dependencies:
       google-auth-library: 9.15.1
       ws: 8.18.3
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.25.2(zod@3.25.76)
+      '@modelcontextprotocol/sdk': 1.25.2(hono@4.11.3)(zod@4.3.6)
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -4316,50 +4303,6 @@ snapshots:
       raw-body: 3.0.1
       zod: 4.3.6
       zod-to-json-schema: 3.25.1(zod@4.3.6)
-    transitivePeerDependencies:
-      - hono
-      - supports-color
-
-  '@modelcontextprotocol/sdk@1.25.2(zod@3.25.76)':
-    dependencies:
-      '@hono/node-server': 1.19.7(hono@4.11.3)
-      ajv: 8.17.1
-      ajv-formats: 3.0.1(ajv@8.17.1)
-      content-type: 1.0.5
-      cors: 2.8.5
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.0.6
-      express: 5.2.1
-      express-rate-limit: 7.5.1(express@5.2.1)
-      jose: 6.1.3
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.1
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.1(zod@3.25.76)
-    transitivePeerDependencies:
-      - hono
-      - supports-color
-
-  '@modelcontextprotocol/sdk@1.25.2(zod@4.3.5)':
-    dependencies:
-      '@hono/node-server': 1.19.7(hono@4.11.3)
-      ajv: 8.17.1
-      ajv-formats: 3.0.1(ajv@8.17.1)
-      content-type: 1.0.5
-      cors: 2.8.5
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.0.6
-      express: 5.2.1
-      express-rate-limit: 7.5.1(express@5.2.1)
-      jose: 6.1.3
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.1
-      zod: 4.3.5
-      zod-to-json-schema: 3.25.1(zod@4.3.5)
     transitivePeerDependencies:
       - hono
       - supports-color
@@ -5456,9 +5399,9 @@ snapshots:
 
   fast-uri@3.1.0: {}
 
-  fastify-mcp@2.1.0(zod@4.3.5):
+  fastify-mcp@2.1.0(zod@4.3.6):
     dependencies:
-      '@modelcontextprotocol/sdk': 1.25.2(zod@4.3.5)
+      '@modelcontextprotocol/sdk': 1.25.2(hono@4.11.3)(zod@4.3.6)
       fastify: 5.7.3
     transitivePeerDependencies:
       - '@cfworker/json-schema'
@@ -6173,10 +6116,10 @@ snapshots:
       is-inside-container: 1.0.0
       wsl-utils: 0.1.0
 
-  openai@6.9.1(ws@8.18.3)(zod@4.3.5):
+  openai@6.9.1(ws@8.18.3)(zod@4.3.6):
     optionalDependencies:
       ws: 8.18.3
-      zod: 4.3.5
+      zod: 4.3.6
 
   p-cancelable@4.0.1: {}
 
@@ -6939,20 +6882,8 @@ snapshots:
 
   yoctocolors@2.1.2: {}
 
-  zod-to-json-schema@3.25.1(zod@3.25.76):
-    dependencies:
-      zod: 3.25.76
-
-  zod-to-json-schema@3.25.1(zod@4.3.5):
-    dependencies:
-      zod: 4.3.5
-
   zod-to-json-schema@3.25.1(zod@4.3.6):
     dependencies:
       zod: 4.3.6
-
-  zod@3.25.76: {}
-
-  zod@4.3.5: {}
 
   zod@4.3.6: {}
