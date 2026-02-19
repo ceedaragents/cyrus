@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { SDKMessage } from "cyrus-claude-runner";
+import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import { ClaudeRunner, getAllTools } from "cyrus-claude-runner";
 import type { CyrusAgentSession, IAgentRunner, ILogger } from "cyrus-core";
 import { createLogger } from "cyrus-core";
@@ -51,6 +51,7 @@ export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
 	defaultModel?: string;
 	defaultFallbackModel?: string;
+	mcpConfig?: Record<string, McpServerConfig>;
 	onWebhookStart: () => void;
 	onWebhookEnd: () => void;
 	onStateChange: () => Promise<void>;
@@ -382,15 +383,21 @@ export class ChatSessionHandler<TEvent> {
 		appendSystemPrompt: string;
 		model: string | undefined;
 		fallbackModel: string | undefined;
+		mcpConfig?: Record<string, McpServerConfig>;
 		resumeSessionId?: string;
 		logger: ILogger;
 		maxTurns: number;
 		onMessage: (message: SDKMessage) => void;
 		onError: (error: Error) => void;
 	} {
+		// When MCP servers are configured, include their tool permissions
+		const mcpToolPermissions = this.deps.mcpConfig
+			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
+			: [];
+
 		return {
 			workingDirectory: workspacePath,
-			allowedTools: getAllTools(),
+			allowedTools: [...getAllTools(), ...mcpToolPermissions],
 			disallowedTools: [] as string[],
 			allowedDirectories: [workspacePath],
 			workspaceName,
@@ -398,6 +405,7 @@ export class ChatSessionHandler<TEvent> {
 			appendSystemPrompt: systemPrompt,
 			model: this.deps.defaultModel,
 			fallbackModel: this.deps.defaultFallbackModel,
+			...(this.deps.mcpConfig ? { mcpConfig: this.deps.mcpConfig } : {}),
 			...(resumeSessionId ? { resumeSessionId } : {}),
 			logger: this.logger.withContext({
 				sessionId,

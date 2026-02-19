@@ -59,6 +59,13 @@ export class SlackEventTransport extends EventEmitter {
 	}
 
 	/**
+	 * Get Slack bot token from the SLACK_BOT_TOKEN environment variable.
+	 */
+	private getSlackBotToken(): string | undefined {
+		return process.env.SLACK_BOT_TOKEN;
+	}
+
+	/**
 	 * Register the /slack-webhook endpoint with the Fastify server
 	 */
 	register(): void {
@@ -147,10 +154,7 @@ export class SlackEventTransport extends EventEmitter {
 			return;
 		}
 
-		// Extract Slack Bot token from custom header (forwarded from CYHOST)
-		const slackBotToken = request.headers["x-slack-bot-token"] as
-			| string
-			| undefined;
+		const slackBotToken = this.getSlackBotToken();
 
 		const webhookEvent: SlackWebhookEvent = {
 			eventType: "app_mention",
