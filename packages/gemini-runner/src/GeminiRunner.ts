@@ -469,6 +469,7 @@ export class GeminiRunner extends EventEmitter implements IAgentRunner {
 						web_search_requests: 0,
 					},
 					service_tier: "standard",
+					speed: "standard",
 				},
 				modelUsage: {},
 				permission_denials: [],
