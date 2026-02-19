@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Self-add-repo no longer requires credentials first** - The `cyrus self-add-repo` command now works without existing Linear credentials. Previously, users had to manually create a fake repository entry in config.json to work around a circular dependency. Now, when adding the first repository, placeholder credentials are used and the user is prompted to run `cyrus self-auth` afterwards to authenticate. ([CYPACK-674](https://linear.app/ceedar/issue/CYPACK-674), [#728](https://github.com/ceedaragents/cyrus/pull/728))
+
 ### Added
 - GitHub PR comment support: Cyrus can now be triggered by `@cyrusagent` mentions on GitHub pull request comments, creating sessions and posting replies directly on PRs. ([CYPACK-772](https://linear.app/ceedar/issue/CYPACK-772), [#820](https://github.com/ceedaragents/cyrus/pull/820))
 - Slack integration: Cyrus can now receive `@mention` webhooks from Slack channels and threads, enabling Slack as a new platform for triggering agent sessions. ([CYPACK-807](https://linear.app/ceedar/issue/CYPACK-807), [#861](https://github.com/ceedaragents/cyrus/pull/861))

@@ -230,7 +230,7 @@ describe("SelfAddRepoCommand", () => {
 	});
 
 	describe("Linear Credentials", () => {
-		it("should error when no Linear credentials exist", async () => {
+		it("should succeed with placeholder credentials when no Linear credentials exist", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
 					repositories: [
@@ -247,13 +247,28 @@ describe("SelfAddRepoCommand", () => {
 			await expect(
 				command.execute(["https://github.com/user/new-repo.git"]),
 			).rejects.toThrow("process.exit called");
-			expect(mockExit).toHaveBeenCalledWith(1);
-			expect(mockApp.logger.error).toHaveBeenCalledWith(
+			expect(mockExit).toHaveBeenCalledWith(0);
+
+			// Should show message about placeholder credentials
+			expect(mockConsoleLog).toHaveBeenCalledWith(
 				expect.stringContaining("No Linear credentials found"),
 			);
+			expect(mockConsoleLog).toHaveBeenCalledWith(
+				expect.stringContaining("Run 'cyrus self-auth'"),
+			);
+
+			// Should add repo with empty credentials
+			const writtenConfig = JSON.parse(
+				mocks.mockWriteFileSync.mock.calls[0][1],
+			);
+			const addedRepo = writtenConfig.repositories.find(
+				(r: any) => r.id === "generated-uuid-123",
+			);
+			expect(addedRepo.linearWorkspaceId).toBe("");
+			expect(addedRepo.linearToken).toBe("");
 		});
 
-		it("should error when repositories array is empty", async () => {
+		it("should succeed with placeholder credentials when repositories array is empty", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
 					repositories: [],
@@ -263,7 +278,17 @@ describe("SelfAddRepoCommand", () => {
 			await expect(
 				command.execute(["https://github.com/user/new-repo.git"]),
 			).rejects.toThrow("process.exit called");
-			expect(mockExit).toHaveBeenCalledWith(1);
+			expect(mockExit).toHaveBeenCalledWith(0);
+
+			// Should add repo with empty credentials
+			const writtenConfig = JSON.parse(
+				mocks.mockWriteFileSync.mock.calls[0][1],
+			);
+			const addedRepo = writtenConfig.repositories.find(
+				(r: any) => r.id === "generated-uuid-123",
+			);
+			expect(addedRepo.linearWorkspaceId).toBe("");
+			expect(addedRepo.linearToken).toBe("");
 		});
 	});
 
@@ -610,13 +635,23 @@ describe("SelfAddRepoCommand", () => {
 			expect(writtenConfig.repositories[2].id).toBe("generated-uuid-123");
 		});
 
-		it("should initialize empty repositories array if missing", async () => {
+		it("should initialize empty repositories array if missing and add repo with placeholder credentials", async () => {
 			mocks.mockReadFileSync.mockReturnValue(JSON.stringify({}));
 
 			await expect(
 				command.execute(["https://github.com/user/new-repo.git"]),
 			).rejects.toThrow("process.exit called");
-			expect(mockExit).toHaveBeenCalledWith(1); // No credentials
+			expect(mockExit).toHaveBeenCalledWith(0);
+
+			// Should add repo with empty credentials
+			const writtenConfig = JSON.parse(
+				mocks.mockWriteFileSync.mock.calls[0][1],
+			);
+			expect(writtenConfig.repositories).toHaveLength(1);
+			const addedRepo = writtenConfig.repositories[0];
+			expect(addedRepo.id).toBe("generated-uuid-123");
+			expect(addedRepo.linearWorkspaceId).toBe("");
+			expect(addedRepo.linearToken).toBe("");
 		});
 	});
 
