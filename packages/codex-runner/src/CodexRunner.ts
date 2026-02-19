@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative as pathRelative } from "node:path";
 import { cwd } from "node:process";
@@ -19,6 +19,7 @@ import { Codex } from "@openai/codex-sdk";
 import type {
 	IAgentRunner,
 	IMessageFormatter,
+	McpServerConfig,
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKResultMessage,
@@ -27,6 +28,7 @@ import type {
 import { CodexMessageFormatter } from "./formatter.js";
 import type {
 	CodexConfigOverrides,
+	CodexConfigValue,
 	CodexJsonEvent,
 	CodexRunnerConfig,
 	CodexRunnerEvents,
@@ -55,6 +57,7 @@ interface ToolProjection {
 }
 
 const DEFAULT_CODEX_MODEL = "gpt-5.3-codex";
+const CODEX_MCP_DOCS_URL = "https://platform.openai.com/docs/docs-mcp";
 
 function toFiniteNumber(value: number | undefined): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -304,6 +307,66 @@ function normalizeMcpIdentifier(value: string): string {
 	return normalized || "unknown";
 }
 
+function autoDetectMcpConfigPath(
+	workingDirectory?: string,
+): string | undefined {
+	if (!workingDirectory) {
+		return undefined;
+	}
+
+	const mcpPath = join(workingDirectory, ".mcp.json");
+	if (!existsSync(mcpPath)) {
+		return undefined;
+	}
+
+	try {
+		JSON.parse(readFileSync(mcpPath, "utf8"));
+		return mcpPath;
+	} catch {
+		console.warn(
+			`[CodexRunner] Found .mcp.json at ${mcpPath} but it is invalid JSON, skipping`,
+		);
+		return undefined;
+	}
+}
+
+function loadMcpConfigFromPaths(
+	configPaths: string | string[] | undefined,
+): Record<string, McpServerConfig> {
+	if (!configPaths) {
+		return {};
+	}
+
+	const paths = Array.isArray(configPaths) ? configPaths : [configPaths];
+	let mcpServers: Record<string, McpServerConfig> = {};
+
+	for (const configPath of paths) {
+		try {
+			const mcpConfigContent = readFileSync(configPath, "utf8");
+			const mcpConfig = JSON.parse(mcpConfigContent);
+			const servers =
+				mcpConfig &&
+				typeof mcpConfig === "object" &&
+				!Array.isArray(mcpConfig) &&
+				mcpConfig.mcpServers &&
+				typeof mcpConfig.mcpServers === "object" &&
+				!Array.isArray(mcpConfig.mcpServers)
+					? (mcpConfig.mcpServers as Record<string, McpServerConfig>)
+					: {};
+			mcpServers = { ...mcpServers, ...servers };
+			console.log(
+				`[CodexRunner] Loaded MCP config from ${configPath}: ${Object.keys(servers).join(", ")}`,
+			);
+		} catch (error) {
+			console.warn(
+				`[CodexRunner] Failed to load MCP config from ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+
+	return mcpServers;
+}
+
 export declare interface CodexRunner {
 	on<K extends keyof CodexRunnerEvents>(
 		event: K,
@@ -492,11 +555,139 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		return env;
 	}
 
+	private buildCodexMcpServersConfig():
+		| Record<string, CodexConfigOverrides>
+		| undefined {
+		const autoDetectedPath = autoDetectMcpConfigPath(
+			this.config.workingDirectory,
+		);
+		const configPaths = autoDetectedPath
+			? [autoDetectedPath]
+			: ([] as string[]);
+		if (this.config.mcpConfigPath) {
+			const explicitPaths = Array.isArray(this.config.mcpConfigPath)
+				? this.config.mcpConfigPath
+				: [this.config.mcpConfigPath];
+			configPaths.push(...explicitPaths);
+		}
+
+		const fileBasedServers = loadMcpConfigFromPaths(configPaths);
+		const mergedServers = this.config.mcpConfig
+			? { ...fileBasedServers, ...this.config.mcpConfig }
+			: fileBasedServers;
+		if (Object.keys(mergedServers).length === 0) {
+			return undefined;
+		}
+
+		// Codex MCP configuration reference:
+		// https://platform.openai.com/docs/docs-mcp
+		const codexServers: Record<string, CodexConfigOverrides> = {};
+		for (const [serverName, rawConfig] of Object.entries(mergedServers)) {
+			const configAny = rawConfig as Record<string, unknown>;
+			if (
+				typeof configAny.listTools === "function" ||
+				typeof configAny.callTool === "function"
+			) {
+				console.warn(
+					`[CodexRunner] Skipping MCP server '${serverName}' because in-process SDK server instances cannot be mapped to codex config`,
+				);
+				continue;
+			}
+
+			const mapped: CodexConfigOverrides = {};
+			if (typeof configAny.command === "string") {
+				mapped.command = configAny.command;
+			}
+			if (Array.isArray(configAny.args)) {
+				mapped.args =
+					configAny.args as unknown as CodexConfigOverrides[keyof CodexConfigOverrides];
+			}
+			if (
+				configAny.env &&
+				typeof configAny.env === "object" &&
+				!Array.isArray(configAny.env)
+			) {
+				mapped.env =
+					configAny.env as unknown as CodexConfigOverrides[keyof CodexConfigOverrides];
+			}
+			if (typeof configAny.cwd === "string") {
+				mapped.cwd = configAny.cwd;
+			}
+			if (typeof configAny.url === "string") {
+				mapped.url = configAny.url;
+			}
+			if (
+				configAny.http_headers &&
+				typeof configAny.http_headers === "object" &&
+				!Array.isArray(configAny.http_headers)
+			) {
+				mapped.http_headers =
+					configAny.http_headers as unknown as CodexConfigOverrides[keyof CodexConfigOverrides];
+			}
+			if (
+				configAny.headers &&
+				typeof configAny.headers === "object" &&
+				!Array.isArray(configAny.headers)
+			) {
+				mapped.http_headers =
+					configAny.headers as unknown as CodexConfigOverrides[keyof CodexConfigOverrides];
+			}
+			if (
+				configAny.env_http_headers &&
+				typeof configAny.env_http_headers === "object" &&
+				!Array.isArray(configAny.env_http_headers)
+			) {
+				mapped.env_http_headers =
+					configAny.env_http_headers as unknown as CodexConfigOverrides[keyof CodexConfigOverrides];
+			}
+			if (typeof configAny.bearer_token_env_var === "string") {
+				mapped.bearer_token_env_var = configAny.bearer_token_env_var;
+			}
+			if (typeof configAny.timeout === "number") {
+				mapped.timeout = configAny.timeout;
+			}
+
+			if (!mapped.command && !mapped.url) {
+				console.warn(
+					`[CodexRunner] Skipping MCP server '${serverName}' because it has no command/url transport`,
+				);
+				continue;
+			}
+
+			codexServers[serverName] = mapped;
+		}
+
+		if (Object.keys(codexServers).length === 0) {
+			return undefined;
+		}
+
+		console.log(
+			`[CodexRunner] Configured ${Object.keys(codexServers).length} MCP server(s) for codex config (docs: ${CODEX_MCP_DOCS_URL})`,
+		);
+		return codexServers;
+	}
+
 	private buildConfigOverrides(): CodexConfigOverrides | undefined {
 		const appendSystemPrompt = (this.config.appendSystemPrompt ?? "").trim();
 		const configOverrides = this.config.configOverrides
 			? { ...this.config.configOverrides }
 			: {};
+		const mcpServers = this.buildCodexMcpServersConfig();
+		if (mcpServers) {
+			const existingMcpServers = configOverrides.mcp_servers;
+			if (
+				existingMcpServers &&
+				typeof existingMcpServers === "object" &&
+				!Array.isArray(existingMcpServers)
+			) {
+				configOverrides.mcp_servers = {
+					...(existingMcpServers as Record<string, CodexConfigValue>),
+					...mcpServers,
+				};
+			} else {
+				configOverrides.mcp_servers = mcpServers;
+			}
+		}
 
 		const sandboxWorkspaceWrite = configOverrides.sandbox_workspace_write;
 		// Keep workspace-write as the default sandbox, but enable outbound network so
