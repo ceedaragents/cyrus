@@ -4247,6 +4247,23 @@ ${taskInstructions}
 			},
 		};
 
+		// Add Slack MCP server if token is configured via environment variable
+		// https://api.slack.com/ai/mcp
+		const slackMcpToken = process.env.SLACK_MCP_TOKEN;
+		if (slackMcpToken) {
+			mcpConfig.slack = {
+				type: "http",
+				url: "https://mcp.slack.com/mcp",
+				headers: {
+					Authorization: `Bearer ${slackMcpToken}`,
+				},
+			};
+
+			this.logger.debug(
+				`Configured Slack MCP server for repository: ${repository.name}`,
+			);
+		}
+
 		// Add OpenAI-based MCP servers if API key is configured
 		if (repository.openaiApiKey) {
 			// Sora video generation tools

@@ -5,6 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Added
+- Integrated Slack MCP server (`https://mcp.slack.com/mcp`) into `EdgeWorker.buildMcpConfig()`, conditionally injected when `SLACK_MCP_TOKEN` env var is set. Added `mcp__slack` to the always-available MCP tools list in `RunnerSelectionService`. Updated all `EdgeWorker.dynamic-tools.test.ts` assertions. ([CYPACK-828](https://linear.app/ceedar/issue/CYPACK-828), [#881](https://github.com/ceedaragents/cyrus/pull/881))
 - Added `SimpleCodexRunner` and `SimpleCursorRunner` implementations for constrained-response queries (ProcedureAnalyzer classification). Both follow the same `SimpleAgentRunner<T>` abstract pattern as Claude and Gemini. Added `defaultRunner` field to `EdgeConfigSchema` (flows through to config update endpoint automatically). `RunnerSelectionService.getDefaultRunner()` implements priority: explicit config > single-API-key auto-detect > "claude" fallback. `ProcedureAnalyzer` now supports all 4 runner types with runner-specific default models. Pinned zod to 4.3.6 via pnpm overrides to eliminate dual-version type incompatibility that blocked cross-package type resolution. Deleted obsolete `codex-runner-shim.d.ts`. Changed `SDKMessage` imports in `simple-agent-runner` from `@anthropic-ai/claude-agent-sdk` to `cyrus-core` to avoid cross-package type conflicts. ([CYPACK-826](https://linear.app/ceedar/issue/CYPACK-826), [#878](https://github.com/ceedaragents/cyrus/pull/878))
 
 ### Changed
