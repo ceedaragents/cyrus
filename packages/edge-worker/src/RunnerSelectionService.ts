@@ -23,6 +23,41 @@ export class RunnerSelectionService {
 	}
 
 	/**
+	 * Determine the default runner type.
+	 *
+	 * Priority:
+	 * 1. Explicit `defaultRunner` in config
+	 * 2. Auto-detect from available API keys (if exactly one runner has keys)
+	 * 3. Fall back to "claude"
+	 */
+	public getDefaultRunner(): "claude" | "gemini" | "codex" | "cursor" {
+		if (this.config.defaultRunner) {
+			return this.config.defaultRunner;
+		}
+
+		// Auto-detect from environment: if exactly one runner's API key is set, use it
+		const available: Array<"claude" | "gemini" | "codex" | "cursor"> = [];
+		if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY) {
+			available.push("claude");
+		}
+		if (process.env.GEMINI_API_KEY) {
+			available.push("gemini");
+		}
+		if (process.env.OPENAI_API_KEY) {
+			available.push("codex");
+		}
+		if (process.env.CURSOR_API_KEY) {
+			available.push("cursor");
+		}
+
+		if (available.length === 1 && available[0]) {
+			return available[0];
+		}
+
+		return "claude";
+	}
+
+	/**
 	 * Resolve default model for a given runner from config with sensible built-in defaults.
 	 */
 	public getDefaultModelForRunner(
@@ -277,7 +312,7 @@ export class RunnerSelectionService {
 			resolvedAgentFromDescription ||
 			resolvedAgentFromLabels ||
 			inferRunnerFromModel(explicitModel) ||
-			"claude";
+			this.getDefaultRunner();
 
 		// If an explicit agent conflicts with model's implied runner, keep the agent and reset model.
 		const modelRunner = inferRunnerFromModel(explicitModel);
