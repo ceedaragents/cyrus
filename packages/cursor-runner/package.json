@@ -16,7 +16,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"cyrus-core": "workspace:*"
+		"cyrus-core": "workspace:*",
+		"cyrus-simple-agent-runner": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",

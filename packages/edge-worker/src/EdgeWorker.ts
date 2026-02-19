@@ -200,13 +200,20 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize global session registry (centralized session storage)
 		this.globalSessionRegistry = new GlobalSessionRegistry();
 
-		// Initialize procedure router with haiku for fast classification
-		// Default to claude runner
+		// Initialize procedure router for fast classification
+		// Use the configured default runner (or auto-detect from API keys)
+		const simpleRunnerType = this.resolveDefaultSimpleRunnerType();
+		const simpleRunnerModel =
+			simpleRunnerType === "claude"
+				? "haiku"
+				: simpleRunnerType === "gemini"
+					? "gemini-2.5-flash-lite"
+					: "gpt-5";
 		this.procedureAnalyzer = new ProcedureAnalyzer({
 			cyrusHome: this.cyrusHome,
-			model: "haiku",
+			model: simpleRunnerModel,
 			timeoutMs: 100000,
-			runnerType: "claude", // Use Claude by default
+			runnerType: simpleRunnerType,
 		});
 
 		// Initialize repository router with dependencies
@@ -4350,6 +4357,42 @@ ${input.userComment}
 			attachmentManifest,
 			guidance,
 		);
+	}
+
+	/**
+	 * Resolve the default runner type for SimpleRunner (classification) use.
+	 * Uses config.defaultRunner if set, otherwise auto-detects from API keys,
+	 * falling back to "claude".
+	 */
+	private resolveDefaultSimpleRunnerType():
+		| "claude"
+		| "gemini"
+		| "codex"
+		| "cursor" {
+		if (this.config.defaultRunner) {
+			return this.config.defaultRunner;
+		}
+
+		// Auto-detect: if exactly one runner has API keys set, use it
+		const available: Array<"claude" | "gemini" | "codex" | "cursor"> = [];
+		if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY) {
+			available.push("claude");
+		}
+		if (process.env.GEMINI_API_KEY) {
+			available.push("gemini");
+		}
+		if (process.env.OPENAI_API_KEY) {
+			available.push("codex");
+		}
+		if (process.env.CURSOR_API_KEY) {
+			available.push("cursor");
+		}
+
+		if (available.length === 1 && available[0]) {
+			return available[0];
+		}
+
+		return "claude";
 	}
 
 	/**

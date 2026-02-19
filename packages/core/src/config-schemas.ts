@@ -197,6 +197,13 @@ export const EdgeConfigSchema = z.object({
 	codexDefaultModel: z.string().optional(),
 
 	/**
+	 * Default runner/harness to use when no runner is specified via labels or description tags.
+	 * If omitted, auto-detected from available API keys (if exactly one is configured),
+	 * otherwise falls back to "claude".
+	 */
+	defaultRunner: z.enum(["claude", "gemini", "codex", "cursor"]).optional(),
+
+	/**
 	 * @deprecated Use claudeDefaultModel instead.
 	 * Legacy field retained for backwards compatibility and migrated on load.
 	 */
