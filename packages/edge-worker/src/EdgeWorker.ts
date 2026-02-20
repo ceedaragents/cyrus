@@ -4181,6 +4181,7 @@ ${taskInstructions}
 
 	/**
 	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
+	 * Optionally includes the Slack MCP server when the SLACK_BOT_TOKEN environment variable is set.
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
@@ -4233,6 +4234,19 @@ ${taskInstructions}
 				},
 			},
 		};
+
+		// Conditionally inject the Slack MCP server when SLACK_BOT_TOKEN is available
+		// https://github.com/korotovsky/slack-mcp-server
+		const slackBotToken = process.env.SLACK_BOT_TOKEN?.trim();
+		if (slackBotToken) {
+			mcpConfig.slack = {
+				command: "npx",
+				args: ["-y", "slack-mcp-server@latest", "--transport", "stdio"],
+				env: {
+					SLACK_MCP_XOXB_TOKEN: slackBotToken,
+				},
+			};
+		}
 
 		return mcpConfig;
 	}

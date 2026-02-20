@@ -138,7 +138,7 @@ Routes issues to different AI modes based on Linear labels and optionally config
 
 - **Custom array**: Specify exact tools needed, e.g., `["Read(**)", "Edit(**)", "Task"]`
 
-Note: Linear MCP tools (`mcp__linear`) are always included automatically.
+Note: Linear MCP tools (`mcp__linear`) are always included automatically. Slack MCP tools (`mcp__slack`) are included when the `SLACK_BOT_TOKEN` environment variable is set.
 
 ---
 
