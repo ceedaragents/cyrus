@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.22] - 2026-02-20
+
 ### Added
 - **Subroutine transition status messages** - Cyrus now posts a status update to the Linear timeline when transitioning between sub-procedures (e.g., "Running tests, linting, and type checking...", "Creating summary..."), so users can see what Cyrus is doing instead of the session appearing to hang. ([CYPACK-835](https://linear.app/ceedar/issue/CYPACK-835), [#887](https://github.com/ceedaragents/cyrus/pull/887))
 - **Configurable default runner** - The default agent harness is now configurable via `defaultRunner` in `config.json` (values: `"claude"`, `"gemini"`, `"codex"`, `"cursor"`) instead of always defaulting to Claude. When only one API key is set (Claude, Gemini, Codex, or Cursor), that runner is auto-detected as the default. When multiple keys are present, set `defaultRunner` to choose which one is used for new sessions. The setting is also updateable via the config update endpoint. ([CYPACK-826](https://linear.app/ceedar/issue/CYPACK-826), [#878](https://github.com/ceedaragents/cyrus/pull/878))
@@ -29,6 +31,50 @@ All notable changes to this project will be documented in this file.
 - **Cursor project .cursor/cli.json is now backed up and restored** - CursorRunner no longer overwrites the project's `.cursor/cli.json`. It temporarily renames the existing file before writing Cyrus permissions, then restores the original when the session ends. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 - **Cursor API key no longer in CLI args or logs** - The Cursor API key is now passed only via the `CURSOR_API_KEY` environment variable, so it never appears in spawn logs or terminal output. The `--force` option has also been removed from cursor-agent invocations. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
 - **Cursor completed todos now display as checked in Linear** - Cursor API uses `TODO_STATUS_COMPLETED` for completed todo items; the formatter now recognizes this so completed items render as `- [x]` instead of `- [ ]` in Linear activity. ([CYPACK-804](https://linear.app/ceedar/issue/CYPACK-804), [#858](https://github.com/ceedaragents/cyrus/pull/858))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.22
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.22
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.22
+
+#### cyrus-core
+- cyrus-core@0.2.22
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.22
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.22
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.22
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.22
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.22
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.22
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.22
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.22
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.22
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.22
 
 ## [0.2.21] - 2026-02-09
 
