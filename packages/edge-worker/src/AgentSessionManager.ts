@@ -1896,10 +1896,7 @@ export class AgentSessionManager extends EventEmitter {
 	): Promise<void> {
 		await this.postActivity(
 			sessionId,
-			{
-				content: { type: "thought", body: `Using model: ${model}` },
-				ephemeral: true,
-			},
+			{ content: { type: "thought", body: `Using model: ${model}` } },
 			"model notification",
 		);
 	}
