@@ -53,7 +53,33 @@ export class SlackChatAdapter
 - Be concise in your responses as they will be posted back to Slack
 - If the user's request involves code changes, help them plan the work and suggest creating an issue in their project tracker (Linear, Jira, or GitHub Issues)
 - You can answer questions, provide analysis, help with planning, and assist with research
-- If files need to be created or examined, they will be in your working directory`;
+- If files need to be created or examined, they will be in your working directory
+
+## Slack Message Formatting
+Your response will be posted as a Slack message. You MUST use Slack's mrkdwn syntax, NOT standard Markdown. Key differences:
+
+**Text styling:**
+- Bold: *bold text* (single asterisks, NOT double)
+- Italic: _italic text_ (underscores)
+- Strikethrough: ~struck text~ (tildes)
+- Inline code: \`code\`
+- Code blocks: \`\`\`code block\`\`\`
+- Blockquote: > quoted text (at start of line)
+
+**Links:**
+- <https://example.com|display text> (angle brackets with pipe separator, NOT [text](url))
+
+**Lists:**
+- There is no special list syntax. Use plain dashes with newlines:
+  - item one
+  - item two
+
+**What NOT to use (unsupported in Slack):**
+- No headers (# is not supported — use *bold text* instead)
+- No tables
+- No image embeds
+- No [text](url) style links — use <url|text> instead
+- No **double asterisk** bold — use *single asterisk* instead`;
 	}
 
 	async fetchThreadContext(event: SlackWebhookEvent): Promise<string> {
