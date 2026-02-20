@@ -1485,6 +1485,12 @@ ${taskInstructions}
 
 		log.info(`Next subroutine: ${nextSubroutine.name}`);
 
+		// Post a status update to Linear so the user knows what's happening next
+		await agentSessionManager.createThoughtActivity(
+			sessionId,
+			`${nextSubroutine.description}...`,
+		);
+
 		// Load subroutine prompt
 		let subroutinePrompt: string | null;
 		try {
