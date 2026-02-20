@@ -1,7 +1,6 @@
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import fs from "fs-extra";
-import OpenAI from "openai";
-import type { ImageGenerateParams } from "openai/resources/images";
+import type OpenAI from "openai";
 import { z } from "zod";
 
 /**
@@ -10,95 +9,79 @@ import { z } from "zod";
 export type ImageModel = "gpt-image-1.5" | "gpt-image-1" | "gpt-image-1-mini";
 
 /**
- * Options for creating image generation tools
- */
-export interface ImageToolsOptions {
-	/**
-	 * OpenAI API key
-	 */
-	apiKey: string;
-
-	/**
-	 * Directory to save generated images (default: current working directory)
-	 */
-	outputDirectory?: string;
-}
-
-/**
- * Create an SDK MCP server with GPT Image generation tools
- * Uses the direct Images API for synchronous generation with model selection
+ * Register GPT Image generation tools on the given MCP server.
+ * Uses the direct Images API for synchronous generation with model selection.
  *
  * @see https://platform.openai.com/docs/guides/image-generation - GPT Image documentation
  * @see https://platform.openai.com/docs/api-reference/images - Images API reference
  */
-export function createImageToolsServer(options: ImageToolsOptions) {
-	const { apiKey, outputDirectory = process.cwd() } = options;
-
-	// Initialize OpenAI client
-	const client = new OpenAI({
-		apiKey,
-		timeout: 600 * 1000, // 10 minutes
-	});
-
-	const generateImageTool = tool(
+export function registerImageTools(
+	server: McpServer,
+	client: OpenAI,
+	outputDirectory: string,
+): void {
+	server.registerTool(
 		"gpt_image_generate",
-		"Generate an image using OpenAI's GPT Image models. Supports gpt-image-1.5 (best quality), gpt-image-1, and gpt-image-1-mini. Returns the generated image file path directly.",
 		{
-			prompt: z
-				.string()
-				.max(32000)
-				.describe(
-					"Text description of the image you want to generate. Be as detailed as possible for best results. Maximum 32,000 characters.",
-				),
-			model: z
-				.enum(["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"])
-				.optional()
-				.default("gpt-image-1.5")
-				.describe(
-					"Model to use: gpt-image-1.5 (best quality, recommended), gpt-image-1 (good quality), or gpt-image-1-mini (faster, lower cost)",
-				),
-			size: z
-				.enum(["1024x1024", "1536x1024", "1024x1536", "auto"])
-				.optional()
-				.default("auto")
-				.describe(
-					"Image size: 1024x1024 (square, faster), 1536x1024 (landscape), 1024x1536 (portrait), or auto (model decides)",
-				),
-			quality: z
-				.enum(["low", "medium", "high"])
-				.optional()
-				.default("high")
-				.describe(
-					"Image quality: low (fastest), medium (good for iteration), high (best quality, default). Production work should use high.",
-				),
-			background: z
-				.enum(["transparent", "opaque", "auto"])
-				.optional()
-				.default("auto")
-				.describe(
-					"Background type: transparent (PNG/WebP only, works best with medium/high quality), opaque, or auto (model decides)",
-				),
-			output_format: z
-				.enum(["png", "jpeg", "webp"])
-				.optional()
-				.default("png")
-				.describe(
-					"Output format: png (default, supports transparency), jpeg (faster), or webp (good compression)",
-				),
-			output_compression: z
-				.number()
-				.min(0)
-				.max(100)
-				.optional()
-				.describe(
-					"Compression level for jpeg/webp (0-100%). Higher = less compression, larger file. Only applicable for jpeg and webp formats.",
-				),
-			filename: z
-				.string()
-				.optional()
-				.describe(
-					"Custom filename for the image (without extension). If not provided, a timestamped name will be generated.",
-				),
+			description:
+				"Generate an image using OpenAI's GPT Image models. Supports gpt-image-1.5 (best quality), gpt-image-1, and gpt-image-1-mini. Returns the generated image file path directly.",
+			inputSchema: {
+				prompt: z
+					.string()
+					.max(32000)
+					.describe(
+						"Text description of the image you want to generate. Be as detailed as possible for best results. Maximum 32,000 characters.",
+					),
+				model: z
+					.enum(["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"])
+					.optional()
+					.default("gpt-image-1.5")
+					.describe(
+						"Model to use: gpt-image-1.5 (best quality, recommended), gpt-image-1 (good quality), or gpt-image-1-mini (faster, lower cost)",
+					),
+				size: z
+					.enum(["1024x1024", "1536x1024", "1024x1536", "auto"])
+					.optional()
+					.default("auto")
+					.describe(
+						"Image size: 1024x1024 (square, faster), 1536x1024 (landscape), 1024x1536 (portrait), or auto (model decides)",
+					),
+				quality: z
+					.enum(["low", "medium", "high"])
+					.optional()
+					.default("high")
+					.describe(
+						"Image quality: low (fastest), medium (good for iteration), high (best quality, default). Production work should use high.",
+					),
+				background: z
+					.enum(["transparent", "opaque", "auto"])
+					.optional()
+					.default("auto")
+					.describe(
+						"Background type: transparent (PNG/WebP only, works best with medium/high quality), opaque, or auto (model decides)",
+					),
+				output_format: z
+					.enum(["png", "jpeg", "webp"])
+					.optional()
+					.default("png")
+					.describe(
+						"Output format: png (default, supports transparency), jpeg (faster), or webp (good compression)",
+					),
+				output_compression: z
+					.number()
+					.min(0)
+					.max(100)
+					.optional()
+					.describe(
+						"Compression level for jpeg/webp (0-100%). Higher = less compression, larger file. Only applicable for jpeg and webp formats.",
+					),
+				filename: z
+					.string()
+					.optional()
+					.describe(
+						"Custom filename for the image (without extension). If not provided, a timestamped name will be generated.",
+					),
+			},
 		},
 		async ({
 			prompt,
@@ -132,9 +115,7 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 				}
 
 				// Build request parameters
-				// Note: GPT Image models always return base64-encoded images,
-				// so response_format is not needed (and not supported for gpt-image-1.5)
-				const params: ImageGenerateParams = {
+				const params: OpenAI.Images.ImageGenerateParams = {
 					model: model as ImageModel,
 					prompt,
 					n: 1,
@@ -233,10 +214,4 @@ export function createImageToolsServer(options: ImageToolsOptions) {
 			}
 		},
 	);
-
-	return createSdkMcpServer({
-		name: "image-tools",
-		version: "1.0.0",
-		tools: [generateImageTool],
-	});
 }

@@ -1,8 +1,12 @@
+import { tmpdir } from "node:os";
 import { basename, extname } from "node:path";
 import { IssueRelationType, LinearClient } from "@linear/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import fs from "fs-extra";
+import OpenAI from "openai";
 import { z } from "zod";
+import { registerImageTools } from "../image-tools/index.js";
+import { registerSoraTools } from "../sora-tools/index.js";
 
 /**
  * Detect MIME type based on file extension
@@ -967,6 +971,19 @@ export function createCyrusToolsServer(
 			}
 		},
 	);
+
+	// Register OpenAI-based tools if OPENAI_API_KEY is available
+	const openaiApiKey = process.env.OPENAI_API_KEY;
+	if (openaiApiKey) {
+		const openaiClient = new OpenAI({
+			apiKey: openaiApiKey,
+			timeout: 600 * 1000, // 10 minutes
+		});
+		const outputDirectory = tmpdir();
+
+		registerImageTools(server, openaiClient, outputDirectory);
+		registerSoraTools(server, openaiClient, outputDirectory);
+	}
 
 	return server;
 }

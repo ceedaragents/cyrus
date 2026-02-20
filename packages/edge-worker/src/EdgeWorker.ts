@@ -10,11 +10,7 @@ import type {
 	PostToolUseHookInput,
 	SDKMessage,
 } from "cyrus-claude-runner";
-import {
-	ClaudeRunner,
-	createImageToolsServer,
-	createSoraToolsServer,
-} from "cyrus-claude-runner";
+import { ClaudeRunner } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
 import type {
@@ -327,9 +323,6 @@ export class EdgeWorker extends EventEmitter {
 							: undefined,
 					promptTemplatePath: repo.promptTemplatePath
 						? resolvePath(repo.promptTemplatePath)
-						: undefined,
-					openaiOutputDirectory: repo.openaiOutputDirectory
-						? resolvePath(repo.openaiOutputDirectory)
 						: undefined,
 				};
 
@@ -1649,9 +1642,6 @@ ${taskInstructions}
 					promptTemplatePath: repo.promptTemplatePath
 						? resolvePath(repo.promptTemplatePath)
 						: undefined,
-					openaiOutputDirectory: repo.openaiOutputDirectory
-						? resolvePath(repo.openaiOutputDirectory)
-						: undefined,
 				};
 
 				// Add to internal map
@@ -1789,9 +1779,6 @@ ${taskInstructions}
 							: undefined,
 					promptTemplatePath: repo.promptTemplatePath
 						? resolvePath(repo.promptTemplatePath)
-						: undefined,
-					openaiOutputDirectory: repo.openaiOutputDirectory
-						? resolvePath(repo.openaiOutputDirectory)
 						: undefined,
 				};
 
@@ -4246,25 +4233,6 @@ ${taskInstructions}
 				},
 			},
 		};
-
-		// Add OpenAI-based MCP servers if API key is configured
-		if (repository.openaiApiKey) {
-			// Sora video generation tools
-			mcpConfig["sora-tools"] = createSoraToolsServer({
-				apiKey: repository.openaiApiKey,
-				outputDirectory: repository.openaiOutputDirectory,
-			});
-
-			// GPT Image generation tools
-			mcpConfig["image-tools"] = createImageToolsServer({
-				apiKey: repository.openaiApiKey,
-				outputDirectory: repository.openaiOutputDirectory,
-			});
-
-			this.logger.debug(
-				`Configured OpenAI MCP servers (Sora + GPT Image) for repository: ${repository.name}`,
-			);
-		}
 
 		return mcpConfig;
 	}

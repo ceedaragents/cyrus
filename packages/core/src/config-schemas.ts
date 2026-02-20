@@ -153,10 +153,6 @@ export const RepositoryConfigSchema = z.object({
 	model: z.string().optional(),
 	fallbackModel: z.string().optional(),
 
-	// OpenAI configuration
-	openaiApiKey: z.string().optional(),
-	openaiOutputDirectory: z.string().optional(),
-
 	// Label-based system prompt configuration
 	labelPrompts: LabelPromptsSchema.optional(),
 
