@@ -202,6 +202,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			restoreState: vi.fn(),
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
+			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
 			on: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
