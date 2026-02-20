@@ -376,6 +376,11 @@ export class AgentSessionManager extends EventEmitter {
 			usage: resultMessage.usage,
 		});
 
+		// Reset crash retry count on successful completion
+		if (resultMessage.subtype === "success" && session.metadata) {
+			delete session.metadata.crashRetryCount;
+		}
+
 		// Handle result using procedure routing system (skip for sessions without procedures, e.g. Slack)
 		if (!this.procedureAnalyzer) {
 			log.info(`Session completed (no procedure routing)`);
@@ -920,6 +925,14 @@ export class AgentSessionManager extends EventEmitter {
 
 		session.status = status;
 		session.updatedAt = Date.now();
+
+		// Clear wasRunning flag when session reaches terminal state (for crash recovery tracking)
+		if (
+			status === AgentSessionStatus.Complete ||
+			status === AgentSessionStatus.Error
+		) {
+			session.wasRunning = false;
+		}
 
 		if (additionalMetadata) {
 			session.metadata = { ...session.metadata, ...additionalMetadata };
@@ -1584,6 +1597,7 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		session.agentRunner = agentRunner;
+		session.wasRunning = true; // Track for crash recovery
 		session.updatedAt = Date.now();
 		log.debug(`Added agent runner`);
 	}
@@ -1651,6 +1665,47 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	getAllSessions(): CyrusAgentSession[] {
 		return Array.from(this.sessions.values());
+	}
+
+	/**
+	 * Get sessions that were interrupted (wasRunning === true but no active runner)
+	 * Used for crash recovery on startup.
+	 *
+	 * Note: We intentionally do NOT filter by status === Active here.
+	 * Between subroutines, status is set to "complete" by completeSession()
+	 * before the next subroutine starts and sets wasRunning back to true.
+	 * The wasRunning flag is the definitive signal for interrupted sessions.
+	 */
+	getInterruptedSessions(): CyrusAgentSession[] {
+		return Array.from(this.sessions.values()).filter(
+			(session) =>
+				session.wasRunning === true && !session.agentRunner?.isRunning(),
+		);
+	}
+
+	/**
+	 * Reset session status to Active for crash recovery.
+	 * Used when resuming interrupted sessions that may have
+	 * status=Complete from a completed subroutine.
+	 */
+	resetSessionStatusForRecovery(linearAgentActivitySessionId: string): void {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (!session) return;
+		session.status = AgentSessionStatus.Active;
+		session.updatedAt = Date.now();
+	}
+
+	/**
+	 * Mark a session as error state and clear wasRunning flag.
+	 * Used by EdgeWorker for crash recovery when max retries are exhausted.
+	 */
+	async markSessionAsError(
+		linearAgentActivitySessionId: string,
+	): Promise<void> {
+		await this.updateSessionStatus(
+			linearAgentActivitySessionId,
+			AgentSessionStatus.Error,
+		);
 	}
 
 	/**
@@ -1885,6 +1940,211 @@ export class AgentSessionManager extends EventEmitter {
 		this.logger.debug(
 			`Restored ${this.sessions.size} sessions, ${Object.keys(serializedEntries).length} entry collections`,
 		);
+	}
+
+	/**
+	 * Build a conversation summary from stored entries for session recovery.
+	 * Used when a session resume fails and we need to reconstruct context.
+	 *
+	 * @param linearAgentActivitySessionId The session ID to build summary for
+	 * @returns Summary string or undefined if no entries exist
+	 */
+	buildConversationSummary(
+		linearAgentActivitySessionId: string,
+	): string | undefined {
+		const entries = this.entries.get(linearAgentActivitySessionId);
+		if (!entries || entries.length === 0) {
+			return undefined;
+		}
+
+		const sections: string[] = [];
+
+		// Collect user messages
+		const userMessages: string[] = [];
+		// Collect file modifications (Edit/Write tools)
+		const fileModifications: string[] = [];
+		// Collect commands run
+		const commandsRun: string[] = [];
+		// Collect other tool usage
+		const otherTools: string[] = [];
+		// Collect errors
+		const errors: string[] = [];
+		// Track last assistant response (non-tool)
+		let lastAssistantResponse: string | undefined;
+
+		for (const entry of entries) {
+			// User messages (not tool results)
+			if (entry.type === "user" && !entry.metadata?.toolUseId) {
+				const content =
+					entry.content.length > 500
+						? `${entry.content.slice(0, 500)}...`
+						: entry.content;
+				userMessages.push(content);
+			}
+
+			// Assistant text responses (no tool, just thinking/responding)
+			if (
+				entry.type === "assistant" &&
+				!entry.metadata?.toolName &&
+				entry.content.trim()
+			) {
+				lastAssistantResponse = entry.content;
+			}
+
+			// Tool usage with inputs
+			if (entry.type === "assistant" && entry.metadata?.toolName) {
+				const toolName = entry.metadata.toolName;
+				const toolInput = entry.metadata.toolInput;
+
+				// Skip noisy tools
+				if (toolName === "TodoWrite" || toolName === "TodoRead") {
+					continue;
+				}
+
+				// File editing tools - capture file paths
+				if (
+					(toolName === "Edit" || toolName === "Write") &&
+					toolInput?.file_path
+				) {
+					const filePath = toolInput.file_path;
+					if (!fileModifications.includes(filePath)) {
+						fileModifications.push(filePath);
+					}
+				}
+				// Bash commands - capture the command
+				else if (toolName === "Bash" && toolInput?.command) {
+					const cmd =
+						toolInput.command.length > 100
+							? `${toolInput.command.slice(0, 100)}...`
+							: toolInput.command;
+					commandsRun.push(cmd);
+				}
+				// Read tool - note which files were read
+				else if (toolName === "Read" && toolInput?.file_path) {
+					const readEntry = `Read: ${toolInput.file_path}`;
+					if (!otherTools.includes(readEntry)) {
+						otherTools.push(readEntry);
+					}
+				}
+				// Grep/Glob - note the search
+				else if (toolName === "Grep" && toolInput?.pattern) {
+					otherTools.push(`Grep: "${toolInput.pattern}"`);
+				} else if (toolName === "Glob" && toolInput?.pattern) {
+					otherTools.push(`Glob: "${toolInput.pattern}"`);
+				}
+				// Other tools - just note the name
+				else if (
+					!["Edit", "Write", "Bash", "Read", "Grep", "Glob"].includes(toolName)
+				) {
+					if (!otherTools.includes(toolName)) {
+						otherTools.push(toolName);
+					}
+				}
+			}
+
+			// Capture errors
+			if (entry.metadata?.toolResultError || entry.metadata?.isError) {
+				const errorContent =
+					entry.content.length > 200
+						? `${entry.content.slice(0, 200)}...`
+						: entry.content;
+				errors.push(errorContent);
+			}
+		}
+
+		// Build the summary with clear sections
+		sections.push("# Session Recovery Context\n");
+		sections.push(
+			"Your previous session was interrupted. Here's what was happening:\n",
+		);
+
+		// User requests
+		if (userMessages.length > 0) {
+			sections.push("## User Requests");
+			// Show most recent user messages (last 3)
+			const recentMessages = userMessages.slice(-3);
+			for (const msg of recentMessages) {
+				sections.push(`> ${msg.replace(/\n/g, "\n> ")}`);
+			}
+			sections.push("");
+		}
+
+		// Files modified
+		if (fileModifications.length > 0) {
+			sections.push("## Files You Modified");
+			for (const file of fileModifications.slice(-15)) {
+				sections.push(`- ${file}`);
+			}
+			sections.push("");
+		}
+
+		// Commands run
+		if (commandsRun.length > 0) {
+			sections.push("## Commands You Ran");
+			// Show last 5 commands
+			for (const cmd of commandsRun.slice(-5)) {
+				sections.push(`- \`${cmd}\``);
+			}
+			sections.push("");
+		}
+
+		// Other tools used
+		if (otherTools.length > 0) {
+			sections.push("## Other Actions");
+			for (const tool of otherTools.slice(-10)) {
+				sections.push(`- ${tool}`);
+			}
+			sections.push("");
+		}
+
+		// Errors encountered
+		if (errors.length > 0) {
+			sections.push("## Errors Encountered");
+			for (const error of errors.slice(-3)) {
+				sections.push(`- ${error}`);
+			}
+			sections.push("");
+		}
+
+		// Last assistant response (what Claude was thinking/saying)
+		if (lastAssistantResponse) {
+			const truncated =
+				lastAssistantResponse.length > 500
+					? `${lastAssistantResponse.slice(0, 500)}...`
+					: lastAssistantResponse;
+			sections.push("## Your Last Response");
+			sections.push(truncated);
+			sections.push("");
+		}
+
+		// Only return summary if we have meaningful content
+		if (sections.length <= 2) {
+			return undefined;
+		}
+
+		const summary = sections.join("\n");
+		console.log(
+			`[AgentSessionManager] Built conversation summary for ${linearAgentActivitySessionId}: ${summary.length} chars`,
+		);
+		return summary;
+	}
+
+	/**
+	 * Clear the Claude session ID from a session to allow recovery from stale state.
+	 * Used when a session resume fails because the session no longer exists.
+	 *
+	 * @param linearAgentActivitySessionId The session ID to clear
+	 */
+	clearClaudeSessionId(linearAgentActivitySessionId: string): void {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (session) {
+			const oldSessionId = session.claudeSessionId;
+			session.claudeSessionId = undefined;
+			session.updatedAt = Date.now();
+			console.log(
+				`[AgentSessionManager] Cleared stale Claude session ID for ${linearAgentActivitySessionId} (was: ${oldSessionId})`,
+			);
+		}
 	}
 
 	/**
