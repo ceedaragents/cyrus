@@ -2974,7 +2974,7 @@ ${taskInstructions}
 			this.attachCrashRecoveryHandler(
 				runner,
 				repository,
-				linearAgentActivitySessionId,
+				sessionId,
 				agentSessionManager,
 			);
 
@@ -3649,7 +3649,7 @@ ${taskInstructions}
 	 * but TypeScript can't resolve .on() on the union type, hence the cast.
 	 */
 	private attachCrashRecoveryHandler(
-		runner: ClaudeRunner | GeminiRunner,
+		runner: ClaudeRunner | GeminiRunner | CodexRunner | CursorRunner,
 		repository: RepositoryConfig,
 		linearAgentActivitySessionId: string,
 		agentSessionManager: AgentSessionManager,
@@ -5444,13 +5444,11 @@ ${input.userComment}
 			for (const session of interruptedSessions) {
 				try {
 					// Reset status to Active for recovery (it may be "complete" from last subroutine)
-					agentSessionManager.resetSessionStatusForRecovery(
-						session.linearAgentActivitySessionId,
-					);
+					agentSessionManager.resetSessionStatusForRecovery(session.id);
 
 					// Build a recovery prompt with context from stored entries
 					const summary = agentSessionManager.buildConversationSummary(
-						session.linearAgentActivitySessionId,
+						session.id,
 					);
 
 					const recoveryPrompt = summary
@@ -5458,12 +5456,12 @@ ${input.userComment}
 						: "Continue the task you were working on.";
 
 					console.log(
-						`[EdgeWorker] Resuming interrupted session ${session.linearAgentActivitySessionId} for issue ${session.issue?.identifier || session.issueId}`,
+						`[EdgeWorker] Resuming interrupted session ${session.id} for issue ${session.issue?.identifier || session.issueId}`,
 					);
 
 					// Post a thought activity to inform the user
 					await agentSessionManager.createThoughtActivity(
-						session.linearAgentActivitySessionId,
+						session.id,
 						"Resuming after interruption. Let me continue where I left off.",
 					);
 
@@ -5471,7 +5469,7 @@ ${input.userComment}
 					await this.resumeAgentSession(
 						session,
 						repository,
-						session.linearAgentActivitySessionId,
+						session.id,
 						agentSessionManager,
 						recoveryPrompt,
 						"", // No attachment manifest for recovery
@@ -5481,7 +5479,7 @@ ${input.userComment}
 					resumedCount++;
 				} catch (error) {
 					console.error(
-						`[EdgeWorker] Failed to resume interrupted session ${session.linearAgentActivitySessionId}:`,
+						`[EdgeWorker] Failed to resume interrupted session ${session.id}:`,
 						error,
 					);
 					// Mark session as no longer running to avoid repeated resume attempts
@@ -6036,7 +6034,7 @@ ${input.userComment}
 		this.attachCrashRecoveryHandler(
 			runner,
 			repository,
-			linearAgentActivitySessionId,
+			sessionId,
 			agentSessionManager,
 		);
 
@@ -6047,18 +6045,15 @@ ${input.userComment}
 				"resume-failed",
 				async (staleSessionId: string) => {
 					console.log(
-						`[resumeAgentSession] Resume failed for session ${linearAgentActivitySessionId}, stale ID: ${staleSessionId}`,
+						`[resumeAgentSession] Resume failed for session ${sessionId}, stale ID: ${staleSessionId}`,
 					);
 
 					// Clear the stale session ID
-					agentSessionManager.clearClaudeSessionId(
-						linearAgentActivitySessionId,
-					);
+					agentSessionManager.clearClaudeSessionId(sessionId);
 
 					// Build conversation summary from stored entries
-					const contextSummary = agentSessionManager.buildConversationSummary(
-						linearAgentActivitySessionId,
-					);
+					const contextSummary =
+						agentSessionManager.buildConversationSummary(sessionId);
 
 					// Prepare recovery prompt with context
 					const recoveryPrompt = contextSummary
@@ -6067,7 +6062,7 @@ ${input.userComment}
 
 					// Post thought to inform user about recovery
 					await agentSessionManager.createThoughtActivity(
-						linearAgentActivitySessionId,
+						sessionId,
 						"Session interrupted - reconstructing context and continuing...",
 					);
 
@@ -6076,7 +6071,7 @@ ${input.userComment}
 						await this.resumeAgentSession(
 							session,
 							repository,
-							linearAgentActivitySessionId,
+							sessionId,
 							agentSessionManager,
 							recoveryPrompt,
 							attachmentManifest,
@@ -6087,15 +6082,15 @@ ${input.userComment}
 							commentTimestamp,
 						);
 						console.log(
-							`[resumeAgentSession] Successfully recovered session ${linearAgentActivitySessionId} with fresh context`,
+							`[resumeAgentSession] Successfully recovered session ${sessionId} with fresh context`,
 						);
 					} catch (retryError) {
 						console.error(
-							`[resumeAgentSession] Failed to recover session ${linearAgentActivitySessionId}:`,
+							`[resumeAgentSession] Failed to recover session ${sessionId}:`,
 							retryError,
 						);
 						await agentSessionManager.createErrorActivity(
-							linearAgentActivitySessionId,
+							sessionId,
 							"Failed to recover session after interruption. Please try again.",
 						);
 					}
