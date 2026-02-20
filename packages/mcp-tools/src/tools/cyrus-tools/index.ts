@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { basename, extname } from "node:path";
 import { IssueRelationType, LinearClient } from "@linear/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -978,7 +979,7 @@ export function createCyrusToolsServer(
 			apiKey: openaiApiKey,
 			timeout: 600 * 1000, // 10 minutes
 		});
-		const outputDirectory = process.cwd();
+		const outputDirectory = tmpdir();
 
 		registerImageTools(server, openaiClient, outputDirectory);
 		registerSoraTools(server, openaiClient, outputDirectory);
