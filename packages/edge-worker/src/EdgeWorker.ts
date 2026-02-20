@@ -1485,10 +1485,10 @@ ${taskInstructions}
 
 		log.info(`Next subroutine: ${nextSubroutine.name}`);
 
-		// Post a status update to Linear so the user knows what's happening next
+		// Post a visually distinct status update to Linear so the user knows what's happening next
 		await agentSessionManager.createThoughtActivity(
 			sessionId,
-			`${nextSubroutine.description}...`,
+			`---\n**${nextSubroutine.description}...**`,
 		);
 
 		// Load subroutine prompt
@@ -2787,6 +2787,16 @@ ${taskInstructions}
 			finalProcedure.name,
 			finalClassification,
 		);
+
+		// Post status update for the first subroutine so users know what's starting
+		const firstSubroutine =
+			this.procedureAnalyzer.getCurrentSubroutine(session);
+		if (firstSubroutine) {
+			await agentSessionManager.createThoughtActivity(
+				sessionId,
+				`${firstSubroutine.description}...`,
+			);
+		}
 
 		// Build and start Claude with initial prompt using full issue (streaming mode)
 		log.info(`Building initial prompt for issue ${fullIssue.identifier}`);
@@ -5344,6 +5354,16 @@ ${input.userComment}
 			selectedProcedure.name,
 			finalClassification,
 		);
+
+		// Post status update for the first subroutine so users know what's starting
+		const firstSubroutine =
+			this.procedureAnalyzer.getCurrentSubroutine(session);
+		if (firstSubroutine) {
+			await agentSessionManager.createThoughtActivity(
+				sessionId,
+				`${firstSubroutine.description}...`,
+			);
+		}
 	}
 
 	/**
