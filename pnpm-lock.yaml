@@ -142,9 +142,6 @@ importers:
       fs-extra:
         specifier: ^11.3.2
         version: 11.3.2
-      openai:
-        specifier: ^6.9.1
-        version: 6.9.1(ws@8.18.3)(zod@4.3.6)
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -443,6 +440,9 @@ importers:
       fs-extra:
         specifier: ^11.3.2
         version: 11.3.2
+      openai:
+        specifier: ^6.9.1
+        version: 6.9.1(ws@8.18.3)(zod@4.3.6)
       zod:
         specifier: 4.3.6
         version: 4.3.6
