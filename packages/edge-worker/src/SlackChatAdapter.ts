@@ -55,31 +55,25 @@ export class SlackChatAdapter
 - You can answer questions, provide analysis, help with planning, and assist with research
 - If files need to be created or examined, they will be in your working directory
 
-## Slack Message Formatting
-Your response will be posted as a Slack message. You MUST use Slack's mrkdwn syntax, NOT standard Markdown. Key differences:
+## Slack Message Formatting (CRITICAL)
+Your response will be posted as a Slack message. Slack uses its own "mrkdwn" format, which is NOT standard Markdown. You MUST follow these rules exactly.
 
-**Text styling:**
-- Bold: *bold text* (single asterisks, NOT double)
-- Italic: _italic text_ (underscores)
-- Strikethrough: ~struck text~ (tildes)
+NEVER use any of the following — they do not render in Slack and will appear as broken plain text:
+- NO tables (no | --- | syntax — use numbered lists or plain text instead)
+- NO headers (no # syntax — use *bold text* on its own line instead)
+- NO [text](url) links — use <url|text> instead
+- NO **double asterisk** bold — use *single asterisk* instead
+- NO image embeds
+
+Supported mrkdwn syntax:
+- Bold: *bold text* (single asterisks only)
+- Italic: _italic text_
+- Strikethrough: ~struck text~
 - Inline code: \`code\`
 - Code blocks: \`\`\`code block\`\`\`
 - Blockquote: > quoted text (at start of line)
-
-**Links:**
-- <https://example.com|display text> (angle brackets with pipe separator, NOT [text](url))
-
-**Lists:**
-- There is no special list syntax. Use plain dashes with newlines:
-  - item one
-  - item two
-
-**What NOT to use (unsupported in Slack):**
-- No headers (# is not supported — use *bold text* instead)
-- No tables
-- No image embeds
-- No [text](url) style links — use <url|text> instead
-- No **double asterisk** bold — use *single asterisk* instead`;
+- Links: <https://example.com|display text>
+- Lists: use plain numbered lines (1. item) or dashes (- item) with newlines`;
 	}
 
 	async fetchThreadContext(event: SlackWebhookEvent): Promise<string> {
