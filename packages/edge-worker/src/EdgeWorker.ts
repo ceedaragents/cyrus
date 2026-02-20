@@ -2788,16 +2788,6 @@ ${taskInstructions}
 			finalClassification,
 		);
 
-		// Post status update for the first subroutine so users know what's starting
-		const firstSubroutine =
-			this.procedureAnalyzer.getCurrentSubroutine(session);
-		if (firstSubroutine) {
-			await agentSessionManager.createThoughtActivity(
-				sessionId,
-				`${firstSubroutine.description}...`,
-			);
-		}
-
 		// Build and start Claude with initial prompt using full issue (streaming mode)
 		log.info(`Building initial prompt for issue ${fullIssue.identifier}`);
 		try {
@@ -5354,16 +5344,6 @@ ${input.userComment}
 			selectedProcedure.name,
 			finalClassification,
 		);
-
-		// Post status update for the first subroutine so users know what's starting
-		const firstSubroutine =
-			this.procedureAnalyzer.getCurrentSubroutine(session);
-		if (firstSubroutine) {
-			await agentSessionManager.createThoughtActivity(
-				sessionId,
-				`${firstSubroutine.description}...`,
-			);
-		}
 	}
 
 	/**
