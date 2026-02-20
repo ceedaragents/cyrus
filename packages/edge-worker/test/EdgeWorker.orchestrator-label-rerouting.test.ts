@@ -80,6 +80,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 			postRoutingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
+			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
 			on: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
