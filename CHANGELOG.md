@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated Claude SDK dependencies** - Updated `@anthropic-ai/claude-agent-sdk` from 0.2.47 to 0.2.50 and `@anthropic-ai/sdk` from 0.77.0 to 0.78.0. Key features: updated to parity with Claude Code v2.1.50, added model capability discovery fields (`supportsEffort`, `supportedEffortLevels`, `supportsAdaptiveThinking`), permission suggestions now populated when safety checks trigger, and added `ConfigChange` hook event for configuration file change auditing. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-837](https://linear.app/ceedar/issue/CYPACK-837), [#891](https://github.com/ceedaragents/cyrus/pull/891))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added
