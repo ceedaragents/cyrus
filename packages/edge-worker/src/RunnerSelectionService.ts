@@ -418,12 +418,17 @@ export class RunnerSelectionService {
 			toolSource = "safe tools fallback";
 		}
 
-		// Linear MCP tools that should always be available
+		// MCP tools that should always be available
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const linearMcpTools = ["mcp__linear", "mcp__cyrus-tools"];
+		const defaultMcpTools = ["mcp__linear", "mcp__cyrus-tools"];
+
+		// Conditionally include Slack MCP tools when SLACK_BOT_TOKEN is available
+		if (process.env.SLACK_BOT_TOKEN?.trim()) {
+			defaultMcpTools.push("mcp__slack");
+		}
 
 		// Combine and deduplicate
-		const allTools = [...new Set([...baseTools, ...linearMcpTools])];
+		const allTools = [...new Set([...baseTools, ...defaultMcpTools])];
 
 		this.logger.debug(
 			`Tool selection for ${repository.name}: ${allTools.length} tools from ${toolSource}`,
