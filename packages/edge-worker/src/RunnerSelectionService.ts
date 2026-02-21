@@ -94,6 +94,9 @@ export class RunnerSelectionService {
 		if (runnerType === "gemini") {
 			return "gemini-2.5-flash";
 		}
+		if (runnerType === "codex") {
+			return "gpt-5.2-codex";
+		}
 		if (runnerType === "cursor") {
 			return "gpt-5";
 		}
@@ -225,10 +228,7 @@ export class RunnerSelectionService {
 				return "gemini-2.5-flash";
 			}
 			if (isCodexModel(normalizedModel)) {
-				if (normalizedModel.endsWith("-codex")) {
-					return model.slice(0, -"-codex".length);
-				}
-				return "gpt-5";
+				return "gpt-5.2-codex";
 			}
 			return "gpt-5";
 		};
