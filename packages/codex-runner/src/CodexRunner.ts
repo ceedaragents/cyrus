@@ -460,6 +460,8 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		this.startTimestampMs = Date.now();
 		this.emittedToolUseIds.clear();
 
+		await this.resolveModelWithFallback();
+
 		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
 		const threadOptions = this.buildThreadOptions();
 		const codex = this.createCodexClient();
@@ -479,6 +481,70 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		return this.sessionInfo;
+	}
+
+	/**
+	 * Check if the configured model is accessible via the OpenAI API.
+	 * If not, swap to the fallback model before starting the session.
+	 *
+	 * Skipped when:
+	 * - No OPENAI_API_KEY is set (Codex-native auth handles model access)
+	 * - The user has a ChatGPT subscription (`codex login status` reports logged in)
+	 */
+	private async resolveModelWithFallback(): Promise<void> {
+		const model = this.config.model;
+		const fallback = this.config.fallbackModel;
+		if (!model || !fallback || fallback === model) return;
+
+		const apiKey = process.env.OPENAI_API_KEY;
+		if (!apiKey) return;
+
+		if (await this.hasCodexSubscription()) return;
+
+		const baseUrl = (
+			process.env.OPENAI_BASE_URL ||
+			process.env.OPENAI_API_BASE ||
+			"https://api.openai.com/v1"
+		).replace(/\/+$/, "");
+
+		try {
+			const response = await fetch(
+				`${baseUrl}/models/${encodeURIComponent(model)}`,
+				{
+					method: "GET",
+					headers: { Authorization: `Bearer ${apiKey}` },
+					signal: AbortSignal.timeout(10_000),
+				},
+			);
+			if (response.status === 404) {
+				console.log(
+					`[CodexRunner] Model "${model}" not found (404), falling back to "${fallback}"`,
+				);
+				this.config.model = fallback;
+			}
+		} catch {
+			// Network error or timeout — proceed with the original model
+			// and let the Codex SDK handle any downstream failure.
+		}
+	}
+
+	/**
+	 * Check if the user has a ChatGPT/Codex subscription by running `codex login status`.
+	 * Returns true if the output contains "Logged in", indicating native auth is available.
+	 */
+	private async hasCodexSubscription(): Promise<boolean> {
+		const codexBin = this.config.codexPath || "codex";
+		try {
+			const { execFile } = await import("node:child_process");
+			const { promisify } = await import("node:util");
+			const execFileAsync = promisify(execFile);
+			const { stdout } = await execFileAsync(codexBin, ["login", "status"], {
+				timeout: 5_000,
+			});
+			return /logged in using chatgpt/i.test(stdout);
+		} catch {
+			return false;
+		}
 	}
 
 	private createCodexClient(): Codex {
