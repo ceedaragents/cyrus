@@ -486,6 +486,10 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	/**
 	 * Check if the configured model is accessible via the OpenAI API.
 	 * If not, swap to the fallback model before starting the session.
+	 *
+	 * Skipped when:
+	 * - No OPENAI_API_KEY is set (Codex-native auth handles model access)
+	 * - The user has a ChatGPT subscription (`codex login status` reports "Logged in using ChatGPT")
 	 */
 	private async resolveModelWithFallback(): Promise<void> {
 		const model = this.config.model;
@@ -494,6 +498,8 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 
 		const apiKey = process.env.OPENAI_API_KEY;
 		if (!apiKey) return;
+
+		if (await this.hasCodexSubscription()) return;
 
 		const baseUrl = (
 			process.env.OPENAI_BASE_URL ||
@@ -519,6 +525,26 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		} catch {
 			// Network error or timeout — proceed with the original model
 			// and let the Codex SDK handle any downstream failure.
+		}
+	}
+
+	/**
+	 * Check if the user has a ChatGPT/Codex subscription by running `codex login status`.
+	 * Returns true when the output contains "Logged in using ChatGPT",
+	 * meaning the user has native Codex auth and can access gpt-5.3-codex.
+	 */
+	private async hasCodexSubscription(): Promise<boolean> {
+		const codexBin = this.config.codexPath || "codex";
+		try {
+			const { execFile } = await import("node:child_process");
+			const { promisify } = await import("node:util");
+			const execFileAsync = promisify(execFile);
+			const { stdout } = await execFileAsync(codexBin, ["login", "status"], {
+				timeout: 5_000,
+			});
+			return /logged in using chatgpt/i.test(stdout);
+		} catch {
+			return false;
 		}
 	}
 
