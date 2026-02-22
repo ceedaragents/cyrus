@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **`defaultRunner` config setting now works correctly** - Setting `"defaultRunner": "codex"` (or `"gemini"` / `"cursor"`) in `~/.cyrus/config.json` now properly routes issues without runner-specific labels to the configured default runner, instead of always falling back to Claude. ([CYPACK-838](https://linear.app/ceedar/issue/CYPACK-838), [#892](https://github.com/ceedaragents/cyrus/pull/892))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added
