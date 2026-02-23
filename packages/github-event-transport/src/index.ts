@@ -24,6 +24,7 @@ export {
 	isCommentOnPullRequest,
 	isIssueCommentPayload,
 	isPullRequestReviewCommentPayload,
+	isPullRequestReviewPayload,
 	stripMention,
 } from "./github-webhook-utils.js";
 export type {
@@ -38,7 +39,9 @@ export type {
 	GitHubPullRequestMinimal,
 	GitHubPullRequestRef,
 	GitHubPullRequestReviewCommentPayload,
+	GitHubPullRequestReviewPayload,
 	GitHubRepository,
+	GitHubReview,
 	GitHubUser,
 	GitHubVerificationMode,
 	GitHubWebhookEvent,

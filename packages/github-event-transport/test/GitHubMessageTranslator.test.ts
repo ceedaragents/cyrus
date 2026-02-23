@@ -4,6 +4,7 @@ import { GitHubMessageTranslator } from "../src/GitHubMessageTranslator.js";
 import type {
 	GitHubIssueCommentPayload,
 	GitHubPullRequestReviewCommentPayload,
+	GitHubPullRequestReviewPayload,
 	GitHubWebhookEvent,
 } from "../src/types.js";
 
@@ -187,6 +188,114 @@ describe("GitHubMessageTranslator", () => {
 		...overrides,
 	});
 
+	const createMockPRReviewPayload = (
+		overrides: Partial<GitHubPullRequestReviewPayload> = {},
+	): GitHubPullRequestReviewPayload => ({
+		action: "submitted",
+		review: {
+			id: 789,
+			node_id: "PRR_kwDOTest",
+			body: "Please fix the error handling",
+			state: "changes_requested",
+			html_url: "https://github.com/owner/repo/pull/42#pullrequestreview-789",
+			user: {
+				login: "reviewer",
+				id: 4,
+				avatar_url: "https://avatars.githubusercontent.com/u/4",
+				html_url: "https://github.com/reviewer",
+				type: "User",
+			},
+			submitted_at: "2025-01-27T12:00:00Z",
+			commit_id: "abc123",
+		},
+		pull_request: {
+			id: 123,
+			number: 42,
+			title: "Test PR",
+			body: "PR description",
+			state: "open",
+			html_url: "https://github.com/owner/repo/pull/42",
+			url: "https://api.github.com/repos/owner/repo/pulls/42",
+			head: {
+				label: "owner:feature-branch",
+				ref: "feature-branch",
+				sha: "abc123",
+				repo: {
+					id: 789,
+					name: "repo",
+					full_name: "owner/repo",
+					html_url: "https://github.com/owner/repo",
+					clone_url: "https://github.com/owner/repo.git",
+					ssh_url: "git@github.com:owner/repo.git",
+					default_branch: "main",
+					owner: {
+						login: "owner",
+						id: 3,
+						avatar_url: "https://avatars.githubusercontent.com/u/3",
+						html_url: "https://github.com/owner",
+						type: "Organization",
+					},
+				},
+			},
+			base: {
+				label: "owner:main",
+				ref: "main",
+				sha: "def456",
+				repo: {
+					id: 789,
+					name: "repo",
+					full_name: "owner/repo",
+					html_url: "https://github.com/owner/repo",
+					clone_url: "https://github.com/owner/repo.git",
+					ssh_url: "git@github.com:owner/repo.git",
+					default_branch: "main",
+					owner: {
+						login: "owner",
+						id: 3,
+						avatar_url: "https://avatars.githubusercontent.com/u/3",
+						html_url: "https://github.com/owner",
+						type: "Organization",
+					},
+				},
+			},
+			user: {
+				login: "author",
+				id: 1,
+				avatar_url: "https://avatars.githubusercontent.com/u/1",
+				html_url: "https://github.com/author",
+				type: "User",
+			},
+		},
+		repository: {
+			id: 789,
+			name: "repo",
+			full_name: "owner/repo",
+			html_url: "https://github.com/owner/repo",
+			clone_url: "https://github.com/owner/repo.git",
+			ssh_url: "git@github.com:owner/repo.git",
+			default_branch: "main",
+			owner: {
+				login: "owner",
+				id: 3,
+				avatar_url: "https://avatars.githubusercontent.com/u/3",
+				html_url: "https://github.com/owner",
+				type: "Organization",
+			},
+		},
+		sender: {
+			login: "reviewer",
+			id: 4,
+			avatar_url: "https://avatars.githubusercontent.com/u/4",
+			html_url: "https://github.com/reviewer",
+			type: "User",
+		},
+		installation: {
+			id: 12345,
+			node_id: "MDIzOkluc3RhbGxhdGlvbjEyMzQ1",
+		},
+		...overrides,
+	});
+
 	describe("canTranslate", () => {
 		it("should return true for issue_comment events", () => {
 			const event: GitHubWebhookEvent = {
@@ -202,6 +311,15 @@ describe("GitHubMessageTranslator", () => {
 				eventType: "pull_request_review_comment",
 				deliveryId: "delivery-123",
 				payload: createMockPRReviewCommentPayload(),
+			};
+			expect(translator.canTranslate(event)).toBe(true);
+		});
+
+		it("should return true for pull_request_review events", () => {
+			const event: GitHubWebhookEvent = {
+				eventType: "pull_request_review",
+				deliveryId: "delivery-123",
+				payload: createMockPRReviewPayload(),
 			};
 			expect(translator.canTranslate(event)).toBe(true);
 		});
@@ -387,6 +505,125 @@ describe("GitHubMessageTranslator", () => {
 			if (userPrompt.action !== "user_prompt") return;
 
 			expect(userPrompt.content).toBe("Please fix this line");
+		});
+
+		it("should translate pull_request_review as UserPromptMessage", () => {
+			const event: GitHubWebhookEvent = {
+				eventType: "pull_request_review",
+				deliveryId: "delivery-123",
+				payload: createMockPRReviewPayload(),
+			};
+
+			const result = translator.translateAsUserPrompt(event);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			expect(result.message.action).toBe("user_prompt");
+			expect(result.message.source).toBe("github");
+			expect(result.message.sessionKey).toBe("owner/repo#42");
+
+			const userPrompt = result.message;
+			if (userPrompt.action !== "user_prompt") return;
+
+			expect(userPrompt.content).toBe("Please fix the error handling");
+			expect(userPrompt.author?.name).toBe("reviewer");
+		});
+
+		it("should translate pull_request_review with null body as empty string", () => {
+			const event: GitHubWebhookEvent = {
+				eventType: "pull_request_review",
+				deliveryId: "delivery-123",
+				payload: createMockPRReviewPayload({
+					review: {
+						...createMockPRReviewPayload().review,
+						body: null,
+					},
+				}),
+			};
+
+			const result = translator.translateAsUserPrompt(event);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			const userPrompt = result.message;
+			if (userPrompt.action !== "user_prompt") return;
+
+			expect(userPrompt.content).toBe("");
+		});
+	});
+
+	describe("translate - pull_request_review", () => {
+		it("should translate pull_request_review event to SessionStartMessage", () => {
+			const event: GitHubWebhookEvent = {
+				eventType: "pull_request_review",
+				deliveryId: "delivery-123",
+				payload: createMockPRReviewPayload(),
+			};
+
+			const result = translator.translate(event);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			expect(result.message.action).toBe("session_start");
+			expect(result.message.source).toBe("github");
+			expect(result.message.sessionKey).toBe("owner/repo#42");
+			expect(result.message.workItemId).toBe("123");
+			expect(result.message.workItemIdentifier).toBe("owner/repo#42");
+
+			const sessionStart = result.message;
+			if (sessionStart.action !== "session_start") return;
+
+			expect(sessionStart.initialPrompt).toBe("Please fix the error handling");
+			expect(sessionStart.title).toBe("Test PR");
+			expect(sessionStart.description).toBe("PR description");
+
+			const platformData =
+				sessionStart.platformData as GitHubSessionStartPlatformData;
+			expect(platformData.eventType).toBe("pull_request_review");
+			expect(platformData.pullRequest?.headRef).toBe("feature-branch");
+			expect(platformData.pullRequest?.baseRef).toBe("main");
+			expect(platformData.comment.body).toBe("Please fix the error handling");
+		});
+
+		it("should translate pull_request_review with null body to empty string", () => {
+			const event: GitHubWebhookEvent = {
+				eventType: "pull_request_review",
+				deliveryId: "delivery-123",
+				payload: createMockPRReviewPayload({
+					review: {
+						...createMockPRReviewPayload().review,
+						body: null,
+					},
+				}),
+			};
+
+			const result = translator.translate(event);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			const sessionStart = result.message;
+			if (sessionStart.action !== "session_start") return;
+
+			expect(sessionStart.initialPrompt).toBe("");
+		});
+
+		it("should use installation ID as organizationId", () => {
+			const event: GitHubWebhookEvent = {
+				eventType: "pull_request_review",
+				deliveryId: "delivery-123",
+				payload: createMockPRReviewPayload(),
+			};
+
+			const result = translator.translate(event);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			expect(result.message.organizationId).toBe("12345");
 		});
 	});
 });

@@ -84,6 +84,7 @@ import {
 	isCommentOnPullRequest,
 	isIssueCommentPayload,
 	isPullRequestReviewCommentPayload,
+	isPullRequestReviewPayload,
 	stripMention,
 } from "cyrus-github-event-transport";
 import {
@@ -820,13 +821,25 @@ export class EdgeWorker extends EventEmitter {
 			const prTitle = extractPRTitle(event);
 			const sessionKey = extractSessionKey(event);
 
+			const isPullRequestReview = isPullRequestReviewPayload(event.payload);
+
 			this.logger.info(
-				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}`,
+				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}${isPullRequestReview ? " (pull_request_review)" : ""}`,
 			);
 
-			// Add "eyes" reaction to acknowledge receipt
+			// For pull_request_review events, defensively check review state
+			if (isPullRequestReviewPayload(event.payload)) {
+				if (event.payload.review.state !== "changes_requested") {
+					this.logger.debug(
+						`Ignoring pull_request_review with state: ${event.payload.review.state}`,
+					);
+					return;
+				}
+			}
+
+			// Add "eyes" reaction to acknowledge receipt (not for pull_request_review — we post a comment instead)
 			const reactionToken = event.installationToken || process.env.GITHUB_TOKEN;
-			if (reactionToken) {
+			if (reactionToken && !isPullRequestReview) {
 				const commentId = extractCommentId(event);
 				if (commentId) {
 					this.gitHubCommentService
@@ -866,6 +879,23 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			}
 
+			// For pull_request_review events, post an instant acknowledgement comment
+			if (isPullRequestReview && reactionToken && prNumber) {
+				this.gitHubCommentService
+					.postIssueComment({
+						token: reactionToken,
+						owner: extractRepoOwner(event),
+						repo: extractRepoName(event),
+						issueNumber: prNumber,
+						body: "Received your change request. Getting started on those changes now.",
+					})
+					.catch((err: unknown) => {
+						this.logger.warn(
+							`Failed to post acknowledgement comment: ${err instanceof Error ? err.message : err}`,
+						);
+					});
+			}
+
 			// Determine the PR branch
 			let branchRef = extractPRBranchRef(event);
 
@@ -882,8 +912,11 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			}
 
-			// Strip the @cyrusagent mention to get the task instructions
-			const taskInstructions = stripMention(commentBody);
+			// For pull_request_review, the review body IS the task context (no mention to strip)
+			// For other events, strip the @cyrusagent mention
+			const taskInstructions = isPullRequestReview
+				? commentBody
+				: stripMention(commentBody);
 
 			// Create workspace (git worktree) for the PR branch
 			const workspace = await this.createGitHubWorkspace(
@@ -946,11 +979,13 @@ export class EdgeWorker extends EventEmitter {
 			session.metadata.commentId = String(extractCommentId(event));
 
 			// Build the system prompt for this GitHub PR session
-			const systemPrompt = this.buildGitHubSystemPrompt(
-				event,
-				branchRef,
-				taskInstructions,
-			);
+			const systemPrompt = isPullRequestReview
+				? this.buildGitHubChangeRequestSystemPrompt(
+						event,
+						branchRef,
+						taskInstructions,
+					)
+				: this.buildGitHubSystemPrompt(event, branchRef, taskInstructions);
 
 			// Build allowed tools and directories
 			const allowedTools = this.buildAllowedTools(repository);
@@ -1179,6 +1214,52 @@ ${taskInstructions}
 - Make changes directly to the code on this branch
 - After making changes, commit and push them to the branch
 - Be concise in your responses as they will be posted back to the GitHub PR`;
+	}
+
+	/**
+	 * Build a system prompt for a GitHub PR change request review session.
+	 */
+	private buildGitHubChangeRequestSystemPrompt(
+		event: GitHubWebhookEvent,
+		branchRef: string,
+		reviewBody: string,
+	): string {
+		const repoFullName = extractRepoFullName(event);
+		const prNumber = extractPRNumber(event);
+		const prTitle = extractPRTitle(event);
+		const commentAuthor = extractCommentAuthor(event);
+		const commentUrl = extractCommentUrl(event);
+
+		const hasReviewBody = reviewBody.trim().length > 0;
+
+		const taskSection = hasReviewBody
+			? `## Reviewer Feedback
+${reviewBody}
+
+## Instructions
+- Read the PR diff and the reviewer's feedback above to understand all requested changes
+- You are already checked out on the PR branch \`${branchRef}\`
+- Address all the reviewer's feedback and make the necessary changes
+- After making changes, commit and push them to the branch
+- Respond with a concise summary of the changes you made`
+			: `## Instructions
+- The reviewer has requested changes but did not leave a summary comment
+- Use \`gh api repos/${repoFullName}/pulls/${prNumber}/reviews\` to read the review comments and understand what changes are needed
+- You are already checked out on the PR branch \`${branchRef}\`
+- Address all the reviewer's feedback and make the necessary changes
+- After making changes, commit and push them to the branch
+- Respond with a concise summary of the changes you made`;
+
+		return `You are working on a GitHub Pull Request that has received a change request review.
+
+## Context
+- **Repository**: ${repoFullName}
+- **PR**: #${prNumber} - ${prTitle || "Untitled"}
+- **Branch**: ${branchRef}
+- **Reviewer**: @${commentAuthor}
+- **Review URL**: ${commentUrl}
+
+${taskSection}`;
 	}
 
 	/**

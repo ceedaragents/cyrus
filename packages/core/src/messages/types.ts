@@ -120,7 +120,10 @@ export interface LinearSessionStartPlatformData {
  */
 export interface GitHubSessionStartPlatformData {
 	/** The event type that triggered this session */
-	eventType: "issue_comment" | "pull_request_review_comment";
+	eventType:
+		| "issue_comment"
+		| "pull_request_review_comment"
+		| "pull_request_review";
 	/** Repository information */
 	repository: GitHubPlatformRef["repository"];
 	/** Pull request information (if available) */
@@ -187,7 +190,10 @@ export interface LinearUserPromptPlatformData {
  */
 export interface GitHubUserPromptPlatformData {
 	/** The event type */
-	eventType: "issue_comment" | "pull_request_review_comment";
+	eventType:
+		| "issue_comment"
+		| "pull_request_review_comment"
+		| "pull_request_review";
 	/** Repository information */
 	repository: GitHubPlatformRef["repository"];
 	/** The comment containing the prompt */
