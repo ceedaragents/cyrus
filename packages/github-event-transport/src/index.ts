@@ -35,6 +35,8 @@ export type {
 	GitHubIssue,
 	GitHubIssueCommentPayload,
 	GitHubPullRequest,
+	GitHubPullRequestEventPayload,
+	GitHubPullRequestFull,
 	GitHubPullRequestMinimal,
 	GitHubPullRequestRef,
 	GitHubPullRequestReviewCommentPayload,

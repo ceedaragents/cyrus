@@ -1,0 +1,29 @@
+{
+	"name": "cyrus-analytics",
+	"version": "0.2.22",
+	"description": "Analytics tracking for Cyrus agent events",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"mixpanel": "^0.18.1"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.3.3",
+		"vitest": "^3.1.4"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

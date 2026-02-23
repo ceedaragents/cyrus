@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
+import { AnalyticsService } from "cyrus-analytics";
 import type {
 	HookCallbackMatcher,
 	HookEvent,
@@ -80,6 +81,7 @@ import {
 	extractSessionKey,
 	GitHubCommentService,
 	GitHubEventTransport,
+	type GitHubPullRequestEventPayload,
 	type GitHubWebhookEvent,
 	isCommentOnPullRequest,
 	isIssueCommentPayload,
@@ -197,6 +199,7 @@ export class EdgeWorker extends EventEmitter {
 	private activityPoster: ActivityPoster;
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
+	private analytics: AnalyticsService;
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
 	private cyrusToolsMcpContexts = new Map<string, CyrusToolsMcpContextEntry>();
@@ -480,6 +483,9 @@ export class EdgeWorker extends EventEmitter {
 			config: this.config,
 		});
 
+		// Initialize analytics service (no-op when MIXPANEL_TOKEN is not set)
+		this.analytics = new AnalyticsService();
+
 		// Components will be initialized and registered in start() method before server starts
 	}
 
@@ -715,6 +721,14 @@ export class EdgeWorker extends EventEmitter {
 				);
 			});
 		});
+
+		// Listen for PR merge events (for analytics tracking)
+		this.gitHubEventTransport.on(
+			"pr_merged",
+			(payload: GitHubPullRequestEventPayload) => {
+				this.handlePullRequestMerged(payload);
+			},
+		);
 
 		// Listen for unified internal messages (new message bus)
 		this.gitHubEventTransport.on("message", (message: InternalMessage) => {
@@ -1035,6 +1049,32 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Handle a PR merge event for analytics tracking.
+	 * Tracks the "PR Merged" Mixpanel event when a GitHub PR is closed with merged=true.
+	 */
+	private handlePullRequestMerged(
+		payload: GitHubPullRequestEventPayload,
+	): void {
+		const { pull_request, repository } = payload;
+		const repoFullName = repository.full_name;
+		const matchedRepo = this.findRepositoryByGitHubUrl(repoFullName);
+
+		this.logger.info(
+			`PR merged: ${repoFullName}#${pull_request.number} "${pull_request.title}"`,
+		);
+
+		this.analytics.trackPRMerged({
+			repositoryFullName: repoFullName,
+			prNumber: pull_request.number,
+			prTitle: pull_request.title,
+			branchName: pull_request.head.ref,
+			mergedBy: pull_request.merged_by?.login,
+			organizationId: matchedRepo?.linearWorkspaceId,
+			repositoryId: matchedRepo?.id,
+		});
 	}
 
 	/**
@@ -2572,6 +2612,24 @@ ${taskInstructions}
 		log.info(`Handling agent session created`);
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
+
+		// Track agent assignment event in Mixpanel
+		const issue = webhook.agentSession.issue;
+		const creator = webhook.agentSession.creator;
+		if (issue && creator) {
+			this.analytics.trackAgentAssigned({
+				organizationId: webhook.organizationId,
+				issueId: issue.id,
+				issueIdentifier: issue.identifier,
+				issueTitle: issue.title,
+				teamId: issue.teamId,
+				userId: creator.id,
+				userName: creator.name,
+				userEmail: creator.email,
+				repositoryId: repository.id,
+				repositoryName: repository.name,
+			});
+		}
 
 		// Initialize agent runner using shared logic
 		await this.initializeAgentRunner(

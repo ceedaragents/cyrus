@@ -30,6 +30,8 @@ export interface GitHubEventTransportConfig {
 export interface GitHubEventTransportEvents {
 	/** Emitted when a GitHub webhook is received and verified (legacy) */
 	event: (event: GitHubWebhookEvent) => void;
+	/** Emitted when a PR merge is detected */
+	pr_merged: (payload: GitHubPullRequestEventPayload) => void;
 	/** Emitted when a unified internal message is received */
 	message: (message: InternalMessage) => void;
 	/** Emitted when an error occurs */
@@ -187,6 +189,28 @@ export interface GitHubPullRequestReviewCommentPayload {
 	action: "created" | "edited" | "deleted";
 	comment: GitHubComment;
 	pull_request: GitHubPullRequest;
+	repository: GitHubRepository;
+	sender: GitHubUser;
+	installation?: GitHubInstallation;
+}
+
+/**
+ * GitHub Pull Request object with merge info (used in pull_request event context)
+ */
+export interface GitHubPullRequestFull extends GitHubPullRequest {
+	/** Whether the PR was merged when closed */
+	merged: boolean;
+	/** The user who merged the PR */
+	merged_by?: GitHubUser | null;
+}
+
+/**
+ * Payload for pull_request webhook events (subset for merge tracking)
+ * @see https://docs.github.com/en/webhooks/webhook-events-and-payloads#pull_request
+ */
+export interface GitHubPullRequestEventPayload {
+	action: "closed" | "opened" | "reopened" | "synchronize" | string;
+	pull_request: GitHubPullRequestFull;
 	repository: GitHubRepository;
 	sender: GitHubUser;
 	installation?: GitHubInstallation;

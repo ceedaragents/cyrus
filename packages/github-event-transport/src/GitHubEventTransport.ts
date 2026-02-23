@@ -9,6 +9,7 @@ import type {
 	GitHubEventTransportEvents,
 	GitHubEventType,
 	GitHubIssueCommentPayload,
+	GitHubPullRequestEventPayload,
 	GitHubPullRequestReviewCommentPayload,
 	GitHubWebhookEvent,
 } from "./types.js";
@@ -183,6 +184,23 @@ export class GitHubEventTransport extends EventEmitter {
 
 		if (!eventType) {
 			reply.code(400).send({ error: "Missing x-github-event header" });
+			return;
+		}
+
+		// Handle pull_request events (for merge tracking)
+		if (eventType === "pull_request") {
+			const payload = request.body as GitHubPullRequestEventPayload;
+			if (payload.action === "closed" && payload.pull_request?.merged) {
+				this.logger.info(
+					`Received pull_request merged webhook (delivery: ${deliveryId})`,
+				);
+				this.emit("pr_merged", payload);
+			} else {
+				this.logger.debug(
+					`Ignoring pull_request with action: ${payload.action}, merged: ${payload.pull_request?.merged}`,
+				);
+			}
+			reply.code(200).send({ success: true });
 			return;
 		}
 
