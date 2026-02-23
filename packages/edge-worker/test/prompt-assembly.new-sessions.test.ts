@@ -57,6 +57,8 @@ Users cannot log in
   <assignee>
     <name></name>
     <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
   </assignee>
 </linear_issue>
 
@@ -132,6 +134,8 @@ Add payment processing
   <assignee>
     <name></name>
     <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
   </assignee>
 </linear_issue>
 

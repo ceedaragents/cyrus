@@ -21,11 +21,11 @@ Update the PR with a comprehensive description:
 gh pr edit --title "[descriptive title]" --body "[full description]"
 ```
 
-**IMPORTANT: Reviewer @mention**
-If the issue context includes an `<assignee>` section with a `<github_username>`, you MUST add an @mention of that user at the **very top** of the PR description body, before the summary. Format it as:
+**IMPORTANT: Assignee @mention**
+If the issue context includes an `<assignee>` section with a `<github_username>`, you MUST add an @mention of that user at the **very top** of the PR description body, before the summary, identifying them as the issue assignee. Format it as:
 
 ```
-@username
+Assignee: @username
 ```
 
 followed by a blank line, then the rest of the description. If no GitHub username is available in the assignee context, skip this step.

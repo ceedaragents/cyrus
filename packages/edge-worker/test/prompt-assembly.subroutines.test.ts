@@ -81,6 +81,8 @@ Add Stripe integration for payments
   <assignee>
     <name></name>
     <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
   </assignee>
 </linear_issue>
 
@@ -175,6 +177,8 @@ Can you explain the authentication flow?
   <assignee>
     <name></name>
     <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
   </assignee>
 </linear_issue>
 
@@ -265,6 +269,8 @@ Explain the caching implementation
   <assignee>
     <name></name>
     <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
   </assignee>
 </linear_issue>
 
@@ -355,6 +361,8 @@ Please test the checkout flow manually
   <assignee>
     <name></name>
     <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
   </assignee>
 </linear_issue>
 
@@ -486,6 +494,8 @@ Please test the login flow manually
   <assignee>
     <name></name>
     <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
   </assignee>
 </linear_issue>
 
