@@ -24,7 +24,7 @@ gh pr edit --title "[descriptive title]" --body "[full description]"
 **IMPORTANT: Assignee attribution**
 Check the `<assignee>` section from the issue context and add assignee information at the **very top** of the PR description body, before the summary:
 
-- If a `<github_username>` is available, format as: `Assignee: @username` (this triggers a GitHub notification)
+- If a `<github_username>` is available, format as: `Assignee: @username ([Display Name](linear_profile_url))` — the @mention triggers a GitHub notification and the Linear profile link provides an audit trail
 - If only a `<linear_profile_url>` is available (no GitHub username), format as: `Assignee: [Display Name](linear_profile_url)` using the `<linear_display_name>` and `<linear_profile_url>` values
 
 Follow this with a blank line, then the rest of the description. If no assignee information is available at all, skip this step.
