@@ -15,6 +15,7 @@ import {
 	isCommentOnPullRequest,
 	isIssueCommentPayload,
 	isPullRequestReviewCommentPayload,
+	isPullRequestReviewPayload,
 	stripMention,
 } from "../src/github-webhook-utils.js";
 import {
@@ -23,6 +24,9 @@ import {
 	plainIssueCommentEvent,
 	prReviewCommentEvent,
 	prReviewCommentPayload,
+	prReviewEmptyBodyEvent,
+	prReviewEvent,
+	prReviewPayload,
 } from "./fixtures.js";
 
 describe("github-webhook-utils", () => {
@@ -46,11 +50,31 @@ describe("github-webhook-utils", () => {
 				false,
 			);
 		});
+
+		it("isPullRequestReviewCommentPayload returns false for pull_request_review payloads", () => {
+			expect(isPullRequestReviewCommentPayload(prReviewPayload)).toBe(false);
+		});
+
+		it("isPullRequestReviewPayload returns true for pull_request_review payloads", () => {
+			expect(isPullRequestReviewPayload(prReviewPayload)).toBe(true);
+		});
+
+		it("isPullRequestReviewPayload returns false for issue_comment payloads", () => {
+			expect(isPullRequestReviewPayload(issueCommentPayload)).toBe(false);
+		});
+
+		it("isPullRequestReviewPayload returns false for PR review comment payloads", () => {
+			expect(isPullRequestReviewPayload(prReviewCommentPayload)).toBe(false);
+		});
 	});
 
 	describe("extractPRBranchRef", () => {
 		it("returns branch ref from pull_request_review_comment", () => {
 			expect(extractPRBranchRef(prReviewCommentEvent)).toBe("fix-tests");
+		});
+
+		it("returns branch ref from pull_request_review", () => {
+			expect(extractPRBranchRef(prReviewEvent)).toBe("fix-tests");
 		});
 
 		it("returns null for issue_comment events (branch must be fetched separately)", () => {
@@ -65,6 +89,10 @@ describe("github-webhook-utils", () => {
 
 		it("returns PR number from pull_request_review_comment", () => {
 			expect(extractPRNumber(prReviewCommentEvent)).toBe(42);
+		});
+
+		it("returns PR number from pull_request_review", () => {
+			expect(extractPRNumber(prReviewEvent)).toBe(42);
 		});
 
 		it("returns null for issue_comment on a plain issue", () => {
@@ -84,11 +112,25 @@ describe("github-webhook-utils", () => {
 				"@cyrusagent This function needs better error handling",
 			);
 		});
+
+		it("returns review body from pull_request_review", () => {
+			expect(extractCommentBody(prReviewEvent)).toBe(
+				"Please fix the error handling in the main function",
+			);
+		});
+
+		it("returns empty string when pull_request_review body is null", () => {
+			expect(extractCommentBody(prReviewEmptyBodyEvent)).toBe("");
+		});
 	});
 
 	describe("extractCommentAuthor", () => {
 		it("returns comment author login", () => {
 			expect(extractCommentAuthor(issueCommentEvent)).toBe("testuser");
+		});
+
+		it("returns review author from pull_request_review", () => {
+			expect(extractCommentAuthor(prReviewEvent)).toBe("testuser");
 		});
 	});
 
@@ -117,6 +159,10 @@ describe("github-webhook-utils", () => {
 
 		it("returns comment ID from PR review comment", () => {
 			expect(extractCommentId(prReviewCommentEvent)).toBe(888);
+		});
+
+		it("returns review ID from pull_request_review", () => {
+			expect(extractCommentId(prReviewEvent)).toBe(777);
 		});
 	});
 
@@ -149,6 +195,10 @@ describe("github-webhook-utils", () => {
 		it("returns true for pull_request_review_comment (always a PR)", () => {
 			expect(isCommentOnPullRequest(prReviewCommentEvent)).toBe(true);
 		});
+
+		it("returns true for pull_request_review (always a PR)", () => {
+			expect(isCommentOnPullRequest(prReviewEvent)).toBe(true);
+		});
 	});
 
 	describe("extractSessionKey", () => {
@@ -163,6 +213,12 @@ describe("github-webhook-utils", () => {
 				"github:testorg/my-repo#42",
 			);
 		});
+
+		it("creates session key from pull_request_review event", () => {
+			expect(extractSessionKey(prReviewEvent)).toBe(
+				"github:testorg/my-repo#42",
+			);
+		});
 	});
 
 	describe("extractPRTitle", () => {
@@ -172,6 +228,10 @@ describe("github-webhook-utils", () => {
 
 		it("returns title from PR review comment event", () => {
 			expect(extractPRTitle(prReviewCommentEvent)).toBe("Fix failing tests");
+		});
+
+		it("returns title from pull_request_review event", () => {
+			expect(extractPRTitle(prReviewEvent)).toBe("Fix failing tests");
 		});
 	});
 
@@ -185,6 +245,12 @@ describe("github-webhook-utils", () => {
 		it("returns comment HTML URL from PR review comment", () => {
 			expect(extractCommentUrl(prReviewCommentEvent)).toBe(
 				"https://github.com/testorg/my-repo/pull/42#discussion_r888",
+			);
+		});
+
+		it("returns review HTML URL from pull_request_review", () => {
+			expect(extractCommentUrl(prReviewEvent)).toBe(
+				"https://github.com/testorg/my-repo/pull/42#pullrequestreview-777",
 			);
 		});
 	});

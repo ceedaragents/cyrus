@@ -10,6 +10,7 @@ import type {
 	GitHubEventType,
 	GitHubIssueCommentPayload,
 	GitHubPullRequestReviewCommentPayload,
+	GitHubPullRequestReviewPayload,
 	GitHubWebhookEvent,
 } from "./types.js";
 
@@ -38,6 +39,7 @@ export declare interface GitHubEventTransport {
  * Supported GitHub event types:
  * - issue_comment: Comments on PR issues (top-level PR comments)
  * - pull_request_review_comment: Inline review comments on PR diffs
+ * - pull_request_review: PR review submissions (e.g., changes_requested)
  */
 export class GitHubEventTransport extends EventEmitter {
 	private config: GitHubEventTransportConfig;
@@ -188,7 +190,8 @@ export class GitHubEventTransport extends EventEmitter {
 
 		if (
 			eventType !== "issue_comment" &&
-			eventType !== "pull_request_review_comment"
+			eventType !== "pull_request_review_comment" &&
+			eventType !== "pull_request_review"
 		) {
 			this.logger.debug(`Ignoring unsupported event type: ${eventType}`);
 			reply.code(200).send({ success: true, ignored: true });
@@ -197,10 +200,20 @@ export class GitHubEventTransport extends EventEmitter {
 
 		const payload = request.body as
 			| GitHubIssueCommentPayload
-			| GitHubPullRequestReviewCommentPayload;
+			| GitHubPullRequestReviewCommentPayload
+			| GitHubPullRequestReviewPayload;
 
-		// Only handle 'created' actions (new comments, not edits/deletes)
-		if (payload.action !== "created") {
+		// For pull_request_review, handle 'submitted' action (not 'created')
+		if (eventType === "pull_request_review") {
+			if (payload.action !== "submitted") {
+				this.logger.debug(
+					`Ignoring ${eventType} with action: ${payload.action}`,
+				);
+				reply.code(200).send({ success: true, ignored: true });
+				return;
+			}
+		} else if (payload.action !== "created") {
+			// For issue_comment and pull_request_review_comment, only handle 'created'
 			this.logger.debug(`Ignoring ${eventType} with action: ${payload.action}`);
 			reply.code(200).send({ success: true, ignored: true });
 			return;
