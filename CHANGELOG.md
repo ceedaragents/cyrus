@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **PR change request handling** - When a reviewer requests changes on a PR created by Cyrus, the agent now automatically acknowledges the review and starts working on the requested changes. Supports both summary-level and line-level review comments. ([CYPACK-842](https://linear.app/ceedar/issue/CYPACK-842), [#896](https://github.com/ceedaragents/cyrus/pull/896))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added

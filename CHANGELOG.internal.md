@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `pull_request_review` event type support to `cyrus-github-event-transport`: new `GitHubReview` and `GitHubPullRequestReviewPayload` types, `isPullRequestReviewPayload` type guard, updated `isPullRequestReviewCommentPayload` to disambiguate via `!("review" in payload)`, extended all extractor functions (`extractCommentBody`, `extractCommentAuthor`, `extractCommentId`, `extractCommentUrl`, `extractPRBranchRef`, `extractPRNumber`, `extractPRTitle`, `isCommentOnPullRequest`), and added `translatePullRequestReview`/`translatePullRequestReviewAsUserPrompt` to `GitHubMessageTranslator`. Extended `GitHubEventType` union and `GitHubWebhookEvent.payload` union. Updated `GitHubSessionStartPlatformData` and `GitHubUserPromptPlatformData` `eventType` fields in `cyrus-core`. Added `buildGitHubChangeRequestSystemPrompt` to EdgeWorker with two branches: non-empty review body shows reviewer feedback, empty review body instructs agent to use `gh api` to read PR review comments. Added acknowledgement comment posting via `postIssueComment` before starting agent session. Added defensive `changes_requested` state check. ([CYPACK-842](https://linear.app/ceedar/issue/CYPACK-842), [#896](https://github.com/ceedaragents/cyrus/pull/896))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added
