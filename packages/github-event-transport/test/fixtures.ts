@@ -7,7 +7,9 @@ import type {
 	GitHubIssueCommentPayload,
 	GitHubPullRequest,
 	GitHubPullRequestReviewCommentPayload,
+	GitHubPullRequestReviewPayload,
 	GitHubRepository,
+	GitHubReview,
 	GitHubUser,
 	GitHubWebhookEvent,
 } from "../src/types.js";
@@ -140,6 +142,58 @@ export const prReviewCommentEvent: GitHubWebhookEvent = {
 	eventType: "pull_request_review_comment",
 	deliveryId: "delivery-002",
 	payload: prReviewCommentPayload,
+};
+
+export const testReview: GitHubReview = {
+	id: 777,
+	node_id: "PRR_kwDOTest",
+	body: "Please fix the error handling in the main function",
+	state: "changes_requested",
+	html_url: "https://github.com/testorg/my-repo/pull/42#pullrequestreview-777",
+	user: testUser,
+	submitted_at: "2025-01-15T10:30:00Z",
+	commit_id: "abc123",
+};
+
+export const testReviewEmpty: GitHubReview = {
+	id: 778,
+	node_id: "PRR_kwDOTestEmpty",
+	body: null,
+	state: "changes_requested",
+	html_url: "https://github.com/testorg/my-repo/pull/42#pullrequestreview-778",
+	user: testUser,
+	submitted_at: "2025-01-15T11:00:00Z",
+	commit_id: "abc123",
+};
+
+export const prReviewPayload: GitHubPullRequestReviewPayload = {
+	action: "submitted",
+	review: testReview,
+	pull_request: testPullRequest,
+	repository: testRepository,
+	sender: testUser,
+	installation: { id: 55555, node_id: "MDIzOk" },
+};
+
+export const prReviewEmptyBodyPayload: GitHubPullRequestReviewPayload = {
+	action: "submitted",
+	review: testReviewEmpty,
+	pull_request: testPullRequest,
+	repository: testRepository,
+	sender: testUser,
+	installation: { id: 55555, node_id: "MDIzOk" },
+};
+
+export const prReviewEvent: GitHubWebhookEvent = {
+	eventType: "pull_request_review",
+	deliveryId: "delivery-004",
+	payload: prReviewPayload,
+};
+
+export const prReviewEmptyBodyEvent: GitHubWebhookEvent = {
+	eventType: "pull_request_review",
+	deliveryId: "delivery-005",
+	payload: prReviewEmptyBodyPayload,
 };
 
 /**

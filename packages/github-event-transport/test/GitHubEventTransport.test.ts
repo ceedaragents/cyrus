@@ -2,7 +2,11 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubEventTransport } from "../src/GitHubEventTransport.js";
 import type { GitHubEventTransportConfig } from "../src/types.js";
-import { issueCommentPayload, prReviewCommentPayload } from "./fixtures.js";
+import {
+	issueCommentPayload,
+	prReviewCommentPayload,
+	prReviewPayload,
+} from "./fixtures.js";
 
 /**
  * Creates a mock Fastify server with a `post` method
@@ -352,6 +356,84 @@ describe("GitHubEventTransport", () => {
 					payload: prReviewCommentPayload,
 				}),
 			);
+		});
+
+		it("processes pull_request_review events with submitted action", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const request = createMockRequest(prReviewPayload, {
+				authorization: `Bearer ${testSecret}`,
+				"x-github-event": "pull_request_review",
+				"x-github-delivery": "delivery-pr-review-001",
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/github-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "pull_request_review",
+					deliveryId: "delivery-pr-review-001",
+					payload: prReviewPayload,
+				}),
+			);
+		});
+
+		it("ignores pull_request_review events with edited action", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const editedReviewPayload = {
+				...prReviewPayload,
+				action: "edited" as const,
+			};
+
+			const request = createMockRequest(editedReviewPayload, {
+				authorization: `Bearer ${testSecret}`,
+				"x-github-event": "pull_request_review",
+				"x-github-delivery": "delivery-pr-review-002",
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/github-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({
+				success: true,
+				ignored: true,
+			});
+			expect(eventListener).not.toHaveBeenCalled();
+		});
+
+		it("ignores pull_request_review events with dismissed action", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const dismissedReviewPayload = {
+				...prReviewPayload,
+				action: "dismissed" as const,
+			};
+
+			const request = createMockRequest(dismissedReviewPayload, {
+				authorization: `Bearer ${testSecret}`,
+				"x-github-event": "pull_request_review",
+				"x-github-delivery": "delivery-pr-review-003",
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/github-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({
+				success: true,
+				ignored: true,
+			});
+			expect(eventListener).not.toHaveBeenCalled();
 		});
 
 		it("extracts installation token from X-GitHub-Installation-Token header", async () => {

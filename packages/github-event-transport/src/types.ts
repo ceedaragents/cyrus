@@ -40,12 +40,15 @@ export interface GitHubEventTransportEvents {
  * Processed GitHub webhook event that is emitted to listeners
  */
 export interface GitHubWebhookEvent {
-	/** The GitHub event type (e.g., 'issue_comment', 'pull_request_review_comment') */
+	/** The GitHub event type (e.g., 'issue_comment', 'pull_request_review_comment', 'pull_request_review') */
 	eventType: GitHubEventType;
 	/** Unique webhook delivery ID */
 	deliveryId: string;
 	/** The full GitHub webhook payload */
-	payload: GitHubIssueCommentPayload | GitHubPullRequestReviewCommentPayload;
+	payload:
+		| GitHubIssueCommentPayload
+		| GitHubPullRequestReviewCommentPayload
+		| GitHubPullRequestReviewPayload;
 	/** GitHub installation token forwarded from CYHOST (1-hour expiry) */
 	installationToken?: string;
 }
@@ -53,7 +56,10 @@ export interface GitHubWebhookEvent {
 /**
  * Supported GitHub webhook event types
  */
-export type GitHubEventType = "issue_comment" | "pull_request_review_comment";
+export type GitHubEventType =
+	| "issue_comment"
+	| "pull_request_review_comment"
+	| "pull_request_review";
 
 // ============================================================================
 // GitHub Webhook Payload Types
@@ -186,6 +192,33 @@ export interface GitHubIssueCommentPayload {
 export interface GitHubPullRequestReviewCommentPayload {
 	action: "created" | "edited" | "deleted";
 	comment: GitHubComment;
+	pull_request: GitHubPullRequest;
+	repository: GitHubRepository;
+	sender: GitHubUser;
+	installation?: GitHubInstallation;
+}
+
+/**
+ * GitHub review object (from pull_request_review webhook)
+ */
+export interface GitHubReview {
+	id: number;
+	node_id: string;
+	body: string | null;
+	state: "approved" | "changes_requested" | "commented";
+	html_url: string;
+	user: GitHubUser;
+	submitted_at: string;
+	commit_id: string;
+}
+
+/**
+ * Payload for pull_request_review webhook events
+ * @see https://docs.github.com/en/webhooks/webhook-events-and-payloads#pull_request_review
+ */
+export interface GitHubPullRequestReviewPayload {
+	action: "submitted" | "edited" | "dismissed";
+	review: GitHubReview;
 	pull_request: GitHubPullRequest;
 	repository: GitHubRepository;
 	sender: GitHubUser;

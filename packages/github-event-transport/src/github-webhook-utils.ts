@@ -5,6 +5,7 @@
 import type {
 	GitHubIssueCommentPayload,
 	GitHubPullRequestReviewCommentPayload,
+	GitHubPullRequestReviewPayload,
 	GitHubWebhookEvent,
 } from "./types.js";
 
@@ -23,7 +24,16 @@ export function isIssueCommentPayload(
 export function isPullRequestReviewCommentPayload(
 	payload: GitHubWebhookEvent["payload"],
 ): payload is GitHubPullRequestReviewCommentPayload {
-	return "pull_request" in payload;
+	return "pull_request" in payload && !("review" in payload);
+}
+
+/**
+ * Type guard for pull_request_review payloads
+ */
+export function isPullRequestReviewPayload(
+	payload: GitHubWebhookEvent["payload"],
+): payload is GitHubPullRequestReviewPayload {
+	return "review" in payload;
 }
 
 /**
@@ -36,6 +46,9 @@ export function isPullRequestReviewCommentPayload(
  * For pull_request_review_comment: The branch is available in payload.pull_request.head.ref
  */
 export function extractPRBranchRef(event: GitHubWebhookEvent): string | null {
+	if (isPullRequestReviewPayload(event.payload)) {
+		return event.payload.pull_request.head.ref;
+	}
 	if (isPullRequestReviewCommentPayload(event.payload)) {
 		return event.payload.pull_request.head.ref;
 	}
@@ -56,6 +69,10 @@ export function extractPRNumber(event: GitHubWebhookEvent): number | null {
 		return null;
 	}
 
+	if (isPullRequestReviewPayload(event.payload)) {
+		return event.payload.pull_request.number;
+	}
+
 	if (isPullRequestReviewCommentPayload(event.payload)) {
 		return event.payload.pull_request.number;
 	}
@@ -64,16 +81,24 @@ export function extractPRNumber(event: GitHubWebhookEvent): number | null {
 }
 
 /**
- * Extract the comment body from a GitHub webhook event
+ * Extract the comment body from a GitHub webhook event.
+ * For pull_request_review events, returns the review body (or empty string if null).
  */
 export function extractCommentBody(event: GitHubWebhookEvent): string {
+	if (isPullRequestReviewPayload(event.payload)) {
+		return event.payload.review.body ?? "";
+	}
 	return event.payload.comment.body;
 }
 
 /**
- * Extract the comment author from a GitHub webhook event
+ * Extract the comment author from a GitHub webhook event.
+ * For pull_request_review events, returns the review author.
  */
 export function extractCommentAuthor(event: GitHubWebhookEvent): string {
+	if (isPullRequestReviewPayload(event.payload)) {
+		return event.payload.review.user.login;
+	}
 	return event.payload.comment.user.login;
 }
 
@@ -99,9 +124,13 @@ export function extractRepoName(event: GitHubWebhookEvent): string {
 }
 
 /**
- * Extract the comment ID from a GitHub webhook event
+ * Extract the comment ID from a GitHub webhook event.
+ * For pull_request_review events, returns the review ID.
  */
 export function extractCommentId(event: GitHubWebhookEvent): number {
+	if (isPullRequestReviewPayload(event.payload)) {
+		return event.payload.review.id;
+	}
 	return event.payload.comment.id;
 }
 
@@ -121,7 +150,7 @@ export function isCommentOnPullRequest(event: GitHubWebhookEvent): boolean {
 	if (isIssueCommentPayload(event.payload)) {
 		return !!event.payload.issue.pull_request;
 	}
-	// pull_request_review_comment is always on a PR
+	// pull_request_review_comment and pull_request_review are always on a PR
 	return true;
 }
 
@@ -161,6 +190,9 @@ export function extractPRTitle(event: GitHubWebhookEvent): string | null {
 	if (isIssueCommentPayload(event.payload)) {
 		return event.payload.issue.title;
 	}
+	if (isPullRequestReviewPayload(event.payload)) {
+		return event.payload.pull_request.title;
+	}
 	if (isPullRequestReviewCommentPayload(event.payload)) {
 		return event.payload.pull_request.title;
 	}
@@ -168,8 +200,12 @@ export function extractPRTitle(event: GitHubWebhookEvent): string | null {
 }
 
 /**
- * Extract the HTML URL for the comment
+ * Extract the HTML URL for the comment.
+ * For pull_request_review events, returns the review URL.
  */
 export function extractCommentUrl(event: GitHubWebhookEvent): string {
+	if (isPullRequestReviewPayload(event.payload)) {
+		return event.payload.review.html_url;
+	}
 	return event.payload.comment.html_url;
 }

@@ -21,6 +21,7 @@ import type {
 import type {
 	GitHubIssueCommentPayload,
 	GitHubPullRequestReviewCommentPayload,
+	GitHubPullRequestReviewPayload,
 	GitHubWebhookEvent,
 } from "./types.js";
 
@@ -51,7 +52,8 @@ export class GitHubMessageTranslator
 		return (
 			typeof e.eventType === "string" &&
 			(e.eventType === "issue_comment" ||
-				e.eventType === "pull_request_review_comment") &&
+				e.eventType === "pull_request_review_comment" ||
+				e.eventType === "pull_request_review") &&
 			typeof e.deliveryId === "string" &&
 			e.payload !== null &&
 			typeof e.payload === "object"
@@ -75,6 +77,10 @@ export class GitHubMessageTranslator
 
 		if (event.eventType === "pull_request_review_comment") {
 			return this.translatePullRequestReviewComment(event, context);
+		}
+
+		if (event.eventType === "pull_request_review") {
+			return this.translatePullRequestReview(event, context);
 		}
 
 		return {
@@ -209,6 +215,10 @@ export class GitHubMessageTranslator
 			return this.translatePullRequestReviewCommentAsUserPrompt(event, context);
 		}
 
+		if (event.eventType === "pull_request_review") {
+			return this.translatePullRequestReviewAsUserPrompt(event, context);
+		}
+
 		return {
 			success: false,
 			reason: `Unsupported GitHub event type: ${event.eventType}`,
@@ -297,6 +307,118 @@ export class GitHubMessageTranslator
 				avatarUrl: sender.avatar_url,
 			},
 			content: comment.body,
+			platformData,
+		};
+
+		return { success: true, message };
+	}
+
+	/**
+	 * Translate pull_request_review event to SessionStartMessage.
+	 */
+	private translatePullRequestReview(
+		event: GitHubWebhookEvent,
+		context?: TranslationContext,
+	): TranslationResult {
+		const payload = event.payload as GitHubPullRequestReviewPayload;
+		const { pull_request, review, repository, sender } = payload;
+
+		const organizationId =
+			context?.organizationId ||
+			String(payload.installation?.id || repository.owner.id);
+
+		const sessionKey = `${repository.full_name}#${pull_request.number}`;
+		const workItemIdentifier = `${repository.full_name}#${pull_request.number}`;
+
+		const platformData: GitHubSessionStartPlatformData = {
+			eventType: event.eventType,
+			repository: this.buildRepositoryRef(repository),
+			pullRequest: this.buildPullRequestRef(pull_request),
+			comment: {
+				id: review.id,
+				body: review.body ?? "",
+				htmlUrl: review.html_url,
+				user: {
+					login: review.user.login,
+					id: review.user.id,
+					avatarUrl: review.user.avatar_url,
+				},
+				createdAt: review.submitted_at,
+			},
+			installationToken: event.installationToken,
+		};
+
+		const message: SessionStartMessage = {
+			id: randomUUID(),
+			source: "github",
+			action: "session_start",
+			receivedAt: review.submitted_at,
+			organizationId,
+			sessionKey,
+			workItemId: String(pull_request.id),
+			workItemIdentifier,
+			author: {
+				id: String(sender.id),
+				name: sender.login,
+				avatarUrl: sender.avatar_url,
+			},
+			initialPrompt: review.body ?? "",
+			title: pull_request.title,
+			description: pull_request.body ?? undefined,
+			platformData,
+		};
+
+		return { success: true, message };
+	}
+
+	/**
+	 * Translate pull_request_review as UserPromptMessage.
+	 */
+	private translatePullRequestReviewAsUserPrompt(
+		event: GitHubWebhookEvent,
+		context?: TranslationContext,
+	): TranslationResult {
+		const payload = event.payload as GitHubPullRequestReviewPayload;
+		const { pull_request, review, repository, sender } = payload;
+
+		const organizationId =
+			context?.organizationId ||
+			String(payload.installation?.id || repository.owner.id);
+
+		const sessionKey = `${repository.full_name}#${pull_request.number}`;
+
+		const platformData: GitHubUserPromptPlatformData = {
+			eventType: event.eventType,
+			repository: this.buildRepositoryRef(repository),
+			comment: {
+				id: review.id,
+				body: review.body ?? "",
+				htmlUrl: review.html_url,
+				user: {
+					login: review.user.login,
+					id: review.user.id,
+					avatarUrl: review.user.avatar_url,
+				},
+				createdAt: review.submitted_at,
+			},
+			installationToken: event.installationToken,
+		};
+
+		const message: UserPromptMessage = {
+			id: randomUUID(),
+			source: "github",
+			action: "user_prompt",
+			receivedAt: review.submitted_at,
+			organizationId,
+			sessionKey,
+			workItemId: String(pull_request.id),
+			workItemIdentifier: `${repository.full_name}#${pull_request.number}`,
+			author: {
+				id: String(sender.id),
+				name: sender.login,
+				avatarUrl: sender.avatar_url,
+			},
+			content: review.body ?? "",
 			platformData,
 		};
 
