@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Mixpanel analytics for activation funnel** - Cyrus now tracks two key events in Mixpanel: when a user assigns the agent to an issue and when the resulting PR is merged. Requires `MIXPANEL_TOKEN` environment variable; tracking is silently disabled when not set. ([CYPACK-841](https://linear.app/ceedar/issue/CYPACK-841), [#894](https://github.com/ceedaragents/cyrus/pull/894))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added

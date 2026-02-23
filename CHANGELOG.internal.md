@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- New `cyrus-analytics` package wrapping the Mixpanel server-side SDK with a `TrackClient` dependency injection interface for testability. Uses `createRequire` for CJS/ESM interop. No-ops when `MIXPANEL_TOKEN` is not set. Tracks "Agent Assigned to Issue" (fires in `EdgeWorker.handleAgentSessionCreatedWebhook()`) and "PR Merged" (fires via `GitHubEventTransport` `pr_merged` event). Added `GitHubPullRequestFull`, `GitHubPullRequestEventPayload` types and `pr_merged` event channel to `GitHubEventTransport` without modifying the existing `GitHubEventType` union. ([CYPACK-841](https://linear.app/ceedar/issue/CYPACK-841), [#894](https://github.com/ceedaragents/cyrus/pull/894))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added
