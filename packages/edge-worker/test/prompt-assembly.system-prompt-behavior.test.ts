@@ -56,6 +56,8 @@ Example task
   <assignee>
     <name></name>
     <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
   </assignee>
 </linear_issue>
 
@@ -127,6 +129,8 @@ No comments yet.
 <id></id>
 <name></name>
 <github_username></github_username>
+<github_user_id></github_user_id>
+<github_noreply_email></github_noreply_email>
 </assignee>
 </linear_issue>
 
@@ -216,6 +220,8 @@ Build the payment integration
 <id></id>
 <name></name>
 <github_username></github_username>
+<github_user_id></github_user_id>
+<github_noreply_email></github_noreply_email>
 </assignee>
 </linear_issue>
 
@@ -305,6 +311,8 @@ Orchestrate this task
 <id></id>
 <name></name>
 <github_username></github_username>
+<github_user_id></github_user_id>
+<github_noreply_email></github_noreply_email>
 </assignee>
 </linear_issue>
 

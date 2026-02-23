@@ -17,6 +17,8 @@
   <assignee>
     <name>{{assignee_name}}</name>
     <github_username>{{assignee_github_username}}</github_username>
+    <github_user_id>{{assignee_github_user_id}}</github_user_id>
+    <github_noreply_email>{{assignee_github_noreply_email}}</github_noreply_email>
   </assignee>
 </linear_issue>
 

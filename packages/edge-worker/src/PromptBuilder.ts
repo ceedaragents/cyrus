@@ -298,10 +298,12 @@ export class PromptBuilder {
 			// Determine the base branch considering parent issues
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
-			// Fetch assignee information (including GitHub user ID)
+			// Fetch assignee information (including GitHub user ID and noreply email)
 			let assigneeId = "";
 			let assigneeName = "";
 			let assigneeGitHubUsername = "";
+			let assigneeGitHubUserId = "";
+			let assigneeGitHubNoreplyEmail = "";
 			try {
 				if (issue.assigneeId) {
 					assigneeId = issue.assigneeId;
@@ -311,11 +313,13 @@ export class PromptBuilder {
 						assigneeName = assignee.displayName || assignee.name || "";
 						// Resolve GitHub username from gitHubUserId
 						if (assignee.gitHubUserId) {
+							assigneeGitHubUserId = assignee.gitHubUserId;
 							const ghUsername = await this.resolveGitHubUsername(
 								assignee.gitHubUserId,
 							);
 							if (ghUsername) {
 								assigneeGitHubUsername = ghUsername;
+								assigneeGitHubNoreplyEmail = `${assignee.gitHubUserId}+${ghUsername}@users.noreply.github.com`;
 							}
 						}
 					}
@@ -405,6 +409,11 @@ export class PromptBuilder {
 				.replace(/{{assignee_id}}/g, assigneeId)
 				.replace(/{{assignee_name}}/g, assigneeName)
 				.replace(/{{assignee_github_username}}/g, assigneeGitHubUsername)
+				.replace(/{{assignee_github_user_id}}/g, assigneeGitHubUserId)
+				.replace(
+					/{{assignee_github_noreply_email}}/g,
+					assigneeGitHubNoreplyEmail,
+				)
 				.replace(/{{workspace_teams}}/g, workspaceTeams)
 				.replace(/{{workspace_labels}}/g, workspaceLabels)
 				// Replace routing context - if empty, also remove the preceding newlines
@@ -657,20 +666,24 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				}
 			}
 
-			// Fetch assignee information (including GitHub username)
+			// Fetch assignee information (including GitHub username, user ID, and noreply email)
 			let assigneeName = "";
 			let assigneeGitHubUsername = "";
+			let assigneeGitHubUserId = "";
+			let assigneeGitHubNoreplyEmail = "";
 			try {
 				if (issue.assigneeId) {
 					const assignee = await issue.assignee;
 					if (assignee) {
 						assigneeName = assignee.displayName || assignee.name || "";
 						if (assignee.gitHubUserId) {
+							assigneeGitHubUserId = assignee.gitHubUserId;
 							const ghUsername = await this.resolveGitHubUsername(
 								assignee.gitHubUserId,
 							);
 							if (ghUsername) {
 								assigneeGitHubUsername = ghUsername;
+								assigneeGitHubNoreplyEmail = `${assignee.gitHubUserId}+${ghUsername}@users.noreply.github.com`;
 							}
 						}
 					}
@@ -705,7 +718,12 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 					this.gitService.sanitizeBranchName(issue.branchName),
 				)
 				.replace(/{{assignee_name}}/g, assigneeName)
-				.replace(/{{assignee_github_username}}/g, assigneeGitHubUsername);
+				.replace(/{{assignee_github_username}}/g, assigneeGitHubUsername)
+				.replace(/{{assignee_github_user_id}}/g, assigneeGitHubUserId)
+				.replace(
+					/{{assignee_github_noreply_email}}/g,
+					assigneeGitHubNoreplyEmail,
+				);
 
 			// Handle the optional new comment section
 			if (newComment) {
