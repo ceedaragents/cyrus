@@ -154,6 +154,10 @@ Another test description
   <state>Unknown</state>
   <priority>None</priority>
   <url></url>
+  <assignee>
+    <name></name>
+    <github_username></github_username>
+  </assignee>
 </linear_issue>
 
 <linear_comments>

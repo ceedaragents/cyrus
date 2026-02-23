@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `gitHubUserId` to the `User` Pick type in `packages/core/src/issue-tracker/types.ts`, enabling access to Linear users' linked GitHub accounts. Added `resolveGitHubUsername()` method to `PromptBuilder` that resolves numeric GitHub user IDs to usernames via the public GitHub REST API (`GET /user/{id}`). Integrated GitHub username resolution into both `buildLabelBasedPrompt()` and `buildIssueContextPrompt()` flows. Updated `standard-issue-assigned-user-prompt.md` and `label-prompt-template.md` templates to include `<assignee>` context with `<github_username>`. Updated `gh-pr.md` subroutine to instruct agents to @mention the assignee at the top of PR descriptions. Added `assigneeGitHubUsername` field to `PromptAssemblyInput` type. ([CYPACK-843](https://linear.app/ceedar/issue/CYPACK-843))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added

@@ -12,6 +12,7 @@
 <assignee>
 <id>{{assignee_id}}</id>
 <name>{{assignee_name}}</name>
+<github_username>{{assignee_github_username}}</github_username>
 </assignee>
 </linear_issue>
 

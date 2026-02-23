@@ -53,6 +53,10 @@ Example task
   <state>Unknown</state>
   <priority>None</priority>
   <url></url>
+  <assignee>
+    <name></name>
+    <github_username></github_username>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -122,6 +126,7 @@ No comments yet.
 <assignee>
 <id></id>
 <name></name>
+<github_username></github_username>
 </assignee>
 </linear_issue>
 
@@ -210,6 +215,7 @@ Build the payment integration
 <assignee>
 <id></id>
 <name></name>
+<github_username></github_username>
 </assignee>
 </linear_issue>
 
@@ -298,6 +304,7 @@ Orchestrate this task
 <assignee>
 <id></id>
 <name></name>
+<github_username></github_username>
 </assignee>
 </linear_issue>
 
