@@ -846,6 +846,23 @@ export class EdgeWorker extends EventEmitter {
 			const prTitle = extractPRTitle(event);
 			const sessionKey = extractSessionKey(event);
 
+			// Skip comments from the bot itself to prevent infinite loops
+			const botUsername = process.env.GITHUB_BOT_USERNAME;
+			if (botUsername && commentAuthor === botUsername) {
+				this.logger.debug(
+					`Ignoring comment from bot user @${botUsername} on ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			// Only trigger on comments that mention the bot (when configured)
+			if (botUsername && !commentBody.includes(`@${botUsername}`)) {
+				this.logger.debug(
+					`Ignoring comment without @${botUsername} mention on ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
 			this.logger.info(
 				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}`,
 			);
@@ -908,8 +925,9 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			}
 
-			// Strip the @cyrusagent mention to get the task instructions
-			const taskInstructions = stripMention(commentBody);
+			// Strip the bot mention to get the task instructions
+			const mentionHandle = botUsername ? `@${botUsername}` : "@cyrusagent";
+			const taskInstructions = stripMention(commentBody, mentionHandle);
 
 			// Create workspace (git worktree) for the PR branch
 			const workspace = await this.createGitHubWorkspace(
