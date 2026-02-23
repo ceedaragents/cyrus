@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { CloudflareTunnelClient } from "cyrus-cloudflare-tunnel-client";
 import { createLogger, type ILogger } from "cyrus-core";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 
 /**
  * OAuth callback state for tracking flows
@@ -77,6 +77,27 @@ export class SharedApplicationServer {
 		this.app = Fastify({
 			logger: false,
 		});
+
+		// Preserve raw request body for webhook signature verification (GitHub HMAC-SHA256).
+		// Fastify's default JSON parser discards the raw bytes, but signature checks need
+		// the exact payload GitHub sent. This replaces the default parser with one that
+		// stashes the raw string on `request.rawBody` before parsing.
+		this.app.addContentTypeParser(
+			"application/json",
+			{ parseAs: "string" },
+			(
+				req: FastifyRequest,
+				body: string,
+				done: (err: Error | null, result?: unknown) => void,
+			) => {
+				(req as FastifyRequest & { rawBody: string }).rawBody = body;
+				try {
+					done(null, JSON.parse(body));
+				} catch (err) {
+					done(err as Error);
+				}
+			},
+		);
 	}
 
 	/**
