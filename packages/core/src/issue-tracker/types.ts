@@ -183,7 +183,7 @@ export type Team = Pick<
  */
 export type User = Pick<
 	LinearSDK.User,
-	"id" | "name" | "displayName" | "email" | "gitHubUserId"
+	"id" | "name" | "displayName" | "email" | "gitHubUserId" | "url"
 >;
 
 /**

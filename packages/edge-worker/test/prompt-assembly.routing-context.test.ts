@@ -63,8 +63,9 @@ describe("Prompt Assembly - Routing Context", () => {
 <description>Test issue</description>
 <url></url>
 <assignee>
-<id></id>
-<name></name>
+<linear_id></linear_id>
+<linear_display_name></linear_display_name>
+<linear_profile_url></linear_profile_url>
 <github_username></github_username>
 <github_user_id></github_user_id>
 <github_noreply_email></github_noreply_email>
@@ -154,8 +155,9 @@ Orchestrate this task
 <description>Add feature spanning frontend and backend</description>
 <url></url>
 <assignee>
-<id></id>
-<name></name>
+<linear_id></linear_id>
+<linear_display_name></linear_display_name>
+<linear_profile_url></linear_profile_url>
 <github_username></github_username>
 <github_user_id></github_user_id>
 <github_noreply_email></github_noreply_email>
@@ -279,8 +281,9 @@ Orchestrate this cross-repo feature
 <description>Should not show inactive repo</description>
 <url></url>
 <assignee>
-<id></id>
-<name></name>
+<linear_id></linear_id>
+<linear_display_name></linear_display_name>
+<linear_profile_url></linear_profile_url>
 <github_username></github_username>
 <github_user_id></github_user_id>
 <github_noreply_email></github_noreply_email>
@@ -366,8 +369,9 @@ Check routing context
 <description>Should not show other workspace repos</description>
 <url></url>
 <assignee>
-<id></id>
-<name></name>
+<linear_id></linear_id>
+<linear_display_name></linear_display_name>
+<linear_profile_url></linear_profile_url>
 <github_username></github_username>
 <github_user_id></github_user_id>
 <github_noreply_email></github_noreply_email>

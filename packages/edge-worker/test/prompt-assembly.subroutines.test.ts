@@ -79,7 +79,8 @@ Add Stripe integration for payments
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-3000</url>
   <assignee>
-    <name></name>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
     <github_username></github_username>
     <github_user_id></github_user_id>
     <github_noreply_email></github_noreply_email>
@@ -175,7 +176,8 @@ Can you explain the authentication flow?
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-4000</url>
   <assignee>
-    <name></name>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
     <github_username></github_username>
     <github_user_id></github_user_id>
     <github_noreply_email></github_noreply_email>
@@ -267,7 +269,8 @@ Explain the caching implementation
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-5000</url>
   <assignee>
-    <name></name>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
     <github_username></github_username>
     <github_user_id></github_user_id>
     <github_noreply_email></github_noreply_email>
@@ -359,7 +362,8 @@ Please test the checkout flow manually
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-6000</url>
   <assignee>
-    <name></name>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
     <github_username></github_username>
     <github_user_id></github_user_id>
     <github_noreply_email></github_noreply_email>
@@ -492,7 +496,8 @@ Please test the login flow manually
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-7000</url>
   <assignee>
-    <name></name>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
     <github_username></github_username>
     <github_user_id></github_user_id>
     <github_noreply_email></github_noreply_email>

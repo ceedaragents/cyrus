@@ -21,14 +21,13 @@ Update the PR with a comprehensive description:
 gh pr edit --title "[descriptive title]" --body "[full description]"
 ```
 
-**IMPORTANT: Assignee @mention**
-If the issue context includes an `<assignee>` section with a `<github_username>`, you MUST add an @mention of that user at the **very top** of the PR description body, before the summary, identifying them as the issue assignee. Format it as:
+**IMPORTANT: Assignee attribution**
+Check the `<assignee>` section from the issue context and add assignee information at the **very top** of the PR description body, before the summary:
 
-```
-Assignee: @username
-```
+- If a `<github_username>` is available, format as: `Assignee: @username` (this triggers a GitHub notification)
+- If only a `<linear_profile_url>` is available (no GitHub username), format as: `Assignee: [Display Name](linear_profile_url)` using the `<linear_display_name>` and `<linear_profile_url>` values
 
-followed by a blank line, then the rest of the description. If no GitHub username is available in the assignee context, skip this step.
+Follow this with a blank line, then the rest of the description. If no assignee information is available at all, skip this step.
 
 The PR description should include:
 - Summary of changes

@@ -298,19 +298,21 @@ export class PromptBuilder {
 			// Determine the base branch considering parent issues
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
-			// Fetch assignee information (including GitHub user ID and noreply email)
+			// Fetch assignee information (including Linear profile URL, GitHub user ID, and noreply email)
 			let assigneeId = "";
 			let assigneeName = "";
+			let assigneeLinearProfileUrl = "";
 			let assigneeGitHubUsername = "";
 			let assigneeGitHubUserId = "";
 			let assigneeGitHubNoreplyEmail = "";
 			try {
 				if (issue.assigneeId) {
 					assigneeId = issue.assigneeId;
-					// Fetch the full assignee object to get the name and GitHub user ID
+					// Fetch the full assignee object to get the name, profile URL, and GitHub user ID
 					const assignee = await issue.assignee;
 					if (assignee) {
 						assigneeName = assignee.displayName || assignee.name || "";
+						assigneeLinearProfileUrl = assignee.url || "";
 						// Resolve GitHub username from gitHubUserId
 						if (assignee.gitHubUserId) {
 							assigneeGitHubUserId = assignee.gitHubUserId;
@@ -408,6 +410,7 @@ export class PromptBuilder {
 				.replace(/{{issue_url}}/g, issue.url || "")
 				.replace(/{{assignee_id}}/g, assigneeId)
 				.replace(/{{assignee_name}}/g, assigneeName)
+				.replace(/{{assignee_linear_profile_url}}/g, assigneeLinearProfileUrl)
 				.replace(/{{assignee_github_username}}/g, assigneeGitHubUsername)
 				.replace(/{{assignee_github_user_id}}/g, assigneeGitHubUserId)
 				.replace(
@@ -666,8 +669,9 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				}
 			}
 
-			// Fetch assignee information (including GitHub username, user ID, and noreply email)
+			// Fetch assignee information (including Linear profile URL, GitHub username, user ID, and noreply email)
 			let assigneeName = "";
+			let assigneeLinearProfileUrl = "";
 			let assigneeGitHubUsername = "";
 			let assigneeGitHubUserId = "";
 			let assigneeGitHubNoreplyEmail = "";
@@ -676,6 +680,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 					const assignee = await issue.assignee;
 					if (assignee) {
 						assigneeName = assignee.displayName || assignee.name || "";
+						assigneeLinearProfileUrl = assignee.url || "";
 						if (assignee.gitHubUserId) {
 							assigneeGitHubUserId = assignee.gitHubUserId;
 							const ghUsername = await this.resolveGitHubUsername(
@@ -718,6 +723,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 					this.gitService.sanitizeBranchName(issue.branchName),
 				)
 				.replace(/{{assignee_name}}/g, assigneeName)
+				.replace(/{{assignee_linear_profile_url}}/g, assigneeLinearProfileUrl)
 				.replace(/{{assignee_github_username}}/g, assigneeGitHubUsername)
 				.replace(/{{assignee_github_user_id}}/g, assigneeGitHubUserId)
 				.replace(

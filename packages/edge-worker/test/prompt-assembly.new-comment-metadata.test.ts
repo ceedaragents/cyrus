@@ -155,7 +155,8 @@ Another test description
   <priority>None</priority>
   <url></url>
   <assignee>
-    <name></name>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
     <github_username></github_username>
     <github_user_id></github_user_id>
     <github_noreply_email></github_noreply_email>
