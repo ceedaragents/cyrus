@@ -14,6 +14,10 @@
   <state>{{issue_state}}</state>
   <priority>{{issue_priority}}</priority>
   <url>{{issue_url}}</url>
+  <assignee>
+    <name>{{assignee_name}}</name>
+    <github_username>{{assignee_github_username}}</github_username>
+  </assignee>
 </linear_issue>
 
 <linear_comments>

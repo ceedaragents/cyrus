@@ -298,16 +298,26 @@ export class PromptBuilder {
 			// Determine the base branch considering parent issues
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
-			// Fetch assignee information
+			// Fetch assignee information (including GitHub user ID)
 			let assigneeId = "";
 			let assigneeName = "";
+			let assigneeGitHubUsername = "";
 			try {
 				if (issue.assigneeId) {
 					assigneeId = issue.assigneeId;
-					// Fetch the full assignee object to get the name
+					// Fetch the full assignee object to get the name and GitHub user ID
 					const assignee = await issue.assignee;
 					if (assignee) {
 						assigneeName = assignee.displayName || assignee.name || "";
+						// Resolve GitHub username from gitHubUserId
+						if (assignee.gitHubUserId) {
+							const ghUsername = await this.resolveGitHubUsername(
+								assignee.gitHubUserId,
+							);
+							if (ghUsername) {
+								assigneeGitHubUsername = ghUsername;
+							}
+						}
 					}
 				}
 			} catch (error) {
@@ -394,6 +404,7 @@ export class PromptBuilder {
 				.replace(/{{issue_url}}/g, issue.url || "")
 				.replace(/{{assignee_id}}/g, assigneeId)
 				.replace(/{{assignee_name}}/g, assigneeName)
+				.replace(/{{assignee_github_username}}/g, assigneeGitHubUsername)
 				.replace(/{{workspace_teams}}/g, workspaceTeams)
 				.replace(/{{workspace_labels}}/g, workspaceLabels)
 				// Replace routing context - if empty, also remove the preceding newlines
@@ -646,6 +657,28 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				}
 			}
 
+			// Fetch assignee information (including GitHub username)
+			let assigneeName = "";
+			let assigneeGitHubUsername = "";
+			try {
+				if (issue.assigneeId) {
+					const assignee = await issue.assignee;
+					if (assignee) {
+						assigneeName = assignee.displayName || assignee.name || "";
+						if (assignee.gitHubUserId) {
+							const ghUsername = await this.resolveGitHubUsername(
+								assignee.gitHubUserId,
+							);
+							if (ghUsername) {
+								assigneeGitHubUsername = ghUsername;
+							}
+						}
+					}
+				}
+			} catch (error) {
+				this.logger.warn(`Failed to fetch assignee details:`, error);
+			}
+
 			// Build the prompt with all variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
@@ -670,7 +703,9 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 				.replace(
 					/{{branch_name}}/g,
 					this.gitService.sanitizeBranchName(issue.branchName),
-				);
+				)
+				.replace(/{{assignee_name}}/g, assigneeName)
+				.replace(/{{assignee_github_username}}/g, assigneeGitHubUsername);
 
 			// Handle the optional new comment section
 			if (newComment) {
@@ -982,6 +1017,51 @@ ${reply.body}
 		const version = versionTagMatch ? versionTagMatch[1] : undefined;
 		// Return undefined for empty strings
 		return version?.trim() ? version : undefined;
+	}
+
+	/**
+	 * Resolve a GitHub user ID (numeric string from Linear) to a GitHub username.
+	 * Uses the public GitHub REST API: GET https://api.github.com/user/{id}
+	 * @param gitHubUserId The numeric GitHub user ID from Linear's gitHubUserId field
+	 * @returns The GitHub username (login), or undefined if resolution fails
+	 */
+	async resolveGitHubUsername(
+		gitHubUserId: string,
+	): Promise<string | undefined> {
+		try {
+			const response = await fetch(
+				`https://api.github.com/user/${gitHubUserId}`,
+				{
+					headers: {
+						Accept: "application/vnd.github.v3+json",
+						"User-Agent": "Cyrus-Agent",
+					},
+				},
+			);
+
+			if (!response.ok) {
+				this.logger.warn(
+					`GitHub API returned ${response.status} for user ID ${gitHubUserId}`,
+				);
+				return undefined;
+			}
+
+			const data = (await response.json()) as { login?: string };
+			if (data.login) {
+				this.logger.debug(
+					`Resolved GitHub user ID ${gitHubUserId} to username: ${data.login}`,
+				);
+				return data.login;
+			}
+
+			return undefined;
+		} catch (error) {
+			this.logger.warn(
+				`Failed to resolve GitHub username for user ID ${gitHubUserId}:`,
+				error,
+			);
+			return undefined;
+		}
 	}
 
 	// ========================================================================

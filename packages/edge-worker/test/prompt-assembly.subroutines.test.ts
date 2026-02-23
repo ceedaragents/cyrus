@@ -78,6 +78,10 @@ Add Stripe integration for payments
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-3000</url>
+  <assignee>
+    <name></name>
+    <github_username></github_username>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -168,6 +172,10 @@ Can you explain the authentication flow?
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-4000</url>
+  <assignee>
+    <name></name>
+    <github_username></github_username>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -254,6 +262,10 @@ Explain the caching implementation
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-5000</url>
+  <assignee>
+    <name></name>
+    <github_username></github_username>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -340,6 +352,10 @@ Please test the checkout flow manually
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-6000</url>
+  <assignee>
+    <name></name>
+    <github_username></github_username>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -467,6 +483,10 @@ Please test the login flow manually
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-7000</url>
+  <assignee>
+    <name></name>
+    <github_username></github_username>
+  </assignee>
 </linear_issue>
 
 <linear_comments>

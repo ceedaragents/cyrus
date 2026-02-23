@@ -65,6 +65,7 @@ describe("Prompt Assembly - Routing Context", () => {
 <assignee>
 <id></id>
 <name></name>
+<github_username></github_username>
 </assignee>
 </linear_issue>
 
@@ -153,6 +154,7 @@ Orchestrate this task
 <assignee>
 <id></id>
 <name></name>
+<github_username></github_username>
 </assignee>
 </linear_issue>
 
@@ -275,6 +277,7 @@ Orchestrate this cross-repo feature
 <assignee>
 <id></id>
 <name></name>
+<github_username></github_username>
 </assignee>
 </linear_issue>
 
@@ -359,6 +362,7 @@ Check routing context
 <assignee>
 <id></id>
 <name></name>
+<github_username></github_username>
 </assignee>
 </linear_issue>
 
