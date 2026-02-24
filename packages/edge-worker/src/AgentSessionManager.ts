@@ -1497,13 +1497,24 @@ export class AgentSessionManager extends EventEmitter {
 							ephemeral = true;
 						}
 					} else if (entry.metadata?.sdkError) {
-						// Assistant message with SDK error (e.g., rate_limit, billing_error)
-						// Create an error type so it's visible to users (not just a thought)
-						// Per CYPACK-719: usage limits should trigger "error" type activity
-						content = {
-							type: "error",
-							body: entry.content,
-						};
+						// Assistant message with SDK error.
+						// Transient quota/rate errors (billing_error, rate_limit) are posted
+						// as thoughts so they don't set the Linear "Error" badge — the session
+						// didn't fail permanently, it just hit a temporary API limit.
+						// All other SDK errors (authentication_failed, invalid_request, etc.)
+						// are posted as proper errors so they surface as actionable failures.
+						const isTransientLimit =
+							entry.metadata.sdkError === "billing_error" ||
+							entry.metadata.sdkError === "rate_limit";
+						content = isTransientLimit
+							? {
+									type: "thought",
+									body: entry.content,
+								}
+							: {
+									type: "error",
+									body: entry.content,
+								};
 					} else {
 						// Regular assistant message - create a thought
 						content = {
