@@ -1257,6 +1257,24 @@ export class AgentSessionManager extends EventEmitter {
 								return;
 							}
 
+							// Skip read-only tool results — high-volume, low-signal in the activity feed.
+							// Errors from read-only tools are still surfaced.
+							const baseToolNameClean = toolName.replace(/^↪\s*/, "");
+							const READ_ONLY_TOOLS = new Set([
+								"Read",
+								"Glob",
+								"Grep",
+								"WebFetch",
+								"WebSearch",
+								"LS",
+							]);
+							if (
+								READ_ONLY_TOOLS.has(baseToolNameClean) &&
+								!toolResult.isError
+							) {
+								return;
+							}
+
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
@@ -1321,6 +1339,21 @@ export class AgentSessionManager extends EventEmitter {
 
 						// Skip AskUserQuestion tool - it's custom handled via Linear's select signal elicitation
 						if (toolName === "AskUserQuestion") {
+							return;
+						}
+
+						// Skip tool-call-setup activity for read-only tools — we also skip their
+						// results (see user message handler), so posting a preview creates an
+						// orphaned activity entry with no matching result.
+						const READ_ONLY_TOOLS_ASSISTANT = new Set([
+							"Read",
+							"Glob",
+							"Grep",
+							"WebFetch",
+							"WebSearch",
+							"LS",
+						]);
+						if (READ_ONLY_TOOLS_ASSISTANT.has(toolName)) {
 							return;
 						}
 
