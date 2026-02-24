@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` to v0.2.52 and `@anthropic-ai/sdk` to v0.78.0 across `cyrus-core`, `cyrus-claude-runner`, and `cyrus-simple-agent-runner`. Closed 5 superseded PRs (#882, #893, #891, #866, #864) and cancelled their associated Linear issues (CYPACK-809, CYPACK-812, CYPACK-830, CYPACK-837, CYPACK-839). ([CYPACK-844](https://linear.app/ceedar/issue/CYPACK-844), [#897](https://github.com/ceedaragents/cyrus/pull/897))
+
 ### Added
 - Added `gitHubUserId` and `url` to the `User` Pick type in `packages/core/src/issue-tracker/types.ts`, enabling access to Linear users' linked GitHub accounts and profile URLs. Added `resolveGitHubUsername()` method to `PromptBuilder` that resolves numeric GitHub user IDs to usernames via the public GitHub REST API (`GET /user/{id}`). Integrated GitHub username resolution into both `buildLabelBasedPrompt()` and `buildIssueContextPrompt()` flows. Updated `standard-issue-assigned-user-prompt.md` and `label-prompt-template.md` templates to include `<assignee>` context with `<linear_display_name>`, `<linear_profile_url>`, `<github_username>`, `<github_user_id>`, and `<github_noreply_email>` fields—tag names clarify metadata source (Linear vs GitHub). Updated `gh-pr.md` subroutine to instruct agents to add "Assignee: @username" at the top of PR descriptions (GitHub notification), with a fallback to "Assignee: [Display Name](linear_profile_url)" for users without linked GitHub accounts (audit trail). Added `assigneeGitHubUsername` field to `PromptAssemblyInput` type. ([CYPACK-843](https://linear.app/ceedar/issue/CYPACK-843), [#895](https://github.com/ceedaragents/cyrus/pull/895))
 
