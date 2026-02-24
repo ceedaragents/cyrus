@@ -179,9 +179,17 @@ ANTHROPIC_API_KEY=your-api-key
 
 ---
 
-## Step 5: Authorize and Add Repositories
+## Step 5: Add Repositories and Authorize
 
-### 5.1 Authorize with Linear
+### 5.1 Add a Repository
+
+```bash
+cyrus self-add-repo https://github.com/yourorg/yourrepo.git
+```
+
+This clones the repository to `~/.cyrus/repos/` and adds it to your configuration. If this is your first repository, Cyrus will add it with placeholder credentials and prompt you to run `cyrus self-auth` next.
+
+### 5.2 Authorize with Linear
 
 ```bash
 cyrus self-auth
@@ -192,13 +200,15 @@ This will:
 2. Open your browser to Linear's OAuth authorization page
 3. After you click **Authorize**, redirect back and save the tokens to your config
 
-### 5.2 Add a Repository
+The authorization will automatically update all repositories that have placeholder credentials with your Linear workspace tokens.
+
+### 5.3 Add More Repositories (Optional)
+
+After authorization, you can add more repositories:
 
 ```bash
-cyrus self-add-repo https://github.com/yourorg/yourrepo.git
+cyrus self-add-repo https://github.com/yourorg/another-repo.git
 ```
-
-This clones the repository to `~/.cyrus/repos/` and configures it with your Linear workspace credentials.
 
 For multiple workspaces, specify which one:
 ```bash
@@ -207,7 +217,7 @@ cyrus self-add-repo https://github.com/yourorg/yourrepo.git "My Workspace"
 
 You can run `cyrus self-add-repo` at any time, even while Cyrus is running. No restart is required—Cyrus will automatically pick up the new repository configuration.
 
-### 5.3 Start Cyrus
+### 5.4 Start Cyrus
 
 Once authorization is complete and repositories are added, start Cyrus:
 

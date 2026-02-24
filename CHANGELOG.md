@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Self-add-repo no longer requires credentials first** - The `cyrus self-add-repo` command now works without existing Linear credentials. Previously, users had to manually create a fake repository entry in config.json to work around a circular dependency. Now, when adding the first repository, placeholder credentials are used and the user is prompted to run `cyrus self-auth` afterwards to authenticate. ([CYPACK-674](https://linear.app/ceedar/issue/CYPACK-674), [#728](https://github.com/ceedaragents/cyrus/pull/728))
+
 ### Added
 - **Assignee attribution on PRs** - PR descriptions now include assignee attribution at the top. When the assignee has a linked GitHub account, they are @mentioned for a GitHub notification. When no GitHub account is linked, the assignee's Linear profile is linked instead, ensuring an audit trail for all PRs. ([CYPACK-843](https://linear.app/ceedar/issue/CYPACK-843), [#895](https://github.com/ceedaragents/cyrus/pull/895))
 
