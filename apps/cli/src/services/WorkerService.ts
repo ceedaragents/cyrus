@@ -222,6 +222,8 @@ export class WorkerService {
 			ngrokAuthToken,
 			// User access control configuration
 			userAccessControl: edgeConfig.userAccessControl,
+			// Concurrency limit
+			maxConcurrentSessions: edgeConfig.maxConcurrentSessions,
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,
