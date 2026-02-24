@@ -67,6 +67,16 @@ export interface AgentSessionManagerEvents {
 		/** Current iteration (1-based) */
 		iteration: number;
 	}) => void;
+	/**
+	 * Emitted when an Anthropic billing/usage-limit error ends a session.
+	 * EdgeWorker responds by scheduling an automatic retry after the reset time.
+	 */
+	billingLimitHit: (data: {
+		sessionId: string;
+		session: CyrusAgentSession;
+		/** Raw reset message from the SDK, e.g. "You've hit your limit · resets 6am (UTC)" */
+		resetMessage: string;
+	}) => void;
 }
 
 /**
@@ -364,6 +374,28 @@ export class AgentSessionManager extends EventEmitter {
 		// to prevent memory leaks
 
 		const wasStopRequested = this.consumeStopRequest(sessionId);
+
+		// If an Anthropic billing limit was detected on this session and the result
+		// is an error (not a user stop), hand off to EdgeWorker for automatic retry
+		// instead of marking the session as permanently failed.
+		if (
+			session.metadata?.billingError &&
+			resultMessage.is_error &&
+			!wasStopRequested
+		) {
+			log.info(
+				`Session ended due to billing limit — scheduling automatic retry (reset: ${session.metadata.billingError.message})`,
+			);
+			// Emit event; EdgeWorker will schedule the retry and post a notice to Linear.
+			// Leave session status as-is (Active) so the Linear issue stays clean.
+			this.emit("billingLimitHit", {
+				sessionId,
+				session,
+				resetMessage: session.metadata.billingError.message,
+			});
+			return;
+		}
+
 		const status = wasStopRequested
 			? AgentSessionStatus.Error
 			: resultMessage.subtype === "success"
@@ -890,6 +922,21 @@ export class AgentSessionManager extends EventEmitter {
 						message as SDKAssistantMessage,
 					);
 					await this.syncEntryToActivitySink(assistantEntry, sessionId);
+					// If this message carries a billing error, store it on the session so
+					// completeSession can schedule an automatic retry instead of failing.
+					if (assistantEntry.metadata?.sdkError === "billing_error") {
+						const sess = this.sessions.get(sessionId);
+						if (sess) {
+							sess.metadata = {
+								...sess.metadata,
+								billingError: {
+									message: assistantEntry.content,
+									detectedAt: Date.now(),
+								},
+							};
+							this.sessions.set(sessionId, sess);
+						}
+					}
 					break;
 				}
 
@@ -992,6 +1039,22 @@ export class AgentSessionManager extends EventEmitter {
 		// DON'T store locally - syncEntryToActivitySink will do it
 		// Sync to Linear
 		await this.syncEntryToActivitySink(resultEntry, sessionId);
+	}
+
+	/**
+	 * Post a standalone thought entry to Linear for the given session.
+	 * Used by EdgeWorker to surface informational notices (e.g. "retrying after billing reset").
+	 */
+	async postThoughtToLinear(sessionId: string, message: string): Promise<void> {
+		const session = this.sessions.get(sessionId);
+		const claudeSessionId = session?.claudeSessionId;
+		const entry: CyrusAgentSessionEntry = {
+			...(claudeSessionId ? { claudeSessionId } : {}),
+			type: "assistant",
+			content: message,
+			metadata: { timestamp: Date.now() },
+		};
+		await this.syncEntryToActivitySink(entry, sessionId);
 	}
 
 	/**

@@ -207,6 +207,11 @@ export class EdgeWorker extends EventEmitter {
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
 	private cyrusToolsMcpContexts = new Map<string, CyrusToolsMcpContextEntry>();
+	/** Pending retry timers scheduled after an Anthropic billing-limit hit */
+	private billingRetryTimeouts = new Map<
+		string,
+		ReturnType<typeof setTimeout>
+	>();
 	private cyrusToolsMcpRequestContext =
 		new AsyncLocalStorage<CyrusToolsMcpContext>();
 	private cyrusToolsMcpSessions = new Sessions<any>();
@@ -440,6 +445,47 @@ export class EdgeWorker extends EventEmitter {
 							repo,
 							agentSessionManager,
 						);
+					},
+				);
+
+				// Subscribe to billing-limit events so we can auto-retry after the reset
+				agentSessionManager.on(
+					"billingLimitHit",
+					({ sessionId, session, resetMessage }) => {
+						const delayMs = this.parseBillingResetDelayMs(resetMessage);
+						const retryAt = new Date(Date.now() + delayMs);
+						this.logger.info(
+							`[${session.issue?.identifier ?? sessionId}] Anthropic billing limit hit — scheduling retry at ${retryAt.toUTCString()} (${Math.round(delayMs / 60_000)} min)`,
+						);
+						// Post informational thought so the user sees why the session is paused
+						void agentSessionManager
+							.postThoughtToLinear(
+								sessionId,
+								`⏳ Daily API limit reached — will automatically retry at ${retryAt.toUTCString()}.`,
+							)
+							.catch((err) => {
+								this.logger.warn(
+									`Failed to post billing-retry notice to Linear: ${err}`,
+								);
+							});
+						const timeout = setTimeout(() => {
+							this.billingRetryTimeouts.delete(sessionId);
+							this.logger.info(
+								`[${session.issue?.identifier ?? sessionId}] Retrying session after billing limit reset`,
+							);
+							void this.resumeAgentSession(
+								session,
+								repo,
+								sessionId,
+								agentSessionManager,
+								"The Anthropic API billing limit has reset. Please continue where you left off with the previous task.",
+							).catch((err) => {
+								this.logger.error(
+									`[${session.issue?.identifier ?? sessionId}] Failed to resume session after billing reset: ${err}`,
+								);
+							});
+						}, delayMs);
+						this.billingRetryTimeouts.set(sessionId, timeout);
 					},
 				);
 
@@ -1305,6 +1351,12 @@ ${taskInstructions}
 	 * Stop the edge worker
 	 */
 	async stop(): Promise<void> {
+		// Cancel any pending billing-retry timers
+		for (const timeout of this.billingRetryTimeouts.values()) {
+			clearTimeout(timeout);
+		}
+		this.billingRetryTimeouts.clear();
+
 		// Stop config file watcher
 		await this.configManager.stop();
 
@@ -2627,6 +2679,44 @@ ${taskInstructions}
 				});
 			});
 		}
+	}
+
+	/**
+	 * Parse the reset time from an Anthropic billing-limit error message and return
+	 * the number of milliseconds to wait before retrying.
+	 *
+	 * Handles messages like "You've hit your limit · resets 6am (UTC)".
+	 * Falls back to 1 hour if the time cannot be parsed.
+	 */
+	private parseBillingResetDelayMs(message: string): number {
+		const FALLBACK_MS = 60 * 60 * 1000; // 1 hour
+		const BUFFER_MS = 2 * 60 * 1000; // 2-minute buffer after reset
+		const match = message.match(
+			/resets\s+(\d+)(?::(\d+))?\s*(am|pm)\s*\(UTC\)/i,
+		);
+		if (!match) {
+			this.logger.warn(
+				`Could not parse billing reset time from "${message}" — retrying in 1 hour`,
+			);
+			return FALLBACK_MS;
+		}
+		// Non-null assertions are safe: groups 1 and 3 are guaranteed by the regex above
+		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+		let hours = parseInt(match[1]!, 10);
+		const minutes = match[2] ? parseInt(match[2], 10) : 0;
+		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+		const ampm = match[3]!.toLowerCase();
+		if (ampm === "pm" && hours !== 12) hours += 12;
+		if (ampm === "am" && hours === 12) hours = 0;
+
+		const now = new Date();
+		const resetTime = new Date(now);
+		resetTime.setUTCHours(hours, minutes, 0, 0);
+		// If the reset time is in the past (already passed today), advance to tomorrow
+		if (resetTime.getTime() <= now.getTime()) {
+			resetTime.setUTCDate(resetTime.getUTCDate() + 1);
+		}
+		return resetTime.getTime() - now.getTime() + BUFFER_MS;
 	}
 
 	private async initializeAgentRunner(
