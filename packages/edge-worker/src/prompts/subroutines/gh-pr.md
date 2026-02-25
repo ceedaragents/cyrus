@@ -89,10 +89,4 @@ Example: "Draft PR updated at https://github.com/org/repo/pull/123 (kept as draf
 
 ## Deploy Preview (Optional)
 
-If a `deploy-preview` skill is available in your environment, you can invoke it to set up a preview environment for testing this PR. This is useful for validating changes in a live environment before the code is merged.
-
-Use the `/deploy-preview` skill if you want to:
-- Create a preview environment for the PR
-- Set up a Supabase project clone for testing
-- Create a GitHub app for the preview
-- Deploy a preview to Vercel or another platform
+If a skill is available in your environment whose "use me when" description refers to creating deploy previews for a branch, you can invoke it to set up a preview environment for testing this PR. This is useful for validating changes in a live environment before the code is merged. Use the skill if you want to create a preview environment, set up infrastructure for testing, or deploy to a preview platform.
