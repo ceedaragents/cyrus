@@ -86,3 +86,13 @@ Draft PR updated at [PR URL] (kept as draft per guidance).
 
 Example: "PR ready at https://github.com/org/repo/pull/123."
 Example: "Draft PR updated at https://github.com/org/repo/pull/123 (kept as draft per guidance)."
+
+## Deploy Preview (Optional)
+
+If a `deploy-preview` skill is available in your environment, you can invoke it to set up a preview environment for testing this PR. This is useful for validating changes in a live environment before the code is merged.
+
+Use the `/deploy-preview` skill if you want to:
+- Create a preview environment for the PR
+- Set up a Supabase project clone for testing
+- Create a GitHub app for the preview
+- Deploy a preview to Vercel or another platform
