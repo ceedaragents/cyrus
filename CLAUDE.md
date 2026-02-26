@@ -496,3 +496,37 @@ For detailed information about Gemini CLI configuration options (settings.json s
 - **Official Documentation**: https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/configuration.md
 
 The GeminiRunner automatically generates a `~/.gemini/settings.json` file with single-turn model aliases and preview features enabled if one doesn't already exist.
+
+## Cursor Cloud specific instructions
+
+### Quick Reference
+
+Common commands are documented in the "Common Commands" section above and in `CLAUDE.md`. Use those as the primary reference.
+
+### F1 Testing Framework
+
+The F1 server (`apps/f1`) requires **bun** runtime. Bun is installed at `~/.bun/bin/bun` and added to `PATH` via `~/.bashrc`. If bun is not on your PATH, run `export PATH="$HOME/.bun/bin:$PATH"`.
+
+To start the F1 server:
+```bash
+cd apps/f1
+CYRUS_PORT=3600 CYRUS_REPO_PATH=/workspace bun run server.ts
+```
+
+Then interact with the CLI from another terminal:
+```bash
+cd apps/f1
+CYRUS_PORT=3600 ./f1 ping
+```
+
+### Build Order
+
+Packages must be built before running the CLI or F1 server. Run `pnpm build` from the repo root. The build command automatically respects dependency order across the monorepo.
+
+### Ignored Build Scripts
+
+The `pnpm install` step may warn about ignored build scripts for `cloudflared`, `node-pty`, `protobufjs`, `tree-sitter-bash`. These are non-critical and handled by `onlyBuiltDependencies` in `pnpm-workspace.yaml`. Do not run `pnpm approve-builds` (it is interactive).
+
+### Pre-commit Hooks
+
+Husky runs `lint-staged` (biome check) and `pnpm typecheck` on pre-commit. These are already handled by `pnpm lint` and `pnpm typecheck` respectively.
