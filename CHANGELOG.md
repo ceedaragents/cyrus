@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Sessions no longer appear stuck after restart** - When the system restarts or migrates, user prompts, stop signals, and other interactions that target older sessions are now recovered instead of silently dropped. Users will see clear feedback instead of a hanging state. ([CYPACK-852](https://linear.app/ceedar/issue/CYPACK-852), [#905](https://github.com/ceedaragents/cyrus/pull/905))
+
 ## [0.2.23] - 2026-02-25
 
 ### Fixed

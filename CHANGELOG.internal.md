@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Added fallback recovery to 4 EdgeWorker webhook handlers (`handleUserPromptedAgentActivity` Branch 3, `handleStopSignal`, `handleIssueUnassignedWebhook`, `handleIssueContentUpdate`) that previously returned silently when `issueRepositoryCache` or session mappings were missing after restart/migration. Prompted webhook now performs 3-tier fallback: search all managers → re-route via `RepositoryRouter.determineRepositoryForWebhook` → post error activity. Stop signal now posts acknowledgment activity via any available manager. Unassignment and issue update handlers now search all `agentSessionManagers` for sessions matching the issue. Warnings downgraded to `info` for expected recovery cases, `warn` reserved for true failures. Added 8 tests in `EdgeWorker.missing-session-recovery.test.ts`. ([CYPACK-852](https://linear.app/ceedar/issue/CYPACK-852), [#905](https://github.com/ceedaragents/cyrus/pull/905))
+
 ## [0.2.23] - 2026-02-25
 
 ### Fixed
