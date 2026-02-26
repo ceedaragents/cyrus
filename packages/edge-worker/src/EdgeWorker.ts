@@ -2137,13 +2137,33 @@ ${taskInstructions}
 
 		const issueId = webhook.notification.issue.id;
 
-		// Get cached repository (unassignment should only happen on issues with active sessions)
-		const repository = this.getCachedRepository(issueId);
+		// Get cached repository, with fallback to searching all managers
+		let repository = this.getCachedRepository(issueId);
 		if (!repository) {
-			this.logger.debug(
-				`No cached repository for issue unassignment webhook ${webhook.notification.issue.identifier} (no active sessions to stop)`,
+			// Fallback: search all managers for sessions matching this issue
+			this.logger.info(
+				`No cached repository for issue unassignment ${webhook.notification.issue.identifier}, searching all managers`,
 			);
-			return;
+
+			for (const [repoId, manager] of this.agentSessionManagers) {
+				const sessions = manager.getSessionsByIssueId(issueId);
+				if (sessions.length > 0) {
+					repository = this.repositories.get(repoId) ?? null;
+					if (repository) {
+						this.logger.info(
+							`Recovered repository ${repoId} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
+						);
+						break;
+					}
+				}
+			}
+
+			if (!repository) {
+				this.logger.debug(
+					`No active sessions found for unassigned issue ${webhook.notification.issue.identifier} across all managers`,
+				);
+				return;
+			}
 		}
 
 		this.logger.info(
@@ -2201,15 +2221,29 @@ ${taskInstructions}
 			return;
 		}
 
-		// Get cached repository (updates should only be processed for issues with active sessions)
-		const repository = this.getCachedRepository(issueId);
+		// Get cached repository, with fallback to searching all managers
+		let repository = this.getCachedRepository(issueId);
 		if (!repository) {
-			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
-				this.logger.debug(
-					`No cached repository for issue update webhook ${issueIdentifier} (no active sessions to notify)`,
-				);
+			// Fallback: search all managers for sessions matching this issue
+			for (const [repoId, manager] of this.agentSessionManagers) {
+				const sessions = manager.getSessionsByIssueId(issueId);
+				if (sessions.length > 0) {
+					repository = this.repositories.get(repoId) ?? null;
+					if (repository) {
+						this.logger.info(
+							`Recovered repository ${repoId} for issue update ${issueIdentifier} from session manager`,
+						);
+						break;
+					}
+				}
 			}
-			return;
+
+			if (!repository) {
+				this.logger.debug(
+					`No active sessions found for issue update ${issueIdentifier} across all managers`,
+				);
+				return;
+			}
 		}
 
 		// Determine what changed for logging
@@ -2995,7 +3029,22 @@ ${taskInstructions}
 		}
 
 		if (!foundManager || !foundSession) {
-			log.warn(`No session found for stop signal: ${agentSessionId}`);
+			// Legacy recovery: session lost after restart/migration
+			// Post acknowledgment so the user doesn't see a hanging state
+			log.info(
+				`No session found for stop signal ${agentSessionId} (likely a legacy session after restart)`,
+			);
+
+			const anyManager = this.agentSessionManagers.values().next().value as
+				| AgentSessionManager
+				| undefined;
+			if (anyManager) {
+				const issueTitle = issue?.title || "this issue";
+				await anyManager.createResponseActivity(
+					agentSessionId,
+					`Stop signal received for ${issueTitle}. No active session was found (the session may have ended or the system was restarted). No further action is needed.`,
+				);
+			}
 			return;
 		}
 
@@ -3398,12 +3447,73 @@ ${taskInstructions}
 			return;
 		}
 
-		const repository = this.getCachedRepository(issueId);
+		let repository = this.getCachedRepository(issueId);
 		if (!repository) {
-			this.logger.warn(
-				`No cached repository found for prompted webhook ${agentSessionId}`,
+			// Fallback: attempt to recover repository for legacy/restarted sessions
+			this.logger.info(
+				`No cached repository for prompted webhook ${agentSessionId}, attempting fallback resolution`,
 			);
-			return;
+
+			// First, check if any manager already has this session
+			for (const [repoId, manager] of this.agentSessionManagers) {
+				const session = manager.getSession(agentSessionId);
+				if (session) {
+					repository = this.repositories.get(repoId) ?? null;
+					if (repository) {
+						this.repositoryRouter
+							.getIssueRepositoryCache()
+							.set(issueId, repoId);
+						this.logger.info(
+							`Recovered repository ${repoId} for issue ${issueId} from session manager`,
+						);
+						break;
+					}
+				}
+			}
+
+			// Second fallback: re-route via repository router
+			if (!repository) {
+				try {
+					const repos = Array.from(this.repositories.values());
+					const routingResult =
+						await this.repositoryRouter.determineRepositoryForWebhook(
+							webhook,
+							repos,
+						);
+
+					if (routingResult.type === "selected") {
+						repository = routingResult.repository;
+						this.repositoryRouter
+							.getIssueRepositoryCache()
+							.set(issueId, repository.id);
+						this.logger.info(
+							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
+						);
+					}
+				} catch (error) {
+					this.logger.warn(
+						`Fallback repository routing failed for prompted webhook ${agentSessionId}`,
+						error,
+					);
+				}
+			}
+
+			if (!repository) {
+				// All recovery attempts failed - post visible feedback
+				const firstManager = this.agentSessionManagers.values().next().value as
+					| AgentSessionManager
+					| undefined;
+				if (firstManager) {
+					await firstManager.createResponseActivity(
+						agentSessionId,
+						"I couldn't process your message because the session configuration was lost. Please create a new session by mentioning me (@cyrus) in a new comment with your prompt.",
+					);
+				}
+				this.logger.warn(
+					`Failed to recover repository for prompted webhook ${agentSessionId} - all fallback methods exhausted`,
+				);
+				return;
+			}
 		}
 
 		// User access control check for mid-session prompts
