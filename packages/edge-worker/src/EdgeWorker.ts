@@ -186,6 +186,13 @@ export class EdgeWorker extends EventEmitter {
 	public repositoryRouter: RepositoryRouter; // Repository routing and selection
 	private gitService: GitService;
 	private activeWebhookCount = 0; // Track number of webhooks currently being processed
+	private activeSessionCount = 0; // Track number of concurrently running agent sessions
+	private sessionQueue: Array<{
+		agentSession: AgentSessionCreatedWebhook["agentSession"];
+		repository: RepositoryConfig;
+		guidance?: AgentSessionCreatedWebhook["guidance"];
+		commentBody?: string | null;
+	}> = [];
 	/** Handler for AskUserQuestion tool invocations via Linear select signal */
 	private askUserQuestionHandler: AskUserQuestionHandler;
 	/** User access control for whitelisting/blacklisting Linear users */
@@ -200,6 +207,11 @@ export class EdgeWorker extends EventEmitter {
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
 	private cyrusToolsMcpContexts = new Map<string, CyrusToolsMcpContextEntry>();
+	/** Pending retry timers scheduled after an Anthropic billing-limit hit */
+	private billingRetryTimeouts = new Map<
+		string,
+		ReturnType<typeof setTimeout>
+	>();
 	private cyrusToolsMcpRequestContext =
 		new AsyncLocalStorage<CyrusToolsMcpContext>();
 	private cyrusToolsMcpSessions = new Sessions<any>();
@@ -433,6 +445,47 @@ export class EdgeWorker extends EventEmitter {
 							repo,
 							agentSessionManager,
 						);
+					},
+				);
+
+				// Subscribe to billing-limit events so we can auto-retry after the reset
+				agentSessionManager.on(
+					"billingLimitHit",
+					({ sessionId, session, resetMessage }) => {
+						const delayMs = this.parseBillingResetDelayMs(resetMessage);
+						const retryAt = new Date(Date.now() + delayMs);
+						this.logger.info(
+							`[${session.issue?.identifier ?? sessionId}] Anthropic billing limit hit — scheduling retry at ${retryAt.toUTCString()} (${Math.round(delayMs / 60_000)} min)`,
+						);
+						// Post informational thought so the user sees why the session is paused
+						void agentSessionManager
+							.postThoughtToLinear(
+								sessionId,
+								`⏳ Daily API limit reached — will automatically retry at ${retryAt.toUTCString()}.`,
+							)
+							.catch((err) => {
+								this.logger.warn(
+									`Failed to post billing-retry notice to Linear: ${err}`,
+								);
+							});
+						const timeout = setTimeout(() => {
+							this.billingRetryTimeouts.delete(sessionId);
+							this.logger.info(
+								`[${session.issue?.identifier ?? sessionId}] Retrying session after billing limit reset`,
+							);
+							void this.resumeAgentSession(
+								session,
+								repo,
+								sessionId,
+								agentSessionManager,
+								"The Anthropic API billing limit has reset. Please continue where you left off with the previous task.",
+							).catch((err) => {
+								this.logger.error(
+									`[${session.issue?.identifier ?? sessionId}] Failed to resume session after billing reset: ${err}`,
+								);
+							});
+						}, delayMs);
+						this.billingRetryTimeouts.set(sessionId, timeout);
 					},
 				);
 
@@ -1298,6 +1351,12 @@ ${taskInstructions}
 	 * Stop the edge worker
 	 */
 	async stop(): Promise<void> {
+		// Cancel any pending billing-retry timers
+		for (const timeout of this.billingRetryTimeouts.values()) {
+			clearTimeout(timeout);
+		}
+		this.billingRetryTimeouts.clear();
+
 		// Stop config file watcher
 		await this.configManager.stop();
 
@@ -2594,6 +2653,72 @@ ${taskInstructions}
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
 	 */
+	/**
+	 * Drain the session queue by starting the next queued session if a slot is available.
+	 * Called after each session completes to maintain the concurrency limit.
+	 */
+	private drainSessionQueue(): void {
+		const maxConcurrent = this.config.maxConcurrentSessions;
+		if (!maxConcurrent || this.sessionQueue.length === 0) return;
+		if (this.activeSessionCount >= maxConcurrent) return;
+
+		const next = this.sessionQueue.shift();
+		if (next) {
+			this.logger.info(
+				`Dequeuing session for ${next.agentSession.issue?.identifier ?? next.agentSession.id} (queue length now ${this.sessionQueue.length})`,
+			);
+			// Use setImmediate to avoid deep call stacks when many sessions complete simultaneously
+			setImmediate(() => {
+				this.initializeAgentRunner(
+					next.agentSession,
+					next.repository,
+					next.guidance,
+					next.commentBody,
+				).catch((err) => {
+					this.logger.error(`Error starting queued session:`, err);
+				});
+			});
+		}
+	}
+
+	/**
+	 * Parse the reset time from an Anthropic billing-limit error message and return
+	 * the number of milliseconds to wait before retrying.
+	 *
+	 * Handles messages like "You've hit your limit · resets 6am (UTC)".
+	 * Falls back to 1 hour if the time cannot be parsed.
+	 */
+	private parseBillingResetDelayMs(message: string): number {
+		const FALLBACK_MS = 60 * 60 * 1000; // 1 hour
+		const BUFFER_MS = 2 * 60 * 1000; // 2-minute buffer after reset
+		const match = message.match(
+			/resets\s+(\d+)(?::(\d+))?\s*(am|pm)\s*\(UTC\)/i,
+		);
+		if (!match) {
+			this.logger.warn(
+				`Could not parse billing reset time from "${message}" — retrying in 1 hour`,
+			);
+			return FALLBACK_MS;
+		}
+		// Non-null assertions are safe: groups 1 and 3 are guaranteed by the regex above
+		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+		let hours = parseInt(match[1]!, 10);
+		const minutes = match[2] ? parseInt(match[2], 10) : 0;
+		// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+		const ampm = match[3]!.toLowerCase();
+		if (ampm === "pm" && hours !== 12) hours += 12;
+		if (ampm === "am" && hours === 12) hours = 0;
+
+		const now = new Date();
+		const resetTime = new Date(now);
+		resetTime.setUTCHours(hours, minutes, 0, 0);
+		// If the reset time is in the past (already passed today), advance to tomorrow
+		if (resetTime.getTime() <= now.getTime()) {
+			resetTime.setUTCDate(resetTime.getUTCDate() + 1);
+		}
+		return resetTime.getTime() - now.getTime() + BUFFER_MS;
+	}
+
 	private async initializeAgentRunner(
 		agentSession: AgentSessionCreatedWebhook["agentSession"],
 		repository: RepositoryConfig,
@@ -2608,351 +2733,383 @@ ${taskInstructions}
 			return;
 		}
 
-		const log = this.logger.withContext({
-			sessionId,
-			issueIdentifier: issue.identifier,
-		});
-
-		// Log guidance if present
-		if (guidance && guidance.length > 0) {
-			log.debug(`Agent guidance received: ${guidance.length} rule(s)`);
-			for (const rule of guidance) {
-				let origin = "Unknown";
-				if (rule.origin) {
-					if (rule.origin.__typename === "TeamOriginWebhookPayload") {
-						origin = `Team: ${rule.origin.team.displayName}`;
-					} else {
-						origin = "Organization";
-					}
-				}
-				log.info(`- ${origin}: ${rule.body.substring(0, 100)}...`);
-			}
-		}
-
-		// HACK: This is required since the comment body is always populated, thus there is no other way to differentiate between the two trigger events
-		const AGENT_SESSION_MARKER = "This thread is for an agent session";
-		const isMentionTriggered =
-			commentBody && !commentBody.includes(AGENT_SESSION_MARKER);
-		// Check if the comment contains the /label-based-prompt command
-		const isLabelBasedPromptRequested = commentBody?.includes(
-			"/label-based-prompt",
-		);
-
-		// Initialize the agent session in AgentSessionManager
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
-		if (!agentSessionManager) {
-			log.error(
-				"There was no agentSessionManage for the repository with id",
-				repository.id,
+		// Enforce concurrency limit — queue the session if at capacity
+		const maxConcurrent = this.config.maxConcurrentSessions;
+		if (maxConcurrent && this.activeSessionCount >= maxConcurrent) {
+			this.logger.info(
+				`Session for ${issue.identifier} queued — at concurrency limit (${this.activeSessionCount}/${maxConcurrent} active, ${this.sessionQueue.length + 1} queued)`,
 			);
+			this.sessionQueue.push({
+				agentSession,
+				repository,
+				guidance,
+				commentBody,
+			});
 			return;
 		}
 
-		// Post instant acknowledgment thought
-		await this.postInstantAcknowledgment(sessionId, repository.id);
-
-		// Create the session using the shared method
-		const sessionData = await this.createLinearAgentSession(
-			sessionId,
-			issue,
-			repository,
-			agentSessionManager,
+		this.activeSessionCount++;
+		this.logger.debug(
+			`Session for ${issue.identifier} starting (${this.activeSessionCount}/${maxConcurrent ?? "∞"} active)`,
 		);
 
-		// Destructure the session data (excluding allowedTools which we'll build with promptType)
-		const {
-			session,
-			fullIssue,
-			workspace: _workspace,
-			attachmentResult,
-			attachmentsDir: _attachmentsDir,
-			allowedDirectories,
-		} = sessionData;
-
-		// Initialize procedure metadata using intelligent routing
-		if (!session.metadata) {
-			session.metadata = {};
-		}
-
-		// Post ephemeral "Routing..." thought
-		await agentSessionManager.postAnalyzingThought(sessionId);
-
-		// Fetch labels early (needed for label override check)
-		const labels = await this.fetchIssueLabels(fullIssue);
-		// Lowercase labels for case-insensitive comparison
-		const lowercaseLabels = labels.map((label) => label.toLowerCase());
-
-		// Check for label overrides BEFORE AI routing
-		const debuggerConfig = repository.labelPrompts?.debugger;
-		const debuggerLabels = Array.isArray(debuggerConfig)
-			? debuggerConfig
-			: debuggerConfig?.labels;
-		const hasDebuggerLabel = debuggerLabels?.some((label: string) =>
-			lowercaseLabels.includes(label.toLowerCase()),
-		);
-
-		// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
-		// This is a hardcoded rule: any issue with 'orchestrator'/'Orchestrator' label
-		// goes to orchestrator procedure
-		const hasHardcodedOrchestratorLabel =
-			lowercaseLabels.includes("orchestrator");
-
-		// Also check any additional orchestrator labels from config
-		const orchestratorConfig = repository.labelPrompts?.orchestrator;
-		const orchestratorLabels = Array.isArray(orchestratorConfig)
-			? orchestratorConfig
-			: orchestratorConfig?.labels;
-		const hasConfiguredOrchestratorLabel =
-			orchestratorLabels?.some((label: string) =>
-				lowercaseLabels.includes(label.toLowerCase()),
-			) ?? false;
-
-		const hasOrchestratorLabel =
-			hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
-
-		// Check for graphite label (for graphite-orchestrator combination)
-		const graphiteConfig = repository.labelPrompts?.graphite;
-		const graphiteLabels = Array.isArray(graphiteConfig)
-			? graphiteConfig
-			: (graphiteConfig?.labels ?? ["graphite"]);
-		const hasGraphiteLabel = graphiteLabels?.some((label: string) =>
-			lowercaseLabels.includes(label.toLowerCase()),
-		);
-
-		// Graphite-orchestrator requires BOTH graphite AND orchestrator labels
-		const hasGraphiteOrchestratorLabels =
-			hasGraphiteLabel && hasOrchestratorLabel;
-
-		let finalProcedure: ProcedureDefinition;
-		let finalClassification: RequestClassification;
-
-		// If labels indicate a specific procedure, use that instead of AI routing
-		if (hasDebuggerLabel) {
-			const debuggerProcedure =
-				this.procedureAnalyzer.getProcedure("debugger-full");
-			if (!debuggerProcedure) {
-				throw new Error("debugger-full procedure not found in registry");
-			}
-			finalProcedure = debuggerProcedure;
-			finalClassification = "debugger";
-			log.info(
-				`Using debugger-full procedure due to debugger label (skipping AI routing)`,
-			);
-		} else if (hasGraphiteOrchestratorLabels) {
-			// Graphite-orchestrator takes precedence over regular orchestrator when both labels present
-			const orchestratorProcedure =
-				this.procedureAnalyzer.getProcedure("orchestrator-full");
-			if (!orchestratorProcedure) {
-				throw new Error("orchestrator-full procedure not found in registry");
-			}
-			finalProcedure = orchestratorProcedure;
-			// Use orchestrator classification but the system prompt will be graphite-orchestrator
-			finalClassification = "orchestrator";
-			log.info(
-				`Using orchestrator-full procedure with graphite-orchestrator prompt (graphite + orchestrator labels)`,
-			);
-		} else if (hasOrchestratorLabel) {
-			const orchestratorProcedure =
-				this.procedureAnalyzer.getProcedure("orchestrator-full");
-			if (!orchestratorProcedure) {
-				throw new Error("orchestrator-full procedure not found in registry");
-			}
-			finalProcedure = orchestratorProcedure;
-			finalClassification = "orchestrator";
-			log.info(
-				`Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
-			);
-		} else {
-			// No label override - use AI routing
-			const issueDescription =
-				`${issue.title}\n\n${fullIssue.description || ""}`.trim();
-			const routingDecision =
-				await this.procedureAnalyzer.determineRoutine(issueDescription);
-			finalProcedure = routingDecision.procedure;
-			finalClassification = routingDecision.classification;
-
-			// Log AI routing decision
-			log.info(`AI routing decision for ${sessionId}:`);
-			log.info(`  Classification: ${routingDecision.classification}`);
-			log.info(`  Procedure: ${finalProcedure.name}`);
-			log.info(`  Reasoning: ${routingDecision.reasoning}`);
-		}
-
-		// Initialize procedure metadata in session with final decision
-		this.procedureAnalyzer.initializeProcedureMetadata(session, finalProcedure);
-
-		// Post single procedure selection result (replaces ephemeral routing thought)
-		await agentSessionManager.postProcedureSelectionThought(
-			sessionId,
-			finalProcedure.name,
-			finalClassification,
-		);
-
-		// Build and start Claude with initial prompt using full issue (streaming mode)
-		log.info(`Building initial prompt for issue ${fullIssue.identifier}`);
 		try {
-			// Create input for unified prompt assembly
-			const input: PromptAssemblyInput = {
-				session,
-				fullIssue,
-				repository,
-				userComment: commentBody || "", // Empty for delegation, present for mentions
-				attachmentManifest: attachmentResult.manifest,
-				guidance: guidance || undefined,
-				agentSession,
-				labels,
-				isNewSession: true,
-				isStreaming: false, // Not yet streaming
-				isMentionTriggered: isMentionTriggered || false,
-				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
-			};
+			const log = this.logger.withContext({
+				sessionId,
+				issueIdentifier: issue.identifier,
+			});
 
-			// Use unified prompt assembly
-			const assembly = await this.assemblePrompt(input);
-
-			// Get systemPromptVersion for tracking (TODO: add to PromptAssembly metadata)
-			let systemPromptVersion: string | undefined;
-			let promptType:
-				| "debugger"
-				| "builder"
-				| "scoper"
-				| "orchestrator"
-				| "graphite-orchestrator"
-				| undefined;
-
-			if (!isMentionTriggered || isLabelBasedPromptRequested) {
-				const systemPromptResult = await this.determineSystemPromptFromLabels(
-					labels,
-					repository,
-				);
-				systemPromptVersion = systemPromptResult?.version;
-				promptType = systemPromptResult?.type;
-
-				// Post thought about system prompt selection
-				if (assembly.systemPrompt) {
-					await this.postSystemPromptSelectionThought(
-						sessionId,
-						labels,
-						repository.id,
-					);
+			// Log guidance if present
+			if (guidance && guidance.length > 0) {
+				log.debug(`Agent guidance received: ${guidance.length} rule(s)`);
+				for (const rule of guidance) {
+					let origin = "Unknown";
+					if (rule.origin) {
+						if (rule.origin.__typename === "TeamOriginWebhookPayload") {
+							origin = `Team: ${rule.origin.team.displayName}`;
+						} else {
+							origin = "Organization";
+						}
+					}
+					log.info(`- ${origin}: ${rule.body.substring(0, 100)}...`);
 				}
 			}
 
-			// Get current subroutine to check for singleTurn mode and disallowAllTools
-			const currentSubroutine =
-				this.procedureAnalyzer.getCurrentSubroutine(session);
-
-			// Build allowed tools list with Linear MCP tools (now with prompt type context)
-			// If subroutine has disallowAllTools: true, use empty array to disable all tools
-			const allowedTools = currentSubroutine?.disallowAllTools
-				? []
-				: this.buildAllowedTools(repository, promptType);
-			const baseDisallowedTools = this.buildDisallowedTools(
-				repository,
-				promptType,
+			// HACK: This is required since the comment body is always populated, thus there is no other way to differentiate between the two trigger events
+			const AGENT_SESSION_MARKER = "This thread is for an agent session";
+			const isMentionTriggered =
+				commentBody && !commentBody.includes(AGENT_SESSION_MARKER);
+			// Check if the comment contains the /label-based-prompt command
+			const isLabelBasedPromptRequested = commentBody?.includes(
+				"/label-based-prompt",
 			);
 
-			// Merge subroutine-level disallowedTools if applicable
-			const disallowedTools = this.mergeSubroutineDisallowedTools(
-				session,
-				baseDisallowedTools,
-				"EdgeWorker",
-			);
-
-			if (currentSubroutine?.disallowAllTools) {
-				log.debug(
-					`All tools disabled for ${fullIssue.identifier} (subroutine: ${currentSubroutine.name})`,
+			// Initialize the agent session in AgentSessionManager
+			const agentSessionManager = this.agentSessionManagers.get(repository.id);
+			if (!agentSessionManager) {
+				log.error(
+					"There was no agentSessionManage for the repository with id",
+					repository.id,
 				);
-			} else {
-				log.debug(
-					`Configured allowed tools for ${fullIssue.identifier}:`,
-					allowedTools,
-				);
-			}
-			if (disallowedTools.length > 0) {
-				log.debug(
-					`Configured disallowed tools for ${fullIssue.identifier}:`,
-					disallowedTools,
-				);
+				return;
 			}
 
-			// Create agent runner with system prompt from assembly
-			// buildAgentRunnerConfig now determines runner type from labels internally
-			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-				session,
-				repository,
+			// Post instant acknowledgment thought
+			await this.postInstantAcknowledgment(sessionId, repository.id);
+
+			// Create the session using the shared method
+			const sessionData = await this.createLinearAgentSession(
 				sessionId,
-				assembly.systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				labels, // Pass labels for runner selection and model override
-				fullIssue.description || undefined, // Description tags can override label selectors
-				undefined, // maxTurns
-				currentSubroutine?.singleTurn, // singleTurn flag
-				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+				issue,
+				repository,
+				agentSessionManager,
 			);
 
-			log.debug(
-				`Label-based runner selection for new session: ${runnerType} (session ${sessionId})`,
-			);
-
-			const runner =
-				runnerType === "claude"
-					? new ClaudeRunner(runnerConfig)
-					: runnerType === "gemini"
-						? new GeminiRunner(runnerConfig)
-						: runnerType === "codex"
-							? new CodexRunner(runnerConfig)
-							: new CursorRunner(runnerConfig);
-
-			// Store runner by comment ID
-			agentSessionManager.addAgentRunner(sessionId, runner);
-
-			// Save state after mapping changes
-			await this.savePersistedState();
-
-			// Emit events using full issue (core Issue type)
-			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
-			this.config.handlers?.onSessionStart?.(
-				fullIssue.id,
+			// Destructure the session data (excluding allowedTools which we'll build with promptType)
+			const {
+				session,
 				fullIssue,
-				repository.id,
-			);
+				workspace: _workspace,
+				attachmentResult,
+				attachmentsDir: _attachmentsDir,
+				allowedDirectories,
+			} = sessionData;
 
-			// Update runner with version information (if available)
-			// Note: updatePromptVersions is specific to ClaudeRunner
-			if (
-				systemPromptVersion &&
-				"updatePromptVersions" in runner &&
-				typeof runner.updatePromptVersions === "function"
-			) {
-				runner.updatePromptVersions({
-					systemPromptVersion,
-				});
+			// Initialize procedure metadata using intelligent routing
+			if (!session.metadata) {
+				session.metadata = {};
 			}
 
-			// Log metadata for debugging
-			log.debug(
-				`Initial prompt built successfully - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}, length: ${assembly.userPrompt.length} characters`,
+			// Post ephemeral "Routing..." thought
+			await agentSessionManager.postAnalyzingThought(sessionId);
+
+			// Fetch labels early (needed for label override check)
+			const labels = await this.fetchIssueLabels(fullIssue);
+			// Lowercase labels for case-insensitive comparison
+			const lowercaseLabels = labels.map((label) => label.toLowerCase());
+
+			// Check for label overrides BEFORE AI routing
+			const debuggerConfig = repository.labelPrompts?.debugger;
+			const debuggerLabels = Array.isArray(debuggerConfig)
+				? debuggerConfig
+				: debuggerConfig?.labels;
+			const hasDebuggerLabel = debuggerLabels?.some((label: string) =>
+				lowercaseLabels.includes(label.toLowerCase()),
 			);
 
-			// Start session - use streaming mode if supported for ability to add messages later
-			if (runner.supportsStreamingInput && runner.startStreaming) {
-				log.debug(`Starting streaming session`);
-				const sessionInfo = await runner.startStreaming(assembly.userPrompt);
-				log.debug(`Streaming session started: ${sessionInfo.sessionId}`);
+			// ALWAYS check for 'orchestrator' label (case-insensitive) regardless of EdgeConfig
+			// This is a hardcoded rule: any issue with 'orchestrator'/'Orchestrator' label
+			// goes to orchestrator procedure
+			const hasHardcodedOrchestratorLabel =
+				lowercaseLabels.includes("orchestrator");
+
+			// Also check any additional orchestrator labels from config
+			const orchestratorConfig = repository.labelPrompts?.orchestrator;
+			const orchestratorLabels = Array.isArray(orchestratorConfig)
+				? orchestratorConfig
+				: orchestratorConfig?.labels;
+			const hasConfiguredOrchestratorLabel =
+				orchestratorLabels?.some((label: string) =>
+					lowercaseLabels.includes(label.toLowerCase()),
+				) ?? false;
+
+			const hasOrchestratorLabel =
+				hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
+
+			// Check for graphite label (for graphite-orchestrator combination)
+			const graphiteConfig = repository.labelPrompts?.graphite;
+			const graphiteLabels = Array.isArray(graphiteConfig)
+				? graphiteConfig
+				: (graphiteConfig?.labels ?? ["graphite"]);
+			const hasGraphiteLabel = graphiteLabels?.some((label: string) =>
+				lowercaseLabels.includes(label.toLowerCase()),
+			);
+
+			// Graphite-orchestrator requires BOTH graphite AND orchestrator labels
+			const hasGraphiteOrchestratorLabels =
+				hasGraphiteLabel && hasOrchestratorLabel;
+
+			let finalProcedure: ProcedureDefinition;
+			let finalClassification: RequestClassification;
+
+			// If labels indicate a specific procedure, use that instead of AI routing
+			if (hasDebuggerLabel) {
+				const debuggerProcedure =
+					this.procedureAnalyzer.getProcedure("debugger-full");
+				if (!debuggerProcedure) {
+					throw new Error("debugger-full procedure not found in registry");
+				}
+				finalProcedure = debuggerProcedure;
+				finalClassification = "debugger";
+				log.info(
+					`Using debugger-full procedure due to debugger label (skipping AI routing)`,
+				);
+			} else if (hasGraphiteOrchestratorLabels) {
+				// Graphite-orchestrator takes precedence over regular orchestrator when both labels present
+				const orchestratorProcedure =
+					this.procedureAnalyzer.getProcedure("orchestrator-full");
+				if (!orchestratorProcedure) {
+					throw new Error("orchestrator-full procedure not found in registry");
+				}
+				finalProcedure = orchestratorProcedure;
+				// Use orchestrator classification but the system prompt will be graphite-orchestrator
+				finalClassification = "orchestrator";
+				log.info(
+					`Using orchestrator-full procedure with graphite-orchestrator prompt (graphite + orchestrator labels)`,
+				);
+			} else if (hasOrchestratorLabel) {
+				const orchestratorProcedure =
+					this.procedureAnalyzer.getProcedure("orchestrator-full");
+				if (!orchestratorProcedure) {
+					throw new Error("orchestrator-full procedure not found in registry");
+				}
+				finalProcedure = orchestratorProcedure;
+				finalClassification = "orchestrator";
+				log.info(
+					`Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
+				);
 			} else {
-				log.debug(`Starting non-streaming session`);
-				const sessionInfo = await runner.start(assembly.userPrompt);
-				log.debug(`Non-streaming session started: ${sessionInfo.sessionId}`);
+				// No label override - use AI routing
+				const issueDescription =
+					`${issue.title}\n\n${fullIssue.description || ""}`.trim();
+				const routingDecision =
+					await this.procedureAnalyzer.determineRoutine(issueDescription);
+				finalProcedure = routingDecision.procedure;
+				finalClassification = routingDecision.classification;
+
+				// Log AI routing decision
+				log.info(`AI routing decision for ${sessionId}:`);
+				log.info(`  Classification: ${routingDecision.classification}`);
+				log.info(`  Procedure: ${finalProcedure.name}`);
+				log.info(`  Reasoning: ${routingDecision.reasoning}`);
 			}
-			// Note: AgentSessionManager will be initialized automatically when the first system message
-			// is received via handleClaudeMessage() callback
-		} catch (error) {
-			log.error(`Error in prompt building/starting:`, error);
-			throw error;
+
+			// Initialize procedure metadata in session with final decision
+			this.procedureAnalyzer.initializeProcedureMetadata(
+				session,
+				finalProcedure,
+			);
+
+			// Post single procedure selection result (replaces ephemeral routing thought)
+			await agentSessionManager.postProcedureSelectionThought(
+				sessionId,
+				finalProcedure.name,
+				finalClassification,
+			);
+
+			// Build and start Claude with initial prompt using full issue (streaming mode)
+			log.info(`Building initial prompt for issue ${fullIssue.identifier}`);
+			try {
+				// Create input for unified prompt assembly
+				const input: PromptAssemblyInput = {
+					session,
+					fullIssue,
+					repository,
+					userComment: commentBody || "", // Empty for delegation, present for mentions
+					attachmentManifest: attachmentResult.manifest,
+					guidance: guidance || undefined,
+					agentSession,
+					labels,
+					isNewSession: true,
+					isStreaming: false, // Not yet streaming
+					isMentionTriggered: isMentionTriggered || false,
+					isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
+				};
+
+				// Use unified prompt assembly
+				const assembly = await this.assemblePrompt(input);
+
+				// Get systemPromptVersion for tracking (TODO: add to PromptAssembly metadata)
+				let systemPromptVersion: string | undefined;
+				let promptType:
+					| "debugger"
+					| "builder"
+					| "scoper"
+					| "orchestrator"
+					| "graphite-orchestrator"
+					| undefined;
+
+				if (!isMentionTriggered || isLabelBasedPromptRequested) {
+					const systemPromptResult = await this.determineSystemPromptFromLabels(
+						labels,
+						repository,
+					);
+					systemPromptVersion = systemPromptResult?.version;
+					promptType = systemPromptResult?.type;
+
+					// Post thought about system prompt selection
+					if (assembly.systemPrompt) {
+						await this.postSystemPromptSelectionThought(
+							sessionId,
+							labels,
+							repository.id,
+						);
+					}
+				}
+
+				// Get current subroutine to check for singleTurn mode and disallowAllTools
+				const currentSubroutine =
+					this.procedureAnalyzer.getCurrentSubroutine(session);
+
+				// Build allowed tools list with Linear MCP tools (now with prompt type context)
+				// If subroutine has disallowAllTools: true, use empty array to disable all tools
+				const allowedTools = currentSubroutine?.disallowAllTools
+					? []
+					: this.buildAllowedTools(repository, promptType);
+				const baseDisallowedTools = this.buildDisallowedTools(
+					repository,
+					promptType,
+				);
+
+				// Merge subroutine-level disallowedTools if applicable
+				const disallowedTools = this.mergeSubroutineDisallowedTools(
+					session,
+					baseDisallowedTools,
+					"EdgeWorker",
+				);
+
+				if (currentSubroutine?.disallowAllTools) {
+					log.debug(
+						`All tools disabled for ${fullIssue.identifier} (subroutine: ${currentSubroutine.name})`,
+					);
+				} else {
+					log.debug(
+						`Configured allowed tools for ${fullIssue.identifier}:`,
+						allowedTools,
+					);
+				}
+				if (disallowedTools.length > 0) {
+					log.debug(
+						`Configured disallowed tools for ${fullIssue.identifier}:`,
+						disallowedTools,
+					);
+				}
+
+				// Create agent runner with system prompt from assembly
+				// buildAgentRunnerConfig now determines runner type from labels internally
+				const { config: runnerConfig, runnerType } =
+					this.buildAgentRunnerConfig(
+						session,
+						repository,
+						sessionId,
+						assembly.systemPrompt,
+						allowedTools,
+						allowedDirectories,
+						disallowedTools,
+						undefined, // resumeSessionId
+						labels, // Pass labels for runner selection and model override
+						fullIssue.description || undefined, // Description tags can override label selectors
+						undefined, // maxTurns
+						currentSubroutine?.singleTurn, // singleTurn flag
+						currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+					);
+
+				log.debug(
+					`Label-based runner selection for new session: ${runnerType} (session ${sessionId})`,
+				);
+
+				const runner =
+					runnerType === "claude"
+						? new ClaudeRunner(runnerConfig)
+						: runnerType === "gemini"
+							? new GeminiRunner(runnerConfig)
+							: runnerType === "codex"
+								? new CodexRunner(runnerConfig)
+								: new CursorRunner(runnerConfig);
+
+				// Store runner by comment ID
+				agentSessionManager.addAgentRunner(sessionId, runner);
+
+				// Save state after mapping changes
+				await this.savePersistedState();
+
+				// Emit events using full issue (core Issue type)
+				this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+				this.config.handlers?.onSessionStart?.(
+					fullIssue.id,
+					fullIssue,
+					repository.id,
+				);
+
+				// Update runner with version information (if available)
+				// Note: updatePromptVersions is specific to ClaudeRunner
+				if (
+					systemPromptVersion &&
+					"updatePromptVersions" in runner &&
+					typeof runner.updatePromptVersions === "function"
+				) {
+					runner.updatePromptVersions({
+						systemPromptVersion,
+					});
+				}
+
+				// Log metadata for debugging
+				log.debug(
+					`Initial prompt built successfully - components: ${assembly.metadata.components.join(", ")}, type: ${assembly.metadata.promptType}, length: ${assembly.userPrompt.length} characters`,
+				);
+
+				// Start session - use streaming mode if supported for ability to add messages later
+				if (runner.supportsStreamingInput && runner.startStreaming) {
+					log.debug(`Starting streaming session`);
+					const sessionInfo = await runner.startStreaming(assembly.userPrompt);
+					log.debug(`Streaming session started: ${sessionInfo.sessionId}`);
+				} else {
+					log.debug(`Starting non-streaming session`);
+					const sessionInfo = await runner.start(assembly.userPrompt);
+					log.debug(`Non-streaming session started: ${sessionInfo.sessionId}`);
+				}
+				// Note: AgentSessionManager will be initialized automatically when the first system message
+				// is received via handleClaudeMessage() callback
+			} catch (error) {
+				log.error(`Error in prompt building/starting:`, error);
+				throw error;
+			}
+		} finally {
+			this.activeSessionCount--;
+			this.logger.debug(
+				`Session for ${issue.identifier} finished (${this.activeSessionCount} active, ${this.sessionQueue.length} queued)`,
+			);
+			this.drainSessionQueue();
 		}
 	}
 

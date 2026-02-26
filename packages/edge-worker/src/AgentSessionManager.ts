@@ -67,6 +67,16 @@ export interface AgentSessionManagerEvents {
 		/** Current iteration (1-based) */
 		iteration: number;
 	}) => void;
+	/**
+	 * Emitted when an Anthropic billing/usage-limit error ends a session.
+	 * EdgeWorker responds by scheduling an automatic retry after the reset time.
+	 */
+	billingLimitHit: (data: {
+		sessionId: string;
+		session: CyrusAgentSession;
+		/** Raw reset message from the SDK, e.g. "You've hit your limit · resets 6am (UTC)" */
+		resetMessage: string;
+	}) => void;
 }
 
 /**
@@ -364,6 +374,28 @@ export class AgentSessionManager extends EventEmitter {
 		// to prevent memory leaks
 
 		const wasStopRequested = this.consumeStopRequest(sessionId);
+
+		// If an Anthropic billing limit was detected on this session and the result
+		// is an error (not a user stop), hand off to EdgeWorker for automatic retry
+		// instead of marking the session as permanently failed.
+		if (
+			session.metadata?.billingError &&
+			resultMessage.is_error &&
+			!wasStopRequested
+		) {
+			log.info(
+				`Session ended due to billing limit — scheduling automatic retry (reset: ${session.metadata.billingError.message})`,
+			);
+			// Emit event; EdgeWorker will schedule the retry and post a notice to Linear.
+			// Leave session status as-is (Active) so the Linear issue stays clean.
+			this.emit("billingLimitHit", {
+				sessionId,
+				session,
+				resetMessage: session.metadata.billingError.message,
+			});
+			return;
+		}
+
 		const status = wasStopRequested
 			? AgentSessionStatus.Error
 			: resultMessage.subtype === "success"
@@ -890,12 +922,40 @@ export class AgentSessionManager extends EventEmitter {
 						message as SDKAssistantMessage,
 					);
 					await this.syncEntryToActivitySink(assistantEntry, sessionId);
+					// If this message carries a billing error, store it on the session so
+					// completeSession can schedule an automatic retry instead of failing.
+					if (assistantEntry.metadata?.sdkError === "billing_error") {
+						const sess = this.sessions.get(sessionId);
+						if (sess) {
+							sess.metadata = {
+								...sess.metadata,
+								billingError: {
+									message: assistantEntry.content,
+									detectedAt: Date.now(),
+								},
+							};
+							this.sessions.set(sessionId, sess);
+						}
+					}
 					break;
 				}
 
 				case "result":
 					await this.completeSession(sessionId, message as SDKResultMessage);
 					break;
+
+				case "rate_limit_event": {
+					const retryAfter =
+						(message as any).retryAfter ?? (message as any).retry_after;
+					if (retryAfter) {
+						log.info(
+							`Claude API rate limit reached — retrying after ${retryAfter}s (session will resume automatically)`,
+						);
+					} else {
+						log.info(`Claude API rate limit reached — retrying automatically`);
+					}
+					break;
+				}
 
 				default:
 					log.warn(`Unknown message type: ${(message as any).type}`);
@@ -979,6 +1039,22 @@ export class AgentSessionManager extends EventEmitter {
 		// DON'T store locally - syncEntryToActivitySink will do it
 		// Sync to Linear
 		await this.syncEntryToActivitySink(resultEntry, sessionId);
+	}
+
+	/**
+	 * Post a standalone thought entry to Linear for the given session.
+	 * Used by EdgeWorker to surface informational notices (e.g. "retrying after billing reset").
+	 */
+	async postThoughtToLinear(sessionId: string, message: string): Promise<void> {
+		const session = this.sessions.get(sessionId);
+		const claudeSessionId = session?.claudeSessionId;
+		const entry: CyrusAgentSessionEntry = {
+			...(claudeSessionId ? { claudeSessionId } : {}),
+			type: "assistant",
+			content: message,
+			metadata: { timestamp: Date.now() },
+		};
+		await this.syncEntryToActivitySink(entry, sessionId);
 	}
 
 	/**
@@ -1244,6 +1320,24 @@ export class AgentSessionManager extends EventEmitter {
 								return;
 							}
 
+							// Skip read-only tool results — high-volume, low-signal in the activity feed.
+							// Errors from read-only tools are still surfaced.
+							const baseToolNameClean = toolName.replace(/^↪\s*/, "");
+							const READ_ONLY_TOOLS = new Set([
+								"Read",
+								"Glob",
+								"Grep",
+								"WebFetch",
+								"WebSearch",
+								"LS",
+							]);
+							if (
+								READ_ONLY_TOOLS.has(baseToolNameClean) &&
+								!toolResult.isError
+							) {
+								return;
+							}
+
 							// Get formatter from runner
 							const formatter = session.agentRunner?.getFormatter();
 							if (!formatter) {
@@ -1308,6 +1402,21 @@ export class AgentSessionManager extends EventEmitter {
 
 						// Skip AskUserQuestion tool - it's custom handled via Linear's select signal elicitation
 						if (toolName === "AskUserQuestion") {
+							return;
+						}
+
+						// Skip tool-call-setup activity for read-only tools — we also skip their
+						// results (see user message handler), so posting a preview creates an
+						// orphaned activity entry with no matching result.
+						const READ_ONLY_TOOLS_ASSISTANT = new Set([
+							"Read",
+							"Glob",
+							"Grep",
+							"WebFetch",
+							"WebSearch",
+							"LS",
+						]);
+						if (READ_ONLY_TOOLS_ASSISTANT.has(toolName)) {
 							return;
 						}
 
@@ -1451,13 +1560,24 @@ export class AgentSessionManager extends EventEmitter {
 							ephemeral = true;
 						}
 					} else if (entry.metadata?.sdkError) {
-						// Assistant message with SDK error (e.g., rate_limit, billing_error)
-						// Create an error type so it's visible to users (not just a thought)
-						// Per CYPACK-719: usage limits should trigger "error" type activity
-						content = {
-							type: "error",
-							body: entry.content,
-						};
+						// Assistant message with SDK error.
+						// Transient quota/rate errors (billing_error, rate_limit) are posted
+						// as thoughts so they don't set the Linear "Error" badge — the session
+						// didn't fail permanently, it just hit a temporary API limit.
+						// All other SDK errors (authentication_failed, invalid_request, etc.)
+						// are posted as proper errors so they surface as actionable failures.
+						const isTransientLimit =
+							entry.metadata.sdkError === "billing_error" ||
+							entry.metadata.sdkError === "rate_limit";
+						content = isTransientLimit
+							? {
+									type: "thought",
+									body: entry.content,
+								}
+							: {
+									type: "error",
+									body: entry.content,
+								};
 					} else {
 						// Regular assistant message - create a thought
 						content = {

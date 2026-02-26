@@ -226,6 +226,10 @@ export class ConfigManager extends EventEmitter {
 				// otherwise keep current or default to true
 				issueUpdateTrigger:
 					parsedConfig.issueUpdateTrigger ?? this.config.issueUpdateTrigger,
+				// Concurrency limit
+				maxConcurrentSessions:
+					parsedConfig.maxConcurrentSessions ??
+					this.config.maxConcurrentSessions,
 			};
 
 			// Basic validation

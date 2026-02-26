@@ -73,6 +73,16 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		/**
+		 * Set when an Anthropic billing/usage-limit error is detected mid-session.
+		 * EdgeWorker uses this to schedule an automatic retry after the API resets
+		 * rather than marking the session as permanently failed.
+		 */
+		billingError?: {
+			/** Raw error message from the SDK, e.g. "You've hit your limit · resets 6am (UTC)" */
+			message: string;
+			detectedAt: number;
+		};
 		procedure?: {
 			procedureName: string;
 			currentSubroutineIndex: number;
