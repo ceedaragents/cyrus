@@ -4,11 +4,57 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.23] - 2026-02-25
+
 ### Fixed
 - **`defaultRunner` config setting now works correctly** - Setting `"defaultRunner": "codex"` (or `"gemini"` / `"cursor"`) in `~/.cyrus/config.json` now properly routes issues without runner-specific labels to the configured default runner, instead of always falling back to Claude. ([CYPACK-838](https://linear.app/ceedar/issue/CYPACK-838), [#892](https://github.com/ceedaragents/cyrus/pull/892))
 
 ### Added
 - **Assignee attribution on PRs** - PR descriptions now include assignee attribution at the top. When the assignee has a linked GitHub account, they are @mentioned for a GitHub notification. When no GitHub account is linked, the assignee's Linear profile is linked instead, ensuring an audit trail for all PRs. ([CYPACK-843](https://linear.app/ceedar/issue/CYPACK-843), [#895](https://github.com/ceedaragents/cyrus/pull/895))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.23
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.23
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.23
+
+#### cyrus-core
+- cyrus-core@0.2.23
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.23
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.23
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.23
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.23
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.23
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.23
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.23
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.23
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.23
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.23
 
 ## [0.2.22] - 2026-02-20
 
