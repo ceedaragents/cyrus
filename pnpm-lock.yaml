@@ -125,11 +125,11 @@ importers:
   packages/claude-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.47
-        version: 0.2.47(zod@4.3.6)
+        specifier: ^0.2.59
+        version: 0.2.59(zod@4.3.6)
       '@anthropic-ai/sdk':
-        specifier: ^0.77.0
-        version: 0.77.0(zod@4.3.6)
+        specifier: ^0.78.0
+        version: 0.78.0(zod@4.3.6)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
@@ -225,8 +225,8 @@ importers:
   packages/core:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.47
-        version: 0.2.47(zod@4.3.6)
+        specifier: ^0.2.59
+        version: 0.2.59(zod@4.3.6)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0
@@ -463,8 +463,8 @@ importers:
   packages/simple-agent-runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.47
-        version: 0.2.47(zod@4.3.6)
+        specifier: ^0.2.59
+        version: 0.2.59(zod@4.3.6)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -507,14 +507,14 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@anthropic-ai/claude-agent-sdk@0.2.47':
-    resolution: {integrity: sha512-tcptBQwLnaUv6f5KiiUUtGduiLUhwV/xT0kPxVG+K2Wws1T/2MLViwIoti3AkJuNJ2qZ5FOwl1YQLHPMeHlYVQ==}
+  '@anthropic-ai/claude-agent-sdk@0.2.59':
+    resolution: {integrity: sha512-xPOUZZimZI5ChaO791olWGXqaRvCwOfj9/1micu42EL9czdcwiDm0WK1OGsqb2mZ7LSCoYWBB0ZHVKOxehemDA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       zod: 4.3.6
 
-  '@anthropic-ai/sdk@0.77.0':
-    resolution: {integrity: sha512-TivlT6nfidz3sOyMF72T2x5AkmHrpT7JgL2e/0HNdh7b24v7JC8cR+rCY/42jA68xIsjmiGQ5IKMsH9feEKh3A==}
+  '@anthropic-ai/sdk@0.78.0':
+    resolution: {integrity: sha512-PzQhR715td/m1UaaN5hHXjYB8Gl2lF9UVhrrGrZeysiF6Rb74Wc9GCB8hzLdzmQtBd1qe89F9OptgB9Za1Ib5w==}
     hasBin: true
     peerDependencies:
       zod: 4.3.6
@@ -3665,7 +3665,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@anthropic-ai/claude-agent-sdk@0.2.47(zod@4.3.6)':
+  '@anthropic-ai/claude-agent-sdk@0.2.59(zod@4.3.6)':
     dependencies:
       zod: 4.3.6
     optionalDependencies:
@@ -3679,7 +3679,7 @@ snapshots:
       '@img/sharp-win32-arm64': 0.34.5
       '@img/sharp-win32-x64': 0.34.5
 
-  '@anthropic-ai/sdk@0.77.0(zod@4.3.6)':
+  '@anthropic-ai/sdk@0.78.0(zod@4.3.6)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
