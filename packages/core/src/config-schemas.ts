@@ -235,6 +235,20 @@ export const EdgeConfigSchema = z.object({
 
 	/** Global defaults for prompt types (tool restrictions per prompt type) */
 	promptDefaults: PromptDefaultsSchema.optional(),
+
+	/**
+	 * Maximum number of agent sessions that can run concurrently.
+	 * Sessions beyond this limit are queued and started as active sessions complete.
+	 * This prevents thundering-herd bursts that exhaust the Linear API rate limit
+	 * (5000 req/hr shared across all concurrent sessions on one OAuth token).
+	 *
+	 * Recommended values:
+	 * - 3 for a single-token setup (safe margin under rate limit)
+	 * - 5-8 if you have multiple tokens or a higher rate limit
+	 *
+	 * Omit or set to 0 to allow unlimited concurrency (original behavior).
+	 */
+	maxConcurrentSessions: z.number().int().positive().optional(),
 });
 
 /**
