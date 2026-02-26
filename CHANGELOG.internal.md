@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.23] - 2026-02-25
+
 ### Fixed
 - `WorkerService.ts` was not passing `defaultRunner`, `linearWorkspaceSlug`, `issueUpdateTrigger`, or `promptDefaults` from `edgeConfig` to the `EdgeWorkerConfig` object, causing `EdgeWorker` and `RunnerSelectionService` to always see `undefined` for these fields. Also added `defaultRunner` and `promptDefaults` to `ConfigManager.loadConfigSafely()` merge so config file changes are reflected on hot-reload. Added `CYRUS_DEFAULT_RUNNER` env var support. Added 4 integration tests for `defaultRunner` config in runner selection. ([CYPACK-838](https://linear.app/ceedar/issue/CYPACK-838), [#892](https://github.com/ceedaragents/cyrus/pull/892))
 
