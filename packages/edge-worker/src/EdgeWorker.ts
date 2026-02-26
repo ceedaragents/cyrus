@@ -953,7 +953,10 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Build allowed tools and directories
-			const allowedTools = this.buildAllowedTools(repository);
+			// Exclude Slack MCP tools from GitHub sessions
+			const allowedTools = this.buildAllowedTools(repository).filter(
+				(t) => t !== "mcp__slack",
+			);
 			const disallowedTools = this.buildDisallowedTools(repository);
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
@@ -971,6 +974,8 @@ export class EdgeWorker extends EventEmitter {
 				undefined, // issueDescription
 				200, // maxTurns
 				false, // singleTurn
+				undefined, // disallowAllTools
+				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
 			);
 
 			const runner = new ClaudeRunner(runnerConfig);
@@ -4187,10 +4192,13 @@ ${taskInstructions}
 
 	/**
 	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
+	 * Optionally includes the Slack MCP server when the SLACK_BOT_TOKEN environment variable is set.
+	 * @param options.excludeSlackMcp - When true, excludes the Slack MCP server even if SLACK_BOT_TOKEN is set (e.g., for GitHub sessions)
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
 		parentSessionId?: string,
+		options?: { excludeSlackMcp?: boolean },
 	): Record<string, McpServerConfig> {
 		const contextId = this.buildCyrusToolsMcpContextId(
 			repository,
@@ -4239,6 +4247,19 @@ ${taskInstructions}
 				},
 			},
 		};
+
+		// Conditionally inject the Slack MCP server when SLACK_BOT_TOKEN is available
+		// https://github.com/korotovsky/slack-mcp-server
+		const slackBotToken = process.env.SLACK_BOT_TOKEN?.trim();
+		if (slackBotToken && !options?.excludeSlackMcp) {
+			mcpConfig.slack = {
+				command: "npx",
+				args: ["-y", "slack-mcp-server@latest", "--transport", "stdio"],
+				env: {
+					SLACK_MCP_XOXB_TOKEN: slackBotToken,
+				},
+			};
+		}
 
 		return mcpConfig;
 	}
@@ -4658,6 +4679,7 @@ ${input.userComment}
 		maxTurns?: number,
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
+		mcpOptions?: { excludeSlackMcp?: boolean },
 	): {
 		config: AgentRunnerConfig;
 		runnerType: "claude" | "gemini" | "codex" | "cursor";
@@ -4801,7 +4823,7 @@ ${input.userComment}
 		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
 		const mcpConfig = disallowAllTools
 			? undefined
-			: this.buildMcpConfig(repository, sessionId);
+			: this.buildMcpConfig(repository, sessionId, mcpOptions);
 		const mcpConfigPath = disallowAllTools
 			? undefined
 			: repository.mcpConfigPath;
