@@ -3477,8 +3477,7 @@ ${taskInstructions}
 					const repos = Array.from(this.repositories.values());
 					const routingResult =
 						await this.repositoryRouter.determineRepositoryForWebhook(
-							// Both webhook types share the same underlying Linear SDK type
-							webhook as unknown as AgentSessionCreatedWebhook,
+							webhook,
 							repos,
 						);
 
@@ -3507,7 +3506,7 @@ ${taskInstructions}
 				if (firstManager) {
 					await firstManager.createResponseActivity(
 						agentSessionId,
-						"I couldn't process your message because the session configuration was lost after a restart. Please create a new session by re-assigning the issue.",
+						"I couldn't process your message because the session configuration was lost. Please create a new session by mentioning me (@cyrus) in a new comment with your prompt.",
 					);
 				}
 				this.logger.warn(
