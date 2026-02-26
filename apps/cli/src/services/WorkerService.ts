@@ -216,6 +216,16 @@ export class WorkerService {
 				process.env.CYRUS_GEMINI_DEFAULT_MODEL || edgeConfig.geminiDefaultModel,
 			codexDefaultModel:
 				process.env.CYRUS_CODEX_DEFAULT_MODEL || edgeConfig.codexDefaultModel,
+			defaultRunner:
+				(process.env.CYRUS_DEFAULT_RUNNER as
+					| "claude"
+					| "gemini"
+					| "codex"
+					| "cursor"
+					| undefined) || edgeConfig.defaultRunner,
+			linearWorkspaceSlug: edgeConfig.linearWorkspaceSlug,
+			issueUpdateTrigger: edgeConfig.issueUpdateTrigger,
+			promptDefaults: edgeConfig.promptDefaults,
 			webhookBaseUrl: process.env.CYRUS_BASE_URL,
 			serverPort: parsePort(process.env.CYRUS_SERVER_PORT, DEFAULT_SERVER_PORT),
 			serverHost: isExternalHost ? "0.0.0.0" : "localhost",

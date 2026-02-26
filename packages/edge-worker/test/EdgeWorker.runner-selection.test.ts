@@ -800,6 +800,150 @@ Issue: {{issue_identifier}}`;
 			expect(ClaudeRunner).toHaveBeenCalled();
 			expect(GeminiRunner).not.toHaveBeenCalled();
 		});
+
+		it("should respect defaultRunner config when set to codex and no labels present", async () => {
+			// Arrange - create EdgeWorker with defaultRunner config
+			const codexConfig: EdgeWorkerConfig = {
+				...mockConfig,
+				defaultRunner: "codex",
+			};
+			const codexEdgeWorker = new EdgeWorker(codexConfig);
+			// Inject mock issue tracker
+			const mockIssueTracker = {
+				fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
+					return mockLinearClient.issue(issueId);
+				}),
+				getIssueLabels: vi.fn(),
+			};
+			(codexEdgeWorker as any).issueTrackers.set(
+				mockRepository.id,
+				mockIssueTracker,
+			);
+
+			const mockIssue = createMockIssueWithLabels([]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (codexEdgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert
+			expect(capturedRunnerType).toBe("codex");
+			expect(CodexRunner).toHaveBeenCalled();
+			expect(ClaudeRunner).not.toHaveBeenCalled();
+		});
+
+		it("should respect defaultRunner config when set to gemini and no labels present", async () => {
+			// Arrange - create EdgeWorker with defaultRunner config
+			const geminiConfig: EdgeWorkerConfig = {
+				...mockConfig,
+				defaultRunner: "gemini",
+			};
+			const geminiEdgeWorker = new EdgeWorker(geminiConfig);
+			// Inject mock issue tracker
+			const mockIssueTracker = {
+				fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
+					return mockLinearClient.issue(issueId);
+				}),
+				getIssueLabels: vi.fn(),
+			};
+			(geminiEdgeWorker as any).issueTrackers.set(
+				mockRepository.id,
+				mockIssueTracker,
+			);
+
+			const mockIssue = createMockIssueWithLabels([]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (geminiEdgeWorker as any).handleAgentSessionCreatedWebhook(
+				webhook,
+				[mockRepository],
+			);
+
+			// Assert
+			expect(capturedRunnerType).toBe("gemini");
+			expect(GeminiRunner).toHaveBeenCalled();
+			expect(ClaudeRunner).not.toHaveBeenCalled();
+		});
+
+		it("should let explicit labels override defaultRunner config", async () => {
+			// Arrange - defaultRunner is codex, but label says claude
+			const codexConfig: EdgeWorkerConfig = {
+				...mockConfig,
+				defaultRunner: "codex",
+			};
+			const codexEdgeWorker = new EdgeWorker(codexConfig);
+			const mockIssueTracker = {
+				fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
+					return mockLinearClient.issue(issueId);
+				}),
+				getIssueLabels: vi.fn(),
+			};
+			(codexEdgeWorker as any).issueTrackers.set(
+				mockRepository.id,
+				mockIssueTracker,
+			);
+
+			const mockIssue = createMockIssueWithLabels(["claude"]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			// Act
+			await (codexEdgeWorker as any).handleAgentSessionCreatedWebhook(webhook, [
+				mockRepository,
+			]);
+
+			// Assert - label should override defaultRunner
+			expect(capturedRunnerType).toBe("claude");
+			expect(ClaudeRunner).toHaveBeenCalled();
+			expect(CodexRunner).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("Case Insensitivity", () => {
