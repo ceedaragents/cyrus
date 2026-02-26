@@ -53,6 +53,13 @@ Example task
   <state>Unknown</state>
   <priority>None</priority>
   <url></url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -120,8 +127,12 @@ No comments yet.
 <description>Task that should trigger builder system prompt</description>
 <url></url>
 <assignee>
-<id></id>
-<name></name>
+<linear_id></linear_id>
+<linear_display_name></linear_display_name>
+<linear_profile_url></linear_profile_url>
+<github_username></github_username>
+<github_user_id></github_user_id>
+<github_noreply_email></github_noreply_email>
 </assignee>
 </linear_issue>
 
@@ -208,8 +219,12 @@ Build the payment integration
 <description>Task that should use orchestrator system prompt via hardcoded rule</description>
 <url></url>
 <assignee>
-<id></id>
-<name></name>
+<linear_id></linear_id>
+<linear_display_name></linear_display_name>
+<linear_profile_url></linear_profile_url>
+<github_username></github_username>
+<github_user_id></github_user_id>
+<github_noreply_email></github_noreply_email>
 </assignee>
 </linear_issue>
 
@@ -296,8 +311,12 @@ Orchestrate this task
 <description>Task that should use orchestrator system prompt even though orchestrator is not in labelPrompts</description>
 <url></url>
 <assignee>
-<id></id>
-<name></name>
+<linear_id></linear_id>
+<linear_display_name></linear_display_name>
+<linear_profile_url></linear_profile_url>
+<github_username></github_username>
+<github_user_id></github_user_id>
+<github_noreply_email></github_noreply_email>
 </assignee>
 </linear_issue>
 

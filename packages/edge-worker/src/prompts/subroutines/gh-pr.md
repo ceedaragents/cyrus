@@ -21,6 +21,14 @@ Update the PR with a comprehensive description:
 gh pr edit --title "[descriptive title]" --body "[full description]"
 ```
 
+**IMPORTANT: Assignee attribution**
+Check the `<assignee>` section from the issue context and add assignee information at the **very top** of the PR description body, before the summary:
+
+- If a `<github_username>` is available, format as: `Assignee: @username ([Display Name](linear_profile_url))` — the @mention triggers a GitHub notification and the Linear profile link provides an audit trail
+- If only a `<linear_profile_url>` is available (no GitHub username), format as: `Assignee: [Display Name](linear_profile_url)` using the `<linear_display_name>` and `<linear_profile_url>` values
+
+Follow this with a blank line, then the rest of the description. If no assignee information is available at all, skip this step.
+
 The PR description should include:
 - Summary of changes
 - Implementation approach
@@ -78,3 +86,7 @@ Draft PR updated at [PR URL] (kept as draft per guidance).
 
 Example: "PR ready at https://github.com/org/repo/pull/123."
 Example: "Draft PR updated at https://github.com/org/repo/pull/123 (kept as draft per guidance)."
+
+## Deploy Preview (Optional)
+
+If a skill is available in your environment whose "use me when" description refers to creating deploy previews for a branch, you can invoke it to set up a preview environment for testing this PR. This is useful for validating changes in a live environment before the code is merged. Use the skill if you want to create a preview environment, set up infrastructure for testing, or deploy to a preview platform.

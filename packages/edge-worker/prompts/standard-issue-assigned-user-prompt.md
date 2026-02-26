@@ -14,6 +14,13 @@
   <state>{{issue_state}}</state>
   <priority>{{issue_priority}}</priority>
   <url>{{issue_url}}</url>
+  <assignee>
+    <linear_display_name>{{assignee_name}}</linear_display_name>
+    <linear_profile_url>{{assignee_linear_profile_url}}</linear_profile_url>
+    <github_username>{{assignee_github_username}}</github_username>
+    <github_user_id>{{assignee_github_user_id}}</github_user_id>
+    <github_noreply_email>{{assignee_github_noreply_email}}</github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>

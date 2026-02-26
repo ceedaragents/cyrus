@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - **`defaultRunner` config setting now works correctly** - Setting `"defaultRunner": "codex"` (or `"gemini"` / `"cursor"`) in `~/.cyrus/config.json` now properly routes issues without runner-specific labels to the configured default runner, instead of always falling back to Claude. ([CYPACK-838](https://linear.app/ceedar/issue/CYPACK-838), [#892](https://github.com/ceedaragents/cyrus/pull/892))
 
+### Added
+- **Assignee attribution on PRs** - PR descriptions now include assignee attribution at the top. When the assignee has a linked GitHub account, they are @mentioned for a GitHub notification. When no GitHub account is linked, the assignee's Linear profile is linked instead, ensuring an audit trail for all PRs. ([CYPACK-843](https://linear.app/ceedar/issue/CYPACK-843), [#895](https://github.com/ceedaragents/cyrus/pull/895))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added

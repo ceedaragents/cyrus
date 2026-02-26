@@ -54,6 +54,13 @@ Users cannot log in
   <state>Unknown</state>
   <priority>None</priority>
   <url></url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -125,6 +132,13 @@ Add payment processing
   <state>Unknown</state>
   <priority>None</priority>
   <url></url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
