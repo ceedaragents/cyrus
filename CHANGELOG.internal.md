@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` to v0.2.59 and `@anthropic-ai/sdk` to v0.78.0. Key additions include `getSessionMessages()` function for reading session transcript history with pagination, `task_progress` events for background agent reporting, model capability fields (`supportsEffort`, `supportedEffortLevels`, `supportsAdaptiveThinking`), and fixes for Bun binary crashes and uncontrolled memory growth in extended sessions. ([CYPACK-850](https://linear.app/ceedar/issue/CYPACK-850), [#904](https://github.com/ceedaragents/cyrus/pull/904))
+
 ### Fixed
 - `WorkerService.ts` was not passing `defaultRunner`, `linearWorkspaceSlug`, `issueUpdateTrigger`, or `promptDefaults` from `edgeConfig` to the `EdgeWorkerConfig` object, causing `EdgeWorker` and `RunnerSelectionService` to always see `undefined` for these fields. Also added `defaultRunner` and `promptDefaults` to `ConfigManager.loadConfigSafely()` merge so config file changes are reflected on hot-reload. Added `CYRUS_DEFAULT_RUNNER` env var support. Added 4 integration tests for `defaultRunner` config in runner selection. ([CYPACK-838](https://linear.app/ceedar/issue/CYPACK-838), [#892](https://github.com/ceedaragents/cyrus/pull/892))
 

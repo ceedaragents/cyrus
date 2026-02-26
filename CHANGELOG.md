@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Assignee attribution on PRs** - PR descriptions now include assignee attribution at the top. When the assignee has a linked GitHub account, they are @mentioned for a GitHub notification. When no GitHub account is linked, the assignee's Linear profile is linked instead, ensuring an audit trail for all PRs. ([CYPACK-843](https://linear.app/ceedar/issue/CYPACK-843), [#895](https://github.com/ceedaragents/cyrus/pull/895))
 
+### Changed
+- **Updated Claude SDK dependencies** - Updated `@anthropic-ai/claude-agent-sdk` to v0.2.59 and `@anthropic-ai/sdk` to v0.78.0, adding `getSessionMessages()` for reading conversation history with pagination, `task_progress` events for real-time background agent reporting, and various stability fixes. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-850](https://linear.app/ceedar/issue/CYPACK-850), [#904](https://github.com/ceedaragents/cyrus/pull/904))
+
 ## [0.2.22] - 2026-02-20
 
 ### Added
