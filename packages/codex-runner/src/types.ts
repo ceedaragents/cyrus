@@ -53,6 +53,8 @@ export interface CodexRunnerConfig extends AgentRunnerConfig {
 	skipGitRepoCheck?: boolean;
 	/** Additional global Codex config overrides passed through SDK `config` */
 	configOverrides?: CodexConfigOverrides;
+	/** JSON Schema for structured output (passed to thread.runStreamed as outputSchema) */
+	outputSchema?: unknown;
 }
 
 /**
