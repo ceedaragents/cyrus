@@ -42,7 +42,7 @@
 		"fastify-mcp": "^2.1.0",
 		"file-type": "^18.7.0",
 		"ignore": "^7.0.5",
-		"zod": "4.3.6"
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
