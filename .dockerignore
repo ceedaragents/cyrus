@@ -1,0 +1,39 @@
+node_modules
+.git
+dist
+*.tgz
+
+# Apps not needed in container (keep package.json for workspace resolution)
+apps/electron
+apps/f1/src
+apps/f1/test-drives
+apps/f1/dist
+
+# Documentation and config
+docs
+*.md
+!package.json
+
+# Development tooling
+.claude
+.codex
+.opencode
+.husky
+.cursor
+.vscode
+.idea
+
+# Test files
+**/*.test.ts
+**/*.test.js
+**/test-scripts
+**/vitest.config.ts
+**/__mocks__
+
+# Misc
+.env
+.env.*
+*.log
+coverage
+.turbo
+infra
