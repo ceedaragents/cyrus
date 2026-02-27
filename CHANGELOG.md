@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Default runner config now applies on hot-reload** - Changing `defaultRunner` in `~/.cyrus/config.json` while Cyrus is running now takes effect immediately, instead of being ignored until restart.
+
 ## [0.2.24] - 2026-02-26
 
 ### Fixed

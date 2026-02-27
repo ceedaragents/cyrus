@@ -499,6 +499,7 @@ export class EdgeWorker extends EventEmitter {
 				await this.addNewRepositories(changes.added);
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
+				this.runnerSelectionService.setConfig(changes.newConfig);
 			},
 		);
 		this.configManager.startConfigWatcher();

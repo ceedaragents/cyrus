@@ -23,6 +23,13 @@ export class RunnerSelectionService {
 	}
 
 	/**
+	 * Update the internal config reference (e.g. after hot-reload).
+	 */
+	setConfig(config: EdgeWorkerConfig): void {
+		this.config = config;
+	}
+
+	/**
 	 * Determine the default runner type.
 	 *
 	 * Priority:
