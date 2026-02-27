@@ -204,8 +204,8 @@ function createResultUsage(parsed: ParsedUsage): SDKResultMessage["usage"] {
 function getDefaultReasoningEffortForModel(
 	model?: string,
 ): CodexRunnerConfig["modelReasoningEffort"] | undefined {
-	// gpt-5 codex variants reject xhigh in some environments; pin a compatible default.
-	return /gpt-5[a-z0-9.-]*codex$/i.test(model || "") ? "high" : undefined;
+	// All gpt-5 variants (including plain "gpt-5") reject xhigh; pin to "high".
+	return /^gpt-5/i.test(model || "") ? "high" : undefined;
 }
 
 function normalizeError(error: unknown): string {
@@ -795,7 +795,12 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		prompt: string,
 		signal: AbortSignal,
 	): Promise<void> {
-		const streamedTurn = await thread.runStreamed(prompt, { signal });
+		const streamedTurn = await thread.runStreamed(prompt, {
+			signal,
+			...(this.config.outputSchema
+				? { outputSchema: this.config.outputSchema }
+				: {}),
+		});
 		for await (const event of streamedTurn.events) {
 			this.handleEvent(event);
 		}

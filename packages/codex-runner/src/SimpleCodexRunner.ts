@@ -12,8 +12,26 @@ import { CodexRunner } from "./CodexRunner.js";
  *
  * This implementation uses the Codex SDK to execute queries and
  * constrains the responses to an enumerated set.
+ * Uses structured outputs (outputSchema) for reliable response parsing.
  */
 export class SimpleCodexRunner<T extends string> extends SimpleAgentRunner<T> {
+	/**
+	 * Build a JSON Schema that constrains the model output to the valid responses.
+	 */
+	private buildOutputSchema(): Record<string, unknown> {
+		return {
+			type: "object",
+			properties: {
+				classification: {
+					type: "string",
+					enum: Array.from(this.validResponseSet),
+				},
+			},
+			required: ["classification"],
+			additionalProperties: false,
+		};
+	}
+
 	/**
 	 * Execute the agent using CodexRunner
 	 */
@@ -42,6 +60,7 @@ export class SimpleCodexRunner<T extends string> extends SimpleAgentRunner<T> {
 				? []
 				: ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
 			allowedDirectories: options?.allowedDirectories,
+			outputSchema: this.buildOutputSchema(),
 		});
 
 		// Set up event handlers
@@ -82,7 +101,8 @@ export class SimpleCodexRunner<T extends string> extends SimpleAgentRunner<T> {
 	}
 
 	/**
-	 * Extract the final response from the last assistant message
+	 * Extract the final response from the last assistant message.
+	 * Handles both structured JSON output and plain text responses.
 	 */
 	protected extractResponse(messages: SDKMessage[]): string {
 		// Find the last assistant message with text content
@@ -105,8 +125,18 @@ export class SimpleCodexRunner<T extends string> extends SimpleAgentRunner<T> {
 						block.type === "text" &&
 						"text" in block
 					) {
-						// Clean the response (remove whitespace, markdown, etc.)
-						const cleaned = this.cleanResponse(block.text as string);
+						const text = (block.text as string).trim();
+						// Try parsing as structured JSON output first
+						const parsed = this.tryParseStructuredResponse(text);
+						if (parsed) {
+							this.emitProgress({
+								type: "response-detected",
+								candidateResponse: parsed,
+							});
+							return parsed;
+						}
+						// Fall back to plain text cleaning
+						const cleaned = this.cleanResponse(text);
 						if (cleaned) {
 							this.emitProgress({
 								type: "response-detected",
@@ -120,6 +150,29 @@ export class SimpleCodexRunner<T extends string> extends SimpleAgentRunner<T> {
 		}
 
 		throw new NoResponseError(messages);
+	}
+
+	/**
+	 * Try to parse a structured JSON response (from outputSchema).
+	 * Returns the classification value if valid, null otherwise.
+	 */
+	private tryParseStructuredResponse(text: string): string | null {
+		try {
+			const parsed = JSON.parse(text);
+			if (
+				parsed &&
+				typeof parsed === "object" &&
+				typeof parsed.classification === "string"
+			) {
+				const value = parsed.classification.trim();
+				if (this.isValidResponse(value)) {
+					return value;
+				}
+			}
+		} catch {
+			// Not JSON, fall through to plain text parsing
+		}
+		return null;
 	}
 
 	/**
