@@ -77,6 +77,22 @@ export class SharedApplicationServer {
 		this.app = Fastify({
 			logger: false,
 		});
+
+		// Register custom JSON parser that preserves the raw body for webhook signature verification.
+		// Routes that need HMAC verification (e.g., /github-webhook) access request.rawBody
+		// to compute signatures against the exact bytes received over the wire.
+		this.app.addContentTypeParser(
+			"application/json",
+			{ parseAs: "string" },
+			(req, body, done) => {
+				(req as unknown as Record<string, unknown>).rawBody = body;
+				try {
+					done(null, JSON.parse(body as string));
+				} catch (err) {
+					done(err as Error);
+				}
+			},
+		);
 	}
 
 	/**
