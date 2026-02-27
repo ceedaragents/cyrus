@@ -3,7 +3,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	PERSISTENCE_VERSION,
@@ -18,6 +18,7 @@ vi.mock("node:fs", () => ({
 vi.mock("node:fs/promises", () => ({
 	mkdir: vi.fn(),
 	readFile: vi.fn(),
+	unlink: vi.fn(),
 	writeFile: vi.fn(),
 }));
 
@@ -224,6 +225,50 @@ describe("PersistenceManager", () => {
 			expect(result).toEqual(v3State.state);
 			// Should not call writeFile since no migration needed
 			expect(writeFile).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("deleteStateFile", () => {
+		it("should unlink the state file when it exists", async () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(unlink).mockResolvedValue(undefined);
+
+			await persistenceManager.deleteStateFile();
+
+			expect(unlink).toHaveBeenCalledWith(
+				"/tmp/test-cyrus/edge-worker-state.json",
+			);
+		});
+
+		it("should do nothing when the state file does not exist", async () => {
+			vi.mocked(existsSync).mockReturnValue(false);
+
+			await persistenceManager.deleteStateFile();
+
+			expect(unlink).not.toHaveBeenCalled();
+		});
+
+		it("should not throw when unlink fails", async () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(unlink).mockRejectedValue(new Error("permission denied"));
+
+			await expect(
+				persistenceManager.deleteStateFile(),
+			).resolves.toBeUndefined();
+		});
+	});
+
+	describe("hasStateFile", () => {
+		it("should return true when the state file exists", () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+
+			expect(persistenceManager.hasStateFile()).toBe(true);
+		});
+
+		it("should return false when the state file does not exist", () => {
+			vi.mocked(existsSync).mockReturnValue(false);
+
+			expect(persistenceManager.hasStateFile()).toBe(false);
 		});
 	});
 
