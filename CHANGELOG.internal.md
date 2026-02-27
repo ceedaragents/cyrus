@@ -5,7 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Fixed
-- `RunnerSelectionService` held a stale config reference after `configChanged` hot-reload events. Added `setConfig()` method to `RunnerSelectionService` and wired it into the EdgeWorker's `configChanged` handler alongside `ConfigManager.setConfig()`. Without this, changes to `defaultRunner` (and other runner-selection-relevant config fields) via config file edits were invisible to runner selection until process restart. ([#907](https://github.com/ceedaragents/cyrus/pull/907))
+- `RunnerSelectionService` held a stale config reference after `configChanged` hot-reload events. Added `setConfig()` method to `RunnerSelectionService` and wired it into the EdgeWorker's `configChanged` handler alongside `ConfigManager.setConfig()`. Additionally, `ConfigManager.handleConfigChange()` returned early when only global config fields changed (no repository diffs), so `configChanged` was never emitted for changes like `defaultRunner` edits. Added `detectGlobalConfigChanges()` to compare key global fields and emit `configChanged` even when repositories are unchanged. ([#907](https://github.com/ceedaragents/cyrus/pull/907))
 
 ## [0.2.24] - 2026-02-26
 
