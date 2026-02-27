@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- `PersistenceManager.deleteStateFile()` now actually deletes the state file using `unlink` instead of writing an empty string. Previously, `hasStateFile()` incorrectly returned `true` after "deletion" and `loadEdgeWorkerState()` relied on a JSON parse error path to return `null`. Added tests for `deleteStateFile` and `hasStateFile`. ([ENG-105](https://linear.app/payton-test1/issue/ENG-105/find-a-small-improvement), [#909](https://github.com/ceedaragents/cyrus/pull/909))
+
 ## [0.2.24] - 2026-02-26
 
 ### Fixed
