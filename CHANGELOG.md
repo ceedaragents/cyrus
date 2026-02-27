@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Default runner config now applies on hot-reload** - Changing `defaultRunner`, model defaults, or other global settings in `~/.cyrus/config.json` while Cyrus is running now takes effect immediately, instead of being ignored until restart. ([#907](https://github.com/ceedaragents/cyrus/pull/907))
+- **Codex runner no longer fails during issue classification** - When `defaultRunner` is set to `codex`, the ProcedureAnalyzer classification step no longer crashes with a reasoning effort error. Also uses structured outputs for more reliable classification responses. ([#907](https://github.com/ceedaragents/cyrus/pull/907))
 
 ## [0.2.24] - 2026-02-26
 

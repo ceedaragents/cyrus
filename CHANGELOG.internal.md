@@ -6,6 +6,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ### Fixed
 - `RunnerSelectionService` held a stale config reference after `configChanged` hot-reload events. Added `setConfig()` method to `RunnerSelectionService` and wired it into the EdgeWorker's `configChanged` handler alongside `ConfigManager.setConfig()`. Additionally, `ConfigManager.handleConfigChange()` returned early when only global config fields changed (no repository diffs), so `configChanged` was never emitted for changes like `defaultRunner` edits. Added `detectGlobalConfigChanges()` to compare key global fields and emit `configChanged` even when repositories are unchanged. ([#907](https://github.com/ceedaragents/cyrus/pull/907))
+- `ProcedureAnalyzer` is now reconstructed when `defaultRunner` changes via hot-reload, since its internal `SimpleRunner` is baked in at construction time. Added debug logging to `resolveDefaultSimpleRunnerType()`. ([#907](https://github.com/ceedaragents/cyrus/pull/907))
+- `getDefaultReasoningEffortForModel()` regex `/gpt-5[a-z0-9.-]*codex$/i` only matched `gpt-5.3-codex` etc., not plain `gpt-5` used by ProcedureAnalyzer. Codex CLI defaulted to `xhigh` reasoning effort which `gpt-5` rejects (`unsupported_value`), causing `NoResponseError` during classification. Fixed regex to `/^gpt-5/i`. ([#907](https://github.com/ceedaragents/cyrus/pull/907))
+- Added `outputSchema` support to `CodexRunnerConfig` and `CodexRunner.runTurn()`, threaded through to `thread.runStreamed()`. `SimpleCodexRunner` now passes a JSON Schema constraining classification to valid enum values, and `extractResponse()` parses the structured JSON (`{"classification":"code"}`) before falling back to plain text cleaning. ([#907](https://github.com/ceedaragents/cyrus/pull/907))
 
 ## [0.2.24] - 2026-02-26
 
