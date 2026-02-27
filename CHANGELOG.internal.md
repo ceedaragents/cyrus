@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` to v0.2.62 and `@anthropic-ai/sdk` to v0.78.0. SDK updates in packages: `packages/core`, `packages/claude-runner`, `packages/simple-agent-runner`. Key SDK changes: `listSessions()` API for discovering previous sessions with metadata, `getSessionMessages()` for paginated conversation history access, memory leak fixes in extended sessions, `session.close()` interference with session resumption fixed, `ConfigChange` hook for configuration monitoring, expanded model metadata with capability discovery fields. `@anthropic-ai/sdk` v0.78.0 adds top-level cache control (automatic caching) and fixes AWS credential race condition. ([CYPACK-854](https://linear.app/ceedar/issue/CYPACK-854), [#908](https://github.com/ceedaragents/cyrus/pull/908))
+
 ## [0.2.24] - 2026-02-26
 
 ### Fixed
