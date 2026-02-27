@@ -2833,11 +2833,9 @@ ${taskInstructions}
 			finalProcedure = routingDecision.procedure;
 			finalClassification = routingDecision.classification;
 
-			// Log AI routing decision
-			log.info(`AI routing decision for ${sessionId}:`);
-			log.info(`  Classification: ${routingDecision.classification}`);
-			log.info(`  Procedure: ${finalProcedure.name}`);
-			log.info(`  Reasoning: ${routingDecision.reasoning}`);
+			log.info(
+				`AI routing: ${routingDecision.classification} → ${finalProcedure.name}`,
+			);
 		}
 
 		// Initialize procedure metadata in session with final decision
@@ -5484,11 +5482,9 @@ ${input.userComment}
 			selectedProcedure = routingDecision.procedure;
 			finalClassification = routingDecision.classification;
 
-			// Log AI routing decision
-			this.logger.info(`AI routing decision for ${sessionId}:`);
-			this.logger.info(`  Classification: ${routingDecision.classification}`);
-			this.logger.info(`  Procedure: ${selectedProcedure.name}`);
-			this.logger.info(`  Reasoning: ${routingDecision.reasoning}`);
+			this.logger.info(
+				`AI routing: ${routingDecision.classification} → ${selectedProcedure.name}`,
+			);
 		}
 
 		// Initialize procedure metadata in session (resets currentSubroutine)
