@@ -497,9 +497,31 @@ export class EdgeWorker extends EventEmitter {
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
 				await this.addNewRepositories(changes.added);
+				const prevDefaultRunner = this.config.defaultRunner;
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
 				this.runnerSelectionService.setConfig(changes.newConfig);
+
+				// Reconstruct ProcedureAnalyzer if the default runner changed,
+				// since its internal SimpleRunner is baked in at construction time.
+				if (changes.newConfig.defaultRunner !== prevDefaultRunner) {
+					const simpleRunnerType = this.resolveDefaultSimpleRunnerType();
+					const simpleRunnerModel =
+						simpleRunnerType === "claude"
+							? "haiku"
+							: simpleRunnerType === "gemini"
+								? "gemini-2.5-flash-lite"
+								: "gpt-5";
+					this.procedureAnalyzer = new ProcedureAnalyzer({
+						cyrusHome: this.cyrusHome,
+						model: simpleRunnerModel,
+						timeoutMs: 100000,
+						runnerType: simpleRunnerType,
+					});
+					this.logger.info(
+						`🔄 ProcedureAnalyzer reconstructed with runner type: ${simpleRunnerType}`,
+					);
+				}
 			},
 		);
 		this.configManager.startConfigWatcher();
@@ -4746,6 +4768,9 @@ ${input.userComment}
 		| "codex"
 		| "cursor" {
 		if (this.config.defaultRunner) {
+			this.logger.info(
+				`🏃 SimpleRunner type resolved from config.defaultRunner: ${this.config.defaultRunner}`,
+			);
 			return this.config.defaultRunner;
 		}
 
@@ -4764,11 +4789,12 @@ ${input.userComment}
 			available.push("cursor");
 		}
 
-		if (available.length === 1 && available[0]) {
-			return available[0];
-		}
-
-		return "claude";
+		const result =
+			available.length === 1 && available[0] ? available[0] : "claude";
+		this.logger.info(
+			`🏃 SimpleRunner type auto-detected: ${result} (available: ${available.join(", ") || "none"}, config.defaultRunner not set)`,
+		);
+		return result;
 	}
 
 	/**
