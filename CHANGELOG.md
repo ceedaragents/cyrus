@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Faster rate limit consumption due to prompt caching bug** - Updated Claude Agent SDK to v0.2.62 which includes Anthropic's hotfix for a prompt caching bug that caused usage limits to be consumed faster than normal. ([CYPACK-855](https://linear.app/ceedar/issue/CYPACK-855), [#912](https://github.com/ceedaragents/cyrus/pull/912))
+
 ## [0.2.24] - 2026-02-26
 
 ### Fixed
