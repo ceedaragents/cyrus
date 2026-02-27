@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- `RunnerSelectionService` held a stale config reference after `configChanged` hot-reload events. Added `setConfig()` method to `RunnerSelectionService` and wired it into the EdgeWorker's `configChanged` handler alongside `ConfigManager.setConfig()`. Without this, changes to `defaultRunner` (and other runner-selection-relevant config fields) via config file edits were invisible to runner selection until process restart.
+
 ## [0.2.24] - 2026-02-26
 
 ### Fixed
