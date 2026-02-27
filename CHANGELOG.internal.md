@@ -4,6 +4,10 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Fixed 4 typos in `packages/CLAUDE.md`: "additonal" → "additional", "repsoitory" → "repository", "agentSesion" → "agentSession", "intitialized" → "initialized".
+- Standardized zod dependency version across monorepo: `edge-worker` was missing caret prefix (`"4.3.6"` → `"^4.3.6"`), `mcp-tools` was on older patch (`"^4.3.5"` → `"^4.3.6"`).
+
 ## [0.2.24] - 2026-02-26
 
 ### Fixed
