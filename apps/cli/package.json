@@ -42,6 +42,7 @@
 	"dependencies": {
 		"@linear/sdk": "^64.0.0",
 		"commander": "^14.0.2",
+		"cyrus-admin-dashboard": "workspace:*",
 		"cyrus-claude-runner": "workspace:*",
 		"cyrus-cloudflare-tunnel-client": "workspace:*",
 		"cyrus-config-updater": "workspace:*",

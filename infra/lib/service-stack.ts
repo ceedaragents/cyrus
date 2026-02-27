@@ -1,5 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
+import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as ecs from "aws-cdk-lib/aws-ecs";
@@ -14,13 +16,14 @@ export interface ServiceStackProps extends cdk.StackProps {
 	vpc: ec2.Vpc;
 	certificateArn?: string;
 	domainName?: string;
+	baseUrl?: string;
 }
 
 export class ServiceStack extends cdk.Stack {
 	constructor(scope: Construct, id: string, props: ServiceStackProps) {
 		super(scope, id, props);
 
-		const { vpc, certificateArn, domainName } = props;
+		const { vpc, certificateArn, domainName, baseUrl } = props;
 
 		// ── ECR Repository ────────────────────────────────────────────────
 		const repository = new ecr.Repository(this, "Repository", {
@@ -44,6 +47,7 @@ export class ServiceStack extends cdk.Stack {
 					LINEAR_CLIENT_SECRET: "CHANGE_ME",
 					LINEAR_WEBHOOK_SECRET: "CHANGE_ME",
 					ANTHROPIC_API_KEY: "CHANGE_ME",
+					CYRUS_ADMIN_TOKEN: "CHANGE_ME",
 				}),
 				generateStringKey: "_placeholder",
 			},
@@ -118,6 +122,7 @@ export class ServiceStack extends cdk.Stack {
 				NODE_ENV: "production",
 				CYRUS_HOST_EXTERNAL: "true",
 				CYRUS_SERVER_PORT: "3456",
+				...(baseUrl ? { CYRUS_BASE_URL: baseUrl } : {}),
 			},
 			secrets: {
 				LINEAR_CLIENT_ID: ecs.Secret.fromSecretsManager(
@@ -135,6 +140,10 @@ export class ServiceStack extends cdk.Stack {
 				ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(
 					secrets,
 					"ANTHROPIC_API_KEY",
+				),
+				CYRUS_ADMIN_TOKEN: ecs.Secret.fromSecretsManager(
+					secrets,
+					"CYRUS_ADMIN_TOKEN",
 				),
 			},
 			portMappings: [{ containerPort: 3456, protocol: ecs.Protocol.TCP }],
@@ -160,7 +169,7 @@ export class ServiceStack extends cdk.Stack {
 		const service = new ecs.FargateService(this, "Service", {
 			cluster,
 			taskDefinition,
-			desiredCount: 1,
+			desiredCount: 0,
 			vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
 			enableExecuteCommand: true,
 			circuitBreaker: { rollback: true },
@@ -232,18 +241,45 @@ export class ServiceStack extends cdk.Stack {
 			});
 		}
 
+		// ── CloudFront Distribution ───────────────────────────────────────
+		// Provides HTTPS termination via *.cloudfront.net without a custom domain
+		const distribution = new cloudfront.Distribution(this, "Distribution", {
+			defaultBehavior: {
+				origin: new origins.HttpOrigin(alb.loadBalancerDnsName, {
+					protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+					httpPort: 80,
+				}),
+				viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+				allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+				cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+				originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+			},
+		});
+
 		// ── Outputs ───────────────────────────────────────────────────────
-		new cdk.CfnOutput(this, "AlbDnsName", {
-			value: alb.loadBalancerDnsName,
-			description: "ALB DNS name for Linear webhook URL",
+		new cdk.CfnOutput(this, "CloudFrontUrl", {
+			value: `https://${distribution.distributionDomainName}`,
+			description: "CloudFront HTTPS URL for Linear webhook/callback",
 		});
 
 		new cdk.CfnOutput(this, "WebhookUrl", {
-			value:
-				certificateArn && domainName
-					? `https://${domainName}/webhook`
-					: `http://${alb.loadBalancerDnsName}/webhook`,
+			value: `https://${distribution.distributionDomainName}/webhook`,
 			description: "Webhook URL to configure in Linear",
+		});
+
+		new cdk.CfnOutput(this, "CallbackUrl", {
+			value: `https://${distribution.distributionDomainName}/callback`,
+			description: "OAuth callback URL to configure in Linear",
+		});
+
+		new cdk.CfnOutput(this, "AdminDashboardUrl", {
+			value: `https://${distribution.distributionDomainName}/admin`,
+			description: "Admin dashboard URL (append ?token=<CYRUS_ADMIN_TOKEN>)",
+		});
+
+		new cdk.CfnOutput(this, "AlbDnsName", {
+			value: alb.loadBalancerDnsName,
+			description: "ALB DNS name (internal, use CloudFront URL instead)",
 		});
 
 		new cdk.CfnOutput(this, "EcrRepositoryUri", {

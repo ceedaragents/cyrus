@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
+import { AdminDashboard } from "cyrus-admin-dashboard";
 import type {
 	HookCallbackMatcher,
 	HookEvent,
@@ -640,6 +641,39 @@ export class EdgeWorker extends EventEmitter {
 		);
 		this.logger.info(
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+		);
+
+		// 3b. Register AdminDashboard (self-hosted admin UI)
+		const adminDashboard = new AdminDashboard(
+			this.sharedApplicationServer.getFastifyInstance(),
+			{
+				cyrusHome: this.cyrusHome,
+				version: this.config.version,
+				getActiveSessions: () => {
+					const sessions: Array<{
+						issueId: string;
+						repositoryId: string;
+						isRunning: boolean;
+					}> = [];
+					for (const [repoId, manager] of this.agentSessionManagers) {
+						for (const session of manager.getActiveSessions()) {
+							const issueId =
+								session.issueContext?.issueId ?? session.issueId ?? "unknown";
+							sessions.push({
+								issueId,
+								repositoryId: repoId,
+								isRunning: session.agentRunner?.isRunning() ?? false,
+							});
+						}
+					}
+					return sessions;
+				},
+			},
+		);
+		adminDashboard.register();
+		this.logger.info("✅ Admin dashboard registered");
+		this.logger.info(
+			"   Routes: GET /admin, /api/admin/config, /api/admin/status, ...",
 		);
 
 		// 3. Register MCP endpoint for cyrus-tools on the same Fastify server/port

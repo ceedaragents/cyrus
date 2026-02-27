@@ -31,6 +31,7 @@ FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc* ./
 COPY apps/cli/package.json apps/cli/package.json
 COPY apps/f1/package.json apps/f1/package.json
+COPY packages/admin-dashboard/package.json packages/admin-dashboard/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/claude-runner/package.json packages/claude-runner/package.json
 COPY packages/cloudflare-tunnel-client/package.json packages/cloudflare-tunnel-client/package.json

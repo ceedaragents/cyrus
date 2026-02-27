@@ -41,6 +41,9 @@ importers:
       commander:
         specifier: ^14.0.2
         version: 14.0.2
+      cyrus-admin-dashboard:
+        specifier: workspace:*
+        version: link:../../packages/admin-dashboard
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../../packages/claude-runner
@@ -117,6 +120,25 @@ importers:
         version: 20.19.21
       typescript:
         specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.4
+        version: 3.2.4(@types/node@20.19.21)(@vitest/ui@3.2.4)(tsx@4.20.6)(yaml@2.8.1)
+
+  packages/admin-dashboard:
+    dependencies:
+      cyrus-core:
+        specifier: workspace:*
+        version: link:../core
+      fastify:
+        specifier: ^5.7.3
+        version: 5.7.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.12.7
+        version: 20.19.21
+      typescript:
+        specifier: ^5.4.5
         version: 5.9.3
       vitest:
         specifier: ^3.1.4
@@ -277,6 +299,9 @@ importers:
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
+      cyrus-admin-dashboard:
+        specifier: workspace:*
+        version: link:../admin-dashboard
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner

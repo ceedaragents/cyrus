@@ -44,6 +44,7 @@ export class WorkerService {
 	async startSetupWaitingMode(): Promise<void> {
 		const { SharedApplicationServer } = await import("cyrus-edge-worker");
 		const { ConfigUpdater } = await import("cyrus-config-updater");
+		const { AdminDashboard } = await import("cyrus-admin-dashboard");
 
 		// Determine server configuration
 		const isExternalHost =
@@ -76,6 +77,19 @@ export class WorkerService {
 		this.logger.info(
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
+
+		// Register AdminDashboard routes
+		const adminDashboard = new AdminDashboard(
+			this.setupWaitingServer.getFastifyInstance(),
+			{ cyrusHome: this.cyrusHome, version: this.version },
+		);
+		adminDashboard.register();
+		this.logger.info("✅ Admin dashboard registered: GET /admin");
+
+		// Register /status endpoint for health checks (needed by ALB/ELB in all modes)
+		this.setupWaitingServer.getFastifyInstance().get("/status", async () => {
+			return { status: "idle" };
+		});
 
 		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
 		await this.setupWaitingServer.start();
@@ -103,6 +117,7 @@ export class WorkerService {
 	async startIdleMode(): Promise<void> {
 		const { SharedApplicationServer } = await import("cyrus-edge-worker");
 		const { ConfigUpdater } = await import("cyrus-config-updater");
+		const { AdminDashboard } = await import("cyrus-admin-dashboard");
 
 		// Determine server configuration
 		const isExternalHost =
@@ -135,6 +150,148 @@ export class WorkerService {
 		this.logger.info(
 			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
 		);
+
+		// Register AdminDashboard routes
+		const adminDashboard = new AdminDashboard(
+			this.setupWaitingServer.getFastifyInstance(),
+			{ cyrusHome: this.cyrusHome, version: this.version },
+		);
+		adminDashboard.register();
+		this.logger.info("✅ Admin dashboard registered: GET /admin");
+
+		// Register /status endpoint for health checks (needed by ALB/ELB in all modes)
+		this.setupWaitingServer.getFastifyInstance().get("/status", async () => {
+			return { status: "idle" };
+		});
+
+		// Register /callback endpoint for Linear OAuth flow (self-hosted mode)
+		if (process.env.LINEAR_CLIENT_ID && process.env.LINEAR_CLIENT_SECRET) {
+			const clientId = process.env.LINEAR_CLIENT_ID;
+			const clientSecret = process.env.LINEAR_CLIENT_SECRET;
+			const baseUrl = process.env.CYRUS_BASE_URL;
+			const fastify = this.setupWaitingServer.getFastifyInstance();
+			const logger = this.logger;
+			const cyrusHome = this.cyrusHome;
+
+			fastify.get(
+				"/callback",
+				async (
+					request: { query: Record<string, string> },
+					reply: {
+						type: (t: string) => typeof reply;
+						code: (c: number) => typeof reply;
+						send: (body: string) => void;
+					},
+				) => {
+					const code = request.query.code;
+					const error = request.query.error;
+
+					if (error) {
+						reply
+							.type("text/html; charset=utf-8")
+							.code(400)
+							.send(
+								`<html><body style="font-family:system-ui;padding:40px;text-align:center"><h2>Authorization failed</h2><p>${error}</p></body></html>`,
+							);
+						return;
+					}
+
+					if (!code) {
+						reply
+							.type("text/html; charset=utf-8")
+							.code(400)
+							.send(
+								`<html><body style="font-family:system-ui;padding:40px;text-align:center"><h2>Missing authorization code</h2></body></html>`,
+							);
+						return;
+					}
+
+					try {
+						// Exchange code for tokens
+						const redirectUri = baseUrl
+							? `${baseUrl}/callback`
+							: `http://localhost:${serverPort}/callback`;
+						const tokenResponse = await fetch(
+							"https://api.linear.app/oauth/token",
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/x-www-form-urlencoded",
+								},
+								body: new URLSearchParams({
+									code,
+									redirect_uri: redirectUri,
+									client_id: clientId,
+									client_secret: clientSecret,
+									grant_type: "authorization_code",
+								}).toString(),
+							},
+						);
+
+						if (!tokenResponse.ok) {
+							const errorText = await tokenResponse.text();
+							throw new Error(`Token exchange failed: ${errorText}`);
+						}
+
+						const data = (await tokenResponse.json()) as {
+							access_token: string;
+						};
+						logger.info(
+							`✅ OAuth token received: ${data.access_token.substring(0, 30)}...`,
+						);
+
+						// Fetch workspace info
+						const { LinearClient } = await import("@linear/sdk");
+						const linearClient = new LinearClient({
+							accessToken: data.access_token,
+						});
+						const viewer = await linearClient.viewer;
+						const org = await viewer.organization;
+						logger.info(`✅ Workspace: ${org.name} (${org.id})`);
+
+						// Save token to config
+						const { readFileSync, writeFileSync } = await import("node:fs");
+						const { resolve } = await import("node:path");
+						const { DEFAULT_CONFIG_FILENAME } = await import("cyrus-core");
+						const configPath = resolve(cyrusHome, DEFAULT_CONFIG_FILENAME);
+						try {
+							const config = JSON.parse(readFileSync(configPath, "utf-8"));
+							for (const repo of config.repositories || []) {
+								repo.linearToken = data.access_token;
+								repo.linearWorkspaceId = org.id;
+								repo.linearWorkspaceName = org.name;
+							}
+							writeFileSync(
+								configPath,
+								JSON.stringify(config, null, "\t"),
+								"utf-8",
+							);
+							logger.info("✅ Token saved to config.json");
+						} catch {
+							logger.info(
+								`ℹ️  Token not saved — no config.json at ${configPath}. Store manually.`,
+							);
+						}
+
+						reply
+							.type("text/html; charset=utf-8")
+							.code(200)
+							.send(
+								`<html><body style="font-family:system-ui;padding:40px;text-align:center"><h2>Cyrus authorized successfully</h2><p>Workspace: ${org.name}</p><p>You can close this window.</p></body></html>`,
+							);
+					} catch (err) {
+						logger.error(`OAuth callback error: ${(err as Error).message}`);
+						reply
+							.type("text/html; charset=utf-8")
+							.code(500)
+							.send(
+								`<html><body style="font-family:system-ui;padding:40px;text-align:center"><h2>Authorization error</h2><p>${(err as Error).message}</p></body></html>`,
+							);
+					}
+				},
+			);
+			this.logger.info("✅ OAuth callback registered: GET /callback");
+		}
 
 		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
 		await this.setupWaitingServer.start();

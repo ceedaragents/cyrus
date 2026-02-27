@@ -18,4 +18,5 @@ new ServiceStack(app, "CyrusService", {
 	vpc: vpcStack.vpc,
 	certificateArn: app.node.tryGetContext("certificateArn"),
 	domainName: app.node.tryGetContext("domainName"),
+	baseUrl: app.node.tryGetContext("baseUrl"),
 });

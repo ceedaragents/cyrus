@@ -1,0 +1,40 @@
+{
+	"name": "cyrus-admin-dashboard",
+	"version": "0.2.24",
+	"description": "Self-hosted admin dashboard for Cyrus agent",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"cyrus-core": "workspace:*",
+		"fastify": "^5.7.3"
+	},
+	"devDependencies": {
+		"@types/node": "^20.12.7",
+		"typescript": "^5.4.5",
+		"vitest": "^3.1.4"
+	},
+	"keywords": [
+		"admin",
+		"dashboard",
+		"cyrus"
+	],
+	"author": "Cyrus Team",
+	"license": "MIT"
+}
