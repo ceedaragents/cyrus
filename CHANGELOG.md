@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.2.26] - 2026-02-28
+## [0.2.26] - 2026-02-28 ([#918](https://github.com/ceedaragents/cyrus/pull/918))
 
 ### Changed
 - **Updated Claude SDK dependencies** - project configs & auto memory are now shared across git worktrees of the same repository, so Claude's persistent memory works consistently across all Cyrus worktrees. Updated `@anthropic-ai/claude-agent-sdk` to v0.2.63 and `@anthropic-ai/sdk` to v0.78.0. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-859](https://linear.app/ceedar/issue/CYPACK-859), [#917](https://github.com/ceedaragents/cyrus/pull/917))
