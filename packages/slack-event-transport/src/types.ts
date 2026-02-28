@@ -6,10 +6,11 @@ import type { InternalMessage } from "cyrus-core";
 import type { FastifyInstance } from "fastify";
 
 /**
- * Verification mode for Slack webhooks forwarded from CYHOST
+ * Verification mode for Slack webhooks
  * - 'proxy': Use Bearer token for authentication (webhooks forwarded from CYHOST)
+ * - 'direct': Use Slack signing secret for HMAC-SHA256 signature verification
  */
-export type SlackVerificationMode = "proxy";
+export type SlackVerificationMode = "proxy" | "direct";
 
 /**
  * Configuration for SlackEventTransport
@@ -17,9 +18,9 @@ export type SlackVerificationMode = "proxy";
 export interface SlackEventTransportConfig {
 	/** Fastify server instance to mount routes on */
 	fastifyServer: FastifyInstance;
-	/** Verification mode: 'proxy' (webhooks forwarded from CYHOST) */
+	/** Verification mode: 'proxy' (via CYHOST) or 'direct' (Slack signing secret) */
 	verificationMode: SlackVerificationMode;
-	/** Secret for verification (CYRUS_API_KEY for proxy mode) */
+	/** Secret for verification (CYRUS_API_KEY for proxy, SLACK_SIGNING_SECRET for direct) */
 	secret: string;
 }
 

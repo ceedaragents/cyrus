@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { TranslationContext } from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
@@ -71,9 +72,18 @@ export class SlackEventTransport extends EventEmitter {
 	register(): void {
 		this.config.fastifyServer.post(
 			"/slack-webhook",
+			{
+				config: {
+					rawBody: true,
+				},
+			},
 			async (request: FastifyRequest, reply: FastifyReply) => {
 				try {
-					await this.handleProxyWebhook(request, reply);
+					if (this.config.verificationMode === "direct") {
+						await this.handleDirectWebhook(request, reply);
+					} else {
+						await this.handleProxyWebhook(request, reply);
+					}
 				} catch (error) {
 					const err = new Error("Webhook error");
 					if (error instanceof Error) {
@@ -88,6 +98,80 @@ export class SlackEventTransport extends EventEmitter {
 
 		this.logger.info(
 			`Registered POST /slack-webhook endpoint (${this.config.verificationMode} mode)`,
+		);
+	}
+
+	/**
+	 * Handle webhook using Slack signing secret (direct from Slack)
+	 */
+	private async handleDirectWebhook(
+		request: FastifyRequest,
+		reply: FastifyReply,
+	): Promise<void> {
+		const timestamp = request.headers["x-slack-request-timestamp"] as string;
+		const signature = request.headers["x-slack-signature"] as string;
+
+		if (!timestamp || !signature) {
+			reply.code(401).send({ error: "Missing Slack signature headers" });
+			return;
+		}
+
+		// Reject requests older than 5 minutes (replay attack prevention)
+		const requestAge = Math.abs(
+			Math.floor(Date.now() / 1000) - parseInt(timestamp, 10),
+		);
+		if (requestAge > 60 * 5) {
+			reply.code(401).send({ error: "Request timestamp too old" });
+			return;
+		}
+
+		try {
+			const body = (request as FastifyRequest & { rawBody: string }).rawBody;
+			const isValid = this.verifySlackSignature(
+				body,
+				timestamp,
+				signature,
+				this.config.secret,
+			);
+
+			if (!isValid) {
+				reply.code(401).send({ error: "Invalid webhook signature" });
+				return;
+			}
+
+			this.processAndEmitEvent(request, reply);
+		} catch (error) {
+			const err = new Error("Slack signature verification failed");
+			if (error instanceof Error) {
+				err.cause = error;
+			}
+			this.logger.error("Slack signature verification failed", err);
+			reply.code(401).send({ error: "Invalid webhook signature" });
+		}
+	}
+
+	/**
+	 * Verify Slack request signature using HMAC-SHA256
+	 * @see https://api.slack.com/authentication/verifying-requests-from-slack
+	 */
+	private verifySlackSignature(
+		body: string,
+		timestamp: string,
+		signature: string,
+		secret: string,
+	): boolean {
+		const sigBaseString = `v0:${timestamp}:${body}`;
+		const expectedSignature = `v0=${createHmac("sha256", secret)
+			.update(sigBaseString)
+			.digest("hex")}`;
+
+		if (signature.length !== expectedSignature.length) {
+			return false;
+		}
+
+		return timingSafeEqual(
+			Buffer.from(signature),
+			Buffer.from(expectedSignature),
 		);
 	}
 

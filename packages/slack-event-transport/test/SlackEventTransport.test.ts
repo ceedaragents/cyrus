@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SlackEventTransport } from "../src/SlackEventTransport.js";
 import type { SlackEventTransportConfig } from "../src/types.js";
@@ -8,7 +9,8 @@ import {
 } from "./fixtures.js";
 
 /**
- * Creates a mock Fastify server with a `post` method
+ * Creates a mock Fastify server with a `post` method.
+ * Handles both (path, handler) and (path, options, handler) signatures.
  */
 function createMockFastify() {
 	const routes: Record<
@@ -16,29 +18,40 @@ function createMockFastify() {
 		(request: unknown, reply: unknown) => Promise<void>
 	> = {};
 	return {
-		post: vi.fn(
-			(
-				path: string,
-				handler: (request: unknown, reply: unknown) => Promise<void>,
-			) => {
-				routes[path] = handler;
-			},
-		),
+		post: vi.fn((path: string, ...args: unknown[]) => {
+			const handler = (args.length === 1 ? args[0] : args[1]) as (
+				request: unknown,
+				reply: unknown,
+			) => Promise<void>;
+			routes[path] = handler;
+		}),
 		routes,
 	};
 }
 
 /**
- * Creates a mock Fastify request
+ * Creates a mock Fastify request with optional rawBody for signature verification
  */
 function createMockRequest(
 	body: unknown,
 	headers: Record<string, string> = {},
 ) {
+	const rawBody = JSON.stringify(body);
 	return {
 		body,
+		rawBody,
 		headers,
 	};
+}
+
+/**
+ * Creates Slack signature headers for a request body
+ */
+function signSlackRequest(rawBody: string, secret: string, timestamp?: string) {
+	const ts = timestamp ?? String(Math.floor(Date.now() / 1000));
+	const sigBaseString = `v0:${ts}:${rawBody}`;
+	const sig = `v0=${createHmac("sha256", secret).update(sigBaseString).digest("hex")}`;
+	return { timestamp: ts, signature: sig };
 }
 
 /**
@@ -79,6 +92,7 @@ describe("SlackEventTransport", () => {
 
 			expect(mockFastify.post).toHaveBeenCalledWith(
 				"/slack-webhook",
+				expect.objectContaining({ config: { rawBody: true } }),
 				expect.any(Function),
 			);
 		});
@@ -377,6 +391,115 @@ describe("SlackEventTransport", () => {
 				error: "Internal server error",
 			});
 			expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
+		});
+	});
+
+	describe("direct mode verification", () => {
+		const signingSecret = "test-slack-signing-secret";
+		let transport: SlackEventTransport;
+
+		beforeEach(() => {
+			const config: SlackEventTransportConfig = {
+				fastifyServer:
+					mockFastify as unknown as SlackEventTransportConfig["fastifyServer"],
+				verificationMode: "direct",
+				secret: signingSecret,
+			};
+			transport = new SlackEventTransport(config);
+			transport.register();
+		});
+
+		it("accepts valid HMAC-SHA256 signature and emits event", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const request = createMockRequest(testEventEnvelope);
+			const { timestamp, signature } = signSlackRequest(
+				request.rawBody,
+				signingSecret,
+			);
+			request.headers["x-slack-request-timestamp"] = timestamp;
+			request.headers["x-slack-signature"] = signature;
+
+			const reply = createMockReply();
+			await mockFastify.routes["/slack-webhook"]!(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({ success: true });
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "app_mention",
+					eventId: "Ev0001",
+					teamId: "T0001",
+				}),
+			);
+		});
+
+		it("rejects missing signature headers", async () => {
+			const request = createMockRequest(testEventEnvelope);
+
+			const reply = createMockReply();
+			await mockFastify.routes["/slack-webhook"]!(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(401);
+			expect(reply.send).toHaveBeenCalledWith({
+				error: "Missing Slack signature headers",
+			});
+		});
+
+		it("rejects invalid signature", async () => {
+			const request = createMockRequest(testEventEnvelope);
+			request.headers["x-slack-request-timestamp"] = String(
+				Math.floor(Date.now() / 1000),
+			);
+			request.headers["x-slack-signature"] =
+				"v0=0000000000000000000000000000000000000000000000000000000000000000";
+
+			const reply = createMockReply();
+			await mockFastify.routes["/slack-webhook"]!(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(401);
+			expect(reply.send).toHaveBeenCalledWith({
+				error: "Invalid webhook signature",
+			});
+		});
+
+		it("rejects stale timestamp (>5 minutes old)", async () => {
+			const request = createMockRequest(testEventEnvelope);
+			const staleTimestamp = String(Math.floor(Date.now() / 1000) - 600);
+			const { signature } = signSlackRequest(
+				request.rawBody,
+				signingSecret,
+				staleTimestamp,
+			);
+			request.headers["x-slack-request-timestamp"] = staleTimestamp;
+			request.headers["x-slack-signature"] = signature;
+
+			const reply = createMockReply();
+			await mockFastify.routes["/slack-webhook"]!(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(401);
+			expect(reply.send).toHaveBeenCalledWith({
+				error: "Request timestamp too old",
+			});
+		});
+
+		it("handles URL verification challenge in direct mode", async () => {
+			const request = createMockRequest(testUrlVerificationEnvelope);
+			const { timestamp, signature } = signSlackRequest(
+				request.rawBody,
+				signingSecret,
+			);
+			request.headers["x-slack-request-timestamp"] = timestamp;
+			request.headers["x-slack-signature"] = signature;
+
+			const reply = createMockReply();
+			await mockFastify.routes["/slack-webhook"]!(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({
+				challenge: "test-challenge-string",
+			});
 		});
 	});
 });
