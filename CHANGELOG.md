@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated Claude SDK dependencies** - Updated `@anthropic-ai/claude-agent-sdk` to v0.2.63 and `@anthropic-ai/sdk` to v0.78.0. Highlights include: `getSessionMessages()` for reading conversation history, `listSessions()` for discovering past sessions, `task_progress` events, `supportedAgents()` method, fix for `pathToClaudeCodeExecutable` with bare command names, top-level cache control with automatic caching in the Anthropic SDK, and stability improvements. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-858](https://linear.app/ceedar/issue/CYPACK-858), [#916](https://github.com/ceedaragents/cyrus/pull/916))
+
 ## [0.2.25] - 2026-02-27
 
 ### Fixed
