@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-cloudflare-tunnel-client",
-	"version": "0.2.24",
+	"version": "0.2.25",
 	"description": "Cloudflare tunnel client for receiving config updates and webhooks from cyrus-hosted",
 	"type": "module",
 	"main": "./dist/index.js",
