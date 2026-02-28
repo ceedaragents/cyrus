@@ -100,6 +100,47 @@ export class SlackMessageService {
 	}
 
 	/**
+	 * Get the bot's own identity (bot_id, user_id) via auth.test.
+	 *
+	 * @see https://api.slack.com/methods/auth.test
+	 */
+	async getIdentity(
+		token: string,
+	): Promise<{ bot_id?: string; user_id: string }> {
+		const url = `${this.apiBaseUrl}/auth.test`;
+
+		const response = await fetch(url, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${token}`,
+				"Content-Type": "application/json",
+			},
+		});
+
+		if (!response.ok) {
+			const errorBody = await response.text();
+			throw new Error(
+				`[SlackMessageService] Failed to get identity: ${response.status} ${response.statusText} - ${errorBody}`,
+			);
+		}
+
+		const responseBody = (await response.json()) as {
+			ok: boolean;
+			error?: string;
+			bot_id?: string;
+			user_id: string;
+		};
+
+		if (!responseBody.ok) {
+			throw new Error(
+				`[SlackMessageService] Slack API error: ${responseBody.error ?? "unknown"}`,
+			);
+		}
+
+		return { bot_id: responseBody.bot_id, user_id: responseBody.user_id };
+	}
+
+	/**
 	 * Fetch all messages in a Slack thread using cursor-based pagination.
 	 *
 	 * @see https://api.slack.com/methods/conversations.replies

@@ -531,6 +531,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// Start shared application server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
 		await this.sharedApplicationServer.start();
+
+		// Resume any sessions that were interrupted by a crash/restart
+		await this.resumeInterruptedSessions();
 	}
 
 	/**
@@ -794,10 +797,20 @@ export class EdgeWorker extends EventEmitter {
 			this.logger,
 		);
 
+		// Auto-detect direct mode when SLACK_SIGNING_SECRET is set
+		const useDirectSlackWebhooks =
+			process.env.SLACK_SIGNING_SECRET != null &&
+			process.env.SLACK_SIGNING_SECRET !== "";
+
+		const slackVerificationMode = useDirectSlackWebhooks ? "direct" : "proxy";
+		const slackSecret = useDirectSlackWebhooks
+			? process.env.SLACK_SIGNING_SECRET!
+			: process.env.CYRUS_API_KEY || "";
+
 		this.slackEventTransport = new SlackEventTransport({
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-			verificationMode: "proxy",
-			secret: process.env.CYRUS_API_KEY || "",
+			verificationMode: slackVerificationMode,
+			secret: slackSecret,
 		});
 
 		this.slackEventTransport.on("event", (event: SlackWebhookEvent) => {
@@ -817,7 +830,9 @@ export class EdgeWorker extends EventEmitter {
 
 		this.slackEventTransport.register();
 
-		this.logger.info("Slack event transport registered");
+		this.logger.info(
+			`Slack event transport registered (${slackVerificationMode} mode)`,
+		);
 	}
 
 	/**
@@ -842,6 +857,23 @@ export class EdgeWorker extends EventEmitter {
 			const commentAuthor = extractCommentAuthor(event);
 			const prTitle = extractPRTitle(event);
 			const sessionKey = extractSessionKey(event);
+
+			// Skip comments from the bot itself to prevent infinite loops
+			const botUsername = process.env.GITHUB_BOT_USERNAME;
+			if (botUsername && commentAuthor === botUsername) {
+				this.logger.debug(
+					`Ignoring comment from bot user @${botUsername} on ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			// Only trigger on comments that mention the bot (when configured)
+			if (botUsername && !commentBody.includes(`@${botUsername}`)) {
+				this.logger.debug(
+					`Ignoring comment without @${botUsername} mention on ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
 
 			this.logger.info(
 				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}`,
@@ -905,8 +937,9 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			}
 
-			// Strip the @cyrusagent mention to get the task instructions
-			const taskInstructions = stripMention(commentBody);
+			// Strip the bot mention to get the task instructions
+			const mentionHandle = botUsername ? `@${botUsername}` : "@cyrusagent";
+			const taskInstructions = stripMention(commentBody, mentionHandle);
 
 			// Create workspace (git worktree) for the PR branch
 			const workspace = await this.createGitHubWorkspace(
@@ -2967,6 +3000,14 @@ ${taskInstructions}
 							? new CodexRunner(runnerConfig)
 							: new CursorRunner(runnerConfig);
 
+			// Handle runner crash recovery (auto-resume on unexpected errors)
+			this.attachCrashRecoveryHandler(
+				runner,
+				repository,
+				sessionId,
+				agentSessionManager,
+			);
+
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(sessionId, runner);
 
@@ -3612,6 +3653,9 @@ ${taskInstructions}
 	 * Handle Claude session error
 	 * Silently ignores AbortError (user-initiated stop), logs other errors
 	 */
+	private static readonly MAX_CRASH_RETRIES = 2;
+	private static readonly CRASH_RETRY_DELAY_MS = 3000;
+
 	private async handleClaudeError(error: Error): Promise<void> {
 		// AbortError is expected when user stops Claude process, don't log it
 		// Check by name since the SDK's AbortError class may not match our imported definition
@@ -3627,6 +3671,153 @@ ${taskInstructions}
 			return;
 		}
 		this.logger.error("Unhandled claude error:", error);
+	}
+
+	/**
+	 * Attach a crash recovery handler to a runner's "error" event.
+	 * Both ClaudeRunner and GeminiRunner extend EventEmitter and emit "error",
+	 * but TypeScript can't resolve .on() on the union type, hence the cast.
+	 */
+	private attachCrashRecoveryHandler(
+		runner: ClaudeRunner | GeminiRunner | CodexRunner | CursorRunner,
+		repository: RepositoryConfig,
+		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
+	): void {
+		// Guard: IAgentRunner doesn't require EventEmitter, so test mocks may not have .on()
+		if (typeof runner.on !== "function") return;
+
+		(runner as ClaudeRunner).on("error", async (error: Error) => {
+			await this.handleRunnerCrashRecovery(
+				error,
+				repository,
+				linearAgentActivitySessionId,
+				agentSessionManager,
+			);
+		});
+	}
+
+	/**
+	 * Handle runner crash by attempting automatic recovery.
+	 * Follows the same pattern as "resume-failed" stale session recovery.
+	 *
+	 * Guards:
+	 * - Skips if session is already in terminal state (Error/Complete with wasRunning=false)
+	 * - Skips if max retries exceeded
+	 * - Skips if AbortError or SIGTERM (graceful shutdown)
+	 */
+	private async handleRunnerCrashRecovery(
+		error: Error,
+		repository: RepositoryConfig,
+		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
+	): Promise<void> {
+		// Skip abort/sigterm (these are handled normally, not crashes)
+		const isAbortError =
+			error.name === "AbortError" || error.message.includes("aborted by user");
+		const isSigterm = error.message.includes(
+			"Claude Code process exited with code 143",
+		);
+		if (isAbortError || isSigterm) {
+			return;
+		}
+
+		// Guard: skip if session is already in terminal state
+		// (GeminiRunner emits error result before "error" event, so session may already be Error)
+		const currentSession = agentSessionManager.getSession(
+			linearAgentActivitySessionId,
+		);
+		if (!currentSession || !currentSession.wasRunning) {
+			console.log(
+				`[EdgeWorker] Crash recovery: session ${linearAgentActivitySessionId} not eligible (wasRunning=${currentSession?.wasRunning}), skipping`,
+			);
+			return;
+		}
+
+		// Check retry count
+		const currentRetries = currentSession.metadata?.crashRetryCount ?? 0;
+		if (currentRetries >= EdgeWorker.MAX_CRASH_RETRIES) {
+			console.error(
+				`[EdgeWorker] Crash recovery: max retries (${EdgeWorker.MAX_CRASH_RETRIES}) exceeded for session ${linearAgentActivitySessionId}`,
+			);
+			await agentSessionManager.createErrorActivity(
+				linearAgentActivitySessionId,
+				`Runner crashed ${currentRetries} time(s) and recovery failed. Please re-prompt to try again.\n\nLast error: ${error.message}`,
+			);
+			await agentSessionManager.markSessionAsError(
+				linearAgentActivitySessionId,
+			);
+			return;
+		}
+
+		// Increment retry count
+		const newRetryCount = currentRetries + 1;
+		if (!currentSession.metadata) {
+			currentSession.metadata = {} as NonNullable<
+				CyrusAgentSession["metadata"]
+			>;
+		}
+		currentSession.metadata.crashRetryCount = newRetryCount;
+
+		console.log(
+			`[EdgeWorker] Crash recovery: attempt ${newRetryCount}/${EdgeWorker.MAX_CRASH_RETRIES} for session ${linearAgentActivitySessionId} (error: ${error.message})`,
+		);
+
+		// Post thought to Linear informing the user
+		await agentSessionManager.createThoughtActivity(
+			linearAgentActivitySessionId,
+			`Runner crashed unexpectedly (attempt ${newRetryCount}/${EdgeWorker.MAX_CRASH_RETRIES}). Recovering...`,
+		);
+
+		// Delay before retry to avoid tight crash loops
+		await new Promise((resolve) =>
+			setTimeout(resolve, EdgeWorker.CRASH_RETRY_DELAY_MS),
+		);
+
+		// Reset status to Active for recovery
+		agentSessionManager.resetSessionStatusForRecovery(
+			linearAgentActivitySessionId,
+		);
+
+		// Build recovery context from stored entries
+		const contextSummary = agentSessionManager.buildConversationSummary(
+			linearAgentActivitySessionId,
+		);
+
+		const recoveryPrompt = contextSummary
+			? `${contextSummary}\n\n---\n\nContinue where you left off.`
+			: "Continue the task you were working on.";
+
+		// Clear the session ID so we start fresh
+		agentSessionManager.clearClaudeSessionId(linearAgentActivitySessionId);
+
+		// Resume with a fresh session
+		try {
+			await this.resumeAgentSession(
+				currentSession,
+				repository,
+				linearAgentActivitySessionId,
+				agentSessionManager,
+				recoveryPrompt,
+				"", // No attachment manifest for recovery
+				true, // Force new session
+			);
+			console.log(
+				`[EdgeWorker] Crash recovery: successfully resumed session ${linearAgentActivitySessionId}`,
+			);
+		} catch (retryError) {
+			console.error(
+				`[EdgeWorker] Crash recovery: failed to resume session ${linearAgentActivitySessionId}:`,
+				retryError,
+			);
+			await agentSessionManager.createErrorActivity(
+				linearAgentActivitySessionId,
+				`Failed to recover from crash. Please re-prompt to try again.\n\nError: ${(retryError as Error).message}`,
+			);
+			await agentSessionManager.markSessionAsError(
+				linearAgentActivitySessionId,
+			);
+		}
 	}
 
 	/**
@@ -5251,6 +5442,90 @@ ${input.userComment}
 	}
 
 	/**
+	 * Resume sessions that were interrupted by a crash/restart
+	 * Looks for sessions with wasRunning === true and no active runner
+	 */
+	private async resumeInterruptedSessions(): Promise<void> {
+		console.log(`[EdgeWorker] Checking for interrupted sessions to resume...`);
+		let resumedCount = 0;
+
+		for (const [
+			repositoryId,
+			agentSessionManager,
+		] of this.agentSessionManagers.entries()) {
+			const interruptedSessions = agentSessionManager.getInterruptedSessions();
+
+			if (interruptedSessions.length === 0) {
+				continue;
+			}
+
+			const repository = this.repositories.get(repositoryId);
+			if (!repository) {
+				console.warn(
+					`[EdgeWorker] Repository ${repositoryId} not found for interrupted sessions`,
+				);
+				continue;
+			}
+
+			console.log(
+				`[EdgeWorker] Found ${interruptedSessions.length} interrupted session(s) for repository ${repository.name}`,
+			);
+
+			for (const session of interruptedSessions) {
+				try {
+					// Reset status to Active for recovery (it may be "complete" from last subroutine)
+					agentSessionManager.resetSessionStatusForRecovery(session.id);
+
+					// Build a recovery prompt with context from stored entries
+					const summary = agentSessionManager.buildConversationSummary(
+						session.id,
+					);
+
+					const recoveryPrompt = summary
+						? `${summary}\n\n---\n\nContinue where you left off.`
+						: "Continue the task you were working on.";
+
+					console.log(
+						`[EdgeWorker] Resuming interrupted session ${session.id} for issue ${session.issue?.identifier || session.issueId}`,
+					);
+
+					// Post a thought activity to inform the user
+					await agentSessionManager.createThoughtActivity(
+						session.id,
+						"Resuming after interruption. Let me continue where I left off.",
+					);
+
+					// Resume the session with the recovery prompt
+					await this.resumeAgentSession(
+						session,
+						repository,
+						session.id,
+						agentSessionManager,
+						recoveryPrompt,
+						"", // No attachment manifest for recovery
+						true, // Force new session (the old claudeSessionId is stale)
+					);
+
+					resumedCount++;
+				} catch (error) {
+					console.error(
+						`[EdgeWorker] Failed to resume interrupted session ${session.id}:`,
+						error,
+					);
+					// Mark session as no longer running to avoid repeated resume attempts
+					session.wasRunning = false;
+				}
+			}
+		}
+
+		if (resumedCount > 0) {
+			console.log(`✅ Resumed ${resumedCount} interrupted session(s)`);
+		} else {
+			console.log(`[EdgeWorker] No interrupted sessions to resume`);
+		}
+	}
+
+	/**
 	 * Serialize EdgeWorker mappings to a serializable format
 	 */
 	public serializeMappings(): SerializableEdgeWorkerState {
@@ -5784,6 +6059,74 @@ ${input.userComment}
 					: runnerType === "codex"
 						? new CodexRunner(runnerConfig)
 						: new CursorRunner(runnerConfig);
+
+		// Handle runner crash recovery (auto-resume on unexpected errors)
+		this.attachCrashRecoveryHandler(
+			runner,
+			repository,
+			sessionId,
+			agentSessionManager,
+		);
+
+		// Handle resume-failed event (stale session recovery)
+		// This occurs when the persisted session ID no longer exists (e.g., after process restart)
+		if (resumeSessionId && runnerType === "claude") {
+			(runner as ClaudeRunner).on(
+				"resume-failed",
+				async (staleSessionId: string) => {
+					console.log(
+						`[resumeAgentSession] Resume failed for session ${sessionId}, stale ID: ${staleSessionId}`,
+					);
+
+					// Clear the stale session ID
+					agentSessionManager.clearClaudeSessionId(sessionId);
+
+					// Build conversation summary from stored entries
+					const contextSummary =
+						agentSessionManager.buildConversationSummary(sessionId);
+
+					// Prepare recovery prompt with context
+					const recoveryPrompt = contextSummary
+						? `${contextSummary}\n\n---\n\nContinuing with: ${promptBody}`
+						: promptBody;
+
+					// Post thought to inform user about recovery
+					await agentSessionManager.createThoughtActivity(
+						sessionId,
+						"Session interrupted - reconstructing context and continuing...",
+					);
+
+					// Retry with a fresh session (recursively call resumeAgentSession with isNewSession=true)
+					try {
+						await this.resumeAgentSession(
+							session,
+							repository,
+							sessionId,
+							agentSessionManager,
+							recoveryPrompt,
+							attachmentManifest,
+							true, // Force new session (no resumeSessionId)
+							additionalAllowedDirectories,
+							maxTurns,
+							commentAuthor,
+							commentTimestamp,
+						);
+						console.log(
+							`[resumeAgentSession] Successfully recovered session ${sessionId} with fresh context`,
+						);
+					} catch (retryError) {
+						console.error(
+							`[resumeAgentSession] Failed to recover session ${sessionId}:`,
+							retryError,
+						);
+						await agentSessionManager.createErrorActivity(
+							sessionId,
+							"Failed to recover session after interruption. Please try again.",
+						);
+					}
+				},
+			);
+		}
 
 		// Store runner
 		agentSessionManager.addAgentRunner(sessionId, runner);
