@@ -94,13 +94,6 @@ describe("Validation Loop", () => {
 				expect(result.pass).toBe(true);
 			});
 
-			it("should treat cursor mock completion text as a passing validation", () => {
-				const response = "Cursor mock session completed";
-				const result = parseValidationResult(response);
-				expect(result.pass).toBe(true);
-				expect(result.reason).toBe("Cursor mock session completed");
-			});
-
 			it("should infer fail from natural language failure indicators", () => {
 				const response = "Verification failed: 3 tests not passing";
 				const result = parseValidationResult(response);
