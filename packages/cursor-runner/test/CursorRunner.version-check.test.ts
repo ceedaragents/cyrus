@@ -55,43 +55,41 @@ function createMockChildProcess(): {
 	};
 }
 
-describe("CursorRunner version check", () => {
+describe("CursorRunner startup", () => {
 	afterEach(() => {
 		for (const dir of tempDirs.splice(0)) {
 			rmSync(dir, { recursive: true, force: true });
 		}
 		delete process.env.CYRUS_CURSOR_MOCK;
-		delete process.env.CYRUS_CURSOR_AGENT_VERSION;
 		spawnSyncMock.mockReset();
 		spawnMock.mockReset();
 	});
 
-	it("posts error to Linear when cursor-agent version does not match tested version", async () => {
+	it("starts without a cursor-agent version preflight", async () => {
 		const workspace = createTempDir();
 
 		spawnSyncMock.mockReturnValue({
 			status: 0,
-			stdout: "2026.02.14-different-version",
+			stdout: "",
 			stderr: "",
 		});
+		spawnMock.mockReturnValue(createMockChildProcess());
 
 		const messages: unknown[] = [];
 		const runner = new CursorRunner({
 			cyrusHome: "/tmp/cyrus",
 			workingDirectory: workspace,
-			cursorAgentVersion: "2026.02.13-41ac335",
 			onMessage: (m) => messages.push(m),
 			onError: () => {}, // prevent unhandled error emission from failing test
 		});
 
-		await runner.start("test version mismatch");
+		await runner.start("test startup");
 
-		expect(spawnSyncMock).toHaveBeenCalledWith(
-			"cursor-agent",
-			["--version"],
-			expect.objectContaining({ encoding: "utf8" }),
+		const versionCalls = spawnSyncMock.mock.calls.filter(
+			(call) => call[1]?.[0] === "--version",
 		);
-		expect(spawnMock).not.toHaveBeenCalled();
+		expect(versionCalls).toHaveLength(0);
+		expect(spawnMock).toHaveBeenCalled();
 
 		const errorResult = messages.find(
 			(m) =>
@@ -102,26 +100,13 @@ describe("CursorRunner version check", () => {
 				"subtype" in m &&
 				m.subtype === "error_during_execution",
 		);
-		expect(errorResult).toBeDefined();
-		expect(errorResult).toMatchObject({
-			type: "result",
-			subtype: "error_during_execution",
-			is_error: true,
-		});
-		const errors = (errorResult as { errors?: string[] }).errors;
-		expect(errors).toBeDefined();
-		expect(errors?.[0]).toContain("version mismatch");
-		expect(errors?.[0]).toContain("2026.02.13-41ac335");
-		expect(errors?.[0]).toContain("2026.02.14-different-version");
+		expect(errorResult).toBeUndefined();
 	});
 
-	it("proceeds when cursor-agent version matches expected", async () => {
+	it("starts normally with no version override configured", async () => {
 		const workspace = createTempDir();
 
 		spawnSyncMock.mockImplementation((_cmd: string, args: string[]) => {
-			if (args[0] === "--version") {
-				return { status: 0, stdout: "2026.02.13-41ac335", stderr: "" };
-			}
 			if (args[1] === "list") {
 				return { status: 0, stdout: "", stderr: "" };
 			}
@@ -133,20 +118,18 @@ describe("CursorRunner version check", () => {
 		const runner = new CursorRunner({
 			cyrusHome: "/tmp/cyrus",
 			workingDirectory: workspace,
-			cursorAgentVersion: "2026.02.13-41ac335",
 		});
 
-		await runner.start("test version match");
+		await runner.start("test start");
 
-		expect(spawnSyncMock).toHaveBeenCalledWith(
-			"cursor-agent",
-			["--version"],
-			expect.any(Object),
+		const versionCalls = spawnSyncMock.mock.calls.filter(
+			(call) => call[1]?.[0] === "--version",
 		);
+		expect(versionCalls).toHaveLength(0);
 		expect(spawnMock).toHaveBeenCalled();
 	});
 
-	it("skips version check when CYRUS_CURSOR_MOCK is set", async () => {
+	it("uses mock mode when CYRUS_CURSOR_MOCK is set", async () => {
 		const workspace = createTempDir();
 		process.env.CYRUS_CURSOR_MOCK = "1";
 
@@ -159,7 +142,6 @@ describe("CursorRunner version check", () => {
 		const runner = new CursorRunner({
 			cyrusHome: "/tmp/cyrus",
 			workingDirectory: workspace,
-			cursorAgentVersion: "2026.02.13-41ac335",
 		});
 
 		await runner.start("test mock");
@@ -168,5 +150,6 @@ describe("CursorRunner version check", () => {
 			(call) => call[1]?.[0] === "--version",
 		);
 		expect(versionCalls).toHaveLength(0);
+		expect(spawnMock).not.toHaveBeenCalled();
 	});
 });

@@ -86,9 +86,6 @@ async function main() {
 
 	await (worker as any).handleAgentSessionCreatedWebhook(webhook, [repository]);
 
-	// Give async post-processing a brief moment to flush activity writes.
-	await new Promise((resolve) => setTimeout(resolve, 200));
-
 	const sessions = issueTracker.listAgentSessions({
 		issueId: issue.id,
 		limit: 1,
@@ -97,13 +94,23 @@ async function main() {
 		throw new Error("No session created by offline drive");
 	}
 	const session = sessions[0];
-	const activities = issueTracker.listAgentActivities(session.id, {
-		limit: 50,
+	const activityLimit = 500;
+	let activities = issueTracker.listAgentActivities(session.id, {
+		limit: activityLimit,
 	});
+	let hasResponse = activities.some((activity) => activity.type === "response");
 
-	const hasResponse = activities.some(
-		(activity) => activity.type === "response",
-	);
+	// Mock runs still advance through multiple subroutines, so wait briefly for
+	// the final response activity instead of relying on a fixed sleep.
+	const deadline = Date.now() + 15000;
+	while (!hasResponse && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		activities = issueTracker.listAgentActivities(session.id, {
+			limit: activityLimit,
+		});
+		hasResponse = activities.some((activity) => activity.type === "response");
+	}
+
 	if (!hasResponse) {
 		throw new Error("No response activity created by cursor session");
 	}
