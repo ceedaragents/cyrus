@@ -897,6 +897,19 @@ export class AgentSessionManager extends EventEmitter {
 					await this.completeSession(sessionId, message as SDKResultMessage);
 					break;
 
+				case "rate_limit_event": {
+					const retryAfter =
+						(message as any).retryAfter ?? (message as any).retry_after;
+					if (retryAfter) {
+						log.info(
+							`Claude API rate limit reached — retrying after ${retryAfter}s (session will resume automatically)`,
+						);
+					} else {
+						log.info(`Claude API rate limit reached — retrying automatically`);
+					}
+					break;
+				}
+
 				default:
 					log.warn(`Unknown message type: ${(message as any).type}`);
 			}
