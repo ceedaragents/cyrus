@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Cursor runs no longer fail on version mismatches** - Cyrus no longer blocks Cursor sessions when the installed `cursor-agent` version differs from a previously tested version, and the `CYRUS_CURSOR_AGENT_VERSION` override is no longer needed. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857/remove-the-requirement-that-throws-this-error), [#915](https://github.com/ceedaragents/cyrus/pull/915))
+
 ## [0.2.25] - 2026-02-27
 
 ### Fixed

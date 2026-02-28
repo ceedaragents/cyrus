@@ -108,8 +108,7 @@ export function parseValidationResult(
 		if (
 			lowerResponse.includes("all verifications passed") ||
 			lowerResponse.includes("all tests pass") ||
-			lowerResponse.includes("verifications successful") ||
-			lowerResponse.includes("cursor mock session completed")
+			lowerResponse.includes("verifications successful")
 		) {
 			return {
 				pass: true,
