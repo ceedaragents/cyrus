@@ -797,10 +797,20 @@ export class EdgeWorker extends EventEmitter {
 			this.logger,
 		);
 
+		// Auto-detect direct mode when SLACK_SIGNING_SECRET is set
+		const useDirectSlackWebhooks =
+			process.env.SLACK_SIGNING_SECRET != null &&
+			process.env.SLACK_SIGNING_SECRET !== "";
+
+		const slackVerificationMode = useDirectSlackWebhooks ? "direct" : "proxy";
+		const slackSecret = useDirectSlackWebhooks
+			? process.env.SLACK_SIGNING_SECRET!
+			: process.env.CYRUS_API_KEY || "";
+
 		this.slackEventTransport = new SlackEventTransport({
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-			verificationMode: "proxy",
-			secret: process.env.CYRUS_API_KEY || "",
+			verificationMode: slackVerificationMode,
+			secret: slackSecret,
 		});
 
 		this.slackEventTransport.on("event", (event: SlackWebhookEvent) => {
@@ -820,7 +830,9 @@ export class EdgeWorker extends EventEmitter {
 
 		this.slackEventTransport.register();
 
-		this.logger.info("Slack event transport registered");
+		this.logger.info(
+			`Slack event transport registered (${slackVerificationMode} mode)`,
+		);
 	}
 
 	/**
