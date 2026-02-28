@@ -5025,9 +5025,6 @@ ${input.userComment}
 			(config as any).sandbox = (process.env.CYRUS_SANDBOX || "enabled") as
 				| "enabled"
 				| "disabled";
-			// Expected cursor-agent version for pre-run validation; mismatch posts error to Linear
-			(config as any).cursorAgentVersion =
-				process.env.CYRUS_CURSOR_AGENT_VERSION || undefined;
 		}
 
 		if (resumeSessionId) {

@@ -37,8 +37,6 @@ import type {
 	CursorSessionInfo,
 } from "./types.js";
 
-/** cursor-agent version we have tested against; set cursorAgentVersion in config to override */
-const TESTED_CURSOR_AGENT_VERSION = "2026.02.13-41ac335";
 const CURSOR_MCP_CONFIG_DOCS_URL =
 	"https://cursor.com/docs/context/mcp#configuration-locations";
 const CURSOR_CLI_PERMISSIONS_DOCS_URL =
@@ -989,17 +987,6 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		const cursorPath = this.config.cursorPath || "cursor-agent";
-		const expectedVersion =
-			this.config.cursorAgentVersion ?? TESTED_CURSOR_AGENT_VERSION;
-		const versionError = this.checkCursorAgentVersion(
-			cursorPath,
-			expectedVersion,
-		);
-		if (versionError) {
-			this.finalizeSession(new Error(versionError));
-			return this.sessionInfo;
-		}
-
 		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
 		const args = this.buildArgs(prompt);
 		const spawnLine = `[CursorRunner] Spawn: ${cursorPath} ${args.join(" ")}`;
@@ -1458,26 +1445,6 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		} finally {
 			this.mcpConfigRestoreState = null;
 		}
-	}
-
-	private checkCursorAgentVersion(
-		cursorPath: string,
-		expectedVersion: string,
-	): string | null {
-		const result = spawnSync(cursorPath, ["--version"], {
-			encoding: "utf8",
-			env: this.buildEnv(),
-		});
-		const actualVersion = result.stdout?.trim() || result.stderr?.trim() || "";
-		if (!actualVersion) {
-			return `cursor-agent version check failed: no output from \`${cursorPath} --version\``;
-		}
-		const normalizedActual = actualVersion.trim();
-		const normalizedExpected = expectedVersion.trim();
-		if (normalizedActual !== normalizedExpected) {
-			return `cursor-agent version mismatch: expected \`${normalizedExpected}\` (tested), got \`${normalizedActual}\`. Set CYRUS_CURSOR_AGENT_VERSION to your version to skip this check, or upgrade cursor-agent to the tested version.`;
-		}
-		return null;
 	}
 
 	private buildArgs(prompt: string): string[] {
