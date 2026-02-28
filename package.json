@@ -12,9 +12,9 @@
 		"lint": "biome check",
 		"format": "biome check --write --unsafe",
 		"test:packages": "pnpm --filter './packages/*' test",
-		"test:packages:run": "pnpm --filter './packages/*' test:run",
+		"test:packages:run": "pnpm --filter './packages/*' build && pnpm --filter './packages/*' test:run",
 		"test:apps": "pnpm --filter './apps/*' test",
-		"typecheck": "pnpm -r typecheck",
+		"typecheck": "pnpm --filter './packages/*' build && pnpm -r typecheck",
 		"prepare": "husky"
 	},
 	"keywords": [
