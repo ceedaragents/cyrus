@@ -21,9 +21,26 @@ export class SlackChatAdapter
 {
 	readonly platformName = "slack" as const;
 	private logger: ILogger;
+	private selfBotId: string | undefined;
 
 	constructor(logger?: ILogger) {
 		this.logger = logger ?? createLogger({ component: "SlackChatAdapter" });
+	}
+
+	private async getSelfBotId(token: string): Promise<string | undefined> {
+		if (this.selfBotId) {
+			return this.selfBotId;
+		}
+		try {
+			const identity = await new SlackMessageService().getIdentity(token);
+			this.selfBotId = identity.bot_id;
+			return this.selfBotId;
+		} catch (error) {
+			this.logger.warn(
+				`Failed to resolve bot identity: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return undefined;
+		}
 	}
 
 	extractTaskInstructions(event: SlackWebhookEvent): string {
@@ -91,19 +108,22 @@ Supported mrkdwn syntax:
 
 		try {
 			const slackService = new SlackMessageService();
-			const messages = await slackService.fetchThreadMessages({
-				token: event.slackBotToken,
-				channel: event.payload.channel,
-				thread_ts: event.payload.thread_ts,
-				limit: 50,
-			});
+			const [messages, selfBotId] = await Promise.all([
+				slackService.fetchThreadMessages({
+					token: event.slackBotToken,
+					channel: event.payload.channel,
+					thread_ts: event.payload.thread_ts,
+					limit: 50,
+				}),
+				this.getSelfBotId(event.slackBotToken),
+			]);
 
-			// Filter out the @mention message itself and bot messages
+			// Filter out the @mention message itself and the bot's own replies.
+			// Other bot messages (Sentry, etc.) are kept as useful context.
 			const contextMessages = messages.filter(
 				(msg) =>
 					msg.ts !== event.payload.ts &&
-					!msg.bot_id &&
-					msg.subtype !== "bot_message",
+					!(selfBotId && msg.bot_id === selfBotId),
 			);
 
 			if (contextMessages.length === 0) {
