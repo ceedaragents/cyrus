@@ -35,6 +35,7 @@ export type {
 	CyrusAgentSessionEntry,
 	IssueContext,
 	IssueMinimal,
+	RepositoryContext,
 	Workspace,
 } from "./CyrusAgentSession.js";
 
