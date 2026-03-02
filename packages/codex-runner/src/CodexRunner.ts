@@ -544,7 +544,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 				["login", "status"],
 				{ timeout: 5_000 },
 			);
-			const result = /logged in using chatgpt/i.test(stdout);
+			const result = /logged in using chatgpt/i.test(stdout + stderr);
 			console.log(
 				`[CodexRunner] hasCodexSubscription: ${result} (stdout: "${stdout.trim()}"${stderr.trim() ? `, stderr: "${stderr.trim()}"` : ""})`,
 			);
