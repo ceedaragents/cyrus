@@ -975,7 +975,8 @@ export class EdgeWorker extends EventEmitter {
 			// For other events, strip the bot mention to get the task instructions
 			const mentionHandle = botUsername ? `@${botUsername}` : "@cyrusagent";
 			const taskInstructions = isPullRequestReview
-				? commentBody
+				? commentBody ||
+					"A reviewer has requested changes on this PR. Read the review comments to understand what needs to be changed."
 				: stripMention(commentBody, mentionHandle);
 
 			// Create workspace (git worktree) for the PR branch
