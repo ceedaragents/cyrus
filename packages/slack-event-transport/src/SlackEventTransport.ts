@@ -238,6 +238,9 @@ export class SlackEventTransport extends EventEmitter {
 			return;
 		}
 
+		// Token may be undefined during startup transitions (e.g. switching runtimes)
+		// when the env update hasn't been processed yet. Downstream consumers
+		// (SlackChatAdapter) fall back to process.env.SLACK_BOT_TOKEN at usage time.
 		const slackBotToken = this.getSlackBotToken();
 
 		const webhookEvent: SlackWebhookEvent = {

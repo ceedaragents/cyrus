@@ -5,10 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **PR change request handling** - When a reviewer requests changes on a PR created by Cyrus, the agent now automatically acknowledges the review and starts working on the requested changes. Supports both summary-level and line-level review comments. ([CYPACK-842](https://linear.app/ceedar/issue/CYPACK-842), [#896](https://github.com/ceedaragents/cyrus/pull/896))
 - **Direct Slack webhook verification for self-hosted deployments** - Cyrus can now verify Slack webhooks directly using HMAC-SHA256 signature verification when `SLACK_SIGNING_SECRET` is set, removing the need for the CYHOST proxy in self-hosted environments. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
 - **GitHub bot mention filtering** - GitHub webhook handler now respects `GITHUB_BOT_USERNAME` to only trigger on `@bot` mentions and ignore its own comments, preventing infinite loops in self-hosted setups. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
 - **Smarter Slack thread context** - Other bots' messages (Sentry, CI, GitHub notifications) are now preserved in Slack thread context instead of being filtered out. Only the bot's own messages are excluded. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
-- 
+
+### Fixed
+- **Slack bot token availability after runtime switch** - Fixed Slack bot token not being available when switching from cloud to self-host runtime. The token is now resolved at usage time with a fallback to `process.env`, handling cases where the env update arrives after the first webhook. ([CYPACK-842](https://linear.app/ceedar/issue/CYPACK-842), [#896](https://github.com/ceedaragents/cyrus/pull/896))
+
 ## [0.2.26] - 2026-02-28 ([#918](https://github.com/ceedaragents/cyrus/pull/918))
 
 ### Changed

@@ -27,6 +27,19 @@ export class SlackChatAdapter
 		this.logger = logger ?? createLogger({ component: "SlackChatAdapter" });
 	}
 
+	/**
+	 * Get the Slack bot token, falling back to process.env if the event doesn't carry one.
+	 *
+	 * The event's slackBotToken is set at webhook-reception time by SlackEventTransport.
+	 * During startup transitions (e.g. switching from cloud to self-host), the token may
+	 * not yet be in process.env when the event is created but may arrive shortly after
+	 * via an async env update. This fallback ensures the token is picked up even if
+	 * it was loaded into process.env after the event was created.
+	 */
+	private getSlackBotToken(event: SlackWebhookEvent): string | undefined {
+		return event.slackBotToken || process.env.SLACK_BOT_TOKEN;
+	}
+
 	private async getSelfBotId(token: string): Promise<string | undefined> {
 		if (this.selfBotId) {
 			return this.selfBotId;
@@ -99,7 +112,8 @@ Supported mrkdwn syntax:
 			return "";
 		}
 
-		if (!event.slackBotToken) {
+		const token = this.getSlackBotToken(event);
+		if (!token) {
 			this.logger.warn(
 				"Cannot fetch Slack thread context: no slackBotToken available",
 			);
@@ -110,12 +124,12 @@ Supported mrkdwn syntax:
 			const slackService = new SlackMessageService();
 			const [messages, selfBotId] = await Promise.all([
 				slackService.fetchThreadMessages({
-					token: event.slackBotToken,
+					token,
 					channel: event.payload.channel,
 					thread_ts: event.payload.thread_ts,
 					limit: 50,
 				}),
-				this.getSelfBotId(event.slackBotToken),
+				this.getSelfBotId(token),
 			]);
 
 			// Filter out the @mention message itself and the bot's own replies.
@@ -169,7 +183,8 @@ Supported mrkdwn syntax:
 				}
 			}
 
-			if (!event.slackBotToken) {
+			const token = this.getSlackBotToken(event);
+			if (!token) {
 				this.logger.warn("Cannot post Slack reply: no slackBotToken available");
 				return;
 			}
@@ -178,7 +193,7 @@ Supported mrkdwn syntax:
 			const threadTs = event.payload.thread_ts || event.payload.ts;
 
 			await new SlackMessageService().postMessage({
-				token: event.slackBotToken,
+				token,
 				channel: event.payload.channel,
 				text: summary,
 				thread_ts: threadTs,
@@ -196,7 +211,8 @@ Supported mrkdwn syntax:
 	}
 
 	async acknowledgeReceipt(event: SlackWebhookEvent): Promise<void> {
-		if (!event.slackBotToken) {
+		const token = this.getSlackBotToken(event);
+		if (!token) {
 			this.logger.warn(
 				"Cannot add Slack reaction: no slackBotToken available (SLACK_BOT_TOKEN env var not set)",
 			);
@@ -204,7 +220,7 @@ Supported mrkdwn syntax:
 		}
 
 		await new SlackReactionService().addReaction({
-			token: event.slackBotToken,
+			token,
 			channel: event.payload.channel,
 			timestamp: event.payload.ts,
 			name: "eyes",
@@ -212,14 +228,15 @@ Supported mrkdwn syntax:
 	}
 
 	async notifyBusy(event: SlackWebhookEvent): Promise<void> {
-		if (!event.slackBotToken) {
+		const token = this.getSlackBotToken(event);
+		if (!token) {
 			return;
 		}
 
 		const threadTs = event.payload.thread_ts || event.payload.ts;
 
 		await new SlackMessageService().postMessage({
-			token: event.slackBotToken,
+			token,
 			channel: event.payload.channel,
 			text: "I'm still working on the previous request in this thread. I'll pick up your new message once I'm done.",
 			thread_ts: threadTs,
