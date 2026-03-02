@@ -4,7 +4,7 @@ import {
 	type LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
 import type { IAgentEventTransport, TranslationContext } from "cyrus-core";
-import { createLogger, type ILogger } from "cyrus-core";
+import { createLogger, type ILogger, LinearWebhookHeaders } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { LinearMessageTranslator } from "./LinearMessageTranslator.js";
 import type {
@@ -115,7 +115,8 @@ export class LinearEventTransport
 		}
 
 		// Get Linear signature from headers
-		const signature = request.headers["linear-signature"] as string;
+		const headers = new LinearWebhookHeaders(request.headers);
+		const signature = headers.getSignature();
 		if (!signature) {
 			reply.code(401).send({ error: "Missing linear-signature header" });
 			return;
@@ -159,7 +160,8 @@ export class LinearEventTransport
 		reply: FastifyReply,
 	): Promise<void> {
 		// Get Authorization header
-		const authHeader = request.headers.authorization;
+		const headers = new LinearWebhookHeaders(request.headers);
+		const authHeader = headers.getAuthorization();
 		if (!authHeader) {
 			reply.code(401).send({ error: "Missing Authorization header" });
 			return;

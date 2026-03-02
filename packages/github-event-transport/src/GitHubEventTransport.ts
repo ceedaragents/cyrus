@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { TranslationContext } from "cyrus-core";
-import { createLogger, type ILogger } from "cyrus-core";
+import { createLogger, GitHubWebhookHeaders, type ILogger } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { GitHubMessageTranslator } from "./GitHubMessageTranslator.js";
 import type {
@@ -106,7 +106,8 @@ export class GitHubEventTransport extends EventEmitter {
 		request: FastifyRequest,
 		reply: FastifyReply,
 	): Promise<void> {
-		const signature = request.headers["x-hub-signature-256"] as string;
+		const headers = new GitHubWebhookHeaders(request.headers);
+		const signature = headers.getSignature256();
 		if (!signature) {
 			reply.code(401).send({ error: "Missing x-hub-signature-256 header" });
 			return;
@@ -143,7 +144,8 @@ export class GitHubEventTransport extends EventEmitter {
 		request: FastifyRequest,
 		reply: FastifyReply,
 	): Promise<void> {
-		const authHeader = request.headers.authorization;
+		const headers = new GitHubWebhookHeaders(request.headers);
+		const authHeader = headers.getAuthorization();
 		if (!authHeader) {
 			reply.code(401).send({ error: "Missing Authorization header" });
 			return;
@@ -174,12 +176,10 @@ export class GitHubEventTransport extends EventEmitter {
 		request: FastifyRequest,
 		reply: FastifyReply,
 	): void {
-		const eventType = request.headers["x-github-event"] as string;
-		const deliveryId =
-			(request.headers["x-github-delivery"] as string) || "unknown";
-		const installationToken = request.headers["x-github-installation-token"] as
-			| string
-			| undefined;
+		const headers = new GitHubWebhookHeaders(request.headers);
+		const eventType = headers.getEventType();
+		const deliveryId = headers.getDeliveryId() || "unknown";
+		const installationToken = headers.getInstallationToken();
 
 		if (!eventType) {
 			reply.code(400).send({ error: "Missing x-github-event header" });

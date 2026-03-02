@@ -37,7 +37,6 @@ export type {
 	IssueMinimal,
 	Workspace,
 } from "./CyrusAgentSession.js";
-
 // Configuration types
 export type {
 	EdgeConfig,
@@ -59,7 +58,6 @@ export {
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,
 } from "./config-types.js";
-
 // Constants
 export {
 	DEFAULT_BASE_BRANCH,
@@ -190,7 +188,6 @@ export {
 	PersistenceManager,
 } from "./PersistenceManager.js";
 export { StreamingPrompt } from "./StreamingPrompt.js";
-
 // Simple Agent Runner types
 export type {
 	IAgentProgressEvent,
@@ -199,6 +196,25 @@ export type {
 	ISimpleAgentRunner,
 	ISimpleAgentRunnerConfig,
 } from "./simple-agent-runner-types.js";
+export type {
+	HeaderValue,
+	IncomingHeaders,
+	IWebhookProviderHeaders,
+	ParsedWebhookHeaders,
+	ProxiedWebhookHeaders,
+	WebhookEventHeaderValues,
+	WebhookHeaderAliasMap,
+	WebhookProvider,
+} from "./webhook-headers.js";
+export {
+	BearerWebhookHeaders,
+	ChatSDKWebhookHeaders,
+	GitHubWebhookHeaders,
+	LinearWebhookHeaders,
+	ProviderWebhookHeaders,
+	SlackWebhookHeaders,
+	WebhookHeaders,
+} from "./webhook-headers.js";
 // Platform-agnostic webhook type aliases - exported from issue-tracker
 // These are now defined in issue-tracker/types.ts as aliases to Linear SDK webhook types
 // EdgeWorker and other high-level code should use these generic names via issue-tracker exports
