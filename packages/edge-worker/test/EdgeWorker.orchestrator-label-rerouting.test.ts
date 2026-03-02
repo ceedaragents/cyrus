@@ -7,6 +7,7 @@ import type { CyrusAgentSession } from "cyrus-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
+import { ProcedureAnalyzer } from "../src/procedures/ProcedureAnalyzer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
 // Mock dependencies
@@ -100,6 +101,16 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
+
+		const fallbackProcedure =
+			edgeWorker.procedureAnalyzer.getProcedure("full-development");
+		vi.spyOn(ProcedureAnalyzer.prototype, "determineRoutine").mockResolvedValue(
+			{
+				classification: "code",
+				procedure: fallbackProcedure!,
+				reasoning: "test stub",
+			},
+		);
 	});
 
 	afterEach(() => {
