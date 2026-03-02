@@ -150,6 +150,7 @@ describe("LinearEventTransport", () => {
 
 			const request = createMockRequest(sampleLinearPayload, {
 				authorization: `Bearer ${testSecret}`,
+				"x-linear-api-token": "proxied-linear-token-456",
 			});
 			const reply = createMockReply();
 
@@ -164,6 +165,13 @@ describe("LinearEventTransport", () => {
 					action: "session_start",
 					source: "linear",
 					workItemId: "issue-123",
+				}),
+			);
+			expect(messageListener.mock.calls[0][0]).toEqual(
+				expect.objectContaining({
+					platformData: expect.objectContaining({
+						linearApiToken: "proxied-linear-token-456",
+					}),
 				}),
 			);
 		});
@@ -189,10 +197,13 @@ describe("LinearEventTransport", () => {
 
 		it("accepts proxied linear signature header in direct mode", async () => {
 			const eventListener = vi.fn();
+			const messageListener = vi.fn();
 			transport.on("event", eventListener);
+			transport.on("message", messageListener);
 
 			const request = createMockRequest(sampleLinearPayload, {
 				"x-cyrus-linear-signature": "sha256=proxied-signature-789",
+				"linear-token": "proxied-linear-token-789",
 			});
 			const reply = createMockReply();
 
@@ -203,6 +214,13 @@ describe("LinearEventTransport", () => {
 			expect(reply.code).toHaveBeenCalledWith(200);
 			expect(reply.send).toHaveBeenCalledWith({ success: true });
 			expect(eventListener).toHaveBeenCalledWith(sampleLinearPayload);
+			expect(messageListener.mock.calls[0][0]).toEqual(
+				expect.objectContaining({
+					platformData: expect.objectContaining({
+						linearApiToken: "proxied-linear-token-789",
+					}),
+				}),
+			);
 		});
 	});
 });

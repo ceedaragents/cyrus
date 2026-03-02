@@ -59,7 +59,7 @@ export class SlackEventTransport extends EventEmitter {
 	}
 
 	/**
-	 * Get Slack bot token from the SLACK_BOT_TOKEN environment variable.
+	 * Get Slack bot token from proxy headers or SLACK_BOT_TOKEN env var fallback.
 	 */
 	private getSlackBotToken(_headers: SlackWebhookHeaders): string | undefined {
 		return process.env.SLACK_BOT_TOKEN?.trim() || undefined;
