@@ -10,9 +10,10 @@
 			"cyrus-claude-runner": ["packages/claude-runner/src"],
 			"cyrus-simple-agent-runner": ["packages/simple-agent-runner/src"],
 			"cyrus-config-updater": ["packages/config-updater/src"],
-			"cyrus-edge-worker": [
-				"packages/edge-worker/dist/edge-worker/src/index.d.ts"
-			]
+			"cyrus-cloudflare-tunnel-client": [
+				"packages/cloudflare-tunnel-client/src"
+			],
+			"cyrus-edge-worker": ["packages/edge-worker/src/EdgeWorker.ts"]
 		}
 	},
 	"include": ["*.ts", "src/**/*.ts"],

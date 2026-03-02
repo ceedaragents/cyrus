@@ -25,7 +25,7 @@
 			"cyrus-linear-client": ["packages/linear-client"],
 			"cyrus-history-stream": ["packages/history-stream"],
 			"cyrus-edge-worker": ["packages/edge-worker"],
-			"cyrus-claude-runner": ["packages/claude-runner"],
+			"cyrus-claude-runner": ["packages/claude-runner/src/index.ts"],
 			"cyrus-codex-runner": ["packages/codex-runner"],
 			"cyrus-cursor-runner": ["packages/cursor-runner"],
 			"cyrus-gemini-runner": ["packages/gemini-runner"],

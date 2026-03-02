@@ -24,6 +24,9 @@ pids
 *.seed
 *.pid.lock
 
+# pnpm cache artifacts
+.pnpm-store
+
 # Test coverage
 coverage/
 

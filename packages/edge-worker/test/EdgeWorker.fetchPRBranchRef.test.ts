@@ -1,9 +1,9 @@
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import type { GitHubWebhookEvent } from "cyrus-github-event-transport";
-import { issueCommentPayload } from "cyrus-github-event-transport/test/fixtures";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { issueCommentPayload } from "../../github-event-transport/test/fixtures";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";

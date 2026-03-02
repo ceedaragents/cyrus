@@ -303,7 +303,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 	 * Fetch a single issue by ID or identifier.
 	 */
 	async fetchIssue(idOrIdentifier: string): Promise<Issue> {
-		return await this.linearClient.issue(idOrIdentifier);
+		return (await this.linearClient.issue(idOrIdentifier)) as unknown as Issue;
 	}
 
 	/**
@@ -380,7 +380,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 				throw new Error("Updated issue not returned from Linear API");
 			}
 
-			return updatedIssue;
+			return updatedIssue as unknown as Issue;
 		} catch (error) {
 			const err = new Error(
 				`Failed to update issue ${issueId}: ${error instanceof Error ? error.message : String(error)}`,
