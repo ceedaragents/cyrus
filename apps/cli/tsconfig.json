@@ -7,13 +7,28 @@
 		"baseUrl": "../../",
 		"paths": {
 			"cyrus-core": ["packages/core/src"],
-			"cyrus-claude-runner": ["packages/claude-runner/src"],
-			"cyrus-simple-agent-runner": ["packages/simple-agent-runner/src"],
-			"cyrus-config-updater": ["packages/config-updater/src"],
-			"cyrus-cloudflare-tunnel-client": [
-				"packages/cloudflare-tunnel-client/src"
+			"cyrus-claude-runner": ["packages/claude-runner/src/index.ts"],
+			"cyrus-simple-agent-runner": [
+				"packages/simple-agent-runner/src/index.ts"
 			],
-			"cyrus-edge-worker": ["packages/edge-worker/src/EdgeWorker.ts"]
+			"cyrus-config-updater": ["packages/config-updater/src/index.ts"],
+			"cyrus-cloudflare-tunnel-client": [
+				"packages/cloudflare-tunnel-client/src/index.ts"
+			],
+			"cyrus-edge-worker": ["packages/edge-worker/src/index.ts"],
+			"cyrus-codex-runner": ["packages/codex-runner/src/index.ts"],
+			"cyrus-cursor-runner": ["packages/cursor-runner/src/index.ts"],
+			"cyrus-gemini-runner": ["packages/gemini-runner/src/index.ts"],
+			"cyrus-mcp-tools": ["packages/mcp-tools/src/index.ts"],
+			"cyrus-linear-event-transport": [
+				"packages/linear-event-transport/src/index.ts"
+			],
+			"cyrus-github-event-transport": [
+				"packages/github-event-transport/src/index.ts"
+			],
+			"cyrus-slack-event-transport": [
+				"packages/slack-event-transport/src/index.ts"
+			]
 		}
 	},
 	"include": ["*.ts", "src/**/*.ts"],
