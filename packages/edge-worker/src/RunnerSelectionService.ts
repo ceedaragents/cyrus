@@ -265,7 +265,7 @@ export class RunnerSelectionService {
 			lowercaseLabels: string[],
 		): string | undefined => {
 			const codexModelLabel = lowercaseLabels.find((label) =>
-				/gpt-[a-z0-9.-]*codex$/i.test(label),
+				/gpt-[a-z0-9.-]*codex/i.test(label),
 			);
 			if (codexModelLabel) {
 				return codexModelLabel;

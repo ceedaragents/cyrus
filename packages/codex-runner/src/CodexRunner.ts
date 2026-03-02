@@ -539,11 +539,20 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			const { execFile } = await import("node:child_process");
 			const { promisify } = await import("node:util");
 			const execFileAsync = promisify(execFile);
-			const { stdout } = await execFileAsync(codexBin, ["login", "status"], {
-				timeout: 5_000,
-			});
-			return /logged in using chatgpt/i.test(stdout);
-		} catch {
+			const { stdout, stderr } = await execFileAsync(
+				codexBin,
+				["login", "status"],
+				{ timeout: 5_000 },
+			);
+			const result = /logged in using chatgpt/i.test(stdout);
+			console.log(
+				`[CodexRunner] hasCodexSubscription: ${result} (stdout: "${stdout.trim()}"${stderr.trim() ? `, stderr: "${stderr.trim()}"` : ""})`,
+			);
+			return result;
+		} catch (error) {
+			console.warn(
+				`[CodexRunner] hasCodexSubscription error (returning false): ${error instanceof Error ? error.message : String(error)}`,
+			);
 			return false;
 		}
 	}
