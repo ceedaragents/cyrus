@@ -58,14 +58,6 @@ export default defineConfig({
 				__dirname,
 				"../github-event-transport/src/index.ts",
 			),
-			"cyrus-github-event-transport/test/fixtures": path.resolve(
-				__dirname,
-				"../github-event-transport/test/fixtures.ts",
-			),
-			"cyrus-github-event-transport/": path.resolve(
-				__dirname,
-				"../github-event-transport/",
-			),
 			"cyrus-slack-event-transport": path.resolve(
 				__dirname,
 				"../slack-event-transport/src/index.ts",
