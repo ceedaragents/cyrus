@@ -795,10 +795,17 @@ export class EdgeWorker extends EventEmitter {
 			this.logger,
 		);
 
-		// Auto-detect direct mode when SLACK_SIGNING_SECRET is set
-		const useDirectSlackWebhooks =
+		// Use direct Slack signature verification only when BOTH:
+		// 1. SLACK_SIGNING_SECRET is set (we have the secret to verify)
+		// 2. CYRUS_HOST_EXTERNAL is true (self-hosted: Slack sends directly to us)
+		// On cloud droplets, CYHOST forwards webhooks with Bearer token auth
+		// (it verifies the Slack signature itself and doesn't forward the headers).
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const hasSlackSigningSecret =
 			process.env.SLACK_SIGNING_SECRET != null &&
 			process.env.SLACK_SIGNING_SECRET !== "";
+		const useDirectSlackWebhooks = isExternalHost && hasSlackSigningSecret;
 
 		const slackVerificationMode = useDirectSlackWebhooks ? "direct" : "proxy";
 		const slackSecret = useDirectSlackWebhooks
