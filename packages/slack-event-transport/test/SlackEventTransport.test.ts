@@ -121,6 +121,57 @@ describe("SlackEventTransport", () => {
 			);
 		});
 
+		it("accepts proxied header overrides for Slack event metadata", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const request = createMockRequest(testEventEnvelope, {
+				authorization: `Bearer ${testSecret}`,
+				"x-slack-event-type": "event_callback",
+				"x-slack-event-id": "Ev-proxy-999",
+				"x-slack-team-id": "T-proxy-001",
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/slack-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({ success: true });
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "app_mention",
+					eventId: "Ev-proxy-999",
+					teamId: "T-proxy-001",
+				}),
+			);
+		});
+
+		it("accepts generic proxied envelope headers for Slack", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const request = createMockRequest(testEventEnvelope, {
+				authorization: `Bearer ${testSecret}`,
+				"x-event-type": "event_callback",
+				"x-event-id": "Ev-proxy-generic-111",
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/slack-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({ success: true });
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "app_mention",
+					eventId: "Ev-proxy-generic-111",
+					teamId: "T0001",
+				}),
+			);
+		});
+
 		it("rejects missing Authorization header", async () => {
 			const request = createMockRequest(testEventEnvelope, {});
 			const reply = createMockReply();

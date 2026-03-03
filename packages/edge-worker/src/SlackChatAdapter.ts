@@ -100,7 +100,7 @@ Supported mrkdwn syntax:
 
 			// Filter out the @mention message itself and bot messages
 			const contextMessages = messages.filter(
-				(msg) =>
+				(msg: SlackThreadMessage) =>
 					msg.ts !== event.payload.ts &&
 					!msg.bot_id &&
 					msg.subtype !== "bot_message",

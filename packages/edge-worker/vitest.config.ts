@@ -54,6 +54,14 @@ export default defineConfig({
 				"../linear-event-transport/src/index.ts",
 			),
 			"cyrus-mcp-tools": path.resolve(__dirname, "../mcp-tools/src/index.ts"),
+			"cyrus-github-event-transport": path.resolve(
+				__dirname,
+				"../github-event-transport/src/index.ts",
+			),
+			"cyrus-slack-event-transport": path.resolve(
+				__dirname,
+				"../slack-event-transport/src/index.ts",
+			),
 			"cyrus-cloudflare-tunnel-client": path.resolve(
 				__dirname,
 				"../cloudflare-tunnel-client/src/index.ts",

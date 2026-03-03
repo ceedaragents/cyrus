@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { TranslationContext } from "cyrus-core";
-import { createLogger, type ILogger } from "cyrus-core";
+import { createLogger, type ILogger, SlackWebhookHeaders } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SlackMessageTranslator } from "./SlackMessageTranslator.js";
 import type {
@@ -59,10 +59,10 @@ export class SlackEventTransport extends EventEmitter {
 	}
 
 	/**
-	 * Get Slack bot token from the SLACK_BOT_TOKEN environment variable.
+	 * Get Slack bot token from proxy headers or SLACK_BOT_TOKEN env var fallback.
 	 */
-	private getSlackBotToken(): string | undefined {
-		return process.env.SLACK_BOT_TOKEN;
+	private getSlackBotToken(_headers: SlackWebhookHeaders): string | undefined {
+		return process.env.SLACK_BOT_TOKEN?.trim() || undefined;
 	}
 
 	/**
@@ -98,7 +98,8 @@ export class SlackEventTransport extends EventEmitter {
 		request: FastifyRequest,
 		reply: FastifyReply,
 	): Promise<void> {
-		const authHeader = request.headers.authorization;
+		const headers = new SlackWebhookHeaders(request.headers);
+		const authHeader = headers.getAuthorization();
 		if (!authHeader) {
 			reply.code(401).send({ error: "Missing Authorization header" });
 			return;
@@ -130,16 +131,21 @@ export class SlackEventTransport extends EventEmitter {
 		reply: FastifyReply,
 	): void {
 		const envelope = request.body as SlackEventEnvelope;
+		if (!envelope) {
+			throw new Error("Missing Slack event envelope");
+		}
+		const headers = new SlackWebhookHeaders(request.headers);
+		const envelopeType = headers.getEnvelopeType() ?? envelope.type;
 
 		// Handle Slack URL verification challenge
-		if (envelope.type === "url_verification") {
+		if (envelopeType === "url_verification") {
 			this.logger.info("Responding to Slack URL verification challenge");
 			reply.code(200).send({ challenge: envelope.challenge });
 			return;
 		}
 
-		if (envelope.type !== "event_callback") {
-			this.logger.debug(`Ignoring unsupported envelope type: ${envelope.type}`);
+		if (envelopeType !== "event_callback") {
+			this.logger.debug(`Ignoring unsupported envelope type: ${envelopeType}`);
 			reply.code(200).send({ success: true, ignored: true });
 			return;
 		}
@@ -154,18 +160,18 @@ export class SlackEventTransport extends EventEmitter {
 			return;
 		}
 
-		const slackBotToken = this.getSlackBotToken();
+		const slackBotToken = this.getSlackBotToken(headers);
 
 		const webhookEvent: SlackWebhookEvent = {
 			eventType: "app_mention",
-			eventId: envelope.event_id,
+			eventId: headers.getEnvelopeEventId() ?? envelope.event_id,
 			payload: event,
 			slackBotToken,
-			teamId: envelope.team_id,
+			teamId: headers.getTeamId() ?? envelope.team_id,
 		};
 
 		this.logger.info(
-			`Received app_mention webhook (event: ${envelope.event_id}, channel: ${event.channel})`,
+			`Received app_mention webhook (event: ${webhookEvent.eventId}, channel: ${event.channel})`,
 		);
 
 		// Emit "event" for transport-level listeners

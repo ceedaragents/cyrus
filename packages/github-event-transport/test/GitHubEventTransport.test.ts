@@ -141,6 +141,33 @@ describe("GitHubEventTransport", () => {
 			);
 		});
 
+		it("accepts proxied header aliases in proxy mode", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const request = createMockRequest(issueCommentPayload, {
+				authorization: `Bearer ${testSecret}`,
+				"x-event-type": "issue_comment",
+				"x-cyhost-delivery-id": "delivery-proxy-456",
+				"x-cyhost-github-installation-token": "ghs_installation_proxy_001",
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/github-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({ success: true });
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "issue_comment",
+					deliveryId: "delivery-proxy-456",
+					payload: issueCommentPayload,
+					installationToken: "ghs_installation_proxy_001",
+				}),
+			);
+		});
+
 		it("rejects missing Authorization header", async () => {
 			const request = createMockRequest(issueCommentPayload, {
 				"x-github-event": "issue_comment",
@@ -210,6 +237,31 @@ describe("GitHubEventTransport", () => {
 				expect.objectContaining({
 					eventType: "issue_comment",
 					deliveryId: "delivery-456",
+				}),
+			);
+		});
+
+		it("accepts proxied header aliases in signature mode", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			const request = createMockRequest(issueCommentPayload, {
+				"x-cyhost-github-event": "issue_comment",
+				"x-delivery-id": "delivery-proxy-789",
+			});
+			const signature = `sha256=${createHmac("sha256", testSecret).update(request.rawBody).digest("hex")}`;
+			request.headers["x-cyhost-github-signature"] = signature;
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/github-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({ success: true });
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "issue_comment",
+					deliveryId: "delivery-proxy-789",
 				}),
 			);
 		});

@@ -1,6 +1,9 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
+		"paths": {
+			"cyrus-claude-runner": ["packages/claude-runner/src/index.ts"]
+		},
 		"outDir": "./dist",
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext"

@@ -61,6 +61,12 @@ Follow the complete **[End-to-End Community Guide](./docs/SELF_HOSTING.md)**.
 - **[Cloudflare Tunnel Setup](./docs/CLOUDFLARE_TUNNEL.md)** - Expose your local instance
 - **[Setup Scripts](./docs/SETUP_SCRIPTS.md)** - Repository and global initialization scripts
 
+### Hands-On Validation Notes
+
+- `agent-browser` and the `/deploy-preview` workflow are used for browser-based and preview validation during manual validation.
+- The deploy-preview workflow is documented in the shared `deploy-preview` skill, where GitHub and Linear app setup steps are recorded for reproducible environment checks.
+- Run `agent-browser --help` to confirm CLI availability before executing any deploy-preview-driven browser checks.
+
 ---
 
 ## License

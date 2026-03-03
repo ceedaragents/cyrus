@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Webhook transports now support proxied metadata headers** - GitHub, Slack, and Linear webhook handlers now use a shared typed header parser so proxied delivery metadata can be consumed alongside platform headers for proxy/webhook flows. ([CYPACK-865](https://linear.app/ceedar/issue/CYPACK-865), [#921](https://github.com/ceedaragents/cyrus/pull/921))
+
 ## [0.2.26] - 2026-02-28 ([#918](https://github.com/ceedaragents/cyrus/pull/918))
 
 ### Changed

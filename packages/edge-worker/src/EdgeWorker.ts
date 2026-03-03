@@ -4131,10 +4131,10 @@ ${taskInstructions}
 	private createCyrusToolsOptions(parentSessionId?: string): CyrusToolsOptions {
 		return {
 			parentSessionId,
-			onSessionCreated: (childSessionId, parentId) => {
+			onSessionCreated: (childSessionId: string, parentId: string) => {
 				this.handleChildSessionMapping(childSessionId, parentId);
 			},
-			onFeedbackDelivery: async (childSessionId, message) => {
+			onFeedbackDelivery: async (childSessionId: string, message: string) => {
 				return this.handleFeedbackDeliveryToChildSession(
 					childSessionId,
 					message,
@@ -5912,7 +5912,10 @@ ${input.userComment}
 			clientSecret,
 			refreshToken: repo.linearRefreshToken,
 			workspaceId,
-			onTokenRefresh: async (tokens) => {
+			onTokenRefresh: async (tokens: {
+				accessToken: string;
+				refreshToken: string;
+			}) => {
 				// Update repository config state (for EdgeWorker's internal tracking)
 				for (const [, repository] of this.repositories) {
 					if (repository.linearWorkspaceId === workspaceId) {

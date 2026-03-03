@@ -4,7 +4,7 @@ import {
 	type LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
 import type { IAgentEventTransport, TranslationContext } from "cyrus-core";
-import { createLogger, type ILogger } from "cyrus-core";
+import { createLogger, type ILogger, LinearWebhookHeaders } from "cyrus-core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { LinearMessageTranslator } from "./LinearMessageTranslator.js";
 import type {
@@ -115,7 +115,8 @@ export class LinearEventTransport
 		}
 
 		// Get Linear signature from headers
-		const signature = request.headers["linear-signature"] as string;
+		const headers = new LinearWebhookHeaders(request.headers);
+		const signature = headers.getSignature();
 		if (!signature) {
 			reply.code(401).send({ error: "Missing linear-signature header" });
 			return;
@@ -132,12 +133,13 @@ export class LinearEventTransport
 			}
 
 			const payload = request.body as LinearWebhookPayload;
+			const requestContext = this.getRequestTranslationContext(headers);
 
 			// Emit "event" for legacy IAgentEventTransport compatibility
 			this.emit("event", payload);
 
 			// Emit "message" with translated internal message
-			this.emitMessage(payload);
+			this.emitMessage(payload, requestContext);
 
 			// Send success response
 			reply.code(200).send({ success: true });
@@ -159,7 +161,8 @@ export class LinearEventTransport
 		reply: FastifyReply,
 	): Promise<void> {
 		// Get Authorization header
-		const authHeader = request.headers.authorization;
+		const headers = new LinearWebhookHeaders(request.headers);
+		const authHeader = headers.getAuthorization();
 		if (!authHeader) {
 			reply.code(401).send({ error: "Missing Authorization header" });
 			return;
@@ -174,12 +177,13 @@ export class LinearEventTransport
 
 		try {
 			const payload = request.body as LinearWebhookPayload;
+			const requestContext = this.getRequestTranslationContext(headers);
 
 			// Emit "event" for legacy IAgentEventTransport compatibility
 			this.emit("event", payload);
 
 			// Emit "message" with translated internal message
-			this.emitMessage(payload);
+			this.emitMessage(payload, requestContext);
 
 			// Send success response
 			reply.code(200).send({ success: true });
@@ -197,16 +201,28 @@ export class LinearEventTransport
 	 * Translate and emit an internal message from a webhook payload.
 	 * Only emits if translation succeeds; logs debug message on failure.
 	 */
-	private emitMessage(payload: LinearWebhookPayload): void {
-		const result = this.messageTranslator.translate(
-			payload,
-			this.translationContext,
-		);
+	private emitMessage(
+		payload: LinearWebhookPayload,
+		requestContext?: TranslationContext,
+	): void {
+		const context = {
+			...this.translationContext,
+			...requestContext,
+		};
+
+		const result = this.messageTranslator.translate(payload, context);
 
 		if (result.success) {
 			this.emit("message", result.message);
 		} else {
 			this.logger.debug(`Message translation skipped: ${result.reason}`);
 		}
+	}
+
+	private getRequestTranslationContext(
+		headers: LinearWebhookHeaders,
+	): Partial<TranslationContext> {
+		const linearApiToken = headers.getLinearApiToken();
+		return linearApiToken ? { linearApiToken } : {};
 	}
 }
