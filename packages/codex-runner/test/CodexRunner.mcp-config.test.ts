@@ -61,4 +61,58 @@ describe("CodexRunner MCP config mapping", () => {
 		});
 		expect(mcpServers.linear.bearer_token_env_var).toBe("LINEAR_API_TOKEN");
 	});
+
+	it("does not inject sandbox workspace-write config when none is provided", () => {
+		const runner = new CodexRunner({
+			workingDirectory: process.cwd(),
+		});
+
+		const configOverrides = (runner as any).buildConfigOverrides();
+		expect(configOverrides).toBeUndefined();
+	});
+
+	it("preserves explicit sandbox workspace-write config without forcing network_access", () => {
+		const runner = new CodexRunner({
+			workingDirectory: process.cwd(),
+			configOverrides: {
+				sandbox_workspace_write: {
+					read_only_access: {
+						network: true,
+						include_tmpdir: true,
+					},
+				},
+			},
+		});
+
+		const configOverrides = (runner as any).buildConfigOverrides();
+		expect(configOverrides).toEqual({
+			sandbox_workspace_write: {
+				read_only_access: {
+					network: true,
+					include_tmpdir: true,
+				},
+			},
+		});
+	});
+
+	it("does not default sandbox mode when sandbox is not configured", () => {
+		const runner = new CodexRunner({
+			workingDirectory: process.cwd(),
+			model: "gpt-5",
+		});
+
+		const threadOptions = (runner as any).buildThreadOptions();
+		expect(threadOptions.sandboxMode).toBeUndefined();
+	});
+
+	it("passes sandbox mode when explicitly configured", () => {
+		const runner = new CodexRunner({
+			workingDirectory: process.cwd(),
+			model: "gpt-5",
+			sandbox: "workspace-write",
+		});
+
+		const threadOptions = (runner as any).buildThreadOptions();
+		expect(threadOptions.sandboxMode).toBe("workspace-write");
+	});
 });

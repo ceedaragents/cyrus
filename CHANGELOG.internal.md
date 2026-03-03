@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- `CodexRunner` now respects platform sandbox defaults by only setting `threadOptions.sandboxMode` when `config.sandbox` is explicitly provided, and by no longer injecting implicit `configOverrides.sandbox_workspace_write` defaults. Added tests for explicit/implicit sandbox behavior. ([CYPACK-868](https://linear.app/ceedar/issue/CYPACK-868), [#922](https://github.com/ceedaragents/cyrus/pull/922))
+
 ## [0.2.25] - 2026-02-27
 
 ### Fixed
