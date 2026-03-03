@@ -45,16 +45,19 @@ export const SUBROUTINES = {
 		name: "git-commit",
 		promptPath: "subroutines/git-commit.md",
 		description: "Committing and pushing changes",
+		contextModeLevel: "light" as const,
 	},
 	ghPr: {
 		name: "gh-pr",
 		promptPath: "subroutines/gh-pr.md",
 		description: "Creating or updating pull request",
+		contextModeLevel: "light" as const,
 	},
 	changelogUpdate: {
 		name: "changelog-update",
 		promptPath: "subroutines/changelog-update.md",
 		description: "Updating changelog",
+		contextModeLevel: "disabled" as const,
 	},
 	conciseSummary: {
 		name: "concise-summary",

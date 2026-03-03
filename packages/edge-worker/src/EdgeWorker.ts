@@ -2953,6 +2953,8 @@ ${taskInstructions}
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+				undefined, // mcpOptions
+				currentSubroutine?.contextModeLevel, // per-subroutine context-mode control
 			);
 
 			log.debug(
@@ -4829,6 +4831,7 @@ ${input.userComment}
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
 		mcpOptions?: { excludeSlackMcp?: boolean; excludeContextMode?: boolean },
+		contextModeLevel?: "full" | "light" | "disabled",
 	): {
 		config: AgentRunnerConfig;
 		runnerType: "claude" | "gemini" | "codex" | "cursor";
@@ -4957,9 +4960,17 @@ ${input.userComment}
 		// Add PreToolUse hooks for context-mode tool guidance (Claude runner only)
 		// These guide Claude to use context-mode MCP tools for large output operations,
 		// preserving context window space without blocking tool execution
+		// contextModeLevel controls per-subroutine behavior:
+		//   "full" (default/undefined): MCP server + PreToolUse hooks active
+		//   "light": MCP server included, PreToolUse hooks skipped
+		//   "disabled": both MCP server and PreToolUse hooks excluded
 		const contextModeEnabled =
-			runnerType === "claude" && repository.contextMode?.enabled !== false;
-		if (contextModeEnabled) {
+			runnerType === "claude" &&
+			repository.contextMode?.enabled !== false &&
+			contextModeLevel !== "disabled";
+		const contextModeHooksEnabled =
+			contextModeEnabled && contextModeLevel !== "light";
+		if (contextModeHooksEnabled) {
 			hooks.PreToolUse = [
 				{
 					matcher: "Bash",
@@ -5013,9 +5024,10 @@ ${input.userComment}
 			? undefined
 			: this.buildMcpConfig(repository, sessionId, {
 					...mcpOptions,
-					// context-mode uses Claude-specific MCP + hooks; exclude for other runners
+					// context-mode uses Claude-specific MCP + hooks; exclude for non-Claude runners
+					// or when contextModeEnabled is false (e.g. contextModeLevel === "disabled")
 					excludeContextMode:
-						mcpOptions?.excludeContextMode ?? runnerType !== "claude",
+						mcpOptions?.excludeContextMode ?? !contextModeEnabled,
 				});
 		const mcpConfigPath = disallowAllTools
 			? undefined
@@ -5828,6 +5840,8 @@ ${input.userComment}
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 			currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+			undefined, // mcpOptions
+			currentSubroutine?.contextModeLevel, // per-subroutine context-mode control
 		);
 
 		// Create the appropriate runner based on session state
