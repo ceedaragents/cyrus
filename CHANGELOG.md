@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Direct Slack webhook verification for self-hosted deployments** - Cyrus can now verify Slack webhooks directly using HMAC-SHA256 signature verification when `SLACK_SIGNING_SECRET` is set, removing the need for the CYHOST proxy in self-hosted environments. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
+- **GitHub bot mention filtering** - GitHub webhook handler now respects `GITHUB_BOT_USERNAME` to only trigger on `@bot` mentions and ignore its own comments, preventing infinite loops in self-hosted setups. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
+- **Smarter Slack thread context** - Other bots' messages (Sentry, CI, GitHub notifications) are now preserved in Slack thread context instead of being filtered out. Only the bot's own messages are excluded. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
+
 ## [0.2.24] - 2026-02-26
 
 ### Fixed
