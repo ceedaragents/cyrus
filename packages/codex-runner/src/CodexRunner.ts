@@ -582,13 +582,13 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 
 		const threadOptions: ThreadOptions = {
 			model: this.config.model,
-			sandboxMode: this.config.sandbox || "workspace-write",
 			workingDirectory: this.config.workingDirectory,
 			skipGitRepoCheck: this.config.skipGitRepoCheck ?? true,
 			approvalPolicy: this.config.askForApproval || "never",
 			...(reasoningEffort ? { modelReasoningEffort: reasoningEffort } : {}),
 			...(webSearchMode ? { webSearchMode } : {}),
 			...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+			...(this.config.sandbox ? { sandboxMode: this.config.sandbox } : {}),
 		};
 
 		return threadOptions;
@@ -766,25 +766,6 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			} else {
 				configOverrides.mcp_servers = mcpServers;
 			}
-		}
-
-		const sandboxWorkspaceWrite = configOverrides.sandbox_workspace_write;
-		// Keep workspace-write as the default sandbox, but enable outbound network so
-		// common remote workflows (for example `git`/`gh` against GitHub) work without
-		// requiring danger-full-access.
-		if (
-			sandboxWorkspaceWrite &&
-			typeof sandboxWorkspaceWrite === "object" &&
-			!Array.isArray(sandboxWorkspaceWrite)
-		) {
-			configOverrides.sandbox_workspace_write = {
-				...sandboxWorkspaceWrite,
-				network_access:
-					(sandboxWorkspaceWrite as { network_access?: boolean })
-						.network_access ?? true,
-			};
-		} else if (!sandboxWorkspaceWrite) {
-			configOverrides.sandbox_workspace_write = { network_access: true };
 		}
 
 		if (!appendSystemPrompt) {

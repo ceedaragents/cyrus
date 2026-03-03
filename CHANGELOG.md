@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Codex sandbox defaults now follow platform configuration** - Codex-runner sessions no longer force a `workspace-write` sandbox or auto-enable sandbox network access when no sandbox settings are provided, so platform sandbox defaults are respected unless explicitly overridden. ([CYPACK-868](https://linear.app/ceedar/issue/CYPACK-868), [#922](https://github.com/ceedaragents/cyrus/pull/922))
+
 ## [0.2.26] - 2026-02-28 ([#918](https://github.com/ceedaragents/cyrus/pull/918))
 
 ### Changed
