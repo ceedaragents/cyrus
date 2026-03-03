@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Multi-repository issue workspaces** - Issues that target multiple repositories now create a parent issue folder with per-repository git worktrees, while single-repository issues continue using the existing one-worktree behavior. ([CYPACK-871](https://linear.app/ceedar/issue/CYPACK-871), [#924](https://github.com/ceedaragents/cyrus/pull/924))
+
 ## [0.2.26] - 2026-02-28 ([#918](https://github.com/ceedaragents/cyrus/pull/918))
 
 ### Changed
