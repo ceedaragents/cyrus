@@ -4970,6 +4970,15 @@ ${input.userComment}
 			contextModeLevel !== "disabled";
 		const contextModeHooksEnabled =
 			contextModeEnabled && contextModeLevel !== "light";
+		if (contextModeEnabled) {
+			log.info(
+				`Context-mode enabled for session ${sessionId} (level: ${contextModeLevel || "full"}, hooks: ${contextModeHooksEnabled ? "active" : "inactive"})`,
+			);
+		} else {
+			log.debug(
+				`Context-mode disabled for session ${sessionId} (runner: ${runnerType}, repoEnabled: ${repository.contextMode?.enabled !== false}, level: ${contextModeLevel || "full"})`,
+			);
+		}
 		if (contextModeHooksEnabled) {
 			hooks.PreToolUse = [
 				{
