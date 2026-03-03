@@ -122,10 +122,13 @@ export class RepositoryRouter {
 	 * Determine repository for webhook using multi-priority routing:
 	 * Priority 0: Existing active sessions
 	 * Priority 1: Description tag (explicit [repo=...] in issue description)
-	 * Priority 2: Routing labels
+	 * Priority 2: Routing labels (overrides team-based - enables label-specific repos within a team)
 	 * Priority 3: Project-based routing
 	 * Priority 4: Team-based routing
 	 * Priority 5: Catch-all repositories
+	 *
+	 * Label-based (2) must override team-based (4) so that a repository can be configured
+	 * to handle label-specific work within a team that would otherwise route to a team-default repo.
 	 */
 	async determineRepositoryForWebhook(
 		webhook: AgentSessionCreatedWebhook | AgentSessionPromptedWebhook,

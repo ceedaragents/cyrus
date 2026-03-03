@@ -70,6 +70,8 @@ Routes Linear issues with specific labels to this repository. This is useful whe
 
 Example: `["backend", "api"]` - Only process issues that have the "backend" or "api" label
 
+**Label-based routing overrides team-based routing.** When an issue has a matching label, it will route to the label-configured repository even if another repository is configured as the team default. This allows you to create a repository within a team that handles only label-specific work (e.g., "frontend" repo) while the team default handles other issues.
+
 ---
 
 ## Routing Priority Order

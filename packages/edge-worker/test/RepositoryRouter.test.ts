@@ -1579,6 +1579,44 @@ describe("RepositoryRouter", () => {
 				expectRouting(result).shouldSelectRepositoryVia(repo, "label-based");
 			});
 
+			it("should prioritize label-based routing over team-based when two different repos match", async () => {
+				// Given: Team-default repo and label-specific repo in same workspace
+				// This enables creating a repo that routes by label within a team
+				// that would otherwise route to the team-default repo
+				const teamDefaultRepo = env
+					.repository("repo-1", "Team Default Repo")
+					.inWorkspace("default-workspace")
+					.withTeams("ENG")
+					.build();
+
+				const labelSpecificRepo = env
+					.repository("repo-2", "Frontend Repo")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.build();
+
+				env.issueHasLabels("issue-1", "frontend");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "ENG-123")
+					.inTeam("ENG")
+					.build();
+
+				// When: Determining repository (team-default listed first)
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					teamDefaultRepo,
+					labelSpecificRepo,
+				]);
+
+				// Then: Label-based repo wins over team-based (CYPACK-878)
+				expectRouting(result).shouldSelectRepositoryVia(
+					labelSpecificRepo,
+					"label-based",
+				);
+			});
+
 			it("should prioritize project routing over team routing", async () => {
 				// Given: Repository configured with projects and teams
 				const repo = env
