@@ -8,6 +8,7 @@ import type {
 	HookEvent,
 	McpServerConfig,
 	PostToolUseHookInput,
+	PreToolUseHookInput,
 	SDKMessage,
 } from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
@@ -2982,6 +2983,8 @@ ${taskInstructions}
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+				undefined, // mcpOptions
+				currentSubroutine?.contextModeLevel, // per-subroutine context-mode control
 			);
 
 			log.debug(
@@ -4359,7 +4362,7 @@ ${taskInstructions}
 	private buildMcpConfig(
 		repository: RepositoryConfig,
 		parentSessionId?: string,
-		options?: { excludeSlackMcp?: boolean },
+		options?: { excludeSlackMcp?: boolean; excludeContextMode?: boolean },
 	): Record<string, McpServerConfig> {
 		const contextId = this.buildCyrusToolsMcpContextId(
 			repository,
@@ -4419,6 +4422,19 @@ ${taskInstructions}
 				env: {
 					SLACK_MCP_XOXB_TOKEN: slackBotToken,
 				},
+			};
+		}
+
+		// Conditionally inject context-mode MCP server for context window optimization
+		// Only for Claude runner (claude-specific MCP + hooks); excluded for Gemini/Codex/Cursor
+		// https://github.com/mksglu/claude-context-mode
+		if (
+			!options?.excludeContextMode &&
+			repository.contextMode?.enabled !== false
+		) {
+			mcpConfig["context-mode"] = {
+				command: "npx",
+				args: ["-y", "context-mode", "start"],
 			};
 		}
 
@@ -4844,7 +4860,8 @@ ${input.userComment}
 		maxTurns?: number,
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
-		mcpOptions?: { excludeSlackMcp?: boolean },
+		mcpOptions?: { excludeSlackMcp?: boolean; excludeContextMode?: boolean },
+		contextModeLevel?: "full" | "light" | "disabled",
 	): {
 		config: AgentRunnerConfig;
 		runnerType: "claude" | "gemini" | "codex" | "cursor";
@@ -4970,6 +4987,90 @@ ${input.userComment}
 			fallbackModelOverride = this.getDefaultFallbackModelForRunner("cursor");
 		}
 
+		// Add PreToolUse hooks for context-mode tool guidance (Claude runner only)
+		// These guide Claude to use context-mode MCP tools for large output operations,
+		// preserving context window space without blocking tool execution
+		// contextModeLevel controls per-subroutine behavior:
+		//   "full" (default/undefined): MCP server + PreToolUse hooks active
+		//   "light": MCP server included, PreToolUse hooks skipped
+		//   "disabled": both MCP server and PreToolUse hooks excluded
+		const contextModeEnabled =
+			runnerType === "claude" &&
+			repository.contextMode?.enabled !== false &&
+			contextModeLevel !== "disabled";
+		const contextModeHooksEnabled =
+			contextModeEnabled && contextModeLevel !== "light";
+		if (contextModeEnabled) {
+			log.info(
+				`Context-mode enabled for session ${sessionId} (level: ${contextModeLevel || "full"}, hooks: ${contextModeHooksEnabled ? "active" : "inactive"})`,
+			);
+		} else {
+			log.debug(
+				`Context-mode disabled for session ${sessionId} (runner: ${runnerType}, repoEnabled: ${repository.contextMode?.enabled !== false}, level: ${contextModeLevel || "full"})`,
+			);
+		}
+		if (contextModeHooksEnabled) {
+			hooks.PreToolUse = [
+				{
+					matcher: "Bash",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const toolInput = input as PreToolUseHookInput & {
+								tool_input?: { command?: string };
+							};
+							const command = toolInput?.tool_input?.command || "";
+							if (/\b(curl|wget)\b/.test(command)) {
+								return {
+									continue: true,
+									additionalContext: `Tip: For fetching and processing web content, consider using the context-mode:fetch_and_index MCP tool instead. It fetches the URL, converts HTML to markdown, chunks the content, and indexes it for searchable retrieval — keeping your context window clean. Use context-mode:search to query the indexed content afterward.`,
+								};
+							}
+							return { continue: true };
+						},
+					],
+				},
+				{
+					matcher: "WebFetch",
+					hooks: [
+						async (_input, _toolUseID, { signal: _signal }) => {
+							return {
+								continue: true,
+								additionalContext: `Tip: For better context efficiency, consider using the context-mode:fetch_and_index MCP tool instead of WebFetch. It fetches the URL, indexes the content into a searchable knowledge base, and returns only a compressed summary — preserving your context window. Use context-mode:search to query specific information from the indexed content.`,
+							};
+						},
+					],
+				},
+			];
+			hooks.SessionStart = [
+				{
+					matcher: "",
+					hooks: [
+						async (_input, _toolUseID, { signal: _signal }) => {
+							return {
+								continue: true,
+								additionalContext: `## Context-Mode Tools Available
+
+This session has context-mode enabled for efficient context window management. The following MCP tools are available:
+
+- **context-mode:execute** — Run shell commands or code in a sandbox. Only the compressed summary enters your context. Use for commands that produce large output.
+- **context-mode:execute_file** — Process file contents without loading the raw data into context. Use for large files.
+- **context-mode:batch_execute** — Run multiple commands/queries in a single call. Use when you need several operations at once.
+- **context-mode:fetch_and_index** — Fetch a URL, convert to markdown, chunk and index for search. Use instead of WebFetch for large pages.
+- **context-mode:index** — Index markdown/text content into the searchable knowledge base.
+- **context-mode:search** — Query the indexed knowledge base. Use to retrieve specific information from previously indexed content instead of re-reading files.
+
+**When to use context-mode tools:**
+- Prefer context-mode:execute over Bash for commands that produce >10KB of output
+- Prefer context-mode:fetch_and_index over WebFetch for web pages
+- After indexing content, use context-mode:search to find specific information
+- For small operations (<10KB output), regular tools are fine`,
+							};
+						},
+					],
+				},
+			];
+		}
+
 		// Log model override if found
 		if (modelOverride) {
 			log.debug(`Model override via selector: ${modelOverride}`);
@@ -4988,7 +5089,13 @@ ${input.userComment}
 		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
 		const mcpConfig = disallowAllTools
 			? undefined
-			: this.buildMcpConfig(repository, sessionId, mcpOptions);
+			: this.buildMcpConfig(repository, sessionId, {
+					...mcpOptions,
+					// context-mode uses Claude-specific MCP + hooks; exclude for non-Claude runners
+					// or when contextModeEnabled is false (e.g. contextModeLevel === "disabled")
+					excludeContextMode:
+						mcpOptions?.excludeContextMode ?? !contextModeEnabled,
+				});
 		const mcpConfigPath = disallowAllTools
 			? undefined
 			: repository.mcpConfigPath;
@@ -5800,6 +5907,8 @@ ${input.userComment}
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 			currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+			undefined, // mcpOptions
+			currentSubroutine?.contextModeLevel, // per-subroutine context-mode control
 		);
 
 		// Create the appropriate runner based on session state

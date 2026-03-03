@@ -44,6 +44,16 @@ export interface SubroutineDefinition {
 	 * the validation-fixer subroutine is run on failures (up to maxIterations).
 	 */
 	usesValidationLoop?: boolean;
+
+	/**
+	 * Controls context-mode behavior for this subroutine.
+	 * - "full" (default): context-mode MCP server and PreToolUse hooks are both active
+	 * - "light": context-mode MCP server is included but PreToolUse hooks are skipped
+	 *   (allows manual use without proactive suggestions)
+	 * - "disabled": context-mode MCP server and PreToolUse hooks are both excluded
+	 * When undefined, treated as "full".
+	 */
+	contextModeLevel?: "full" | "light" | "disabled";
 }
 
 /**
