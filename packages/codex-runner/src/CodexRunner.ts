@@ -204,8 +204,8 @@ function createResultUsage(parsed: ParsedUsage): SDKResultMessage["usage"] {
 function getDefaultReasoningEffortForModel(
 	model?: string,
 ): CodexRunnerConfig["modelReasoningEffort"] | undefined {
-	// gpt-5 codex variants reject xhigh in some environments; pin a compatible default.
-	return /gpt-5[a-z0-9.-]*codex$/i.test(model || "") ? "high" : undefined;
+	// All gpt-5 variants (including plain "gpt-5") reject xhigh; pin to "high".
+	return /^gpt-5/i.test(model || "") ? "high" : undefined;
 }
 
 function normalizeError(error: unknown): string {
@@ -539,11 +539,20 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			const { execFile } = await import("node:child_process");
 			const { promisify } = await import("node:util");
 			const execFileAsync = promisify(execFile);
-			const { stdout } = await execFileAsync(codexBin, ["login", "status"], {
-				timeout: 5_000,
-			});
-			return /logged in using chatgpt/i.test(stdout);
-		} catch {
+			const { stdout, stderr } = await execFileAsync(
+				codexBin,
+				["login", "status"],
+				{ timeout: 5_000 },
+			);
+			const result = /logged in using chatgpt/i.test(stdout + stderr);
+			console.log(
+				`[CodexRunner] hasCodexSubscription: ${result} (stdout: "${stdout.trim()}"${stderr.trim() ? `, stderr: "${stderr.trim()}"` : ""})`,
+			);
+			return result;
+		} catch (error) {
+			console.warn(
+				`[CodexRunner] hasCodexSubscription error (returning false): ${error instanceof Error ? error.message : String(error)}`,
+			);
 			return false;
 		}
 	}
@@ -795,7 +804,12 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		prompt: string,
 		signal: AbortSignal,
 	): Promise<void> {
-		const streamedTurn = await thread.runStreamed(prompt, { signal });
+		const streamedTurn = await thread.runStreamed(prompt, {
+			signal,
+			...(this.config.outputSchema
+				? { outputSchema: this.config.outputSchema }
+				: {}),
+		});
 		for await (const event of streamedTurn.events) {
 			this.handleEvent(event);
 		}

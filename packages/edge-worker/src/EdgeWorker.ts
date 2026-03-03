@@ -497,8 +497,31 @@ export class EdgeWorker extends EventEmitter {
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
 				await this.addNewRepositories(changes.added);
+				const prevDefaultRunner = this.config.defaultRunner;
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
+				this.runnerSelectionService.setConfig(changes.newConfig);
+
+				// Reconstruct ProcedureAnalyzer if the default runner changed,
+				// since its internal SimpleRunner is baked in at construction time.
+				if (changes.newConfig.defaultRunner !== prevDefaultRunner) {
+					const simpleRunnerType = this.resolveDefaultSimpleRunnerType();
+					const simpleRunnerModel =
+						simpleRunnerType === "claude"
+							? "haiku"
+							: simpleRunnerType === "gemini"
+								? "gemini-2.5-flash-lite"
+								: "gpt-5";
+					this.procedureAnalyzer = new ProcedureAnalyzer({
+						cyrusHome: this.cyrusHome,
+						model: simpleRunnerModel,
+						timeoutMs: 100000,
+						runnerType: simpleRunnerType,
+					});
+					this.logger.info(
+						`🔄 ProcedureAnalyzer reconstructed with runner type: ${simpleRunnerType}`,
+					);
+				}
 			},
 		);
 		this.configManager.startConfigWatcher();
@@ -2840,11 +2863,9 @@ ${taskInstructions}
 			finalProcedure = routingDecision.procedure;
 			finalClassification = routingDecision.classification;
 
-			// Log AI routing decision
-			log.info(`AI routing decision for ${sessionId}:`);
-			log.info(`  Classification: ${routingDecision.classification}`);
-			log.info(`  Procedure: ${finalProcedure.name}`);
-			log.info(`  Reasoning: ${routingDecision.reasoning}`);
+			log.info(
+				`AI routing: ${routingDecision.classification} → ${finalProcedure.name}`,
+			);
 		}
 
 		// Initialize procedure metadata in session with final decision
@@ -4775,6 +4796,9 @@ ${input.userComment}
 		| "codex"
 		| "cursor" {
 		if (this.config.defaultRunner) {
+			this.logger.info(
+				`🏃 SimpleRunner type resolved from config.defaultRunner: ${this.config.defaultRunner}`,
+			);
 			return this.config.defaultRunner;
 		}
 
@@ -4793,11 +4817,12 @@ ${input.userComment}
 			available.push("cursor");
 		}
 
-		if (available.length === 1 && available[0]) {
-			return available[0];
-		}
-
-		return "claude";
+		const result =
+			available.length === 1 && available[0] ? available[0] : "claude";
+		this.logger.info(
+			`🏃 SimpleRunner type auto-detected: ${result} (available: ${available.join(", ") || "none"}, config.defaultRunner not set)`,
+		);
+		return result;
 	}
 
 	/**
@@ -5030,9 +5055,6 @@ ${input.userComment}
 			(config as any).sandbox = (process.env.CYRUS_SANDBOX || "enabled") as
 				| "enabled"
 				| "disabled";
-			// Expected cursor-agent version for pre-run validation; mismatch posts error to Linear
-			(config as any).cursorAgentVersion =
-				process.env.CYRUS_CURSOR_AGENT_VERSION || undefined;
 		}
 
 		if (resumeSessionId) {
@@ -5487,11 +5509,9 @@ ${input.userComment}
 			selectedProcedure = routingDecision.procedure;
 			finalClassification = routingDecision.classification;
 
-			// Log AI routing decision
-			this.logger.info(`AI routing decision for ${sessionId}:`);
-			this.logger.info(`  Classification: ${routingDecision.classification}`);
-			this.logger.info(`  Procedure: ${selectedProcedure.name}`);
-			this.logger.info(`  Reasoning: ${routingDecision.reasoning}`);
+			this.logger.info(
+				`AI routing: ${routingDecision.classification} → ${selectedProcedure.name}`,
+			);
 		}
 
 		// Initialize procedure metadata in session (resets currentSubroutine)

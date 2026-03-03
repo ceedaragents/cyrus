@@ -149,18 +149,27 @@ export class ConfigManager extends EventEmitter {
 
 			const changes = this.detectRepositoryChanges(newConfig);
 
-			if (
-				changes.added.length === 0 &&
-				changes.modified.length === 0 &&
-				changes.removed.length === 0
-			) {
-				this.logger.info("ℹ️  No repository changes detected");
+			const hasRepoChanges =
+				changes.added.length > 0 ||
+				changes.modified.length > 0 ||
+				changes.removed.length > 0;
+
+			// Detect non-repository (global) config changes
+			const hasGlobalChanges = this.detectGlobalConfigChanges(newConfig);
+
+			if (!hasRepoChanges && !hasGlobalChanges) {
+				this.logger.info("ℹ️  No config changes detected");
 				return;
 			}
 
-			this.logger.info(
-				`📊 Repository changes detected: ${changes.added.length} added, ${changes.modified.length} modified, ${changes.removed.length} removed`,
-			);
+			if (hasRepoChanges) {
+				this.logger.info(
+					`📊 Repository changes detected: ${changes.added.length} added, ${changes.modified.length} modified, ${changes.removed.length} removed`,
+				);
+			}
+			if (hasGlobalChanges) {
+				this.logger.info("📊 Global config changes detected");
+			}
 
 			// Emit the diff so EdgeWorker can orchestrate the mutations.
 			this.emit("configChanged", {
@@ -295,6 +304,35 @@ export class ConfigManager extends EventEmitter {
 		}
 
 		return { added, modified, removed };
+	}
+
+	/**
+	 * Detect changes to non-repository (global) config fields such as
+	 * `defaultRunner`, `claudeDefaultModel`, `promptDefaults`, etc.
+	 */
+	private detectGlobalConfigChanges(newConfig: EdgeWorkerConfig): boolean {
+		const globalKeys: Array<keyof EdgeWorkerConfig> = [
+			"defaultRunner",
+			"claudeDefaultModel",
+			"claudeDefaultFallbackModel",
+			"geminiDefaultModel",
+			"codexDefaultModel",
+			"defaultModel",
+			"defaultFallbackModel",
+			"defaultAllowedTools",
+			"defaultDisallowedTools",
+			"promptDefaults",
+			"issueUpdateTrigger",
+			"linearWorkspaceSlug",
+			"userAccessControl",
+		];
+
+		for (const key of globalKeys) {
+			if (!this.deepEqual(this.config[key], newConfig[key])) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

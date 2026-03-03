@@ -220,7 +220,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 
 			// Verify the console log indicates AI routing was used
 			expect(console.log).toHaveBeenCalledWith(
-				expect.stringContaining("AI routing decision"),
+				expect.stringContaining("AI routing:"),
 			);
 		});
 
@@ -510,7 +510,7 @@ Work completed on subtask TEST-124.
 
 			// Should NOT have any AI routing logs
 			const hasAIRoutingLogs = allLogCalls.some((msg: string) =>
-				msg.includes("AI routing decision"),
+				msg.includes("AI routing:"),
 			);
 			expect(hasAIRoutingLogs).toBe(false);
 
@@ -798,7 +798,7 @@ Work completed on subtask TEST-124.
 
 			// Verify AI routing was used
 			expect(console.log).toHaveBeenCalledWith(
-				expect.stringContaining("AI routing decision"),
+				expect.stringContaining("AI routing:"),
 			);
 		});
 	});

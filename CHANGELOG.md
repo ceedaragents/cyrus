@@ -8,6 +8,108 @@ All notable changes to this project will be documented in this file.
 - **Direct Slack webhook verification for self-hosted deployments** - Cyrus can now verify Slack webhooks directly using HMAC-SHA256 signature verification when `SLACK_SIGNING_SECRET` is set, removing the need for the CYHOST proxy in self-hosted environments. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
 - **GitHub bot mention filtering** - GitHub webhook handler now respects `GITHUB_BOT_USERNAME` to only trigger on `@bot` mentions and ignore its own comments, preventing infinite loops in self-hosted setups. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
 - **Smarter Slack thread context** - Other bots' messages (Sentry, CI, GitHub notifications) are now preserved in Slack thread context instead of being filtered out. Only the bot's own messages are excluded. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
+- 
+## [0.2.26] - 2026-02-28 ([#918](https://github.com/ceedaragents/cyrus/pull/918))
+
+### Changed
+- **Updated Claude SDK dependencies** - project configs & auto memory are now shared across git worktrees of the same repository, so Claude's persistent memory works consistently across all Cyrus worktrees. Updated `@anthropic-ai/claude-agent-sdk` to v0.2.63 and `@anthropic-ai/sdk` to v0.78.0. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-859](https://linear.app/ceedar/issue/CYPACK-859), [#917](https://github.com/ceedaragents/cyrus/pull/917))
+
+### Fixed
+- **Cursor runs no longer fail on version mismatches** - Cyrus no longer blocks Cursor sessions when the installed `cursor-agent` version differs from a previously tested version, and the `CYRUS_CURSOR_AGENT_VERSION` override is no longer needed. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857/remove-the-requirement-that-throws-this-error), [#915](https://github.com/ceedaragents/cyrus/pull/915))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.26
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.26
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.26
+
+#### cyrus-core
+- cyrus-core@0.2.26
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.26
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.26
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.26
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.26
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.26
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.26
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.26
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.26
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.26
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.26
+
+## [0.2.25] - 2026-02-27
+
+### Fixed
+- **Default runner config now applies on hot-reload** - Changing `defaultRunner`, model defaults, or other global settings in `~/.cyrus/config.json` while Cyrus is running now takes effect immediately, instead of being ignored until restart. ([CYPACK-856](https://linear.app/ceedar/issue/CYPACK-856), [#907](https://github.com/ceedaragents/cyrus/pull/907))
+- **Codex runner no longer fails during issue classification** - When `defaultRunner` is set to `codex`, the ProcedureAnalyzer classification step no longer crashes with a reasoning effort error. Also uses structured outputs for more reliable classification responses. ([CYPACK-856](https://linear.app/ceedar/issue/CYPACK-856), [#907](https://github.com/ceedaragents/cyrus/pull/907))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.25
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.25
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.25
+
+#### cyrus-core
+- cyrus-core@0.2.25
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.25
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.25
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.25
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.25
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.25
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.25
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.25
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.25
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.25
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.25
 
 ## [0.2.24] - 2026-02-26
 

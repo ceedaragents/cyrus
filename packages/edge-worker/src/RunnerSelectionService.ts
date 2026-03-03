@@ -23,6 +23,13 @@ export class RunnerSelectionService {
 	}
 
 	/**
+	 * Update the internal config reference (e.g. after hot-reload).
+	 */
+	setConfig(config: EdgeWorkerConfig): void {
+		this.config = config;
+	}
+
+	/**
 	 * Determine the default runner type.
 	 *
 	 * Priority:
@@ -258,7 +265,7 @@ export class RunnerSelectionService {
 			lowercaseLabels: string[],
 		): string | undefined => {
 			const codexModelLabel = lowercaseLabels.find((label) =>
-				/gpt-[a-z0-9.-]*codex$/i.test(label),
+				/gpt-[a-z0-9.-]*codex/i.test(label),
 			);
 			if (codexModelLabel) {
 				return codexModelLabel;
