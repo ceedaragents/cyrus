@@ -8,6 +8,7 @@ import type {
 	HookEvent,
 	McpServerConfig,
 	PostToolUseHookInput,
+	PreToolUseHookInput,
 	SDKMessage,
 } from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
@@ -4951,6 +4952,45 @@ ${input.userComment}
 			runnerType = "cursor";
 			modelOverride = this.getDefaultModelForRunner("cursor");
 			fallbackModelOverride = this.getDefaultFallbackModelForRunner("cursor");
+		}
+
+		// Add PreToolUse hooks for context-mode tool guidance (Claude runner only)
+		// These guide Claude to use context-mode MCP tools for large output operations,
+		// preserving context window space without blocking tool execution
+		const contextModeEnabled =
+			runnerType === "claude" && repository.contextMode?.enabled !== false;
+		if (contextModeEnabled) {
+			hooks.PreToolUse = [
+				{
+					matcher: "Bash",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const toolInput = input as PreToolUseHookInput & {
+								tool_input?: { command?: string };
+							};
+							const command = toolInput?.tool_input?.command || "";
+							if (/\b(curl|wget)\b/.test(command)) {
+								return {
+									continue: true,
+									additionalContext: `Tip: For fetching and processing web content, consider using the context-mode:fetch_and_index MCP tool instead. It fetches the URL, converts HTML to markdown, chunks the content, and indexes it for searchable retrieval — keeping your context window clean. Use context-mode:search to query the indexed content afterward.`,
+								};
+							}
+							return { continue: true };
+						},
+					],
+				},
+				{
+					matcher: "WebFetch",
+					hooks: [
+						async (_input, _toolUseID, { signal: _signal }) => {
+							return {
+								continue: true,
+								additionalContext: `Tip: For better context efficiency, consider using the context-mode:fetch_and_index MCP tool instead of WebFetch. It fetches the URL, indexes the content into a searchable knowledge base, and returns only a compressed summary — preserving your context window. Use context-mode:search to query specific information from the indexed content.`,
+							};
+						},
+					],
+				},
+			];
 		}
 
 		// Log model override if found
