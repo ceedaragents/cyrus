@@ -5002,6 +5002,34 @@ ${input.userComment}
 					],
 				},
 			];
+			hooks.SessionStart = [
+				{
+					matcher: "",
+					hooks: [
+						async (_input, _toolUseID, { signal: _signal }) => {
+							return {
+								continue: true,
+								additionalContext: `## Context-Mode Tools Available
+
+This session has context-mode enabled for efficient context window management. The following MCP tools are available:
+
+- **context-mode:execute** — Run shell commands or code in a sandbox. Only the compressed summary enters your context. Use for commands that produce large output.
+- **context-mode:execute_file** — Process file contents without loading the raw data into context. Use for large files.
+- **context-mode:batch_execute** — Run multiple commands/queries in a single call. Use when you need several operations at once.
+- **context-mode:fetch_and_index** — Fetch a URL, convert to markdown, chunk and index for search. Use instead of WebFetch for large pages.
+- **context-mode:index** — Index markdown/text content into the searchable knowledge base.
+- **context-mode:search** — Query the indexed knowledge base. Use to retrieve specific information from previously indexed content instead of re-reading files.
+
+**When to use context-mode tools:**
+- Prefer context-mode:execute over Bash for commands that produce >10KB of output
+- Prefer context-mode:fetch_and_index over WebFetch for web pages
+- After indexing content, use context-mode:search to find specific information
+- For small operations (<10KB output), regular tools are fine`,
+							};
+						},
+					],
+				},
+			];
 		}
 
 		// Log model override if found
