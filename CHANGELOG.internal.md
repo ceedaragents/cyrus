@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `context-mode` MCP server to `buildMcpConfig()` in EdgeWorker. Conditionally included when runner is `claude` and `repository.contextMode.enabled !== false`. Extended `RepositoryConfigSchema` with optional `contextMode.enabled` field and `buildMcpConfig()` options with `excludeContextMode`. ([CYPACK-873](https://linear.app/ceedar/issue/CYPACK-873), [#925](https://github.com/ceedaragents/cyrus/pull/925))
+
 ## [0.2.25] - 2026-02-27
 
 ### Fixed
