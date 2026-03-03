@@ -12,18 +12,31 @@ import {
 /**
  * Repository routing result types
  */
+export type RoutingMethod =
+	| "description-tag"
+	| "label-based"
+	| "project-based"
+	| "team-based"
+	| "team-prefix"
+	| "catch-all"
+	| "workspace-fallback";
+
 export type RepositoryRoutingResult =
 	| {
 			type: "selected";
 			repository: RepositoryConfig;
-			routingMethod:
-				| "description-tag"
-				| "label-based"
-				| "project-based"
-				| "team-based"
-				| "team-prefix"
-				| "catch-all"
-				| "workspace-fallback";
+			routingMethod: RoutingMethod;
+	  }
+	| {
+			type: "selected-multiple";
+			/** Ordered repository list used to construct the workspace */
+			repositories: RepositoryConfig[];
+			/** Primary repository used for session manager + issue tracker interactions */
+			primaryRepository: RepositoryConfig;
+			/** Explicit routing methods that contributed to this multi-repo selection */
+			routingMethods: Array<
+				Extract<RoutingMethod, "description-tag" | "label-based">
+			>;
 	  }
 	| { type: "needs_selection"; workspaceRepos: RepositoryConfig[] }
 	| { type: "none" };
@@ -66,8 +79,10 @@ export interface RepositoryRouterDeps {
  * This class was extracted from EdgeWorker to improve modularity and testability.
  */
 export class RepositoryRouter {
-	/** Cache mapping issue IDs to selected repository IDs */
+	/** Cache mapping issue IDs to primary selected repository IDs */
 	private issueRepositoryCache = new Map<string, string>();
+	/** Cache mapping issue IDs to all repositories selected for workspace creation */
+	private issueWorkspaceRepositoryCache = new Map<string, string[]>();
 
 	/** Pending repository selections awaiting user response */
 	private pendingSelections = new Map<string, PendingRepositorySelection>();
@@ -109,6 +124,7 @@ export class RepositoryRouter {
 				`Cached repository ${cachedRepositoryId} no longer exists, removing from cache`,
 			);
 			this.issueRepositoryCache.delete(issueId);
+			this.issueWorkspaceRepositoryCache.delete(issueId);
 			return null;
 		}
 
@@ -116,6 +132,65 @@ export class RepositoryRouter {
 			`Using cached repository ${cachedRepository.name} for issue ${issueId}`,
 		);
 		return cachedRepository;
+	}
+
+	/**
+	 * Get cached workspace repositories for an issue.
+	 * Falls back to primary repository cache for backwards compatibility.
+	 */
+	getCachedWorkspaceRepositories(
+		issueId: string,
+		repositoriesMap: Map<string, RepositoryConfig>,
+	): RepositoryConfig[] | null {
+		const cachedRepositoryIds = this.issueWorkspaceRepositoryCache.get(issueId);
+		if (cachedRepositoryIds && cachedRepositoryIds.length > 0) {
+			const repositories = cachedRepositoryIds
+				.map((repositoryId) => repositoriesMap.get(repositoryId) ?? null)
+				.filter((repo): repo is RepositoryConfig => repo !== null);
+
+			if (repositories.length > 0) {
+				return repositories;
+			}
+
+			// Clean up invalid cache entries
+			this.issueWorkspaceRepositoryCache.delete(issueId);
+		}
+
+		const cachedPrimaryRepository = this.getCachedRepository(
+			issueId,
+			repositoriesMap,
+		);
+		return cachedPrimaryRepository ? [cachedPrimaryRepository] : null;
+	}
+
+	/**
+	 * Cache repository selection for an issue.
+	 * Stores both primary repository (legacy behavior) and optional multi-repo workspace set.
+	 */
+	setIssueRepositorySelection(
+		issueId: string,
+		primaryRepositoryId: string,
+		workspaceRepositoryIds?: string[],
+	): void {
+		this.issueRepositoryCache.set(issueId, primaryRepositoryId);
+
+		const uniqueWorkspaceRepositoryIds = Array.from(
+			new Set(
+				(workspaceRepositoryIds ?? [primaryRepositoryId]).filter(
+					(repositoryId) => repositoryId.length > 0,
+				),
+			),
+		);
+
+		if (uniqueWorkspaceRepositoryIds.length > 1) {
+			this.issueWorkspaceRepositoryCache.set(
+				issueId,
+				uniqueWorkspaceRepositoryIds,
+			);
+			return;
+		}
+
+		this.issueWorkspaceRepositoryCache.delete(issueId);
 	}
 
 	/**
@@ -169,37 +244,59 @@ export class RepositoryRouter {
 		);
 		if (workspaceRepos.length === 0) return { type: "none" };
 
-		// Priority 1: Check description tag [repo=...]
-		const descriptionTagRepo = await this.findRepositoryByDescriptionTag(
+		// Priority 1 + 2 (explicit mentions): description tags and routing labels.
+		// If they collectively mention 2+ repositories, we enter multi-repo mode.
+		const descriptionTagRepos = await this.findRepositoriesByDescriptionTags(
 			issueId,
 			workspaceRepos,
 			workspaceId,
 		);
-		if (descriptionTagRepo) {
+		const labelMatchedRepos = await this.findRepositoriesByLabels(
+			issueId,
+			workspaceRepos,
+			workspaceId,
+		);
+
+		const explicitRepos = this.mergeUniqueRepositories(
+			[...descriptionTagRepos, ...labelMatchedRepos],
+			workspaceRepos,
+		);
+
+		if (explicitRepos.length > 1) {
+			const methods: Array<"description-tag" | "label-based"> = [];
+			if (descriptionTagRepos.length > 0) methods.push("description-tag");
+			if (labelMatchedRepos.length > 0) methods.push("label-based");
+
+			const primaryRepository = explicitRepos[0];
+			if (!primaryRepository) {
+				return { type: "none" };
+			}
+
 			this.logger.info(
-				`Repository selected: ${descriptionTagRepo.name} (description-tag routing)`,
+				`Multiple repositories explicitly matched (${explicitRepos.length}) - using multi-repo workspace`,
 			);
 			return {
-				type: "selected",
-				repository: descriptionTagRepo,
-				routingMethod: "description-tag",
+				type: "selected-multiple",
+				repositories: explicitRepos,
+				primaryRepository,
+				routingMethods: methods,
 			};
 		}
 
-		// Priority 2: Check routing labels
-		const labelMatchedRepo = await this.findRepositoryByLabels(
-			issueId,
-			workspaceRepos,
-			workspaceId,
-		);
-		if (labelMatchedRepo) {
+		if (explicitRepos.length === 1) {
+			const explicitRepository = explicitRepos[0];
+			if (!explicitRepository) {
+				return { type: "none" };
+			}
+			const routingMethod =
+				descriptionTagRepos.length > 0 ? "description-tag" : "label-based";
 			this.logger.info(
-				`Repository selected: ${labelMatchedRepo.name} (label-based routing)`,
+				`Repository selected: ${explicitRepository.name} (${routingMethod} routing)`,
 			);
 			return {
 				type: "selected",
-				repository: labelMatchedRepo,
-				routingMethod: "label-based",
+				repository: explicitRepository,
+				routingMethod,
 			};
 		}
 
@@ -306,42 +403,36 @@ export class RepositoryRouter {
 	/**
 	 * Find repository by routing labels
 	 */
-	private async findRepositoryByLabels(
+	private async findRepositoriesByLabels(
 		issueId: string | undefined,
 		repos: RepositoryConfig[],
 		workspaceId: string,
-	): Promise<RepositoryConfig | null> {
-		if (!issueId) return null;
+	): Promise<RepositoryConfig[]> {
+		if (!issueId) return [];
 
 		const reposWithRoutingLabels = repos.filter(
 			(repo) => repo.routingLabels && repo.routingLabels.length > 0,
 		);
 
-		if (reposWithRoutingLabels.length === 0) return null;
+		if (reposWithRoutingLabels.length === 0) return [];
 
 		try {
 			const labels = await this.deps.fetchIssueLabels(issueId, workspaceId);
-
-			for (const repo of reposWithRoutingLabels) {
-				if (
-					repo.routingLabels?.some((routingLabel: string) =>
-						labels.includes(routingLabel),
-					)
-				) {
-					return repo;
-				}
-			}
+			return reposWithRoutingLabels.filter((repo) =>
+				repo.routingLabels?.some((routingLabel: string) =>
+					labels.includes(routingLabel),
+				),
+			);
 		} catch (error) {
 			this.logger.error(`Failed to fetch labels for routing:`, error);
+			return [];
 		}
-
-		return null;
 	}
 
 	/**
-	 * Find repository by description tag
+	 * Find repositories by description tags.
 	 *
-	 * Parses the issue description for a [repo=...] tag and matches against:
+	 * Parses issue description for [repo=...] tags and matches against:
 	 * - Repository GitHub URL (contains org/repo-name)
 	 * - Repository name
 	 * - Repository ID
@@ -350,58 +441,54 @@ export class RepositoryRouter {
 	 * - [repo=Trelent/lighthouse-financial-disclosure]
 	 * - [repo=my-repo-name]
 	 */
-	private async findRepositoryByDescriptionTag(
+	private async findRepositoriesByDescriptionTags(
 		issueId: string | undefined,
 		repos: RepositoryConfig[],
 		workspaceId: string,
-	): Promise<RepositoryConfig | null> {
-		if (!issueId) return null;
+	): Promise<RepositoryConfig[]> {
+		if (!issueId) return [];
 
 		try {
 			const description = await this.deps.fetchIssueDescription(
 				issueId,
 				workspaceId,
 			);
-			if (!description) return null;
+			if (!description) return [];
 
-			const repoTag = this.parseRepoTagFromDescription(description);
-			if (!repoTag) return null;
+			const repoTags = this.parseRepoTagsFromDescription(description);
+			if (repoTags.length === 0) return [];
 
-			this.logger.debug(`Found [repo=${repoTag}] tag in issue description`);
+			this.logger.debug(
+				`Found ${repoTags.length} [repo=...] tag(s) in issue description`,
+			);
 
-			// Try to match against repositories
-			for (const repo of repos) {
-				// Match by GitHub URL containing the tag value (e.g., "org/repo-name")
-				if (repo.githubUrl?.includes(repoTag)) {
-					this.logger.debug(
-						`Matched repo tag "${repoTag}" to repository ${repo.name} via GitHub URL`,
-					);
-					return repo;
-				}
+			const matchedRepositoryIds = new Set<string>();
+			for (const repoTag of repoTags) {
+				const matchedRepo = repos.find((repo) => {
+					if (repo.githubUrl?.includes(repoTag)) return true;
+					if (repo.name.toLowerCase() === repoTag.toLowerCase()) return true;
+					if (repo.id === repoTag) return true;
+					return false;
+				});
 
-				// Match by repository name (exact match, case-insensitive)
-				if (repo.name.toLowerCase() === repoTag.toLowerCase()) {
-					this.logger.debug(
-						`Matched repo tag "${repoTag}" to repository ${repo.name} via name`,
-					);
-					return repo;
-				}
-
-				// Match by repository ID
-				if (repo.id === repoTag) {
-					this.logger.debug(
-						`Matched repo tag "${repoTag}" to repository ${repo.name} via ID`,
-					);
-					return repo;
+				if (matchedRepo) {
+					matchedRepositoryIds.add(matchedRepo.id);
 				}
 			}
 
-			this.logger.debug(`No repository matched [repo=${repoTag}] tag`);
+			if (matchedRepositoryIds.size === 0) {
+				this.logger.debug(
+					`No repository matched repo tags: ${repoTags.join(", ")}`,
+				);
+				return [];
+			}
+
+			// Preserve configured repository order for determinism.
+			return repos.filter((repo) => matchedRepositoryIds.has(repo.id));
 		} catch (error) {
 			this.logger.error(`Failed to fetch description for routing:`, error);
+			return [];
 		}
-
-		return null;
 	}
 
 	/**
@@ -417,12 +504,34 @@ export class RepositoryRouter {
 	 *
 	 * Returns the tag value or null if not found.
 	 */
+	parseRepoTagsFromDescription(description: string): string[] {
+		const regex = /\\?\[repo=([a-zA-Z0-9_\-/.]+)\\?\]/g;
+		const matches = Array.from(description.matchAll(regex)).map(
+			(match) => match[1],
+		);
+		return Array.from(
+			new Set(matches.filter((value): value is string => !!value)),
+		);
+	}
+
+	/**
+	 * Parse first [repo=...] tag from issue description.
+	 * Kept for backwards compatibility with existing callers/tests.
+	 */
 	parseRepoTagFromDescription(description: string): string | null {
-		// Match [repo=...] pattern - captures everything between = and ]
-		// The pattern allows: alphanumeric, hyphens, underscores, forward slashes, dots
-		// Also handles escaped brackets (\\[ and \\]) that Linear may produce
-		const match = description.match(/\\?\[repo=([a-zA-Z0-9_\-/.]+)\\?\]/);
-		return match?.[1] ?? null;
+		return this.parseRepoTagsFromDescription(description)[0] ?? null;
+	}
+
+	private mergeUniqueRepositories(
+		repositories: RepositoryConfig[],
+		orderedWorkspaceRepos: RepositoryConfig[],
+	): RepositoryConfig[] {
+		const repositoryIds = new Set(
+			repositories.map((repository) => repository.id),
+		);
+		return orderedWorkspaceRepos.filter((repository) =>
+			repositoryIds.has(repository.id),
+		);
 	}
 
 	/**
@@ -728,9 +837,23 @@ export class RepositoryRouter {
 	}
 
 	/**
+	 * Get issue workspace repository cache for serialization
+	 */
+	getIssueWorkspaceRepositoryCache(): Map<string, string[]> {
+		return this.issueWorkspaceRepositoryCache;
+	}
+
+	/**
 	 * Restore issue repository cache from serialization
 	 */
 	restoreIssueRepositoryCache(cache: Map<string, string>): void {
 		this.issueRepositoryCache = cache;
+	}
+
+	/**
+	 * Restore issue workspace repository cache from serialization
+	 */
+	restoreIssueWorkspaceRepositoryCache(cache: Map<string, string[]>): void {
+		this.issueWorkspaceRepositoryCache = cache;
 	}
 }

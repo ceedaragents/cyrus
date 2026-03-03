@@ -224,10 +224,77 @@ export class GitService {
 	/**
 	 * Create a git worktree for an issue
 	 */
+	async createIssueWorkspace(
+		issue: Issue,
+		repositories: RepositoryConfig[],
+		globalSetupScript?: string,
+	): Promise<Workspace> {
+		const workspaceRepositories = repositories.filter((repository) =>
+			Boolean(repository),
+		);
+		const primaryRepository = workspaceRepositories[0];
+		if (!primaryRepository) {
+			throw new Error("No repositories provided for workspace creation");
+		}
+
+		if (workspaceRepositories.length === 1) {
+			return this.createGitWorktree(
+				issue,
+				primaryRepository,
+				globalSetupScript,
+			);
+		}
+
+		const issueWorkspacePath = join(
+			primaryRepository.workspaceBaseDir,
+			issue.identifier,
+		);
+		mkdirSync(issueWorkspacePath, { recursive: true });
+
+		const createdRepositoryWorkspaces: NonNullable<Workspace["repositories"]> =
+			[];
+		const usedFolderNames = new Set<string>();
+		for (const repository of workspaceRepositories) {
+			let repositoryFolderName =
+				basename(repository.repositoryPath) || repository.name;
+			if (usedFolderNames.has(repositoryFolderName)) {
+				repositoryFolderName = `${repositoryFolderName}-${repository.id}`;
+			}
+			usedFolderNames.add(repositoryFolderName);
+
+			const repositoryWorkspacePath = join(
+				issueWorkspacePath,
+				repositoryFolderName,
+			);
+			const repositoryWorkspace = await this.createGitWorktree(
+				issue,
+				repository,
+				globalSetupScript,
+				repositoryWorkspacePath,
+			);
+			createdRepositoryWorkspaces.push({
+				repositoryId: repository.id,
+				repositoryName: repository.name,
+				path: repositoryWorkspace.path,
+				isGitWorktree: repositoryWorkspace.isGitWorktree,
+			});
+		}
+
+		return {
+			path: issueWorkspacePath,
+			isGitWorktree: false,
+			repositories: createdRepositoryWorkspaces,
+		};
+	}
+
+	/**
+	 * Create a git worktree for an issue
+	 */
 	async createGitWorktree(
 		issue: Issue,
 		repository: RepositoryConfig,
 		globalSetupScript?: string,
+		workspacePathOverride?: string,
 	): Promise<Workspace> {
 		try {
 			// Verify this is a git repository
@@ -251,7 +318,9 @@ export class GitService {
 					.replace(/\s+/g, "-")
 					.substring(0, 30)}`;
 			const branchName = this.sanitizeBranchName(rawBranchName);
-			const workspacePath = join(repository.workspaceBaseDir, issue.identifier);
+			const workspacePath =
+				workspacePathOverride ||
+				join(repository.workspaceBaseDir, issue.identifier);
 
 			// Ensure workspace directory exists
 			mkdirSync(repository.workspaceBaseDir, { recursive: true });
@@ -534,7 +603,9 @@ export class GitService {
 			}
 
 			// Fall back to regular directory if git worktree fails
-			const fallbackPath = join(repository.workspaceBaseDir, issue.identifier);
+			const fallbackPath =
+				workspacePathOverride ||
+				join(repository.workspaceBaseDir, issue.identifier);
 			mkdirSync(fallbackPath, { recursive: true });
 			return {
 				path: fallbackPath,

@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitService } from "../src/GitService.js";
 
@@ -15,6 +15,7 @@ vi.mock("node:fs", () => ({
 
 const mockExecSync = vi.mocked(execSync);
 const mockExistsSync = vi.mocked(existsSync);
+const mockMkdirSync = vi.mocked(mkdirSync);
 
 describe("GitService", () => {
 	let gitService: GitService;
@@ -301,6 +302,104 @@ describe("GitService", () => {
 
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
 			expect(result.isGitWorktree).toBe(false);
+		});
+	});
+
+	describe("createIssueWorkspace", () => {
+		const issue = {
+			id: "issue-1",
+			identifier: "ENG-97",
+			title: "Fix the shader",
+			branchName: "cyrustester/eng-97-fix-shader",
+		} as any;
+
+		const repo1 = {
+			id: "repo-1",
+			name: "primary",
+			repositoryPath: "/home/user/repos/cyrus",
+			workspaceBaseDir: "/home/user/.cyrus/worktrees",
+			baseBranch: "main",
+		} as any;
+
+		const repo2 = {
+			id: "repo-2",
+			name: "secondary",
+			repositoryPath: "/home/user/repos/cyrus-hosted",
+			workspaceBaseDir: "/home/user/.cyrus/worktrees",
+			baseBranch: "main",
+		} as any;
+
+		it("delegates to createGitWorktree for single repository", async () => {
+			const workspace = {
+				path: "/home/user/.cyrus/worktrees/ENG-97",
+				isGitWorktree: true,
+			};
+			const createGitWorktreeSpy = vi
+				.spyOn(gitService, "createGitWorktree")
+				.mockResolvedValue(workspace as any);
+
+			const result = await gitService.createIssueWorkspace(issue, [repo1]);
+
+			expect(result).toEqual(workspace);
+			expect(createGitWorktreeSpy).toHaveBeenCalledWith(
+				issue,
+				repo1,
+				undefined,
+			);
+			expect(mockMkdirSync).not.toHaveBeenCalled();
+		});
+
+		it("creates issue root directory and nested per-repo worktrees for multi-repo sessions", async () => {
+			const createGitWorktreeSpy = vi
+				.spyOn(gitService, "createGitWorktree")
+				.mockResolvedValueOnce({
+					path: "/home/user/.cyrus/worktrees/ENG-97/cyrus",
+					isGitWorktree: true,
+				} as any)
+				.mockResolvedValueOnce({
+					path: "/home/user/.cyrus/worktrees/ENG-97/cyrus-hosted",
+					isGitWorktree: true,
+				} as any);
+
+			const result = await gitService.createIssueWorkspace(issue, [
+				repo1,
+				repo2,
+			]);
+
+			expect(mockMkdirSync).toHaveBeenCalledWith(
+				"/home/user/.cyrus/worktrees/ENG-97",
+				{ recursive: true },
+			);
+			expect(createGitWorktreeSpy).toHaveBeenNthCalledWith(
+				1,
+				issue,
+				repo1,
+				undefined,
+				"/home/user/.cyrus/worktrees/ENG-97/cyrus",
+			);
+			expect(createGitWorktreeSpy).toHaveBeenNthCalledWith(
+				2,
+				issue,
+				repo2,
+				undefined,
+				"/home/user/.cyrus/worktrees/ENG-97/cyrus-hosted",
+			);
+			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
+			expect(result.isGitWorktree).toBe(false);
+			expect(result.repositories).toEqual([
+				{
+					repositoryId: "repo-1",
+					repositoryName: "primary",
+					path: "/home/user/.cyrus/worktrees/ENG-97/cyrus",
+					isGitWorktree: true,
+				},
+				{
+					repositoryId: "repo-2",
+					repositoryName: "secondary",
+					path: "/home/user/.cyrus/worktrees/ENG-97/cyrus-hosted",
+					isGitWorktree: true,
+				},
+			]);
 		});
 	});
 });

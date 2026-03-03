@@ -37,6 +37,16 @@ export interface Workspace {
 	path: string;
 	isGitWorktree: boolean;
 	historyPath?: string;
+	/**
+	 * Optional repository worktree metadata for multi-repository issue workspaces.
+	 * Single-repository sessions typically omit this field.
+	 */
+	repositories?: Array<{
+		repositoryId: string;
+		repositoryName: string;
+		path: string;
+		isGitWorktree: boolean;
+	}>;
 }
 
 export interface CyrusAgentSession {

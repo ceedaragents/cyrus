@@ -1945,6 +1945,35 @@ ${taskInstructions}
 	}
 
 	/**
+	 * Get cached workspace repositories for an issue.
+	 * Returns a single-item array for legacy/single-repo cache entries.
+	 */
+	private getCachedWorkspaceRepositories(issueId: string): RepositoryConfig[] {
+		return (
+			this.repositoryRouter.getCachedWorkspaceRepositories(
+				issueId,
+				this.repositories,
+			) ?? []
+		);
+	}
+
+	/**
+	 * Cache repository selection for an issue, preserving legacy primary-repo cache
+	 * and optional multi-repo workspace membership.
+	 */
+	private cacheIssueRepositorySelection(
+		issueId: string,
+		primaryRepositoryId: string,
+		workspaceRepositoryIds?: string[],
+	): void {
+		this.repositoryRouter.setIssueRepositorySelection(
+			issueId,
+			primaryRepositoryId,
+			workspaceRepositoryIds,
+		);
+	}
+
+	/**
 	 * Handle webhook events from proxy - main router for all webhooks
 	 */
 	private async handleWebhook(
@@ -2460,6 +2489,7 @@ ${taskInstructions}
 		issue: { id: string; identifier: string },
 		repository: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
+		workspaceRepositories?: RepositoryConfig[],
 	): Promise<AgentSessionData> {
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
@@ -2470,11 +2500,23 @@ ${taskInstructions}
 		// Move issue to started state automatically, in case it's not already
 		await this.moveIssueToStartedState(fullIssue, repository.id);
 
+		const selectedWorkspaceRepositories =
+			workspaceRepositories && workspaceRepositories.length > 0
+				? workspaceRepositories
+				: [repository];
+
 		// Create workspace using full issue data
 		// Use custom handler if provided, otherwise create a git worktree by default
 		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, repository)
-			: await this.gitService.createGitWorktree(fullIssue, repository);
+			? await this.config.handlers.createWorkspace(
+					fullIssue,
+					repository,
+					selectedWorkspaceRepositories,
+				)
+			: await this.gitService.createIssueWorkspace(
+					fullIssue,
+					selectedWorkspaceRepositories,
+				);
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
 
@@ -2511,11 +2553,24 @@ ${taskInstructions}
 		await mkdir(attachmentsDir, { recursive: true });
 
 		// Build allowed directories list - always include attachments directory
+		const workspaceGitMetadataDirectories =
+			workspace.repositories && workspace.repositories.length > 0
+				? workspace.repositories.flatMap((workspaceRepository) =>
+						this.gitService.getGitMetadataDirectories(workspaceRepository.path),
+					)
+				: this.gitService.getGitMetadataDirectories(workspace.path);
+		const workspaceRepositoryPaths = workspace.repositories?.map(
+			(workspaceRepository) => workspaceRepository.path,
+		) ?? [workspace.path];
 		const allowedDirectories: string[] = [
 			...new Set([
 				attachmentsDir,
-				repository.repositoryPath,
-				...this.gitService.getGitMetadataDirectories(workspace.path),
+				workspace.path,
+				...workspaceRepositoryPaths,
+				...selectedWorkspaceRepositories.map(
+					(workspaceRepository) => workspaceRepository.repositoryPath,
+				),
+				...workspaceGitMetadataDirectories,
 			]),
 		];
 
@@ -2555,12 +2610,19 @@ ${taskInstructions}
 		// Check the cache first, as the agentSessionCreated webhook may have been triggered by an @mention
 		// on an issue that already has an agentSession and an associated repository.
 		let repository: RepositoryConfig | null = null;
+		let workspaceRepositories: RepositoryConfig[] = [];
 		if (issueId) {
 			repository = this.getCachedRepository(issueId);
+			workspaceRepositories = this.getCachedWorkspaceRepositories(issueId);
 			if (repository) {
 				this.logger.debug(
 					`Using cached repository ${repository.name} for issue ${issueId}`,
 				);
+				if (workspaceRepositories.length > 1) {
+					this.logger.debug(
+						`Using cached multi-repo workspace (${workspaceRepositories.length} repositories) for issue ${issueId}`,
+					);
+				}
 			}
 		}
 
@@ -2591,24 +2653,43 @@ ${taskInstructions}
 				return;
 			}
 
-			// At this point, routingResult.type === "selected"
-			repository = routingResult.repository;
-			const routingMethod = routingResult.routingMethod;
+			if (routingResult.type === "selected-multiple") {
+				repository = routingResult.primaryRepository;
+				workspaceRepositories = routingResult.repositories;
+				this.logger.info(
+					`Multi-repo workspace selected for issue ${issueId}: ${workspaceRepositories.map((repo) => repo.name).join(", ")}`,
+				);
+			} else {
+				repository = routingResult.repository;
+				workspaceRepositories = [repository];
+			}
 
-			// Cache the repository for this issue
+			// Cache the repository selection for this issue
 			if (issueId) {
-				this.repositoryRouter
-					.getIssueRepositoryCache()
-					.set(issueId, repository.id);
+				this.cacheIssueRepositorySelection(
+					issueId,
+					repository.id,
+					workspaceRepositories.map(
+						(workspaceRepository) => workspaceRepository.id,
+					),
+				);
 			}
 
 			// Post agent activity showing auto-matched routing
+			const routingMethod =
+				routingResult.type === "selected"
+					? routingResult.routingMethod
+					: (routingResult.routingMethods[0] ?? "workspace-fallback");
 			await this.postRepositorySelectionActivity(
 				webhook.agentSession.id,
 				repository.id,
 				repository.name,
 				routingMethod,
 			);
+		}
+
+		if (repository && workspaceRepositories.length === 0) {
+			workspaceRepositories = [repository];
 		}
 
 		if (!webhook.agentSession.issue) {
@@ -2641,6 +2722,7 @@ ${taskInstructions}
 			repository,
 			guidance,
 			commentBody,
+			workspaceRepositories,
 		);
 	}
 
@@ -2661,6 +2743,7 @@ ${taskInstructions}
 		repository: RepositoryConfig,
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
+		workspaceRepositories?: RepositoryConfig[],
 	): Promise<void> {
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
@@ -2719,6 +2802,7 @@ ${taskInstructions}
 			issue,
 			repository,
 			agentSessionManager,
+			workspaceRepositories,
 		);
 
 		// Destructure the session data (excluding allowedTools which we'll build with promptType)
@@ -3131,7 +3215,7 @@ ${taskInstructions}
 
 		// Cache the selected repository for this issue
 		const issueId = agentSession.issue.id;
-		this.repositoryRouter.getIssueRepositoryCache().set(issueId, repository.id);
+		this.cacheIssueRepositorySelection(issueId, repository.id, [repository.id]);
 
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
@@ -3151,6 +3235,7 @@ ${taskInstructions}
 			repository,
 			guidance,
 			commentBody,
+			[repository],
 		);
 	}
 
@@ -3253,12 +3338,21 @@ ${taskInstructions}
 				false,
 			);
 
+			const cachedWorkspaceRepositories = this.getCachedWorkspaceRepositories(
+				issue.id,
+			);
+			const sessionWorkspaceRepositories =
+				cachedWorkspaceRepositories.length > 0
+					? cachedWorkspaceRepositories
+					: [repository];
+
 			// Create the session using the shared method
 			const sessionData = await this.createLinearAgentSession(
 				sessionId,
 				issue,
 				repository,
 				agentSessionManager,
+				sessionWorkspaceRepositories,
 			);
 
 			// Destructure session data for new session
@@ -3481,9 +3575,7 @@ ${taskInstructions}
 				if (session) {
 					repository = this.repositories.get(repoId) ?? null;
 					if (repository) {
-						this.repositoryRouter
-							.getIssueRepositoryCache()
-							.set(issueId, repoId);
+						this.cacheIssueRepositorySelection(issueId, repoId, [repoId]);
 						this.logger.info(
 							`Recovered repository ${repoId} for issue ${issueId} from session manager`,
 						);
@@ -3504,11 +3596,23 @@ ${taskInstructions}
 
 					if (routingResult.type === "selected") {
 						repository = routingResult.repository;
-						this.repositoryRouter
-							.getIssueRepositoryCache()
-							.set(issueId, repository.id);
+						this.cacheIssueRepositorySelection(issueId, repository.id, [
+							repository.id,
+						]);
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
+						);
+					} else if (routingResult.type === "selected-multiple") {
+						repository = routingResult.primaryRepository;
+						this.cacheIssueRepositorySelection(
+							issueId,
+							repository.id,
+							routingResult.repositories.map(
+								(workspaceRepository) => workspaceRepository.id,
+							),
+						);
+						this.logger.info(
+							`Recovered multi-repo workspace for issue ${issueId} via fallback routing (${routingResult.routingMethods.join(", ")})`,
 						);
 					}
 				} catch (error) {
@@ -5277,12 +5381,16 @@ ${input.userComment}
 		const issueRepositoryCache = Object.fromEntries(
 			this.repositoryRouter.getIssueRepositoryCache().entries(),
 		);
+		const issueWorkspaceRepositoryCache = Object.fromEntries(
+			this.repositoryRouter.getIssueWorkspaceRepositoryCache().entries(),
+		);
 
 		return {
 			agentSessions,
 			agentSessionEntries,
 			childToParentAgentSession,
 			issueRepositoryCache,
+			issueWorkspaceRepositoryCache,
 		};
 	}
 
@@ -5330,6 +5438,16 @@ ${input.userComment}
 			this.repositoryRouter.restoreIssueRepositoryCache(cache);
 			this.logger.debug(
 				`Restored ${cache.size} issue-to-repository cache mappings`,
+			);
+		}
+
+		if (state.issueWorkspaceRepositoryCache) {
+			const cache = new Map(
+				Object.entries(state.issueWorkspaceRepositoryCache),
+			);
+			this.repositoryRouter.restoreIssueWorkspaceRepositoryCache(cache);
+			this.logger.debug(
+				`Restored ${cache.size} issue-to-workspace-repositories cache mappings`,
 			);
 		}
 	}
@@ -5730,12 +5848,42 @@ ${input.userComment}
 		);
 		await mkdir(attachmentsDir, { recursive: true });
 
+		const sessionWorkspaceRepositories =
+			session.workspace.repositories &&
+			session.workspace.repositories.length > 0
+				? session.workspace.repositories
+						.map((workspaceRepository) =>
+							this.repositories.get(workspaceRepository.repositoryId),
+						)
+						.filter(
+							(workspaceRepository): workspaceRepository is RepositoryConfig =>
+								Boolean(workspaceRepository),
+						)
+				: [repository];
+
+		const sessionWorkspaceRepositoryPaths =
+			session.workspace.repositories &&
+			session.workspace.repositories.length > 0
+				? session.workspace.repositories.map(
+						(workspaceRepository) => workspaceRepository.path,
+					)
+				: [session.workspace.path];
+
+		const workspaceGitMetadataDirectories =
+			sessionWorkspaceRepositoryPaths.flatMap((workspaceRepositoryPath) =>
+				this.gitService.getGitMetadataDirectories(workspaceRepositoryPath),
+			);
+
 		const allowedDirectories = [
 			...new Set([
 				attachmentsDir,
-				repository.repositoryPath,
+				session.workspace.path,
+				...sessionWorkspaceRepositoryPaths,
+				...sessionWorkspaceRepositories.map(
+					(workspaceRepository) => workspaceRepository.repositoryPath,
+				),
 				...additionalAllowedDirectories,
-				...this.gitService.getGitMetadataDirectories(session.workspace.path),
+				...workspaceGitMetadataDirectories,
 			]),
 		];
 

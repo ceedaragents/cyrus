@@ -63,6 +63,8 @@ export interface SerializableEdgeWorkerState {
 	childToParentAgentSession?: Record<string, string>;
 	// Issue to repository mapping (for caching user repository selections)
 	issueRepositoryCache?: Record<string, string>;
+	// Issue to workspace repositories mapping (for multi-repo workspace reconstruction)
+	issueWorkspaceRepositoryCache?: Record<string, string[]>;
 }
 
 /**

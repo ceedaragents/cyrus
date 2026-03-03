@@ -276,6 +276,16 @@ class RoutingAssertion {
 		return this;
 	}
 
+	shouldSelectMultipleRepositories(...expectedRepos: RepositoryConfig[]): this {
+		expect(this.result.type).toBe("selected-multiple");
+		if (this.result.type === "selected-multiple") {
+			expect(this.result.repositories.map((repo) => repo.id)).toEqual(
+				expectedRepos.map((repo) => repo.id),
+			);
+		}
+		return this;
+	}
+
 	shouldSelectNothing(): this {
 		expect(this.result.type).toBe("none");
 		return this;
@@ -334,6 +344,27 @@ describe("RepositoryRouter", () => {
 				expect(result).toBeNull();
 			});
 
+			it("should return cached workspace repositories for multi-repo selections", () => {
+				const repo1 = env.repository("repo-1", "Repo 1").build();
+				const repo2 = env.repository("repo-2", "Repo 2").build();
+				const reposMap = new Map([
+					[repo1.id, repo1],
+					[repo2.id, repo2],
+				]);
+
+				env.router.setIssueRepositorySelection("issue-1", repo1.id, [
+					repo1.id,
+					repo2.id,
+				]);
+
+				const result = env.router.getCachedWorkspaceRepositories(
+					"issue-1",
+					reposMap,
+				);
+
+				expect(result).toEqual([repo1, repo2]);
+			});
+
 			it("should remove invalid cache entries when cached repository no longer exists", () => {
 				// Given: Cache points to non-existent repository
 				const repo = env.repository("repo-1", "Valid Repo").build();
@@ -379,6 +410,18 @@ describe("RepositoryRouter", () => {
 				expect(exported.size).toBe(2);
 				expect(exported.get("issue-1")).toBe("repo-1");
 				expect(exported.get("issue-2")).toBe("repo-2");
+			});
+
+			it("should restore and export workspace repository cache for multi-repo selections", () => {
+				const workspaceCache = new Map<string, string[]>([
+					["issue-1", ["repo-1", "repo-2"]],
+				]);
+
+				env.router.restoreIssueWorkspaceRepositoryCache(workspaceCache);
+
+				expect(env.router.getIssueWorkspaceRepositoryCache()).toEqual(
+					workspaceCache,
+				);
 			});
 		});
 	});
@@ -491,6 +534,38 @@ describe("RepositoryRouter", () => {
 				);
 			});
 
+			it("should select multiple repositories when multiple [repo=...] tags are present", async () => {
+				const repo1 = env
+					.repository("repo-1", "Cyrus")
+					.inWorkspace("default-workspace")
+					.withGithubUrl("https://github.com/ceedaragents/cyrus")
+					.build();
+
+				const repo2 = env
+					.repository("repo-2", "Hosted")
+					.inWorkspace("default-workspace")
+					.withGithubUrl("https://github.com/ceedaragents/cyrus-hosted")
+					.build();
+
+				env.issueHasDescription(
+					"issue-1",
+					"Please update [repo=ceedaragents/cyrus] and [repo=ceedaragents/cyrus-hosted].",
+				);
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo1,
+					repo2,
+				]);
+
+				expectRouting(result).shouldSelectMultipleRepositories(repo1, repo2);
+			});
+
 			it("should route to repository when tag matches repository name exactly", async () => {
 				// Given: Repositories with different names
 				const frontendRepo = env
@@ -587,7 +662,7 @@ describe("RepositoryRouter", () => {
 				);
 			});
 
-			it("should take precedence over label-based routing", async () => {
+			it("should select multiple repositories when description and labels mention different repositories", async () => {
 				// Given: A repository matched by label, another by description tag
 				const labelMatchedRepo = env
 					.repository("repo-1", "Label Matched")
@@ -620,9 +695,36 @@ describe("RepositoryRouter", () => {
 					descriptionMatchedRepo,
 				]);
 
-				// Then: Should select description-matched repo (higher priority)
-				expectRouting(result).shouldSelectRepositoryVia(
+				// Then: Should enter explicit multi-repo mode
+				expectRouting(result).shouldSelectMultipleRepositories(
+					labelMatchedRepo,
 					descriptionMatchedRepo,
+				);
+			});
+
+			it("should keep single-repository routing when description tag and label match the same repository", async () => {
+				const repo = env
+					.repository("repo-1", "frontend")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.withGithubUrl("https://github.com/org/frontend")
+					.build();
+
+				env.issueHasLabels("issue-1", "frontend");
+				env.issueHasDescription("issue-1", "Work on [repo=org/frontend]");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				expectRouting(result).shouldSelectRepositoryVia(
+					repo,
 					"description-tag",
 				);
 			});
@@ -716,6 +818,13 @@ describe("RepositoryRouter", () => {
 		});
 
 		describe("parseRepoTagFromDescription", () => {
+			it("should parse all tags with parseRepoTagsFromDescription", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"[repo=first-repo] and [repo=second-repo]",
+				);
+				expect(result).toEqual(["first-repo", "second-repo"]);
+			});
+
 			it("should parse simple repo name", () => {
 				const result = env.router.parseRepoTagFromDescription(
 					"Work on [repo=my-repo] feature",
@@ -851,7 +960,7 @@ describe("RepositoryRouter", () => {
 				);
 			});
 
-			it("should route to first matching repository when multiple labels match", async () => {
+			it("should select multiple repositories when multiple labels match different repositories", async () => {
 				// Given: Multiple repositories with overlapping labels
 				const repo1 = env
 					.repository("repo-1", "First Repo")
@@ -879,8 +988,8 @@ describe("RepositoryRouter", () => {
 					repo2,
 				]);
 
-				// Then: Should select first matching repository
-				expectRouting(result).shouldSelectRepositoryVia(repo1, "label-based");
+				// Then: Should enter explicit multi-repo mode
+				expectRouting(result).shouldSelectMultipleRepositories(repo1, repo2);
 			});
 
 			it("should continue to next priority when issue has no matching labels", async () => {
