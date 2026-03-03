@@ -4329,7 +4329,7 @@ ${taskInstructions}
 	private buildMcpConfig(
 		repository: RepositoryConfig,
 		parentSessionId?: string,
-		options?: { excludeSlackMcp?: boolean },
+		options?: { excludeSlackMcp?: boolean; excludeContextMode?: boolean },
 	): Record<string, McpServerConfig> {
 		const contextId = this.buildCyrusToolsMcpContextId(
 			repository,
@@ -4389,6 +4389,19 @@ ${taskInstructions}
 				env: {
 					SLACK_MCP_XOXB_TOKEN: slackBotToken,
 				},
+			};
+		}
+
+		// Conditionally inject context-mode MCP server for context window optimization
+		// Only for Claude runner (claude-specific MCP + hooks); excluded for Gemini/Codex/Cursor
+		// https://github.com/mksglu/claude-context-mode
+		if (
+			!options?.excludeContextMode &&
+			repository.contextMode?.enabled !== false
+		) {
+			mcpConfig["context-mode"] = {
+				command: "npx",
+				args: ["-y", "context-mode", "start"],
 			};
 		}
 
@@ -4814,7 +4827,7 @@ ${input.userComment}
 		maxTurns?: number,
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
-		mcpOptions?: { excludeSlackMcp?: boolean },
+		mcpOptions?: { excludeSlackMcp?: boolean; excludeContextMode?: boolean },
 	): {
 		config: AgentRunnerConfig;
 		runnerType: "claude" | "gemini" | "codex" | "cursor";
@@ -4958,7 +4971,12 @@ ${input.userComment}
 		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
 		const mcpConfig = disallowAllTools
 			? undefined
-			: this.buildMcpConfig(repository, sessionId, mcpOptions);
+			: this.buildMcpConfig(repository, sessionId, {
+					...mcpOptions,
+					// context-mode uses Claude-specific MCP + hooks; exclude for other runners
+					excludeContextMode:
+						mcpOptions?.excludeContextMode ?? runnerType !== "claude",
+				});
 		const mcpConfigPath = disallowAllTools
 			? undefined
 			: repository.mcpConfigPath;

@@ -158,6 +158,14 @@ export const RepositoryConfigSchema = z.object({
 
 	// Repository-specific user access control
 	userAccessControl: UserAccessControlConfigSchema.optional(),
+
+	// Context window optimization via context-mode MCP server
+	// https://github.com/mksglu/claude-context-mode
+	contextMode: z
+		.object({
+			enabled: z.boolean().optional(),
+		})
+		.optional(),
 });
 
 /**
