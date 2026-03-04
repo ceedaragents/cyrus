@@ -37,7 +37,7 @@ export class SlackChatAdapter
 	 * it was loaded into process.env after the event was created.
 	 */
 	private getSlackBotToken(event: SlackWebhookEvent): string | undefined {
-		return event.slackBotToken || process.env.SLACK_BOT_TOKEN;
+		return event.slackBotToken ?? process.env.SLACK_BOT_TOKEN;
 	}
 
 	private async getSelfBotId(token: string): Promise<string | undefined> {

@@ -863,6 +863,8 @@ export class EdgeWorker extends EventEmitter {
 			const prTitle = extractPRTitle(event);
 			const sessionKey = extractSessionKey(event);
 
+			const isPullRequestReview = isPullRequestReviewPayload(event.payload);
+
 			// Skip comments from the bot itself to prevent infinite loops
 			const botUsername = process.env.GITHUB_BOT_USERNAME;
 			if (botUsername && commentAuthor === botUsername) {
@@ -872,21 +874,8 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			}
 
-			// Only trigger on comments that mention the bot (when configured)
-			if (botUsername && !commentBody.includes(`@${botUsername}`)) {
-				this.logger.debug(
-					`Ignoring comment without @${botUsername} mention on ${repoFullName}#${prNumber}`,
-				);
-				return;
-			}
-
-			const isPullRequestReview = isPullRequestReviewPayload(event.payload);
-
-			this.logger.info(
-				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}${isPullRequestReview ? " (pull_request_review)" : ""}`,
-			);
-
 			// For pull_request_review events, defensively check review state
+			// (must happen before the mention check — reviews don't contain @mentions)
 			if (isPullRequestReviewPayload(event.payload)) {
 				if (event.payload.review.state !== "changes_requested") {
 					this.logger.debug(
@@ -895,6 +884,23 @@ export class EdgeWorker extends EventEmitter {
 					return;
 				}
 			}
+
+			// Only trigger on comments that mention the bot (when configured)
+			// Skip this check for pull_request_review events — reviews don't @mention the bot
+			if (
+				!isPullRequestReview &&
+				botUsername &&
+				!commentBody.includes(`@${botUsername}`)
+			) {
+				this.logger.debug(
+					`Ignoring comment without @${botUsername} mention on ${repoFullName}#${prNumber}`,
+				);
+				return;
+			}
+
+			this.logger.info(
+				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}${isPullRequestReview ? " (pull_request_review)" : ""}`,
+			);
 
 			// Add "eyes" reaction to acknowledge receipt (not for pull_request_review — we post a comment instead)
 			const reactionToken = event.installationToken || process.env.GITHUB_TOKEN;
@@ -964,9 +970,9 @@ export class EdgeWorker extends EventEmitter {
 				branchRef = await this.fetchPRBranchRef(event, repository);
 			}
 
-			if (!branchRef) {
+			if (!branchRef || !prNumber) {
 				this.logger.error(
-					`Could not determine branch for ${repoFullName}#${prNumber}`,
+					`Could not determine branch or PR number for ${repoFullName}#${prNumber}`,
 				);
 				return;
 			}
@@ -983,7 +989,7 @@ export class EdgeWorker extends EventEmitter {
 			const workspace = await this.createGitHubWorkspace(
 				repository,
 				branchRef,
-				prNumber!,
+				prNumber,
 			);
 
 			if (!workspace) {

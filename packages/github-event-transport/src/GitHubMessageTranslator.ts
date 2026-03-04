@@ -22,6 +22,7 @@ import type {
 	GitHubIssueCommentPayload,
 	GitHubPullRequestReviewCommentPayload,
 	GitHubPullRequestReviewPayload,
+	GitHubReview,
 	GitHubWebhookEvent,
 } from "./types.js";
 
@@ -334,17 +335,7 @@ export class GitHubMessageTranslator
 			eventType: event.eventType,
 			repository: this.buildRepositoryRef(repository),
 			pullRequest: this.buildPullRequestRef(pull_request),
-			comment: {
-				id: review.id,
-				body: review.body ?? "",
-				htmlUrl: review.html_url,
-				user: {
-					login: review.user.login,
-					id: review.user.id,
-					avatarUrl: review.user.avatar_url,
-				},
-				createdAt: review.submitted_at,
-			},
+			comment: this.buildReviewAsCommentRef(review),
 			installationToken: event.installationToken,
 		};
 
@@ -390,17 +381,7 @@ export class GitHubMessageTranslator
 		const platformData: GitHubUserPromptPlatformData = {
 			eventType: event.eventType,
 			repository: this.buildRepositoryRef(repository),
-			comment: {
-				id: review.id,
-				body: review.body ?? "",
-				htmlUrl: review.html_url,
-				user: {
-					login: review.user.login,
-					id: review.user.id,
-					avatarUrl: review.user.avatar_url,
-				},
-				createdAt: review.submitted_at,
-			},
+			comment: this.buildReviewAsCommentRef(review),
 			installationToken: event.installationToken,
 		};
 
@@ -538,6 +519,26 @@ export class GitHubMessageTranslator
 			createdAt: comment.created_at,
 			path: comment.path,
 			diffHunk: comment.diff_hunk,
+		};
+	}
+
+	/**
+	 * Build comment reference from a pull_request_review review object.
+	 * Adapts the review shape into the common comment ref format.
+	 */
+	private buildReviewAsCommentRef(
+		review: GitHubReview,
+	): GitHubPlatformRef["comment"] {
+		return {
+			id: review.id,
+			body: review.body ?? "",
+			htmlUrl: review.html_url,
+			user: {
+				login: review.user.login,
+				id: review.user.id,
+				avatarUrl: review.user.avatar_url,
+			},
+			createdAt: review.submitted_at,
 		};
 	}
 }
