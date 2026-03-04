@@ -16,6 +16,7 @@ export type RepositoryRoutingResult =
 	| {
 			type: "selected";
 			repository: RepositoryConfig;
+			repositories: RepositoryConfig[];
 			routingMethod:
 				| "description-tag"
 				| "label-based"
@@ -67,7 +68,7 @@ export interface RepositoryRouterDeps {
  */
 export class RepositoryRouter {
 	/** Cache mapping issue IDs to selected repository IDs */
-	private issueRepositoryCache = new Map<string, string>();
+	private issueRepositoryCache = new Map<string, string[]>();
 
 	/** Pending repository selections awaiting user response */
 	private pendingSelections = new Map<string, PendingRepositorySelection>();
@@ -82,7 +83,7 @@ export class RepositoryRouter {
 	}
 
 	/**
-	 * Get cached repository for an issue
+	 * Get cached repositories for an issue
 	 *
 	 * This is a simple cache lookup used by agentSessionPrompted webhooks (Branch 3).
 	 * Per CLAUDE.md: "The repository will be retrieved from the issue-to-repository
@@ -90,32 +91,64 @@ export class RepositoryRouter {
 	 *
 	 * @param issueId The Linear issue ID
 	 * @param repositoriesMap Map of repository IDs to configurations
-	 * @returns The cached repository or null if not found
+	 * @returns Cached repositories (empty when not found)
+	 */
+	getCachedRepositories(
+		issueId: string,
+		repositoriesMap: Map<string, RepositoryConfig>,
+	): RepositoryConfig[] {
+		const cachedValue = this.issueRepositoryCache.get(issueId) as
+			| string[]
+			| string
+			| undefined;
+		const cachedRepositoryIds = Array.isArray(cachedValue)
+			? cachedValue
+			: cachedValue
+				? [cachedValue]
+				: [];
+		if (cachedRepositoryIds.length === 0) {
+			this.logger.debug(`No cached repositories found for issue ${issueId}`);
+			return [];
+		}
+		if (!Array.isArray(cachedValue)) {
+			this.issueRepositoryCache.set(issueId, cachedRepositoryIds);
+		}
+
+		const cachedRepositories = cachedRepositoryIds
+			.map((repositoryId) => repositoriesMap.get(repositoryId))
+			.filter((repository): repository is RepositoryConfig =>
+				Boolean(repository),
+			);
+
+		if (cachedRepositories.length !== cachedRepositoryIds.length) {
+			const survivingIds = cachedRepositories.map(
+				(repository) => repository.id,
+			);
+			this.logger.warn(
+				`Some cached repositories no longer exist for issue ${issueId}; pruning cache to [${survivingIds.join(", ")}]`,
+			);
+			if (survivingIds.length > 0) {
+				this.issueRepositoryCache.set(issueId, survivingIds);
+			} else {
+				this.issueRepositoryCache.delete(issueId);
+			}
+		}
+
+		this.logger.debug(
+			`Using ${cachedRepositories.length} cached repositories for issue ${issueId}`,
+		);
+		return cachedRepositories;
+	}
+
+	/**
+	 * Backward-compatible single-repository accessor.
+	 * @deprecated Use getCachedRepositories instead.
 	 */
 	getCachedRepository(
 		issueId: string,
 		repositoriesMap: Map<string, RepositoryConfig>,
 	): RepositoryConfig | null {
-		const cachedRepositoryId = this.issueRepositoryCache.get(issueId);
-		if (!cachedRepositoryId) {
-			this.logger.debug(`No cached repository found for issue ${issueId}`);
-			return null;
-		}
-
-		const cachedRepository = repositoriesMap.get(cachedRepositoryId);
-		if (!cachedRepository) {
-			// Repository no longer exists, remove from cache
-			this.logger.warn(
-				`Cached repository ${cachedRepositoryId} no longer exists, removing from cache`,
-			);
-			this.issueRepositoryCache.delete(issueId);
-			return null;
-		}
-
-		this.logger.debug(
-			`Using cached repository ${cachedRepository.name} for issue ${issueId}`,
-		);
-		return cachedRepository;
+		return this.getCachedRepositories(issueId, repositoriesMap)[0] ?? null;
 	}
 
 	/**
@@ -137,6 +170,7 @@ export class RepositoryRouter {
 				? {
 						type: "selected",
 						repository: repos[0],
+						repositories: [repos[0]],
 						routingMethod: "workspace-fallback",
 					}
 				: { type: "none" };
@@ -157,6 +191,7 @@ export class RepositoryRouter {
 					return {
 						type: "selected",
 						repository: repo,
+						repositories: [repo],
 						routingMethod: "workspace-fallback",
 					};
 				}
@@ -182,6 +217,7 @@ export class RepositoryRouter {
 			return {
 				type: "selected",
 				repository: descriptionTagRepo,
+				repositories: [descriptionTagRepo],
 				routingMethod: "description-tag",
 			};
 		}
@@ -199,6 +235,7 @@ export class RepositoryRouter {
 			return {
 				type: "selected",
 				repository: labelMatchedRepo,
+				repositories: [labelMatchedRepo],
 				routingMethod: "label-based",
 			};
 		}
@@ -217,6 +254,7 @@ export class RepositoryRouter {
 				return {
 					type: "selected",
 					repository: projectMatchedRepo,
+					repositories: [projectMatchedRepo],
 					routingMethod: "project-based",
 				};
 			}
@@ -235,6 +273,7 @@ export class RepositoryRouter {
 				return {
 					type: "selected",
 					repository: teamMatchedRepo,
+					repositories: [teamMatchedRepo],
 					routingMethod: "team-based",
 				};
 			}
@@ -253,6 +292,7 @@ export class RepositoryRouter {
 					return {
 						type: "selected",
 						repository: repo,
+						repositories: [repo],
 						routingMethod: "team-prefix",
 					};
 				}
@@ -275,16 +315,26 @@ export class RepositoryRouter {
 			return {
 				type: "selected",
 				repository: catchAllRepo,
+				repositories: [catchAllRepo],
 				routingMethod: "catch-all",
 			};
 		}
 
-		// Multiple repositories with no routing match - request user selection
+		// Multiple repositories with no routing match - run the session across all repositories.
 		if (workspaceRepos.length > 1) {
 			this.logger.info(
-				`Multiple repositories (${workspaceRepos.length}) found with no routing match - requesting user selection`,
+				`Multiple repositories (${workspaceRepos.length}) found with no routing match - selecting all`,
 			);
-			return { type: "needs_selection", workspaceRepos };
+			const primaryRepository = workspaceRepos[0];
+			if (!primaryRepository) {
+				return { type: "none" };
+			}
+			return {
+				type: "selected",
+				repository: primaryRepository,
+				repositories: workspaceRepos,
+				routingMethod: "workspace-fallback",
+			};
 		}
 
 		// Final fallback to first workspace repo
@@ -296,6 +346,7 @@ export class RepositoryRouter {
 			return {
 				type: "selected",
 				repository: fallbackRepo,
+				repositories: [fallbackRepo],
 				routingMethod: "workspace-fallback",
 			};
 		}
@@ -723,14 +774,23 @@ export class RepositoryRouter {
 	/**
 	 * Get issue repository cache for serialization
 	 */
-	getIssueRepositoryCache(): Map<string, string> {
+	getIssueRepositoryCache(): Map<string, string[]> {
 		return this.issueRepositoryCache;
 	}
 
 	/**
 	 * Restore issue repository cache from serialization
 	 */
-	restoreIssueRepositoryCache(cache: Map<string, string>): void {
-		this.issueRepositoryCache = cache;
+	restoreIssueRepositoryCache(cache: Map<string, string[] | string>): void {
+		this.issueRepositoryCache = new Map(
+			Array.from(cache.entries()).map(([issueId, repositoryIds]) => [
+				issueId,
+				Array.isArray(repositoryIds)
+					? repositoryIds
+					: repositoryIds
+						? [repositoryIds]
+						: [],
+			]),
+		);
 	}
 }

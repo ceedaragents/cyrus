@@ -228,6 +228,7 @@ export class GitService {
 		issue: Issue,
 		repository: RepositoryConfig,
 		globalSetupScript?: string,
+		workspacePathOverride?: string,
 	): Promise<Workspace> {
 		try {
 			// Verify this is a git repository
@@ -251,7 +252,9 @@ export class GitService {
 					.replace(/\s+/g, "-")
 					.substring(0, 30)}`;
 			const branchName = this.sanitizeBranchName(rawBranchName);
-			const workspacePath = join(repository.workspaceBaseDir, issue.identifier);
+			const workspacePath =
+				workspacePathOverride ||
+				join(repository.workspaceBaseDir, issue.identifier);
 
 			// Ensure workspace directory exists
 			mkdirSync(repository.workspaceBaseDir, { recursive: true });

@@ -180,6 +180,18 @@ export const EdgeConfigSchema = z.object({
 	/** Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...") */
 	linearWorkspaceSlug: z.string().optional(),
 
+	/** Optional workspace-level Linear workspace ID (used when repositories inherit a shared token) */
+	linearWorkspaceId: z.string().optional(),
+
+	/** Optional workspace-level Linear workspace name */
+	linearWorkspaceName: z.string().optional(),
+
+	/** Optional workspace-level Linear access token (repositories can still override with per-repo tokens) */
+	linearToken: z.string().optional(),
+
+	/** Optional workspace-level Linear refresh token */
+	linearRefreshToken: z.string().optional(),
+
 	/** Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku") */
 	claudeDefaultModel: z.string().optional(),
 

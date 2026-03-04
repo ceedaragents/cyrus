@@ -132,8 +132,8 @@ export class PromptScenario {
 
 	withRepository(repo: any) {
 		this.input.repository = repo;
-		// Also ensure the worker has an IssueTrackerService for this repository
-		if (!(this.worker as any).issueTrackers.has(repo.id)) {
+		// Also ensure the worker has an IssueTrackerService.
+		if (!(this.worker as any).sharedIssueTracker) {
 			const mockIssueTracker = {
 				getComments: () => Promise.resolve([]),
 				getComment: () => Promise.resolve(null),
@@ -143,7 +143,7 @@ export class PromptScenario {
 						Promise.resolve({ data: { comment: { body: "" } } }),
 				},
 			};
-			(this.worker as any).issueTrackers.set(repo.id, mockIssueTracker);
+			(this.worker as any).sharedIssueTracker = mockIssueTracker;
 		}
 		return this;
 	}

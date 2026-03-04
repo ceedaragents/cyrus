@@ -143,10 +143,7 @@ describe("EdgeWorker - Status Endpoint", () => {
 			};
 
 			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
-				mockSessionManager,
-			);
+			(edgeWorker as any).sharedAgentSessionManager = mockSessionManager;
 
 			const status = (edgeWorker as any).computeStatus();
 
@@ -168,10 +165,7 @@ describe("EdgeWorker - Status Endpoint", () => {
 			};
 
 			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
-				mockSessionManager,
-			);
+			(edgeWorker as any).sharedAgentSessionManager = mockSessionManager;
 
 			const status = (edgeWorker as any).computeStatus();
 
@@ -195,10 +189,7 @@ describe("EdgeWorker - Status Endpoint", () => {
 			};
 
 			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
-				mockSessionManager,
-			);
+			(edgeWorker as any).sharedAgentSessionManager = mockSessionManager;
 
 			const status = (edgeWorker as any).computeStatus();
 
@@ -216,28 +207,15 @@ describe("EdgeWorker - Status Endpoint", () => {
 				isRunning: vi.fn().mockReturnValue(true),
 			};
 
-			const mockSessionManager1 = {
-				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner1]),
+			const mockSessionManager = {
+				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner1, mockRunner2]),
 			};
-			const mockSessionManager2 = {
-				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner2]),
-			};
-
-			// Set multiple session managers
-			(edgeWorker as any).agentSessionManagers.set(
-				"repo-1",
-				mockSessionManager1,
-			);
-			(edgeWorker as any).agentSessionManagers.set(
-				"repo-2",
-				mockSessionManager2,
-			);
+			(edgeWorker as any).sharedAgentSessionManager = mockSessionManager;
 
 			const status = (edgeWorker as any).computeStatus();
 
 			expect(status).toBe("busy");
-			expect(mockSessionManager1.getAllAgentRunners).toHaveBeenCalled();
-			expect(mockSessionManager2.getAllAgentRunners).toHaveBeenCalled();
+			expect(mockSessionManager.getAllAgentRunners).toHaveBeenCalled();
 		});
 	});
 

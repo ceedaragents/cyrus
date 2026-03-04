@@ -448,6 +448,45 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 
 			expect(tools).toEqual(["CustomTool", "mcp__linear", "mcp__cyrus-tools"]);
 		});
+
+		it("should union allowed tools across multiple repositories", () => {
+			const repoA: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				id: "repo-a",
+				name: "Repo A",
+				allowedTools: ["Read", "Edit"],
+			};
+			const repoB: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				id: "repo-b",
+				name: "Repo B",
+				allowedTools: ["Read", "Bash"],
+			};
+
+			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
+			const tools = buildAllowedTools([repoA, repoB]);
+
+			expect(tools).toEqual([
+				"Read",
+				"Edit",
+				"Bash",
+				"mcp__linear",
+				"mcp__cyrus-tools",
+			]);
+		});
+
+		it("should support zero-repository sessions using global defaults", () => {
+			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
+			const tools = buildAllowedTools([]);
+
+			expect(tools).toEqual([
+				"Read",
+				"Write",
+				"Edit",
+				"mcp__linear",
+				"mcp__cyrus-tools",
+			]);
+		});
 	});
 
 	describe("determineSystemPromptFromLabels", () => {
@@ -785,6 +824,72 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			// Without prompt type, should use repository level
 			const noPromptTools = buildDisallowedTools(repository);
 			expect(noPromptTools).toEqual(["RepoLevel"]);
+		});
+
+		it("should intersect disallowed tools across multiple repositories", () => {
+			const repoA: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				id: "repo-a",
+				name: "Repo A",
+				disallowedTools: ["Bash", "WebFetch"],
+			};
+			const repoB: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				id: "repo-b",
+				name: "Repo B",
+				disallowedTools: ["Bash", "Edit"],
+			};
+
+			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
+			const tools = buildDisallowedTools([repoA, repoB]);
+
+			expect(tools).toEqual(["Bash"]);
+		});
+
+		it("should support zero-repository sessions for disallowed tools", () => {
+			const ew = new EdgeWorker({
+				...mockConfig,
+				defaultDisallowedTools: ["Bash", "Write"],
+			});
+			const buildDisallowedTools = getBuildDisallowedTools(ew);
+			const tools = buildDisallowedTools([]);
+
+			expect(tools).toEqual(["Bash", "Write"]);
+		});
+	});
+
+	describe("buildAgentRunnerConfig zero-repo fallback", () => {
+		const getBuildAgentRunnerConfig = (ew: EdgeWorker) =>
+			(ew as any).buildAgentRunnerConfig.bind(ew);
+
+		it("should not throw when building runner config with no repositories", () => {
+			const workerWithNoRepos = new EdgeWorker({
+				...mockConfig,
+				repositories: [],
+				linearToken: "workspace-token",
+				linearWorkspaceId: "workspace-id",
+			});
+
+			const buildAgentRunnerConfig =
+				getBuildAgentRunnerConfig(workerWithNoRepos);
+			const session = {
+				id: "session-1",
+				workspace: { path: "/tmp/session-1", isGitWorktree: false },
+				issueId: "issue-1",
+				issue: { identifier: "TEST-1" },
+			} as any;
+
+			expect(() =>
+				buildAgentRunnerConfig(
+					session,
+					[],
+					"session-1",
+					undefined,
+					["Read", "mcp__linear", "mcp__cyrus-tools"],
+					["/tmp/session-1"],
+					[],
+				),
+			).not.toThrow();
 		});
 	});
 });

@@ -18,6 +18,7 @@ import {
 	type IAgentRunner,
 	type ILogger,
 	type IssueMinimal,
+	type RepositoryContext,
 	type SerializedCyrusAgentSession,
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
@@ -161,6 +162,7 @@ export class AgentSessionManager extends EventEmitter {
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
 		platform: "linear" | "github" | "slack" = "linear",
+		repositories: RepositoryContext[] = [],
 	): CyrusAgentSession {
 		const log = this.logger.withContext({
 			sessionId,
@@ -185,6 +187,7 @@ export class AgentSessionManager extends EventEmitter {
 			},
 			issueId, // Kept for backwards compatibility
 			issue: issueMinimal,
+			repositories,
 			workspace: workspace,
 		};
 
@@ -218,6 +221,7 @@ export class AgentSessionManager extends EventEmitter {
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
+			repositories: [],
 			workspace,
 		};
 
@@ -1868,6 +1872,11 @@ export class AgentSessionManager extends EventEmitter {
 		for (const [sessionId, sessionData] of Object.entries(serializedSessions)) {
 			const session: CyrusAgentSession = {
 				...sessionData,
+				repositories: Array.isArray(
+					(sessionData as Partial<CyrusAgentSession>).repositories,
+				)
+					? (sessionData as CyrusAgentSession).repositories
+					: [],
 			};
 			this.sessions.set(sessionId, session);
 		}

@@ -22,7 +22,7 @@ import type { SubroutineDefinition } from "./procedures/index.js";
 export interface PromptBuilderDeps {
 	logger: ILogger;
 	repositories: Map<string, RepositoryConfig>;
-	issueTrackers: Map<string, IIssueTrackerService>;
+	getIssueTracker: (repositoryId: string) => IIssueTrackerService | undefined;
 	gitService: GitService;
 	config: EdgeWorkerConfig;
 }
@@ -59,14 +59,16 @@ export interface PromptResult {
 export class PromptBuilder {
 	private readonly logger: ILogger;
 	private readonly repositories: Map<string, RepositoryConfig>;
-	private readonly issueTrackers: Map<string, IIssueTrackerService>;
+	private readonly getIssueTracker: (
+		repositoryId: string,
+	) => IIssueTrackerService | undefined;
 	private readonly gitService: GitService;
 	private readonly config: EdgeWorkerConfig;
 
 	constructor(deps: PromptBuilderDeps) {
 		this.logger = deps.logger;
 		this.repositories = deps.repositories;
-		this.issueTrackers = deps.issueTrackers;
+		this.getIssueTracker = deps.getIssueTracker;
 		this.gitService = deps.gitService;
 		this.config = deps.config;
 	}
@@ -331,7 +333,7 @@ export class PromptBuilder {
 			}
 
 			// Get IssueTrackerService for this repository
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.getIssueTracker(repository.id);
 			if (!issueTracker) {
 				this.logger.error(
 					`No IssueTrackerService found for repository ${repository.id}`,
@@ -649,7 +651,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.getIssueTracker(repository.id);
 			let commentThreads = "No comments yet.";
 
 			if (issueTracker && issue.id) {
