@@ -165,8 +165,13 @@ type CyrusToolsMcpContextEntry = {
 export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
-	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
-	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
+	private workspaceAgentSessionManagers: Map<string, AgentSessionManager> =
+		new Map(); // canonical runtime map (keyed by workspace ID)
+	private workspaceIssueTrackers: Map<string, IIssueTrackerService> = new Map(); // canonical runtime map (keyed by workspace ID)
+	private repositoryToWorkspace: Map<string, string> = new Map(); // repository ID -> workspace ID index
+	private workspaceRuntimeOwnerRepository: Map<string, string> = new Map(); // workspace ID -> repository ID (owner for runtime defaults)
+	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // compatibility index (repository ID -> workspace manager)
+	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // compatibility index (repository ID -> workspace tracker)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
@@ -238,14 +243,7 @@ export class EdgeWorker extends EventEmitter {
 		// Initialize repository router with dependencies
 		const repositoryRouterDeps: RepositoryRouterDeps = {
 			fetchIssueLabels: async (issueId: string, workspaceId: string) => {
-				// Find repository for this workspace
-				const repo = Array.from(this.repositories.values()).find(
-					(r) => r.linearWorkspaceId === workspaceId,
-				);
-				if (!repo) return [];
-
-				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(repo.id);
+				const issueTracker = this.getIssueTrackerForWorkspace(workspaceId);
 				if (!issueTracker) return [];
 
 				// Use platform-agnostic getIssueLabels method
@@ -255,14 +253,7 @@ export class EdgeWorker extends EventEmitter {
 				issueId: string,
 				workspaceId: string,
 			): Promise<string | undefined> => {
-				// Find repository for this workspace
-				const repo = Array.from(this.repositories.values()).find(
-					(r) => r.linearWorkspaceId === workspaceId,
-				);
-				if (!repo) return undefined;
-
-				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(repo.id);
+				const issueTracker = this.getIssueTrackerForWorkspace(workspaceId);
 				if (!issueTracker) return undefined;
 
 				// Fetch issue and get description
@@ -278,7 +269,8 @@ export class EdgeWorker extends EventEmitter {
 				}
 			},
 			hasActiveSession: (issueId: string, repositoryId: string) => {
-				const sessionManager = this.agentSessionManagers.get(repositoryId);
+				const sessionManager =
+					this.getAgentSessionManagerForRepository(repositoryId);
 				if (!sessionManager) return false;
 				const activeSessions =
 					sessionManager.getActiveSessionsByIssueId(issueId);
@@ -327,116 +319,7 @@ export class EdgeWorker extends EventEmitter {
 				};
 
 				this.repositories.set(repo.id, resolvedRepo);
-
-				// Create issue tracker for this repository's workspace
-				const issueTracker =
-					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
-						: new LinearIssueTrackerService(
-								new LinearClient({
-									accessToken: repo.linearToken,
-								}),
-								this.buildOAuthConfig(resolvedRepo),
-							);
-				this.issueTrackers.set(repo.id, issueTracker);
-
-				// Create AgentSessionManager for this repository with parent session lookup and resume callback
-				//
-				// Note: This pattern works (despite appearing recursive) because:
-				// 1. The agentSessionManager variable is captured by the closure after it's assigned
-				// 2. JavaScript's variable hoisting means 'agentSessionManager' exists (but is undefined) when the arrow function is created
-				// 3. By the time the callback is actually invoked (when a child session completes), agentSessionManager is fully initialized
-				// 4. The callback only executes asynchronously, well after the constructor has completed and agentSessionManager is assigned
-				//
-				// This allows the AgentSessionManager to call back into itself to access its own sessions,
-				// enabling child sessions to trigger parent session resumption using the same manager instance.
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					repo.linearWorkspaceId,
-				);
-				const agentSessionManager = new AgentSessionManager(
-					activitySink,
-					(childSessionId: string) => {
-						this.logger.debug(
-							`Looking up parent session for child ${childSessionId}`,
-						);
-						const parentId =
-							this.globalSessionRegistry.getParentSessionId(childSessionId);
-						this.logger.debug(
-							`Child ${childSessionId} -> Parent ${parentId || "not found"}`,
-						);
-						return parentId;
-					},
-					async (parentSessionId, prompt, childSessionId) => {
-						await this.handleResumeParentSession(
-							parentSessionId,
-							prompt,
-							childSessionId,
-							repo,
-							agentSessionManager,
-						);
-					},
-					this.procedureAnalyzer,
-					this.sharedApplicationServer,
-				);
-
-				// Subscribe to subroutine completion events
-				agentSessionManager.on(
-					"subroutineComplete",
-					async ({ sessionId, session }) => {
-						await this.handleSubroutineTransition(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-						);
-					},
-				);
-
-				// Subscribe to validation loop events
-				agentSessionManager.on(
-					"validationLoopIteration",
-					async ({
-						sessionId,
-						session,
-						fixerPrompt,
-						iteration,
-						maxIterations,
-					}) => {
-						this.logger.info(
-							`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
-						);
-						await this.handleValidationLoopFixer(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-							fixerPrompt,
-							iteration,
-						);
-					},
-				);
-
-				agentSessionManager.on(
-					"validationLoopRerun",
-					async ({ sessionId, session, iteration }) => {
-						this.logger.info(
-							`Validation loop re-running verifications (iteration ${iteration})`,
-						);
-						await this.handleValidationLoopRerun(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-						);
-					},
-				);
-
-				this.agentSessionManagers.set(repo.id, agentSessionManager);
+				this.ensureWorkspaceRuntimeForRepository(resolvedRepo);
 			}
 		}
 
@@ -481,6 +364,353 @@ export class EdgeWorker extends EventEmitter {
 		});
 
 		// Components will be initialized and registered in start() method before server starts
+	}
+
+	private createIssueTrackerForRepository(
+		repository: RepositoryConfig,
+	): IIssueTrackerService {
+		if (this.config.platform === "cli") {
+			const service = new CLIIssueTrackerService();
+			service.seedDefaultData();
+			return service;
+		}
+
+		return new LinearIssueTrackerService(
+			new LinearClient({
+				accessToken: repository.linearToken,
+			}),
+			this.buildOAuthConfig(repository),
+		);
+	}
+
+	private getFirstRepositoryForWorkspace(
+		workspaceId: string,
+	): RepositoryConfig | undefined {
+		return Array.from(this.repositories.values()).find(
+			(repository) => repository.linearWorkspaceId === workspaceId,
+		);
+	}
+
+	private getWorkspaceOwnerRepository(
+		workspaceId: string,
+	): RepositoryConfig | undefined {
+		const ownerRepositoryId =
+			this.workspaceRuntimeOwnerRepository.get(workspaceId);
+		if (ownerRepositoryId) {
+			const ownerRepository = this.repositories.get(ownerRepositoryId);
+			if (ownerRepository) {
+				return ownerRepository;
+			}
+		}
+
+		return this.getFirstRepositoryForWorkspace(workspaceId);
+	}
+
+	private resolvePrimaryRepositoryForSession(
+		session: CyrusAgentSession,
+		workspaceId: string,
+	): RepositoryConfig | undefined {
+		const issueId = session.issueContext?.issueId ?? session.issueId;
+		if (issueId) {
+			const primaryRepositoryId = this.repositoryRouter
+				.getIssueRepositoryCache()
+				.get(issueId);
+			if (primaryRepositoryId) {
+				const cachedPrimaryRepository =
+					this.repositories.get(primaryRepositoryId);
+				if (cachedPrimaryRepository) {
+					return cachedPrimaryRepository;
+				}
+			}
+		}
+
+		const workspacePrimaryRepositoryId =
+			session.workspace?.repositories?.[0]?.repositoryId;
+		if (workspacePrimaryRepositoryId) {
+			const workspacePrimaryRepository = this.repositories.get(
+				workspacePrimaryRepositoryId,
+			);
+			if (workspacePrimaryRepository) {
+				return workspacePrimaryRepository;
+			}
+		}
+
+		return this.getWorkspaceOwnerRepository(workspaceId);
+	}
+
+	private getIssueTrackerForRepository(
+		repositoryId: string,
+	): IIssueTrackerService | undefined {
+		const repositoryIssueTracker = this.issueTrackers.get(repositoryId);
+		if (repositoryIssueTracker) {
+			return repositoryIssueTracker;
+		}
+
+		const workspaceId =
+			this.repositoryToWorkspace.get(repositoryId) ||
+			this.repositories.get(repositoryId)?.linearWorkspaceId;
+		if (workspaceId) {
+			const workspaceIssueTracker =
+				this.workspaceIssueTrackers.get(workspaceId);
+			if (workspaceIssueTracker) {
+				return workspaceIssueTracker;
+			}
+		}
+		return undefined;
+	}
+
+	private getAgentSessionManagerForRepository(
+		repositoryId: string,
+	): AgentSessionManager | undefined {
+		const repositorySessionManager =
+			this.agentSessionManagers.get(repositoryId);
+		if (repositorySessionManager) {
+			return repositorySessionManager;
+		}
+
+		const workspaceId =
+			this.repositoryToWorkspace.get(repositoryId) ||
+			this.repositories.get(repositoryId)?.linearWorkspaceId;
+		if (workspaceId) {
+			const workspaceSessionManager =
+				this.workspaceAgentSessionManagers.get(workspaceId);
+			if (workspaceSessionManager) {
+				return workspaceSessionManager;
+			}
+		}
+		return undefined;
+	}
+
+	private getRuntimeSessionManagers(): AgentSessionManager[] {
+		const seenManagers = new Set<AgentSessionManager>();
+		const managers: AgentSessionManager[] = [];
+		for (const manager of this.workspaceAgentSessionManagers.values()) {
+			if (seenManagers.has(manager)) {
+				continue;
+			}
+			seenManagers.add(manager);
+			managers.push(manager);
+		}
+		for (const manager of this.agentSessionManagers.values()) {
+			if (seenManagers.has(manager)) {
+				continue;
+			}
+			seenManagers.add(manager);
+			managers.push(manager);
+		}
+		return managers;
+	}
+
+	private getRuntimeSessionManagerEntries(): Array<
+		[string, AgentSessionManager]
+	> {
+		const seenManagers = new Set<AgentSessionManager>();
+		const entries: Array<[string, AgentSessionManager]> = [];
+		for (const [workspaceId, manager] of this.workspaceAgentSessionManagers) {
+			if (seenManagers.has(manager)) {
+				continue;
+			}
+			seenManagers.add(manager);
+			entries.push([workspaceId, manager]);
+		}
+		for (const [repositoryId, manager] of this.agentSessionManagers.entries()) {
+			if (seenManagers.has(manager)) {
+				continue;
+			}
+			seenManagers.add(manager);
+			const workspaceId =
+				this.repositoryToWorkspace.get(repositoryId) ||
+				this.repositories.get(repositoryId)?.linearWorkspaceId ||
+				repositoryId;
+			entries.push([workspaceId, manager]);
+		}
+		return entries;
+	}
+
+	private ensureWorkspaceRuntimeForRepository(
+		repository: RepositoryConfig,
+	): void {
+		const workspaceId = repository.linearWorkspaceId;
+		this.repositoryToWorkspace.set(repository.id, workspaceId);
+
+		let issueTracker = this.workspaceIssueTrackers.get(workspaceId);
+		if (!issueTracker) {
+			issueTracker = this.createIssueTrackerForRepository(repository);
+			this.workspaceIssueTrackers.set(workspaceId, issueTracker);
+		}
+
+		if (!this.workspaceRuntimeOwnerRepository.has(workspaceId)) {
+			this.workspaceRuntimeOwnerRepository.set(workspaceId, repository.id);
+		}
+
+		let workspaceSessionManager =
+			this.workspaceAgentSessionManagers.get(workspaceId);
+		if (!workspaceSessionManager) {
+			const activitySink = new LinearActivitySink(issueTracker, workspaceId);
+
+			// NOTE: This captures workspaceSessionManager by reference and is safe because
+			// callbacks are invoked asynchronously after assignment.
+			workspaceSessionManager = new AgentSessionManager(
+				activitySink,
+				(childSessionId: string) => {
+					this.logger.debug(
+						`Looking up parent session for child ${childSessionId}`,
+					);
+					const parentId =
+						this.globalSessionRegistry.getParentSessionId(childSessionId);
+					this.logger.debug(
+						`Child ${childSessionId} -> Parent ${parentId || "not found"}`,
+					);
+					return parentId;
+				},
+				async (parentSessionId, prompt, childSessionId) => {
+					const manager = this.workspaceAgentSessionManagers.get(workspaceId);
+					const parentSession = manager?.getSession(parentSessionId);
+					const parentRepository = parentSession
+						? this.resolvePrimaryRepositoryForSession(
+								parentSession,
+								workspaceId,
+							)
+						: this.getWorkspaceOwnerRepository(workspaceId);
+
+					if (!manager || !parentRepository) {
+						this.logger.warn(
+							`Unable to resume parent session ${parentSessionId} in workspace ${workspaceId}: runtime context missing`,
+						);
+						return;
+					}
+
+					await this.handleResumeParentSession(
+						parentSessionId,
+						prompt,
+						childSessionId,
+						parentRepository,
+						manager,
+					);
+				},
+				this.procedureAnalyzer,
+				this.sharedApplicationServer,
+			);
+
+			workspaceSessionManager.on(
+				"subroutineComplete",
+				async ({ sessionId, session }) => {
+					const sessionRepository = this.resolvePrimaryRepositoryForSession(
+						session,
+						workspaceId,
+					);
+					if (!sessionRepository) {
+						this.logger.warn(
+							`Skipping subroutine transition for session ${sessionId}: repository context not found`,
+						);
+						return;
+					}
+					await this.handleSubroutineTransition(
+						sessionId,
+						session,
+						sessionRepository,
+						workspaceSessionManager!,
+					);
+				},
+			);
+
+			workspaceSessionManager.on(
+				"validationLoopIteration",
+				async ({
+					sessionId,
+					session,
+					fixerPrompt,
+					iteration,
+					maxIterations,
+				}) => {
+					const sessionRepository = this.resolvePrimaryRepositoryForSession(
+						session,
+						workspaceId,
+					);
+					if (!sessionRepository) {
+						this.logger.warn(
+							`Skipping validation-fixer for session ${sessionId}: repository context not found`,
+						);
+						return;
+					}
+					this.logger.info(
+						`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
+					);
+					await this.handleValidationLoopFixer(
+						sessionId,
+						session,
+						sessionRepository,
+						workspaceSessionManager!,
+						fixerPrompt,
+						iteration,
+					);
+				},
+			);
+
+			workspaceSessionManager.on(
+				"validationLoopRerun",
+				async ({ sessionId, session, iteration }) => {
+					const sessionRepository = this.resolvePrimaryRepositoryForSession(
+						session,
+						workspaceId,
+					);
+					if (!sessionRepository) {
+						this.logger.warn(
+							`Skipping validation rerun for session ${sessionId}: repository context not found`,
+						);
+						return;
+					}
+					this.logger.info(
+						`Validation loop re-running verifications (iteration ${iteration})`,
+					);
+					await this.handleValidationLoopRerun(
+						sessionId,
+						session,
+						sessionRepository,
+						workspaceSessionManager!,
+					);
+				},
+			);
+
+			this.workspaceAgentSessionManagers.set(
+				workspaceId,
+				workspaceSessionManager,
+			);
+		}
+
+		if (!issueTracker || !workspaceSessionManager) {
+			throw new Error(
+				`Failed to initialize workspace runtime for ${workspaceId}`,
+			);
+		}
+
+		// Maintain repository keyed aliases during migration to workspace-owned runtimes.
+		this.issueTrackers.set(repository.id, issueTracker);
+		this.agentSessionManagers.set(repository.id, workspaceSessionManager);
+	}
+
+	private sessionTouchesRepository(
+		session: CyrusAgentSession,
+		repositoryId: string,
+	): boolean {
+		if (
+			session.workspace.repositories?.some(
+				(workspaceRepository) =>
+					workspaceRepository.repositoryId === repositoryId,
+			)
+		) {
+			return true;
+		}
+
+		const issueId = session.issueContext?.issueId ?? session.issueId;
+		if (!issueId) {
+			return false;
+		}
+
+		const primaryRepositoryId = this.repositoryRouter
+			.getIssueRepositoryCache()
+			.get(issueId);
+		return primaryRepositoryId === repositoryId;
 	}
 
 	/**
@@ -546,7 +776,7 @@ export class EdgeWorker extends EventEmitter {
 		// Platform-specific initialization
 		if (this.config.platform === "cli") {
 			// CLI mode: Create and register CLIRPCServer
-			const firstIssueTracker = this.issueTrackers.get(firstRepo.id);
+			const firstIssueTracker = this.getIssueTrackerForRepository(firstRepo.id);
 			if (!firstIssueTracker) {
 				throw new Error("Issue tracker not found for first repository");
 			}
@@ -881,7 +1111,9 @@ export class EdgeWorker extends EventEmitter {
 			}
 
 			// Get the agent session manager for this repository
-			const agentSessionManager = this.agentSessionManagers.get(repository.id);
+			const agentSessionManager = this.getAgentSessionManagerForRepository(
+				repository.id,
+			);
 			if (!agentSessionManager) {
 				this.logger.error(
 					`No AgentSessionManager for repository ${repository.name}`,
@@ -1305,7 +1537,7 @@ ${taskInstructions}
 		}
 
 		// Busy if any runner is actively running (repository-tied sessions)
-		for (const manager of this.agentSessionManagers.values()) {
+		for (const manager of this.getRuntimeSessionManagers()) {
 			const runners = manager.getAllAgentRunners();
 			for (const runner of runners) {
 				if (runner.isRunning()) {
@@ -1341,7 +1573,7 @@ ${taskInstructions}
 
 		// get all agent runners (including chat platform sessions)
 		const agentRunners: IAgentRunner[] = [];
-		for (const agentSessionManager of this.agentSessionManagers.values()) {
+		for (const agentSessionManager of this.getRuntimeSessionManagers()) {
 			agentRunners.push(...agentSessionManager.getAllAgentRunners());
 		}
 		if (this.chatSessionHandler) {
@@ -1395,25 +1627,31 @@ ${taskInstructions}
 			`Child session completed, resuming parent session ${parentSessionId}`,
 		);
 
-		// Find parent session across all repositories
+		// Find parent session across all workspace runtimes
 		// This is critical for cross-repository orchestration where parent and child
-		// may be in different repositories with different AgentSessionManagers
+		// may be in different repositories while sharing a workspace runtime.
 		// See also: feedback delivery code at line ~4413 which uses same pattern
 		log.debug(
-			`Searching for parent session ${parentSessionId} across all repositories`,
+			`Searching for parent session ${parentSessionId} across all workspace runtimes`,
 		);
 		let parentSession: CyrusAgentSession | undefined;
 		let parentRepo: RepositoryConfig | undefined;
 		let parentAgentSessionManager: AgentSessionManager | undefined;
 
-		for (const [repoId, manager] of this.agentSessionManagers) {
+		for (const [
+			workspaceId,
+			manager,
+		] of this.getRuntimeSessionManagerEntries()) {
 			const candidate = manager.getSession(parentSessionId);
 			if (candidate) {
 				parentSession = candidate;
-				parentRepo = this.repositories.get(repoId);
+				parentRepo = this.resolvePrimaryRepositoryForSession(
+					candidate,
+					workspaceId,
+				);
 				parentAgentSessionManager = manager;
 				log.debug(
-					`Found parent session in repository: ${parentRepo?.name || repoId}`,
+					`Found parent session in workspace ${workspaceId}: ${parentRepo?.name || "repository unresolved"}`,
 				);
 				break;
 			}
@@ -1421,7 +1659,7 @@ ${taskInstructions}
 
 		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
 			log.error(
-				`Parent session ${parentSessionId} not found in any repository's agent session manager`,
+				`Parent session ${parentSessionId} not found in any workspace runtime`,
 			);
 			return;
 		}
@@ -1449,7 +1687,7 @@ ${taskInstructions}
 
 		// Post thought showing child result receipt
 		// Use parent's issue tracker since we're posting to the parent's session
-		const issueTracker = this.issueTrackers.get(parentRepo.id);
+		const issueTracker = this.getIssueTrackerForRepository(parentRepo.id);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -1680,101 +1918,7 @@ ${taskInstructions}
 
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
-
-				// Create issue tracker with OAuth config for token refresh
-				const issueTracker =
-					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
-						: new LinearIssueTrackerService(
-								new LinearClient({
-									accessToken: repo.linearToken,
-								}),
-								this.buildOAuthConfig(resolvedRepo),
-							);
-				this.issueTrackers.set(repo.id, issueTracker);
-
-				// Create AgentSessionManager with same pattern as constructor
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					repo.linearWorkspaceId,
-				);
-				const agentSessionManager = new AgentSessionManager(
-					activitySink,
-					(childSessionId: string) => {
-						return this.globalSessionRegistry.getParentSessionId(
-							childSessionId,
-						);
-					},
-					async (parentSessionId, prompt, childSessionId) => {
-						await this.handleResumeParentSession(
-							parentSessionId,
-							prompt,
-							childSessionId,
-							repo,
-							agentSessionManager,
-						);
-					},
-					this.procedureAnalyzer,
-					this.sharedApplicationServer,
-				);
-
-				// Subscribe to subroutine completion events
-				agentSessionManager.on(
-					"subroutineComplete",
-					async ({ sessionId, session }) => {
-						await this.handleSubroutineTransition(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-						);
-					},
-				);
-
-				// Subscribe to validation loop events
-				agentSessionManager.on(
-					"validationLoopIteration",
-					async ({
-						sessionId,
-						session,
-						fixerPrompt,
-						iteration,
-						maxIterations,
-					}) => {
-						this.logger.info(
-							`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
-						);
-						await this.handleValidationLoopFixer(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-							fixerPrompt,
-							iteration,
-						);
-					},
-				);
-
-				agentSessionManager.on(
-					"validationLoopRerun",
-					async ({ sessionId, session, iteration }) => {
-						this.logger.info(
-							`Validation loop re-running verifications (iteration ${iteration})`,
-						);
-						await this.handleValidationLoopRerun(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-						);
-					},
-				);
-
-				this.agentSessionManagers.set(repo.id, agentSessionManager);
+				this.ensureWorkspaceRuntimeForRepository(resolvedRepo);
 
 				this.logger.info(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
@@ -1818,11 +1962,26 @@ ${taskInstructions}
 
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
+				this.ensureWorkspaceRuntimeForRepository(resolvedRepo);
+
+				if (oldRepo.linearWorkspaceId !== resolvedRepo.linearWorkspaceId) {
+					const oldWorkspaceId = oldRepo.linearWorkspaceId;
+					const hasRemainingOldWorkspaceRepositories = Array.from(
+						this.repositories.values(),
+					).some(
+						(repository) => repository.linearWorkspaceId === oldWorkspaceId,
+					);
+					if (!hasRemainingOldWorkspaceRepositories) {
+						this.workspaceIssueTrackers.delete(oldWorkspaceId);
+						this.workspaceAgentSessionManagers.delete(oldWorkspaceId);
+						this.workspaceRuntimeOwnerRepository.delete(oldWorkspaceId);
+					}
+				}
 
 				// If token changed, update the issue tracker's client
 				if (oldRepo.linearToken !== repo.linearToken) {
 					this.logger.info(`  🔑 Token changed, updating client`);
-					const issueTracker = this.issueTrackers.get(repo.id);
+					const issueTracker = this.getIssueTrackerForRepository(repo.id);
 					if (issueTracker) {
 						(issueTracker as LinearIssueTrackerService).setAccessToken(
 							repo.linearToken,
@@ -1861,9 +2020,14 @@ ${taskInstructions}
 			try {
 				this.logger.info(`🗑️  Removing repository: ${repo.name} (${repo.id})`);
 
-				// Check for active sessions
-				const manager = this.agentSessionManagers.get(repo.id);
-				const activeSessions = manager?.getActiveSessions() || [];
+				const workspaceId = this.repositoryToWorkspace.get(repo.id);
+				const manager = this.getAgentSessionManagerForRepository(repo.id);
+				const activeSessions =
+					manager
+						?.getActiveSessions()
+						.filter((session) =>
+							this.sessionTouchesRepository(session, repo.id),
+						) || [];
 
 				if (activeSessions.length > 0) {
 					this.logger.warn(
@@ -1888,7 +2052,7 @@ ${taskInstructions}
 							}
 
 							// Post cancellation message to tracker
-							const issueTracker = this.issueTrackers.get(repo.id);
+							const issueTracker = this.getIssueTrackerForRepository(repo.id);
 							if (issueTracker && session.externalSessionId) {
 								await this.postActivityDirect(
 									issueTracker,
@@ -1911,10 +2075,45 @@ ${taskInstructions}
 					}
 				}
 
-				// Remove repository from all maps
+				// Remove repository indexes
 				this.repositories.delete(repo.id);
+				this.repositoryToWorkspace.delete(repo.id);
 				this.issueTrackers.delete(repo.id);
 				this.agentSessionManagers.delete(repo.id);
+
+				if (workspaceId) {
+					const remainingWorkspaceRepos = Array.from(
+						this.repositories.values(),
+					).filter(
+						(repository) => repository.linearWorkspaceId === workspaceId,
+					);
+
+					if (remainingWorkspaceRepos.length === 0) {
+						this.workspaceIssueTrackers.delete(workspaceId);
+						this.workspaceAgentSessionManagers.delete(workspaceId);
+						this.workspaceRuntimeOwnerRepository.delete(workspaceId);
+					} else {
+						const ownerRepositoryId =
+							this.workspaceRuntimeOwnerRepository.get(workspaceId);
+						if (ownerRepositoryId === repo.id) {
+							const replacementOwner = remainingWorkspaceRepos[0];
+							if (replacementOwner) {
+								this.workspaceRuntimeOwnerRepository.set(
+									workspaceId,
+									replacementOwner.id,
+								);
+								const workspaceTracker =
+									this.workspaceIssueTrackers.get(workspaceId);
+								if (
+									workspaceTracker &&
+									workspaceTracker instanceof LinearIssueTrackerService
+								) {
+									workspaceTracker.setAccessToken(replacementOwner.linearToken);
+								}
+							}
+						}
+					}
+				}
 
 				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
@@ -2197,13 +2396,20 @@ ${taskInstructions}
 				`No cached repository for issue unassignment ${webhook.notification.issue.identifier}, searching all managers`,
 			);
 
-			for (const [repoId, manager] of this.agentSessionManagers) {
+			for (const [
+				workspaceId,
+				manager,
+			] of this.getRuntimeSessionManagerEntries()) {
 				const sessions = manager.getSessionsByIssueId(issueId);
 				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
+					repository =
+						this.resolvePrimaryRepositoryForSession(
+							sessions[0]!,
+							workspaceId,
+						) ?? null;
 					if (repository) {
 						this.logger.info(
-							`Recovered repository ${repoId} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
+							`Recovered repository ${repository.id} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
 						);
 						break;
 					}
@@ -2277,13 +2483,20 @@ ${taskInstructions}
 		let repository = this.getCachedRepository(issueId);
 		if (!repository) {
 			// Fallback: search all managers for sessions matching this issue
-			for (const [repoId, manager] of this.agentSessionManagers) {
+			for (const [
+				workspaceId,
+				manager,
+			] of this.getRuntimeSessionManagerEntries()) {
 				const sessions = manager.getSessionsByIssueId(issueId);
 				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
+					repository =
+						this.resolvePrimaryRepositoryForSession(
+							sessions[0]!,
+							workspaceId,
+						) ?? null;
 					if (repository) {
 						this.logger.info(
-							`Recovered repository ${repoId} for issue update ${issueIdentifier} from session manager`,
+							`Recovered repository ${repository.id} for issue update ${issueIdentifier} from session manager`,
 						);
 						break;
 					}
@@ -2309,7 +2522,9 @@ ${taskInstructions}
 		);
 
 		// Get agent session manager for this repository
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
+		const agentSessionManager = this.getAgentSessionManagerForRepository(
+			repository.id,
+		);
 		if (!agentSessionManager) {
 			this.logger.debug(
 				`No agent session manager for repository ${repository.id}`,
@@ -2468,12 +2683,17 @@ ${taskInstructions}
 	private getIssueTrackerForWorkspace(
 		workspaceId: string,
 	): IIssueTrackerService | undefined {
-		for (const [repoId, repo] of this.repositories) {
-			if (repo.linearWorkspaceId === workspaceId) {
-				return this.issueTrackers.get(repoId);
-			}
+		const workspaceIssueTracker = this.workspaceIssueTrackers.get(workspaceId);
+		if (workspaceIssueTracker) {
+			return workspaceIssueTracker;
 		}
-		return undefined;
+
+		const workspaceRepository =
+			this.getFirstRepositoryForWorkspace(workspaceId);
+		if (!workspaceRepository) {
+			return undefined;
+		}
+		return this.getIssueTrackerForRepository(workspaceRepository.id);
 	}
 
 	/**
@@ -2784,7 +3004,9 @@ ${taskInstructions}
 		);
 
 		// Initialize the agent session in AgentSessionManager
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
+		const agentSessionManager = this.getAgentSessionManagerForRepository(
+			repository.id,
+		);
 		if (!agentSessionManager) {
 			log.error(
 				"There was no agentSessionManage for the repository with id",
@@ -3124,7 +3346,7 @@ ${taskInstructions}
 		let foundManager: AgentSessionManager | null = null;
 		let foundSession: CyrusAgentSession | null = null;
 
-		for (const manager of this.agentSessionManagers.values()) {
+		for (const manager of this.getRuntimeSessionManagers()) {
 			const session = manager.getSession(agentSessionId);
 			if (session) {
 				foundManager = manager;
@@ -3140,7 +3362,7 @@ ${taskInstructions}
 				`No session found for stop signal ${agentSessionId} (likely a legacy session after restart)`,
 			);
 
-			const anyManager = this.agentSessionManagers.values().next().value as
+			const anyManager = this.getRuntimeSessionManagers()[0] as
 				| AgentSessionManager
 				| undefined;
 			if (anyManager) {
@@ -3312,7 +3534,9 @@ ${taskInstructions}
 		const commentId = webhook.agentActivity.sourceCommentId;
 
 		// Initialize the agent session in AgentSessionManager
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
+		const agentSessionManager = this.getAgentSessionManagerForRepository(
+			repository.id,
+		);
 		if (!agentSessionManager) {
 			this.logger.error(
 				"Unexpected: There was no agentSessionManage for the repository with id",
@@ -3386,7 +3610,7 @@ ${taskInstructions}
 			);
 
 			// Need to fetch full issue for routing context
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.getIssueTrackerForRepository(repository.id);
 			if (issueTracker) {
 				try {
 					fullIssue = await issueTracker.fetchIssue(issue.id);
@@ -3414,7 +3638,7 @@ ${taskInstructions}
 		// (before any async routing work to ensure instant user feedback)
 
 		// Get issue tracker for this repository
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.getIssueTrackerForRepository(repository.id);
 		if (!issueTracker) {
 			this.logger.error(
 				"Unexpected: There was no IssueTrackerService for the repository with id",
@@ -3569,15 +3793,22 @@ ${taskInstructions}
 				`No cached repository for prompted webhook ${agentSessionId}, attempting fallback resolution`,
 			);
 
-			// First, check if any manager already has this session
-			for (const [repoId, manager] of this.agentSessionManagers) {
+			// First, check if any workspace manager already has this session
+			for (const [
+				workspaceId,
+				manager,
+			] of this.getRuntimeSessionManagerEntries()) {
 				const session = manager.getSession(agentSessionId);
 				if (session) {
-					repository = this.repositories.get(repoId) ?? null;
+					repository =
+						this.resolvePrimaryRepositoryForSession(session, workspaceId) ??
+						null;
 					if (repository) {
-						this.cacheIssueRepositorySelection(issueId, repoId, [repoId]);
+						this.cacheIssueRepositorySelection(issueId, repository.id, [
+							repository.id,
+						]);
 						this.logger.info(
-							`Recovered repository ${repoId} for issue ${issueId} from session manager`,
+							`Recovered repository ${repository.id} for issue ${issueId} from workspace manager`,
 						);
 						break;
 					}
@@ -3625,7 +3856,7 @@ ${taskInstructions}
 
 			if (!repository) {
 				// All recovery attempts failed - post visible feedback
-				const firstManager = this.agentSessionManagers.values().next().value as
+				const firstManager = this.getRuntimeSessionManagers()[0] as
 					| AgentSessionManager
 					| undefined;
 				if (firstManager) {
@@ -3663,7 +3894,9 @@ ${taskInstructions}
 		issue: WebhookIssue,
 		repository: RepositoryConfig,
 	): Promise<void> {
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
+		const agentSessionManager = this.getAgentSessionManagerForRepository(
+			repository.id,
+		);
 		if (!agentSessionManager) {
 			this.logger.info(
 				"No agentSessionManager for unassigned issue, so no sessions to stop",
@@ -3705,7 +3938,8 @@ ${taskInstructions}
 		message: SDKMessage,
 		repositoryId: string,
 	): Promise<void> {
-		const agentSessionManager = this.agentSessionManagers.get(repositoryId);
+		const agentSessionManager =
+			this.getAgentSessionManagerForRepository(repositoryId);
 		// Integrate with AgentSessionManager to capture streaming messages
 		if (agentSessionManager) {
 			await agentSessionManager.handleClaudeMessage(sessionId, message);
@@ -3951,7 +4185,7 @@ ${taskInstructions}
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
+			const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 			if (!issueTracker) {
 				this.logger.warn(
 					`No issue tracker found for repository ${repositoryId}, skipping state update`,
@@ -4031,7 +4265,7 @@ ${taskInstructions}
 	// private async postInitialComment(issueId: string, repositoryId: string): Promise<void> {
 	//   const body = "I'm getting started right away."
 	//   // Get the issue tracker for this repository
-	//   const issueTracker = this.issueTrackers.get(repositoryId)
+	//   const issueTracker = this.getIssueTrackerForRepository(repositoryId)
 	//   if (!issueTracker) {
 	//     throw new Error(`No issue tracker found for repository ${repositoryId}`)
 	//   }
@@ -4081,7 +4315,7 @@ ${taskInstructions}
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.getIssueTrackerForRepository(repository.id);
 		return this.attachmentService.downloadIssueAttachments(
 			issue,
 			repository,
@@ -4271,13 +4505,19 @@ ${taskInstructions}
 		// Find the parent session ID for context
 		const parentSessionId = this.childToParentAgentSession.get(childSessionId);
 
-		// Find the repository containing the child session
+		// Find the workspace runtime containing the child session
 		let childRepo: RepositoryConfig | undefined;
 		let childAgentSessionManager: AgentSessionManager | undefined;
 
-		for (const [repoId, manager] of this.agentSessionManagers) {
+		for (const [
+			workspaceId,
+			manager,
+		] of this.getRuntimeSessionManagerEntries()) {
 			if (manager.hasAgentRunner(childSessionId)) {
-				childRepo = this.repositories.get(repoId);
+				const childSession = manager.getSession(childSessionId);
+				childRepo = childSession
+					? this.resolvePrimaryRepositoryForSession(childSession, workspaceId)
+					: this.getWorkspaceOwnerRepository(workspaceId);
 				childAgentSessionManager = manager;
 				break;
 			}
@@ -4304,7 +4544,7 @@ ${taskInstructions}
 		// Get parent session info for better context in the thought
 		let parentIssueId: string | undefined;
 		if (parentSessionId) {
-			for (const manager of this.agentSessionManagers.values()) {
+			for (const manager of this.getRuntimeSessionManagers()) {
 				const parentSession = manager.getSession(parentSessionId);
 				if (parentSession) {
 					parentIssueId =
@@ -4315,7 +4555,7 @@ ${taskInstructions}
 		}
 
 		// Post thought to Linear showing feedback receipt
-		const issueTracker = this.issueTrackers.get(childRepo.id);
+		const issueTracker = this.getIssueTrackerForRepository(childRepo.id);
 		if (issueTracker) {
 			const feedbackThought = parentIssueId
 				? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
@@ -5232,7 +5472,8 @@ ${input.userComment}
 		issueId: string,
 		repositoryId: string,
 	): any[] {
-		const agentSessionManager = this.agentSessionManagers.get(repositoryId);
+		const agentSessionManager =
+			this.getAgentSessionManagerForRepository(repositoryId);
 		if (!agentSessionManager) {
 			return [];
 		}
@@ -5283,7 +5524,7 @@ ${input.userComment}
 		repository: RepositoryConfig,
 		_reason: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.getIssueTrackerForRepository(repository.id);
 		const agentSessionId = webhook.agentSession.id;
 		const behavior = this.userAccessControl.getBlockBehavior(repository.id);
 
@@ -5328,7 +5569,7 @@ ${input.userComment}
 			if (state) {
 				this.restoreMappings(state);
 				this.logger.debug(
-					`✅ Loaded persisted EdgeWorker state with ${Object.keys(state.agentSessions || {}).length} repositories`,
+					`✅ Loaded persisted EdgeWorker state with ${Object.keys(state.agentSessions || {}).length} workspace runtimes`,
 				);
 			}
 		} catch (error) {
@@ -5344,7 +5585,7 @@ ${input.userComment}
 			const state = this.serializeMappings();
 			await this.persistenceManager.saveEdgeWorkerState(state);
 			this.logger.debug(
-				`✅ Saved EdgeWorker state for ${Object.keys(state.agentSessions || {}).length} repositories`,
+				`✅ Saved EdgeWorker state for ${Object.keys(state.agentSessions || {}).length} workspace runtimes`,
 			);
 		} catch (error) {
 			this.logger.error(`Failed to save persisted EdgeWorker state:`, error);
@@ -5355,7 +5596,7 @@ ${input.userComment}
 	 * Serialize EdgeWorker mappings to a serializable format
 	 */
 	public serializeMappings(): SerializableEdgeWorkerState {
-		// Serialize Agent Session state for all repositories
+		// Serialize Agent Session state for all workspace runtimes
 		const agentSessions: Record<
 			string,
 			Record<string, SerializedCyrusAgentSession>
@@ -5365,12 +5606,12 @@ ${input.userComment}
 			Record<string, SerializedCyrusAgentSessionEntry[]>
 		> = {};
 		for (const [
-			repositoryId,
+			workspaceId,
 			agentSessionManager,
-		] of this.agentSessionManagers.entries()) {
+		] of this.getRuntimeSessionManagerEntries()) {
 			const serializedState = agentSessionManager.serializeState();
-			agentSessions[repositoryId] = serializedState.sessions;
-			agentSessionEntries[repositoryId] = serializedState.entries;
+			agentSessions[workspaceId] = serializedState.sessions;
+			agentSessionEntries[workspaceId] = serializedState.entries;
 		}
 		// Serialize child to parent agent session mapping
 		const childToParentAgentSession = Object.fromEntries(
@@ -5398,25 +5639,37 @@ ${input.userComment}
 	 * Restore EdgeWorker mappings from serialized state
 	 */
 	public restoreMappings(state: SerializableEdgeWorkerState): void {
-		// Restore Agent Session state for all repositories
+		// Restore Agent Session state for all workspace runtimes
 		if (state.agentSessions && state.agentSessionEntries) {
 			for (const [
-				repositoryId,
+				workspaceId,
 				agentSessionManager,
-			] of this.agentSessionManagers.entries()) {
-				const repositorySessions = state.agentSessions[repositoryId] || {};
-				const repositoryEntries = state.agentSessionEntries[repositoryId] || {};
+			] of this.getRuntimeSessionManagerEntries()) {
+				const workspaceRepositoryIds = Array.from(this.repositories.values())
+					.filter((repository) => repository.linearWorkspaceId === workspaceId)
+					.map((repository) => repository.id);
+				const sessionSources = [
+					state.agentSessions[workspaceId] || {},
+					...workspaceRepositoryIds.map(
+						(repositoryId) => state.agentSessions?.[repositoryId] || {},
+					),
+				];
+				const entrySources = [
+					state.agentSessionEntries[workspaceId] || {},
+					...workspaceRepositoryIds.map(
+						(repositoryId) => state.agentSessionEntries?.[repositoryId] || {},
+					),
+				];
+				const workspaceSessions = Object.assign({}, ...sessionSources);
+				const workspaceEntries = Object.assign({}, ...entrySources);
 
 				if (
-					Object.keys(repositorySessions).length > 0 ||
-					Object.keys(repositoryEntries).length > 0
+					Object.keys(workspaceSessions).length > 0 ||
+					Object.keys(workspaceEntries).length > 0
 				) {
-					agentSessionManager.restoreState(
-						repositorySessions,
-						repositoryEntries,
-					);
+					agentSessionManager.restoreState(workspaceSessions, workspaceEntries);
 					this.logger.debug(
-						`Restored Agent Session state for repository ${repositoryId}`,
+						`Restored Agent Session state for workspace ${workspaceId}`,
 					);
 				}
 			}
@@ -5539,7 +5792,7 @@ ${input.userComment}
 		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch full issue and labels to check for Orchestrator label override
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.getIssueTrackerForRepository(repository.id);
 		let hasOrchestratorLabel = false;
 
 		// Get issueId from issueContext (preferred) or deprecated issueId field
@@ -5981,7 +6234,7 @@ ${input.userComment}
 	 */
 	private getRepositoryPlatform(repositoryId: string): string | undefined {
 		try {
-			return this.issueTrackers.get(repositoryId)?.getPlatformType();
+			return this.getIssueTrackerForRepository(repositoryId)?.getPlatformType();
 		} catch {
 			return undefined;
 		}
@@ -5994,7 +6247,7 @@ ${input.userComment}
 		issueId: string,
 		repositoryId: string,
 	): Promise<Issue | null> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
 			return null;
