@@ -943,10 +943,7 @@ export class AgentSessionManager extends EventEmitter {
 							sessionId,
 							assistantMessage,
 						);
-						await this.syncEntryToActivitySink(
-							assistantEntry,
-							sessionId,
-						);
+						await this.syncEntryToActivitySink(assistantEntry, sessionId);
 						break;
 					}
 
@@ -2174,23 +2171,22 @@ export class AgentSessionManager extends EventEmitter {
 		const unifiedContent = this.parallelTaskTracker.formatUnifiedView(group);
 
 		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
-				content: {
+			const result = await this.activitySink.postActivity(
+				session.externalSessionId!,
+				{
 					type: "thought",
 					body: unifiedContent,
-				},
-				ephemeral: true,
-			});
+				} as any,
+				{ ephemeral: true },
+			);
 
-			if (result.success && result.agentActivity) {
-				const activity = await result.agentActivity;
+			if (result.activityId) {
 				this.parallelTaskTracker.setEphemeralActivityId(
 					group.groupId,
-					activity.id,
+					result.activityId,
 				);
 				console.log(
-					`[AgentSessionManager] Created unified parallel activity ${activity.id} for group ${group.groupId}`,
+					`[AgentSessionManager] Created unified parallel activity ${result.activityId} for group ${group.groupId}`,
 				);
 			} else {
 				console.error(
@@ -2211,7 +2207,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Returns true if this was handled as a parallel subtask, false otherwise
 	 */
 	private async updateParallelTaskProgress(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		parentToolUseId: string,
 		toolName: string,
 		toolInput: any,
@@ -2226,7 +2222,7 @@ export class AgentSessionManager extends EventEmitter {
 			return false;
 		}
 
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		if (!session) {
 			return false;
 		}
@@ -2253,25 +2249,24 @@ export class AgentSessionManager extends EventEmitter {
 			return true;
 		}
 
-		// Create an updated ephemeral activity (Linear ephemeral replacement)
+		// Create an updated ephemeral activity (ephemeral replacement)
 		const unifiedContent = this.parallelTaskTracker.formatUnifiedView(group);
 
 		try {
-			const result = await this.issueTracker.createAgentActivity({
-				agentSessionId: session.linearAgentActivitySessionId,
-				content: {
+			const result = await this.activitySink.postActivity(
+				session.externalSessionId!,
+				{
 					type: "thought",
 					body: unifiedContent,
-				},
-				ephemeral: true,
-			});
+				} as any,
+				{ ephemeral: true },
+			);
 
-			if (result.success && result.agentActivity) {
-				const activity = await result.agentActivity;
+			if (result.activityId) {
 				// Update the stored activity ID
 				this.parallelTaskTracker.setEphemeralActivityId(
 					group.groupId,
-					activity.id,
+					result.activityId,
 				);
 			}
 		} catch (error) {
@@ -2289,7 +2284,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Returns true if this was handled as a parallel task completion, false otherwise
 	 */
 	private async completeParallelTaskAgent(
-		linearAgentActivitySessionId: string,
+		sessionId: string,
 		toolUseId: string,
 		result?: string,
 	): Promise<boolean> {
@@ -2298,7 +2293,7 @@ export class AgentSessionManager extends EventEmitter {
 			return false;
 		}
 
-		const session = this.sessions.get(linearAgentActivitySessionId);
+		const session = this.sessions.get(sessionId);
 		if (!session) {
 			return false;
 		}
@@ -2324,16 +2319,15 @@ export class AgentSessionManager extends EventEmitter {
 
 			try {
 				// Create non-ephemeral final activity (replaces ephemeral)
-				const activityResult = await this.issueTracker.createAgentActivity({
-					agentSessionId: session.linearAgentActivitySessionId,
-					content: {
+				const activityResult = await this.activitySink.postActivity(
+					session.externalSessionId!,
+					{
 						type: "thought",
 						body: `✅ Parallel agents completed\n\n${finalContent}`,
-					},
-					ephemeral: false,
-				});
+					} as any,
+				);
 
-				if (activityResult.success) {
+				if (activityResult.activityId) {
 					console.log(
 						`[AgentSessionManager] Posted final parallel completion for group ${group.groupId}`,
 					);
@@ -2346,23 +2340,20 @@ export class AgentSessionManager extends EventEmitter {
 			}
 
 			// Clean up the completed group
-			this.parallelTaskTracker.removeGroup(
-				linearAgentActivitySessionId,
-				group.groupId,
-			);
+			this.parallelTaskTracker.removeGroup(sessionId, group.groupId);
 		} else {
 			// Not all complete yet - update the ephemeral activity
 			const unifiedContent = this.parallelTaskTracker.formatUnifiedView(group);
 
 			try {
-				await this.issueTracker.createAgentActivity({
-					agentSessionId: session.linearAgentActivitySessionId,
-					content: {
+				await this.activitySink.postActivity(
+					session.externalSessionId!,
+					{
 						type: "thought",
 						body: unifiedContent,
-					},
-					ephemeral: true,
-				});
+					} as any,
+					{ ephemeral: true },
+				);
 			} catch (error) {
 				console.error(
 					`[AgentSessionManager] Error updating parallel progress:`,
