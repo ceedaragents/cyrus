@@ -72,6 +72,9 @@ export class SlackEventTransport extends EventEmitter {
 	 * When started in proxy mode, checks if SLACK_SIGNING_SECRET and
 	 * CYRUS_HOST_EXTERNAL have been added to the environment since startup,
 	 * enabling a runtime switch to direct verification.
+	 *
+	 * Encapsulates all mode-switch detection and logging so callers only
+	 * need to dispatch on the returned mode (SRP).
 	 */
 	private resolveVerification(): {
 		mode: SlackVerificationMode;
@@ -90,6 +93,9 @@ export class SlackEventTransport extends EventEmitter {
 			slackSigningSecret != null && slackSigningSecret !== "";
 
 		if (isExternalHost && hasSlackSigningSecret) {
+			this.logger.info(
+				"Runtime switch: SLACK_SIGNING_SECRET detected, using direct Slack signature verification",
+			);
 			return { mode: "direct", secret: slackSigningSecret };
 		}
 
@@ -111,12 +117,6 @@ export class SlackEventTransport extends EventEmitter {
 			async (request: FastifyRequest, reply: FastifyReply) => {
 				try {
 					const { mode, secret } = this.resolveVerification();
-
-					if (mode !== this.config.verificationMode && mode === "direct") {
-						this.logger.info(
-							"Runtime switch: SLACK_SIGNING_SECRET detected, using direct Slack signature verification",
-						);
-					}
 
 					if (mode === "direct") {
 						await this.handleDirectWebhook(request, reply, secret);

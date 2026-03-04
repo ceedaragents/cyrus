@@ -72,6 +72,9 @@ export class GitHubEventTransport extends EventEmitter {
 	 * When started in proxy mode, checks if GITHUB_WEBHOOK_SECRET has been
 	 * added to the environment since startup, enabling a runtime switch
 	 * to signature verification.
+	 *
+	 * Encapsulates all mode-switch detection and logging so callers only
+	 * need to dispatch on the returned mode (SRP).
 	 */
 	private resolveVerification(): {
 		mode: GitHubVerificationMode;
@@ -87,6 +90,9 @@ export class GitHubEventTransport extends EventEmitter {
 		const hasGithubSecret = githubSecret != null && githubSecret !== "";
 
 		if (hasGithubSecret) {
+			this.logger.info(
+				"Runtime switch: GITHUB_WEBHOOK_SECRET detected, using GitHub signature verification",
+			);
 			return { mode: "signature", secret: githubSecret };
 		}
 
@@ -108,12 +114,6 @@ export class GitHubEventTransport extends EventEmitter {
 			async (request: FastifyRequest, reply: FastifyReply) => {
 				try {
 					const { mode, secret } = this.resolveVerification();
-
-					if (mode !== this.config.verificationMode && mode === "signature") {
-						this.logger.info(
-							"Runtime switch: GITHUB_WEBHOOK_SECRET detected, using GitHub signature verification",
-						);
-					}
 
 					if (mode === "signature") {
 						await this.handleSignatureWebhook(request, reply, secret);
