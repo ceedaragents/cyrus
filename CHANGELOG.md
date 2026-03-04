@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 - **GitHub bot mention filtering** - GitHub webhook handler now respects `GITHUB_BOT_USERNAME` to only trigger on `@bot` mentions and ignore its own comments, preventing infinite loops in self-hosted setups. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
 - **Smarter Slack thread context** - Other bots' messages (Sentry, CI, GitHub notifications) are now preserved in Slack thread context instead of being filtered out. Only the bot's own messages are excluded. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
 
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.66** - Includes `DirectConnectTransport` for WebSocket connections to a running `claude server`, `agent_id`/`agent_type` fields in hook events, and bug fixes. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-879](https://linear.app/ceedar/issue/CYPACK-879), [#932](https://github.com/ceedaragents/cyrus/pull/932))
+
 ### Fixed
 - **Slack bot token availability after runtime switch** - Fixed Slack bot token not being available when switching from cloud to self-host runtime. The token is now resolved at usage time with a fallback to `process.env`, handling cases where the env update arrives after the first webhook. ([CYPACK-842](https://linear.app/ceedar/issue/CYPACK-842), [#896](https://github.com/ceedaragents/cyrus/pull/896))
 
