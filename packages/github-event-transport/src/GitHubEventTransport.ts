@@ -11,6 +11,7 @@ import type {
 	GitHubIssueCommentPayload,
 	GitHubPullRequestReviewCommentPayload,
 	GitHubPullRequestReviewPayload,
+	GitHubVerificationMode,
 	GitHubWebhookEvent,
 } from "./types.js";
 
@@ -67,6 +68,41 @@ export class GitHubEventTransport extends EventEmitter {
 	}
 
 	/**
+	 * Resolve the effective verification mode and secret at request time.
+	 * When started in proxy mode, checks if GITHUB_WEBHOOK_SECRET and
+	 * CYRUS_HOST_EXTERNAL have been added to the environment since startup,
+	 * enabling a runtime switch to signature verification.
+	 *
+	 * Encapsulates all mode-switch detection and logging so callers only
+	 * need to dispatch on the returned mode (SRP).
+	 */
+	private resolveVerification(): {
+		mode: GitHubVerificationMode;
+		secret: string;
+	} {
+		// If already configured for signature mode at startup, keep using it
+		if (this.config.verificationMode === "signature") {
+			return { mode: "signature", secret: this.config.secret };
+		}
+
+		// Check if signature mode env vars have been added at runtime
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const githubSecret = process.env.GITHUB_WEBHOOK_SECRET;
+		const hasGithubSecret = githubSecret != null && githubSecret !== "";
+
+		if (isExternalHost && hasGithubSecret) {
+			this.logger.info(
+				"Runtime switch: GITHUB_WEBHOOK_SECRET detected, using GitHub signature verification",
+			);
+			return { mode: "signature", secret: githubSecret };
+		}
+
+		// Fall back to proxy mode with original config secret
+		return { mode: "proxy", secret: this.config.secret };
+	}
+
+	/**
 	 * Register the /github-webhook endpoint with the Fastify server
 	 */
 	register(): void {
@@ -79,10 +115,12 @@ export class GitHubEventTransport extends EventEmitter {
 			},
 			async (request: FastifyRequest, reply: FastifyReply) => {
 				try {
-					if (this.config.verificationMode === "signature") {
-						await this.handleSignatureWebhook(request, reply);
+					const { mode, secret } = this.resolveVerification();
+
+					if (mode === "signature") {
+						await this.handleSignatureWebhook(request, reply, secret);
 					} else {
-						await this.handleProxyWebhook(request, reply);
+						await this.handleProxyWebhook(request, reply, secret);
 					}
 				} catch (error) {
 					const err = new Error("Webhook error");
@@ -107,6 +145,7 @@ export class GitHubEventTransport extends EventEmitter {
 	private async handleSignatureWebhook(
 		request: FastifyRequest,
 		reply: FastifyReply,
+		secret: string,
 	): Promise<void> {
 		const signature = request.headers["x-hub-signature-256"] as string;
 		if (!signature) {
@@ -116,11 +155,7 @@ export class GitHubEventTransport extends EventEmitter {
 
 		try {
 			const body = (request as FastifyRequest & { rawBody: string }).rawBody;
-			const isValid = this.verifyGitHubSignature(
-				body,
-				signature,
-				this.config.secret,
-			);
+			const isValid = this.verifyGitHubSignature(body, signature, secret);
 
 			if (!isValid) {
 				reply.code(401).send({ error: "Invalid webhook signature" });
@@ -144,6 +179,7 @@ export class GitHubEventTransport extends EventEmitter {
 	private async handleProxyWebhook(
 		request: FastifyRequest,
 		reply: FastifyReply,
+		secret: string,
 	): Promise<void> {
 		const authHeader = request.headers.authorization;
 		if (!authHeader) {
@@ -151,7 +187,7 @@ export class GitHubEventTransport extends EventEmitter {
 			return;
 		}
 
-		const expectedAuth = `Bearer ${this.config.secret}`;
+		const expectedAuth = `Bearer ${secret}`;
 		if (authHeader !== expectedAuth) {
 			reply.code(401).send({ error: "Invalid authorization token" });
 			return;

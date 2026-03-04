@@ -8,6 +8,7 @@ import type {
 	SlackEventEnvelope,
 	SlackEventTransportConfig,
 	SlackEventTransportEvents,
+	SlackVerificationMode,
 	SlackWebhookEvent,
 } from "./types.js";
 
@@ -67,6 +68,42 @@ export class SlackEventTransport extends EventEmitter {
 	}
 
 	/**
+	 * Resolve the effective verification mode and secret at request time.
+	 * When started in proxy mode, checks if SLACK_SIGNING_SECRET and
+	 * CYRUS_HOST_EXTERNAL have been added to the environment since startup,
+	 * enabling a runtime switch to direct verification.
+	 *
+	 * Encapsulates all mode-switch detection and logging so callers only
+	 * need to dispatch on the returned mode (SRP).
+	 */
+	private resolveVerification(): {
+		mode: SlackVerificationMode;
+		secret: string;
+	} {
+		// If already configured for direct mode at startup, keep using it
+		if (this.config.verificationMode === "direct") {
+			return { mode: "direct", secret: this.config.secret };
+		}
+
+		// Check if direct mode env vars have been added at runtime
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const slackSigningSecret = process.env.SLACK_SIGNING_SECRET;
+		const hasSlackSigningSecret =
+			slackSigningSecret != null && slackSigningSecret !== "";
+
+		if (isExternalHost && hasSlackSigningSecret) {
+			this.logger.info(
+				"Runtime switch: SLACK_SIGNING_SECRET detected, using direct Slack signature verification",
+			);
+			return { mode: "direct", secret: slackSigningSecret };
+		}
+
+		// Fall back to proxy mode with original config secret
+		return { mode: "proxy", secret: this.config.secret };
+	}
+
+	/**
 	 * Register the /slack-webhook endpoint with the Fastify server
 	 */
 	register(): void {
@@ -79,10 +116,12 @@ export class SlackEventTransport extends EventEmitter {
 			},
 			async (request: FastifyRequest, reply: FastifyReply) => {
 				try {
-					if (this.config.verificationMode === "direct") {
-						await this.handleDirectWebhook(request, reply);
+					const { mode, secret } = this.resolveVerification();
+
+					if (mode === "direct") {
+						await this.handleDirectWebhook(request, reply, secret);
 					} else {
-						await this.handleProxyWebhook(request, reply);
+						await this.handleProxyWebhook(request, reply, secret);
 					}
 				} catch (error) {
 					const err = new Error("Webhook error");
@@ -107,6 +146,7 @@ export class SlackEventTransport extends EventEmitter {
 	private async handleDirectWebhook(
 		request: FastifyRequest,
 		reply: FastifyReply,
+		secret: string,
 	): Promise<void> {
 		const timestamp = request.headers["x-slack-request-timestamp"] as string;
 		const signature = request.headers["x-slack-signature"] as string;
@@ -131,7 +171,7 @@ export class SlackEventTransport extends EventEmitter {
 				body,
 				timestamp,
 				signature,
-				this.config.secret,
+				secret,
 			);
 
 			if (!isValid) {
@@ -181,6 +221,7 @@ export class SlackEventTransport extends EventEmitter {
 	private async handleProxyWebhook(
 		request: FastifyRequest,
 		reply: FastifyReply,
+		secret: string,
 	): Promise<void> {
 		const authHeader = request.headers.authorization;
 		if (!authHeader) {
@@ -188,7 +229,7 @@ export class SlackEventTransport extends EventEmitter {
 			return;
 		}
 
-		const expectedAuth = `Bearer ${this.config.secret}`;
+		const expectedAuth = `Bearer ${secret}`;
 		if (authHeader !== expectedAuth) {
 			reply.code(401).send({ error: "Invalid authorization token" });
 			return;
