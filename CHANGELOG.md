@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Label-based repository routing overrides team-based** - When an issue has a label matching a repository's `routingLabels`, that repository is selected even if another repository is configured as the team default. This enables label-specific repositories (e.g., "frontend" repo) within a team. ([CYPACK-878](https://linear.app/ceedar/issue/CYPACK-878), [#931](https://github.com/ceedaragents/cyrus/pull/931))
+
 ### Added
 - **Direct Slack webhook verification for self-hosted deployments** - Cyrus can now verify Slack webhooks directly using HMAC-SHA256 signature verification when `SLACK_SIGNING_SECRET` is set, removing the need for the CYHOST proxy in self-hosted environments. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
 - **GitHub bot mention filtering** - GitHub webhook handler now respects `GITHUB_BOT_USERNAME` to only trigger on `@bot` mentions and ignore its own comments, preventing infinite loops in self-hosted setups. Thanks to [@aniravi24](https://github.com/aniravi24) ([#829](https://github.com/ceedaragents/cyrus/pull/829))
