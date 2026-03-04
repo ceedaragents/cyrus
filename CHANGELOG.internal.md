@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.28] - 2026-03-04
+
 ### Added
 - Added `resolveVerification()` to `SlackEventTransport` and `GitHubEventTransport` that checks `SLACK_SIGNING_SECRET`/`GITHUB_WEBHOOK_SECRET` env vars (plus `CYRUS_HOST_EXTERNAL`) at request time instead of only at initialization. When started in proxy mode and the relevant env vars are added at runtime, the transport dynamically switches to direct/signature HMAC-SHA256 verification. Both transports now use the same dual-gate (`secret` + `CYRUS_HOST_EXTERNAL`) pattern. Follows the CYPACK-842 pattern of resolving from `process.env` at usage time. Handler methods (`handleDirectWebhook`, `handleProxyWebhook`, `handleSignatureWebhook`) now accept a `secret` parameter from the resolved config. Updated `EdgeWorker.registerGitHubEventTransport()` startup logic to also require `CYRUS_HOST_EXTERNAL` for consistency with Slack. Added "runtime mode switching" test suites to both transport packages. ([CYPACK-884](https://linear.app/ceedar/issue/CYPACK-884), [#934](https://github.com/ceedaragents/cyrus/pull/934))
 
