@@ -85,7 +85,10 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockIssueTracker = {
 				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
+			(edgeWorker as any).workspaceIssueTrackers.set(
+				"test-workspace",
+				mockIssueTracker,
+			);
 
 			// Call the method
 			const result = await (edgeWorker as any).downloadIssueAttachments(
@@ -123,7 +126,10 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockIssueTracker = {
 				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
+			(edgeWorker as any).workspaceIssueTrackers.set(
+				"test-workspace",
+				mockIssueTracker,
+			);
 
 			const result = await (edgeWorker as any).downloadIssueAttachments(
 				mockIssue,
@@ -150,7 +156,10 @@ describe("EdgeWorker - Native Attachments", () => {
 			const mockIssueTracker = {
 				getComments: vi.fn().mockResolvedValue([]),
 			};
-			(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
+			(edgeWorker as any).workspaceIssueTrackers.set(
+				"test-workspace",
+				mockIssueTracker,
+			);
 
 			// Should not throw, but handle gracefully
 			const result = await (edgeWorker as any).downloadIssueAttachments(

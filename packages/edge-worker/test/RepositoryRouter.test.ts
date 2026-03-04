@@ -323,7 +323,7 @@ describe("RepositoryRouter", () => {
 					.inWorkspace("workspace-1")
 					.build();
 				const reposMap = new Map([[repo.id, repo]]);
-				env.router.getIssueRepositoryCache().set("issue-1", repo.id);
+				env.router.setIssueRepositorySelection("issue-1", repo.id, [repo.id]);
 
 				// When: Retrieving cached repository
 				const result = env.router.getCachedRepository("issue-1", reposMap);
@@ -370,8 +370,8 @@ describe("RepositoryRouter", () => {
 				const repo = env.repository("repo-1", "Valid Repo").build();
 				const reposMap = new Map([[repo.id, repo]]);
 				env.router
-					.getIssueRepositoryCache()
-					.set("issue-1", "non-existent-repo");
+					.getIssueWorkspaceRepositoryCache()
+					.set("issue-1", ["non-existent-repo"]);
 
 				// When: Retrieving cached repository
 				const result = env.router.getCachedRepository("issue-1", reposMap);
@@ -399,9 +399,8 @@ describe("RepositoryRouter", () => {
 
 			it("should allow exporting cache for serialization", () => {
 				// Given: A router with cache entries
-				const cache = env.router.getIssueRepositoryCache();
-				cache.set("issue-1", "repo-1");
-				cache.set("issue-2", "repo-2");
+				env.router.setIssueRepositorySelection("issue-1", "repo-1", ["repo-1"]);
+				env.router.setIssueRepositorySelection("issue-2", "repo-2", ["repo-2"]);
 
 				// When: Exporting cache
 				const exported = env.router.getIssueRepositoryCache();

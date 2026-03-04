@@ -143,8 +143,8 @@ describe("EdgeWorker - Status Endpoint", () => {
 			};
 
 			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
+			(edgeWorker as any).workspaceAgentSessionManagers.set(
+				"test-workspace",
 				mockSessionManager,
 			);
 
@@ -168,8 +168,8 @@ describe("EdgeWorker - Status Endpoint", () => {
 			};
 
 			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
+			(edgeWorker as any).workspaceAgentSessionManagers.set(
+				"test-workspace",
 				mockSessionManager,
 			);
 
@@ -195,8 +195,8 @@ describe("EdgeWorker - Status Endpoint", () => {
 			};
 
 			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
+			(edgeWorker as any).workspaceAgentSessionManagers.set(
+				"test-workspace",
 				mockSessionManager,
 			);
 
@@ -224,11 +224,11 @@ describe("EdgeWorker - Status Endpoint", () => {
 			};
 
 			// Set multiple session managers
-			(edgeWorker as any).agentSessionManagers.set(
+			(edgeWorker as any).workspaceAgentSessionManagers.set(
 				"repo-1",
 				mockSessionManager1,
 			);
-			(edgeWorker as any).agentSessionManagers.set(
+			(edgeWorker as any).workspaceAgentSessionManagers.set(
 				"repo-2",
 				mockSessionManager2,
 			);

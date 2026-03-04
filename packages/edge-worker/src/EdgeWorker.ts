@@ -170,8 +170,6 @@ export class EdgeWorker extends EventEmitter {
 	private workspaceIssueTrackers: Map<string, IIssueTrackerService> = new Map(); // canonical runtime map (keyed by workspace ID)
 	private repositoryToWorkspace: Map<string, string> = new Map(); // repository ID -> workspace ID index
 	private workspaceRuntimeOwnerRepository: Map<string, string> = new Map(); // workspace ID -> repository ID (owner for runtime defaults)
-	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // compatibility index (repository ID -> workspace manager)
-	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // compatibility index (repository ID -> workspace tracker)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
@@ -306,6 +304,7 @@ export class EdgeWorker extends EventEmitter {
 				// Resolve paths that may contain tilde (~) prefix
 				const resolvedRepo: RepositoryConfig = {
 					...repo,
+					linearWorkspaceId: repo.linearWorkspaceId || repo.id,
 					repositoryPath: resolvePath(repo.repositoryPath),
 					workspaceBaseDir: resolvePath(repo.workspaceBaseDir),
 					mcpConfigPath: Array.isArray(repo.mcpConfigPath)
@@ -344,11 +343,12 @@ export class EdgeWorker extends EventEmitter {
 			this.config,
 			this.logger,
 		);
-		this.activityPoster = new ActivityPoster(
-			this.issueTrackers,
-			this.repositories,
-			this.logger,
-		);
+		this.activityPoster = new ActivityPoster({
+			getIssueTrackerForRepository: (repositoryId: string) =>
+				this.getIssueTrackerForRepository(repositoryId),
+			repositories: this.repositories,
+			logger: this.logger,
+		});
 		this.configManager = new ConfigManager(
 			this.config,
 			this.logger,
@@ -358,7 +358,8 @@ export class EdgeWorker extends EventEmitter {
 		this.promptBuilder = new PromptBuilder({
 			logger: this.logger,
 			repositories: this.repositories,
-			issueTrackers: this.issueTrackers,
+			getIssueTrackerForRepository: (repositoryId: string) =>
+				this.getIssueTrackerForRepository(repositoryId),
 			gitService: this.gitService,
 			config: this.config,
 		});
@@ -406,15 +407,27 @@ export class EdgeWorker extends EventEmitter {
 		return this.getFirstRepositoryForWorkspace(workspaceId);
 	}
 
+	private getWorkspaceLinearToken(
+		workspaceId: string,
+		fallbackRepository?: RepositoryConfig,
+	): string | undefined {
+		return (
+			this.getWorkspaceOwnerRepository(workspaceId)?.linearToken ||
+			fallbackRepository?.linearToken
+		);
+	}
+
 	private resolvePrimaryRepositoryForSession(
 		session: CyrusAgentSession,
 		workspaceId: string,
 	): RepositoryConfig | undefined {
 		const issueId = session.issueContext?.issueId ?? session.issueId;
 		if (issueId) {
-			const primaryRepositoryId = this.repositoryRouter
-				.getIssueRepositoryCache()
-				.get(issueId);
+			const primaryRepositoryId =
+				this.repositoryRouter.getCachedWorkspaceRepositories(
+					issueId,
+					this.repositories,
+				)?.[0]?.id;
 			if (primaryRepositoryId) {
 				const cachedPrimaryRepository =
 					this.repositories.get(primaryRepositoryId);
@@ -441,14 +454,10 @@ export class EdgeWorker extends EventEmitter {
 	private getIssueTrackerForRepository(
 		repositoryId: string,
 	): IIssueTrackerService | undefined {
-		const repositoryIssueTracker = this.issueTrackers.get(repositoryId);
-		if (repositoryIssueTracker) {
-			return repositoryIssueTracker;
-		}
-
 		const workspaceId =
 			this.repositoryToWorkspace.get(repositoryId) ||
-			this.repositories.get(repositoryId)?.linearWorkspaceId;
+			this.repositories.get(repositoryId)?.linearWorkspaceId ||
+			repositoryId;
 		if (workspaceId) {
 			const workspaceIssueTracker =
 				this.workspaceIssueTrackers.get(workspaceId);
@@ -462,15 +471,10 @@ export class EdgeWorker extends EventEmitter {
 	private getAgentSessionManagerForRepository(
 		repositoryId: string,
 	): AgentSessionManager | undefined {
-		const repositorySessionManager =
-			this.agentSessionManagers.get(repositoryId);
-		if (repositorySessionManager) {
-			return repositorySessionManager;
-		}
-
 		const workspaceId =
 			this.repositoryToWorkspace.get(repositoryId) ||
-			this.repositories.get(repositoryId)?.linearWorkspaceId;
+			this.repositories.get(repositoryId)?.linearWorkspaceId ||
+			repositoryId;
 		if (workspaceId) {
 			const workspaceSessionManager =
 				this.workspaceAgentSessionManagers.get(workspaceId);
@@ -482,55 +486,19 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	private getRuntimeSessionManagers(): AgentSessionManager[] {
-		const seenManagers = new Set<AgentSessionManager>();
-		const managers: AgentSessionManager[] = [];
-		for (const manager of this.workspaceAgentSessionManagers.values()) {
-			if (seenManagers.has(manager)) {
-				continue;
-			}
-			seenManagers.add(manager);
-			managers.push(manager);
-		}
-		for (const manager of this.agentSessionManagers.values()) {
-			if (seenManagers.has(manager)) {
-				continue;
-			}
-			seenManagers.add(manager);
-			managers.push(manager);
-		}
-		return managers;
+		return Array.from(this.workspaceAgentSessionManagers.values());
 	}
 
 	private getRuntimeSessionManagerEntries(): Array<
 		[string, AgentSessionManager]
 	> {
-		const seenManagers = new Set<AgentSessionManager>();
-		const entries: Array<[string, AgentSessionManager]> = [];
-		for (const [workspaceId, manager] of this.workspaceAgentSessionManagers) {
-			if (seenManagers.has(manager)) {
-				continue;
-			}
-			seenManagers.add(manager);
-			entries.push([workspaceId, manager]);
-		}
-		for (const [repositoryId, manager] of this.agentSessionManagers.entries()) {
-			if (seenManagers.has(manager)) {
-				continue;
-			}
-			seenManagers.add(manager);
-			const workspaceId =
-				this.repositoryToWorkspace.get(repositoryId) ||
-				this.repositories.get(repositoryId)?.linearWorkspaceId ||
-				repositoryId;
-			entries.push([workspaceId, manager]);
-		}
-		return entries;
+		return Array.from(this.workspaceAgentSessionManagers.entries());
 	}
 
 	private ensureWorkspaceRuntimeForRepository(
 		repository: RepositoryConfig,
 	): void {
-		const workspaceId = repository.linearWorkspaceId;
+		const workspaceId = repository.linearWorkspaceId || repository.id;
 		this.repositoryToWorkspace.set(repository.id, workspaceId);
 
 		let issueTracker = this.workspaceIssueTrackers.get(workspaceId);
@@ -683,10 +651,6 @@ export class EdgeWorker extends EventEmitter {
 				`Failed to initialize workspace runtime for ${workspaceId}`,
 			);
 		}
-
-		// Maintain repository keyed aliases during migration to workspace-owned runtimes.
-		this.issueTrackers.set(repository.id, issueTracker);
-		this.agentSessionManagers.set(repository.id, workspaceSessionManager);
 	}
 
 	private sessionTouchesRepository(
@@ -707,10 +671,14 @@ export class EdgeWorker extends EventEmitter {
 			return false;
 		}
 
-		const primaryRepositoryId = this.repositoryRouter
-			.getIssueRepositoryCache()
-			.get(issueId);
-		return primaryRepositoryId === repositoryId;
+		const cachedWorkspaceRepositories =
+			this.repositoryRouter.getCachedWorkspaceRepositories(
+				issueId,
+				this.repositories,
+			) ?? [];
+		return cachedWorkspaceRepositories.some(
+			(repository) => repository.id === repositoryId,
+		);
 	}
 
 	/**
@@ -2078,8 +2046,6 @@ ${taskInstructions}
 				// Remove repository indexes
 				this.repositories.delete(repo.id);
 				this.repositoryToWorkspace.delete(repo.id);
-				this.issueTrackers.delete(repo.id);
-				this.agentSessionManagers.delete(repo.id);
 
 				if (workspaceId) {
 					const remainingWorkspaceRepos = Array.from(
@@ -2145,7 +2111,6 @@ ${taskInstructions}
 
 	/**
 	 * Get cached workspace repositories for an issue.
-	 * Returns a single-item array for legacy/single-repo cache entries.
 	 */
 	private getCachedWorkspaceRepositories(issueId: string): RepositoryConfig[] {
 		return (
@@ -2157,14 +2122,17 @@ ${taskInstructions}
 	}
 
 	/**
-	 * Cache repository selection for an issue, preserving legacy primary-repo cache
-	 * and optional multi-repo workspace membership.
+	 * Cache workspace repository selection for an issue.
 	 */
 	private cacheIssueRepositorySelection(
 		issueId: string,
-		primaryRepositoryId: string,
-		workspaceRepositoryIds?: string[],
+		workspaceRepositoryIds: string[],
 	): void {
+		const primaryRepositoryId = workspaceRepositoryIds[0];
+		if (!primaryRepositoryId) {
+			return;
+		}
+
 		this.repositoryRouter.setIssueRepositorySelection(
 			issueId,
 			primaryRepositoryId,
@@ -2569,19 +2537,29 @@ ${taskInstructions}
 				).length;
 
 				// Download attachments from the new description
-				const downloadResult = await this.downloadCommentAttachments(
-					issueData.description,
-					attachmentsDir,
-					repository.linearToken,
-					existingAttachmentCount,
+				const workspaceLinearToken = this.getWorkspaceLinearToken(
+					repository.linearWorkspaceId,
+					repository,
 				);
-
-				if (downloadResult.totalNewAttachments > 0) {
-					attachmentManifest =
-						this.generateNewAttachmentManifest(downloadResult);
-					this.logger.debug(
-						`Downloaded ${downloadResult.totalNewAttachments} attachments from updated description`,
+				if (!workspaceLinearToken) {
+					this.logger.warn(
+						`No Linear token available for workspace ${repository.linearWorkspaceId}, skipping attachment download for issue update`,
 					);
+				} else {
+					const downloadResult = await this.downloadCommentAttachments(
+						issueData.description,
+						attachmentsDir,
+						workspaceLinearToken,
+						existingAttachmentCount,
+					);
+
+					if (downloadResult.totalNewAttachments > 0) {
+						attachmentManifest =
+							this.generateNewAttachmentManifest(downloadResult);
+						this.logger.debug(
+							`Downloaded ${downloadResult.totalNewAttachments} attachments from updated description`,
+						);
+					}
 				}
 			} catch (error) {
 				this.logger.error(
@@ -2711,14 +2689,16 @@ ${taskInstructions}
 		agentSessionManager: AgentSessionManager,
 		workspaceRepositories?: RepositoryConfig[],
 	): Promise<AgentSessionData> {
+		const workspaceId = repository.linearWorkspaceId;
+
 		// Fetch full Linear issue details
-		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+		const fullIssue = await this.fetchFullIssueDetails(issue.id, workspaceId);
 		if (!fullIssue) {
 			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
 		}
 
 		// Move issue to started state automatically, in case it's not already
-		await this.moveIssueToStartedState(fullIssue, repository.id);
+		await this.moveIssueToStartedState(fullIssue, workspaceId);
 
 		const selectedWorkspaceRepositories =
 			workspaceRepositories && workspaceRepositories.length > 0
@@ -2888,7 +2868,6 @@ ${taskInstructions}
 			if (issueId) {
 				this.cacheIssueRepositorySelection(
 					issueId,
-					repository.id,
 					workspaceRepositories.map(
 						(workspaceRepository) => workspaceRepository.id,
 					),
@@ -3437,7 +3416,7 @@ ${taskInstructions}
 
 		// Cache the selected repository for this issue
 		const issueId = agentSession.issue.id;
-		this.cacheIssueRepositorySelection(issueId, repository.id, [repository.id]);
+		this.cacheIssueRepositorySelection(issueId, [repository.id]);
 
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
@@ -3687,19 +3666,24 @@ ${taskInstructions}
 			).length;
 
 			// Download new attachments from the comment
-			const downloadResult = comment
-				? await this.downloadCommentAttachments(
-						comment.body,
-						attachmentsDir,
-						repository.linearToken,
-						existingAttachmentCount,
-					)
-				: {
-						totalNewAttachments: 0,
-						newAttachmentMap: {},
-						newImageMap: {},
-						failedCount: 0,
-					};
+			const workspaceLinearToken = this.getWorkspaceLinearToken(
+				repository.linearWorkspaceId,
+				repository,
+			);
+			let downloadResult = {
+				totalNewAttachments: 0,
+				newAttachmentMap: {},
+				newImageMap: {},
+				failedCount: 0,
+			};
+			if (comment && workspaceLinearToken) {
+				downloadResult = await this.downloadCommentAttachments(
+					comment.body,
+					attachmentsDir,
+					workspaceLinearToken,
+					existingAttachmentCount,
+				);
+			}
 
 			if (downloadResult.totalNewAttachments > 0) {
 				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
@@ -3804,9 +3788,7 @@ ${taskInstructions}
 						this.resolvePrimaryRepositoryForSession(session, workspaceId) ??
 						null;
 					if (repository) {
-						this.cacheIssueRepositorySelection(issueId, repository.id, [
-							repository.id,
-						]);
+						this.cacheIssueRepositorySelection(issueId, [repository.id]);
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} from workspace manager`,
 						);
@@ -3827,9 +3809,7 @@ ${taskInstructions}
 
 					if (routingResult.type === "selected") {
 						repository = routingResult.repository;
-						this.cacheIssueRepositorySelection(issueId, repository.id, [
-							repository.id,
-						]);
+						this.cacheIssueRepositorySelection(issueId, [repository.id]);
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
 						);
@@ -3837,7 +3817,6 @@ ${taskInstructions}
 						repository = routingResult.primaryRepository;
 						this.cacheIssueRepositorySelection(
 							issueId,
-							repository.id,
 							routingResult.repositories.map(
 								(workspaceRepository) => workspaceRepository.id,
 							),
@@ -4177,18 +4156,18 @@ ${taskInstructions}
 	/**
 	 * Move issue to started state when assigned
 	 * @param issue Full Linear issue object from Linear SDK
-	 * @param repositoryId Repository ID for issue tracker lookup
+	 * @param workspaceId Workspace ID for issue tracker lookup
 	 */
 
 	private async moveIssueToStartedState(
 		issue: Issue,
-		repositoryId: string,
+		workspaceId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.getIssueTrackerForRepository(repositoryId);
+			const issueTracker = this.getIssueTrackerForWorkspace(workspaceId);
 			if (!issueTracker) {
 				this.logger.warn(
-					`No issue tracker found for repository ${repositoryId}, skipping state update`,
+					`No issue tracker found for workspace ${workspaceId}, skipping state update`,
 				);
 				return;
 			}
@@ -5618,10 +5597,7 @@ ${input.userComment}
 			this.childToParentAgentSession.entries(),
 		);
 
-		// Serialize issue to repository cache from RepositoryRouter
-		const issueRepositoryCache = Object.fromEntries(
-			this.repositoryRouter.getIssueRepositoryCache().entries(),
-		);
+		// Serialize issue to workspace repositories cache from RepositoryRouter
 		const issueWorkspaceRepositoryCache = Object.fromEntries(
 			this.repositoryRouter.getIssueWorkspaceRepositoryCache().entries(),
 		);
@@ -5630,7 +5606,6 @@ ${input.userComment}
 			agentSessions,
 			agentSessionEntries,
 			childToParentAgentSession,
-			issueRepositoryCache,
 			issueWorkspaceRepositoryCache,
 		};
 	}
@@ -5685,7 +5660,7 @@ ${input.userComment}
 			);
 		}
 
-		// Restore issue to repository cache in RepositoryRouter
+		// Restore issue to repository cache in RepositoryRouter (legacy migration path)
 		if (state.issueRepositoryCache) {
 			const cache = new Map(Object.entries(state.issueRepositoryCache));
 			this.repositoryRouter.restoreIssueRepositoryCache(cache);
@@ -6034,7 +6009,7 @@ ${input.userComment}
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
 			issueIdForResume,
-			repository.id,
+			repository.linearWorkspaceId,
 		);
 		if (!fullIssue) {
 			log.error(`Failed to fetch full issue details for ${issueIdForResume}`);
@@ -6245,11 +6220,11 @@ ${input.userComment}
 	 */
 	public async fetchFullIssueDetails(
 		issueId: string,
-		repositoryId: string,
+		workspaceId: string,
 	): Promise<Issue | null> {
-		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
+		const issueTracker = this.getIssueTrackerForWorkspace(workspaceId);
 		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
 			return null;
 		}
 

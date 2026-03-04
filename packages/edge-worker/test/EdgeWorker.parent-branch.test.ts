@@ -204,7 +204,10 @@ Base Branch: {{base_branch}}`;
 			}),
 			getIssueLabels: vi.fn().mockResolvedValue([]),
 		};
-		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+		(edgeWorker as any).workspaceIssueTrackers.set(
+			mockRepository.linearWorkspaceId,
+			mockIssueTracker,
+		);
 
 		// Mock branchExists to always return true so parent branches are used
 		vi.spyOn((edgeWorker as any).gitService, "branchExists").mockResolvedValue(

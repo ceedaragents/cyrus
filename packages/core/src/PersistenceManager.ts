@@ -11,7 +11,7 @@ import type {
 import { createLogger, type ILogger } from "./logging/index.js";
 
 /** Current persistence format version */
-export const PERSISTENCE_VERSION = "3.0";
+export const PERSISTENCE_VERSION = "4.0";
 
 // Serialized versions with Date fields as strings
 export type SerializedCyrusAgentSession = CyrusAgentSession;
@@ -53,7 +53,7 @@ interface V2CyrusAgentSession {
  * Serializable EdgeWorker state for persistence
  */
 export interface SerializableEdgeWorkerState {
-	// Agent Session state - keyed by repository ID, since that's how we construct AgentSessionManagers
+	// Agent Session state - keyed by workspace ID
 	agentSessions?: Record<string, Record<string, SerializedCyrusAgentSession>>;
 	agentSessionEntries?: Record<
 		string,
@@ -61,9 +61,10 @@ export interface SerializableEdgeWorkerState {
 	>;
 	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
-	// Issue to repository mapping (for caching user repository selections)
+	// Legacy issue to repository mapping (migrated to issueWorkspaceRepositoryCache)
+	// Kept optional for one-time migration support when loading older state files.
 	issueRepositoryCache?: Record<string, string>;
-	// Issue to workspace repositories mapping (for multi-repo workspace reconstruction)
+	// Issue to workspace repositories mapping (canonical in v4)
 	issueWorkspaceRepositoryCache?: Record<string, string[]>;
 }
 
@@ -115,7 +116,7 @@ export class PersistenceManager {
 
 	/**
 	 * Load EdgeWorker state from disk (single file for all repositories)
-	 * Automatically migrates from v2.0 to v3.0 format if needed.
+	 * Automatically migrates older formats to v4.0 format if needed.
 	 */
 	async loadEdgeWorkerState(): Promise<SerializableEdgeWorkerState | null> {
 		try {
@@ -134,9 +135,20 @@ export class PersistenceManager {
 
 			// Handle version migration
 			if (stateData.version === "2.0") {
-				this.logger.info("Migrating state from v2.0 to v3.0");
-				const migratedState = this.migrateV2ToV3(stateData.state);
+				this.logger.info("Migrating state from v2.0 to v4.0");
+				const v3State = this.migrateV2ToV3(stateData.state);
+				const migratedState = this.migrateV3ToV4(v3State);
 				// Save the migrated state
+				await this.saveEdgeWorkerState(migratedState);
+				this.logger.info(
+					`Migration complete, saved as v${PERSISTENCE_VERSION}`,
+				);
+				return migratedState;
+			}
+
+			if (stateData.version === "3.0") {
+				this.logger.info("Migrating state from v3.0 to v4.0");
+				const migratedState = this.migrateV3ToV4(stateData.state);
 				await this.saveEdgeWorkerState(migratedState);
 				this.logger.info(
 					`Migration complete, saved as v${PERSISTENCE_VERSION}`,
@@ -156,6 +168,37 @@ export class PersistenceManager {
 			this.logger.error("Failed to load EdgeWorker state:", error);
 			return null;
 		}
+	}
+
+	/**
+	 * Migrate v3.0 state format to v4.0 format
+	 *
+	 * Changes:
+	 * - `issueWorkspaceRepositoryCache` becomes canonical cache shape
+	 * - `issueRepositoryCache` is folded into workspace cache for single-repo selections
+	 */
+	private migrateV3ToV4(
+		v3State: SerializableEdgeWorkerState,
+	): SerializableEdgeWorkerState {
+		const { issueRepositoryCache: _legacyCache, ...restState } = v3State;
+		const migratedWorkspaceCache: Record<string, string[]> = {
+			...(v3State.issueWorkspaceRepositoryCache || {}),
+		};
+
+		if (v3State.issueRepositoryCache) {
+			for (const [issueId, repositoryId] of Object.entries(
+				v3State.issueRepositoryCache,
+			)) {
+				if (!migratedWorkspaceCache[issueId]?.length) {
+					migratedWorkspaceCache[issueId] = [repositoryId];
+				}
+			}
+		}
+
+		return {
+			...restState,
+			issueWorkspaceRepositoryCache: migratedWorkspaceCache,
+		};
 	}
 
 	/**

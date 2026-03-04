@@ -177,8 +177,8 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		);
 
 		// Setup repository managers
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
+		(edgeWorker as any).workspaceAgentSessionManagers.set(
+			"test-workspace",
 			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);

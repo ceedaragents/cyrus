@@ -180,8 +180,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		);
 
 		// Setup repository managers
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
+		(edgeWorker as any).workspaceAgentSessionManagers.set(
+			"test-workspace",
 			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
@@ -386,6 +386,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				...mockRepository,
 				id: "test-repo-2",
 				name: "Test Repo 2",
+				linearWorkspaceId: "test-workspace-2",
 			};
 
 			const mockRepo2Manager = {
@@ -394,8 +395,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			};
 
 			// First repository doesn't have the session
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo-2",
+			(edgeWorker as any).workspaceAgentSessionManagers.set(
+				"test-workspace-2",
 				mockRepo2Manager,
 			);
 			(edgeWorker as any).repositories.set("test-repo-2", repo2);

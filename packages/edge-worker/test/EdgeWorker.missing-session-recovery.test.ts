@@ -162,8 +162,8 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 
 		// Set up agent session managers (but WITHOUT cached repository mappings)
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
+		(edgeWorker as any).workspaceAgentSessionManagers.set(
+			"test-workspace",
 			mockAgentSessionManager,
 		);
 
@@ -179,7 +179,10 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			}),
 			fetchComment: vi.fn().mockResolvedValue(null),
 		};
-		(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
+		(edgeWorker as any).workspaceIssueTrackers.set(
+			"test-workspace",
+			mockIssueTracker,
+		);
 	});
 
 	afterEach(() => {
@@ -314,7 +317,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			// Arrange: Ensure the issue-to-repository cache is EMPTY
 			// (simulates post-restart/migration scenario)
 			const repositoryRouter = (edgeWorker as any).repositoryRouter;
-			const cache = repositoryRouter.getIssueRepositoryCache();
+			const cache = repositoryRouter.getIssueWorkspaceRepositoryCache();
 			cache.clear(); // No cached mappings
 
 			const webhook = createPromptedWebhook();
@@ -336,7 +339,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 		it("should re-establish the repository cache mapping after fallback resolution", async () => {
 			// Arrange: Empty cache
 			const repositoryRouter = (edgeWorker as any).repositoryRouter;
-			const cache = repositoryRouter.getIssueRepositoryCache();
+			const cache = repositoryRouter.getIssueWorkspaceRepositoryCache();
 			cache.clear();
 
 			// Mock the fallback to return a valid repository
@@ -356,13 +359,13 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 
 			// Assert: Cache should now contain the mapping
 			// Currently FAILS because fallback is never attempted
-			expect(cache.get("issue-123")).toBe("test-repo");
+			expect(cache.get("issue-123")).toEqual(["test-repo"]);
 		});
 
 		it("should post a response activity when fallback resolution fails", async () => {
 			// Arrange: Empty cache, and fallback returns no match
 			const repositoryRouter = (edgeWorker as any).repositoryRouter;
-			const cache = repositoryRouter.getIssueRepositoryCache();
+			const cache = repositoryRouter.getIssueWorkspaceRepositoryCache();
 			cache.clear();
 
 			vi.spyOn(
@@ -436,7 +439,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 		it("should attempt to find and stop sessions across all managers", async () => {
 			// Arrange: Empty repository cache but sessions exist in manager
 			const repositoryRouter = (edgeWorker as any).repositoryRouter;
-			const cache = repositoryRouter.getIssueRepositoryCache();
+			const cache = repositoryRouter.getIssueWorkspaceRepositoryCache();
 			cache.clear();
 
 			// Simulate an active session for the issue
@@ -470,7 +473,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 		it("should attempt fallback repository resolution for active sessions", async () => {
 			// Arrange: Empty repository cache
 			const repositoryRouter = (edgeWorker as any).repositoryRouter;
-			const cache = repositoryRouter.getIssueRepositoryCache();
+			const cache = repositoryRouter.getIssueWorkspaceRepositoryCache();
 			cache.clear();
 
 			const webhook = createIssueUpdateWebhook();
@@ -505,7 +508,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 		it("should create a replacement session and continue processing", async () => {
 			// Arrange: Repository IS cached, but session is NOT found
 			const repositoryRouter = (edgeWorker as any).repositoryRouter;
-			const cache = repositoryRouter.getIssueRepositoryCache();
+			const cache = repositoryRouter.getIssueWorkspaceRepositoryCache();
 			cache.set("issue-123", "test-repo");
 
 			// Session not found initially

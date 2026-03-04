@@ -79,8 +79,6 @@ export interface RepositoryRouterDeps {
  * This class was extracted from EdgeWorker to improve modularity and testability.
  */
 export class RepositoryRouter {
-	/** Cache mapping issue IDs to primary selected repository IDs */
-	private issueRepositoryCache = new Map<string, string>();
 	/** Cache mapping issue IDs to all repositories selected for workspace creation */
 	private issueWorkspaceRepositoryCache = new Map<string, string[]>();
 
@@ -111,7 +109,8 @@ export class RepositoryRouter {
 		issueId: string,
 		repositoriesMap: Map<string, RepositoryConfig>,
 	): RepositoryConfig | null {
-		const cachedRepositoryId = this.issueRepositoryCache.get(issueId);
+		const cachedRepositoryId =
+			this.issueWorkspaceRepositoryCache.get(issueId)?.[0];
 		if (!cachedRepositoryId) {
 			this.logger.debug(`No cached repository found for issue ${issueId}`);
 			return null;
@@ -123,7 +122,6 @@ export class RepositoryRouter {
 			this.logger.warn(
 				`Cached repository ${cachedRepositoryId} no longer exists, removing from cache`,
 			);
-			this.issueRepositoryCache.delete(issueId);
 			this.issueWorkspaceRepositoryCache.delete(issueId);
 			return null;
 		}
@@ -155,12 +153,7 @@ export class RepositoryRouter {
 			// Clean up invalid cache entries
 			this.issueWorkspaceRepositoryCache.delete(issueId);
 		}
-
-		const cachedPrimaryRepository = this.getCachedRepository(
-			issueId,
-			repositoriesMap,
-		);
-		return cachedPrimaryRepository ? [cachedPrimaryRepository] : null;
+		return null;
 	}
 
 	/**
@@ -172,25 +165,18 @@ export class RepositoryRouter {
 		primaryRepositoryId: string,
 		workspaceRepositoryIds?: string[],
 	): void {
-		this.issueRepositoryCache.set(issueId, primaryRepositoryId);
-
 		const uniqueWorkspaceRepositoryIds = Array.from(
 			new Set(
-				(workspaceRepositoryIds ?? [primaryRepositoryId]).filter(
+				[primaryRepositoryId, ...(workspaceRepositoryIds ?? [])].filter(
 					(repositoryId) => repositoryId.length > 0,
 				),
 			),
 		);
 
-		if (uniqueWorkspaceRepositoryIds.length > 1) {
-			this.issueWorkspaceRepositoryCache.set(
-				issueId,
-				uniqueWorkspaceRepositoryIds,
-			);
-			return;
-		}
-
-		this.issueWorkspaceRepositoryCache.delete(issueId);
+		this.issueWorkspaceRepositoryCache.set(
+			issueId,
+			uniqueWorkspaceRepositoryIds,
+		);
 	}
 
 	/**
@@ -833,7 +819,14 @@ export class RepositoryRouter {
 	 * Get issue repository cache for serialization
 	 */
 	getIssueRepositoryCache(): Map<string, string> {
-		return this.issueRepositoryCache;
+		const primaryCache = new Map<string, string>();
+		for (const [issueId, repositoryIds] of this.issueWorkspaceRepositoryCache) {
+			const primaryRepositoryId = repositoryIds[0];
+			if (primaryRepositoryId) {
+				primaryCache.set(issueId, primaryRepositoryId);
+			}
+		}
+		return primaryCache;
 	}
 
 	/**
@@ -847,7 +840,11 @@ export class RepositoryRouter {
 	 * Restore issue repository cache from serialization
 	 */
 	restoreIssueRepositoryCache(cache: Map<string, string>): void {
-		this.issueRepositoryCache = cache;
+		for (const [issueId, repositoryId] of cache.entries()) {
+			if (!this.issueWorkspaceRepositoryCache.has(issueId)) {
+				this.issueWorkspaceRepositoryCache.set(issueId, [repositoryId]);
+			}
+		}
 	}
 
 	/**

@@ -267,7 +267,10 @@ Issue: {{issue_identifier}}`;
 			}),
 			getIssueLabels: vi.fn(),
 		};
-		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+		(edgeWorker as any).workspaceIssueTrackers.set(
+			mockRepository.linearWorkspaceId,
+			mockIssueTracker,
+		);
 	});
 
 	afterEach(() => {
@@ -815,8 +818,8 @@ Issue: {{issue_identifier}}`;
 				}),
 				getIssueLabels: vi.fn(),
 			};
-			(codexEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
+			(codexEdgeWorker as any).workspaceIssueTrackers.set(
+				mockRepository.linearWorkspaceId,
 				mockIssueTracker,
 			);
 
@@ -863,8 +866,8 @@ Issue: {{issue_identifier}}`;
 				}),
 				getIssueLabels: vi.fn(),
 			};
-			(geminiEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
+			(geminiEdgeWorker as any).workspaceIssueTrackers.set(
+				mockRepository.linearWorkspaceId,
 				mockIssueTracker,
 			);
 
@@ -911,8 +914,8 @@ Issue: {{issue_identifier}}`;
 				}),
 				getIssueLabels: vi.fn(),
 			};
-			(codexEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
+			(codexEdgeWorker as any).workspaceIssueTrackers.set(
+				mockRepository.linearWorkspaceId,
 				mockIssueTracker,
 			);
 

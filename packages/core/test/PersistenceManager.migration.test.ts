@@ -1,5 +1,5 @@
 /**
- * Tests for PersistenceManager v2.0 to v3.0 migration
+ * Tests for PersistenceManager migration to v4.0
  */
 
 import { existsSync } from "node:fs";
@@ -29,7 +29,7 @@ describe("PersistenceManager", () => {
 		persistenceManager = new PersistenceManager("/tmp/test-cyrus");
 	});
 
-	describe("v2.0 to v3.0 Migration", () => {
+	describe("v2.0 to v4.0 Migration", () => {
 		const v2State = {
 			version: "2.0",
 			savedAt: "2025-01-15T12:00:00.000Z",
@@ -78,7 +78,7 @@ describe("PersistenceManager", () => {
 			},
 		};
 
-		it("should migrate v2.0 state to v3.0 format", async () => {
+		it("should migrate v2.0 state to v4.0 format", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -123,7 +123,7 @@ describe("PersistenceManager", () => {
 			expect(migratedSession.workspace.path).toBe("/tmp/worktree");
 		});
 
-		it("should save migrated state as v3.0", async () => {
+		it("should save migrated state as v4.0", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -131,7 +131,7 @@ describe("PersistenceManager", () => {
 
 			await persistenceManager.loadEdgeWorkerState();
 
-			// Verify writeFile was called with v3.0 version
+			// Verify writeFile was called with v4.0 version
 			expect(writeFile).toHaveBeenCalled();
 			const savedData = JSON.parse(
 				vi.mocked(writeFile).mock.calls[0][1] as string,
@@ -157,10 +157,11 @@ describe("PersistenceManager", () => {
 				v2State.state.childToParentAgentSession,
 			);
 
-			// Check issue repository cache is preserved
-			expect(result!.issueRepositoryCache).toEqual(
-				v2State.state.issueRepositoryCache,
-			);
+			// Legacy issue repository cache should be migrated into workspace cache
+			expect(result!.issueRepositoryCache).toBeUndefined();
+			expect(result!.issueWorkspaceRepositoryCache).toEqual({
+				"issue-456": ["repo-1"],
+			});
 		});
 
 		it("should return null for unknown version", async () => {
@@ -195,7 +196,7 @@ describe("PersistenceManager", () => {
 			expect(result).toBeNull();
 		});
 
-		it("should load v3.0 state without migration", async () => {
+		it("should migrate v3.0 state to v4.0 format on load", async () => {
 			const v3State = {
 				version: "3.0",
 				savedAt: "2025-01-15T12:00:00.000Z",
@@ -221,15 +222,18 @@ describe("PersistenceManager", () => {
 
 			const result = await persistenceManager.loadEdgeWorkerState();
 
-			expect(result).toEqual(v3State.state);
-			// Should not call writeFile since no migration needed
-			expect(writeFile).not.toHaveBeenCalled();
+			expect(result).toEqual({
+				...v3State.state,
+				issueWorkspaceRepositoryCache: {},
+			});
+			// Should persist migrated v4 state
+			expect(writeFile).toHaveBeenCalled();
 		});
 	});
 
 	describe("PERSISTENCE_VERSION constant", () => {
-		it("should be 3.0", () => {
-			expect(PERSISTENCE_VERSION).toBe("3.0");
+		it("should be 4.0", () => {
+			expect(PERSISTENCE_VERSION).toBe("4.0");
 		});
 	});
 });
