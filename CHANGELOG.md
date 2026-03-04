@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Webhook verification mode now updates at runtime** - When `SLACK_SIGNING_SECRET` or `GITHUB_WEBHOOK_SECRET` environment variables are added after the process starts, Cyrus now automatically switches from proxied to direct webhook verification without requiring a restart. ([CYPACK-884](https://linear.app/ceedar/issue/CYPACK-884), [#934](https://github.com/ceedaragents/cyrus/pull/934))
+- **Webhook verification mode now updates at runtime** - When `SLACK_SIGNING_SECRET` or `GITHUB_WEBHOOK_SECRET` environment variables are added after the process starts (along with `CYRUS_HOST_EXTERNAL=true`), Cyrus now automatically switches from proxied to direct webhook verification without requiring a restart. ([CYPACK-884](https://linear.app/ceedar/issue/CYPACK-884), [#934](https://github.com/ceedaragents/cyrus/pull/934))
 
 ## [0.2.27] - 2026-03-04 ([#933](https://github.com/ceedaragents/cyrus/pull/933))
 

@@ -713,12 +713,17 @@ export class EdgeWorker extends EventEmitter {
 	 * This creates a /github-webhook endpoint that handles @cyrusagent mentions on GitHub PRs.
 	 */
 	private registerGitHubEventTransport(): void {
-		// Use the same verification approach as Linear webhooks
-		// In proxy mode: Bearer token (CYRUS_API_KEY)
-		// In direct/cloud mode: GitHub HMAC-SHA256 signature
-		const useSignatureVerification =
+		// Use direct GitHub signature verification only when BOTH:
+		// 1. GITHUB_WEBHOOK_SECRET is set (we have the secret to verify)
+		// 2. CYRUS_HOST_EXTERNAL is true (self-hosted: GitHub sends directly to us)
+		// On cloud droplets, CYHOST forwards webhooks with Bearer token auth
+		// (it verifies the GitHub signature itself and doesn't forward the headers).
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const hasGithubWebhookSecret =
 			process.env.GITHUB_WEBHOOK_SECRET != null &&
 			process.env.GITHUB_WEBHOOK_SECRET !== "";
+		const useSignatureVerification = isExternalHost && hasGithubWebhookSecret;
 		const verificationMode = useSignatureVerification ? "signature" : "proxy";
 		const secret = useSignatureVerification
 			? process.env.GITHUB_WEBHOOK_SECRET!

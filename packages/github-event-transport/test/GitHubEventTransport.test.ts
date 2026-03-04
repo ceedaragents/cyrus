@@ -574,14 +574,16 @@ describe("GitHubEventTransport", () => {
 
 		afterEach(() => {
 			delete process.env.GITHUB_WEBHOOK_SECRET;
+			delete process.env.CYRUS_HOST_EXTERNAL;
 		});
 
-		it("switches to signature verification when GITHUB_WEBHOOK_SECRET is set at request time", async () => {
+		it("switches to signature verification when GITHUB_WEBHOOK_SECRET and CYRUS_HOST_EXTERNAL are set at request time", async () => {
 			const eventListener = vi.fn();
 			transport.on("event", eventListener);
 
-			// Add env var after startup
+			// Add env vars after startup
 			process.env.GITHUB_WEBHOOK_SECRET = runtimeWebhookSecret;
+			process.env.CYRUS_HOST_EXTERNAL = "true";
 
 			const request = createMockRequest(issueCommentPayload, {
 				"x-github-event": "issue_comment",
@@ -604,11 +606,13 @@ describe("GitHubEventTransport", () => {
 			);
 		});
 
-		it("stays in proxy mode when GITHUB_WEBHOOK_SECRET is not set", async () => {
+		it("stays in proxy mode when only GITHUB_WEBHOOK_SECRET is set (no CYRUS_HOST_EXTERNAL)", async () => {
 			const eventListener = vi.fn();
 			transport.on("event", eventListener);
 
-			delete process.env.GITHUB_WEBHOOK_SECRET;
+			// Only set webhook secret, not external host flag
+			process.env.GITHUB_WEBHOOK_SECRET = runtimeWebhookSecret;
+			delete process.env.CYRUS_HOST_EXTERNAL;
 
 			const request = createMockRequest(issueCommentPayload, {
 				authorization: `Bearer ${testSecret}`,
@@ -630,9 +634,37 @@ describe("GitHubEventTransport", () => {
 			);
 		});
 
+		it("stays in proxy mode when neither env var is set", async () => {
+			const eventListener = vi.fn();
+			transport.on("event", eventListener);
+
+			delete process.env.GITHUB_WEBHOOK_SECRET;
+			delete process.env.CYRUS_HOST_EXTERNAL;
+
+			const request = createMockRequest(issueCommentPayload, {
+				authorization: `Bearer ${testSecret}`,
+				"x-github-event": "issue_comment",
+				"x-github-delivery": "delivery-proxy-002",
+			});
+			const reply = createMockReply();
+
+			const handler = mockFastify.routes["/github-webhook"]!;
+			await handler(request, reply);
+
+			expect(reply.code).toHaveBeenCalledWith(200);
+			expect(reply.send).toHaveBeenCalledWith({ success: true });
+			expect(eventListener).toHaveBeenCalledWith(
+				expect.objectContaining({
+					eventType: "issue_comment",
+					deliveryId: "delivery-proxy-002",
+				}),
+			);
+		});
+
 		it("rejects proxy-style request after switching to signature mode", async () => {
-			// Add env var to trigger signature mode
+			// Add env vars to trigger signature mode
 			process.env.GITHUB_WEBHOOK_SECRET = runtimeWebhookSecret;
+			process.env.CYRUS_HOST_EXTERNAL = "true";
 
 			// Send request with Bearer token (proxy style) — should fail
 			// because signature mode expects x-hub-signature-256 header
@@ -653,8 +685,9 @@ describe("GitHubEventTransport", () => {
 		});
 
 		it("rejects invalid signature after switching to signature mode", async () => {
-			// Add env var to trigger signature mode
+			// Add env vars to trigger signature mode
 			process.env.GITHUB_WEBHOOK_SECRET = runtimeWebhookSecret;
+			process.env.CYRUS_HOST_EXTERNAL = "true";
 
 			const request = createMockRequest(issueCommentPayload, {
 				"x-hub-signature-256": "sha256=invalid_signature_here",

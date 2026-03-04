@@ -69,9 +69,9 @@ export class GitHubEventTransport extends EventEmitter {
 
 	/**
 	 * Resolve the effective verification mode and secret at request time.
-	 * When started in proxy mode, checks if GITHUB_WEBHOOK_SECRET has been
-	 * added to the environment since startup, enabling a runtime switch
-	 * to signature verification.
+	 * When started in proxy mode, checks if GITHUB_WEBHOOK_SECRET and
+	 * CYRUS_HOST_EXTERNAL have been added to the environment since startup,
+	 * enabling a runtime switch to signature verification.
 	 *
 	 * Encapsulates all mode-switch detection and logging so callers only
 	 * need to dispatch on the returned mode (SRP).
@@ -85,11 +85,13 @@ export class GitHubEventTransport extends EventEmitter {
 			return { mode: "signature", secret: this.config.secret };
 		}
 
-		// Check if signature mode secret has been added at runtime
+		// Check if signature mode env vars have been added at runtime
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
 		const githubSecret = process.env.GITHUB_WEBHOOK_SECRET;
 		const hasGithubSecret = githubSecret != null && githubSecret !== "";
 
-		if (hasGithubSecret) {
+		if (isExternalHost && hasGithubSecret) {
 			this.logger.info(
 				"Runtime switch: GITHUB_WEBHOOK_SECRET detected, using GitHub signature verification",
 			);
