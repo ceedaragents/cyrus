@@ -4,8 +4,54 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.28] - 2026-03-04
+
 ### Fixed
 - **Webhook verification mode now updates at runtime** - When `SLACK_SIGNING_SECRET` or `GITHUB_WEBHOOK_SECRET` environment variables are added after the process starts (along with `CYRUS_HOST_EXTERNAL=true`), Cyrus now automatically switches from proxied to direct webhook verification without requiring a restart. ([CYPACK-884](https://linear.app/ceedar/issue/CYPACK-884), [#934](https://github.com/ceedaragents/cyrus/pull/934))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.28
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.28
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.28
+
+#### cyrus-core
+- cyrus-core@0.2.28
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.28
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.28
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.28
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.28
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.28
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.28
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.28
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.28
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.28
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.28
 
 ## [0.2.27] - 2026-03-04 ([#933](https://github.com/ceedaragents/cyrus/pull/933))
 
