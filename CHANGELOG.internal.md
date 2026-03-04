@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `resolveVerification()` to `SlackEventTransport` and `GitHubEventTransport` that checks `SLACK_SIGNING_SECRET`/`GITHUB_WEBHOOK_SECRET` env vars at request time instead of only at initialization. When started in proxy mode and the relevant secret env var is added at runtime, the transport dynamically switches to direct/signature HMAC-SHA256 verification. Follows the CYPACK-842 pattern of resolving from `process.env` at usage time. Handler methods (`handleDirectWebhook`, `handleProxyWebhook`, `handleSignatureWebhook`) now accept a `secret` parameter from the resolved config. Added "runtime mode switching" test suites to both transport packages. ([CYPACK-884](https://linear.app/ceedar/issue/CYPACK-884), [#934](https://github.com/ceedaragents/cyrus/pull/934))
+
 ## [0.2.27] - 2026-03-04
 
 ### Added
