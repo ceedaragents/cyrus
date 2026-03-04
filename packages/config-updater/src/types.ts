@@ -1,4 +1,5 @@
-import type { RepositoryConfig } from "cyrus-core";
+import { EdgeConfigPayloadSchema } from "cyrus-core";
+import { z } from "zod";
 
 /**
  * Repository configuration payload
@@ -20,20 +21,17 @@ export interface DeleteRepositoryPayload {
 }
 
 /**
- * Cyrus config update payload
+ * Cyrus config update payload schema
+ * Extends EdgeConfigPayloadSchema with operation flags for the update process.
+ * Uses EdgeConfigPayloadSchema (not EdgeConfigSchema) because incoming payloads
+ * may omit workspaceBaseDir - the handler applies a default value.
  */
-export interface CyrusConfigPayload {
-	repositories: RepositoryConfig[];
-	disallowedTools?: string[];
-	ngrokAuthToken?: string;
-	stripeCustomerId?: string;
-	linearWorkspaceSlug?: string;
-	defaultModel?: string;
-	defaultFallbackModel?: string;
-	global_setup_script?: string;
-	restartCyrus?: boolean;
-	backupConfig?: boolean;
-}
+export const CyrusConfigPayloadSchema = EdgeConfigPayloadSchema.extend({
+	restartCyrus: z.boolean().optional(),
+	backupConfig: z.boolean().optional(),
+});
+
+export type CyrusConfigPayload = z.infer<typeof CyrusConfigPayloadSchema>;
 
 /**
  * Cyrus environment variables payload (for Claude token)

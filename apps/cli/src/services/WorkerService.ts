@@ -1,3 +1,4 @@
+import { getCyrusAppUrl } from "cyrus-cloudflare-tunnel-client";
 import type { EdgeWorkerConfig, Issue, RepositoryConfig } from "cyrus-core";
 import type { GitService } from "cyrus-edge-worker";
 import { EdgeWorker } from "cyrus-edge-worker";
@@ -19,6 +20,7 @@ export class WorkerService {
 		private gitService: GitService,
 		private cyrusHome: string,
 		private logger: Logger,
+		private version?: string,
 	) {}
 
 	/**
@@ -90,7 +92,7 @@ export class WorkerService {
 		this.logger.info("📡 Config updater: Ready");
 		this.logger.raw("");
 		this.logger.info("Your Cyrus instance is ready to receive configuration.");
-		this.logger.info("Complete setup at: https://app.atcyrus.com/onboarding");
+		this.logger.info(`Complete setup at: ${getCyrusAppUrl()}/onboarding`);
 		this.logger.divider(70);
 	}
 
@@ -148,10 +150,9 @@ export class WorkerService {
 
 		this.logger.info("📡 Config updater: Ready");
 		this.logger.raw("");
-		this.logger.info(
-			"Waiting for repository configuration from app.atcyrus.com",
-		);
-		this.logger.info("Add repositories at: https://app.atcyrus.com/repos");
+		const appUrl = getCyrusAppUrl();
+		this.logger.info(`Waiting for repository configuration from ${appUrl}`);
+		this.logger.info(`Add repositories at: ${appUrl}/repos`);
 		this.logger.divider(70);
 	}
 
@@ -191,6 +192,7 @@ export class WorkerService {
 
 		// Create EdgeWorker configuration
 		const config: EdgeWorkerConfig = {
+			version: this.version,
 			repositories,
 			cyrusHome: this.cyrusHome,
 			defaultAllowedTools:
@@ -198,18 +200,38 @@ export class WorkerService {
 			defaultDisallowedTools:
 				process.env.DISALLOWED_TOOLS?.split(",").map((t) => t.trim()) ||
 				undefined,
-			// Model configuration: environment variables take precedence over config file
-			defaultModel: process.env.CYRUS_DEFAULT_MODEL || edgeConfig.defaultModel,
-			defaultFallbackModel:
+			// Model configuration: environment variables take precedence over config file.
+			// Legacy env vars/keys are still accepted for backwards compatibility.
+			claudeDefaultModel:
+				process.env.CYRUS_CLAUDE_DEFAULT_MODEL ||
+				process.env.CYRUS_DEFAULT_MODEL ||
+				edgeConfig.claudeDefaultModel ||
+				edgeConfig.defaultModel,
+			claudeDefaultFallbackModel:
+				process.env.CYRUS_CLAUDE_DEFAULT_FALLBACK_MODEL ||
 				process.env.CYRUS_DEFAULT_FALLBACK_MODEL ||
+				edgeConfig.claudeDefaultFallbackModel ||
 				edgeConfig.defaultFallbackModel,
+			geminiDefaultModel:
+				process.env.CYRUS_GEMINI_DEFAULT_MODEL || edgeConfig.geminiDefaultModel,
+			codexDefaultModel:
+				process.env.CYRUS_CODEX_DEFAULT_MODEL || edgeConfig.codexDefaultModel,
+			defaultRunner:
+				(process.env.CYRUS_DEFAULT_RUNNER as
+					| "claude"
+					| "gemini"
+					| "codex"
+					| "cursor"
+					| undefined) || edgeConfig.defaultRunner,
+			linearWorkspaceSlug: edgeConfig.linearWorkspaceSlug,
+			issueUpdateTrigger: edgeConfig.issueUpdateTrigger,
+			promptDefaults: edgeConfig.promptDefaults,
 			webhookBaseUrl: process.env.CYRUS_BASE_URL,
 			serverPort: parsePort(process.env.CYRUS_SERVER_PORT, DEFAULT_SERVER_PORT),
 			serverHost: isExternalHost ? "0.0.0.0" : "localhost",
 			ngrokAuthToken,
-			features: {
-				enableContinuation: true,
-			},
+			// User access control configuration
+			userAccessControl: edgeConfig.userAccessControl,
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,

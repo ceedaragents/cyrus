@@ -9,11 +9,19 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import {
+	type CanUseTool,
+	type PermissionResult,
 	query,
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { type IAgentRunner, StreamingPrompt } from "cyrus-core";
+import type { AskUserQuestionInput } from "cyrus-core";
+import {
+	createLogger,
+	type IAgentRunner,
+	type ILogger,
+	StreamingPrompt,
+} from "cyrus-core";
 import dotenv from "dotenv";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
@@ -52,6 +60,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	readonly supportsStreamingInput = true;
 
 	private config: ClaudeRunnerConfig;
+	private logger: ILogger;
 	private abortController: AbortController | null = null;
 	private sessionInfo: ClaudeSessionInfo | null = null;
 	private logStream: WriteStream | null = null;
@@ -61,17 +70,143 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private cyrusHome: string;
 	private formatter: IMessageFormatter;
 	private pendingResultMessage: SDKMessage | null = null;
+	private canUseToolCallback: CanUseTool | undefined;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
 		this.config = config;
+		this.logger = config.logger ?? createLogger({ component: "ClaudeRunner" });
 		this.cyrusHome = config.cyrusHome;
 		this.formatter = new ClaudeMessageFormatter();
+
+		// Create canUseTool callback if onAskUserQuestion is provided
+		if (config.onAskUserQuestion) {
+			this.canUseToolCallback = this.createCanUseToolCallback();
+		}
 
 		// Forward config callbacks to events
 		if (config.onMessage) this.on("message", config.onMessage);
 		if (config.onError) this.on("error", config.onError);
 		if (config.onComplete) this.on("complete", config.onComplete);
+	}
+
+	/**
+	 * Create the canUseTool callback for intercepting AskUserQuestion tool calls.
+	 *
+	 * This implements the Claude SDK permission handling pattern:
+	 * - Intercepts AskUserQuestion tool calls
+	 * - Rejects requests with multiple questions (only 1 allowed at a time)
+	 * - Delegates to the onAskUserQuestion callback for presentation
+	 * - Returns the user's answers or denial
+	 *
+	 * @see {@link https://platform.claude.com/docs/en/agent-sdk/permissions#handling-the-ask-user-question-tool}
+	 */
+	private createCanUseToolCallback(): CanUseTool {
+		return async (
+			toolName: string,
+			input: Record<string, unknown>,
+			options: {
+				signal: AbortSignal;
+				toolUseID: string;
+			},
+		): Promise<PermissionResult> => {
+			// Only intercept AskUserQuestion tool
+			if (toolName !== "AskUserQuestion") {
+				// Allow all other tools to proceed normally
+				return {
+					behavior: "allow",
+					updatedInput: input,
+				};
+			}
+
+			this.logger.debug(
+				`Intercepted AskUserQuestion tool call (toolUseID: ${options.toolUseID})`,
+			);
+
+			// Validate the input structure
+			const askInput = input as unknown as AskUserQuestionInput;
+			if (!askInput.questions || !Array.isArray(askInput.questions)) {
+				return {
+					behavior: "deny",
+					message:
+						"Invalid AskUserQuestion input: 'questions' array is required",
+				};
+			}
+
+			// IMPORTANT: Only allow one question at a time
+			if (askInput.questions.length !== 1) {
+				this.logger.warn(
+					`Rejecting AskUserQuestion with ${askInput.questions.length} questions (only 1 allowed)`,
+				);
+				return {
+					behavior: "deny",
+					message:
+						"Only one question at a time is supported. Please ask each question separately.",
+				};
+			}
+
+			// Validate the onAskUserQuestion callback exists
+			if (!this.config.onAskUserQuestion) {
+				this.logger.error("onAskUserQuestion callback not configured");
+				return {
+					behavior: "deny",
+					message: "AskUserQuestion handler not configured",
+				};
+			}
+
+			// Get the session ID (required for tracking)
+			const sessionId = this.sessionInfo?.sessionId;
+			if (!sessionId) {
+				this.logger.error("Cannot handle AskUserQuestion without session ID");
+				return {
+					behavior: "deny",
+					message: "Session not initialized",
+				};
+			}
+
+			try {
+				// Delegate to the onAskUserQuestion callback
+				this.logger.debug(
+					`Delegating AskUserQuestion to callback for session ${sessionId}`,
+				);
+
+				const result = await this.config.onAskUserQuestion(
+					askInput,
+					sessionId,
+					options.signal,
+				);
+
+				if (result.answered && result.answers) {
+					this.logger.debug(
+						`User answered AskUserQuestion for session ${sessionId}`,
+					);
+
+					// Return the answers via updatedInput as per SDK documentation
+					return {
+						behavior: "allow",
+						updatedInput: {
+							questions: askInput.questions,
+							answers: result.answers,
+						},
+					};
+				} else {
+					this.logger.debug(
+						`User denied AskUserQuestion for session ${sessionId}: ${result.message}`,
+					);
+					return {
+						behavior: "deny",
+						message: result.message || "User did not respond to the question",
+					};
+				}
+			} catch (error) {
+				const errorMessage = (error as Error).message || String(error);
+				this.logger.error(`Error handling AskUserQuestion: ${errorMessage}`);
+				return {
+					behavior: "deny",
+					message: `Failed to present question: ${errorMessage}`,
+				};
+			}
+		};
 	}
 
 	/**
@@ -125,24 +260,17 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			isRunning: true,
 		};
 
-		console.log(
-			`[ClaudeRunner] Starting new session (session ID will be assigned by Claude)`,
+		this.logger.info(
+			"Starting new session (session ID will be assigned by Claude)",
 		);
-		console.log(
-			"[ClaudeRunner] Working directory:",
-			this.config.workingDirectory,
-		);
+		this.logger.debug("Working directory:", this.config.workingDirectory);
 
 		// Ensure working directory exists
 		if (this.config.workingDirectory) {
 			try {
 				mkdirSync(this.config.workingDirectory, { recursive: true });
-				console.log("[ClaudeRunner] Created working directory");
 			} catch (err) {
-				console.error(
-					"[ClaudeRunner] Failed to create working directory:",
-					err,
-				);
+				this.logger.error("Failed to create working directory:", err);
 			}
 		}
 
@@ -167,13 +295,13 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			if (stringPrompt !== null && stringPrompt !== undefined) {
 				// String mode
-				console.log(
-					`[ClaudeRunner] Starting query with string prompt length: ${stringPrompt.length} characters`,
+				this.logger.debug(
+					`Starting query with string prompt length: ${stringPrompt.length} characters`,
 				);
 				promptForQuery = stringPrompt;
 			} else {
 				// Streaming mode
-				console.log(`[ClaudeRunner] Starting query with streaming prompt`);
+				this.logger.debug("Starting query with streaming prompt");
 				this.streamingPrompt = new StreamingPrompt(
 					null,
 					streamingInitialPrompt,
@@ -209,8 +337,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			// Log disallowed tools if configured
 			if (processedDisallowedTools) {
-				console.log(
-					`[ClaudeRunner] Disallowed tools configured:`,
+				this.logger.debug(
+					"Disallowed tools configured:",
 					processedDisallowedTools,
 				);
 			}
@@ -230,14 +358,10 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						const testContent = readFileSync(autoMcpPath, "utf8");
 						JSON.parse(testContent);
 						configPaths.push(autoMcpPath);
-						console.log(
-							`[ClaudeRunner] Auto-detected MCP config at ${autoMcpPath}`,
-						);
+						this.logger.debug(`Auto-detected MCP config at ${autoMcpPath}`);
 					} catch (_error) {
 						// Silently skip invalid .mcp.json files (could be test fixtures, etc.)
-						console.log(
-							`[ClaudeRunner] Skipping invalid .mcp.json at ${autoMcpPath}`,
-						);
+						this.logger.debug(`Skipping invalid .mcp.json at ${autoMcpPath}`);
 					}
 				}
 			}
@@ -257,29 +381,26 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					const mcpConfig = JSON.parse(mcpConfigContent);
 					const servers = mcpConfig.mcpServers || {};
 					mcpServers = { ...mcpServers, ...servers };
-					console.log(
-						`[ClaudeRunner] Loaded MCP servers from ${path}: ${Object.keys(servers).join(", ")}`,
+					this.logger.debug(
+						`Loaded MCP servers from ${path}: ${Object.keys(servers).join(", ")}`,
 					);
 				} catch (error) {
-					console.error(
-						`[ClaudeRunner] Failed to load MCP config from ${path}:`,
-						error,
-					);
+					this.logger.error(`Failed to load MCP config from ${path}:`, error);
 				}
 			}
 
 			// Finally, merge inline config (overrides file config for same server names)
 			if (this.config.mcpConfig) {
 				mcpServers = { ...mcpServers, ...this.config.mcpConfig };
-				console.log(
-					`[ClaudeRunner] Final MCP servers after merge: ${Object.keys(mcpServers).join(", ")}`,
+				this.logger.debug(
+					`Final MCP servers after merge: ${Object.keys(mcpServers).join(", ")}`,
 				);
 			}
 
 			// Log allowed directories if configured
 			if (this.config.allowedDirectories) {
-				console.log(
-					`[ClaudeRunner] Allowed directories configured:`,
+				this.logger.debug(
+					"Allowed directories configured:",
 					this.config.allowedDirectories,
 				);
 			}
@@ -303,6 +424,12 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					// particularly with CLAUDE.md files, settings files, and custom slash commands,
 					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
 					settingSources: ["user", "project", "local"],
+					env: {
+						...process.env,
+						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
+						CLAUDE_CODE_ENABLE_TASKS: "true",
+						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+					},
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
 					}),
@@ -313,11 +440,15 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					...(processedDisallowedTools && {
 						disallowedTools: processedDisallowedTools,
 					}),
+					...(this.canUseToolCallback && {
+						canUseTool: this.canUseToolCallback,
+					}),
 					...(this.config.resumeSessionId && {
 						resume: this.config.resumeSessionId,
 					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					...(this.config.hooks && { hooks: this.config.hooks }),
+					...(this.config.tools !== undefined && { tools: this.config.tools }),
 					...(this.config.maxTurns && { maxTurns: this.config.maxTurns }),
 					...(this.config.outputFormat && {
 						outputFormat: this.config.outputFormat,
@@ -329,17 +460,15 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			// Process messages from the query
 			for await (const message of query(queryOptions)) {
 				if (!this.sessionInfo?.isRunning) {
-					console.log(
-						"[ClaudeRunner] Session was stopped, breaking from query loop",
-					);
+					this.logger.info("Session was stopped, breaking from query loop");
 					break;
 				}
 
 				// Extract session ID from first message if we don't have one yet
 				if (!this.sessionInfo.sessionId && message.session_id) {
 					this.sessionInfo.sessionId = message.session_id;
-					console.log(
-						`[ClaudeRunner] Session ID assigned by Claude: ${message.session_id}`,
+					this.logger.info(
+						`Session ID assigned by Claude: ${message.session_id}`,
 					);
 
 					// Update streaming prompt with session ID if it exists
@@ -375,8 +504,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					this.pendingResultMessage = message;
 					// Complete streaming prompt immediately so it stops accepting input
 					if (this.streamingPrompt) {
-						console.log(
-							"[ClaudeRunner] Got result message, completing streaming prompt",
+						this.logger.debug(
+							"Got result message, completing streaming prompt",
 						);
 						this.streamingPrompt.complete();
 					}
@@ -388,8 +517,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			// Session completed successfully - mark as not running BEFORE emitting result
 			// This ensures any code checking isRunning() during result processing sees the correct state
-			console.log(
-				`[ClaudeRunner] Session completed with ${this.messages.length} messages`,
+			this.logger.info(
+				`Session completed with ${this.messages.length} messages`,
 			);
 			this.sessionInfo.isRunning = false;
 
@@ -402,24 +531,32 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			this.emit("complete", this.messages);
 		} catch (error) {
-			console.error("[ClaudeRunner] Session error:", error);
-
 			if (this.sessionInfo) {
 				this.sessionInfo.isRunning = false;
 			}
 
-			if (error instanceof AbortError) {
-				console.log("[ClaudeRunner] Session was aborted");
-			} else if (
+			// Check for user-initiated abort - this is a normal operation, not an error
+			// The SDK throws AbortError when the process is aborted via AbortController
+			// We check by name since the SDK's AbortError class may not match our local definition
+			const isAbortError =
 				error instanceof Error &&
-				error.message.includes("Claude Code process exited with code 143")
-			) {
-				// Exit code 143 is SIGTERM (128 + 15), which indicates graceful termination
-				// This is expected when the session is stopped during unassignment
-				console.log(
-					"[ClaudeRunner] Session was terminated gracefully (SIGTERM)",
-				);
+				(error.name === "AbortError" ||
+					error.message.includes("aborted by user"));
+
+			// Check for SIGTERM (exit code 143 = 128 + 15), which indicates graceful termination
+			// This is expected when the session is stopped during unassignment
+			const isSigterm =
+				error instanceof Error &&
+				error.message.includes("Claude Code process exited with code 143");
+
+			if (isAbortError) {
+				// User-initiated stop - log at info level, not error
+				this.logger.info("Session stopped by user");
+			} else if (isSigterm) {
+				this.logger.info("Session was terminated gracefully (SIGTERM)");
 			} else {
+				// Actual error - log and emit
+				this.logger.error("Session error:", error);
 				this.emit(
 					"error",
 					error instanceof Error ? error : new Error(String(error)),
@@ -488,11 +625,9 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				}
 
 				writeFileSync(versionFilePath, versionContent);
-				console.log(
-					`[ClaudeRunner] Wrote prompt versions to: ${versionFilePath}`,
-				);
+				this.logger.debug(`Wrote prompt versions to: ${versionFilePath}`);
 			} catch (error) {
-				console.error("[ClaudeRunner] Failed to write version file:", error);
+				this.logger.error("Failed to write version file:", error);
 			}
 		}
 	}
@@ -502,7 +637,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 */
 	stop(): void {
 		if (this.abortController) {
-			console.log("[ClaudeRunner] Stopping Claude session");
+			this.logger.info("Stopping session");
 			this.abortController.abort();
 			this.abortController = null;
 		}
@@ -592,9 +727,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				break;
 
 			default:
-				console.log(
-					`[ClaudeRunner] Unhandled message type: ${(message as any).type}`,
-				);
+				this.logger.debug(`Unhandled message type: ${(message as any).type}`);
 		}
 	}
 
@@ -614,16 +747,13 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				});
 
 				if (result.error) {
-					console.warn(
-						`[ClaudeRunner] Failed to parse .env file:`,
-						result.error,
-					);
+					this.logger.warn("Failed to parse .env file:", result.error);
 				} else if (result.parsed && Object.keys(result.parsed).length > 0) {
-					console.log(`[ClaudeRunner] Loaded environment variables from .env`);
+					this.logger.debug("Loaded environment variables from .env");
 				}
 			}
 		} catch (error) {
-			console.warn(`[ClaudeRunner] Error loading repository .env:`, error);
+			this.logger.warn("Error loading repository .env:", error);
 			// Don't fail the session, just warn
 		}
 	}
@@ -670,8 +800,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			const readableLogFileName = `session-${sessionId}-${timestamp}.md`;
 			const readableLogPath = join(workspaceLogsDir, readableLogFileName);
 
-			console.log(`[ClaudeRunner] Creating detailed log: ${detailedLogPath}`);
-			console.log(`[ClaudeRunner] Creating readable log: ${readableLogPath}`);
+			this.logger.debug(`Creating detailed log: ${detailedLogPath}`);
+			this.logger.debug(`Creating readable log: ${readableLogPath}`);
 
 			this.logStream = createWriteStream(detailedLogPath, { flags: "a" });
 			this.readableLogStream = createWriteStream(readableLogPath, {
@@ -701,7 +831,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 			this.readableLogStream.write(readableHeader);
 		} catch (error) {
-			console.error("[ClaudeRunner] Failed to set up logging:", error);
+			this.logger.error("Failed to set up logging:", error);
 		}
 	}
 
@@ -722,8 +852,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					) {
 						// Extract text content only, skip tool use noise
 						const textBlocks = message.message.content
-							.filter((block) => block.type === "text")
-							.map((block) => (block as { text: string }).text)
+							.filter((block: any) => block.type === "text")
+							.map((block: any) => (block as { text: string }).text)
 							.join("");
 
 						if (textBlocks.trim()) {
@@ -734,9 +864,10 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 						// Log tool usage in a clean format, but filter out noisy tools
 						const toolBlocks = message.message.content
-							.filter((block) => block.type === "tool_use")
+							.filter((block: any) => block.type === "tool_use")
 							.filter(
-								(block) => (block as { name: string }).name !== "TodoWrite",
+								(block: any) =>
+									(block as { name: string }).name !== "TodoWrite",
 							); // Filter out TodoWrite as it's noisy
 
 						if (toolBlocks.length > 0) {
@@ -770,8 +901,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						Array.isArray(message.message.content)
 					) {
 						const userContent = message.message.content
-							.filter((block) => block.type === "text")
-							.map((block) => (block as { text: string }).text)
+							.filter((block: any) => block.type === "text")
+							.map((block: any) => (block as { text: string }).text)
 							.join("");
 
 						if (userContent.trim()) {
@@ -806,7 +937,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					break;
 			}
 		} catch (error) {
-			console.error("[ClaudeRunner] Error writing readable log entry:", error);
+			this.logger.error("Error writing readable log entry:", error);
 		}
 	}
 }

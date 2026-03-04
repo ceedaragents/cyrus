@@ -1,0 +1,100 @@
+# Git & GitHub Setup
+
+Cyrus uses your local Git and GitHub CLI (`gh`) authentication to create commits and pull requests. This guide explains how to configure these tools and what permissions Cyrus will have.
+
+---
+
+## Understanding Permissions
+
+**Important:** Cyrus operates with the same permissions as your authenticated Git and GitHub CLI user.
+
+When Cyrus creates commits and PRs:
+- All commits are attributed to your Git user (`git config user.name` and `user.email`)
+- All PRs are created under your GitHub account
+- Your repository access permissions apply to all operations
+- The only indication that Claude assisted is the "Co-Authored-By" commit trailer
+
+This means Cyrus can access any repository your authenticated user can access. Configure authentication carefully based on what repositories you want Cyrus to work with.
+
+---
+
+## Git Configuration
+
+Configure Git with your identity:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+```
+
+### SSH Authentication (Recommended)
+
+Set up SSH keys for Git operations:
+
+```bash
+# Generate SSH key (if you don't have one)
+ssh-keygen -t ed25519 -C "your.email@example.com"
+
+# Start the SSH agent
+eval "$(ssh-agent -s)"
+
+# Add your key to the agent
+ssh-add ~/.ssh/id_ed25519
+
+# Copy the public key
+cat ~/.ssh/id_ed25519.pub
+```
+
+Add the public key to your GitHub account at [github.com/settings/keys](https://github.com/settings/keys).
+
+---
+
+## GitHub CLI Setup
+
+Install and authenticate the GitHub CLI for PR creation:
+
+### Installation
+
+**macOS:**
+```bash
+brew install gh
+```
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt install gh
+```
+
+**Other platforms:** See [cli.github.com](https://cli.github.com/)
+
+### Authentication
+
+```bash
+gh auth login
+```
+
+Follow the prompts to authenticate. For servers without a browser, use a personal access token:
+
+```bash
+gh auth login --with-token < token.txt
+```
+
+### Verify Setup
+
+```bash
+# Check Git config
+git config --global user.name
+git config --global user.email
+
+# Check GitHub CLI
+gh auth status
+```
+
+---
+
+## Security Considerations
+
+- **Use a dedicated account** for Cyrus if you want to limit its access
+- **Repository access** is determined by your SSH key and GitHub token permissions
+- **Review permissions** before adding repositories to Cyrus
+- **Audit commits** - all Cyrus commits include the "Co-Authored-By" trailer for traceability

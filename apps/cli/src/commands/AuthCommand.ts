@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { getCyrusAppUrl } from "cyrus-cloudflare-tunnel-client";
 import { BaseCommand } from "./ICommand.js";
 
 /**
@@ -18,7 +19,7 @@ export class AuthCommand extends BaseCommand {
 			this.logError("Error: Auth key is required");
 			console.log("\nUsage: cyrus auth <auth-key>");
 			console.log(
-				"\nGet your auth key from: https://app.atcyrus.com/onboarding/auth-cyrus",
+				`\nGet your auth key from: ${getCyrusAppUrl()}/onboarding/auth-cyrus`,
 			);
 			process.exit(1);
 		}
@@ -41,7 +42,7 @@ export class AuthCommand extends BaseCommand {
 				console.error(configResponse.error || "Invalid response from server");
 				console.log("\nPlease verify your auth key is correct.");
 				console.log(
-					"Get your auth key from: https://app.atcyrus.com/onboarding/auth-cyrus",
+					`Get your auth key from: ${getCyrusAppUrl()}/onboarding/auth-cyrus`,
 				);
 				process.exit(1);
 			}

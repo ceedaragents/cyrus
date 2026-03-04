@@ -16,96 +16,118 @@ export const SUBROUTINES = {
 	debuggerReproduction: {
 		name: "debugger-reproduction",
 		promptPath: "subroutines/debugger-reproduction.md",
-		description: "Reproduce bug and perform root cause analysis",
+		description: "Reproducing bug and analyzing root cause",
 	},
 	getApproval: {
 		name: "get-approval",
 		promptPath: "subroutines/get-approval.md",
-		description: "Request user approval before proceeding",
+		description: "Requesting user approval before proceeding",
 		singleTurn: true,
 		requiresApproval: true, // Flag to trigger approval workflow
 	},
 	debuggerFix: {
 		name: "debugger-fix",
 		promptPath: "subroutines/debugger-fix.md",
-		description: "Implement minimal fix based on approved reproduction",
+		description: "Implementing fix based on root cause analysis",
 	},
 	verifications: {
 		name: "verifications",
 		promptPath: "subroutines/verifications.md",
-		description: "Run tests, linting, and type checking",
+		description: "Running tests, linting, and type checking",
 		usesValidationLoop: true, // Enable validation loop with retry logic
 	},
 	validationFixer: {
 		name: "validation-fixer",
 		promptPath: "subroutines/validation-fixer.md",
-		description: "Fix validation failures from the verifications subroutine",
+		description: "Fixing validation failures",
 	},
-	gitGh: {
-		name: "git-gh",
-		promptPath: "subroutines/git-gh.md",
-		description: "Commit changes and create/update PR",
+	gitCommit: {
+		name: "git-commit",
+		promptPath: "subroutines/git-commit.md",
+		description: "Committing and pushing changes",
+	},
+	ghPr: {
+		name: "gh-pr",
+		promptPath: "subroutines/gh-pr.md",
+		description: "Creating or updating pull request",
+	},
+	changelogUpdate: {
+		name: "changelog-update",
+		promptPath: "subroutines/changelog-update.md",
+		description: "Updating changelog",
 	},
 	conciseSummary: {
 		name: "concise-summary",
 		promptPath: "subroutines/concise-summary.md",
 		singleTurn: true,
-		description: "Brief summary for simple requests",
+		description: "Creating summary",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	verboseSummary: {
 		name: "verbose-summary",
 		promptPath: "subroutines/verbose-summary.md",
 		singleTurn: true,
-		description: "Detailed summary with implementation details",
+		description: "Creating detailed summary",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	questionInvestigation: {
 		name: "question-investigation",
 		promptPath: "subroutines/question-investigation.md",
-		description: "Gather information needed to answer a question",
+		description: "Investigating question",
 	},
 	questionAnswer: {
 		name: "question-answer",
 		promptPath: "subroutines/question-answer.md",
 		singleTurn: true,
-		description: "Format final answer to user question",
+		description: "Formatting answer",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	codingActivity: {
 		name: "coding-activity",
 		promptPath: "subroutines/coding-activity.md",
-		description: "Implementation phase for code changes (no git/gh operations)",
+		description: "Implementing code changes",
 	},
 	preparation: {
 		name: "preparation",
 		promptPath: "subroutines/preparation.md",
-		description:
-			"Analyze request to determine if clarification or planning is needed",
+		description: "Analyzing request and planning approach",
 	},
 	planSummary: {
 		name: "plan-summary",
 		promptPath: "subroutines/plan-summary.md",
 		singleTurn: true,
-		description: "Present clarifying questions or implementation plan",
+		description: "Presenting implementation plan",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
 	},
 	userTesting: {
 		name: "user-testing",
 		promptPath: "subroutines/user-testing.md",
-		description: "Perform testing as requested by the user",
+		description: "Performing user-requested testing",
 	},
 	userTestingSummary: {
 		name: "user-testing-summary",
 		promptPath: "subroutines/user-testing-summary.md",
 		singleTurn: true,
-		description: "Summary of user testing session results",
+		description: "Creating test results summary",
 		suppressThoughtPosting: true,
-		disallowedTools: ["mcp__linear__create_comment"],
+		disallowAllTools: true,
+	},
+	releaseExecution: {
+		name: "release-execution",
+		promptPath: "subroutines/release-execution.md",
+		description: "Executing release process",
+	},
+	releaseSummary: {
+		name: "release-summary",
+		promptPath: "subroutines/release-summary.md",
+		singleTurn: true,
+		description: "Creating release summary",
+		suppressThoughtPosting: true,
+		disallowAllTools: true,
 	},
 } as const;
 
@@ -128,7 +150,8 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			"For documentation/markdown edits that don't require verification",
 		subroutines: [
 			SUBROUTINES.primary,
-			SUBROUTINES.gitGh,
+			SUBROUTINES.gitCommit,
+			SUBROUTINES.ghPr,
 			SUBROUTINES.conciseSummary,
 		],
 	},
@@ -139,7 +162,9 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		subroutines: [
 			SUBROUTINES.codingActivity,
 			SUBROUTINES.verifications,
-			SUBROUTINES.gitGh,
+			SUBROUTINES.changelogUpdate,
+			SUBROUTINES.gitCommit,
+			SUBROUTINES.ghPr,
 			SUBROUTINES.conciseSummary,
 		],
 	},
@@ -152,7 +177,9 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			SUBROUTINES.debuggerReproduction,
 			SUBROUTINES.debuggerFix,
 			SUBROUTINES.verifications,
-			SUBROUTINES.gitGh,
+			SUBROUTINES.changelogUpdate,
+			SUBROUTINES.gitCommit,
+			SUBROUTINES.ghPr,
 			SUBROUTINES.conciseSummary,
 		],
 	},
@@ -176,6 +203,13 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		description: "User-driven testing workflow for manual testing sessions",
 		subroutines: [SUBROUTINES.userTesting, SUBROUTINES.userTestingSummary],
 	},
+
+	release: {
+		name: "release",
+		description:
+			"Release workflow that invokes project release skill or asks user for release info",
+		subroutines: [SUBROUTINES.releaseExecution, SUBROUTINES.releaseSummary],
+	},
 };
 
 /**
@@ -193,6 +227,7 @@ export const CLASSIFICATION_TO_PROCEDURE: Record<
 	debugger: "debugger-full",
 	orchestrator: "orchestrator-full",
 	"user-testing": "user-testing",
+	release: "release",
 };
 
 /**

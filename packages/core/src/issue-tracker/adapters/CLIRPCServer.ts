@@ -129,6 +129,10 @@ export interface CreateIssueParams {
 	description?: string;
 	priority?: number;
 	stateId?: string;
+	/**
+	 * Label names (not IDs) - labels will be created if they don't exist
+	 */
+	labels?: string[];
 }
 
 /**
@@ -477,7 +481,7 @@ export class CLIRPCServer {
 		params: CreateIssueParams,
 		requestId: RPCRequestId,
 	): Promise<RPCResponse<CreateIssueData>> {
-		const { teamId, title, description, priority, stateId } = params;
+		const { teamId, title, description, priority, stateId, labels } = params;
 
 		if (!teamId || !title) {
 			return {
@@ -491,12 +495,23 @@ export class CLIRPCServer {
 		}
 
 		try {
+			// Resolve label names to IDs (creating labels if they don't exist)
+			let labelIds: string[] | undefined;
+			if (labels && labels.length > 0) {
+				labelIds = await Promise.all(
+					labels.map((labelName) =>
+						this.config.issueTracker.findOrCreateLabel(labelName),
+					),
+				);
+			}
+
 			const issue = await this.config.issueTracker.createIssue({
 				teamId,
 				title,
 				description,
 				priority,
 				stateId,
+				labelIds,
 			});
 
 			return {

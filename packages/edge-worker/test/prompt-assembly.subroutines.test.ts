@@ -78,6 +78,13 @@ Add Stripe integration for payments
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-3000</url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -91,7 +98,9 @@ Implement the requested changes:
 - Run tests to verify it works
 - Follow existing patterns
 
-**Do NOT**: commit, push, or create PRs (next phase handles that)
+**Do NOT**:
+- Commit, push, or create PRs (later phases handle that)
+- Touch the changelog (a separate subroutine handles changelog updates)
 
 Complete with: \`Implementation complete - [what was done].\``)
 			.verify();
@@ -166,6 +175,13 @@ Can you explain the authentication flow?
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-4000</url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -252,6 +268,13 @@ Explain the caching implementation
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-5000</url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -338,6 +361,13 @@ Please test the checkout flow manually
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-6000</url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>
@@ -465,6 +495,13 @@ Please test the login flow manually
   <state>Unknown</state>
   <priority>None</priority>
   <url>https://linear.app/ceedar/issue/CEE-7000</url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
 </linear_issue>
 
 <linear_comments>

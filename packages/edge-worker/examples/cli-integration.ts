@@ -67,16 +67,6 @@ export async function createCLIEdgeWorker(config: any) {
 				);
 			},
 		},
-
-		// Features from config
-		features: {
-			enableContinuation: config.features?.enableContinuation ?? true,
-			enableTokenLimitHandling:
-				config.features?.enableTokenLimitHandling ?? true,
-			enableAttachmentDownload:
-				config.features?.enableAttachmentDownload ?? false,
-			promptTemplatePath: config.claude.promptTemplatePath,
-		},
 	});
 
 	// Handle process shutdown

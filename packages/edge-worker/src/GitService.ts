@@ -1,40 +1,22 @@
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve as pathResolve } from "node:path";
 
 import type { Issue, RepositoryConfig, Workspace } from "cyrus-core";
-
-/**
- * Logger interface for GitService
- * Allows consumers to provide their own logging implementation
- */
-export interface GitServiceLogger {
-	info(message: string, ...args: unknown[]): void;
-	warn(message: string, ...args: unknown[]): void;
-	error(message: string, ...args: unknown[]): void;
-}
-
-/**
- * Default console-based logger implementation
- */
-const defaultLogger: GitServiceLogger = {
-	info: (message: string, ...args: unknown[]) =>
-		console.log(`[GitService] ${message}`, ...args),
-	warn: (message: string, ...args: unknown[]) =>
-		console.warn(`[GitService] ${message}`, ...args),
-	error: (message: string, ...args: unknown[]) =>
-		console.error(`[GitService] ${message}`, ...args),
-};
+import { createLogger, type ILogger } from "cyrus-core";
+import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
 /**
  * Service responsible for Git worktree operations
  */
 export class GitService {
-	private logger: GitServiceLogger;
+	private logger: ILogger;
+	private worktreeIncludeService: WorktreeIncludeService;
 
-	constructor(logger?: GitServiceLogger) {
-		this.logger = logger ?? defaultLogger;
+	constructor(logger?: ILogger) {
+		this.logger = logger ?? createLogger({ component: "GitService" });
+		this.worktreeIncludeService = new WorktreeIncludeService(this.logger);
 	}
 	/**
 	 * Check if a branch exists locally or remotely
@@ -70,6 +52,41 @@ export class GitService {
 	 */
 	public sanitizeBranchName(name: string): string {
 		return name ? name.replace(/`/g, "") : name;
+	}
+
+	/**
+	 * Resolve mutable Git metadata directories for a repository/worktree.
+	 * This includes linked worktree metadata paths (for example
+	 * `.git/worktrees/<name>/FETCH_HEAD`) that must be writable by sandboxes.
+	 */
+	public getGitMetadataDirectories(workingDirectory: string): string[] {
+		const resolvedDirectories = new Set<string>();
+		const revParse = (
+			flag: "--git-dir" | "--git-common-dir",
+		): string | null => {
+			try {
+				const output = execSync(`git rev-parse ${flag}`, {
+					cwd: workingDirectory,
+					encoding: "utf8",
+					stdio: "pipe",
+				}).trim();
+				return output ? pathResolve(workingDirectory, output) : null;
+			} catch {
+				return null;
+			}
+		};
+
+		const gitDir = revParse("--git-dir");
+		if (gitDir) {
+			resolvedDirectories.add(gitDir);
+		}
+
+		const gitCommonDir = revParse("--git-common-dir");
+		if (gitCommonDir) {
+			resolvedDirectories.add(gitCommonDir);
+		}
+
+		return [...resolvedDirectories];
 	}
 
 	/**
@@ -168,6 +185,43 @@ export class GitService {
 	}
 
 	/**
+	 * Find an existing worktree by its checked-out branch name.
+	 * Parses `git worktree list --porcelain` output and returns the worktree path
+	 * if a worktree is found with the given branch checked out, or null otherwise.
+	 */
+	findWorktreeByBranch(branchName: string, repoPath: string): string | null {
+		try {
+			const output = execSync("git worktree list --porcelain", {
+				cwd: repoPath,
+				encoding: "utf-8",
+			});
+
+			const blocks = output.split("\n\n");
+			for (const block of blocks) {
+				const lines = block.split("\n");
+				let worktreePath: string | null = null;
+				let branchRef: string | null = null;
+
+				for (const line of lines) {
+					if (line.startsWith("worktree ")) {
+						worktreePath = line.slice("worktree ".length);
+					} else if (line.startsWith("branch ")) {
+						branchRef = line.slice("branch refs/heads/".length);
+					}
+				}
+
+				if (worktreePath && branchRef === branchName) {
+					return worktreePath;
+				}
+			}
+
+			return null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
 	 * Create a git worktree for an issue
 	 */
 	async createGitWorktree(
@@ -234,6 +288,23 @@ export class GitService {
 				// Branch doesn't exist, we'll create it
 			}
 
+			// If the branch already exists, check if it's already checked out in another worktree
+			if (!createBranch) {
+				const existingWorktreePath = this.findWorktreeByBranch(
+					branchName,
+					repository.repositoryPath,
+				);
+				if (existingWorktreePath && existingWorktreePath !== workspacePath) {
+					this.logger.info(
+						`Branch "${branchName}" is already checked out in worktree at ${existingWorktreePath}, reusing existing worktree`,
+					);
+					return {
+						path: existingWorktreePath,
+						isGitWorktree: true,
+					};
+				}
+			}
+
 			// Determine base branch for this issue
 			let baseBranch = repository.baseBranch;
 
@@ -279,7 +350,7 @@ export class GitService {
 			}
 
 			// Fetch latest changes from remote
-			this.logger.info("Fetching latest changes from remote...");
+			this.logger.debug("Fetching latest changes from remote...");
 			let hasRemote = true;
 			try {
 				execSync("git fetch origin", {
@@ -324,12 +395,12 @@ export class GitService {
 					}
 
 					if (useRemoteBranch) {
-						// Use remote version of base branch
+						// Use remote version of base branch with --track to set upstream
 						const remoteBranch = `origin/${baseBranch}`;
 						this.logger.info(
-							`Creating git worktree at ${workspacePath} from ${remoteBranch}`,
+							`Creating git worktree at ${workspacePath} from ${remoteBranch} (tracking ${baseBranch})`,
 						);
-						worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`;
+						worktreeCmd = `git worktree add --track -b "${branchName}" "${workspacePath}" "${remoteBranch}"`;
 					} else {
 						// Check if base branch exists locally
 						try {
@@ -337,26 +408,26 @@ export class GitService {
 								cwd: repository.repositoryPath,
 								stdio: "pipe",
 							});
-							// Use local base branch
+							// Use local base branch (can't track since remote doesn't have it)
 							this.logger.info(
 								`Creating git worktree at ${workspacePath} from local ${baseBranch}`,
 							);
-							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
+							worktreeCmd = `git worktree add -b "${branchName}" "${workspacePath}" "${baseBranch}"`;
 						} catch {
-							// Base branch doesn't exist locally either, fall back to remote default
+							// Base branch doesn't exist locally either, fall back to remote default with --track
 							this.logger.info(
-								`Base branch '${baseBranch}' not found locally, falling back to remote ${repository.baseBranch}`,
+								`Base branch '${baseBranch}' not found locally, falling back to remote ${repository.baseBranch} (tracking ${repository.baseBranch})`,
 							);
 							const defaultRemoteBranch = `origin/${repository.baseBranch}`;
-							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${defaultRemoteBranch}"`;
+							worktreeCmd = `git worktree add --track -b "${branchName}" "${workspacePath}" "${defaultRemoteBranch}"`;
 						}
 					}
 				} else {
-					// No remote, use local branch
+					// No remote, use local branch (no tracking since no remote)
 					this.logger.info(
 						`Creating git worktree at ${workspacePath} from local ${baseBranch}`,
 					);
-					worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
+					worktreeCmd = `git worktree add -b "${branchName}" "${workspacePath}" "${baseBranch}"`;
 				}
 			} else {
 				// Branch already exists, just check it out
@@ -370,6 +441,13 @@ export class GitService {
 				cwd: repository.repositoryPath,
 				stdio: "pipe",
 			});
+
+			// Copy files specified in .worktreeinclude that are also in .gitignore
+			// This runs before setup scripts so they can access these files
+			await this.worktreeIncludeService.copyIgnoredFiles(
+				repository.repositoryPath,
+				workspacePath,
+			);
 
 			// First, run the global setup script if configured
 			if (globalSetupScript) {
@@ -437,10 +515,24 @@ export class GitService {
 				isGitWorktree: true,
 			};
 		} catch (error) {
-			this.logger.error(
-				"Failed to create git worktree:",
-				(error as Error).message,
+			const errorMessage = (error as Error).message;
+			this.logger.error("Failed to create git worktree:", errorMessage);
+
+			// Check if the error is "branch already checked out in another worktree"
+			// Git error format: "fatal: 'branch-name' is already used by worktree at '/path/to/worktree'"
+			const worktreeMatch = errorMessage.match(
+				/already used by worktree at '([^']+)'/,
 			);
+			if (worktreeMatch?.[1] && existsSync(worktreeMatch[1])) {
+				this.logger.info(
+					`Reusing existing worktree at ${worktreeMatch[1]} (branch already checked out)`,
+				);
+				return {
+					path: worktreeMatch[1],
+					isGitWorktree: true,
+				};
+			}
+
 			// Fall back to regular directory if git worktree fails
 			const fallbackPath = join(repository.workspaceBaseDir, issue.identifier);
 			mkdirSync(fallbackPath, { recursive: true });

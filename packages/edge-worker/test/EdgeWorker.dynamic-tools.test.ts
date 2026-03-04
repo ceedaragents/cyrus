@@ -65,9 +65,14 @@ import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 describe("EdgeWorker - Dynamic Tools Configuration", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
+	let savedSlackBotToken: string | undefined;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+
+		// Save and clear SLACK_BOT_TOKEN to ensure deterministic tool lists
+		savedSlackBotToken = process.env.SLACK_BOT_TOKEN;
+		delete process.env.SLACK_BOT_TOKEN;
 
 		// Mock console methods
 		vi.spyOn(console, "log").mockImplementation(() => {});
@@ -155,6 +160,13 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+
+		// Restore SLACK_BOT_TOKEN
+		if (savedSlackBotToken === undefined) {
+			delete process.env.SLACK_BOT_TOKEN;
+		} else {
+			process.env.SLACK_BOT_TOKEN = savedSlackBotToken;
+		}
 	});
 
 	describe("buildAllowedTools", () => {
@@ -327,6 +339,64 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			// Should deduplicate Linear MCP tools
 			expect(tools).toEqual(["Read", "mcp__linear", "mcp__cyrus-tools"]);
 			expect(tools.filter((t) => t === "mcp__linear")).toHaveLength(1);
+		});
+
+		it("should include Slack MCP tools when SLACK_BOT_TOKEN is set", () => {
+			const originalSlackToken = process.env.SLACK_BOT_TOKEN;
+			try {
+				process.env.SLACK_BOT_TOKEN = "xoxb-test-slack-token";
+
+				const repository: RepositoryConfig = {
+					...mockConfig.repositories[0],
+					allowedTools: ["Read", "Write"],
+				};
+
+				const buildAllowedTools = getBuildAllowedTools(edgeWorker);
+				const tools = buildAllowedTools(repository);
+
+				expect(tools).toEqual([
+					"Read",
+					"Write",
+					"mcp__linear",
+					"mcp__cyrus-tools",
+					"mcp__slack",
+				]);
+			} finally {
+				if (originalSlackToken === undefined) {
+					delete process.env.SLACK_BOT_TOKEN;
+				} else {
+					process.env.SLACK_BOT_TOKEN = originalSlackToken;
+				}
+			}
+		});
+
+		it("should not include Slack MCP tools when SLACK_BOT_TOKEN is not set", () => {
+			const originalSlackToken = process.env.SLACK_BOT_TOKEN;
+			try {
+				delete process.env.SLACK_BOT_TOKEN;
+
+				const repository: RepositoryConfig = {
+					...mockConfig.repositories[0],
+					allowedTools: ["Read", "Write"],
+				};
+
+				const buildAllowedTools = getBuildAllowedTools(edgeWorker);
+				const tools = buildAllowedTools(repository);
+
+				expect(tools).toEqual([
+					"Read",
+					"Write",
+					"mcp__linear",
+					"mcp__cyrus-tools",
+				]);
+				expect(tools).not.toContain("mcp__slack");
+			} finally {
+				if (originalSlackToken === undefined) {
+					delete process.env.SLACK_BOT_TOKEN;
+				} else {
+					process.env.SLACK_BOT_TOKEN = originalSlackToken;
+				}
+			}
 		});
 
 		it("should handle backward compatibility with old array-based labelPrompts", () => {

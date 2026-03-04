@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-config-updater",
-	"version": "0.2.5",
+	"version": "0.2.26",
 	"description": "Configuration update handlers for Cyrus agent",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -23,12 +23,13 @@
 	},
 	"dependencies": {
 		"cyrus-core": "workspace:*",
-		"fastify": "^5.2.0"
+		"fastify": "^5.7.3",
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@types/node": "^20.12.7",
 		"typescript": "^5.4.5",
-		"vitest": "^2.0.0"
+		"vitest": "^3.1.4"
 	},
 	"keywords": [
 		"config",

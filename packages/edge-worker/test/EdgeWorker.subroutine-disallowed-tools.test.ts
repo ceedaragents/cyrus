@@ -1,9 +1,9 @@
 /**
- * Tests for subroutine-level disallowedTools functionality
+ * Tests for subroutine-level tool disabling functionality
  *
  * Verifies that summary subroutines (concise-summary, verbose-summary,
- * question-answer, plan-summary) properly block Linear comment tools
- * to prevent the agent from getting stuck in maxTurns=1 scenarios.
+ * question-answer, plan-summary, etc.) properly disable all tools
+ * to prevent the agent from appearing to "hang" in Linear.
  */
 
 import type { CyrusAgentSession } from "cyrus-core";
@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ProcedureAnalyzer } from "../src/procedures/ProcedureAnalyzer";
 import { PROCEDURES, SUBROUTINES } from "../src/procedures/registry";
 
-describe("EdgeWorker - Subroutine DisallowedTools", () => {
+describe("EdgeWorker - Subroutine Tool Disabling", () => {
 	let procedureAnalyzer: ProcedureAnalyzer;
 
 	beforeEach(() => {
@@ -21,62 +21,74 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 	});
 
 	describe("Summary Subroutines Configuration", () => {
-		it("should have disallowedTools configured for concise-summary", () => {
+		it("should have disallowAllTools: true configured for concise-summary", () => {
 			const subroutine = SUBROUTINES.conciseSummary;
-			expect(subroutine.disallowedTools).toBeDefined();
-			expect(subroutine.disallowedTools).toContain(
-				"mcp__linear__create_comment",
-			);
+			expect(subroutine.disallowAllTools).toBe(true);
 			expect(subroutine.singleTurn).toBe(true);
 			expect(subroutine.suppressThoughtPosting).toBe(true);
 		});
 
-		it("should have disallowedTools configured for verbose-summary", () => {
+		it("should have disallowAllTools: true configured for verbose-summary", () => {
 			const subroutine = SUBROUTINES.verboseSummary;
-			expect(subroutine.disallowedTools).toBeDefined();
-			expect(subroutine.disallowedTools).toContain(
-				"mcp__linear__create_comment",
-			);
+			expect(subroutine.disallowAllTools).toBe(true);
 			expect(subroutine.singleTurn).toBe(true);
 			expect(subroutine.suppressThoughtPosting).toBe(true);
 		});
 
-		it("should have disallowedTools configured for question-answer", () => {
+		it("should have disallowAllTools: true configured for question-answer", () => {
 			const subroutine = SUBROUTINES.questionAnswer;
-			expect(subroutine.disallowedTools).toBeDefined();
-			expect(subroutine.disallowedTools).toContain(
-				"mcp__linear__create_comment",
-			);
+			expect(subroutine.disallowAllTools).toBe(true);
 			expect(subroutine.singleTurn).toBe(true);
 			expect(subroutine.suppressThoughtPosting).toBe(true);
 		});
 
-		it("should have disallowedTools configured for plan-summary", () => {
+		it("should have disallowAllTools: true configured for plan-summary", () => {
 			const subroutine = SUBROUTINES.planSummary;
-			expect(subroutine.disallowedTools).toBeDefined();
-			expect(subroutine.disallowedTools).toContain(
-				"mcp__linear__create_comment",
-			);
+			expect(subroutine.disallowAllTools).toBe(true);
 			expect(subroutine.singleTurn).toBe(true);
 			expect(subroutine.suppressThoughtPosting).toBe(true);
 		});
 
-		it("should NOT have disallowedTools for non-summary subroutines", () => {
-			// Verify that regular subroutines don't have disallowedTools
-			expect(SUBROUTINES.primary.disallowedTools).toBeUndefined();
-			expect(SUBROUTINES.codingActivity.disallowedTools).toBeUndefined();
-			expect(SUBROUTINES.verifications.disallowedTools).toBeUndefined();
-			expect(SUBROUTINES.gitGh.disallowedTools).toBeUndefined();
-			expect(SUBROUTINES.questionInvestigation.disallowedTools).toBeUndefined();
-			expect(SUBROUTINES.preparation.disallowedTools).toBeUndefined();
+		it("should have disallowAllTools: true configured for user-testing-summary", () => {
+			const subroutine = SUBROUTINES.userTestingSummary;
+			expect(subroutine.disallowAllTools).toBe(true);
+			expect(subroutine.singleTurn).toBe(true);
+			expect(subroutine.suppressThoughtPosting).toBe(true);
+		});
+
+		it("should have disallowAllTools: true configured for release-summary", () => {
+			const subroutine = SUBROUTINES.releaseSummary;
+			expect(subroutine.disallowAllTools).toBe(true);
+			expect(subroutine.singleTurn).toBe(true);
+			expect(subroutine.suppressThoughtPosting).toBe(true);
+		});
+
+		it("should NOT have disallowAllTools for non-summary subroutines", () => {
+			// Verify that regular subroutines don't have disallowAllTools
+			expect(SUBROUTINES.primary.disallowAllTools).toBeUndefined();
+			expect(SUBROUTINES.codingActivity.disallowAllTools).toBeUndefined();
+			expect(SUBROUTINES.verifications.disallowAllTools).toBeUndefined();
+			expect(SUBROUTINES.gitCommit.disallowAllTools).toBeUndefined();
+			expect(SUBROUTINES.ghPr.disallowAllTools).toBeUndefined();
+			expect(SUBROUTINES.changelogUpdate.disallowAllTools).toBeUndefined();
+			expect(
+				SUBROUTINES.questionInvestigation.disallowAllTools,
+			).toBeUndefined();
+			expect(SUBROUTINES.preparation.disallowAllTools).toBeUndefined();
 		});
 	});
 
 	describe("Procedure Integration", () => {
-		it("should expose disallowedTools when at concise-summary subroutine in full-development procedure", () => {
+		it("should expose disallowAllTools when at concise-summary subroutine in full-development procedure", () => {
 			const procedure = PROCEDURES["full-development"];
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-123",
+				id: "session-123",
+				externalSessionId: "session-123",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-123",
+					issueIdentifier: "TEST-1",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -87,6 +99,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 					id: "issue-123",
 					identifier: "TEST-1",
 					title: "Test Issue",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-123",
@@ -96,23 +109,28 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
 
 			// Advance to concise-summary (last subroutine)
-			// full-development: coding-activity → verifications → git-gh → concise-summary
+			// full-development: coding-activity → verifications → changelog-update → git-commit → gh-pr → concise-summary
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to verifications
-			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to git-gh
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to changelog-update
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to git-commit
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to gh-pr
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123"); // Move to concise-summary
 
 			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("concise-summary");
-			expect(currentSubroutine?.disallowedTools).toBeDefined();
-			expect(currentSubroutine?.disallowedTools).toContain(
-				"mcp__linear__create_comment",
-			);
+			expect(currentSubroutine?.disallowAllTools).toBe(true);
 		});
 
-		it("should expose disallowedTools when at verbose-summary subroutine", () => {
+		it("should expose disallowAllTools when at verbose-summary subroutine", () => {
 			// Create a custom procedure with verbose-summary for testing
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-456",
+				id: "session-456",
+				externalSessionId: "session-456",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-456",
+					issueIdentifier: "TEST-2",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -123,6 +141,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 					id: "issue-456",
 					identifier: "TEST-2",
 					title: "Test Issue",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-456",
@@ -144,16 +163,19 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 
 			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("verbose-summary");
-			expect(currentSubroutine?.disallowedTools).toBeDefined();
-			expect(currentSubroutine?.disallowedTools).toContain(
-				"mcp__linear__create_comment",
-			);
+			expect(currentSubroutine?.disallowAllTools).toBe(true);
 		});
 
-		it("should expose disallowedTools for question-answer in simple-question procedure", () => {
+		it("should expose disallowAllTools for question-answer in simple-question procedure", () => {
 			const procedure = PROCEDURES["simple-question"];
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-789",
+				id: "session-789",
+				externalSessionId: "session-789",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-789",
+					issueIdentifier: "TEST-3",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -164,6 +186,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 					id: "issue-789",
 					identifier: "TEST-3",
 					title: "Test Question",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-789",
@@ -177,16 +200,19 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 
 			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("question-answer");
-			expect(currentSubroutine?.disallowedTools).toBeDefined();
-			expect(currentSubroutine?.disallowedTools).toContain(
-				"mcp__linear__create_comment",
-			);
+			expect(currentSubroutine?.disallowAllTools).toBe(true);
 		});
 
-		it("should expose disallowedTools for plan-summary in plan-mode procedure", () => {
+		it("should expose disallowAllTools for plan-summary in plan-mode procedure", () => {
 			const procedure = PROCEDURES["plan-mode"];
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-101",
+				id: "session-101",
+				externalSessionId: "session-101",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-101",
+					issueIdentifier: "TEST-4",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -197,6 +223,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 					id: "issue-101",
 					identifier: "TEST-4",
 					title: "Test Planning",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-101",
@@ -210,16 +237,19 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 
 			const currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("plan-summary");
-			expect(currentSubroutine?.disallowedTools).toBeDefined();
-			expect(currentSubroutine?.disallowedTools).toContain(
-				"mcp__linear__create_comment",
-			);
+			expect(currentSubroutine?.disallowAllTools).toBe(true);
 		});
 
-		it("should NOT expose disallowedTools for non-summary subroutines", () => {
+		it("should NOT expose disallowAllTools for non-summary subroutines", () => {
 			const procedure = PROCEDURES["full-development"];
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-202",
+				id: "session-202",
+				externalSessionId: "session-202",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-202",
+					issueIdentifier: "TEST-5",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -230,6 +260,7 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 					id: "issue-202",
 					identifier: "TEST-5",
 					title: "Test Issue",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-202",
@@ -238,39 +269,52 @@ describe("EdgeWorker - Subroutine DisallowedTools", () => {
 
 			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
 
+			// full-development: coding-activity → verifications → changelog-update → git-commit → gh-pr → concise-summary
+
 			// Check coding-activity (first subroutine)
 			let currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("coding-activity");
-			expect(currentSubroutine?.disallowedTools).toBeUndefined();
+			expect(currentSubroutine?.disallowAllTools).toBeUndefined();
 
 			// Advance to verifications
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
 			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("verifications");
-			expect(currentSubroutine?.disallowedTools).toBeUndefined();
+			expect(currentSubroutine?.disallowAllTools).toBeUndefined();
 
-			// Advance to git-gh
+			// Advance to changelog-update
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
 			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("git-gh");
-			expect(currentSubroutine?.disallowedTools).toBeUndefined();
+			expect(currentSubroutine?.name).toBe("changelog-update");
+			expect(currentSubroutine?.disallowAllTools).toBeUndefined();
+
+			// Advance to git-commit
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+			expect(currentSubroutine?.name).toBe("git-commit");
+			expect(currentSubroutine?.disallowAllTools).toBeUndefined();
+
+			// Advance to gh-pr
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-202");
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+			expect(currentSubroutine?.name).toBe("gh-pr");
+			expect(currentSubroutine?.disallowAllTools).toBeUndefined();
 		});
 	});
 
 	describe("Type Definitions", () => {
-		it("should support disallowedTools in SubroutineDefinition type", () => {
-			// This is a compile-time test - if this compiles, the type supports disallowedTools
+		it("should support disallowAllTools in SubroutineDefinition type", () => {
+			// This is a compile-time test - if this compiles, the type supports disallowAllTools
 			const testSubroutine: typeof SUBROUTINES.conciseSummary = {
 				name: "test-subroutine",
 				promptPath: "test/path.md",
 				singleTurn: true,
 				description: "Test subroutine",
 				suppressThoughtPosting: true,
-				disallowedTools: ["mcp__linear__create_comment", "some_other_tool"],
+				disallowAllTools: true,
 			};
 
-			expect(testSubroutine.disallowedTools).toBeDefined();
-			expect(testSubroutine.disallowedTools?.length).toBe(2);
+			expect(testSubroutine.disallowAllTools).toBe(true);
 		});
 	});
 });

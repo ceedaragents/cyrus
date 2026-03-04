@@ -1,3 +1,7 @@
 export { CloudflareTunnelClient } from "./CloudflareTunnelClient.js";
-export { ConfigApiClient } from "./ConfigApiClient.js";
+export {
+	ConfigApiClient,
+	DEFAULT_CYRUS_APP_URL,
+	getCyrusAppUrl,
+} from "./ConfigApiClient.js";
 export * from "./types.js";

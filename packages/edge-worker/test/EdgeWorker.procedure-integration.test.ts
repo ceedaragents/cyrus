@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
 import { ProcedureAnalyzer } from "../src/procedures/ProcedureAnalyzer";
 import { PROCEDURES } from "../src/procedures/registry";
+import type { IActivitySink } from "../src/sinks/IActivitySink";
 
 /**
  * Integration tests for procedure routing as used by EdgeWorker and AgentSessionManager
@@ -12,7 +13,7 @@ import { PROCEDURES } from "../src/procedures/registry";
 describe("EdgeWorker - Procedure Routing Integration", () => {
 	let procedureAnalyzer: ProcedureAnalyzer;
 	let agentSessionManager: AgentSessionManager;
-	let mockLinearClient: any;
+	let mockActivitySink: IActivitySink;
 
 	beforeEach(() => {
 		// Create ProcedureAnalyzer
@@ -20,17 +21,16 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			cyrusHome: "/test/.cyrus",
 		});
 
-		// Create minimal mock Linear client
-		mockLinearClient = {
-			createAgentActivity: vi.fn().mockResolvedValue({
-				success: true,
-				agentActivity: Promise.resolve({ id: "activity-123" }),
-			}),
+		// Create minimal mock activity sink
+		mockActivitySink = {
+			id: "test-workspace",
+			postActivity: vi.fn().mockResolvedValue({ activityId: "activity-123" }),
+			createAgentSession: vi.fn().mockResolvedValue("session-123"),
 		};
 
 		// Create AgentSessionManager with procedure router
 		agentSessionManager = new AgentSessionManager(
-			mockLinearClient,
+			mockActivitySink,
 			undefined, // getParentSessionId
 			undefined, // resumeParentSession
 			procedureAnalyzer,
@@ -44,7 +44,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 
 			// Step 2: EdgeWorker creates session and initializes procedure metadata
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-123",
+				id: "session-123",
+				externalSessionId: "session-123",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-123",
+					issueIdentifier: "TEST-1",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -55,6 +61,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-123",
 					identifier: "TEST-1",
 					title: "Test Issue",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-123",
@@ -89,34 +96,55 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			expect(currentSubroutine?.name).toBe("verifications");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 7: Verifications completes, advance to git-gh
+			// Step 7: Verifications completes, advance to changelog-update
+			// full-development: coding-activity → verifications → changelog-update → git-commit → gh-pr → concise-summary
 			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
-			expect(nextSubroutine?.name).toBe("git-gh");
+			expect(nextSubroutine?.name).toBe("changelog-update");
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
 
-			// Step 8: Execute git-gh subroutine
+			// Step 8: Execute changelog-update subroutine
 			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("git-gh");
+			expect(currentSubroutine?.name).toBe("changelog-update");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 9: git-gh completes, advance to concise-summary (last subroutine)
+			// Step 9: changelog-update completes, advance to git-commit
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
+			expect(nextSubroutine?.name).toBe("git-commit");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
+
+			// Step 10: Execute git-commit subroutine
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+			expect(currentSubroutine?.name).toBe("git-commit");
+			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
+
+			// Step 11: git-commit completes, advance to gh-pr
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
+			expect(nextSubroutine?.name).toBe("gh-pr");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
+
+			// Step 12: Execute gh-pr subroutine
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+			expect(currentSubroutine?.name).toBe("gh-pr");
+			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
+
+			// Step 13: gh-pr completes, advance to concise-summary (last subroutine)
 			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("concise-summary");
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-123");
 
-			// Step 10: Execute concise-summary (with thought suppression!)
+			// Step 14: Execute concise-summary (with thought suppression!)
 			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
 			expect(currentSubroutine?.name).toBe("concise-summary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true); // Suppression active!
 
-			// Step 11: Check that we're at the last subroutine
+			// Step 15: Check that we're at the last subroutine
 			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine).toBeNull(); // No more subroutines
 			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true);
 
-			// Verify subroutine history (only 3 recorded because we're still AT concise-summary)
+			// Verify subroutine history (only 5 recorded because we're still AT concise-summary)
 			// History only records completed subroutines when advancing AWAY from them
-			expect(session.metadata.procedure?.subroutineHistory).toHaveLength(3);
+			expect(session.metadata.procedure?.subroutineHistory).toHaveLength(5);
 			expect(session.metadata.procedure?.subroutineHistory[0].subroutine).toBe(
 				"coding-activity",
 			);
@@ -124,7 +152,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 				"verifications",
 			);
 			expect(session.metadata.procedure?.subroutineHistory[2].subroutine).toBe(
-				"git-gh",
+				"changelog-update",
+			);
+			expect(session.metadata.procedure?.subroutineHistory[3].subroutine).toBe(
+				"git-commit",
+			);
+			expect(session.metadata.procedure?.subroutineHistory[4].subroutine).toBe(
+				"gh-pr",
 			);
 			// concise-summary is NOT yet in history because we haven't advanced away from it
 		});
@@ -135,7 +169,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 
 			// Step 2: Create and initialize session
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-456",
+				id: "session-456",
+				externalSessionId: "session-456",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-456",
+					issueIdentifier: "TEST-2",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -146,6 +186,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-456",
 					identifier: "TEST-2",
 					title: "Update README",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-456",
@@ -159,16 +200,25 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			expect(currentSubroutine?.name).toBe("primary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 4: Advance to git-gh (no suppression)
+			// Step 4: Advance to git-commit (no suppression)
 			let nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
-			expect(nextSubroutine?.name).toBe("git-gh");
+			expect(nextSubroutine?.name).toBe("git-commit");
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-456");
 
 			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
-			expect(currentSubroutine?.name).toBe("git-gh");
+			expect(currentSubroutine?.name).toBe("git-commit");
 			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
 
-			// Step 5: Advance to concise-summary (WITH suppression)
+			// Step 5: Advance to gh-pr (no suppression)
+			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
+			expect(nextSubroutine?.name).toBe("gh-pr");
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-456");
+
+			currentSubroutine = procedureAnalyzer.getCurrentSubroutine(session);
+			expect(currentSubroutine?.name).toBe("gh-pr");
+			expect(currentSubroutine?.suppressThoughtPosting).toBeUndefined();
+
+			// Step 6: Advance to concise-summary (WITH suppression)
 			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine?.name).toBe("concise-summary");
 			procedureAnalyzer.advanceToNextSubroutine(session, "claude-456");
@@ -177,7 +227,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			expect(currentSubroutine?.name).toBe("concise-summary");
 			expect(currentSubroutine?.suppressThoughtPosting).toBe(true); // Suppression!
 
-			// Step 6: Procedure complete
+			// Step 7: Procedure complete
 			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine).toBeNull();
 			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true);
@@ -189,7 +239,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 
 			// Step 2: Create and initialize session
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-789",
+				id: "session-789",
+				externalSessionId: "session-789",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-789",
+					issueIdentifier: "TEST-3",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -200,6 +256,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-789",
 					identifier: "TEST-3",
 					title: "Test Coverage Question",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-789",
@@ -236,7 +293,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		it("should suppress thoughts during question-answer subroutine", async () => {
 			// Create a session already at question-answer
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-suppress-1",
+				id: "session-suppress-1",
+				externalSessionId: "session-suppress-1",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-suppress-1",
+					issueIdentifier: "TEST-SUPPRESS-1",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -247,6 +310,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-suppress-1",
 					identifier: "TEST-SUPPRESS-1",
 					title: "Test Suppression",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-suppress-1",
@@ -274,7 +338,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		it("should NOT suppress thoughts during coding-activity subroutine", async () => {
 			// Create a session at coding-activity
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-no-suppress",
+				id: "session-no-suppress",
+				externalSessionId: "session-no-suppress",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-no-suppress",
+					issueIdentifier: "TEST-NO-SUPPRESS",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -285,6 +355,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-no-suppress",
 					identifier: "TEST-NO-SUPPRESS",
 					title: "Test No Suppression",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-no-suppress",
@@ -307,7 +378,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		it("should initialize fresh procedure metadata for each new session", async () => {
 			// First session
 			const session1: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-1",
+				id: "session-1",
+				externalSessionId: "session-1",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-1",
+					issueIdentifier: "TEST-1",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -318,6 +395,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-1",
 					identifier: "TEST-1",
 					title: "First Issue",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-1",
@@ -336,7 +414,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 
 			// Second session (simulating new issue/comment)
 			const session2: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-2",
+				id: "session-2",
+				externalSessionId: "session-2",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-2",
+					issueIdentifier: "TEST-2",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -347,6 +431,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-2",
 					identifier: "TEST-2",
 					title: "Second Issue",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-2",
@@ -373,7 +458,13 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		it("should route fresh procedure for each new comment in same session", async () => {
 			// Simulate an existing session that has a procedure already running
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-routing-test",
+				id: "session-routing-test",
+				externalSessionId: "session-routing-test",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-routing",
+					issueIdentifier: "TEST-ROUTING",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -384,6 +475,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-routing",
 					identifier: "TEST-ROUTING",
 					title: "Test Routing",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-routing",
@@ -429,10 +521,259 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 		});
 	});
 
+	describe("Subroutine Result Storage", () => {
+		it("should store result text in subroutineHistory when advancing", () => {
+			const procedure = PROCEDURES["full-development"];
+			const session: CyrusAgentSession = {
+				id: "session-result-1",
+				externalSessionId: "session-result-1",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-result-1",
+					issueIdentifier: "TEST-RESULT-1",
+				},
+				type: "comment_thread" as const,
+				status: "active" as const,
+				context: "comment_thread" as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueId: "issue-result-1",
+				issue: {
+					id: "issue-result-1",
+					identifier: "TEST-RESULT-1",
+					title: "Test Result Storage",
+					branchName: "test-branch",
+				},
+				workspace: { path: "/test/workspace", isGitWorktree: false },
+				claudeSessionId: "claude-result-1",
+				metadata: {},
+			};
+
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
+
+			// Advance with a result
+			procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				"claude-result-1",
+				"Here is the coding result",
+			);
+
+			expect(session.metadata.procedure?.subroutineHistory).toHaveLength(1);
+			expect(session.metadata.procedure?.subroutineHistory[0].result).toBe(
+				"Here is the coding result",
+			);
+
+			// Advance again with a different result
+			procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				"claude-result-1",
+				"Verifications passed",
+			);
+
+			expect(session.metadata.procedure?.subroutineHistory).toHaveLength(2);
+			expect(session.metadata.procedure?.subroutineHistory[1].result).toBe(
+				"Verifications passed",
+			);
+		});
+
+		it("should not include result in history when no result is provided", () => {
+			const procedure = PROCEDURES["full-development"];
+			const session: CyrusAgentSession = {
+				id: "session-no-result",
+				externalSessionId: "session-no-result",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-no-result",
+					issueIdentifier: "TEST-NO-RESULT",
+				},
+				type: "comment_thread" as const,
+				status: "active" as const,
+				context: "comment_thread" as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueId: "issue-no-result",
+				issue: {
+					id: "issue-no-result",
+					identifier: "TEST-NO-RESULT",
+					title: "Test No Result",
+					branchName: "test-branch",
+				},
+				workspace: { path: "/test/workspace", isGitWorktree: false },
+				claudeSessionId: "claude-no-result",
+				metadata: {},
+			};
+
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
+
+			// Advance without a result (existing behavior)
+			procedureAnalyzer.advanceToNextSubroutine(session, "claude-no-result");
+
+			expect(session.metadata.procedure?.subroutineHistory).toHaveLength(1);
+			expect(
+				session.metadata.procedure?.subroutineHistory[0].result,
+			).toBeUndefined();
+		});
+	});
+
+	describe("getLastSubroutineResult", () => {
+		it("should return the result from the last completed subroutine", () => {
+			const procedure = PROCEDURES["full-development"];
+			const session: CyrusAgentSession = {
+				id: "session-last-result",
+				externalSessionId: "session-last-result",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-last-result",
+					issueIdentifier: "TEST-LAST-RESULT",
+				},
+				type: "comment_thread" as const,
+				status: "active" as const,
+				context: "comment_thread" as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueId: "issue-last-result",
+				issue: {
+					id: "issue-last-result",
+					identifier: "TEST-LAST-RESULT",
+					title: "Test Last Result",
+					branchName: "test-branch",
+				},
+				workspace: { path: "/test/workspace", isGitWorktree: false },
+				claudeSessionId: "claude-last-result",
+				metadata: {},
+			};
+
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
+
+			// Advance with results
+			procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				"claude-last-result",
+				"First result",
+			);
+			procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				"claude-last-result",
+				"Second result",
+			);
+
+			const lastResult = procedureAnalyzer.getLastSubroutineResult(session);
+			expect(lastResult).toBe("Second result");
+		});
+
+		it("should return null when no subroutines have been completed", () => {
+			const procedure = PROCEDURES["full-development"];
+			const session: CyrusAgentSession = {
+				id: "session-empty-result",
+				externalSessionId: "session-empty-result",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-empty-result",
+					issueIdentifier: "TEST-EMPTY-RESULT",
+				},
+				type: "comment_thread" as const,
+				status: "active" as const,
+				context: "comment_thread" as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueId: "issue-empty-result",
+				issue: {
+					id: "issue-empty-result",
+					identifier: "TEST-EMPTY-RESULT",
+					title: "Test Empty Result",
+					branchName: "test-branch",
+				},
+				workspace: { path: "/test/workspace", isGitWorktree: false },
+				claudeSessionId: "claude-empty-result",
+				metadata: {},
+			};
+
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
+
+			const lastResult = procedureAnalyzer.getLastSubroutineResult(session);
+			expect(lastResult).toBeNull();
+		});
+
+		it("should return null when session has no procedure metadata", () => {
+			const session: CyrusAgentSession = {
+				id: "session-no-procedure",
+				externalSessionId: "session-no-procedure",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-no-procedure",
+					issueIdentifier: "TEST-NO-PROCEDURE",
+				},
+				type: "comment_thread" as const,
+				status: "active" as const,
+				context: "comment_thread" as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueId: "issue-no-procedure",
+				issue: {
+					id: "issue-no-procedure",
+					identifier: "TEST-NO-PROCEDURE",
+					title: "Test No Procedure",
+					branchName: "test-branch",
+				},
+				workspace: { path: "/test/workspace", isGitWorktree: false },
+				claudeSessionId: "claude-no-procedure",
+				metadata: {},
+			};
+
+			const lastResult = procedureAnalyzer.getLastSubroutineResult(session);
+			expect(lastResult).toBeNull();
+		});
+
+		it("should return null when last subroutine has no result stored", () => {
+			const procedure = PROCEDURES["full-development"];
+			const session: CyrusAgentSession = {
+				id: "session-no-stored-result",
+				externalSessionId: "session-no-stored-result",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-no-stored-result",
+					issueIdentifier: "TEST-NO-STORED",
+				},
+				type: "comment_thread" as const,
+				status: "active" as const,
+				context: "comment_thread" as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueId: "issue-no-stored-result",
+				issue: {
+					id: "issue-no-stored-result",
+					identifier: "TEST-NO-STORED",
+					title: "Test No Stored Result",
+					branchName: "test-branch",
+				},
+				workspace: { path: "/test/workspace", isGitWorktree: false },
+				claudeSessionId: "claude-no-stored-result",
+				metadata: {},
+			};
+
+			procedureAnalyzer.initializeProcedureMetadata(session, procedure);
+
+			// Advance without providing a result
+			procedureAnalyzer.advanceToNextSubroutine(
+				session,
+				"claude-no-stored-result",
+			);
+
+			const lastResult = procedureAnalyzer.getLastSubroutineResult(session);
+			expect(lastResult).toBeNull();
+		});
+	});
+
 	describe("Error Handling", () => {
 		it("should handle errors during procedure execution gracefully", () => {
 			const session: CyrusAgentSession = {
-				linearAgentActivitySessionId: "session-error",
+				id: "session-error",
+				externalSessionId: "session-error",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-error",
+					issueIdentifier: "TEST-ERROR",
+				},
 				type: "comment_thread" as const,
 				status: "active" as const,
 				context: "comment_thread" as const,
@@ -443,6 +784,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					id: "issue-error",
 					identifier: "TEST-ERROR",
 					title: "Error Test",
+					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
 				claudeSessionId: "claude-error",

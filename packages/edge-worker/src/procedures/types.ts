@@ -31,6 +31,14 @@ export interface SubroutineDefinition {
 	disallowedTools?: readonly string[];
 
 	/**
+	 * Whether to disallow ALL tool usage during this subroutine.
+	 * When true, the agent will only produce text output without any tool calls.
+	 * This is useful for summary subroutines where tool usage would cause
+	 * the session to appear "hanging" to users in Linear.
+	 */
+	disallowAllTools?: boolean;
+
+	/**
 	 * Whether this subroutine uses the validation loop with retry logic.
 	 * When true, the subroutine output is parsed as ValidationResult and
 	 * the validation-fixer subroutine is run on failures (up to maxIterations).
@@ -85,6 +93,9 @@ export interface ProcedureMetadata {
 		completedAt: number;
 		claudeSessionId: string | null;
 		geminiSessionId: string | null;
+		codexSessionId?: string | null;
+		/** The result text from the completed subroutine (if available) */
+		result?: string;
 	}>;
 
 	/** State for validation loop (when current subroutine uses usesValidationLoop) */
@@ -102,7 +113,8 @@ export type RequestClassification =
 	| "code"
 	| "debugger"
 	| "orchestrator"
-	| "user-testing";
+	| "user-testing"
+	| "release";
 
 /**
  * Result of procedure analysis decision

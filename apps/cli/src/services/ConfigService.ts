@@ -43,15 +43,79 @@ export class ConfigService {
 
 		// Strip promptTemplatePath from all repositories to ensure built-in template is used
 		if (config.repositories) {
-			config.repositories = config.repositories.map((repo) => {
-				const { promptTemplatePath, ...repoWithoutTemplate } = repo;
-				if (promptTemplatePath) {
-					this.logger.info(
-						`Ignoring custom prompt template for repository: ${repo.name} (using built-in template)`,
-					);
+			config.repositories = config.repositories.map(
+				(repo: EdgeConfig["repositories"][number]) => {
+					const { promptTemplatePath, ...repoWithoutTemplate } = repo;
+					if (promptTemplatePath) {
+						this.logger.info(
+							`Ignoring custom prompt template for repository: ${repo.name} (using built-in template)`,
+						);
+					}
+					return repoWithoutTemplate;
+				},
+			);
+		}
+
+		// Run migrations on loaded config
+		config = this.migrateConfig(config);
+
+		return config;
+	}
+
+	/**
+	 * Run migrations on config to ensure it's up to date
+	 * Persists changes to disk if any migrations were applied
+	 */
+	private migrateConfig(config: EdgeConfig): EdgeConfig {
+		let configModified = false;
+
+		// Migration: Rename legacy global model fields to Claude-specific names
+		// Keep old values but move them to the new keys and remove deprecated fields.
+		if (config.defaultModel !== undefined) {
+			if (!config.claudeDefaultModel) {
+				config.claudeDefaultModel = config.defaultModel;
+				this.logger.info(
+					`[Migration] Moved "defaultModel" to "claudeDefaultModel"`,
+				);
+			}
+			delete (config as EdgeConfig & { defaultModel?: string }).defaultModel;
+			configModified = true;
+		}
+
+		if (config.defaultFallbackModel !== undefined) {
+			if (!config.claudeDefaultFallbackModel) {
+				config.claudeDefaultFallbackModel = config.defaultFallbackModel;
+				this.logger.info(
+					`[Migration] Moved "defaultFallbackModel" to "claudeDefaultFallbackModel"`,
+				);
+			}
+			delete (config as EdgeConfig & { defaultFallbackModel?: string })
+				.defaultFallbackModel;
+			configModified = true;
+		}
+
+		// Migration: Add "Skill" to allowedTools arrays that don't have it
+		// This enables Claude Skills functionality for existing configurations
+		// See: https://code.claude.com/docs/en/skills
+		// See: https://platform.claude.com/docs/en/agent-sdk/skills
+		if (config.repositories) {
+			for (const repo of config.repositories) {
+				if (repo.allowedTools && Array.isArray(repo.allowedTools)) {
+					if (!repo.allowedTools.includes("Skill")) {
+						repo.allowedTools.push("Skill");
+						configModified = true;
+						this.logger.info(
+							`[Migration] Added "Skill" to allowedTools for repository: ${repo.name}`,
+						);
+					}
 				}
-				return repoWithoutTemplate;
-			});
+			}
+		}
+
+		// Persist changes if any migrations were applied
+		if (configModified) {
+			this.save(config);
+			this.logger.info("[Migration] Configuration updated and saved to disk");
 		}
 
 		return config;

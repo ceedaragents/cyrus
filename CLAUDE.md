@@ -63,6 +63,21 @@ The F1 (Formula 1) testing framework provides a controlled environment to test C
 
 CRITICAL: you must use the f1 test drive protocol during the 'testing and validation' stage of any major work undertaking. You CAN also use it in development situations where you want to test drive the version of the product that you're working on.
 
+## Linear Webhooks Reference
+
+Cyrus processes Linear webhooks to respond to events like issue assignments, user prompts, and issue updates. The Linear SDK and webhook schemas are documented at:
+
+- **EntityWebhookPayload**: https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+- **DataWebhookPayload**: https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/unions/DataWebhookPayload
+- **IssueWebhookPayload**: https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/IssueWebhookPayload
+
+Key webhook types handled:
+- `AgentSessionEvent` (created/prompted) - When issues are assigned to Cyrus or users send prompts
+- `AppUserNotification` (issueUnassignedFromYou) - When issues are unassigned
+- `Issue` (update with title/description changes) - When issue title or description is modified
+
+The `EntityWebhookPayload` contains an `updatedFrom` field that holds previous values of changed properties, enabling Cyrus to detect what changed and compare old vs new values.
+
 ## Working with SDKs
 
 When examining or working with a package SDK:
@@ -75,6 +90,122 @@ When examining or working with a package SDK:
 2. Locate the specific SDK in the `node_modules` directory to examine its structure, types, and implementation details.
 
 3. Review the SDK's documentation, source code, and type definitions to understand its API and usage patterns.
+
+## Shared Skills Across Harnesses
+
+For reusable operational workflows (for example F1 test driving), keep a canonical skill in:
+
+- `skills/<skill-name>/SKILL.md`
+
+Then symlink that skill into harness-specific skill directories:
+
+- `.claude/skills/<skill-name>`
+- `.codex/skills/<skill-name>`
+- `.opencode/skills/<skill-name>`
+
+Use:
+
+```bash
+./scripts/symlink-skills.sh
+```
+
+Design rule:
+
+1. Keep subagent files thin wrappers.
+2. Put 95%+ workflow logic into canonical shared skills.
+3. Update shared skill first; avoid duplicating protocol text across harnesses.
+
+## Checklist For New Agent CLI Harnesses
+
+When implementing a new runner/harness (for example Codex, Gemini, OpenCode, or other CLIs), use this checklist before shipping.
+
+### 1) Session Lifecycle And Turn Limits
+
+- Verify turn-limit behavior (`maxTurns`, `maxSessionTurns`, or equivalent).
+- Confirm what error/result payload is emitted when limits are exceeded.
+- Ensure session stop behavior is explicit and deterministic.
+
+### 2) Prompt Model And Instructions
+
+- Identify how base system prompt is applied.
+- Identify whether appended instructions are supported and whether they extend or replace defaults.
+- Confirm provider-specific instruction fields (for example `developer_instructions`) and expected precedence.
+
+### 3) Streaming Event Schema
+
+- Capture real JSON event streams and document item types.
+- Determine whether events are full objects or deltas/partials that require aggregation.
+- Add replay tests from real transcripts.
+
+### 4) Final Message Semantics
+
+- Verify where the final answer lives:
+  - in a `result` payload (Claude-style), or
+  - in the last assistant message (Gemini-style), or
+  - mixed model/event behavior.
+- Ensure we always post a final `response` activity when work completes successfully.
+
+### 5) Tools And Permissions
+
+- Validate `tools`, `allowedTools`, and `disallowedTools` semantics for the SDK.
+- Validate approval/sandbox behavior for tool execution.
+- Verify tool calls produce both start and completion signals.
+- For providers that rely on static/project config files (for example Cursor CLI), implement a permission translation layer from Cyrus/Claude tool names to provider-native permission tokens and write that config before session start. This must support subroutine-time updates when allowed/disallowed tools change. For Cursor MCP servers, pre-enable them before session start (`agent mcp list` + `agent mcp enable <server>` per server) so tools are available in headless runs. When using Cursor in Cyrus, only MCP servers configured in `.cursor/mcp.json` should be treated as project MCP config; use Cursor's MCP config-location and file-format docs as the source of truth: https://cursor.com/docs/context/mcp#configuration-locations. For broad file permissions, map wildcard `Read(**)` / `Write(**)` to workspace-scoped patterns (for example `Read(./**)` / `Write(./**)`) to avoid unintentionally permitting absolute system paths. Reference: https://cursor.com/docs/cli/reference/permissions
+
+### 6) Prompt Streaming Input
+
+- Verify whether the SDK supports streaming/incremental prompt input.
+- Set `supportsStreamingInput` correctly and gate behavior in runner adapters.
+
+### 7) MCP Servers And Custom Tools
+
+- Verify MCP server config format and merge behavior.
+- Verify custom tool registration/invocation behavior.
+- Ensure MCP/custom-tool events are mapped into consistent runner message shapes.
+
+### 8) Runner Selection Via Labels And Description Selectors
+
+- Keep agent label and model label separate (example: `codex` and `gpt-5-codex`).
+- Support issue description selectors like `[agent=...]`, `[model=...]`, `[repo=...]`.
+- Add precedence tests for labels vs selectors vs repository defaults.
+
+### 9) Activity Formatting And Timeline Visibility
+
+- Ensure formatter output is timeline-ready (AgentActivity content fields).
+- Ensure tool lifecycle events are visible as activities (not silently dropped).
+- Use Markdown-compatible formatting for checklists:
+  - `- [ ] item`
+  - `- [x] item`
+
+### 10) Usage, Stop Reasons, And Typing
+
+- Map usage/cost/stop-reason fields to expected shared types.
+- Fill required compatibility fields even when provider omits them natively.
+- Keep strict TypeScript compatibility for cross-runner shared contracts.
+
+### 11) Config Schema And Backward Compatibility
+
+- Use provider-specific defaults (`claudeDefaultModel`, `geminiDefaultModel`, `codexDefaultModel`).
+- Add config migration logic for renamed or legacy fields.
+- Keep docs/comments provider-specific and explicit.
+
+### 12) Validation Protocol Before Merge
+
+- Run unit tests for new runner adapters and formatter behavior.
+- Run replay tests from real CLI transcripts.
+- Validate F1 end-to-end scenarios for:
+  - label-based runner/model selection
+  - description selector-based runner/model selection
+  - visible tool/file-edit activities in session timeline
+  - final response posting behavior
+
+### Codex Integration Lesson Learned
+
+Codex emitted tool activity at `item.started`/`item.completed` events, but those were initially not mapped to `tool_use`/`tool_result`. The result was missing action/file-edit visibility in Linear. For any new harness, treat tool lifecycle mapping as a first-class acceptance criterion, not a formatter-only concern.
+
+### Cursor Integration Lesson Learned
+
+Cursor CLI permissions are enforced from config (`~/.cursor/cli-config.json` or `<project>/.cursor/cli.json`) instead of dynamic per-request tool allowlists. For Cursor-like providers, do not rely on dynamic SDK tool constraints alone—add a translation layer (for example `mcp__server__tool` -> `Mcp(server:tool)`, `Bash(...)` -> `Shell(...)`) and sync project permissions before each run and between subroutines. Also pre-enable MCP servers via `agent mcp list` + `agent mcp enable <server>` using both project-listed and runner-configured server names so headless sessions can invoke MCP tools immediately. In Cyrus Cursor runs, treat `.cursor/mcp.json` as the project MCP source and follow Cursor's configuration-location and file-syntax docs (these differ from Claude's MCP interpretation): https://cursor.com/docs/context/mcp#configuration-locations. Use workspace-scoped wildcard file permissions (`Read(./**)`, `Write(./**)`) rather than unscoped `Read(**)` / `Write(**)` in translation defaults. Reference: https://cursor.com/docs/cli/reference/permissions
 
 ## Navigating GitHub Repositories
 
@@ -342,85 +473,11 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
 
 ## Publishing
 
-**Important: Always publish packages in the correct order to ensure proper dependency resolution.**
+For publishing and release instructions, use the `/release` skill (within Claude Code or Claude Agent SDK) which provides a complete guide for publishing packages to npm in the correct dependency order. Invoke it with:
 
-### Pre-Publishing Checklist
-
-1. **Update CHANGELOG.md**: 
-   - Move items from `## [Unreleased]` to a new versioned section
-   - Use the CLI version number (e.g., `## [0.1.22] - 2025-01-06`)
-   - Focus on end-user impact from the perspective of the `cyrus` CLI
-
-2. **Commit all changes**:
-   ```bash
-   git add -A
-   git commit -m "Prepare release v0.1.XX"
-   git push
-   ```
-
-### Publishing Workflow
-
-1. **Install dependencies from root**:
-   ```bash
-   pnpm install  # Ensures all workspace dependencies are up to date
-   ```
-
-2. **Build all packages from root first**:
-   ```bash
-   pnpm build  # Builds all packages to ensure dependencies are resolved
-   ```
-
-3. **Publish packages in dependency order**:
-
-   **IMPORTANT**: Publish in this exact order to avoid dependency resolution issues:
-
-   ```bash
-   # 1. Packages with no internal dependencies
-   cd packages/ndjson-client && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 2. Packages that depend on external deps only
-   cd packages/claude-runner && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 3. Core package (depends on claude-runner)
-   cd packages/core && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 4. Simple agent runner (depends on claude-runner)
-   cd packages/simple-agent-runner && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-
-   # 5. Edge worker (depends on core, claude-runner, ndjson-client, simple-agent-runner)
-   cd packages/edge-worker && pnpm publish --access public --no-git-checks
-   cd ../..
-   pnpm install  # Update lockfile
-   ```
-
-4. **Finally publish the CLI**:
-   ```bash
-   pnpm install  # Final install to ensure all deps are latest
-   cd apps/cli && pnpm publish --access public --no-git-checks
-   cd ../..
-   ```
-
-5. **Create git tag and push**:
-   ```bash
-   git tag v0.1.XX
-   git push origin <branch-name>
-   git push origin v0.1.XX
-   ```
-
-**Key Notes:**
-- Always use `--no-git-checks` flag to publish from feature branches
-- Run `pnpm install` after each publish to update the lockfile
-- The `simple-agent-runner` package MUST be published before `edge-worker`
-- Build all packages once at the start, then publish without rebuilding
-- This ensures `workspace:*` references resolve to published versions
+```
+/release
+```
 
 
 ## Gemini CLI for Testing

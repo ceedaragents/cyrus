@@ -110,6 +110,9 @@ export interface PromptAssemblyInput {
 
 	/** Labels on the issue (for system prompt determination) */
 	labels?: string[];
+
+	/** GitHub username of the issue assignee (resolved from Linear gitHubUserId) */
+	assigneeGitHubUsername?: string;
 }
 
 /**

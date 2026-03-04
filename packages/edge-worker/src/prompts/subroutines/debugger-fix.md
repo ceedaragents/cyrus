@@ -73,8 +73,9 @@ Example: "Fix implemented in src/auth/session.ts - normalized date comparisons t
 - ✅ **DO follow existing patterns** - maintain code consistency
 - ✅ **DO use Task for analysis** - direct file loading only for editing
 - ❌ **DO NOT add unrelated improvements** - fix the bug only
-- ❌ **DO NOT commit or push** - that happens in the git-gh phase
+- ❌ **DO NOT commit or push** - that happens in later phases
 - ❌ **DO NOT run linting or type checking** - that happens in verifications phase
+- ❌ **DO NOT touch the changelog** - a separate subroutine handles changelog updates
 
 ## What Happens Next
 
