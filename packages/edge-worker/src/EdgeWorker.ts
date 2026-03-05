@@ -785,9 +785,15 @@ export class EdgeWorker extends EventEmitter {
 			slackAdapter,
 			{
 				cyrusHome: this.cyrusHome,
-				defaultModel: this.config.defaultModel,
-				defaultFallbackModel: this.config.defaultFallbackModel,
 				mcpConfig,
+				createRunner: (config) => {
+					const runnerType = this.runnerSelectionService.getDefaultRunner();
+					return this.createRunnerForType(runnerType, {
+						...config,
+						model: this.getDefaultModelForRunner(runnerType),
+						fallbackModel: this.getDefaultFallbackModelForRunner(runnerType),
+					});
+				},
 				onWebhookStart: () => {
 					this.activeWebhookCount++;
 				},
@@ -1068,7 +1074,7 @@ export class EdgeWorker extends EventEmitter {
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
 			// Create agent runner using the standard config builder
-			const { config: runnerConfig } = this.buildAgentRunnerConfig(
+			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 				session,
 				repository,
 				githubSessionId,
@@ -1085,7 +1091,7 @@ export class EdgeWorker extends EventEmitter {
 				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
 			);
 
-			const runner = new ClaudeRunner(runnerConfig);
+			const runner = this.createRunnerForType(runnerType, runnerConfig);
 
 			// Store the runner in the session manager
 			agentSessionManager.addAgentRunner(githubSessionId, runner);
@@ -1101,7 +1107,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			this.logger.info(
-				`Starting Claude runner for GitHub PR ${repoFullName}#${prNumber}`,
+				`Starting ${runnerType} runner for GitHub PR ${repoFullName}#${prNumber}`,
 			);
 
 			// Start the session and handle completion
@@ -3088,14 +3094,7 @@ ${taskSection}`;
 				`Label-based runner selection for new session: ${runnerType} (session ${sessionId})`,
 			);
 
-			const runner =
-				runnerType === "claude"
-					? new ClaudeRunner(runnerConfig)
-					: runnerType === "gemini"
-						? new GeminiRunner(runnerConfig)
-						: runnerType === "codex"
-							? new CodexRunner(runnerConfig)
-							: new CursorRunner(runnerConfig);
+			const runner = this.createRunnerForType(runnerType, runnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(sessionId, runner);
@@ -3786,6 +3785,27 @@ ${taskSection}`;
 		return this.runnerSelectionService.getDefaultFallbackModelForRunner(
 			runnerType,
 		);
+	}
+
+	/**
+	 * Instantiate the appropriate runner for the given type.
+	 */
+	private createRunnerForType(
+		runnerType: "claude" | "gemini" | "codex" | "cursor",
+		config: AgentRunnerConfig,
+	): IAgentRunner {
+		switch (runnerType) {
+			case "claude":
+				return new ClaudeRunner(config);
+			case "gemini":
+				return new GeminiRunner(config);
+			case "codex":
+				return new CodexRunner(config);
+			case "cursor":
+				return new CursorRunner(config);
+			default:
+				throw new Error(`Unknown runner type: ${runnerType satisfies never}`);
+		}
 	}
 
 	/**
@@ -5903,14 +5923,7 @@ ${input.userComment}
 		);
 
 		// Create the appropriate runner based on session state
-		const runner =
-			runnerType === "claude"
-				? new ClaudeRunner(runnerConfig)
-				: runnerType === "gemini"
-					? new GeminiRunner(runnerConfig)
-					: runnerType === "codex"
-						? new CodexRunner(runnerConfig)
-						: new CursorRunner(runnerConfig);
+		const runner = this.createRunnerForType(runnerType, runnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(sessionId, runner);

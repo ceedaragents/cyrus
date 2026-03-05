@@ -1,8 +1,14 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
-import { ClaudeRunner, getAllTools } from "cyrus-claude-runner";
-import type { CyrusAgentSession, IAgentRunner, ILogger } from "cyrus-core";
+import { getAllTools } from "cyrus-claude-runner";
+import type {
+	AgentRunnerConfig,
+	AgentSessionInfo,
+	CyrusAgentSession,
+	IAgentRunner,
+	ILogger,
+} from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { NoopActivitySink } from "./sinks/NoopActivitySink.js";
@@ -49,9 +55,9 @@ export interface ChatPlatformAdapter<TEvent> {
  */
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
-	defaultModel?: string;
-	defaultFallbackModel?: string;
 	mcpConfig?: Record<string, McpServerConfig>;
+	/** Factory function that creates the appropriate runner based on config.defaultRunner */
+	createRunner: (config: AgentRunnerConfig) => IAgentRunner;
 	onWebhookStart: () => void;
 	onWebhookEnd: () => void;
 	onStateChange: () => Promise<void>;
@@ -226,7 +232,7 @@ export class ChatSessionHandler<TEvent> {
 				sessionId,
 			);
 
-			const runner = new ClaudeRunner(runnerConfig);
+			const runner = this.deps.createRunner(runnerConfig);
 
 			// Store the runner in the session manager
 			this.sessionManager.addAgentRunner(sessionId, runner);
@@ -241,13 +247,18 @@ export class ChatSessionHandler<TEvent> {
 				: taskInstructions;
 
 			this.logger.info(
-				`Starting Claude runner for ${this.adapter.platformName} event ${eventId}`,
+				`Starting runner for ${this.adapter.platformName} event ${eventId}`,
 			);
 
-			// Start in streaming mode so follow-up messages in the same thread
-			// can be injected via addStreamMessage() while the session is running
+			// Start in streaming mode if supported (allows follow-up message injection),
+			// otherwise fall back to non-streaming start
 			try {
-				const sessionInfo = await runner.startStreaming!(userPrompt);
+				let sessionInfo: AgentSessionInfo;
+				if (runner.supportsStreamingInput && runner.startStreaming) {
+					sessionInfo = await runner.startStreaming(userPrompt);
+				} else {
+					sessionInfo = await runner.start(userPrompt);
+				}
 				this.logger.info(
 					`${this.adapter.platformName} session started: ${sessionInfo.sessionId}`,
 				);
@@ -307,11 +318,16 @@ export class ChatSessionHandler<TEvent> {
 			resumeSessionId,
 		);
 
-		const runner = new ClaudeRunner(runnerConfig);
+		const runner = this.deps.createRunner(runnerConfig);
 		this.sessionManager.addAgentRunner(sessionId, runner);
 
 		try {
-			const sessionInfo = await runner.startStreaming!(taskInstructions);
+			let sessionInfo: AgentSessionInfo;
+			if (runner.supportsStreamingInput && runner.startStreaming) {
+				sessionInfo = await runner.startStreaming(taskInstructions);
+			} else {
+				sessionInfo = await runner.start(taskInstructions);
+			}
 			this.logger.info(
 				`${this.adapter.platformName} session resumed: ${sessionInfo.sessionId} (was ${resumeSessionId})`,
 			);
@@ -326,10 +342,10 @@ export class ChatSessionHandler<TEvent> {
 	}
 
 	/**
-	 * Handle Claude messages for chat sessions.
+	 * Handle agent messages for chat sessions.
 	 * Routes to the dedicated AgentSessionManager.
 	 */
-	private async handleClaudeMessage(
+	private async handleAgentMessage(
 		sessionId: string,
 		message: SDKMessage,
 	): Promise<void> {
@@ -364,7 +380,7 @@ export class ChatSessionHandler<TEvent> {
 	}
 
 	/**
-	 * Build a ClaudeRunner config for a chat session.
+	 * Build a runner config for a chat session.
 	 * Used by both handleEvent (new session) and resumeSession to eliminate duplication.
 	 */
 	private buildRunnerConfig(
@@ -373,23 +389,7 @@ export class ChatSessionHandler<TEvent> {
 		systemPrompt: string,
 		sessionId: string,
 		resumeSessionId?: string,
-	): {
-		workingDirectory: string;
-		allowedTools: string[];
-		disallowedTools: string[];
-		allowedDirectories: string[];
-		workspaceName: string | undefined;
-		cyrusHome: string;
-		appendSystemPrompt: string;
-		model: string | undefined;
-		fallbackModel: string | undefined;
-		mcpConfig?: Record<string, McpServerConfig>;
-		resumeSessionId?: string;
-		logger: ILogger;
-		maxTurns: number;
-		onMessage: (message: SDKMessage) => void;
-		onError: (error: Error) => void;
-	} {
+	): AgentRunnerConfig {
 		// When MCP servers are configured, include their tool permissions
 		const mcpToolPermissions = this.deps.mcpConfig
 			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
@@ -403,8 +403,6 @@ export class ChatSessionHandler<TEvent> {
 			workspaceName,
 			cyrusHome: this.deps.cyrusHome,
 			appendSystemPrompt: systemPrompt,
-			model: this.deps.defaultModel,
-			fallbackModel: this.deps.defaultFallbackModel,
 			...(this.deps.mcpConfig ? { mcpConfig: this.deps.mcpConfig } : {}),
 			...(resumeSessionId ? { resumeSessionId } : {}),
 			logger: this.logger.withContext({
@@ -412,9 +410,8 @@ export class ChatSessionHandler<TEvent> {
 				platform: this.adapter.platformName,
 			}),
 			maxTurns: 200,
-			onMessage: (message: SDKMessage) => {
-				this.handleClaudeMessage(sessionId, message);
-			},
+			onMessage: (message: SDKMessage) =>
+				this.handleAgentMessage(sessionId, message),
 			onError: (error: Error) => this.deps.onClaudeError(error),
 		};
 	}

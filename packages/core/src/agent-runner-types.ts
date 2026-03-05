@@ -5,10 +5,10 @@ import type {
 	SDKMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-
 // Import the AskUserQuestionInput type from the SDK's tool input types
 // This ensures we use the SDK's official type definitions
 import type { AskUserQuestionInput as SDKAskUserQuestionInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools.d.ts";
+import type { ILogger } from "./logging/ILogger.js";
 
 // ============================================================================
 // ASK USER QUESTION TYPES
@@ -432,6 +432,8 @@ export interface AgentRunnerConfig {
 	 * a single tool call will be rejected.
 	 */
 	onAskUserQuestion?: OnAskUserQuestion;
+	/** Logger instance for the runner */
+	logger?: ILogger;
 	/** Callback for each message received */
 	onMessage?: (message: AgentMessage) => void | Promise<void>;
 	/** Callback for errors */
