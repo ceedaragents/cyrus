@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.69** — includes MCP server disconnect fix, `getSessionMessages()` pagination, `supportsFastMode` model indicator, and AskUserQuestion `previewFormat` config. See the [full SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-887](https://linear.app/ceedar/issue/CYPACK-887), [#938](https://github.com/ceedaragents/cyrus/pull/938))
+
 ## [0.2.28] - 2026-03-04
 
 ### Fixed
