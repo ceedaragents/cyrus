@@ -220,7 +220,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const resumeArgs = resumeAgentSessionSpy.mock.calls[0];
 			const [
 				childSession,
-				repo,
+				repositories,
 				sessionId,
 				_manager,
 				prompt,
@@ -239,8 +239,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				`## Received feedback from orchestrator\n\n---\n\n${feedbackMessage}\n\n---`,
 			);
 
-			// Verify repository is passed correctly
-			expect(repo).toBe(mockRepository);
+			// Verify repository context is passed as a multi-repo-aware array
+			expect(repositories).toEqual([mockRepository]);
 
 			// Verify no attachments for feedback
 			expect(attachmentManifest).toBe("");

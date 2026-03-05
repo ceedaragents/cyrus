@@ -433,13 +433,7 @@ export class EdgeWorker extends EventEmitter {
 		this.promptBuilder = new PromptBuilder({
 			logger: this.logger,
 			repositories: this.repositories,
-			getIssueTracker: (repositoryId: string) => {
-				const repository = this.repositories.get(repositoryId);
-				if (!repository) {
-					return this.getIssueTracker();
-				}
-				return this.getIssueTrackerForWorkspace(repository.linearWorkspaceId);
-			},
+			getIssueTracker: () => this.getIssueTracker(),
 			gitService: this.gitService,
 			config: this.config,
 		});
@@ -1473,7 +1467,7 @@ ${taskSection}`;
 		parentSessionId: string,
 		prompt: string,
 		childSessionId: string,
-		childRepo: RepositoryConfig,
+		childRepositories: RepositoryConfig[],
 		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId: parentSessionId });
@@ -1487,8 +1481,14 @@ ${taskSection}`;
 			log.error(`Parent session ${parentSessionId} not found`);
 			return;
 		}
-		const parentRepo =
-			this.resolveSessionRepositories(parentSession)[0] || childRepo;
+		const resolvedParentRepositories =
+			this.resolveSessionRepositories(parentSession);
+		const parentRepositories =
+			resolvedParentRepositories.length > 0
+				? resolvedParentRepositories
+				: childRepositories;
+		const primaryParentRepository =
+			parentRepositories[0] ?? this.getFallbackRepositoryConfig();
 
 		log.debug(
 			`Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
@@ -1509,7 +1509,10 @@ ${taskSection}`;
 			);
 		}
 
-		await this.postParentResumeAcknowledgment(parentSessionId, parentRepo.id);
+		await this.postParentResumeAcknowledgment(
+			parentSessionId,
+			primaryParentRepository.id,
+		);
 
 		// Post thought showing child result receipt
 		// Use parent's issue tracker since we're posting to the parent's session
@@ -1534,7 +1537,7 @@ ${taskSection}`;
 		try {
 			await this.handlePromptWithStreamingCheck(
 				parentSession,
-				parentRepo,
+				parentRepositories,
 				parentSessionId,
 				parentAgentSessionManager,
 				prompt,
@@ -1549,7 +1552,7 @@ ${taskSection}`;
 		} catch (error) {
 			log.error(`Failed to resume parent session ${parentSessionId}:`, error);
 			log.error(
-				`Error context - Parent issue: ${parentSession.issueId}, Repository: ${parentRepo.name}`,
+				`Error context - Parent issue: ${parentSession.issueId}, Repository: ${primaryParentRepository.name}`,
 			);
 		}
 	}
@@ -1561,7 +1564,7 @@ ${taskSection}`;
 	private async handleSubroutineTransition(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId });
@@ -1604,7 +1607,7 @@ ${taskSection}`;
 		try {
 			await this.resumeAgentSession(
 				session,
-				repo,
+				repositories,
 				sessionId,
 				agentSessionManager,
 				subroutinePrompt,
@@ -1630,7 +1633,7 @@ ${taskSection}`;
 	private async handleValidationLoopFixer(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 		fixerPrompt: string,
 		iteration: number,
@@ -1642,7 +1645,7 @@ ${taskSection}`;
 		try {
 			await this.resumeAgentSession(
 				session,
-				repo,
+				repositories,
 				sessionId,
 				agentSessionManager,
 				fixerPrompt,
@@ -1666,7 +1669,7 @@ ${taskSection}`;
 	private async handleValidationLoopRerun(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		this.logger.info(`Re-running verifications for session ${sessionId}`);
@@ -1699,7 +1702,7 @@ ${taskSection}`;
 
 			await this.resumeAgentSession(
 				session,
-				repo,
+				repositories,
 				sessionId,
 				agentSessionManager,
 				subroutinePrompt,
@@ -1970,6 +1973,15 @@ ${taskSection}`;
 		return firstRepository ? [firstRepository] : [];
 	}
 
+	private resolveSessionRepositoriesForContinuation(
+		session: CyrusAgentSession,
+	): RepositoryConfig[] {
+		const repositories = this.resolveSessionRepositories(session);
+		return repositories.length > 0
+			? repositories
+			: [this.getFallbackRepositoryConfig()];
+	}
+
 	private normalizeRepositoriesInput(
 		repositories: RepositoryConfig[] | RepositoryConfig | undefined,
 	): RepositoryConfig[] {
@@ -2222,14 +2234,14 @@ ${taskSection}`;
 
 			const sessions =
 				this.getAgentSessionManager().getSessionsByIssueId(issueId);
-			const sessionRepository =
+			const sessionPrimaryRepository =
 				sessions.length > 0 && sessions[0]
-					? this.resolveSessionRepositories(sessions[0])[0]
+					? this.resolveSessionRepositoriesForContinuation(sessions[0])[0]
 					: undefined;
-			if (sessionRepository) {
-				repository = sessionRepository;
+			if (sessionPrimaryRepository) {
+				repository = sessionPrimaryRepository;
 				this.logger.info(
-					`Recovered repository ${sessionRepository.id} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
+					`Recovered repository ${sessionPrimaryRepository.id} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
 				);
 			}
 
@@ -2302,14 +2314,14 @@ ${taskSection}`;
 			// Fallback: search session manager for sessions matching this issue
 			const sessions =
 				this.getAgentSessionManager().getSessionsByIssueId(issueId);
-			const sessionRepository =
+			const sessionPrimaryRepository =
 				sessions.length > 0 && sessions[0]
-					? this.resolveSessionRepositories(sessions[0])[0]
+					? this.resolveSessionRepositoriesForContinuation(sessions[0])[0]
 					: undefined;
-			if (sessionRepository) {
-				repository = sessionRepository;
+			if (sessionPrimaryRepository) {
+				repository = sessionPrimaryRepository;
 				this.logger.info(
-					`Recovered repository ${sessionRepository.id} for issue update ${issueIdentifier} from session manager`,
+					`Recovered repository ${sessionPrimaryRepository.id} for issue update ${issueIdentifier} from session manager`,
 				);
 			}
 
@@ -2437,7 +2449,7 @@ ${taskSection}`;
 
 				await this.handlePromptWithStreamingCheck(
 					session,
-					repository,
+					this.resolveSessionRepositoriesForContinuation(session),
 					linearAgentActivitySessionId,
 					agentSessionManager,
 					promptBody,
@@ -2535,15 +2547,14 @@ ${taskSection}`;
 			},
 			async (parentSessionId, prompt, childSessionId) => {
 				const childSession = manager.getSession(childSessionId);
-				const childRepo =
-					(childSession
-						? this.resolveSessionRepositories(childSession)[0]
-						: undefined) || this.getFallbackRepositoryConfig();
+				const childRepositories = childSession
+					? this.resolveSessionRepositoriesForContinuation(childSession)
+					: [this.getFallbackRepositoryConfig()];
 				await this.handleResumeParentSession(
 					parentSessionId,
 					prompt,
 					childSessionId,
-					childRepo,
+					childRepositories,
 					manager,
 				);
 			},
@@ -2553,13 +2564,12 @@ ${taskSection}`;
 
 		if (typeof manager.on === "function") {
 			manager.on("subroutineComplete", async ({ sessionId, session }) => {
-				const sessionRepo =
-					this.resolveSessionRepositories(session)[0] ||
-					this.getFallbackRepositoryConfig();
+				const sessionRepositories =
+					this.resolveSessionRepositoriesForContinuation(session);
 				await this.handleSubroutineTransition(
 					sessionId,
 					session,
-					sessionRepo,
+					sessionRepositories,
 					manager,
 				);
 			});
@@ -2573,16 +2583,15 @@ ${taskSection}`;
 					iteration,
 					maxIterations,
 				}) => {
-					const sessionRepo =
-						this.resolveSessionRepositories(session)[0] ||
-						this.getFallbackRepositoryConfig();
+					const sessionRepositories =
+						this.resolveSessionRepositoriesForContinuation(session);
 					this.logger.info(
 						`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
 					);
 					await this.handleValidationLoopFixer(
 						sessionId,
 						session,
-						sessionRepo,
+						sessionRepositories,
 						manager,
 						fixerPrompt,
 						iteration,
@@ -2593,16 +2602,15 @@ ${taskSection}`;
 			manager.on(
 				"validationLoopRerun",
 				async ({ sessionId, session, iteration }) => {
-					const sessionRepo =
-						this.resolveSessionRepositories(session)[0] ||
-						this.getFallbackRepositoryConfig();
+					const sessionRepositories =
+						this.resolveSessionRepositoriesForContinuation(session);
 					this.logger.info(
 						`Validation loop re-running verifications (iteration ${iteration})`,
 					);
 					await this.handleValidationLoopRerun(
 						sessionId,
 						session,
-						sessionRepo,
+						sessionRepositories,
 						manager,
 					);
 				},
@@ -3646,7 +3654,7 @@ ${taskSection}`;
 		try {
 			await this.handlePromptWithStreamingCheck(
 				session,
-				primaryRepository,
+				normalizedRepositories,
 				sessionId,
 				agentSessionManager,
 				promptBody,
@@ -4458,9 +4466,8 @@ ${taskSection}`;
 			console.error(`[EdgeWorker] Child session ${childSessionId} not found`);
 			return false;
 		}
-		const childRepo =
-			this.resolveSessionRepositories(childSession)[0] ||
-			this.getFallbackRepositoryConfig();
+		const childRepositories =
+			this.resolveSessionRepositoriesForContinuation(childSession);
 
 		console.log(
 			`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
@@ -4517,7 +4524,7 @@ ${taskSection}`;
 
 		this.handlePromptWithStreamingCheck(
 			childSession,
-			childRepo,
+			childRepositories,
 			childSessionId,
 			childAgentSessionManager,
 			feedbackPrompt,
@@ -5861,7 +5868,7 @@ ${input.userComment}
 	 */
 	private async handlePromptWithStreamingCheck(
 		session: CyrusAgentSession,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[] | RepositoryConfig,
 		sessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
@@ -5873,6 +5880,10 @@ ${input.userComment}
 		commentTimestamp?: string,
 	): Promise<boolean> {
 		const log = this.logger.withContext({ sessionId });
+		const normalizedRepositories =
+			this.normalizeRepositoriesInput(repositories);
+		const primaryRepository =
+			normalizedRepositories[0] ?? this.getFallbackRepositoryConfig();
 		// Check if runner is actively running before routing
 		const existingRunner = session.agentRunner;
 		const isRunning = existingRunner?.isRunning() || false;
@@ -5884,7 +5895,7 @@ ${input.userComment}
 				sessionId,
 				agentSessionManager,
 				promptBody,
-				repository,
+				primaryRepository,
 			);
 			log.debug(`Routed procedure for ${logContext}`);
 		} else {
@@ -5918,7 +5929,7 @@ ${input.userComment}
 
 		await this.resumeAgentSession(
 			session,
-			repository,
+			normalizedRepositories,
 			sessionId,
 			agentSessionManager,
 			promptBody,
@@ -5952,7 +5963,7 @@ ${input.userComment}
 	 * Resume or create an Agent session with the given prompt
 	 * This is the core logic for handling prompted agent activities
 	 * @param session The Cyrus agent session
-	 * @param repository The repository configuration
+	 * @param repositories Repository configurations for the session context
 	 * @param sessionId The Linear agent session ID
 	 * @param agentSessionManager The agent session manager
 	 * @param promptBody The prompt text to send
@@ -5961,7 +5972,7 @@ ${input.userComment}
 	 */
 	async resumeAgentSession(
 		session: CyrusAgentSession,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[] | RepositoryConfig,
 		sessionId: string,
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
@@ -5973,11 +5984,15 @@ ${input.userComment}
 		commentTimestamp?: string,
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId });
-		const sessionRepositories = this.resolveSessionRepositories(
-			session,
-			repository,
-		);
-		const primaryRepository = sessionRepositories[0] ?? repository;
+		const normalizedRepositories =
+			this.normalizeRepositoriesInput(repositories);
+		const repositoriesFromSession = this.resolveSessionRepositories(session);
+		const sessionRepositories =
+			repositoriesFromSession.length > 0
+				? repositoriesFromSession
+				: normalizedRepositories;
+		const primaryRepository =
+			sessionRepositories[0] ?? this.getFallbackRepositoryConfig();
 		// Check for existing runner
 		const existingRunner = session.agentRunner;
 
@@ -6102,7 +6117,7 @@ ${input.userComment}
 		// For existing sessions, we still need labels for model override but ignore runner type
 		const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 			session,
-			this.resolveSessionRepositories(session, repository),
+			sessionRepositories,
 			sessionId,
 			systemPrompt,
 			allowedTools,

@@ -22,7 +22,7 @@ import type { SubroutineDefinition } from "./procedures/index.js";
 export interface PromptBuilderDeps {
 	logger: ILogger;
 	repositories: Map<string, RepositoryConfig>;
-	getIssueTracker: (repositoryId: string) => IIssueTrackerService | undefined;
+	getIssueTracker: () => IIssueTrackerService | undefined;
 	gitService: GitService;
 	config: EdgeWorkerConfig;
 }
@@ -59,9 +59,7 @@ export interface PromptResult {
 export class PromptBuilder {
 	private readonly logger: ILogger;
 	private readonly repositories: Map<string, RepositoryConfig>;
-	private readonly getIssueTracker: (
-		repositoryId: string,
-	) => IIssueTrackerService | undefined;
+	private readonly getIssueTracker: () => IIssueTrackerService | undefined;
 	private readonly gitService: GitService;
 	private readonly config: EdgeWorkerConfig;
 
@@ -333,7 +331,7 @@ export class PromptBuilder {
 			}
 
 			// Get IssueTrackerService for this repository
-			const issueTracker = this.getIssueTracker(repository.id);
+			const issueTracker = this.getIssueTracker();
 			if (!issueTracker) {
 				this.logger.error(
 					`No IssueTrackerService found for repository ${repository.id}`,
@@ -651,7 +649,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
-			const issueTracker = this.getIssueTracker(repository.id);
+			const issueTracker = this.getIssueTracker();
 			let commentThreads = "No comments yet.";
 
 			if (issueTracker && issue.id) {
