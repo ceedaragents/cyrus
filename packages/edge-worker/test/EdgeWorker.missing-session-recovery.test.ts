@@ -345,6 +345,12 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 				repository: mockRepository,
 				repositories: [mockRepository],
 				routingMethod: "team-based",
+				repositorySelections: [
+					{
+						repository: mockRepository,
+						routingMethod: "team-based",
+					},
+				],
 			});
 
 			const webhook = createPromptedWebhook();

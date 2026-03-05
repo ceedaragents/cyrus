@@ -15,6 +15,12 @@ type RepositorySelectionMethod =
 	| "workspace-fallback"
 	| "user-selected";
 
+type RepositorySelectionActivityInput = {
+	id: string;
+	name: string;
+	routingMethod: RepositorySelectionMethod;
+};
+
 export class ActivityPoster {
 	private getIssueTracker: () => IIssueTrackerService;
 	private repositories: Map<string, RepositoryConfig>;
@@ -101,17 +107,18 @@ export class ActivityPoster {
 		repositoryName: string,
 		selectionMethod: RepositorySelectionMethod,
 	): Promise<void> {
-		await this.postRepositorySelectionActivities(
-			sessionId,
-			[{ id: repositoryId, name: repositoryName }],
-			selectionMethod,
-		);
+		await this.postRepositorySelectionActivities(sessionId, [
+			{
+				id: repositoryId,
+				name: repositoryName,
+				routingMethod: selectionMethod,
+			},
+		]);
 	}
 
 	async postRepositorySelectionActivities(
 		sessionId: string,
-		repositories: Array<{ id: string; name: string }>,
-		selectionMethod: RepositorySelectionMethod,
+		repositories: RepositorySelectionActivityInput[],
 	): Promise<void> {
 		if (repositories.length === 0) {
 			return;
@@ -122,12 +129,13 @@ export class ActivityPoster {
 			`Posting repository selection activity for session ${sessionId} (${repositories.length} repositories)`,
 		);
 
-		const methodDisplay = this.getSelectionMethodDisplay(selectionMethod);
-		const names = repositories.map((repository) => repository.name);
-		const body =
-			names.length === 1 && names[0]
-				? `Repository "${names[0]}" has been ${methodDisplay}.`
-				: `Selected ${names.length} repositories (${methodDisplay}):\n- ${names.join("\n- ")}`;
+		const uniqueRoutingMethods = Array.from(
+			new Set(repositories.map((repository) => repository.routingMethod)),
+		);
+		const body = this.buildRepositorySelectionBody(
+			repositories,
+			uniqueRoutingMethods,
+		);
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -167,6 +175,38 @@ export class ActivityPoster {
 			return "matched via catch-all routing";
 		}
 		return "matched via workspace fallback";
+	}
+
+	private buildRepositorySelectionBody(
+		repositories: RepositorySelectionActivityInput[],
+		uniqueRoutingMethods: RepositorySelectionMethod[],
+	): string {
+		if (repositories.length === 1) {
+			const selection = repositories[0];
+			if (!selection) {
+				return "A repository was selected.";
+			}
+			const methodDisplay = this.getSelectionMethodDisplay(
+				selection.routingMethod,
+			);
+			return `Repository "${selection.name}" has been ${methodDisplay}.`;
+		}
+
+		if (uniqueRoutingMethods.length === 1 && uniqueRoutingMethods[0]) {
+			const methodDisplay = this.getSelectionMethodDisplay(
+				uniqueRoutingMethods[0],
+			);
+			return `Selected ${repositories.length} repositories (${methodDisplay}):\n- ${repositories
+				.map((repository) => repository.name)
+				.join("\n- ")}`;
+		}
+
+		return `Selected ${repositories.length} repositories via mixed routing:\n- ${repositories
+			.map(
+				(repository) =>
+					`${repository.name} (${this.getSelectionMethodDisplay(repository.routingMethod)})`,
+			)
+			.join("\n- ")}`;
 	}
 
 	async postSystemPromptSelectionThought(

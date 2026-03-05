@@ -130,6 +130,8 @@ import type {
 import {
 	RepositoryRouter,
 	type RepositoryRouterDeps,
+	type RepositoryRoutingMethod,
+	type RepositorySelection,
 } from "./RepositoryRouter.js";
 import { RunnerSelectionService } from "./RunnerSelectionService.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
@@ -2845,8 +2847,10 @@ ${taskSection}`;
 			}
 
 			if (routingResult.type === "selected") {
-				selectedRepositories = routingResult.repositories;
-				const routingMethod = routingResult.routingMethod;
+				const repositorySelections = routingResult.repositorySelections;
+				selectedRepositories = repositorySelections.map(
+					(selection) => selection.repository,
+				);
 
 				// Cache repositories for this issue
 				if (issueId) {
@@ -2861,8 +2865,7 @@ ${taskSection}`;
 				// Post one routing activity summarizing all selected repositories.
 				await this.postRepositorySelectionActivities(
 					webhook.agentSession.id,
-					selectedRepositories,
-					routingMethod,
+					repositorySelections,
 				);
 			}
 		}
@@ -3770,15 +3773,24 @@ ${taskSection}`;
 						);
 
 					if (routingResult.type === "selected") {
-						repositoriesForPrompt = routingResult.repositories;
+						repositoriesForPrompt = routingResult.repositorySelections.map(
+							(selection) => selection.repository,
+						);
 						this.repositoryRouter.getIssueRepositoryCache().set(
 							issueId,
 							repositoriesForPrompt.map(
 								(repository: RepositoryConfig) => repository.id,
 							),
 						);
+						const routingMethods = Array.from(
+							new Set(
+								routingResult.repositorySelections.map(
+									(selection) => selection.routingMethod,
+								),
+							),
+						).join(", ");
 						this.logger.info(
-							`Recovered ${repositoriesForPrompt.length} repository context(s) for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
+							`Recovered ${repositoriesForPrompt.length} repository context(s) for issue ${issueId} via fallback routing (${routingMethods})`,
 						);
 					}
 				} catch (error) {
@@ -5707,15 +5719,7 @@ ${input.userComment}
 		sessionId: string,
 		repositoryId: string,
 		repositoryName: string,
-		selectionMethod:
-			| "description-tag"
-			| "label-based"
-			| "project-based"
-			| "team-based"
-			| "team-prefix"
-			| "catch-all"
-			| "workspace-fallback"
-			| "user-selected",
+		selectionMethod: RepositoryRoutingMethod | "user-selected",
 	): Promise<void> {
 		return this.activityPoster.postRepositorySelectionActivity(
 			sessionId,
@@ -5727,24 +5731,15 @@ ${input.userComment}
 
 	private async postRepositorySelectionActivities(
 		sessionId: string,
-		repositories: RepositoryConfig[],
-		selectionMethod:
-			| "description-tag"
-			| "label-based"
-			| "project-based"
-			| "team-based"
-			| "team-prefix"
-			| "catch-all"
-			| "workspace-fallback"
-			| "user-selected",
+		repositorySelections: RepositorySelection[],
 	): Promise<void> {
 		return this.activityPoster.postRepositorySelectionActivities(
 			sessionId,
-			repositories.map((repository) => ({
-				id: repository.id,
-				name: repository.name,
+			repositorySelections.map((selection) => ({
+				id: selection.repository.id,
+				name: selection.repository.name,
+				routingMethod: selection.routingMethod,
 			})),
-			selectionMethod,
 		);
 	}
 

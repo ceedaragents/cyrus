@@ -12,19 +12,27 @@ import {
 /**
  * Repository routing result types
  */
+export type RepositoryRoutingMethod =
+	| "description-tag"
+	| "label-based"
+	| "project-based"
+	| "team-based"
+	| "team-prefix"
+	| "catch-all"
+	| "workspace-fallback";
+
+export interface RepositorySelection {
+	repository: RepositoryConfig;
+	routingMethod: RepositoryRoutingMethod;
+}
+
 export type RepositoryRoutingResult =
 	| {
 			type: "selected";
 			repository: RepositoryConfig;
 			repositories: RepositoryConfig[];
-			routingMethod:
-				| "description-tag"
-				| "label-based"
-				| "project-based"
-				| "team-based"
-				| "team-prefix"
-				| "catch-all"
-				| "workspace-fallback";
+			routingMethod: RepositoryRoutingMethod;
+			repositorySelections: RepositorySelection[];
 	  }
 	| { type: "needs_selection"; workspaceRepos: RepositoryConfig[] }
 	| { type: "none" };
@@ -80,6 +88,27 @@ export class RepositoryRouter {
 		logger?: ILogger,
 	) {
 		this.logger = logger ?? createLogger({ component: "RepositoryRouter" });
+	}
+
+	private buildSelectedResult(
+		repositories: RepositoryConfig[],
+		routingMethod: RepositoryRoutingMethod,
+		preferredRepository?: RepositoryConfig,
+	): RepositoryRoutingResult {
+		const repository = preferredRepository ?? repositories[0];
+		if (!repository) {
+			return { type: "none" };
+		}
+		return {
+			type: "selected",
+			repository,
+			repositories,
+			routingMethod,
+			repositorySelections: repositories.map((selectedRepository) => ({
+				repository: selectedRepository,
+				routingMethod,
+			})),
+		};
 	}
 
 	/**
@@ -156,12 +185,7 @@ export class RepositoryRouter {
 		const workspaceId = webhook.organizationId;
 		if (!workspaceId) {
 			return repos[0]
-				? {
-						type: "selected",
-						repository: repos[0],
-						repositories: [repos[0]],
-						routingMethod: "workspace-fallback",
-					}
+				? this.buildSelectedResult([repos[0]], "workspace-fallback", repos[0])
 				: { type: "none" };
 		}
 
@@ -177,12 +201,7 @@ export class RepositoryRouter {
 					this.logger.info(
 						`Repository selected: ${repo.name} (existing active session)`,
 					);
-					return {
-						type: "selected",
-						repository: repo,
-						repositories: [repo],
-						routingMethod: "workspace-fallback",
-					};
+					return this.buildSelectedResult([repo], "workspace-fallback", repo);
 				}
 			}
 		}
@@ -203,12 +222,11 @@ export class RepositoryRouter {
 			this.logger.info(
 				`Repository selected: ${descriptionTagRepo.name} (description-tag routing)`,
 			);
-			return {
-				type: "selected",
-				repository: descriptionTagRepo,
-				repositories: [descriptionTagRepo],
-				routingMethod: "description-tag",
-			};
+			return this.buildSelectedResult(
+				[descriptionTagRepo],
+				"description-tag",
+				descriptionTagRepo,
+			);
 		}
 
 		// Priority 2: Check routing labels
@@ -221,12 +239,11 @@ export class RepositoryRouter {
 			this.logger.info(
 				`Repository selected: ${labelMatchedRepo.name} (label-based routing)`,
 			);
-			return {
-				type: "selected",
-				repository: labelMatchedRepo,
-				repositories: [labelMatchedRepo],
-				routingMethod: "label-based",
-			};
+			return this.buildSelectedResult(
+				[labelMatchedRepo],
+				"label-based",
+				labelMatchedRepo,
+			);
 		}
 
 		// Priority 3: Check project-based routing
@@ -240,12 +257,11 @@ export class RepositoryRouter {
 				this.logger.info(
 					`Repository selected: ${projectMatchedRepo.name} (project-based routing)`,
 				);
-				return {
-					type: "selected",
-					repository: projectMatchedRepo,
-					repositories: [projectMatchedRepo],
-					routingMethod: "project-based",
-				};
+				return this.buildSelectedResult(
+					[projectMatchedRepo],
+					"project-based",
+					projectMatchedRepo,
+				);
 			}
 		}
 
@@ -259,12 +275,11 @@ export class RepositoryRouter {
 				this.logger.info(
 					`Repository selected: ${teamMatchedRepo.name} (team-based routing)`,
 				);
-				return {
-					type: "selected",
-					repository: teamMatchedRepo,
-					repositories: [teamMatchedRepo],
-					routingMethod: "team-based",
-				};
+				return this.buildSelectedResult(
+					[teamMatchedRepo],
+					"team-based",
+					teamMatchedRepo,
+				);
 			}
 		}
 
@@ -278,12 +293,7 @@ export class RepositoryRouter {
 					this.logger.info(
 						`Repository selected: ${repo.name} (team prefix routing)`,
 					);
-					return {
-						type: "selected",
-						repository: repo,
-						repositories: [repo],
-						routingMethod: "team-prefix",
-					};
+					return this.buildSelectedResult([repo], "team-prefix", repo);
 				}
 			}
 		}
@@ -301,12 +311,11 @@ export class RepositoryRouter {
 			this.logger.info(
 				`Repository selected: ${catchAllRepo.name} (workspace catch-all)`,
 			);
-			return {
-				type: "selected",
-				repository: catchAllRepo,
-				repositories: [catchAllRepo],
-				routingMethod: "catch-all",
-			};
+			return this.buildSelectedResult(
+				[catchAllRepo],
+				"catch-all",
+				catchAllRepo,
+			);
 		}
 
 		// Multiple repositories with no routing match - run the session across all repositories.
@@ -318,12 +327,11 @@ export class RepositoryRouter {
 			if (!primaryRepository) {
 				return { type: "none" };
 			}
-			return {
-				type: "selected",
-				repository: primaryRepository,
-				repositories: workspaceRepos,
-				routingMethod: "workspace-fallback",
-			};
+			return this.buildSelectedResult(
+				workspaceRepos,
+				"workspace-fallback",
+				primaryRepository,
+			);
 		}
 
 		// Final fallback to first workspace repo
@@ -332,12 +340,11 @@ export class RepositoryRouter {
 			this.logger.info(
 				`Repository selected: ${fallbackRepo.name} (workspace fallback)`,
 			);
-			return {
-				type: "selected",
-				repository: fallbackRepo,
-				repositories: [fallbackRepo],
-				routingMethod: "workspace-fallback",
-			};
+			return this.buildSelectedResult(
+				[fallbackRepo],
+				"workspace-fallback",
+				fallbackRepo,
+			);
 		}
 
 		return { type: "none" };
