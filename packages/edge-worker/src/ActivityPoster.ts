@@ -5,6 +5,16 @@ import type {
 	RepositoryConfig,
 } from "cyrus-core";
 
+type RepositorySelectionMethod =
+	| "description-tag"
+	| "label-based"
+	| "project-based"
+	| "team-based"
+	| "team-prefix"
+	| "catch-all"
+	| "workspace-fallback"
+	| "user-selected";
+
 export class ActivityPoster {
 	private getIssueTracker: () => IIssueTrackerService;
 	private repositories: Map<string, RepositoryConfig>;
@@ -89,39 +99,35 @@ export class ActivityPoster {
 		sessionId: string,
 		repositoryId: string,
 		repositoryName: string,
-		selectionMethod:
-			| "description-tag"
-			| "label-based"
-			| "project-based"
-			| "team-based"
-			| "team-prefix"
-			| "catch-all"
-			| "workspace-fallback"
-			| "user-selected",
+		selectionMethod: RepositorySelectionMethod,
 	): Promise<void> {
+		await this.postRepositorySelectionActivities(
+			sessionId,
+			[{ id: repositoryId, name: repositoryName }],
+			selectionMethod,
+		);
+	}
+
+	async postRepositorySelectionActivities(
+		sessionId: string,
+		repositories: Array<{ id: string; name: string }>,
+		selectionMethod: RepositorySelectionMethod,
+	): Promise<void> {
+		if (repositories.length === 0) {
+			return;
+		}
+
 		const issueTracker = this.getIssueTracker();
 		this.logger.debug(
-			`Posting repository selection activity for session ${sessionId} (repository ${repositoryId})`,
+			`Posting repository selection activity for session ${sessionId} (${repositories.length} repositories)`,
 		);
 
-		let methodDisplay: string;
-		if (selectionMethod === "user-selected") {
-			methodDisplay = "selected by user";
-		} else if (selectionMethod === "description-tag") {
-			methodDisplay = "matched via [repo=...] tag in issue description";
-		} else if (selectionMethod === "label-based") {
-			methodDisplay = "matched via label-based routing";
-		} else if (selectionMethod === "project-based") {
-			methodDisplay = "matched via project-based routing";
-		} else if (selectionMethod === "team-based") {
-			methodDisplay = "matched via team-based routing";
-		} else if (selectionMethod === "team-prefix") {
-			methodDisplay = "matched via team prefix routing";
-		} else if (selectionMethod === "catch-all") {
-			methodDisplay = "matched via catch-all routing";
-		} else {
-			methodDisplay = "matched via workspace fallback";
-		}
+		const methodDisplay = this.getSelectionMethodDisplay(selectionMethod);
+		const names = repositories.map((repository) => repository.name);
+		const body =
+			names.length === 1 && names[0]
+				? `Repository "${names[0]}" has been ${methodDisplay}.`
+				: `Selected ${names.length} repositories (${methodDisplay}):\n- ${names.join("\n- ")}`;
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -129,11 +135,38 @@ export class ActivityPoster {
 				agentSessionId: sessionId,
 				content: {
 					type: "thought",
-					body: `Repository "${repositoryName}" has been ${methodDisplay}.`,
+					body,
 				},
 			},
 			"repository selection",
 		);
+	}
+
+	private getSelectionMethodDisplay(
+		selectionMethod: RepositorySelectionMethod,
+	): string {
+		if (selectionMethod === "user-selected") {
+			return "selected by user";
+		}
+		if (selectionMethod === "description-tag") {
+			return "matched via [repo=...] tag in issue description";
+		}
+		if (selectionMethod === "label-based") {
+			return "matched via label-based routing";
+		}
+		if (selectionMethod === "project-based") {
+			return "matched via project-based routing";
+		}
+		if (selectionMethod === "team-based") {
+			return "matched via team-based routing";
+		}
+		if (selectionMethod === "team-prefix") {
+			return "matched via team prefix routing";
+		}
+		if (selectionMethod === "catch-all") {
+			return "matched via catch-all routing";
+		}
+		return "matched via workspace fallback";
 	}
 
 	async postSystemPromptSelectionThought(

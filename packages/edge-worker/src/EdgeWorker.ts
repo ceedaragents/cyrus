@@ -2858,15 +2858,12 @@ ${taskSection}`;
 					);
 				}
 
-				// Post agent activity showing auto-matched routing for each selected repository.
-				for (const repository of selectedRepositories) {
-					await this.postRepositorySelectionActivity(
-						webhook.agentSession.id,
-						repository.id,
-						repository.name,
-						routingMethod,
-					);
-				}
+				// Post one routing activity summarizing all selected repositories.
+				await this.postRepositorySelectionActivities(
+					webhook.agentSession.id,
+					selectedRepositories,
+					routingMethod,
+				);
 			}
 		}
 
@@ -5724,6 +5721,29 @@ ${input.userComment}
 			sessionId,
 			repositoryId,
 			repositoryName,
+			selectionMethod,
+		);
+	}
+
+	private async postRepositorySelectionActivities(
+		sessionId: string,
+		repositories: RepositoryConfig[],
+		selectionMethod:
+			| "description-tag"
+			| "label-based"
+			| "project-based"
+			| "team-based"
+			| "team-prefix"
+			| "catch-all"
+			| "workspace-fallback"
+			| "user-selected",
+	): Promise<void> {
+		return this.activityPoster.postRepositorySelectionActivities(
+			sessionId,
+			repositories.map((repository) => ({
+				id: repository.id,
+				name: repository.name,
+			})),
 			selectionMethod,
 		);
 	}
