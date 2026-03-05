@@ -146,6 +146,18 @@ export interface IMessageFormatter {
 		result: string,
 		isError: boolean,
 	): string;
+	/**
+	 * Format a group of parallel tool calls as a unified view.
+	 * Used for ephemeral activities that show all parallel tools in a tree-like structure.
+	 */
+	formatParallelToolGroup(
+		tools: Array<{
+			name: string;
+			input: any;
+			status: "pending" | "completed";
+			isError?: boolean;
+		}>,
+	): string;
 }
 
 /**

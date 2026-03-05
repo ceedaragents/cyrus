@@ -553,4 +553,38 @@ export class GeminiMessageFormatter implements IMessageFormatter {
 			return result || "";
 		}
 	}
+
+	formatParallelToolGroup(
+		tools: Array<{
+			name: string;
+			input: any;
+			status: "pending" | "completed";
+			isError?: boolean;
+		}>,
+	): string {
+		const totalTools = tools.length;
+		const completedCount = tools.filter((t) => t.status === "completed").length;
+
+		const toolNames = tools.map((t) => t.name.replace("↪ ", ""));
+		const uniqueNames = [...new Set(toolNames)];
+		const headerToolName =
+			uniqueNames.length === 1 ? `${uniqueNames[0]} calls` : "parallel tools";
+
+		let body = `**Running ${totalTools} ${headerToolName}** (${completedCount}/${totalTools} complete)\n`;
+
+		for (let i = 0; i < tools.length; i++) {
+			const tool = tools[i]!;
+			const isLast = i === tools.length - 1;
+			const prefix = isLast ? "└─" : "├─";
+			const statusIcon =
+				tool.status === "completed" ? (tool.isError ? "❌" : "✅") : "⏳";
+			const displayName = tool.name.replace("↪ ", "");
+			const param = this.formatToolParameter(tool.name, tool.input);
+			const shortParam =
+				param.length > 80 ? `${param.substring(0, 77)}…` : param;
+			body += `${prefix} ${statusIcon} **${displayName}**: ${shortParam}\n`;
+		}
+
+		return body;
+	}
 }

@@ -60,6 +60,21 @@ export interface IMessageFormatter {
 		result: string,
 		isError: boolean,
 	): string;
+
+	/**
+	 * Format a group of parallel tool calls as a unified view.
+	 * Used for ephemeral activities that show all parallel tools in a tree-like structure.
+	 * @param tools - Array of tool info with status
+	 * @returns Formatted markdown string showing the parallel tools
+	 */
+	formatParallelToolGroup(
+		tools: Array<{
+			name: string;
+			input: any;
+			status: "pending" | "completed";
+			isError?: boolean;
+		}>,
+	): string;
 }
 
 /**
@@ -646,5 +661,48 @@ export class ClaudeMessageFormatter implements IMessageFormatter {
 			);
 			return result || "";
 		}
+	}
+
+	/**
+	 * Format a group of parallel tool calls as a unified view.
+	 * Produces a tree-like structure similar to Claude Code's native parallel agent display.
+	 */
+	formatParallelToolGroup(
+		tools: Array<{
+			name: string;
+			input: any;
+			status: "pending" | "completed";
+			isError?: boolean;
+		}>,
+	): string {
+		const totalTools = tools.length;
+		const completedCount = tools.filter((t) => t.status === "completed").length;
+
+		// Determine the dominant tool type for the header
+		const toolNames = tools.map((t) => t.name.replace("↪ ", ""));
+		const uniqueNames = [...new Set(toolNames)];
+		const headerToolName =
+			uniqueNames.length === 1 ? `${uniqueNames[0]} calls` : "parallel tools";
+
+		let body = `**Running ${totalTools} ${headerToolName}** (${completedCount}/${totalTools} complete)\n`;
+
+		for (let i = 0; i < tools.length; i++) {
+			const tool = tools[i]!;
+			const isLast = i === tools.length - 1;
+			const prefix = isLast ? "└─" : "├─";
+
+			const statusIcon =
+				tool.status === "completed" ? (tool.isError ? "❌" : "✅") : "⏳";
+
+			const displayName = tool.name.replace("↪ ", "");
+			const param = this.formatToolParameter(tool.name, tool.input);
+			// Truncate parameter for readability
+			const shortParam =
+				param.length > 80 ? `${param.substring(0, 77)}…` : param;
+
+			body += `${prefix} ${statusIcon} **${displayName}**: ${shortParam}\n`;
+		}
+
+		return body;
 	}
 }

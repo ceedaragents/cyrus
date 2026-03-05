@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added parallel tool group tracking to `AgentSessionManager`: new `parallelToolGroups` Map state, `extractAllToolInfo()` and `extractAllToolResultInfo()` methods to detect multiple `tool_use`/`tool_result` blocks per message (previous `extractToolInfo()` used `.find()` which only captured the first block). Added `createSessionEntryForTool()`/`createSessionEntryForToolResult()` for individual block processing. Modified `handleClaudeMessage()` assistant/user cases to detect and route multi-block messages. Modified `syncEntryToActivitySink()` to suppress individual activities for parallel groups and post unified ephemeral activities via `postParallelGroupActivity()`. Added `formatParallelToolGroup()` to `IMessageFormatter` interface in `packages/core/src/agent-runner-types.ts` and implemented in all 4 runners (Claude, Codex, Cursor, Gemini) with tree-like markdown formatting (`├─`/`└─` with `⏳`/`✅`/`❌` status icons). Added 11 tests in `AgentSessionManager.parallel-tools.test.ts`. ([CYPACK-886](https://linear.app/ceedar/issue/CYPACK-886), [#937](https://github.com/ceedaragents/cyrus/pull/937))
+
 ## [0.2.28] - 2026-03-04
 
 ### Added

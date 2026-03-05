@@ -102,6 +102,21 @@ export class AgentSessionManager extends EventEmitter {
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
+	/** Tracks groups of parallel tool calls per session for unified ephemeral display */
+	private parallelToolGroups: Map<
+		string,
+		{
+			tools: Map<
+				string,
+				{
+					name: string;
+					input: any;
+					status: "pending" | "completed";
+					isError?: boolean;
+				}
+			>;
+		}
+	> = new Map();
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -341,6 +356,88 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Create a session entry for a specific tool_use block (used for parallel tool calls).
+	 * Unlike createSessionEntry which extracts only the first tool, this takes a specific tool.
+	 */
+	private async createSessionEntryForTool(
+		sessionId: string,
+		sdkMessage: SDKAssistantMessage,
+		toolInfo: { id: string; name: string; input: any },
+	): Promise<CyrusAgentSessionEntry> {
+		const sdkError = sdkMessage.error;
+
+		const session = this.sessions.get(sessionId);
+		const runner = session?.agentRunner;
+		const runnerType =
+			runner?.constructor.name === "GeminiRunner"
+				? "gemini"
+				: runner?.constructor.name === "CodexRunner"
+					? "codex"
+					: runner?.constructor.name === "CursorRunner"
+						? "cursor"
+						: "claude";
+
+		return {
+			...(runnerType === "gemini"
+				? { geminiSessionId: sdkMessage.session_id }
+				: runnerType === "codex"
+					? { codexSessionId: sdkMessage.session_id }
+					: runnerType === "cursor"
+						? { cursorSessionId: sdkMessage.session_id }
+						: { claudeSessionId: sdkMessage.session_id }),
+			type: "assistant",
+			content: this.extractContent(sdkMessage),
+			metadata: {
+				timestamp: Date.now(),
+				parentToolUseId: sdkMessage.parent_tool_use_id || undefined,
+				toolUseId: toolInfo.id,
+				toolName: toolInfo.name,
+				toolInput: toolInfo.input,
+				...(sdkError && { sdkError }),
+			},
+		};
+	}
+
+	/**
+	 * Create a session entry for a specific tool_result block (used for parallel tool results).
+	 * Unlike createSessionEntry which extracts only the first result, this takes a specific result.
+	 */
+	private async createSessionEntryForToolResult(
+		sessionId: string,
+		sdkMessage: SDKUserMessage,
+		resultInfo: { toolUseId: string; isError: boolean; content?: string },
+	): Promise<CyrusAgentSessionEntry> {
+		const session = this.sessions.get(sessionId);
+		const runner = session?.agentRunner;
+		const runnerType =
+			runner?.constructor.name === "GeminiRunner"
+				? "gemini"
+				: runner?.constructor.name === "CodexRunner"
+					? "codex"
+					: runner?.constructor.name === "CursorRunner"
+						? "cursor"
+						: "claude";
+
+		return {
+			...(runnerType === "gemini"
+				? { geminiSessionId: sdkMessage.session_id }
+				: runnerType === "codex"
+					? { codexSessionId: sdkMessage.session_id }
+					: runnerType === "cursor"
+						? { cursorSessionId: sdkMessage.session_id }
+						: { claudeSessionId: sdkMessage.session_id }),
+			type: "user",
+			content: resultInfo.content || this.extractContent(sdkMessage),
+			metadata: {
+				timestamp: Date.now(),
+				parentToolUseId: sdkMessage.parent_tool_use_id || undefined,
+				toolUseId: resultInfo.toolUseId,
+				toolResultError: resultInfo.isError,
+			},
+		};
+	}
+
+	/**
 	 * Complete a session from Claude result message
 	 */
 	async completeSession(
@@ -358,6 +455,9 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Clear any active Task when session completes
 		this.activeTasksBySession.delete(sessionId);
+
+		// Clear parallel tool group tracking for this session
+		this.parallelToolGroups.delete(sessionId);
 
 		// Clear tool calls tracking for this session
 		// Note: We should ideally track by session, but for now clearing all is safer
@@ -876,20 +976,50 @@ export class AgentSessionManager extends EventEmitter {
 					break;
 
 				case "user": {
-					const userEntry = await this.createSessionEntry(
-						sessionId,
-						message as SDKUserMessage,
-					);
-					await this.syncEntryToActivitySink(userEntry, sessionId);
+					const sdkUserMsg = message as SDKUserMessage;
+					const allToolResults = this.extractAllToolResultInfo(sdkUserMsg);
+
+					if (allToolResults.length > 1) {
+						// Multiple parallel tool results in one message — process each
+						for (const resultInfo of allToolResults) {
+							const entry = await this.createSessionEntryForToolResult(
+								sessionId,
+								sdkUserMsg,
+								resultInfo,
+							);
+							await this.syncEntryToActivitySink(entry, sessionId);
+						}
+					} else {
+						const userEntry = await this.createSessionEntry(
+							sessionId,
+							sdkUserMsg,
+						);
+						await this.syncEntryToActivitySink(userEntry, sessionId);
+					}
 					break;
 				}
 
 				case "assistant": {
-					const assistantEntry = await this.createSessionEntry(
-						sessionId,
-						message as SDKAssistantMessage,
-					);
-					await this.syncEntryToActivitySink(assistantEntry, sessionId);
+					const sdkAssistantMsg = message as SDKAssistantMessage;
+					const allToolUses = this.extractAllToolInfo(sdkAssistantMsg);
+
+					if (allToolUses.length > 1) {
+						// Multiple parallel tool calls in one message — process each
+						for (const toolInfo of allToolUses) {
+							const entry = await this.createSessionEntryForTool(
+								sessionId,
+								sdkAssistantMsg,
+								toolInfo,
+							);
+							await this.syncEntryToActivitySink(entry, sessionId);
+						}
+					} else {
+						const assistantEntry = await this.createSessionEntry(
+							sessionId,
+							sdkAssistantMsg,
+						);
+						await this.syncEntryToActivitySink(assistantEntry, sessionId);
+					}
 					break;
 				}
 
@@ -1081,6 +1211,64 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Extract ALL tool_use blocks from a Claude assistant message (not just the first).
+	 * Returns an array of tool info objects for all parallel tool calls.
+	 */
+	private extractAllToolInfo(
+		sdkMessage: SDKAssistantMessage,
+	): Array<{ id: string; name: string; input: any }> {
+		const message = sdkMessage.message as APIAssistantMessage;
+		const tools: Array<{ id: string; name: string; input: any }> = [];
+
+		if (Array.isArray(message.content)) {
+			for (const block of message.content) {
+				if (
+					block.type === "tool_use" &&
+					"id" in block &&
+					"name" in block &&
+					"input" in block
+				) {
+					tools.push({
+						id: block.id,
+						name: block.name,
+						input: block.input,
+					});
+				}
+			}
+		}
+		return tools;
+	}
+
+	/**
+	 * Extract ALL tool_result blocks from a Claude user message (not just the first).
+	 * Returns an array of tool result info objects for all parallel tool results.
+	 */
+	private extractAllToolResultInfo(
+		sdkMessage: SDKUserMessage,
+	): Array<{ toolUseId: string; isError: boolean; content?: string }> {
+		const message = sdkMessage.message as APIUserMessage;
+		const results: Array<{
+			toolUseId: string;
+			isError: boolean;
+			content?: string;
+		}> = [];
+
+		if (Array.isArray(message.content)) {
+			for (const block of message.content) {
+				if (block.type === "tool_result" && "tool_use_id" in block) {
+					results.push({
+						toolUseId: block.tool_use_id,
+						isError: "is_error" in block && block.is_error === true,
+						content:
+							typeof block.content === "string" ? block.content : undefined,
+					});
+				}
+			}
+		}
+		return results;
+	}
+
+	/**
 	 * Extract tool result content and error status from session entry
 	 */
 	private extractToolResult(
@@ -1120,6 +1308,39 @@ export class AgentSessionManager extends EventEmitter {
 			let ephemeral = false;
 			switch (entry.type) {
 				case "user": {
+					// --- Parallel tool group handling for tool results ---
+					if (entry.metadata?.toolUseId) {
+						const group = this.parallelToolGroups.get(sessionId);
+						if (group?.tools.has(entry.metadata.toolUseId)) {
+							const isParallel = group.tools.size > 1;
+
+							if (isParallel) {
+								const toolEntry = group.tools.get(entry.metadata.toolUseId)!;
+								toolEntry.status = "completed";
+								toolEntry.isError = entry.metadata.toolResultError || false;
+
+								// Clean up tool call tracking for parallel tools
+								this.toolCallsByToolUseId.delete(entry.metadata.toolUseId);
+
+								const pendingCount = [...group.tools.values()].filter(
+									(t) => t.status === "pending",
+								).length;
+
+								if (pendingCount > 0) {
+									// Still pending tools — post updated ephemeral
+									await this.postParallelGroupActivity(sessionId);
+								} else {
+									// All tools completed — clear group, let next activity replace ephemeral
+									this.parallelToolGroups.delete(sessionId);
+								}
+								return; // Don't post individual result for grouped tools
+							}
+
+							// Single tool in group — clear and fall through to normal handling
+							this.parallelToolGroups.delete(sessionId);
+						}
+					}
+
 					const activeTaskId = this.activeTasksBySession.get(sessionId);
 					if (activeTaskId && activeTaskId === entry.metadata?.toolUseId) {
 						content = {
@@ -1304,6 +1525,44 @@ export class AgentSessionManager extends EventEmitter {
 								name: storedName,
 								input: entry.metadata.toolInput || entry.content,
 							});
+
+							// --- Parallel tool group tracking ---
+							// Tools that have their own non-standard posting (TaskCreate, TaskUpdate, etc.)
+							// still participate in parallel groups for display purposes.
+							const toolInput = entry.metadata.toolInput || entry.content;
+
+							// Get or create the parallel group for this session
+							let group = this.parallelToolGroups.get(sessionId);
+							if (!group) {
+								group = { tools: new Map() };
+								this.parallelToolGroups.set(sessionId, group);
+							}
+
+							// If there are completed tools from a previous batch, clear them
+							const allCompleted =
+								group.tools.size > 0 &&
+								[...group.tools.values()].every(
+									(t) => t.status === "completed",
+								);
+							if (allCompleted) {
+								group.tools.clear();
+							}
+
+							group.tools.set(entry.metadata.toolUseId, {
+								name: storedName,
+								input: toolInput,
+								status: "pending",
+							});
+
+							// Check if there are other pending tools → parallel group
+							const pendingTools = [...group.tools.values()].filter(
+								(t) => t.status === "pending",
+							);
+							if (pendingTools.length > 1) {
+								// Multiple pending tools — post unified ephemeral
+								await this.postParallelGroupActivity(sessionId);
+								return; // Don't post individual activity
+							}
 						}
 
 						// Skip AskUserQuestion tool - it's custom handled via Linear's select signal elicitation
@@ -1547,6 +1806,31 @@ export class AgentSessionManager extends EventEmitter {
 		} catch (error) {
 			log.error(`Failed to sync entry to activity sink:`, error);
 		}
+	}
+
+	/**
+	 * Post a unified ephemeral activity for a group of parallel tool calls.
+	 * Shows a tree-like view of all tools in the group with their status.
+	 */
+	private async postParallelGroupActivity(sessionId: string): Promise<void> {
+		const group = this.parallelToolGroups.get(sessionId);
+		if (!group || group.tools.size === 0) return;
+
+		const session = this.sessions.get(sessionId);
+		const formatter = session?.agentRunner?.getFormatter();
+		if (!formatter) return;
+
+		const tools = [...group.tools.values()];
+		const body = formatter.formatParallelToolGroup(tools);
+
+		await this.postActivity(
+			sessionId,
+			{
+				content: { type: "thought", body },
+				ephemeral: true,
+			},
+			"parallel-group",
+		);
 	}
 
 	/**
@@ -1821,6 +2105,7 @@ export class AgentSessionManager extends EventEmitter {
 				const log = this.sessionLog(sessionId);
 				this.sessions.delete(sessionId);
 				this.entries.delete(sessionId);
+				this.parallelToolGroups.delete(sessionId);
 				log.debug(`Cleaned up session`);
 			}
 		}
