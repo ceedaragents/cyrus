@@ -141,17 +141,6 @@ export class RepositoryRouter {
 	}
 
 	/**
-	 * Backward-compatible single-repository accessor.
-	 * @deprecated Use getCachedRepositories instead.
-	 */
-	getCachedRepository(
-		issueId: string,
-		repositoriesMap: Map<string, RepositoryConfig>,
-	): RepositoryConfig | null {
-		return this.getCachedRepositories(issueId, repositoriesMap)[0] ?? null;
-	}
-
-	/**
 	 * Determine repository for webhook using multi-priority routing:
 	 * Priority 0: Existing active sessions
 	 * Priority 1: Description tag (explicit [repo=...] in issue description)

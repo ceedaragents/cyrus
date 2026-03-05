@@ -306,7 +306,7 @@ describe("RepositoryRouter", () => {
 
 	describe("Cache Management", () => {
 		describe("when retrieving cached repositories", () => {
-			it("should return the cached repository when it exists in both cache and repository map", () => {
+			it("should return cached repositories when they exist in both cache and repository map", () => {
 				// Given: A repository and a populated cache
 				const repo = env
 					.repository("repo-1", "Cached Repo")
@@ -315,23 +315,23 @@ describe("RepositoryRouter", () => {
 				const reposMap = new Map([[repo.id, repo]]);
 				env.router.getIssueRepositoryCache().set("issue-1", [repo.id]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
-				// Then: Should return the cached repository
-				expect(result).toBe(repo);
+				// Then: Should return the cached repositories
+				expect(result).toEqual([repo]);
 			});
 
-			it("should return null when no cache entry exists for the issue", () => {
+			it("should return empty array when no cache entry exists for the issue", () => {
 				// Given: A repository but no cache entry
 				const repo = env.repository("repo-1", "Uncached Repo").build();
 				const reposMap = new Map([[repo.id, repo]]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
-				// Then: Should return null
-				expect(result).toBeNull();
+				// Then: Should return empty array
+				expect(result).toEqual([]);
 			});
 
 			it("should remove invalid cache entries when cached repository no longer exists", () => {
@@ -342,11 +342,11 @@ describe("RepositoryRouter", () => {
 					.getIssueRepositoryCache()
 					.set("issue-1", ["non-existent-repo"]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
-				// Then: Should return null and clean up cache
-				expect(result).toBeNull();
+				// Then: Should return empty array and clean up cache
+				expect(result).toEqual([]);
 				expect(env.router.getIssueRepositoryCache().has("issue-1")).toBe(false);
 			});
 		});
