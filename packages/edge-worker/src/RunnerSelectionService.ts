@@ -17,6 +17,12 @@ export class RunnerSelectionService {
 	private config: EdgeWorkerConfig;
 	private logger: ILogger;
 
+	private normalizeRepositories(
+		repositories: RepositoryConfig[] | RepositoryConfig,
+	): RepositoryConfig[] {
+		return Array.isArray(repositories) ? repositories : [repositories];
+	}
+
 	constructor(config: EdgeWorkerConfig, logger: ILogger) {
 		this.config = config;
 		this.logger = logger;
@@ -368,9 +374,9 @@ export class RunnerSelectionService {
 	}
 
 	/**
-	 * Build allowed tools list with Linear MCP tools automatically included
+	 * Resolve the base allowed tools for a single repository (without workspace MCP tools).
 	 */
-	public buildAllowedTools(
+	private resolveAllowedToolsForRepository(
 		repository: RepositoryConfig,
 		promptType?:
 			| "debugger"
@@ -425,29 +431,17 @@ export class RunnerSelectionService {
 			toolSource = "safe tools fallback";
 		}
 
-		// MCP tools that should always be available
-		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const defaultMcpTools = ["mcp__linear", "mcp__cyrus-tools"];
-
-		// Conditionally include Slack MCP tools when SLACK_BOT_TOKEN is available
-		if (process.env.SLACK_BOT_TOKEN?.trim()) {
-			defaultMcpTools.push("mcp__slack");
-		}
-
-		// Combine and deduplicate
-		const allTools = [...new Set([...baseTools, ...defaultMcpTools])];
-
 		this.logger.debug(
-			`Tool selection for ${repository.name}: ${allTools.length} tools from ${toolSource}`,
+			`Tool selection for ${repository.name}: ${baseTools.length} tools from ${toolSource}`,
 		);
 
-		return allTools;
+		return baseTools;
 	}
 
 	/**
-	 * Build disallowed tools list from repository and global config
+	 * Resolve the base disallowed tools for a single repository.
 	 */
-	public buildDisallowedTools(
+	private resolveDisallowedToolsForRepository(
 		repository: RepositoryConfig,
 		promptType?:
 			| "debugger"
@@ -508,6 +502,102 @@ export class RunnerSelectionService {
 		}
 
 		return disallowedTools;
+	}
+
+	/**
+	 * Build allowed tools list across repositories:
+	 * - Resolve presets per-repository first
+	 * - Union tools across repositories
+	 * - Add workspace-level MCP tools once
+	 */
+	public buildAllowedTools(
+		repositories: RepositoryConfig[] | RepositoryConfig,
+		promptType?:
+			| "debugger"
+			| "builder"
+			| "scoper"
+			| "orchestrator"
+			| "graphite-orchestrator",
+	): string[] {
+		const normalizedRepositories = this.normalizeRepositories(repositories);
+		const baseTools =
+			normalizedRepositories.length > 0
+				? Array.from(
+						new Set(
+							normalizedRepositories.flatMap((repository) =>
+								this.resolveAllowedToolsForRepository(repository, promptType),
+							),
+						),
+					)
+				: (() => {
+						const effectivePromptType =
+							promptType === "graphite-orchestrator"
+								? "orchestrator"
+								: promptType;
+						if (
+							effectivePromptType &&
+							this.config.promptDefaults?.[effectivePromptType]?.allowedTools
+						) {
+							return this.resolveToolPreset(
+								this.config.promptDefaults[effectivePromptType].allowedTools,
+							);
+						}
+						if (this.config.defaultAllowedTools) {
+							return this.config.defaultAllowedTools;
+						}
+						return getSafeTools();
+					})();
+
+		// Workspace MCP tools are always included once.
+		const defaultMcpTools = ["mcp__linear", "mcp__cyrus-tools"];
+		if (process.env.SLACK_BOT_TOKEN?.trim()) {
+			defaultMcpTools.push("mcp__slack");
+		}
+
+		return [...new Set([...baseTools, ...defaultMcpTools])];
+	}
+
+	/**
+	 * Build disallowed tools list across repositories:
+	 * - Resolve disallowed set per-repository first
+	 * - Intersect tools across repositories (only block when all repos block)
+	 */
+	public buildDisallowedTools(
+		repositories: RepositoryConfig[] | RepositoryConfig,
+		promptType?:
+			| "debugger"
+			| "builder"
+			| "scoper"
+			| "orchestrator"
+			| "graphite-orchestrator",
+	): string[] {
+		const normalizedRepositories = this.normalizeRepositories(repositories);
+		if (normalizedRepositories.length === 0) {
+			const effectivePromptType =
+				promptType === "graphite-orchestrator" ? "orchestrator" : promptType;
+			if (
+				effectivePromptType &&
+				this.config.promptDefaults?.[effectivePromptType]?.disallowedTools
+			) {
+				return this.config.promptDefaults[effectivePromptType].disallowedTools;
+			}
+			return this.config.defaultDisallowedTools || [];
+		}
+
+		const disallowedSets = normalizedRepositories.map(
+			(repository) =>
+				new Set(
+					this.resolveDisallowedToolsForRepository(repository, promptType),
+				),
+		);
+		const [firstSet, ...restSets] = disallowedSets;
+		if (!firstSet) {
+			return [];
+		}
+
+		return Array.from(firstSet).filter((tool) =>
+			restSets.every((set) => set.has(tool)),
+		);
 	}
 
 	/**

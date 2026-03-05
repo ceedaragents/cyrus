@@ -62,7 +62,7 @@ export interface SerializableEdgeWorkerState {
 	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
 	// Issue to repository mapping (for caching user repository selections)
-	issueRepositoryCache?: Record<string, string>;
+	issueRepositoryCache?: Record<string, string[] | string>;
 }
 
 /**
@@ -222,6 +222,7 @@ export class PersistenceManager {
 			createdAt: v2Session.createdAt,
 			updatedAt: v2Session.updatedAt,
 			workspace: v2Session.workspace,
+			repositories: [],
 			claudeSessionId: v2Session.claudeSessionId,
 			geminiSessionId: v2Session.geminiSessionId,
 			metadata: v2Session.metadata,

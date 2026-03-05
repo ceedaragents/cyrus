@@ -104,8 +104,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 			});
 
 			edgeWorker = new EdgeWorker(mockConfig);
-			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = (edgeWorker as any).sharedIssueTracker;
 
 			const result = await issueTracker?.fetchIssue("issue-123");
 
@@ -119,8 +118,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 			mockLinearClient.issue.mockRejectedValueOnce(error);
 
 			edgeWorker = new EdgeWorker(mockConfig);
-			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = (edgeWorker as any).sharedIssueTracker;
 
 			await expect(issueTracker?.fetchIssue("issue-123")).rejects.toThrow(
 				"Network error",
@@ -136,8 +134,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 			edgeWorker = new EdgeWorker(mockConfig);
 
 			// The issueTracker should be created but without OAuth config
-			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = (edgeWorker as any).sharedIssueTracker;
 			expect(issueTracker).toBeDefined();
 			// OAuth config should not be set (no refresh capability)
 			expect((issueTracker as any).oauthConfig).toBeUndefined();
@@ -151,8 +148,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 			edgeWorker = new EdgeWorker(mockConfig);
 
 			// The issueTracker should be created but without OAuth config
-			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = (edgeWorker as any).sharedIssueTracker;
 			expect(issueTracker).toBeDefined();
 			// OAuth config should not be set (no refresh capability)
 			expect((issueTracker as any).oauthConfig).toBeUndefined();
@@ -163,8 +159,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 		it("should configure OAuth with correct credentials", async () => {
 			edgeWorker = new EdgeWorker(mockConfig);
 
-			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = (edgeWorker as any).sharedIssueTracker;
 			const oauthConfig = (issueTracker as any).oauthConfig;
 
 			expect(oauthConfig).toBeDefined();

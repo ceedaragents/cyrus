@@ -267,7 +267,7 @@ Issue: {{issue_identifier}}`;
 			}),
 			getIssueLabels: vi.fn(),
 		};
-		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+		(edgeWorker as any).sharedIssueTracker = mockIssueTracker;
 	});
 
 	afterEach(() => {
@@ -815,10 +815,7 @@ Issue: {{issue_identifier}}`;
 				}),
 				getIssueLabels: vi.fn(),
 			};
-			(codexEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
-				mockIssueTracker,
-			);
+			(codexEdgeWorker as any).sharedIssueTracker = mockIssueTracker;
 
 			const mockIssue = createMockIssueWithLabels([]);
 			mockLinearClient.issue.mockResolvedValue(mockIssue);
@@ -863,10 +860,7 @@ Issue: {{issue_identifier}}`;
 				}),
 				getIssueLabels: vi.fn(),
 			};
-			(geminiEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
-				mockIssueTracker,
-			);
+			(geminiEdgeWorker as any).sharedIssueTracker = mockIssueTracker;
 
 			const mockIssue = createMockIssueWithLabels([]);
 			mockLinearClient.issue.mockResolvedValue(mockIssue);
@@ -911,10 +905,7 @@ Issue: {{issue_identifier}}`;
 				}),
 				getIssueLabels: vi.fn(),
 			};
-			(codexEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
-				mockIssueTracker,
-			);
+			(codexEdgeWorker as any).sharedIssueTracker = mockIssueTracker;
 
 			const mockIssue = createMockIssueWithLabels(["claude"]);
 			mockLinearClient.issue.mockResolvedValue(mockIssue);

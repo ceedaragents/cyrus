@@ -162,10 +162,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 
 		// Set up agent session managers (but WITHOUT cached repository mappings)
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
-			mockAgentSessionManager,
-		);
+		(edgeWorker as any).sharedAgentSessionManager = mockAgentSessionManager;
 
 		// Mock issue tracker
 		const mockIssueTracker = {
@@ -179,7 +176,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			}),
 			fetchComment: vi.fn().mockResolvedValue(null),
 		};
-		(edgeWorker as any).issueTrackers.set("test-repo", mockIssueTracker);
+		(edgeWorker as any).sharedIssueTracker = mockIssueTracker;
 	});
 
 	afterEach(() => {
@@ -346,6 +343,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			).mockResolvedValue({
 				type: "selected",
 				repository: mockRepository,
+				repositories: [mockRepository],
 				routingMethod: "team-based",
 			});
 
@@ -356,7 +354,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 
 			// Assert: Cache should now contain the mapping
 			// Currently FAILS because fallback is never attempted
-			expect(cache.get("issue-123")).toBe("test-repo");
+			expect(cache.get("issue-123")).toEqual(["test-repo"]);
 		});
 
 		it("should post a response activity when fallback resolution fails", async () => {
@@ -559,7 +557,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			expect(createSessionSpy).toHaveBeenCalledWith(
 				"agent-session-legacy-123",
 				expect.objectContaining({ id: "issue-123" }),
-				mockRepository,
+				[mockRepository],
 				mockAgentSessionManager,
 			);
 		});

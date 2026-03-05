@@ -180,10 +180,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		);
 
 		// Setup repository managers
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
-			mockChildAgentSessionManager,
-		);
+		(edgeWorker as any).sharedAgentSessionManager =
+			mockChildAgentSessionManager;
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 	});
 
@@ -388,20 +386,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				name: "Test Repo 2",
 			};
 
-			const mockRepo2Manager = {
-				hasAgentRunner: vi.fn().mockReturnValue(false),
-				getSession: vi.fn().mockReturnValue(null),
-			};
-
-			// First repository doesn't have the session
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo-2",
-				mockRepo2Manager,
-			);
+			// Keep repository map populated, but session lookup is shared.
 			(edgeWorker as any).repositories.set("test-repo-2", repo2);
 
-			// Adjust mock to make first repo not have it, second repo has it
-			mockRepo2Manager.hasAgentRunner.mockReturnValue(false);
+			// Shared manager owns all sessions/runners.
 			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(true);
 
 			const childSessionId = "child-session-456";
@@ -427,11 +415,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
-			// Verify the child was found in one of the repositories
-			const hasAgentRunnerCalls =
-				mockRepo2Manager.hasAgentRunner.mock.calls.length +
-				mockChildAgentSessionManager.hasAgentRunner.mock.calls.length;
-			expect(hasAgentRunnerCalls).toBeGreaterThan(0);
+			expect(mockChildAgentSessionManager.hasAgentRunner).toHaveBeenCalled();
 		});
 	});
 

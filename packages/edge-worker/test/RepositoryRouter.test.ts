@@ -306,32 +306,32 @@ describe("RepositoryRouter", () => {
 
 	describe("Cache Management", () => {
 		describe("when retrieving cached repositories", () => {
-			it("should return the cached repository when it exists in both cache and repository map", () => {
+			it("should return cached repositories when they exist in both cache and repository map", () => {
 				// Given: A repository and a populated cache
 				const repo = env
 					.repository("repo-1", "Cached Repo")
 					.inWorkspace("workspace-1")
 					.build();
 				const reposMap = new Map([[repo.id, repo]]);
-				env.router.getIssueRepositoryCache().set("issue-1", repo.id);
+				env.router.getIssueRepositoryCache().set("issue-1", [repo.id]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
-				// Then: Should return the cached repository
-				expect(result).toBe(repo);
+				// Then: Should return the cached repositories
+				expect(result).toEqual([repo]);
 			});
 
-			it("should return null when no cache entry exists for the issue", () => {
+			it("should return empty array when no cache entry exists for the issue", () => {
 				// Given: A repository but no cache entry
 				const repo = env.repository("repo-1", "Uncached Repo").build();
 				const reposMap = new Map([[repo.id, repo]]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
-				// Then: Should return null
-				expect(result).toBeNull();
+				// Then: Should return empty array
+				expect(result).toEqual([]);
 			});
 
 			it("should remove invalid cache entries when cached repository no longer exists", () => {
@@ -340,13 +340,13 @@ describe("RepositoryRouter", () => {
 				const reposMap = new Map([[repo.id, repo]]);
 				env.router
 					.getIssueRepositoryCache()
-					.set("issue-1", "non-existent-repo");
+					.set("issue-1", ["non-existent-repo"]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
-				// Then: Should return null and clean up cache
-				expect(result).toBeNull();
+				// Then: Should return empty array and clean up cache
+				expect(result).toEqual([]);
 				expect(env.router.getIssueRepositoryCache().has("issue-1")).toBe(false);
 			});
 		});
@@ -354,31 +354,36 @@ describe("RepositoryRouter", () => {
 		describe("when persisting cache", () => {
 			it("should restore cache from serialized data", () => {
 				// Given: A serialized cache
-				const cache = new Map<string, string>([
+				const cache = new Map<string, string[] | string>([
 					["issue-1", "repo-1"],
-					["issue-2", "repo-2"],
+					["issue-2", ["repo-2"]],
 				]);
 
 				// When: Restoring cache
 				env.router.restoreIssueRepositoryCache(cache);
 
 				// Then: Cache should be restored
-				expect(env.router.getIssueRepositoryCache()).toEqual(cache);
+				expect(env.router.getIssueRepositoryCache()).toEqual(
+					new Map<string, string[]>([
+						["issue-1", ["repo-1"]],
+						["issue-2", ["repo-2"]],
+					]),
+				);
 			});
 
 			it("should allow exporting cache for serialization", () => {
 				// Given: A router with cache entries
 				const cache = env.router.getIssueRepositoryCache();
-				cache.set("issue-1", "repo-1");
-				cache.set("issue-2", "repo-2");
+				cache.set("issue-1", ["repo-1"]);
+				cache.set("issue-2", ["repo-2"]);
 
 				// When: Exporting cache
 				const exported = env.router.getIssueRepositoryCache();
 
 				// Then: Should export all entries
 				expect(exported.size).toBe(2);
-				expect(exported.get("issue-1")).toBe("repo-1");
-				expect(exported.get("issue-2")).toBe("repo-2");
+				expect(exported.get("issue-1")).toEqual(["repo-1"]);
+				expect(exported.get("issue-2")).toEqual(["repo-2"]);
 			});
 		});
 	});
@@ -1217,7 +1222,7 @@ describe("RepositoryRouter", () => {
 		});
 
 		describe("when multiple repositories exist with no routing match", () => {
-			it("should request user selection when multiple configured repositories don't match", async () => {
+			it("should select all repositories when multiple configured repositories don't match", async () => {
 				// Given: Multiple repositories with specific configurations
 				const repo1 = env
 					.repository("repo-1", "Repo 1")
@@ -1241,8 +1246,13 @@ describe("RepositoryRouter", () => {
 					repo2,
 				]);
 
-				// Then: Should request user selection
-				expectRouting(result).shouldNeedSelectionWithRepos(2);
+				// Then: Should select all repositories
+				expect(result.type).toBe("selected");
+				if (result.type === "selected") {
+					expect(result.repositories).toHaveLength(2);
+					expect(result.repository.id).toBe(repo1.id);
+					expect(result.routingMethod).toBe("workspace-fallback");
+				}
 			});
 		});
 

@@ -39,6 +39,21 @@ export interface Workspace {
 	historyPath?: string;
 }
 
+/**
+ * Repository context attached to a session.
+ *
+ * Sessions always carry an array of repository contexts:
+ * - 0 entries: no repository affinity (plain workspace)
+ * - 1 entry: single-repository session
+ * - N entries: multi-repository session
+ */
+export interface RepositoryContext {
+	id: string;
+	name: string;
+	repositoryPath?: string;
+	workspacePath?: string;
+}
+
 export interface CyrusAgentSession {
 	/** Unique session identifier (was linearAgentActivitySessionId in v2.0) */
 	id: string;
@@ -58,6 +73,8 @@ export interface CyrusAgentSession {
 	issueId?: string;
 	/** Minimal issue data - optional for standalone sessions */
 	issue?: IssueMinimal;
+	/** Repository affinity for the session (always an array, may be empty) */
+	repositories: RepositoryContext[];
 	workspace: Workspace;
 	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)

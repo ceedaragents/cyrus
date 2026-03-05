@@ -228,7 +228,7 @@ Issue: {{issue_identifier}}`;
 			}),
 			getIssueLabels: vi.fn(),
 		};
-		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+		(edgeWorker as any).sharedIssueTracker = mockIssueTracker;
 	});
 
 	afterEach(() => {

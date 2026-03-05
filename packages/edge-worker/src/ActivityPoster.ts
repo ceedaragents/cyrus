@@ -6,16 +6,16 @@ import type {
 } from "cyrus-core";
 
 export class ActivityPoster {
-	private issueTrackers: Map<string, IIssueTrackerService>;
+	private getIssueTracker: () => IIssueTrackerService;
 	private repositories: Map<string, RepositoryConfig>;
 	private logger: ILogger;
 
 	constructor(
-		issueTrackers: Map<string, IIssueTrackerService>,
+		getIssueTracker: () => IIssueTrackerService,
 		repositories: Map<string, RepositoryConfig>,
 		logger: ILogger,
 	) {
-		this.issueTrackers = issueTrackers;
+		this.getIssueTracker = getIssueTracker;
 		this.repositories = repositories;
 		this.logger = logger;
 	}
@@ -46,13 +46,9 @@ export class ActivityPoster {
 
 	async postInstantAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		_repositoryId: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
-		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
-			return;
-		}
+		const issueTracker = this.getIssueTracker();
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -69,13 +65,9 @@ export class ActivityPoster {
 
 	async postParentResumeAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		_repositoryId: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
-		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
-			return;
-		}
+		const issueTracker = this.getIssueTracker();
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -89,7 +81,7 @@ export class ActivityPoster {
 
 	async postRepositorySelectionActivity(
 		sessionId: string,
-		repositoryId: string,
+		_repositoryId: string,
 		repositoryName: string,
 		selectionMethod:
 			| "description-tag"
@@ -101,11 +93,7 @@ export class ActivityPoster {
 			| "workspace-fallback"
 			| "user-selected",
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
-		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
-			return;
-		}
+		const issueTracker = this.getIssueTracker();
 
 		let methodDisplay: string;
 		if (selectionMethod === "user-selected") {
@@ -144,11 +132,7 @@ export class ActivityPoster {
 		labels: string[],
 		repositoryId: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
-		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
-			return;
-		}
+		const issueTracker = this.getIssueTracker();
 
 		// Determine which prompt type was selected and which label triggered it
 		let selectedPromptType: string | null = null;
@@ -231,14 +215,10 @@ export class ActivityPoster {
 
 	async postInstantPromptedAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		_repositoryId: string,
 		isStreaming: boolean,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
-		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
-			return;
-		}
+		const issueTracker = this.getIssueTracker();
 
 		const message = isStreaming
 			? "I've queued up your message as guidance"
@@ -257,14 +237,11 @@ export class ActivityPoster {
 	async postComment(
 		issueId: string,
 		body: string,
-		repositoryId: string,
+		_repositoryId: string,
 		parentId?: string,
 	): Promise<void> {
 		// Get the issue tracker for this repository
-		const issueTracker = this.issueTrackers.get(repositoryId);
-		if (!issueTracker) {
-			throw new Error(`No issue tracker found for repository ${repositoryId}`);
-		}
+		const issueTracker = this.getIssueTracker();
 		const commentInput: { body: string; parentId?: string } = {
 			body,
 		};
