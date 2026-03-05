@@ -17,14 +17,18 @@ export class NoopActivitySink implements IActivitySink {
 	}
 
 	async postActivity(
-		_sessionId: string,
-		_activity: AgentActivityContent,
-		_options?: ActivityPostOptions,
+		sessionId: string,
+		activity: AgentActivityContent,
+		options?: ActivityPostOptions,
 	): Promise<ActivityPostResult> {
+		void sessionId;
+		void activity;
+		void options;
 		return {};
 	}
 
-	async createAgentSession(_issueId: string): Promise<string> {
+	async createAgentSession(issueId: string): Promise<string> {
+		void issueId;
 		return "";
 	}
 }

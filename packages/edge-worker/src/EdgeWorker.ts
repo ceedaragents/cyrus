@@ -280,11 +280,15 @@ export class EdgeWorker extends EventEmitter {
 					return undefined;
 				}
 			},
-			hasActiveSession: (issueId: string, _repositoryId: string) => {
+			hasActiveSession: (issueId: string, repositoryId: string) => {
 				const sessionManager = this.getAgentSessionManager();
 				const activeSessions =
 					sessionManager.getActiveSessionsByIssueId(issueId);
-				return activeSessions.length > 0;
+				return activeSessions.some((session) =>
+					this.resolveSessionRepositories(session).some(
+						(repository) => repository.id === repositoryId,
+					),
+				);
 			},
 			getIssueTracker: (workspaceId: string) => {
 				return this.getIssueTrackerForWorkspace(workspaceId);
@@ -427,7 +431,13 @@ export class EdgeWorker extends EventEmitter {
 		this.promptBuilder = new PromptBuilder({
 			logger: this.logger,
 			repositories: this.repositories,
-			getIssueTracker: (_repositoryId: string) => this.getIssueTracker(),
+			getIssueTracker: (repositoryId: string) => {
+				const repository = this.repositories.get(repositoryId);
+				if (!repository) {
+					return this.getIssueTracker();
+				}
+				return this.getIssueTrackerForWorkspace(repository.linearWorkspaceId);
+			},
 			gitService: this.gitService,
 			config: this.config,
 		});
@@ -632,7 +642,8 @@ export class EdgeWorker extends EventEmitter {
 	private registerStatusEndpoint(): void {
 		const fastify = this.sharedApplicationServer.getFastifyInstance();
 
-		fastify.get("/status", async (_request, reply) => {
+		fastify.get("/status", async (request, reply) => {
+			void request;
 			const status = this.computeStatus();
 			return reply.status(200).send({ status });
 		});
@@ -648,7 +659,8 @@ export class EdgeWorker extends EventEmitter {
 	private registerVersionEndpoint(): void {
 		const fastify = this.sharedApplicationServer.getFastifyInstance();
 
-		fastify.get("/version", async (_request, reply) => {
+		fastify.get("/version", async (request, reply) => {
+			void request;
 			return reply.status(200).send({
 				cyrus_cli_version: this.config.version ?? null,
 			});
@@ -911,7 +923,7 @@ export class EdgeWorker extends EventEmitter {
 			// For issue_comment events, the branch ref is not in the payload
 			// We need to fetch it from the GitHub API
 			if (!branchRef && isIssueCommentPayload(event.payload)) {
-				branchRef = await this.fetchPRBranchRef(event, repository);
+				branchRef = await this.fetchPRBranchRef(event);
 			}
 
 			if (!branchRef || !prNumber) {
@@ -1057,7 +1069,7 @@ export class EdgeWorker extends EventEmitter {
 				this.logger.info(`GitHub session started: ${sessionInfo.sessionId}`);
 
 				// When session completes, post the reply back to GitHub
-				await this.postGitHubReply(event, runner, repository);
+				await this.postGitHubReply(event, runner);
 			} catch (error) {
 				this.logger.error(
 					`GitHub session error for ${repoFullName}#${prNumber}`,
@@ -1103,7 +1115,6 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async fetchPRBranchRef(
 		event: GitHubWebhookEvent,
-		_repository: RepositoryConfig,
 	): Promise<string | null> {
 		if (!isIssueCommentPayload(event.payload)) return null;
 
@@ -1292,7 +1303,6 @@ ${taskSection}`;
 	private async postGitHubReply(
 		event: GitHubWebhookEvent,
 		runner: IAgentRunner,
-		_repository: RepositoryConfig,
 	): Promise<void> {
 		try {
 			// Get the last assistant message from the runner as the summary
@@ -1461,7 +1471,7 @@ ${taskSection}`;
 		parentSessionId: string,
 		prompt: string,
 		childSessionId: string,
-		_childRepo: RepositoryConfig,
+		childRepo: RepositoryConfig,
 		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId: parentSessionId });
@@ -1476,7 +1486,7 @@ ${taskSection}`;
 			return;
 		}
 		const parentRepo =
-			this.resolveSessionRepositories(parentSession)[0] || _childRepo;
+			this.resolveSessionRepositories(parentSession)[0] || childRepo;
 
 		log.debug(
 			`Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
@@ -2471,8 +2481,19 @@ ${taskSection}`;
 	 * Get issue tracker for a workspace by finding first repository with that workspace ID
 	 */
 	private getIssueTrackerForWorkspace(
-		_workspaceId: string,
+		workspaceId: string,
 	): IIssueTrackerService | undefined {
+		if (!workspaceId) {
+			return this.getIssueTracker();
+		}
+		const hasWorkspaceRepository = Array.from(this.repositories.values()).some(
+			(repository) => repository.linearWorkspaceId === workspaceId,
+		);
+		if (!hasWorkspaceRepository && this.repositories.size > 0) {
+			this.logger.debug(
+				`No repository matched workspace ${workspaceId}, using shared issue tracker`,
+			);
+		}
 		return this.getIssueTracker();
 	}
 
@@ -2608,16 +2629,13 @@ ${taskSection}`;
 		const primaryRepository = normalizedRepositories[0] ?? null;
 
 		// Fetch full Linear issue details
-		const fullIssue = await this.fetchFullIssueDetails(
-			issue.id,
-			primaryRepository?.id,
-		);
+		const fullIssue = await this.fetchFullIssueDetails(issue.id);
 		if (!fullIssue) {
 			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
 		}
 
 		// Move issue to started state automatically, in case it's not already
-		await this.moveIssueToStartedState(fullIssue, primaryRepository?.id);
+		await this.moveIssueToStartedState(fullIssue);
 
 		const fallbackWorkspaceBaseDir =
 			primaryRepository?.workspaceBaseDir ||
@@ -2975,14 +2993,8 @@ ${taskSection}`;
 		);
 
 		// Destructure the session data (excluding allowedTools which we'll build with promptType)
-		const {
-			session,
-			fullIssue,
-			workspace: _workspace,
-			attachmentResult,
-			attachmentsDir: _attachmentsDir,
-			allowedDirectories,
-		} = sessionData;
+		const { session, fullIssue, attachmentResult, allowedDirectories } =
+			sessionData;
 
 		// Initialize procedure metadata using intelligent routing
 		if (!session.metadata) {
@@ -3866,7 +3878,6 @@ ${taskSection}`;
 	private async handleClaudeMessage(
 		sessionId: string,
 		message: SDKMessage,
-		_repositoryId: string,
 	): Promise<void> {
 		const agentSessionManager = this.getAgentSessionManager();
 		// Integrate with AgentSessionManager to capture streaming messages
@@ -4070,7 +4081,8 @@ ${taskSection}`;
 	 * Get event transport (for testing purposes)
 	 * @internal
 	 */
-	_getClientByToken(_token: string): any {
+	_getClientByToken(token: string): any {
+		void token;
 		// Return the single shared event transport
 		return this.linearEventTransport;
 	}
@@ -4107,10 +4119,7 @@ ${taskSection}`;
 	 * @param repositoryId Repository ID for issue tracker lookup
 	 */
 
-	private async moveIssueToStartedState(
-		issue: Issue,
-		_repositoryId?: string,
-	): Promise<void> {
+	private async moveIssueToStartedState(issue: Issue): Promise<void> {
 		try {
 			const issueTracker = this.getIssueTracker();
 
@@ -4299,7 +4308,7 @@ ${taskSection}`;
 			return;
 		}
 
-		fastify.addHook("onRequest", (request: any, _reply: any, done: any) => {
+		fastify.addHook("onRequest", (request: any, reply: any, done: any) => {
 			const rawUrl =
 				typeof request?.raw?.url === "string"
 					? request.raw.url
@@ -4316,7 +4325,7 @@ ${taskSection}`;
 			if (
 				!this.isCyrusToolsMcpAuthorizationValid(request.headers?.authorization)
 			) {
-				_reply.code(401).send({
+				reply.code(401).send({
 					error: "Unauthorized cyrus-tools MCP request",
 				});
 				done();
@@ -5138,7 +5147,7 @@ ${input.userComment}
 				{
 					matcher: "playwright_screenshot",
 					hooks: [
-						async (input, _toolUseID, { signal: _signal }) => {
+						async (input) => {
 							const postToolUseInput = input as PostToolUseHookInput;
 							log.debug(
 								`Tool ${postToolUseInput.tool_name} completed with response:`,
@@ -5158,7 +5167,7 @@ ${input.userComment}
 				{
 					matcher: "mcp__claude-in-chrome__computer",
 					hooks: [
-						async (input, _toolUseID, { signal: _signal }) => {
+						async (input) => {
 							const postToolUseInput = input as PostToolUseHookInput;
 							const response = postToolUseInput.tool_response as {
 								action?: string;
@@ -5180,7 +5189,7 @@ ${input.userComment}
 				{
 					matcher: "mcp__claude-in-chrome__gif_creator",
 					hooks: [
-						async (input, _toolUseID, { signal: _signal }) => {
+						async (input) => {
 							const postToolUseInput = input as PostToolUseHookInput;
 							const response = postToolUseInput.tool_response as {
 								action?: string;
@@ -5201,7 +5210,7 @@ ${input.userComment}
 				{
 					matcher: "mcp__chrome-devtools__take_screenshot",
 					hooks: [
-						async (input, _toolUseID, { signal: _signal }) => {
+						async (input) => {
 							const postToolUseInput = input as PostToolUseHookInput;
 							// Extract file path from input (the tool saves to filePath parameter)
 							const toolInput = postToolUseInput.tool_input as {
@@ -5306,7 +5315,7 @@ ${input.userComment}
 				),
 			}),
 			onMessage: (message: SDKMessage) => {
-				this.handleClaudeMessage(sessionId, message, primaryRepository.id);
+				this.handleClaudeMessage(sessionId, message);
 			},
 			onError: (error: Error) => this.handleClaudeError(error),
 		};
@@ -5359,9 +5368,12 @@ ${input.userComment}
 		linearAgentSessionId: string,
 		organizationId: string,
 	): AgentRunnerConfig["onAskUserQuestion"] {
-		return async (input, _sessionId, signal) => {
+		return async (input, sessionId, signal) => {
 			// Note: We use linearAgentSessionId (from closure) instead of the passed sessionId
 			// because the passed sessionId is the Claude session ID, not the Linear agent session ID
+			this.logger.debug(
+				`Received AskUserQuestion callback from runner session ${sessionId} for linear session ${linearAgentSessionId}`,
+			);
 			return this.askUserQuestionHandler.handleAskUserQuestion(
 				input,
 				linearAgentSessionId,
@@ -5430,10 +5442,7 @@ ${input.userComment}
 	/**
 	 * Get Agent Sessions for an issue
 	 */
-	public getAgentSessionsForIssue(
-		issueId: string,
-		_repositoryId: string,
-	): any[] {
+	public getAgentSessionsForIssue(issueId: string): any[] {
 		const agentSessionManager = this.getAgentSessionManager();
 		return agentSessionManager.getSessionsByIssueId(issueId);
 	}
@@ -5474,13 +5483,16 @@ ${input.userComment}
 	 * Posts a response activity to end the session.
 	 * @param webhook The webhook that triggered the blocked access
 	 * @param repository The repository configuration
-	 * @param _reason The reason for blocking (for logging)
+	 * @param reason The reason for blocking
 	 */
 	private async handleBlockedUser(
 		webhook: AgentSessionCreatedWebhook | AgentSessionPromptedWebhook,
 		repository: RepositoryConfig,
-		_reason: string,
+		reason: string,
 	): Promise<void> {
+		this.logger.info(
+			`Handling blocked user for repository ${repository.id}: ${reason}`,
+		);
 		const issueTracker = this.getIssueTracker();
 		const agentSessionId = webhook.agentSession.id;
 		const behavior = this.userAccessControl.getBlockBehavior(repository.id);
@@ -5981,10 +5993,7 @@ ${input.userComment}
 		}
 
 		// Fetch full issue details
-		const fullIssue = await this.fetchFullIssueDetails(
-			issueIdForResume,
-			primaryRepository.id,
-		);
+		const fullIssue = await this.fetchFullIssueDetails(issueIdForResume);
 		if (!fullIssue) {
 			log.error(`Failed to fetch full issue details for ${issueIdForResume}`);
 			throw new Error(
@@ -6151,7 +6160,13 @@ ${input.userComment}
 	/**
 	 * Get the platform type for a repository's issue tracker.
 	 */
-	private getRepositoryPlatform(_repositoryId: string): string | undefined {
+	private getRepositoryPlatform(repositoryId: string): string | undefined {
+		if (
+			repositoryId !== "__workspace__" &&
+			!this.repositories.has(repositoryId)
+		) {
+			return undefined;
+		}
 		try {
 			return this.getIssueTracker().getPlatformType();
 		} catch {
@@ -6162,10 +6177,7 @@ ${input.userComment}
 	/**
 	 * Fetch complete issue details from Linear API
 	 */
-	public async fetchFullIssueDetails(
-		issueId: string,
-		_repositoryId?: string,
-	): Promise<Issue | null> {
+	public async fetchFullIssueDetails(issueId: string): Promise<Issue | null> {
 		const issueTracker = this.getIssueTracker();
 
 		try {
@@ -6181,7 +6193,7 @@ ${input.userComment}
 						`Issue ${issueId} has parent: ${parent.identifier}`,
 					);
 				}
-			} catch (_error) {
+			} catch {
 				// Parent field might not exist, ignore error
 			}
 

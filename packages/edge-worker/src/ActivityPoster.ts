@@ -46,9 +46,12 @@ export class ActivityPoster {
 
 	async postInstantAcknowledgment(
 		sessionId: string,
-		_repositoryId: string,
+		repositoryId: string,
 	): Promise<void> {
 		const issueTracker = this.getIssueTracker();
+		this.logger.debug(
+			`Posting instant acknowledgment for session ${sessionId} in repository ${repositoryId}`,
+		);
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -65,9 +68,12 @@ export class ActivityPoster {
 
 	async postParentResumeAcknowledgment(
 		sessionId: string,
-		_repositoryId: string,
+		repositoryId: string,
 	): Promise<void> {
 		const issueTracker = this.getIssueTracker();
+		this.logger.debug(
+			`Posting parent resume acknowledgment for session ${sessionId} in repository ${repositoryId}`,
+		);
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -81,7 +87,7 @@ export class ActivityPoster {
 
 	async postRepositorySelectionActivity(
 		sessionId: string,
-		_repositoryId: string,
+		repositoryId: string,
 		repositoryName: string,
 		selectionMethod:
 			| "description-tag"
@@ -94,6 +100,9 @@ export class ActivityPoster {
 			| "user-selected",
 	): Promise<void> {
 		const issueTracker = this.getIssueTracker();
+		this.logger.debug(
+			`Posting repository selection activity for session ${sessionId} (repository ${repositoryId})`,
+		);
 
 		let methodDisplay: string;
 		if (selectionMethod === "user-selected") {
@@ -215,10 +224,13 @@ export class ActivityPoster {
 
 	async postInstantPromptedAcknowledgment(
 		sessionId: string,
-		_repositoryId: string,
+		repositoryId: string,
 		isStreaming: boolean,
 	): Promise<void> {
 		const issueTracker = this.getIssueTracker();
+		this.logger.debug(
+			`Posting prompted acknowledgment for session ${sessionId} in repository ${repositoryId}`,
+		);
 
 		const message = isStreaming
 			? "I've queued up your message as guidance"
@@ -237,11 +249,14 @@ export class ActivityPoster {
 	async postComment(
 		issueId: string,
 		body: string,
-		_repositoryId: string,
+		repositoryId: string,
 		parentId?: string,
 	): Promise<void> {
 		// Get the issue tracker for this repository
 		const issueTracker = this.getIssueTracker();
+		this.logger.debug(
+			`Posting comment for issue ${issueId} in repository ${repositoryId}`,
+		);
 		const commentInput: { body: string; parentId?: string } = {
 			body,
 		};

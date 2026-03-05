@@ -1263,7 +1263,7 @@ ${reply.body}
 					);
 				}
 			}
-		} catch (_error) {
+		} catch {
 			// Parent field might not exist or couldn't be fetched, use default base branch
 			this.logger.debug(
 				`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,

@@ -180,7 +180,7 @@ export class PersistenceManager {
 				v2State.agentSessions,
 			)) {
 				migratedState.agentSessions![repoId] = {};
-				for (const [_sessionId, v2Session] of Object.entries(repoSessions)) {
+				for (const v2Session of Object.values(repoSessions)) {
 					const session = v2Session as unknown as V2CyrusAgentSession;
 					const migratedSession = this.migrateSessionV2ToV3(session);
 					// Use the new id as the key

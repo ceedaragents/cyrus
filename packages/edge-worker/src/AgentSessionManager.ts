@@ -608,8 +608,6 @@ export class AgentSessionManager extends EventEmitter {
 					session,
 					sessionId,
 					resultMessage,
-					runnerSessionId,
-					nextSubroutine,
 				);
 				if (handled) {
 					return; // Validation loop took over control flow
@@ -657,8 +655,6 @@ export class AgentSessionManager extends EventEmitter {
 		session: CyrusAgentSession,
 		sessionId: string,
 		resultMessage: SDKResultMessage,
-		_runnerSessionId: string,
-		_nextSubroutine: { name: string } | null,
 	): Promise<boolean> {
 		const log = this.sessionLog(sessionId);
 		const maxIterations = DEFAULT_VALIDATION_LOOP_CONFIG.maxIterations;
@@ -1843,7 +1839,8 @@ export class AgentSessionManager extends EventEmitter {
 		// Serialize sessions
 		for (const [sessionId, session] of this.sessions.entries()) {
 			// Exclude agentRunner from serialization as it's not serializable
-			const { agentRunner: _agentRunner, ...serializableSession } = session;
+			const serializableSession = { ...session };
+			delete serializableSession.agentRunner;
 			sessions[sessionId] = serializableSession;
 		}
 

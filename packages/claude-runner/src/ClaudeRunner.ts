@@ -359,7 +359,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 						JSON.parse(testContent);
 						configPaths.push(autoMcpPath);
 						this.logger.debug(`Auto-detected MCP config at ${autoMcpPath}`);
-					} catch (_error) {
+					} catch {
 						// Silently skip invalid .mcp.json files (could be test fixtures, etc.)
 						this.logger.debug(`Skipping invalid .mcp.json at ${autoMcpPath}`);
 					}
