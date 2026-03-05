@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Parallel tool calls now show as a single unified activity** - When the agent runs multiple tools in parallel, they are displayed as one compact tree-like view with live status updates (pending/completed/error) instead of flooding the timeline with separate activities for each tool. The unified activity is ephemeral and automatically replaced when the next action occurs. ([CYPACK-886](https://linear.app/ceedar/issue/CYPACK-886), [#937](https://github.com/ceedaragents/cyrus/pull/937))
+
 ## [0.2.28] - 2026-03-04
 
 ### Fixed
