@@ -6,33 +6,49 @@ import type {
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 
-// Import the AskUserQuestionInput type from the SDK's tool input types
-// This ensures we use the SDK's official type definitions
-import type { AskUserQuestionInput as SDKAskUserQuestionInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools.d.ts";
-
 // ============================================================================
 // ASK USER QUESTION TYPES
 // ============================================================================
-// Re-export the SDK's AskUserQuestionInput type as the canonical input type.
-// The SDK's type has complex tuple structures for questions and options.
-// We also provide simplified types for easier consumption in our callback API.
 
 /**
- * The canonical AskUserQuestionInput type from the Claude SDK.
+ * An option presented to the user for selection.
+ */
+export interface AskUserQuestionOption {
+	/** The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice. */
+	label: string;
+	/** Explanation of what this option means or what will happen if chosen. */
+	description: string;
+	/** Optional preview content rendered when this option is focused. */
+	preview?: string;
+}
+
+/**
+ * A single question presented to the user.
+ */
+export interface AskUserQuestionItem {
+	/** The complete question to ask the user. */
+	question: string;
+	/** Very short label displayed as a chip/tag (max 12 chars). */
+	header: string;
+	/** The available choices for this question (2-4 options). */
+	options: [
+		AskUserQuestionOption,
+		AskUserQuestionOption,
+		...AskUserQuestionOption[],
+	];
+	/** Set to true to allow the user to select multiple options. */
+	multiSelect: boolean;
+}
+
+/**
+ * Input for the AskUserQuestion tool.
+ * Structurally compatible with the Claude SDK's AskUserQuestionInput type.
  *
  * @see {@link https://platform.claude.com/docs/en/agent-sdk/typescript#ask-user-question}
  */
-export type AskUserQuestionInput = SDKAskUserQuestionInput;
-
-/**
- * Simplified option type for easier API consumption.
- * Matches the structure within AskUserQuestionInput but without tuple constraints.
- */
-export interface AskUserQuestionOption {
-	/** The display text for this option */
-	label: string;
-	/** Explanation of what this option means */
-	description: string;
+export interface AskUserQuestionInput {
+	/** Questions to ask the user (1-4 questions). */
+	questions: [AskUserQuestionItem, ...AskUserQuestionItem[]];
 }
 
 /**
