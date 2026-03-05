@@ -35,6 +35,14 @@ When a Linear issue is assigned to Cyrus, the following sequence occurs:
 
 6. **Activity Tracking**: Every thought and action is posted back to Linear as activities, providing full visibility into what Claude is doing.
 
+## Repository Association Model
+
+**Do not model issues/sessions as having a \"primary repository.\"**
+
+- An issue/session is associated with a repository set (`0`, `1`, or `N` repositories).
+- Runtime logic should operate on repository sets by default (routing, tool auth, MCP composition, continuation).
+- If a call site still requires a single repository object for compatibility, choose one deterministically from the set and name it by purpose (for example `repositoryForRunnerDefaults`) rather than implying ownership/priority.
+
 ### Example Interaction
 
 A typical session flow:

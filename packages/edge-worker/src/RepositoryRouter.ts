@@ -323,14 +323,14 @@ export class RepositoryRouter {
 			this.logger.info(
 				`Multiple repositories (${workspaceRepos.length}) found with no routing match - selecting all`,
 			);
-			const primaryRepository = workspaceRepos[0];
-			if (!primaryRepository) {
+			const fallbackRepository = workspaceRepos[0];
+			if (!fallbackRepository) {
 				return { type: "none" };
 			}
 			return this.buildSelectedResult(
 				workspaceRepos,
 				"workspace-fallback",
-				primaryRepository,
+				fallbackRepository,
 			);
 		}
 

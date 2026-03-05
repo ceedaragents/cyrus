@@ -155,7 +155,7 @@ This proves that:
 **Status**: PASS (expected behavior for multi-repo with no clear routing)
 
 ### [21:12:43] - Repository Selection Response
-**Command**: `./f1 prompt-session --session-id session-1 --message "Please use repository: f1-test-repo (the primary repository)"`
+**Command**: `./f1 prompt-session --session-id session-1 --message "Please use repository: f1-test-repo (the target repository)"`
 **Server Log**: `[EdgeWorker] Processing repository selection response`
 **Status**: PASS
 

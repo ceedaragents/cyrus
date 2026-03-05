@@ -1991,6 +1991,56 @@ ${taskSection}`;
 		return Array.isArray(repositories) ? repositories : [repositories];
 	}
 
+	/**
+	 * Resolve one deterministic repository from a repository set for call sites
+	 * that still require a single repository object (for example prompt/template
+	 * selection or legacy callback wiring). This does NOT imply repository
+	 * ownership/priority semantics for the issue.
+	 */
+	private resolveSingleRepositoryConfig(
+		repositories: RepositoryConfig[] | RepositoryConfig | undefined,
+	): RepositoryConfig {
+		const normalizedRepositories =
+			this.normalizeRepositoriesInput(repositories);
+		if (normalizedRepositories[0]) {
+			return normalizedRepositories[0];
+		}
+		const firstKnownRepository = Array.from(this.repositories.values())[0];
+		return firstKnownRepository ?? this.getFallbackRepositoryConfig();
+	}
+
+	private resolveWorkspaceLinearToken(
+		repositories: RepositoryConfig[] | RepositoryConfig | undefined,
+	): string {
+		const normalizedRepositories =
+			this.normalizeRepositoriesInput(repositories);
+		return (
+			this.config.linearToken ||
+			normalizedRepositories.find((repository) => repository.linearToken)
+				?.linearToken ||
+			Array.from(this.repositories.values()).find(
+				(repository) => repository.linearToken,
+			)?.linearToken ||
+			this.getFallbackRepositoryConfig().linearToken
+		);
+	}
+
+	private resolveWorkspaceId(
+		repositories: RepositoryConfig[] | RepositoryConfig | undefined,
+	): string {
+		const normalizedRepositories =
+			this.normalizeRepositoriesInput(repositories);
+		return (
+			this.config.linearWorkspaceId ||
+			normalizedRepositories.find((repository) => repository.linearWorkspaceId)
+				?.linearWorkspaceId ||
+			Array.from(this.repositories.values()).find(
+				(repository) => repository.linearWorkspaceId,
+			)?.linearWorkspaceId ||
+			this.getFallbackRepositoryConfig().linearWorkspaceId
+		);
+	}
+
 	private getFallbackRepositoryConfig(): RepositoryConfig {
 		const firstConfiguredRepo = this.config.repositories[0];
 		return (
@@ -2636,7 +2686,10 @@ ${taskSection}`;
 	): Promise<AgentSessionData> {
 		const normalizedRepositories =
 			this.normalizeRepositoriesInput(repositories);
-		const primaryRepository = normalizedRepositories[0] ?? null;
+		const singleRepository =
+			normalizedRepositories.length === 1
+				? normalizedRepositories[0] || null
+				: null;
 
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(issue.id);
@@ -2648,7 +2701,8 @@ ${taskSection}`;
 		await this.moveIssueToStartedState(fullIssue);
 
 		const fallbackWorkspaceBaseDir =
-			primaryRepository?.workspaceBaseDir ||
+			normalizedRepositories.find((repository) => repository.workspaceBaseDir)
+				?.workspaceBaseDir ||
 			this.config.repositories[0]?.workspaceBaseDir ||
 			join(this.cyrusHome, "worktrees");
 		const issueWorkspaceRoot = join(
@@ -2665,19 +2719,19 @@ ${taskSection}`;
 				path: issueWorkspaceRoot,
 				isGitWorktree: false,
 			};
-		} else if (normalizedRepositories.length === 1 && primaryRepository) {
+		} else if (singleRepository) {
 			// Preserve existing behavior for single-repository sessions.
 			workspace = this.config.handlers?.createWorkspace
 				? await this.config.handlers.createWorkspace(
 						fullIssue,
-						primaryRepository,
+						singleRepository,
 					)
 				: await this.gitService.createGitWorktree(
 						fullIssue,
-						primaryRepository,
+						singleRepository,
 						this.config.global_setup_script,
 					);
-			repositoryWorkspacePaths.set(primaryRepository.id, workspace.path);
+			repositoryWorkspacePaths.set(singleRepository.id, workspace.path);
 		} else {
 			// Multi-repository sessions use an issue-level parent folder with one worktree per repository.
 			await mkdir(issueWorkspaceRoot, { recursive: true });
@@ -2739,10 +2793,13 @@ ${taskSection}`;
 		}
 
 		// Download attachments before creating Claude runner
-		const attachmentResult = primaryRepository
+		const attachmentRepository =
+			singleRepository ||
+			this.resolveSingleRepositoryConfig(normalizedRepositories);
+		const attachmentResult = attachmentRepository
 			? await this.downloadIssueAttachments(
 					fullIssue,
-					primaryRepository,
+					attachmentRepository,
 					workspace.path,
 				)
 			: { manifest: "", attachmentsDir: null };
@@ -2899,16 +2956,12 @@ ${taskSection}`;
 			}
 		}
 
-		const primaryRepository =
-			selectedRepositories[0] ??
-			Array.from(this.repositories.values())[0] ??
-			this.getFallbackRepositoryConfig();
+		const logRepository =
+			this.resolveSingleRepositoryConfig(selectedRepositories);
 
 		const log = this.logger.withContext({
 			sessionId: webhook.agentSession.id,
-			platform: primaryRepository
-				? this.getRepositoryPlatform(primaryRepository.id)
-				: undefined,
+			platform: this.getRepositoryPlatform(logRepository.id),
 			issueIdentifier: webhook.agentSession.issue.identifier,
 		});
 		log.info(`Handling agent session created`);
@@ -2932,7 +2985,7 @@ ${taskSection}`;
 	 * handleAgentSessionCreatedWebhook and handleUserPromptedAgentActivity use.
 	 *
 	 * @param agentSession The Linear agent session
-	 * @param repository The repository configuration
+	 * @param repositories Repository configurations associated with this issue/session
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
 	 */
@@ -2946,10 +2999,9 @@ ${taskSection}`;
 			this.normalizeRepositoriesInput(repositories);
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
-		const primaryRepository =
-			normalizedRepositories[0] ??
-			Array.from(this.repositories.values())[0] ??
-			this.getFallbackRepositoryConfig();
+		const promptConfigRepository = this.resolveSingleRepositoryConfig(
+			normalizedRepositories,
+		);
 
 		if (!issue) {
 			this.logger.warn("Cannot initialize Claude runner without issue");
@@ -2990,7 +3042,7 @@ ${taskSection}`;
 		const agentSessionManager = this.getAgentSessionManager();
 
 		// Post instant acknowledgment thought
-		await this.postInstantAcknowledgment(sessionId, primaryRepository.id);
+		await this.postInstantAcknowledgment(sessionId, promptConfigRepository.id);
 
 		// Create the session using the shared method
 		const sessionData = await this.createLinearAgentSession(
@@ -3018,7 +3070,7 @@ ${taskSection}`;
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
 		// Check for label overrides BEFORE AI routing
-		const debuggerConfig = primaryRepository.labelPrompts?.debugger;
+		const debuggerConfig = promptConfigRepository.labelPrompts?.debugger;
 		const debuggerLabels = Array.isArray(debuggerConfig)
 			? debuggerConfig
 			: debuggerConfig?.labels;
@@ -3033,7 +3085,8 @@ ${taskSection}`;
 			lowercaseLabels.includes("orchestrator");
 
 		// Also check any additional orchestrator labels from config
-		const orchestratorConfig = primaryRepository.labelPrompts?.orchestrator;
+		const orchestratorConfig =
+			promptConfigRepository.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: orchestratorConfig?.labels;
@@ -3046,7 +3099,7 @@ ${taskSection}`;
 			hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
 
 		// Check for graphite label (for graphite-orchestrator combination)
-		const graphiteConfig = primaryRepository.labelPrompts?.graphite;
+		const graphiteConfig = promptConfigRepository.labelPrompts?.graphite;
 		const graphiteLabels = Array.isArray(graphiteConfig)
 			? graphiteConfig
 			: (graphiteConfig?.labels ?? ["graphite"]);
@@ -3128,7 +3181,7 @@ ${taskSection}`;
 			const input: PromptAssemblyInput = {
 				session,
 				fullIssue,
-				repository: primaryRepository,
+				repository: promptConfigRepository,
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
 				guidance: guidance || undefined,
@@ -3156,7 +3209,7 @@ ${taskSection}`;
 			if (!isMentionTriggered || isLabelBasedPromptRequested) {
 				const systemPromptResult = await this.determineSystemPromptFromLabels(
 					labels,
-					primaryRepository,
+					promptConfigRepository,
 				);
 				systemPromptVersion = systemPromptResult?.version;
 				promptType = systemPromptResult?.type;
@@ -3166,7 +3219,7 @@ ${taskSection}`;
 					await this.postSystemPromptSelectionThought(
 						sessionId,
 						labels,
-						primaryRepository.id,
+						promptConfigRepository.id,
 					);
 				}
 			}
@@ -3251,12 +3304,12 @@ ${taskSection}`;
 				"session:started",
 				fullIssue.id,
 				fullIssue,
-				primaryRepository.id,
+				promptConfigRepository.id,
 			);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
 				fullIssue,
-				primaryRepository.id,
+				promptConfigRepository.id,
 			);
 
 			// Update runner with version information (if available)
@@ -3478,10 +3531,9 @@ ${taskSection}`;
 		const { agentSession } = webhook;
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
-		const primaryRepository =
-			normalizedRepositories[0] ??
-			Array.from(this.repositories.values())[0] ??
-			this.getFallbackRepositoryConfig();
+		const activityRepository = this.resolveSingleRepositoryConfig(
+			normalizedRepositories,
+		);
 
 		if (!issue) {
 			this.logger.warn("Cannot handle prompted activity without issue");
@@ -3511,7 +3563,7 @@ ${taskSection}`;
 			// Post instant acknowledgment for new session creation
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				primaryRepository.id,
+				activityRepository.id,
 				false,
 			);
 
@@ -3536,12 +3588,12 @@ ${taskSection}`;
 				"session:started",
 				fullIssue.id,
 				fullIssue,
-				primaryRepository.id,
+				activityRepository.id,
 			);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
 				fullIssue,
-				primaryRepository.id,
+				activityRepository.id,
 			);
 		} else {
 			this.logger.debug(
@@ -3554,7 +3606,7 @@ ${taskSection}`;
 
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				primaryRepository.id,
+				activityRepository.id,
 				isCurrentlyStreaming,
 			);
 
@@ -3627,11 +3679,14 @@ ${taskSection}`;
 			).length;
 
 			// Download new attachments from the comment
+			const workspaceLinearToken = this.resolveWorkspaceLinearToken(
+				normalizedRepositories,
+			);
 			const downloadResult = comment
 				? await this.downloadCommentAttachments(
 						comment.body,
 						attachmentsDir,
-						primaryRepository.linearToken,
+						workspaceLinearToken,
 						existingAttachmentCount,
 					)
 				: {
@@ -3825,9 +3880,6 @@ ${taskSection}`;
 			}
 		}
 
-		const primaryRepository =
-			repositoriesForPrompt[0] ?? this.getFallbackRepositoryConfig();
-
 		// Keep cache aligned with session-carried repository context.
 		this.repositoryRouter.getIssueRepositoryCache().set(
 			issueId,
@@ -3836,18 +3888,20 @@ ${taskSection}`;
 			),
 		);
 
-		// User access control check for mid-session prompts
-		const accessResult = this.checkUserAccess(webhook, primaryRepository);
-		if (!accessResult.allowed) {
-			this.logger.info(
-				`User ${accessResult.userName} blocked from prompting: ${accessResult.reason}`,
-			);
-			await this.handleBlockedUser(
-				webhook,
-				primaryRepository,
-				accessResult.reason,
-			);
-			return;
+		// User access control check for mid-session prompts across all associated repositories.
+		const repositoriesForAccessCheck =
+			repositoriesForPrompt.length > 0
+				? repositoriesForPrompt
+				: [this.getFallbackRepositoryConfig()];
+		for (const repository of repositoriesForAccessCheck) {
+			const accessResult = this.checkUserAccess(webhook, repository);
+			if (!accessResult.allowed) {
+				this.logger.info(
+					`User ${accessResult.userName} blocked from prompting: ${accessResult.reason}`,
+				);
+				await this.handleBlockedUser(webhook, repository, accessResult.reason);
+				return;
+			}
 		}
 
 		await this.handleNormalPromptedActivity(webhook, repositoriesForPrompt);
@@ -5145,10 +5199,9 @@ ${input.userComment}
 	} {
 		const normalizedRepositories =
 			this.normalizeRepositoriesInput(repositories);
-		const primaryRepository =
-			normalizedRepositories[0] ??
-			Array.from(this.repositories.values())[0] ??
-			this.getFallbackRepositoryConfig();
+		const repositoryForRunnerDefaults = this.resolveSingleRepositoryConfig(
+			normalizedRepositories,
+		);
 
 		const log = this.logger.withContext({
 			sessionId,
@@ -5282,7 +5335,7 @@ ${input.userComment}
 		// Determine final model from selectors, repository override, then runner-specific defaults
 		const finalModel =
 			modelOverride ||
-			primaryRepository.model ||
+			repositoryForRunnerDefaults.model ||
 			this.getDefaultModelForRunner(runnerType);
 
 		// When disallowAllTools is true, don't provide any MCP servers to ensure
@@ -5317,7 +5370,7 @@ ${input.userComment}
 			model: finalModel,
 			fallbackModel:
 				fallbackModelOverride ||
-				primaryRepository.fallbackModel ||
+				repositoryForRunnerDefaults.fallbackModel ||
 				this.getDefaultFallbackModelForRunner(runnerType),
 			logger: log,
 			hooks,
@@ -5327,7 +5380,7 @@ ${input.userComment}
 			...(runnerType === "claude" && {
 				onAskUserQuestion: this.createAskUserQuestionCallback(
 					sessionId,
-					primaryRepository.linearWorkspaceId,
+					this.resolveWorkspaceId(normalizedRepositories),
 				),
 			}),
 			onMessage: (message: SDKMessage) => {
@@ -5856,7 +5909,7 @@ ${input.userComment}
 	 * 3. Add to stream if streaming, OR resume session if not
 	 *
 	 * @param session The Cyrus agent session
-	 * @param repository Repository configuration
+	 * @param repositories Repository configurations associated with the issue/session
 	 * @param sessionId Linear agent activity session ID
 	 * @param agentSessionManager Agent session manager instance
 	 * @param promptBody The prompt text to send
@@ -5882,8 +5935,9 @@ ${input.userComment}
 		const log = this.logger.withContext({ sessionId });
 		const normalizedRepositories =
 			this.normalizeRepositoriesInput(repositories);
-		const primaryRepository =
-			normalizedRepositories[0] ?? this.getFallbackRepositoryConfig();
+		const repositoryForProcedureRouting = this.resolveSingleRepositoryConfig(
+			normalizedRepositories,
+		);
 		// Check if runner is actively running before routing
 		const existingRunner = session.agentRunner;
 		const isRunning = existingRunner?.isRunning() || false;
@@ -5895,7 +5949,7 @@ ${input.userComment}
 				sessionId,
 				agentSessionManager,
 				promptBody,
-				primaryRepository,
+				repositoryForProcedureRouting,
 			);
 			log.debug(`Routed procedure for ${logContext}`);
 		} else {
@@ -5991,8 +6045,8 @@ ${input.userComment}
 			repositoriesFromSession.length > 0
 				? repositoriesFromSession
 				: normalizedRepositories;
-		const primaryRepository =
-			sessionRepositories[0] ?? this.getFallbackRepositoryConfig();
+		const repositoryForSingleRepoPromptInputs =
+			this.resolveSingleRepositoryConfig(sessionRepositories);
 		// Check for existing runner
 		const existingRunner = session.agentRunner;
 
@@ -6050,7 +6104,7 @@ ${input.userComment}
 
 		const systemPromptResult = await this.determineSystemPromptFromLabels(
 			labels,
-			primaryRepository,
+			repositoryForSingleRepoPromptInputs,
 		);
 		const systemPrompt = systemPromptResult?.prompt;
 		const promptType = systemPromptResult?.type;
@@ -6152,7 +6206,7 @@ ${input.userComment}
 			isNewSession,
 			session,
 			fullIssue,
-			primaryRepository,
+			repositoryForSingleRepoPromptInputs,
 			promptBody,
 			attachmentManifest,
 			commentAuthor,
