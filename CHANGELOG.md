@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Multi-repository issue workspaces and sessions** - Cyrus now supports 0-repo, 1-repo, and multi-repo issue sessions with stable repository affinity across prompts, merged tool permissions across selected repositories, and preserved single-repository workspace behavior. ([CYPACK-881](https://linear.app/ceedar/issue/CYPACK-881), [#936](https://github.com/ceedaragents/cyrus/pull/936))
+
 ## [0.2.27] - 2026-03-04 ([#933](https://github.com/ceedaragents/cyrus/pull/933))
 
 ### Added

@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Consolidated EdgeWorker session orchestration to a single shared `AgentSessionManager` and `IIssueTrackerService`, added per-session `repositories: RepositoryContext[]`, updated repository routing/cache to array semantics, and merged multi-repo tool/MCP configuration handling (including persisted-state compatibility migration paths). ([CYPACK-881](https://linear.app/ceedar/issue/CYPACK-881), [#936](https://github.com/ceedaragents/cyrus/pull/936))
+
 ## [0.2.27] - 2026-03-04
 
 ### Added
