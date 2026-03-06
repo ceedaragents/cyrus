@@ -9,6 +9,7 @@ import type {
 	EdgeWorkerConfig,
 	ILogger,
 	RepositoryConfig,
+	RunnerType,
 } from "cyrus-core";
 
 import type { ProcedureAnalyzer } from "./procedures/index.js";
@@ -37,13 +38,13 @@ export class RunnerSelectionService {
 	 * 2. Auto-detect from available API keys (if exactly one runner has keys)
 	 * 3. Fall back to "claude"
 	 */
-	public getDefaultRunner(): "claude" | "gemini" | "codex" | "cursor" {
+	public getDefaultRunner(): RunnerType {
 		if (this.config.defaultRunner) {
 			return this.config.defaultRunner;
 		}
 
 		// Auto-detect from environment: if exactly one runner's API key is set, use it
-		const available: Array<"claude" | "gemini" | "codex" | "cursor"> = [];
+		const available: Array<RunnerType> = [];
 		if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY) {
 			available.push("claude");
 		}
@@ -67,9 +68,7 @@ export class RunnerSelectionService {
 	/**
 	 * Resolve default model for a given runner from config with sensible built-in defaults.
 	 */
-	public getDefaultModelForRunner(
-		runnerType: "claude" | "gemini" | "codex" | "cursor",
-	): string {
+	public getDefaultModelForRunner(runnerType: RunnerType): string {
 		if (runnerType === "claude") {
 			return (
 				this.config.claudeDefaultModel || this.config.defaultModel || "opus"
@@ -88,9 +87,7 @@ export class RunnerSelectionService {
 	 * Resolve default fallback model for a given runner from config with sensible built-in defaults.
 	 * Supports legacy Claude fallback key for backwards compatibility.
 	 */
-	public getDefaultFallbackModelForRunner(
-		runnerType: "claude" | "gemini" | "codex" | "cursor",
-	): string {
+	public getDefaultFallbackModelForRunner(runnerType: RunnerType): string {
 		if (runnerType === "claude") {
 			return (
 				this.config.claudeDefaultFallbackModel ||
@@ -145,7 +142,7 @@ export class RunnerSelectionService {
 		labels: string[],
 		issueDescription?: string,
 	): {
-		runnerType: "claude" | "gemini" | "codex" | "cursor";
+		runnerType: RunnerType;
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
@@ -160,19 +157,13 @@ export class RunnerSelectionService {
 			"model",
 		);
 
-		const defaultModelByRunner: Record<
-			"claude" | "gemini" | "codex" | "cursor",
-			string
-		> = {
+		const defaultModelByRunner: Record<RunnerType, string> = {
 			claude: this.getDefaultModelForRunner("claude"),
 			gemini: this.getDefaultModelForRunner("gemini"),
 			codex: this.getDefaultModelForRunner("codex"),
 			cursor: this.getDefaultModelForRunner("cursor"),
 		};
-		const defaultFallbackByRunner: Record<
-			"claude" | "gemini" | "codex" | "cursor",
-			string
-		> = {
+		const defaultFallbackByRunner: Record<RunnerType, string> = {
 			claude: this.getDefaultFallbackModelForRunner("claude"),
 			gemini: this.getDefaultFallbackModelForRunner("gemini"),
 			codex: this.getDefaultFallbackModelForRunner("codex"),
@@ -182,9 +173,7 @@ export class RunnerSelectionService {
 		const isCodexModel = (model: string): boolean =>
 			/gpt-[a-z0-9.-]*codex$/i.test(model) || /^gpt-[a-z0-9.-]+$/i.test(model);
 
-		const inferRunnerFromModel = (
-			model?: string,
-		): "claude" | "gemini" | "codex" | "cursor" | undefined => {
+		const inferRunnerFromModel = (model?: string): RunnerType | undefined => {
 			if (!model) return undefined;
 			const normalizedModel = model.toLowerCase();
 			if (normalizedModel.startsWith("gemini")) return "gemini";
@@ -202,7 +191,7 @@ export class RunnerSelectionService {
 
 		const inferFallbackModel = (
 			model: string,
-			runnerType: "claude" | "gemini" | "codex" | "cursor",
+			runnerType: RunnerType,
 		): string | undefined => {
 			const normalizedModel = model.toLowerCase();
 			if (runnerType === "claude") {
@@ -242,7 +231,7 @@ export class RunnerSelectionService {
 
 		const resolveAgentFromLabel = (
 			lowercaseLabels: string[],
-		): "claude" | "gemini" | "codex" | "cursor" | undefined => {
+		): RunnerType | undefined => {
 			if (lowercaseLabels.includes("cursor")) {
 				return "cursor";
 			}
@@ -315,7 +304,7 @@ export class RunnerSelectionService {
 		const modelFromLabels = resolveModelFromLabel(normalizedLabels);
 		const explicitModel = modelFromDescription || modelFromLabels;
 
-		const runnerType: "claude" | "gemini" | "codex" | "cursor" =
+		const runnerType: RunnerType =
 			resolvedAgentFromDescription ||
 			resolvedAgentFromLabels ||
 			inferRunnerFromModel(explicitModel) ||

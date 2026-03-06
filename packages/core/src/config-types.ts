@@ -16,6 +16,8 @@ export {
 	type RepositoryConfigPayload,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
+	type RunnerType,
+	RunnerTypeSchema,
 	type UserAccessControlConfig,
 	UserAccessControlConfigSchema,
 	type UserIdentifier,

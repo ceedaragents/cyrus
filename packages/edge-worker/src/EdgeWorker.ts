@@ -32,6 +32,7 @@ import type {
 	IssueUnassignedWebhook,
 	IssueUpdateWebhook,
 	RepositoryConfig,
+	RunnerType,
 	SerializableEdgeWorkerState,
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
@@ -3769,9 +3770,7 @@ ${taskSection}`;
 	 * Resolve default model for a given runner from config with sensible built-in defaults.
 	 * Supports legacy config keys for backwards compatibility.
 	 */
-	private getDefaultModelForRunner(
-		runnerType: "claude" | "gemini" | "codex" | "cursor",
-	): string {
+	private getDefaultModelForRunner(runnerType: RunnerType): string {
 		return this.runnerSelectionService.getDefaultModelForRunner(runnerType);
 	}
 
@@ -3779,9 +3778,7 @@ ${taskSection}`;
 	 * Resolve default fallback model for a given runner from config with sensible built-in defaults.
 	 * Supports legacy Claude fallback key for backwards compatibility.
 	 */
-	private getDefaultFallbackModelForRunner(
-		runnerType: "claude" | "gemini" | "codex" | "cursor",
-	): string {
+	private getDefaultFallbackModelForRunner(runnerType: RunnerType): string {
 		return this.runnerSelectionService.getDefaultFallbackModelForRunner(
 			runnerType,
 		);
@@ -3824,7 +3821,7 @@ ${taskSection}`;
 		labels: string[],
 		issueDescription?: string,
 	): {
-		runnerType: "claude" | "gemini" | "codex" | "cursor";
+		runnerType: RunnerType;
 		modelOverride?: string;
 		fallbackModelOverride?: string;
 	} {
@@ -4923,7 +4920,7 @@ ${input.userComment}
 		}
 
 		// Auto-detect: if exactly one runner has API keys set, use it
-		const available: Array<"claude" | "gemini" | "codex" | "cursor"> = [];
+		const available: Array<RunnerType> = [];
 		if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY) {
 			available.push("claude");
 		}
@@ -4967,7 +4964,7 @@ ${input.userComment}
 		mcpOptions?: { excludeSlackMcp?: boolean },
 	): {
 		config: AgentRunnerConfig;
-		runnerType: "claude" | "gemini" | "codex" | "cursor";
+		runnerType: RunnerType;
 	} {
 		const log = this.logger.withContext({
 			sessionId,

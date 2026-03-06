@@ -11,6 +11,7 @@ import {
 	createLogger,
 	type ILogger,
 	type ISimpleAgentRunner,
+	type RunnerType,
 } from "cyrus-core";
 import { SimpleCursorRunner } from "cyrus-cursor-runner";
 import { SimpleGeminiRunner } from "cyrus-gemini-runner";
@@ -24,7 +25,7 @@ import type {
 	SubroutineDefinition,
 } from "./types.js";
 
-export type SimpleRunnerType = "claude" | "gemini" | "codex" | "cursor";
+export type SimpleRunnerType = RunnerType;
 
 export interface ProcedureAnalyzerConfig {
 	cyrusHome: string;

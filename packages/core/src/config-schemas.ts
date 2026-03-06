@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 /**
+ * Supported runner/harness types for agent execution.
+ */
+export const RunnerTypeSchema = z.enum(["claude", "gemini", "codex", "cursor"]);
+export type RunnerType = z.infer<typeof RunnerTypeSchema>;
+
+/**
  * User identifier for access control matching.
  * Supports multiple formats for flexibility:
  * - String: treated as user ID (e.g., "usr_abc123")
@@ -197,7 +203,7 @@ export const EdgeConfigSchema = z.object({
 	 * If omitted, auto-detected from available API keys (if exactly one is configured),
 	 * otherwise falls back to "claude".
 	 */
-	defaultRunner: z.enum(["claude", "gemini", "codex", "cursor"]).optional(),
+	defaultRunner: RunnerTypeSchema.optional(),
 
 	/**
 	 * @deprecated Use claudeDefaultModel instead.
