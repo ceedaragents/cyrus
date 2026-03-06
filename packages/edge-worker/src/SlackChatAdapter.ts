@@ -21,13 +21,22 @@ export class SlackChatAdapter
 {
 	readonly platformName = "slack" as const;
 	private repositoryPaths: string[];
+	private repositoryRoutingContext: string;
 	private logger: ILogger;
 	private selfBotId: string | undefined;
 
-	constructor(repositoryPaths: string[] = [], logger?: ILogger) {
+	constructor(
+		repositoryPaths: string[] = [],
+		logger?: ILogger,
+		options?: {
+			repositoryRoutingContext?: string;
+		},
+	) {
 		this.repositoryPaths = Array.from(
 			new Set(repositoryPaths.filter(Boolean)),
 		).sort();
+		this.repositoryRoutingContext =
+			options?.repositoryRoutingContext?.trim() || "";
 		this.logger = logger ?? createLogger({ component: "SlackChatAdapter" });
 	}
 
@@ -105,6 +114,14 @@ ${this.repositoryPaths.map((path) => `- ${path}`).join("\n")}
 - You can answer questions, provide analysis, help with planning, and assist with research
 - If files need to be created or examined, they will be in your working directory
 ${repositoryAccessSection}
+${this.repositoryRoutingContext ? `\n\n${this.repositoryRoutingContext}` : ""}
+
+## Orchestration Notes
+- If the user asks you to make repo code changes immediately, use these steps:
+  - First run \`mcp__linear__get_user\` with \`query: "me"\` to get your Linear identity.
+  - Assign the created Issue to that same user (your own Linear user).
+  - That assignment is what immediately kicks off work in your own agent session.
+  - Track execution progress by searching \`mcp__cyrus-tools__linear_get_agent_sessions\` for the active session, then opening it with \`mcp__cyrus-tools__linear_get_agent_session\`.
 
 ## Slack Message Formatting (CRITICAL)
 Your response will be posted as a Slack message. Slack uses its own "mrkdwn" format, which is NOT standard Markdown. You MUST follow these rules exactly.

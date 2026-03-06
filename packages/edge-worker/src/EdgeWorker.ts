@@ -773,10 +773,17 @@ export class EdgeWorker extends EventEmitter {
 		const chatRepositoryPaths = Array.from(this.repositories.values()).map(
 			(repo) => repo.repositoryPath,
 		);
-		const slackAdapter = new SlackChatAdapter(chatRepositoryPaths, this.logger);
+		const firstRepo = Array.from(this.repositories.values())[0];
+		const routingContext = firstRepo
+			? this.promptBuilder.generateRoutingContext(firstRepo)
+			: "";
+		const slackAdapter = new SlackChatAdapter(
+			chatRepositoryPaths,
+			this.logger,
+			{ repositoryRoutingContext: routingContext },
+		);
 
 		// Build MCP config for Slack sessions using the first repository's Linear token
-		const firstRepo = Array.from(this.repositories.values())[0];
 		const mcpConfig = firstRepo ? this.buildMcpConfig(firstRepo) : undefined;
 
 		if (!firstRepo) {
