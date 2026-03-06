@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Updated Claude Agent SDK to v0.2.70** - Updated `@anthropic-ai/claude-agent-sdk` from v0.2.63 to v0.2.70. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-893](https://linear.app/ceedar/issue/CYPACK-893), [#944](https://github.com/ceedaragents/cyrus/pull/944))
+
 ### Fixed
 - **Chat session repository context and git pull guidance** - Chat sessions now receive read-only access to all configured repository paths and include explicit `git pull` instructions in their system prompt when inspecting repository source code. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
 
