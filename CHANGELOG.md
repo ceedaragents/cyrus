@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Built-in LSP tools for agent sessions** - Agent sessions now automatically get language server tools (go-to-definition, find-references, diagnostics, hover, rename) for detected project languages (TypeScript, Go, Rust, Python) via `mcp-language-server`. ([CYPACK-894](https://linear.app/ceedar/issue/CYPACK-894), [#945](https://github.com/ceedaragents/cyrus/pull/945))
 
+### Fixed
+- **Rate limit event handling** - Rate limit events from Claude are now properly handled instead of producing "Unknown message type" warnings in logs. ([CYPACK-895](https://linear.app/ceedar/issue/CYPACK-895), [#946](https://github.com/ceedaragents/cyrus/pull/946))
+
 ## [0.2.30] - 2026-03-05
 
 ### Fixed

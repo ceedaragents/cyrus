@@ -4,6 +4,7 @@ import type {
 	APIUserMessage,
 	SDKAssistantMessage,
 	SDKMessage,
+	SDKRateLimitEvent,
 	SDKResultMessage,
 	SDKStatusMessage,
 	SDKSystemMessage,
@@ -897,6 +898,10 @@ export class AgentSessionManager extends EventEmitter {
 					await this.completeSession(sessionId, message as SDKResultMessage);
 					break;
 
+				case "rate_limit_event":
+					this.handleRateLimitEvent(sessionId, message as SDKRateLimitEvent);
+					break;
+
 				default:
 					log.warn(`Unknown message type: ${(message as any).type}`);
 			}
@@ -905,6 +910,31 @@ export class AgentSessionManager extends EventEmitter {
 			// Mark session as error state
 			await this.updateSessionStatus(sessionId, AgentSessionStatus.Error);
 		}
+	}
+
+	/**
+	 * Handle rate limit events from Claude runners
+	 */
+	private handleRateLimitEvent(
+		sessionId: string,
+		message: SDKRateLimitEvent,
+	): void {
+		const log = this.sessionLog(sessionId);
+		const info = message.rate_limit_info;
+
+		if (info.status === "rejected") {
+			const resetsAt = info.resetsAt
+				? new Date(info.resetsAt * 1000).toISOString()
+				: "unknown";
+			log.warn(
+				`Rate limited (${info.rateLimitType ?? "unknown"}), resets at ${resetsAt}`,
+			);
+		} else if (info.status === "allowed_warning") {
+			log.info(
+				`Rate limit warning: ${Math.round((info.utilization ?? 0) * 100)}% utilization (${info.rateLimitType ?? "unknown"})`,
+			);
+		}
+		// "allowed" status is a no-op — fires frequently and provides no actionable information
 	}
 
 	/**
