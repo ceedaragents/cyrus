@@ -90,7 +90,7 @@ describe("ChatSessionHandler chat session permissions", () => {
 		expect(capturedConfig).toBeDefined();
 		expect(capturedConfig.allowedTools).toContain("Read(**)");
 		expect(capturedConfig.allowedTools).toContain("TodoRead");
-		expect(capturedConfig.allowedTools).toContain("Bash(git pull *)");
+		expect(capturedConfig.allowedTools).toContain("Bash(git -C * pull)");
 		expect(capturedConfig.allowedTools).not.toContain("Edit(**)");
 
 		const expectedWorkspace = join(cyrusHome, "slack-workspaces", "thread-key");
@@ -119,8 +119,7 @@ describe("SlackChatAdapter system prompt", () => {
 		expect(systemPrompt).toContain("## Repository Access");
 		expect(systemPrompt).toContain("- /repo/chat-one");
 		expect(systemPrompt).toContain("- /repo/chat-two");
-		expect(systemPrompt).toContain("git -C <repositoryPath> pull");
-		expect(systemPrompt).toContain("Bash(git pull *)");
+		expect(systemPrompt).toContain("Bash(git -C * pull)");
 	});
 
 	it("includes orchestrator routing context and self-assignment workflow", () => {

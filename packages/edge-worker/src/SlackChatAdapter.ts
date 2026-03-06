@@ -92,12 +92,11 @@ export class SlackChatAdapter
 - You have read-only access to the following configured repositories:
 ${this.repositoryPaths.map((path) => `- ${path}`).join("\n")}
 
-- If you need to inspect source code in one of these repositories, run:
-  - \`git -C <repositoryPath> pull\`
+- If you need to inspect source code in one of these repositories, use:
+  - Bash(git -C * pull)
 
 - You are explicitly allowed to run git pull with:
-  - Bash(git pull *)
-  - Before running pull, first run \`cd <repositoryPath>\` to switch to the repo directory.
+  - Bash(git -C * pull)
 			`
 				: `
 ## Repository Access
