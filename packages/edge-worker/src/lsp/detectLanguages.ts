@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -64,4 +65,20 @@ export function detectLanguages(workspacePath: string): SupportedLanguage[] {
 	}
 
 	return detected;
+}
+
+/**
+ * Check whether a binary is available on the system PATH.
+ *
+ * Uses `which` (macOS/Linux) to probe. Returns `true` if the binary resolves,
+ * `false` otherwise. The check is intentionally synchronous and fast — it only
+ * runs once per session startup and the result is used to gate MCP injection.
+ */
+export function isBinaryAvailable(name: string): boolean {
+	try {
+		execSync(`which ${name}`, { stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
 }

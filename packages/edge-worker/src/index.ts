@@ -30,6 +30,7 @@ export { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 export {
 	buildLspMcpConfig,
 	detectLanguages,
+	isBinaryAvailable,
 	type LspLanguageConfig,
 	SUPPORTED_LANGUAGES,
 	type SupportedLanguage,
