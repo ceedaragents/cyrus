@@ -933,11 +933,8 @@ export class AgentSessionManager extends EventEmitter {
 			log.info(
 				`Rate limit warning: ${Math.round((info.utilization ?? 0) * 100)}% utilization (${info.rateLimitType ?? "unknown"})`,
 			);
-		} else {
-			log.debug(
-				`Rate limit status: ${info.status}, utilization: ${Math.round((info.utilization ?? 0) * 100)}%`,
-			);
 		}
+		// "allowed" status is a no-op — fires frequently and provides no actionable information
 	}
 
 	/**
