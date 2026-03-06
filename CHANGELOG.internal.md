@@ -6,13 +6,17 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [0.2.30] - 2026-03-05
 
+### Fixed
+- Chat sessions now receive read-only repository path access and explicit `git pull` instructions in their system prompt, with generalized routing context for multi-workspace repositories. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
+
+## [0.2.29] - 2026-03-05
+
 ### Changed
-- Extracted `RunnerType` from Zod schema and replaced magic strings with typed constants across runner selection and configuration. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
-- Replaced hardcoded runner instantiation with factory pattern for cleaner runner creation. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
+- Replaced hardcoded runner instantiation in `ChatSessionHandler` with a `createRunner` factory in `ChatSessionHandlerDeps`. Consolidated all runner instantiation in `EdgeWorker` into a single `createRunnerForType` method with exhaustive switch. Resolves model/runner-type mismatch on config hot-reload by moving model resolution into the factory closure. Added `logger` field to `AgentRunnerConfig` to formalize existing usage.
+- Extracted `RunnerType` type alias from the Zod `runnerTypeEnum` in `config-schemas.ts` and replaced all hardcoded `"claude" | "gemini" | "codex" | "cursor"` literal unions across `EdgeWorker`, `RunnerSelectionService`, `ProcedureAnalyzer`, and tests.
 
 ### Fixed
-- Agent's own messages are now included in Slack thread context for proper conversation continuity. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
-- Chat sessions now receive read-only repository path access and explicit `git pull` instructions in their system prompt, with generalized routing context for multi-workspace repositories. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
+- `SlackChatAdapter.fetchThreadContext()` no longer filters out the bot's own replies. Follow-up sessions (especially after a runner type change) now retain full conversation history, with the agent's own messages labeled as `"assistant (you)"`.
 
 ## [0.2.28] - 2026-03-04
 
