@@ -96,7 +96,9 @@ ${this.repositoryPaths.map((path) => `- ${path}`).join("\n")}
   - \`git -C <repositoryPath> pull\`
 
 - You are explicitly allowed to run git pull with:
-  - Bash(git pull:*)`
+  - Bash(git pull *)
+  - Before running pull, first run \`cd <repositoryPath>\` to switch to the repo directory.
+			`
 				: `
 ## Repository Access
 - No repository paths are configured for this chat session.`;
