@@ -46,6 +46,7 @@ export type {
 	OAuthCallbackHandler,
 	RepositoryConfig,
 	RepositoryConfigPayload,
+	RunnerType,
 	UserAccessControlConfig,
 	UserIdentifier,
 } from "./config-types.js";
@@ -55,6 +56,7 @@ export {
 	EdgeConfigSchema,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
+	RunnerTypeSchema,
 	resolvePath,
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,

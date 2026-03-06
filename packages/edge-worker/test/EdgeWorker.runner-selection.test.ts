@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
-import type { LinearAgentSessionCreatedWebhook } from "cyrus-core";
+import type { LinearAgentSessionCreatedWebhook, RunnerType } from "cyrus-core";
 import {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
@@ -56,8 +56,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 	let mockCursorRunner: any;
 	let mockGeminiRunner: any;
 	let mockAgentSessionManager: any;
-	let capturedRunnerType: "claude" | "gemini" | "codex" | "cursor" | null =
-		null;
+	let capturedRunnerType: RunnerType | null = null;
 	let capturedRunnerConfig: any = null;
 
 	const mockRepository: RepositoryConfig = {
