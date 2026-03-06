@@ -4,8 +4,54 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.29] - 2026-03-05
+
 ### Fixed
 - **Chat session repository context and git pull guidance** - Chat sessions now receive read-only access to all configured repository paths and include explicit `git pull` instructions in their system prompt when inspecting repository source code. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.29
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.29
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.29
+
+#### cyrus-core
+- cyrus-core@0.2.29
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.29
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.29
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.29
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.29
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.29
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.29
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.29
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.29
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.29
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.29
 
 ## [0.2.28] - 2026-03-04
 
