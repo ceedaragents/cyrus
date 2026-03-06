@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Built-in LSP tools for agent sessions** - Agent sessions now automatically get language server tools (go-to-definition, find-references, diagnostics, hover, rename) for detected project languages (TypeScript, Go, Rust, Python) via `mcp-language-server`. ([CYPACK-894](https://linear.app/ceedar/issue/CYPACK-894), [#945](https://github.com/ceedaragents/cyrus/pull/945))
+
 ## [0.2.30] - 2026-03-05
 
 ### Fixed

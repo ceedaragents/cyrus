@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `packages/edge-worker/src/lsp/` module with `detectLanguages()` (scans workspace for `tsconfig.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, etc.) and `buildLspMcpConfig()` (generates `mcp-language-server` stdio MCP entries keyed as `lsp-<language>`). Extended `buildMcpConfig()` options with `workspacePath` to auto-inject LSP servers at all three `buildAgentRunnerConfig` call sites (GitHub sessions, new sessions, resume sessions). ([CYPACK-894](https://linear.app/ceedar/issue/CYPACK-894), [#945](https://github.com/ceedaragents/cyrus/pull/945))
+
 ## [0.2.30] - 2026-03-05
 
 ### Fixed
