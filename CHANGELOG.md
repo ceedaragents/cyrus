@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Rate limit event handling** - Rate limit events from Claude are now properly handled instead of producing "Unknown message type" warnings in logs. ([CYPACK-895](https://linear.app/ceedar/issue/CYPACK-895), [#946](https://github.com/ceedaragents/cyrus/pull/946))
+
 ## [0.2.30] - 2026-03-05
 
 ### Fixed

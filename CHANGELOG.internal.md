@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Added proper handling for `rate_limit_event` messages from Claude runners in `AgentSessionManager`, eliminating noisy "Unknown message type" warnings. Logs at warn level for rejected rate limits, info for warnings, and debug for normal status. ([CYPACK-895](https://linear.app/ceedar/issue/CYPACK-895), [#946](https://github.com/ceedaragents/cyrus/pull/946))
+
 ## [0.2.30] - 2026-03-05
 
 ### Fixed
