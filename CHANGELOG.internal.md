@@ -4,7 +4,7 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
-## [0.2.29] - 2026-03-05
+## [0.2.30] - 2026-03-05
 
 ### Changed
 - Extracted `RunnerType` from Zod schema and replaced magic strings with typed constants across runner selection and configuration. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
