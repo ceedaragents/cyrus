@@ -726,6 +726,15 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				// System messages are for initialization
 				break;
 
+			case "rate_limit_event":
+			case "stream_event":
+			case "tool_progress":
+			case "auth_status":
+			case "tool_use_summary":
+			case "prompt_suggestion":
+				// Informational events handled upstream by AgentSessionManager
+				break;
+
 			default:
 				this.logger.debug(`Unhandled message type: ${(message as any).type}`);
 		}
