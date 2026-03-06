@@ -4,6 +4,55 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.29] - 2026-03-05
+
+### Fixed
+- **Slack thread context now includes the agent's own messages** - Follow-up sessions (especially after switching runner types) no longer lose conversation history. The agent's previous replies are now included in thread context and labeled as "assistant (you)" so the new runner understands conversation roles.
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.29
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.29
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.29
+
+#### cyrus-core
+- cyrus-core@0.2.29
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.29
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.29
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.29
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.29
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.29
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.29
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.29
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.29
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.29
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.29
+
 ## [0.2.28] - 2026-03-04
 
 ### Fixed

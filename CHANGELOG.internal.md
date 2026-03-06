@@ -4,6 +4,15 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.29] - 2026-03-05
+
+### Changed
+- Replaced hardcoded runner instantiation in `ChatSessionHandler` with a `createRunner` factory in `ChatSessionHandlerDeps`. Consolidated all runner instantiation in `EdgeWorker` into a single `createRunnerForType` method with exhaustive switch. Resolves model/runner-type mismatch on config hot-reload by moving model resolution into the factory closure. Added `logger` field to `AgentRunnerConfig` to formalize existing usage.
+- Extracted `RunnerType` type alias from the Zod `runnerTypeEnum` in `config-schemas.ts` and replaced all hardcoded `"claude" | "gemini" | "codex" | "cursor"` literal unions across `EdgeWorker`, `RunnerSelectionService`, `ProcedureAnalyzer`, and tests.
+
+### Fixed
+- `SlackChatAdapter.fetchThreadContext()` no longer filters out the bot's own replies. Follow-up sessions (especially after a runner type change) now retain full conversation history, with the agent's own messages labeled as `"assistant (you)"`.
+
 ## [0.2.28] - 2026-03-04
 
 ### Added
