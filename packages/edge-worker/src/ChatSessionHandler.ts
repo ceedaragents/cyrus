@@ -402,7 +402,7 @@ export class ChatSessionHandler<TEvent> {
 			new Set([
 				...getReadOnlyTools(),
 				...mcpToolPermissions,
-				"Bash(git pull:*)",
+				"Bash(git pull *)",
 			]),
 		);
 
