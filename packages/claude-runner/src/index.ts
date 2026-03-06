@@ -34,6 +34,7 @@ export type {
 	OutputFormatConfig,
 	SDKAssistantMessage,
 	SDKMessage,
+	SDKRateLimitEvent,
 	SDKResultMessage,
 	SDKStatusMessage,
 	SDKSystemMessage,
