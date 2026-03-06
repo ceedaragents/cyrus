@@ -394,4 +394,80 @@ Check workspace isolation
 			.expectComponents("issue-context", "user-comment")
 			.verify();
 	});
+
+	it("generateRoutingContextForAllWorkspaces should include routing contexts for each multi-repo workspace", () => {
+		const workspace1RepoA = {
+			id: "repo-ws1-a",
+			name: "Workspace One App",
+			repositoryPath: "/test/ws1/app",
+			workspaceBaseDir: "/test/workspace",
+			linearWorkspaceId: "workspace-1",
+			linearToken: "test-token-1",
+			baseBranch: "main",
+			githubUrl: "https://github.com/org/ws1-app",
+			labelPrompts: {
+				orchestrator: { labels: ["Orchestrator"] },
+			},
+		};
+
+		const workspace1RepoB = {
+			id: "repo-ws1-b",
+			name: "Workspace One API",
+			repositoryPath: "/test/ws1/api",
+			workspaceBaseDir: "/test/workspace",
+			linearWorkspaceId: "workspace-1",
+			linearToken: "test-token-2",
+			baseBranch: "main",
+			githubUrl: "https://github.com/org/ws1-api",
+			labelPrompts: {
+				orchestrator: { labels: ["Orchestrator"] },
+			},
+		};
+
+		const workspace2RepoA = {
+			id: "repo-ws2-a",
+			name: "Workspace Two Service",
+			repositoryPath: "/test/ws2/service",
+			workspaceBaseDir: "/test/workspace",
+			linearWorkspaceId: "workspace-2",
+			linearToken: "test-token-3",
+			baseBranch: "main",
+			githubUrl: "https://github.com/org/ws2-service",
+			labelPrompts: {
+				orchestrator: { labels: ["Orchestrator"] },
+			},
+		};
+
+		const workspace2RepoB = {
+			id: "repo-ws2-b",
+			name: "Workspace Two Worker",
+			repositoryPath: "/test/ws2/worker",
+			workspaceBaseDir: "/test/workspace",
+			linearWorkspaceId: "workspace-2",
+			linearToken: "test-token-4",
+			baseBranch: "main",
+			githubUrl: "https://github.com/org/ws2-worker",
+			labelPrompts: {
+				orchestrator: { labels: ["Orchestrator"] },
+			},
+		};
+
+		const worker = createTestWorker([
+			workspace1RepoA,
+			workspace1RepoB,
+			workspace2RepoA,
+			workspace2RepoB,
+		]);
+
+		const promptBuilder = (worker as any).promptBuilder as {
+			generateRoutingContextForAllWorkspaces: () => string;
+		};
+		const context = promptBuilder.generateRoutingContextForAllWorkspaces();
+
+		expect(context.match(/<repository_routing_context>/g)?.length || 0).toBe(2);
+		expect(context).toContain("Workspace One App");
+		expect(context).toContain("Workspace Two Service");
+		expect(context).toContain("[repo=org/ws1-app]");
+		expect(context).toContain("[repo=org/ws2-service]");
+	});
 });

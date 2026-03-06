@@ -446,6 +446,55 @@ export class PromptBuilder {
 	}
 
 	/**
+	 * Generate routing context for all configured workspaces.
+	 *
+	 * This is used by chat flows that need orchestrator-style routing context
+	 * but do not have a single current repository context.
+	 *
+	 * @returns XML-formatted routing context strings joined by blank lines,
+	 * or empty string when there is no multi-repo routing needed.
+	 */
+	generateRoutingContextForAllWorkspaces(): string {
+		const activeRepositoriesByWorkspace = new Map<string, RepositoryConfig[]>();
+
+		for (const repository of this.repositories.values()) {
+			if (repository.isActive === false) {
+				continue;
+			}
+
+			const workspaceId = repository.linearWorkspaceId;
+			const repositories = activeRepositoriesByWorkspace.get(workspaceId) ?? [];
+			repositories.push(repository);
+			activeRepositoriesByWorkspace.set(workspaceId, repositories);
+		}
+
+		const routingContexts: string[] = [];
+
+		const workspaceIds = Array.from(activeRepositoriesByWorkspace.entries())
+			.filter(([, repositories]) => repositories.length > 1)
+			.sort(([aWorkspaceId], [bWorkspaceId]) =>
+				aWorkspaceId.localeCompare(bWorkspaceId),
+			);
+
+		for (const [, repositories] of workspaceIds) {
+			const sortedRepositories = [...repositories].sort((a, b) =>
+				a.name.localeCompare(b.name),
+			);
+			const contextRepository = sortedRepositories[0];
+			if (!contextRepository) {
+				continue;
+			}
+
+			const context = this.generateRoutingContext(contextRepository);
+			if (context) {
+				routingContexts.push(context);
+			}
+		}
+
+		return routingContexts.join("\n\n");
+	}
+
+	/**
 	 * Generate routing context for orchestrator mode
 	 *
 	 * This provides the orchestrator with information about available repositories
