@@ -20,10 +20,14 @@ export class SlackChatAdapter
 	implements ChatPlatformAdapter<SlackWebhookEvent>
 {
 	readonly platformName = "slack" as const;
+	private repositoryPaths: string[];
 	private logger: ILogger;
 	private selfBotId: string | undefined;
 
-	constructor(logger?: ILogger) {
+	constructor(repositoryPaths: string[] = [], logger?: ILogger) {
+		this.repositoryPaths = Array.from(
+			new Set(repositoryPaths.filter(Boolean)),
+		).sort();
 		this.logger = logger ?? createLogger({ component: "SlackChatAdapter" });
 	}
 
@@ -72,6 +76,22 @@ export class SlackChatAdapter
 	}
 
 	buildSystemPrompt(event: SlackWebhookEvent): string {
+		const repositoryAccessSection =
+			this.repositoryPaths.length > 0
+				? `
+## Repository Access
+- You have read-only access to the following configured repositories:
+${this.repositoryPaths.map((path) => `- ${path}`).join("\n")}
+
+- If you need to inspect source code in one of these repositories, run:
+  - \`git -C <repositoryPath> pull\`
+
+- You are explicitly allowed to run git pull with:
+  - Bash(git pull:*)`
+				: `
+## Repository Access
+- No repository paths are configured for this chat session.`;
+
 		return `You are responding to a Slack @mention.
 
 ## Context
@@ -84,6 +104,7 @@ export class SlackChatAdapter
 - If the user's request involves code changes, help them plan the work and suggest creating an issue in their project tracker (Linear, Jira, or GitHub Issues)
 - You can answer questions, provide analysis, help with planning, and assist with research
 - If files need to be created or examined, they will be in your working directory
+${repositoryAccessSection}
 
 ## Slack Message Formatting (CRITICAL)
 Your response will be posted as a Slack message. Slack uses its own "mrkdwn" format, which is NOT standard Markdown. You MUST follow these rules exactly.
