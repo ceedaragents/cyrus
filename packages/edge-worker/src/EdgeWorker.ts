@@ -774,9 +774,8 @@ export class EdgeWorker extends EventEmitter {
 			(repo) => repo.repositoryPath,
 		);
 		const firstRepo = Array.from(this.repositories.values())[0];
-		const routingContext = firstRepo
-			? this.promptBuilder.generateRoutingContext(firstRepo)
-			: "";
+		const routingContext =
+			this.promptBuilder.generateRoutingContextForAllWorkspaces();
 		const slackAdapter = new SlackChatAdapter(
 			chatRepositoryPaths,
 			this.logger,
