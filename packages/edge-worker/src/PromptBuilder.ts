@@ -455,6 +455,8 @@ export class PromptBuilder {
 	 * or empty string when there is no multi-repo routing needed.
 	 */
 	generateRoutingContextForAllWorkspaces(): string {
+		// Group only active repositories by Linear workspace ID so we can
+		// return routing context for each workspace independently.
 		const activeRepositoriesByWorkspace = new Map<string, RepositoryConfig[]>();
 
 		for (const repository of this.repositories.values()) {
@@ -462,6 +464,7 @@ export class PromptBuilder {
 				continue;
 			}
 
+			// Keep a stable per-workspace bucket as we scan configured repositories.
 			const workspaceId = repository.linearWorkspaceId;
 			const repositories = activeRepositoriesByWorkspace.get(workspaceId) ?? [];
 			repositories.push(repository);
@@ -470,13 +473,19 @@ export class PromptBuilder {
 
 		const routingContexts: string[] = [];
 
+		// Only include workspaces with more than one active repository,
+		// because routing context is only useful when there is a destination choice.
 		const workspaceIds = Array.from(activeRepositoriesByWorkspace.entries())
 			.filter(([, repositories]) => repositories.length > 1)
+			// Deterministic order keeps prompt output stable for tests and debugging.
 			.sort(([aWorkspaceId], [bWorkspaceId]) =>
 				aWorkspaceId.localeCompare(bWorkspaceId),
 			);
 
 		for (const [, repositories] of workspaceIds) {
+			// The routing-context template is generated from a representative
+			// repository in the workspace, which already expands to all repositories
+			// in that same workspace via generateRoutingContext(...).
 			const sortedRepositories = [...repositories].sort((a, b) =>
 				a.name.localeCompare(b.name),
 			);
@@ -485,12 +494,15 @@ export class PromptBuilder {
 				continue;
 			}
 
+			// Preserve historical behavior for single-repo workspaces by relying on
+			// generateRoutingContext to return an empty string when no routing is needed.
 			const context = this.generateRoutingContext(contextRepository);
 			if (context) {
 				routingContexts.push(context);
 			}
 		}
 
+		// Separate workspace blocks with blank lines so the final prompt stays readable.
 		return routingContexts.join("\n\n");
 	}
 
