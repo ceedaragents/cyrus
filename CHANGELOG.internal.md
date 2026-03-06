@@ -4,6 +4,11 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.30] - 2026-03-05
+
+### Fixed
+- Chat sessions now receive read-only repository path access and explicit `git pull` instructions in their system prompt, with generalized routing context for multi-workspace repositories. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
+
 ## [0.2.29] - 2026-03-05
 
 ### Changed
