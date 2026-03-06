@@ -15,7 +15,7 @@ export interface LspLanguageConfig {
 	markers: string[];
 }
 
-export const SUPPORTED_LANGUAGES: Record<string, LspLanguageConfig> = {
+export const SUPPORTED_LANGUAGES = {
 	typescript: {
 		lspCommand: "typescript-language-server",
 		lspArgs: ["--stdio"],
@@ -23,12 +23,10 @@ export const SUPPORTED_LANGUAGES: Record<string, LspLanguageConfig> = {
 	},
 	go: {
 		lspCommand: "gopls",
-		lspArgs: [],
 		markers: ["go.mod"],
 	},
 	rust: {
 		lspCommand: "rust-analyzer",
-		lspArgs: [],
 		markers: ["Cargo.toml"],
 	},
 	python: {
@@ -36,18 +34,27 @@ export const SUPPORTED_LANGUAGES: Record<string, LspLanguageConfig> = {
 		lspArgs: ["--stdio"],
 		markers: ["pyproject.toml", "setup.py", "requirements.txt"],
 	},
-};
+} satisfies Record<string, LspLanguageConfig>;
+
+export type SupportedLanguage = keyof typeof SUPPORTED_LANGUAGES;
 
 /**
  * Detect which languages are present in a workspace by checking for marker files.
  *
+ * Uses synchronous `existsSync` intentionally — the number of marker checks is
+ * small (≤ 8 for 4 languages) so the blocking cost is negligible. If the
+ * supported language set grows significantly, consider switching to async I/O.
+ *
  * Returns an array of language keys (e.g. `["typescript", "go"]`) that have at
  * least one marker file present in `workspacePath`.
  */
-export function detectLanguages(workspacePath: string): string[] {
-	const detected: string[] = [];
+export function detectLanguages(workspacePath: string): SupportedLanguage[] {
+	const detected: SupportedLanguage[] = [];
 
-	for (const [language, config] of Object.entries(SUPPORTED_LANGUAGES)) {
+	for (const language of Object.keys(
+		SUPPORTED_LANGUAGES,
+	) as SupportedLanguage[]) {
+		const config = SUPPORTED_LANGUAGES[language];
 		const hasMarker = config.markers.some((marker) =>
 			existsSync(join(workspacePath, marker)),
 		);

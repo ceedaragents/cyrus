@@ -3,4 +3,5 @@ export {
 	detectLanguages,
 	type LspLanguageConfig,
 	SUPPORTED_LANGUAGES,
+	type SupportedLanguage,
 } from "./detectLanguages.js";

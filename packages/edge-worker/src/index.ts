@@ -32,6 +32,7 @@ export {
 	detectLanguages,
 	type LspLanguageConfig,
 	SUPPORTED_LANGUAGES,
+	type SupportedLanguage,
 } from "./lsp/index.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";

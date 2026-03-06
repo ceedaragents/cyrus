@@ -93,6 +93,10 @@ describe("LSP MCP integration", () => {
 			expect(buildLspMcpConfig(workspacePath)).toEqual({});
 		});
 
+		it("should return empty config for empty workspace path", () => {
+			expect(buildLspMcpConfig("")).toEqual({});
+		});
+
 		it("should build TypeScript LSP config", () => {
 			writeFileSync(join(workspacePath, "tsconfig.json"), "{}");
 			const config = buildLspMcpConfig(workspacePath);

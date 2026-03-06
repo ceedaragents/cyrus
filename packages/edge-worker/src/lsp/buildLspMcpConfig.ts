@@ -1,5 +1,9 @@
 import type { McpServerConfig } from "cyrus-claude-runner";
-import { detectLanguages, SUPPORTED_LANGUAGES } from "./detectLanguages.js";
+import {
+	detectLanguages,
+	type LspLanguageConfig,
+	SUPPORTED_LANGUAGES,
+} from "./detectLanguages.js";
 
 /**
  * Build MCP server configurations for detected languages in a workspace.
@@ -19,12 +23,13 @@ import { detectLanguages, SUPPORTED_LANGUAGES } from "./detectLanguages.js";
 export function buildLspMcpConfig(
 	workspacePath: string,
 ): Record<string, McpServerConfig> {
+	if (!workspacePath) return {};
+
 	const languages = detectLanguages(workspacePath);
 	const config: Record<string, McpServerConfig> = {};
 
 	for (const language of languages) {
-		const langConfig = SUPPORTED_LANGUAGES[language];
-		if (!langConfig) continue;
+		const langConfig: LspLanguageConfig = SUPPORTED_LANGUAGES[language];
 
 		const args = ["--workspace", workspacePath, "--lsp", langConfig.lspCommand];
 
