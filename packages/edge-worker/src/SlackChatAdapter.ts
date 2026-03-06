@@ -119,7 +119,8 @@ ${this.repositoryRoutingContext ? `\n\n${this.repositoryRoutingContext}` : ""}
 ## Orchestration Notes
 - If the user asks you to make repo code changes immediately, use these steps:
   - First run \`mcp__linear__get_user\` with \`query: "me"\` to get your Linear identity.
-  - Assign the created Issue to that same user (your own Linear user).
+  - Create an Issue in the user's tracker for the requested work (for example using \`mcp__linear__save_issue\`), including enough context and acceptance criteria to execute it.
+  - Assign that Issue to that same user (your own Linear user).
   - That assignment is what immediately kicks off work in your own agent session.
   - Track execution progress by searching \`mcp__cyrus-tools__linear_get_agent_sessions\` for the active session, then opening it with \`mcp__cyrus-tools__linear_get_agent_session\`.
 
