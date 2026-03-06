@@ -391,6 +391,10 @@ export class ChatSessionHandler<TEvent> {
 		sessionId: string,
 		resumeSessionId?: string,
 	): AgentRunnerConfig {
+		const sessionLogger = this.logger.withContext({
+			sessionId,
+			platform: this.adapter.platformName,
+		});
 		// When MCP servers are configured, include their tool permissions
 		const mcpToolPermissions = this.deps.mcpConfig
 			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
@@ -405,6 +409,7 @@ export class ChatSessionHandler<TEvent> {
 				"Bash(git pull *)",
 			]),
 		);
+		sessionLogger.debug("Chat session allowed tools:", allowedTools);
 
 		return {
 			workingDirectory: workspacePath,
@@ -416,10 +421,7 @@ export class ChatSessionHandler<TEvent> {
 			appendSystemPrompt: systemPrompt,
 			...(this.deps.mcpConfig ? { mcpConfig: this.deps.mcpConfig } : {}),
 			...(resumeSessionId ? { resumeSessionId } : {}),
-			logger: this.logger.withContext({
-				sessionId,
-				platform: this.adapter.platformName,
-			}),
+			logger: sessionLogger,
 			maxTurns: 200,
 			onMessage: (message: SDKMessage) =>
 				this.handleAgentMessage(sessionId, message),
