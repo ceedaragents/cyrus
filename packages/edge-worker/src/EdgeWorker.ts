@@ -110,6 +110,7 @@ import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
+import { buildLspMcpConfig } from "./lsp/index.js";
 import { PromptBuilder } from "./PromptBuilder.js";
 import {
 	ProcedureAnalyzer,
@@ -1099,7 +1100,7 @@ export class EdgeWorker extends EventEmitter {
 				200, // maxTurns
 				false, // singleTurn
 				undefined, // disallowAllTools
-				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
+				{ excludeSlackMcp: true, workspacePath: session.workspace.path }, // Exclude Slack MCP; inject LSP servers
 			);
 
 			const runner = this.createRunnerForType(runnerType, runnerConfig);
@@ -3099,6 +3100,7 @@ ${taskSection}`;
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+				{ workspacePath: session.workspace.path }, // Inject LSP MCP servers based on detected languages
 			);
 
 			log.debug(
@@ -4481,12 +4483,14 @@ ${taskSection}`;
 	/**
 	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
 	 * Optionally includes the Slack MCP server when the SLACK_BOT_TOKEN environment variable is set.
+	 * Optionally includes LSP MCP servers when a workspace path is provided and language markers are detected.
 	 * @param options.excludeSlackMcp - When true, excludes the Slack MCP server even if SLACK_BOT_TOKEN is set (e.g., for GitHub sessions)
+	 * @param options.workspacePath - When provided, auto-detects languages and injects LSP MCP servers via mcp-language-server
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
 		parentSessionId?: string,
-		options?: { excludeSlackMcp?: boolean },
+		options?: { excludeSlackMcp?: boolean; workspacePath?: string },
 	): Record<string, McpServerConfig> {
 		const contextId = this.buildCyrusToolsMcpContextId(
 			repository,
@@ -4547,6 +4551,15 @@ ${taskSection}`;
 					SLACK_MCP_XOXB_TOKEN: slackBotToken,
 				},
 			};
+		}
+
+		// Conditionally inject LSP MCP servers when a workspace path is provided.
+		// Auto-detects languages (TypeScript, Go, Rust, Python) from project marker files
+		// and adds mcp-language-server instances for each detected language.
+		// https://github.com/isaacphi/mcp-language-server
+		if (options?.workspacePath) {
+			const lspConfigs = buildLspMcpConfig(options.workspacePath);
+			Object.assign(mcpConfig, lspConfigs);
 		}
 
 		return mcpConfig;
@@ -4971,7 +4984,7 @@ ${input.userComment}
 		maxTurns?: number,
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
-		mcpOptions?: { excludeSlackMcp?: boolean },
+		mcpOptions?: { excludeSlackMcp?: boolean; workspacePath?: string },
 	): {
 		config: AgentRunnerConfig;
 		runnerType: RunnerType;
@@ -5927,6 +5940,7 @@ ${input.userComment}
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 			currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+			{ workspacePath: session.workspace.path }, // Inject LSP MCP servers based on detected languages
 		);
 
 		// Create the appropriate runner based on session state
