@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Chat session repository context and git pull guidance** - Chat sessions now receive read-only access to all configured repository paths and include explicit `git pull` instructions in their system prompt when inspecting repository source code. ([CYPACK-891](https://linear.app/ceedar/issue/CYPACK-891), [#942](https://github.com/ceedaragents/cyrus/pull/942))
+
 ## [0.2.29] - 2026-03-05
 
 ### Fixed

@@ -770,10 +770,19 @@ export class EdgeWorker extends EventEmitter {
 	 * This creates a /slack-webhook endpoint that handles @mention events from Slack.
 	 */
 	private registerSlackEventTransport(): void {
-		const slackAdapter = new SlackChatAdapter(this.logger);
+		const chatRepositoryPaths = Array.from(this.repositories.values()).map(
+			(repo) => repo.repositoryPath,
+		);
+		const firstRepo = Array.from(this.repositories.values())[0];
+		const routingContext =
+			this.promptBuilder.generateRoutingContextForAllWorkspaces();
+		const slackAdapter = new SlackChatAdapter(
+			chatRepositoryPaths,
+			this.logger,
+			{ repositoryRoutingContext: routingContext },
+		);
 
 		// Build MCP config for Slack sessions using the first repository's Linear token
-		const firstRepo = Array.from(this.repositories.values())[0];
 		const mcpConfig = firstRepo ? this.buildMcpConfig(firstRepo) : undefined;
 
 		if (!firstRepo) {
@@ -786,6 +795,7 @@ export class EdgeWorker extends EventEmitter {
 			slackAdapter,
 			{
 				cyrusHome: this.cyrusHome,
+				chatRepositoryPaths,
 				mcpConfig,
 				createRunner: (config) => {
 					const runnerType = this.runnerSelectionService.getDefaultRunner();

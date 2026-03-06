@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
-import { getAllTools } from "cyrus-claude-runner";
+import { getReadOnlyTools } from "cyrus-claude-runner";
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
@@ -56,6 +56,7 @@ export interface ChatPlatformAdapter<TEvent> {
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
 	mcpConfig?: Record<string, McpServerConfig>;
+	chatRepositoryPaths?: string[];
 	/** Factory function that creates the appropriate runner based on config.defaultRunner */
 	createRunner: (config: AgentRunnerConfig) => IAgentRunner;
 	onWebhookStart: () => void;
@@ -390,25 +391,37 @@ export class ChatSessionHandler<TEvent> {
 		sessionId: string,
 		resumeSessionId?: string,
 	): AgentRunnerConfig {
+		const sessionLogger = this.logger.withContext({
+			sessionId,
+			platform: this.adapter.platformName,
+		});
 		// When MCP servers are configured, include their tool permissions
 		const mcpToolPermissions = this.deps.mcpConfig
 			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
 			: [];
+		const repositoryPaths = Array.from(
+			new Set((this.deps.chatRepositoryPaths ?? []).filter(Boolean)),
+		);
+		const allowedTools = Array.from(
+			new Set([
+				...getReadOnlyTools(),
+				...mcpToolPermissions,
+				"Bash(git -C * pull)",
+			]),
+		);
+		sessionLogger.debug("Chat session allowed tools:", allowedTools);
 
 		return {
 			workingDirectory: workspacePath,
-			allowedTools: [...getAllTools(), ...mcpToolPermissions],
+			allowedTools,
 			disallowedTools: [] as string[],
-			allowedDirectories: [workspacePath],
+			allowedDirectories: [workspacePath, ...repositoryPaths],
 			workspaceName,
 			cyrusHome: this.deps.cyrusHome,
 			appendSystemPrompt: systemPrompt,
 			...(this.deps.mcpConfig ? { mcpConfig: this.deps.mcpConfig } : {}),
 			...(resumeSessionId ? { resumeSessionId } : {}),
-			logger: this.logger.withContext({
-				sessionId,
-				platform: this.adapter.platformName,
-			}),
+			logger: sessionLogger,
 			maxTurns: 200,
 			onMessage: (message: SDKMessage) =>
 				this.handleAgentMessage(sessionId, message),

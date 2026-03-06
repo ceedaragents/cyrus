@@ -20,10 +20,23 @@ export class SlackChatAdapter
 	implements ChatPlatformAdapter<SlackWebhookEvent>
 {
 	readonly platformName = "slack" as const;
+	private repositoryPaths: string[];
+	private repositoryRoutingContext: string;
 	private logger: ILogger;
 	private selfBotId: string | undefined;
 
-	constructor(logger?: ILogger) {
+	constructor(
+		repositoryPaths: string[] = [],
+		logger?: ILogger,
+		options?: {
+			repositoryRoutingContext?: string;
+		},
+	) {
+		this.repositoryPaths = Array.from(
+			new Set(repositoryPaths.filter(Boolean)),
+		).sort();
+		this.repositoryRoutingContext =
+			options?.repositoryRoutingContext?.trim() || "";
 		this.logger = logger ?? createLogger({ component: "SlackChatAdapter" });
 	}
 
@@ -72,6 +85,23 @@ export class SlackChatAdapter
 	}
 
 	buildSystemPrompt(event: SlackWebhookEvent): string {
+		const repositoryAccessSection =
+			this.repositoryPaths.length > 0
+				? `
+## Repository Access
+- You have read-only access to the following configured repositories:
+${this.repositoryPaths.map((path) => `- ${path}`).join("\n")}
+
+- If you need to inspect source code in one of these repositories, use:
+  - Bash(git -C * pull)
+
+- You are explicitly allowed to run git pull with:
+  - Bash(git -C * pull)
+			`
+				: `
+## Repository Access
+- No repository paths are configured for this chat session.`;
+
 		return `You are responding to a Slack @mention.
 
 ## Context
@@ -84,6 +114,16 @@ export class SlackChatAdapter
 - If the user's request involves code changes, help them plan the work and suggest creating an issue in their project tracker (Linear, Jira, or GitHub Issues)
 - You can answer questions, provide analysis, help with planning, and assist with research
 - If files need to be created or examined, they will be in your working directory
+${repositoryAccessSection}
+${this.repositoryRoutingContext ? `\n\n${this.repositoryRoutingContext}` : ""}
+
+## Orchestration Notes
+- If the user asks you to make repo code changes immediately, use these steps:
+  - First run \`mcp__linear__get_user\` with \`query: "me"\` to get your Linear identity.
+  - Create an Issue in the user's tracker for the requested work (for example using \`mcp__linear__save_issue\`), including enough context and acceptance criteria to execute it.
+  - Assign that Issue to that same user (your own Linear user).
+  - That assignment is what immediately kicks off work in your own agent session.
+  - Track execution progress by searching \`mcp__cyrus-tools__linear_get_agent_sessions\` for the active session, then opening it with \`mcp__cyrus-tools__linear_get_agent_session\`.
 
 ## Slack Message Formatting (CRITICAL)
 Your response will be posted as a Slack message. Slack uses its own "mrkdwn" format, which is NOT standard Markdown. You MUST follow these rules exactly.
