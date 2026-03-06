@@ -132,19 +132,13 @@ Supported mrkdwn syntax:
 				this.getSelfBotId(token),
 			]);
 
-			// Filter out the @mention message itself and the bot's own replies.
-			// Other bot messages (Sentry, etc.) are kept as useful context.
-			const contextMessages = messages.filter(
-				(msg) =>
-					msg.ts !== event.payload.ts &&
-					!(selfBotId && msg.bot_id === selfBotId),
-			);
-
-			if (contextMessages.length === 0) {
+			if (messages.length === 0) {
 				return "";
 			}
 
-			return this.formatThreadContext(contextMessages);
+			// Include all messages (user and bot) so follow-up sessions retain
+			// full conversation history, especially when the runner type changes.
+			return this.formatThreadContext(messages, selfBotId);
 		} catch (error) {
 			this.logger.warn(
 				`Failed to fetch Slack thread context: ${error instanceof Error ? error.message : String(error)}`,
@@ -243,18 +237,22 @@ Supported mrkdwn syntax:
 		});
 	}
 
-	private formatThreadContext(messages: SlackThreadMessage[]): string {
+	private formatThreadContext(
+		messages: SlackThreadMessage[],
+		selfBotId?: string,
+	): string {
 		const formattedMessages = messages
-			.map(
-				(msg) =>
-					`  <message>
-    <author>${msg.user ?? "unknown"}</author>
+			.map((msg) => {
+				const isSelf = selfBotId && msg.bot_id === selfBotId;
+				const author = isSelf ? "assistant (you)" : (msg.user ?? "unknown");
+				return `  <message>
+    <author>${author}</author>
     <timestamp>${msg.ts}</timestamp>
     <content>
 ${msg.text}
     </content>
-  </message>`,
-			)
+  </message>`;
+			})
 			.join("\n");
 
 		return `<slack_thread_context>\n${formattedMessages}\n</slack_thread_context>`;
