@@ -122,4 +122,28 @@ describe("SlackChatAdapter system prompt", () => {
 		expect(systemPrompt).toContain("git -C <repositoryPath> pull");
 		expect(systemPrompt).toContain("Bash(git pull:*)");
 	});
+
+	it("includes orchestrator routing context and self-assignment workflow", () => {
+		const repositoryPaths = ["/repo/chat-one", "/repo/chat-two"];
+		const repositoryRoutingContext =
+			"<repository_routing_context>\n  <description>Use repo routing tags.</description>\n</repository_routing_context>";
+		const adapter = new SlackChatAdapter(repositoryPaths, undefined, {
+			repositoryRoutingContext,
+		});
+		const systemPrompt = adapter.buildSystemPrompt({
+			payload: {
+				user: "U1",
+				channel: "C1",
+				text: "<@cyrus> assign this work",
+				ts: "1700000000.000100",
+				event_ts: "1700000000.000100",
+				type: "app_mention",
+			},
+		} as any);
+
+		expect(systemPrompt).toContain(repositoryRoutingContext);
+		expect(systemPrompt).toContain("mcp__linear__get_user");
+		expect(systemPrompt).toContain('query: "me"');
+		expect(systemPrompt).toContain("linear_get_agent_sessions");
+	});
 });
