@@ -290,6 +290,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		it("should return false when child session is not found in any repository", async () => {
 			// Arrange
 			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(false);
+			mockChildAgentSessionManager.getSession.mockReturnValue(null);
 
 			const childSessionId = "nonexistent-child-session";
 			const feedbackMessage = "This should fail";
@@ -427,11 +428,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
-			// Verify the child was found in one of the repositories
-			const hasAgentRunnerCalls =
-				mockRepo2Manager.hasAgentRunner.mock.calls.length +
-				mockChildAgentSessionManager.hasAgentRunner.mock.calls.length;
-			expect(hasAgentRunnerCalls).toBeGreaterThan(0);
+			// Verify the child was found by searching sessions in one of the repositories
+			const getSessionCalls =
+				mockRepo2Manager.getSession.mock.calls.length +
+				mockChildAgentSessionManager.getSession.mock.calls.length;
+			expect(getSessionCalls).toBeGreaterThan(0);
 		});
 	});
 

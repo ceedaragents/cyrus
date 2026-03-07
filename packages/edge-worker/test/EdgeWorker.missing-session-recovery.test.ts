@@ -356,7 +356,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 
 			// Assert: Cache should now contain the mapping
 			// Currently FAILS because fallback is never attempted
-			expect(cache.get("issue-123")).toBe("test-repo");
+			expect(cache.get("issue-123")).toEqual(["test-repo"]);
 		});
 
 		it("should post a response activity when fallback resolution fails", async () => {

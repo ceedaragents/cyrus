@@ -1544,36 +1544,23 @@ ${taskSection}`;
 		);
 
 		// Find parent session across all repositories
-		// This is critical for cross-repository orchestration where parent and child
-		// may be in different repositories with different AgentSessionManagers
-		// See also: feedback delivery code at line ~4413 which uses same pattern
 		log.debug(
 			`Searching for parent session ${parentSessionId} across all repositories`,
 		);
-		let parentSession: CyrusAgentSession | undefined;
-		let parentRepo: RepositoryConfig | undefined;
-		let parentAgentSessionManager: AgentSessionManager | undefined;
+		const parentCtx = this.findSessionWithContext(parentSessionId);
 
-		for (const [repoId, manager] of this.agentSessionManagers) {
-			const candidate = manager.getSession(parentSessionId);
-			if (candidate) {
-				parentSession = candidate;
-				parentRepo = this.repositories.get(repoId);
-				parentAgentSessionManager = manager;
-				log.debug(
-					`Found parent session in repository: ${parentRepo?.name || repoId}`,
-				);
-				break;
-			}
-		}
-
-		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
+		if (!parentCtx) {
 			log.error(
 				`Parent session ${parentSessionId} not found in any repository's agent session manager`,
 			);
 			return;
 		}
 
+		const {
+			session: parentSession,
+			repository: parentRepo,
+			manager: parentAgentSessionManager,
+		} = parentCtx;
 		log.debug(
 			`Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
 		);
@@ -2316,17 +2303,12 @@ ${taskSection}`;
 				`No cached repository for issue unassignment ${webhook.notification.issue.identifier}, searching all managers`,
 			);
 
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const sessions = manager.getSessionsByIssueId(issueId);
-				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
-						this.logger.info(
-							`Recovered repository ${repoId} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
-						);
-						break;
-					}
-				}
+			const found = this.findRepositoryForIssueFromSessions(issueId);
+			if (found) {
+				repository = found.repository;
+				this.logger.info(
+					`Recovered repository ${found.repoId} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
+				);
 			}
 
 			if (!repository) {
@@ -2340,11 +2322,6 @@ ${taskSection}`;
 		this.logger.info(
 			`Handling issue unassignment: ${webhook.notification.issue.identifier}`,
 		);
-
-		// Log the complete webhook payload for TypeScript type definition
-		// console.log('=== ISSUE UNASSIGNMENT WEBHOOK PAYLOAD ===')
-		// console.log(JSON.stringify(webhook, null, 2))
-		// console.log('=== END WEBHOOK PAYLOAD ===')
 
 		await this.handleIssueUnassigned(webhook.notification.issue, repository);
 	}
@@ -2396,17 +2373,12 @@ ${taskSection}`;
 		let repository = this.getCachedRepository(issueId);
 		if (!repository) {
 			// Fallback: search all managers for sessions matching this issue
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const sessions = manager.getSessionsByIssueId(issueId);
-				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
-						this.logger.info(
-							`Recovered repository ${repoId} for issue update ${issueIdentifier} from session manager`,
-						);
-						break;
-					}
-				}
+			const found = this.findRepositoryForIssueFromSessions(issueId);
+			if (found) {
+				repository = found.repository;
+				this.logger.info(
+					`Recovered repository ${found.repoId} for issue update ${issueIdentifier} from session manager`,
+				);
 			}
 
 			if (!repository) {
@@ -3176,19 +3148,10 @@ ${taskSection}`;
 			`Received stop signal for agent activity session ${agentSessionId}`,
 		);
 
-		// Find the agent session manager that contains this session
-		// We don't need repository lookup - just search all managers
-		let foundManager: AgentSessionManager | null = null;
-		let foundSession: CyrusAgentSession | null = null;
-
-		for (const manager of this.agentSessionManagers.values()) {
-			const session = manager.getSession(agentSessionId);
-			if (session) {
-				foundManager = manager;
-				foundSession = session;
-				break;
-			}
-		}
+		// Find the session and its manager
+		const stopCtx = this.findSessionWithContext(agentSessionId);
+		const foundManager = stopCtx?.manager ?? null;
+		const foundSession = stopCtx?.session ?? null;
 
 		if (!foundManager || !foundSession) {
 			// Legacy recovery: session lost after restart/migration
@@ -3617,18 +3580,16 @@ ${taskSection}`;
 			);
 
 			// First, check if any manager already has this session
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const session = manager.getSession(agentSessionId);
-				if (session) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
-						this.repositoryRouter.addToIssueRepositoryCache(issueId, repoId);
-						this.logger.info(
-							`Recovered repository ${repoId} for issue ${issueId} from session manager`,
-						);
-						break;
-					}
-				}
+			const sessionCtx = this.findSessionWithContext(agentSessionId);
+			if (sessionCtx) {
+				repository = sessionCtx.repository;
+				this.repositoryRouter.addToIssueRepositoryCache(
+					issueId,
+					sessionCtx.repository.id,
+				);
+				this.logger.info(
+					`Recovered repository ${sessionCtx.repository.id} for issue ${issueId} from session manager`,
+				);
 			}
 
 			// Second fallback: re-route via repository router
@@ -4325,30 +4286,20 @@ ${taskSection}`;
 		const parentSessionId = this.childToParentAgentSession.get(childSessionId);
 
 		// Find the repository containing the child session
-		let childRepo: RepositoryConfig | undefined;
-		let childAgentSessionManager: AgentSessionManager | undefined;
+		const childCtx = this.findSessionWithContext(childSessionId);
 
-		for (const [repoId, manager] of this.agentSessionManagers) {
-			if (manager.hasAgentRunner(childSessionId)) {
-				childRepo = this.repositories.get(repoId);
-				childAgentSessionManager = manager;
-				break;
-			}
-		}
-
-		if (!childRepo || !childAgentSessionManager) {
+		if (!childCtx) {
 			console.error(
 				`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
 			);
 			return false;
 		}
 
-		// Get the child session
-		const childSession = childAgentSessionManager.getSession(childSessionId);
-		if (!childSession) {
-			console.error(`[EdgeWorker] Child session ${childSessionId} not found`);
-			return false;
-		}
+		const {
+			session: childSession,
+			repository: childRepo,
+			manager: childAgentSessionManager,
+		} = childCtx;
 
 		console.log(
 			`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
@@ -4357,13 +4308,10 @@ ${taskSection}`;
 		// Get parent session info for better context in the thought
 		let parentIssueId: string | undefined;
 		if (parentSessionId) {
-			for (const manager of this.agentSessionManagers.values()) {
-				const parentSession = manager.getSession(parentSessionId);
-				if (parentSession) {
-					parentIssueId =
-						parentSession.issue?.identifier || parentSession.issueId;
-					break;
-				}
+			const parentCtx = this.findSessionWithContext(parentSessionId);
+			if (parentCtx) {
+				parentIssueId =
+					parentCtx.session.issue?.identifier || parentCtx.session.issueId;
 			}
 		}
 
@@ -5978,6 +5926,51 @@ ${input.userComment}
 			repositoryId,
 			isStreaming,
 		);
+	}
+
+	/**
+	 * Find a session and its associated repository/manager context.
+	 * Uses session.repositoryId for O(1) lookup when available,
+	 * falls back to scanning all managers for legacy sessions.
+	 */
+	private findSessionWithContext(sessionId: string): {
+		session: CyrusAgentSession;
+		repository: RepositoryConfig;
+		manager: AgentSessionManager;
+	} | null {
+		// Fast path: check GlobalSessionRegistry or scan managers
+		for (const [repoId, manager] of this.agentSessionManagers) {
+			const session = manager.getSession(sessionId);
+			if (session) {
+				// If session has repositoryId, verify it matches (defensive)
+				const effectiveRepoId = session.repositoryId ?? repoId;
+				const repository = this.repositories.get(effectiveRepoId);
+				if (repository) {
+					return { session, repository, manager };
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Find the repository for an issue by checking active sessions.
+	 * Returns the first repository that has an active session for the issue.
+	 */
+	private findRepositoryForIssueFromSessions(issueId: string): {
+		repository: RepositoryConfig;
+		repoId: string;
+	} | null {
+		for (const [repoId, manager] of this.agentSessionManagers) {
+			const sessions = manager.getSessionsByIssueId(issueId);
+			if (sessions.length > 0) {
+				const repository = this.repositories.get(repoId);
+				if (repository) {
+					return { repository, repoId };
+				}
+			}
+		}
+		return null;
 	}
 
 	/**

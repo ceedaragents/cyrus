@@ -313,7 +313,7 @@ describe("RepositoryRouter", () => {
 					.inWorkspace("workspace-1")
 					.build();
 				const reposMap = new Map([[repo.id, repo]]);
-				env.router.getIssueRepositoryCache().set("issue-1", repo.id);
+				env.router.addToIssueRepositoryCache("issue-1", repo.id);
 
 				// When: Retrieving cached repository
 				const result = env.router.getCachedRepository("issue-1", reposMap);
@@ -340,7 +340,7 @@ describe("RepositoryRouter", () => {
 				const reposMap = new Map([[repo.id, repo]]);
 				env.router
 					.getIssueRepositoryCache()
-					.set("issue-1", "non-existent-repo");
+					.set("issue-1", ["non-existent-repo"]);
 
 				// When: Retrieving cached repository
 				const result = env.router.getCachedRepository("issue-1", reposMap);
