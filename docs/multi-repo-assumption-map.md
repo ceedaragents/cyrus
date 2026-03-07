@@ -101,25 +101,43 @@ This manifests in three interlocking patterns:
 | 490-563 | `elicitUserRepositorySelection()` | Asks user to pick ONE repo | **Critical** |
 | 599-639 | `selectRepositoryFromResponse()` | Returns ONE selected repo | **Critical** |
 
-#### `EdgeWorker.ts`
-| Line(s) | Code | Assumption | Criticality |
-|---------|------|-----------|-------------|
-| 169 | `repositories: Map<string, RepositoryConfig>` | Repo map itself is fine | Low |
-| 170 | `agentSessionManagers: Map<string, AgentSessionManager>` | **ONE manager per repo** — sessions for a repo are scoped to that manager | **Critical** |
-| 171 | `issueTrackers: Map<string, IIssueTrackerService>` | **ONE tracker per repo** | **Critical** |
-| ~282-283 | `hasActiveSession: (issueId, repositoryId) => boolean` | Checks if issue has session in **a specific repo** | **High** |
-| ~543-551 | First repo fallback for various operations | Takes `firstRepo` from `repositories.values()` | **Medium** |
-| ~961 | `agentSessionManagers.get(repository.id)` | Gets THE manager for THE repo | **Critical** |
-| ~1556-1563 | Loop over `agentSessionManagers` to find parent session | Iterates all repos to find which one holds the parent session | **High** — shows the pain of per-repo managers |
-| ~2318-2324 | Recovery loop for unassignment | Iterates all repos to find which one holds the session for an issue | **High** |
-| ~2398-2404 | Recovery loop for issue updates | Same pattern | **High** |
-| ~3619-3628 | Recovery loop for prompted webhooks | Same pattern — plus caches the found repo | **High** |
-| ~5421-5426 | `serializeState()` | Serializes sessions keyed by `repositoryId` | **Critical** |
-| ~5453-5468 | `restoreState()` | Restores sessions per `repositoryId` | **Critical** |
-| ~5514-5518, 5527-5531, 5541-5556 | Activity posting delegations | All take `repositoryId: string` | **High** |
-| ~5757-5762, 5971-5976 | More activity methods | Same `repositoryId` pattern | **High** |
-| ~5984-5986 | `getRepositoryPlatform(repositoryId)` | Single repo lookup | **Medium** |
-| ~3954-3955 | Status endpoint | Reports one status per repo | **Low** |
+#### `EdgeWorker.ts` (20 specific assumption sites identified)
+
+| # | Line(s) | Code / Method | Assumption | Pattern | Criticality |
+|---|---------|--------------|-----------|---------|-------------|
+| 1 | 169 | `repositories: Map<string, RepositoryConfig>` | Repo map itself is fine | — | Low |
+| 2 | 170 | `agentSessionManagers: Map<string, AgentSessionManager>` | **ONE manager per repo** | Map keying | **Critical** |
+| 3 | 171 | `issueTrackers: Map<string, IIssueTrackerService>` | **ONE tracker per repo** | Map keying | **Critical** |
+| 4 | 282-288 | `hasActiveSession` callback in RepositoryRouter init | `agentSessionManagers.get(repositoryId)` — direct lookup | Direct lookup | **Critical** |
+| 5 | 1556-1567 | `handleResumeParentSession()` | Loops all managers to find parent session; `break` on first match | Loop + break | **Critical** |
+| 6 | 2088-2091 | `getCachedRepository()` | Issue→repo cache returns single repo | Cache lookup | **Critical** |
+| 7 | 2310-2337 | `handleIssueUnassignedWebhook()` | Loops managers, takes FIRST repo found via `break` | Loop + break | **Critical** |
+| 8 | 2395-2409 | `handleIssueContentUpdate()` | Same loop+break pattern for issue updates | Loop + break | **Critical** |
+| 9 | 2430 | `handleIssueContentUpdate()` post-loop | `agentSessionManagers.get(repository.id)` — direct lookup after loop | Direct lookup | **Critical** |
+| 10 | 2612-2625 | `createLinearAgentSession()` | Workspace created for ONE repo: `createGitWorktree(fullIssue, repository)` | Session init | **Critical** |
+| 11 | 2707-2750 | `handleAgentSessionCreatedWebhook()` | Cache write: `.set(issueId, repository.id)` — overwrites any previous | Cache write | **Critical** |
+| 12 | 2851 | `initializeAgentRunner()` | `agentSessionManagers.get(repository.id)` — direct lookup | Direct lookup | **Critical** |
+| 13 | 3117, 3413 | Session start event emission | `this.emit("session:started", ..., repository.id)` — single repo ID | Event signature | **Critical** |
+| 14 | 3183-3189 | `handleStopSignal()` | Loops managers, `break` on first session found | Loop + break | **Critical** |
+| 15 | 3260-3274 | `handleRepositorySelectionResponse()` | Cache write after user selects ONE repo | Cache write | **Critical** |
+| 16 | 3618-3633 | `handleNormalPromptedActivity()` | Fallback recovery loop: finds repo for session, `break` + cache write | Loop + break | **Critical** |
+| 17 | 3702-3710 | `handleIssueUnassigned()` (internal) | `agentSessionManagers.get(repository.id)` → `getSessionsByIssueId` | Direct lookup | **Critical** |
+| 18 | 3744 | `handleClaudeMessage()` | `agentSessionManagers.get(repositoryId)` — routes message to one manager | Direct lookup | **High** |
+| 19 | 4007-4068 | `moveIssueToStartedState()` | `issueTrackers.get(repositoryId)` — state update scoped to one repo | Direct lookup | **High** |
+| 20 | 4331-4336 | `deliverFeedbackToChildSession()` | Loop+break to find child session's repo | Loop + break | **Critical** |
+| 21 | 4360-4367 | `deliverFeedbackToChildSession()` (parent lookup) | Loop+break to find parent session's repo | Loop + break | **Critical** |
+| 22 | 5434-5442 | `serializeMappings()` | `issueRepositoryCache` serialized as flat 1:1 map | Data model | **Critical** |
+| 23 | 5485-5490 | `restoreMappings()` | Restored cache maintains 1:1 issue→repo | Data model | **Critical** |
+| 24 | 5421-5426 | `serializeState()` | Sessions keyed by `repositoryId` | Data model | **Critical** |
+| 25 | 5453-5468 | `restoreState()` | Restores sessions per `repositoryId` | Data model | **Critical** |
+| 26 | 5514-5556 | Activity posting delegations | All take `repositoryId: string` | Parameter sig | **High** |
+| 27 | 5757-5976 | More activity methods | Same `repositoryId` parameter pattern | Parameter sig | **High** |
+| 28 | 5984-5986 | `getRepositoryPlatform(repositoryId)` | Single repo lookup | Direct lookup | **Medium** |
+| 29 | 3954-3955 | Status endpoint | Reports one status per repo | — | **Low** |
+
+**Summary: 20 CRITICAL, 4 HIGH, 1 MEDIUM, 1 LOW assumptions in EdgeWorker.ts alone.**
+
+Key anti-pattern: **7 instances of "loop over all agentSessionManagers + break on first match"** — these exist specifically because sessions don't carry their own repo reference, forcing brute-force searches across all repo-scoped managers.
 
 #### `AgentSessionManager.ts`
 | Line(s) | Code | Assumption | Criticality |
