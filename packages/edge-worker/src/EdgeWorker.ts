@@ -1049,6 +1049,7 @@ export class EdgeWorker extends EventEmitter {
 				issueMinimal,
 				workspace,
 				"github", // Don't stream activities to Linear for GitHub sources
+				repository.id,
 			);
 
 			const session = agentSessionManager.getSession(githubSessionId);
@@ -2631,6 +2632,8 @@ ${taskSection}`;
 			issue.id,
 			issueMinimal,
 			workspace,
+			"linear",
+			repository.id,
 		);
 
 		// Get the newly created session
@@ -2744,9 +2747,7 @@ ${taskSection}`;
 
 			// Cache the repository for this issue
 			if (issueId) {
-				this.repositoryRouter
-					.getIssueRepositoryCache()
-					.set(issueId, repository.id);
+				this.repositoryRouter.addToIssueRepositoryCache(issueId, repository.id);
 			}
 
 			// Post agent activity showing auto-matched routing
@@ -3271,7 +3272,7 @@ ${taskSection}`;
 
 		// Cache the selected repository for this issue
 		const issueId = agentSession.issue.id;
-		this.repositoryRouter.getIssueRepositoryCache().set(issueId, repository.id);
+		this.repositoryRouter.addToIssueRepositoryCache(issueId, repository.id);
 
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
@@ -3621,9 +3622,7 @@ ${taskSection}`;
 				if (session) {
 					repository = this.repositories.get(repoId) ?? null;
 					if (repository) {
-						this.repositoryRouter
-							.getIssueRepositoryCache()
-							.set(issueId, repoId);
+						this.repositoryRouter.addToIssueRepositoryCache(issueId, repoId);
 						this.logger.info(
 							`Recovered repository ${repoId} for issue ${issueId} from session manager`,
 						);
@@ -3644,9 +3643,10 @@ ${taskSection}`;
 
 					if (routingResult.type === "selected") {
 						repository = routingResult.repository;
-						this.repositoryRouter
-							.getIssueRepositoryCache()
-							.set(issueId, repository.id);
+						this.repositoryRouter.addToIssueRepositoryCache(
+							issueId,
+							repository.id,
+						);
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
 						);
@@ -5483,7 +5483,9 @@ ${input.userComment}
 
 		// Restore issue to repository cache in RepositoryRouter
 		if (state.issueRepositoryCache) {
-			const cache = new Map(Object.entries(state.issueRepositoryCache));
+			const cache = new Map<string, string[]>(
+				Object.entries(state.issueRepositoryCache),
+			);
 			this.repositoryRouter.restoreIssueRepositoryCache(cache);
 			this.logger.debug(
 				`Restored ${cache.size} issue-to-repository cache mappings`,

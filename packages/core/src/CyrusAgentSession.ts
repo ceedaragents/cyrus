@@ -44,6 +44,8 @@ export interface CyrusAgentSession {
 	id: string;
 	/** External session ID from the issue tracker (e.g., Linear's AgentSession ID) */
 	externalSessionId?: string;
+	/** The repository ID this session is associated with (added in v4.0) */
+	repositoryId?: string;
 	type: AgentSessionType.CommentThread;
 	status: AgentSessionStatus;
 	context: AgentSessionType.CommentThread;

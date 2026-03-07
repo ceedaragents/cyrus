@@ -66,8 +66,8 @@ export interface RepositoryRouterDeps {
  * This class was extracted from EdgeWorker to improve modularity and testability.
  */
 export class RepositoryRouter {
-	/** Cache mapping issue IDs to selected repository IDs */
-	private issueRepositoryCache = new Map<string, string>();
+	/** Cache mapping issue IDs to selected repository IDs (supports multiple repos per issue) */
+	private issueRepositoryCache = new Map<string, string[]>();
 
 	/** Pending repository selections awaiting user response */
 	private pendingSelections = new Map<string, PendingRepositorySelection>();
@@ -82,40 +82,74 @@ export class RepositoryRouter {
 	}
 
 	/**
-	 * Get cached repository for an issue
-	 *
-	 * This is a simple cache lookup used by agentSessionPrompted webhooks (Branch 3).
-	 * Per CLAUDE.md: "The repository will be retrieved from the issue-to-repository
-	 * cache - no new routing logic is performed."
+	 * Get all cached repositories for an issue
 	 *
 	 * @param issueId The Linear issue ID
 	 * @param repositoriesMap Map of repository IDs to configurations
-	 * @returns The cached repository or null if not found
+	 * @returns Array of cached repositories (empty if none found)
+	 */
+	getCachedRepositories(
+		issueId: string,
+		repositoriesMap: Map<string, RepositoryConfig>,
+	): RepositoryConfig[] {
+		const cachedRepoIds = this.issueRepositoryCache.get(issueId);
+		if (!cachedRepoIds || cachedRepoIds.length === 0) {
+			this.logger.debug(`No cached repositories found for issue ${issueId}`);
+			return [];
+		}
+
+		const repos: RepositoryConfig[] = [];
+		const validIds: string[] = [];
+		for (const repoId of cachedRepoIds) {
+			const repo = repositoriesMap.get(repoId);
+			if (repo) {
+				repos.push(repo);
+				validIds.push(repoId);
+			} else {
+				this.logger.warn(
+					`Cached repository ${repoId} no longer exists, removing from cache`,
+				);
+			}
+		}
+
+		// Update cache if any repos were removed
+		if (validIds.length !== cachedRepoIds.length) {
+			if (validIds.length === 0) {
+				this.issueRepositoryCache.delete(issueId);
+			} else {
+				this.issueRepositoryCache.set(issueId, validIds);
+			}
+		}
+
+		return repos;
+	}
+
+	/**
+	 * Get the first cached repository for an issue (backwards-compatible convenience method)
+	 *
+	 * This is a simple cache lookup used by agentSessionPrompted webhooks (Branch 3).
+	 *
+	 * @param issueId The Linear issue ID
+	 * @param repositoriesMap Map of repository IDs to configurations
+	 * @returns The first cached repository or null if not found
 	 */
 	getCachedRepository(
 		issueId: string,
 		repositoriesMap: Map<string, RepositoryConfig>,
 	): RepositoryConfig | null {
-		const cachedRepositoryId = this.issueRepositoryCache.get(issueId);
-		if (!cachedRepositoryId) {
-			this.logger.debug(`No cached repository found for issue ${issueId}`);
-			return null;
-		}
+		const repos = this.getCachedRepositories(issueId, repositoriesMap);
+		return repos[0] ?? null;
+	}
 
-		const cachedRepository = repositoriesMap.get(cachedRepositoryId);
-		if (!cachedRepository) {
-			// Repository no longer exists, remove from cache
-			this.logger.warn(
-				`Cached repository ${cachedRepositoryId} no longer exists, removing from cache`,
-			);
-			this.issueRepositoryCache.delete(issueId);
-			return null;
+	/**
+	 * Add a repository to the cache for an issue (supports multiple repos per issue)
+	 */
+	addToIssueRepositoryCache(issueId: string, repositoryId: string): void {
+		const existing = this.issueRepositoryCache.get(issueId) ?? [];
+		if (!existing.includes(repositoryId)) {
+			existing.push(repositoryId);
+			this.issueRepositoryCache.set(issueId, existing);
 		}
-
-		this.logger.debug(
-			`Using cached repository ${cachedRepository.name} for issue ${issueId}`,
-		);
-		return cachedRepository;
 	}
 
 	/**
@@ -723,14 +757,14 @@ export class RepositoryRouter {
 	/**
 	 * Get issue repository cache for serialization
 	 */
-	getIssueRepositoryCache(): Map<string, string> {
+	getIssueRepositoryCache(): Map<string, string[]> {
 		return this.issueRepositoryCache;
 	}
 
 	/**
 	 * Restore issue repository cache from serialization
 	 */
-	restoreIssueRepositoryCache(cache: Map<string, string>): void {
+	restoreIssueRepositoryCache(cache: Map<string, string[]>): void {
 		this.issueRepositoryCache = cache;
 	}
 }

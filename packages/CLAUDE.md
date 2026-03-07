@@ -2,9 +2,9 @@
 
 ### agentSessionCreated
 
-**IMPORTANT NOTE:** A delegation always triggers the first agentSession on a Linear issue. An @ mention can trigger either the first or an additonal agentSession on a Linear issue. For the case when it triggers an additional agentSession, the webhook MUST use the existing selected repository, as we do NOT support switching repositories within a single issue.
-When the first agentSession is created for a Linear issue, a repository must be selected and cached for that issue. If a repsoitory can not be matched based on the metadata of the Linear issue and the configured routing for the repositories, then a agentSession select signal should be sent to Linear with the configured repositories as options. In this case, a
-Claude runner should NOT be initialized until the subsequent agentSessionPrompted webhook is received.
+**IMPORTANT NOTE:** A delegation always triggers the first agentSession on a Linear issue. An @ mention can trigger either the first or an additional agentSession on a Linear issue. An issue can have sessions across multiple repositories — the issue-to-repository cache maps each issue to an array of repository IDs.
+When the first agentSession is created for a Linear issue, a repository must be selected and added to the cache for that issue. If a repository cannot be matched based on the metadata of the Linear issue and the configured routing for the repositories, then an agentSession select signal should be sent to Linear with the configured repositories as options. In this case, a
+Claude runner should NOT be initialized until the subsequent agentSessionPrompted webhook is received. For subsequent agentSessions on the same issue, a different repository may be selected and added to the cache if routing determines a different match.
 
 An agentSessionCreated webhook has two triggers from Linear:
 
@@ -41,6 +41,6 @@ unrelated prompt which we should handle by just using the fallback repo (first r
 
 #### else:
 
-For this case an agentSession MUST exist and a repository MUST already be associated with the Linear issue. The repository will be retrieved from the issue-to-repository cache - no new routing logic is performed.
+For this case an agentSession MUST exist and a repository MUST already be associated with the Linear issue. The repository will be retrieved from the issue-to-repository cache (first cached repo used by default). If the session carries a `repositoryId`, that is used directly without cache lookup.
 
 

@@ -162,6 +162,7 @@ export class AgentSessionManager extends EventEmitter {
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
 		platform: "linear" | "github" | "slack" = "linear",
+		repositoryId?: string,
 	): CyrusAgentSession {
 		const log = this.logger.withContext({
 			sessionId,
@@ -174,6 +175,7 @@ export class AgentSessionManager extends EventEmitter {
 			id: sessionId,
 			// Only Linear sessions have a valid external session ID for posting activities
 			externalSessionId: platform === "linear" ? sessionId : undefined,
+			repositoryId,
 			type: AgentSessionType.CommentThread,
 			status: AgentSessionStatus.Active,
 			context: AgentSessionType.CommentThread,
