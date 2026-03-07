@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Dynamic skills** - Skills can now be dynamically loaded from `~/.cyrus/skills/` and injected into agent sessions based on routing strategies (always, label, team, repository, keyword). Compatible with all runners (Claude, Codex, Cursor, Gemini). ([CYPACK-896](https://linear.app/ceedar/issue/CYPACK-896), [#947](https://github.com/ceedaragents/cyrus/pull/947))
+
 ### Fixed
 - **Rate limit event handling** - Rate limit events from Claude are now properly handled instead of producing "Unknown message type" warnings in logs. ([CYPACK-895](https://linear.app/ceedar/issue/CYPACK-895), [#946](https://github.com/ceedaragents/cyrus/pull/946))
 

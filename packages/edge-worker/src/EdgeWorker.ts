@@ -37,6 +37,8 @@ import type {
 	SerializedCyrusAgentSession,
 	SerializedCyrusAgentSessionEntry,
 	SessionStartMessage,
+	SkillDefinition,
+	SkillRoutingContext,
 	StopSignalMessage,
 	UnassignMessage,
 	UserPromptMessage,
@@ -132,6 +134,7 @@ import { RunnerSelectionService } from "./RunnerSelectionService.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { SkillInjector, SkillLoader, SkillRouter } from "./skills/index.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -199,6 +202,11 @@ export class EdgeWorker extends EventEmitter {
 	private activityPoster: ActivityPoster;
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
+	// Dynamic skills system
+	private skillLoader: SkillLoader;
+	private skillRouter: SkillRouter;
+	private skillInjector: SkillInjector;
+	private cachedSkills: SkillDefinition[] = [];
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
 	private cyrusToolsMcpContexts = new Map<string, CyrusToolsMcpContextEntry>();
@@ -292,6 +300,11 @@ export class EdgeWorker extends EventEmitter {
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
 		this.gitService = new GitService();
+
+		// Initialize dynamic skills system
+		this.skillLoader = new SkillLoader(this.logger);
+		this.skillRouter = new SkillRouter();
+		this.skillInjector = new SkillInjector();
 
 		// Initialize AskUserQuestion handler for elicitation via Linear select signal
 		this.askUserQuestionHandler = new AskUserQuestionHandler({
@@ -491,6 +504,9 @@ export class EdgeWorker extends EventEmitter {
 	async start(): Promise<void> {
 		// Load persisted state for each repository
 		await this.loadPersistedState();
+
+		// Load dynamic skills from ~/.cyrus/skills/
+		await this.loadDynamicSkills();
 
 		// Start config file watcher via ConfigManager
 		this.configManager.on(
@@ -5126,16 +5142,52 @@ ${input.userComment}
 			);
 		}
 
+		// Resolve dynamic skills for this session
+		const skillRoutingContext: SkillRoutingContext = {
+			labels,
+			teamKey: session.issue?.identifier?.split("-")[0],
+			repositoryId: repository.id,
+			repositoryName: repository.name,
+			issueTitle: session.issue?.title,
+			issueDescription: issueDescription,
+		};
+		const skillInjection = disallowAllTools
+			? {
+					appendedPrompt: "",
+					additionalTools: [] as string[],
+					injectedSkillNames: [] as string[],
+				}
+			: this.resolveSkillsForSession(skillRoutingContext);
+
+		if (skillInjection.injectedSkillNames.length > 0) {
+			log.info(
+				`Injected ${skillInjection.injectedSkillNames.length} dynamic skill(s): ${skillInjection.injectedSkillNames.join(", ")}`,
+			);
+		}
+
+		// Merge skill tools into allowed tools
+		const mergedAllowedTools =
+			skillInjection.additionalTools.length > 0
+				? [...new Set([...allowedTools, ...skillInjection.additionalTools])]
+				: allowedTools;
+
+		// Merge skill instructions into system prompt
+		const mergedSystemPrompt = skillInjection.appendedPrompt
+			? [systemPrompt || "", skillInjection.appendedPrompt]
+					.filter(Boolean)
+					.join("\n\n")
+			: systemPrompt || "";
+
 		const config = {
 			workingDirectory: session.workspace.path,
-			allowedTools,
+			allowedTools: mergedAllowedTools,
 			disallowedTools,
 			allowedDirectories,
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath,
 			mcpConfig,
-			appendSystemPrompt: systemPrompt || "",
+			appendSystemPrompt: mergedSystemPrompt,
 			// When disallowAllTools is true, remove all built-in tools from model context
 			// so Claude cannot see or attempt tool use (distinct from allowedTools which only controls permissions)
 			...(disallowAllTools && { tools: [] }),
@@ -5196,6 +5248,40 @@ ${input.userComment}
 		}
 
 		return { config, runnerType };
+	}
+
+	/**
+	 * Load dynamic skills from ~/.cyrus/skills/ directory.
+	 * Called during startup and can be called to reload skills.
+	 */
+	private async loadDynamicSkills(): Promise<void> {
+		const skillsDir = join(this.cyrusHome, "skills");
+		this.cachedSkills = await this.skillLoader.loadSkills(skillsDir);
+	}
+
+	/**
+	 * Resolve which dynamic skills should be active for a session.
+	 * Uses the SkillRouter to match skills against session context,
+	 * then uses the SkillInjector to build injection result.
+	 */
+	private resolveSkillsForSession(context: SkillRoutingContext): {
+		appendedPrompt: string;
+		additionalTools: string[];
+		injectedSkillNames: string[];
+	} {
+		if (this.cachedSkills.length === 0) {
+			return {
+				appendedPrompt: "",
+				additionalTools: [],
+				injectedSkillNames: [],
+			};
+		}
+
+		const resolvedSkills = this.skillRouter.resolveSkills(
+			this.cachedSkills,
+			context,
+		);
+		return this.skillInjector.buildInjection(resolvedSkills);
 	}
 
 	/**

@@ -201,6 +201,18 @@ export type {
 	ISimpleAgentRunner,
 	ISimpleAgentRunnerConfig,
 } from "./simple-agent-runner-types.js";
+
+// Dynamic Skills
+export type {
+	ISkillLoader,
+	ISkillRouter,
+	ISkillRoutingStrategy,
+	SkillDefinition,
+	SkillInjectionResult,
+	SkillRoutingConfig,
+	SkillRoutingContext,
+	SkillRoutingStrategy,
+} from "./skills/index.js";
 // Platform-agnostic webhook type aliases - exported from issue-tracker
 // These are now defined in issue-tracker/types.ts as aliases to Linear SDK webhook types
 // EdgeWorker and other high-level code should use these generic names via issue-tracker exports

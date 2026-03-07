@@ -36,6 +36,17 @@ export type {
 	IActivitySink,
 } from "./sinks/index.js";
 export { LinearActivitySink } from "./sinks/index.js";
+// Dynamic skills
+export {
+	AlwaysRoutingStrategy,
+	KeywordRoutingStrategy,
+	LabelRoutingStrategy,
+	RepositoryRoutingStrategy,
+	SkillInjector,
+	SkillLoader,
+	SkillRouter,
+	TeamRoutingStrategy,
+} from "./skills/index.js";
 export type { EdgeWorkerEvents } from "./types.js";
 // User access control
 export {
