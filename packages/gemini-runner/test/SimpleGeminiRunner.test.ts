@@ -6,6 +6,7 @@ import type { SimpleAgentRunnerConfig } from "cyrus-simple-agent-runner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GeminiRunner } from "../src/GeminiRunner.js";
 import { SimpleGeminiRunner } from "../src/SimpleGeminiRunner.js";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 // Mock GeminiRunner
 vi.mock("../src/GeminiRunner.js", () => {
@@ -20,16 +21,18 @@ describe("SimpleGeminiRunner", () => {
 	let runner: SimpleGeminiRunner<"approve" | "reject">;
 	let mockRunner: any;
 	let eventHandlers: Map<string, (arg: any) => void>;
-
-	const defaultConfig: SimpleAgentRunnerConfig<"approve" | "reject"> = {
-		validResponses: ["approve", "reject"] as const,
-		cyrusHome: "/tmp/test-cyrus-home",
-		workingDirectory: "/tmp/test",
-		model: "gemini-2.5-flash",
-	};
+	let testCyrusHome: string;
+	let defaultConfig: SimpleAgentRunnerConfig<"approve" | "reject">;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		testCyrusHome = createTestCyrusHome();
+		defaultConfig = {
+			validResponses: ["approve", "reject"] as const,
+			cyrusHome: testCyrusHome,
+			workingDirectory: "/tmp/test",
+			model: "gemini-2.5-flash",
+		};
 		eventHandlers = new Map();
 
 		// Create a fresh mock for each test with proper event handling
@@ -420,7 +423,7 @@ describe("SimpleGeminiRunner", () => {
 			type BooleanResponse = "true" | "false";
 			const boolConfig: SimpleAgentRunnerConfig<BooleanResponse> = {
 				validResponses: ["true", "false"] as const,
-				cyrusHome: "/tmp/test-cyrus-home",
+				cyrusHome: testCyrusHome,
 				workingDirectory: "/tmp/test",
 			};
 
@@ -448,7 +451,7 @@ describe("SimpleGeminiRunner", () => {
 					"needs-info",
 					"escalated",
 				] as const,
-				cyrusHome: "/tmp/test-cyrus-home",
+				cyrusHome: testCyrusHome,
 				workingDirectory: "/tmp/test",
 			};
 

@@ -11,6 +11,7 @@ import type {
 	GeminiStreamEvent,
 	GeminiToolUseEvent,
 } from "../src/types.js";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 // Mock child_process spawn
 vi.mock("node:child_process", () => ({
@@ -140,14 +141,17 @@ function createResultEvent(
 describe("GeminiRunner", () => {
 	let runner: GeminiRunner;
 	let processEmulator: ProcessEmulator;
-	const defaultConfig: GeminiRunnerConfig = {
-		workingDirectory: "/tmp/test",
-		cyrusHome: "/tmp/test-cyrus-home",
-		model: "gemini-2.5-flash",
-	};
+	let testCyrusHome: string;
+	let defaultConfig: GeminiRunnerConfig;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		testCyrusHome = createTestCyrusHome();
+		defaultConfig = {
+			workingDirectory: "/tmp/test",
+			cyrusHome: testCyrusHome,
+			model: "gemini-2.5-flash",
+		};
 		processEmulator = new ProcessEmulator();
 		mockSpawn.mockReturnValue(processEmulator as unknown as ChildProcess);
 		runner = new GeminiRunner(defaultConfig);
