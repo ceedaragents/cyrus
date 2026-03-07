@@ -28,6 +28,20 @@ Linear Issue ──(1:1)──▶ Repository ──(1:1)──▶ AgentSessionMa
 
 **The core assumption is: ONE issue → ONE repository → ONE set of sessions.**
 
+### Documented Hard Constraint (to be removed)
+
+`packages/CLAUDE.md` explicitly states: *"we do NOT support switching repositories within a single issue"* — this is the design rule we are eliminating. The `agentSessionPrompted` Branch 3 handler enforces: *"The repository will be retrieved from the issue-to-repository cache — no new routing logic is performed."*
+
+### Existing Multi-Repo Awareness (to build on)
+
+The codebase already supports **multiple repositories per workspace** in config. Key existing multi-repo infrastructure:
+- `apps/f1/server.ts` lines 41-42: `CYRUS_REPO_PATH_2` env var and `MULTI_REPO_MODE` flag for F1 testing
+- `PromptBuilder.ts` lines 448-507: `generateRoutingContext()` only generates cross-repo routing context when >1 repo exists in a workspace
+- `RepositoryRouter.ts` lines 283-288: Elicitation flow for user to pick a repo when multiple match
+- `apps/cli/src/commands/SelfAddRepoCommand.ts`: Supports adding multiple repos to config
+
+The gap is: **config supports N repos, but each issue is locked to exactly one.**
+
 This manifests in three interlocking patterns:
 
 ### Pattern A: Issue-to-Repository Cache (1:1 mapping)
@@ -488,7 +502,7 @@ Every `.ts` file in the repository, with its multi-repo impact assessment.
 
 ### `apps/f1/` (13 source files)
 
-- [x] `server.ts` — **REVIEW**: F1 test server repo setup
+- [x] `server.ts` — **REVIEW**: Already has `MULTI_REPO_MODE` (line 42) and secondary repo config (lines 131-156). May need updates to test 0-repo and N-repo-per-issue scenarios
 - [x] `src/cli.ts` — **NO CHANGE**
 - [x] `src/commands/*.ts` (10 command files) — **NO CHANGE** (F1 commands are test tooling)
 - [x] `src/templates/index.ts` — **NO CHANGE**
