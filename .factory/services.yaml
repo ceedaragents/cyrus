@@ -1,0 +1,14 @@
+commands:
+  install: pnpm install
+  build: pnpm build
+  typecheck: pnpm typecheck
+  lint: pnpm lint
+  test: pnpm test:packages:run -- --maxWorkers=8
+
+services:
+  f1-multi-repo:
+    start: CYRUS_PORT=3600 CYRUS_REPO_PATH="/Users/connor/code/cyrus/worktrees/multirepo" CYRUS_REPO_PATH_2="/Users/connor/code/cyrus/worktrees/multirepo" bun "/Users/connor/code/cyrus/worktrees/multirepo/apps/f1/server.ts"
+    stop: lsof -ti :3600 | xargs kill
+    healthcheck: curl -sf http://localhost:3600/status
+    port: 3600
+    depends_on: []
