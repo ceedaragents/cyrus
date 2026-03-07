@@ -5,24 +5,21 @@ import type {
 	SDKMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-// Import the AskUserQuestionInput type from the SDK's tool input types
-// This ensures we use the SDK's official type definitions
-import type { AskUserQuestionInput as SDKAskUserQuestionInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools.d.ts";
 import type { ILogger } from "./logging/ILogger.js";
 
 // ============================================================================
 // ASK USER QUESTION TYPES
 // ============================================================================
-// Re-export the SDK's AskUserQuestionInput type as the canonical input type.
-// The SDK's type has complex tuple structures for questions and options.
 // We also provide simplified types for easier consumption in our callback API.
 
 /**
- * The canonical AskUserQuestionInput type from the Claude SDK.
+ * The AskUserQuestionInput type matching the Claude SDK's tool input schema.
  *
  * @see {@link https://platform.claude.com/docs/en/agent-sdk/typescript#ask-user-question}
  */
-export type AskUserQuestionInput = SDKAskUserQuestionInput;
+export interface AskUserQuestionInput {
+	questions: AskUserQuestion[];
+}
 
 /**
  * Simplified option type for easier API consumption.

@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from `^0.2.63` to `^0.2.71` in `cyrus-core`, `cyrus-claude-runner`, and `cyrus-simple-agent-runner`. Fixed breaking type import: `sdk-tools.d.ts` is no longer in the SDK's `exports` field; `AskUserQuestionInput` is now defined locally in `cyrus-core`. See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-897](https://linear.app/ceedar/issue/CYPACK-897), [#948](https://github.com/ceedaragents/cyrus/pull/948))
+
 ### Fixed
 - Added proper handling for `rate_limit_event` messages from Claude runners in `AgentSessionManager` with tiered logging (warn/info/debug by status), and silenced all unhandled informational message types (`rate_limit_event`, `stream_event`, `tool_progress`, `auth_status`, `tool_use_summary`, `prompt_suggestion`) in `ClaudeRunner.processMessage`. ([CYPACK-895](https://linear.app/ceedar/issue/CYPACK-895), [#946](https://github.com/ceedaragents/cyrus/pull/946))
 
