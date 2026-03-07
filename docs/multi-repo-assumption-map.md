@@ -201,17 +201,28 @@ Key anti-pattern: **7 instances of "loop over all agentSessionManagers + break o
 #### `AttachmentService.ts`
 | Line(s) | Code | Assumption | Criticality |
 |---------|------|-----------|-------------|
-| — | Processes attachments for a session | Likely uses workspace path (single repo) | **Medium** |
+| ~39-44 | `downloadIssueAttachments(issue, repository: RepositoryConfig, ...)` | Single repo param — attachments downloaded once per issue per repo | **Medium** |
 
 #### `RunnerSelectionService.ts`
 | Line(s) | Code | Assumption | Criticality |
 |---------|------|-----------|-------------|
-| — | Selects runner based on repo config | Takes single `RepositoryConfig` | **Medium** |
+| ~362-434 | `buildAllowedTools(repository: RepositoryConfig, ...)` | Single repo param — tools are repo-specific, which is correct | **Low** |
+
+#### `ChatSessionHandler.ts`
+| Line(s) | Code | Assumption | Criticality |
+|---------|------|-----------|-------------|
+| ~78 | `threadSessions: Map<string, string>` | Maps thread key → session ID with no repo awareness | **Medium** — could conflict if chat integrates with repo-scoped sessions |
+| ~125-149 | Thread-to-session lookup | One thread = one session, independent of repository | **Medium** |
 
 #### `sinks/LinearActivitySink.ts`
 | Line(s) | Code | Assumption | Criticality |
 |---------|------|-----------|-------------|
-| — | Posts activities to Linear | Takes issue tracker from single repo context | **Medium** |
+| ~53-56 | Constructor takes `issueTracker` + `workspaceId` (not `repositoryId`) | Workspace-scoped sink, but used in per-repo context | **Medium** |
+
+#### `procedures/types.ts`
+| Line(s) | Code | Assumption | Criticality |
+|---------|------|-----------|-------------|
+| ~83-103 | `ProcedureMetadata` interface | Procedure execution is per-session (no multi-repo awareness) — cannot span repos | **Medium** |
 
 #### `SlackChatAdapter.ts`
 | Line(s) | Code | Assumption | Criticality |
