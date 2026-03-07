@@ -4,6 +4,17 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- **Multi-repository support foundation**: Removed the 1:1 issue→repository constraint. Issues can now have sessions across multiple repositories.
+  - Added `repositoryId?: string` field to `CyrusAgentSession` — sessions now self-identify their repository
+  - Changed `issueRepositoryCache` from `Map<string, string>` to `Map<string, string[]>` — one issue can map to multiple repos
+  - Added `addToIssueRepositoryCache()` method for append-style cache writes
+  - Added `getCachedRepositories()` returning all repos for an issue, kept `getCachedRepository()` for backward compat
+  - Added `findSessionWithContext()` and `findRepositoryForIssueFromSessions()` helper methods in EdgeWorker
+  - Replaced 7 loop+break session search patterns with O(1) helper lookups
+  - Bumped persistence version from 3.0 to 4.0 with automatic v3→v4 migration
+  - Updated `packages/CLAUDE.md` to remove "do NOT support switching repositories" constraint
+
 ### Fixed
 - Added proper handling for `rate_limit_event` messages from Claude runners in `AgentSessionManager` with tiered logging (warn/info/debug by status), and silenced all unhandled informational message types (`rate_limit_event`, `stream_event`, `tool_progress`, `auth_status`, `tool_use_summary`, `prompt_suggestion`) in `ClaudeRunner.processMessage`. ([CYPACK-895](https://linear.app/ceedar/issue/CYPACK-895), [#946](https://github.com/ceedaragents/cyrus/pull/946))
 

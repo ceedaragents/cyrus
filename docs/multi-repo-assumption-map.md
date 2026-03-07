@@ -559,31 +559,37 @@ Every `.ts` file in the repository, with its multi-repo impact assessment.
 
 ## Transformation Strategy (Layer Order)
 
-### Phase 1: Core Types
-- Add `repositoryIds?: string[]` to `CyrusAgentSession`
-- Change `issueRepositoryCache` from `Record<string, string>` to `Record<string, string[]>`
-- Update `PERSISTENCE_VERSION` to `"4.0"`, add v3→v4 migration
-- Update handler signatures in `config-types.ts`
+### Phase 1: Core Types ✅ COMPLETED
+- Added `repositoryId?: string` to `CyrusAgentSession` (singular, not array — each session is in one repo)
+- Changed `issueRepositoryCache` from `Record<string, string>` to `Record<string, string[]>`
+- Updated `PERSISTENCE_VERSION` to `"4.0"`, added v3→v4 migration (both v2→v4 and v3→v4 paths)
+- Handler signatures in `config-types.ts` left unchanged (they take single `repositoryId` per-event, which is correct)
 
-### Phase 2: Infrastructure
-- `RepositoryRouter`: Return `RepositoryConfig[]` instead of single `RepositoryConfig`
-- `AgentSessionManager`: Remove per-repo coupling — sessions carry their own repo context
-- `EdgeWorker`: Replace per-repo maps with session-centric architecture
+### Phase 2: Infrastructure ✅ COMPLETED
+- `RepositoryRouter`: Cache changed to `Map<string, string[]>`, added `addToIssueRepositoryCache()` and `getCachedRepositories()`
+- `AgentSessionManager`: `createLinearAgentSession()` now accepts optional `repositoryId` parameter
+- `EdgeWorker`:
+  - Added `findSessionWithContext()` — O(1) session→repo lookup using `session.repositoryId`
+  - Added `findRepositoryForIssueFromSessions()` — find repo from active sessions
+  - Replaced all 7 loop+break patterns with helper methods
+  - All cache writes use `addToIssueRepositoryCache()` (append, not overwrite)
 
-### Phase 3: Business Logic
-- `PromptBuilder`: Accept `repositories: RepositoryConfig[]` for multi-repo context
-- `GitService`: Support creating workspaces across multiple repos
-- `ActivityPoster`: Route activities to correct tracker(s)
+### Phase 3: Business Logic (deferred — existing signatures work)
+- `PromptBuilder`, `GitService`, `ActivityPoster` — signatures already take single `RepositoryConfig`, which is correct per-session/per-event
+- These will need changes only when we add cross-repo orchestration features
 
-### Phase 4: Events & CLI
-- Update `EdgeWorkerEvents` signatures
-- Update `WorkerService` event handlers
+### Phase 4: Events & CLI (not needed)
+- `EdgeWorkerEvents` signatures take `repositoryId: string` — correct per-event
+- `WorkerService` handlers — no change needed
 
-### Phase 5: Tests
-- Update all affected test files
+### Phase 5: Tests ✅ COMPLETED
+- Updated `PersistenceManager.migration.test.ts` — v3→v4 and v4.0 tests
+- Updated `RepositoryRouter.test.ts` — cache expects `string[]`
+- Updated `EdgeWorker.missing-session-recovery.test.ts` — cache expects `string[]`
+- Updated `EdgeWorker.feedback-delivery.test.ts` — uses `getSession` instead of `hasAgentRunner`
+- All 584 tests pass (43 core + 541 edge-worker)
 
-### Phase 6: Verification
-- `pnpm typecheck`
-- `pnpm test:packages:run`
-- `pnpm build`
-- F1 test drive
+### Phase 6: Verification ✅ COMPLETED
+- `pnpm typecheck` — all 15 packages pass
+- `pnpm test:packages:run` — all tests pass
+- `pnpm build` — all packages build clean
