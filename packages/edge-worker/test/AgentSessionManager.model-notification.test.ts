@@ -36,6 +36,7 @@ describe("AgentSessionManager - Model Notification", () => {
 				path: "/test/workspace",
 				isGitWorktree: false,
 			},
+			["test-repo"],
 		);
 	});
 

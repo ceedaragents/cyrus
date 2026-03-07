@@ -52,6 +52,7 @@ describe("AgentSessionManager stop-session behavior", () => {
 				path: "/tmp/workspace",
 				isGitWorktree: false,
 			},
+			["test-repo"],
 		);
 	});
 

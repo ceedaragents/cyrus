@@ -37,6 +37,7 @@ describe("GlobalSessionRegistry", () => {
 			path: `/tmp/test-${sessionId}`,
 			isGitWorktree: true,
 		},
+		repositoryIds: [],
 		...overrides,
 	});
 

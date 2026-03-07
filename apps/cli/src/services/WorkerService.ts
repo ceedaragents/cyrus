@@ -235,8 +235,15 @@ export class WorkerService {
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,
-					repository: RepositoryConfig,
+					repositories: RepositoryConfig[],
 				): Promise<Workspace> => {
+					// Use first repository for workspace creation (runner operates in one repo)
+					const repository = repositories[0];
+					if (!repository) {
+						throw new Error(
+							"Cannot create workspace without at least one repository",
+						);
+					}
 					return this.gitService.createGitWorktree(
 						issue,
 						repository,
@@ -276,18 +283,18 @@ export class WorkerService {
 		// Session events
 		this.edgeWorker.on(
 			"session:started",
-			(issueId: string, _issue: Issue, repositoryId: string) => {
+			(issueId: string, _issue: Issue, repositoryIds: string[]) => {
 				this.logger.info(
-					`Started session for issue ${issueId} in repository ${repositoryId}`,
+					`Started session for issue ${issueId} in repository(ies) ${repositoryIds.join(", ")}`,
 				);
 			},
 		);
 
 		this.edgeWorker.on(
 			"session:ended",
-			(issueId: string, exitCode: number | null, repositoryId: string) => {
+			(issueId: string, exitCode: number | null, repositoryIds: string[]) => {
 				this.logger.info(
-					`Session for issue ${issueId} ended with exit code ${exitCode} in repository ${repositoryId}`,
+					`Session for issue ${issueId} ended with exit code ${exitCode} in repository(ies) ${repositoryIds.join(", ")}`,
 				);
 			},
 		);

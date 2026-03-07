@@ -64,6 +64,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-123",
 				metadata: {},
 			};
@@ -189,6 +190,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-456",
 				metadata: {},
 			};
@@ -259,6 +261,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-789",
 				metadata: {},
 			};
@@ -313,6 +316,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-suppress-1",
 				metadata: {
 					procedure: {
@@ -358,6 +362,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-no-suppress",
 				metadata: {
 					procedure: {
@@ -398,6 +403,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-1",
 				metadata: {},
 			};
@@ -434,6 +440,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-2",
 				metadata: {},
 			};
@@ -478,6 +485,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-routing",
 				metadata: {
 					procedure: {
@@ -545,6 +553,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-result-1",
 				metadata: {},
 			};
@@ -599,6 +608,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-no-result",
 				metadata: {},
 			};
@@ -639,6 +649,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-last-result",
 				metadata: {},
 			};
@@ -684,6 +695,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-empty-result",
 				metadata: {},
 			};
@@ -716,6 +728,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-no-procedure",
 				metadata: {},
 			};
@@ -747,6 +760,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-no-stored-result",
 				metadata: {},
 			};
@@ -787,6 +801,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-error",
 				metadata: {},
 			};

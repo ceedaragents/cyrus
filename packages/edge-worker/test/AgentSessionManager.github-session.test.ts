@@ -44,6 +44,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 				branchName: "fix/gh-42",
 			},
 			{ path: "/test/workspace", isGitWorktree: false },
+			["test-repo"],
 			"github",
 		);
 	}
@@ -60,6 +61,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 				branchName: "fix/lin-99",
 			},
 			{ path: "/test/workspace", isGitWorktree: false },
+			["test-repo"],
 			"linear",
 		);
 	}

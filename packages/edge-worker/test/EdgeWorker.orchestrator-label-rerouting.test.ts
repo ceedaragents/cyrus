@@ -137,6 +137,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -193,6 +194,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -254,6 +256,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -319,6 +322,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -377,6 +381,7 @@ Work completed on subtask TEST-124.
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -433,6 +438,7 @@ Work completed on subtask TEST-124.
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -489,6 +495,7 @@ Work completed on subtask TEST-124.
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -584,6 +591,7 @@ Work completed on subtask TEST-124.
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -678,6 +686,7 @@ Work completed on subtask TEST-124.
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 
@@ -772,6 +781,7 @@ Work completed on subtask TEST-124.
 					issueIdentifier: "TEST-123",
 				},
 				workspace: { path: "/test/workspaces/TEST-123", isGitWorktree: false },
+				repositoryIds: [],
 				metadata: {},
 			};
 

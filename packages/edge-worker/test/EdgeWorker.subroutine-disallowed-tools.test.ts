@@ -102,6 +102,7 @@ describe("EdgeWorker - Subroutine Tool Disabling", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-123",
 				metadata: {},
 			};
@@ -144,6 +145,7 @@ describe("EdgeWorker - Subroutine Tool Disabling", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-456",
 				metadata: {
 					procedure: {
@@ -189,6 +191,7 @@ describe("EdgeWorker - Subroutine Tool Disabling", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-789",
 				metadata: {},
 			};
@@ -226,6 +229,7 @@ describe("EdgeWorker - Subroutine Tool Disabling", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-101",
 				metadata: {},
 			};
@@ -263,6 +267,7 @@ describe("EdgeWorker - Subroutine Tool Disabling", () => {
 					branchName: "test-branch",
 				},
 				workspace: { path: "/test/workspace", isGitWorktree: false },
+				repositoryIds: [],
 				claudeSessionId: "claude-202",
 				metadata: {},
 			};

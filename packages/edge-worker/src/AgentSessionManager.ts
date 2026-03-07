@@ -161,6 +161,7 @@ export class AgentSessionManager extends EventEmitter {
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
+		repositoryIds: string[],
 		platform: "linear" | "github" | "slack" = "linear",
 	): CyrusAgentSession {
 		const log = this.logger.withContext({
@@ -168,7 +169,9 @@ export class AgentSessionManager extends EventEmitter {
 			platform,
 			issueIdentifier: issueMinimal.identifier,
 		});
-		log.info(`Tracking session for issue ${issueId}`);
+		log.info(
+			`Tracking session for issue ${issueId} with ${repositoryIds.length} repository(ies)`,
+		);
 
 		const agentSession: CyrusAgentSession = {
 			id: sessionId,
@@ -186,6 +189,7 @@ export class AgentSessionManager extends EventEmitter {
 			},
 			issueId, // Kept for backwards compatibility
 			issue: issueMinimal,
+			repositoryIds,
 			workspace: workspace,
 		};
 
@@ -219,6 +223,7 @@ export class AgentSessionManager extends EventEmitter {
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
+			repositoryIds: [],
 			workspace,
 		};
 

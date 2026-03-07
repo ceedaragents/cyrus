@@ -38,6 +38,7 @@ describe("AgentSessionManager - Codex tool activity mapping", () => {
 				path: "/Users/connor/code/cyrus",
 				isGitWorktree: false,
 			},
+			["test-repo"],
 		);
 		manager.addAgentRunner(sessionId, runner);
 

@@ -295,7 +295,7 @@ Issue: {{issue_identifier}}`;
 		const repositoryRouter = (edgeWorker as any).repositoryRouter;
 		repositoryRouter
 			.getIssueRepositoryCache()
-			.set("issue-123", mockRepository.id);
+			.set("issue-123", [mockRepository.id]);
 
 		// Act - call the private method directly
 		const handleUserPromptedAgentActivity = (

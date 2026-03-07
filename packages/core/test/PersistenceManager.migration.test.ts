@@ -1,5 +1,5 @@
 /**
- * Tests for PersistenceManager v2.0 to v3.0 migration
+ * Tests for PersistenceManager state migration (v2.0 → v3.0 → v4.0)
  */
 
 import { existsSync } from "node:fs";
@@ -29,7 +29,7 @@ describe("PersistenceManager", () => {
 		persistenceManager = new PersistenceManager("/tmp/test-cyrus");
 	});
 
-	describe("v2.0 to v3.0 Migration", () => {
+	describe("v2.0 to v4.0 Migration", () => {
 		const v2State = {
 			version: "2.0",
 			savedAt: "2025-01-15T12:00:00.000Z",
@@ -78,7 +78,7 @@ describe("PersistenceManager", () => {
 			},
 		};
 
-		it("should migrate v2.0 state to v3.0 format", async () => {
+		it("should migrate v2.0 state to v4.0 format", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -107,6 +107,9 @@ describe("PersistenceManager", () => {
 				issueIdentifier: "TEST-123",
 			});
 
+			// Should have repositoryIds (v4.0 addition)
+			expect(migratedSession.repositoryIds).toEqual(["repo-1"]);
+
 			// Should preserve issueId for backwards compatibility
 			expect(migratedSession.issueId).toBe("issue-456");
 
@@ -123,7 +126,7 @@ describe("PersistenceManager", () => {
 			expect(migratedSession.workspace.path).toBe("/tmp/worktree");
 		});
 
-		it("should save migrated state as v3.0", async () => {
+		it("should save migrated state as v4.0", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -131,7 +134,7 @@ describe("PersistenceManager", () => {
 
 			await persistenceManager.loadEdgeWorkerState();
 
-			// Verify writeFile was called with v3.0 version
+			// Verify writeFile was called with v4.0 version
 			expect(writeFile).toHaveBeenCalled();
 			const savedData = JSON.parse(
 				vi.mocked(writeFile).mock.calls[0][1] as string,
@@ -139,7 +142,7 @@ describe("PersistenceManager", () => {
 			expect(savedData.version).toBe(PERSISTENCE_VERSION);
 		});
 
-		it("should preserve entries and child-to-parent mappings during migration", async () => {
+		it("should preserve entries and child-to-parent mappings, and migrate issueRepositoryCache to arrays", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -157,10 +160,10 @@ describe("PersistenceManager", () => {
 				v2State.state.childToParentAgentSession,
 			);
 
-			// Check issue repository cache is preserved
-			expect(result!.issueRepositoryCache).toEqual(
-				v2State.state.issueRepositoryCache,
-			);
+			// Check issue repository cache is migrated to arrays (v4.0)
+			expect(result!.issueRepositoryCache).toEqual({
+				"issue-456": ["repo-1"],
+			});
 		});
 
 		it("should return null for unknown version", async () => {
@@ -194,8 +197,10 @@ describe("PersistenceManager", () => {
 
 			expect(result).toBeNull();
 		});
+	});
 
-		it("should load v3.0 state without migration", async () => {
+	describe("v3.0 to v4.0 Migration", () => {
+		it("should migrate v3.0 state to v4.0 format", async () => {
 			const v3State = {
 				version: "3.0",
 				savedAt: "2025-01-15T12:00:00.000Z",
@@ -213,23 +218,81 @@ describe("PersistenceManager", () => {
 							},
 						},
 					},
+					issueRepositoryCache: {
+						"issue-456": "repo-1",
+						"issue-789": "repo-2",
+					},
 				},
 			};
 
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(writeFile).mockResolvedValue(undefined);
+			vi.mocked(mkdir).mockResolvedValue(undefined);
 
 			const result = await persistenceManager.loadEdgeWorkerState();
 
-			expect(result).toEqual(v3State.state);
+			expect(result).toBeDefined();
+
+			// issueRepositoryCache should be migrated to arrays
+			expect(result!.issueRepositoryCache).toEqual({
+				"issue-456": ["repo-1"],
+				"issue-789": ["repo-2"],
+			});
+
+			// Sessions should have repositoryIds
+			const session = result!.agentSessions!["repo-1"]["session-123"];
+			expect(session.repositoryIds).toEqual(["repo-1"]);
+
+			// Should save migrated state
+			expect(writeFile).toHaveBeenCalled();
+			const savedData = JSON.parse(
+				vi.mocked(writeFile).mock.calls[0][1] as string,
+			);
+			expect(savedData.version).toBe("4.0");
+		});
+	});
+
+	describe("v4.0 state loading", () => {
+		it("should load v4.0 state without migration", async () => {
+			const v4State = {
+				version: "4.0",
+				savedAt: "2025-01-15T12:00:00.000Z",
+				state: {
+					agentSessions: {
+						"repo-1": {
+							"session-123": {
+								id: "session-123",
+								externalSessionId: "session-123",
+								repositoryIds: ["repo-1", "repo-2"],
+								issueContext: {
+									trackerId: "linear",
+									issueId: "issue-456",
+									issueIdentifier: "TEST-123",
+								},
+							},
+						},
+					},
+					issueRepositoryCache: {
+						"issue-456": ["repo-1", "repo-2"],
+					},
+				},
+			};
+
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v4State));
+
+			const result = await persistenceManager.loadEdgeWorkerState();
+
+			expect(result).toEqual(v4State.state);
 			// Should not call writeFile since no migration needed
 			expect(writeFile).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("PERSISTENCE_VERSION constant", () => {
-		it("should be 3.0", () => {
-			expect(PERSISTENCE_VERSION).toBe("3.0");
+		it("should be 4.0", () => {
+			expect(PERSISTENCE_VERSION).toBe("4.0");
 		});
 	});
 });

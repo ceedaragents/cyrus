@@ -131,7 +131,7 @@ export class PromptScenario {
 	}
 
 	withRepository(repo: any) {
-		this.input.repository = repo;
+		this.input.repositories = [repo];
 		// Also ensure the worker has an IssueTrackerService for this repository
 		if (!(this.worker as any).issueTrackers.has(repo.id)) {
 			const mockIssueTracker = {

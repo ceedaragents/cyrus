@@ -58,6 +58,12 @@ export interface CyrusAgentSession {
 	issueId?: string;
 	/** Minimal issue data - optional for standalone sessions */
 	issue?: IssueMinimal;
+	/**
+	 * Repository IDs associated with this session.
+	 * Can be empty (0 repos), single (1 repo), or multiple (N repos).
+	 * Replaces the old assumption of one repository per session.
+	 */
+	repositoryIds: string[];
 	workspace: Workspace;
 	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)

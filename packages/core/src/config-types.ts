@@ -113,28 +113,28 @@ export interface EdgeWorkerRuntimeConfig {
 		/** Called when workspace needs to be created. Includes repository context. */
 		createWorkspace?: (
 			issue: Issue,
-			repository: RepositoryConfig,
+			repositories: RepositoryConfig[],
 		) => Promise<Workspace>;
 
-		/** Called with Claude messages (for UI updates, logging, etc). Includes repository ID. */
+		/** Called with Claude messages (for UI updates, logging, etc). Includes repository IDs. */
 		onClaudeMessage?: (
 			issueId: string,
 			message: SDKMessage,
-			repositoryId: string,
+			repositoryIds: string[],
 		) => void;
 
-		/** Called when session starts. Includes repository ID. */
+		/** Called when session starts. Includes repository IDs. */
 		onSessionStart?: (
 			issueId: string,
 			issue: Issue,
-			repositoryId: string,
+			repositoryIds: string[],
 		) => void;
 
-		/** Called when session ends. Includes repository ID. */
+		/** Called when session ends. Includes repository IDs. */
 		onSessionEnd?: (
 			issueId: string,
 			exitCode: number | null,
-			repositoryId: string,
+			repositoryIds: string[],
 		) => void;
 
 		/** Called on errors */

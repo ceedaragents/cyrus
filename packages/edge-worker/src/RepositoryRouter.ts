@@ -10,12 +10,13 @@ import {
 } from "cyrus-core";
 
 /**
- * Repository routing result types
+ * Repository routing result types.
+ * The "selected" variant returns an array of repositories (supports 0, 1, or N).
  */
 export type RepositoryRoutingResult =
 	| {
 			type: "selected";
-			repository: RepositoryConfig;
+			repositories: RepositoryConfig[];
 			routingMethod:
 				| "description-tag"
 				| "label-based"
@@ -66,8 +67,8 @@ export interface RepositoryRouterDeps {
  * This class was extracted from EdgeWorker to improve modularity and testability.
  */
 export class RepositoryRouter {
-	/** Cache mapping issue IDs to selected repository IDs */
-	private issueRepositoryCache = new Map<string, string>();
+	/** Cache mapping issue IDs to selected repository IDs (supports 0, 1, or N repos) */
+	private issueRepositoryCache = new Map<string, string[]>();
 
 	/** Pending repository selections awaiting user response */
 	private pendingSelections = new Map<string, PendingRepositorySelection>();
@@ -82,40 +83,56 @@ export class RepositoryRouter {
 	}
 
 	/**
-	 * Get cached repository for an issue
+	 * Get cached repositories for an issue
 	 *
 	 * This is a simple cache lookup used by agentSessionPrompted webhooks (Branch 3).
 	 * Per CLAUDE.md: "The repository will be retrieved from the issue-to-repository
 	 * cache - no new routing logic is performed."
 	 *
+	 * Returns an array of repositories (can be empty, 1, or N).
+	 *
 	 * @param issueId The Linear issue ID
 	 * @param repositoriesMap Map of repository IDs to configurations
-	 * @returns The cached repository or null if not found
+	 * @returns Array of cached repositories, or null if no cache entry exists
 	 */
-	getCachedRepository(
+	getCachedRepositories(
 		issueId: string,
 		repositoriesMap: Map<string, RepositoryConfig>,
-	): RepositoryConfig | null {
-		const cachedRepositoryId = this.issueRepositoryCache.get(issueId);
-		if (!cachedRepositoryId) {
-			this.logger.debug(`No cached repository found for issue ${issueId}`);
+	): RepositoryConfig[] | null {
+		const cachedRepositoryIds = this.issueRepositoryCache.get(issueId);
+		if (!cachedRepositoryIds || cachedRepositoryIds.length === 0) {
+			this.logger.debug(`No cached repositories found for issue ${issueId}`);
 			return null;
 		}
 
-		const cachedRepository = repositoriesMap.get(cachedRepositoryId);
-		if (!cachedRepository) {
-			// Repository no longer exists, remove from cache
-			this.logger.warn(
-				`Cached repository ${cachedRepositoryId} no longer exists, removing from cache`,
-			);
-			this.issueRepositoryCache.delete(issueId);
-			return null;
+		const repositories: RepositoryConfig[] = [];
+		const validIds: string[] = [];
+
+		for (const repoId of cachedRepositoryIds) {
+			const repo = repositoriesMap.get(repoId);
+			if (repo) {
+				repositories.push(repo);
+				validIds.push(repoId);
+			} else {
+				this.logger.warn(
+					`Cached repository ${repoId} no longer exists, removing from cache`,
+				);
+			}
+		}
+
+		// Update cache to remove stale entries
+		if (validIds.length !== cachedRepositoryIds.length) {
+			if (validIds.length === 0) {
+				this.issueRepositoryCache.delete(issueId);
+				return null;
+			}
+			this.issueRepositoryCache.set(issueId, validIds);
 		}
 
 		this.logger.debug(
-			`Using cached repository ${cachedRepository.name} for issue ${issueId}`,
+			`Using ${repositories.length} cached repository(ies) for issue ${issueId}: ${repositories.map((r) => r.name).join(", ")}`,
 		);
-		return cachedRepository;
+		return repositories.length > 0 ? repositories : null;
 	}
 
 	/**
@@ -136,7 +153,7 @@ export class RepositoryRouter {
 			return repos[0]
 				? {
 						type: "selected",
-						repository: repos[0],
+						repositories: [repos[0]],
 						routingMethod: "workspace-fallback",
 					}
 				: { type: "none" };
@@ -147,19 +164,23 @@ export class RepositoryRouter {
 			this.extractIssueInfo(webhook);
 
 		// Priority 0: Check for existing active sessions
-		// TODO: Remove this priority check - existing session detection should not be a routing method
+		// Collect ALL repos with active sessions (supports multi-repo)
 		if (issueId) {
+			const activeRepos: RepositoryConfig[] = [];
 			for (const repo of repos) {
 				if (this.deps.hasActiveSession(issueId, repo.id)) {
-					this.logger.info(
-						`Repository selected: ${repo.name} (existing active session)`,
-					);
-					return {
-						type: "selected",
-						repository: repo,
-						routingMethod: "workspace-fallback",
-					};
+					activeRepos.push(repo);
 				}
+			}
+			if (activeRepos.length > 0) {
+				this.logger.info(
+					`Repository(ies) selected: ${activeRepos.map((r) => r.name).join(", ")} (existing active session)`,
+				);
+				return {
+					type: "selected",
+					repositories: activeRepos,
+					routingMethod: "workspace-fallback",
+				};
 			}
 		}
 
@@ -181,7 +202,7 @@ export class RepositoryRouter {
 			);
 			return {
 				type: "selected",
-				repository: descriptionTagRepo,
+				repositories: [descriptionTagRepo],
 				routingMethod: "description-tag",
 			};
 		}
@@ -198,7 +219,7 @@ export class RepositoryRouter {
 			);
 			return {
 				type: "selected",
-				repository: labelMatchedRepo,
+				repositories: [labelMatchedRepo],
 				routingMethod: "label-based",
 			};
 		}
@@ -216,7 +237,7 @@ export class RepositoryRouter {
 				);
 				return {
 					type: "selected",
-					repository: projectMatchedRepo,
+					repositories: [projectMatchedRepo],
 					routingMethod: "project-based",
 				};
 			}
@@ -234,14 +255,13 @@ export class RepositoryRouter {
 				);
 				return {
 					type: "selected",
-					repository: teamMatchedRepo,
+					repositories: [teamMatchedRepo],
 					routingMethod: "team-based",
 				};
 			}
 		}
 
 		// Try parsing issue identifier as fallback for team routing
-		// TODO: Remove team prefix routing - should rely on explicit team-based routing only
 		if (issueIdentifier?.includes("-")) {
 			const prefix = issueIdentifier.split("-")[0];
 			if (prefix) {
@@ -252,7 +272,7 @@ export class RepositoryRouter {
 					);
 					return {
 						type: "selected",
-						repository: repo,
+						repositories: [repo],
 						routingMethod: "team-prefix",
 					};
 				}
@@ -260,7 +280,6 @@ export class RepositoryRouter {
 		}
 
 		// Priority 5: Find catch-all repository (no routing configuration)
-		// TODO: Remove catch-all routing - require explicit routing configuration for all repositories
 		const catchAllRepo = workspaceRepos.find(
 			(repo) =>
 				(!repo.teamKeys || repo.teamKeys.length === 0) &&
@@ -274,7 +293,7 @@ export class RepositoryRouter {
 			);
 			return {
 				type: "selected",
-				repository: catchAllRepo,
+				repositories: [catchAllRepo],
 				routingMethod: "catch-all",
 			};
 		}
@@ -295,7 +314,7 @@ export class RepositoryRouter {
 			);
 			return {
 				type: "selected",
-				repository: fallbackRepo,
+				repositories: [fallbackRepo],
 				routingMethod: "workspace-fallback",
 			};
 		}
@@ -593,13 +612,14 @@ export class RepositoryRouter {
 	}
 
 	/**
-	 * Select repository from user response
-	 * Returns the selected repository or null if webhook should not be processed further
+	 * Select repositories from user response
+	 * Returns the selected repositories or null if webhook should not be processed further.
+	 * Currently returns a single repo from user selection, but the return type supports N repos.
 	 */
-	async selectRepositoryFromResponse(
+	async selectRepositoriesFromResponse(
 		agentSessionId: string,
 		selectedRepositoryName: string,
-	): Promise<RepositoryConfig | null> {
+	): Promise<RepositoryConfig[] | null> {
 		const pendingData = this.pendingSelections.get(agentSessionId);
 		if (!pendingData) {
 			this.logger.debug(
@@ -635,7 +655,7 @@ export class RepositoryRouter {
 			this.logger.info(`User selected repository: ${repository.name}`);
 		}
 
-		return repository;
+		return [repository];
 	}
 
 	/**
@@ -723,14 +743,14 @@ export class RepositoryRouter {
 	/**
 	 * Get issue repository cache for serialization
 	 */
-	getIssueRepositoryCache(): Map<string, string> {
+	getIssueRepositoryCache(): Map<string, string[]> {
 		return this.issueRepositoryCache;
 	}
 
 	/**
 	 * Restore issue repository cache from serialization
 	 */
-	restoreIssueRepositoryCache(cache: Map<string, string>): void {
+	restoreIssueRepositoryCache(cache: Map<string, string[]>): void {
 		this.issueRepositoryCache = cache;
 	}
 }

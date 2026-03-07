@@ -36,6 +36,7 @@ describe("AgentSessionManager - Status Messages", () => {
 				path: "/test/workspace",
 				isGitWorktree: false,
 			},
+			["test-repo"],
 		);
 	});
 
