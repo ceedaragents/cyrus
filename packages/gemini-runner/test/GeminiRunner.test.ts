@@ -31,6 +31,7 @@ vi.mock("node:fs/promises", () => ({
 
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import { TEST_CYRUS_HOME, TEST_WORKING_DIR } from "./test-dirs.js";
 
 const mockSpawn = vi.mocked(spawn);
 const mockCreateInterface = vi.mocked(createInterface);
@@ -141,8 +142,8 @@ describe("GeminiRunner", () => {
 	let runner: GeminiRunner;
 	let processEmulator: ProcessEmulator;
 	const defaultConfig: GeminiRunnerConfig = {
-		workingDirectory: "/tmp/test",
-		cyrusHome: "/tmp/test-cyrus-home",
+		workingDirectory: TEST_WORKING_DIR,
+		cyrusHome: TEST_CYRUS_HOME,
 		model: "gemini-2.5-flash",
 	};
 
@@ -195,7 +196,7 @@ describe("GeminiRunner", () => {
 				"gemini",
 				expect.arrayContaining(["--model", "gemini-2.5-flash"]),
 				expect.objectContaining({
-					cwd: "/tmp/test",
+					cwd: TEST_WORKING_DIR,
 				}),
 			);
 

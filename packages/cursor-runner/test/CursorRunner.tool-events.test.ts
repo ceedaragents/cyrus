@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { CursorRunner } from "../src/CursorRunner.js";
+import { TEST_CYRUS_HOME, TEST_WORKING_DIR } from "./test-dirs.js";
 
 function createRunner(): CursorRunner {
 	return new CursorRunner({
-		cyrusHome: "/tmp/cyrus",
-		workingDirectory: "/tmp/repo",
+		cyrusHome: TEST_CYRUS_HOME,
+		workingDirectory: TEST_WORKING_DIR,
 	});
 }
 
 describe("CursorRunner tool event mapping", () => {
 	it("maps legacy gpt-5 model alias to a Cursor-supported model argument", () => {
 		const runner = new CursorRunner({
-			cyrusHome: "/tmp/cyrus",
-			workingDirectory: "/tmp/repo",
+			cyrusHome: TEST_CYRUS_HOME,
+			workingDirectory: TEST_WORKING_DIR,
 			model: "gpt-5",
 		});
 		const args = (runner as any).buildArgs("hello");

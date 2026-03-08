@@ -17,6 +17,7 @@ vi.mock("node:child_process", async () => {
 });
 
 import { CursorRunner } from "../src/CursorRunner.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 const tempDirs: string[] = [];
 
@@ -58,7 +59,7 @@ describe("CursorRunner MCP enable preflight", () => {
 		});
 
 		const runner = new CursorRunner({
-			cyrusHome: "/tmp/cyrus",
+			cyrusHome: TEST_CYRUS_HOME,
 			workingDirectory: workspace,
 			mcpConfig: {
 				linear: { command: "npx", args: ["-y", "@linear/mcp-server"] },
@@ -96,7 +97,7 @@ describe("CursorRunner MCP enable preflight", () => {
 		});
 
 		const runner = new CursorRunner({
-			cyrusHome: "/tmp/cyrus",
+			cyrusHome: TEST_CYRUS_HOME,
 			workingDirectory: workspace,
 			mcpConfig: {
 				trigger: { command: "npx", args: ["-y", "@trigger/mcp"] },
