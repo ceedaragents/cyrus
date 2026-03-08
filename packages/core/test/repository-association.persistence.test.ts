@@ -140,4 +140,68 @@ describe("repository-association persistence", () => {
 				.path,
 		).toBe("/tmp/last-execution-location");
 	});
+
+	it("preserves multiple repository associations across serialization and restoration", async () => {
+		const multiAssociationSession: SerializedCyrusAgentSession = {
+			id: "session-many",
+			externalSessionId: "linear-session-many",
+			type: "comment-thread",
+			status: "active",
+			context: "comment-thread",
+			createdAt: 1705320002000,
+			updatedAt: 1705320002000,
+			issueContext: {
+				trackerId: "linear",
+				issueId: "issue-many",
+				issueIdentifier: "TEST-2",
+			},
+			issueId: "issue-many",
+			workspace: {
+				path: "/tmp/shared-execution-location",
+				isGitWorktree: false,
+			},
+			repositoryAssociations: [
+				{
+					repositoryId: "repo-1",
+					linearWorkspaceId: "workspace-1",
+					associationOrigin: "routed",
+					status: "active",
+					executionWorkspace: {
+						path: "/tmp/worktrees/repo-1",
+						isGitWorktree: true,
+					},
+				},
+				{
+					repositoryId: "repo-2",
+					linearWorkspaceId: "workspace-2",
+					associationOrigin: "user-selected",
+					status: "selected",
+					executionWorkspace: {
+						path: "/tmp/worktrees/repo-2",
+						isGitWorktree: true,
+					},
+				},
+			],
+		};
+
+		const restoredState = await saveAndReload({
+			agentSessionsById: {
+				[multiAssociationSession.id]: multiAssociationSession,
+			},
+			agentSessionEntriesById: {
+				[multiAssociationSession.id]: [
+					{
+						type: "assistant",
+						content: "Working across multiple repositories",
+						metadata: { timestamp: 1705320002000 },
+					},
+				],
+			},
+		});
+
+		expect(
+			restoredState?.agentSessionsById?.[multiAssociationSession.id]
+				.repositoryAssociations,
+		).toStrictEqual(multiAssociationSession.repositoryAssociations);
+	});
 });

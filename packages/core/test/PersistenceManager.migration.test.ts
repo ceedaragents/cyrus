@@ -1,5 +1,5 @@
 /**
- * Tests for PersistenceManager v2.0 to v3.0 migration
+ * Tests for PersistenceManager legacy-to-latest migration
  */
 
 import { existsSync } from "node:fs";
@@ -29,7 +29,7 @@ describe("PersistenceManager", () => {
 		persistenceManager = new PersistenceManager("/tmp/test-cyrus");
 	});
 
-	describe("v2.0 to v3.0 Migration", () => {
+	describe("legacy state migration", () => {
 		const v2State = {
 			version: "2.0",
 			savedAt: "2025-01-15T12:00:00.000Z",
@@ -78,7 +78,117 @@ describe("PersistenceManager", () => {
 			},
 		};
 
-		it("should migrate v2.0 state to v3.0 format", async () => {
+		const v3State = {
+			version: "3.0",
+			savedAt: "2025-01-16T12:00:00.000Z",
+			state: {
+				agentSessionsById: {
+					"session-123": {
+						id: "session-123",
+						externalSessionId: "linear-session-123",
+						type: "comment-thread",
+						status: "active",
+						context: "comment-thread",
+						createdAt: 1705320000000,
+						updatedAt: 1705320000500,
+						issueContext: {
+							trackerId: "linear",
+							issueId: "issue-456",
+							issueIdentifier: "TEST-123",
+						},
+						issueId: "issue-456",
+						issue: {
+							id: "issue-456",
+							identifier: "TEST-123",
+							title: "Test Issue",
+							branchName: "test-branch",
+						},
+						workspace: {
+							path: "/tmp/worktree-repo-1",
+							isGitWorktree: true,
+						},
+						repositoryAssociations: [
+							{
+								repositoryId: "repo-1",
+								associationOrigin: "routed",
+								status: "active",
+								executionWorkspace: {
+									path: "/tmp/worktree-repo-1",
+									isGitWorktree: true,
+								},
+							},
+						],
+					},
+				},
+				agentSessionEntriesById: {
+					"session-123": [
+						{
+							type: "user",
+							content: "Initial message",
+							metadata: { timestamp: 1705320000000 },
+						},
+					],
+				},
+				agentSessions: {
+					"repo-2": {
+						"session-123": {
+							id: "session-123",
+							externalSessionId: "linear-session-123",
+							type: "comment-thread",
+							status: "active",
+							context: "comment-thread",
+							createdAt: 1705320000100,
+							updatedAt: 1705320000600,
+							issueContext: {
+								trackerId: "linear",
+								issueId: "issue-456",
+								issueIdentifier: "TEST-123",
+							},
+							issueId: "issue-456",
+							workspace: {
+								path: "/tmp/worktree-repo-2",
+								isGitWorktree: true,
+							},
+							repositoryAssociations: [
+								{
+									repositoryId: "repo-2",
+									associationOrigin: "user-selected",
+									status: "selected",
+									executionWorkspace: {
+										path: "/tmp/worktree-repo-2",
+										isGitWorktree: true,
+									},
+								},
+							],
+						},
+					},
+				},
+				agentSessionEntries: {
+					"repo-2": {
+						"session-123": [
+							{
+								type: "user",
+								content: "Initial message",
+								metadata: { timestamp: 1705320000000 },
+							},
+							{
+								type: "assistant",
+								content: "Working in another associated repository",
+								metadata: { timestamp: 1705320000600 },
+							},
+						],
+					},
+				},
+				childToParentAgentSession: {
+					"child-session": "parent-session",
+				},
+				issueRepositoryCache: {
+					"issue-456": "repo-3",
+				},
+			},
+		};
+
+		it("should migrate v2.0 state to the latest normalized format", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -87,11 +197,13 @@ describe("PersistenceManager", () => {
 			const result = await persistenceManager.loadEdgeWorkerState();
 
 			expect(result).toBeDefined();
-			expect(result!.agentSessions).toBeDefined();
+			expect(result!.agentSessionsById).toBeDefined();
+			expect(result).not.toHaveProperty("agentSessions");
+			expect(result).not.toHaveProperty("agentSessionEntries");
+			expect(result).not.toHaveProperty("issueRepositoryCache");
 
 			// Check migrated session
-			const migratedSession =
-				result!.agentSessions!["repo-1"]["linear-session-123"];
+			const migratedSession = result!.agentSessionsById!["linear-session-123"];
 			expect(migratedSession).toBeDefined();
 
 			// Should have new id field
@@ -136,9 +248,18 @@ describe("PersistenceManager", () => {
 			expect(result!.agentSessionsById).toEqual({
 				"linear-session-123": migratedSession,
 			});
+			expect(result!.issueRepositoryAssociationsByIssueId).toEqual({
+				"issue-456": [
+					{
+						repositoryId: "repo-1",
+						associationOrigin: "legacy-migration",
+						status: "selected",
+					},
+				],
+			});
 		});
 
-		it("should save migrated state as v3.0", async () => {
+		it("should save migrated legacy state as the latest format without legacy containers", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -146,15 +267,18 @@ describe("PersistenceManager", () => {
 
 			await persistenceManager.loadEdgeWorkerState();
 
-			// Verify writeFile was called with v3.0 version
+			// Verify writeFile was called with the latest version
 			expect(writeFile).toHaveBeenCalled();
 			const savedData = JSON.parse(
 				vi.mocked(writeFile).mock.calls[0][1] as string,
 			);
 			expect(savedData.version).toBe(PERSISTENCE_VERSION);
+			expect(savedData.state.agentSessions).toBeUndefined();
+			expect(savedData.state.agentSessionEntries).toBeUndefined();
+			expect(savedData.state.issueRepositoryCache).toBeUndefined();
 		});
 
-		it("should preserve entries and child-to-parent mappings during migration", async () => {
+		it("should preserve child mappings and normalize entries during migration", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -162,19 +286,9 @@ describe("PersistenceManager", () => {
 
 			const result = await persistenceManager.loadEdgeWorkerState();
 
-			// Check entries are preserved
-			expect(result!.agentSessionEntries).toEqual(
-				v2State.state.agentSessionEntries,
-			);
-
 			// Check child-to-parent mappings are preserved
 			expect(result!.childToParentAgentSession).toEqual(
 				v2State.state.childToParentAgentSession,
-			);
-
-			// Check issue repository cache is preserved
-			expect(result!.issueRepositoryCache).toEqual(
-				v2State.state.issueRepositoryCache,
 			);
 
 			expect(result!.agentSessionEntriesById).toEqual({
@@ -183,6 +297,71 @@ describe("PersistenceManager", () => {
 						type: "user",
 						content: "Hello",
 						metadata: { timestamp: 1705320000000 },
+					},
+				],
+			});
+		});
+
+		it("should merge repo-keyed v3 buckets and issue cache into explicit associations", async () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(writeFile).mockResolvedValue(undefined);
+			vi.mocked(mkdir).mockResolvedValue(undefined);
+
+			const result = await persistenceManager.loadEdgeWorkerState();
+
+			expect(result).toBeDefined();
+			expect(result).not.toHaveProperty("agentSessions");
+			expect(result).not.toHaveProperty("agentSessionEntries");
+			expect(result).not.toHaveProperty("issueRepositoryCache");
+
+			expect(
+				result!.agentSessionsById?.["session-123"].repositoryAssociations,
+			).toEqual([
+				{
+					repositoryId: "repo-1",
+					associationOrigin: "routed",
+					status: "active",
+					executionWorkspace: {
+						path: "/tmp/worktree-repo-1",
+						isGitWorktree: true,
+					},
+				},
+				{
+					repositoryId: "repo-2",
+					associationOrigin: "user-selected",
+					status: "selected",
+					executionWorkspace: {
+						path: "/tmp/worktree-repo-2",
+						isGitWorktree: true,
+					},
+				},
+				{
+					repositoryId: "repo-3",
+					associationOrigin: "legacy-migration",
+					status: "selected",
+				},
+			]);
+
+			expect(result!.agentSessionEntriesById?.["session-123"]).toEqual([
+				{
+					type: "user",
+					content: "Initial message",
+					metadata: { timestamp: 1705320000000 },
+				},
+				{
+					type: "assistant",
+					content: "Working in another associated repository",
+					metadata: { timestamp: 1705320000600 },
+				},
+			]);
+
+			expect(result!.issueRepositoryAssociationsByIssueId).toEqual({
+				"issue-456": [
+					{
+						repositoryId: "repo-3",
+						associationOrigin: "legacy-migration",
+						status: "selected",
 					},
 				],
 			});
@@ -220,9 +399,9 @@ describe("PersistenceManager", () => {
 			expect(result).toBeNull();
 		});
 
-		it("should load v3.0 state without migration", async () => {
-			const v3State = {
-				version: "3.0",
+		it("should load the latest persisted format without migration", async () => {
+			const v4State = {
+				version: "4.0",
 				savedAt: "2025-01-15T12:00:00.000Z",
 				state: {
 					agentSessionsById: {
@@ -237,37 +416,32 @@ describe("PersistenceManager", () => {
 							repositoryAssociations: [],
 						},
 					},
-					agentSessions: {
-						"repo-1": {
-							"session-123": {
-								id: "session-123",
-								externalSessionId: "session-123",
-								issueContext: {
-									trackerId: "linear",
-									issueId: "issue-456",
-									issueIdentifier: "TEST-123",
-								},
-								repositoryAssociations: [],
+					issueRepositoryAssociationsByIssueId: {
+						"issue-456": [
+							{
+								repositoryId: "repo-1",
+								associationOrigin: "restored",
+								status: "selected",
 							},
-						},
+						],
 					},
 				},
 			};
 
 			vi.mocked(existsSync).mockReturnValue(true);
-			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v4State));
 
 			const result = await persistenceManager.loadEdgeWorkerState();
 
-			expect(result).toEqual(v3State.state);
+			expect(result).toEqual(v4State.state);
 			// Should not call writeFile since no migration needed
 			expect(writeFile).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("PERSISTENCE_VERSION constant", () => {
-		it("should be 3.0", () => {
-			expect(PERSISTENCE_VERSION).toBe("3.0");
+		it("should be 4.0", () => {
+			expect(PERSISTENCE_VERSION).toBe("4.0");
 		});
 	});
 });

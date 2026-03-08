@@ -5389,7 +5389,7 @@ ${input.userComment}
 			if (state) {
 				this.restoreMappings(state);
 				this.logger.debug(
-					`✅ Loaded persisted EdgeWorker state with ${Object.keys(state.agentSessions || {}).length} repositories`,
+					`✅ Loaded persisted EdgeWorker state with ${Object.keys(state.agentSessionsById || {}).length} sessions`,
 				);
 			}
 		} catch (error) {
@@ -5405,7 +5405,7 @@ ${input.userComment}
 			const state = this.serializeMappings();
 			await this.persistenceManager.saveEdgeWorkerState(state);
 			this.logger.debug(
-				`✅ Saved EdgeWorker state for ${Object.keys(state.agentSessions || {}).length} repositories`,
+				`✅ Saved EdgeWorker state for ${Object.keys(state.agentSessionsById || {}).length} sessions`,
 			);
 		} catch (error) {
 			this.logger.error(`Failed to save persisted EdgeWorker state:`, error);
@@ -5416,38 +5416,62 @@ ${input.userComment}
 	 * Serialize EdgeWorker mappings to a serializable format
 	 */
 	public serializeMappings(): SerializableEdgeWorkerState {
-		// Serialize Agent Session state for all repositories
-		const agentSessions: Record<
+		const agentSessionsById: Record<string, SerializedCyrusAgentSession> = {};
+		const agentSessionEntriesById: Record<
 			string,
-			Record<string, SerializedCyrusAgentSession>
+			SerializedCyrusAgentSessionEntry[]
 		> = {};
-		const agentSessionEntries: Record<
-			string,
-			Record<string, SerializedCyrusAgentSessionEntry[]>
+		const issueRepositoryAssociationsByIssueId: NonNullable<
+			SerializableEdgeWorkerState["issueRepositoryAssociationsByIssueId"]
 		> = {};
+
 		for (const [
-			repositoryId,
+			_repositoryId,
 			agentSessionManager,
 		] of this.agentSessionManagers.entries()) {
 			const serializedState = agentSessionManager.serializeState();
-			agentSessions[repositoryId] = serializedState.sessions;
-			agentSessionEntries[repositoryId] = serializedState.entries;
+
+			for (const [sessionId, session] of Object.entries(
+				serializedState.sessions,
+			)) {
+				agentSessionsById[sessionId] = this.mergeSerializedSessionState(
+					agentSessionsById[sessionId],
+					session,
+				);
+			}
+
+			for (const [sessionId, entries] of Object.entries(
+				serializedState.entries,
+			)) {
+				agentSessionEntriesById[sessionId] = this.mergeSerializedEntriesState(
+					agentSessionEntriesById[sessionId],
+					entries,
+				);
+			}
 		}
+
 		// Serialize child to parent agent session mapping
 		const childToParentAgentSession = Object.fromEntries(
 			this.childToParentAgentSession.entries(),
 		);
 
-		// Serialize issue to repository cache from RepositoryRouter
-		const issueRepositoryCache = Object.fromEntries(
-			this.repositoryRouter.getIssueRepositoryCache().entries(),
-		);
+		for (const [issueId, repositoryId] of this.repositoryRouter
+			.getIssueRepositoryCache()
+			.entries()) {
+			issueRepositoryAssociationsByIssueId[issueId] = [
+				{
+					repositoryId,
+					associationOrigin: "user-selected",
+					status: "selected",
+				},
+			];
+		}
 
 		return {
-			agentSessions,
-			agentSessionEntries,
+			agentSessionsById,
+			agentSessionEntriesById,
 			childToParentAgentSession,
-			issueRepositoryCache,
+			issueRepositoryAssociationsByIssueId,
 		};
 	}
 
@@ -5455,27 +5479,67 @@ ${input.userComment}
 	 * Restore EdgeWorker mappings from serialized state
 	 */
 	public restoreMappings(state: SerializableEdgeWorkerState): void {
-		// Restore Agent Session state for all repositories
-		if (state.agentSessions && state.agentSessionEntries) {
+		if (state.agentSessionsById) {
+			const sessionsByRepository = new Map<
+				string,
+				Record<string, SerializedCyrusAgentSession>
+			>();
+			const entriesByRepository = new Map<
+				string,
+				Record<string, SerializedCyrusAgentSessionEntry[]>
+			>();
+
+			for (const [repositoryId] of this.agentSessionManagers.entries()) {
+				sessionsByRepository.set(repositoryId, {});
+				entriesByRepository.set(repositoryId, {});
+			}
+
+			for (const [sessionId, session] of Object.entries(
+				state.agentSessionsById,
+			)) {
+				const associatedRepositoryIds =
+					session.repositoryAssociations?.map(
+						(association) => association.repositoryId,
+					) ?? [];
+
+				if (associatedRepositoryIds.length === 0) {
+					this.logger.debug(
+						`Skipping restore for unassociated session ${sessionId}`,
+					);
+					continue;
+				}
+
+				for (const repositoryId of associatedRepositoryIds) {
+					const repositorySessions = sessionsByRepository.get(repositoryId);
+					const repositoryEntries = entriesByRepository.get(repositoryId);
+					if (!repositorySessions || !repositoryEntries) {
+						continue;
+					}
+
+					repositorySessions[sessionId] = session;
+					repositoryEntries[sessionId] =
+						state.agentSessionEntriesById?.[sessionId] ?? [];
+				}
+			}
+
 			for (const [
 				repositoryId,
 				agentSessionManager,
 			] of this.agentSessionManagers.entries()) {
-				const repositorySessions = state.agentSessions[repositoryId] || {};
-				const repositoryEntries = state.agentSessionEntries[repositoryId] || {};
+				const repositorySessions = sessionsByRepository.get(repositoryId) ?? {};
+				const repositoryEntries = entriesByRepository.get(repositoryId) ?? {};
 
 				if (
-					Object.keys(repositorySessions).length > 0 ||
-					Object.keys(repositoryEntries).length > 0
+					Object.keys(repositorySessions).length === 0 &&
+					Object.keys(repositoryEntries).length === 0
 				) {
-					agentSessionManager.restoreState(
-						repositorySessions,
-						repositoryEntries,
-					);
-					this.logger.debug(
-						`Restored Agent Session state for repository ${repositoryId}`,
-					);
+					continue;
 				}
+
+				agentSessionManager.restoreState(repositorySessions, repositoryEntries);
+				this.logger.debug(
+					`Restored Agent Session state for repository ${repositoryId}`,
+				);
 			}
 		}
 
@@ -5489,14 +5553,83 @@ ${input.userComment}
 			);
 		}
 
-		// Restore issue to repository cache in RepositoryRouter
-		if (state.issueRepositoryCache) {
-			const cache = new Map(Object.entries(state.issueRepositoryCache));
-			this.repositoryRouter.restoreIssueRepositoryCache(cache);
+		const issueRepositoryCache = new Map<string, string>();
+		for (const [issueId, associations] of Object.entries(
+			state.issueRepositoryAssociationsByIssueId ?? {},
+		)) {
+			const preferredAssociation =
+				this.selectIssueRepositoryAssociation(associations);
+			if (preferredAssociation) {
+				issueRepositoryCache.set(issueId, preferredAssociation.repositoryId);
+			}
+		}
+
+		if (issueRepositoryCache.size > 0) {
+			this.repositoryRouter.restoreIssueRepositoryCache(issueRepositoryCache);
 			this.logger.debug(
-				`Restored ${cache.size} issue-to-repository cache mappings`,
+				`Restored ${issueRepositoryCache.size} issue-to-repository association mappings`,
 			);
 		}
+	}
+
+	private mergeSerializedSessionState(
+		existingSession: SerializedCyrusAgentSession | undefined,
+		incomingSession: SerializedCyrusAgentSession,
+	): SerializedCyrusAgentSession {
+		if (!existingSession) {
+			return {
+				...incomingSession,
+				repositoryAssociations: [
+					...(incomingSession.repositoryAssociations ?? []),
+				],
+			};
+		}
+
+		const associationMap = new Map(
+			(existingSession.repositoryAssociations ?? []).map((association) => [
+				association.repositoryId,
+				association,
+			]),
+		);
+
+		for (const association of incomingSession.repositoryAssociations ?? []) {
+			associationMap.set(association.repositoryId, association);
+		}
+
+		return {
+			...existingSession,
+			repositoryAssociations: Array.from(associationMap.values()),
+		};
+	}
+
+	private mergeSerializedEntriesState(
+		existingEntries: SerializedCyrusAgentSessionEntry[] | undefined,
+		incomingEntries: SerializedCyrusAgentSessionEntry[],
+	): SerializedCyrusAgentSessionEntry[] {
+		if (!existingEntries) {
+			return [...incomingEntries];
+		}
+
+		return incomingEntries.length > existingEntries.length
+			? [...incomingEntries]
+			: [...existingEntries];
+	}
+
+	private selectIssueRepositoryAssociation(
+		associations: NonNullable<
+			SerializableEdgeWorkerState["issueRepositoryAssociationsByIssueId"]
+		>[string],
+	): { repositoryId: string } | undefined {
+		if (!associations || associations.length === 0) {
+			return undefined;
+		}
+
+		return (
+			associations.find((association) => association.status === "selected") ||
+			associations.find((association) => association.status === "active") ||
+			associations.find((association) => association.status === "complete") ||
+			associations[0]
+		);
 	}
 
 	/**
