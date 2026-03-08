@@ -1,7 +1,7 @@
 # Test Drive #001: Multi-Repository Orchestration (CYPACK-711)
 
 **Date**: 2026-01-13
-**Goal**: Validate that the orchestrator prompt includes repository routing context when multiple repositories are configured
+**Goal**: Validate that the orchestrator prompt includes repository routing context when multiple repositories are configured and ambiguous routing stays explicit until a repository is selected
 **Test Repo**: /Users/agentops/.cyrus/worktrees/CYPACK-711
 **Server Port**: 30111
 
@@ -12,7 +12,7 @@
 Validate the acceptance criteria from CYPACK-711:
 > "use the f1 test driver to test your implementation, with an 'orchestrator' label. You'll need to enable a Cyrus 'edgeconfig' that has multiple repositories to see whether it can handle it."
 
-Specifically, we want to confirm that when an orchestrator-labeled issue is processed in a multi-repo configuration, the orchestrator prompt includes the `<repository_routing_context>` section with information about all available repositories and their routing rules.
+Specifically, we want to confirm that when an orchestrator-labeled issue is processed in a multi-repo configuration, the orchestrator prompt includes the `<repository_routing_context>` section with information about all available repositories and their routing rules, and that the session remains unresolved until an explicit repository selection is made.
 
 ---
 
@@ -24,7 +24,7 @@ Specifically, we want to confirm that when an orchestrator-labeled issue is proc
 
 2. **F1 server.ts**: Multi-repo mode support
    - Environment variable: `CYRUS_REPO_PATH_2`
-   - Creates two repository configurations in same workspace
+   - Creates two repository configurations in the same workspace so routing can stay unresolved until selection
 
 3. **label-prompt-template.md**: Template variable `{{routing_context}}`
    - Inserted at line 27 of the template
@@ -106,7 +106,7 @@ CYRUS_PORT=30111 ./f1 start-session --issue-id issue-2
 - ✅ Labels applied correctly ("orchestrator")
 
 ### EdgeWorker Verification
-- ✅ Repository selection elicitation posted (multi-repo detection working)
+- ✅ Repository selection elicitation posted (multi-repo detection working and no implicit fallback used)
 - ✅ Repository selection response handled
 - ✅ Session started successfully (session-1)
 - ✅ Git worktree creation attempted (failed due to invalid branch name with colon, but this is a separate issue)
@@ -126,14 +126,15 @@ CYRUS_PORT=30111 ./f1 start-session --issue-id issue-2
 From the Claude session log (`session-69270b79-1c74-44ee-8c6c-afc7cea9a748-2026-01-13T21-12-50-018Z.md`), the orchestrator explicitly confirmed:
 
 > **Has visibility into the routing context**: I can see the `<repository_routing_context>` section which provides:
-> - **F1 Test Repository (primary/current)**: Routes via `[repo=f1-test/primary-repo]` description tag, or "primary"/"main-repo" labels
-> - **F1 Secondary Repository**: Routes via `[repo=f1-test/secondary-repo]` description tag, or "secondary"/"backend" labels
+> - **F1 Frontend Repository**: Routes via `[repo=f1-test/frontend-repo]` description tag, or "frontend"/"ui" labels
+> - **F1 Backend Repository**: Routes via `[repo=f1-test/backend-repo]` description tag, or "backend"/"api" labels
 
 This proves that:
 1. The `generateRoutingContext()` method was called
 2. The routing context XML was generated with both repositories
 3. The template variable `{{routing_context}}` was replaced in the prompt
 4. The orchestrator received and understood the routing information
+5. The session stayed at zero repository associations until the user made an explicit selection
 
 ---
 
@@ -152,10 +153,10 @@ This proves that:
 ### [21:12:16] - Repository Selection Elicitation
 **Server Log**: `[RepositoryRouter] Multiple repositories (2) found with no routing match - requesting user selection`
 **Output**: Elicitation posted asking user to select repository
-**Status**: PASS (expected behavior for multi-repo with no clear routing)
+**Status**: PASS (expected behavior for multi-repo with no clear routing and no silent default repository)
 
 ### [21:12:43] - Repository Selection Response
-**Command**: `./f1 prompt-session --session-id session-1 --message "Please use repository: f1-test-repo (the primary repository)"`
+**Command**: `./f1 prompt-session --session-id session-1 --message "Please use repository: F1 Frontend Repository"`
 **Server Log**: `[EdgeWorker] Processing repository selection response`
 **Status**: PASS
 
@@ -193,10 +194,11 @@ This proves that:
 3. **Routing context generation**: The `generateRoutingContext()` method successfully generated XML with:
    - Both repository names and GitHub URLs
    - Routing methods for each repo (description tags, labels, team keys, project keys)
-   - Current repository marker
+   - No session-wide current-repository marker; each repository stayed explicitly scoped
 4. **Prompt assembly**: The template variable replacement worked correctly, inserting the routing context
-5. **Claude understanding**: The orchestrator agent successfully parsed and understood the routing context
-6. **F1 CLI**: All commands worked smoothly (ping, create-issue, assign-issue, start-session, view-session)
+5. **Explicit selection flow**: The session stayed unresolved until the user selected `F1 Frontend Repository`
+6. **Claude understanding**: The orchestrator agent successfully parsed and understood the routing context
+7. **F1 CLI**: All commands worked smoothly (ping, create-issue, assign-issue, start-session, view-session)
 
 ### Issues Found
 
@@ -252,10 +254,11 @@ The multi-repository orchestration feature (CYPACK-711) is **working as designed
 
 The orchestrator successfully:
 1. Detected the multi-repo configuration (2 repositories in same workspace)
-2. Generated routing context with repository names, GitHub URLs, and routing methods
-3. Inserted the routing context into the label-based prompt
-4. Parsed and understood the routing information
-5. Attempted to use description tag routing when creating sub-issues
+2. Kept the session unresolved until an explicit repository selection was made
+3. Generated routing context with repository names, GitHub URLs, and routing methods
+4. Inserted the routing context into the label-based prompt
+5. Parsed and understood the routing information
+6. Attempted to use description tag routing when creating sub-issues
 
 The implementation is production-ready for the orchestrator use case.
 

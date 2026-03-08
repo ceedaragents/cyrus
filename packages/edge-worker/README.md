@@ -8,6 +8,16 @@ Unified edge worker for processing Linear issues with Claude. Handles webhook ev
 pnpm add @cyrus/edge-worker
 ```
 
+## Repository Associations And Routing
+
+The EdgeWorker uses the same explicit `0/1/N` repository-association model as the rest of Cyrus instead of assuming one session-wide default repository.
+
+- **0 associations**: if routing cannot produce a unique match, EdgeWorker keeps the session unresolved and posts a repository selection prompt.
+- **1 association**: a routing rule or explicit user response creates one repository association and work begins in that repository.
+- **N associations**: orchestration and routing surfaces enumerate every applicable repository, and callbacks/events stay scoped to the repository association that produced that interaction.
+
+The `repositoryId` passed to handlers and emitted events is therefore a repository-scoped interaction handle, not an ambient session-wide repository identity.
+
 ## Usage
 
 The EdgeWorker supports multiple repository/Linear workspace pairs. Each repository configuration includes:
@@ -28,7 +38,7 @@ const edgeWorker = new EdgeWorker({
   claudePath: '/usr/local/bin/claude',
   defaultAllowedTools: ['bash', 'edit', 'read'],
   
-  // Single repository configuration
+  // Single configured repository -> one explicit association after routing
   repositories: [{
     id: 'main-repo',
     name: 'Main Repository',
@@ -92,9 +102,10 @@ const edgeWorker = new EdgeWorker({
   // Multiple repositories
   repositories,
   
-  // UI updates with repository context
+  // UI updates with repository-scoped context
   handlers: {
     onClaudeEvent: (issueId, event, repositoryId) => {
+      // repositoryId identifies the repository association that emitted this event
       // Update UI with Claude's progress
       mainWindow.webContents.send('claude-event', { 
         issueId, 
@@ -104,6 +115,7 @@ const edgeWorker = new EdgeWorker({
     },
     
     onSessionStart: (issueId, issue, repositoryId) => {
+      // Session lifecycle callbacks remain scoped to the repository association in use
       const repo = repositories.find(r => r.id === repositoryId)
       // Show notification
       new Notification({
@@ -153,7 +165,7 @@ Optional per-repository settings:
 
 ### Optional Handlers
 
-All handlers are optional and now include repository context:
+All handlers are optional and now include repository context. Any `repositoryId` argument identifies the repository association that triggered that callback:
 
 - `createWorkspace(issue, repository)`: Custom workspace creation
 - `onClaudeEvent(issueId, event, repositoryId)`: Claude event updates
@@ -173,11 +185,11 @@ The EdgeWorker extends EventEmitter and emits:
 
 - `connected`: Connected to proxy (token)
 - `disconnected`: Disconnected from proxy (token, reason)
-- `session:started`: Claude session started (issueId, issue, repositoryId)
-- `session:ended`: Claude session ended (issueId, exitCode, repositoryId)
-- `claude:event`: Any Claude event (issueId, event, repositoryId)
-- `claude:response`: Claude text response (issueId, text, repositoryId)
-- `claude:tool-use`: Claude used a tool (issueId, tool, input, repositoryId)
+- `session:started`: Claude session started for a repository association (issueId, issue, repositoryId)
+- `session:ended`: Claude session ended for a repository association (issueId, exitCode, repositoryId)
+- `claude:event`: Any Claude event emitted for a repository association (issueId, event, repositoryId)
+- `claude:response`: Claude text response for a repository association (issueId, text, repositoryId)
+- `claude:tool-use`: Claude used a tool while operating in a repository association (issueId, tool, input, repositoryId)
 - `error`: Error occurred (error, context)
 
 ## Architecture
@@ -197,6 +209,9 @@ Linear
 ```
 
 Key features:
+- Sessions can remain at zero, one, or many explicit repository associations over time
+- If routing is ambiguous, EdgeWorker requests repository selection instead of silently defaulting to a fallback repo
+- Repository-scoped callbacks/events are derived from explicit associations rather than a session-wide default repository
 - Multiple repositories can share the same Linear workspace/token
 - Repositories with different tokens connect separately to minimize connections
 - Each repository has its own workspace directory and configuration

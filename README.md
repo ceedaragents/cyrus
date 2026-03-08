@@ -9,9 +9,19 @@
 
 [![Discord](https://img.shields.io/discord/1443747721910685792?label=Discord&logo=discord&logoColor=white)](https://discord.gg/prrtADHYTt)
 
-Your (Claude Code|Codex|Cursor|Gemini) powered (Linear|Github|Slack) agent. Cyrus monitors (Linear|Github) issues assigned to it, creates isolated Git worktrees for each issue, runs (Claude Code|Codex|Cursor|Gemini) sessions to process them, and streams detailed agent activity updates back to (Linear|Github), along with rich interactions like dropdown selects and approvals.
+Your (Claude Code|Codex|Cursor|Gemini) powered (Linear|Github|Slack) agent. Cyrus monitors (Linear|Github) issues assigned to it, creates isolated Git worktrees for each issue/repository association, runs (Claude Code|Codex|Cursor|Gemini) sessions to process them, and streams detailed agent activity updates back to (Linear|Github), along with rich interactions like dropdown selects and approvals.
 
 **Note:** Cyrus requires you to bring your own keys/billing for tokens.
+
+## Repository Routing Model
+
+Cyrus uses an explicit `0/1/N` repository-association model for every session instead of assuming one ambient default repository:
+
+- **0 associations**: if routing cannot identify a unique repository, Cyrus keeps the session unassociated and asks the user to choose from the configured repositories.
+- **1 association**: if a description tag, routing label, project rule, team rule, or explicit user choice resolves to one repository, Cyrus starts work in that repository.
+- **N associations**: when multiple repositories are relevant, Cyrus surfaces all applicable repositories in orchestration/routing context and expects repository-specific work to stay explicitly scoped.
+
+This means ambiguous routing never silently falls back to a default repository, and multi-repository work stays traceable through explicit repository selection and routing signals.
 
 ---
 
