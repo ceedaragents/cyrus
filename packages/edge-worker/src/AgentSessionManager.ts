@@ -24,6 +24,7 @@ import {
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
 } from "cyrus-core";
+import type { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import type { ProcedureAnalyzer } from "./procedures/ProcedureAnalyzer.js";
 import type { ValidationLoopMetadata } from "./procedures/types.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
@@ -106,6 +107,7 @@ export class AgentSessionManager extends EventEmitter {
 	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
+	private globalSessionRegistry?: GlobalSessionRegistry;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -115,6 +117,7 @@ export class AgentSessionManager extends EventEmitter {
 
 	constructor(
 		activitySink: IActivitySink,
+		globalSessionRegistry?: GlobalSessionRegistry,
 		getParentSessionId?: (childSessionId: string) => string | undefined,
 		resumeParentSession?: (
 			parentSessionId: string,
@@ -128,10 +131,33 @@ export class AgentSessionManager extends EventEmitter {
 		super();
 		this.logger = logger ?? createLogger({ component: "AgentSessionManager" });
 		this.activitySink = activitySink;
+		this.globalSessionRegistry = globalSessionRegistry;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.procedureAnalyzer = procedureAnalyzer;
 		this.sharedApplicationServer = sharedApplicationServer;
+	}
+
+	private syncSessionToGlobalRegistry(sessionId: string): void {
+		const session = this.sessions.get(sessionId);
+		if (!session || !this.globalSessionRegistry) {
+			return;
+		}
+
+		this.globalSessionRegistry.setSession(session);
+	}
+
+	private syncEntriesToGlobalRegistry(sessionId: string): void {
+		if (!this.globalSessionRegistry) {
+			return;
+		}
+
+		const entries = this.entries.get(sessionId);
+		if (!entries) {
+			return;
+		}
+
+		this.globalSessionRegistry.replaceEntries(sessionId, entries);
 	}
 
 	/**
@@ -195,8 +221,15 @@ export class AgentSessionManager extends EventEmitter {
 		};
 
 		// Store locally
+		const sessionEntries: CyrusAgentSessionEntry[] = [];
 		this.sessions.set(sessionId, agentSession);
-		this.entries.set(sessionId, []);
+		this.entries.set(sessionId, sessionEntries);
+		if (
+			this.globalSessionRegistry &&
+			!this.globalSessionRegistry.hasSession(sessionId)
+		) {
+			this.globalSessionRegistry.createSession(agentSession, sessionEntries);
+		}
 
 		return agentSession;
 	}
@@ -228,8 +261,15 @@ export class AgentSessionManager extends EventEmitter {
 			workspace,
 		};
 
+		const sessionEntries: CyrusAgentSessionEntry[] = [];
 		this.sessions.set(sessionId, agentSession);
-		this.entries.set(sessionId, []);
+		this.entries.set(sessionId, sessionEntries);
+		if (
+			this.globalSessionRegistry &&
+			!this.globalSessionRegistry.hasSession(sessionId)
+		) {
+			this.globalSessionRegistry.createSession(agentSession, sessionEntries);
+		}
 
 		return agentSession;
 	}
@@ -279,6 +319,7 @@ export class AgentSessionManager extends EventEmitter {
 			permissionMode: claudeSystemMessage.permissionMode,
 			apiKeySource: claudeSystemMessage.apiKeySource,
 		};
+		this.syncSessionToGlobalRegistry(sessionId);
 	}
 
 	/**
@@ -962,6 +1003,7 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		this.sessions.set(sessionId, session);
+		this.syncSessionToGlobalRegistry(sessionId);
 	}
 
 	/**
@@ -1150,6 +1192,8 @@ export class AgentSessionManager extends EventEmitter {
 			const entries = this.entries.get(sessionId) || [];
 			entries.push(entry);
 			this.entries.set(sessionId, entries);
+			this.syncEntriesToGlobalRegistry(sessionId);
+			this.syncSessionToGlobalRegistry(sessionId);
 
 			// Build activity content based on entry type
 			let content: any;
@@ -1621,6 +1665,7 @@ export class AgentSessionManager extends EventEmitter {
 
 		session.agentRunner = agentRunner;
 		session.updatedAt = Date.now();
+		this.syncSessionToGlobalRegistry(sessionId);
 		log.debug(`Added agent runner`);
 	}
 
@@ -1898,6 +1943,7 @@ export class AgentSessionManager extends EventEmitter {
 	restoreState(
 		serializedSessions: Record<string, SerializedCyrusAgentSession>,
 		serializedEntries: Record<string, SerializedCyrusAgentSessionEntry[]>,
+		options?: { syncRegistry?: boolean },
 	): void {
 		// Clear existing state
 		this.sessions.clear();
@@ -1910,6 +1956,13 @@ export class AgentSessionManager extends EventEmitter {
 				repositoryAssociations: sessionData.repositoryAssociations ?? [],
 			};
 			this.sessions.set(sessionId, session);
+			if (options?.syncRegistry && this.globalSessionRegistry) {
+				if (this.globalSessionRegistry.hasSession(sessionId)) {
+					this.globalSessionRegistry.setSession(session);
+				} else {
+					this.globalSessionRegistry.createSession(session);
+				}
+			}
 		}
 
 		// Restore entries
@@ -1920,6 +1973,9 @@ export class AgentSessionManager extends EventEmitter {
 				}),
 			);
 			this.entries.set(sessionId, sessionEntries);
+			if (options?.syncRegistry && this.globalSessionRegistry) {
+				this.globalSessionRegistry.replaceEntries(sessionId, sessionEntries);
+			}
 		}
 
 		this.logger.debug(

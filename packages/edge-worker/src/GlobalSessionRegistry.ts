@@ -67,20 +67,54 @@ export class GlobalSessionRegistry extends EventEmitter {
 	 */
 	private childToParentMap: Map<string, string> = new Map();
 
+	private getSessionIssueId(session: CyrusAgentSession): string | undefined {
+		return session.issueContext?.issueId ?? session.issueId;
+	}
+
+	private getSessionRepositoryIds(session: CyrusAgentSession): string[] {
+		return (
+			session.repositoryAssociations?.map(
+				(association) => association.repositoryId,
+			) ?? []
+		);
+	}
+
 	/**
 	 * Create a new session in the registry
 	 * @param session The session to create
 	 * @throws Error if session with same ID already exists
 	 */
-	createSession(session: CyrusAgentSession): void {
+	createSession(
+		session: CyrusAgentSession,
+		initialEntries: CyrusAgentSessionEntry[] = [],
+	): void {
 		if (this.sessions.has(session.id)) {
 			throw new Error(`Session with ID ${session.id} already exists`);
 		}
 
 		this.sessions.set(session.id, session);
-		this.entries.set(session.id, []);
+		this.entries.set(session.id, initialEntries);
 
 		this.emit("sessionCreated", session);
+	}
+
+	/**
+	 * Upsert a session without requiring repository-owned storage.
+	 */
+	setSession(session: CyrusAgentSession): void {
+		if (!this.sessions.has(session.id)) {
+			this.createSession(session);
+			return;
+		}
+
+		this.sessions.set(session.id, session);
+		if (!this.entries.has(session.id)) {
+			this.entries.set(session.id, []);
+		}
+	}
+
+	hasSession(sessionId: string): boolean {
+		return this.sessions.has(sessionId);
 	}
 
 	/**
@@ -146,6 +180,18 @@ export class GlobalSessionRegistry extends EventEmitter {
 		return Array.from(this.sessions.values());
 	}
 
+	getSessionsByIssueId(issueId: string): CyrusAgentSession[] {
+		return Array.from(this.sessions.values()).filter(
+			(session) => this.getSessionIssueId(session) === issueId,
+		);
+	}
+
+	getSessionsByRepositoryId(repositoryId: string): CyrusAgentSession[] {
+		return Array.from(this.sessions.values()).filter((session) =>
+			this.getSessionRepositoryIds(session).includes(repositoryId),
+		);
+	}
+
 	/**
 	 * Add an entry to a session's conversation history
 	 * @param sessionId The session id
@@ -175,6 +221,14 @@ export class GlobalSessionRegistry extends EventEmitter {
 	 */
 	getEntries(sessionId: string): CyrusAgentSessionEntry[] {
 		return this.entries.get(sessionId) || [];
+	}
+
+	replaceEntries(sessionId: string, entries: CyrusAgentSessionEntry[]): void {
+		if (!this.sessions.has(sessionId)) {
+			throw new Error(`Session with ID ${sessionId} not found`);
+		}
+
+		this.entries.set(sessionId, entries);
 	}
 
 	/**
