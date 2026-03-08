@@ -1,0 +1,25 @@
+{
+	"status": "overridden",
+	"summary": "Scrutiny for runtime-surface-adoption was overridden because the only failing validator remained the documented pre-existing packages/edge-worker screenshot-upload-hooks suite, which is unrelated to the repository-association refactor work completed in this milestone. Typecheck and lint passed, and milestone features had targeted green tests, build validation, and F1 evidence.",
+	"validatorResults": {
+		"test": {
+			"status": "failed",
+			"details": "pnpm test:packages:run -- --maxWorkers=8 fails in packages/edge-worker/test/EdgeWorker.screenshot-upload-hooks.test.ts with undefined screenshot hook matcher expectations."
+		},
+		"typecheck": {
+			"status": "passed"
+		},
+		"lint": {
+			"status": "passed"
+		}
+	},
+	"appliedUpdates": [],
+	"suggestedGuidanceUpdates": [],
+	"override": {
+		"appliedBy": "orchestrator",
+		"reason": "Mission AGENTS.md documents the screenshot-upload-hooks suite as pre-existing unrelated edge-worker validation noise. The runtime milestone features validated with targeted routing/lifecycle/prompt/integration tests, workspace build, and F1 evidence, so this unrelated baseline suite is deferred.",
+		"deferredIssues": [
+			"packages/edge-worker/test/EdgeWorker.screenshot-upload-hooks.test.ts"
+		]
+	}
+}

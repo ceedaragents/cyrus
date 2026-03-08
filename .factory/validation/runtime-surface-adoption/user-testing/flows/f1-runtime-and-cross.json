@@ -1,0 +1,181 @@
+{
+	"surface": "f1 multi-repo cli",
+	"testedAt": "2026-03-08T03:26:43.330771+00:00",
+	"assertions": [
+		{
+			"id": "VAL-RUNTIME-001",
+			"status": "pass",
+			"reason": "Ambiguous routing stayed unresolved until an explicit repository was selected, and an invalid freeform reply did not fall back to any default repository.",
+			"evidence": [
+				"`view-session --session-id session-1 --limit 10` showed only the elicitation `Which repository should I work in for this issue?` after `start-session --issue-id issue-1`.",
+				"`prompt-session --session-id session-1 --message \"Use whichever repository fits best.\"` followed by `view-session --search \"couldn't match\"` produced an error activity instead of selecting a repository.",
+				"Shared server log lines 38-43 show `No unique repository matched`, `Repository \"Use whichever repository fits best.\" did not match any pending selection option`, and `Repository selection for agent session session-1 is still unresolved...`."
+			]
+		},
+		{
+			"id": "VAL-RUNTIME-002",
+			"status": "pass",
+			"reason": "Once a repository was selected, the same issue/session continued into session tracking and runner initialization without losing issue state.",
+			"evidence": [
+				"`view-session --session-id session-1 --limit 30` showed the prompt `F1 Frontend Repository` followed by `Repository \"F1 Frontend Repository\" has been selected by user...` and continued analysis thoughts.",
+				"Shared server log lines 43-61 show `User selected repository: F1 Frontend Repository`, then `Tracking session for issue issue-1`, then Gemini runner startup using the issue title/description for classification.",
+				"Shared server log lines 195-214 show the same lifecycle continuity for `session-2` / `issue-2`, including `User selected repository: F1 Backend Repository`, `Tracking session for issue issue-2`, and `Building initial prompt for issue DEF-2`."
+			]
+		},
+		{
+			"id": "VAL-RUNTIME-003",
+			"status": "pass",
+			"reason": "After repository selection, the orchestration prompt still enumerated both applicable repositories instead of collapsing the session to a single ambient repository context.",
+			"evidence": [
+				"`view-session --session-id session-2 --limit 20` showed `Selected procedure: **orchestrator-full**` and `Entering 'orchestrator' mode...` after the backend selection reply.",
+				"Shared server log lines 255-289 include `<repository_routing_context>` with both `F1 Backend Repository` and `F1 Frontend Repository` under `<available_repositories>`.",
+				"Shared server log lines 210-214 show prompt assembly happening after the selected backend repository was applied, while still carrying the multi-repository routing context forward."
+			]
+		},
+		{
+			"id": "VAL-RUNTIME-004",
+			"status": "blocked",
+			"reason": "The assertion requires validating post-restart restoration behavior, but this assignment prohibited stopping or restarting the shared F1 service.",
+			"evidence": [
+				"The mission/task constraints explicitly said `Do not stop or restart the service.`",
+				"Separate CLI calls (`start-session`, `prompt-session`, `view-session`) preserved live runtime state within the same service process, but no restart-based restore path could be exercised from this surface."
+			]
+		},
+		{
+			"id": "VAL-CROSS-001",
+			"status": "pass",
+			"reason": "The zero-association session remained explicit from start through invalid selection handling until a repository was explicitly chosen.",
+			"evidence": [
+				"`start-session --issue-id issue-1` followed by `view-session --session-id session-1 --limit 10` showed only the repository-selection elicitation and no preselected repository.",
+				"The invalid reply `Use whichever repository fits best.` produced an error activity and the server log line `Repository selection for agent session session-1 is still unresolved...`.",
+				"Log string counts for `Agent session session-1 not found` and `Issue issue-1 not found` were both zero, showing the unresolved state stayed explicit rather than breaking downstream lookups."
+			]
+		},
+		{
+			"id": "VAL-CROSS-002",
+			"status": "pass",
+			"reason": "The ambiguous issue moved cleanly into one explicit repository association via exact-name selection and continued downstream without singular shortcut loss.",
+			"evidence": [
+				"`prompt-session --session-id session-1 --message \"F1 Frontend Repository\"` followed by `view-session --session-id session-1 --limit 30` showed the exact-name selection thought and continued analysis thoughts in the same session.",
+				"Shared server log lines 43-61 show the exact-name selection immediately followed by `Tracking session for issue issue-1` and Gemini runner startup using the selected issue/session state.",
+				"Log string counts for `Agent session session-1 not found` and `Issue issue-1 not found` were zero."
+			]
+		},
+		{
+			"id": "VAL-CROSS-003",
+			"status": "pass",
+			"reason": "The multi-repository flow preserved cross-repository context through routing and orchestration instead of truncating the session to one repository.",
+			"evidence": [
+				"`create-issue` / `assign-issue` / `start-session` for `issue-2` began from the same ambiguous selection state as `issue-1`, proving the workspace still had multiple candidate repositories.",
+				"After `prompt-session --session-id session-2 --message \"Please use F1 Backend Repository for this issue.\"`, `view-session --session-id session-2 --limit 20` showed the backend selection plus orchestrator procedure selection in the same session timeline.",
+				"Shared server log lines 255-289 preserved both `F1 Backend Repository` and `F1 Frontend Repository` inside `<repository_routing_context>` during prompt assembly, so the multi-repo context was not truncated to one repository."
+			]
+		},
+		{
+			"id": "VAL-CROSS-004",
+			"status": "pass",
+			"reason": "Selection-driven association updates propagated consistently into session activity, prompt assembly, and downstream runtime state.",
+			"evidence": [
+				"Session 1 exact-name selection updated the timeline from elicitation -> prompt -> selection thought -> follow-on analysis without changing session or issue identity.",
+				"Session 2 natural-language selection updated the timeline from elicitation -> prompt -> selection thought -> `orchestrator-full` procedure -> orchestrator-mode thought.",
+				"Shared log evidence showed zero occurrences of `Agent session session-1 not found`, `Issue issue-1 not found`, `Agent session session-2 not found`, and `Issue issue-2 not found`, indicating downstream state remained consistent after selection."
+			]
+		}
+	],
+	"commandsRun": [
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js status",
+			"exitCode": 0,
+			"observation": "Confirmed the F1 CLI server was ready on http://localhost:3600 before running flows."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js create-issue --team-id team-default --title \"utv-runtime-f1-a :: exact selection flow\" --description \"utv-runtime-f1-a :: Validate ambiguous routing stays unresolved until an explicit repository name is chosen.\"",
+			"exitCode": 0,
+			"observation": "Created issue-1 / DEF-1 for the exact-name selection flow."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js assign-issue --issue-id issue-1 --assignee-id user-default",
+			"exitCode": 0,
+			"observation": "Assigned issue-1 to user-default."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js start-session --issue-id issue-1",
+			"exitCode": 0,
+			"observation": "Started session-1 for issue-1."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js view-session --session-id session-1 --limit 10",
+			"exitCode": 0,
+			"observation": "Observed the initial repository-selection elicitation with no default repository chosen."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js prompt-session --session-id session-1 --message \"Use whichever repository fits best.\"",
+			"exitCode": 0,
+			"observation": "Sent an intentionally invalid/ambiguous selection response."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js view-session --session-id session-1 --search \"couldn't match\" --limit 5",
+			"exitCode": 0,
+			"observation": "Confirmed the invalid response produced a repository-match error instead of a fallback selection."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js prompt-session --session-id session-1 --message \"F1 Frontend Repository\"",
+			"exitCode": 0,
+			"observation": "Selected the frontend repository by exact name."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js view-session --session-id session-1 --limit 30",
+			"exitCode": 0,
+			"observation": "Observed selection confirmation and continued downstream analysis thoughts in session-1."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js create-issue --team-id team-default --title \"utv-runtime-f1-a :: natural language backend selection\" --description \"utv-runtime-f1-a :: Validate that repository selection accepts a natural-language wrapper phrase and continues into orchestrator routing context.\" --labels orchestrator",
+			"exitCode": 0,
+			"observation": "Created issue-2 / DEF-2 for the natural-language selection flow."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js assign-issue --issue-id issue-2 --assignee-id user-default",
+			"exitCode": 0,
+			"observation": "Assigned issue-2 to user-default."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js start-session --issue-id issue-2",
+			"exitCode": 0,
+			"observation": "Started session-2 for issue-2."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js view-session --session-id session-2 --limit 10",
+			"exitCode": 0,
+			"observation": "Observed the initial repository-selection elicitation for the second ambiguous flow."
+		},
+		{
+			"command": "CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js prompt-session --session-id session-2 --message \"Please use F1 Backend Repository for this issue.\"",
+			"exitCode": 0,
+			"observation": "Selected the backend repository using a natural-language wrapper phrase."
+		},
+		{
+			"command": "sleep 3 && CYRUS_PORT=3600 node /Users/connor/code/cyrus/worktrees/multirepo/apps/f1/dist/src/cli.js view-session --session-id session-2 --limit 20",
+			"exitCode": 0,
+			"observation": "Observed selection confirmation plus orchestrator procedure thoughts in session-2."
+		},
+		{
+			"command": "rg -n -C 3 \"session-1|issue-1|session-2|issue-2|User selected repository|repository_routing_context|orchestrator-full|Entering 'orchestrator' mode|CLAUDE\\.local\\.md|No such file or directory|optional local prompt\" /var/folders/5s/rldbq43s2yj4v5xb89bwygv80000gn/T/droid-bg-1772940152200.out",
+			"exitCode": 0,
+			"observation": "Confirmed repository-selection, session-tracking, and multi-repository prompt-context evidence in the shared server log."
+		},
+		{
+			"command": "python3 - <<'PY' ... count log strings ... PY",
+			"exitCode": 0,
+			"observation": "Verified zero occurrences of avoidable optional-local-prompt noise and zero `Agent session/Issue not found` messages for issue-1/session-1 and issue-2/session-2."
+		}
+	],
+	"frictions": [
+		"The shared server log showed unrelated Git/worktree noise (`git fetch origin` publickey warning and invalid branch-name errors for titles containing `::`), but the repository-selection/session-continuation assertions still proceeded and were observable.",
+		"`view-session` truncates long activity messages with ellipses, so the shared server log had to be inspected to confirm the full repository-selection and `<repository_routing_context>` details."
+	],
+	"blockers": [
+		"VAL-RUNTIME-004 remained blocked because the assignment prohibited stopping or restarting the shared F1 service, so post-restart runtime-state restoration could not be exercised from this surface."
+	],
+	"toolsUsed": ["Execute", "Read", "Grep", "LS", "TodoWrite"],
+	"summary": "Validated the F1 multi-repo CLI runtime flow: 7 assigned assertions passed across ambiguous routing, exact-name selection, natural-language selection, downstream continuation, and multi-repository routing context; 1 assertion (VAL-RUNTIME-004) was blocked by the no-restart constraint."
+}

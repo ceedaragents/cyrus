@@ -32,6 +32,8 @@ Testing surface, startup steps, and known quirks for this mission.
 - Some edge-worker tests may also hit `/tmp/test-cyrus-home` permission errors during temp log creation.
 - Prefer targeted tests for changed areas during iteration, then use F1/manual validation plus typechecks/build for mission-level confidence.
 - For inline package-API validation scripts, use `node --input-type=module` so ESM imports from `packages/core/dist/index.js` work reliably.
+- `apps/f1/server.ts` generates a fresh temp `CYRUS_HOME` on each start, so post-restart restore coverage is better validated with targeted `packages/edge-worker` restore tests than by restarting the same F1 instance.
+- Avoid `::` in F1 validation issue titles/descriptions; the sanitized branch-name path can still produce invalid branch names. Use hyphenated namespace prefixes instead.
 
 ## Flow Validator Guidance: Repository audit artifact
 
@@ -48,3 +50,30 @@ Testing surface, startup steps, and known quirks for this mission.
 - Allowed evidence sources: `Execute` for Node scripts and targeted package tests, plus `Read`/`Grep` for exported type inspection when needed to confirm public API shape.
 - Off-limits: editing product code, using repo-keyed legacy containers as the primary success criterion, or sharing persistence directories between validator runs.
 - Isolation rule: each validator must stay inside its assigned namespace directory and only write its assigned flow report file.
+
+## Flow Validator Guidance: f1 multi-repo cli
+
+- Surface: the running `f1-multi-repo` service on port `3600`, exercised through `node apps/f1/dist/src/cli.js`.
+- Parent validator owns service startup/teardown; flow validators should assume the service is already healthy before they begin.
+- Required runtime evidence for this milestone comes from real CLI flows: `status`, `create-issue`, `assign-issue`, `start-session`, `view-session`, and `prompt-session`.
+- The key behaviors to confirm are: zero-association sessions stay unresolved until selection, exact-name and natural-language repository selections resolve cleanly, selected sessions continue into runner initialization without losing issue/session state, and orchestrator routing context enumerates both repositories.
+- Also inspect the shared F1 server log provided by the parent validator for absence of avoidable optional-local-prompt noise and for repository-selection / routing-context continuation evidence.
+- Off-limits: editing product code, reconfiguring the service port, or reusing another validator's issue/session identifiers.
+- Isolation rule: each validator must use only issue titles/descriptions prefixed with its assigned namespace, keep to its assigned session IDs, and write only its assigned flow report.
+
+## Flow Validator Guidance: repository-association docs surface
+
+- Surface: committed repository files that users and validators read directly, especially `README.md`, `packages/edge-worker/README.md`, and `apps/f1/test-drives/2026-01-13-multi-repo-orchestration.md` / `apps/f1/test-drives/2026-03-08-zero-one-many-association-validation.md`.
+- No app server is required for this surface; use repository inspection only.
+- Allowed evidence sources: `Read`, `Grep`, `Glob`, `LS`, and read-only git commands.
+- The key behaviors to confirm are that public/internal examples describe explicit repository associations and selection behavior, avoid teaching a session-wide primary/current repository model, and that the F1 validation assets describe ambiguous-routing plus multi-repository routing-context flows.
+- Off-limits: editing documentation, inferring coverage from one file when the assertion names require checking multiple surfaces, or using generated artifacts as a substitute for the committed sources.
+- Isolation rule: each validator must keep notes within its own report and avoid creating any shared scratch files.
+
+## Flow Validator Guidance: edge-worker restore test surface
+
+- Surface: targeted `packages/edge-worker` runtime restore tests that exercise persisted session/repository-association restoration without relying on a long-lived F1 temp home.
+- Preferred command: `pnpm --filter cyrus-edge-worker exec vitest run test/EdgeWorker.missing-session-recovery.test.ts test/GlobalSessionRegistry.test.ts test/AgentSessionManager.repository-associations.test.ts`.
+- Use direct file inspection of those tests when you need to tie a passing command back to explicit repository-association restore behavior.
+- Off-limits: running the full edge-worker suite as primary evidence, editing product code, or inferring restore behavior from unrelated runner-selection/feedback failures.
+- Isolation rule: each validator writes only its assigned report file and treats unrelated baseline failures outside the targeted restore command as noise, not assertion evidence.

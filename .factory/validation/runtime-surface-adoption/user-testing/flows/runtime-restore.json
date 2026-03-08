@@ -1,0 +1,27 @@
+{
+	"surface": "edge-worker restore test surface",
+	"assertions": [
+		{
+			"id": "VAL-RUNTIME-004",
+			"status": "pass",
+			"reason": "The targeted edge-worker restore command passed cleanly, and the covered tests directly verify that persisted runtime state restores repository associations through explicit session data and the global registry instead of repo-first storage assumptions.",
+			"evidence": [
+				"Command `pnpm --filter cyrus-edge-worker exec vitest run test/EdgeWorker.missing-session-recovery.test.ts test/GlobalSessionRegistry.test.ts test/AgentSessionManager.repository-associations.test.ts` exited 0 with 3 test files passed and 63 tests passed.",
+				"`packages/edge-worker/test/EdgeWorker.missing-session-recovery.test.ts` lines 685-771 define persisted runtime restoration coverage, including `should restore zero-association sessions into the global registry without repo buckets`, which restores `agentSessionsById` state and expects `restoredSession?.repositoryAssociations` to equal `[]` after `restoreMappings(state)`.",
+				"`packages/edge-worker/test/GlobalSessionRegistry.test.ts` lines 222-238 verify lookups come from explicit `repositoryAssociations`, and lines 458-514 verify `restoreState(...)` plus serialize/restore round-trip behavior in the global session registry.",
+				"`packages/edge-worker/test/AgentSessionManager.repository-associations.test.ts` lines 64-130 restore a session containing `repositoryAssociations: [{ repositoryId: \"repo-restore\", associationOrigin: \"restored\", status: \"selected\" }]` and then assert the global registry still exposes that restored association."
+			]
+		}
+	],
+	"commandsRun": [
+		{
+			"command": "cd /Users/connor/code/cyrus/worktrees/multirepo && pnpm --filter cyrus-edge-worker exec vitest run test/EdgeWorker.missing-session-recovery.test.ts test/GlobalSessionRegistry.test.ts test/AgentSessionManager.repository-associations.test.ts",
+			"exitCode": 0,
+			"observation": "Vitest passed for the targeted restore surface: GlobalSessionRegistry (46 tests), AgentSessionManager.repository-associations (2 tests), and EdgeWorker.missing-session-recovery (15 tests); 63/63 tests passed in 1.02s."
+		}
+	],
+	"frictions": [],
+	"blockers": [],
+	"toolsUsed": ["TodoWrite", "Read", "Grep", "LS", "Execute", "ApplyPatch"],
+	"summary": "VAL-RUNTIME-004 passed on the targeted edge-worker restore surface: the restore-focused Vitest command succeeded, and the cited tests show repository associations are restored from explicit persisted session data through the global registry rather than repo-first storage buckets."
+}

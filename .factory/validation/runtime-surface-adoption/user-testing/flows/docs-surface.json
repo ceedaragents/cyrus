@@ -1,0 +1,64 @@
+{
+	"surface": "repository-association docs surface",
+	"assertions": [
+		{
+			"id": "VAL-SURFACE-001",
+			"status": "pass",
+			"reason": "The inspected public and validation-facing docs consistently teach explicit 0/1/N repository associations and repository selection/routing behavior rather than a session-wide primary/current repository model.",
+			"evidence": [
+				"README.md:18-24 introduces an explicit 0/1/N repository-association model and says ambiguous routing never silently falls back to a default repository.",
+				"packages/edge-worker/README.md:13-19 says EdgeWorker does not assume one session-wide default repository and defines repositoryId as a repository-scoped interaction handle rather than ambient session identity.",
+				"apps/f1/test-drives/2026-01-13-multi-repo-orchestration.md:197 records 'No session-wide current-repository marker; each repository stayed explicitly scoped.'",
+				"A targeted grep across README.md, packages/edge-worker/README.md, and the two assigned F1 test drives found no positive primary-repository/current-repository teaching; the only current-repository hit was the negative scoped note above."
+			]
+		},
+		{
+			"id": "VAL-SURFACE-002",
+			"status": "pass",
+			"reason": "The committed F1 validation assets describe both the ambiguous/no-match selection flow and the multi-repository routing-context flow in the new 0/1/N association terms.",
+			"evidence": [
+				"apps/f1/test-drives/2026-03-08-zero-one-many-association-validation.md:11-14 enumerates zero associations staying explicit, exact-name selection, natural-language selection, and multi-repository prompt context.",
+				"apps/f1/test-drives/2026-03-08-zero-one-many-association-validation.md:57-58 states that view-session showed the repository-selection elicitation and that no repository was silently chosen before reply.",
+				"apps/f1/test-drives/2026-03-08-zero-one-many-association-validation.md:96-98 records that the selected flow reached a prompt containing <repository_routing_context> with both backend and frontend repositories.",
+				"apps/f1/test-drives/2026-01-13-multi-repo-orchestration.md:15,124-137,257-259 documents unresolved multi-repo routing, explicit repository selection, and prompt routing context containing all applicable repositories."
+			]
+		},
+		{
+			"id": "VAL-SURFACE-003",
+			"status": "pass",
+			"reason": "Both required README surfaces document the final repository-association model and routing/selection behavior at a high level.",
+			"evidence": [
+				"README.md:18-24 explains the final 0/1/N repository-association model, zero-association selection behavior, and multi-repository routing context.",
+				"packages/edge-worker/README.md:11-19 explains repository associations and routing outcomes for 0, 1, and N associations.",
+				"packages/edge-worker/README.md:168-214 documents repository-scoped callbacks/events and reiterates that ambiguous routing requests repository selection instead of defaulting to a fallback repo."
+			]
+		},
+		{
+			"id": "VAL-SURFACE-004",
+			"status": "pass",
+			"reason": "The public package documentation and examples describe repository-scoped handlers/events and repositories arrays, not a single ambient repository handle for the whole session.",
+			"evidence": [
+				"packages/edge-worker/README.md:19 says repositoryId is a repository-scoped interaction handle, not an ambient session-wide repository identity.",
+				"packages/edge-worker/README.md:31-61 shows the single-repository example as one explicit association produced from a repositories array after routing, not a singular session repository field.",
+				"packages/edge-worker/README.md:81-130 shows multi-repository examples where onClaudeEvent/onSessionStart receive repositoryId scoped to the repository association that emitted the interaction.",
+				"packages/edge-worker/README.md:188-214 documents emitted events as occurring 'for a repository association' and says repository-scoped callbacks/events are derived from explicit associations rather than a session-wide default repository."
+			]
+		}
+	],
+	"commandsRun": [
+		{
+			"command": "git -C \"/Users/connor/code/cyrus/worktrees/multirepo\" diff --name-only -- README.md packages/edge-worker/README.md apps/f1/test-drives/2026-01-13-multi-repo-orchestration.md apps/f1/test-drives/2026-03-08-zero-one-many-association-validation.md",
+			"exitCode": 0,
+			"observation": "No output; the inspected documentation files match HEAD in the working tree, so the Read/Grep evidence reflects committed content for those paths."
+		},
+		{
+			"command": "git -C \"/Users/connor/code/cyrus/worktrees/multirepo\" status --short -- README.md packages/edge-worker/README.md apps/f1/test-drives/2026-01-13-multi-repo-orchestration.md apps/f1/test-drives/2026-03-08-zero-one-many-association-validation.md",
+			"exitCode": 0,
+			"observation": "No output; none of the inspected README/F1 validation files are modified or untracked in the current worktree."
+		}
+	],
+	"frictions": [],
+	"blockers": [],
+	"toolsUsed": ["Read", "Grep", "Glob", "LS", "Execute"],
+	"summary": "All four repository-association docs surface assertions passed. The root and edge-worker README files teach the explicit 0/1/N repository-association model and selection behavior, while the F1 validation assets cover ambiguous routing, repository selection, and multi-repository routing-context visibility without reverting to a primary/current repository mental model."
+}
