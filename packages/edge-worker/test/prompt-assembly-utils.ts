@@ -1,3 +1,4 @@
+import { createTestCyrusHome } from "./testCyrusHome.js";
 /**
  * Prompt Assembly Test Utilities
  *
@@ -32,7 +33,7 @@ export function createTestWorker(
 	}
 
 	const config: EdgeWorkerConfig = {
-		cyrusHome: "/tmp/test-cyrus-home",
+		cyrusHome: createTestCyrusHome(),
 		claudeDefaultModel: "sonnet",
 		linearWorkspaceSlug,
 		repositories,

@@ -7,6 +7,7 @@ import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 // Mock all dependencies
 vi.mock("fs/promises");
@@ -40,6 +41,8 @@ vi.mock("cyrus-core", async (importOriginal) => {
  * Currently, all these scenarios cause silent early returns, leaving the
  * Linear surface appearing stuck/hung with no user feedback.
  */
+const testCyrusHome = createTestCyrusHome();
+
 describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
@@ -146,7 +149,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: testCyrusHome,
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
@@ -533,7 +536,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 						path: "/test/workspaces/TEST-123",
 						isGitWorktree: false,
 					},
-					attachmentsDir: "/tmp/test-cyrus-home/TEST-123/attachments",
+					attachmentsDir: `${testCyrusHome}/TEST-123/attachments`,
 				});
 
 			// Also mock the handlePromptWithStreamingCheck to prevent further execution

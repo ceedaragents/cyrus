@@ -15,6 +15,7 @@ import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -46,6 +47,8 @@ vi.mock("cyrus-core", async (importOriginal) => {
 	};
 });
 vi.mock("file-type");
+
+const testCyrusHome = createTestCyrusHome();
 
 describe("EdgeWorker - Runner Selection Based on Labels", () => {
 	let edgeWorker: EdgeWorker;
@@ -247,7 +250,7 @@ Issue: {{issue_identifier}}`;
 
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: testCyrusHome,
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({

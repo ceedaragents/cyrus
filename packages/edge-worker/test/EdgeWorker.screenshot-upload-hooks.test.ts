@@ -13,6 +13,7 @@ import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -55,6 +56,8 @@ vi.mock("file-type");
  * the linear_upload_file tool, so Claude doesn't know it should upload
  * screenshots to Linear for them to be viewable in comments.
  */
+const testCyrusHome = createTestCyrusHome();
+
 describe("EdgeWorker - Screenshot Upload Guidance Hooks", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
@@ -209,7 +212,7 @@ Issue: {{issue_identifier}}`;
 
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: testCyrusHome,
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({

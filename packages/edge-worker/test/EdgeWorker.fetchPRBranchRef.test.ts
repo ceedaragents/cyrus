@@ -8,6 +8,7 @@ import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 // Mock dependencies
 vi.mock("cyrus-claude-runner");
@@ -26,6 +27,8 @@ vi.mock("cyrus-core", async (importOriginal) => {
 	};
 });
 vi.mock("file-type");
+
+const testCyrusHome = createTestCyrusHome();
 
 describe("EdgeWorker - fetchPRBranchRef", () => {
 	let edgeWorker: EdgeWorker;
@@ -96,7 +99,7 @@ describe("EdgeWorker - fetchPRBranchRef", () => {
 
 		// Create EdgeWorker config
 		mockConfig = {
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: testCyrusHome,
 			repositories: [],
 		};
 

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 // Mock dependencies BEFORE imports
 vi.mock("cyrus-claude-runner", () => ({
@@ -62,6 +63,8 @@ import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
 
+const testCyrusHome = createTestCyrusHome();
+
 describe("EdgeWorker - Dynamic Tools Configuration", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
@@ -82,7 +85,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 		// Create mock configuration
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: testCyrusHome,
 			defaultAllowedTools: ["Read", "Write", "Edit"],
 			repositories: [
 				{
