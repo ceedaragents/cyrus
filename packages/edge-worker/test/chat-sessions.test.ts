@@ -1,9 +1,9 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { TEST_CYRUS_CHAT } from "./test-dirs.js";
 import type { ChatPlatformAdapter } from "../src/ChatSessionHandler.js";
 import { ChatSessionHandler } from "../src/ChatSessionHandler.js";
 import { SlackChatAdapter } from "../src/SlackChatAdapter.js";
+import { TEST_CYRUS_CHAT } from "./test-dirs.js";
 
 interface TestEvent {
 	eventId: string;
