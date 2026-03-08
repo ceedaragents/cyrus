@@ -60,8 +60,8 @@ Remember: Your first message is internal planning. Use this time to:
 </task_management_instructions>`)
 			.expectUserPrompt(`<context>
   <repository>undefined</repository>
-  <working_directory>undefined</working_directory>
-  <base_branch>undefined</base_branch>
+  <working_directory>/test/repo</working_directory>
+  <base_branch>main</base_branch>
 </context>
 
 <linear_issue>

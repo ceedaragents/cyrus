@@ -6,6 +6,7 @@ import type { SimpleAgentRunnerConfig } from "cyrus-simple-agent-runner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GeminiRunner } from "../src/GeminiRunner.js";
 import { SimpleGeminiRunner } from "../src/SimpleGeminiRunner.js";
+import { TEST_CYRUS_HOME, TEST_WORKING_DIR } from "./test-dirs.js";
 
 // Mock GeminiRunner
 vi.mock("../src/GeminiRunner.js", () => {
@@ -23,8 +24,8 @@ describe("SimpleGeminiRunner", () => {
 
 	const defaultConfig: SimpleAgentRunnerConfig<"approve" | "reject"> = {
 		validResponses: ["approve", "reject"] as const,
-		cyrusHome: "/tmp/test-cyrus-home",
-		workingDirectory: "/tmp/test",
+		cyrusHome: TEST_CYRUS_HOME,
+		workingDirectory: TEST_WORKING_DIR,
 		model: "gemini-2.5-flash",
 	};
 
@@ -99,7 +100,7 @@ describe("SimpleGeminiRunner", () => {
 		it("should throw when cyrusHome is not provided", () => {
 			const invalidConfig = {
 				validResponses: ["approve", "reject"] as const,
-				workingDirectory: "/tmp/test",
+				workingDirectory: TEST_WORKING_DIR,
 			};
 
 			expect(() => new SimpleGeminiRunner(invalidConfig as any)).toThrow(
@@ -420,8 +421,8 @@ describe("SimpleGeminiRunner", () => {
 			type BooleanResponse = "true" | "false";
 			const boolConfig: SimpleAgentRunnerConfig<BooleanResponse> = {
 				validResponses: ["true", "false"] as const,
-				cyrusHome: "/tmp/test-cyrus-home",
-				workingDirectory: "/tmp/test",
+				cyrusHome: TEST_CYRUS_HOME,
+				workingDirectory: TEST_WORKING_DIR,
 			};
 
 			const boolRunner = new SimpleGeminiRunner(boolConfig);
@@ -448,8 +449,8 @@ describe("SimpleGeminiRunner", () => {
 					"needs-info",
 					"escalated",
 				] as const,
-				cyrusHome: "/tmp/test-cyrus-home",
-				workingDirectory: "/tmp/test",
+				cyrusHome: TEST_CYRUS_HOME,
+				workingDirectory: TEST_WORKING_DIR,
 			};
 
 			const statusRunner = new SimpleGeminiRunner(statusConfig);

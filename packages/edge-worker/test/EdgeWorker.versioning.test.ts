@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import type { EdgeWorkerConfig } from "../src/types.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -60,7 +61,7 @@ describe("EdgeWorker - Version Tag Extraction", () => {
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
 			webhookPort: 3456,
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [
 				{
 					id: "test-repo",
