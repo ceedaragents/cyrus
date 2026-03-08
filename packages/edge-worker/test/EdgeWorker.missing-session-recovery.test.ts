@@ -449,10 +449,9 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 				},
 			);
 
-			const initializeAgentRunnerSpy = vi.spyOn(
-				edgeWorker as any,
-				"initializeAgentRunner",
-			);
+			const initializeAgentRunnerSpy = vi
+				.spyOn(edgeWorker as any, "initializeAgentRunner")
+				.mockResolvedValue(undefined);
 
 			const webhook = createPromptedWebhook({
 				agentActivity: {
@@ -483,6 +482,70 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 					},
 				}),
 			);
+		});
+
+		it("should initialize the selected repository with user-selected association provenance", async () => {
+			const repositoryRouter = (edgeWorker as any).repositoryRouter;
+			(repositoryRouter as any).pendingSelections.set(
+				"agent-session-legacy-123",
+				{
+					issueId: "issue-123",
+					workspaceRepos: [mockRepository],
+				},
+			);
+
+			const initializeAgentRunnerSpy = vi
+				.spyOn(edgeWorker as any, "initializeAgentRunner")
+				.mockResolvedValue(undefined);
+
+			const webhook = createPromptedWebhook({
+				agentActivity: {
+					content: {
+						body: "Please use repository: Test Repo",
+					},
+				},
+			});
+
+			await (edgeWorker as any).handleWebhook(webhook, [mockRepository]);
+
+			expect(initializeAgentRunnerSpy).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "agent-session-legacy-123" }),
+				mockRepository,
+				undefined,
+				"Please continue working on this",
+				"user-selected",
+			);
+			expect(repositoryRouter.getIssueRepositoryCache().get("issue-123")).toBe(
+				"test-repo",
+			);
+		});
+
+		it("should accept natural-language wrapper phrases around a valid repository name", async () => {
+			const repositoryRouter = (edgeWorker as any).repositoryRouter;
+			const secondRepository: RepositoryConfig = {
+				...mockRepository,
+				id: "test-repo-2",
+				name: "Backend Repository",
+				repositoryPath: "/test/repo-2",
+				githubUrl: "https://github.com/test-org/backend-repository",
+			};
+
+			const webhook = createPromptedWebhook();
+			await repositoryRouter.elicitUserRepositorySelection(webhook, [
+				mockRepository,
+				secondRepository,
+			]);
+
+			const selectedRepository =
+				await repositoryRouter.selectRepositoryFromResponse(
+					"agent-session-legacy-123",
+					"Please use Backend Repository for this issue.",
+				);
+
+			expect(selectedRepository).toBe(secondRepository);
+			expect(
+				repositoryRouter.hasPendingSelection("agent-session-legacy-123"),
+			).toBe(false);
 		});
 	});
 

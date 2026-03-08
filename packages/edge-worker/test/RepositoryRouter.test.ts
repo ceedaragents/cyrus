@@ -1494,6 +1494,42 @@ describe("RepositoryRouter", () => {
 				expect(result).toBe(repo2);
 			});
 
+			it("should find and return repository when the response wraps the repository name in natural language", async () => {
+				const repo1 = env.repository("repo-1", "Frontend Repo").build();
+				const repo2 = env.repository("repo-2", "Backend Repo").build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"Please use repository: Backend Repo",
+				);
+
+				expect(result).toBe(repo2);
+			});
+
+			it("should find and return repository when the response wraps the repository identifier in natural language", async () => {
+				const repo1 = env
+					.repository("repo-1", "Frontend Repo")
+					.withGithubUrl("https://github.com/org/frontend")
+					.build();
+				const repo2 = env
+					.repository("repo-2", "Backend Repo")
+					.withGithubUrl("https://github.com/org/backend")
+					.build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"Let's use org/backend for this issue.",
+				);
+
+				expect(result).toBe(repo2);
+			});
+
 			it("should return null and keep the selection pending when selection is invalid", async () => {
 				// Given: User selecting non-existent repository
 				const repo1 = env.repository("repo-1", "Repo 1").build();
@@ -1509,6 +1545,22 @@ describe("RepositoryRouter", () => {
 				);
 
 				// Then: Should not silently pick a repository, and the user can retry
+				expect(result).toBeNull();
+				expect(env.router.hasPendingSelection("session-1")).toBe(true);
+			});
+
+			it("should return null and keep the selection pending when wrapper text mentions multiple repository options", async () => {
+				const repo1 = env.repository("repo-1", "Frontend Repo").build();
+				const repo2 = env.repository("repo-2", "Backend Repo").build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"Either Frontend Repo or Backend Repo should work",
+				);
+
 				expect(result).toBeNull();
 				expect(env.router.hasPendingSelection("session-1")).toBe(true);
 			});

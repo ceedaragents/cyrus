@@ -611,11 +611,9 @@ export class RepositoryRouter {
 			return null;
 		}
 
-		// Find selected repository by GitHub URL or name
-		const selectedRepo = pendingData.workspaceRepos.find(
-			(repo) =>
-				repo.githubUrl === selectedRepositoryName ||
-				repo.name === selectedRepositoryName,
+		const selectedRepo = this.matchRepositoryFromSelectionResponse(
+			selectedRepositoryName,
+			pendingData.workspaceRepos,
 		);
 
 		if (!selectedRepo) {
@@ -631,6 +629,136 @@ export class RepositoryRouter {
 		this.logger.info(`User selected repository: ${selectedRepo.name}`);
 
 		return selectedRepo;
+	}
+
+	private matchRepositoryFromSelectionResponse(
+		selectionResponse: string,
+		repositories: RepositoryConfig[],
+	): RepositoryConfig | null {
+		const normalizedResponse =
+			this.normalizeRepositorySelectionValue(selectionResponse);
+
+		const exactMatches = repositories.filter((repository) =>
+			this.getRepositorySelectionAliases(repository).some(
+				(alias) =>
+					this.normalizeRepositorySelectionValue(alias) === normalizedResponse,
+			),
+		);
+
+		if (exactMatches.length === 1) {
+			return exactMatches[0] ?? null;
+		}
+
+		if (exactMatches.length > 1) {
+			this.logger.info(
+				`Repository selection response "${selectionResponse}" matched multiple repositories exactly; keeping selection pending`,
+			);
+			return null;
+		}
+
+		const wrappedMatches = repositories
+			.map((repository) => {
+				const bestAlias = this.getRepositorySelectionAliases(repository)
+					.map((alias) => this.normalizeRepositorySelectionValue(alias))
+					.filter(Boolean)
+					.reduce(
+						(bestMatch, alias) => {
+							const startIndex = normalizedResponse.indexOf(alias);
+							if (startIndex === -1) {
+								return bestMatch;
+							}
+
+							if (!bestMatch || alias.length > bestMatch.alias.length) {
+								return { alias, startIndex };
+							}
+
+							return bestMatch;
+						},
+						undefined as { alias: string; startIndex: number } | undefined,
+					);
+
+				return {
+					repository,
+					bestAlias,
+				};
+			})
+			.filter((match) => match.bestAlias)
+			.sort(
+				(left, right) =>
+					(right.bestAlias?.alias.length ?? 0) -
+					(left.bestAlias?.alias.length ?? 0),
+			);
+
+		const bestMatch = wrappedMatches[0];
+		if (!bestMatch) {
+			return null;
+		}
+
+		const bestMatchStart = bestMatch.bestAlias?.startIndex ?? 0;
+		const bestMatchEnd =
+			bestMatchStart + (bestMatch.bestAlias?.alias.length ?? 0);
+		const hasSeparateMatch = wrappedMatches.slice(1).some((match) => {
+			const matchStart = match.bestAlias?.startIndex ?? -1;
+			const matchEnd = matchStart + (match.bestAlias?.alias.length ?? 0);
+			return matchStart < bestMatchStart || matchEnd > bestMatchEnd;
+		});
+
+		if (hasSeparateMatch) {
+			this.logger.info(
+				`Repository selection response "${selectionResponse}" matched multiple repositories; keeping selection pending`,
+			);
+			return null;
+		}
+
+		return bestMatch.repository;
+	}
+
+	private getRepositorySelectionAliases(
+		repository: RepositoryConfig,
+	): string[] {
+		const aliases = new Set<string>();
+
+		const addAlias = (value?: string) => {
+			if (!value) {
+				return;
+			}
+
+			const trimmedValue = value.trim();
+			if (!trimmedValue) {
+				return;
+			}
+
+			aliases.add(trimmedValue);
+		};
+
+		addAlias(repository.name);
+		addAlias(repository.id);
+		addAlias(repository.githubUrl);
+
+		if (repository.githubUrl) {
+			const repositoryPath = repository.githubUrl
+				.replace(/^https?:\/\/github\.com\//i, "")
+				.replace(/\.git$/i, "")
+				.replace(/\/$/, "");
+			addAlias(repositoryPath);
+
+			const repositorySlug = repositoryPath.split("/").pop();
+			addAlias(repositorySlug);
+		}
+
+		return Array.from(aliases);
+	}
+
+	private normalizeRepositorySelectionValue(value: string): string {
+		return value
+			.trim()
+			.toLowerCase()
+			.replace(/^['"`]+|['"`]+$/g, "")
+			.replace(/^https?:\/\/(?:www\.)?github\.com\//i, "")
+			.replace(/\.git$/i, "")
+			.replace(/[^a-z0-9]+/g, " ")
+			.replace(/\s+/g, " ")
+			.trim();
 	}
 
 	/**

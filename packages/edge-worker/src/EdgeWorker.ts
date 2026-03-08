@@ -22,6 +22,7 @@ import type {
 	ContentUpdateMessage,
 	CyrusAgentSession,
 	CyrusAgentSessionRepositoryAssociation,
+	CyrusAgentSessionRepositoryAssociationOrigin,
 	EdgeWorkerConfig,
 	GuidanceRule,
 	IAgentRunner,
@@ -170,6 +171,10 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
+	private cliIssueTrackersByWorkspaceId = new Map<
+		string,
+		CLIIssueTrackerService
+	>();
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
@@ -333,11 +338,7 @@ export class EdgeWorker extends EventEmitter {
 				// Create issue tracker for this repository's workspace
 				const issueTracker =
 					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
+						? this.getOrCreateCliIssueTracker(resolvedRepo.linearWorkspaceId)
 						: new LinearIssueTrackerService(
 								new LinearClient({
 									accessToken: repo.linearToken,
@@ -1819,11 +1820,7 @@ ${taskSection}`;
 				// Create issue tracker with OAuth config for token refresh
 				const issueTracker =
 					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
+						? this.getOrCreateCliIssueTracker(resolvedRepo.linearWorkspaceId)
 						: new LinearIssueTrackerService(
 								new LinearClient({
 									accessToken: repo.linearToken,
@@ -2156,6 +2153,20 @@ ${taskSection}`;
 		>((preferredAssociation, association) => {
 			return this.choosePreferredAssociation(preferredAssociation, association);
 		}, undefined);
+	}
+
+	private getOrCreateCliIssueTracker(
+		workspaceId: string,
+	): CLIIssueTrackerService {
+		const existingTracker = this.cliIssueTrackersByWorkspaceId.get(workspaceId);
+		if (existingTracker) {
+			return existingTracker;
+		}
+
+		const tracker = new CLIIssueTrackerService();
+		tracker.seedDefaultData();
+		this.cliIssueTrackersByWorkspaceId.set(workspaceId, tracker);
+		return tracker;
 	}
 
 	private getRepositoryContextForSession(
@@ -2699,6 +2710,7 @@ ${taskSection}`;
 		issue: { id: string; identifier: string },
 		repository: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
+		associationOrigin: CyrusAgentSessionRepositoryAssociationOrigin = "routed",
 	): Promise<AgentSessionData> {
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
@@ -2727,7 +2739,7 @@ ${taskSection}`;
 			{
 				repositoryId: repository.id,
 				linearWorkspaceId: repository.linearWorkspaceId,
-				associationOrigin: "routed",
+				associationOrigin,
 				status: "active",
 				executionWorkspace: workspace,
 			},
@@ -2888,6 +2900,7 @@ ${taskSection}`;
 			repository,
 			guidance,
 			commentBody,
+			"user-selected",
 		);
 	}
 
@@ -2908,6 +2921,7 @@ ${taskSection}`;
 		repository: RepositoryConfig,
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
+		associationOrigin: CyrusAgentSessionRepositoryAssociationOrigin = "routed",
 	): Promise<void> {
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
@@ -2966,6 +2980,7 @@ ${taskSection}`;
 			issue,
 			repository,
 			agentSessionManager,
+			associationOrigin,
 		);
 
 		// Destructure the session data (excluding allowedTools which we'll build with promptType)
@@ -3407,6 +3422,7 @@ ${taskSection}`;
 			repository,
 			guidance,
 			commentBody,
+			"user-selected",
 		);
 	}
 

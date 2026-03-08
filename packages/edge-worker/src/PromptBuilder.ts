@@ -675,22 +675,32 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		);
 
 		try {
-			// Use custom template if provided (repository-specific)
-			let templatePath = repository.promptTemplatePath;
+			const __filename = fileURLToPath(import.meta.url);
+			const __dirname = dirname(__filename);
+			const defaultTemplatePath = resolve(
+				__dirname,
+				"../prompts/standard-issue-assigned-user-prompt.md",
+			);
 
-			// If no custom template, use the standard issue assigned user prompt template
-			if (!templatePath) {
-				const __filename = fileURLToPath(import.meta.url);
-				const __dirname = dirname(__filename);
-				templatePath = resolve(
-					__dirname,
-					"../prompts/standard-issue-assigned-user-prompt.md",
-				);
+			let templatePath = repository.promptTemplatePath || defaultTemplatePath;
+			let template: string;
+
+			this.logger.debug(`Loading prompt template from: ${templatePath}`);
+			try {
+				template = await readFile(templatePath, "utf-8");
+			} catch (error) {
+				const fileError = error as NodeJS.ErrnoException;
+				if (repository.promptTemplatePath && fileError.code === "ENOENT") {
+					this.logger.debug(
+						`Optional prompt template not found at ${repository.promptTemplatePath}; falling back to built-in template`,
+					);
+					templatePath = defaultTemplatePath;
+					template = await readFile(defaultTemplatePath, "utf-8");
+				} else {
+					throw error;
+				}
 			}
 
-			// Load the template
-			this.logger.debug(`Loading prompt template from: ${templatePath}`);
-			const template = await readFile(templatePath, "utf-8");
 			this.logger.debug(
 				`Template loaded, length: ${template.length} characters`,
 			);
