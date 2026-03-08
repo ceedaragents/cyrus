@@ -153,6 +153,7 @@ describe("EdgeWorker - System Prompt Resume", () => {
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
+			getSessionsByIssueId: vi.fn().mockReturnValue([]),
 			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 			on: vi.fn(), // EventEmitter method
 			emit: vi.fn(), // EventEmitter method

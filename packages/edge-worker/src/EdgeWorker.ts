@@ -44,6 +44,7 @@ import type {
 	WebhookIssue,
 } from "cyrus-core";
 import {
+	AgentSessionStatus,
 	CLIIssueTrackerService,
 	CLIRPCServer,
 	createLogger,
@@ -277,10 +278,12 @@ export class EdgeWorker extends EventEmitter {
 					return undefined;
 				}
 			},
-			hasActiveSession: (issueId: string, _repositoryId: string) => {
+			hasActiveSession: (issueId: string, repositoryId: string) => {
 				const activeSessions =
 					this.agentSessionManager.getActiveSessionsByIssueId(issueId);
-				return activeSessions.length > 0;
+				return activeSessions.some((s) =>
+					s.repositoryIds.includes(repositoryId),
+				);
 			},
 			getIssueTracker: (workspaceId: string) => {
 				return this.getIssueTrackerForWorkspace(workspaceId);
@@ -2008,9 +2011,13 @@ ${taskSection}`;
 			.filter((r): r is RepositoryConfig => r !== undefined);
 	}
 
-	/** Find an active session by issue ID */
+	/** Find any session (active or completed) by issue ID to preserve repository mapping */
 	private findSessionByIssueId(issueId: string): CyrusAgentSession | undefined {
-		return this.agentSessionManager.getActiveSessionsByIssueId(issueId)[0];
+		// Use getSessionsByIssueId (all statuses) so that completed sessions still
+		// provide their repositoryIds for subsequent webhooks on the same issue.
+		// Prefer active sessions, fall back to any.
+		const all = this.agentSessionManager.getSessionsByIssueId(issueId);
+		return all.find((s) => s.status === AgentSessionStatus.Active) ?? all[0];
 	}
 
 	/**

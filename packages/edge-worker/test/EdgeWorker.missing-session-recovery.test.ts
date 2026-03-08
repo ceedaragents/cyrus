@@ -452,7 +452,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 	describe("Issue update webhook with sessions", () => {
 		it("should look up sessions by issue ID for content updates", async () => {
 			// Arrange: Active session for the issue
-			mockAgentSessionManager.getActiveSessionsByIssueId.mockReturnValue([
+			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
 				{
 					id: "agent-session-legacy-123",
 					status: "active",
@@ -474,10 +474,9 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			// Act
 			await (edgeWorker as any).handleWebhook(webhook, [mockRepository]);
 
-			// Assert: Should search sessions via the global manager
-			expect(
-				mockAgentSessionManager.getActiveSessionsByIssueId,
-			).toHaveBeenCalled();
+			// Assert: Should search sessions via the global manager (uses getSessionsByIssueId
+			// to find sessions across all statuses, preferring active ones)
+			expect(mockAgentSessionManager.getSessionsByIssueId).toHaveBeenCalled();
 		});
 	});
 

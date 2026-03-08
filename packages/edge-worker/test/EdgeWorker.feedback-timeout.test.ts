@@ -107,6 +107,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
+			getSessionsByIssueId: vi.fn().mockReturnValue([]),
 			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 			on: vi.fn(), // EventEmitter method
 			emit: vi.fn(), // EventEmitter method

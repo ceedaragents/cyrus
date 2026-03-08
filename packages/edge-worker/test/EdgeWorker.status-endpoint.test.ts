@@ -35,6 +35,7 @@ vi.mock("../src/AgentSessionManager.js", () => ({
 		getAllSessions: vi.fn().mockReturnValue([]),
 		createLinearAgentSession: vi.fn(),
 		getSession: vi.fn(),
+		getSessionsByIssueId: vi.fn().mockReturnValue([]),
 		getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 		on: vi.fn(), // EventEmitter method
 		emit: vi.fn(), // EventEmitter method
