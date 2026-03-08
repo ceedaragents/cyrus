@@ -8,6 +8,7 @@ import type { RepositoryConfig } from "cyrus-core";
 import { expect } from "vitest";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import type { EdgeWorkerConfig } from "../src/types.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 /**
  * Create an EdgeWorker instance for testing
@@ -32,7 +33,7 @@ export function createTestWorker(
 	}
 
 	const config: EdgeWorkerConfig = {
-		cyrusHome: "/tmp/test-cyrus-home",
+		cyrusHome: TEST_CYRUS_HOME,
 		claudeDefaultModel: "sonnet",
 		linearWorkspaceSlug,
 		repositories,
@@ -131,7 +132,7 @@ export class PromptScenario {
 	}
 
 	withRepository(repo: any) {
-		this.input.repository = repo;
+		this.input.repositories = [repo];
 		// Also ensure the worker has an IssueTrackerService for this repository
 		if (!(this.worker as any).issueTrackers.has(repo.id)) {
 			const mockIssueTracker = {

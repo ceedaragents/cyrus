@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 // Mock dependencies BEFORE imports
 vi.mock("cyrus-claude-runner", () => ({
@@ -82,7 +83,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 		// Create mock configuration
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: TEST_CYRUS_HOME,
 			defaultAllowedTools: ["Read", "Write", "Edit"],
 			repositories: [
 				{

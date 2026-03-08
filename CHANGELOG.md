@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Test temp directories** - Tests now use `mkdtempSync` for unique per-run temp directories, avoiding EACCES on shared `/tmp` and preventing simultaneous test runs from different worktrees from competing for the same folders.
 - **Rate limit event handling** - Rate limit events from Claude are now properly handled instead of producing "Unknown message type" warnings in logs. ([CYPACK-895](https://linear.app/ceedar/issue/CYPACK-895), [#946](https://github.com/ceedaragents/cyrus/pull/946))
 
 ## [0.2.30] - 2026-03-05

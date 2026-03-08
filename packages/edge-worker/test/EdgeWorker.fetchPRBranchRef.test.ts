@@ -8,6 +8,7 @@ import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 // Mock dependencies
 vi.mock("cyrus-claude-runner");
@@ -96,7 +97,7 @@ describe("EdgeWorker - fetchPRBranchRef", () => {
 
 		// Create EdgeWorker config
 		mockConfig = {
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [],
 		};
 

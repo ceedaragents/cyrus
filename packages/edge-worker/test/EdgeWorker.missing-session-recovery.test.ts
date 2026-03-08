@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
+import { join } from "node:path";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 // Mock all dependencies
 vi.mock("fs/promises");
@@ -146,7 +148,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: "/tmp/test-cyrus-home",
+			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
@@ -533,7 +535,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 						path: "/test/workspaces/TEST-123",
 						isGitWorktree: false,
 					},
-					attachmentsDir: "/tmp/test-cyrus-home/TEST-123/attachments",
+					attachmentsDir: join(TEST_CYRUS_HOME, "TEST-123", "attachments"),
 				});
 
 			// Also mock the handlePromptWithStreamingCheck to prevent further execution
