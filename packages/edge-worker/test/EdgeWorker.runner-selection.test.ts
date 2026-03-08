@@ -90,10 +90,19 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 		};
 	}
 
+	let savedGeminiApiKey: string | undefined;
+	let savedOpenAiApiKey: string | undefined;
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		capturedRunnerType = null;
 		capturedRunnerConfig = null;
+
+		// Save and clear API keys to ensure deterministic default runner detection
+		savedGeminiApiKey = process.env.GEMINI_API_KEY;
+		savedOpenAiApiKey = process.env.OPENAI_API_KEY;
+		delete process.env.GEMINI_API_KEY;
+		delete process.env.OPENAI_API_KEY;
 
 		// Mock console methods
 		vi.spyOn(console, "log").mockImplementation(() => {});
@@ -192,7 +201,11 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 		mockAgentSessionManager = {
 			createLinearAgentSession: vi.fn(),
 			getSession: vi.fn().mockReturnValue({
-				issueId: "issue-123",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-123",
+					issueIdentifier: "TEST-123",
+				},
 				workspace: { path: "/test/workspaces/TEST-123" },
 			}),
 			addAgentRunner: vi.fn(),
@@ -202,7 +215,9 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
+			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 			on: vi.fn(), // EventEmitter method
+			emit: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
 			() => mockAgentSessionManager,
@@ -270,6 +285,13 @@ Issue: {{issue_identifier}}`;
 	});
 
 	afterEach(() => {
+		// Restore API keys
+		if (savedGeminiApiKey !== undefined) {
+			process.env.GEMINI_API_KEY = savedGeminiApiKey;
+		}
+		if (savedOpenAiApiKey !== undefined) {
+			process.env.OPENAI_API_KEY = savedOpenAiApiKey;
+		}
 		vi.restoreAllMocks();
 	});
 
@@ -1086,7 +1108,11 @@ Issue: {{issue_identifier}}`;
 			);
 
 			const session: any = {
-				issueId: "issue-123",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-123",
+					issueIdentifier: "TEST-123",
+				},
 				workspace: { path: "/test/workspaces/TEST-123" },
 				issue: { identifier: "TEST-123" },
 				cursorSessionId: "cursor-session-existing",

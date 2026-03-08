@@ -130,7 +130,6 @@ describe("EdgeWorker - System Prompt Resume", () => {
 				id: "agent-session-123",
 				externalSessionId: "agent-session-123",
 				claudeSessionId: "claude-session-123",
-				issueId: "issue-123",
 				issueContext: {
 					trackerId: "linear",
 					issueId: "issue-123",
@@ -144,15 +143,19 @@ describe("EdgeWorker - System Prompt Resume", () => {
 				},
 				workspace: { path: "/test/workspaces/TEST-123" },
 				claudeRunner: mockClaudeRunner,
+				repositoryIds: ["test-repo"],
 			}),
 			addAgentRunner: vi.fn(),
 			getAllClaudeRunners: vi.fn().mockReturnValue([]),
+			getAllAgentRunners: vi.fn().mockReturnValue([]),
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
+			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 			on: vi.fn(), // EventEmitter method
+			emit: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
 			() => mockAgentSessionManager,
@@ -290,18 +293,14 @@ Issue: {{issue_identifier}}`;
 			},
 		};
 
-		// IMPORTANT: Pre-cache the repository for this issue (simulating that a session was already created)
-		// This is required for prompted webhooks which use getCachedRepository
-		const repositoryRouter = (edgeWorker as any).repositoryRouter;
-		repositoryRouter
-			.getIssueRepositoryCache()
-			.set("issue-123", mockRepository.id);
+		// Session carries its own repositoryIds - no separate cache needed
+		// The mock getSession already returns a session with repositoryIds: ["test-repo"]
 
 		// Act - call the private method directly
 		const handleUserPromptedAgentActivity = (
 			edgeWorker as any
 		).handleUserPromptedAgentActivity.bind(edgeWorker);
-		await handleUserPromptedAgentActivity(promptedWebhook, [mockRepository]);
+		await handleUserPromptedAgentActivity(promptedWebhook);
 
 		// Assert - Bug is now fixed: system prompt is included!
 		expect(vi.mocked(ClaudeRunner)).toHaveBeenCalled();

@@ -31,7 +31,7 @@ vi.mock("cyrus-core", async (importOriginal) => {
 describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
-	let mockAgentSessionManager: any;
+	let _mockAgentSessionManager: any;
 	let mockChildAgentSessionManager: any;
 	let mockClaudeRunner: any;
 	let resumeClaudeSessionSpy: any;
@@ -89,36 +89,35 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		};
 		vi.mocked(ClaudeRunner).mockImplementation(() => mockClaudeRunner);
 
-		// Mock child session manager
+		// Mock child session manager (now the single global manager)
 		mockChildAgentSessionManager = {
 			hasAgentRunner: vi.fn().mockReturnValue(true),
 			getSession: vi.fn().mockReturnValue({
-				issueId: "CHILD-456",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "CHILD-456",
+					issueIdentifier: "CHILD-456",
+				},
 				claudeSessionId: "child-claude-session-456",
 				workspace: { path: "/test/workspaces/CHILD-456" },
 				claudeRunner: mockClaudeRunner,
+				repositoryIds: ["test-repo"],
 			}),
 			getAgentRunner: vi.fn().mockReturnValue(mockClaudeRunner),
 			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
+			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 			on: vi.fn(), // EventEmitter method
+			emit: vi.fn(), // EventEmitter method
 		};
 
-		// Mock parent session manager (for different repository)
-		mockAgentSessionManager = {
-			hasAgentRunner: vi.fn().mockReturnValue(false),
-			getSession: vi.fn().mockReturnValue(null),
-			on: vi.fn(), // EventEmitter method
-		};
+		// Mock parent session manager reference (unused now)
+		_mockAgentSessionManager = mockChildAgentSessionManager;
 
-		// Mock AgentSessionManager constructor
+		// Mock AgentSessionManager constructor - returns a single global manager
 		vi.mocked(AgentSessionManager).mockImplementation(
-			(_linearClient, ..._args) => {
-				// Return different managers based on some condition
-				// In real usage, these would be created per repository
-				return mockAgentSessionManager;
-			},
+			() => mockChildAgentSessionManager,
 		);
 
 		// Mock other dependencies
@@ -170,17 +169,17 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
+		// Mock rerouteProcedureForSession to avoid ProcedureAnalyzer issues in tests
+		vi.spyOn(edgeWorker as any, "rerouteProcedureForSession").mockResolvedValue(
+			undefined,
+		);
+
 		// Setup parent-child mapping
 		(edgeWorker as any).childToParentAgentSession.set(
 			"child-session-456",
 			"parent-session-123",
 		);
 
-		// Setup repository managers
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
-			mockChildAgentSessionManager,
-		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 	});
 

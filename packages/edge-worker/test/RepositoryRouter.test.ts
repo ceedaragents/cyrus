@@ -245,8 +245,8 @@ class RoutingAssertion {
 	shouldSelectRepository(expectedRepo: RepositoryConfig): this {
 		expect(this.result.type).toBe("selected");
 		if (this.result.type === "selected") {
-			expect(this.result.repository.id).toBe(expectedRepo.id);
-			expect(this.result.repository.name).toBe(expectedRepo.name);
+			expect(this.result.repositories[0].id).toBe(expectedRepo.id);
+			expect(this.result.repositories[0].name).toBe(expectedRepo.name);
 		}
 		return this;
 	}
@@ -257,7 +257,7 @@ class RoutingAssertion {
 	): this {
 		expect(this.result.type).toBe("selected");
 		if (this.result.type === "selected") {
-			expect(this.result.repository.id).toBe(expectedRepo.id);
+			expect(this.result.repositories[0].id).toBe(expectedRepo.id);
 			expect(this.result.routingMethod).toBe(method);
 		}
 		return this;
@@ -298,89 +298,6 @@ describe("RepositoryRouter", () => {
 
 	beforeEach(() => {
 		env = new RoutingTestEnvironment();
-	});
-
-	// ========================================================================
-	// Cache Management Tests
-	// ========================================================================
-
-	describe("Cache Management", () => {
-		describe("when retrieving cached repositories", () => {
-			it("should return the cached repository when it exists in both cache and repository map", () => {
-				// Given: A repository and a populated cache
-				const repo = env
-					.repository("repo-1", "Cached Repo")
-					.inWorkspace("workspace-1")
-					.build();
-				const reposMap = new Map([[repo.id, repo]]);
-				env.router.getIssueRepositoryCache().set("issue-1", repo.id);
-
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
-
-				// Then: Should return the cached repository
-				expect(result).toBe(repo);
-			});
-
-			it("should return null when no cache entry exists for the issue", () => {
-				// Given: A repository but no cache entry
-				const repo = env.repository("repo-1", "Uncached Repo").build();
-				const reposMap = new Map([[repo.id, repo]]);
-
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
-
-				// Then: Should return null
-				expect(result).toBeNull();
-			});
-
-			it("should remove invalid cache entries when cached repository no longer exists", () => {
-				// Given: Cache points to non-existent repository
-				const repo = env.repository("repo-1", "Valid Repo").build();
-				const reposMap = new Map([[repo.id, repo]]);
-				env.router
-					.getIssueRepositoryCache()
-					.set("issue-1", "non-existent-repo");
-
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
-
-				// Then: Should return null and clean up cache
-				expect(result).toBeNull();
-				expect(env.router.getIssueRepositoryCache().has("issue-1")).toBe(false);
-			});
-		});
-
-		describe("when persisting cache", () => {
-			it("should restore cache from serialized data", () => {
-				// Given: A serialized cache
-				const cache = new Map<string, string>([
-					["issue-1", "repo-1"],
-					["issue-2", "repo-2"],
-				]);
-
-				// When: Restoring cache
-				env.router.restoreIssueRepositoryCache(cache);
-
-				// Then: Cache should be restored
-				expect(env.router.getIssueRepositoryCache()).toEqual(cache);
-			});
-
-			it("should allow exporting cache for serialization", () => {
-				// Given: A router with cache entries
-				const cache = env.router.getIssueRepositoryCache();
-				cache.set("issue-1", "repo-1");
-				cache.set("issue-2", "repo-2");
-
-				// When: Exporting cache
-				const exported = env.router.getIssueRepositoryCache();
-
-				// Then: Should export all entries
-				expect(exported.size).toBe(2);
-				expect(exported.get("issue-1")).toBe("repo-1");
-				expect(exported.get("issue-2")).toBe("repo-2");
-			});
-		});
 	});
 
 	// ========================================================================
@@ -1443,13 +1360,13 @@ describe("RepositoryRouter", () => {
 				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
 
 				// When: User selects backend repository
-				const result = await env.router.selectRepositoryFromResponse(
+				const result = await env.router.selectRepositoriesFromResponse(
 					"session-1",
 					"https://github.com/org/backend",
 				);
 
 				// Then: Should return backend repository
-				expect(result).toBe(repo2);
+				expect(result?.[0]).toBe(repo2);
 			});
 
 			it("should find and return repository matching name selection", async () => {
@@ -1461,13 +1378,13 @@ describe("RepositoryRouter", () => {
 				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
 
 				// When: User selects backend repository by name
-				const result = await env.router.selectRepositoryFromResponse(
+				const result = await env.router.selectRepositoriesFromResponse(
 					"session-1",
 					"Backend Repo",
 				);
 
 				// Then: Should return backend repository
-				expect(result).toBe(repo2);
+				expect(result?.[0]).toBe(repo2);
 			});
 
 			it("should fallback to first repository when selection not found", async () => {
@@ -1479,20 +1396,20 @@ describe("RepositoryRouter", () => {
 				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
 
 				// When: User provides invalid selection
-				const result = await env.router.selectRepositoryFromResponse(
+				const result = await env.router.selectRepositoriesFromResponse(
 					"session-1",
 					"Non-existent Repo",
 				);
 
 				// Then: Should fallback to first repository
-				expect(result).toBe(repo1);
+				expect(result?.[0]).toBe(repo1);
 			});
 
 			it("should return null when no pending selection exists for session", async () => {
 				// Given: No pending selection
 
 				// When: Attempting to process selection
-				const result = await env.router.selectRepositoryFromResponse(
+				const result = await env.router.selectRepositoriesFromResponse(
 					"non-existent-session",
 					"Some Repo",
 				);
@@ -1510,7 +1427,7 @@ describe("RepositoryRouter", () => {
 				expect(env.router.hasPendingSelection("session-1")).toBe(true);
 
 				// When: Processing user selection
-				await env.router.selectRepositoryFromResponse("session-1", "Repo");
+				await env.router.selectRepositoriesFromResponse("session-1", "Repo");
 
 				// Then: Should remove pending selection
 				expect(env.router.hasPendingSelection("session-1")).toBe(false);
@@ -1535,7 +1452,7 @@ describe("RepositoryRouter", () => {
 				expect(env.router.hasPendingSelection("session-2")).toBe(true);
 
 				// When: Processing one selection
-				await env.router.selectRepositoryFromResponse("session-1", "Repo 1");
+				await env.router.selectRepositoriesFromResponse("session-1", "Repo 1");
 
 				// Then: Only processed one should be removed
 				expect(env.router.hasPendingSelection("session-1")).toBe(false);

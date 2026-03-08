@@ -31,7 +31,7 @@ vi.mock("cyrus-core", async (importOriginal) => {
 describe("EdgeWorker - Feedback Delivery", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
-	let mockAgentSessionManager: any;
+	let _mockAgentSessionManager: any;
 	let mockChildAgentSessionManager: any;
 	let mockClaudeRunner: any;
 	let resumeAgentSessionSpy: any;
@@ -87,36 +87,35 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		};
 		vi.mocked(ClaudeRunner).mockImplementation(() => mockClaudeRunner);
 
-		// Mock child session manager
+		// Mock child session manager (now the single global manager)
 		mockChildAgentSessionManager = {
 			hasAgentRunner: vi.fn().mockReturnValue(true),
 			getSession: vi.fn().mockReturnValue({
-				issueId: "CHILD-456",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "CHILD-456",
+					issueIdentifier: "CHILD-456",
+				},
 				claudeSessionId: "child-claude-session-456",
 				workspace: { path: "/test/workspaces/CHILD-456" },
 				claudeRunner: mockClaudeRunner,
+				repositoryIds: ["test-repo"],
 			}),
 			getAgentRunner: vi.fn().mockReturnValue(mockClaudeRunner),
 			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
+			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 			on: vi.fn(), // EventEmitter method
+			emit: vi.fn(), // EventEmitter method
 		};
 
-		// Mock parent session manager (for different repository)
-		mockAgentSessionManager = {
-			hasAgentRunner: vi.fn().mockReturnValue(false),
-			getSession: vi.fn().mockReturnValue(null),
-			on: vi.fn(), // EventEmitter method
-		};
+		// Mock parent session manager reference (unused now, kept for clarity)
+		_mockAgentSessionManager = mockChildAgentSessionManager;
 
-		// Mock AgentSessionManager constructor
+		// Mock AgentSessionManager constructor - returns a single global manager
 		vi.mocked(AgentSessionManager).mockImplementation(
-			(_linearClient, ..._args) => {
-				// Return different managers based on some condition
-				// In real usage, these would be created per repository
-				return mockAgentSessionManager;
-			},
+			() => mockChildAgentSessionManager,
 		);
 
 		// Mock other dependencies
@@ -168,6 +167,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
+		// Mock rerouteProcedureForSession to avoid ProcedureAnalyzer issues in tests
+		vi.spyOn(edgeWorker as any, "rerouteProcedureForSession").mockResolvedValue(
+			undefined,
+		);
+
 		// Spy on resumeAgentSession method
 		resumeAgentSessionSpy = vi
 			.spyOn(edgeWorker as any, "resumeAgentSession")
@@ -179,11 +183,6 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			"parent-session-123",
 		);
 
-		// Setup repository managers
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
-			mockChildAgentSessionManager,
-		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 	});
 
@@ -233,7 +232,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Verify the CHILD session is resumed, not the parent
 			expect(sessionId).toBe(childSessionId);
-			expect(childSession.issueId).toBe("CHILD-456");
+			expect(childSession.issueContext?.issueId).toBe("CHILD-456");
 			expect(childSession.claudeSessionId).toBe("child-claude-session-456");
 
 			// Verify correct prompt format with enhanced markdown: feedback FROM parent TO child
@@ -287,9 +286,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			);
 		});
 
-		it("should return false when child session is not found in any repository", async () => {
-			// Arrange
-			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(false);
+		it("should return false when child session is not found", async () => {
+			// Arrange - getSession returns null for unknown session
+			mockChildAgentSessionManager.getSession.mockReturnValueOnce(null);
 
 			const childSessionId = "nonexistent-child-session";
 			const feedbackMessage = "This should fail";
@@ -310,18 +309,26 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(result).toBe(false);
 			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
-				expect.stringContaining(
-					`Child session ${childSessionId} not found in any repository`,
-				),
+				expect.stringContaining(`Child session ${childSessionId} not found`),
 			);
 		});
 
-		it("should return false when child session data is not found in manager", async () => {
-			// Arrange
-			mockChildAgentSessionManager.getSession.mockReturnValue(null);
+		it("should return false when child session has no repository", async () => {
+			// Arrange - session exists but has no repositoryIds
+			mockChildAgentSessionManager.getSession.mockReturnValueOnce({
+				issueContext: {
+					trackerId: "linear",
+					issueId: "CHILD-456",
+					issueIdentifier: "CHILD-456",
+				},
+				claudeSessionId: "child-claude-session-456",
+				workspace: { path: "/test/workspaces/CHILD-456" },
+				claudeRunner: mockClaudeRunner,
+				repositoryIds: [], // No repositories
+			});
 
 			const childSessionId = "child-session-456";
-			const feedbackMessage = "This should also fail";
+			const feedbackMessage = "This should fail";
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
@@ -339,7 +346,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(result).toBe(false);
 			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
-				expect.stringContaining(`Child session ${childSessionId} not found`),
+				expect.stringContaining(
+					`No repository found for child session ${childSessionId}`,
+				),
 			);
 		});
 
@@ -380,30 +389,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			);
 		});
 
-		it("should find child session across multiple repositories", async () => {
-			// Arrange - Setup multiple repositories
-			const repo2: RepositoryConfig = {
-				...mockRepository,
-				id: "test-repo-2",
-				name: "Test Repo 2",
-			};
-
-			const mockRepo2Manager = {
-				hasAgentRunner: vi.fn().mockReturnValue(false),
-				getSession: vi.fn().mockReturnValue(null),
-			};
-
-			// First repository doesn't have the session
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo-2",
-				mockRepo2Manager,
-			);
-			(edgeWorker as any).repositories.set("test-repo-2", repo2);
-
-			// Adjust mock to make first repo not have it, second repo has it
-			mockRepo2Manager.hasAgentRunner.mockReturnValue(false);
-			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(true);
-
+		it("should find child session with single global session manager", async () => {
+			// Arrange - With single global manager, session is found directly
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback across repositories";
 
@@ -419,7 +406,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				feedbackMessage,
 			);
 
-			// Assert - Should find the child in the correct repository
+			// Assert - Should find the child via the single global manager
 			expect(result).toBe(true);
 
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
@@ -427,11 +414,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
-			// Verify the child was found in one of the repositories
-			const hasAgentRunnerCalls =
-				mockRepo2Manager.hasAgentRunner.mock.calls.length +
-				mockChildAgentSessionManager.hasAgentRunner.mock.calls.length;
-			expect(hasAgentRunnerCalls).toBeGreaterThan(0);
+			// Verify the session was looked up via the global manager
+			expect(mockChildAgentSessionManager.getSession).toHaveBeenCalledWith(
+				childSessionId,
+			);
 		});
 	});
 

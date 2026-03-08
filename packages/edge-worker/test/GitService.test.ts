@@ -212,7 +212,7 @@ describe("GitService", () => {
 				return Buffer.from("");
 			});
 
-			const result = await gitService.createGitWorktree(issue, repository);
+			const result = await gitService.createGitWorktree(issue, [repository]);
 
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/LINEAR-SESSION");
 			expect(result.isGitWorktree).toBe(true);
@@ -260,7 +260,7 @@ describe("GitService", () => {
 				return false;
 			});
 
-			const result = await gitService.createGitWorktree(issue, repository);
+			const result = await gitService.createGitWorktree(issue, [repository]);
 
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/LINEAR-SESSION");
 			expect(result.isGitWorktree).toBe(true);
@@ -297,7 +297,7 @@ describe("GitService", () => {
 				return Buffer.from("");
 			});
 
-			const result = await gitService.createGitWorktree(issue, repository);
+			const result = await gitService.createGitWorktree(issue, [repository]);
 
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
 			expect(result.isGitWorktree).toBe(false);

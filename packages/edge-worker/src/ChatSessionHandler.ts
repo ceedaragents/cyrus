@@ -89,9 +89,9 @@ export class ChatSessionHandler<TEvent> {
 		this.logger = logger ?? createLogger({ component: "ChatSessionHandler" });
 
 		// Initialize a dedicated AgentSessionManager (not tied to any repository)
-		const activitySink = new NoopActivitySink(adapter.platformName);
+		const noopSink = new NoopActivitySink(adapter.platformName);
 		this.sessionManager = new AgentSessionManager(
-			activitySink,
+			() => noopSink, // Chat sessions use noop sink (no Linear activity posting)
 			undefined, // No parent session lookup
 			undefined, // No resume parent session
 			undefined, // No procedure analyzer
@@ -203,6 +203,7 @@ export class ChatSessionHandler<TEvent> {
 			this.sessionManager.createChatSession(
 				sessionId,
 				workspace,
+				[], // Chat sessions have no repository context
 				this.adapter.platformName,
 			);
 

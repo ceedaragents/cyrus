@@ -34,8 +34,6 @@ import type {
 	RepositoryConfig,
 	RunnerType,
 	SerializableEdgeWorkerState,
-	SerializedCyrusAgentSession,
-	SerializedCyrusAgentSessionEntry,
 	SessionStartMessage,
 	StopSignalMessage,
 	UnassignMessage,
@@ -167,7 +165,7 @@ type CyrusToolsMcpContextEntry = {
 export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
-	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
+	private agentSessionManager!: AgentSessionManager; // Single global session manager across all repositories
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
@@ -279,11 +277,9 @@ export class EdgeWorker extends EventEmitter {
 					return undefined;
 				}
 			},
-			hasActiveSession: (issueId: string, repositoryId: string) => {
-				const sessionManager = this.agentSessionManagers.get(repositoryId);
-				if (!sessionManager) return false;
+			hasActiveSession: (issueId: string, _repositoryId: string) => {
 				const activeSessions =
-					sessionManager.getActiveSessionsByIssueId(issueId);
+					this.agentSessionManager.getActiveSessionsByIssueId(issueId);
 				return activeSessions.length > 0;
 			},
 			getIssueTracker: (workspaceId: string) => {
@@ -308,6 +304,122 @@ export class EdgeWorker extends EventEmitter {
 			serverPort,
 			serverHost,
 			skipTunnel,
+		);
+
+		// Create a single AgentSessionManager with a resolver that looks up
+		// the activity sink from the first repositoryId.
+		this.agentSessionManager = new AgentSessionManager(
+			(repositoryIds: string[]) => {
+				const firstRepoId = repositoryIds[0];
+				if (firstRepoId) {
+					const issueTracker = this.issueTrackers.get(firstRepoId);
+					const repo = this.repositories.get(firstRepoId);
+					if (issueTracker && repo) {
+						return new LinearActivitySink(issueTracker, repo.linearWorkspaceId);
+					}
+				}
+				// Noop sink for sessions with no repositories
+				return {
+					postActivity: async () => ({ success: true, activityId: undefined }),
+					updateActivity: async () => ({ success: true }),
+				} as unknown as import("./sinks/index.js").IActivitySink;
+			},
+			(childSessionId: string) => {
+				this.logger.debug(
+					`Looking up parent session for child ${childSessionId}`,
+				);
+				const parentId =
+					this.globalSessionRegistry.getParentSessionId(childSessionId);
+				this.logger.debug(
+					`Child ${childSessionId} -> Parent ${parentId || "not found"}`,
+				);
+				return parentId;
+			},
+			async (parentSessionId, prompt, childSessionId) => {
+				await this.handleResumeParentSession(
+					parentSessionId,
+					prompt,
+					childSessionId,
+				);
+			},
+			this.procedureAnalyzer,
+			this.sharedApplicationServer,
+		);
+
+		// Subscribe to subroutine completion events
+		this.agentSessionManager.on(
+			"subroutineComplete",
+			async ({ sessionId, session }) => {
+				const repositories = this.resolveRepositories(
+					session.repositoryIds ?? [],
+				);
+				const repo = repositories[0];
+				if (!repo) {
+					this.logger.error(
+						`No repository found for subroutine completion in session ${sessionId}`,
+					);
+					return;
+				}
+				await this.handleSubroutineTransition(
+					sessionId,
+					session,
+					repo,
+					this.agentSessionManager,
+				);
+			},
+		);
+
+		// Subscribe to validation loop events
+		this.agentSessionManager.on(
+			"validationLoopIteration",
+			async ({ sessionId, session, fixerPrompt, iteration, maxIterations }) => {
+				this.logger.info(
+					`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
+				);
+				const repositories = this.resolveRepositories(
+					session.repositoryIds ?? [],
+				);
+				const repo = repositories[0];
+				if (!repo) {
+					this.logger.error(
+						`No repository found for validation loop in session ${sessionId}`,
+					);
+					return;
+				}
+				await this.handleValidationLoopFixer(
+					sessionId,
+					session,
+					repo,
+					this.agentSessionManager,
+					fixerPrompt,
+					iteration,
+				);
+			},
+		);
+
+		this.agentSessionManager.on(
+			"validationLoopRerun",
+			async ({ sessionId, session, iteration }) => {
+				this.logger.info(
+					`Validation loop re-running verifications (iteration ${iteration})`,
+				);
+				const repositories = this.resolveRepositories(
+					session.repositoryIds ?? [],
+				);
+				const repo = repositories[0];
+				if (!repo) {
+					this.logger.error(
+						`No repository found for validation loop rerun in session ${sessionId}`,
+					);
+					return;
+				}
+				await this.handleValidationLoopRerun(
+					sessionId,
+					session,
+					repo,
+					this.agentSessionManager,
+				);
+			},
 		);
 
 		// Initialize repositories with path resolution
@@ -345,100 +457,6 @@ export class EdgeWorker extends EventEmitter {
 								this.buildOAuthConfig(resolvedRepo),
 							);
 				this.issueTrackers.set(repo.id, issueTracker);
-
-				// Create AgentSessionManager for this repository with parent session lookup and resume callback
-				//
-				// Note: This pattern works (despite appearing recursive) because:
-				// 1. The agentSessionManager variable is captured by the closure after it's assigned
-				// 2. JavaScript's variable hoisting means 'agentSessionManager' exists (but is undefined) when the arrow function is created
-				// 3. By the time the callback is actually invoked (when a child session completes), agentSessionManager is fully initialized
-				// 4. The callback only executes asynchronously, well after the constructor has completed and agentSessionManager is assigned
-				//
-				// This allows the AgentSessionManager to call back into itself to access its own sessions,
-				// enabling child sessions to trigger parent session resumption using the same manager instance.
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					repo.linearWorkspaceId,
-				);
-				const agentSessionManager = new AgentSessionManager(
-					activitySink,
-					(childSessionId: string) => {
-						this.logger.debug(
-							`Looking up parent session for child ${childSessionId}`,
-						);
-						const parentId =
-							this.globalSessionRegistry.getParentSessionId(childSessionId);
-						this.logger.debug(
-							`Child ${childSessionId} -> Parent ${parentId || "not found"}`,
-						);
-						return parentId;
-					},
-					async (parentSessionId, prompt, childSessionId) => {
-						await this.handleResumeParentSession(
-							parentSessionId,
-							prompt,
-							childSessionId,
-							repo,
-							agentSessionManager,
-						);
-					},
-					this.procedureAnalyzer,
-					this.sharedApplicationServer,
-				);
-
-				// Subscribe to subroutine completion events
-				agentSessionManager.on(
-					"subroutineComplete",
-					async ({ sessionId, session }) => {
-						await this.handleSubroutineTransition(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-						);
-					},
-				);
-
-				// Subscribe to validation loop events
-				agentSessionManager.on(
-					"validationLoopIteration",
-					async ({
-						sessionId,
-						session,
-						fixerPrompt,
-						iteration,
-						maxIterations,
-					}) => {
-						this.logger.info(
-							`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
-						);
-						await this.handleValidationLoopFixer(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-							fixerPrompt,
-							iteration,
-						);
-					},
-				);
-
-				agentSessionManager.on(
-					"validationLoopRerun",
-					async ({ sessionId, session, iteration }) => {
-						this.logger.info(
-							`Validation loop re-running verifications (iteration ${iteration})`,
-						);
-						await this.handleValidationLoopRerun(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-						);
-					},
-				);
-
-				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
 		}
 
@@ -957,14 +975,7 @@ export class EdgeWorker extends EventEmitter {
 				return;
 			}
 
-			// Get the agent session manager for this repository
-			const agentSessionManager = this.agentSessionManagers.get(repository.id);
-			if (!agentSessionManager) {
-				this.logger.error(
-					`No AgentSessionManager for repository ${repository.name}`,
-				);
-				return;
-			}
+			const agentSessionManager = this.agentSessionManager;
 
 			// For pull_request_review events, post an instant acknowledgement comment
 			if (isPullRequestReview && reactionToken && prNumber) {
@@ -1048,6 +1059,7 @@ export class EdgeWorker extends EventEmitter {
 				sessionKey,
 				issueMinimal,
 				workspace,
+				[repository.id],
 				"github", // Don't stream activities to Linear for GitHub sources
 			);
 
@@ -1114,7 +1126,7 @@ export class EdgeWorker extends EventEmitter {
 				"session:started",
 				sessionKey,
 				issueMinimal as unknown as Issue,
-				repository.id,
+				[repository.id],
 			);
 
 			this.logger.info(
@@ -1264,10 +1276,9 @@ export class EdgeWorker extends EventEmitter {
 					}),
 			} as unknown as Issue;
 
-			return await this.gitService.createGitWorktree(
-				syntheticIssue,
+			return await this.gitService.createGitWorktree(syntheticIssue, [
 				repository,
-			);
+			]);
 		} catch (error) {
 			this.logger.error(
 				`Failed to create GitHub workspace for PR #${prNumber}`,
@@ -1451,13 +1462,11 @@ ${taskSection}`;
 			return "busy";
 		}
 
-		// Busy if any runner is actively running (repository-tied sessions)
-		for (const manager of this.agentSessionManagers.values()) {
-			const runners = manager.getAllAgentRunners();
-			for (const runner of runners) {
-				if (runner.isRunning()) {
-					return "busy";
-				}
+		// Busy if any runner is actively running
+		const runners = this.agentSessionManager.getAllAgentRunners();
+		for (const runner of runners) {
+			if (runner.isRunning()) {
+				return "busy";
 			}
 		}
 
@@ -1488,9 +1497,7 @@ ${taskSection}`;
 
 		// get all agent runners (including chat platform sessions)
 		const agentRunners: IAgentRunner[] = [];
-		for (const agentSessionManager of this.agentSessionManagers.values()) {
-			agentRunners.push(...agentSessionManager.getAllAgentRunners());
-		}
+		agentRunners.push(...this.agentSessionManager.getAllAgentRunners());
 		if (this.chatSessionHandler) {
 			agentRunners.push(...this.chatSessionHandler.getAllRunners());
 		}
@@ -1534,52 +1541,38 @@ ${taskSection}`;
 		parentSessionId: string,
 		prompt: string,
 		childSessionId: string,
-		_childRepo: RepositoryConfig,
-		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId: parentSessionId });
 		log.info(
 			`Child session completed, resuming parent session ${parentSessionId}`,
 		);
 
-		// Find parent session across all repositories
-		// This is critical for cross-repository orchestration where parent and child
-		// may be in different repositories with different AgentSessionManagers
-		// See also: feedback delivery code at line ~4413 which uses same pattern
-		log.debug(
-			`Searching for parent session ${parentSessionId} across all repositories`,
-		);
-		let parentSession: CyrusAgentSession | undefined;
-		let parentRepo: RepositoryConfig | undefined;
-		let parentAgentSessionManager: AgentSessionManager | undefined;
-
-		for (const [repoId, manager] of this.agentSessionManagers) {
-			const candidate = manager.getSession(parentSessionId);
-			if (candidate) {
-				parentSession = candidate;
-				parentRepo = this.repositories.get(repoId);
-				parentAgentSessionManager = manager;
-				log.debug(
-					`Found parent session in repository: ${parentRepo?.name || repoId}`,
-				);
-				break;
-			}
-		}
-
-		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
+		// Find parent session from the single manager
+		const parentSession = this.agentSessionManager.getSession(parentSessionId);
+		if (!parentSession) {
 			log.error(
-				`Parent session ${parentSessionId} not found in any repository's agent session manager`,
+				`Parent session ${parentSessionId} not found in agent session manager`,
 			);
 			return;
 		}
 
+		const parentRepos = this.resolveRepositories(
+			parentSession.repositoryIds ?? [],
+		);
+		const parentRepo = parentRepos[0];
+		if (!parentRepo) {
+			log.error(`No repository found for parent session ${parentSessionId}`);
+			return;
+		}
+
+		log.debug(`Found parent session in repository: ${parentRepo.name}`);
+
 		log.debug(
-			`Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
+			`Found parent session - Issue: ${parentSession.issueContext?.issueId}, Workspace: ${parentSession.workspace.path}`,
 		);
 
 		// Get the child session to access its workspace path
-		// Child session is in the child's manager (passed in from the callback)
-		const childSession = childAgentSessionManager.getSession(childSessionId);
+		const childSession = this.agentSessionManager.getSession(childSessionId);
 		const childWorkspaceDirs: string[] = [];
 		if (childSession) {
 			childWorkspaceDirs.push(childSession.workspace.path);
@@ -1599,7 +1592,7 @@ ${taskSection}`;
 		const issueTracker = this.issueTrackers.get(parentRepo.id);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
-				childSession.issue?.identifier || childSession.issueId;
+				childSession.issue?.identifier || childSession.issueContext?.issueId;
 			const resultThought = `Received result from sub-issue ${childIssueIdentifier}:\n\n---\n\n${prompt}\n\n---`;
 
 			await this.postActivityDirect(
@@ -1619,7 +1612,7 @@ ${taskSection}`;
 				parentSession,
 				parentRepo,
 				parentSessionId,
-				parentAgentSessionManager,
+				this.agentSessionManager,
 				prompt,
 				"", // No attachment manifest for child results
 				false, // Not a new session
@@ -1632,7 +1625,7 @@ ${taskSection}`;
 		} catch (error) {
 			log.error(`Failed to resume parent session ${parentSessionId}:`, error);
 			log.error(
-				`Error context - Parent issue: ${parentSession.issueId}, Repository: ${parentRepo.name}`,
+				`Error context - Parent issue: ${parentSession.issueContext?.issueId}, Repository: ${parentRepo.name}`,
 			);
 		}
 	}
@@ -1844,84 +1837,8 @@ ${taskSection}`;
 							);
 				this.issueTrackers.set(repo.id, issueTracker);
 
-				// Create AgentSessionManager with same pattern as constructor
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					repo.linearWorkspaceId,
-				);
-				const agentSessionManager = new AgentSessionManager(
-					activitySink,
-					(childSessionId: string) => {
-						return this.globalSessionRegistry.getParentSessionId(
-							childSessionId,
-						);
-					},
-					async (parentSessionId, prompt, childSessionId) => {
-						await this.handleResumeParentSession(
-							parentSessionId,
-							prompt,
-							childSessionId,
-							repo,
-							agentSessionManager,
-						);
-					},
-					this.procedureAnalyzer,
-					this.sharedApplicationServer,
-				);
-
-				// Subscribe to subroutine completion events
-				agentSessionManager.on(
-					"subroutineComplete",
-					async ({ sessionId, session }) => {
-						await this.handleSubroutineTransition(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-						);
-					},
-				);
-
-				// Subscribe to validation loop events
-				agentSessionManager.on(
-					"validationLoopIteration",
-					async ({
-						sessionId,
-						session,
-						fixerPrompt,
-						iteration,
-						maxIterations,
-					}) => {
-						this.logger.info(
-							`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
-						);
-						await this.handleValidationLoopFixer(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-							fixerPrompt,
-							iteration,
-						);
-					},
-				);
-
-				agentSessionManager.on(
-					"validationLoopRerun",
-					async ({ sessionId, session, iteration }) => {
-						this.logger.info(
-							`Validation loop re-running verifications (iteration ${iteration})`,
-						);
-						await this.handleValidationLoopRerun(
-							sessionId,
-							session,
-							repo,
-							agentSessionManager,
-						);
-					},
-				);
-
-				this.agentSessionManagers.set(repo.id, agentSessionManager);
+				// No per-repo AgentSessionManager needed - the single global manager
+				// resolves activity sinks dynamically from session.repositoryIds
 
 				this.logger.info(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
@@ -2008,9 +1925,11 @@ ${taskSection}`;
 			try {
 				this.logger.info(`🗑️  Removing repository: ${repo.name} (${repo.id})`);
 
-				// Check for active sessions
-				const manager = this.agentSessionManagers.get(repo.id);
-				const activeSessions = manager?.getActiveSessions() || [];
+				// Check for active sessions in this repo
+				const allActiveSessions = this.agentSessionManager.getActiveSessions();
+				const activeSessions = allActiveSessions.filter((s) =>
+					s.repositoryIds?.includes(repo.id),
+				);
 
 				if (activeSessions.length > 0) {
 					this.logger.warn(
@@ -2021,11 +1940,13 @@ ${taskSection}`;
 					for (const session of activeSessions) {
 						try {
 							this.logger.debug(
-								`  🛑 Stopping session for issue ${session.issueId}`,
+								`  🛑 Stopping session for issue ${session.issueContext?.issueId}`,
 							);
 
 							// Get the agent runner for this session
-							const runner = manager?.getAgentRunner(session.id);
+							const runner = this.agentSessionManager.getAgentRunner(
+								session.id,
+							);
 							if (runner) {
 								// Stop the agent process
 								runner.stop();
@@ -2058,10 +1979,9 @@ ${taskSection}`;
 					}
 				}
 
-				// Remove repository from all maps
+				// Remove repository from lookup maps
 				this.repositories.delete(repo.id);
 				this.issueTrackers.delete(repo.id);
-				this.agentSessionManagers.delete(repo.id);
 
 				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
@@ -2081,14 +2001,16 @@ ${taskSection}`;
 		this.config.handlers?.onError?.(error);
 	}
 
-	/**
-	 * Get cached repository for an issue (used by agentSessionPrompted Branch 3)
-	 */
-	private getCachedRepository(issueId: string): RepositoryConfig | null {
-		return this.repositoryRouter.getCachedRepository(
-			issueId,
-			this.repositories,
-		);
+	/** Resolve RepositoryConfig objects from IDs */
+	private resolveRepositories(repositoryIds: string[]): RepositoryConfig[] {
+		return repositoryIds
+			.map((id) => this.repositories.get(id))
+			.filter((r): r is RepositoryConfig => r !== undefined);
+	}
+
+	/** Find an active session by issue ID */
+	private findSessionByIssueId(issueId: string): CyrusAgentSession | undefined {
+		return this.agentSessionManager.getActiveSessionsByIssueId(issueId)[0];
 	}
 
 	/**
@@ -2307,33 +2229,15 @@ ${taskSection}`;
 
 		const issueId = webhook.notification.issue.id;
 
-		// Get cached repository, with fallback to searching all managers
-		let repository = this.getCachedRepository(issueId);
+		// Look up repositories from the session
+		const session = this.findSessionByIssueId(issueId);
+		const repositories = this.resolveRepositories(session?.repositoryIds ?? []);
+		const repository = repositories[0]!;
 		if (!repository) {
-			// Fallback: search all managers for sessions matching this issue
-			this.logger.info(
-				`No cached repository for issue unassignment ${webhook.notification.issue.identifier}, searching all managers`,
+			this.logger.debug(
+				`No active sessions found for unassigned issue ${webhook.notification.issue.identifier}`,
 			);
-
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const sessions = manager.getSessionsByIssueId(issueId);
-				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
-						this.logger.info(
-							`Recovered repository ${repoId} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
-						);
-						break;
-					}
-				}
-			}
-
-			if (!repository) {
-				this.logger.debug(
-					`No active sessions found for unassigned issue ${webhook.notification.issue.identifier} across all managers`,
-				);
-				return;
-			}
+			return;
 		}
 
 		this.logger.info(
@@ -2391,29 +2295,17 @@ ${taskSection}`;
 			return;
 		}
 
-		// Get cached repository, with fallback to searching all managers
-		let repository = this.getCachedRepository(issueId);
+		// Look up repositories from the session
+		const existingSession = this.findSessionByIssueId(issueId);
+		const repositories = this.resolveRepositories(
+			existingSession?.repositoryIds ?? [],
+		);
+		const repository = repositories[0]!;
 		if (!repository) {
-			// Fallback: search all managers for sessions matching this issue
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const sessions = manager.getSessionsByIssueId(issueId);
-				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
-						this.logger.info(
-							`Recovered repository ${repoId} for issue update ${issueIdentifier} from session manager`,
-						);
-						break;
-					}
-				}
-			}
-
-			if (!repository) {
-				this.logger.debug(
-					`No active sessions found for issue update ${issueIdentifier} across all managers`,
-				);
-				return;
-			}
+			this.logger.debug(
+				`No active sessions found for issue update ${issueIdentifier}`,
+			);
+			return;
 		}
 
 		// Determine what changed for logging
@@ -2426,14 +2318,7 @@ ${taskSection}`;
 			`Handling issue content update: ${issueIdentifier} (changed: ${changedFields.join(", ")})`,
 		);
 
-		// Get agent session manager for this repository
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
-		if (!agentSessionManager) {
-			this.logger.debug(
-				`No agent session manager for repository ${repository.id}`,
-			);
-			return;
-		}
+		const agentSessionManager = this.agentSessionManager;
 
 		// Find session(s) for this issue (may be running or paused between subroutines)
 		const sessions = agentSessionManager.getSessionsByIssueId(issueId);
@@ -2605,9 +2490,14 @@ ${taskSection}`;
 	private async createLinearAgentSession(
 		sessionId: string,
 		issue: { id: string; identifier: string },
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 	): Promise<AgentSessionData> {
+		const repository = repositories[0]!;
+		if (!repository) {
+			throw new Error(`No repository provided for session ${sessionId}`);
+		}
+		const repositoryIds = repositories.map((r) => r.id);
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
 		if (!fullIssue) {
@@ -2620,8 +2510,8 @@ ${taskSection}`;
 		// Create workspace using full issue data
 		// Use custom handler if provided, otherwise create a git worktree by default
 		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, repository)
-			: await this.gitService.createGitWorktree(fullIssue, repository);
+			? await this.config.handlers.createWorkspace(fullIssue, [repository])
+			: await this.gitService.createGitWorktree(fullIssue, [repository]);
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
 
@@ -2631,6 +2521,7 @@ ${taskSection}`;
 			issue.id,
 			issueMinimal,
 			workspace,
+			repositoryIds,
 		);
 
 		// Get the newly created session
@@ -2699,20 +2590,24 @@ ${taskSection}`;
 	): Promise<void> {
 		const issueId = webhook.agentSession?.issue?.id;
 
-		// Check the cache first, as the agentSessionCreated webhook may have been triggered by an @mention
-		// on an issue that already has an agentSession and an associated repository.
-		let repository: RepositoryConfig | null = null;
+		// Check if there's already a session for this issue (e.g., @mention on existing issue)
+		let repositories: RepositoryConfig[] = [];
 		if (issueId) {
-			repository = this.getCachedRepository(issueId);
-			if (repository) {
-				this.logger.debug(
-					`Using cached repository ${repository.name} for issue ${issueId}`,
+			const existingSession = this.findSessionByIssueId(issueId);
+			if (existingSession) {
+				repositories = this.resolveRepositories(
+					existingSession.repositoryIds ?? [],
 				);
+				if (repositories.length > 0) {
+					this.logger.debug(
+						`Using repositories from existing session for issue ${issueId}`,
+					);
+				}
 			}
 		}
 
-		// If not cached, perform routing logic
-		if (!repository) {
+		// If not found from existing session, perform routing logic
+		if (repositories.length === 0) {
 			const routingResult =
 				await this.repositoryRouter.determineRepositoryForWebhook(
 					webhook,
@@ -2739,23 +2634,27 @@ ${taskSection}`;
 			}
 
 			// At this point, routingResult.type === "selected"
-			repository = routingResult.repository;
+			repositories = routingResult.repositories;
 			const routingMethod = routingResult.routingMethod;
-
-			// Cache the repository for this issue
-			if (issueId) {
-				this.repositoryRouter
-					.getIssueRepositoryCache()
-					.set(issueId, repository.id);
-			}
+			const firstRepo = repositories[0];
 
 			// Post agent activity showing auto-matched routing
-			await this.postRepositorySelectionActivity(
-				webhook.agentSession.id,
-				repository.id,
-				repository.name,
-				routingMethod,
+			if (firstRepo) {
+				await this.postRepositorySelectionActivity(
+					webhook.agentSession.id,
+					firstRepo.id,
+					firstRepo.name,
+					routingMethod,
+				);
+			}
+		}
+
+		const repository = repositories[0]!;
+		if (!repository) {
+			this.logger.warn(
+				`No repository resolved for agent session created webhook`,
 			);
+			return;
 		}
 
 		if (!webhook.agentSession.issue) {
@@ -2785,7 +2684,7 @@ ${taskSection}`;
 		// Initialize agent runner using shared logic
 		await this.initializeAgentRunner(
 			agentSession,
-			repository,
+			repositories,
 			guidance,
 			commentBody,
 		);
@@ -2799,16 +2698,22 @@ ${taskSection}`;
 	 * handleAgentSessionCreatedWebhook and handleUserPromptedAgentActivity use.
 	 *
 	 * @param agentSession The Linear agent session
-	 * @param repository The repository configuration
+	 * @param repositories The repository configurations
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
 	 */
 	private async initializeAgentRunner(
 		agentSession: AgentSessionCreatedWebhook["agentSession"],
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 	): Promise<void> {
+		const repository = repositories[0]!;
+		if (!repository) {
+			this.logger.warn("Cannot initialize agent runner without repository");
+			return;
+		}
+		const repositoryIds = repositories.map((r) => r.id);
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
 
@@ -2847,15 +2752,7 @@ ${taskSection}`;
 			"/label-based-prompt",
 		);
 
-		// Initialize the agent session in AgentSessionManager
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
-		if (!agentSessionManager) {
-			log.error(
-				"There was no agentSessionManage for the repository with id",
-				repository.id,
-			);
-			return;
-		}
+		const agentSessionManager = this.agentSessionManager;
 
 		// Post instant acknowledgment thought
 		await this.postInstantAcknowledgment(sessionId, repository.id);
@@ -2864,7 +2761,7 @@ ${taskSection}`;
 		const sessionData = await this.createLinearAgentSession(
 			sessionId,
 			issue,
-			repository,
+			repositories,
 			agentSessionManager,
 		);
 
@@ -3002,7 +2899,7 @@ ${taskSection}`;
 			const input: PromptAssemblyInput = {
 				session,
 				fullIssue,
-				repository,
+				repositories,
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
 				guidance: guidance || undefined,
@@ -3114,11 +3011,11 @@ ${taskSection}`;
 			await this.savePersistedState();
 
 			// Emit events using full issue (core Issue type)
-			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			this.emit("session:started", fullIssue.id, fullIssue, repositoryIds);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
 				fullIssue,
-				repository.id,
+				repositoryIds,
 			);
 
 			// Update runner with version information (if available)
@@ -3175,37 +3072,24 @@ ${taskSection}`;
 			`Received stop signal for agent activity session ${agentSessionId}`,
 		);
 
-		// Find the agent session manager that contains this session
-		// We don't need repository lookup - just search all managers
-		let foundManager: AgentSessionManager | null = null;
-		let foundSession: CyrusAgentSession | null = null;
+		// Find the session from the single manager
+		const foundSession = this.agentSessionManager.getSession(agentSessionId);
+		const foundManager = this.agentSessionManager;
 
-		for (const manager of this.agentSessionManagers.values()) {
-			const session = manager.getSession(agentSessionId);
-			if (session) {
-				foundManager = manager;
-				foundSession = session;
-				break;
-			}
-		}
-
-		if (!foundManager || !foundSession) {
+		if (!foundSession) {
 			// Legacy recovery: session lost after restart/migration
 			// Post acknowledgment so the user doesn't see a hanging state
 			log.info(
 				`No session found for stop signal ${agentSessionId} (likely a legacy session after restart)`,
 			);
 
-			const anyManager = this.agentSessionManagers.values().next().value as
-				| AgentSessionManager
-				| undefined;
-			if (anyManager) {
+			{
 				const issueTitle = issue?.title || "this issue";
-				await anyManager.createResponseActivity(
+				await this.agentSessionManager.createResponseActivity(
 					agentSessionId,
 					`Stop signal received for ${issueTitle}. No active session was found (the session may have ended or the system was restarted). No further action is needed.`,
 				);
-			}
+			} // end legacy recovery
 			return;
 		}
 
@@ -3256,39 +3140,38 @@ ${taskSection}`;
 
 		log.debug(`Processing repository selection response: "${userMessage}"`);
 
-		// Get the selected repository (or fallback)
-		const repository = await this.repositoryRouter.selectRepositoryFromResponse(
-			agentSessionId,
-			userMessage,
-		);
+		// Get the selected repositories (or fallback)
+		const repositories =
+			await this.repositoryRouter.selectRepositoriesFromResponse(
+				agentSessionId,
+				userMessage,
+			);
 
-		if (!repository) {
+		if (!repositories || repositories.length === 0) {
 			log.error(
 				`Failed to select repository for agent session ${agentSessionId}`,
 			);
 			return;
 		}
 
-		// Cache the selected repository for this issue
-		const issueId = agentSession.issue.id;
-		this.repositoryRouter.getIssueRepositoryCache().set(issueId, repository.id);
+		const firstRepo = repositories[0]!;
 
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
 			agentSessionId,
-			repository.id,
-			repository.name,
+			firstRepo.id,
+			firstRepo.name,
 			"user-selected",
 		);
 
 		log.debug(
-			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
+			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${firstRepo.name}`,
 		);
 
-		// Initialize agent runner with the selected repository
+		// Initialize agent runner with the selected repositories
 		await this.initializeAgentRunner(
 			agentSession,
-			repository,
+			repositories,
 			guidance,
 			commentBody,
 		);
@@ -3366,15 +3249,7 @@ ${taskSection}`;
 
 		const commentId = webhook.agentActivity.sourceCommentId;
 
-		// Initialize the agent session in AgentSessionManager
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
-		if (!agentSessionManager) {
-			this.logger.error(
-				"Unexpected: There was no agentSessionManage for the repository with id",
-				repository.id,
-			);
-			return;
-		}
+		const agentSessionManager = this.agentSessionManager;
 
 		let session = agentSessionManager.getSession(sessionId);
 		let isNewSession = false;
@@ -3397,7 +3272,7 @@ ${taskSection}`;
 			const sessionData = await this.createLinearAgentSession(
 				sessionId,
 				issue,
-				repository,
+				[repository],
 				agentSessionManager,
 			);
 
@@ -3410,11 +3285,12 @@ ${taskSection}`;
 			// Save state and emit events for new session
 			await this.savePersistedState();
 			// Emit events using full issue (core Issue type)
-			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			const repositoryIds = [repository.id];
+			this.emit("session:started", fullIssue.id, fullIssue, repositoryIds);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
 				fullIssue,
-				repository.id,
+				repositoryIds,
 			);
 		} else {
 			this.logger.debug(
@@ -3608,68 +3484,51 @@ ${taskSection}`;
 			return;
 		}
 
-		let repository = this.getCachedRepository(issueId);
+		// Look up repository from existing session
+		const existingSession = this.agentSessionManager.getSession(agentSessionId);
+		let repository: RepositoryConfig | null = null;
+		if (existingSession) {
+			const repos = this.resolveRepositories(
+				existingSession.repositoryIds ?? [],
+			);
+			repository = repos[0] ?? null;
+		}
+
 		if (!repository) {
-			// Fallback: attempt to recover repository for legacy/restarted sessions
+			// Fallback: re-route via repository router
 			this.logger.info(
-				`No cached repository for prompted webhook ${agentSessionId}, attempting fallback resolution`,
+				`No session/repository for prompted webhook ${agentSessionId}, attempting fallback routing`,
 			);
 
-			// First, check if any manager already has this session
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const session = manager.getSession(agentSessionId);
-				if (session) {
-					repository = this.repositories.get(repoId) ?? null;
+			try {
+				const repos = Array.from(this.repositories.values());
+				const routingResult =
+					await this.repositoryRouter.determineRepositoryForWebhook(
+						webhook,
+						repos,
+					);
+
+				if (routingResult.type === "selected") {
+					repository = routingResult.repositories[0] ?? null;
 					if (repository) {
-						this.repositoryRouter
-							.getIssueRepositoryCache()
-							.set(issueId, repoId);
-						this.logger.info(
-							`Recovered repository ${repoId} for issue ${issueId} from session manager`,
-						);
-						break;
-					}
-				}
-			}
-
-			// Second fallback: re-route via repository router
-			if (!repository) {
-				try {
-					const repos = Array.from(this.repositories.values());
-					const routingResult =
-						await this.repositoryRouter.determineRepositoryForWebhook(
-							webhook,
-							repos,
-						);
-
-					if (routingResult.type === "selected") {
-						repository = routingResult.repository;
-						this.repositoryRouter
-							.getIssueRepositoryCache()
-							.set(issueId, repository.id);
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
 						);
 					}
-				} catch (error) {
-					this.logger.warn(
-						`Fallback repository routing failed for prompted webhook ${agentSessionId}`,
-						error,
-					);
 				}
+			} catch (error) {
+				this.logger.warn(
+					`Fallback repository routing failed for prompted webhook ${agentSessionId}`,
+					error,
+				);
 			}
 
 			if (!repository) {
 				// All recovery attempts failed - post visible feedback
-				const firstManager = this.agentSessionManagers.values().next().value as
-					| AgentSessionManager
-					| undefined;
-				if (firstManager) {
-					await firstManager.createResponseActivity(
-						agentSessionId,
-						"I couldn't process your message because the session configuration was lost. Please create a new session by mentioning me (@cyrus) in a new comment with your prompt.",
-					);
-				}
+				await this.agentSessionManager.createResponseActivity(
+					agentSessionId,
+					"I couldn't process your message because the session configuration was lost. Please create a new session by mentioning me (@cyrus) in a new comment with your prompt.",
+				);
 				this.logger.warn(
 					`Failed to recover repository for prompted webhook ${agentSessionId} - all fallback methods exhausted`,
 				);
@@ -3699,13 +3558,7 @@ ${taskSection}`;
 		issue: WebhookIssue,
 		repository: RepositoryConfig,
 	): Promise<void> {
-		const agentSessionManager = this.agentSessionManagers.get(repository.id);
-		if (!agentSessionManager) {
-			this.logger.info(
-				"No agentSessionManager for unassigned issue, so no sessions to stop",
-			);
-			return;
-		}
+		const agentSessionManager = this.agentSessionManager;
 
 		const sessions = agentSessionManager.getSessionsByIssueId(issue.id);
 		const activeThreadCount = sessions.length;
@@ -3739,13 +3592,10 @@ ${taskSection}`;
 	private async handleClaudeMessage(
 		sessionId: string,
 		message: SDKMessage,
-		repositoryId: string,
+		_repositoryId: string,
 	): Promise<void> {
-		const agentSessionManager = this.agentSessionManagers.get(repositoryId);
 		// Integrate with AgentSessionManager to capture streaming messages
-		if (agentSessionManager) {
-			await agentSessionManager.handleClaudeMessage(sessionId, message);
-		}
+		await this.agentSessionManager.handleClaudeMessage(sessionId, message);
 	}
 
 	/**
@@ -3860,10 +3710,9 @@ ${taskSection}`;
 		  }
 		| undefined
 	> {
-		return this.promptBuilder.determineSystemPromptFromLabels(
-			labels,
+		return this.promptBuilder.determineSystemPromptFromLabels(labels, [
 			repository,
-		);
+		]);
 	}
 
 	/**
@@ -3882,7 +3731,7 @@ ${taskSection}`;
 	): Promise<{ prompt: string; version?: string }> {
 		return this.promptBuilder.buildLabelBasedPrompt(
 			issue,
-			repository,
+			[repository],
 			attachmentManifest,
 			guidance,
 		);
@@ -3936,7 +3785,7 @@ ${taskSection}`;
 	): Promise<{ prompt: string; version?: string }> {
 		return this.promptBuilder.buildIssueContextPrompt(
 			issue,
-			repository,
+			[repository],
 			newComment,
 			attachmentManifest,
 			guidance,
@@ -4107,7 +3956,7 @@ ${taskSection}`;
 		return this.activityPoster.postComment(
 			issueId,
 			body,
-			repositoryId,
+			[repositoryId],
 			parentId,
 		);
 	}
@@ -4324,46 +4173,41 @@ ${taskSection}`;
 		// Find the parent session ID for context
 		const parentSessionId = this.childToParentAgentSession.get(childSessionId);
 
-		// Find the repository containing the child session
-		let childRepo: RepositoryConfig | undefined;
-		let childAgentSessionManager: AgentSessionManager | undefined;
+		// Find the child session and its repository
+		const childSession = this.agentSessionManager.getSession(childSessionId);
 
-		for (const [repoId, manager] of this.agentSessionManagers) {
-			if (manager.hasAgentRunner(childSessionId)) {
-				childRepo = this.repositories.get(repoId);
-				childAgentSessionManager = manager;
-				break;
-			}
-		}
-
-		if (!childRepo || !childAgentSessionManager) {
-			console.error(
-				`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
-			);
-			return false;
-		}
-
-		// Get the child session
-		const childSession = childAgentSessionManager.getSession(childSessionId);
 		if (!childSession) {
 			console.error(`[EdgeWorker] Child session ${childSessionId} not found`);
 			return false;
 		}
 
+		const childRepos = this.resolveRepositories(
+			childSession.repositoryIds ?? [],
+		);
+		const childRepo = childRepos[0];
+
+		if (!childRepo) {
+			console.error(
+				`[EdgeWorker] No repository found for child session ${childSessionId}`,
+			);
+			return false;
+		}
+
+		const childAgentSessionManager = this.agentSessionManager;
+
 		console.log(
-			`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
+			`[EdgeWorker] Found child session - Issue: ${childSession.issueContext?.issueId}`,
 		);
 
 		// Get parent session info for better context in the thought
 		let parentIssueId: string | undefined;
 		if (parentSessionId) {
-			for (const manager of this.agentSessionManagers.values()) {
-				const parentSession = manager.getSession(parentSessionId);
-				if (parentSession) {
-					parentIssueId =
-						parentSession.issue?.identifier || parentSession.issueId;
-					break;
-				}
+			const parentSession =
+				this.agentSessionManager.getSession(parentSessionId);
+			if (parentSession) {
+				parentIssueId =
+					parentSession.issue?.identifier ||
+					parentSession.issueContext?.issueId;
 			}
 		}
 
@@ -4603,7 +4447,7 @@ ${taskSection}`;
 		const input: PromptAssemblyInput = {
 			session,
 			fullIssue,
-			repository,
+			repositories: [repository],
 			userComment: promptBody,
 			commentAuthor,
 			commentTimestamp,
@@ -4683,11 +4527,14 @@ ${taskSection}`;
 		// 1. Determine system prompt from labels
 		// Only for delegation (not mentions) or when /label-based-prompt is requested
 		let labelBasedSystemPrompt: string | undefined;
+		const primaryRepo = input.repositories[0];
 		if (!input.isMentionTriggered || input.isLabelBasedPromptRequested) {
-			labelBasedSystemPrompt = await this.determineSystemPromptForAssembly(
-				input.labels || [],
-				input.repository,
-			);
+			if (primaryRepo) {
+				labelBasedSystemPrompt = await this.determineSystemPromptForAssembly(
+					input.labels || [],
+					primaryRepo,
+				);
+			}
 		}
 
 		// 2. Determine system prompt based on prompt type
@@ -4711,7 +4558,7 @@ ${taskSection}`;
 		);
 		const issueContext = await this.buildIssueContextForPromptAssembly(
 			input.fullIssue,
-			input.repository,
+			primaryRepo!,
 			promptType,
 			input.attachmentManifest,
 			input.guidance,
@@ -5131,7 +4978,7 @@ ${input.userComment}
 			allowedTools,
 			disallowedTools,
 			allowedDirectories,
-			workspaceName: session.issue?.identifier || session.issueId,
+			workspaceName: session.issue?.identifier || session.issueContext?.issueId,
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath,
 			mcpConfig,
@@ -5235,7 +5082,7 @@ ${input.userComment}
 			| "graphite-orchestrator",
 	): string[] {
 		return this.runnerSelectionService.buildDisallowedTools(
-			repository,
+			[repository],
 			promptType,
 		);
 	}
@@ -5273,7 +5120,7 @@ ${input.userComment}
 			| "graphite-orchestrator",
 	): string[] {
 		return this.runnerSelectionService.buildAllowedTools(
-			repository,
+			[repository],
 			promptType,
 		);
 	}
@@ -5283,14 +5130,9 @@ ${input.userComment}
 	 */
 	public getAgentSessionsForIssue(
 		issueId: string,
-		repositoryId: string,
+		_repositoryId: string,
 	): any[] {
-		const agentSessionManager = this.agentSessionManagers.get(repositoryId);
-		if (!agentSessionManager) {
-			return [];
-		}
-
-		return agentSessionManager.getSessionsByIssueId(issueId);
+		return this.agentSessionManager.getSessionsByIssueId(issueId);
 	}
 
 	// ========================================================================
@@ -5408,38 +5250,18 @@ ${input.userComment}
 	 * Serialize EdgeWorker mappings to a serializable format
 	 */
 	public serializeMappings(): SerializableEdgeWorkerState {
-		// Serialize Agent Session state for all repositories
-		const agentSessions: Record<
-			string,
-			Record<string, SerializedCyrusAgentSession>
-		> = {};
-		const agentSessionEntries: Record<
-			string,
-			Record<string, SerializedCyrusAgentSessionEntry[]>
-		> = {};
-		for (const [
-			repositoryId,
-			agentSessionManager,
-		] of this.agentSessionManagers.entries()) {
-			const serializedState = agentSessionManager.serializeState();
-			agentSessions[repositoryId] = serializedState.sessions;
-			agentSessionEntries[repositoryId] = serializedState.entries;
-		}
+		// Serialize Agent Session state (flat - sessions carry their own repositoryIds)
+		const serializedState = this.agentSessionManager.serializeState();
+
 		// Serialize child to parent agent session mapping
 		const childToParentAgentSession = Object.fromEntries(
 			this.childToParentAgentSession.entries(),
 		);
 
-		// Serialize issue to repository cache from RepositoryRouter
-		const issueRepositoryCache = Object.fromEntries(
-			this.repositoryRouter.getIssueRepositoryCache().entries(),
-		);
-
 		return {
-			agentSessions,
-			agentSessionEntries,
+			agentSessions: serializedState.sessions,
+			agentSessionEntries: serializedState.entries,
 			childToParentAgentSession,
-			issueRepositoryCache,
 		};
 	}
 
@@ -5447,27 +5269,16 @@ ${input.userComment}
 	 * Restore EdgeWorker mappings from serialized state
 	 */
 	public restoreMappings(state: SerializableEdgeWorkerState): void {
-		// Restore Agent Session state for all repositories
-		if (state.agentSessions && state.agentSessionEntries) {
-			for (const [
-				repositoryId,
-				agentSessionManager,
-			] of this.agentSessionManagers.entries()) {
-				const repositorySessions = state.agentSessions[repositoryId] || {};
-				const repositoryEntries = state.agentSessionEntries[repositoryId] || {};
+		// Restore Agent Session state (flat - sessions carry their own repositoryIds)
+		if (state.agentSessions || state.agentSessionEntries) {
+			const sessions = state.agentSessions || {};
+			const entries = state.agentSessionEntries || {};
 
-				if (
-					Object.keys(repositorySessions).length > 0 ||
-					Object.keys(repositoryEntries).length > 0
-				) {
-					agentSessionManager.restoreState(
-						repositorySessions,
-						repositoryEntries,
-					);
-					this.logger.debug(
-						`Restored Agent Session state for repository ${repositoryId}`,
-					);
-				}
+			if (Object.keys(sessions).length > 0 || Object.keys(entries).length > 0) {
+				this.agentSessionManager.restoreState(sessions, entries);
+				this.logger.debug(
+					`Restored ${Object.keys(sessions).length} agent sessions`,
+				);
 			}
 		}
 
@@ -5478,15 +5289,6 @@ ${input.userComment}
 			);
 			this.logger.debug(
 				`Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
-			);
-		}
-
-		// Restore issue to repository cache in RepositoryRouter
-		if (state.issueRepositoryCache) {
-			const cache = new Map(Object.entries(state.issueRepositoryCache));
-			this.repositoryRouter.restoreIssueRepositoryCache(cache);
-			this.logger.debug(
-				`Restored ${cache.size} issue-to-repository cache mappings`,
 			);
 		}
 	}
@@ -5513,10 +5315,9 @@ ${input.userComment}
 		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		return this.activityPoster.postInstantAcknowledgment(
-			sessionId,
+		return this.activityPoster.postInstantAcknowledgment(sessionId, [
 			repositoryId,
-		);
+		]);
 	}
 
 	/**
@@ -5526,10 +5327,9 @@ ${input.userComment}
 		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		return this.activityPoster.postParentResumeAcknowledgment(
-			sessionId,
+		return this.activityPoster.postParentResumeAcknowledgment(sessionId, [
 			repositoryId,
-		);
+		]);
 	}
 
 	/**
@@ -5552,7 +5352,7 @@ ${input.userComment}
 	): Promise<void> {
 		return this.activityPoster.postRepositorySelectionActivity(
 			sessionId,
-			repositoryId,
+			[repositoryId],
 			repositoryName,
 			selectionMethod,
 		);
@@ -5581,8 +5381,8 @@ ${input.userComment}
 		const issueTracker = this.issueTrackers.get(repository.id);
 		let hasOrchestratorLabel = false;
 
-		// Get issueId from issueContext (preferred) or deprecated issueId field
-		const issueId = session.issueContext?.issueId ?? session.issueId;
+		// Get issueId from issueContext
+		const issueId = session.issueContext?.issueId;
 		if (issueTracker && issueId) {
 			try {
 				const fullIssue = await issueTracker.fetchIssue(issueId);
@@ -5759,7 +5559,7 @@ ${input.userComment}
 		return this.activityPoster.postSystemPromptSelectionThought(
 			sessionId,
 			labels,
-			repositoryId,
+			[repositoryId],
 		);
 	}
 
@@ -5810,8 +5610,8 @@ ${input.userComment}
 			existingRunner.stop();
 		}
 
-		// Get issueId from issueContext (preferred) or deprecated issueId field
-		const issueIdForResume = session.issueContext?.issueId ?? session.issueId;
+		// Get issueId from issueContext
+		const issueIdForResume = session.issueContext?.issueId;
 		if (!issueIdForResume) {
 			log.error(`No issue ID found for session ${session.id}`);
 			throw new Error(`No issue ID found for session ${session.id}`);
@@ -5973,7 +5773,7 @@ ${input.userComment}
 	): Promise<void> {
 		return this.activityPoster.postInstantPromptedAcknowledgment(
 			sessionId,
-			repositoryId,
+			[repositoryId],
 			isStreaming,
 		);
 	}

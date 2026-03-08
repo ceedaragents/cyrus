@@ -30,7 +30,7 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 
 		// Create AgentSessionManager with procedure router
 		agentSessionManager = new AgentSessionManager(
-			mockActivitySink,
+			() => mockActivitySink,
 			undefined, // getParentSessionId
 			undefined, // resumeParentSession
 			procedureAnalyzer,

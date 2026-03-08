@@ -19,7 +19,7 @@ describe("AgentSessionManager - Codex tool activity mapping", () => {
 		};
 
 		postActivitySpy = vi.spyOn(mockActivitySink, "postActivity");
-		manager = new AgentSessionManager(mockActivitySink);
+		manager = new AgentSessionManager(() => mockActivitySink);
 		runner = new CodexRunner({
 			workingDirectory: "/Users/connor/code/cyrus",
 		});
@@ -38,6 +38,7 @@ describe("AgentSessionManager - Codex tool activity mapping", () => {
 				path: "/Users/connor/code/cyrus",
 				isGitWorktree: false,
 			},
+			[],
 		);
 		manager.addAgentRunner(sessionId, runner);
 

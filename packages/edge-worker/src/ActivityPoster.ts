@@ -46,8 +46,10 @@ export class ActivityPoster {
 
 	async postInstantAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		repositoryIds: string[],
 	): Promise<void> {
+		if (repositoryIds.length === 0) return;
+		const repositoryId = repositoryIds[0]!;
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
@@ -69,8 +71,10 @@ export class ActivityPoster {
 
 	async postParentResumeAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		repositoryIds: string[],
 	): Promise<void> {
+		if (repositoryIds.length === 0) return;
+		const repositoryId = repositoryIds[0]!;
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
@@ -89,7 +93,7 @@ export class ActivityPoster {
 
 	async postRepositorySelectionActivity(
 		sessionId: string,
-		repositoryId: string,
+		repositoryIds: string[],
 		repositoryName: string,
 		selectionMethod:
 			| "description-tag"
@@ -101,6 +105,8 @@ export class ActivityPoster {
 			| "workspace-fallback"
 			| "user-selected",
 	): Promise<void> {
+		if (repositoryIds.length === 0) return;
+		const repositoryId = repositoryIds[0]!;
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
@@ -142,8 +148,10 @@ export class ActivityPoster {
 	async postSystemPromptSelectionThought(
 		sessionId: string,
 		labels: string[],
-		repositoryId: string,
+		repositoryIds: string[],
 	): Promise<void> {
+		if (repositoryIds.length === 0) return;
+		const repositoryId = repositoryIds[0]!;
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
@@ -231,9 +239,11 @@ export class ActivityPoster {
 
 	async postInstantPromptedAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		repositoryIds: string[],
 		isStreaming: boolean,
 	): Promise<void> {
+		if (repositoryIds.length === 0) return;
+		const repositoryId = repositoryIds[0]!;
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
@@ -257,9 +267,13 @@ export class ActivityPoster {
 	async postComment(
 		issueId: string,
 		body: string,
-		repositoryId: string,
+		repositoryIds: string[],
 		parentId?: string,
 	): Promise<void> {
+		if (repositoryIds.length === 0) {
+			throw new Error("No repository IDs provided for posting comment");
+		}
+		const repositoryId = repositoryIds[0]!;
 		// Get the issue tracker for this repository
 		const issueTracker = this.issueTrackers.get(repositoryId);
 		if (!issueTracker) {

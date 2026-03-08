@@ -235,11 +235,11 @@ export class WorkerService {
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,
-					repository: RepositoryConfig,
+					repositories: RepositoryConfig[],
 				): Promise<Workspace> => {
 					return this.gitService.createGitWorktree(
 						issue,
-						repository,
+						repositories,
 						edgeConfig.global_setup_script,
 					);
 				},
@@ -276,18 +276,18 @@ export class WorkerService {
 		// Session events
 		this.edgeWorker.on(
 			"session:started",
-			(issueId: string, _issue: Issue, repositoryId: string) => {
+			(issueId: string, _issue: Issue, repositoryIds: string[]) => {
 				this.logger.info(
-					`Started session for issue ${issueId} in repository ${repositoryId}`,
+					`Started session for issue ${issueId} in repositories [${repositoryIds.join(", ")}]`,
 				);
 			},
 		);
 
 		this.edgeWorker.on(
 			"session:ended",
-			(issueId: string, exitCode: number | null, repositoryId: string) => {
+			(issueId: string, exitCode: number | null, repositoryIds: string[]) => {
 				this.logger.info(
-					`Session for issue ${issueId} ended with exit code ${exitCode} in repository ${repositoryId}`,
+					`Session for issue ${issueId} ended with exit code ${exitCode} in repositories [${repositoryIds.join(", ")}]`,
 				);
 			},
 		);

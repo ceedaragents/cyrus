@@ -73,8 +73,8 @@ export interface PromptAssemblyInput {
 	/** Full issue details */
 	fullIssue: Issue;
 
-	/** Repository configuration */
-	repository: RepositoryConfig;
+	/** Repository configurations associated with this session (0, 1, or N) */
+	repositories: RepositoryConfig[];
 
 	// ===== Prompt Content =====
 	/** User's comment text (or empty string for initial assignment) */

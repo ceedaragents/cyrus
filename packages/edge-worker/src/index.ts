@@ -10,6 +10,7 @@ export type {
 	UserIdentifier,
 	Workspace,
 } from "cyrus-core";
+export type { ActivitySinkResolver } from "./AgentSessionManager.js";
 export { AgentSessionManager } from "./AgentSessionManager.js";
 export type {
 	AskUserQuestionHandlerConfig,

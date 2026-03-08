@@ -19,7 +19,7 @@ describe("AgentSessionManager - Model Notification", () => {
 
 		postActivitySpy = vi.spyOn(mockActivitySink, "postActivity");
 
-		manager = new AgentSessionManager(mockActivitySink);
+		manager = new AgentSessionManager(() => mockActivitySink);
 
 		// Create a test session
 		manager.createLinearAgentSession(
@@ -36,6 +36,7 @@ describe("AgentSessionManager - Model Notification", () => {
 				path: "/test/workspace",
 				isGitWorktree: false,
 			},
+			[],
 		);
 	});
 

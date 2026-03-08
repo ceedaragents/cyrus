@@ -51,13 +51,15 @@ export interface CyrusAgentSession {
 	updatedAt: number; // e.g. Date.now()
 	/** Issue context - optional for standalone sessions */
 	issueContext?: IssueContext;
-	/**
-	 * Issue ID - kept for backwards compatibility during transition
-	 * @deprecated Use issueContext.issueId instead
-	 */
-	issueId?: string;
 	/** Minimal issue data - optional for standalone sessions */
 	issue?: IssueMinimal;
+	/**
+	 * Repository IDs associated with this session.
+	 * - Empty array: standalone session (no repository context)
+	 * - Single entry: standard single-repo session
+	 * - Multiple entries: multi-repo orchestration session
+	 */
+	repositoryIds: string[];
 	workspace: Workspace;
 	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)

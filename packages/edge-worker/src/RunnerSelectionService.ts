@@ -360,7 +360,7 @@ export class RunnerSelectionService {
 	 * Build allowed tools list with Linear MCP tools automatically included
 	 */
 	public buildAllowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -368,6 +368,8 @@ export class RunnerSelectionService {
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
+		if (repositories.length === 0) return [];
+		const repository = repositories[0]!;
 		// graphite-orchestrator uses the same tool config as orchestrator
 		const effectivePromptType =
 			promptType === "graphite-orchestrator" ? "orchestrator" : promptType;
@@ -437,7 +439,7 @@ export class RunnerSelectionService {
 	 * Build disallowed tools list from repository and global config
 	 */
 	public buildDisallowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -445,6 +447,8 @@ export class RunnerSelectionService {
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
+		if (repositories.length === 0) return [];
+		const repository = repositories[0]!;
 		// graphite-orchestrator uses the same tool config as orchestrator
 		const effectivePromptType =
 			promptType === "graphite-orchestrator" ? "orchestrator" : promptType;

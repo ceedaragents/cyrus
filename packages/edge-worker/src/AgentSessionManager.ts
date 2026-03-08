@@ -85,15 +85,23 @@ export declare interface AgentSessionManager {
 }
 
 /**
+ * Callback type for resolving an activity sink from repository IDs.
+ * Sessions may have 0, 1, or N repositories. The resolver picks the
+ * appropriate sink (typically from the first/primary repository).
+ */
+export type ActivitySinkResolver = (repositoryIds: string[]) => IActivitySink;
+
+/**
  * Manages Agent Sessions integration with Claude Code SDK
  * Transforms Claude streaming messages into Agent Session format
  * Handles session lifecycle: create → active → complete/error
  *
- * CURRENTLY BEING HANDLED 'per repository'
+ * Operates globally across all repositories. Each session carries its own
+ * repositoryIds[], and the activity sink is resolved dynamically per-session.
  */
 export class AgentSessionManager extends EventEmitter {
 	private logger: ILogger;
-	private activitySink: IActivitySink;
+	private resolveActivitySink: ActivitySinkResolver;
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its id
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
@@ -113,7 +121,7 @@ export class AgentSessionManager extends EventEmitter {
 	) => Promise<void>;
 
 	constructor(
-		activitySink: IActivitySink,
+		resolveActivitySink: ActivitySinkResolver,
 		getParentSessionId?: (childSessionId: string) => string | undefined,
 		resumeParentSession?: (
 			parentSessionId: string,
@@ -126,11 +134,19 @@ export class AgentSessionManager extends EventEmitter {
 	) {
 		super();
 		this.logger = logger ?? createLogger({ component: "AgentSessionManager" });
-		this.activitySink = activitySink;
+		this.resolveActivitySink = resolveActivitySink;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.procedureAnalyzer = procedureAnalyzer;
 		this.sharedApplicationServer = sharedApplicationServer;
+	}
+
+	/**
+	 * Get the activity sink for a session by looking up its repositoryIds.
+	 */
+	private getActivitySink(sessionId: string): IActivitySink {
+		const session = this.sessions.get(sessionId);
+		return this.resolveActivitySink(session?.repositoryIds ?? []);
 	}
 
 	/**
@@ -161,6 +177,7 @@ export class AgentSessionManager extends EventEmitter {
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
+		repositoryIds: string[],
 		platform: "linear" | "github" | "slack" = "linear",
 	): CyrusAgentSession {
 		const log = this.logger.withContext({
@@ -184,8 +201,8 @@ export class AgentSessionManager extends EventEmitter {
 				issueId: issueId,
 				issueIdentifier: issueMinimal.identifier,
 			},
-			issueId, // Kept for backwards compatibility
 			issue: issueMinimal,
+			repositoryIds,
 			workspace: workspace,
 		};
 
@@ -207,6 +224,7 @@ export class AgentSessionManager extends EventEmitter {
 	createChatSession(
 		sessionId: string,
 		workspace: Workspace,
+		repositoryIds: string[],
 		platform: string,
 	): CyrusAgentSession {
 		const log = this.logger.withContext({ sessionId, platform });
@@ -219,6 +237,7 @@ export class AgentSessionManager extends EventEmitter {
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
+			repositoryIds,
 			workspace,
 		};
 
@@ -1556,7 +1575,7 @@ export class AgentSessionManager extends EventEmitter {
 				options.ephemeral = true;
 			}
 
-			const result = await this.activitySink.postActivity(
+			const result = await this.getActivitySink(sessionId).postActivity(
 				session.externalSessionId,
 				content,
 				options,
@@ -1628,10 +1647,10 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
-	 * Resolve the issue ID from a session, checking issueContext first then deprecated issueId.
+	 * Resolve the issue ID from a session's issueContext.
 	 */
 	private getSessionIssueId(session: CyrusAgentSession): string | undefined {
-		return session.issueContext?.issueId ?? session.issueId;
+		return session.issueContext?.issueId;
 	}
 
 	/**
@@ -1737,7 +1756,7 @@ export class AgentSessionManager extends EventEmitter {
 				options.signalMetadata = input.signalMetadata;
 			}
 
-			const result = await this.activitySink.postActivity(
+			const result = await this.getActivitySink(sessionId).postActivity(
 				session.externalSessionId,
 				input.content,
 				options,

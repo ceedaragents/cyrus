@@ -15,7 +15,7 @@ import {
 export type RepositoryRoutingResult =
 	| {
 			type: "selected";
-			repository: RepositoryConfig;
+			repositories: RepositoryConfig[];
 			routingMethod:
 				| "description-tag"
 				| "label-based"
@@ -66,9 +66,6 @@ export interface RepositoryRouterDeps {
  * This class was extracted from EdgeWorker to improve modularity and testability.
  */
 export class RepositoryRouter {
-	/** Cache mapping issue IDs to selected repository IDs */
-	private issueRepositoryCache = new Map<string, string>();
-
 	/** Pending repository selections awaiting user response */
 	private pendingSelections = new Map<string, PendingRepositorySelection>();
 
@@ -79,43 +76,6 @@ export class RepositoryRouter {
 		logger?: ILogger,
 	) {
 		this.logger = logger ?? createLogger({ component: "RepositoryRouter" });
-	}
-
-	/**
-	 * Get cached repository for an issue
-	 *
-	 * This is a simple cache lookup used by agentSessionPrompted webhooks (Branch 3).
-	 * Per CLAUDE.md: "The repository will be retrieved from the issue-to-repository
-	 * cache - no new routing logic is performed."
-	 *
-	 * @param issueId The Linear issue ID
-	 * @param repositoriesMap Map of repository IDs to configurations
-	 * @returns The cached repository or null if not found
-	 */
-	getCachedRepository(
-		issueId: string,
-		repositoriesMap: Map<string, RepositoryConfig>,
-	): RepositoryConfig | null {
-		const cachedRepositoryId = this.issueRepositoryCache.get(issueId);
-		if (!cachedRepositoryId) {
-			this.logger.debug(`No cached repository found for issue ${issueId}`);
-			return null;
-		}
-
-		const cachedRepository = repositoriesMap.get(cachedRepositoryId);
-		if (!cachedRepository) {
-			// Repository no longer exists, remove from cache
-			this.logger.warn(
-				`Cached repository ${cachedRepositoryId} no longer exists, removing from cache`,
-			);
-			this.issueRepositoryCache.delete(issueId);
-			return null;
-		}
-
-		this.logger.debug(
-			`Using cached repository ${cachedRepository.name} for issue ${issueId}`,
-		);
-		return cachedRepository;
 	}
 
 	/**
@@ -136,7 +96,7 @@ export class RepositoryRouter {
 			return repos[0]
 				? {
 						type: "selected",
-						repository: repos[0],
+						repositories: [repos[0]],
 						routingMethod: "workspace-fallback",
 					}
 				: { type: "none" };
@@ -156,7 +116,7 @@ export class RepositoryRouter {
 					);
 					return {
 						type: "selected",
-						repository: repo,
+						repositories: [repo],
 						routingMethod: "workspace-fallback",
 					};
 				}
@@ -181,7 +141,7 @@ export class RepositoryRouter {
 			);
 			return {
 				type: "selected",
-				repository: descriptionTagRepo,
+				repositories: [descriptionTagRepo],
 				routingMethod: "description-tag",
 			};
 		}
@@ -198,7 +158,7 @@ export class RepositoryRouter {
 			);
 			return {
 				type: "selected",
-				repository: labelMatchedRepo,
+				repositories: [labelMatchedRepo],
 				routingMethod: "label-based",
 			};
 		}
@@ -216,7 +176,7 @@ export class RepositoryRouter {
 				);
 				return {
 					type: "selected",
-					repository: projectMatchedRepo,
+					repositories: [projectMatchedRepo],
 					routingMethod: "project-based",
 				};
 			}
@@ -234,7 +194,7 @@ export class RepositoryRouter {
 				);
 				return {
 					type: "selected",
-					repository: teamMatchedRepo,
+					repositories: [teamMatchedRepo],
 					routingMethod: "team-based",
 				};
 			}
@@ -252,7 +212,7 @@ export class RepositoryRouter {
 					);
 					return {
 						type: "selected",
-						repository: repo,
+						repositories: [repo],
 						routingMethod: "team-prefix",
 					};
 				}
@@ -274,7 +234,7 @@ export class RepositoryRouter {
 			);
 			return {
 				type: "selected",
-				repository: catchAllRepo,
+				repositories: [catchAllRepo],
 				routingMethod: "catch-all",
 			};
 		}
@@ -295,7 +255,7 @@ export class RepositoryRouter {
 			);
 			return {
 				type: "selected",
-				repository: fallbackRepo,
+				repositories: [fallbackRepo],
 				routingMethod: "workspace-fallback",
 			};
 		}
@@ -593,13 +553,13 @@ export class RepositoryRouter {
 	}
 
 	/**
-	 * Select repository from user response
-	 * Returns the selected repository or null if webhook should not be processed further
+	 * Select repositories from user response
+	 * Returns the selected repositories or null if webhook should not be processed further
 	 */
-	async selectRepositoryFromResponse(
+	async selectRepositoriesFromResponse(
 		agentSessionId: string,
 		selectedRepositoryName: string,
-	): Promise<RepositoryConfig | null> {
+	): Promise<RepositoryConfig[] | null> {
 		const pendingData = this.pendingSelections.get(agentSessionId);
 		if (!pendingData) {
 			this.logger.debug(
@@ -635,7 +595,7 @@ export class RepositoryRouter {
 			this.logger.info(`User selected repository: ${repository.name}`);
 		}
 
-		return repository;
+		return [repository];
 	}
 
 	/**
@@ -718,19 +678,5 @@ export class RepositoryRouter {
 		webhook: Webhook,
 	): webhook is AgentSessionPromptedWebhook {
 		return webhook.action === "prompted";
-	}
-
-	/**
-	 * Get issue repository cache for serialization
-	 */
-	getIssueRepositoryCache(): Map<string, string> {
-		return this.issueRepositoryCache;
-	}
-
-	/**
-	 * Restore issue repository cache from serialization
-	 */
-	restoreIssueRepositoryCache(cache: Map<string, string>): void {
-		this.issueRepositoryCache = cache;
 	}
 }
