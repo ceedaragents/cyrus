@@ -3238,9 +3238,9 @@ ${taskSection}`;
 	 * Handle repository selection response from prompted webhook
 	 * Branch 2 of agentSessionPrompted (see packages/CLAUDE.md)
 	 *
-	 * This method extracts the user's repository selection from their response,
-	 * or uses the fallback repository if their message doesn't match any option.
-	 * In both cases, the selected repository is cached for future use.
+	 * This method extracts the user's repository selection from their response.
+	 * Repository association remains unresolved until the response matches an
+	 * explicit pending option.
 	 */
 	private async handleRepositorySelectionResponse(
 		webhook: AgentSessionPromptedWebhook,
@@ -3271,9 +3271,19 @@ ${taskSection}`;
 		);
 
 		if (!repository) {
-			log.error(
-				`Failed to select repository for agent session ${agentSessionId}`,
-			);
+			if (this.repositoryRouter.hasPendingSelection(agentSessionId)) {
+				log.info(
+					`Repository selection for agent session ${agentSessionId} is still unresolved after response: "${userMessage}"`,
+				);
+				await this.postInvalidRepositorySelectionActivity(
+					agentSessionId,
+					webhook.organizationId,
+				);
+			} else {
+				log.error(
+					`Failed to select repository for agent session ${agentSessionId}`,
+				);
+			}
 			return;
 		}
 
@@ -3589,8 +3599,8 @@ ${taskSection}`;
 
 		// Branch 2: Handle repository selection response
 		// This is the first Claude runner initialization after user selects a repository.
-		// The selection handler extracts the choice from the response (or uses fallback)
-		// and caches the repository for future use.
+		// The selection handler only materializes a repository association after an
+		// explicit matching selection.
 		if (this.repositoryRouter.hasPendingSelection(agentSessionId)) {
 			await this.handleRepositorySelectionResponse(webhook);
 			return;
@@ -3658,6 +3668,15 @@ ${taskSection}`;
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
 						);
+					} else if (routingResult.type === "needs_selection") {
+						await this.repositoryRouter.elicitUserRepositorySelection(
+							webhook,
+							routingResult.workspaceRepos,
+						);
+						this.logger.info(
+							`Prompted webhook ${agentSessionId} needs explicit repository selection before continuing`,
+						);
+						return;
 					}
 				} catch (error) {
 					this.logger.warn(
@@ -5697,6 +5716,41 @@ ${input.userComment}
 			repositoryName,
 			selectionMethod,
 		);
+	}
+
+	private async postInvalidRepositorySelectionActivity(
+		agentSessionId: string,
+		workspaceId?: string,
+	): Promise<void> {
+		if (!workspaceId) {
+			this.logger.warn(
+				`Cannot post invalid repository selection feedback for ${agentSessionId} without workspace context`,
+			);
+			return;
+		}
+
+		const issueTracker = this.getIssueTrackerForWorkspace(workspaceId);
+		if (!issueTracker) {
+			this.logger.warn(
+				`No issue tracker found while posting invalid repository selection feedback for workspace ${workspaceId}`,
+			);
+			return;
+		}
+
+		try {
+			await issueTracker.createAgentActivity({
+				agentSessionId,
+				content: {
+					type: "error",
+					body: "I couldn't match your repository selection. Please choose one of the repository options from the selection list.",
+				},
+			});
+		} catch (error) {
+			this.logger.error(
+				`Failed to post invalid repository selection feedback for ${agentSessionId}`,
+				error,
+			);
+		}
 	}
 
 	/**

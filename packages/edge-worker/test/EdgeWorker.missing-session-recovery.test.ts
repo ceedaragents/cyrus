@@ -172,6 +172,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 
 		// Mock issue tracker
 		const mockIssueTracker = {
+			createAgentActivity: vi.fn().mockResolvedValue(undefined),
 			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",
@@ -384,6 +385,103 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			// Currently FAILS because the code returns early with just a log.warn
 			// The user should see feedback that their prompt couldn't be processed
 			expect(mockAgentSessionManager.createResponseActivity).toHaveBeenCalled();
+		});
+
+		it("should re-elicit repository selection when fallback routing is ambiguous", async () => {
+			// Arrange: Empty cache and ambiguous fallback routing
+			const repositoryRouter = (edgeWorker as any).repositoryRouter;
+			repositoryRouter.getIssueRepositoryCache().clear();
+
+			const secondRepository: RepositoryConfig = {
+				...mockRepository,
+				id: "test-repo-2",
+				name: "Test Repo 2",
+				repositoryPath: "/test/repo-2",
+			};
+
+			(edgeWorker as any).repositories.set(
+				secondRepository.id,
+				secondRepository,
+			);
+
+			const determineRepoSpy = vi
+				.spyOn(repositoryRouter, "determineRepositoryForWebhook")
+				.mockResolvedValue({
+					type: "needs_selection",
+					workspaceRepos: [mockRepository, secondRepository],
+				});
+			const elicitSpy = vi
+				.spyOn(repositoryRouter, "elicitUserRepositorySelection")
+				.mockResolvedValue(undefined);
+
+			const webhook = createPromptedWebhook();
+
+			// Act
+			await (edgeWorker as any).handleWebhook(webhook, [
+				mockRepository,
+				secondRepository,
+			]);
+
+			// Assert: Should keep the session unresolved and ask the user to choose
+			expect(determineRepoSpy).toHaveBeenCalled();
+			expect(elicitSpy).toHaveBeenCalledWith(webhook, [
+				mockRepository,
+				secondRepository,
+			]);
+			expect(
+				mockAgentSessionManager.createLinearAgentSession,
+			).not.toHaveBeenCalled();
+		});
+	});
+
+	// =========================================================================
+	// 1.5. PROMPTED WEBHOOK — Invalid repository selection response
+	// =========================================================================
+	describe("Prompted webhook with invalid repository selection response", () => {
+		it("should keep the selection pending and post visible feedback instead of silently choosing a repository", async () => {
+			const repositoryRouter = (edgeWorker as any).repositoryRouter;
+			(repositoryRouter as any).pendingSelections.set(
+				"agent-session-legacy-123",
+				{
+					issueId: "issue-123",
+					workspaceRepos: [mockRepository],
+				},
+			);
+
+			const initializeAgentRunnerSpy = vi.spyOn(
+				edgeWorker as any,
+				"initializeAgentRunner",
+			);
+
+			const webhook = createPromptedWebhook({
+				agentActivity: {
+					content: {
+						body: "Unknown Repository",
+					},
+				},
+			});
+
+			// Act
+			await (edgeWorker as any).handleWebhook(webhook, [mockRepository]);
+
+			// Assert: Invalid responses should stay unresolved and provide feedback
+			expect(
+				repositoryRouter.hasPendingSelection("agent-session-legacy-123"),
+			).toBe(true);
+			expect(initializeAgentRunnerSpy).not.toHaveBeenCalled();
+			expect(
+				(edgeWorker as any).issueTrackers.get("test-repo").createAgentActivity,
+			).toHaveBeenCalledWith(
+				expect.objectContaining({
+					agentSessionId: "agent-session-legacy-123",
+					content: {
+						type: "error",
+						body: expect.stringContaining(
+							"couldn't match your repository selection",
+						),
+					},
+				}),
+			);
 		});
 	});
 
