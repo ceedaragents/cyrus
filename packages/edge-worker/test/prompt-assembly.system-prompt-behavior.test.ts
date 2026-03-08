@@ -39,8 +39,8 @@ describe("Prompt Assembly - System Prompt Behavior", () => {
 			.withLabels()
 			.expectUserPrompt(`<context>
   <repository>undefined</repository>
-  <working_directory>undefined</working_directory>
-  <base_branch>undefined</base_branch>
+  <working_directory>/test/repo</working_directory>
+  <base_branch>main</base_branch>
 </context>
 
 <linear_issue>
@@ -117,7 +117,7 @@ No comments yet.
 			.withLabels("feature")
 			.expectUserPrompt(`<git_context>
 <repository>undefined</repository>
-<base_branch>undefined</base_branch>
+<base_branch>main</base_branch>
 </git_context>
 
 <linear_issue>
@@ -209,7 +209,7 @@ Build the payment integration
 			.withLabels("Orchestrator") // Hardcoded orchestrator label (case-insensitive)
 			.expectUserPrompt(`<git_context>
 <repository>undefined</repository>
-<base_branch>undefined</base_branch>
+<base_branch>main</base_branch>
 </git_context>
 
 <linear_issue>
@@ -342,7 +342,7 @@ Orchestrate this task
 			.withLabels("Orchestrator") // Hardcoded orchestrator label
 			.expectUserPrompt(`<git_context>
 <repository>undefined</repository>
-<base_branch>undefined</base_branch>
+<base_branch>main</base_branch>
 </git_context>
 
 <linear_issue>

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
-import { createTestCyrusHome } from "./testCyrusHome.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 // Mock dependencies
 vi.mock("@linear/sdk");
@@ -23,8 +23,6 @@ vi.mock("cyrus-core", async (importOriginal) => {
 		})),
 	};
 });
-
-const testCyrusHome = createTestCyrusHome();
 
 describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 	let edgeWorker: EdgeWorker;
@@ -92,7 +90,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: testCyrusHome,
+			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
@@ -544,7 +542,7 @@ Work completed on subtask TEST-124.
 			// Create new EdgeWorker with the config that has no orchestrator labelPrompts
 			const configWithoutOrchestratorLabels: EdgeWorkerConfig = {
 				proxyUrl: "http://localhost:3000",
-				cyrusHome: testCyrusHome,
+				cyrusHome: TEST_CYRUS_HOME,
 				repositories: [repositoryWithoutOrchestratorConfig],
 				handlers: {
 					createWorkspace: vi.fn().mockResolvedValue({
@@ -638,7 +636,7 @@ Work completed on subtask TEST-124.
 			// Create new EdgeWorker with the config that has no orchestrator labelPrompts
 			const configWithoutOrchestratorLabels: EdgeWorkerConfig = {
 				proxyUrl: "http://localhost:3000",
-				cyrusHome: testCyrusHome,
+				cyrusHome: TEST_CYRUS_HOME,
 				repositories: [repositoryWithoutOrchestratorConfig],
 				handlers: {
 					createWorkspace: vi.fn().mockResolvedValue({
@@ -732,7 +730,7 @@ Work completed on subtask TEST-124.
 			// Create new EdgeWorker with the config that has no orchestrator labelPrompts
 			const configWithoutOrchestratorLabels: EdgeWorkerConfig = {
 				proxyUrl: "http://localhost:3000",
-				cyrusHome: testCyrusHome,
+				cyrusHome: TEST_CYRUS_HOME,
 				repositories: [repositoryWithoutOrchestratorConfig],
 				handlers: {
 					createWorkspace: vi.fn().mockResolvedValue({

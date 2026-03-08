@@ -6,7 +6,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EdgeWorker } from "../src/EdgeWorker";
 import type { EdgeWorkerConfig } from "../src/types";
-import { createTestCyrusHome } from "./testCyrusHome.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 // Mock fs/promises
 vi.mock("node:fs/promises", () => ({
@@ -26,8 +26,6 @@ vi.mock("file-type", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-const testCyrusHome = createTestCyrusHome();
-
 describe("EdgeWorker - Native Attachments", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
@@ -35,7 +33,7 @@ describe("EdgeWorker - Native Attachments", () => {
 	beforeEach(() => {
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: testCyrusHome,
+			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [
 				{
 					id: "test-repo",

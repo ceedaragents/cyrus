@@ -8,7 +8,7 @@ import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
-import { createTestCyrusHome } from "./testCyrusHome.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 // Mock all dependencies
 vi.mock("fs/promises");
@@ -29,8 +29,6 @@ vi.mock("cyrus-core", async (importOriginal) => {
 		})),
 	};
 });
-
-const testCyrusHome = createTestCyrusHome();
 
 describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 	let edgeWorker: EdgeWorker;
@@ -219,7 +217,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: testCyrusHome,
+			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ChatPlatformAdapter } from "../src/ChatSessionHandler.js";
 import { ChatSessionHandler } from "../src/ChatSessionHandler.js";
 import { SlackChatAdapter } from "../src/SlackChatAdapter.js";
+import { TEST_CYRUS_CHAT } from "./test-dirs.js";
 
 interface TestEvent {
 	eventId: string;
@@ -53,7 +54,7 @@ describe("ChatSessionHandler chat session permissions", () => {
 			eventId: "test-event",
 			threadKey: "test-thread",
 		};
-		const cyrusHome = "/tmp/cyrus-chat";
+		const cyrusHome = TEST_CYRUS_CHAT;
 		const chatRepositoryPaths = ["/repo/chat-one", "/repo/chat-two"];
 		let capturedConfig: any;
 

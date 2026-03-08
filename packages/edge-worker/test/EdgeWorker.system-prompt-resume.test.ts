@@ -15,7 +15,7 @@ import { AgentSessionManager } from "../src/AgentSessionManager.js";
 import { EdgeWorker } from "../src/EdgeWorker.js";
 import { SharedApplicationServer } from "../src/SharedApplicationServer.js";
 import type { EdgeWorkerConfig, RepositoryConfig } from "../src/types.js";
-import { createTestCyrusHome } from "./testCyrusHome.js";
+import { TEST_CYRUS_HOME } from "./test-dirs.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -45,8 +45,6 @@ vi.mock("cyrus-core", async (importOriginal) => {
 	};
 });
 vi.mock("file-type");
-
-const testCyrusHome = createTestCyrusHome();
 
 describe("EdgeWorker - System Prompt Resume", () => {
 	let edgeWorker: EdgeWorker;
@@ -207,7 +205,7 @@ Issue: {{issue_identifier}}`;
 
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
-			cyrusHome: testCyrusHome,
+			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
