@@ -85,7 +85,7 @@ No comments yet.
 			id: "repo-uuid-5678-9012-34ef-123456789012",
 			repositoryPath: "/test/repo",
 			workspaceBaseDir: "/test/workspace",
-			linearToken: "test-token-123", // Mock token for testing
+			linearToken: "mock-linear-placeholder", // Mock token for testing
 			labelPrompts: {
 				builder: ["feature", "enhancement"],
 				debugger: ["bug", "hotfix"],
@@ -179,7 +179,7 @@ Build the payment integration
 			id: "repo-uuid-6789-0123-45ab-cdef12345678",
 			repositoryPath: "/test/repo",
 			workspaceBaseDir: "/test/workspace",
-			linearToken: "test-token-123",
+			linearToken: "mock-linear-placeholder",
 			// Note: NO labelPrompts configured!
 		};
 
@@ -264,7 +264,7 @@ Orchestrate this task
 			id: "repo-uuid-8901-2345-67de-f0123456789a",
 			repositoryPath: "/test/repo",
 			workspaceBaseDir: "/test/workspace",
-			linearToken: "test-token-123",
+			linearToken: "mock-linear-placeholder",
 		};
 
 		const worker = createTestWorker([repository]);
@@ -307,7 +307,7 @@ Orchestrate this task
 			id: "repo-uuid-7890-1234-56cd-ef0123456789",
 			repositoryPath: "/test/repo",
 			workspaceBaseDir: "/test/workspace",
-			linearToken: "test-token-123",
+			linearToken: "mock-linear-placeholder",
 			labelPrompts: {
 				// Has other entries but NOT orchestrator
 				debugger: ["Bug"],
