@@ -132,9 +132,16 @@ export class PromptScenario {
 	}
 
 	withRepository(repo: any) {
-		this.input.repositories = [repo];
+		// Ensure repo has required fields for prompt assembly (baseBranch, labelPrompts, repositoryPath)
+		const fullRepo = {
+			baseBranch: "main",
+			labelPrompts: {},
+			repositoryPath: repo.repositoryPath ?? repo.path ?? "/test/repo",
+			...repo,
+		};
+		this.input.repository = fullRepo;
 		// Also ensure the worker has an IssueTrackerService for this repository
-		if (!(this.worker as any).issueTrackers.has(repo.id)) {
+		if (!(this.worker as any).issueTrackers.has(fullRepo.id)) {
 			const mockIssueTracker = {
 				getComments: () => Promise.resolve([]),
 				getComment: () => Promise.resolve(null),
@@ -144,7 +151,7 @@ export class PromptScenario {
 						Promise.resolve({ data: { comment: { body: "" } } }),
 				},
 			};
-			(this.worker as any).issueTrackers.set(repo.id, mockIssueTracker);
+			(this.worker as any).issueTrackers.set(fullRepo.id, mockIssueTracker);
 		}
 		return this;
 	}

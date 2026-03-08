@@ -140,8 +140,8 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			.withLabels()
 			.expectUserPrompt(`<context>
   <repository>undefined</repository>
-  <working_directory>undefined</working_directory>
-  <base_branch>undefined</base_branch>
+  <working_directory>/test/repo</working_directory>
+  <base_branch>main</base_branch>
 </context>
 
 <linear_issue>
