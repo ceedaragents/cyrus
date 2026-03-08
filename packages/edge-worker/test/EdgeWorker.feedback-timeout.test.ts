@@ -1,5 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner } from "cyrus-claude-runner";
+import type { CyrusAgentSession } from "cyrus-core";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { createCyrusToolsServer } from "cyrus-mcp-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,7 +38,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 	let mockAgentSessionManager: any;
 	let mockChildAgentSessionManager: any;
 	let mockClaudeRunner: any;
-	let resumeClaudeSessionSpy: any;
+	let handlePromptWithStreamingCheckSpy: any;
 	let mockOnFeedbackDelivery: any;
 	let _mockOnSessionCreated: any;
 
@@ -52,6 +53,65 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		isActive: true,
 		allowedTools: ["Read", "Edit"],
 		labelPrompts: {},
+	};
+
+	const createRegistrySession = (
+		sessionId: string,
+		issueId: string,
+		issueIdentifier: string,
+	): CyrusAgentSession => ({
+		id: sessionId,
+		externalSessionId: sessionId,
+		type: "comment-thread",
+		status: "active",
+		context: "comment-thread",
+		createdAt: Date.now(),
+		updatedAt: Date.now(),
+		issueContext: {
+			trackerId: "linear",
+			issueId,
+			issueIdentifier,
+		},
+		issueId,
+		issue: {
+			id: issueId,
+			identifier: issueIdentifier,
+			title: `${issueIdentifier} title`,
+			branchName: issueIdentifier.toLowerCase(),
+		},
+		repositoryAssociations: [
+			{
+				repositoryId: mockRepository.id,
+				associationOrigin: "restored",
+				status: "selected",
+			},
+		],
+		workspace: {
+			path: `/test/workspaces/${issueIdentifier}`,
+			isGitWorktree: false,
+		},
+	});
+
+	const seedRegistrySessions = () => {
+		const registry = (edgeWorker as any).globalSessionRegistry;
+		registry.createSession(
+			createRegistrySession(
+				"parent-session-123",
+				"issue-parent-123",
+				"PARENT-123",
+			),
+		);
+		registry.createSession(
+			createRegistrySession("child-session-456", "CHILD-456", "CHILD-456"),
+		);
+	};
+
+	const createDeferred = () => {
+		let resolve!: () => void;
+		const promise = new Promise<void>((resolver) => {
+			resolve = resolver;
+		});
+		return { promise, resolve };
 	};
 
 	beforeEach(() => {
@@ -79,14 +139,12 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			} as any;
 		});
 
-		// Mock ClaudeRunner with a long-running session to simulate the timeout
+		// Mock ClaudeRunner used by the child session fixture
 		mockClaudeRunner = {
 			supportsStreamingInput: true,
-			startStreaming: vi.fn().mockImplementation(async () => {
-				// Simulate a long-running Claude session (10 seconds)
-				await new Promise((resolve) => setTimeout(resolve, 10000));
-				return { sessionId: "claude-session-123" };
-			}),
+			startStreaming: vi
+				.fn()
+				.mockResolvedValue({ sessionId: "claude-session-123" }),
 			stop: vi.fn(),
 			isStreaming: vi.fn().mockReturnValue(false),
 		};
@@ -172,12 +230,9 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);
-
-		// Setup parent-child mapping
-		(edgeWorker as any).childToParentAgentSession.set(
-			"child-session-456",
-			"parent-session-123",
-		);
+		handlePromptWithStreamingCheckSpy = vi
+			.spyOn(edgeWorker as any, "handlePromptWithStreamingCheck")
+			.mockResolvedValue(false);
 
 		// Setup repository managers
 		(edgeWorker as any).agentSessionManagers.set(
@@ -185,6 +240,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+		seedRegistrySessions();
 	});
 
 	afterEach(() => {
@@ -204,19 +260,16 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 			// Use the real implementation without mocking resumeAgentSession
 			// to test the actual fire-and-forget behavior
-			resumeClaudeSessionSpy = vi
-				.spyOn(edgeWorker as any, "resumeAgentSession")
-				.mockImplementation(async () => {
-					// Simulate a long-running session
-					await mockClaudeRunner.startStreaming();
-					return undefined;
-				});
+			handlePromptWithStreamingCheckSpy.mockImplementation(
+				() => new Promise<boolean>(() => undefined),
+			);
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				"parent-session-123",
 			);
+			_mockOnSessionCreated(childSessionId, "parent-session-123");
 
 			// Act - Call the feedback delivery and measure time
 			const startTime = Date.now();
@@ -233,13 +286,13 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
+			expect(handlePromptWithStreamingCheckSpy).toHaveBeenCalledOnce();
+			expect(
+				mockChildAgentSessionManager.hasAgentRunner,
+			).not.toHaveBeenCalled();
 
 			// Should return in less than 100ms (not wait for the 10-second session)
 			expect(duration).toBeLessThan(100);
-
-			// The child session is still running in the background
-			expect(mockClaudeRunner.startStreaming).toHaveBeenCalledOnce();
 		}); // Regular timeout since it should return quickly
 
 		it("should verify feedback initiates session but doesn't block on completion", async () => {
@@ -249,22 +302,21 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback";
 			let sessionCompleted = false;
+			const backgroundSession = createDeferred();
 
 			// Mock resumeAgentSession to track when it completes
-			resumeClaudeSessionSpy = vi
-				.spyOn(edgeWorker as any, "resumeAgentSession")
-				.mockImplementation(async () => {
-					// Start a 2-second operation
-					await new Promise((resolve) => setTimeout(resolve, 2000));
-					sessionCompleted = true;
-					return undefined;
-				});
+			handlePromptWithStreamingCheckSpy.mockImplementation(async () => {
+				await backgroundSession.promise;
+				sessionCompleted = true;
+				return false;
+			});
 
 			// Build MCP config
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				"parent-session-123",
 			);
+			_mockOnSessionCreated(childSessionId, "parent-session-123");
 
 			// Act
 			const startTime = Date.now();
@@ -282,11 +334,12 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
+			expect(handlePromptWithStreamingCheckSpy).toHaveBeenCalledOnce();
 
-			// Wait a bit and verify session completes in background
-			await new Promise((resolve) => setTimeout(resolve, 2100));
+			backgroundSession.resolve();
+			await Promise.resolve();
+			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(sessionCompleted).toBe(true);
-		}, 5000);
+		});
 	});
 });

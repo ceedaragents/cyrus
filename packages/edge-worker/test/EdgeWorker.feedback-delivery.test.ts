@@ -1,5 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import { ClaudeRunner } from "cyrus-claude-runner";
+import type { CyrusAgentSession } from "cyrus-core";
 import { LinearEventTransport } from "cyrus-linear-event-transport";
 import { createCyrusToolsServer } from "cyrus-mcp-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,7 +38,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 	let mockAgentSessionManager: any;
 	let mockChildAgentSessionManager: any;
 	let mockClaudeRunner: any;
-	let resumeAgentSessionSpy: any;
+	let handlePromptWithStreamingCheckSpy: any;
 	let mockOnFeedbackDelivery: any;
 	let mockOnSessionCreated: any;
 
@@ -52,6 +53,57 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		isActive: true,
 		allowedTools: ["Read", "Edit"],
 		labelPrompts: {},
+	};
+
+	const createRegistrySession = (
+		sessionId: string,
+		issueId: string,
+		issueIdentifier: string,
+	): CyrusAgentSession => ({
+		id: sessionId,
+		externalSessionId: sessionId,
+		type: "comment-thread",
+		status: "active",
+		context: "comment-thread",
+		createdAt: Date.now(),
+		updatedAt: Date.now(),
+		issueContext: {
+			trackerId: "linear",
+			issueId,
+			issueIdentifier,
+		},
+		issueId,
+		issue: {
+			id: issueId,
+			identifier: issueIdentifier,
+			title: `${issueIdentifier} title`,
+			branchName: issueIdentifier.toLowerCase(),
+		},
+		repositoryAssociations: [
+			{
+				repositoryId: mockRepository.id,
+				associationOrigin: "restored",
+				status: "selected",
+			},
+		],
+		workspace: {
+			path: `/test/workspaces/${issueIdentifier}`,
+			isGitWorktree: false,
+		},
+	});
+
+	const seedRegistrySessions = () => {
+		const registry = (edgeWorker as any).globalSessionRegistry;
+		registry.createSession(
+			createRegistrySession(
+				"parent-session-123",
+				"issue-parent-123",
+				"PARENT-123",
+			),
+		);
+		registry.createSession(
+			createRegistrySession("child-session-456", "CHILD-456", "CHILD-456"),
+		);
 	};
 
 	beforeEach(() => {
@@ -171,16 +223,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
-		// Spy on resumeAgentSession method
-		resumeAgentSessionSpy = vi
-			.spyOn(edgeWorker as any, "resumeAgentSession")
-			.mockResolvedValue(undefined);
-
-		// Setup parent-child mapping
-		(edgeWorker as any).childToParentAgentSession.set(
-			"child-session-456",
-			"parent-session-123",
-		);
+		// Spy on the current fire-and-forget feedback handoff entrypoint
+		handlePromptWithStreamingCheckSpy = vi
+			.spyOn(edgeWorker as any, "handlePromptWithStreamingCheck")
+			.mockResolvedValue(false);
 
 		// Setup repository managers
 		(edgeWorker as any).agentSessionManagers.set(
@@ -188,6 +234,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+		seedRegistrySessions();
 	});
 
 	afterEach(() => {
@@ -207,6 +254,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				mockRepository,
 				parentSessionId,
 			);
+			mockOnSessionCreated(childSessionId, parentSessionId);
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -220,9 +268,12 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
+			expect(handlePromptWithStreamingCheckSpy).toHaveBeenCalledOnce();
+			expect(
+				mockChildAgentSessionManager.hasAgentRunner,
+			).not.toHaveBeenCalled();
 
-			const resumeArgs = resumeAgentSessionSpy.mock.calls[0];
+			const resumeArgs = handlePromptWithStreamingCheckSpy.mock.calls[0];
 			const [
 				childSession,
 				repo,
@@ -232,6 +283,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				attachmentManifest,
 				isNewSession,
 				additionalAllowedDirectories,
+				logContext,
 			] = resumeArgs;
 
 			// Verify the CHILD session is resumed, not the parent
@@ -255,12 +307,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Verify no additional allowed directories for feedback (empty array)
 			expect(additionalAllowedDirectories).toEqual([]);
+			expect(logContext).toBe("give feedback to child");
 		});
 
 		it("should handle feedback delivery when parent session ID is unknown", async () => {
-			// Arrange - Remove parent mapping to test unknown parent scenario
-			(edgeWorker as any).childToParentAgentSession.delete("child-session-456");
-
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback without known parent";
 
@@ -282,9 +332,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
+			expect(handlePromptWithStreamingCheckSpy).toHaveBeenCalledOnce();
 
-			const prompt = resumeAgentSessionSpy.mock.calls[0][4];
+			const prompt = handlePromptWithStreamingCheckSpy.mock.calls[0][4];
 			expect(prompt).toBe(
 				`## Received feedback from orchestrator\n\n---\n\n${feedbackMessage}\n\n---`,
 			);
@@ -292,6 +342,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		it("should return false when child session is not found in any repository", async () => {
 			// Arrange
+			(edgeWorker as any).globalSessionRegistry.deleteSession(
+				"child-session-456",
+			);
 			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(false);
 
 			const childSessionId = "nonexistent-child-session";
@@ -311,7 +364,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert
 			expect(result).toBe(false);
-			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
+			expect(handlePromptWithStreamingCheckSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
 				expect.stringContaining(
 					`Child session ${childSessionId} not found in any repository`,
@@ -321,6 +374,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		it("should return false when child session data is not found in manager", async () => {
 			// Arrange
+			(edgeWorker as any).globalSessionRegistry.deleteSession(
+				"child-session-456",
+			);
 			mockChildAgentSessionManager.getSession.mockReturnValue(null);
 
 			const childSessionId = "child-session-456";
@@ -331,6 +387,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				mockRepository,
 				"parent-session-123",
 			);
+			mockOnSessionCreated(childSessionId, "parent-session-123");
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -340,7 +397,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Assert
 			expect(result).toBe(false);
-			expect(resumeAgentSessionSpy).not.toHaveBeenCalled();
+			expect(handlePromptWithStreamingCheckSpy).not.toHaveBeenCalled();
 			expect(console.error).toHaveBeenCalledWith(
 				expect.stringContaining(`Child session ${childSessionId} not found`),
 			);
@@ -348,7 +405,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		it("should handle resumeAgentSession errors gracefully", async () => {
 			// Arrange
-			resumeAgentSessionSpy.mockRejectedValue(new Error("Resume failed"));
+			handlePromptWithStreamingCheckSpy.mockRejectedValue(
+				new Error("Resume failed"),
+			);
 
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "This will cause resume to fail";
@@ -358,6 +417,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				mockRepository,
 				"parent-session-123",
 			);
+			mockOnSessionCreated(childSessionId, "parent-session-123");
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -371,7 +431,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
+			expect(handlePromptWithStreamingCheckSpy).toHaveBeenCalledOnce();
 
 			// Wait a bit for the async error handling to occur
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -396,16 +456,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				getSession: vi.fn().mockReturnValue(null),
 			};
 
-			// First repository doesn't have the session
 			(edgeWorker as any).agentSessionManagers.set(
 				"test-repo-2",
 				mockRepo2Manager,
 			);
 			(edgeWorker as any).repositories.set("test-repo-2", repo2);
-
-			// Adjust mock to make first repo not have it, second repo has it
-			mockRepo2Manager.hasAgentRunner.mockReturnValue(false);
-			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(true);
 
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback across repositories";
@@ -415,6 +470,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				mockRepository,
 				"parent-session-123",
 			);
+			mockOnSessionCreated(childSessionId, "parent-session-123");
 
 			// Act - Call the captured feedback delivery callback
 			const result = await mockOnFeedbackDelivery(
@@ -428,13 +484,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
-			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
-
-			// Verify the child was found in one of the repositories
-			const hasAgentRunnerCalls =
-				mockRepo2Manager.hasAgentRunner.mock.calls.length +
-				mockChildAgentSessionManager.hasAgentRunner.mock.calls.length;
-			expect(hasAgentRunnerCalls).toBeGreaterThan(0);
+			expect(handlePromptWithStreamingCheckSpy).toHaveBeenCalledOnce();
+			expect(mockRepo2Manager.hasAgentRunner).not.toHaveBeenCalled();
 		});
 	});
 
@@ -465,6 +516,12 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Verify the callbacks were captured
 			expect(mockOnFeedbackDelivery).toBeDefined();
 			expect(mockOnSessionCreated).toBeDefined();
+			mockOnSessionCreated("child-session-456", parentSessionId);
+			expect(
+				(edgeWorker as any).globalSessionRegistry.getParentSessionId(
+					"child-session-456",
+				),
+			).toBe(parentSessionId);
 		});
 
 		it("should include CYRUS_API_KEY as Authorization header for cyrus-tools MCP config", () => {

@@ -35,6 +35,7 @@ describe("AgentSessionManager stop-session behavior", () => {
 			mockActivitySink,
 			undefined,
 			undefined,
+			undefined,
 			mockProcedureAnalyzer,
 		);
 
