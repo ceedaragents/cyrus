@@ -1,0 +1,30 @@
+{
+	"milestone": "audit-and-target-model",
+	"round": 1,
+	"status": "pass",
+	"assertionsSummary": {
+		"total": 4,
+		"passed": 4,
+		"failed": 0,
+		"blocked": 0
+	},
+	"passedAssertions": [
+		"VAL-AUDIT-001",
+		"VAL-AUDIT-002",
+		"VAL-AUDIT-003",
+		"VAL-AUDIT-004"
+	],
+	"failedAssertions": [],
+	"blockedAssertions": [],
+	"flowReports": [
+		".factory/validation/audit-and-target-model/user-testing/flows/repository-audit-artifact.json"
+	],
+	"appliedUpdates": [
+		{
+			"target": "user-testing.md",
+			"description": "Documented the audit milestone's read-only repository-artifact testing surface and added flow validator isolation/guidance for repository audit artifact validation.",
+			"source": "setup"
+		}
+	],
+	"previousRound": null
+}

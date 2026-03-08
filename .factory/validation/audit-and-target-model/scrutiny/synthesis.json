@@ -1,0 +1,28 @@
+{
+	"status": "overridden",
+	"summary": "Scrutiny for audit-and-target-model was overridden after the test gate failed only on documented pre-existing edge-worker assertion suites unrelated to the audit artifact or temp-home isolation fixes. Typecheck and lint passed, and the temp-log permission blockers were removed.",
+	"validatorResults": {
+		"test": {
+			"status": "failed",
+			"details": "pnpm test:packages:run -- --maxWorkers=8 still fails only on pre-existing packages/edge-worker assertion suites (feedback-delivery, feedback-timeout, screenshot-upload-hooks, runner-selection)."
+		},
+		"typecheck": {
+			"status": "passed"
+		},
+		"lint": {
+			"status": "passed"
+		}
+	},
+	"appliedUpdates": [],
+	"suggestedGuidanceUpdates": [],
+	"override": {
+		"appliedBy": "orchestrator",
+		"reason": "Mission AGENTS.md already documents these edge-worker failures as unrelated pre-existing validation noise. The audit milestone only changed mission artifacts and test temp-home isolation, and those changes validated cleanly in targeted tests.",
+		"deferredIssues": [
+			"packages/edge-worker/test/EdgeWorker.feedback-delivery.test.ts",
+			"packages/edge-worker/test/EdgeWorker.feedback-timeout.test.ts",
+			"packages/edge-worker/test/EdgeWorker.screenshot-upload-hooks.test.ts",
+			"packages/edge-worker/test/EdgeWorker.runner-selection.test.ts"
+		]
+	}
+}
