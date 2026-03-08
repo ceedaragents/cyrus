@@ -1,0 +1,32 @@
+{
+	"milestone": "core-session-state-refactor",
+	"round": 1,
+	"status": "pass",
+	"assertionsSummary": {
+		"total": 5,
+		"passed": 5,
+		"failed": 0,
+		"blocked": 0
+	},
+	"passedAssertions": [
+		"VAL-CORE-001",
+		"VAL-CORE-002",
+		"VAL-CORE-003",
+		"VAL-CORE-004",
+		"VAL-CORE-005"
+	],
+	"failedAssertions": [],
+	"blockedAssertions": [],
+	"flowReports": [
+		".factory/validation/core-session-state-refactor/user-testing/flows/zero-single-types.json",
+		".factory/validation/core-session-state-refactor/user-testing/flows/multi-migration.json"
+	],
+	"appliedUpdates": [
+		{
+			"target": "user-testing.md",
+			"description": "Documented the core-session-state-refactor package-API validation surface and added flow-validator isolation guidance for cyrus-core persistence testing.",
+			"source": "setup"
+		}
+	],
+	"previousRound": null
+}

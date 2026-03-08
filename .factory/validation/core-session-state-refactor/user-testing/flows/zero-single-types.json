@@ -1,0 +1,26 @@
+{
+	"milestone": "core-session-state-refactor",
+	"surface": "cyrus-core persistence api",
+	"summary": "Validated VAL-CORE-001, VAL-CORE-002, and VAL-CORE-005 against the public cyrus-core dist surface; all three assertions passed.",
+	"toolsUsed": ["Read", "Grep", "Execute"],
+	"frictions": [],
+	"blockers": [],
+	"assertionResults": [
+		{
+			"id": "VAL-CORE-001",
+			"status": "pass",
+			"evidence": "A node --input-type=module script importing packages/core/dist/index.js used PersistenceManager with the assigned zero-single-types namespace, saved zero-association-session with repositoryAssociations: [], reloaded it successfully, and observed repositoryAssociationsLength=0 with workspace.path preserved as /tmp/zero-top-level-workspace."
+		},
+		{
+			"id": "VAL-CORE-002",
+			"status": "pass",
+			"evidence": "The same public-API script saved and reloaded single-association-session with repositoryAssociations[0].repositoryId='repo-single' while the top-level workspace.path remained /tmp/top-level-session-workspace and repositoryAssociations[0].executionWorkspace.path remained /tmp/repository-association-execution-workspace, confirming workspacePathsDiffer=true after reload."
+		},
+		{
+			"id": "VAL-CORE-005",
+			"status": "pass",
+			"evidence": "packages/core/dist/CyrusAgentSession.d.ts exposes repositoryAssociations?: CyrusAgentSessionRepositoryAssociation[] at line 69 and packages/core/dist/index.d.ts re-exports CyrusAgentSessionRepositoryAssociation types at line 4; targeted grep found no public 'primaryRepository' or 'currentRepository' shortcuts in either declaration file."
+		}
+	],
+	"testedAt": "2026-03-08T02:04:39.482374Z"
+}
