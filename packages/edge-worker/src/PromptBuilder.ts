@@ -449,7 +449,7 @@ export class PromptBuilder {
 	 * Generate routing context for all configured workspaces.
 	 *
 	 * This is used by chat flows that need orchestrator-style routing context
-	 * but do not have a single current repository context.
+	 * but do not have a single repository-scoped session context.
 	 *
 	 * @returns XML-formatted routing context strings joined by blank lines,
 	 * or empty string when there is no multi-repo routing needed.
@@ -484,8 +484,8 @@ export class PromptBuilder {
 
 		for (const [, repositories] of workspaceIds) {
 			// The routing-context template is generated from a representative
-			// repository in the workspace, which already expands to all repositories
-			// in that same workspace via generateRoutingContext(...).
+			// repository in the workspace, which expands to every active repository
+			// associated with that workspace via generateRoutingContext(...).
 			const sortedRepositories = [...repositories].sort((a, b) =>
 				a.name.localeCompare(b.name),
 			);
@@ -509,22 +509,24 @@ export class PromptBuilder {
 	/**
 	 * Generate routing context for orchestrator mode
 	 *
-	 * This provides the orchestrator with information about available repositories
+	 * This provides the orchestrator with information about applicable repositories
 	 * and how to route sub-issues to them. The context includes:
-	 * - List of configured repositories in the workspace
+	 * - List of configured repositories in the same workspace
 	 * - Routing rules for each repository (labels, teams, projects)
 	 * - Instructions on using description tags for explicit routing
 	 *
-	 * @param currentRepository The repository handling the current orchestrator issue
+	 * @param workspaceRepository A repository associated with the workspace whose routing context should be enumerated
 	 * @returns XML-formatted routing context string, or empty string if no routing info available
 	 */
-	generateRoutingContext(currentRepository: RepositoryConfig): string {
+	generateRoutingContext(workspaceRepository: RepositoryConfig): string {
 		// Get all repositories in the same workspace
-		const workspaceRepos = Array.from(this.repositories.values()).filter(
-			(repo) =>
-				repo.linearWorkspaceId === currentRepository.linearWorkspaceId &&
-				repo.isActive !== false,
-		);
+		const workspaceRepos = Array.from(this.repositories.values())
+			.filter(
+				(repo) =>
+					repo.linearWorkspaceId === workspaceRepository.linearWorkspaceId &&
+					repo.isActive !== false,
+			)
+			.sort((a, b) => a.name.localeCompare(b.name));
 
 		// If there's only one repository, no routing context needed
 		if (workspaceRepos.length <= 1) {
@@ -563,10 +565,7 @@ export class PromptBuilder {
 				);
 			}
 
-			const currentMarker =
-				repo.id === currentRepository.id ? " (current)" : "";
-
-			return `  <repository name="${repo.name}"${currentMarker}>
+			return `  <repository name="${repo.name}">
     <github_url>${repo.githubUrl || "N/A"}</github_url>
     <routing_methods>
 ${routingMethods.join("\n")}
@@ -576,7 +575,7 @@ ${routingMethods.join("\n")}
 
 		return `<repository_routing_context>
 <description>
-When creating sub-issues that should be handled in a DIFFERENT repository, use one of these routing methods.
+This workspace can route work to multiple applicable repositories. Choose the repository that matches each sub-issue and make the repository association explicit with one of these routing methods.
 
 **IMPORTANT - Routing Priority Order:**
 The system evaluates routing methods in this strict priority order. The FIRST match wins:

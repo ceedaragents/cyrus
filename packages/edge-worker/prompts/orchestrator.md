@@ -79,7 +79,7 @@ Create sub-issues with:
   - Specific routing methods configured for each repository
   - The exact description tag format for each repository
 
-  If no `<repository_routing_context>` is present, all sub-issues will be handled in the current repository.
+  If no `<repository_routing_context>` is present, do not assume additional repositories are available for routing.
 
 ### 2. Execute
 ```

@@ -175,7 +175,7 @@ Orchestrate this task
 
 <repository_routing_context>
 <description>
-When creating sub-issues that should be handled in a DIFFERENT repository, use one of these routing methods.
+This workspace can route work to multiple applicable repositories. Choose the repository that matches each sub-issue and make the repository association explicit with one of these routing methods.
 
 **IMPORTANT - Routing Priority Order:**
 The system evaluates routing methods in this strict priority order. The FIRST match wins:
@@ -189,14 +189,6 @@ For reliable cross-repository routing, prefer Description Tags as they are expli
 </description>
 
 <available_repositories>
-  <repository name="Frontend App" (current)>
-    <github_url>https://github.com/myorg/frontend-app</github_url>
-    <routing_methods>
-    - Description tag: Add \`[repo=myorg/frontend-app]\` to sub-issue description
-    - Routing labels: "frontend", "ui"
-    - Team keys: "FE" (create issue in this team)
-    </routing_methods>
-  </repository>
   <repository name="Backend API">
     <github_url>https://github.com/myorg/backend-api</github_url>
     <routing_methods>
@@ -204,6 +196,14 @@ For reliable cross-repository routing, prefer Description Tags as they are expli
     - Routing labels: "backend", "api"
     - Team keys: "BE" (create issue in this team)
     - Project keys: "API Project" (add issue to this project)
+    </routing_methods>
+  </repository>
+  <repository name="Frontend App">
+    <github_url>https://github.com/myorg/frontend-app</github_url>
+    <routing_methods>
+    - Description tag: Add \`[repo=myorg/frontend-app]\` to sub-issue description
+    - Routing labels: "frontend", "ui"
+    - Team keys: "FE" (create issue in this team)
     </routing_methods>
   </repository>
 </available_repositories>
@@ -464,10 +464,66 @@ Check workspace isolation
 		};
 		const context = promptBuilder.generateRoutingContextForAllWorkspaces();
 
-		expect(context.match(/<repository_routing_context>/g)?.length || 0).toBe(2);
-		expect(context).toContain("Workspace One App");
-		expect(context).toContain("Workspace Two Service");
-		expect(context).toContain("[repo=org/ws1-app]");
-		expect(context).toContain("[repo=org/ws2-service]");
+		expect(context).toBe(`<repository_routing_context>
+<description>
+This workspace can route work to multiple applicable repositories. Choose the repository that matches each sub-issue and make the repository association explicit with one of these routing methods.
+
+**IMPORTANT - Routing Priority Order:**
+The system evaluates routing methods in this strict priority order. The FIRST match wins:
+
+1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description. This is the most explicit and reliable method.
+2. **Routing Labels (Priority 2)**: Apply a label configured to route to the target repository.
+3. **Project Assignment (Priority 3)**: Add the issue to a project that routes to the target repository.
+4. **Team Selection (Priority 4 - Lowest)**: Create the issue in a Linear team that routes to the target repository.
+
+For reliable cross-repository routing, prefer Description Tags as they are explicit and unambiguous.
+</description>
+
+<available_repositories>
+  <repository name="Workspace One API">
+    <github_url>https://github.com/org/ws1-api</github_url>
+    <routing_methods>
+    - Description tag: Add \`[repo=org/ws1-api]\` to sub-issue description
+    </routing_methods>
+  </repository>
+  <repository name="Workspace One App">
+    <github_url>https://github.com/org/ws1-app</github_url>
+    <routing_methods>
+    - Description tag: Add \`[repo=org/ws1-app]\` to sub-issue description
+    </routing_methods>
+  </repository>
+</available_repositories>
+</repository_routing_context>
+
+<repository_routing_context>
+<description>
+This workspace can route work to multiple applicable repositories. Choose the repository that matches each sub-issue and make the repository association explicit with one of these routing methods.
+
+**IMPORTANT - Routing Priority Order:**
+The system evaluates routing methods in this strict priority order. The FIRST match wins:
+
+1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description. This is the most explicit and reliable method.
+2. **Routing Labels (Priority 2)**: Apply a label configured to route to the target repository.
+3. **Project Assignment (Priority 3)**: Add the issue to a project that routes to the target repository.
+4. **Team Selection (Priority 4 - Lowest)**: Create the issue in a Linear team that routes to the target repository.
+
+For reliable cross-repository routing, prefer Description Tags as they are explicit and unambiguous.
+</description>
+
+<available_repositories>
+  <repository name="Workspace Two Service">
+    <github_url>https://github.com/org/ws2-service</github_url>
+    <routing_methods>
+    - Description tag: Add \`[repo=org/ws2-service]\` to sub-issue description
+    </routing_methods>
+  </repository>
+  <repository name="Workspace Two Worker">
+    <github_url>https://github.com/org/ws2-worker</github_url>
+    <routing_methods>
+    - Description tag: Add \`[repo=org/ws2-worker]\` to sub-issue description
+    </routing_methods>
+  </repository>
+</available_repositories>
+</repository_routing_context>`);
 	});
 });

@@ -259,6 +259,47 @@ Orchestrate this task
 		);
 	});
 
+	it("should describe missing routing context without implying a session-wide current repository", async () => {
+		const repository = {
+			id: "repo-uuid-8901-2345-67de-f0123456789a",
+			repositoryPath: "/test/repo",
+			workspaceBaseDir: "/test/workspace",
+			linearToken: "test-token-123",
+		};
+
+		const worker = createTestWorker([repository]);
+
+		const session = {
+			issueId: "b8c9d0e1-f234-5678-9012-3456789abcde",
+			workspace: { path: "/test" },
+			metadata: {},
+		};
+
+		const issue = {
+			id: "b8c9d0e1-f234-5678-9012-3456789abcde",
+			identifier: "CEE-5000",
+			title: "Orchestrator routing guidance",
+			description: "Validate explicit repository-association guidance",
+		};
+
+		const result = await scenario(worker)
+			.newSession()
+			.assignmentBased()
+			.withSession(session)
+			.withIssue(issue)
+			.withRepository(repository)
+			.withUserComment("Orchestrate this task")
+			.withLabels("Orchestrator")
+			.build();
+
+		expect(result.systemPrompt).toContain(
+			"If no `<repository_routing_context>` is present, do not assume additional repositories are available for routing.",
+		);
+		expect(result.systemPrompt).not.toContain(
+			"all sub-issues will be handled in the current repository",
+		);
+	});
+
 	it("should load orchestrator system prompt when labelPrompts exists but without orchestrator entry (hardcoded rule)", async () => {
 		// Repository WITH labelPrompts configured but WITHOUT orchestrator - simulates cyrus-hosted scenario
 		// where labelPrompts has builder/debugger/scoper but NOT orchestrator
