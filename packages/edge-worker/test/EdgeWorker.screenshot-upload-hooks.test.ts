@@ -213,6 +213,7 @@ Issue: {{issue_identifier}}`;
 		mockConfig = {
 			proxyUrl: "http://localhost:3000",
 			cyrusHome: testCyrusHome,
+			defaultRunner: "claude",
 			repositories: [mockRepository],
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
@@ -326,6 +327,8 @@ Issue: {{issue_identifier}}`;
 			]);
 
 			// Assert
+			expect(ClaudeRunner).toHaveBeenCalled();
+			expect(GeminiRunner).not.toHaveBeenCalled();
 			const playwrightHook = findHookMatcher("playwright_screenshot");
 			expect(playwrightHook).toBeDefined();
 		});

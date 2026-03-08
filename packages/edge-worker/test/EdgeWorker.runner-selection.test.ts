@@ -49,6 +49,30 @@ vi.mock("cyrus-core", async (importOriginal) => {
 vi.mock("file-type");
 
 const testCyrusHome = createTestCyrusHome();
+const runnerEnvKeys = [
+	"ANTHROPIC_API_KEY",
+	"CLAUDE_CODE_OAUTH_TOKEN",
+	"GEMINI_API_KEY",
+	"OPENAI_API_KEY",
+	"CURSOR_API_KEY",
+] as const;
+type RunnerEnvKey = (typeof runnerEnvKeys)[number];
+const originalRunnerEnv = Object.fromEntries(
+	runnerEnvKeys.map((key) => [key, process.env[key]]),
+) as Record<RunnerEnvKey, string | undefined>;
+
+function setRunnerEnv(
+	overrides: Partial<Record<RunnerEnvKey, string | undefined>> = {},
+): void {
+	for (const key of runnerEnvKeys) {
+		const value = overrides[key];
+		if (value === undefined) {
+			delete process.env[key];
+			continue;
+		}
+		process.env[key] = value;
+	}
+}
 
 describe("EdgeWorker - Runner Selection Based on Labels", () => {
 	let edgeWorker: EdgeWorker;
@@ -95,6 +119,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		setRunnerEnv();
 		capturedRunnerType = null;
 		capturedRunnerConfig = null;
 
@@ -273,6 +298,7 @@ Issue: {{issue_identifier}}`;
 	});
 
 	afterEach(() => {
+		setRunnerEnv(originalRunnerEnv);
 		vi.restoreAllMocks();
 	});
 
@@ -801,6 +827,49 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerType).toBe("claude");
 			expect(ClaudeRunner).toHaveBeenCalled();
 			expect(GeminiRunner).not.toHaveBeenCalled();
+		});
+
+		it("should auto-detect Gemini runner when GEMINI_API_KEY is the only available runner credential", async () => {
+			setRunnerEnv({ GEMINI_API_KEY: "test-gemini-key" });
+
+			const geminiEnvEdgeWorker = new EdgeWorker(mockConfig);
+			const mockIssueTracker = {
+				fetchIssue: vi.fn().mockImplementation(async (issueId: string) => {
+					return mockLinearClient.issue(issueId);
+				}),
+				getIssueLabels: vi.fn(),
+			};
+			(geminiEnvEdgeWorker as any).issueTrackers.set(
+				mockRepository.id,
+				mockIssueTracker,
+			);
+
+			const mockIssue = createMockIssueWithLabels([]);
+			mockLinearClient.issue.mockResolvedValue(mockIssue);
+
+			const webhook: LinearAgentSessionCreatedWebhook = {
+				type: "Issue",
+				action: "agentSessionCreated",
+				organizationId: "test-workspace",
+				agentSession: {
+					id: "agent-session-123",
+					issue: {
+						id: "issue-123",
+						identifier: "TEST-123",
+						team: { key: "TEST" },
+					},
+					comment: { body: "@cyrus work on this" },
+				},
+			};
+
+			await (geminiEnvEdgeWorker as any).handleAgentSessionCreatedWebhook(
+				webhook,
+				[mockRepository],
+			);
+
+			expect(capturedRunnerType).toBe("gemini");
+			expect(GeminiRunner).toHaveBeenCalled();
+			expect(ClaudeRunner).not.toHaveBeenCalled();
 		});
 
 		it("should respect defaultRunner config when set to codex and no labels present", async () => {
