@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CursorRunner } from "../src/CursorRunner.js";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 const tempDirs: string[] = [];
 
@@ -29,7 +30,7 @@ describe("CursorRunner permissions mapping", () => {
 
 	it("maps Claude-style tool permissions to Cursor CLI permissions", () => {
 		const runner = new CursorRunner({
-			cyrusHome: "/tmp/cyrus",
+			cyrusHome: createTestCyrusHome(),
 			workingDirectory: "/tmp/repo",
 			allowedTools: [
 				"Read(src/**)",
@@ -61,7 +62,7 @@ describe("CursorRunner permissions mapping", () => {
 
 	it("scopes wildcard read/write permissions to workspace paths", () => {
 		const runner = new CursorRunner({
-			cyrusHome: "/tmp/cyrus",
+			cyrusHome: createTestCyrusHome(),
 			workingDirectory: "/tmp/repo",
 			allowedTools: ["Read", "Edit", "Write", "TodoWrite"],
 		});
@@ -92,7 +93,7 @@ describe("CursorRunner permissions mapping", () => {
 		);
 
 		const runner = new CursorRunner({
-			cyrusHome: "/tmp/cyrus",
+			cyrusHome: createTestCyrusHome(),
 			workingDirectory,
 			allowedTools: [
 				"Read(src/**)",
@@ -187,7 +188,7 @@ describe("CursorRunner permissions mapping", () => {
 		const workingDirectory = createTempDir();
 		process.env.CYRUS_CURSOR_MOCK = "1";
 		const runner = new CursorRunner({
-			cyrusHome: "/tmp/cyrus",
+			cyrusHome: createTestCyrusHome(),
 			workingDirectory,
 			allowedTools: ["Read(src/**)", "Bash(git:*)"],
 			disallowedTools: ["Bash(rm:*)"],
