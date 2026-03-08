@@ -15,6 +15,7 @@ import {
 	AgentSessionType,
 	type CyrusAgentSession,
 	type CyrusAgentSessionEntry,
+	type CyrusAgentSessionRepositoryAssociation,
 	createLogger,
 	type IAgentRunner,
 	type ILogger,
@@ -162,6 +163,7 @@ export class AgentSessionManager extends EventEmitter {
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
 		platform: "linear" | "github" | "slack" = "linear",
+		repositoryAssociation?: CyrusAgentSessionRepositoryAssociation,
 	): CyrusAgentSession {
 		const log = this.logger.withContext({
 			sessionId,
@@ -186,6 +188,9 @@ export class AgentSessionManager extends EventEmitter {
 			},
 			issueId, // Kept for backwards compatibility
 			issue: issueMinimal,
+			repositoryAssociations: repositoryAssociation
+				? [repositoryAssociation]
+				: [],
 			workspace: workspace,
 		};
 
@@ -219,6 +224,7 @@ export class AgentSessionManager extends EventEmitter {
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
+			repositoryAssociations: [],
 			workspace,
 		};
 
@@ -1870,7 +1876,10 @@ export class AgentSessionManager extends EventEmitter {
 		for (const [sessionId, session] of this.sessions.entries()) {
 			// Exclude agentRunner from serialization as it's not serializable
 			const { agentRunner: _agentRunner, ...serializableSession } = session;
-			sessions[sessionId] = serializableSession;
+			sessions[sessionId] = {
+				...serializableSession,
+				repositoryAssociations: session.repositoryAssociations ?? [],
+			};
 		}
 
 		// Serialize entries
@@ -1898,6 +1907,7 @@ export class AgentSessionManager extends EventEmitter {
 		for (const [sessionId, sessionData] of Object.entries(serializedSessions)) {
 			const session: CyrusAgentSession = {
 				...sessionData,
+				repositoryAssociations: sessionData.repositoryAssociations ?? [],
 			};
 			this.sessions.set(sessionId, session);
 		}

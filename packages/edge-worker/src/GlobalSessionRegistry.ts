@@ -262,7 +262,10 @@ export class GlobalSessionRegistry extends EventEmitter {
 		for (const [sessionId, session] of sessionEntries) {
 			// Exclude non-serializable agentRunner
 			const { agentRunner: _agentRunner, ...serializableSession } = session;
-			serializedSessions[sessionId] = serializableSession;
+			serializedSessions[sessionId] = {
+				...serializableSession,
+				repositoryAssociations: session.repositoryAssociations ?? [],
+			};
 		}
 
 		const serializedEntries: Record<
@@ -295,7 +298,10 @@ export class GlobalSessionRegistry extends EventEmitter {
 
 		// Restore sessions
 		for (const [sessionId, session] of Object.entries(state.sessions)) {
-			this.sessions.set(sessionId, session as CyrusAgentSession);
+			this.sessions.set(sessionId, {
+				...session,
+				repositoryAssociations: session.repositoryAssociations ?? [],
+			} as CyrusAgentSession);
 		}
 
 		// Restore entries

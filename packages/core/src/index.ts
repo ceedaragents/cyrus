@@ -33,6 +33,9 @@ export type {
 export type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
+	CyrusAgentSessionRepositoryAssociation,
+	CyrusAgentSessionRepositoryAssociationOrigin,
+	CyrusAgentSessionRepositoryAssociationStatus,
 	IssueContext,
 	IssueMinimal,
 	Workspace,

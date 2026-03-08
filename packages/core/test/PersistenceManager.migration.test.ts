@@ -118,9 +118,24 @@ describe("PersistenceManager", () => {
 				branchName: "test-branch",
 			});
 
+			expect(migratedSession.repositoryAssociations).toEqual([
+				{
+					repositoryId: "repo-1",
+					associationOrigin: "legacy-migration",
+					status: "active",
+					executionWorkspace: {
+						path: "/tmp/worktree",
+						isGitWorktree: true,
+					},
+				},
+			]);
+
 			// Should preserve other fields
 			expect(migratedSession.claudeSessionId).toBe("claude-789");
 			expect(migratedSession.workspace.path).toBe("/tmp/worktree");
+			expect(result!.agentSessionsById).toEqual({
+				"linear-session-123": migratedSession,
+			});
 		});
 
 		it("should save migrated state as v3.0", async () => {
@@ -161,6 +176,16 @@ describe("PersistenceManager", () => {
 			expect(result!.issueRepositoryCache).toEqual(
 				v2State.state.issueRepositoryCache,
 			);
+
+			expect(result!.agentSessionEntriesById).toEqual({
+				"linear-session-123": [
+					{
+						type: "user",
+						content: "Hello",
+						metadata: { timestamp: 1705320000000 },
+					},
+				],
+			});
 		});
 
 		it("should return null for unknown version", async () => {
@@ -200,6 +225,18 @@ describe("PersistenceManager", () => {
 				version: "3.0",
 				savedAt: "2025-01-15T12:00:00.000Z",
 				state: {
+					agentSessionsById: {
+						"session-123": {
+							id: "session-123",
+							externalSessionId: "session-123",
+							issueContext: {
+								trackerId: "linear",
+								issueId: "issue-456",
+								issueIdentifier: "TEST-123",
+							},
+							repositoryAssociations: [],
+						},
+					},
 					agentSessions: {
 						"repo-1": {
 							"session-123": {
@@ -210,6 +247,7 @@ describe("PersistenceManager", () => {
 									issueId: "issue-456",
 									issueIdentifier: "TEST-123",
 								},
+								repositoryAssociations: [],
 							},
 						},
 					},

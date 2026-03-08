@@ -2631,6 +2631,14 @@ ${taskSection}`;
 			issue.id,
 			issueMinimal,
 			workspace,
+			"linear",
+			{
+				repositoryId: repository.id,
+				linearWorkspaceId: repository.linearWorkspaceId,
+				associationOrigin: "routed",
+				status: "active",
+				executionWorkspace: workspace,
+			},
 		);
 
 		// Get the newly created session

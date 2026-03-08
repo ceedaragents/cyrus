@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type {
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
+	CyrusAgentSessionRepositoryAssociation,
 	IssueContext,
 	IssueMinimal,
 } from "./CyrusAgentSession.js";
@@ -14,7 +15,12 @@ import { createLogger, type ILogger } from "./logging/index.js";
 export const PERSISTENCE_VERSION = "3.0";
 
 // Serialized versions with Date fields as strings
-export type SerializedCyrusAgentSession = CyrusAgentSession;
+export type SerializedCyrusAgentSession = Omit<
+	CyrusAgentSession,
+	"repositoryAssociations"
+> & {
+	repositoryAssociations: CyrusAgentSessionRepositoryAssociation[];
+};
 // extends Omit<CyrusAgentSession, 'createdAt' | 'updatedAt'> {
 //   createdAt: string
 //   updatedAt: string
@@ -53,8 +59,21 @@ interface V2CyrusAgentSession {
  * Serializable EdgeWorker state for persistence
  */
 export interface SerializableEdgeWorkerState {
+	/**
+	 * Explicit normalized session store keyed by session id.
+	 * Prefer this over repo-keyed containers when repository identity must remain explicit.
+	 */
+	agentSessionsById?: Record<string, SerializedCyrusAgentSession>;
+	/** Explicit normalized entry store keyed by session id. */
+	agentSessionEntriesById?: Record<string, SerializedCyrusAgentSessionEntry[]>;
 	// Agent Session state - keyed by repository ID, since that's how we construct AgentSessionManagers
+	/**
+	 * @deprecated Migration-only repo-keyed session buckets. Do not treat these as the steady-state source of truth.
+	 */
 	agentSessions?: Record<string, Record<string, SerializedCyrusAgentSession>>;
+	/**
+	 * @deprecated Migration-only repo-keyed session-entry buckets. Do not treat these as the steady-state source of truth.
+	 */
 	agentSessionEntries?: Record<
 		string,
 		Record<string, SerializedCyrusAgentSessionEntry[]>
@@ -62,6 +81,7 @@ export interface SerializableEdgeWorkerState {
 	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
 	// Issue to repository mapping (for caching user repository selections)
+	/** @deprecated Migration-only cache; repository identity should come from explicit session associations. */
 	issueRepositoryCache?: Record<string, string>;
 }
 
@@ -99,10 +119,11 @@ export class PersistenceManager {
 		try {
 			await this.ensurePersistenceDirectory();
 			const stateFile = this.getEdgeWorkerStateFilePath();
+			const normalizedState = this.normalizeSerializableState(state);
 			const stateData = {
 				version: PERSISTENCE_VERSION,
 				savedAt: new Date().toISOString(),
-				state,
+				state: normalizedState,
 			};
 			await writeFile(stateFile, JSON.stringify(stateData, null, 2), "utf8");
 		} catch (error) {
@@ -149,7 +170,7 @@ export class PersistenceManager {
 				return null;
 			}
 
-			return stateData.state;
+			return this.normalizeSerializableState(stateData.state);
 		} catch (error) {
 			this.logger.error("Failed to load EdgeWorker state:", error);
 			return null;
@@ -171,6 +192,8 @@ export class PersistenceManager {
 	): SerializableEdgeWorkerState {
 		const migratedState: SerializableEdgeWorkerState = {
 			...v2State,
+			agentSessionsById: {},
+			agentSessionEntriesById: {},
 			agentSessions: {},
 		};
 
@@ -182,10 +205,20 @@ export class PersistenceManager {
 				migratedState.agentSessions![repoId] = {};
 				for (const [_sessionId, v2Session] of Object.entries(repoSessions)) {
 					const session = v2Session as unknown as V2CyrusAgentSession;
-					const migratedSession = this.migrateSessionV2ToV3(session);
+					const migratedSession = this.migrateSessionV2ToV3(session, repoId);
 					// Use the new id as the key
 					migratedState.agentSessions![repoId][migratedSession.id] =
 						migratedSession;
+					migratedState.agentSessionsById![migratedSession.id] =
+						migratedSession;
+				}
+			}
+		}
+
+		if (v2State.agentSessionEntries) {
+			for (const repoEntries of Object.values(v2State.agentSessionEntries)) {
+				for (const [sessionId, entries] of Object.entries(repoEntries)) {
+					migratedState.agentSessionEntriesById![sessionId] = entries;
 				}
 			}
 		}
@@ -194,7 +227,7 @@ export class PersistenceManager {
 		// Since linearAgentActivitySessionId becomes id, the keys remain the same
 		// The entries themselves don't need modification
 
-		return migratedState;
+		return this.normalizeSerializableState(migratedState);
 	}
 
 	/**
@@ -202,6 +235,7 @@ export class PersistenceManager {
 	 */
 	private migrateSessionV2ToV3(
 		v2Session: V2CyrusAgentSession,
+		repositoryId: string,
 	): SerializedCyrusAgentSession {
 		// Build issueContext from v2.0 fields
 		const issueContext: IssueContext = {
@@ -231,7 +265,70 @@ export class PersistenceManager {
 			issueId: v2Session.issueId,
 			// Now optional
 			issue: v2Session.issue,
+			repositoryAssociations: [
+				{
+					repositoryId,
+					associationOrigin: "legacy-migration",
+					status: "active",
+					executionWorkspace: v2Session.workspace,
+				},
+			],
 		} as SerializedCyrusAgentSession;
+	}
+
+	private normalizeSerializableState(
+		state: SerializableEdgeWorkerState,
+	): SerializableEdgeWorkerState {
+		return {
+			...state,
+			agentSessionsById: state.agentSessionsById
+				? Object.fromEntries(
+						Object.entries(state.agentSessionsById).map(
+							([sessionId, session]) => [
+								sessionId,
+								this.normalizeSerializedSession(session),
+							],
+						),
+					)
+				: state.agentSessionsById,
+			agentSessionEntriesById: state.agentSessionEntriesById
+				? Object.fromEntries(Object.entries(state.agentSessionEntriesById))
+				: state.agentSessionEntriesById,
+			agentSessions: state.agentSessions
+				? Object.fromEntries(
+						Object.entries(state.agentSessions).map(
+							([repositoryId, sessions]) => [
+								repositoryId,
+								Object.fromEntries(
+									Object.entries(sessions).map(([sessionId, session]) => [
+										sessionId,
+										this.normalizeSerializedSession(session),
+									]),
+								),
+							],
+						),
+					)
+				: state.agentSessions,
+			agentSessionEntries: state.agentSessionEntries
+				? Object.fromEntries(
+						Object.entries(state.agentSessionEntries).map(
+							([repositoryId, entries]) => [
+								repositoryId,
+								Object.fromEntries(Object.entries(entries)),
+							],
+						),
+					)
+				: state.agentSessionEntries,
+		};
+	}
+
+	private normalizeSerializedSession(
+		session: SerializedCyrusAgentSession | CyrusAgentSession,
+	): SerializedCyrusAgentSession {
+		return {
+			...session,
+			repositoryAssociations: session.repositoryAssociations ?? [],
+		};
 	}
 
 	/**
