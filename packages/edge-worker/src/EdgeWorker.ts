@@ -309,14 +309,13 @@ export class EdgeWorker extends EventEmitter {
 			skipTunnel,
 		);
 
-		// Create a single AgentSessionManager with a resolver that looks up
-		// the activity sink from the first repositoryId.
+		// Create a single AgentSessionManager with a resolver that iterates
+		// all repositoryIds to find a valid activity sink.
 		this.agentSessionManager = new AgentSessionManager(
 			(repositoryIds: string[]) => {
-				const firstRepoId = repositoryIds[0];
-				if (firstRepoId) {
-					const issueTracker = this.issueTrackers.get(firstRepoId);
-					const repo = this.repositories.get(firstRepoId);
+				for (const repoId of repositoryIds) {
+					const issueTracker = this.issueTrackers.get(repoId);
+					const repo = this.repositories.get(repoId);
 					if (issueTracker && repo) {
 						return new LinearActivitySink(issueTracker, repo.linearWorkspaceId);
 					}
@@ -353,10 +352,10 @@ export class EdgeWorker extends EventEmitter {
 		this.agentSessionManager.on(
 			"subroutineComplete",
 			async ({ sessionId, session }) => {
-				const primaryRepository = this.resolveRepositories(
+				const repositories = this.resolveRepositories(
 					session.repositoryIds ?? [],
-				)[0];
-				if (!primaryRepository) {
+				);
+				if (repositories.length === 0) {
 					this.logger.error(
 						`No repository found for subroutine completion in session ${sessionId}`,
 					);
@@ -365,7 +364,7 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleSubroutineTransition(
 					sessionId,
 					session,
-					primaryRepository,
+					repositories,
 					this.agentSessionManager,
 				);
 			},
@@ -378,10 +377,10 @@ export class EdgeWorker extends EventEmitter {
 				this.logger.info(
 					`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
 				);
-				const primaryRepository = this.resolveRepositories(
+				const repositories = this.resolveRepositories(
 					session.repositoryIds ?? [],
-				)[0];
-				if (!primaryRepository) {
+				);
+				if (repositories.length === 0) {
 					this.logger.error(
 						`No repository found for validation loop in session ${sessionId}`,
 					);
@@ -390,7 +389,7 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleValidationLoopFixer(
 					sessionId,
 					session,
-					primaryRepository,
+					repositories,
 					this.agentSessionManager,
 					fixerPrompt,
 					iteration,
@@ -404,10 +403,10 @@ export class EdgeWorker extends EventEmitter {
 				this.logger.info(
 					`Validation loop re-running verifications (iteration ${iteration})`,
 				);
-				const primaryRepository = this.resolveRepositories(
+				const repositories = this.resolveRepositories(
 					session.repositoryIds ?? [],
-				)[0];
-				if (!primaryRepository) {
+				);
+				if (repositories.length === 0) {
 					this.logger.error(
 						`No repository found for validation loop rerun in session ${sessionId}`,
 					);
@@ -416,7 +415,7 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleValidationLoopRerun(
 					sessionId,
 					session,
-					primaryRepository,
+					repositories,
 					this.agentSessionManager,
 				);
 			},
@@ -1090,10 +1089,10 @@ export class EdgeWorker extends EventEmitter {
 
 			// Build allowed tools and directories
 			// Exclude Slack MCP tools from GitHub sessions
-			const allowedTools = this.buildAllowedTools(repository).filter(
+			const allowedTools = this.buildAllowedTools([repository]).filter(
 				(t) => t !== "mcp__slack",
 			);
-			const disallowedTools = this.buildDisallowedTools(repository);
+			const disallowedTools = this.buildDisallowedTools([repository]);
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
 			// Create agent runner using the standard config builder
@@ -1560,7 +1559,7 @@ ${taskSection}`;
 		const parentRepos = this.resolveRepositories(
 			parentSession.repositoryIds ?? [],
 		);
-		const parentRepo = parentRepos[0];
+		const parentRepo = this.getPrimaryRepository(parentRepos);
 		if (!parentRepo) {
 			log.error(`No repository found for parent session ${parentSessionId}`);
 			return;
@@ -1638,11 +1637,19 @@ ${taskSection}`;
 	private async handleSubroutineTransition(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId });
 		log.info(`Handling subroutine completion for session ${sessionId}`);
+
+		const repo = this.getPrimaryRepository(repositories);
+		if (!repo) {
+			log.error(
+				`No primary repository for subroutine transition in session ${sessionId}`,
+			);
+			return;
+		}
 
 		// Get next subroutine (advancement already handled by AgentSessionManager)
 		const nextSubroutine = this.procedureAnalyzer.getCurrentSubroutine(session);
@@ -1707,11 +1714,19 @@ ${taskSection}`;
 	private async handleValidationLoopFixer(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 		fixerPrompt: string,
 		iteration: number,
 	): Promise<void> {
+		const repo = this.getPrimaryRepository(repositories);
+		if (!repo) {
+			this.logger.error(
+				`No primary repository for validation loop fixer in session ${sessionId}`,
+			);
+			return;
+		}
+
 		this.logger.info(
 			`Running fixer for session ${sessionId}, iteration ${iteration}`,
 		);
@@ -1743,9 +1758,17 @@ ${taskSection}`;
 	private async handleValidationLoopRerun(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
+		const repo = this.getPrimaryRepository(repositories);
+		if (!repo) {
+			this.logger.error(
+				`No primary repository for validation loop rerun in session ${sessionId}`,
+			);
+			return;
+		}
+
 		this.logger.info(`Re-running verifications for session ${sessionId}`);
 
 		// Get the verifications subroutine definition
@@ -2009,6 +2032,13 @@ ${taskSection}`;
 			.filter((r): r is RepositoryConfig => r !== undefined);
 	}
 
+	/** The primary repository is used for workspace creation and git operations */
+	private getPrimaryRepository(
+		repositories: RepositoryConfig[],
+	): RepositoryConfig | undefined {
+		return repositories[0];
+	}
+
 	/** Find any session (active or completed) by issue ID to preserve repository mapping */
 	private findSessionByIssueId(issueId: string): CyrusAgentSession | undefined {
 		// Use getSessionsByIssueId (all statuses) so that completed sessions still
@@ -2234,12 +2264,10 @@ ${taskSection}`;
 
 		const issueId = webhook.notification.issue.id;
 
-		// Look up repository from the session
+		// Look up repositories from the session
 		const session = this.findSessionByIssueId(issueId);
-		const repository = this.resolveRepositories(
-			session?.repositoryIds ?? [],
-		)[0];
-		if (!repository) {
+		const repositories = this.resolveRepositories(session?.repositoryIds ?? []);
+		if (repositories.length === 0) {
 			this.logger.debug(
 				`No active sessions found for unassigned issue ${webhook.notification.issue.identifier}`,
 			);
@@ -2255,7 +2283,7 @@ ${taskSection}`;
 		// console.log(JSON.stringify(webhook, null, 2))
 		// console.log('=== END WEBHOOK PAYLOAD ===')
 
-		await this.handleIssueUnassigned(webhook.notification.issue, repository);
+		await this.handleIssueUnassigned(webhook.notification.issue, repositories);
 	}
 
 	/**
@@ -2301,17 +2329,19 @@ ${taskSection}`;
 			return;
 		}
 
-		// Look up repository from the session
+		// Look up repositories from the session
 		const existingSession = this.findSessionByIssueId(issueId);
-		const repository = this.resolveRepositories(
+		const repositories = this.resolveRepositories(
 			existingSession?.repositoryIds ?? [],
-		)[0];
-		if (!repository) {
+		);
+		if (repositories.length === 0) {
 			this.logger.debug(
 				`No active sessions found for issue update ${issueIdentifier}`,
 			);
 			return;
 		}
+		// Use primary repository for attachment downloads (needs a linear token)
+		const repository = this.getPrimaryRepository(repositories)!;
 
 		// Determine what changed for logging
 		const changedFields: string[] = [];
@@ -2565,8 +2595,8 @@ ${taskSection}`;
 		);
 
 		// Build allowed tools list with Linear MCP tools
-		const allowedTools = this.buildAllowedTools(repository);
-		const disallowedTools = this.buildDisallowedTools(repository);
+		const allowedTools = this.buildAllowedTools([repository]);
+		const disallowedTools = this.buildDisallowedTools([repository]);
 
 		return {
 			session,
@@ -2638,21 +2668,18 @@ ${taskSection}`;
 			// At this point, routingResult.type === "selected"
 			repositories = routingResult.repositories;
 			const routingMethod = routingResult.routingMethod;
-			const firstRepo = repositories[0];
 
-			// Post agent activity showing auto-matched routing
-			if (firstRepo) {
+			// Post agent activity showing auto-matched routing for all repos
+			if (repositories.length > 0) {
 				await this.postRepositorySelectionActivity(
 					webhook.agentSession.id,
-					firstRepo.id,
-					firstRepo.name,
+					repositories,
 					routingMethod,
 				);
 			}
 		}
 
-		const repository = repositories[0];
-		if (!repository) {
+		if (repositories.length === 0) {
 			this.logger.warn(
 				`No repository resolved for agent session created webhook`,
 			);
@@ -2664,19 +2691,22 @@ ${taskSection}`;
 			return;
 		}
 
-		// User access control check
-		const accessResult = this.checkUserAccess(webhook, repository);
-		if (!accessResult.allowed) {
-			this.logger.info(
-				`User ${accessResult.userName} blocked from delegating: ${accessResult.reason}`,
-			);
-			await this.handleBlockedUser(webhook, repository, accessResult.reason);
-			return;
+		// User access control check — block if user is blocked on ANY repo in the set
+		for (const repo of repositories) {
+			const accessResult = this.checkUserAccess(webhook, repo);
+			if (!accessResult.allowed) {
+				this.logger.info(
+					`User ${accessResult.userName} blocked from delegating: ${accessResult.reason}`,
+				);
+				await this.handleBlockedUser(webhook, repo, accessResult.reason);
+				return;
+			}
 		}
 
+		const primaryRepo = this.getPrimaryRepository(repositories)!;
 		const log = this.logger.withContext({
 			sessionId: webhook.agentSession.id,
-			platform: this.getRepositoryPlatform(repository.id),
+			platform: this.getRepositoryPlatform(primaryRepo.id),
 			issueIdentifier: webhook.agentSession.issue.identifier,
 		});
 		log.info(`Handling agent session created`);
@@ -2686,7 +2716,7 @@ ${taskSection}`;
 		// Initialize agent runner using shared logic
 		await this.initializeAgentRunner(
 			agentSession,
-			repository,
+			repositories,
 			guidance,
 			commentBody,
 		);
@@ -2700,17 +2730,24 @@ ${taskSection}`;
 	 * handleAgentSessionCreatedWebhook and handleUserPromptedAgentActivity use.
 	 *
 	 * @param agentSession The Linear agent session
-	 * @param repository The primary repository configuration
+	 * @param repositories All repository configurations for this session
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
 	 */
 	private async initializeAgentRunner(
 		agentSession: AgentSessionCreatedWebhook["agentSession"],
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 	): Promise<void> {
-		const repositoryIds = [repository.id];
+		const repository = this.getPrimaryRepository(repositories);
+		if (!repository) {
+			this.logger.warn(
+				"Cannot initialize agent runner without any repositories",
+			);
+			return;
+		}
+		const repositoryIds = repositories.map((r) => r.id);
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
 
@@ -2897,7 +2934,7 @@ ${taskSection}`;
 			const input: PromptAssemblyInput = {
 				session,
 				fullIssue,
-				repositories: [repository],
+				repositories,
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
 				guidance: guidance || undefined,
@@ -2948,9 +2985,9 @@ ${taskSection}`;
 			// If subroutine has disallowAllTools: true, use empty array to disable all tools
 			const allowedTools = currentSubroutine?.disallowAllTools
 				? []
-				: this.buildAllowedTools(repository, promptType);
+				: this.buildAllowedTools(repositories, promptType);
 			const baseDisallowedTools = this.buildDisallowedTools(
-				repository,
+				repositories,
 				promptType,
 			);
 
@@ -3152,24 +3189,22 @@ ${taskSection}`;
 			return;
 		}
 
-		const repository = repositories[0]!;
-
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
 			agentSessionId,
-			repository.id,
-			repository.name,
+			repositories,
 			"user-selected",
 		);
 
+		const repoNames = repositories.map((r) => r.name).join(", ");
 		log.debug(
-			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
+			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repoNames}`,
 		);
 
-		// Initialize agent runner with the selected repository
+		// Initialize agent runner with the selected repositories
 		await this.initializeAgentRunner(
 			agentSession,
-			repository,
+			repositories,
 			guidance,
 			commentBody,
 		);
@@ -3490,7 +3525,7 @@ ${taskSection}`;
 			const repos = this.resolveRepositories(
 				existingSession.repositoryIds ?? [],
 			);
-			repository = repos[0] ?? null;
+			repository = this.getPrimaryRepository(repos) ?? null;
 		}
 
 		if (!repository) {
@@ -3508,7 +3543,8 @@ ${taskSection}`;
 					);
 
 				if (routingResult.type === "selected") {
-					repository = routingResult.repositories[0] ?? null;
+					repository =
+						this.getPrimaryRepository(routingResult.repositories) ?? null;
 					if (repository) {
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
@@ -3555,7 +3591,7 @@ ${taskSection}`;
 	 */
 	private async handleIssueUnassigned(
 		issue: WebhookIssue,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 	): Promise<void> {
 		const agentSessionManager = this.agentSessionManager;
 
@@ -3571,12 +3607,16 @@ ${taskSection}`;
 
 		// Post ONE farewell comment on the issue (not in any thread) if there were active sessions
 		if (activeThreadCount > 0) {
-			await this.postComment(
-				issue.id,
-				"I've been unassigned and am stopping work now.",
-				repository.id,
-				// No parentId - post as a new comment on the issue
-			);
+			// Use any valid repository to post the comment
+			const repositoryId = this.getPrimaryRepository(repositories)?.id;
+			if (repositoryId) {
+				await this.postComment(
+					issue.id,
+					"I've been unassigned and am stopping work now.",
+					repositoryId,
+					// No parentId - post as a new comment on the issue
+				);
+			}
 		}
 
 		// Emit events
@@ -4184,7 +4224,7 @@ ${taskSection}`;
 		const childRepos = this.resolveRepositories(
 			childSession.repositoryIds ?? [],
 		);
-		const childRepo = childRepos[0];
+		const childRepo = this.getPrimaryRepository(childRepos);
 
 		if (!childRepo) {
 			console.error(
@@ -4527,7 +4567,7 @@ ${taskSection}`;
 		// 1. Determine system prompt from labels
 		// Only for delegation (not mentions) or when /label-based-prompt is requested
 		let labelBasedSystemPrompt: string | undefined;
-		const primaryRepo = input.repositories[0];
+		const primaryRepo = this.getPrimaryRepository(input.repositories);
 		if (!input.isMentionTriggered || input.isLabelBasedPromptRequested) {
 			if (primaryRepo) {
 				labelBasedSystemPrompt = await this.determineSystemPromptForAssembly(
@@ -5070,10 +5110,11 @@ ${input.userComment}
 	}
 
 	/**
-	 * Build disallowed tools list following the same hierarchy as allowed tools
+	 * Build disallowed tools list following the same hierarchy as allowed tools.
+	 * Merges disallowed tools from all repositories (union — conservative approach).
 	 */
 	private buildDisallowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -5081,10 +5122,10 @@ ${input.userComment}
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
-		return this.runnerSelectionService.buildDisallowedTools(
-			repository,
-			promptType,
+		const allTools = repositories.flatMap((repo) =>
+			this.runnerSelectionService.buildDisallowedTools(repo, promptType),
 		);
+		return [...new Set(allTools)];
 	}
 
 	/**
@@ -5108,10 +5149,11 @@ ${input.userComment}
 	}
 
 	/**
-	 * Build allowed tools list with Linear MCP tools automatically included
+	 * Build allowed tools list with Linear MCP tools automatically included.
+	 * Merges allowed tools from all repositories (union).
 	 */
 	private buildAllowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -5119,10 +5161,10 @@ ${input.userComment}
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
-		return this.runnerSelectionService.buildAllowedTools(
-			repository,
-			promptType,
+		const allTools = repositories.flatMap((repo) =>
+			this.runnerSelectionService.buildAllowedTools(repo, promptType),
 		);
+		return [...new Set(allTools)];
 	}
 
 	/**
@@ -5340,8 +5382,7 @@ ${input.userComment}
 	 */
 	private async postRepositorySelectionActivity(
 		sessionId: string,
-		repositoryId: string,
-		repositoryName: string,
+		repositories: RepositoryConfig[],
 		selectionMethod:
 			| "description-tag"
 			| "label-based"
@@ -5352,10 +5393,21 @@ ${input.userComment}
 			| "workspace-fallback"
 			| "user-selected",
 	): Promise<void> {
+		if (repositories.length === 0) return;
+		const repoNames = repositories.map((r) => r.name).join(", ");
+		// Find any valid repository to route the activity through
+		let repositoryId: string | undefined;
+		for (const repo of repositories) {
+			if (this.issueTrackers.has(repo.id)) {
+				repositoryId = repo.id;
+				break;
+			}
+		}
+		if (!repositoryId) return; // No valid tracker found for any repository
 		return this.activityPoster.postRepositorySelectionActivity(
 			sessionId,
 			repositoryId,
-			repositoryName,
+			repoNames,
 			selectionMethod,
 		);
 	}
@@ -5663,9 +5715,9 @@ ${input.userComment}
 		// If subroutine has disallowAllTools: true, use empty array to disable all tools
 		const allowedTools = currentSubroutine?.disallowAllTools
 			? []
-			: this.buildAllowedTools(repository, promptType);
+			: this.buildAllowedTools([repository], promptType);
 		const baseDisallowedTools = this.buildDisallowedTools(
-			repository,
+			[repository],
 			promptType,
 		);
 
