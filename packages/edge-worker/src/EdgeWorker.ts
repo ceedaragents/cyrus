@@ -353,11 +353,10 @@ export class EdgeWorker extends EventEmitter {
 		this.agentSessionManager.on(
 			"subroutineComplete",
 			async ({ sessionId, session }) => {
-				const repositories = this.resolveRepositories(
+				const primaryRepository = this.resolveRepositories(
 					session.repositoryIds ?? [],
-				);
-				const repo = repositories[0];
-				if (!repo) {
+				)[0];
+				if (!primaryRepository) {
 					this.logger.error(
 						`No repository found for subroutine completion in session ${sessionId}`,
 					);
@@ -366,7 +365,7 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleSubroutineTransition(
 					sessionId,
 					session,
-					repo,
+					primaryRepository,
 					this.agentSessionManager,
 				);
 			},
@@ -379,11 +378,10 @@ export class EdgeWorker extends EventEmitter {
 				this.logger.info(
 					`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
 				);
-				const repositories = this.resolveRepositories(
+				const primaryRepository = this.resolveRepositories(
 					session.repositoryIds ?? [],
-				);
-				const repo = repositories[0];
-				if (!repo) {
+				)[0];
+				if (!primaryRepository) {
 					this.logger.error(
 						`No repository found for validation loop in session ${sessionId}`,
 					);
@@ -392,7 +390,7 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleValidationLoopFixer(
 					sessionId,
 					session,
-					repo,
+					primaryRepository,
 					this.agentSessionManager,
 					fixerPrompt,
 					iteration,
@@ -406,11 +404,10 @@ export class EdgeWorker extends EventEmitter {
 				this.logger.info(
 					`Validation loop re-running verifications (iteration ${iteration})`,
 				);
-				const repositories = this.resolveRepositories(
+				const primaryRepository = this.resolveRepositories(
 					session.repositoryIds ?? [],
-				);
-				const repo = repositories[0];
-				if (!repo) {
+				)[0];
+				if (!primaryRepository) {
 					this.logger.error(
 						`No repository found for validation loop rerun in session ${sessionId}`,
 					);
@@ -419,7 +416,7 @@ export class EdgeWorker extends EventEmitter {
 				await this.handleValidationLoopRerun(
 					sessionId,
 					session,
-					repo,
+					primaryRepository,
 					this.agentSessionManager,
 				);
 			},
@@ -1279,9 +1276,10 @@ export class EdgeWorker extends EventEmitter {
 					}),
 			} as unknown as Issue;
 
-			return await this.gitService.createGitWorktree(syntheticIssue, [
+			return await this.gitService.createGitWorktree(
+				syntheticIssue,
 				repository,
-			]);
+			);
 		} catch (error) {
 			this.logger.error(
 				`Failed to create GitHub workspace for PR #${prNumber}`,
@@ -2236,10 +2234,11 @@ ${taskSection}`;
 
 		const issueId = webhook.notification.issue.id;
 
-		// Look up repositories from the session
+		// Look up repository from the session
 		const session = this.findSessionByIssueId(issueId);
-		const repositories = this.resolveRepositories(session?.repositoryIds ?? []);
-		const repository = repositories[0]!;
+		const repository = this.resolveRepositories(
+			session?.repositoryIds ?? [],
+		)[0];
 		if (!repository) {
 			this.logger.debug(
 				`No active sessions found for unassigned issue ${webhook.notification.issue.identifier}`,
@@ -2302,12 +2301,11 @@ ${taskSection}`;
 			return;
 		}
 
-		// Look up repositories from the session
+		// Look up repository from the session
 		const existingSession = this.findSessionByIssueId(issueId);
-		const repositories = this.resolveRepositories(
+		const repository = this.resolveRepositories(
 			existingSession?.repositoryIds ?? [],
-		);
-		const repository = repositories[0]!;
+		)[0];
 		if (!repository) {
 			this.logger.debug(
 				`No active sessions found for issue update ${issueIdentifier}`,
@@ -2490,21 +2488,18 @@ ${taskSection}`;
 	 * Create a new Linear agent session with all necessary setup
 	 * @param sessionId The Linear agent activity session ID
 	 * @param issue Linear issue object
-	 * @param repository Repository configuration
+	 * @param repository Repository configuration (primary repository for workspace creation)
+	 * @param repositoryIds All repository IDs associated with this session
 	 * @param agentSessionManager Agent session manager instance
 	 * @returns Object containing session details and setup information
 	 */
 	private async createLinearAgentSession(
 		sessionId: string,
 		issue: { id: string; identifier: string },
-		repositories: RepositoryConfig[],
+		repository: RepositoryConfig,
+		repositoryIds: string[],
 		agentSessionManager: AgentSessionManager,
 	): Promise<AgentSessionData> {
-		const repository = repositories[0]!;
-		if (!repository) {
-			throw new Error(`No repository provided for session ${sessionId}`);
-		}
-		const repositoryIds = repositories.map((r) => r.id);
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
 		if (!fullIssue) {
@@ -2517,8 +2512,8 @@ ${taskSection}`;
 		// Create workspace using full issue data
 		// Use custom handler if provided, otherwise create a git worktree by default
 		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, [repository])
-			: await this.gitService.createGitWorktree(fullIssue, [repository]);
+			? await this.config.handlers.createWorkspace(fullIssue, repository)
+			: await this.gitService.createGitWorktree(fullIssue, repository);
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
 
@@ -2656,7 +2651,7 @@ ${taskSection}`;
 			}
 		}
 
-		const repository = repositories[0]!;
+		const repository = repositories[0];
 		if (!repository) {
 			this.logger.warn(
 				`No repository resolved for agent session created webhook`,
@@ -2691,7 +2686,7 @@ ${taskSection}`;
 		// Initialize agent runner using shared logic
 		await this.initializeAgentRunner(
 			agentSession,
-			repositories,
+			repository,
 			guidance,
 			commentBody,
 		);
@@ -2705,22 +2700,17 @@ ${taskSection}`;
 	 * handleAgentSessionCreatedWebhook and handleUserPromptedAgentActivity use.
 	 *
 	 * @param agentSession The Linear agent session
-	 * @param repositories The repository configurations
+	 * @param repository The primary repository configuration
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
 	 */
 	private async initializeAgentRunner(
 		agentSession: AgentSessionCreatedWebhook["agentSession"],
-		repositories: RepositoryConfig[],
+		repository: RepositoryConfig,
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 	): Promise<void> {
-		const repository = repositories[0]!;
-		if (!repository) {
-			this.logger.warn("Cannot initialize agent runner without repository");
-			return;
-		}
-		const repositoryIds = repositories.map((r) => r.id);
+		const repositoryIds = [repository.id];
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
 
@@ -2768,7 +2758,8 @@ ${taskSection}`;
 		const sessionData = await this.createLinearAgentSession(
 			sessionId,
 			issue,
-			repositories,
+			repository,
+			repositoryIds,
 			agentSessionManager,
 		);
 
@@ -2906,7 +2897,7 @@ ${taskSection}`;
 			const input: PromptAssemblyInput = {
 				session,
 				fullIssue,
-				repositories,
+				repositories: [repository],
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
 				guidance: guidance || undefined,
@@ -3161,24 +3152,24 @@ ${taskSection}`;
 			return;
 		}
 
-		const firstRepo = repositories[0]!;
+		const repository = repositories[0]!;
 
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
 			agentSessionId,
-			firstRepo.id,
-			firstRepo.name,
+			repository.id,
+			repository.name,
 			"user-selected",
 		);
 
 		log.debug(
-			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${firstRepo.name}`,
+			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
 		);
 
-		// Initialize agent runner with the selected repositories
+		// Initialize agent runner with the selected repository
 		await this.initializeAgentRunner(
 			agentSession,
-			repositories,
+			repository,
 			guidance,
 			commentBody,
 		);
@@ -3279,7 +3270,8 @@ ${taskSection}`;
 			const sessionData = await this.createLinearAgentSession(
 				sessionId,
 				issue,
-				[repository],
+				repository,
+				[repository.id],
 				agentSessionManager,
 			);
 
@@ -3717,9 +3709,10 @@ ${taskSection}`;
 		  }
 		| undefined
 	> {
-		return this.promptBuilder.determineSystemPromptFromLabels(labels, [
+		return this.promptBuilder.determineSystemPromptFromLabels(
+			labels,
 			repository,
-		]);
+		);
 	}
 
 	/**
@@ -3738,7 +3731,7 @@ ${taskSection}`;
 	): Promise<{ prompt: string; version?: string }> {
 		return this.promptBuilder.buildLabelBasedPrompt(
 			issue,
-			[repository],
+			repository,
 			attachmentManifest,
 			guidance,
 		);
@@ -3792,7 +3785,7 @@ ${taskSection}`;
 	): Promise<{ prompt: string; version?: string }> {
 		return this.promptBuilder.buildIssueContextPrompt(
 			issue,
-			[repository],
+			repository,
 			newComment,
 			attachmentManifest,
 			guidance,
@@ -3963,7 +3956,7 @@ ${taskSection}`;
 		return this.activityPoster.postComment(
 			issueId,
 			body,
-			[repositoryId],
+			repositoryId,
 			parentId,
 		);
 	}
@@ -5089,7 +5082,7 @@ ${input.userComment}
 			| "graphite-orchestrator",
 	): string[] {
 		return this.runnerSelectionService.buildDisallowedTools(
-			[repository],
+			repository,
 			promptType,
 		);
 	}
@@ -5127,7 +5120,7 @@ ${input.userComment}
 			| "graphite-orchestrator",
 	): string[] {
 		return this.runnerSelectionService.buildAllowedTools(
-			[repository],
+			repository,
 			promptType,
 		);
 	}
@@ -5322,9 +5315,10 @@ ${input.userComment}
 		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		return this.activityPoster.postInstantAcknowledgment(sessionId, [
+		return this.activityPoster.postInstantAcknowledgment(
+			sessionId,
 			repositoryId,
-		]);
+		);
 	}
 
 	/**
@@ -5334,9 +5328,10 @@ ${input.userComment}
 		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		return this.activityPoster.postParentResumeAcknowledgment(sessionId, [
+		return this.activityPoster.postParentResumeAcknowledgment(
+			sessionId,
 			repositoryId,
-		]);
+		);
 	}
 
 	/**
@@ -5359,7 +5354,7 @@ ${input.userComment}
 	): Promise<void> {
 		return this.activityPoster.postRepositorySelectionActivity(
 			sessionId,
-			[repositoryId],
+			repositoryId,
 			repositoryName,
 			selectionMethod,
 		);
@@ -5566,7 +5561,7 @@ ${input.userComment}
 		return this.activityPoster.postSystemPromptSelectionThought(
 			sessionId,
 			labels,
-			[repositoryId],
+			repositoryId,
 		);
 	}
 
@@ -5780,7 +5775,7 @@ ${input.userComment}
 	): Promise<void> {
 		return this.activityPoster.postInstantPromptedAcknowledgment(
 			sessionId,
-			[repositoryId],
+			repositoryId,
 			isStreaming,
 		);
 	}

@@ -226,16 +226,9 @@ export class GitService {
 	 */
 	async createGitWorktree(
 		issue: Issue,
-		repositories: RepositoryConfig[],
+		repository: RepositoryConfig,
 		globalSetupScript?: string,
 	): Promise<Workspace> {
-		if (repositories.length === 0) {
-			throw new Error(
-				"Cannot create worktree without repository configuration",
-			);
-		}
-		// Non-null: guarded by length check above
-		const repository = repositories[0]!;
 		try {
 			// Verify this is a git repository
 			try {

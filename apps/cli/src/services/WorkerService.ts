@@ -235,11 +235,11 @@ export class WorkerService {
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,
-					repositories: RepositoryConfig[],
+					repository: RepositoryConfig,
 				): Promise<Workspace> => {
 					return this.gitService.createGitWorktree(
 						issue,
-						repositories,
+						repository,
 						edgeConfig.global_setup_script,
 					);
 				},

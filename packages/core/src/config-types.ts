@@ -113,7 +113,7 @@ export interface EdgeWorkerRuntimeConfig {
 		/** Called when workspace needs to be created. Includes repository context. */
 		createWorkspace?: (
 			issue: Issue,
-			repositories: RepositoryConfig[],
+			repository: RepositoryConfig,
 		) => Promise<Workspace>;
 
 		/** Called with Claude messages (for UI updates, logging, etc). */

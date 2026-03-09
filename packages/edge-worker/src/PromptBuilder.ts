@@ -80,9 +80,8 @@ export class PromptBuilder {
 	 */
 	async determineSystemPromptFromLabels(
 		labels: string[],
-		repositories: RepositoryConfig[],
+		repository: RepositoryConfig,
 	): Promise<SystemPromptResult | undefined> {
-		const repository = repositories[0]!;
 		if (labels.length === 0) {
 			return undefined;
 		}
@@ -263,18 +262,17 @@ export class PromptBuilder {
 	/**
 	 * Build simplified prompt for label-based workflows
 	 * @param issue Full Linear issue
-	 * @param repositories Repository configurations (primary repo is repositories[0])
+	 * @param repository Repository configuration
 	 * @param attachmentManifest Optional attachment manifest
 	 * @param guidance Optional agent guidance rules from Linear
 	 * @returns Formatted prompt string
 	 */
 	async buildLabelBasedPrompt(
 		issue: Issue,
-		repositories: RepositoryConfig[],
+		repository: RepositoryConfig,
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
 	): Promise<PromptResult> {
-		const repository = repositories[0]!;
 		this.logger.debug(
 			`buildLabelBasedPrompt called for issue ${issue.identifier}`,
 		);
@@ -298,7 +296,7 @@ export class PromptBuilder {
 			}
 
 			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repositories);
+			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Fetch assignee information (including Linear profile URL, GitHub user ID, and noreply email)
 			let assigneeId = "";
@@ -396,7 +394,7 @@ export class PromptBuilder {
 			}
 
 			// Generate routing context for orchestrator mode
-			const routingContext = this.generateRoutingContext(repositories);
+			const routingContext = this.generateRoutingContext(repository);
 
 			// Build the simplified prompt with only essential variables
 			let prompt = template
@@ -498,7 +496,7 @@ export class PromptBuilder {
 
 			// Preserve historical behavior for single-repo workspaces by relying on
 			// generateRoutingContext to return an empty string when no routing is needed.
-			const context = this.generateRoutingContext([contextRepository]);
+			const context = this.generateRoutingContext(contextRepository);
 			if (context) {
 				routingContexts.push(context);
 			}
@@ -517,11 +515,10 @@ export class PromptBuilder {
 	 * - Routing rules for each repository (labels, teams, projects)
 	 * - Instructions on using description tags for explicit routing
 	 *
-	 * @param repositories Repository configurations (primary repo is repositories[0])
+	 * @param currentRepository The current repository configuration (all workspace repos are fetched from this.repositories)
 	 * @returns XML-formatted routing context string, or empty string if no routing info available
 	 */
-	generateRoutingContext(repositories: RepositoryConfig[]): string {
-		const currentRepository = repositories[0]!;
+	generateRoutingContext(currentRepository: RepositoryConfig): string {
 		// Get all repositories in the same workspace
 		const workspaceRepos = Array.from(this.repositories.values()).filter(
 			(repo) =>
@@ -661,7 +658,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	/**
 	 * Build a prompt for Claude using the improved XML-style template
 	 * @param issue Full Linear issue
-	 * @param repositories Repository configurations (primary repo is repositories[0])
+	 * @param repository Repository configuration
 	 * @param newComment Optional new comment to focus on (for handleNewRootComment)
 	 * @param attachmentManifest Optional attachment manifest
 	 * @param guidance Optional agent guidance rules from Linear
@@ -669,12 +666,11 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	 */
 	async buildIssueContextPrompt(
 		issue: Issue,
-		repositories: RepositoryConfig[],
+		repository: RepositoryConfig,
 		newComment?: WebhookComment,
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
 	): Promise<PromptResult> {
-		const repository = repositories[0]!;
 		this.logger.debug(
 			`buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
 		);
@@ -711,7 +707,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			const stateName = state?.name || "Unknown";
 
 			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repositories);
+			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
 			const issueTracker = this.issueTrackers.get(repository.id);
@@ -864,7 +860,7 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			const stateName = state?.name || "Unknown";
 
 			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repositories);
+			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			const fallbackPrompt = `Please help me with the following Linear issue:
 
@@ -1242,14 +1238,13 @@ ${reply.body}
 	 */
 	async determineBaseBranch(
 		issue: Issue,
-		repositories: RepositoryConfig[],
+		repository: RepositoryConfig,
 	): Promise<string> {
-		const repository = repositories[0]!;
 		// Start with the repository's default base branch
 		let baseBranch = repository.baseBranch;
 
 		// Check if this issue has the graphite label - if so, blocked-by relationship takes priority
-		const isGraphiteIssue = await this.hasGraphiteLabel(issue, repositories);
+		const isGraphiteIssue = await this.hasGraphiteLabel(issue, repository);
 
 		if (isGraphiteIssue) {
 			// For Graphite stacking: use the blocking issue's branch as base
@@ -1346,9 +1341,8 @@ ${reply.body}
 	 */
 	async hasGraphiteLabel(
 		issue: Issue,
-		repositories: RepositoryConfig[],
+		repository: RepositoryConfig,
 	): Promise<boolean> {
-		const repository = repositories[0]!;
 		const graphiteConfig = repository.labelPrompts?.graphite;
 		const graphiteLabels = Array.isArray(graphiteConfig)
 			? graphiteConfig
