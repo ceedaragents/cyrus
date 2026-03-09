@@ -35,6 +35,7 @@ vi.mock("../src/AgentSessionManager.js", () => ({
 		getAllSessions: vi.fn().mockReturnValue([]),
 		createLinearAgentSession: vi.fn(),
 		getSession: vi.fn(),
+		getSessionsByIssueId: vi.fn().mockReturnValue([]),
 		getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 		on: vi.fn(), // EventEmitter method
 		emit: vi.fn(), // EventEmitter method
@@ -137,16 +138,10 @@ describe("EdgeWorker - Status Endpoint", () => {
 				isRunning: vi.fn().mockReturnValue(true),
 			};
 
-			// Create a mock session manager that returns the mock runner
-			const mockSessionManager = {
-				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner]),
-			};
-
-			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
-				mockSessionManager,
-			);
+			// Override the single global session manager's getAllAgentRunners
+			(edgeWorker as any).agentSessionManager.getAllAgentRunners = vi
+				.fn()
+				.mockReturnValue([mockRunner]);
 
 			const status = (edgeWorker as any).computeStatus();
 
@@ -162,16 +157,10 @@ describe("EdgeWorker - Status Endpoint", () => {
 				isRunning: vi.fn().mockReturnValue(false),
 			};
 
-			// Create a mock session manager that returns the mock runner
-			const mockSessionManager = {
-				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner]),
-			};
-
-			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
-				mockSessionManager,
-			);
+			// Override the single global session manager's getAllAgentRunners
+			(edgeWorker as any).agentSessionManager.getAllAgentRunners = vi
+				.fn()
+				.mockReturnValue([mockRunner]);
 
 			const status = (edgeWorker as any).computeStatus();
 
@@ -189,26 +178,20 @@ describe("EdgeWorker - Status Endpoint", () => {
 				isRunning: vi.fn().mockReturnValue(true),
 			};
 
-			// Create a mock session manager that returns both runners
-			const mockSessionManager = {
-				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner1, mockRunner2]),
-			};
-
-			// Set the mock session manager
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo",
-				mockSessionManager,
-			);
+			// Override the single global session manager's getAllAgentRunners
+			(edgeWorker as any).agentSessionManager.getAllAgentRunners = vi
+				.fn()
+				.mockReturnValue([mockRunner1, mockRunner2]);
 
 			const status = (edgeWorker as any).computeStatus();
 
 			expect(status).toBe("busy");
 		});
 
-		it("should check all session managers across multiple repositories", async () => {
+		it("should check the single global session manager for all runners", async () => {
 			edgeWorker = new EdgeWorker(mockConfig);
 
-			// Create mock runners for different repos - repo1 idle, repo2 busy
+			// Create mock runners
 			const mockRunner1 = {
 				isRunning: vi.fn().mockReturnValue(false),
 			};
@@ -216,28 +199,17 @@ describe("EdgeWorker - Status Endpoint", () => {
 				isRunning: vi.fn().mockReturnValue(true),
 			};
 
-			const mockSessionManager1 = {
-				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner1]),
-			};
-			const mockSessionManager2 = {
-				getAllAgentRunners: vi.fn().mockReturnValue([mockRunner2]),
-			};
-
-			// Set multiple session managers
-			(edgeWorker as any).agentSessionManagers.set(
-				"repo-1",
-				mockSessionManager1,
-			);
-			(edgeWorker as any).agentSessionManagers.set(
-				"repo-2",
-				mockSessionManager2,
-			);
+			// Override the single global session manager's getAllAgentRunners
+			const getAllAgentRunnersSpy = vi
+				.fn()
+				.mockReturnValue([mockRunner1, mockRunner2]);
+			(edgeWorker as any).agentSessionManager.getAllAgentRunners =
+				getAllAgentRunnersSpy;
 
 			const status = (edgeWorker as any).computeStatus();
 
 			expect(status).toBe("busy");
-			expect(mockSessionManager1.getAllAgentRunners).toHaveBeenCalled();
-			expect(mockSessionManager2.getAllAgentRunners).toHaveBeenCalled();
+			expect(getAllAgentRunnersSpy).toHaveBeenCalled();
 		});
 	});
 

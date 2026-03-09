@@ -32,7 +32,7 @@ describe("AgentSessionManager stop-session behavior", () => {
 		};
 
 		manager = new AgentSessionManager(
-			mockActivitySink,
+			() => mockActivitySink,
 			undefined,
 			undefined,
 			mockProcedureAnalyzer,
@@ -52,6 +52,7 @@ describe("AgentSessionManager stop-session behavior", () => {
 				path: "/tmp/workspace",
 				isGitWorktree: false,
 			},
+			[],
 		);
 	});
 

@@ -139,7 +139,7 @@ export class PromptScenario {
 			repositoryPath: repo.repositoryPath ?? repo.path ?? "/test/repo",
 			...repo,
 		};
-		this.input.repository = fullRepo;
+		this.input.repositories = [fullRepo];
 		// Also ensure the worker has an IssueTrackerService for this repository
 		if (!(this.worker as any).issueTrackers.has(fullRepo.id)) {
 			const mockIssueTracker = {

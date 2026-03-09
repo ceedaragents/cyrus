@@ -515,7 +515,7 @@ export class PromptBuilder {
 	 * - Routing rules for each repository (labels, teams, projects)
 	 * - Instructions on using description tags for explicit routing
 	 *
-	 * @param currentRepository The repository handling the current orchestrator issue
+	 * @param currentRepository The current repository configuration (all workspace repos are fetched from this.repositories)
 	 * @returns XML-formatted routing context string, or empty string if no routing info available
 	 */
 	generateRoutingContext(currentRepository: RepositoryConfig): string {

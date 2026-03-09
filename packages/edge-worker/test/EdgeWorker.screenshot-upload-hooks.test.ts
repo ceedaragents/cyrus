@@ -64,6 +64,8 @@ describe("EdgeWorker - Screenshot Upload Guidance Hooks", () => {
 	let mockGeminiRunner: any;
 	let mockAgentSessionManager: any;
 	let capturedRunnerConfig: any = null;
+	let savedGeminiApiKey: string | undefined;
+	let savedOpenAiApiKey: string | undefined;
 
 	const mockRepository: RepositoryConfig = {
 		id: "test-repo",
@@ -96,6 +98,12 @@ describe("EdgeWorker - Screenshot Upload Guidance Hooks", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		capturedRunnerConfig = null;
+
+		// Save and clear API keys to prevent auto-detection of non-claude runners
+		savedGeminiApiKey = process.env.GEMINI_API_KEY;
+		savedOpenAiApiKey = process.env.OPENAI_API_KEY;
+		delete process.env.GEMINI_API_KEY;
+		delete process.env.OPENAI_API_KEY;
 
 		// Mock console methods
 		vi.spyOn(console, "log").mockImplementation(() => {});
@@ -155,8 +163,16 @@ describe("EdgeWorker - Screenshot Upload Guidance Hooks", () => {
 		mockAgentSessionManager = {
 			createLinearAgentSession: vi.fn(),
 			getSession: vi.fn().mockReturnValue({
-				issueId: "issue-123",
+				id: "agent-session-123",
+				externalSessionId: "agent-session-123",
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-123",
+					issueIdentifier: "TEST-123",
+				},
 				workspace: { path: "/test/workspaces/TEST-123" },
+				repositoryIds: ["test-repo"],
+				metadata: {},
 			}),
 			addAgentRunner: vi.fn(),
 			getAllAgentRunners: vi.fn().mockReturnValue([]),
@@ -165,7 +181,10 @@ describe("EdgeWorker - Screenshot Upload Guidance Hooks", () => {
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
-			on: vi.fn(),
+			getSessionsByIssueId: vi.fn().mockReturnValue([]),
+			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
+			on: vi.fn(), // EventEmitter method
+			emit: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
 			() => mockAgentSessionManager,
@@ -228,11 +247,40 @@ Issue: {{issue_identifier}}`;
 				return mockLinearClient.issue(issueId);
 			}),
 			getIssueLabels: vi.fn(),
+			fetchWorkflowStates: vi.fn().mockResolvedValue({
+				nodes: [
+					{ id: "state-1", name: "Todo", type: "unstarted", position: 0 },
+					{ id: "state-2", name: "In Progress", type: "started", position: 1 },
+				],
+			}),
+			updateIssue: vi.fn().mockResolvedValue({ success: true }),
 		};
 		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+
+		// Mock procedureAnalyzer.determineRoutine to avoid calling Claude
+		vi.spyOn(
+			(edgeWorker as any).procedureAnalyzer,
+			"determineRoutine",
+		).mockResolvedValue({
+			classification: "code",
+			procedure: (edgeWorker as any).procedureAnalyzer.getProcedure(
+				"full-development",
+			) ?? {
+				name: "full-development",
+				subroutines: [{ name: "coding-activity" }],
+			},
+			reasoning: "Test mock classification",
+		});
 	});
 
 	afterEach(() => {
+		// Restore API keys
+		if (savedGeminiApiKey !== undefined) {
+			process.env.GEMINI_API_KEY = savedGeminiApiKey;
+		}
+		if (savedOpenAiApiKey !== undefined) {
+			process.env.OPENAI_API_KEY = savedOpenAiApiKey;
+		}
 		vi.restoreAllMocks();
 	});
 

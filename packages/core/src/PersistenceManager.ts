@@ -11,21 +11,12 @@ import type {
 import { createLogger, type ILogger } from "./logging/index.js";
 
 /** Current persistence format version */
-export const PERSISTENCE_VERSION = "3.0";
+export const PERSISTENCE_VERSION = "4.0";
 
 // Serialized versions with Date fields as strings
 export type SerializedCyrusAgentSession = CyrusAgentSession;
-// extends Omit<CyrusAgentSession, 'createdAt' | 'updatedAt'> {
-//   createdAt: string
-//   updatedAt: string
-// }
 
 export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry;
-// extends Omit<CyrusAgentSessionEntry, 'metadata'> {
-//   metadata?: Omit<CyrusAgentSessionEntry['metadata'], 'timestamp'> & {
-//     timestamp?: string
-//   }
-// }
 
 /**
  * v2.0 session format (for migration purposes)
@@ -50,19 +41,56 @@ interface V2CyrusAgentSession {
 }
 
 /**
- * Serializable EdgeWorker state for persistence
+ * v3.0 session format (for migration purposes)
+ * Sessions were keyed by repository ID, without repositoryIds on the session.
  */
-export interface SerializableEdgeWorkerState {
-	// Agent Session state - keyed by repository ID, since that's how we construct AgentSessionManagers
-	agentSessions?: Record<string, Record<string, SerializedCyrusAgentSession>>;
+interface V3SerializableEdgeWorkerState {
+	agentSessions?: Record<string, Record<string, V3CyrusAgentSession>>;
 	agentSessionEntries?: Record<
 		string,
 		Record<string, SerializedCyrusAgentSessionEntry[]>
 	>;
-	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
-	// Issue to repository mapping (for caching user repository selections)
 	issueRepositoryCache?: Record<string, string>;
+}
+
+interface V3CyrusAgentSession {
+	id: string;
+	externalSessionId?: string;
+	type: string;
+	status: string;
+	context: string;
+	createdAt: number;
+	updatedAt: number;
+	issueContext?: IssueContext;
+	issueId?: string;
+	issue?: IssueMinimal;
+	workspace: {
+		path: string;
+		isGitWorktree: boolean;
+		historyPath?: string;
+	};
+	claudeSessionId?: string;
+	geminiSessionId?: string;
+	codexSessionId?: string;
+	cursorSessionId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+/**
+ * Serializable EdgeWorker state for persistence (v4.0)
+ *
+ * Sessions are stored in a flat map keyed by session ID.
+ * Each session carries its own repositoryIds[] (0, 1, or N repos).
+ * The per-repository keying from v3.0 is gone.
+ */
+export interface SerializableEdgeWorkerState {
+	/** Agent sessions keyed by session ID */
+	agentSessions?: Record<string, SerializedCyrusAgentSession>;
+	/** Agent session entries keyed by session ID */
+	agentSessionEntries?: Record<string, SerializedCyrusAgentSessionEntry[]>;
+	/** Child to parent agent session mapping */
+	childToParentAgentSession?: Record<string, string>;
 }
 
 /**
@@ -93,7 +121,7 @@ export class PersistenceManager {
 	}
 
 	/**
-	 * Save EdgeWorker state to disk (single file for all repositories)
+	 * Save EdgeWorker state to disk (single file for all sessions)
 	 */
 	async saveEdgeWorkerState(state: SerializableEdgeWorkerState): Promise<void> {
 		try {
@@ -112,8 +140,8 @@ export class PersistenceManager {
 	}
 
 	/**
-	 * Load EdgeWorker state from disk (single file for all repositories)
-	 * Automatically migrates from v2.0 to v3.0 format if needed.
+	 * Load EdgeWorker state from disk.
+	 * Automatically migrates from v2.0 or v3.0 to v4.0 format if needed.
 	 */
 	async loadEdgeWorkerState(): Promise<SerializableEdgeWorkerState | null> {
 		try {
@@ -132,9 +160,19 @@ export class PersistenceManager {
 
 			// Handle version migration
 			if (stateData.version === "2.0") {
-				this.logger.info("Migrating state from v2.0 to v3.0");
-				const migratedState = this.migrateV2ToV3(stateData.state);
-				// Save the migrated state
+				this.logger.info("Migrating state from v2.0 to v4.0");
+				const v3State = this.migrateV2ToV3(stateData.state);
+				const migratedState = this.migrateV3ToV4(v3State);
+				await this.saveEdgeWorkerState(migratedState);
+				this.logger.info(
+					`Migration complete, saved as v${PERSISTENCE_VERSION}`,
+				);
+				return migratedState;
+			}
+
+			if (stateData.version === "3.0") {
+				this.logger.info("Migrating state from v3.0 to v4.0");
+				const migratedState = this.migrateV3ToV4(stateData.state);
 				await this.saveEdgeWorkerState(migratedState);
 				this.logger.info(
 					`Migration complete, saved as v${PERSISTENCE_VERSION}`,
@@ -161,20 +199,17 @@ export class PersistenceManager {
 	 *
 	 * Changes:
 	 * - linearAgentActivitySessionId -> id
-	 * - Add externalSessionId (set to original linearAgentActivitySessionId for Linear sessions)
-	 * - Add issueContext object with trackerId, issueId, issueIdentifier
-	 * - issueId becomes optional (kept for backwards compatibility)
-	 * - issue becomes optional
+	 * - Add externalSessionId
+	 * - Add issueContext
 	 */
 	private migrateV2ToV3(
-		v2State: SerializableEdgeWorkerState,
-	): SerializableEdgeWorkerState {
-		const migratedState: SerializableEdgeWorkerState = {
+		v2State: V3SerializableEdgeWorkerState,
+	): V3SerializableEdgeWorkerState {
+		const migratedState: V3SerializableEdgeWorkerState = {
 			...v2State,
 			agentSessions: {},
 		};
 
-		// Migrate agent sessions
 		if (v2State.agentSessions) {
 			for (const [repoId, repoSessions] of Object.entries(
 				v2State.agentSessions,
@@ -183,16 +218,11 @@ export class PersistenceManager {
 				for (const [_sessionId, v2Session] of Object.entries(repoSessions)) {
 					const session = v2Session as unknown as V2CyrusAgentSession;
 					const migratedSession = this.migrateSessionV2ToV3(session);
-					// Use the new id as the key
 					migratedState.agentSessions![repoId][migratedSession.id] =
 						migratedSession;
 				}
 			}
 		}
-
-		// agentSessionEntries keys need to be updated to use new session IDs
-		// Since linearAgentActivitySessionId becomes id, the keys remain the same
-		// The entries themselves don't need modification
 
 		return migratedState;
 	}
@@ -202,20 +232,16 @@ export class PersistenceManager {
 	 */
 	private migrateSessionV2ToV3(
 		v2Session: V2CyrusAgentSession,
-	): SerializedCyrusAgentSession {
-		// Build issueContext from v2.0 fields
+	): V3CyrusAgentSession {
 		const issueContext: IssueContext = {
-			trackerId: "linear", // v2.0 only supported Linear
+			trackerId: "linear",
 			issueId: v2Session.issueId,
 			issueIdentifier: v2Session.issue?.identifier || v2Session.issueId,
 		};
 
 		return {
-			// New field: rename linearAgentActivitySessionId to id
 			id: v2Session.linearAgentActivitySessionId,
-			// New field: store the original Linear session ID as externalSessionId
 			externalSessionId: v2Session.linearAgentActivitySessionId,
-			// Preserved fields
 			type: v2Session.type,
 			status: v2Session.status,
 			context: v2Session.context,
@@ -225,13 +251,59 @@ export class PersistenceManager {
 			claudeSessionId: v2Session.claudeSessionId,
 			geminiSessionId: v2Session.geminiSessionId,
 			metadata: v2Session.metadata,
-			// New field: structured issue context
 			issueContext,
-			// Kept for backwards compatibility (marked as deprecated in interface)
 			issueId: v2Session.issueId,
-			// Now optional
 			issue: v2Session.issue,
-		} as SerializedCyrusAgentSession;
+		};
+	}
+
+	/**
+	 * Migrate v3.0 state format to v4.0 format
+	 *
+	 * Changes:
+	 * - Sessions are flattened from per-repository nesting to flat map
+	 * - Each session gets repositoryIds[] populated from its former repo key
+	 * - issueRepositoryCache is removed (repo association lives on session)
+	 * - issueId deprecated field is removed
+	 */
+	private migrateV3ToV4(
+		v3State: V3SerializableEdgeWorkerState,
+	): SerializableEdgeWorkerState {
+		const migratedState: SerializableEdgeWorkerState = {
+			agentSessions: {},
+			agentSessionEntries: {},
+			childToParentAgentSession: v3State.childToParentAgentSession,
+		};
+
+		// Flatten per-repository sessions into flat map, adding repositoryIds
+		if (v3State.agentSessions) {
+			for (const [repoId, repoSessions] of Object.entries(
+				v3State.agentSessions,
+			)) {
+				for (const [sessionId, v3Session] of Object.entries(repoSessions)) {
+					migratedState.agentSessions![sessionId] = {
+						...v3Session,
+						repositoryIds: [repoId],
+					} as SerializedCyrusAgentSession;
+				}
+			}
+		}
+
+		// Flatten per-repository entries into flat map
+		if (v3State.agentSessionEntries) {
+			for (const [_repoId, repoEntries] of Object.entries(
+				v3State.agentSessionEntries,
+			)) {
+				for (const [sessionId, entries] of Object.entries(repoEntries)) {
+					migratedState.agentSessionEntries![sessionId] = entries;
+				}
+			}
+		}
+
+		// issueRepositoryCache is intentionally not migrated — repo association
+		// now lives on each session's repositoryIds field
+
+		return migratedState;
 	}
 
 	/**
@@ -248,7 +320,7 @@ export class PersistenceManager {
 		try {
 			const stateFile = this.getEdgeWorkerStateFilePath();
 			if (existsSync(stateFile)) {
-				await writeFile(stateFile, "", "utf8"); // Clear file instead of deleting
+				await writeFile(stateFile, "", "utf8");
 			}
 		} catch (error) {
 			this.logger.error("Failed to delete EdgeWorker state file:", error);

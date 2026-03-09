@@ -71,6 +71,10 @@ describe("EdgeWorker - fetchPRBranchRef", () => {
 			recordThought: vi.fn().mockResolvedValue(undefined),
 			recordAction: vi.fn().mockResolvedValue(undefined),
 			completeSession: vi.fn().mockResolvedValue(undefined),
+			getSessionsByIssueId: vi.fn().mockReturnValue([]),
+			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
+			on: vi.fn(), // EventEmitter method
+			emit: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
 			() => mockAgentSessionManager,

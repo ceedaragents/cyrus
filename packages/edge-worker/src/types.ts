@@ -9,34 +9,34 @@ export interface EdgeWorkerEvents {
 	connected: (token: string) => void;
 	disconnected: (token: string, reason?: string) => void;
 
-	// Session events (now includes repository ID)
+	// Session events
 	"session:started": (
 		issueId: string,
 		issue: Issue,
-		repositoryId: string,
+		repositoryIds: string[],
 	) => void;
 	"session:ended": (
 		issueId: string,
 		exitCode: number | null,
-		repositoryId: string,
+		repositoryIds: string[],
 	) => void;
 
-	// Claude messages (now includes repository ID)
+	// Claude messages
 	"claude:message": (
 		issueId: string,
 		message: SDKMessage,
-		repositoryId: string,
+		repositoryIds: string[],
 	) => void;
 	"claude:response": (
 		issueId: string,
 		text: string,
-		repositoryId: string,
+		repositoryIds: string[],
 	) => void;
 	"claude:tool-use": (
 		issueId: string,
 		tool: string,
 		input: any,
-		repositoryId: string,
+		repositoryIds: string[],
 	) => void;
 
 	// Error events

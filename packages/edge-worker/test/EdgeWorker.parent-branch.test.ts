@@ -132,12 +132,16 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 			}),
 			addAgentRunner: vi.fn(),
 			getAllClaudeRunners: vi.fn().mockReturnValue([]),
+			getAllAgentRunners: vi.fn().mockReturnValue([]),
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
+			getSessionsByIssueId: vi.fn().mockReturnValue([]),
+			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 			on: vi.fn(), // EventEmitter method
+			emit: vi.fn(), // EventEmitter method
 		};
 		vi.mocked(AgentSessionManager).mockImplementation(
 			() => mockAgentSessionManager,

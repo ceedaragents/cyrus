@@ -197,7 +197,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
 
 			// Test debugger prompt with readOnly preset
-			const debuggerTools = buildAllowedTools(repository, "debugger");
+			const debuggerTools = buildAllowedTools([repository], "debugger");
 			expect(debuggerTools).toEqual([
 				...getReadOnlyTools(),
 				"mcp__linear",
@@ -205,7 +205,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			]);
 
 			// Test builder prompt with custom array
-			const builderTools = buildAllowedTools(repository, "builder");
+			const builderTools = buildAllowedTools([repository], "builder");
 			expect(builderTools).toEqual([
 				"Read",
 				"Edit",
@@ -215,7 +215,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			]);
 
 			// Test scoper prompt with safe preset
-			const scoperTools = buildAllowedTools(repository, "scoper");
+			const scoperTools = buildAllowedTools([repository], "scoper");
 			expect(scoperTools).toEqual([
 				...getSafeTools(),
 				"mcp__linear",
@@ -247,7 +247,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			// Test debugger prompt with global all preset
-			const debuggerTools = buildAllowedTools(repository, "debugger");
+			const debuggerTools = buildAllowedTools([repository], "debugger");
 			expect(debuggerTools).toEqual([
 				...getAllTools(),
 				"mcp__linear",
@@ -255,7 +255,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			]);
 
 			// Test builder prompt with global safe preset
-			const builderTools = buildAllowedTools(repository, "builder");
+			const builderTools = buildAllowedTools([repository], "builder");
 			expect(builderTools).toEqual([
 				...getSafeTools(),
 				"mcp__linear",
@@ -263,7 +263,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			]);
 
 			// Test scoper prompt with global custom array
-			const scoperTools = buildAllowedTools(repository, "scoper");
+			const scoperTools = buildAllowedTools([repository], "scoper");
 			expect(scoperTools).toEqual([
 				"Read",
 				"WebFetch",
@@ -279,7 +279,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
-			const tools = buildAllowedTools(repository);
+			const tools = buildAllowedTools([repository]);
 
 			expect(tools).toEqual([
 				"Read",
@@ -295,7 +295,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
-			const tools = buildAllowedTools(repository);
+			const tools = buildAllowedTools([repository]);
 
 			// Should use global defaultAllowedTools from mockConfig
 			expect(tools).toEqual([
@@ -320,7 +320,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				...mockConfig.repositories[0],
 			};
 
-			const tools = buildAllowedTools(repository);
+			const tools = buildAllowedTools([repository]);
 			expect(tools).toEqual([
 				...getSafeTools(),
 				"mcp__linear",
@@ -335,7 +335,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
-			const tools = buildAllowedTools(repository);
+			const tools = buildAllowedTools([repository]);
 
 			// Should deduplicate Linear MCP tools
 			expect(tools).toEqual(["Read", "mcp__linear", "mcp__cyrus-tools"]);
@@ -353,7 +353,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				};
 
 				const buildAllowedTools = getBuildAllowedTools(edgeWorker);
-				const tools = buildAllowedTools(repository);
+				const tools = buildAllowedTools([repository]);
 
 				expect(tools).toEqual([
 					"Read",
@@ -382,7 +382,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 				};
 
 				const buildAllowedTools = getBuildAllowedTools(edgeWorker);
-				const tools = buildAllowedTools(repository);
+				const tools = buildAllowedTools([repository]);
 
 				expect(tools).toEqual([
 					"Read",
@@ -415,7 +415,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
 
 			// Old format should fall back to repository/global defaults
-			const debuggerTools = buildAllowedTools(repository, "debugger");
+			const debuggerTools = buildAllowedTools([repository], "debugger");
 			expect(debuggerTools).toEqual([
 				"Read",
 				"Write",
@@ -425,7 +425,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			]);
 
 			// New format should work as expected
-			const builderTools = buildAllowedTools(repository, "builder");
+			const builderTools = buildAllowedTools([repository], "builder");
 			expect(builderTools).toEqual([
 				...getSafeTools(),
 				"mcp__linear",
@@ -445,7 +445,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
-			const tools = buildAllowedTools(repository, "debugger");
+			const tools = buildAllowedTools([repository], "debugger");
 
 			expect(tools).toEqual(["CustomTool", "mcp__linear", "mcp__cyrus-tools"]);
 		});
@@ -639,7 +639,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
-			const tools = buildDisallowedTools(repository, "debugger");
+			const tools = buildDisallowedTools([repository], "debugger");
 
 			expect(tools).toEqual(["Bash", "Write"]);
 		});
@@ -661,7 +661,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const ew = new EdgeWorker(configWithPromptDefaults);
 
 			const buildDisallowedTools = getBuildDisallowedTools(ew);
-			const tools = buildDisallowedTools(repository, "debugger");
+			const tools = buildDisallowedTools([repository], "debugger");
 
 			expect(tools).toEqual(["Bash", "SystemAccess"]);
 		});
@@ -673,7 +673,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
-			const tools = buildDisallowedTools(repository);
+			const tools = buildDisallowedTools([repository]);
 
 			expect(tools).toEqual(["WebFetch", "WebSearch"]);
 		});
@@ -691,7 +691,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const ew = new EdgeWorker(configWithDefaults);
 
 			const buildDisallowedTools = getBuildDisallowedTools(ew);
-			const tools = buildDisallowedTools(repository);
+			const tools = buildDisallowedTools([repository]);
 
 			expect(tools).toEqual(["Bash", "DangerousTool"]);
 		});
@@ -702,7 +702,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
-			const tools = buildDisallowedTools(repository);
+			const tools = buildDisallowedTools([repository]);
 
 			// Unlike allowedTools, disallowedTools has no defaults
 			expect(tools).toEqual([]);
@@ -722,7 +722,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
-			const tools = buildDisallowedTools(repository, "builder");
+			const tools = buildDisallowedTools([repository], "builder");
 
 			// Should fall back to repository-level disallowedTools
 			expect(tools).toEqual(["Bash"]);
@@ -745,11 +745,11 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
 
 			// Old format should fall back to repository defaults
-			const debuggerTools = buildDisallowedTools(repository, "debugger");
+			const debuggerTools = buildDisallowedTools([repository], "debugger");
 			expect(debuggerTools).toEqual(["OldDefault"]);
 
 			// New format should work as expected
-			const builderTools = buildDisallowedTools(repository, "builder");
+			const builderTools = buildDisallowedTools([repository], "builder");
 			expect(builderTools).toEqual(["NewFormat"]);
 		});
 
@@ -780,11 +780,11 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const buildDisallowedTools = getBuildDisallowedTools(ew);
 
 			// Should use label-level config (highest priority)
-			const tools = buildDisallowedTools(repository, "debugger");
+			const tools = buildDisallowedTools([repository], "debugger");
 			expect(tools).toEqual(["LabelLevel"]);
 
 			// Without prompt type, should use repository level
-			const noPromptTools = buildDisallowedTools(repository);
+			const noPromptTools = buildDisallowedTools([repository]);
 			expect(noPromptTools).toEqual(["RepoLevel"]);
 		});
 	});
