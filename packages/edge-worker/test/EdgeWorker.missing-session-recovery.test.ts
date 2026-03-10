@@ -341,13 +341,13 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			const cache = repositoryRouter.getIssueRepositoryCache();
 			cache.clear();
 
-			// Mock the fallback to return a valid repository
+			// Mock the fallback to return a valid repository (array format)
 			vi.spyOn(
 				repositoryRouter,
 				"determineRepositoryForWebhook",
 			).mockResolvedValue({
 				type: "selected",
-				repository: mockRepository,
+				repositories: [mockRepository],
 				routingMethod: "team-based",
 			});
 
@@ -356,9 +356,9 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			// Act
 			await (edgeWorker as any).handleWebhook(webhook, [mockRepository]);
 
-			// Assert: Cache should now contain the mapping
+			// Assert: Cache should now contain the mapping as string[]
 			// Currently FAILS because fallback is never attempted
-			expect(cache.get("issue-123")).toBe("test-repo");
+			expect(cache.get("issue-123")).toEqual(["test-repo"]);
 		});
 
 		it("should post a response activity when fallback resolution fails", async () => {
@@ -507,7 +507,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			// Arrange: Repository IS cached, but session is NOT found
 			const repositoryRouter = (edgeWorker as any).repositoryRouter;
 			const cache = repositoryRouter.getIssueRepositoryCache();
-			cache.set("issue-123", "test-repo");
+			cache.set("issue-123", ["test-repo"]);
 
 			// Session not found initially
 			mockAgentSessionManager.getSession.mockReturnValue(null);
