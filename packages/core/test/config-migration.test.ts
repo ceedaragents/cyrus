@@ -25,23 +25,24 @@ describe("migrateEdgeConfig", () => {
 
 		const result = migrateEdgeConfig(oldConfig);
 
-		// Should have workspace-level tokens
+		// Should have workspace-level tokens and workspace name
 		expect(result.linearWorkspaces).toEqual({
 			"ws-123": {
 				linearToken: "lin_api_token_123",
 				linearRefreshToken: "lin_refresh_token_123",
+				linearWorkspaceName: "My Workspace",
 			},
 		});
 
-		// Repositories should no longer have tokens
+		// Repositories should no longer have tokens or workspace name
 		const repos = result.repositories as Record<string, unknown>[];
 		expect(repos[0]).not.toHaveProperty("linearToken");
 		expect(repos[0]).not.toHaveProperty("linearRefreshToken");
+		expect(repos[0]).not.toHaveProperty("linearWorkspaceName");
 
 		// Other repo fields should be preserved
 		expect(repos[0]).toHaveProperty("id", "repo-1");
 		expect(repos[0]).toHaveProperty("linearWorkspaceId", "ws-123");
-		expect(repos[0]).toHaveProperty("linearWorkspaceName", "My Workspace");
 	});
 
 	it("deduplicates tokens across repos sharing same workspace", () => {

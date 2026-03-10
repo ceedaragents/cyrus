@@ -113,13 +113,9 @@ export class SelfAddRepoCommand extends BaseCommand {
 					config.linearWorkspaces,
 				)) {
 					if (wsConfig.linearToken) {
-						// Find workspace name from any repository with this ID
-						const repoWithName = config.repositories.find(
-							(r) => r.linearWorkspaceId === wsId,
-						);
 						workspaces.set(wsId, {
 							id: wsId,
-							name: repoWithName?.linearWorkspaceName || wsId,
+							name: wsConfig.linearWorkspaceName || wsId,
 							token: wsConfig.linearToken,
 							refreshToken: wsConfig.linearRefreshToken,
 						});
@@ -192,7 +188,6 @@ export class SelfAddRepoCommand extends BaseCommand {
 				baseBranch: DEFAULT_BASE_BRANCH,
 				workspaceBaseDir: resolve(this.app.cyrusHome, DEFAULT_WORKTREES_DIR),
 				linearWorkspaceId: selectedWorkspace.id,
-				linearWorkspaceName: selectedWorkspace.name,
 				isActive: true,
 			});
 

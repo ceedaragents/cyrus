@@ -61,10 +61,7 @@ export class RefreshTokenCommand extends BaseCommand {
 
 		if (config.linearWorkspaces) {
 			for (const [wsId, wsConfig] of Object.entries(config.linearWorkspaces)) {
-				const repoWithName = config.repositories.find(
-					(r) => r.linearWorkspaceId === wsId,
-				);
-				const name = repoWithName?.linearWorkspaceName || wsId;
+				const name = wsConfig.linearWorkspaceName || wsId;
 				const result = await checkLinearToken(wsConfig.linearToken);
 				workspaceStatuses.push({
 					id: wsId,
