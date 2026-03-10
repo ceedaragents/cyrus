@@ -69,13 +69,15 @@ describe("EdgeWorker - Version Tag Extraction", () => {
 					repositoryPath: "/test/repo",
 					workspaceBaseDir: "/test/workspaces",
 					baseBranch: "main",
-					linearToken: "test-token",
 					linearWorkspaceId: "test-workspace",
 					isActive: true,
 					allowedTools: ["Read", "Edit"],
 					promptTemplatePath: "/test/template.md",
 				},
 			],
+			linearWorkspaces: {
+				"test-workspace": { linearToken: "test-token" },
+			},
 		};
 
 		edgeWorker = new EdgeWorker(mockConfig);

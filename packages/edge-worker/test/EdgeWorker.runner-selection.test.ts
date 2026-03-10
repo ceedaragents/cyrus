@@ -66,7 +66,6 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
-		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
 		allowedTools: ["Read", "Edit"],
@@ -251,6 +250,9 @@ Issue: {{issue_identifier}}`;
 			proxyUrl: "http://localhost:3000",
 			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [mockRepository],
+			linearWorkspaces: {
+				"test-workspace": { linearToken: "test-token" },
+			},
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
 					path: "/test/workspaces/TEST-123",
@@ -268,7 +270,10 @@ Issue: {{issue_identifier}}`;
 			}),
 			getIssueLabels: vi.fn(),
 		};
-		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+		(edgeWorker as any).issueTrackers.set(
+			mockRepository.linearWorkspaceId,
+			mockIssueTracker,
+		);
 	});
 
 	afterEach(() => {
@@ -817,7 +822,7 @@ Issue: {{issue_identifier}}`;
 				getIssueLabels: vi.fn(),
 			};
 			(codexEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				mockIssueTracker,
 			);
 
@@ -865,7 +870,7 @@ Issue: {{issue_identifier}}`;
 				getIssueLabels: vi.fn(),
 			};
 			(geminiEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				mockIssueTracker,
 			);
 
@@ -913,7 +918,7 @@ Issue: {{issue_identifier}}`;
 				getIssueLabels: vi.fn(),
 			};
 			(codexEdgeWorker as any).issueTrackers.set(
-				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				mockIssueTracker,
 			);
 

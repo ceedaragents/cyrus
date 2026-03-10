@@ -43,6 +43,7 @@ export type {
 	EdgeConfig,
 	EdgeConfigPayload,
 	EdgeWorkerConfig,
+	LinearWorkspaceConfig,
 	OAuthCallbackHandler,
 	RepositoryConfig,
 	RepositoryConfigPayload,
@@ -54,6 +55,8 @@ export {
 	EdgeConfigPayloadSchema,
 	// Zod schemas for runtime validation
 	EdgeConfigSchema,
+	LinearWorkspaceConfigSchema,
+	migrateEdgeConfig,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
 	RunnerTypeSchema,

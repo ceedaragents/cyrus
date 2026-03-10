@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { migrateEdgeConfig } from "cyrus-core";
 import type { EdgeConfig } from "../config/types.js";
 import type { Logger } from "./Logger.js";
 
@@ -33,7 +34,9 @@ export class ConfigService {
 		if (existsSync(this.configPath)) {
 			try {
 				const content = readFileSync(this.configPath, "utf-8");
-				config = JSON.parse(content);
+				const raw = JSON.parse(content);
+				// Migrate legacy per-repo tokens to workspace-keyed format
+				config = migrateEdgeConfig(raw) as EdgeConfig;
 			} catch (e) {
 				this.logger.error(
 					`Failed to load edge config: ${(e as Error).message}`,

@@ -169,7 +169,7 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
 	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
-	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
+	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by workspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
@@ -247,7 +247,7 @@ export class EdgeWorker extends EventEmitter {
 				if (!repo) return [];
 
 				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(repo.id);
+				const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
 				if (!issueTracker) return [];
 
 				// Use platform-agnostic getIssueLabels method
@@ -264,7 +264,7 @@ export class EdgeWorker extends EventEmitter {
 				if (!repo) return undefined;
 
 				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(repo.id);
+				const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
 				if (!issueTracker) return undefined;
 
 				// Fetch issue and get description
@@ -431,23 +431,29 @@ export class EdgeWorker extends EventEmitter {
 
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker for this repository's workspace
-				const issueTracker =
-					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
-						: new LinearIssueTrackerService(
-								new LinearClient({
-									accessToken: repo.linearToken,
-								}),
-								this.buildOAuthConfig(resolvedRepo),
-							);
-				this.issueTrackers.set(repo.id, issueTracker);
+				// Create issue tracker for this workspace (one per workspace, not per repo)
+				if (!this.issueTrackers.has(repo.linearWorkspaceId)) {
+					const linearToken = this.getLinearTokenForWorkspace(
+						repo.linearWorkspaceId,
+					);
+					const issueTracker =
+						this.config.platform === "cli"
+							? (() => {
+									const service = new CLIIssueTrackerService();
+									service.seedDefaultData();
+									return service;
+								})()
+							: new LinearIssueTrackerService(
+									new LinearClient({
+										accessToken: linearToken,
+									}),
+									this.buildOAuthConfig(repo.linearWorkspaceId),
+								);
+					this.issueTrackers.set(repo.linearWorkspaceId, issueTracker);
+				}
 
-				// Create activity sink for this repository
+				// Create activity sink for this repository (uses workspace issue tracker)
+				const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId)!;
 				const activitySink = new LinearActivitySink(
 					issueTracker,
 					repo.linearWorkspaceId,
@@ -562,7 +568,9 @@ export class EdgeWorker extends EventEmitter {
 		// Platform-specific initialization
 		if (this.config.platform === "cli") {
 			// CLI mode: Create and register CLIRPCServer
-			const firstIssueTracker = this.issueTrackers.get(firstRepo.id);
+			const firstIssueTracker = this.issueTrackers.get(
+				firstRepo.linearWorkspaceId,
+			);
 			if (!firstIssueTracker) {
 				throw new Error("Issue tracker not found for first repository");
 			}
@@ -1592,7 +1600,7 @@ ${taskSection}`;
 
 		// Post thought showing child result receipt
 		// Use parent's issue tracker since we're posting to the parent's session
-		const issueTracker = this.issueTrackers.get(parentRepo.id);
+		const issueTracker = this.issueTrackers.get(parentRepo.linearWorkspaceId);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -1824,23 +1832,29 @@ ${taskSection}`;
 				// Add to internal map
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// Create issue tracker with OAuth config for token refresh
-				const issueTracker =
-					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
-						: new LinearIssueTrackerService(
-								new LinearClient({
-									accessToken: repo.linearToken,
-								}),
-								this.buildOAuthConfig(resolvedRepo),
-							);
-				this.issueTrackers.set(repo.id, issueTracker);
+				// Create issue tracker for this workspace if not already present
+				if (!this.issueTrackers.has(repo.linearWorkspaceId)) {
+					const linearToken = this.getLinearTokenForWorkspace(
+						repo.linearWorkspaceId,
+					);
+					const issueTracker =
+						this.config.platform === "cli"
+							? (() => {
+									const service = new CLIIssueTrackerService();
+									service.seedDefaultData();
+									return service;
+								})()
+							: new LinearIssueTrackerService(
+									new LinearClient({
+										accessToken: linearToken,
+									}),
+									this.buildOAuthConfig(repo.linearWorkspaceId),
+								);
+					this.issueTrackers.set(repo.linearWorkspaceId, issueTracker);
+				}
 
 				// Create activity sink for this repository
+				const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId)!;
 				const activitySink = new LinearActivitySink(
 					issueTracker,
 					repo.linearWorkspaceId,
@@ -1890,13 +1904,34 @@ ${taskSection}`;
 				// Update stored config
 				this.repositories.set(repo.id, resolvedRepo);
 
-				// If token changed, update the issue tracker's client
-				if (oldRepo.linearToken !== repo.linearToken) {
-					this.logger.info(`  🔑 Token changed, updating client`);
-					const issueTracker = this.issueTrackers.get(repo.id);
-					if (issueTracker) {
+				// If workspace changed or token was updated, ensure issue tracker is current
+				const currentToken = this.getLinearTokenForWorkspace(
+					repo.linearWorkspaceId,
+				);
+				if (!this.issueTrackers.has(repo.linearWorkspaceId)) {
+					this.logger.info(
+						`  🔑 Creating issue tracker for workspace ${repo.linearWorkspaceId}`,
+					);
+					const newIssueTracker =
+						this.config.platform === "cli"
+							? (() => {
+									const service = new CLIIssueTrackerService();
+									service.seedDefaultData();
+									return service;
+								})()
+							: new LinearIssueTrackerService(
+									new LinearClient({
+										accessToken: currentToken,
+									}),
+									this.buildOAuthConfig(repo.linearWorkspaceId),
+								);
+					this.issueTrackers.set(repo.linearWorkspaceId, newIssueTracker);
+				} else {
+					// Update token on existing issue tracker if it changed
+					const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
+					if (issueTracker && currentToken) {
 						(issueTracker as LinearIssueTrackerService).setAccessToken(
-							repo.linearToken,
+							currentToken,
 						);
 					}
 				}
@@ -1963,7 +1998,9 @@ ${taskSection}`;
 							}
 
 							// Post cancellation message to tracker
-							const issueTracker = this.issueTrackers.get(repo.id);
+							const issueTracker = this.issueTrackers.get(
+								repo.linearWorkspaceId,
+							);
 							if (issueTracker && session.externalSessionId) {
 								await this.postActivityDirect(
 									issueTracker,
@@ -1988,8 +2025,15 @@ ${taskSection}`;
 
 				// Remove repository from all maps
 				this.repositories.delete(repo.id);
-				this.issueTrackers.delete(repo.id);
 				this.activitySinks.delete(repo.id);
+
+				// Only remove workspace issue tracker if no other repos use this workspace
+				const workspaceStillInUse = Array.from(this.repositories.values()).some(
+					(r) => r.linearWorkspaceId === repo.linearWorkspaceId,
+				);
+				if (!workspaceStillInUse) {
+					this.issueTrackers.delete(repo.linearWorkspaceId);
+				}
 
 				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
 			} catch (error) {
@@ -2401,10 +2445,11 @@ ${taskSection}`;
 				).length;
 
 				// Download attachments from the new description
+				const linearToken = this.getLinearTokenForRepository(repository);
 				const downloadResult = await this.downloadCommentAttachments(
 					issueData.description,
 					attachmentsDir,
-					repository.linearToken,
+					linearToken,
 					existingAttachmentCount,
 				);
 
@@ -2510,17 +2555,44 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Get issue tracker for a workspace by finding first repository with that workspace ID
+	 * Get issue tracker for a workspace (direct lookup by workspace ID)
 	 */
 	private getIssueTrackerForWorkspace(
 		workspaceId: string,
 	): IIssueTrackerService | undefined {
-		for (const [repoId, repo] of this.repositories) {
-			if (repo.linearWorkspaceId === workspaceId) {
-				return this.issueTrackers.get(repoId);
-			}
+		return this.issueTrackers.get(workspaceId);
+	}
+
+	/**
+	 * Get issue tracker for a repository (resolves through workspace ID)
+	 */
+	private getIssueTrackerForRepository(
+		repositoryId: string,
+	): IIssueTrackerService | undefined {
+		const repo = this.repositories.get(repositoryId);
+		if (!repo) return undefined;
+		return this.issueTrackers.get(repo.linearWorkspaceId);
+	}
+
+	/**
+	 * Get the Linear API token for a workspace from workspace-level config.
+	 */
+	private getLinearTokenForWorkspace(workspaceId: string): string {
+		const workspaceConfig = this.config.linearWorkspaces?.[workspaceId];
+		if (!workspaceConfig) {
+			throw new Error(
+				`No Linear workspace config found for workspace ${workspaceId}. ` +
+					`Ensure linearWorkspaces.${workspaceId} is configured.`,
+			);
 		}
-		return undefined;
+		return workspaceConfig.linearToken;
+	}
+
+	/**
+	 * Get the Linear API token for a repository (resolves through workspace ID).
+	 */
+	private getLinearTokenForRepository(repository: RepositoryConfig): string {
+		return this.getLinearTokenForWorkspace(repository.linearWorkspaceId);
 	}
 
 	/**
@@ -3339,7 +3411,7 @@ ${taskSection}`;
 			);
 
 			// Need to fetch full issue for routing context
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
 			if (issueTracker) {
 				try {
 					fullIssue = await issueTracker.fetchIssue(issue.id);
@@ -3367,7 +3439,7 @@ ${taskSection}`;
 		// (before any async routing work to ensure instant user feedback)
 
 		// Get issue tracker for this repository
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
 		if (!issueTracker) {
 			this.logger.error(
 				"Unexpected: There was no IssueTrackerService for the repository with id",
@@ -3416,11 +3488,13 @@ ${taskSection}`;
 			).length;
 
 			// Download new attachments from the comment
+			const linearTokenForAttachments =
+				this.getLinearTokenForRepository(repository);
 			const downloadResult = comment
 				? await this.downloadCommentAttachments(
 						comment.body,
 						attachmentsDir,
-						repository.linearToken,
+						linearTokenForAttachments,
 						existingAttachmentCount,
 					)
 				: {
@@ -3894,7 +3968,7 @@ ${taskSection}`;
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(repositoryId);
+			const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 			if (!issueTracker) {
 				this.logger.warn(
 					`No issue tracker found for repository ${repositoryId}, skipping state update`,
@@ -4024,10 +4098,11 @@ ${taskSection}`;
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
+		const linearToken = this.getLinearTokenForRepository(repository);
 		return this.attachmentService.downloadIssueAttachments(
 			issue,
-			repository,
+			linearToken,
 			workspacePath,
 			issueTracker,
 		);
@@ -4257,7 +4332,7 @@ ${taskSection}`;
 		}
 
 		// Post thought to Linear showing feedback receipt
-		const issueTracker = this.issueTrackers.get(childRepo.id);
+		const issueTracker = this.issueTrackers.get(childRepo.linearWorkspaceId);
 		if (issueTracker) {
 			const feedbackThought = parentIssueId
 				? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
@@ -4384,14 +4459,15 @@ ${taskSection}`;
 
 		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		// If the client reconnects and needs another server, the endpoint creates a fresh one.
+		const linearToken = this.getLinearTokenForRepository(repository);
 		const prebuiltServer = createCyrusToolsServer(
-			repository.linearToken,
+			linearToken,
 			this.createCyrusToolsOptions(parentSessionId),
 		);
 
 		this.cyrusToolsMcpContexts.set(contextId, {
 			contextId,
-			linearToken: repository.linearToken,
+			linearToken,
 			parentSessionId,
 			prebuiltServer,
 			createdAt: Date.now(),
@@ -4401,14 +4477,14 @@ ${taskSection}`;
 		const cyrusToolsAuthorizationHeader =
 			this.getCyrusToolsMcpAuthorizationHeaderValue();
 
-		// Always inject the Linear MCP servers with the repository's token
+		// Always inject the Linear MCP servers with the workspace's token
 		// https://linear.app/docs/mcp
 		const mcpConfig: Record<string, McpServerConfig> = {
 			linear: {
 				type: "http",
 				url: "https://mcp.linear.app/mcp",
 				headers: {
-					Authorization: `Bearer ${repository.linearToken}`,
+					Authorization: `Bearer ${linearToken}`,
 				},
 			},
 			"cyrus-tools": {
@@ -5220,7 +5296,7 @@ ${input.userComment}
 		repository: RepositoryConfig,
 		_reason: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
 		const agentSessionId = webhook.agentSession.id;
 		const behavior = this.userAccessControl.getBlockBehavior(repository.id);
 
@@ -5456,7 +5532,7 @@ ${input.userComment}
 		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch full issue and labels to check for Orchestrator label override
-		const issueTracker = this.issueTrackers.get(repository.id);
+		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
 		let hasOrchestratorLabel = false;
 
 		// Get issueId from issueContext (preferred) or deprecated issueId field
@@ -5861,7 +5937,7 @@ ${input.userComment}
 	 */
 	private getRepositoryPlatform(repositoryId: string): string | undefined {
 		try {
-			return this.issueTrackers.get(repositoryId)?.getPlatformType();
+			return this.getIssueTrackerForRepository(repositoryId)?.getPlatformType();
 		} catch {
 			return undefined;
 		}
@@ -5874,7 +5950,7 @@ ${input.userComment}
 		issueId: string,
 		repositoryId: string,
 	): Promise<Issue | null> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
 			return null;
@@ -5910,11 +5986,10 @@ ${input.userComment}
 
 	/**
 	 * Build OAuth config for LinearIssueTrackerService.
+	 * Uses workspace-level token storage.
 	 * Returns undefined if OAuth credentials are not available.
 	 */
-	private buildOAuthConfig(
-		repo: RepositoryConfig,
-	): LinearOAuthConfig | undefined {
+	private buildOAuthConfig(workspaceId: string): LinearOAuthConfig | undefined {
 		const clientId = process.env.LINEAR_CLIENT_ID;
 		const clientSecret = process.env.LINEAR_CLIENT_SECRET;
 
@@ -5925,28 +6000,32 @@ ${input.userComment}
 			return undefined;
 		}
 
-		if (!repo.linearRefreshToken) {
+		const workspaceConfig = this.config.linearWorkspaces?.[workspaceId];
+		if (!workspaceConfig?.linearRefreshToken) {
 			this.logger.warn(
-				`No refresh token for repository ${repo.id}, token refresh disabled`,
+				`No refresh token for workspace ${workspaceId}, token refresh disabled`,
 			);
 			return undefined;
 		}
 
-		const workspaceId = repo.linearWorkspaceId;
-		const workspaceName = repo.linearWorkspaceName || workspaceId;
+		// Find workspace name from any repository with this workspace ID
+		const workspaceName =
+			Array.from(this.repositories.values()).find(
+				(r) => r.linearWorkspaceId === workspaceId,
+			)?.linearWorkspaceName || workspaceId;
 
 		return {
 			clientId,
 			clientSecret,
-			refreshToken: repo.linearRefreshToken,
+			refreshToken: workspaceConfig.linearRefreshToken,
 			workspaceId,
 			onTokenRefresh: async (tokens) => {
-				// Update repository config state (for EdgeWorker's internal tracking)
-				for (const [, repository] of this.repositories) {
-					if (repository.linearWorkspaceId === workspaceId) {
-						repository.linearToken = tokens.accessToken;
-						repository.linearRefreshToken = tokens.refreshToken;
-					}
+				// Update workspace config in memory
+				if (this.config.linearWorkspaces?.[workspaceId]) {
+					this.config.linearWorkspaces[workspaceId].linearToken =
+						tokens.accessToken;
+					this.config.linearWorkspaces[workspaceId].linearRefreshToken =
+						tokens.refreshToken;
 				}
 
 				// Persist tokens to config.json
@@ -5961,7 +6040,7 @@ ${input.userComment}
 	}
 
 	/**
-	 * Save OAuth tokens to config.json
+	 * Save OAuth tokens to config.json (workspace-level storage)
 	 */
 	private async saveOAuthTokens(tokens: {
 		linearToken: string;
@@ -5978,20 +6057,25 @@ ${input.userComment}
 			const configContent = await readFile(this.configPath, "utf-8");
 			const config = JSON.parse(configContent);
 
-			// Find and update all repositories with this workspace ID
-			if (config.repositories && Array.isArray(config.repositories)) {
-				for (const repo of config.repositories) {
-					if (repo.linearWorkspaceId === tokens.linearWorkspaceId) {
-						repo.linearToken = tokens.linearToken;
-						if (tokens.linearRefreshToken) {
-							repo.linearRefreshToken = tokens.linearRefreshToken;
-						}
-						if (tokens.linearWorkspaceName) {
-							repo.linearWorkspaceName = tokens.linearWorkspaceName;
-						}
-					}
-				}
+			// Ensure linearWorkspaces exists
+			if (!config.linearWorkspaces) {
+				config.linearWorkspaces = {};
 			}
+
+			// Update workspace-level token storage
+			config.linearWorkspaces[tokens.linearWorkspaceId] = {
+				linearToken: tokens.linearToken,
+				...(tokens.linearRefreshToken
+					? { linearRefreshToken: tokens.linearRefreshToken }
+					: config.linearWorkspaces[tokens.linearWorkspaceId]
+								?.linearRefreshToken
+						? {
+								linearRefreshToken:
+									config.linearWorkspaces[tokens.linearWorkspaceId]
+										.linearRefreshToken,
+							}
+						: {}),
+			};
 
 			await writeFile(this.configPath, JSON.stringify(config, null, "\t"));
 			this.logger.debug(
