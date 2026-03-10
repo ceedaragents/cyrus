@@ -77,28 +77,35 @@ export class PromptBuilder {
 	// ========================================================================
 
 	/**
-	 * Determine system prompt based on issue labels and repository configuration
+	 * Determine system prompt based on issue labels and repository configurations.
+	 *
+	 * Checks `labelPrompts` config across all repos; first match wins (ordered by
+	 * array position). Logs a warning when subsequent repos would match a different
+	 * prompt type (conflict detection).
 	 */
 	async determineSystemPromptFromLabels(
 		labels: string[],
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 	): Promise<SystemPromptResult | undefined> {
 		if (labels.length === 0) {
 			return undefined;
 		}
 
-		// Lowercase labels for case-insensitive comparison
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
 		// HARDCODED RULE: Always check for 'orchestrator' label (case-insensitive)
-		// regardless of whether repository.labelPrompts is configured.
-		// This matches the hardcoded routing behavior from CYPACK-715.
+		// regardless of whether any repository.labelPrompts is configured.
 		const hasHardcodedOrchestratorLabel =
 			lowercaseLabels.includes("orchestrator");
 
-		// If no labelPrompts configured but has hardcoded orchestrator label,
+		// Check if ANY repo has labelPrompts configured
+		const anyRepoHasLabelPrompts = repositories.some(
+			(repo) => repo.labelPrompts,
+		);
+
+		// If no repos have labelPrompts but has hardcoded orchestrator label,
 		// load orchestrator system prompt directly
-		if (!repository.labelPrompts && hasHardcodedOrchestratorLabel) {
+		if (!anyRepoHasLabelPrompts && hasHardcodedOrchestratorLabel) {
 			try {
 				const __filename = fileURLToPath(import.meta.url);
 				const __dirname = dirname(__filename);
@@ -129,7 +136,55 @@ export class PromptBuilder {
 			}
 		}
 
-		// If no labelPrompts configured and no hardcoded orchestrator, return undefined
+		if (!anyRepoHasLabelPrompts) {
+			return undefined;
+		}
+
+		// Iterate repos in array order — first match wins, log conflicts
+		let winningResult: SystemPromptResult | undefined;
+		let winningRepoName: string | undefined;
+
+		for (const repository of repositories) {
+			if (!repository.labelPrompts) {
+				continue;
+			}
+
+			const matchResult = await this.matchSystemPromptForRepo(
+				lowercaseLabels,
+				labels,
+				repository,
+				hasHardcodedOrchestratorLabel,
+			);
+
+			if (!matchResult) {
+				continue;
+			}
+
+			if (!winningResult) {
+				winningResult = matchResult;
+				winningRepoName = repository.name;
+			} else if (matchResult.type !== winningResult.type) {
+				// Conflict: different prompt type from a later repo
+				this.logger.warn(
+					`Label prompt conflict: repo '${repository.name}' would match '${matchResult.type}' ` +
+						`but repo '${winningRepoName}' already matched '${winningResult.type}' (first match wins)`,
+				);
+			}
+		}
+
+		return winningResult;
+	}
+
+	/**
+	 * Match system prompt for a single repository's labelPrompts config.
+	 * Internal helper used by determineSystemPromptFromLabels.
+	 */
+	private async matchSystemPromptForRepo(
+		lowercaseLabels: string[],
+		labels: string[],
+		repository: RepositoryConfig,
+		hasHardcodedOrchestratorLabel: boolean,
+	): Promise<SystemPromptResult | undefined> {
 		if (!repository.labelPrompts) {
 			return undefined;
 		}
@@ -147,14 +202,12 @@ export class PromptBuilder {
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: (orchestratorConfig?.labels ?? ["orchestrator"]);
-		// Use hardcoded check OR config-based check for orchestrator
 		const hasOrchestratorLabel =
 			hasHardcodedOrchestratorLabel ||
 			orchestratorLabels?.some((label: string) =>
 				lowercaseLabels.includes(label.toLowerCase()),
 			);
 
-		// If both graphite AND orchestrator labels are present, use graphite-orchestrator prompt
 		if (hasGraphiteLabel && hasOrchestratorLabel) {
 			try {
 				const __filename = fileURLToPath(import.meta.url);
@@ -167,7 +220,7 @@ export class PromptBuilder {
 				);
 				const promptContent = await readFile(promptPath, "utf-8");
 				this.logger.debug(
-					`Using graphite-orchestrator system prompt for labels: ${labels.join(", ")}`,
+					`Using graphite-orchestrator system prompt from repo '${repository.name}' for labels: ${labels.join(", ")}`,
 				);
 
 				const promptVersion = this.extractVersionTag(promptContent);
@@ -187,7 +240,6 @@ export class PromptBuilder {
 					`Failed to load graphite-orchestrator prompt template:`,
 					error,
 				);
-				// Fall through to regular orchestrator if graphite-orchestrator prompt fails
 			}
 		}
 
@@ -201,13 +253,10 @@ export class PromptBuilder {
 
 		for (const promptType of promptTypes) {
 			const promptConfig = repository.labelPrompts[promptType];
-			// Handle both old array format and new object format for backward compatibility
 			const configuredLabels = Array.isArray(promptConfig)
 				? promptConfig
 				: promptConfig?.labels;
 
-			// For orchestrator type, also check the hardcoded 'orchestrator' label
-			// This ensures orchestrator prompt loads even without explicit labelPrompts config
 			const matchesLabel =
 				promptType === "orchestrator"
 					? hasHardcodedOrchestratorLabel ||
@@ -220,7 +269,6 @@ export class PromptBuilder {
 
 			if (matchesLabel) {
 				try {
-					// Load the prompt template from file
 					const __filename = fileURLToPath(import.meta.url);
 					const __dirname = dirname(__filename);
 					const promptPath = join(
@@ -231,10 +279,9 @@ export class PromptBuilder {
 					);
 					const promptContent = await readFile(promptPath, "utf-8");
 					this.logger.debug(
-						`Using ${promptType} system prompt for labels: ${labels.join(", ")}`,
+						`Using ${promptType} system prompt from repo '${repository.name}' for labels: ${labels.join(", ")}`,
 					);
 
-					// Extract and log version tag if present
 					const promptVersion = this.extractVersionTag(promptContent);
 					if (promptVersion) {
 						this.logger.debug(
@@ -261,19 +308,24 @@ export class PromptBuilder {
 	}
 
 	/**
-	 * Build simplified prompt for label-based workflows
+	 * Build simplified prompt for label-based workflows.
+	 *
+	 * Loads prompt templates from each repo; for multi-repo sessions, merges
+	 * into a single prompt with per-repo sections delineated using XML tags.
+	 *
 	 * @param issue Full Linear issue
-	 * @param repository Repository configuration
+	 * @param repositories Repository configurations (all repos in session)
 	 * @param attachmentManifest Optional attachment manifest
 	 * @param guidance Optional agent guidance rules from Linear
 	 * @returns Formatted prompt string
 	 */
 	async buildLabelBasedPrompt(
 		issue: Issue,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
 	): Promise<PromptResult> {
+		const repository = repositories[0]!;
 		this.logger.debug(
 			`buildLabelBasedPrompt called for issue ${issue.identifier}`,
 		);
@@ -297,7 +349,9 @@ export class PromptBuilder {
 			}
 
 			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repository);
+			const baseBranchMap = await this.determineBaseBranch(issue, repositories);
+			const baseBranch =
+				baseBranchMap.get(repository.id) ?? repository.baseBranch;
 
 			// Fetch assignee information (including Linear profile URL, GitHub user ID, and noreply email)
 			let assigneeId = "";
@@ -427,6 +481,21 @@ export class PromptBuilder {
 					routingContext ? /{{routing_context}}/g : /\n*{{routing_context}}/g,
 					routingContext,
 				);
+
+			// For multi-repo: replace single-repo git_context with per-repo sections
+			if (repositories.length > 1) {
+				const repoSections = repositories
+					.map((repo) => {
+						const repoBranch = baseBranchMap.get(repo.id) ?? repo.baseBranch;
+						return `  <repository name="${repo.name}">\n    <base_branch>${repoBranch}</base_branch>\n  </repository>`;
+					})
+					.join("\n");
+
+				prompt = prompt.replace(
+					/<git_context>[\s\S]*?<\/git_context>/,
+					`<repositories>\n${repoSections}\n</repositories>`,
+				);
+			}
 
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
@@ -660,9 +729,13 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	}
 
 	/**
-	 * Build a prompt for Claude using the improved XML-style template
+	 * Build a prompt for Claude using the improved XML-style template.
+	 *
+	 * Uses each repo's `promptTemplatePath` for its own section; for multi-repo
+	 * sessions, includes context from all repositories with per-repo XML sections.
+	 *
 	 * @param issue Full Linear issue
-	 * @param repository Repository configuration
+	 * @param repositories Repository configurations (all repos in session)
 	 * @param newComment Optional new comment to focus on (for handleNewRootComment)
 	 * @param attachmentManifest Optional attachment manifest
 	 * @param guidance Optional agent guidance rules from Linear
@@ -670,11 +743,12 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 	 */
 	async buildIssueContextPrompt(
 		issue: Issue,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		newComment?: WebhookComment,
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
 	): Promise<PromptResult> {
+		const repository = repositories[0]!;
 		this.logger.debug(
 			`buildIssueContextPrompt called for issue ${issue.identifier}${newComment ? " with new comment" : ""}`,
 		);
@@ -711,7 +785,9 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			const stateName = state?.name || "Unknown";
 
 			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repository);
+			const baseBranchMap = await this.determineBaseBranch(issue, repositories);
+			const baseBranch =
+				baseBranchMap.get(repository.id) ?? repository.baseBranch;
 
 			// Get formatted comment threads
 			const issueTracker = this.issueTrackers.get(
@@ -798,6 +874,24 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 					assigneeGitHubNoreplyEmail,
 				);
 
+			// For multi-repo: replace single-repo context with per-repo sections
+			if (repositories.length > 1) {
+				const repoSections = repositories
+					.map((repo) => {
+						const repoBranch = baseBranchMap.get(repo.id) ?? repo.baseBranch;
+						const workingDir = this.config.handlers?.createWorkspace
+							? "Will be created based on issue"
+							: repo.repositoryPath;
+						return `  <repository name="${repo.name}">\n    <working_directory>${workingDir}</working_directory>\n    <base_branch>${repoBranch}</base_branch>\n  </repository>`;
+					})
+					.join("\n");
+
+				prompt = prompt.replace(
+					/<context>[\s\S]*?<\/context>/,
+					`<repositories>\n${repoSections}\n</repositories>`,
+				);
+			}
+
 			// Handle the optional new comment section
 			if (newComment) {
 				// Replace the conditional block
@@ -850,10 +944,14 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
-			// Append repository-specific instruction if provided
-			if (repository.appendInstruction) {
-				this.logger.debug(`Adding repository-specific instruction`);
-				prompt = `${prompt}\n\n<repository-specific-instruction>\n${repository.appendInstruction}\n</repository-specific-instruction>`;
+			// Append repository-specific instructions from all repos
+			for (const repo of repositories) {
+				if (repo.appendInstruction) {
+					this.logger.debug(
+						`Adding repository-specific instruction for ${repo.name}`,
+					);
+					prompt = `${prompt}\n\n<repository-specific-instruction repository="${repo.name}">\n${repo.appendInstruction}\n</repository-specific-instruction>`;
+				}
 			}
 
 			this.logger.debug(`Final prompt length: ${prompt.length} characters`);
@@ -866,20 +964,24 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			const stateName = state?.name || "Unknown";
 
 			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repository);
+			const baseBranchMap = await this.determineBaseBranch(issue, repositories);
+
+			const repoLines = repositories
+				.map((repo) => {
+					const branch = baseBranchMap.get(repo.id) ?? repo.baseBranch;
+					return `Repository: ${repo.name}\nWorking directory: ${repo.repositoryPath}\nBase branch: ${branch}`;
+				})
+				.join("\n\n");
 
 			const fallbackPrompt = `Please help me with the following Linear issue:
 
-Repository: ${repository.name}
+${repoLines}
 Issue: ${issue.identifier}
 Title: ${issue.title}
 Description: ${issue.description || "No description provided"}
 State: ${stateName}
 Priority: ${issue.priority?.toString() || "None"}
 Branch: ${issue.branchName}
-
-Working directory: ${repository.repositoryPath}
-Base branch: ${baseBranch}
 
 ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
 
@@ -1234,9 +1336,12 @@ ${reply.body}
 	// ========================================================================
 
 	/**
-	 * Determine the base branch for an issue, considering parent issues and blocked-by relationships
+	 * Determine the base branch for an issue across all repositories.
 	 *
-	 * Priority order:
+	 * Returns a Map from repositoryId to baseBranch. Each repo may have
+	 * different base branches and Graphite stacking relationships.
+	 *
+	 * Priority order (per repo):
 	 * 1. If issue has graphite label AND has a "blocked by" relationship, use the blocking issue's branch
 	 *    (This enables Graphite stacking where each sub-issue branches off the previous)
 	 * 2. If issue has a parent, use the parent's branch
@@ -1244,94 +1349,116 @@ ${reply.body}
 	 */
 	async determineBaseBranch(
 		issue: Issue,
-		repository: RepositoryConfig,
-	): Promise<string> {
-		// Start with the repository's default base branch
-		let baseBranch = repository.baseBranch;
+		repositories: RepositoryConfig[],
+	): Promise<Map<string, string>> {
+		const result = new Map<string, string>();
 
-		// Check if this issue has the graphite label - if so, blocked-by relationship takes priority
-		const isGraphiteIssue = await this.hasGraphiteLabel(issue, repository);
+		// Pre-compute shared issue-level data once (Graphite check, parent, blocking issues)
+		const isGraphiteIssue = await this.hasGraphiteLabel(issue, repositories);
 
+		let blockingIssues: Issue[] | undefined;
 		if (isGraphiteIssue) {
-			// For Graphite stacking: use the blocking issue's branch as base
-			const blockingIssues = await this.fetchBlockingIssues(issue);
-
-			if (blockingIssues.length > 0) {
-				// Use the first blocking issue's branch (typically there's only one in a stack)
-				const blockingIssue = blockingIssues[0]!;
-				this.logger.debug(
-					`Issue ${issue.identifier} has graphite label and is blocked by ${blockingIssue.identifier}`,
-				);
-
-				// Get blocking issue's branch name
-				const blockingRawBranchName =
-					blockingIssue.branchName ||
-					`${blockingIssue.identifier}-${(blockingIssue.title ?? "")
-						.toLowerCase()
-						.replace(/\s+/g, "-")
-						.substring(0, 30)}`;
-				const blockingBranchName = this.gitService.sanitizeBranchName(
-					blockingRawBranchName,
-				);
-
-				// Check if blocking issue's branch exists
-				const blockingBranchExists = await this.gitService.branchExists(
-					blockingBranchName,
-					repository.repositoryPath,
-				);
-
-				if (blockingBranchExists) {
-					baseBranch = blockingBranchName;
-					this.logger.debug(
-						`Using blocking issue branch '${blockingBranchName}' as base for Graphite-stacked issue ${issue.identifier}`,
-					);
-					return baseBranch;
-				}
-				this.logger.debug(
-					`Blocking issue branch '${blockingBranchName}' not found, falling back to parent/default`,
-				);
-			}
+			blockingIssues = await this.fetchBlockingIssues(issue);
 		}
 
-		// Check if issue has a parent (standard sub-issue behavior)
+		let parent: Issue | undefined;
 		try {
-			const parent = await issue.parent;
-			if (parent) {
-				this.logger.debug(
-					`Issue ${issue.identifier} has parent: ${parent.identifier}`,
-				);
+			parent = (await issue.parent) ?? undefined;
+		} catch {
+			// Parent field might not exist or couldn't be fetched
+		}
 
-				// Get parent's branch name
-				const parentRawBranchName =
-					parent.branchName ||
-					`${parent.identifier}-${parent.title
-						?.toLowerCase()
-						.replace(/\s+/g, "-")
-						.substring(0, 30)}`;
-				const parentBranchName =
-					this.gitService.sanitizeBranchName(parentRawBranchName);
+		for (const repository of repositories) {
+			const baseBranch = await this.determineBaseBranchForRepo(
+				issue,
+				repository,
+				isGraphiteIssue,
+				blockingIssues,
+				parent,
+			);
+			result.set(repository.id, baseBranch);
+		}
 
-				// Check if parent branch exists
-				const parentBranchExists = await this.gitService.branchExists(
-					parentBranchName,
-					repository.repositoryPath,
-				);
+		return result;
+	}
 
-				if (parentBranchExists) {
-					baseBranch = parentBranchName;
-					this.logger.debug(
-						`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
-					);
-				} else {
-					this.logger.debug(
-						`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
-					);
-				}
-			}
-		} catch (_error) {
-			// Parent field might not exist or couldn't be fetched, use default base branch
+	/**
+	 * Determine the base branch for a single repository.
+	 * Internal helper used by determineBaseBranch.
+	 */
+	private async determineBaseBranchForRepo(
+		issue: Issue,
+		repository: RepositoryConfig,
+		isGraphiteIssue: boolean,
+		blockingIssues?: Issue[],
+		parent?: Issue,
+	): Promise<string> {
+		let baseBranch = repository.baseBranch;
+
+		if (isGraphiteIssue && blockingIssues && blockingIssues.length > 0) {
+			const blockingIssue = blockingIssues[0]!;
 			this.logger.debug(
-				`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,
+				`Issue ${issue.identifier} has graphite label and is blocked by ${blockingIssue.identifier}`,
+			);
+
+			const blockingRawBranchName =
+				blockingIssue.branchName ||
+				`${blockingIssue.identifier}-${(blockingIssue.title ?? "")
+					.toLowerCase()
+					.replace(/\s+/g, "-")
+					.substring(0, 30)}`;
+			const blockingBranchName = this.gitService.sanitizeBranchName(
+				blockingRawBranchName,
+			);
+
+			const blockingBranchExists = await this.gitService.branchExists(
+				blockingBranchName,
+				repository.repositoryPath,
+			);
+
+			if (blockingBranchExists) {
+				this.logger.debug(
+					`Using blocking issue branch '${blockingBranchName}' as base for Graphite-stacked issue ${issue.identifier} in repo ${repository.name}`,
+				);
+				return blockingBranchName;
+			}
+			this.logger.debug(
+				`Blocking issue branch '${blockingBranchName}' not found in repo ${repository.name}, falling back to parent/default`,
+			);
+		}
+
+		if (parent) {
+			this.logger.debug(
+				`Issue ${issue.identifier} has parent: ${parent.identifier}`,
+			);
+
+			const parentRawBranchName =
+				parent.branchName ||
+				`${parent.identifier}-${parent.title
+					?.toLowerCase()
+					.replace(/\s+/g, "-")
+					.substring(0, 30)}`;
+			const parentBranchName =
+				this.gitService.sanitizeBranchName(parentRawBranchName);
+
+			const parentBranchExists = await this.gitService.branchExists(
+				parentBranchName,
+				repository.repositoryPath,
+			);
+
+			if (parentBranchExists) {
+				baseBranch = parentBranchName;
+				this.logger.debug(
+					`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier} in repo ${repository.name}`,
+				);
+			} else {
+				this.logger.debug(
+					`Parent branch '${parentBranchName}' not found in repo ${repository.name}, using default base branch '${repository.baseBranch}'`,
+				);
+			}
+		} else {
+			this.logger.debug(
+				`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}' for repo ${repository.name}`,
 			);
 		}
 
@@ -1339,23 +1466,29 @@ ${reply.body}
 	}
 
 	/**
-	 * Check if an issue has the graphite label
+	 * Check if an issue has the graphite label defined in any repository's labelPrompts.graphite config
 	 *
 	 * @param issue The issue to check
-	 * @param repository The repository configuration
-	 * @returns True if the issue has the graphite label
+	 * @param repositories The repository configurations to check
+	 * @returns True if the issue has the graphite label in any repo
 	 */
 	async hasGraphiteLabel(
 		issue: Issue,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 	): Promise<boolean> {
-		const graphiteConfig = repository.labelPrompts?.graphite;
-		const graphiteLabels = Array.isArray(graphiteConfig)
-			? graphiteConfig
-			: (graphiteConfig?.labels ?? ["graphite"]);
-
 		const issueLabels = await this.fetchIssueLabels(issue);
-		return graphiteLabels.some((label: string) => issueLabels.includes(label));
+
+		for (const repository of repositories) {
+			const graphiteConfig = repository.labelPrompts?.graphite;
+			const graphiteLabels = Array.isArray(graphiteConfig)
+				? graphiteConfig
+				: (graphiteConfig?.labels ?? ["graphite"]);
+
+			if (graphiteLabels.some((label: string) => issueLabels.includes(label))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

@@ -73,7 +73,12 @@ export interface PromptAssemblyInput {
 	/** Full issue details */
 	fullIssue: Issue;
 
-	/** Repository configuration */
+	/** Repository configurations (all repos in the session) */
+	repositories: RepositoryConfig[];
+
+	/**
+	 * @deprecated Use `repositories` instead. Alias for `repositories[0]`.
+	 */
 	repository: RepositoryConfig;
 
 	// ===== Prompt Content =====

@@ -40,7 +40,6 @@ import type {
 	UserPromptMessage,
 	Webhook,
 	WebhookAgentSession,
-	WebhookComment,
 	WebhookIssue,
 } from "cyrus-core";
 import {
@@ -3066,6 +3065,7 @@ ${taskSection}`;
 			const input: PromptAssemblyInput = {
 				session,
 				fullIssue,
+				repositories: [repository],
 				repository,
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
@@ -3897,32 +3897,9 @@ ${taskSection}`;
 		  }
 		| undefined
 	> {
-		return this.promptBuilder.determineSystemPromptFromLabels(
-			labels,
+		return this.promptBuilder.determineSystemPromptFromLabels(labels, [
 			repository,
-		);
-	}
-
-	/**
-	 * Build simplified prompt for label-based workflows
-	 * @param issue Full Linear issue
-	 * @param repository Repository configuration
-	 * @param attachmentManifest Optional attachment manifest
-	 * @param guidance Optional agent guidance rules from Linear
-	 * @returns Formatted prompt string
-	 */
-	private async buildLabelBasedPrompt(
-		issue: Issue,
-		repository: RepositoryConfig,
-		attachmentManifest: string = "",
-		guidance?: GuidanceRule[],
-	): Promise<{ prompt: string; version?: string }> {
-		return this.promptBuilder.buildLabelBasedPrompt(
-			issue,
-			repository,
-			attachmentManifest,
-			guidance,
-		);
+		]);
 	}
 
 	/**
@@ -3953,31 +3930,6 @@ ${taskSection}`;
 	 */
 	private convertLinearIssueToCore(issue: Issue): IssueMinimal {
 		return this.promptBuilder.convertLinearIssueToCore(issue);
-	}
-
-	/**
-	 * Build a prompt for Claude using the improved XML-style template
-	 * @param issue Full Linear issue
-	 * @param repository Repository configuration
-	 * @param newComment Optional new comment to focus on (for handleNewRootComment)
-	 * @param attachmentManifest Optional attachment manifest
-	 * @param guidance Optional agent guidance rules from Linear
-	 * @returns Formatted prompt string
-	 */
-	private async buildIssueContextPrompt(
-		issue: Issue,
-		repository: RepositoryConfig,
-		newComment?: WebhookComment,
-		attachmentManifest: string = "",
-		guidance?: GuidanceRule[],
-	): Promise<{ prompt: string; version?: string }> {
-		return this.promptBuilder.buildIssueContextPrompt(
-			issue,
-			repository,
-			newComment,
-			attachmentManifest,
-			guidance,
-		);
 	}
 
 	/**
@@ -4684,6 +4636,7 @@ ${taskSection}`;
 		const input: PromptAssemblyInput = {
 			session,
 			fullIssue,
+			repositories: [repository],
 			repository,
 			userComment: promptBody,
 			commentAuthor,
@@ -4763,12 +4716,14 @@ ${taskSection}`;
 
 		// 1. Determine system prompt from labels
 		// Only for delegation (not mentions) or when /label-based-prompt is requested
+		const repositories = input.repositories ?? [input.repository];
 		let labelBasedSystemPrompt: string | undefined;
 		if (!input.isMentionTriggered || input.isLabelBasedPromptRequested) {
-			labelBasedSystemPrompt = await this.determineSystemPromptForAssembly(
+			const result = await this.promptBuilder.determineSystemPromptFromLabels(
 				input.labels || [],
-				input.repository,
+				repositories,
 			);
+			labelBasedSystemPrompt = result?.prompt;
 		}
 
 		// 2. Determine system prompt based on prompt type
@@ -4792,7 +4747,7 @@ ${taskSection}`;
 		);
 		const issueContext = await this.buildIssueContextForPromptAssembly(
 			input.fullIssue,
-			input.repository,
+			repositories,
 			promptType,
 			input.attachmentManifest,
 			input.guidance,
@@ -4934,25 +4889,11 @@ ${input.userComment}
 	}
 
 	/**
-	 * Adapter method for prompt assembly - extracts just the prompt string
-	 */
-	private async determineSystemPromptForAssembly(
-		labels: string[],
-		repository: RepositoryConfig,
-	): Promise<string | undefined> {
-		const result = await this.determineSystemPromptFromLabels(
-			labels,
-			repository,
-		);
-		return result?.prompt;
-	}
-
-	/**
 	 * Adapter method for prompt assembly - routes to appropriate issue context builder
 	 */
 	private async buildIssueContextForPromptAssembly(
 		issue: Issue,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		promptType: PromptType,
 		attachmentManifest?: string,
 		guidance?: GuidanceRule[],
@@ -4976,17 +4917,17 @@ ${input.userComment}
 			promptType === "label-based" ||
 			promptType === "label-based-prompt-command"
 		) {
-			return this.buildLabelBasedPrompt(
+			return this.promptBuilder.buildLabelBasedPrompt(
 				issue,
-				repository,
+				repositories,
 				attachmentManifest,
 				guidance,
 			);
 		}
 		// Fallback to standard issue context
-		return this.buildIssueContextPrompt(
+		return this.promptBuilder.buildIssueContextPrompt(
 			issue,
-			repository,
+			repositories,
 			undefined, // No new comment for initial prompt assembly
 			attachmentManifest,
 			guidance,
