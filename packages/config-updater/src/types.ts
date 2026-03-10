@@ -60,7 +60,7 @@ export interface McpServerConfig {
  * Test MCP connection payload
  */
 export interface TestMcpPayload {
-	transportType: "stdio" | "sse";
+	transportType: "stdio" | "sse" | "http";
 	serverUrl?: string | null;
 	command?: string | null;
 	commandArgs?: Array<{ value: string; order: number }> | null;
