@@ -458,7 +458,6 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			await (edgeWorker as any).handleWebhook(webhook, [mockRepository]);
 
 			// Assert: Should still find and stop sessions even without cached repo
-			// Currently FAILS — handleIssueUnassignedWebhook returns early at line 2146
 			expect(mockAgentSessionManager.requestSessionStop).toHaveBeenCalled();
 		});
 	});
