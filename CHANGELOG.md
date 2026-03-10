@@ -4,8 +4,54 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.32] - 2026-03-10
+
 ### Fixed
 - **Orchestrator sub-issue results not reaching parent** - Sub-issue completion results are now correctly written back to the parent orchestrator issue. This regression was introduced in v0.2.22 by the GlobalSessionRegistry refactor (CYPACK-724), which changed the parent session lookup to read from `globalSessionRegistry` without updating the write path to match. ([CYPACK-922](https://linear.app/ceedar/issue/CYPACK-922), [#957](https://github.com/ceedaragents/cyrus/pull/957))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.32
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.32
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.32
+
+#### cyrus-core
+- cyrus-core@0.2.32
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.32
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.32
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.32
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.32
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.32
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.32
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.32
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.32
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.32
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.32
 
 ## [0.2.31] - 2026-03-09
 
