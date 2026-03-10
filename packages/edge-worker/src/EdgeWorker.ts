@@ -2098,13 +2098,22 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Get cached repository for an issue (used by agentSessionPrompted Branch 3)
+	 * Get cached repositories for an issue (used by agentSessionPrompted Branch 3)
+	 * Returns null if nothing cached, or array of resolved RepositoryConfigs.
 	 */
-	private getCachedRepository(issueId: string): RepositoryConfig | null {
-		return this.repositoryRouter.getCachedRepository(
+	private getCachedRepositories(issueId: string): RepositoryConfig[] | null {
+		return this.repositoryRouter.getCachedRepositories(
 			issueId,
 			this.repositories,
 		);
+	}
+
+	/**
+	 * Get first cached repository for an issue (convenience for single-repo callers)
+	 */
+	private getCachedRepository(issueId: string): RepositoryConfig | null {
+		const repos = this.getCachedRepositories(issueId);
+		return repos && repos.length > 0 ? repos[0]! : null;
 	}
 
 	/**
@@ -2760,10 +2769,11 @@ ${taskSection}`;
 		// on an issue that already has an agentSession and an associated repository.
 		let repository: RepositoryConfig | null = null;
 		if (issueId) {
-			repository = this.getCachedRepository(issueId);
-			if (repository) {
+			const cachedRepos = this.getCachedRepositories(issueId);
+			if (cachedRepos && cachedRepos.length > 0) {
+				repository = cachedRepos[0]!;
 				this.logger.debug(
-					`Using cached repository ${repository.name} for issue ${issueId}`,
+					`Using cached repositories [${cachedRepos.map((r) => r.name).join(", ")}] for issue ${issueId}`,
 				);
 			}
 		}
@@ -2796,14 +2806,15 @@ ${taskSection}`;
 			}
 
 			// At this point, routingResult.type === "selected"
-			repository = routingResult.repository;
+			repository = routingResult.repositories[0]!;
 			const routingMethod = routingResult.routingMethod;
 
-			// Cache the repository for this issue
+			// Cache all matched repositories for this issue as string[]
 			if (issueId) {
-				this.repositoryRouter
-					.getIssueRepositoryCache()
-					.set(issueId, repository.id);
+				this.repositoryRouter.getIssueRepositoryCache().set(
+					issueId,
+					routingResult.repositories.map((r) => r.id),
+				);
 			}
 
 			// Post agent activity showing auto-matched routing
@@ -3311,9 +3322,11 @@ ${taskSection}`;
 			return;
 		}
 
-		// Cache the selected repository for this issue
+		// Cache the selected repository for this issue as string[]
 		const issueId = agentSession.issue.id;
-		this.repositoryRouter.getIssueRepositoryCache().set(issueId, repository.id);
+		this.repositoryRouter
+			.getIssueRepositoryCache()
+			.set(issueId, [repository.id]);
 
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
@@ -3665,7 +3678,7 @@ ${taskSection}`;
 					if (repository) {
 						this.repositoryRouter
 							.getIssueRepositoryCache()
-							.set(issueId, repoId);
+							.set(issueId, [repoId]);
 						this.logger.info(
 							`Recovered repository ${repoId} for issue ${issueId} from session manager`,
 						);
@@ -3684,10 +3697,11 @@ ${taskSection}`;
 						);
 
 					if (routingResult.type === "selected") {
-						repository = routingResult.repository;
-						this.repositoryRouter
-							.getIssueRepositoryCache()
-							.set(issueId, repository.id);
+						repository = routingResult.repositories[0]!;
+						this.repositoryRouter.getIssueRepositoryCache().set(
+							issueId,
+							routingResult.repositories.map((r) => r.id),
+						);
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
 						);
@@ -5475,12 +5489,19 @@ ${input.userComment}
 					const issueId =
 						(session as any).issueContext?.issueId ?? (session as any).issueId;
 					if (issueId && state.issueRepositoryCache[issueId]) {
-						const repoId = state.issueRepositoryCache[issueId];
-						this.sessionRepositories.set(sessionId, repoId);
-						// Also register the activity sink for this restored session
-						const activitySink = this.activitySinks.get(repoId);
-						if (activitySink) {
-							this.agentSessionManager.setActivitySink(sessionId, activitySink);
+						const cachedRepoIds = state.issueRepositoryCache[issueId];
+						// Use first repo ID for session-to-repo mapping (primary repo)
+						const repoId = cachedRepoIds[0];
+						if (repoId) {
+							this.sessionRepositories.set(sessionId, repoId);
+							// Also register the activity sink for this restored session
+							const activitySink = this.activitySinks.get(repoId);
+							if (activitySink) {
+								this.agentSessionManager.setActivitySink(
+									sessionId,
+									activitySink,
+								);
+							}
 						}
 					}
 				}
@@ -5503,8 +5524,14 @@ ${input.userComment}
 		}
 
 		// Restore issue to repository cache in RepositoryRouter
+		// Handles migration from old Record<string, string> to Record<string, string[]>
 		if (state.issueRepositoryCache) {
-			const cache = new Map(Object.entries(state.issueRepositoryCache));
+			const cache = new Map(
+				Object.entries(state.issueRepositoryCache) as [
+					string,
+					string | string[],
+				][],
+			);
 			this.repositoryRouter.restoreIssueRepositoryCache(cache);
 			this.logger.debug(
 				`Restored ${cache.size} issue-to-repository cache mappings`,

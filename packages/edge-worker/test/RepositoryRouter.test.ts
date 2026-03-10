@@ -244,8 +244,8 @@ class RoutingAssertion {
 	shouldSelectRepository(expectedRepo: RepositoryConfig): this {
 		expect(this.result.type).toBe("selected");
 		if (this.result.type === "selected") {
-			expect(this.result.repository.id).toBe(expectedRepo.id);
-			expect(this.result.repository.name).toBe(expectedRepo.name);
+			expect(this.result.repositories[0]?.id).toBe(expectedRepo.id);
+			expect(this.result.repositories[0]?.name).toBe(expectedRepo.name);
 		}
 		return this;
 	}
@@ -256,7 +256,33 @@ class RoutingAssertion {
 	): this {
 		expect(this.result.type).toBe("selected");
 		if (this.result.type === "selected") {
-			expect(this.result.repository.id).toBe(expectedRepo.id);
+			expect(this.result.repositories[0]?.id).toBe(expectedRepo.id);
+			expect(this.result.routingMethod).toBe(method);
+		}
+		return this;
+	}
+
+	shouldSelectRepositories(expectedRepos: RepositoryConfig[]): this {
+		expect(this.result.type).toBe("selected");
+		if (this.result.type === "selected") {
+			expect(this.result.repositories).toHaveLength(expectedRepos.length);
+			for (let i = 0; i < expectedRepos.length; i++) {
+				expect(this.result.repositories[i]?.id).toBe(expectedRepos[i]!.id);
+			}
+		}
+		return this;
+	}
+
+	shouldSelectRepositoriesVia(
+		expectedRepos: RepositoryConfig[],
+		method: string,
+	): this {
+		expect(this.result.type).toBe("selected");
+		if (this.result.type === "selected") {
+			expect(this.result.repositories).toHaveLength(expectedRepos.length);
+			for (let i = 0; i < expectedRepos.length; i++) {
+				expect(this.result.repositories[i]?.id).toBe(expectedRepos[i]!.id);
+			}
 			expect(this.result.routingMethod).toBe(method);
 		}
 		return this;
@@ -305,20 +331,20 @@ describe("RepositoryRouter", () => {
 
 	describe("Cache Management", () => {
 		describe("when retrieving cached repositories", () => {
-			it("should return the cached repository when it exists in both cache and repository map", () => {
+			it("should return the cached repositories when they exist in both cache and repository map", () => {
 				// Given: A repository and a populated cache
 				const repo = env
 					.repository("repo-1", "Cached Repo")
 					.inWorkspace("workspace-1")
 					.build();
 				const reposMap = new Map([[repo.id, repo]]);
-				env.router.getIssueRepositoryCache().set("issue-1", repo.id);
+				env.router.getIssueRepositoryCache().set("issue-1", [repo.id]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
-				// Then: Should return the cached repository
-				expect(result).toBe(repo);
+				// Then: Should return the cached repositories
+				expect(result).toEqual([repo]);
 			});
 
 			it("should return null when no cache entry exists for the issue", () => {
@@ -326,36 +352,54 @@ describe("RepositoryRouter", () => {
 				const repo = env.repository("repo-1", "Uncached Repo").build();
 				const reposMap = new Map([[repo.id, repo]]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
 				// Then: Should return null
 				expect(result).toBeNull();
 			});
 
-			it("should remove invalid cache entries when cached repository no longer exists", () => {
+			it("should remove invalid cache entries when all cached repositories no longer exist", () => {
 				// Given: Cache points to non-existent repository
 				const repo = env.repository("repo-1", "Valid Repo").build();
 				const reposMap = new Map([[repo.id, repo]]);
 				env.router
 					.getIssueRepositoryCache()
-					.set("issue-1", "non-existent-repo");
+					.set("issue-1", ["non-existent-repo"]);
 
-				// When: Retrieving cached repository
-				const result = env.router.getCachedRepository("issue-1", reposMap);
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
 
 				// Then: Should return null and clean up cache
 				expect(result).toBeNull();
 				expect(env.router.getIssueRepositoryCache().has("issue-1")).toBe(false);
 			});
+
+			it("should return only valid repos and clean invalid from cache", () => {
+				// Given: Cache with one valid and one invalid repo ID
+				const repo = env.repository("repo-1", "Valid Repo").build();
+				const reposMap = new Map([[repo.id, repo]]);
+				env.router
+					.getIssueRepositoryCache()
+					.set("issue-1", ["repo-1", "non-existent-repo"]);
+
+				// When: Retrieving cached repositories
+				const result = env.router.getCachedRepositories("issue-1", reposMap);
+
+				// Then: Should return only valid repos and update cache
+				expect(result).toEqual([repo]);
+				expect(env.router.getIssueRepositoryCache().get("issue-1")).toEqual([
+					"repo-1",
+				]);
+			});
 		});
 
 		describe("when persisting cache", () => {
-			it("should restore cache from serialized data", () => {
-				// Given: A serialized cache
-				const cache = new Map<string, string>([
-					["issue-1", "repo-1"],
-					["issue-2", "repo-2"],
+			it("should restore cache from serialized data (new string[] format)", () => {
+				// Given: A serialized cache in new format
+				const cache = new Map<string, string[]>([
+					["issue-1", ["repo-1"]],
+					["issue-2", ["repo-2", "repo-3"]],
 				]);
 
 				// When: Restoring cache
@@ -365,19 +409,38 @@ describe("RepositoryRouter", () => {
 				expect(env.router.getIssueRepositoryCache()).toEqual(cache);
 			});
 
+			it("should migrate old string format to string[] on restore", () => {
+				// Given: A serialized cache in old format (string values)
+				const oldCache = new Map<string, string | string[]>([
+					["issue-1", "repo-1"],
+					["issue-2", "repo-2"],
+				]);
+
+				// When: Restoring from old format
+				env.router.restoreIssueRepositoryCache(oldCache);
+
+				// Then: Cache should be migrated to string[] format
+				expect(env.router.getIssueRepositoryCache().get("issue-1")).toEqual([
+					"repo-1",
+				]);
+				expect(env.router.getIssueRepositoryCache().get("issue-2")).toEqual([
+					"repo-2",
+				]);
+			});
+
 			it("should allow exporting cache for serialization", () => {
 				// Given: A router with cache entries
 				const cache = env.router.getIssueRepositoryCache();
-				cache.set("issue-1", "repo-1");
-				cache.set("issue-2", "repo-2");
+				cache.set("issue-1", ["repo-1"]);
+				cache.set("issue-2", ["repo-2", "repo-3"]);
 
 				// When: Exporting cache
 				const exported = env.router.getIssueRepositoryCache();
 
-				// Then: Should export all entries
+				// Then: Should export all entries as string[]
 				expect(exported.size).toBe(2);
-				expect(exported.get("issue-1")).toBe("repo-1");
-				expect(exported.get("issue-2")).toBe("repo-2");
+				expect(exported.get("issue-1")).toEqual(["repo-1"]);
+				expect(exported.get("issue-2")).toEqual(["repo-2", "repo-3"]);
 			});
 		});
 	});
@@ -714,97 +777,103 @@ describe("RepositoryRouter", () => {
 			});
 		});
 
-		describe("parseRepoTagFromDescription", () => {
+		describe("parseRepoTagsFromDescription", () => {
 			it("should parse simple repo name", () => {
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"Work on [repo=my-repo] feature",
 				);
-				expect(result).toBe("my-repo");
+				expect(result).toEqual(["my-repo"]);
 			});
 
 			it("should parse org/repo format", () => {
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"Fix bug in [repo=org/repo-name]",
 				);
-				expect(result).toBe("org/repo-name");
+				expect(result).toEqual(["org/repo-name"]);
 			});
 
 			it("should parse repo with dots", () => {
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"Work on [repo=my.dotted.repo]",
 				);
-				expect(result).toBe("my.dotted.repo");
+				expect(result).toEqual(["my.dotted.repo"]);
 			});
 
 			it("should parse repo with underscores", () => {
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"Fix [repo=my_repo_name]",
 				);
-				expect(result).toBe("my_repo_name");
+				expect(result).toEqual(["my_repo_name"]);
 			});
 
-			it("should return first tag when multiple tags exist", () => {
-				const result = env.router.parseRepoTagFromDescription(
+			it("should return all tags when multiple tags exist", () => {
+				const result = env.router.parseRepoTagsFromDescription(
 					"[repo=first-repo] and [repo=second-repo]",
 				);
-				expect(result).toBe("first-repo");
+				expect(result).toEqual(["first-repo", "second-repo"]);
 			});
 
-			it("should return null when no tag exists", () => {
-				const result = env.router.parseRepoTagFromDescription(
+			it("should return empty array when no tag exists", () => {
+				const result = env.router.parseRepoTagsFromDescription(
 					"This is a description without tags",
 				);
-				expect(result).toBeNull();
+				expect(result).toEqual([]);
 			});
 
-			it("should return null for malformed tags", () => {
-				const result = env.router.parseRepoTagFromDescription("[repo=]");
-				expect(result).toBeNull();
+			it("should return empty array for malformed tags", () => {
+				const result = env.router.parseRepoTagsFromDescription("[repo=]");
+				expect(result).toEqual([]);
 			});
 
-			it("should return null for tags with spaces (invalid characters)", () => {
-				const result = env.router.parseRepoTagFromDescription(
+			it("should return empty array for tags with spaces (invalid characters)", () => {
+				const result = env.router.parseRepoTagsFromDescription(
 					"[repo=invalid chars here!]",
 				);
-				// Tags with spaces are invalid and don't match
-				expect(result).toBeNull();
+				expect(result).toEqual([]);
 			});
 
 			it("should handle multiline descriptions", () => {
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"Line 1\n\n[repo=my-repo]\n\nLine 3",
 				);
-				expect(result).toBe("my-repo");
+				expect(result).toEqual(["my-repo"]);
 			});
 
 			it("should handle escaped brackets from Linear (\\[repo=...\\])", () => {
 				// Linear escapes square brackets in descriptions
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"test\\n\\n\\[repo=cyrus\\]",
 				);
-				expect(result).toBe("cyrus");
+				expect(result).toEqual(["cyrus"]);
 			});
 
 			it("should handle escaped brackets with org/repo format", () => {
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"Fix bug in \\[repo=org/repo-name\\]",
 				);
-				expect(result).toBe("org/repo-name");
+				expect(result).toEqual(["org/repo-name"]);
 			});
 
 			it("should handle mixed escaped and unescaped brackets", () => {
 				// Only the opening bracket is escaped
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"Work on \\[repo=my-repo]",
 				);
-				expect(result).toBe("my-repo");
+				expect(result).toEqual(["my-repo"]);
 			});
 
 			it("should handle only closing bracket escaped", () => {
-				const result = env.router.parseRepoTagFromDescription(
+				const result = env.router.parseRepoTagsFromDescription(
 					"Work on [repo=my-repo\\]",
 				);
-				expect(result).toBe("my-repo");
+				expect(result).toEqual(["my-repo"]);
+			});
+
+			it("should parse multiple tags with different formats", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"Work on [repo=frontend] and [repo=org/backend] and \\[repo=shared-lib\\]",
+				);
+				expect(result).toEqual(["frontend", "org/backend", "shared-lib"]);
 			});
 		});
 	});
@@ -1189,8 +1258,8 @@ describe("RepositoryRouter", () => {
 
 	describe("Workspace Fallback & Edge Cases", () => {
 		describe("when single repository exists", () => {
-			it("should select single repository as workspace fallback when no routing rules match", async () => {
-				// Given: Single repository with specific team configuration
+			it("should request user selection when single configured repository doesn't match routing", async () => {
+				// Given: Single repository with specific team configuration that doesn't match
 				const repo = env
 					.repository("repo-1", "Only Repo")
 					.withTeams("TEAM1")
@@ -1207,11 +1276,8 @@ describe("RepositoryRouter", () => {
 					repo,
 				]);
 
-				// Then: Should select single repo as fallback
-				expectRouting(result).shouldSelectRepositoryVia(
-					repo,
-					"workspace-fallback",
-				);
+				// Then: No default assignment — request user selection
+				expectRouting(result).shouldNeedSelectionWithRepos(1);
 			});
 		});
 
@@ -1719,6 +1785,264 @@ describe("RepositoryRouter", () => {
 					catchAllRepo,
 					"catch-all",
 				);
+			});
+		});
+	});
+
+	// ========================================================================
+	// Multi-Repo Routing Tests
+	// ========================================================================
+
+	describe("Multi-Repo Routing", () => {
+		describe("when multiple [repo=...] description tags exist", () => {
+			it("should return all matching repositories via description-tag routing", async () => {
+				// Given: Two repos matching two description tags
+				const frontendRepo = env
+					.repository("repo-1", "frontend")
+					.inWorkspace("default-workspace")
+					.build();
+				const backendRepo = env
+					.repository("repo-2", "backend")
+					.inWorkspace("default-workspace")
+					.build();
+
+				env.issueHasDescription(
+					"issue-1",
+					"Work on [repo=frontend] and [repo=backend]",
+				);
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-1")
+					.build();
+
+				// When: Determining repositories
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					frontendRepo,
+					backendRepo,
+				]);
+
+				// Then: Should return both repos
+				expectRouting(result).shouldSelectRepositoriesVia(
+					[frontendRepo, backendRepo],
+					"description-tag",
+				);
+			});
+
+			it("should not duplicate repos when same tag matches twice", async () => {
+				// Given: A repo that could match by name and by URL
+				const repo = env
+					.repository("repo-1", "my-repo")
+					.inWorkspace("default-workspace")
+					.withGithubUrl("https://github.com/org/my-repo")
+					.build();
+
+				env.issueHasDescription("issue-1", "[repo=my-repo] [repo=org/my-repo]");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-1")
+					.build();
+
+				// When
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo,
+				]);
+
+				// Then: Should return only one repo (deduplicated)
+				expectRouting(result).shouldSelectRepositoriesVia(
+					[repo],
+					"description-tag",
+				);
+			});
+
+			it("should skip team-based routing when description tags match", async () => {
+				// Given: A repo matching by description tag AND by team
+				const descRepo = env
+					.repository("repo-1", "desc-match")
+					.inWorkspace("default-workspace")
+					.build();
+				const teamRepo = env
+					.repository("repo-2", "team-match")
+					.inWorkspace("default-workspace")
+					.withTeams("TEST")
+					.build();
+
+				env.issueHasDescription("issue-1", "[repo=desc-match]");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-1")
+					.inTeam("TEST")
+					.build();
+
+				// When
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					descRepo,
+					teamRepo,
+				]);
+
+				// Then: Description-tag takes priority; team routing is skipped
+				expectRouting(result).shouldSelectRepositoriesVia(
+					[descRepo],
+					"description-tag",
+				);
+			});
+		});
+
+		describe("when label-based routing matches multiple repos", () => {
+			it("should return all label-matched repositories", async () => {
+				// Given: Two repos both matching the same routing label
+				const repo1 = env
+					.repository("repo-1", "Repo A")
+					.inWorkspace("default-workspace")
+					.withLabels("monorepo")
+					.build();
+				const repo2 = env
+					.repository("repo-2", "Repo B")
+					.inWorkspace("default-workspace")
+					.withLabels("monorepo")
+					.build();
+
+				env.issueHasLabels("issue-1", "monorepo");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-1")
+					.build();
+
+				// When
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo1,
+					repo2,
+				]);
+
+				// Then: Both repos matched
+				expectRouting(result).shouldSelectRepositoriesVia(
+					[repo1, repo2],
+					"label-based",
+				);
+			});
+
+			it("should skip team-based routing when labels match", async () => {
+				// Given: A repo matching by label AND a different repo matching by team
+				const labelRepo = env
+					.repository("repo-1", "Label Match")
+					.inWorkspace("default-workspace")
+					.withLabels("frontend")
+					.build();
+				const teamRepo = env
+					.repository("repo-2", "Team Match")
+					.inWorkspace("default-workspace")
+					.withTeams("TEST")
+					.build();
+
+				env.issueHasLabels("issue-1", "frontend");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-1")
+					.inTeam("TEST")
+					.build();
+
+				// When
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					labelRepo,
+					teamRepo,
+				]);
+
+				// Then: Label routing wins; team routing skipped
+				expectRouting(result).shouldSelectRepositoriesVia(
+					[labelRepo],
+					"label-based",
+				);
+			});
+		});
+
+		describe("when no routing matches", () => {
+			it("should return needs_selection instead of default assignment", async () => {
+				// Given: Repos with routing config that doesn't match
+				const repo1 = env
+					.repository("repo-1", "Repo A")
+					.inWorkspace("default-workspace")
+					.withTeams("TEAM1")
+					.build();
+				const repo2 = env
+					.repository("repo-2", "Repo B")
+					.inWorkspace("default-workspace")
+					.withTeams("TEAM2")
+					.build();
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "OTHER-1")
+					.inTeam("OTHER")
+					.build();
+
+				// When
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo1,
+					repo2,
+				]);
+
+				// Then: No default — prompt user
+				expectRouting(result).shouldNeedSelectionWithRepos(2);
+			});
+		});
+
+		describe("cache migration from old format", () => {
+			it("should migrate old string values to string[] on restore", () => {
+				// Given: Old format cache (string values instead of string[])
+				const oldCache = new Map<string, string | string[]>([
+					["issue-1", "repo-1"],
+					["issue-2", "repo-2"],
+				]);
+
+				// When: Restoring from old format
+				env.router.restoreIssueRepositoryCache(oldCache);
+
+				// Then: All values should be string[]
+				const cache = env.router.getIssueRepositoryCache();
+				expect(cache.get("issue-1")).toEqual(["repo-1"]);
+				expect(cache.get("issue-2")).toEqual(["repo-2"]);
+			});
+
+			it("should preserve new string[] values on restore", () => {
+				// Given: New format cache
+				const newCache = new Map<string, string[]>([
+					["issue-1", ["repo-1", "repo-2"]],
+					["issue-2", ["repo-3"]],
+				]);
+
+				// When: Restoring
+				env.router.restoreIssueRepositoryCache(newCache);
+
+				// Then: Values should be preserved
+				const cache = env.router.getIssueRepositoryCache();
+				expect(cache.get("issue-1")).toEqual(["repo-1", "repo-2"]);
+				expect(cache.get("issue-2")).toEqual(["repo-3"]);
+			});
+
+			it("should handle mixed old and new format values", () => {
+				// Given: Cache with both old string and new string[] values
+				const mixedCache = new Map<string, string | string[]>([
+					["issue-1", "repo-1"], // old format
+					["issue-2", ["repo-2", "repo-3"]], // new format
+				]);
+
+				// When: Restoring
+				env.router.restoreIssueRepositoryCache(mixedCache);
+
+				// Then: All migrated to string[]
+				const cache = env.router.getIssueRepositoryCache();
+				expect(cache.get("issue-1")).toEqual(["repo-1"]);
+				expect(cache.get("issue-2")).toEqual(["repo-2", "repo-3"]);
 			});
 		});
 	});
