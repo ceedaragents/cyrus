@@ -462,15 +462,22 @@ describe("SelfAuthCommand", () => {
 				mocks.mockWriteFileSync.mock.calls[0][1],
 			);
 
-			// repos with ws-123 should be updated
-			expect(writtenConfig.repositories[0].linearToken).toBe("lin_oauth_new");
-			expect(writtenConfig.repositories[0].linearRefreshToken).toBe(
+			// Tokens are stored at workspace level, not on repositories
+			expect(writtenConfig.linearWorkspaces["ws-123"].linearToken).toBe(
+				"lin_oauth_new",
+			);
+			expect(writtenConfig.linearWorkspaces["ws-123"].linearRefreshToken).toBe(
 				"refresh_new",
 			);
-			expect(writtenConfig.repositories[2].linearToken).toBe("lin_oauth_new");
 
 			// repo with ws-456 should NOT be updated
-			expect(writtenConfig.repositories[1].linearToken).toBe("other");
+			expect(writtenConfig.linearWorkspaces["ws-456"].linearToken).toBe(
+				"other",
+			);
+
+			// Repos should have workspace ID set but no tokens
+			expect(writtenConfig.repositories[0].linearToken).toBeUndefined();
+			expect(writtenConfig.repositories[0].linearWorkspaceId).toBe("ws-123");
 		});
 
 		it("should update repositories with empty workspace ID", async () => {
@@ -527,15 +534,20 @@ describe("SelfAuthCommand", () => {
 				mocks.mockWriteFileSync.mock.calls[0][1],
 			);
 
-			// repo with empty workspace should be updated with new workspace
-			expect(writtenConfig.repositories[0].linearToken).toBe("lin_oauth_new");
+			// repo with empty workspace should be updated with new workspace ID/name
 			expect(writtenConfig.repositories[0].linearWorkspaceId).toBe("ws-new");
 			expect(writtenConfig.repositories[0].linearWorkspaceName).toBe(
 				"New Workspace",
 			);
+			// Tokens are stored at workspace level, not on repositories
+			expect(writtenConfig.repositories[0].linearToken).toBeUndefined();
+			expect(writtenConfig.linearWorkspaces["ws-new"].linearToken).toBe(
+				"lin_oauth_new",
+			);
 
 			// repo with different workspace should NOT be updated
-			expect(writtenConfig.repositories[1].linearToken).toBe("keep");
+			expect(writtenConfig.repositories[1].linearWorkspaceId).toBe("ws-456");
+			expect(writtenConfig.linearWorkspaces["ws-456"].linearToken).toBe("keep");
 		});
 	});
 });
