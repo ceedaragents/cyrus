@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **Orchestrator sub-issue results not reaching parent** - Sub-issue completion results are now correctly written back to the parent orchestrator issue. Previously, results were silently dropped due to a registry mismatch introduced during the GlobalSessionRegistry refactor. ([CYPACK-922](https://linear.app/ceedar/issue/CYPACK-922), [#957](https://github.com/ceedaragents/cyrus/pull/957))
+- **Orchestrator sub-issue results not reaching parent** - Sub-issue completion results are now correctly written back to the parent orchestrator issue. This regression was introduced in v0.2.22 by the GlobalSessionRegistry refactor (CYPACK-724), which changed the parent session lookup to read from `globalSessionRegistry` without updating the write path to match. ([CYPACK-922](https://linear.app/ceedar/issue/CYPACK-922), [#957](https://github.com/ceedaragents/cyrus/pull/957))
 
 ## [0.2.31] - 2026-03-09
 
