@@ -160,8 +160,29 @@ export class PromptScenario {
 			...repo,
 		};
 		this.input.repository = fullRepo;
-		const workspaceKey = fullRepo.linearWorkspaceId;
+		this.input.repositories = [fullRepo];
 		// Also ensure the worker has an IssueTrackerService for this repository
+		this.ensureIssueTracker(fullRepo);
+		return this;
+	}
+
+	withRepositories(repos: any[]) {
+		const fullRepos = repos.map((repo) => ({
+			baseBranch: "main",
+			labelPrompts: {},
+			repositoryPath: repo.repositoryPath ?? repo.path ?? "/test/repo",
+			...repo,
+		}));
+		this.input.repositories = fullRepos;
+		this.input.repository = fullRepos[0];
+		for (const repo of fullRepos) {
+			this.ensureIssueTracker(repo);
+		}
+		return this;
+	}
+
+	private ensureIssueTracker(repo: any) {
+		const workspaceKey = repo.linearWorkspaceId ?? repo.id;
 		if (!(this.worker as any).issueTrackers.has(workspaceKey)) {
 			const mockIssueTracker = {
 				getComments: () => Promise.resolve([]),
@@ -179,14 +200,12 @@ export class PromptScenario {
 			if (!(this.worker as any).config.linearWorkspaces) {
 				(this.worker as any).config.linearWorkspaces = {};
 			}
-			// Use default slug from createTestWorker if available
 			const defaultSlug = (this.worker as any).config._testDefaultWorkspaceSlug;
 			(this.worker as any).config.linearWorkspaces[workspaceKey] = {
 				linearToken: "test-token",
 				...(defaultSlug ? { linearWorkspaceSlug: defaultSlug } : {}),
 			};
 		}
-		return this;
 	}
 
 	withGuidance(guidance: any[]) {
