@@ -1,5 +1,5 @@
 /**
- * Tests for PersistenceManager v2.0 to v3.0 migration
+ * Tests for PersistenceManager migrations (v2.0 → v3.0 → v4.0)
  */
 
 import { existsSync } from "node:fs";
@@ -29,7 +29,7 @@ describe("PersistenceManager", () => {
 		persistenceManager = new PersistenceManager("/tmp/test-cyrus");
 	});
 
-	describe("v2.0 to v3.0 Migration", () => {
+	describe("v2.0 to v4.0 Migration (via v3.0)", () => {
 		const v2State = {
 			version: "2.0",
 			savedAt: "2025-01-15T12:00:00.000Z",
@@ -78,7 +78,7 @@ describe("PersistenceManager", () => {
 			},
 		};
 
-		it("should migrate v2.0 state to v3.0 format", async () => {
+		it("should migrate v2.0 state through v3.0 to v4.0 flat format", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -89,12 +89,11 @@ describe("PersistenceManager", () => {
 			expect(result).toBeDefined();
 			expect(result!.agentSessions).toBeDefined();
 
-			// Check migrated session
-			const migratedSession =
-				result!.agentSessions!["repo-1"]["linear-session-123"];
+			// v4.0: sessions are flat (keyed by sessionId, not nested under repoId)
+			const migratedSession = result!.agentSessions!["linear-session-123"];
 			expect(migratedSession).toBeDefined();
 
-			// Should have new id field
+			// Should have new id field (from v2→v3 migration)
 			expect(migratedSession.id).toBe("linear-session-123");
 
 			// Should have externalSessionId
@@ -123,7 +122,7 @@ describe("PersistenceManager", () => {
 			expect(migratedSession.workspace.path).toBe("/tmp/worktree");
 		});
 
-		it("should save migrated state as v3.0", async () => {
+		it("should save migrated state as v4.0", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -131,7 +130,7 @@ describe("PersistenceManager", () => {
 
 			await persistenceManager.loadEdgeWorkerState();
 
-			// Verify writeFile was called with v3.0 version
+			// Verify writeFile was called with v4.0 version
 			expect(writeFile).toHaveBeenCalled();
 			const savedData = JSON.parse(
 				vi.mocked(writeFile).mock.calls[0][1] as string,
@@ -139,7 +138,7 @@ describe("PersistenceManager", () => {
 			expect(savedData.version).toBe(PERSISTENCE_VERSION);
 		});
 
-		it("should preserve entries and child-to-parent mappings during migration", async () => {
+		it("should flatten entries and preserve mappings during v2→v4 migration", async () => {
 			vi.mocked(existsSync).mockReturnValue(true);
 			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v2State));
 			vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -147,10 +146,14 @@ describe("PersistenceManager", () => {
 
 			const result = await persistenceManager.loadEdgeWorkerState();
 
-			// Check entries are preserved
-			expect(result!.agentSessionEntries).toEqual(
-				v2State.state.agentSessionEntries,
-			);
+			// Entries should be flattened (keyed by sessionId, not nested under repoId)
+			expect(result!.agentSessionEntries!["linear-session-123"]).toEqual([
+				{
+					type: "user",
+					content: "Hello",
+					metadata: { timestamp: 1705320000000 },
+				},
+			]);
 
 			// Check child-to-parent mappings are preserved
 			expect(result!.childToParentAgentSession).toEqual(
@@ -194,22 +197,150 @@ describe("PersistenceManager", () => {
 
 			expect(result).toBeNull();
 		});
+	});
 
-		it("should load v3.0 state without migration", async () => {
-			const v3State = {
-				version: "3.0",
+	describe("v3.0 to v4.0 Migration", () => {
+		const v3State = {
+			version: "3.0",
+			savedAt: "2025-01-15T12:00:00.000Z",
+			state: {
+				agentSessions: {
+					"repo-1": {
+						"session-123": {
+							id: "session-123",
+							externalSessionId: "session-123",
+							issueContext: {
+								trackerId: "linear",
+								issueId: "issue-456",
+								issueIdentifier: "TEST-123",
+							},
+							issueId: "issue-456",
+							workspace: { path: "/tmp/worktree", isGitWorktree: true },
+						},
+					},
+					"repo-2": {
+						"session-456": {
+							id: "session-456",
+							externalSessionId: "session-456",
+							issueContext: {
+								trackerId: "linear",
+								issueId: "issue-789",
+								issueIdentifier: "OTHER-1",
+							},
+							issueId: "issue-789",
+							workspace: { path: "/tmp/worktree2", isGitWorktree: false },
+						},
+					},
+				},
+				agentSessionEntries: {
+					"repo-1": {
+						"session-123": [{ type: "user", content: "Hello from repo-1" }],
+					},
+					"repo-2": {
+						"session-456": [{ type: "user", content: "Hello from repo-2" }],
+					},
+				},
+				childToParentAgentSession: {
+					"child-1": "parent-1",
+				},
+				issueRepositoryCache: {
+					"issue-456": "repo-1",
+					"issue-789": "repo-2",
+				},
+			},
+		};
+
+		it("should flatten nested sessions from multiple repos into a flat map", async () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(writeFile).mockResolvedValue(undefined);
+			vi.mocked(mkdir).mockResolvedValue(undefined);
+
+			const result = await persistenceManager.loadEdgeWorkerState();
+
+			expect(result).toBeDefined();
+
+			// Sessions should be flat (no repo nesting)
+			expect(result!.agentSessions!["session-123"]).toBeDefined();
+			expect(result!.agentSessions!["session-456"]).toBeDefined();
+
+			// Verify session content
+			expect(result!.agentSessions!["session-123"].issueContext).toEqual({
+				trackerId: "linear",
+				issueId: "issue-456",
+				issueIdentifier: "TEST-123",
+			});
+			expect(result!.agentSessions!["session-456"].issueContext).toEqual({
+				trackerId: "linear",
+				issueId: "issue-789",
+				issueIdentifier: "OTHER-1",
+			});
+		});
+
+		it("should flatten nested entries from multiple repos", async () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(writeFile).mockResolvedValue(undefined);
+			vi.mocked(mkdir).mockResolvedValue(undefined);
+
+			const result = await persistenceManager.loadEdgeWorkerState();
+
+			// Entries should be flat
+			expect(result!.agentSessionEntries!["session-123"]).toEqual([
+				{ type: "user", content: "Hello from repo-1" },
+			]);
+			expect(result!.agentSessionEntries!["session-456"]).toEqual([
+				{ type: "user", content: "Hello from repo-2" },
+			]);
+		});
+
+		it("should preserve childToParentAgentSession and issueRepositoryCache", async () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(writeFile).mockResolvedValue(undefined);
+			vi.mocked(mkdir).mockResolvedValue(undefined);
+
+			const result = await persistenceManager.loadEdgeWorkerState();
+
+			expect(result!.childToParentAgentSession).toEqual({
+				"child-1": "parent-1",
+			});
+			expect(result!.issueRepositoryCache).toEqual({
+				"issue-456": "repo-1",
+				"issue-789": "repo-2",
+			});
+		});
+
+		it("should save migrated v3→v4 state with correct version", async () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(writeFile).mockResolvedValue(undefined);
+			vi.mocked(mkdir).mockResolvedValue(undefined);
+
+			await persistenceManager.loadEdgeWorkerState();
+
+			expect(writeFile).toHaveBeenCalled();
+			const savedData = JSON.parse(
+				vi.mocked(writeFile).mock.calls[0][1] as string,
+			);
+			expect(savedData.version).toBe("4.0");
+		});
+	});
+
+	describe("v4.0 state (current)", () => {
+		it("should load v4.0 state without migration", async () => {
+			const v4State = {
+				version: "4.0",
 				savedAt: "2025-01-15T12:00:00.000Z",
 				state: {
 					agentSessions: {
-						"repo-1": {
-							"session-123": {
-								id: "session-123",
-								externalSessionId: "session-123",
-								issueContext: {
-									trackerId: "linear",
-									issueId: "issue-456",
-									issueIdentifier: "TEST-123",
-								},
+						"session-123": {
+							id: "session-123",
+							externalSessionId: "session-123",
+							issueContext: {
+								trackerId: "linear",
+								issueId: "issue-456",
+								issueIdentifier: "TEST-123",
 							},
 						},
 					},
@@ -217,19 +348,19 @@ describe("PersistenceManager", () => {
 			};
 
 			vi.mocked(existsSync).mockReturnValue(true);
-			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v4State));
 
 			const result = await persistenceManager.loadEdgeWorkerState();
 
-			expect(result).toEqual(v3State.state);
+			expect(result).toEqual(v4State.state);
 			// Should not call writeFile since no migration needed
 			expect(writeFile).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("PERSISTENCE_VERSION constant", () => {
-		it("should be 3.0", () => {
-			expect(PERSISTENCE_VERSION).toBe("3.0");
+		it("should be 4.0", () => {
+			expect(PERSISTENCE_VERSION).toBe("4.0");
 		});
 	});
 });

@@ -32,7 +32,6 @@ describe("AgentSessionManager stop-session behavior", () => {
 		};
 
 		manager = new AgentSessionManager(
-			mockActivitySink,
 			undefined,
 			undefined,
 			mockProcedureAnalyzer,
@@ -53,6 +52,7 @@ describe("AgentSessionManager stop-session behavior", () => {
 				isGitWorktree: false,
 			},
 		);
+		manager.setActivitySink(sessionId, mockActivitySink);
 	});
 
 	it("does not advance procedure when a session stop is requested", async () => {

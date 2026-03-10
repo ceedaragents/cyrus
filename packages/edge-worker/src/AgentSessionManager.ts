@@ -89,11 +89,12 @@ export declare interface AgentSessionManager {
  * Transforms Claude streaming messages into Agent Session format
  * Handles session lifecycle: create → active → complete/error
  *
- * CURRENTLY BEING HANDLED 'per repository'
+ * Single instance shared across all repositories. Activity sinks are
+ * registered per-session so each session posts to the correct tracker.
  */
 export class AgentSessionManager extends EventEmitter {
 	private logger: ILogger;
-	private activitySink: IActivitySink;
+	private activitySinks: Map<string, IActivitySink> = new Map(); // Per-session activity sinks
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its id
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
@@ -113,7 +114,6 @@ export class AgentSessionManager extends EventEmitter {
 	) => Promise<void>;
 
 	constructor(
-		activitySink: IActivitySink,
 		getParentSessionId?: (childSessionId: string) => string | undefined,
 		resumeParentSession?: (
 			parentSessionId: string,
@@ -126,11 +126,25 @@ export class AgentSessionManager extends EventEmitter {
 	) {
 		super();
 		this.logger = logger ?? createLogger({ component: "AgentSessionManager" });
-		this.activitySink = activitySink;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
 		this.procedureAnalyzer = procedureAnalyzer;
 		this.sharedApplicationServer = sharedApplicationServer;
+	}
+
+	/**
+	 * Register an activity sink for a specific session.
+	 * This associates the session with the correct issue tracker for activity posting.
+	 */
+	setActivitySink(sessionId: string, sink: IActivitySink): void {
+		this.activitySinks.set(sessionId, sink);
+	}
+
+	/**
+	 * Get the activity sink for a session.
+	 */
+	private getActivitySink(sessionId: string): IActivitySink | undefined {
+		return this.activitySinks.get(sessionId);
 	}
 
 	/**
@@ -1556,7 +1570,15 @@ export class AgentSessionManager extends EventEmitter {
 				options.ephemeral = true;
 			}
 
-			const result = await this.activitySink.postActivity(
+			const activitySink = this.getActivitySink(sessionId);
+			if (!activitySink) {
+				log.debug(
+					`Skipping activity sync - no activity sink registered for session`,
+				);
+				return;
+			}
+
+			const result = await activitySink.postActivity(
 				session.externalSessionId,
 				content,
 				options,
@@ -1737,7 +1759,15 @@ export class AgentSessionManager extends EventEmitter {
 				options.signalMetadata = input.signalMetadata;
 			}
 
-			const result = await this.activitySink.postActivity(
+			const activitySink = this.getActivitySink(sessionId);
+			if (!activitySink) {
+				log.debug(
+					`Skipping ${label} - no activity sink registered for session`,
+				);
+				return null;
+			}
+
+			const result = await activitySink.postActivity(
 				session.externalSessionId,
 				input.content,
 				options,

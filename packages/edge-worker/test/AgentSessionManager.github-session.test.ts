@@ -29,7 +29,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 
 		postActivitySpy = mockActivitySink.postActivity as ReturnType<typeof vi.fn>;
 
-		manager = new AgentSessionManager(mockActivitySink);
+		manager = new AgentSessionManager();
 	});
 
 	function createGitHubSession() {
@@ -46,6 +46,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 			{ path: "/test/workspace", isGitWorktree: false },
 			"github",
 		);
+		manager.setActivitySink(sessionId, mockActivitySink);
 	}
 
 	function createLinearSession() {
@@ -62,6 +63,7 @@ describe("AgentSessionManager - GitHub Session", () => {
 			{ path: "/test/workspace", isGitWorktree: false },
 			"linear",
 		);
+		manager.setActivitySink(sessionId, mockActivitySink);
 	}
 
 	// ── GitHub session tests ──────────────────────────────────────────────
