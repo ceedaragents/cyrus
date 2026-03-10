@@ -29,6 +29,13 @@ Check the `<assignee>` section from the issue context and add assignee informati
 
 Follow this with a blank line, then the rest of the description. If no assignee information is available at all, skip this step.
 
+**IMPORTANT: Cyrus attribution marker**
+You MUST include the following hidden HTML comment somewhere in the PR body (e.g. at the very end). This marker is used to identify Cyrus-authored PRs for tracking purposes:
+```
+<!-- generated-by-cyrus -->
+```
+This marker is invisible when rendered on GitHub but allows the webhook to detect that this PR was authored by Cyrus, even when the PR is created under a human user's GitHub account.
+
 The PR description should include:
 - Summary of changes
 - Implementation approach
