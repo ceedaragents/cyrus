@@ -109,7 +109,6 @@ describe("EdgeWorker - fetchPRBranchRef", () => {
 			name: "my-repo",
 			cloneUrl: "https://github.com/testorg/my-repo.git",
 			basePath: "/tmp/test-repos",
-			linearToken: "test-linear-token",
 			primaryBranch: "main",
 		};
 

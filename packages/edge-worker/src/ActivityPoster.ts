@@ -20,6 +20,18 @@ export class ActivityPoster {
 		this.logger = logger;
 	}
 
+	/**
+	 * Get issue tracker for a repository by resolving through workspace ID.
+	 * The issueTrackers map is keyed by workspace ID, not repository ID.
+	 */
+	private getIssueTrackerForRepository(
+		repositoryId: string,
+	): IIssueTrackerService | undefined {
+		const repo = this.repositories.get(repositoryId);
+		if (!repo) return undefined;
+		return this.issueTrackers.get(repo.linearWorkspaceId);
+	}
+
 	async postActivityDirect(
 		issueTracker: IIssueTrackerService,
 		input: AgentActivityCreateInput,
@@ -48,7 +60,7 @@ export class ActivityPoster {
 		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
 			return;
@@ -71,7 +83,7 @@ export class ActivityPoster {
 		sessionId: string,
 		repositoryId: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
 			return;
@@ -101,7 +113,7 @@ export class ActivityPoster {
 			| "workspace-fallback"
 			| "user-selected",
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
 			return;
@@ -144,7 +156,7 @@ export class ActivityPoster {
 		labels: string[],
 		repositoryId: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
 			return;
@@ -234,7 +246,7 @@ export class ActivityPoster {
 		repositoryId: string,
 		isStreaming: boolean,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 		if (!issueTracker) {
 			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
 			return;
@@ -261,7 +273,7 @@ export class ActivityPoster {
 		parentId?: string,
 	): Promise<void> {
 		// Get the issue tracker for this repository
-		const issueTracker = this.issueTrackers.get(repositoryId);
+		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
 		if (!issueTracker) {
 			throw new Error(`No issue tracker found for repository ${repositoryId}`);
 		}

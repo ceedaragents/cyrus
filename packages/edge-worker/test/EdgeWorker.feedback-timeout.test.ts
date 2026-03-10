@@ -45,7 +45,6 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
-		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
 		allowedTools: ["Read", "Edit"],
@@ -161,6 +160,9 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			proxyUrl: "http://localhost:3000",
 			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [mockRepository],
+			linearWorkspaces: {
+				"test-workspace": { linearToken: "test-token" },
+			},
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
 					path: "/test/workspaces/CHILD-456",

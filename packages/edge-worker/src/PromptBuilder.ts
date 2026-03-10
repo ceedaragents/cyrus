@@ -331,7 +331,7 @@ export class PromptBuilder {
 			}
 
 			// Get IssueTrackerService for this repository
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
 			if (!issueTracker) {
 				this.logger.error(
 					`No IssueTrackerService found for repository ${repository.id}`,
@@ -710,7 +710,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
-			const issueTracker = this.issueTrackers.get(repository.id);
+			const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
 			let commentThreads = "No comments yet.";
 
 			if (issueTracker && issue.id) {

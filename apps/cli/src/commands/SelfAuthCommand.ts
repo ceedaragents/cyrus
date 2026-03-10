@@ -1,7 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import { DEFAULT_CONFIG_FILENAME, type EdgeConfig } from "cyrus-core";
+import {
+	DEFAULT_CONFIG_FILENAME,
+	type EdgeConfig,
+	migrateEdgeConfig,
+} from "cyrus-core";
 import Fastify, { type FastifyInstance } from "fastify";
 import open from "open";
 import { BaseCommand } from "./ICommand.js";
@@ -39,7 +43,9 @@ export class SelfAuthCommand extends BaseCommand {
 		const configPath = resolve(this.app.cyrusHome, DEFAULT_CONFIG_FILENAME);
 		let config: EdgeConfig;
 		try {
-			config = JSON.parse(readFileSync(configPath, "utf-8")) as EdgeConfig;
+			config = migrateEdgeConfig(
+				JSON.parse(readFileSync(configPath, "utf-8")),
+			) as EdgeConfig;
 		} catch {
 			this.logError(`Config file not found: ${configPath}`);
 			console.log("Run 'cyrus' first to create initial configuration.");
@@ -241,6 +247,17 @@ export class SelfAuthCommand extends BaseCommand {
 		tokens: { accessToken: string; refreshToken?: string },
 		workspace: { id: string; name: string },
 	): void {
+		// Update workspace-level token storage
+		if (!config.linearWorkspaces) {
+			(config as Record<string, unknown>).linearWorkspaces = {};
+		}
+		config.linearWorkspaces![workspace.id] = {
+			linearToken: tokens.accessToken,
+			...(tokens.refreshToken
+				? { linearRefreshToken: tokens.refreshToken }
+				: {}),
+		};
+
 		// Update all repositories matching this workspace (or unset workspace)
 		for (const repo of config.repositories) {
 			if (
@@ -248,8 +265,6 @@ export class SelfAuthCommand extends BaseCommand {
 				!repo.linearWorkspaceId ||
 				repo.linearWorkspaceId === ""
 			) {
-				repo.linearToken = tokens.accessToken;
-				repo.linearRefreshToken = tokens.refreshToken;
 				repo.linearWorkspaceId = workspace.id;
 				repo.linearWorkspaceName = workspace.name;
 			}

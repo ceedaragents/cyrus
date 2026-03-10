@@ -22,16 +22,18 @@ vi.mock("node:fs/promises", () => ({
 				{
 					id: "repo-1",
 					linearWorkspaceId: "workspace-123",
-					linearToken: "old_token",
-					linearRefreshToken: "old_refresh_token",
 				},
 				{
 					id: "repo-2",
 					linearWorkspaceId: "workspace-123",
+				},
+			],
+			linearWorkspaces: {
+				"workspace-123": {
 					linearToken: "old_token",
 					linearRefreshToken: "old_refresh_token",
 				},
-			],
+			},
 		}),
 	),
 	writeFile: vi.fn().mockResolvedValue(undefined),
@@ -62,10 +64,14 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 					baseBranch: "main",
 					linearWorkspaceId: "workspace-123",
 					linearWorkspaceName: "Test Workspace",
+				},
+			],
+			linearWorkspaces: {
+				"workspace-123": {
 					linearToken: "test_token",
 					linearRefreshToken: "refresh_token",
 				},
-			],
+			},
 			cyrusHome: "/test/.cyrus",
 			serverPort: 3456,
 			serverHost: "localhost",
@@ -105,7 +111,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 
 			edgeWorker = new EdgeWorker(mockConfig);
 			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = issueTrackers.get("workspace-123");
 
 			const result = await issueTracker?.fetchIssue("issue-123");
 
@@ -120,7 +126,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 
 			edgeWorker = new EdgeWorker(mockConfig);
 			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = issueTrackers.get("workspace-123");
 
 			await expect(issueTracker?.fetchIssue("issue-123")).rejects.toThrow(
 				"Network error",
@@ -132,12 +138,13 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 
 		it("should not configure token refresh without refresh token", async () => {
 			// Setup config without refresh token
-			mockConfig.repositories[0].linearRefreshToken = undefined;
+			mockConfig.linearWorkspaces!["workspace-123"].linearRefreshToken =
+				undefined;
 			edgeWorker = new EdgeWorker(mockConfig);
 
 			// The issueTracker should be created but without OAuth config
 			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = issueTrackers.get("workspace-123");
 			expect(issueTracker).toBeDefined();
 			// OAuth config should not be set (no refresh capability)
 			expect((issueTracker as any).oauthConfig).toBeUndefined();
@@ -152,7 +159,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 
 			// The issueTracker should be created but without OAuth config
 			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = issueTrackers.get("workspace-123");
 			expect(issueTracker).toBeDefined();
 			// OAuth config should not be set (no refresh capability)
 			expect((issueTracker as any).oauthConfig).toBeUndefined();
@@ -164,7 +171,7 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 			edgeWorker = new EdgeWorker(mockConfig);
 
 			const issueTrackers = (edgeWorker as any).issueTrackers;
-			const issueTracker = issueTrackers.get("repo-1");
+			const issueTracker = issueTrackers.get("workspace-123");
 			const oauthConfig = (issueTracker as any).oauthConfig;
 
 			expect(oauthConfig).toBeDefined();

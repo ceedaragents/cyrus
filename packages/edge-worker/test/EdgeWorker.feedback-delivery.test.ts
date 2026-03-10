@@ -45,7 +45,6 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
-		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
 		allowedTools: ["Read", "Edit"],
@@ -159,6 +158,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			proxyUrl: "http://localhost:3000",
 			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [mockRepository],
+			linearWorkspaces: {
+				"test-workspace": { linearToken: "test-token" },
+			},
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
 					path: "/test/workspaces/CHILD-456",
@@ -435,7 +437,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Verify createCyrusToolsServer was called with correct options
 			expect(createCyrusToolsServer).toHaveBeenCalledWith(
-				mockRepository.linearToken,
+				"test-token",
 				expect.objectContaining({
 					parentSessionId,
 					onFeedbackDelivery: expect.any(Function),

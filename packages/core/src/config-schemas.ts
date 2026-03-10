@@ -125,6 +125,15 @@ const PromptDefaultsSchema = z.object({
 });
 
 /**
+ * Configuration for a Linear workspace's credentials.
+ * Keyed by workspace ID in EdgeConfig.linearWorkspaces.
+ */
+export const LinearWorkspaceConfigSchema = z.object({
+	linearToken: z.string(),
+	linearRefreshToken: z.string().optional(),
+});
+
+/**
  * Configuration for a single repository/workspace pair
  */
 export const RepositoryConfigSchema = z.object({
@@ -140,8 +149,6 @@ export const RepositoryConfigSchema = z.object({
 	// Linear configuration
 	linearWorkspaceId: z.string(),
 	linearWorkspaceName: z.string().optional(),
-	linearToken: z.string(),
-	linearRefreshToken: z.string().optional(),
 	teamKeys: z.array(z.string()).optional(),
 	routingLabels: z.array(z.string()).optional(),
 	projectKeys: z.array(z.string()).optional(),
@@ -176,6 +183,14 @@ export const RepositoryConfigSchema = z.object({
 export const EdgeConfigSchema = z.object({
 	/** Array of repository configurations */
 	repositories: z.array(RepositoryConfigSchema),
+
+	/**
+	 * Linear workspace credentials keyed by workspace ID.
+	 * Centralizes tokens that were previously duplicated per-repository.
+	 */
+	linearWorkspaces: z
+		.record(z.string(), LinearWorkspaceConfigSchema)
+		.optional(),
 
 	/** Ngrok auth token for tunnel creation */
 	ngrokAuthToken: z.string().optional(),
@@ -259,11 +274,77 @@ export const EdgeConfigPayloadSchema = EdgeConfigSchema.extend({
 	repositories: z.array(RepositoryConfigPayloadSchema),
 });
 
+/**
+ * Migrate an EdgeConfig from the legacy per-repo token format to the
+ * workspace-keyed format.
+ *
+ * Old format: each repository has linearToken and linearRefreshToken.
+ * New format: linearWorkspaces at EdgeConfig level keyed by workspace ID,
+ * repositories no longer carry tokens.
+ *
+ * This function is idempotent — if linearWorkspaces already exists, it
+ * returns the config unchanged.
+ */
+export function migrateEdgeConfig(
+	raw: Record<string, unknown>,
+): Record<string, unknown> {
+	// Already migrated or no repositories — nothing to do
+	if (raw.linearWorkspaces || !Array.isArray(raw.repositories)) {
+		return raw;
+	}
+
+	const repos = raw.repositories as Record<string, unknown>[];
+	const hasLegacyTokens = repos.some((r) => typeof r.linearToken === "string");
+
+	if (!hasLegacyTokens) {
+		return raw;
+	}
+
+	// Build workspace map from per-repo tokens
+	const linearWorkspaces: Record<
+		string,
+		{ linearToken: string; linearRefreshToken?: string }
+	> = {};
+
+	for (const repo of repos) {
+		const workspaceId = repo.linearWorkspaceId as string | undefined;
+		const token = repo.linearToken as string | undefined;
+		if (workspaceId && token) {
+			// First repo with this workspace wins (they should all have the same token)
+			if (!linearWorkspaces[workspaceId]) {
+				linearWorkspaces[workspaceId] = {
+					linearToken: token,
+					...(typeof repo.linearRefreshToken === "string"
+						? { linearRefreshToken: repo.linearRefreshToken }
+						: {}),
+				};
+			}
+		}
+	}
+
+	// Strip legacy token fields from repositories
+	const migratedRepos = repos.map((repo) => {
+		const {
+			linearToken: _linearToken,
+			linearRefreshToken: _linearRefreshToken,
+			...rest
+		} = repo;
+		return rest;
+	});
+
+	return {
+		...raw,
+		repositories: migratedRepos,
+		linearWorkspaces,
+	};
+}
+
 // Infer types from schemas
 export type UserIdentifier = z.infer<typeof UserIdentifierSchema>;
 export type UserAccessControlConfig = z.infer<
 	typeof UserAccessControlConfigSchema
 >;
+export type LinearWorkspaceConfig = z.infer<typeof LinearWorkspaceConfigSchema>;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
 export type RepositoryConfigPayload = z.infer<

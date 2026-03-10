@@ -1,11 +1,6 @@
 import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import type {
-	IIssueTrackerService,
-	ILogger,
-	Issue,
-	RepositoryConfig,
-} from "cyrus-core";
+import type { IIssueTrackerService, ILogger, Issue } from "cyrus-core";
 import { fileTypeFromBuffer } from "file-type";
 
 export class AttachmentService {
@@ -32,13 +27,13 @@ export class AttachmentService {
 	/**
 	 * Download attachments from Linear issue
 	 * @param issue Linear issue object from webhook data
-	 * @param repository Repository configuration
+	 * @param linearToken Linear API token for authenticated downloads
 	 * @param workspacePath Path to workspace directory
 	 * @param issueTracker Optional issue tracker service for fetching comments and native attachments
 	 */
 	async downloadIssueAttachments(
 		issue: Issue,
-		repository: RepositoryConfig,
+		linearToken: string,
 		workspacePath: string,
 		issueTracker?: IIssueTrackerService,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
@@ -133,7 +128,7 @@ export class AttachmentService {
 				const result = await this.downloadAttachment(
 					url,
 					tempPath,
-					repository.linearToken,
+					linearToken,
 				);
 
 				if (result.success) {

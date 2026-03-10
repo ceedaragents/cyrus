@@ -85,7 +85,7 @@ No comments yet.
 			id: "repo-uuid-5678-9012-34ef-123456789012",
 			repositoryPath: "/test/repo",
 			workspaceBaseDir: "/test/workspace",
-			linearToken: "test-token-123", // Mock token for testing
+			linearWorkspaceId: "test-workspace",
 			labelPrompts: {
 				builder: ["feature", "enhancement"],
 				debugger: ["bug", "hotfix"],
@@ -179,7 +179,7 @@ Build the payment integration
 			id: "repo-uuid-6789-0123-45ab-cdef12345678",
 			repositoryPath: "/test/repo",
 			workspaceBaseDir: "/test/workspace",
-			linearToken: "test-token-123",
+			linearWorkspaceId: "test-workspace",
 			// Note: NO labelPrompts configured!
 		};
 
@@ -266,7 +266,7 @@ Orchestrate this task
 			id: "repo-uuid-7890-1234-56cd-ef0123456789",
 			repositoryPath: "/test/repo",
 			workspaceBaseDir: "/test/workspace",
-			linearToken: "test-token-123",
+			linearWorkspaceId: "test-workspace",
 			labelPrompts: {
 				// Has other entries but NOT orchestrator
 				debugger: ["Bug"],

@@ -95,7 +95,6 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		githubUrl: "https://github.com/f1-test/primary-repo",
 		linearWorkspaceId: "cli-workspace",
 		linearWorkspaceName: "F1 Testing",
-		linearToken: "f1-test-token", // Dummy token for CLI mode
 		workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
 		isActive: true,
 		// Routing configuration for multi-repo support
@@ -137,7 +136,6 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 			githubUrl: "https://github.com/f1-test/secondary-repo",
 			linearWorkspaceId: "cli-workspace", // Same workspace for routing test
 			linearWorkspaceName: "F1 Testing",
-			linearToken: "f1-test-token-2",
 			workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR, "secondary"),
 			isActive: true,
 			// Different routing labels for second repo
