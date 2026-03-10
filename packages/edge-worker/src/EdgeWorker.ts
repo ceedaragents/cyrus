@@ -1040,12 +1040,39 @@ export class EdgeWorker extends EventEmitter {
 					"A reviewer has requested changes on this PR. Read the review comments to understand what needs to be changed."
 				: stripMention(commentBody, mentionHandle);
 
-			// Create workspace (git worktree) for the PR branch
-			const workspace = await this.createGitHubWorkspace(
-				repository,
-				branchRef,
-				prNumber,
-			);
+			// Check for an existing multi-repo session that includes this repository.
+			// If found, use its sub-worktree instead of creating a new workspace.
+			let workspace: { path: string; isGitWorktree: boolean } | null = null;
+			const multiRepoSession =
+				agentSessionManager.getActiveMultiRepoSessionForRepository(
+					repository.id,
+				);
+
+			if (multiRepoSession) {
+				const subWorktreePath =
+					multiRepoSession.workspace.repoPaths?.[repository.id];
+				if (subWorktreePath) {
+					workspace = { path: subWorktreePath, isGitWorktree: true };
+					this.logger.info(
+						`Resolved multi-repo sub-worktree for ${repository.name}: ${subWorktreePath}`,
+					);
+				} else {
+					this.logger.warn(
+						`No sub-worktree found for repo ${repository.name} in multi-repo session ${multiRepoSession.id}, falling back to root workspace`,
+					);
+					workspace = {
+						path: multiRepoSession.workspace.path,
+						isGitWorktree: true,
+					};
+				}
+			} else {
+				// Single-repo or no existing session: create workspace as before
+				workspace = await this.createGitHubWorkspace(
+					repository,
+					branchRef,
+					prNumber,
+				);
+			}
 
 			if (!workspace) {
 				this.logger.error(
