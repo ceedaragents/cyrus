@@ -4,6 +4,17 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.33] - 2026-03-10
+
+### Fixed
+- ClaudeRunner now infers `type: "http"` for file-loaded MCP server configs that have a `url` but no `type` discriminator. The Claude Agent SDK requires an explicit `type` field — without it, sessions crash with 0 messages. Codex/Gemini runners are unaffected because they do property-based translation. ([#966](https://github.com/ceedaragents/cyrus/pull/966))
+
+### Changed
+- Replaced placeholder `testMcp` handler with actual MCP SDK integration: stdio spawns via `StdioClientTransport`, HTTP/SSE connects via `StreamableHTTPClientTransport`, both perform `tools/list` and return discovered tools. Added `@modelcontextprotocol/sdk` dependency to config-updater and `NodeNext` module resolution. ([#966](https://github.com/ceedaragents/cyrus/pull/966))
+- Refactored MCP test handler: fixed `withTimeout` timer leak by clearing setTimeout on settlement, extracted `connectAndDiscover()` to eliminate duplicated connect/list/respond logic, avoided mutating `payload.commandArgs` by copying before sort, added 5s timeout to `client.close()` to prevent zombie stdio processes. ([#966](https://github.com/ceedaragents/cyrus/pull/966))
+- MCP config files moved to `~/.cyrus/mcp-configs/` subdirectory; config-updater routes consolidated under `/api/update/` prefix. ([#966](https://github.com/ceedaragents/cyrus/pull/966))
+- Restored tab indentation in all package.json files.
+
 ## [0.2.32] - 2026-03-10
 
 ### Changed

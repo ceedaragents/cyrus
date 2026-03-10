@@ -4,6 +4,58 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.33] - 2026-03-10
+
+### Fixed
+- **MCP config files crashing ClaudeRunner sessions** - File-loaded MCP server configs (`.mcp.json`, `mcp-*.json`) that omit the `type` field for URL-based servers no longer crash sessions with 0 messages. ClaudeRunner now infers `type: "http"` when a `url` is present. ([#966](https://github.com/ceedaragents/cyrus/pull/966))
+
+### Added
+- **Real MCP connection testing** - The MCP test endpoint now performs actual SDK connections (stdio process spawn or HTTP/SSE) and returns discovered tools, replacing the previous placeholder response. ([#966](https://github.com/ceedaragents/cyrus/pull/966))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.33
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.33
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.33
+
+#### cyrus-core
+- cyrus-core@0.2.33
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.33
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.33
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.33
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.33
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.33
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.33
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.33
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.33
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.33
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.33
+
 ## [0.2.32] - 2026-03-10
 
 ### Fixed
