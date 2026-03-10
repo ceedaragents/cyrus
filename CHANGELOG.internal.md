@@ -19,6 +19,7 @@ This changelog documents internal development changes, refactors, tooling update
 
 ### Changed
 - **Consolidated parent-child session mapping to single source of truth** - Removed redundant `EdgeWorker.childToParentAgentSession` map. `GlobalSessionRegistry` is now the sole owner of parent-child session mappings, eliminating the dual-write obligation that caused the orchestrator result-writing regression. Serialization format (`childToParentAgentSession` key) preserved for backward compatibility. ([CYPACK-922](https://linear.app/ceedar/issue/CYPACK-922), [#957](https://github.com/ceedaragents/cyrus/pull/957))
+- Consolidated `AgentSessionManager` from a per-repository `Map<string, AgentSessionManager>` to a single instance in `EdgeWorker`. Activity sink resolution moved from constructor-level to per-session via `setActivitySink()`. Serialization format flattened from nested `{[repoId]: {[sessionId]: session}}` to `{[sessionId]: session}` with persistence version bumped 3.0 → 4.0 (backward-compatible migration). ([CYPACK-911](https://linear.app/ceedar/issue/CYPACK-911), [#955](https://github.com/ceedaragents/cyrus/pull/955))
 
 ## [0.2.31] - 2026-03-09
 
