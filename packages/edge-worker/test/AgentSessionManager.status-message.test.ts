@@ -19,7 +19,7 @@ describe("AgentSessionManager - Status Messages", () => {
 
 		postActivitySpy = vi.spyOn(mockActivitySink, "postActivity");
 
-		manager = new AgentSessionManager(mockActivitySink);
+		manager = new AgentSessionManager();
 
 		// Create a test session
 		manager.createLinearAgentSession(
@@ -37,6 +37,7 @@ describe("AgentSessionManager - Status Messages", () => {
 				isGitWorktree: false,
 			},
 		);
+		manager.setActivitySink(sessionId, mockActivitySink);
 	});
 
 	it("should post ephemeral activity when compacting status is received", async () => {

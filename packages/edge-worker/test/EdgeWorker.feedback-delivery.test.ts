@@ -180,10 +180,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			"parent-session-123",
 		);
 
-		// Setup repository managers
-		(edgeWorker as any).agentSessionManagers.set(
+		// Setup single agent session manager and session-to-repo mapping
+		(edgeWorker as any).agentSessionManager = mockChildAgentSessionManager;
+		(edgeWorker as any).sessionRepositories.set(
+			"child-session-456",
 			"test-repo",
-			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 	});
@@ -384,28 +385,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			);
 		});
 
-		it("should find child session across multiple repositories", async () => {
-			// Arrange - Setup multiple repositories
-			const repo2: RepositoryConfig = {
-				...mockRepository,
-				id: "test-repo-2",
-				name: "Test Repo 2",
-			};
-
-			const mockRepo2Manager = {
-				hasAgentRunner: vi.fn().mockReturnValue(false),
-				getSession: vi.fn().mockReturnValue(null),
-			};
-
-			// First repository doesn't have the session
-			(edgeWorker as any).agentSessionManagers.set(
-				"test-repo-2",
-				mockRepo2Manager,
-			);
-			(edgeWorker as any).repositories.set("test-repo-2", repo2);
-
-			// Adjust mock to make first repo not have it, second repo has it
-			mockRepo2Manager.hasAgentRunner.mockReturnValue(false);
+		it("should find child session via single session manager and sessionRepositories mapping", async () => {
+			// Arrange - The single ASM has the child session runner
 			mockChildAgentSessionManager.hasAgentRunner.mockReturnValue(true);
 
 			const childSessionId = "child-session-456";
@@ -423,7 +404,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				feedbackMessage,
 			);
 
-			// Assert - Should find the child in the correct repository
+			// Assert - Should find the child via sessionRepositories and single ASM
 			expect(result).toBe(true);
 
 			// Wait for the async handlePromptWithStreamingCheck to complete (fire-and-forget pattern)
@@ -431,11 +412,10 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			expect(resumeAgentSessionSpy).toHaveBeenCalledOnce();
 
-			// Verify the child was found in one of the repositories
-			const hasAgentRunnerCalls =
-				mockRepo2Manager.hasAgentRunner.mock.calls.length +
-				mockChildAgentSessionManager.hasAgentRunner.mock.calls.length;
-			expect(hasAgentRunnerCalls).toBeGreaterThan(0);
+			// Verify the child was found via the single session manager
+			expect(mockChildAgentSessionManager.hasAgentRunner).toHaveBeenCalledWith(
+				childSessionId,
+			);
 		});
 	});
 

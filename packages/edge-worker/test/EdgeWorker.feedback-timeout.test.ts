@@ -177,10 +177,11 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			"parent-session-123",
 		);
 
-		// Setup repository managers
-		(edgeWorker as any).agentSessionManagers.set(
+		// Setup single agent session manager and session-to-repo mapping
+		(edgeWorker as any).agentSessionManager = mockChildAgentSessionManager;
+		(edgeWorker as any).sessionRepositories.set(
+			"child-session-456",
 			"test-repo",
-			mockChildAgentSessionManager,
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 	});

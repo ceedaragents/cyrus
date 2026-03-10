@@ -11,7 +11,6 @@ import type {
 } from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import { AgentSessionManager } from "./AgentSessionManager.js";
-import { NoopActivitySink } from "./sinks/NoopActivitySink.js";
 
 /**
  * Defines what each chat platform must provide for the generic session lifecycle.
@@ -89,9 +88,7 @@ export class ChatSessionHandler<TEvent> {
 		this.logger = logger ?? createLogger({ component: "ChatSessionHandler" });
 
 		// Initialize a dedicated AgentSessionManager (not tied to any repository)
-		const activitySink = new NoopActivitySink(adapter.platformName);
 		this.sessionManager = new AgentSessionManager(
-			activitySink,
 			undefined, // No parent session lookup
 			undefined, // No resume parent session
 			undefined, // No procedure analyzer

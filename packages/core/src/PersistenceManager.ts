@@ -11,7 +11,7 @@ import type {
 import { createLogger, type ILogger } from "./logging/index.js";
 
 /** Current persistence format version */
-export const PERSISTENCE_VERSION = "3.0";
+export const PERSISTENCE_VERSION = "4.0";
 
 // Serialized versions with Date fields as strings
 export type SerializedCyrusAgentSession = CyrusAgentSession;
@@ -51,17 +51,30 @@ interface V2CyrusAgentSession {
 
 /**
  * Serializable EdgeWorker state for persistence
+ *
+ * v4.0: Flat session format - sessions keyed directly by sessionId (no repo nesting)
+ * v3.0: Nested format - sessions keyed by [repoId][sessionId]
  */
 export interface SerializableEdgeWorkerState {
-	// Agent Session state - keyed by repository ID, since that's how we construct AgentSessionManagers
+	// Agent Session state - flat map of sessionId → session (v4.0)
+	agentSessions?: Record<string, SerializedCyrusAgentSession>;
+	agentSessionEntries?: Record<string, SerializedCyrusAgentSessionEntry[]>;
+	// Child to parent agent session mapping
+	childToParentAgentSession?: Record<string, string>;
+	// Issue to repository mapping (for caching user repository selections)
+	issueRepositoryCache?: Record<string, string>;
+}
+
+/**
+ * v3.0 nested state format (for migration purposes)
+ */
+export interface V3SerializableEdgeWorkerState {
 	agentSessions?: Record<string, Record<string, SerializedCyrusAgentSession>>;
 	agentSessionEntries?: Record<
 		string,
 		Record<string, SerializedCyrusAgentSessionEntry[]>
 	>;
-	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
-	// Issue to repository mapping (for caching user repository selections)
 	issueRepositoryCache?: Record<string, string>;
 }
 
@@ -132,9 +145,21 @@ export class PersistenceManager {
 
 			// Handle version migration
 			if (stateData.version === "2.0") {
-				this.logger.info("Migrating state from v2.0 to v3.0");
-				const migratedState = this.migrateV2ToV3(stateData.state);
-				// Save the migrated state
+				this.logger.info("Migrating state from v2.0 to v3.0 to v4.0");
+				const v3State = this.migrateV2ToV3(stateData.state);
+				const migratedState = this.migrateV3ToV4(v3State);
+				await this.saveEdgeWorkerState(migratedState);
+				this.logger.info(
+					`Migration complete, saved as v${PERSISTENCE_VERSION}`,
+				);
+				return migratedState;
+			}
+
+			if (stateData.version === "3.0") {
+				this.logger.info("Migrating state from v3.0 to v4.0");
+				const migratedState = this.migrateV3ToV4(
+					stateData.state as V3SerializableEdgeWorkerState,
+				);
 				await this.saveEdgeWorkerState(migratedState);
 				this.logger.info(
 					`Migration complete, saved as v${PERSISTENCE_VERSION}`,
@@ -167,9 +192,9 @@ export class PersistenceManager {
 	 * - issue becomes optional
 	 */
 	private migrateV2ToV3(
-		v2State: SerializableEdgeWorkerState,
-	): SerializableEdgeWorkerState {
-		const migratedState: SerializableEdgeWorkerState = {
+		v2State: V3SerializableEdgeWorkerState,
+	): V3SerializableEdgeWorkerState {
+		const migratedState: V3SerializableEdgeWorkerState = {
 			...v2State,
 			agentSessions: {},
 		};
@@ -195,6 +220,45 @@ export class PersistenceManager {
 		// The entries themselves don't need modification
 
 		return migratedState;
+	}
+
+	/**
+	 * Migrate v3.0 state format to v4.0 format
+	 *
+	 * Changes:
+	 * - Flatten nested {[repoId]: {[sessionId]: session}} to flat {[sessionId]: session}
+	 * - Flatten nested entries similarly
+	 */
+	private migrateV3ToV4(
+		v3State: V3SerializableEdgeWorkerState,
+	): SerializableEdgeWorkerState {
+		const flatSessions: Record<string, SerializedCyrusAgentSession> = {};
+		const flatEntries: Record<string, SerializedCyrusAgentSessionEntry[]> = {};
+
+		// Flatten sessions: merge all repo-keyed sessions into a single flat map
+		if (v3State.agentSessions) {
+			for (const repoSessions of Object.values(v3State.agentSessions)) {
+				for (const [sessionId, session] of Object.entries(repoSessions)) {
+					flatSessions[sessionId] = session;
+				}
+			}
+		}
+
+		// Flatten entries similarly
+		if (v3State.agentSessionEntries) {
+			for (const repoEntries of Object.values(v3State.agentSessionEntries)) {
+				for (const [sessionId, entries] of Object.entries(repoEntries)) {
+					flatEntries[sessionId] = entries;
+				}
+			}
+		}
+
+		return {
+			agentSessions: flatSessions,
+			agentSessionEntries: flatEntries,
+			childToParentAgentSession: v3State.childToParentAgentSession,
+			issueRepositoryCache: v3State.issueRepositoryCache,
+		};
 	}
 
 	/**

@@ -104,6 +104,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			createResponseActivity: vi.fn().mockResolvedValue(undefined),
 			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
 			requestSessionStop: vi.fn(),
+			setActivitySink: vi.fn(),
 			on: vi.fn(),
 		};
 
@@ -163,11 +164,8 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 		// Set up repositories map
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
 
-		// Set up agent session managers (but WITHOUT cached repository mappings)
-		(edgeWorker as any).agentSessionManagers.set(
-			"test-repo",
-			mockAgentSessionManager,
-		);
+		// Set up single agent session manager (but WITHOUT cached repository mappings)
+		(edgeWorker as any).agentSessionManager = mockAgentSessionManager;
 
 		// Mock issue tracker
 		const mockIssueTracker = {
