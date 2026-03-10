@@ -36,11 +36,15 @@ export function createTestWorker(
 	}
 
 	// Auto-generate linearWorkspaces from repository configs
-	const linearWorkspaces: Record<string, { linearToken: string }> = {};
+	const linearWorkspaces: Record<
+		string,
+		{ linearToken: string; linearWorkspaceSlug?: string }
+	> = {};
 	for (const repo of repositories) {
 		if (repo.linearWorkspaceId && !linearWorkspaces[repo.linearWorkspaceId]) {
 			linearWorkspaces[repo.linearWorkspaceId] = {
 				linearToken: "test-token",
+				...(linearWorkspaceSlug ? { linearWorkspaceSlug } : {}),
 			};
 		}
 	}
@@ -48,12 +52,13 @@ export function createTestWorker(
 	const config: EdgeWorkerConfig = {
 		cyrusHome: TEST_CYRUS_HOME,
 		claudeDefaultModel: "sonnet",
-		linearWorkspaceSlug,
 		repositories,
 		linearWorkspaces,
 		issueTrackers,
 		mcpServers: {},
-	};
+		// Store default slug so withRepository() can inherit it for dynamically added workspaces
+		_testDefaultWorkspaceSlug: linearWorkspaceSlug,
+	} as EdgeWorkerConfig & { _testDefaultWorkspaceSlug?: string };
 	return new EdgeWorker(config);
 }
 
@@ -151,15 +156,13 @@ export class PromptScenario {
 			baseBranch: "main",
 			labelPrompts: {},
 			repositoryPath: repo.repositoryPath ?? repo.path ?? "/test/repo",
+			linearWorkspaceId: repo.linearWorkspaceId ?? repo.id,
 			...repo,
 		};
 		this.input.repository = fullRepo;
+		const workspaceKey = fullRepo.linearWorkspaceId;
 		// Also ensure the worker has an IssueTrackerService for this repository
-		if (
-			!(this.worker as any).issueTrackers.has(
-				fullRepo.linearWorkspaceId ?? fullRepo.id,
-			)
-		) {
+		if (!(this.worker as any).issueTrackers.has(workspaceKey)) {
 			const mockIssueTracker = {
 				getComments: () => Promise.resolve([]),
 				getComment: () => Promise.resolve(null),
@@ -169,10 +172,19 @@ export class PromptScenario {
 						Promise.resolve({ data: { comment: { body: "" } } }),
 				},
 			};
-			(this.worker as any).issueTrackers.set(
-				fullRepo.linearWorkspaceId ?? fullRepo.id,
-				mockIssueTracker,
-			);
+			(this.worker as any).issueTrackers.set(workspaceKey, mockIssueTracker);
+		}
+		// Ensure the worker has a linearWorkspaces entry for this workspace
+		if (!(this.worker as any).config.linearWorkspaces?.[workspaceKey]) {
+			if (!(this.worker as any).config.linearWorkspaces) {
+				(this.worker as any).config.linearWorkspaces = {};
+			}
+			// Use default slug from createTestWorker if available
+			const defaultSlug = (this.worker as any).config._testDefaultWorkspaceSlug;
+			(this.worker as any).config.linearWorkspaces[workspaceKey] = {
+				linearToken: "test-token",
+				...(defaultSlug ? { linearWorkspaceSlug: defaultSlug } : {}),
+			};
 		}
 		return this;
 	}
