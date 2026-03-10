@@ -4520,16 +4520,23 @@ ${taskSection}`;
 
 	/**
 	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
-	 * Optionally includes the Slack MCP server when the SLACK_BOT_TOKEN environment variable is set.
+	 * Accepts a single repository or an array for multi-repo sessions.
+	 * Workspace-level servers (Linear, cyrus-tools, Slack) are configured once using workspace-level token.
 	 * @param options.excludeSlackMcp - When true, excludes the Slack MCP server even if SLACK_BOT_TOKEN is set (e.g., for GitHub sessions)
 	 */
 	private buildMcpConfig(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig | RepositoryConfig[],
 		parentSessionId?: string,
 		options?: { excludeSlackMcp?: boolean },
 	): Record<string, McpServerConfig> {
+		const repoArray = Array.isArray(repositories)
+			? repositories
+			: [repositories];
+
+		// Use first repository for workspace-level MCP context (Linear token, context ID)
+		const primaryRepo = repoArray[0]!;
 		const contextId = this.buildCyrusToolsMcpContextId(
-			repository,
+			primaryRepo,
 			parentSessionId,
 		);
 
@@ -4555,7 +4562,7 @@ ${taskSection}`;
 		const cyrusToolsAuthorizationHeader =
 			this.getCyrusToolsMcpAuthorizationHeaderValue();
 
-		// Always inject the Linear MCP servers with the workspace's token
+		// Workspace-level MCP servers — configured once regardless of repo count
 		// https://linear.app/docs/mcp
 		const mcpConfig: Record<string, McpServerConfig> = {
 			linear: {
@@ -4593,6 +4600,37 @@ ${taskSection}`;
 		}
 
 		return mcpConfig;
+	}
+
+	/**
+	 * Merge mcpConfigPath from multiple repositories into a single list.
+	 * For same-name .mcp.json servers across repos, last wins (handled by Claude's merge behavior).
+	 */
+	private buildMergedMcpConfigPath(
+		repositories: RepositoryConfig | RepositoryConfig[],
+	): string | string[] | undefined {
+		const repoArray = Array.isArray(repositories)
+			? repositories
+			: [repositories];
+
+		if (repoArray.length === 1) {
+			return repoArray[0]!.mcpConfigPath;
+		}
+
+		// Collect all mcpConfigPaths from each repo into a flat list
+		const allPaths: string[] = [];
+		for (const repo of repoArray) {
+			if (!repo.mcpConfigPath) continue;
+			if (Array.isArray(repo.mcpConfigPath)) {
+				allPaths.push(...repo.mcpConfigPath);
+			} else {
+				allPaths.push(repo.mcpConfigPath);
+			}
+		}
+
+		if (allPaths.length === 0) return undefined;
+		if (allPaths.length === 1) return allPaths[0];
+		return allPaths;
 	}
 
 	private getCyrusToolsMcpAuthorizationHeaderValue(): string | undefined {
@@ -5161,7 +5199,7 @@ ${input.userComment}
 			: this.buildMcpConfig(repository, sessionId, mcpOptions);
 		const mcpConfigPath = disallowAllTools
 			? undefined
-			: repository.mcpConfigPath;
+			: this.buildMergedMcpConfigPath(repository);
 
 		if (disallowAllTools) {
 			log.info(
@@ -5266,10 +5304,11 @@ ${input.userComment}
 	}
 
 	/**
-	 * Build disallowed tools list following the same hierarchy as allowed tools
+	 * Build disallowed tools list following the same hierarchy as allowed tools.
+	 * Accepts single or multiple repositories (intersection for multi-repo).
 	 */
 	private buildDisallowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig | RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -5278,7 +5317,7 @@ ${input.userComment}
 			| "graphite-orchestrator",
 	): string[] {
 		return this.runnerSelectionService.buildDisallowedTools(
-			repository,
+			repositories,
 			promptType,
 		);
 	}
@@ -5304,10 +5343,11 @@ ${input.userComment}
 	}
 
 	/**
-	 * Build allowed tools list with Linear MCP tools automatically included
+	 * Build allowed tools list with Linear MCP tools automatically included.
+	 * Accepts single or multiple repositories (union for multi-repo).
 	 */
 	private buildAllowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig | RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -5316,7 +5356,7 @@ ${input.userComment}
 			| "graphite-orchestrator",
 	): string[] {
 		return this.runnerSelectionService.buildAllowedTools(
-			repository,
+			repositories,
 			promptType,
 		);
 	}
