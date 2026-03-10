@@ -663,7 +663,7 @@ export class EdgeWorker extends EventEmitter {
 			"   Routes: /api/update/cyrus-config, /api/update/cyrus-env,",
 		);
 		this.logger.info(
-			"           /api/update/repository, /api/test-mcp, /api/configure-mcp",
+			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp",
 		);
 
 		// 3. Register MCP endpoint for cyrus-tools on the same Fastify server/port

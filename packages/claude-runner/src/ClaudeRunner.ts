@@ -380,6 +380,17 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					const mcpConfigContent = readFileSync(path, "utf8");
 					const mcpConfig = JSON.parse(mcpConfigContent);
 					const servers = mcpConfig.mcpServers || {};
+					// Normalize transport type for file-loaded configs.
+					// Config files (.mcp.json, mcp-*.json) often omit the `type` field,
+					// but the SDK requires an explicit discriminator for non-stdio transports.
+					for (const config of Object.values(servers) as Record<
+						string,
+						unknown
+					>[]) {
+						if (!config.type && typeof config.url === "string") {
+							config.type = "http";
+						}
+					}
 					mcpServers = { ...mcpServers, ...servers };
 					this.logger.debug(
 						`Loaded MCP servers from ${path}: ${Object.keys(servers).join(", ")}`,

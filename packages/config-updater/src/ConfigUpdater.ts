@@ -21,7 +21,7 @@ import type {
 
 /**
  * ConfigUpdater registers configuration update routes with a Fastify server
- * Handles: cyrus-config, cyrus-env, repository, test-mcp, configure-mcp, check-gh endpoints
+ * Handles: cyrus-config, cyrus-env, repository, update/test-mcp, update/configure-mcp, check-gh endpoints
  */
 export class ConfigUpdater {
 	private fastify: FastifyInstance;
@@ -46,8 +46,11 @@ export class ConfigUpdater {
 			"/api/update/repository",
 			this.handleRepositoryDeleteRoute,
 		);
-		this.registerRoute("/api/test-mcp", this.handleTestMcpRoute);
-		this.registerRoute("/api/configure-mcp", this.handleConfigureMcpRoute);
+		this.registerRoute("/api/update/test-mcp", this.handleTestMcpRoute);
+		this.registerRoute(
+			"/api/update/configure-mcp",
+			this.handleConfigureMcpRoute,
+		);
 		this.registerRoute("/api/check-gh", this.handleCheckGhRoute);
 	}
 
