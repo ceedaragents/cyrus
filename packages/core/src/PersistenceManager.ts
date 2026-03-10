@@ -62,7 +62,8 @@ export interface SerializableEdgeWorkerState {
 	// Child to parent agent session mapping
 	childToParentAgentSession?: Record<string, string>;
 	// Issue to repository mapping (for caching user repository selections)
-	issueRepositoryCache?: Record<string, string>;
+	// v4.1: string[] (multi-repo). Migration: old Record<string, string> auto-converts.
+	issueRepositoryCache?: Record<string, string[]>;
 }
 
 /**
@@ -264,11 +265,22 @@ export class PersistenceManager {
 			}
 		}
 
+		// Migrate issueRepositoryCache from old Record<string, string> to Record<string, string[]>
+		let migratedCache: Record<string, string[]> | undefined;
+		if (v3State.issueRepositoryCache) {
+			migratedCache = {};
+			for (const [issueId, repoId] of Object.entries(
+				v3State.issueRepositoryCache,
+			)) {
+				migratedCache[issueId] = [repoId];
+			}
+		}
+
 		return {
 			agentSessions: flatSessions,
 			agentSessionEntries: flatEntries,
 			childToParentAgentSession: v3State.childToParentAgentSession,
-			issueRepositoryCache: v3State.issueRepositoryCache,
+			issueRepositoryCache: migratedCache,
 		};
 	}
 
