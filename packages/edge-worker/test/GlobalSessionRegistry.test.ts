@@ -33,6 +33,7 @@ describe("GlobalSessionRegistry", () => {
 			title: `Test Issue ${sessionId}`,
 			branchName: `test-${sessionId}`,
 		},
+		repositories: [],
 		workspace: {
 			path: `/tmp/test-${sessionId}`,
 			isGitWorktree: true,
@@ -633,6 +634,112 @@ describe("GlobalSessionRegistry", () => {
 
 			expect(listener1).toHaveBeenCalledWith(session);
 			expect(listener2).toHaveBeenCalledWith(session);
+		});
+	});
+
+	describe("Repository Context", () => {
+		it("should serialize and restore session with 0 repositories (chatbot session)", () => {
+			const session = createMockSession("chat-session", {
+				repositories: [],
+			});
+			registry.createSession(session);
+
+			const serialized = registry.serializeState();
+			const newRegistry = new GlobalSessionRegistry();
+			newRegistry.restoreState(serialized);
+
+			const restored = newRegistry.getSession("chat-session");
+			expect(restored?.repositories).toEqual([]);
+		});
+
+		it("should serialize and restore session with 1 repository (single-repo)", () => {
+			const session = createMockSession("single-repo-session", {
+				repositories: [
+					{
+						repositoryId: "repo-1",
+						branchName: "cypack-123",
+						baseBranchName: "main",
+					},
+				],
+			});
+			registry.createSession(session);
+
+			const serialized = registry.serializeState();
+			const newRegistry = new GlobalSessionRegistry();
+			newRegistry.restoreState(serialized);
+
+			const restored = newRegistry.getSession("single-repo-session");
+			expect(restored?.repositories).toEqual([
+				{
+					repositoryId: "repo-1",
+					branchName: "cypack-123",
+					baseBranchName: "main",
+				},
+			]);
+		});
+
+		it("should serialize and restore session with N repositories (multi-repo)", () => {
+			const session = createMockSession("multi-repo-session", {
+				repositories: [
+					{
+						repositoryId: "repo-1",
+						branchName: "feature-a",
+						baseBranchName: "main",
+					},
+					{
+						repositoryId: "repo-2",
+						branchName: "feature-b",
+						baseBranchName: "develop",
+					},
+					{
+						repositoryId: "repo-3",
+						branchName: "hotfix-1",
+						baseBranchName: "release/v2",
+					},
+				],
+			});
+			registry.createSession(session);
+
+			const serialized = registry.serializeState();
+			const newRegistry = new GlobalSessionRegistry();
+			newRegistry.restoreState(serialized);
+
+			const restored = newRegistry.getSession("multi-repo-session");
+			expect(restored?.repositories).toHaveLength(3);
+			expect(restored?.repositories[0].repositoryId).toBe("repo-1");
+			expect(restored?.repositories[1].repositoryId).toBe("repo-2");
+			expect(restored?.repositories[2].repositoryId).toBe("repo-3");
+		});
+
+		it("should default repositories to [] when restoring old sessions without the field", () => {
+			// Simulate an old serialized state that doesn't have the repositories field
+			const oldState = {
+				version: "3.0" as const,
+				sessions: {
+					"legacy-session": {
+						id: "legacy-session",
+						externalSessionId: "legacy-session",
+						type: "comment-thread" as const,
+						status: "active" as const,
+						context: "comment-thread" as const,
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+						workspace: {
+							path: "/tmp/legacy",
+							isGitWorktree: true,
+						},
+						// No repositories field — simulating old format
+					},
+				},
+				entries: {},
+				childToParentMap: {},
+			};
+
+			// Cast to bypass type checking (simulating old data without repositories)
+			registry.restoreState(oldState as any);
+
+			const restored = registry.getSession("legacy-session");
+			expect(restored?.repositories).toEqual([]);
 		});
 	});
 });

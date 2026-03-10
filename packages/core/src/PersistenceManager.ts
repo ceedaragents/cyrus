@@ -295,6 +295,8 @@ export class PersistenceManager {
 			issueId: v2Session.issueId,
 			// Now optional
 			issue: v2Session.issue,
+			// New field: empty repositories for migrated sessions
+			repositories: [],
 		} as SerializedCyrusAgentSession;
 	}
 
