@@ -181,7 +181,6 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private globalSessionRegistry: GlobalSessionRegistry; // Centralized session storage across all repositories
-	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
 	private configPath?: string; // Path to config.json file
 	/** @internal - Exposed for testing only */
@@ -4307,16 +4306,12 @@ ${taskSection}`;
 		console.log(
 			`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentSessionId}`,
 		);
-		this.childToParentAgentSession.set(childSessionId, parentSessionId);
-		// Also register in GlobalSessionRegistry so AgentSessionManager's
-		// getParentSessionId callback can find the parent when the child completes.
-		// Without this, child session results are never written back to the parent.
 		this.globalSessionRegistry.setParentSession(
 			childSessionId,
 			parentSessionId,
 		);
 		console.log(
-			`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+			`[EdgeWorker] Parent-child mapping registered in GlobalSessionRegistry`,
 		);
 	}
 
@@ -4329,7 +4324,8 @@ ${taskSection}`;
 		);
 
 		// Find the parent session ID for context
-		const parentSessionId = this.childToParentAgentSession.get(childSessionId);
+		const parentSessionId =
+			this.globalSessionRegistry.getParentSessionId(childSessionId);
 
 		// Find the repository containing the child session
 		let childRepo: RepositoryConfig | undefined;
@@ -5432,10 +5428,9 @@ ${input.userComment}
 			agentSessions[repositoryId] = serializedState.sessions;
 			agentSessionEntries[repositoryId] = serializedState.entries;
 		}
-		// Serialize child to parent agent session mapping
-		const childToParentAgentSession = Object.fromEntries(
-			this.childToParentAgentSession.entries(),
-		);
+		// Serialize child to parent agent session mapping from GlobalSessionRegistry
+		const registryState = this.globalSessionRegistry.serializeState();
+		const childToParentAgentSession = registryState.childToParentMap;
 
 		// Serialize issue to repository cache from RepositoryRouter
 		const issueRepositoryCache = Object.fromEntries(
@@ -5478,17 +5473,14 @@ ${input.userComment}
 			}
 		}
 
-		// Restore child to parent agent session mapping
+		// Restore child to parent agent session mapping into GlobalSessionRegistry
 		if (state.childToParentAgentSession) {
-			this.childToParentAgentSession = new Map(
-				Object.entries(state.childToParentAgentSession),
-			);
-			// Sync to GlobalSessionRegistry so AgentSessionManager callbacks work
-			for (const [childId, parentId] of this.childToParentAgentSession) {
+			const entries = Object.entries(state.childToParentAgentSession);
+			for (const [childId, parentId] of entries) {
 				this.globalSessionRegistry.setParentSession(childId, parentId);
 			}
 			this.logger.debug(
-				`Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
+				`Restored ${entries.length} child-to-parent agent session mappings`,
 			);
 		}
 

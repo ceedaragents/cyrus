@@ -171,8 +171,8 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 		edgeWorker = new EdgeWorker(mockConfig);
 
-		// Setup parent-child mapping
-		(edgeWorker as any).childToParentAgentSession.set(
+		// Setup parent-child mapping in GlobalSessionRegistry (single source of truth)
+		(edgeWorker as any).globalSessionRegistry.setParentSession(
 			"child-session-456",
 			"parent-session-123",
 		);

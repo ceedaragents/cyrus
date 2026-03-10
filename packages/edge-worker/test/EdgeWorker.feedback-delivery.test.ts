@@ -174,8 +174,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			.spyOn(edgeWorker as any, "resumeAgentSession")
 			.mockResolvedValue(undefined);
 
-		// Setup parent-child mapping
-		(edgeWorker as any).childToParentAgentSession.set(
+		// Setup parent-child mapping in GlobalSessionRegistry (single source of truth)
+		(edgeWorker as any).globalSessionRegistry.setParentSession(
 			"child-session-456",
 			"parent-session-123",
 		);
@@ -256,8 +256,11 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		});
 
 		it("should handle feedback delivery when parent session ID is unknown", async () => {
-			// Arrange - Remove parent mapping to test unknown parent scenario
-			(edgeWorker as any).childToParentAgentSession.delete("child-session-456");
+			// Arrange - Replace registry with a fresh one (no parent mapping)
+			const { GlobalSessionRegistry } = await import(
+				"../src/GlobalSessionRegistry.js"
+			);
+			(edgeWorker as any).globalSessionRegistry = new GlobalSessionRegistry();
 
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback without known parent";
@@ -518,7 +521,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		});
 	});
 
-	describe("Child Session Mapping to GlobalSessionRegistry", () => {
+	describe("Child Session Mapping (single source of truth in GlobalSessionRegistry)", () => {
 		it("should register parent-child mapping in GlobalSessionRegistry when handleChildSessionMapping is called", () => {
 			const childId = "new-child-session-789";
 			const parentId = "parent-session-123";
@@ -526,12 +529,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			// Call handleChildSessionMapping
 			(edgeWorker as any).handleChildSessionMapping(childId, parentId);
 
-			// Verify it's in the local map
-			expect((edgeWorker as any).childToParentAgentSession.get(childId)).toBe(
-				parentId,
-			);
-
-			// Verify it's ALSO in GlobalSessionRegistry (this is the fix for CYPACK-922)
+			// Verify it's in GlobalSessionRegistry (single source of truth - CYPACK-922)
 			const globalRegistry = (edgeWorker as any).globalSessionRegistry;
 			expect(globalRegistry.getParentSessionId(childId)).toBe(parentId);
 		});
