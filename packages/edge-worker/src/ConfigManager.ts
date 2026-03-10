@@ -203,8 +203,8 @@ export class ConfigManager extends EventEmitter {
 				repositories: parsedConfig.repositories || [],
 				ngrokAuthToken:
 					parsedConfig.ngrokAuthToken || this.config.ngrokAuthToken,
-				linearWorkspaceSlug:
-					parsedConfig.linearWorkspaceSlug || this.config.linearWorkspaceSlug,
+				linearWorkspaces:
+					parsedConfig.linearWorkspaces || this.config.linearWorkspaces,
 				claudeDefaultModel:
 					parsedConfig.claudeDefaultModel ||
 					parsedConfig.defaultModel ||
@@ -323,7 +323,7 @@ export class ConfigManager extends EventEmitter {
 			"defaultDisallowedTools",
 			"promptDefaults",
 			"issueUpdateTrigger",
-			"linearWorkspaceSlug",
+			"linearWorkspaces",
 			"userAccessControl",
 		];
 

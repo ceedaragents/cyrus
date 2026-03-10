@@ -1,15 +1,39 @@
 import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import type { IIssueTrackerService, ILogger, Issue } from "cyrus-core";
+import type {
+	IIssueTrackerService,
+	ILogger,
+	Issue,
+	LinearWorkspaceConfig,
+} from "cyrus-core";
 import { fileTypeFromBuffer } from "file-type";
 
 export class AttachmentService {
 	private logger: ILogger;
 	private cyrusHome: string;
+	private linearWorkspaces: Record<string, LinearWorkspaceConfig>;
 
-	constructor(logger: ILogger, cyrusHome: string) {
+	constructor(
+		logger: ILogger,
+		cyrusHome: string,
+		linearWorkspaces: Record<string, LinearWorkspaceConfig>,
+	) {
 		this.logger = logger;
 		this.cyrusHome = cyrusHome;
+		this.linearWorkspaces = linearWorkspaces;
+	}
+
+	/**
+	 * Get the Linear API token for a workspace
+	 */
+	private getLinearTokenForWorkspace(workspaceId: string): string {
+		const workspaceConfig = this.linearWorkspaces[workspaceId];
+		if (!workspaceConfig) {
+			throw new Error(
+				`No Linear workspace config found for workspace ${workspaceId}`,
+			);
+		}
+		return workspaceConfig.linearToken;
 	}
 
 	extractAttachmentUrls(text: string): string[] {
@@ -27,16 +51,17 @@ export class AttachmentService {
 	/**
 	 * Download attachments from Linear issue
 	 * @param issue Linear issue object from webhook data
-	 * @param linearToken Linear API token for authenticated downloads
+	 * @param linearWorkspaceId Linear workspace ID for token lookup
 	 * @param workspacePath Path to workspace directory
 	 * @param issueTracker Optional issue tracker service for fetching comments and native attachments
 	 */
 	async downloadIssueAttachments(
 		issue: Issue,
-		linearToken: string,
+		linearWorkspaceId: string,
 		workspacePath: string,
 		issueTracker?: IIssueTrackerService,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
+		const linearToken = this.getLinearTokenForWorkspace(linearWorkspaceId);
 		// Create attachments directory in home directory
 		const workspaceFolderName = basename(workspacePath);
 		const attachmentsDir = join(

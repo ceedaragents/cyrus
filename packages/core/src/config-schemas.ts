@@ -131,6 +131,8 @@ const PromptDefaultsSchema = z.object({
 export const LinearWorkspaceConfigSchema = z.object({
 	linearToken: z.string(),
 	linearRefreshToken: z.string().optional(),
+	/** Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...") */
+	linearWorkspaceSlug: z.string().optional(),
 });
 
 /**
@@ -197,9 +199,6 @@ export const EdgeConfigSchema = z.object({
 
 	/** Stripe customer ID for billing */
 	stripeCustomerId: z.string().optional(),
-
-	/** Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...") */
-	linearWorkspaceSlug: z.string().optional(),
 
 	/** Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku") */
 	claudeDefaultModel: z.string().optional(),
@@ -303,8 +302,15 @@ export function migrateEdgeConfig(
 	// Build workspace map from per-repo tokens
 	const linearWorkspaces: Record<
 		string,
-		{ linearToken: string; linearRefreshToken?: string }
+		{
+			linearToken: string;
+			linearRefreshToken?: string;
+			linearWorkspaceSlug?: string;
+		}
 	> = {};
+
+	// Grab the top-level slug (if present) so it can be folded into each workspace
+	const globalSlug = raw.linearWorkspaceSlug as string | undefined;
 
 	for (const repo of repos) {
 		const workspaceId = repo.linearWorkspaceId as string | undefined;
@@ -317,6 +323,7 @@ export function migrateEdgeConfig(
 					...(typeof repo.linearRefreshToken === "string"
 						? { linearRefreshToken: repo.linearRefreshToken }
 						: {}),
+					...(globalSlug ? { linearWorkspaceSlug: globalSlug } : {}),
 				};
 			}
 		}
@@ -332,8 +339,10 @@ export function migrateEdgeConfig(
 		return rest;
 	});
 
+	const { linearWorkspaceSlug: _slug, ...rest } = raw;
+
 	return {
-		...raw,
+		...rest,
 		repositories: migratedRepos,
 		linearWorkspaces,
 	};

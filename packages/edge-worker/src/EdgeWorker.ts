@@ -478,7 +478,11 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Initialize extracted service modules
-		this.attachmentService = new AttachmentService(this.logger, this.cyrusHome);
+		this.attachmentService = new AttachmentService(
+			this.logger,
+			this.cyrusHome,
+			this.config.linearWorkspaces || {},
+		);
 		this.runnerSelectionService = new RunnerSelectionService(
 			this.config,
 			this.logger,
@@ -1596,7 +1600,10 @@ ${taskSection}`;
 			);
 		}
 
-		await this.postParentResumeAcknowledgment(parentSessionId, parentRepo.id);
+		await this.postParentResumeAcknowledgment(
+			parentSessionId,
+			parentRepo.linearWorkspaceId,
+		);
 
 		// Post thought showing child result receipt
 		// Use parent's issue tracker since we're posting to the parent's session
@@ -1675,7 +1682,7 @@ ${taskSection}`;
 		try {
 			subroutinePrompt = await this.loadSubroutinePrompt(
 				nextSubroutine,
-				this.config.linearWorkspaceSlug,
+				this.getWorkspaceSlug(repo.linearWorkspaceId),
 			);
 			if (!subroutinePrompt) {
 				// Fallback if loadSubroutinePrompt returns null
@@ -1776,7 +1783,7 @@ ${taskSection}`;
 			// Load the verifications prompt
 			const subroutinePrompt = await this.loadSubroutinePrompt(
 				verificationsSubroutine,
-				this.config.linearWorkspaceSlug,
+				this.getWorkspaceSlug(repo.linearWorkspaceId),
 			);
 
 			if (!subroutinePrompt) {
@@ -2564,17 +2571,6 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Get issue tracker for a repository (resolves through workspace ID)
-	 */
-	private getIssueTrackerForRepository(
-		repositoryId: string,
-	): IIssueTrackerService | undefined {
-		const repo = this.repositories.get(repositoryId);
-		if (!repo) return undefined;
-		return this.issueTrackers.get(repo.linearWorkspaceId);
-	}
-
-	/**
 	 * Get the Linear API token for a workspace from workspace-level config.
 	 */
 	private getLinearTokenForWorkspace(workspaceId: string): string {
@@ -2596,6 +2592,13 @@ ${taskSection}`;
 	}
 
 	/**
+	 * Get the Linear workspace slug for a workspace from workspace-level config.
+	 */
+	private getWorkspaceSlug(workspaceId: string): string | undefined {
+		return this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceSlug;
+	}
+
+	/**
 	 * Create a new Linear agent session with all necessary setup
 	 * @param sessionId The Linear agent activity session ID
 	 * @param issue Linear issue object
@@ -2610,13 +2613,16 @@ ${taskSection}`;
 		agentSessionManager: AgentSessionManager,
 	): Promise<AgentSessionData> {
 		// Fetch full Linear issue details
-		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
+		const fullIssue = await this.fetchFullIssueDetails(
+			issue.id,
+			repository.linearWorkspaceId,
+		);
 		if (!fullIssue) {
 			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
 		}
 
 		// Move issue to started state automatically, in case it's not already
-		await this.moveIssueToStartedState(fullIssue, repository.id);
+		await this.moveIssueToStartedState(fullIssue, repository.linearWorkspaceId);
 
 		// Create workspace using full issue data
 		// Use custom handler if provided, otherwise create a git worktree by default
@@ -2760,7 +2766,7 @@ ${taskSection}`;
 			// Post agent activity showing auto-matched routing
 			await this.postRepositorySelectionActivity(
 				webhook.agentSession.id,
-				repository.id,
+				repository.linearWorkspaceId,
 				repository.name,
 				routingMethod,
 			);
@@ -2783,7 +2789,7 @@ ${taskSection}`;
 
 		const log = this.logger.withContext({
 			sessionId: webhook.agentSession.id,
-			platform: this.getRepositoryPlatform(repository.id),
+			platform: this.getRepositoryPlatform(repository.linearWorkspaceId),
 			issueIdentifier: webhook.agentSession.issue.identifier,
 		});
 		log.info(`Handling agent session created`);
@@ -2858,7 +2864,10 @@ ${taskSection}`;
 		const agentSessionManager = this.agentSessionManager;
 
 		// Post instant acknowledgment thought
-		await this.postInstantAcknowledgment(sessionId, repository.id);
+		await this.postInstantAcknowledgment(
+			sessionId,
+			repository.linearWorkspaceId,
+		);
 
 		// Create the session using the shared method
 		const sessionData = await this.createLinearAgentSession(
@@ -3040,6 +3049,7 @@ ${taskSection}`;
 					await this.postSystemPromptSelectionThought(
 						sessionId,
 						labels,
+						repository.linearWorkspaceId,
 						repository.id,
 					);
 				}
@@ -3263,7 +3273,7 @@ ${taskSection}`;
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
 			agentSessionId,
-			repository.id,
+			repository.linearWorkspaceId,
 			repository.name,
 			"user-selected",
 		);
@@ -3368,7 +3378,7 @@ ${taskSection}`;
 			// Post instant acknowledgment for new session creation
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				repository.id,
+				repository.linearWorkspaceId,
 				false,
 			);
 
@@ -3406,7 +3416,7 @@ ${taskSection}`;
 
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				repository.id,
+				repository.linearWorkspaceId,
 				isCurrentlyStreaming,
 			);
 
@@ -3690,7 +3700,7 @@ ${taskSection}`;
 			await this.postComment(
 				issue.id,
 				"I've been unassigned and am stopping work now.",
-				repository.id,
+				repository.linearWorkspaceId,
 				// No parentId - post as a new comment on the issue
 			);
 		}
@@ -3960,18 +3970,18 @@ ${taskSection}`;
 	/**
 	 * Move issue to started state when assigned
 	 * @param issue Full Linear issue object from Linear SDK
-	 * @param repositoryId Repository ID for issue tracker lookup
+	 * @param workspaceId Workspace ID for issue tracker lookup
 	 */
 
 	private async moveIssueToStartedState(
 		issue: Issue,
-		repositoryId: string,
+		workspaceId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.getIssueTrackerForRepository(repositoryId);
+			const issueTracker = this.issueTrackers.get(workspaceId);
 			if (!issueTracker) {
 				this.logger.warn(
-					`No issue tracker found for repository ${repositoryId}, skipping state update`,
+					`No issue tracker found for workspace ${workspaceId}, skipping state update`,
 				);
 				return;
 			}
@@ -4065,13 +4075,13 @@ ${taskSection}`;
 	private async postComment(
 		issueId: string,
 		body: string,
-		repositoryId: string,
+		workspaceId: string,
 		parentId?: string,
 	): Promise<void> {
 		return this.activityPoster.postComment(
 			issueId,
 			body,
-			repositoryId,
+			workspaceId,
 			parentId,
 		);
 	}
@@ -4099,10 +4109,9 @@ ${taskSection}`;
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
 		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
-		const linearToken = this.getLinearTokenForRepository(repository);
 		return this.attachmentService.downloadIssueAttachments(
 			issue,
-			linearToken,
+			repository.linearWorkspaceId,
 			workspacePath,
 			issueTracker,
 		);
@@ -4694,7 +4703,7 @@ ${taskSection}`;
 		if (currentSubroutine) {
 			const subroutinePrompt = await this.loadSubroutinePrompt(
 				currentSubroutine,
-				this.config.linearWorkspaceSlug,
+				this.getWorkspaceSlug(input.repository.linearWorkspaceId),
 			);
 			if (subroutinePrompt) {
 				parts.push(subroutinePrompt);
@@ -5465,11 +5474,11 @@ ${input.userComment}
 	 */
 	private async postInstantAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		workspaceId: string,
 	): Promise<void> {
 		return this.activityPoster.postInstantAcknowledgment(
 			sessionId,
-			repositoryId,
+			workspaceId,
 		);
 	}
 
@@ -5478,11 +5487,11 @@ ${input.userComment}
 	 */
 	private async postParentResumeAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		workspaceId: string,
 	): Promise<void> {
 		return this.activityPoster.postParentResumeAcknowledgment(
 			sessionId,
-			repositoryId,
+			workspaceId,
 		);
 	}
 
@@ -5492,7 +5501,7 @@ ${input.userComment}
 	 */
 	private async postRepositorySelectionActivity(
 		sessionId: string,
-		repositoryId: string,
+		workspaceId: string,
 		repositoryName: string,
 		selectionMethod:
 			| "description-tag"
@@ -5506,7 +5515,7 @@ ${input.userComment}
 	): Promise<void> {
 		return this.activityPoster.postRepositorySelectionActivity(
 			sessionId,
-			repositoryId,
+			workspaceId,
 			repositoryName,
 			selectionMethod,
 		);
@@ -5708,11 +5717,13 @@ ${input.userComment}
 	private async postSystemPromptSelectionThought(
 		sessionId: string,
 		labels: string[],
+		workspaceId: string,
 		repositoryId: string,
 	): Promise<void> {
 		return this.activityPoster.postSystemPromptSelectionThought(
 			sessionId,
 			labels,
+			workspaceId,
 			repositoryId,
 		);
 	}
@@ -5774,7 +5785,7 @@ ${input.userComment}
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
 			issueIdForResume,
-			repository.id,
+			repository.linearWorkspaceId,
 		);
 		if (!fullIssue) {
 			log.error(`Failed to fetch full issue details for ${issueIdForResume}`);
@@ -5922,22 +5933,22 @@ ${input.userComment}
 	 */
 	private async postInstantPromptedAcknowledgment(
 		sessionId: string,
-		repositoryId: string,
+		workspaceId: string,
 		isStreaming: boolean,
 	): Promise<void> {
 		return this.activityPoster.postInstantPromptedAcknowledgment(
 			sessionId,
-			repositoryId,
+			workspaceId,
 			isStreaming,
 		);
 	}
 
 	/**
-	 * Get the platform type for a repository's issue tracker.
+	 * Get the platform type for a workspace's issue tracker.
 	 */
-	private getRepositoryPlatform(repositoryId: string): string | undefined {
+	private getRepositoryPlatform(workspaceId: string): string | undefined {
 		try {
-			return this.getIssueTrackerForRepository(repositoryId)?.getPlatformType();
+			return this.issueTrackers.get(workspaceId)?.getPlatformType();
 		} catch {
 			return undefined;
 		}
@@ -5948,11 +5959,11 @@ ${input.userComment}
 	 */
 	public async fetchFullIssueDetails(
 		issueId: string,
-		repositoryId: string,
+		workspaceId: string,
 	): Promise<Issue | null> {
-		const issueTracker = this.getIssueTrackerForRepository(repositoryId);
+		const issueTracker = this.issueTrackers.get(workspaceId);
 		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for repository ${repositoryId}`);
+			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
 			return null;
 		}
 

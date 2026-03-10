@@ -223,7 +223,6 @@ export class WorkerService {
 					| "codex"
 					| "cursor"
 					| undefined) || edgeConfig.defaultRunner,
-			linearWorkspaceSlug: edgeConfig.linearWorkspaceSlug,
 			issueUpdateTrigger: edgeConfig.issueUpdateTrigger,
 			promptDefaults: edgeConfig.promptDefaults,
 			webhookBaseUrl: process.env.CYRUS_BASE_URL,
