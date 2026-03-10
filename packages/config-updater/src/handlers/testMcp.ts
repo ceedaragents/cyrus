@@ -4,9 +4,11 @@ import {
 	StdioClientTransport,
 } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ApiResponse, TestMcpPayload } from "../types.js";
 
 const TEST_TIMEOUT_MS = 25_000; // 25s (edge request timeout is 30s)
+const CLOSE_TIMEOUT_MS = 5_000; // 5s for graceful close
 
 /**
  * Handle MCP connection test
@@ -60,10 +62,11 @@ export async function handleTestMcp(
  * Test a stdio MCP server by spawning the process, connecting, and listing tools.
  */
 async function testStdioMcp(payload: TestMcpPayload): Promise<ApiResponse> {
-	const args =
-		payload.commandArgs
-			?.sort((a, b) => a.order - b.order)
-			.map((a) => a.value) || [];
+	const args = payload.commandArgs
+		? [...payload.commandArgs]
+				.sort((a, b) => a.order - b.order)
+				.map((a) => a.value)
+		: [];
 
 	// Start with the default safe environment (PATH, HOME, etc.)
 	const env = getDefaultEnvironment();
@@ -82,45 +85,7 @@ async function testStdioMcp(payload: TestMcpPayload): Promise<ApiResponse> {
 		stderr: "pipe",
 	});
 
-	const client = new Client({
-		name: "cyrus-mcp-tester",
-		version: "1.0.0",
-	});
-
-	try {
-		await withTimeout(client.connect(transport), "Connection timed out");
-
-		const toolsResult = await withTimeout(
-			client.listTools(),
-			"Tool listing timed out",
-		);
-
-		const tools = toolsResult.tools.map((t) => ({
-			name: t.name,
-			description: t.description || "",
-		}));
-
-		const serverVersion = client.getServerVersion();
-
-		return {
-			success: true,
-			message: `MCP connection test successful — discovered ${tools.length} tool(s)`,
-			data: {
-				tools,
-				serverInfo: {
-					name: serverVersion?.name || payload.command,
-					version: serverVersion?.version || "unknown",
-					protocol: "mcp/1.0",
-				},
-			},
-		};
-	} finally {
-		try {
-			await client.close();
-		} catch {
-			// Ignore close errors — process cleanup is best-effort
-		}
-	}
+	return await connectAndDiscover(transport, payload.command!);
 }
 
 /**
@@ -156,6 +121,16 @@ async function testHttpMcp(payload: TestMcpPayload): Promise<ApiResponse> {
 		},
 	});
 
+	return await connectAndDiscover(transport, url);
+}
+
+/**
+ * Connect to an MCP server via the given transport, list tools, and return the result.
+ */
+async function connectAndDiscover(
+	transport: Transport,
+	fallbackName: string,
+): Promise<ApiResponse> {
 	const client = new Client({
 		name: "cyrus-mcp-tester",
 		version: "1.0.0",
@@ -182,7 +157,7 @@ async function testHttpMcp(payload: TestMcpPayload): Promise<ApiResponse> {
 			data: {
 				tools,
 				serverInfo: {
-					name: serverVersion?.name || url,
+					name: serverVersion?.name || fallbackName,
 					version: serverVersion?.version || "unknown",
 					protocol: "mcp/1.0",
 				},
@@ -190,19 +165,24 @@ async function testHttpMcp(payload: TestMcpPayload): Promise<ApiResponse> {
 		};
 	} finally {
 		try {
-			await client.close();
+			await withTimeout(client.close(), "Close timed out", CLOSE_TIMEOUT_MS);
 		} catch {
-			// Ignore close errors
+			// Best-effort cleanup — if close hangs, let it go
 		}
 	}
 }
 
-/** Race a promise against a timeout. */
-function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+/** Race a promise against a timeout, clearing the timer on settlement. */
+function withTimeout<T>(
+	promise: Promise<T>,
+	message: string,
+	ms: number = TEST_TIMEOUT_MS,
+): Promise<T> {
+	let timer: ReturnType<typeof setTimeout>;
 	return Promise.race([
 		promise,
-		new Promise<never>((_, reject) =>
-			setTimeout(() => reject(new Error(message)), TEST_TIMEOUT_MS),
-		),
-	]);
+		new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error(message)), ms);
+		}),
+	]).finally(() => clearTimeout(timer));
 }
