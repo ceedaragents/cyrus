@@ -1079,6 +1079,13 @@ export class EdgeWorker extends EventEmitter {
 				issueMinimal,
 				workspace,
 				"github", // Don't stream activities to Linear for GitHub sources
+				[
+					{
+						repositoryId: repository.id,
+						branchName: branchRef,
+						baseBranchName: repository.baseBranch,
+					},
+				],
 			);
 
 			// Register session-to-repo mapping and activity sink
@@ -2656,6 +2663,14 @@ ${taskSection}`;
 			issue.id,
 			issueMinimal,
 			workspace,
+			"linear",
+			[
+				{
+					repositoryId: repository.id,
+					branchName: issueMinimal.branchName,
+					baseBranchName: repository.baseBranch,
+				},
+			],
 		);
 
 		// Register session-to-repo mapping and activity sink

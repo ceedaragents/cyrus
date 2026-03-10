@@ -120,6 +120,9 @@ describe("PersistenceManager", () => {
 			// Should preserve other fields
 			expect(migratedSession.claudeSessionId).toBe("claude-789");
 			expect(migratedSession.workspace.path).toBe("/tmp/worktree");
+
+			// Should have empty repositories array (migrated sessions have no repo context)
+			expect(migratedSession.repositories).toEqual([]);
 		});
 
 		it("should save migrated state as v4.0", async () => {

@@ -19,6 +19,7 @@ import {
 	type IAgentRunner,
 	type ILogger,
 	type IssueMinimal,
+	type RepositoryContext,
 	type SerializedCyrusAgentSession,
 	type SerializedCyrusAgentSessionEntry,
 	type Workspace,
@@ -169,6 +170,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * @param workspace - Workspace configuration
 	 * @param platform - Source platform ("linear", "github", "slack"). Defaults to "linear".
 	 *                   Only "linear" sessions will have activities streamed to Linear.
+	 * @param repositories - Repository contexts for the session (defaults to empty array)
 	 */
 	createLinearAgentSession(
 		sessionId: string,
@@ -176,6 +178,7 @@ export class AgentSessionManager extends EventEmitter {
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
 		platform: "linear" | "github" | "slack" = "linear",
+		repositories: RepositoryContext[] = [],
 	): CyrusAgentSession {
 		const log = this.logger.withContext({
 			sessionId,
@@ -200,6 +203,7 @@ export class AgentSessionManager extends EventEmitter {
 			},
 			issueId, // Kept for backwards compatibility
 			issue: issueMinimal,
+			repositories,
 			workspace: workspace,
 		};
 
@@ -217,11 +221,14 @@ export class AgentSessionManager extends EventEmitter {
 	 * Unlike {@link createLinearAgentSession}, this does NOT require issue
 	 * context — the session lives in a standalone workspace with no issue
 	 * tracker linkage.
+	 *
+	 * @param repositories - Repository contexts for the session (defaults to empty array for chatbot sessions)
 	 */
 	createChatSession(
 		sessionId: string,
 		workspace: Workspace,
 		platform: string,
+		repositories: RepositoryContext[] = [],
 	): CyrusAgentSession {
 		const log = this.logger.withContext({ sessionId, platform });
 		log.info("Creating chat session");
@@ -233,6 +240,7 @@ export class AgentSessionManager extends EventEmitter {
 			context: AgentSessionType.CommentThread,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
+			repositories,
 			workspace,
 		};
 
@@ -1924,10 +1932,11 @@ export class AgentSessionManager extends EventEmitter {
 		this.sessions.clear();
 		this.entries.clear();
 
-		// Restore sessions
+		// Restore sessions (migrate old sessions without repositories field)
 		for (const [sessionId, sessionData] of Object.entries(serializedSessions)) {
 			const session: CyrusAgentSession = {
 				...sessionData,
+				repositories: sessionData.repositories ?? [],
 			};
 			this.sessions.set(sessionId, session);
 		}
