@@ -293,9 +293,13 @@ export class GlobalSessionRegistry extends EventEmitter {
 		this.entries.clear();
 		this.childToParentMap.clear();
 
-		// Restore sessions
+		// Restore sessions (migrate old sessions without repositories field)
 		for (const [sessionId, session] of Object.entries(state.sessions)) {
-			this.sessions.set(sessionId, session as CyrusAgentSession);
+			const migrated: CyrusAgentSession = {
+				...(session as CyrusAgentSession),
+				repositories: (session as CyrusAgentSession).repositories ?? [],
+			};
+			this.sessions.set(sessionId, migrated);
 		}
 
 		// Restore entries
