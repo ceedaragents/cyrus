@@ -156,7 +156,6 @@ describe("SelfAddRepoCommand", () => {
 							linearWorkspaceId: "ws-123",
 							linearToken: "token",
 							linearRefreshToken: "refresh",
-							linearWorkspaceName: "Test",
 						},
 					],
 				}),
@@ -271,14 +270,18 @@ describe("SelfAddRepoCommand", () => {
 		it("should auto-select when only one workspace exists", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
+					linearWorkspaces: {
+						"ws-only": {
+							linearToken: "token-1",
+							linearRefreshToken: "refresh-1",
+							linearWorkspaceName: "Only Workspace",
+						},
+					},
 					repositories: [
 						{
 							id: "repo-1",
 							name: "existing",
 							linearWorkspaceId: "ws-only",
-							linearWorkspaceName: "Only Workspace",
-							linearToken: "token-1",
-							linearRefreshToken: "refresh-1",
 						},
 					],
 				}),
@@ -308,19 +311,25 @@ describe("SelfAddRepoCommand", () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
 					linearWorkspaces: {
-						"ws-1": { linearToken: "token-1", linearRefreshToken: "refresh-1" },
-						"ws-2": { linearToken: "token-2", linearRefreshToken: "refresh-2" },
+						"ws-1": {
+							linearToken: "token-1",
+							linearRefreshToken: "refresh-1",
+							linearWorkspaceName: "Workspace One",
+						},
+						"ws-2": {
+							linearToken: "token-2",
+							linearRefreshToken: "refresh-2",
+							linearWorkspaceName: "Workspace Two",
+						},
 					},
 					repositories: [
 						{
 							id: "repo-1",
 							linearWorkspaceId: "ws-1",
-							linearWorkspaceName: "Workspace One",
 						},
 						{
 							id: "repo-2",
 							linearWorkspaceId: "ws-2",
-							linearWorkspaceName: "Workspace Two",
 						},
 					],
 				}),
@@ -349,20 +358,26 @@ describe("SelfAddRepoCommand", () => {
 		it("should use workspace from command line argument", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
+					linearWorkspaces: {
+						"ws-1": {
+							linearToken: "token-1",
+							linearRefreshToken: "refresh-1",
+							linearWorkspaceName: "Workspace One",
+						},
+						"ws-2": {
+							linearToken: "token-2",
+							linearRefreshToken: "refresh-2",
+							linearWorkspaceName: "Workspace Two",
+						},
+					},
 					repositories: [
 						{
 							id: "repo-1",
 							linearWorkspaceId: "ws-1",
-							linearWorkspaceName: "Workspace One",
-							linearToken: "token-1",
-							linearRefreshToken: "refresh-1",
 						},
 						{
 							id: "repo-2",
 							linearWorkspaceId: "ws-2",
-							linearWorkspaceName: "Workspace Two",
-							linearToken: "token-2",
-							linearRefreshToken: "refresh-2",
 						},
 					],
 				}),
@@ -392,18 +407,24 @@ describe("SelfAddRepoCommand", () => {
 			// Need multiple workspaces to avoid auto-selection
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
+					linearWorkspaces: {
+						"ws-1": {
+							linearToken: "token-1",
+							linearWorkspaceName: "Workspace One",
+						},
+						"ws-2": {
+							linearToken: "token-2",
+							linearWorkspaceName: "Workspace Two",
+						},
+					},
 					repositories: [
 						{
 							id: "repo-1",
 							linearWorkspaceId: "ws-1",
-							linearWorkspaceName: "Workspace One",
-							linearToken: "token-1",
 						},
 						{
 							id: "repo-2",
 							linearWorkspaceId: "ws-2",
-							linearWorkspaceName: "Workspace Two",
-							linearToken: "token-2",
 						},
 					],
 				}),
@@ -424,18 +445,24 @@ describe("SelfAddRepoCommand", () => {
 		it("should error on invalid workspace selection", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
+					linearWorkspaces: {
+						"ws-1": {
+							linearToken: "token-1",
+							linearWorkspaceName: "Workspace One",
+						},
+						"ws-2": {
+							linearToken: "token-2",
+							linearWorkspaceName: "Workspace Two",
+						},
+					},
 					repositories: [
 						{
 							id: "repo-1",
 							linearWorkspaceId: "ws-1",
-							linearWorkspaceName: "Workspace One",
-							linearToken: "token-1",
 						},
 						{
 							id: "repo-2",
 							linearWorkspaceId: "ws-2",
-							linearWorkspaceName: "Workspace Two",
-							linearToken: "token-2",
 						},
 					],
 				}),
@@ -538,13 +565,13 @@ describe("SelfAddRepoCommand", () => {
 						"ws-123": {
 							linearToken: "existing-token",
 							linearRefreshToken: "existing-refresh",
+							linearWorkspaceName: "Test Workspace",
 						},
 					},
 					repositories: [
 						{
 							id: "existing",
 							linearWorkspaceId: "ws-123",
-							linearWorkspaceName: "Test Workspace",
 						},
 					],
 				}),
@@ -571,7 +598,6 @@ describe("SelfAddRepoCommand", () => {
 				baseBranch: "main",
 				workspaceBaseDir: "/home/user/.cyrus/worktrees",
 				linearWorkspaceId: "ws-123",
-				linearWorkspaceName: "Test Workspace",
 				isActive: true,
 			});
 		});
@@ -625,12 +651,16 @@ describe("SelfAddRepoCommand", () => {
 		it("should log success with repo details", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
+					linearWorkspaces: {
+						"ws-123": {
+							linearToken: "token",
+							linearRefreshToken: "refresh",
+							linearWorkspaceName: "My Workspace",
+						},
+					},
 					repositories: [
 						{
 							linearWorkspaceId: "ws-123",
-							linearWorkspaceName: "My Workspace",
-							linearToken: "token",
-							linearRefreshToken: "refresh",
 						},
 					],
 				}),

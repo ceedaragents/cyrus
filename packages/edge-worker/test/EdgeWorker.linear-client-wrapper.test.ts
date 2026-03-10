@@ -63,13 +63,13 @@ describe("EdgeWorker LinearClient Wrapper", () => {
 					workspaceBaseDir: "/test/workspaces",
 					baseBranch: "main",
 					linearWorkspaceId: "workspace-123",
-					linearWorkspaceName: "Test Workspace",
 				},
 			],
 			linearWorkspaces: {
 				"workspace-123": {
 					linearToken: "test_token",
 					linearRefreshToken: "refresh_token",
+					linearWorkspaceName: "Test Workspace",
 				},
 			},
 			cyrusHome: "/test/.cyrus",

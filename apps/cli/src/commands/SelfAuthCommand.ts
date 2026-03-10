@@ -256,6 +256,7 @@ export class SelfAuthCommand extends BaseCommand {
 			...(tokens.refreshToken
 				? { linearRefreshToken: tokens.refreshToken }
 				: {}),
+			linearWorkspaceName: workspace.name,
 		};
 
 		// Update all repositories matching this workspace (or unset workspace)
@@ -266,7 +267,6 @@ export class SelfAuthCommand extends BaseCommand {
 				repo.linearWorkspaceId === ""
 			) {
 				repo.linearWorkspaceId = workspace.id;
-				repo.linearWorkspaceName = workspace.name;
 			}
 		}
 
