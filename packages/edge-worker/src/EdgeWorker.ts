@@ -4543,7 +4543,7 @@ ${taskSection}`;
 		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		// If the client reconnects and needs another server, the endpoint creates a fresh one.
 		const linearToken = this.getLinearTokenForWorkspace(
-			requireLinearWorkspaceId(repository),
+			requireLinearWorkspaceId(primaryRepo),
 		);
 		const prebuiltServer = createCyrusToolsServer(
 			linearToken,
