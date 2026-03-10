@@ -2255,6 +2255,18 @@ ${taskSection}`;
 						);
 					}
 				}
+
+				if (!repository) {
+					// Sessions exist but no repository mapping — still stop the sessions
+					this.logger.warn(
+						`Found ${sessions.length} session(s) for unassigned issue ${webhook.notification.issue.identifier} but no repository mapping, stopping sessions without farewell comment`,
+					);
+					for (const session of sessions) {
+						this.agentSessionManager.requestSessionStop(session.id);
+						session.agentRunner?.stop();
+					}
+					return;
+				}
 			}
 
 			if (!repository) {
@@ -2268,11 +2280,6 @@ ${taskSection}`;
 		this.logger.info(
 			`Handling issue unassignment: ${webhook.notification.issue.identifier}`,
 		);
-
-		// Log the complete webhook payload for TypeScript type definition
-		// console.log('=== ISSUE UNASSIGNMENT WEBHOOK PAYLOAD ===')
-		// console.log(JSON.stringify(webhook, null, 2))
-		// console.log('=== END WEBHOOK PAYLOAD ===')
 
 		await this.handleIssueUnassigned(webhook.notification.issue, repository);
 	}
@@ -5288,10 +5295,9 @@ ${input.userComment}
 		// Serialize Agent Session state - flat structure from single ASM
 		const serializedState = this.agentSessionManager.serializeState();
 
-		// Serialize child to parent agent session mapping
-		const childToParentAgentSession = Object.fromEntries(
-			this.childToParentAgentSession.entries(),
-		);
+		// Serialize child to parent agent session mapping from GlobalSessionRegistry
+		const registryState = this.globalSessionRegistry.serializeState();
+		const childToParentAgentSession = registryState.childToParentMap;
 
 		// Serialize issue to repository cache from RepositoryRouter
 		const issueRepositoryCache = Object.fromEntries(
