@@ -5,24 +5,37 @@ import type {
 	SDKMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-// Import the AskUserQuestionInput type from the SDK's tool input types
-// This ensures we use the SDK's official type definitions
-import type { AskUserQuestionInput as SDKAskUserQuestionInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools.d.ts";
 import type { ILogger } from "./logging/ILogger.js";
 
 // ============================================================================
 // ASK USER QUESTION TYPES
 // ============================================================================
-// Re-export the SDK's AskUserQuestionInput type as the canonical input type.
-// The SDK's type has complex tuple structures for questions and options.
-// We also provide simplified types for easier consumption in our callback API.
+// Note: AskUserQuestionInput was previously imported from
+// @anthropic-ai/claude-agent-sdk/sdk-tools.d.ts, but that path is not exposed
+// in the package exports field (NodeNext requires explicit exports entries).
+// We define an equivalent type inline here.
 
 /**
- * The canonical AskUserQuestionInput type from the Claude SDK.
+ * The input type for the AskUserQuestion tool.
+ * Mirrors the structure from @anthropic-ai/claude-agent-sdk sdk-tools.d.ts.
  *
  * @see {@link https://platform.claude.com/docs/en/agent-sdk/typescript#ask-user-question}
  */
-export type AskUserQuestionInput = SDKAskUserQuestionInput;
+export interface AskUserQuestionInput {
+	questions: Array<{
+		question: string;
+		header: string;
+		options: Array<{
+			label: string;
+			description: string;
+			preview?: string;
+			markdown?: string;
+		}>;
+		multiSelect?: boolean;
+	}>;
+	answers?: Record<string, string>;
+	annotations?: Record<string, { markdown?: string; notes?: string }>;
+}
 
 /**
  * Simplified option type for easier API consumption.
@@ -47,7 +60,7 @@ export interface AskUserQuestion {
 	/** The available choices (2-4 options) */
 	options: AskUserQuestionOption[];
 	/** Whether multiple options can be selected */
-	multiSelect: boolean;
+	multiSelect?: boolean;
 }
 
 /**
