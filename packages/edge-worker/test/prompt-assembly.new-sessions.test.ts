@@ -167,4 +167,82 @@ Remember: Your first message is internal planning. Use this time to:
 			.expectComponents("issue-context", "user-comment")
 			.verify();
 	});
+
+	it("assignment-based - should fall back to the built-in prompt when an optional custom prompt file is missing", async () => {
+		const worker = createTestWorker();
+
+		const session = {
+			issueId: "f0e1d2c3-b4a5-6789-cdef-0123456789ab",
+			workspace: { path: "/test" },
+			metadata: {},
+		};
+
+		const issue = {
+			id: "f0e1d2c3-b4a5-6789-cdef-0123456789ab",
+			identifier: "CEE-789",
+			title: "Fallback prompt template",
+			description: "Use the built-in prompt when the local file is missing",
+		};
+
+		const repository = {
+			id: "repo-uuid-3456-7890-12cd-ef1234567890",
+			path: "/test/repo",
+			promptTemplatePath: "/tmp/does-not-exist/custom-prompt.md",
+		};
+
+		await scenario(worker)
+			.newSession()
+			.assignmentBased()
+			.withSession(session)
+			.withIssue(issue)
+			.withRepository(repository)
+			.withUserComment("")
+			.withLabels()
+			.expectUserPrompt(`<context>
+  <repository>undefined</repository>
+  <working_directory>/test/repo</working_directory>
+  <base_branch>main</base_branch>
+</context>
+
+<linear_issue>
+  <id>f0e1d2c3-b4a5-6789-cdef-0123456789ab</id>
+  <identifier>CEE-789</identifier>
+  <title>Fallback prompt template</title>
+  <description>
+Use the built-in prompt when the local file is missing
+  </description>
+  <state>Unknown</state>
+  <priority>None</priority>
+  <url></url>
+  <assignee>
+    <linear_display_name></linear_display_name>
+    <linear_profile_url></linear_profile_url>
+    <github_username></github_username>
+    <github_user_id></github_user_id>
+    <github_noreply_email></github_noreply_email>
+  </assignee>
+</linear_issue>
+
+<linear_comments>
+No comments yet.
+</linear_comments>`)
+			.expectSystemPrompt(`<task_management_instructions>
+CRITICAL: You MUST use the TodoWrite and TodoRead tools extensively:
+- IMMEDIATELY create a comprehensive task list at the beginning of your work
+- Break down complex tasks into smaller, actionable items
+- Mark tasks as 'in_progress' when you start them
+- Mark tasks as 'completed' immediately after finishing them
+- Only have ONE task 'in_progress' at a time
+- Add new tasks as you discover them during your work
+- Your first response should focus on creating a thorough task breakdown
+
+Remember: Your first message is internal planning. Use this time to:
+1. Thoroughly analyze the issue and requirements
+2. Create detailed todos using TodoWrite
+3. Plan your approach systematically
+</task_management_instructions>`)
+			.expectPromptType("fallback")
+			.expectComponents("issue-context")
+			.verify();
+	});
 });

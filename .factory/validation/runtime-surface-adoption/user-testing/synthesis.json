@@ -1,0 +1,40 @@
+{
+	"milestone": "runtime-surface-adoption",
+	"round": 1,
+	"status": "pass",
+	"assertionsSummary": {
+		"total": 12,
+		"passed": 12,
+		"failed": 0,
+		"blocked": 0
+	},
+	"passedAssertions": [
+		"VAL-RUNTIME-001",
+		"VAL-RUNTIME-002",
+		"VAL-RUNTIME-003",
+		"VAL-RUNTIME-004",
+		"VAL-SURFACE-001",
+		"VAL-SURFACE-002",
+		"VAL-SURFACE-003",
+		"VAL-SURFACE-004",
+		"VAL-CROSS-001",
+		"VAL-CROSS-002",
+		"VAL-CROSS-003",
+		"VAL-CROSS-004"
+	],
+	"failedAssertions": [],
+	"blockedAssertions": [],
+	"appliedUpdates": [
+		{
+			"target": "user-testing.md",
+			"description": "Added flow-validator guidance for the F1 multi-repo CLI surface, the repository-association docs surface, and the targeted edge-worker restore test surface used to cover runtime restore behavior.",
+			"source": "setup"
+		},
+		{
+			"target": "user-testing.md",
+			"description": "Recorded validation knowledge that apps/f1/server.ts creates a fresh temp CYRUS_HOME on each start and that F1 issue titles should avoid '::' because it can lead to invalid branch names during worktree setup.",
+			"source": "flow-report"
+		}
+	],
+	"previousRound": null
+}

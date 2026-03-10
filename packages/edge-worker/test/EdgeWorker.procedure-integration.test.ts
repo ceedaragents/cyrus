@@ -1,9 +1,16 @@
-import type { CyrusAgentSession } from "cyrus-core";
+import type {
+	CLIIssueTrackerService,
+	CyrusAgentSession,
+	EdgeWorkerConfig,
+	RepositoryConfig,
+} from "cyrus-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSessionManager } from "../src/AgentSessionManager";
+import { EdgeWorker } from "../src/EdgeWorker";
 import { ProcedureAnalyzer } from "../src/procedures/ProcedureAnalyzer";
 import { PROCEDURES } from "../src/procedures/registry";
 import type { IActivitySink } from "../src/sinks/IActivitySink";
+import { createTestCyrusHome } from "./testCyrusHome.js";
 
 /**
  * Integration tests for procedure routing as used by EdgeWorker and AgentSessionManager
@@ -286,6 +293,72 @@ describe("EdgeWorker - Procedure Routing Integration", () => {
 			nextSubroutine = procedureAnalyzer.getNextSubroutine(session);
 			expect(nextSubroutine).toBeNull();
 			expect(procedureAnalyzer.isProcedureComplete(session)).toBe(true);
+		});
+	});
+
+	describe("CLI multi-repository session continuity", () => {
+		it("shares issue and agent-session state across repositories in the same CLI workspace", async () => {
+			const cyrusHome = createTestCyrusHome();
+			const frontendRepository: RepositoryConfig = {
+				id: "repo-frontend",
+				name: "Frontend Repo",
+				repositoryPath: "/test/frontend",
+				workspaceBaseDir: "/test/workspaces/frontend",
+				baseBranch: "main",
+				linearToken: "token-frontend",
+				linearWorkspaceId: "cli-workspace",
+				isActive: true,
+			};
+			const backendRepository: RepositoryConfig = {
+				id: "repo-backend",
+				name: "Backend Repo",
+				repositoryPath: "/test/backend",
+				workspaceBaseDir: "/test/workspaces/backend",
+				baseBranch: "main",
+				linearToken: "token-backend",
+				linearWorkspaceId: "cli-workspace",
+				isActive: true,
+			};
+
+			const edgeWorker = new EdgeWorker({
+				platform: "cli",
+				cyrusHome,
+				repositories: [frontendRepository, backendRepository],
+			} satisfies EdgeWorkerConfig);
+
+			const frontendTracker = (edgeWorker as any).issueTrackers.get(
+				frontendRepository.id,
+			) as CLIIssueTrackerService;
+			const backendTracker = (edgeWorker as any).issueTrackers.get(
+				backendRepository.id,
+			) as CLIIssueTrackerService;
+
+			const createdIssue = await frontendTracker.createIssue({
+				teamId: "team-default",
+				title: "Shared CLI issue",
+				description: "Verify zero/one selection continuity",
+			});
+
+			const sessionPayload = await frontendTracker.createAgentSessionOnIssue({
+				issueId: createdIssue.id,
+			});
+			const createdSession = await sessionPayload.agentSession;
+
+			await expect(
+				edgeWorker.fetchFullIssueDetails(createdIssue.id, backendRepository.id),
+			).resolves.toMatchObject({ id: createdIssue.id });
+			await expect(
+				backendTracker.fetchAgentSession(createdSession.id),
+			).resolves.toMatchObject({ id: createdSession.id });
+			await expect(
+				backendTracker.createAgentActivity({
+					agentSessionId: createdSession.id,
+					content: {
+						type: "thought",
+						body: "Repository selection can continue in the backend repo",
+					},
+				}),
+			).resolves.toMatchObject({ success: true });
 		});
 	});
 

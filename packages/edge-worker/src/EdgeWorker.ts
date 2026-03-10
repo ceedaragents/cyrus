@@ -21,6 +21,8 @@ import type {
 	AgentSessionPromptedWebhook,
 	ContentUpdateMessage,
 	CyrusAgentSession,
+	CyrusAgentSessionRepositoryAssociation,
+	CyrusAgentSessionRepositoryAssociationOrigin,
 	EdgeWorkerConfig,
 	GuidanceRule,
 	IAgentRunner,
@@ -169,6 +171,10 @@ export class EdgeWorker extends EventEmitter {
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManagers: Map<string, AgentSessionManager> = new Map(); // Maps repository ID to AgentSessionManager, which manages agent runners for a repo
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per 'repository'
+	private cliIssueTrackersByWorkspaceId = new Map<
+		string,
+		CLIIssueTrackerService
+	>();
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
@@ -181,7 +187,6 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private globalSessionRegistry: GlobalSessionRegistry; // Centralized session storage across all repositories
-	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 	private procedureAnalyzer: ProcedureAnalyzer; // Intelligent workflow routing
 	private configPath?: string; // Path to config.json file
 	/** @internal - Exposed for testing only */
@@ -333,11 +338,7 @@ export class EdgeWorker extends EventEmitter {
 				// Create issue tracker for this repository's workspace
 				const issueTracker =
 					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
+						? this.getOrCreateCliIssueTracker(resolvedRepo.linearWorkspaceId)
 						: new LinearIssueTrackerService(
 								new LinearClient({
 									accessToken: repo.linearToken,
@@ -362,6 +363,7 @@ export class EdgeWorker extends EventEmitter {
 				);
 				const agentSessionManager = new AgentSessionManager(
 					activitySink,
+					this.globalSessionRegistry,
 					(childSessionId: string) => {
 						this.logger.debug(
 							`Looking up parent session for child ${childSessionId}`,
@@ -1542,33 +1544,18 @@ ${taskSection}`;
 			`Child session completed, resuming parent session ${parentSessionId}`,
 		);
 
-		// Find parent session across all repositories
-		// This is critical for cross-repository orchestration where parent and child
-		// may be in different repositories with different AgentSessionManagers
-		// See also: feedback delivery code at line ~4413 which uses same pattern
 		log.debug(
-			`Searching for parent session ${parentSessionId} across all repositories`,
+			`Resolving parent session ${parentSessionId} from global registry`,
 		);
-		let parentSession: CyrusAgentSession | undefined;
-		let parentRepo: RepositoryConfig | undefined;
-		let parentAgentSessionManager: AgentSessionManager | undefined;
-
-		for (const [repoId, manager] of this.agentSessionManagers) {
-			const candidate = manager.getSession(parentSessionId);
-			if (candidate) {
-				parentSession = candidate;
-				parentRepo = this.repositories.get(repoId);
-				parentAgentSessionManager = manager;
-				log.debug(
-					`Found parent session in repository: ${parentRepo?.name || repoId}`,
-				);
-				break;
-			}
-		}
+		const parentSession =
+			this.globalSessionRegistry.getSession(parentSessionId);
+		const parentContext = this.getRepositoryContextForSession(parentSession);
+		const parentRepo = parentContext?.repository;
+		const parentAgentSessionManager = parentContext?.manager;
 
 		if (!parentSession || !parentRepo || !parentAgentSessionManager) {
 			log.error(
-				`Parent session ${parentSessionId} not found in any repository's agent session manager`,
+				`Parent session ${parentSessionId} could not be resolved from explicit repository associations`,
 			);
 			return;
 		}
@@ -1579,7 +1566,9 @@ ${taskSection}`;
 
 		// Get the child session to access its workspace path
 		// Child session is in the child's manager (passed in from the callback)
-		const childSession = childAgentSessionManager.getSession(childSessionId);
+		const childSession =
+			this.globalSessionRegistry.getSession(childSessionId) ??
+			childAgentSessionManager.getSession(childSessionId);
 		const childWorkspaceDirs: string[] = [];
 		if (childSession) {
 			childWorkspaceDirs.push(childSession.workspace.path);
@@ -1831,11 +1820,7 @@ ${taskSection}`;
 				// Create issue tracker with OAuth config for token refresh
 				const issueTracker =
 					this.config.platform === "cli"
-						? (() => {
-								const service = new CLIIssueTrackerService();
-								service.seedDefaultData();
-								return service;
-							})()
+						? this.getOrCreateCliIssueTracker(resolvedRepo.linearWorkspaceId)
 						: new LinearIssueTrackerService(
 								new LinearClient({
 									accessToken: repo.linearToken,
@@ -1851,6 +1836,7 @@ ${taskSection}`;
 				);
 				const agentSessionManager = new AgentSessionManager(
 					activitySink,
+					this.globalSessionRegistry,
 					(childSessionId: string) => {
 						return this.globalSessionRegistry.getParentSessionId(
 							childSessionId,
@@ -2091,6 +2077,154 @@ ${taskSection}`;
 		);
 	}
 
+	private getSessionIssueId(session: CyrusAgentSession): string | undefined {
+		return session.issueContext?.issueId ?? session.issueId;
+	}
+
+	private associationStatusRank(
+		status: CyrusAgentSessionRepositoryAssociation["status"],
+	): number {
+		switch (status) {
+			case "selected":
+				return 4;
+			case "active":
+				return 3;
+			case "complete":
+				return 2;
+			default:
+				return 1;
+		}
+	}
+
+	private choosePreferredAssociation(
+		existing: CyrusAgentSessionRepositoryAssociation | undefined,
+		incoming: CyrusAgentSessionRepositoryAssociation | undefined,
+	): CyrusAgentSessionRepositoryAssociation | undefined {
+		if (!existing) {
+			return incoming;
+		}
+
+		if (!incoming) {
+			return existing;
+		}
+
+		const existingRank = this.associationStatusRank(existing.status);
+		const incomingRank = this.associationStatusRank(incoming.status);
+
+		if (incomingRank > existingRank) {
+			return incoming;
+		}
+
+		if (incomingRank < existingRank) {
+			return existing;
+		}
+
+		return incoming.executionWorkspace && !existing.executionWorkspace
+			? incoming
+			: existing;
+	}
+
+	private mergeAssociationCollections(
+		associations: CyrusAgentSessionRepositoryAssociation[],
+	): CyrusAgentSessionRepositoryAssociation[] {
+		const mergedAssociations = new Map<
+			string,
+			CyrusAgentSessionRepositoryAssociation
+		>();
+
+		for (const association of associations) {
+			mergedAssociations.set(
+				association.repositoryId,
+				this.choosePreferredAssociation(
+					mergedAssociations.get(association.repositoryId),
+					association,
+				)!,
+			);
+		}
+
+		return Array.from(mergedAssociations.values());
+	}
+
+	private getPreferredAssociation(
+		associations: CyrusAgentSessionRepositoryAssociation[],
+	): CyrusAgentSessionRepositoryAssociation | undefined {
+		return associations.reduce<
+			CyrusAgentSessionRepositoryAssociation | undefined
+		>((preferredAssociation, association) => {
+			return this.choosePreferredAssociation(preferredAssociation, association);
+		}, undefined);
+	}
+
+	private getOrCreateCliIssueTracker(
+		workspaceId: string,
+	): CLIIssueTrackerService {
+		const existingTracker = this.cliIssueTrackersByWorkspaceId.get(workspaceId);
+		if (existingTracker) {
+			return existingTracker;
+		}
+
+		const tracker = new CLIIssueTrackerService();
+		tracker.seedDefaultData();
+		this.cliIssueTrackersByWorkspaceId.set(workspaceId, tracker);
+		return tracker;
+	}
+
+	private getRepositoryContextForSession(
+		session: CyrusAgentSession | undefined,
+	):
+		| {
+				repository: RepositoryConfig;
+				manager: AgentSessionManager;
+		  }
+		| undefined {
+		if (!session) {
+			return undefined;
+		}
+
+		const repositoryId = this.getPreferredAssociation(
+			session.repositoryAssociations ?? [],
+		)?.repositoryId;
+		if (!repositoryId) {
+			return undefined;
+		}
+
+		const repository = this.repositories.get(repositoryId);
+		const manager = this.agentSessionManagers.get(repositoryId);
+		if (!repository || !manager) {
+			return undefined;
+		}
+
+		return { repository, manager };
+	}
+
+	private getIssueRepositoryAssociations(
+		issueId: string,
+	): CyrusAgentSessionRepositoryAssociation[] {
+		const sessions = this.globalSessionRegistry.getSessionsByIssueId(issueId);
+		return this.mergeAssociationCollections(
+			sessions.flatMap((session) => session.repositoryAssociations ?? []),
+		);
+	}
+
+	private getAssociatedRepositoryForIssue(
+		issueId: string,
+	): RepositoryConfig | null {
+		const cachedRepository = this.getCachedRepository(issueId);
+		if (cachedRepository) {
+			return cachedRepository;
+		}
+
+		const preferredAssociation = this.getPreferredAssociation(
+			this.getIssueRepositoryAssociations(issueId),
+		);
+
+		if (!preferredAssociation) {
+			return null;
+		}
+
+		return this.repositories.get(preferredAssociation.repositoryId) ?? null;
+	}
+
 	/**
 	 * Handle webhook events from proxy - main router for all webhooks
 	 */
@@ -2307,33 +2441,16 @@ ${taskSection}`;
 
 		const issueId = webhook.notification.issue.id;
 
-		// Get cached repository, with fallback to searching all managers
-		let repository = this.getCachedRepository(issueId);
+		// Get cached repository, with fallback to explicit repository associations
+		const repository = this.getAssociatedRepositoryForIssue(issueId);
 		if (!repository) {
-			// Fallback: search all managers for sessions matching this issue
 			this.logger.info(
-				`No cached repository for issue unassignment ${webhook.notification.issue.identifier}, searching all managers`,
+				`No cached repository for issue unassignment ${webhook.notification.issue.identifier}, no explicit repository association was found`,
 			);
-
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const sessions = manager.getSessionsByIssueId(issueId);
-				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
-						this.logger.info(
-							`Recovered repository ${repoId} for unassignment of ${webhook.notification.issue.identifier} from session manager`,
-						);
-						break;
-					}
-				}
-			}
-
-			if (!repository) {
-				this.logger.debug(
-					`No active sessions found for unassigned issue ${webhook.notification.issue.identifier} across all managers`,
-				);
-				return;
-			}
+			this.logger.debug(
+				`No active sessions found for unassigned issue ${webhook.notification.issue.identifier} across explicit session associations`,
+			);
+			return;
 		}
 
 		this.logger.info(
@@ -2391,23 +2508,9 @@ ${taskSection}`;
 			return;
 		}
 
-		// Get cached repository, with fallback to searching all managers
-		let repository = this.getCachedRepository(issueId);
+		// Get cached repository, with fallback to explicit repository associations
+		const repository = this.getAssociatedRepositoryForIssue(issueId);
 		if (!repository) {
-			// Fallback: search all managers for sessions matching this issue
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const sessions = manager.getSessionsByIssueId(issueId);
-				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
-						this.logger.info(
-							`Recovered repository ${repoId} for issue update ${issueIdentifier} from session manager`,
-						);
-						break;
-					}
-				}
-			}
-
 			if (!repository) {
 				this.logger.debug(
 					`No active sessions found for issue update ${issueIdentifier} across all managers`,
@@ -2607,6 +2710,7 @@ ${taskSection}`;
 		issue: { id: string; identifier: string },
 		repository: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
+		associationOrigin: CyrusAgentSessionRepositoryAssociationOrigin = "routed",
 	): Promise<AgentSessionData> {
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id);
@@ -2631,6 +2735,14 @@ ${taskSection}`;
 			issue.id,
 			issueMinimal,
 			workspace,
+			"linear",
+			{
+				repositoryId: repository.id,
+				linearWorkspaceId: repository.linearWorkspaceId,
+				associationOrigin,
+				status: "active",
+				executionWorkspace: workspace,
+			},
 		);
 
 		// Get the newly created session
@@ -2788,6 +2900,7 @@ ${taskSection}`;
 			repository,
 			guidance,
 			commentBody,
+			"user-selected",
 		);
 	}
 
@@ -2808,6 +2921,7 @@ ${taskSection}`;
 		repository: RepositoryConfig,
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
+		associationOrigin: CyrusAgentSessionRepositoryAssociationOrigin = "routed",
 	): Promise<void> {
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
@@ -2866,6 +2980,7 @@ ${taskSection}`;
 			issue,
 			repository,
 			agentSessionManager,
+			associationOrigin,
 		);
 
 		// Destructure the session data (excluding allowedTools which we'll build with promptType)
@@ -3175,17 +3290,23 @@ ${taskSection}`;
 			`Received stop signal for agent activity session ${agentSessionId}`,
 		);
 
-		// Find the agent session manager that contains this session
-		// We don't need repository lookup - just search all managers
-		let foundManager: AgentSessionManager | null = null;
-		let foundSession: CyrusAgentSession | null = null;
+		const registrySession =
+			this.globalSessionRegistry.getSession(agentSessionId);
+		const registryContext =
+			this.getRepositoryContextForSession(registrySession);
+		let foundManager: AgentSessionManager | null =
+			registryContext?.manager ?? null;
+		let foundSession: CyrusAgentSession | null =
+			foundManager?.getSession(agentSessionId) ?? registrySession ?? null;
 
-		for (const manager of this.agentSessionManagers.values()) {
-			const session = manager.getSession(agentSessionId);
-			if (session) {
-				foundManager = manager;
-				foundSession = session;
-				break;
+		if (!foundManager || !foundSession) {
+			for (const manager of this.agentSessionManagers.values()) {
+				const session = manager.getSession(agentSessionId);
+				if (session) {
+					foundManager = manager;
+					foundSession = session;
+					break;
+				}
 			}
 		}
 
@@ -3230,9 +3351,9 @@ ${taskSection}`;
 	 * Handle repository selection response from prompted webhook
 	 * Branch 2 of agentSessionPrompted (see packages/CLAUDE.md)
 	 *
-	 * This method extracts the user's repository selection from their response,
-	 * or uses the fallback repository if their message doesn't match any option.
-	 * In both cases, the selected repository is cached for future use.
+	 * This method extracts the user's repository selection from their response.
+	 * Repository association remains unresolved until the response matches an
+	 * explicit pending option.
 	 */
 	private async handleRepositorySelectionResponse(
 		webhook: AgentSessionPromptedWebhook,
@@ -3263,9 +3384,19 @@ ${taskSection}`;
 		);
 
 		if (!repository) {
-			log.error(
-				`Failed to select repository for agent session ${agentSessionId}`,
-			);
+			if (this.repositoryRouter.hasPendingSelection(agentSessionId)) {
+				log.info(
+					`Repository selection for agent session ${agentSessionId} is still unresolved after response: "${userMessage}"`,
+				);
+				await this.postInvalidRepositorySelectionActivity(
+					agentSessionId,
+					webhook.organizationId,
+				);
+			} else {
+				log.error(
+					`Failed to select repository for agent session ${agentSessionId}`,
+				);
+			}
 			return;
 		}
 
@@ -3291,6 +3422,7 @@ ${taskSection}`;
 			repository,
 			guidance,
 			commentBody,
+			"user-selected",
 		);
 	}
 
@@ -3581,8 +3713,8 @@ ${taskSection}`;
 
 		// Branch 2: Handle repository selection response
 		// This is the first Claude runner initialization after user selects a repository.
-		// The selection handler extracts the choice from the response (or uses fallback)
-		// and caches the repository for future use.
+		// The selection handler only materializes a repository association after an
+		// explicit matching selection.
 		if (this.repositoryRouter.hasPendingSelection(agentSessionId)) {
 			await this.handleRepositorySelectionResponse(webhook);
 			return;
@@ -3615,21 +3747,19 @@ ${taskSection}`;
 				`No cached repository for prompted webhook ${agentSessionId}, attempting fallback resolution`,
 			);
 
-			// First, check if any manager already has this session
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const session = manager.getSession(agentSessionId);
-				if (session) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
-						this.repositoryRouter
-							.getIssueRepositoryCache()
-							.set(issueId, repoId);
-						this.logger.info(
-							`Recovered repository ${repoId} for issue ${issueId} from session manager`,
-						);
-						break;
-					}
-				}
+			// First, use the globally tracked session associations when available
+			const existingSession =
+				this.globalSessionRegistry.getSession(agentSessionId);
+			const existingSessionContext =
+				this.getRepositoryContextForSession(existingSession);
+			if (existingSessionContext) {
+				repository = existingSessionContext.repository;
+				this.repositoryRouter
+					.getIssueRepositoryCache()
+					.set(issueId, existingSessionContext.repository.id);
+				this.logger.info(
+					`Recovered repository ${existingSessionContext.repository.id} for issue ${issueId} from explicit session associations`,
+				);
 			}
 
 			// Second fallback: re-route via repository router
@@ -3650,6 +3780,15 @@ ${taskSection}`;
 						this.logger.info(
 							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
 						);
+					} else if (routingResult.type === "needs_selection") {
+						await this.repositoryRouter.elicitUserRepositorySelection(
+							webhook,
+							routingResult.workspaceRepos,
+						);
+						this.logger.info(
+							`Prompted webhook ${agentSessionId} needs explicit repository selection before continuing`,
+						);
+						return;
 					}
 				} catch (error) {
 					this.logger.warn(
@@ -4307,9 +4446,12 @@ ${taskSection}`;
 		console.log(
 			`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentSessionId}`,
 		);
-		this.childToParentAgentSession.set(childSessionId, parentSessionId);
+		this.globalSessionRegistry.setParentSession(
+			childSessionId,
+			parentSessionId,
+		);
 		console.log(
-			`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+			`[EdgeWorker] Parent-child mapping updated for child ${childSessionId}`,
 		);
 	}
 
@@ -4322,17 +4464,22 @@ ${taskSection}`;
 		);
 
 		// Find the parent session ID for context
-		const parentSessionId = this.childToParentAgentSession.get(childSessionId);
+		const parentSessionId =
+			this.globalSessionRegistry.getParentSessionId(childSessionId);
 
-		// Find the repository containing the child session
-		let childRepo: RepositoryConfig | undefined;
-		let childAgentSessionManager: AgentSessionManager | undefined;
+		const childSession = this.globalSessionRegistry.getSession(childSessionId);
+		const childContext = this.getRepositoryContextForSession(childSession);
+		let childRepo: RepositoryConfig | undefined = childContext?.repository;
+		let childAgentSessionManager: AgentSessionManager | undefined =
+			childContext?.manager;
 
-		for (const [repoId, manager] of this.agentSessionManagers) {
-			if (manager.hasAgentRunner(childSessionId)) {
-				childRepo = this.repositories.get(repoId);
-				childAgentSessionManager = manager;
-				break;
+		if (!childRepo || !childAgentSessionManager) {
+			for (const [repoId, manager] of this.agentSessionManagers) {
+				if (manager.hasAgentRunner(childSessionId)) {
+					childRepo = this.repositories.get(repoId);
+					childAgentSessionManager = manager;
+					break;
+				}
 			}
 		}
 
@@ -4344,27 +4491,24 @@ ${taskSection}`;
 		}
 
 		// Get the child session
-		const childSession = childAgentSessionManager.getSession(childSessionId);
-		if (!childSession) {
+		const resolvedChildSession =
+			childAgentSessionManager.getSession(childSessionId) ?? childSession;
+		if (!resolvedChildSession) {
 			console.error(`[EdgeWorker] Child session ${childSessionId} not found`);
 			return false;
 		}
 
 		console.log(
-			`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
+			`[EdgeWorker] Found child session - Issue: ${resolvedChildSession.issueId}`,
 		);
 
 		// Get parent session info for better context in the thought
 		let parentIssueId: string | undefined;
 		if (parentSessionId) {
-			for (const manager of this.agentSessionManagers.values()) {
-				const parentSession = manager.getSession(parentSessionId);
-				if (parentSession) {
-					parentIssueId =
-						parentSession.issue?.identifier || parentSession.issueId;
-					break;
-				}
-			}
+			const parentSession =
+				this.globalSessionRegistry.getSession(parentSessionId);
+			parentIssueId =
+				parentSession?.issue?.identifier || parentSession?.issueId;
 		}
 
 		// Post thought to Linear showing feedback receipt
@@ -4408,7 +4552,7 @@ ${taskSection}`;
 		);
 
 		this.handlePromptWithStreamingCheck(
-			childSession,
+			resolvedChildSession,
 			childRepo,
 			childSessionId,
 			childAgentSessionManager,
@@ -5381,7 +5525,7 @@ ${input.userComment}
 			if (state) {
 				this.restoreMappings(state);
 				this.logger.debug(
-					`✅ Loaded persisted EdgeWorker state with ${Object.keys(state.agentSessions || {}).length} repositories`,
+					`✅ Loaded persisted EdgeWorker state with ${Object.keys(state.agentSessionsById || {}).length} sessions`,
 				);
 			}
 		} catch (error) {
@@ -5397,7 +5541,7 @@ ${input.userComment}
 			const state = this.serializeMappings();
 			await this.persistenceManager.saveEdgeWorkerState(state);
 			this.logger.debug(
-				`✅ Saved EdgeWorker state for ${Object.keys(state.agentSessions || {}).length} repositories`,
+				`✅ Saved EdgeWorker state for ${Object.keys(state.agentSessionsById || {}).length} sessions`,
 			);
 		} catch (error) {
 			this.logger.error(`Failed to save persisted EdgeWorker state:`, error);
@@ -5408,38 +5552,43 @@ ${input.userComment}
 	 * Serialize EdgeWorker mappings to a serializable format
 	 */
 	public serializeMappings(): SerializableEdgeWorkerState {
-		// Serialize Agent Session state for all repositories
-		const agentSessions: Record<
-			string,
-			Record<string, SerializedCyrusAgentSession>
+		const registryState = this.globalSessionRegistry.serializeState();
+		const issueRepositoryAssociationsByIssueId: NonNullable<
+			SerializableEdgeWorkerState["issueRepositoryAssociationsByIssueId"]
 		> = {};
-		const agentSessionEntries: Record<
-			string,
-			Record<string, SerializedCyrusAgentSessionEntry[]>
-		> = {};
-		for (const [
-			repositoryId,
-			agentSessionManager,
-		] of this.agentSessionManagers.entries()) {
-			const serializedState = agentSessionManager.serializeState();
-			agentSessions[repositoryId] = serializedState.sessions;
-			agentSessionEntries[repositoryId] = serializedState.entries;
-		}
-		// Serialize child to parent agent session mapping
-		const childToParentAgentSession = Object.fromEntries(
-			this.childToParentAgentSession.entries(),
-		);
 
-		// Serialize issue to repository cache from RepositoryRouter
-		const issueRepositoryCache = Object.fromEntries(
-			this.repositoryRouter.getIssueRepositoryCache().entries(),
-		);
+		for (const session of this.globalSessionRegistry.getAllSessions()) {
+			const issueId = this.getSessionIssueId(session);
+			if (!issueId) {
+				continue;
+			}
+
+			issueRepositoryAssociationsByIssueId[issueId] =
+				this.mergeAssociationCollections([
+					...(issueRepositoryAssociationsByIssueId[issueId] ?? []),
+					...(session.repositoryAssociations ?? []),
+				]);
+		}
+
+		for (const [issueId, repositoryId] of this.repositoryRouter
+			.getIssueRepositoryCache()
+			.entries()) {
+			issueRepositoryAssociationsByIssueId[issueId] =
+				this.mergeAssociationCollections([
+					...(issueRepositoryAssociationsByIssueId[issueId] ?? []),
+					{
+						repositoryId,
+						associationOrigin: "user-selected",
+						status: "selected",
+					},
+				]);
+		}
 
 		return {
-			agentSessions,
-			agentSessionEntries,
-			childToParentAgentSession,
-			issueRepositoryCache,
+			agentSessionsById: registryState.sessions,
+			agentSessionEntriesById: registryState.entries,
+			childToParentAgentSession: registryState.childToParentMap,
+			issueRepositoryAssociationsByIssueId,
 		};
 	}
 
@@ -5447,48 +5596,121 @@ ${input.userComment}
 	 * Restore EdgeWorker mappings from serialized state
 	 */
 	public restoreMappings(state: SerializableEdgeWorkerState): void {
-		// Restore Agent Session state for all repositories
-		if (state.agentSessions && state.agentSessionEntries) {
-			for (const [
-				repositoryId,
-				agentSessionManager,
-			] of this.agentSessionManagers.entries()) {
-				const repositorySessions = state.agentSessions[repositoryId] || {};
-				const repositoryEntries = state.agentSessionEntries[repositoryId] || {};
+		this.globalSessionRegistry.restoreState({
+			version: "3.0",
+			sessions: state.agentSessionsById ?? {},
+			entries: state.agentSessionEntriesById ?? {},
+			childToParentMap: state.childToParentAgentSession ?? {},
+		});
 
-				if (
-					Object.keys(repositorySessions).length > 0 ||
-					Object.keys(repositoryEntries).length > 0
-				) {
-					agentSessionManager.restoreState(
-						repositorySessions,
-						repositoryEntries,
-					);
-					this.logger.debug(
-						`Restored Agent Session state for repository ${repositoryId}`,
-					);
+		const sessionsByRepository = new Map<
+			string,
+			Record<string, SerializedCyrusAgentSession>
+		>();
+		const entriesByRepository = new Map<
+			string,
+			Record<string, SerializedCyrusAgentSessionEntry[]>
+		>();
+
+		for (const [repositoryId] of this.agentSessionManagers.entries()) {
+			sessionsByRepository.set(repositoryId, {});
+			entriesByRepository.set(repositoryId, {});
+		}
+
+		for (const session of this.globalSessionRegistry.getAllSessions()) {
+			const associatedRepositoryIds = (
+				session.repositoryAssociations ?? []
+			).map((association) => association.repositoryId);
+
+			if (associatedRepositoryIds.length === 0) {
+				this.logger.debug(
+					`Restored unassociated session ${session.id} into the global registry`,
+				);
+				continue;
+			}
+
+			for (const repositoryId of associatedRepositoryIds) {
+				const repositorySessions = sessionsByRepository.get(repositoryId);
+				const repositoryEntries = entriesByRepository.get(repositoryId);
+				if (!repositorySessions || !repositoryEntries) {
+					continue;
 				}
+
+				repositorySessions[session.id] = {
+					...(state.agentSessionsById?.[session.id] ?? session),
+					repositoryAssociations: session.repositoryAssociations ?? [],
+				};
+				repositoryEntries[session.id] = [
+					...(state.agentSessionEntriesById?.[session.id] ??
+						this.globalSessionRegistry.getEntries(session.id)),
+				];
 			}
 		}
 
-		// Restore child to parent agent session mapping
-		if (state.childToParentAgentSession) {
-			this.childToParentAgentSession = new Map(
-				Object.entries(state.childToParentAgentSession),
-			);
+		for (const [
+			repositoryId,
+			agentSessionManager,
+		] of this.agentSessionManagers.entries()) {
+			const repositorySessions = sessionsByRepository.get(repositoryId) ?? {};
+			const repositoryEntries = entriesByRepository.get(repositoryId) ?? {};
+
+			agentSessionManager.restoreState(repositorySessions, repositoryEntries);
 			this.logger.debug(
-				`Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
+				`Restored Agent Session state for repository ${repositoryId}`,
 			);
 		}
 
-		// Restore issue to repository cache in RepositoryRouter
-		if (state.issueRepositoryCache) {
-			const cache = new Map(Object.entries(state.issueRepositoryCache));
-			this.repositoryRouter.restoreIssueRepositoryCache(cache);
+		const issueRepositoryCache = new Map<string, string>();
+		const issueRepositoryAssociationsByIssueId = {
+			...(state.issueRepositoryAssociationsByIssueId ?? {}),
+		};
+
+		for (const session of this.globalSessionRegistry.getAllSessions()) {
+			const issueId = this.getSessionIssueId(session);
+			if (!issueId || (session.repositoryAssociations ?? []).length === 0) {
+				continue;
+			}
+
+			issueRepositoryAssociationsByIssueId[issueId] =
+				this.mergeAssociationCollections([
+					...(issueRepositoryAssociationsByIssueId[issueId] ?? []),
+					...(session.repositoryAssociations ?? []),
+				]);
+		}
+
+		for (const [issueId, associations] of Object.entries(
+			issueRepositoryAssociationsByIssueId,
+		)) {
+			const preferredAssociation =
+				this.selectIssueRepositoryAssociation(associations);
+			if (preferredAssociation) {
+				issueRepositoryCache.set(issueId, preferredAssociation.repositoryId);
+			}
+		}
+
+		this.repositoryRouter.restoreIssueRepositoryCache(issueRepositoryCache);
+		if (issueRepositoryCache.size > 0) {
 			this.logger.debug(
-				`Restored ${cache.size} issue-to-repository cache mappings`,
+				`Restored ${issueRepositoryCache.size} issue-to-repository association mappings`,
 			);
 		}
+	}
+
+	private selectIssueRepositoryAssociation(
+		associations: NonNullable<
+			SerializableEdgeWorkerState["issueRepositoryAssociationsByIssueId"]
+		>[string],
+	): { repositoryId: string } | undefined {
+		if (!associations || associations.length === 0) {
+			return undefined;
+		}
+
+		return (
+			associations.find((association) => association.status === "selected") ||
+			associations.find((association) => association.status === "active") ||
+			associations.find((association) => association.status === "complete") ||
+			associations[0]
+		);
 	}
 
 	/**
@@ -5556,6 +5778,41 @@ ${input.userComment}
 			repositoryName,
 			selectionMethod,
 		);
+	}
+
+	private async postInvalidRepositorySelectionActivity(
+		agentSessionId: string,
+		workspaceId?: string,
+	): Promise<void> {
+		if (!workspaceId) {
+			this.logger.warn(
+				`Cannot post invalid repository selection feedback for ${agentSessionId} without workspace context`,
+			);
+			return;
+		}
+
+		const issueTracker = this.getIssueTrackerForWorkspace(workspaceId);
+		if (!issueTracker) {
+			this.logger.warn(
+				`No issue tracker found while posting invalid repository selection feedback for workspace ${workspaceId}`,
+			);
+			return;
+		}
+
+		try {
+			await issueTracker.createAgentActivity({
+				agentSessionId,
+				content: {
+					type: "error",
+					body: "I couldn't match your repository selection. Please choose one of the repository options from the selection list.",
+				},
+			});
+		} catch (error) {
+			this.logger.error(
+				`Failed to post invalid repository selection feedback for ${agentSessionId}`,
+				error,
+			);
+		}
 	}
 
 	/**

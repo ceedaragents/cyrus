@@ -218,6 +218,43 @@ describe("GlobalSessionRegistry", () => {
 			expect(allSessions).toContainEqual(session1);
 			expect(allSessions).toContainEqual(session2);
 		});
+
+		it("should derive issue and repository lookups from explicit repository associations", () => {
+			const unrelatedSession = createMockSession("session-unrelated", {
+				repositoryAssociations: [],
+			});
+			const associatedSession = createMockSession("session-associated", {
+				issueContext: {
+					trackerId: "linear",
+					issueId: "shared-issue",
+					issueIdentifier: "TEST-123",
+				},
+				issueId: "shared-issue",
+				repositoryAssociations: [
+					{
+						repositoryId: "repo-1",
+						associationOrigin: "restored",
+						status: "selected",
+					},
+					{
+						repositoryId: "repo-2",
+						associationOrigin: "user-selected",
+						status: "active",
+					},
+				],
+			});
+
+			registry.createSession(unrelatedSession);
+			registry.createSession(associatedSession);
+
+			expect(registry.getSessionsByIssueId("shared-issue")).toEqual([
+				associatedSession,
+			]);
+			expect(registry.getSessionsByRepositoryId("repo-2")).toEqual([
+				associatedSession,
+			]);
+			expect(registry.getSessionsByRepositoryId("repo-missing")).toEqual([]);
+		});
 	});
 
 	describe("Entry Management", () => {

@@ -1,0 +1,25 @@
+{
+	"status": "overridden",
+	"summary": "Scrutiny for core-session-state-refactor was overridden because the only failing validator remained the documented pre-existing packages/edge-worker screenshot-upload-hooks suite, which is unrelated to the core session/persistence refactor. Typecheck and lint passed, and the milestone features had targeted green tests plus downstream edge-worker typechecks.",
+	"validatorResults": {
+		"test": {
+			"status": "failed",
+			"details": "pnpm test:packages:run -- --maxWorkers=8 fails in packages/edge-worker/test/EdgeWorker.screenshot-upload-hooks.test.ts with existing undefined screenshot hook matcher expectations."
+		},
+		"typecheck": {
+			"status": "passed"
+		},
+		"lint": {
+			"status": "passed"
+		}
+	},
+	"appliedUpdates": [],
+	"suggestedGuidanceUpdates": [],
+	"override": {
+		"appliedBy": "orchestrator",
+		"reason": "Mission AGENTS.md documents the screenshot-upload-hooks suite as pre-existing unrelated edge-worker validation noise. The core milestone changed core session/public types and persistence, validated those changes with targeted core tests, migration coverage, lint, and downstream edge-worker typechecks, so scrutiny review is safe to defer past this unrelated baseline failure.",
+		"deferredIssues": [
+			"packages/edge-worker/test/EdgeWorker.screenshot-upload-hooks.test.ts"
+		]
+	}
+}

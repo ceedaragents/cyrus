@@ -104,6 +104,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			createResponseActivity: vi.fn().mockResolvedValue(undefined),
 			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
 			requestSessionStop: vi.fn(),
+			restoreState: vi.fn(),
 			on: vi.fn(),
 		};
 
@@ -171,6 +172,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 
 		// Mock issue tracker
 		const mockIssueTracker = {
+			createAgentActivity: vi.fn().mockResolvedValue(undefined),
 			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",
@@ -384,12 +386,260 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			// The user should see feedback that their prompt couldn't be processed
 			expect(mockAgentSessionManager.createResponseActivity).toHaveBeenCalled();
 		});
+
+		it("should re-elicit repository selection when fallback routing is ambiguous", async () => {
+			// Arrange: Empty cache and ambiguous fallback routing
+			const repositoryRouter = (edgeWorker as any).repositoryRouter;
+			repositoryRouter.getIssueRepositoryCache().clear();
+
+			const secondRepository: RepositoryConfig = {
+				...mockRepository,
+				id: "test-repo-2",
+				name: "Test Repo 2",
+				repositoryPath: "/test/repo-2",
+			};
+
+			(edgeWorker as any).repositories.set(
+				secondRepository.id,
+				secondRepository,
+			);
+
+			const determineRepoSpy = vi
+				.spyOn(repositoryRouter, "determineRepositoryForWebhook")
+				.mockResolvedValue({
+					type: "needs_selection",
+					workspaceRepos: [mockRepository, secondRepository],
+				});
+			const elicitSpy = vi
+				.spyOn(repositoryRouter, "elicitUserRepositorySelection")
+				.mockResolvedValue(undefined);
+
+			const webhook = createPromptedWebhook();
+
+			// Act
+			await (edgeWorker as any).handleWebhook(webhook, [
+				mockRepository,
+				secondRepository,
+			]);
+
+			// Assert: Should keep the session unresolved and ask the user to choose
+			expect(determineRepoSpy).toHaveBeenCalled();
+			expect(elicitSpy).toHaveBeenCalledWith(webhook, [
+				mockRepository,
+				secondRepository,
+			]);
+			expect(
+				mockAgentSessionManager.createLinearAgentSession,
+			).not.toHaveBeenCalled();
+		});
+	});
+
+	// =========================================================================
+	// 1.5. PROMPTED WEBHOOK — Invalid repository selection response
+	// =========================================================================
+	describe("Prompted webhook with invalid repository selection response", () => {
+		it("should keep the selection pending and post visible feedback instead of silently choosing a repository", async () => {
+			const repositoryRouter = (edgeWorker as any).repositoryRouter;
+			(repositoryRouter as any).pendingSelections.set(
+				"agent-session-legacy-123",
+				{
+					issueId: "issue-123",
+					workspaceRepos: [mockRepository],
+				},
+			);
+
+			const initializeAgentRunnerSpy = vi
+				.spyOn(edgeWorker as any, "initializeAgentRunner")
+				.mockResolvedValue(undefined);
+
+			const webhook = createPromptedWebhook({
+				agentActivity: {
+					content: {
+						body: "Unknown Repository",
+					},
+				},
+			});
+
+			// Act
+			await (edgeWorker as any).handleWebhook(webhook, [mockRepository]);
+
+			// Assert: Invalid responses should stay unresolved and provide feedback
+			expect(
+				repositoryRouter.hasPendingSelection("agent-session-legacy-123"),
+			).toBe(true);
+			expect(initializeAgentRunnerSpy).not.toHaveBeenCalled();
+			expect(
+				(edgeWorker as any).issueTrackers.get("test-repo").createAgentActivity,
+			).toHaveBeenCalledWith(
+				expect.objectContaining({
+					agentSessionId: "agent-session-legacy-123",
+					content: {
+						type: "error",
+						body: expect.stringContaining(
+							"couldn't match your repository selection",
+						),
+					},
+				}),
+			);
+		});
+
+		it("should initialize the selected repository with user-selected association provenance", async () => {
+			const repositoryRouter = (edgeWorker as any).repositoryRouter;
+			(repositoryRouter as any).pendingSelections.set(
+				"agent-session-legacy-123",
+				{
+					issueId: "issue-123",
+					workspaceRepos: [mockRepository],
+				},
+			);
+
+			const initializeAgentRunnerSpy = vi
+				.spyOn(edgeWorker as any, "initializeAgentRunner")
+				.mockResolvedValue(undefined);
+
+			const webhook = createPromptedWebhook({
+				agentActivity: {
+					content: {
+						body: "Please use repository: Test Repo",
+					},
+				},
+			});
+
+			await (edgeWorker as any).handleWebhook(webhook, [mockRepository]);
+
+			expect(initializeAgentRunnerSpy).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "agent-session-legacy-123" }),
+				mockRepository,
+				undefined,
+				"Please continue working on this",
+				"user-selected",
+			);
+			expect(repositoryRouter.getIssueRepositoryCache().get("issue-123")).toBe(
+				"test-repo",
+			);
+		});
+
+		it("should accept natural-language wrapper phrases around a valid repository name", async () => {
+			const repositoryRouter = (edgeWorker as any).repositoryRouter;
+			const secondRepository: RepositoryConfig = {
+				...mockRepository,
+				id: "test-repo-2",
+				name: "Backend Repository",
+				repositoryPath: "/test/repo-2",
+				githubUrl: "https://github.com/test-org/backend-repository",
+			};
+
+			const webhook = createPromptedWebhook();
+			await repositoryRouter.elicitUserRepositorySelection(webhook, [
+				mockRepository,
+				secondRepository,
+			]);
+
+			const selectedRepository =
+				await repositoryRouter.selectRepositoryFromResponse(
+					"agent-session-legacy-123",
+					"Please use Backend Repository for this issue.",
+				);
+
+			expect(selectedRepository).toBe(secondRepository);
+			expect(
+				repositoryRouter.hasPendingSelection("agent-session-legacy-123"),
+			).toBe(false);
+		});
 	});
 
 	// =========================================================================
 	// 2. STOP SIGNAL — Missing session from in-memory managers
 	// =========================================================================
 	describe("Stop signal with missing session", () => {
+		it("should route stop-signal recovery through the associated repository from the global registry", async () => {
+			const secondRepository: RepositoryConfig = {
+				...mockRepository,
+				id: "test-repo-2",
+				name: "Test Repo 2",
+				repositoryPath: "/test/repo-2",
+			};
+
+			const secondManager = {
+				...mockAgentSessionManager,
+				createResponseActivity: vi.fn().mockResolvedValue(undefined),
+				requestSessionStop: vi.fn(),
+			};
+
+			(edgeWorker as any).repositories.set(
+				secondRepository.id,
+				secondRepository,
+			);
+			(edgeWorker as any).agentSessionManagers.set(
+				secondRepository.id,
+				secondManager,
+			);
+			(edgeWorker as any).issueTrackers.set(secondRepository.id, {
+				createAgentActivity: vi.fn().mockResolvedValue(undefined),
+				fetchIssue: vi.fn().mockResolvedValue({
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					description: "Test description",
+					branchName: "test-123",
+					team: {
+						id: "test-workspace",
+						key: "TEST",
+						name: "Test Team",
+					},
+				}),
+				fetchComment: vi.fn().mockResolvedValue(null),
+			});
+
+			(edgeWorker as any).globalSessionRegistry.createSession({
+				id: "agent-session-legacy-456",
+				externalSessionId: "agent-session-legacy-456",
+				type: "comment-thread",
+				status: "active",
+				context: "comment-thread",
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-123",
+					issueIdentifier: "TEST-123",
+				},
+				issueId: "issue-123",
+				issue: {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					branchName: "test-123",
+				},
+				repositoryAssociations: [
+					{
+						repositoryId: secondRepository.id,
+						associationOrigin: "restored",
+						status: "selected",
+					},
+				],
+				workspace: {
+					path: "/test/workspaces/TEST-123",
+					isGitWorktree: false,
+				},
+			});
+
+			const webhook = createStopSignalWebhook();
+
+			await (edgeWorker as any).handleWebhook(webhook, [
+				mockRepository,
+				secondRepository,
+			]);
+
+			expect(secondManager.createResponseActivity).toHaveBeenCalledWith(
+				"agent-session-legacy-456",
+				expect.stringContaining("I've stopped working on Test Issue"),
+			);
+			expect(
+				mockAgentSessionManager.createResponseActivity,
+			).not.toHaveBeenCalled();
+		});
+
 		it("should post a response activity instead of returning silently", async () => {
 			// Arrange: No sessions exist in any manager (simulates post-restart)
 			mockAgentSessionManager.getSession.mockReturnValue(null);
@@ -431,6 +681,102 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 		});
 	});
 
+	describe("Persisted runtime state restoration", () => {
+		it("should serialize globally tracked zero-association sessions without requiring repository-owned managers", () => {
+			(edgeWorker as any).globalSessionRegistry.createSession({
+				id: "unassociated-session",
+				externalSessionId: "unassociated-session",
+				type: "comment-thread",
+				status: "active",
+				context: "comment-thread",
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-999",
+					issueIdentifier: "TEST-999",
+				},
+				issueId: "issue-999",
+				issue: {
+					id: "issue-999",
+					identifier: "TEST-999",
+					title: "Unassociated Test Issue",
+					branchName: "test-999",
+				},
+				repositoryAssociations: [],
+				workspace: {
+					path: "/test/workspaces/TEST-999",
+					isGitWorktree: false,
+				},
+			});
+
+			const state = (edgeWorker as any).serializeMappings();
+
+			expect(state.agentSessionsById).toHaveProperty("unassociated-session");
+			expect(
+				state.agentSessionsById["unassociated-session"].repositoryAssociations,
+			).toEqual([]);
+		});
+
+		it("should restore zero-association sessions into the global registry without repo buckets", () => {
+			const state = {
+				agentSessionsById: {
+					"unassociated-session": {
+						id: "unassociated-session",
+						externalSessionId: "unassociated-session",
+						type: "comment-thread",
+						status: "active",
+						context: "comment-thread",
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+						issueContext: {
+							trackerId: "linear",
+							issueId: "issue-999",
+							issueIdentifier: "TEST-999",
+						},
+						issueId: "issue-999",
+						issue: {
+							id: "issue-999",
+							identifier: "TEST-999",
+							title: "Unassociated Test Issue",
+							branchName: "test-999",
+						},
+						repositoryAssociations: [],
+						workspace: {
+							path: "/test/workspaces/TEST-999",
+							isGitWorktree: false,
+						},
+					},
+				},
+				agentSessionEntriesById: {
+					"unassociated-session": [
+						{
+							type: "user",
+							content: "hello",
+							metadata: { timestamp: Date.now() },
+						},
+					],
+				},
+				childToParentAgentSession: {},
+				issueRepositoryAssociationsByIssueId: {},
+			};
+
+			(edgeWorker as any).restoreMappings(state);
+
+			const restoredSession = (
+				edgeWorker as any
+			).globalSessionRegistry.getSession("unassociated-session");
+			expect(restoredSession).toMatchObject({ id: "unassociated-session" });
+			expect(restoredSession?.repositoryAssociations).toEqual([]);
+			expect(
+				(edgeWorker as any).globalSessionRegistry.getEntries(
+					"unassociated-session",
+				),
+			).toHaveLength(1);
+			expect(mockAgentSessionManager.restoreState).toHaveBeenCalledWith({}, {});
+		});
+	});
+
 	// =========================================================================
 	// 3. UNASSIGNMENT — Missing repository cache mapping
 	// =========================================================================
@@ -450,6 +796,38 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 					isRunning: vi.fn().mockReturnValue(true),
 				},
 			};
+			(edgeWorker as any).globalSessionRegistry.createSession({
+				id: "agent-session-legacy-789",
+				externalSessionId: "agent-session-legacy-789",
+				type: "comment-thread",
+				status: "active",
+				context: "comment-thread",
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-123",
+					issueIdentifier: "TEST-123",
+				},
+				issueId: "issue-123",
+				issue: {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					branchName: "test-123",
+				},
+				repositoryAssociations: [
+					{
+						repositoryId: mockRepository.id,
+						associationOrigin: "restored",
+						status: "selected",
+					},
+				],
+				workspace: {
+					path: "/test/workspaces/TEST-123",
+					isGitWorktree: false,
+				},
+			});
 			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
 				mockSession,
 			]);
@@ -476,6 +854,38 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			cache.clear();
 
 			const webhook = createIssueUpdateWebhook();
+			(edgeWorker as any).globalSessionRegistry.createSession({
+				id: "agent-session-issue-update",
+				externalSessionId: "agent-session-issue-update",
+				type: "comment-thread",
+				status: "active",
+				context: "comment-thread",
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				issueContext: {
+					trackerId: "linear",
+					issueId: "issue-123",
+					issueIdentifier: "TEST-123",
+				},
+				issueId: "issue-123",
+				issue: {
+					id: "issue-123",
+					identifier: "TEST-123",
+					title: "Test Issue",
+					branchName: "test-123",
+				},
+				repositoryAssociations: [
+					{
+						repositoryId: mockRepository.id,
+						associationOrigin: "restored",
+						status: "selected",
+					},
+				],
+				workspace: {
+					path: "/test/workspaces/TEST-123",
+					isGitWorktree: false,
+				},
+			});
 
 			// Spy on the router
 			const determineRepoSpy = vi.spyOn(
@@ -487,9 +897,8 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			await (edgeWorker as any).handleWebhook(webhook, [mockRepository]);
 
 			// Assert: Should attempt fallback resolution
-			// Currently FAILS — handleIssueContentUpdate returns early at line 2212
-			// For issue updates, at minimum the code should search all managers
-			// for sessions matching the issue before giving up
+			// The runtime should recover repository context from explicit associations
+			// before deciding whether rerouting is necessary.
 			const searchedManagers =
 				mockAgentSessionManager.getSessionsByIssueId.mock.calls.length > 0 ||
 				determineRepoSpy.mock.calls.length > 0;

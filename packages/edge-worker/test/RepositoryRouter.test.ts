@@ -443,6 +443,36 @@ describe("RepositoryRouter", () => {
 				// Then: Should proceed to team-based routing
 				expectRouting(result).shouldSelectRepositoryVia(repo, "team-based");
 			});
+
+			it("should request user selection when multiple repositories have active sessions for the same issue", async () => {
+				// Given: Two repositories both report active sessions for the same issue
+				const repo1 = env
+					.repository("repo-1", "Repo 1")
+					.inWorkspace("default-workspace")
+					.build();
+				const repo2 = env
+					.repository("repo-2", "Repo 2")
+					.inWorkspace("default-workspace")
+					.build();
+
+				env.issueHasActiveSessionIn("issue-1", "repo-1");
+				env.issueHasActiveSessionIn("issue-1", "repo-2");
+
+				const webhook = env
+					.webhook()
+					.inWorkspace("default-workspace")
+					.forIssue("issue-1", "TEST-123")
+					.build();
+
+				// When: Determining repository
+				const result = await env.router.determineRepositoryForWebhook(webhook, [
+					repo1,
+					repo2,
+				]);
+
+				// Then: The ambiguity should stay explicit until the user chooses
+				expectRouting(result).shouldNeedSelectionWithRepos(2);
+			});
 		});
 	});
 
@@ -1190,7 +1220,7 @@ describe("RepositoryRouter", () => {
 
 	describe("Workspace Fallback & Edge Cases", () => {
 		describe("when single repository exists", () => {
-			it("should select single repository as workspace fallback when no routing rules match", async () => {
+			it("should request user selection instead of silently choosing the only repository when no routing rules match", async () => {
 				// Given: Single repository with specific team configuration
 				const repo = env
 					.repository("repo-1", "Only Repo")
@@ -1208,11 +1238,8 @@ describe("RepositoryRouter", () => {
 					repo,
 				]);
 
-				// Then: Should select single repo as fallback
-				expectRouting(result).shouldSelectRepositoryVia(
-					repo,
-					"workspace-fallback",
-				);
+				// Then: The unmatched routing state should remain explicit
+				expectRouting(result).shouldNeedSelectionWithRepos(1);
 			});
 		});
 
@@ -1261,7 +1288,7 @@ describe("RepositoryRouter", () => {
 				expectRouting(result).shouldSelectNothing();
 			});
 
-			it("should return workspace fallback when no workspace ID in webhook", async () => {
+			it("should request user selection when no workspace ID in webhook", async () => {
 				// Given: Repository but no workspace ID
 				const repo = env.repository("repo-1", "Repo").build();
 
@@ -1273,11 +1300,8 @@ describe("RepositoryRouter", () => {
 					repo,
 				]);
 
-				// Then: Should fallback to first repo
-				expectRouting(result).shouldSelectRepositoryVia(
-					repo,
-					"workspace-fallback",
-				);
+				// Then: The router should require an explicit selection instead of guessing
+				expectRouting(result).shouldNeedSelectionWithRepos(1);
 			});
 
 			it("should return none when repositories exist but in different workspace", async () => {
@@ -1470,7 +1494,43 @@ describe("RepositoryRouter", () => {
 				expect(result).toBe(repo2);
 			});
 
-			it("should fallback to first repository when selection not found", async () => {
+			it("should find and return repository when the response wraps the repository name in natural language", async () => {
+				const repo1 = env.repository("repo-1", "Frontend Repo").build();
+				const repo2 = env.repository("repo-2", "Backend Repo").build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"Please use repository: Backend Repo",
+				);
+
+				expect(result).toBe(repo2);
+			});
+
+			it("should find and return repository when the response wraps the repository identifier in natural language", async () => {
+				const repo1 = env
+					.repository("repo-1", "Frontend Repo")
+					.withGithubUrl("https://github.com/org/frontend")
+					.build();
+				const repo2 = env
+					.repository("repo-2", "Backend Repo")
+					.withGithubUrl("https://github.com/org/backend")
+					.build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"Let's use org/backend for this issue.",
+				);
+
+				expect(result).toBe(repo2);
+			});
+
+			it("should return null and keep the selection pending when selection is invalid", async () => {
 				// Given: User selecting non-existent repository
 				const repo1 = env.repository("repo-1", "Repo 1").build();
 				const repo2 = env.repository("repo-2", "Repo 2").build();
@@ -1484,8 +1544,25 @@ describe("RepositoryRouter", () => {
 					"Non-existent Repo",
 				);
 
-				// Then: Should fallback to first repository
-				expect(result).toBe(repo1);
+				// Then: Should not silently pick a repository, and the user can retry
+				expect(result).toBeNull();
+				expect(env.router.hasPendingSelection("session-1")).toBe(true);
+			});
+
+			it("should return null and keep the selection pending when wrapper text mentions multiple repository options", async () => {
+				const repo1 = env.repository("repo-1", "Frontend Repo").build();
+				const repo2 = env.repository("repo-2", "Backend Repo").build();
+
+				const webhook = env.webhook().withSession("session-1").build();
+				await env.router.elicitUserRepositorySelection(webhook, [repo1, repo2]);
+
+				const result = await env.router.selectRepositoryFromResponse(
+					"session-1",
+					"Either Frontend Repo or Backend Repo should work",
+				);
+
+				expect(result).toBeNull();
+				expect(env.router.hasPendingSelection("session-1")).toBe(true);
 			});
 
 			it("should return null when no pending selection exists for session", async () => {

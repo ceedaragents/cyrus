@@ -25,4 +25,7 @@ else
     echo "CYRUS_SERVER_PORT=$CYRUS_SERVER_PORT" >> .env
 fi
 
-cp /Users/cyrusops/code/cyrus/CLAUDE.local.md CLAUDE.local.md
+LOCAL_CLAUDE_PROMPT="/Users/cyrusops/code/cyrus/CLAUDE.local.md"
+if [ -f "$LOCAL_CLAUDE_PROMPT" ]; then
+    cp "$LOCAL_CLAUDE_PROMPT" CLAUDE.local.md
+fi

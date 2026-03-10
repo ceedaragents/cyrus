@@ -39,6 +39,32 @@ export interface Workspace {
 	historyPath?: string;
 }
 
+export type CyrusAgentSessionRepositoryAssociationOrigin =
+	| "routed"
+	| "user-selected"
+	| "restored"
+	| "legacy-migration"
+	| "manual";
+
+export type CyrusAgentSessionRepositoryAssociationStatus =
+	| "candidate"
+	| "selected"
+	| "active"
+	| "complete";
+
+export interface CyrusAgentSessionRepositoryAssociation {
+	/** Stable repository identity for this session association. */
+	repositoryId: string;
+	/** Optional Linear workspace identifier for repository-scoped routing context. */
+	linearWorkspaceId?: string;
+	/** How this repository became associated with the session. */
+	associationOrigin: CyrusAgentSessionRepositoryAssociationOrigin;
+	/** Current state of this repository association within the session lifecycle. */
+	status: CyrusAgentSessionRepositoryAssociationStatus;
+	/** Optional execution location scoped to this repository association. */
+	executionWorkspace?: Workspace;
+}
+
 export interface CyrusAgentSession {
 	/** Unique session identifier (was linearAgentActivitySessionId in v2.0) */
 	id: string;
@@ -58,6 +84,16 @@ export interface CyrusAgentSession {
 	issueId?: string;
 	/** Minimal issue data - optional for standalone sessions */
 	issue?: IssueMinimal;
+	/**
+	 * Explicit repository participation for this session.
+	 * This is the repository-identity source of truth when association data is available.
+	 * Use an empty array to represent a session with no repository association.
+	 */
+	repositoryAssociations?: CyrusAgentSessionRepositoryAssociation[];
+	/**
+	 * Last known execution location for this session.
+	 * This is execution-location metadata only and must not be used to infer repository identity.
+	 */
 	workspace: Workspace;
 	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)

@@ -1,0 +1,55 @@
+{
+	"milestone": "audit-and-target-model",
+	"surface": "repository-audit-artifact",
+	"summary": "Validated 4 audit-artifact assertions against the tracked repository file .factory/library/repository-association-audit.md; all 4 assertions passed.",
+	"toolsUsed": ["Read", "Grep", "LS", "Execute"],
+	"frictions": [],
+	"blockers": [],
+	"assertionResults": [
+		{
+			"id": "VAL-AUDIT-001",
+			"status": "pass",
+			"reason": "The committed audit artifact includes both a high-level assumption-category map and detailed file/path-level findings describing remaining single-primary-repository assumptions.",
+			"evidence": [
+				"Artifact exists at .factory/library/repository-association-audit.md and is tracked in git (`git ls-files --stage` -> `100644 a3d49cb1e79a7645367954840d58ab09fe92e0af 0 .factory/library/repository-association-audit.md`).",
+				"Validation coverage section explicitly maps VAL-AUDIT-001 to 'high-level categories and detailed file/path findings below' (repository-association-audit.md:5-10).",
+				"High-level assumption categories are present with representative paths (repository-association-audit.md:18-27).",
+				"Detailed file-level findings enumerate concrete file/path findings such as PersistenceManager, RepositoryRouter, PromptBuilder, EdgeWorker, F1 assets, and tests (repository-association-audit.md:29-57)."
+			]
+		},
+		{
+			"id": "VAL-AUDIT-002",
+			"status": "pass",
+			"reason": "The audit artifact contains an explicit full-repository checklist with summary counts, exclusion rationale, and per-directory coverage spanning source, tests, prompts, F1 test drives, and user-facing docs/examples.",
+			"evidence": [
+				"Audit method states 414 in-scope files were reviewed and defines checklist classifications plus excluded-path rationale (repository-association-audit.md:12-16, 134-146).",
+				"Checklist summary reports 15 direct assumption sites, 14 indirect coupling surfaces, and 385 reviewed unaffected files across 414 in-scope files (repository-association-audit.md:134-136).",
+				"Excluded-path rationale explicitly covers symlink, VCS, vendor, generated, cache, and coverage paths (repository-association-audit.md:138-146).",
+				"Checklist entries show coverage for user-facing docs/examples and source/tests/prompts/F1 assets, including apps/cli/README.md, apps/f1/test-drives/2026-01-13-multi-repo-orchestration.md, docs/SELF_HOSTING.md, packages/edge-worker/examples/cli-integration.ts, packages/edge-worker/prompts/orchestrator.md, and packages/edge-worker/test/RepositoryRouter.test.ts (repository-association-audit.md:194-195, 249, 269, 406, 415, 498)."
+			]
+		},
+		{
+			"id": "VAL-AUDIT-003",
+			"status": "pass",
+			"reason": "The artifact defines the normalized 0/1/N repository-association model, identifies repositoryAssociations on CyrusAgentSession as the steady-state source of truth, and documents the persisted ownership and migration boundary.",
+			"evidence": [
+				"Validation coverage maps VAL-AUDIT-003 to the target-model and steady-state source-of-truth section (repository-association-audit.md:5-10).",
+				"Target model section states that the steady-state source of truth is an explicit repository-association collection stored on each CyrusAgentSession in a session-keyed normalized store (repository-association-audit.md:67-71).",
+				"Conceptual model defines RepositoryAssociation, RepositorySelectionState, and CyrusAgentSession.repositoryAssociations with explicit zero/one/many association semantics (repository-association-audit.md:73-114).",
+				"Persisted ownership boundary requires session-keyed containers and says runtime indexes/repo-scoped APIs must be derived from the session association set rather than treated as authoritative identity (repository-association-audit.md:116-120)."
+			]
+		},
+		{
+			"id": "VAL-AUDIT-004",
+			"status": "pass",
+			"reason": "The artifact explicitly demotes legacy repo-first containers and fallback conventions to migration-only inputs and states they are not authoritative steady-state runtime state after normalization.",
+			"evidence": [
+				"Migration-only boundary section lists repo-keyed agentSessions, agentSessionEntries, singular issueRepositoryCache mappings, repo-owned agentSessionManagers, and fallback-to-first-repository rules as migration-only inputs (repository-association-audit.md:122-130).",
+				"Migration rule says legacy shapes are loaded once at the persistence boundary, converted to normalized CyrusAgentSession records, and not consulted by steady-state runtime branches afterward (repository-association-audit.md:132).",
+				"High-level categories and detailed findings identify the legacy repo-first containers/fallbacks that are to be demoted, matching the assertion's repo-keyed buckets, singular caches, and primary/current conventions (repository-association-audit.md:18-27, 29-57).",
+				"Git history confirms the artifact is committed (`git log --oneline -- .factory/library/repository-association-audit.md` -> `49cad3e2 Document repository-association audit and target model`)."
+			]
+		}
+	],
+	"testedAt": "2026-03-08T00:52:32Z"
+}

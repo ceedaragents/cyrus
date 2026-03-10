@@ -131,17 +131,6 @@ export class RepositoryRouter {
 		webhook: AgentSessionCreatedWebhook | AgentSessionPromptedWebhook,
 		repos: RepositoryConfig[],
 	): Promise<RepositoryRoutingResult> {
-		const workspaceId = webhook.organizationId;
-		if (!workspaceId) {
-			return repos[0]
-				? {
-						type: "selected",
-						repository: repos[0],
-						routingMethod: "workspace-fallback",
-					}
-				: { type: "none" };
-		}
-
 		// Extract issue information
 		const { issueId, teamKey, issueIdentifier } =
 			this.extractIssueInfo(webhook);
@@ -149,8 +138,13 @@ export class RepositoryRouter {
 		// Priority 0: Check for existing active sessions
 		// TODO: Remove this priority check - existing session detection should not be a routing method
 		if (issueId) {
-			for (const repo of repos) {
-				if (this.deps.hasActiveSession(issueId, repo.id)) {
+			const reposWithActiveSessions = repos.filter((repo) =>
+				this.deps.hasActiveSession(issueId, repo.id),
+			);
+
+			if (reposWithActiveSessions.length === 1) {
+				const [repo] = reposWithActiveSessions;
+				if (repo) {
 					this.logger.info(
 						`Repository selected: ${repo.name} (existing active session)`,
 					);
@@ -161,6 +155,28 @@ export class RepositoryRouter {
 					};
 				}
 			}
+
+			if (reposWithActiveSessions.length > 1) {
+				this.logger.info(
+					`Multiple repositories (${reposWithActiveSessions.length}) have active sessions for issue ${issueId} - requesting user selection`,
+				);
+				return {
+					type: "needs_selection",
+					workspaceRepos: reposWithActiveSessions,
+				};
+			}
+		}
+
+		const workspaceId = webhook.organizationId;
+		if (!workspaceId) {
+			if (repos.length > 0) {
+				this.logger.info(
+					`Webhook missing workspace context - requesting explicit repository selection from ${repos.length} configured repositories`,
+				);
+				return { type: "needs_selection", workspaceRepos: repos };
+			}
+
+			return { type: "none" };
 		}
 
 		// Filter repos by workspace
@@ -279,25 +295,12 @@ export class RepositoryRouter {
 			};
 		}
 
-		// Multiple repositories with no routing match - request user selection
-		if (workspaceRepos.length > 1) {
+		// No routing rule matched. Keep repository association explicit until the user confirms.
+		if (workspaceRepos.length > 0) {
 			this.logger.info(
-				`Multiple repositories (${workspaceRepos.length}) found with no routing match - requesting user selection`,
+				`No unique repository matched for workspace ${workspaceId} - requesting user selection from ${workspaceRepos.length} candidate repositories`,
 			);
 			return { type: "needs_selection", workspaceRepos };
-		}
-
-		// Final fallback to first workspace repo
-		const fallbackRepo = workspaceRepos[0];
-		if (fallbackRepo) {
-			this.logger.info(
-				`Repository selected: ${fallbackRepo.name} (workspace fallback)`,
-			);
-			return {
-				type: "selected",
-				repository: fallbackRepo,
-				routingMethod: "workspace-fallback",
-			};
 		}
 
 		return { type: "none" };
@@ -488,7 +491,7 @@ export class RepositoryRouter {
 	 * Elicit user repository selection - post elicitation to Linear
 	 */
 	async elicitUserRepositorySelection(
-		webhook: AgentSessionCreatedWebhook,
+		webhook: AgentSessionCreatedWebhook | AgentSessionPromptedWebhook,
 		workspaceRepos: RepositoryConfig[],
 	): Promise<void> {
 		const { agentSession } = webhook;
@@ -608,34 +611,154 @@ export class RepositoryRouter {
 			return null;
 		}
 
-		// Remove from pending map
-		this.pendingSelections.delete(agentSessionId);
-
-		// Find selected repository by GitHub URL or name
-		const selectedRepo = pendingData.workspaceRepos.find(
-			(repo) =>
-				repo.githubUrl === selectedRepositoryName ||
-				repo.name === selectedRepositoryName,
+		const selectedRepo = this.matchRepositoryFromSelectionResponse(
+			selectedRepositoryName,
+			pendingData.workspaceRepos,
 		);
 
-		// Fallback to first repository if not found
-		const repository = selectedRepo || pendingData.workspaceRepos[0];
-		if (!repository) {
-			this.logger.error(
-				`No repository found for selection: ${selectedRepositoryName}`,
+		if (!selectedRepo) {
+			this.logger.info(
+				`Repository "${selectedRepositoryName}" did not match any pending selection option for agent session ${agentSessionId}`,
 			);
 			return null;
 		}
 
-		if (!selectedRepo) {
-			this.logger.info(
-				`Repository "${selectedRepositoryName}" not found, falling back to ${repository.name}`,
-			);
-		} else {
-			this.logger.info(`User selected repository: ${repository.name}`);
+		// Remove from pending map only after a valid explicit selection
+		this.pendingSelections.delete(agentSessionId);
+
+		this.logger.info(`User selected repository: ${selectedRepo.name}`);
+
+		return selectedRepo;
+	}
+
+	private matchRepositoryFromSelectionResponse(
+		selectionResponse: string,
+		repositories: RepositoryConfig[],
+	): RepositoryConfig | null {
+		const normalizedResponse =
+			this.normalizeRepositorySelectionValue(selectionResponse);
+
+		const exactMatches = repositories.filter((repository) =>
+			this.getRepositorySelectionAliases(repository).some(
+				(alias) =>
+					this.normalizeRepositorySelectionValue(alias) === normalizedResponse,
+			),
+		);
+
+		if (exactMatches.length === 1) {
+			return exactMatches[0] ?? null;
 		}
 
-		return repository;
+		if (exactMatches.length > 1) {
+			this.logger.info(
+				`Repository selection response "${selectionResponse}" matched multiple repositories exactly; keeping selection pending`,
+			);
+			return null;
+		}
+
+		const wrappedMatches = repositories
+			.map((repository) => {
+				const bestAlias = this.getRepositorySelectionAliases(repository)
+					.map((alias) => this.normalizeRepositorySelectionValue(alias))
+					.filter(Boolean)
+					.reduce(
+						(bestMatch, alias) => {
+							const startIndex = normalizedResponse.indexOf(alias);
+							if (startIndex === -1) {
+								return bestMatch;
+							}
+
+							if (!bestMatch || alias.length > bestMatch.alias.length) {
+								return { alias, startIndex };
+							}
+
+							return bestMatch;
+						},
+						undefined as { alias: string; startIndex: number } | undefined,
+					);
+
+				return {
+					repository,
+					bestAlias,
+				};
+			})
+			.filter((match) => match.bestAlias)
+			.sort(
+				(left, right) =>
+					(right.bestAlias?.alias.length ?? 0) -
+					(left.bestAlias?.alias.length ?? 0),
+			);
+
+		const bestMatch = wrappedMatches[0];
+		if (!bestMatch) {
+			return null;
+		}
+
+		const bestMatchStart = bestMatch.bestAlias?.startIndex ?? 0;
+		const bestMatchEnd =
+			bestMatchStart + (bestMatch.bestAlias?.alias.length ?? 0);
+		const hasSeparateMatch = wrappedMatches.slice(1).some((match) => {
+			const matchStart = match.bestAlias?.startIndex ?? -1;
+			const matchEnd = matchStart + (match.bestAlias?.alias.length ?? 0);
+			return matchStart < bestMatchStart || matchEnd > bestMatchEnd;
+		});
+
+		if (hasSeparateMatch) {
+			this.logger.info(
+				`Repository selection response "${selectionResponse}" matched multiple repositories; keeping selection pending`,
+			);
+			return null;
+		}
+
+		return bestMatch.repository;
+	}
+
+	private getRepositorySelectionAliases(
+		repository: RepositoryConfig,
+	): string[] {
+		const aliases = new Set<string>();
+
+		const addAlias = (value?: string) => {
+			if (!value) {
+				return;
+			}
+
+			const trimmedValue = value.trim();
+			if (!trimmedValue) {
+				return;
+			}
+
+			aliases.add(trimmedValue);
+		};
+
+		addAlias(repository.name);
+		addAlias(repository.id);
+		addAlias(repository.githubUrl);
+
+		if (repository.githubUrl) {
+			const repositoryPath = repository.githubUrl
+				.replace(/^https?:\/\/github\.com\//i, "")
+				.replace(/\.git$/i, "")
+				.replace(/\/$/, "");
+			addAlias(repositoryPath);
+
+			const repositorySlug = repositoryPath.split("/").pop();
+			addAlias(repositorySlug);
+		}
+
+		return Array.from(aliases);
+	}
+
+	private normalizeRepositorySelectionValue(value: string): string {
+		return value
+			.trim()
+			.toLowerCase()
+			.replace(/^['"`]+|['"`]+$/g, "")
+			.replace(/^https?:\/\/(?:www\.)?github\.com\//i, "")
+			.replace(/\.git$/i, "")
+			.replace(/[^a-z0-9]+/g, " ")
+			.replace(/\s+/g, " ")
+			.trim();
 	}
 
 	/**

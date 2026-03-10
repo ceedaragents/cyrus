@@ -209,6 +209,29 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		};
 	}
 
+	private getSettingSources(): Array<"user" | "project" | "local"> {
+		const settingSources: Array<"user" | "project" | "local"> = [
+			"user",
+			"project",
+		];
+
+		const workingDirectory = this.config.workingDirectory;
+		if (!workingDirectory) {
+			return settingSources;
+		}
+
+		const hasOptionalLocalPromptFiles = [
+			join(workingDirectory, "CLAUDE.local.md"),
+			join(workingDirectory, ".claude", "settings.local.json"),
+		].some((filePath) => existsSync(filePath));
+
+		if (hasOptionalLocalPromptFiles) {
+			settingSources.push("local");
+		}
+
+		return settingSources;
+	}
+
 	/**
 	 * Start a new Claude session with string prompt (legacy mode)
 	 */
@@ -423,7 +446,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 					// load file based settings, to maintain more backwards compatibility,
 					// particularly with CLAUDE.md files, settings files, and custom slash commands,
 					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
-					settingSources: ["user", "project", "local"],
+					settingSources: this.getSettingSources(),
 					env: {
 						...process.env,
 						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",

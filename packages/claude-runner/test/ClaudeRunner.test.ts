@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the Claude SDK
@@ -7,7 +8,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 // Mock file system operations
-vi.mock("fs", () => ({
+vi.mock("node:fs", () => ({
 	mkdirSync: vi.fn(),
 	existsSync: vi.fn(() => false),
 	readFileSync: vi.fn(() => ""),
@@ -42,6 +43,7 @@ describe("ClaudeRunner", () => {
 
 		// Set up mock query function
 		mockQuery = vi.mocked(query);
+		vi.mocked(existsSync).mockImplementation(() => false);
 
 		// Create runner instance
 		runner = new ClaudeRunner(defaultConfig);
@@ -120,22 +122,24 @@ describe("ClaudeRunner", () => {
 			expect(runner.isRunning()).toBe(false); // Should be false after completion
 			expect(sessionInfo.sessionId).toBeDefined();
 			expect(sessionInfo.startedAt).toBeInstanceOf(Date);
-			expect(mockQuery).toHaveBeenCalledWith({
-				prompt: "Hello Claude",
-				options: {
-					model: "opus",
-					fallbackModel: "sonnet",
-					abortController: expect.any(AbortController),
-					cwd: "/tmp/test",
-					systemPrompt: { type: "preset", preset: "claude_code" },
-					settingSources: ["user", "project", "local"],
-					env: expect.objectContaining({
-						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
-						CLAUDE_CODE_ENABLE_TASKS: "true",
-						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+			expect(mockQuery).toHaveBeenCalledWith(
+				expect.objectContaining({
+					prompt: "Hello Claude",
+					options: expect.objectContaining({
+						model: "opus",
+						fallbackModel: "sonnet",
+						abortController: expect.any(AbortController),
+						cwd: "/tmp/test",
+						systemPrompt: { type: "preset", preset: "claude_code" },
+						settingSources: ["user", "project"],
+						env: expect.objectContaining({
+							CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
+							CLAUDE_CODE_ENABLE_TASKS: "true",
+							CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+						}),
 					}),
-				},
-			});
+				}),
+			);
 		});
 
 		it("should handle workspace configuration properly", async () => {
@@ -155,22 +159,24 @@ describe("ClaudeRunner", () => {
 
 			await runnerWithWorkspace.start("test");
 
-			expect(mockQuery).toHaveBeenCalledWith({
-				prompt: "test",
-				options: {
-					model: "opus",
-					fallbackModel: "sonnet",
-					abortController: expect.any(AbortController),
-					cwd: "/tmp/test",
-					systemPrompt: { type: "preset", preset: "claude_code" },
-					settingSources: ["user", "project", "local"],
-					env: expect.objectContaining({
-						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
-						CLAUDE_CODE_ENABLE_TASKS: "true",
-						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+			expect(mockQuery).toHaveBeenCalledWith(
+				expect.objectContaining({
+					prompt: "test",
+					options: expect.objectContaining({
+						model: "opus",
+						fallbackModel: "sonnet",
+						abortController: expect.any(AbortController),
+						cwd: "/tmp/test",
+						systemPrompt: { type: "preset", preset: "claude_code" },
+						settingSources: ["user", "project"],
+						env: expect.objectContaining({
+							CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
+							CLAUDE_CODE_ENABLE_TASKS: "true",
+							CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+						}),
 					}),
-				},
-			});
+				}),
+			);
 		});
 
 		it("should use system prompt if provided", async () => {
@@ -190,22 +196,49 @@ describe("ClaudeRunner", () => {
 
 			await runnerWithSystemPrompt.start("test");
 
-			expect(mockQuery).toHaveBeenCalledWith({
-				prompt: "test",
-				options: {
-					model: "opus",
-					fallbackModel: "sonnet",
-					abortController: expect.any(AbortController),
-					cwd: "/tmp/test",
-					systemPrompt: "You are a helpful assistant",
-					settingSources: ["user", "project", "local"],
-					env: expect.objectContaining({
-						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
-						CLAUDE_CODE_ENABLE_TASKS: "true",
-						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+			expect(mockQuery).toHaveBeenCalledWith(
+				expect.objectContaining({
+					prompt: "test",
+					options: expect.objectContaining({
+						model: "opus",
+						fallbackModel: "sonnet",
+						abortController: expect.any(AbortController),
+						cwd: "/tmp/test",
+						systemPrompt: "You are a helpful assistant",
+						settingSources: ["user", "project"],
+						env: expect.objectContaining({
+							CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
+							CLAUDE_CODE_ENABLE_TASKS: "true",
+							CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+						}),
 					}),
-				},
+				}),
+			);
+		});
+
+		it("should include local setting sources when optional local prompt files exist", async () => {
+			vi.mocked(existsSync).mockImplementation(
+				(path) => path === "/tmp/test/CLAUDE.local.md",
+			);
+
+			mockQuery.mockImplementation(async function* () {
+				yield {
+					type: "assistant",
+					message: { content: [{ type: "text", text: "Hello!" }] },
+					parent_tool_use_id: null,
+					session_id: "test-session",
+				} as any;
 			});
+
+			await runner.start("test");
+
+			expect(mockQuery).toHaveBeenCalledWith(
+				expect.objectContaining({
+					options: expect.objectContaining({
+						settingSources: ["user", "project", "local"],
+					}),
+				}),
+			);
 		});
 
 		it("should throw error if session already running", async () => {

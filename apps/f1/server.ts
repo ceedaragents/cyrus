@@ -37,7 +37,7 @@ import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
 const CYRUS_PORT = Number.parseInt(process.env.CYRUS_PORT || "3600", 10);
 const CYRUS_REPO_PATH = process.env.CYRUS_REPO_PATH || process.cwd();
 const CYRUS_HOME = join(tmpdir(), `cyrus-f1-${Date.now()}`);
-// Optional second repository path for multi-repo orchestration testing
+// Optional second repository path for multi-repo routing/selection testing
 const CYRUS_REPO_PATH_2 = process.env.CYRUS_REPO_PATH_2;
 const MULTI_REPO_MODE = Boolean(CYRUS_REPO_PATH_2);
 
@@ -86,21 +86,21 @@ function setupDirectories(): void {
  * Create EdgeWorker configuration for CLI platform
  */
 function createEdgeWorkerConfig(): EdgeWorkerConfig {
-	// Create primary test repository configuration
+	// Create the first test repository configuration
 	const repository: RepositoryConfig = {
 		id: "f1-test-repo",
-		name: "F1 Test Repository",
+		name: "F1 Frontend Repository",
 		repositoryPath: CYRUS_REPO_PATH,
 		baseBranch: "main",
-		githubUrl: "https://github.com/f1-test/primary-repo",
+		githubUrl: "https://github.com/f1-test/frontend-repo",
 		linearWorkspaceId: "cli-workspace",
 		linearWorkspaceName: "F1 Testing",
 		linearToken: "f1-test-token", // Dummy token for CLI mode
 		workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
 		isActive: true,
 		// Routing configuration for multi-repo support
-		routingLabels: ["primary", "main-repo"],
-		teamKeys: ["PRIMARY"],
+		routingLabels: ["frontend", "ui"],
+		teamKeys: ["FRONTEND"],
 		// Label-based system prompt configuration for F1 testing
 		// This enables testing of label-based orchestrator/debugger/builder/scoper modes
 		labelPrompts: {
@@ -131,18 +131,18 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 	if (MULTI_REPO_MODE && CYRUS_REPO_PATH_2) {
 		const secondaryRepository: RepositoryConfig = {
 			id: "f1-test-repo-secondary",
-			name: "F1 Secondary Repository",
+			name: "F1 Backend Repository",
 			repositoryPath: CYRUS_REPO_PATH_2,
 			baseBranch: "main",
-			githubUrl: "https://github.com/f1-test/secondary-repo",
+			githubUrl: "https://github.com/f1-test/backend-repo",
 			linearWorkspaceId: "cli-workspace", // Same workspace for routing test
 			linearWorkspaceName: "F1 Testing",
 			linearToken: "f1-test-token-2",
-			workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR, "secondary"),
+			workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR, "backend"),
 			isActive: true,
-			// Different routing labels for second repo
-			routingLabels: ["secondary", "backend"],
-			teamKeys: ["SECONDARY"],
+			// Distinct routing labels for the second repo
+			routingLabels: ["backend", "api"],
+			teamKeys: ["BACKEND"],
 			projectKeys: ["Backend Project"],
 			labelPrompts: {
 				debugger: {

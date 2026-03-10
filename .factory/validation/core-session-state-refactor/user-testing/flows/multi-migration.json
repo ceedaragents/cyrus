@@ -1,0 +1,21 @@
+{
+	"milestone": "core-session-state-refactor",
+	"surface": "cyrus-core persistence api",
+	"summary": "Validated VAL-CORE-003 and VAL-CORE-004 against the public cyrus-core dist surface; both assertions passed.",
+	"toolsUsed": ["Read", "Grep", "Execute"],
+	"frictions": [],
+	"blockers": [],
+	"assertionResults": [
+		{
+			"id": "VAL-CORE-003",
+			"status": "pass",
+			"evidence": "A node --input-type=module script importing packages/core/dist/index.js used PersistenceManager with the assigned multi-migration namespace, saved session-many with repositoryAssociations for repo-1, repo-2, and repo-3, then reloaded the state and observed reloadedAssociationIds=['repo-1','repo-2','repo-3'], associationCountPreserved=true, associationsDeepEqual=true, workspacePathAfterReload='/tmp/shared-execution-location', and persisted version='4.0'."
+		},
+		{
+			"id": "VAL-CORE-004",
+			"status": "pass",
+			"evidence": "In the same namespace, a legacy v3 edge-worker-state.json containing agentSessionsById plus repo-keyed agentSessions/agentSessionEntries and issueRepositoryCache was loaded through PersistenceManager; the migrated v4 save removed legacy agentSessions/agentSessionEntries/issueRepositoryCache containers, wrote issueRepositoryAssociationsByIssueId['issue-456']=[{repositoryId:'repo-3',associationOrigin:'legacy-migration',status:'selected'}], and preserved migratedAssociationIds=['repo-1','repo-2','repo-3'] for session-123 instead of collapsing to one repository."
+		}
+	],
+	"testedAt": "2026-03-08T02:06:59.610889Z"
+}
