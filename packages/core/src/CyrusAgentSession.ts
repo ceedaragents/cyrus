@@ -39,6 +39,20 @@ export interface Workspace {
 	historyPath?: string;
 }
 
+/**
+ * Lightweight repository context carried by each session.
+ * Identifies which repository (and branches) the session operates on.
+ * 0 entries = chatbot/no-repo session, 1 = single-repo, N = multi-repo.
+ */
+export interface RepositoryContext {
+	/** The repository config ID (matches RepositoryConfig.id) */
+	repositoryId: string;
+	/** The git branch the session works on (e.g., derived from issue identifier) */
+	branchName: string;
+	/** The base branch for PRs (e.g., "main" or a Graphite parent branch) */
+	baseBranchName: string;
+}
+
 export interface CyrusAgentSession {
 	/** Unique session identifier (was linearAgentActivitySessionId in v2.0) */
 	id: string;
@@ -58,6 +72,8 @@ export interface CyrusAgentSession {
 	issueId?: string;
 	/** Minimal issue data - optional for standalone sessions */
 	issue?: IssueMinimal;
+	/** Repository contexts for this session (always array, never undefined) */
+	repositories: RepositoryContext[];
 	workspace: Workspace;
 	// NOTE: Only one of these will be populated
 	claudeSessionId?: string; // Claude-specific session ID (assigned once it initializes)
