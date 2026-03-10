@@ -165,10 +165,10 @@ describe("PersistenceManager", () => {
 				v2State.state.childToParentAgentSession,
 			);
 
-			// Check issue repository cache is preserved
-			expect(result!.issueRepositoryCache).toEqual(
-				v2State.state.issueRepositoryCache,
-			);
+			// Check issue repository cache is migrated to string[] format
+			expect(result!.issueRepositoryCache).toEqual({
+				"issue-456": ["repo-1"],
+			});
 		});
 
 		it("should return null for unknown version", async () => {
@@ -327,9 +327,10 @@ describe("PersistenceManager", () => {
 			expect(result!.childToParentAgentSession).toEqual({
 				"child-1": "parent-1",
 			});
+			// Cache migrated from old string format to string[]
 			expect(result!.issueRepositoryCache).toEqual({
-				"issue-456": "repo-1",
-				"issue-789": "repo-2",
+				"issue-456": ["repo-1"],
+				"issue-789": ["repo-2"],
 			});
 		});
 
