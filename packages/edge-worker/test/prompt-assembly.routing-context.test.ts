@@ -18,7 +18,7 @@ describe("Prompt Assembly - Routing Context", () => {
 			repositoryPath: "/test/single-repo",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "test-workspace-1",
-			linearToken: "test-token-123",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/single-repo",
 			routingLabels: ["backend"],
@@ -96,7 +96,7 @@ Orchestrate this task
 			repositoryPath: "/test/frontend",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "test-workspace-2",
-			linearToken: "test-token-123",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/myorg/frontend-app",
 			routingLabels: ["frontend", "ui"],
@@ -112,7 +112,7 @@ Orchestrate this task
 			repositoryPath: "/test/backend",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "test-workspace-2",
-			linearToken: "test-token-456",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/myorg/backend-api",
 			routingLabels: ["backend", "api"],
@@ -224,7 +224,7 @@ Orchestrate this cross-repo feature
 			repositoryPath: "/test/active",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "test-workspace-3",
-			linearToken: "test-token-123",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/active-repo",
 			isActive: true,
@@ -239,7 +239,7 @@ Orchestrate this cross-repo feature
 			repositoryPath: "/test/inactive",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "test-workspace-3",
-			linearToken: "test-token-456",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/inactive-repo",
 			isActive: false,
@@ -314,7 +314,7 @@ Check routing context
 			repositoryPath: "/test/ws1",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "workspace-1",
-			linearToken: "test-token-123",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/ws1-repo",
 			labelPrompts: {
@@ -328,7 +328,7 @@ Check routing context
 			repositoryPath: "/test/ws2",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "workspace-2",
-			linearToken: "test-token-456",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/ws2-repo",
 		};
@@ -402,7 +402,7 @@ Check workspace isolation
 			repositoryPath: "/test/ws1/app",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "workspace-1",
-			linearToken: "test-token-1",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/ws1-app",
 			labelPrompts: {
@@ -416,7 +416,7 @@ Check workspace isolation
 			repositoryPath: "/test/ws1/api",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "workspace-1",
-			linearToken: "test-token-2",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/ws1-api",
 			labelPrompts: {
@@ -430,7 +430,7 @@ Check workspace isolation
 			repositoryPath: "/test/ws2/service",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "workspace-2",
-			linearToken: "test-token-3",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/ws2-service",
 			labelPrompts: {
@@ -444,7 +444,7 @@ Check workspace isolation
 			repositoryPath: "/test/ws2/worker",
 			workspaceBaseDir: "/test/workspace",
 			linearWorkspaceId: "workspace-2",
-			linearToken: "test-token-4",
+
 			baseBranch: "main",
 			githubUrl: "https://github.com/org/ws2-worker",
 			labelPrompts: {

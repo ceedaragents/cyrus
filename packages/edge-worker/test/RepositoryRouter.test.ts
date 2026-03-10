@@ -34,7 +34,6 @@ class RepositoryBuilder {
 			repositoryPath: `/path/to/${id}`,
 			baseBranch: "main",
 			linearWorkspaceId: "default-workspace",
-			linearToken: "test-token",
 			workspaceBaseDir: "/workspace",
 			isActive: true,
 		};

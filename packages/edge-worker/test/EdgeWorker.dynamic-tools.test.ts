@@ -92,11 +92,13 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 					repositoryPath: "/test/repo",
 					workspaceBaseDir: "/test/workspaces",
 					baseBranch: "main",
-					linearToken: "test-token",
 					linearWorkspaceId: "test-workspace",
 					isActive: true,
 				},
 			],
+			linearWorkspaces: {
+				"test-workspace": { linearToken: "test-token" },
+			},
 		};
 
 		// Mock SharedApplicationServer

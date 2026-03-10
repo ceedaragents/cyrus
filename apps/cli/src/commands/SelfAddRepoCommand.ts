@@ -8,6 +8,7 @@ import {
 	DEFAULT_CONFIG_FILENAME,
 	DEFAULT_WORKTREES_DIR,
 	type EdgeConfig,
+	migrateEdgeConfig,
 } from "cyrus-core";
 import { BaseCommand } from "./ICommand.js";
 
@@ -64,7 +65,9 @@ export class SelfAddRepoCommand extends BaseCommand {
 			const configPath = resolve(this.app.cyrusHome, DEFAULT_CONFIG_FILENAME);
 			let config: EdgeConfig;
 			try {
-				config = JSON.parse(readFileSync(configPath, "utf-8")) as EdgeConfig;
+				config = migrateEdgeConfig(
+					JSON.parse(readFileSync(configPath, "utf-8")),
+				) as EdgeConfig;
 			} catch {
 				this.logError(`Config file not found: ${configPath}`);
 				process.exit(1);
@@ -103,20 +106,24 @@ export class SelfAddRepoCommand extends BaseCommand {
 				process.exit(1);
 			}
 
-			// Find workspaces with Linear credentials
+			// Find workspaces with Linear credentials (from workspace-level config)
 			const workspaces = new Map<string, WorkspaceCredentials>();
-			for (const repo of config.repositories) {
-				if (
-					repo.linearWorkspaceId &&
-					repo.linearToken &&
-					!workspaces.has(repo.linearWorkspaceId)
-				) {
-					workspaces.set(repo.linearWorkspaceId, {
-						id: repo.linearWorkspaceId,
-						name: repo.linearWorkspaceName || repo.linearWorkspaceId,
-						token: repo.linearToken,
-						refreshToken: repo.linearRefreshToken,
-					});
+			if (config.linearWorkspaces) {
+				for (const [wsId, wsConfig] of Object.entries(
+					config.linearWorkspaces,
+				)) {
+					if (wsConfig.linearToken) {
+						// Find workspace name from any repository with this ID
+						const repoWithName = config.repositories.find(
+							(r) => r.linearWorkspaceId === wsId,
+						);
+						workspaces.set(wsId, {
+							id: wsId,
+							name: repoWithName?.linearWorkspaceName || wsId,
+							token: wsConfig.linearToken,
+							refreshToken: wsConfig.linearRefreshToken,
+						});
+					}
 				}
 			}
 
@@ -186,8 +193,6 @@ export class SelfAddRepoCommand extends BaseCommand {
 				workspaceBaseDir: resolve(this.app.cyrusHome, DEFAULT_WORKTREES_DIR),
 				linearWorkspaceId: selectedWorkspace.id,
 				linearWorkspaceName: selectedWorkspace.name,
-				linearToken: selectedWorkspace.token,
-				linearRefreshToken: selectedWorkspace.refreshToken,
 				isActive: true,
 			});
 

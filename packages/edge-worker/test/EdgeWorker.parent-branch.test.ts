@@ -57,7 +57,6 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
-		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
 		allowedTools: ["Read", "Edit"],
@@ -186,6 +185,9 @@ Base Branch: {{base_branch}}`;
 			proxyUrl: "http://localhost:3000",
 			cyrusHome: TEST_CYRUS_HOME,
 			repositories: [mockRepository],
+			linearWorkspaces: {
+				"test-workspace": { linearToken: "test-token" },
+			},
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
 					path: "/test/workspaces/TEST-123",
@@ -206,7 +208,10 @@ Base Branch: {{base_branch}}`;
 			}),
 			getIssueLabels: vi.fn().mockResolvedValue([]),
 		};
-		(edgeWorker as any).issueTrackers.set(mockRepository.id, mockIssueTracker);
+		(edgeWorker as any).issueTrackers.set(
+			mockRepository.linearWorkspaceId,
+			mockIssueTracker,
+		);
 
 		// Mock branchExists to always return true so parent branches are used
 		vi.spyOn((edgeWorker as any).gitService, "branchExists").mockResolvedValue(

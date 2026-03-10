@@ -78,7 +78,6 @@ describe("EdgeWorker - Status Endpoint", () => {
 		repositoryPath: "/test/repo",
 		workspaceBaseDir: "/test/workspaces",
 		baseBranch: "main",
-		linearToken: "test-token",
 		linearWorkspaceId: "test-workspace",
 		isActive: true,
 	};
@@ -96,6 +95,9 @@ describe("EdgeWorker - Status Endpoint", () => {
 			platform: "linear",
 			cyrusHome: "/test/.cyrus",
 			repositories: [mockRepository],
+			linearWorkspaces: {
+				"test-workspace": { linearToken: "test-token" },
+			},
 		};
 	});
 

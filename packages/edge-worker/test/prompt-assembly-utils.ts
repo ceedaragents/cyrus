@@ -29,7 +29,20 @@ export function createTestWorker(
 				rawRequest: () => Promise.resolve({ data: { comment: { body: "" } } }),
 			},
 		};
-		issueTrackers.set(repo.id, mockIssueTracker as any);
+		issueTrackers.set(
+			repo.linearWorkspaceId ?? repo.id,
+			mockIssueTracker as any,
+		);
+	}
+
+	// Auto-generate linearWorkspaces from repository configs
+	const linearWorkspaces: Record<string, { linearToken: string }> = {};
+	for (const repo of repositories) {
+		if (repo.linearWorkspaceId && !linearWorkspaces[repo.linearWorkspaceId]) {
+			linearWorkspaces[repo.linearWorkspaceId] = {
+				linearToken: "test-token",
+			};
+		}
 	}
 
 	const config: EdgeWorkerConfig = {
@@ -37,6 +50,7 @@ export function createTestWorker(
 		claudeDefaultModel: "sonnet",
 		linearWorkspaceSlug,
 		repositories,
+		linearWorkspaces,
 		issueTrackers,
 		mcpServers: {},
 	};
@@ -141,7 +155,11 @@ export class PromptScenario {
 		};
 		this.input.repository = fullRepo;
 		// Also ensure the worker has an IssueTrackerService for this repository
-		if (!(this.worker as any).issueTrackers.has(fullRepo.id)) {
+		if (
+			!(this.worker as any).issueTrackers.has(
+				fullRepo.linearWorkspaceId ?? fullRepo.id,
+			)
+		) {
 			const mockIssueTracker = {
 				getComments: () => Promise.resolve([]),
 				getComment: () => Promise.resolve(null),
@@ -151,7 +169,10 @@ export class PromptScenario {
 						Promise.resolve({ data: { comment: { body: "" } } }),
 				},
 			};
-			(this.worker as any).issueTrackers.set(fullRepo.id, mockIssueTracker);
+			(this.worker as any).issueTrackers.set(
+				fullRepo.linearWorkspaceId ?? fullRepo.id,
+				mockIssueTracker,
+			);
 		}
 		return this;
 	}

@@ -48,34 +48,63 @@ export class RefreshTokenCommand extends BaseCommand {
 
 		const config = this.app.config.load();
 
-		// Show repositories with their token status
-		console.log("Checking current token status...\n");
-		const tokenStatuses: Array<{ repo: any; valid: boolean }> = [];
+		// Build workspace list from workspace-level config
+		type WorkspaceStatus = {
+			id: string;
+			name: string;
+			token: string;
+			valid: boolean;
+		};
+		const workspaceStatuses: WorkspaceStatus[] = [];
 
-		for (const repo of config.repositories) {
-			const result = await checkLinearToken(repo.linearToken);
-			tokenStatuses.push({ repo, valid: result.valid });
-			console.log(
-				`${tokenStatuses.length}. ${repo.name} (${repo.linearWorkspaceName}): ${
-					result.valid ? "✅ Valid" : "❌ Invalid"
-				}`,
-			);
+		console.log("Checking current token status...\n");
+
+		if (config.linearWorkspaces) {
+			for (const [wsId, wsConfig] of Object.entries(config.linearWorkspaces)) {
+				const repoWithName = config.repositories.find(
+					(r) => r.linearWorkspaceId === wsId,
+				);
+				const name = repoWithName?.linearWorkspaceName || wsId;
+				const result = await checkLinearToken(wsConfig.linearToken);
+				workspaceStatuses.push({
+					id: wsId,
+					name,
+					token: wsConfig.linearToken,
+					valid: result.valid,
+				});
+				console.log(
+					`${workspaceStatuses.length}. Workspace ${name}: ${
+						result.valid ? "✅ Valid" : "❌ Invalid"
+					}`,
+				);
+			}
 		}
 
-		// Ask which token to refresh
+		if (workspaceStatuses.length === 0) {
+			this.logError(
+				"No Linear workspaces configured. Run 'cyrus self-auth' first.",
+			);
+			process.exit(1);
+		}
+
+		// Ask which workspace token to refresh
 		const answer = await CLIPrompts.ask(
-			'\nWhich repository token would you like to refresh? (Enter number or "all"): ',
+			'\nWhich workspace token would you like to refresh? (Enter number or "all"): ',
 		);
 
 		const indicesToRefresh: number[] = [];
 
 		if (answer.toLowerCase() === "all") {
 			indicesToRefresh.push(
-				...Array.from({ length: tokenStatuses.length }, (_, i) => i),
+				...Array.from({ length: workspaceStatuses.length }, (_, i) => i),
 			);
 		} else {
 			const index = parseInt(answer, 10) - 1;
-			if (Number.isNaN(index) || index < 0 || index >= tokenStatuses.length) {
+			if (
+				Number.isNaN(index) ||
+				index < 0 ||
+				index >= workspaceStatuses.length
+			) {
 				this.logError("Invalid selection");
 				process.exit(1);
 			}
@@ -84,15 +113,10 @@ export class RefreshTokenCommand extends BaseCommand {
 
 		// Refresh tokens
 		for (const index of indicesToRefresh) {
-			const tokenStatus = tokenStatuses[index];
-			if (!tokenStatus) continue;
+			const ws = workspaceStatuses[index];
+			if (!ws) continue;
 
-			const { repo } = tokenStatus;
-			console.log(
-				`\nRefreshing token for ${repo.name} (${
-					repo.linearWorkspaceName || repo.linearWorkspaceId
-				})...`,
-			);
+			console.log(`\nRefreshing token for workspace ${ws.name} (${ws.id})...`);
 			console.log("Opening Linear OAuth flow in your browser...");
 
 			// Use the proxy's OAuth flow with a callback to localhost
@@ -167,27 +191,24 @@ export class RefreshTokenCommand extends BaseCommand {
 				continue;
 			}
 
-			// Update the config - update ALL repositories that had the same old token
-			const oldToken = repo.linearToken;
-			let updatedCount = 0;
-
+			// Update the workspace-level token in config
 			this.app.config.update((cfg) => {
-				for (let i = 0; i < cfg.repositories.length; i++) {
-					const currentRepo = cfg.repositories[i];
-					if (currentRepo && currentRepo.linearToken === oldToken) {
-						currentRepo.linearToken = newToken;
-						updatedCount++;
-						this.logSuccess(`Updated token for ${currentRepo.name}`);
-					}
+				if (!cfg.linearWorkspaces) {
+					(cfg as Record<string, unknown>).linearWorkspaces = {};
 				}
+				cfg.linearWorkspaces![ws.id] = {
+					linearToken: newToken,
+					...(cfg.linearWorkspaces![ws.id]?.linearRefreshToken
+						? {
+								linearRefreshToken:
+									cfg.linearWorkspaces![ws.id]!.linearRefreshToken,
+							}
+						: {}),
+				};
 				return cfg;
 			});
 
-			if (updatedCount > 1) {
-				console.log(
-					`\n📝 Updated ${updatedCount} repositories that shared the same token`,
-				);
-			}
+			this.logSuccess(`Updated token for workspace ${ws.name}`);
 		}
 
 		this.logSuccess("Configuration saved");
