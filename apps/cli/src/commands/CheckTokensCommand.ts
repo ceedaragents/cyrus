@@ -55,9 +55,10 @@ export class CheckTokensCommand extends BaseCommand {
 			checkedWorkspaces.add(workspaceId);
 
 			const token = config.linearWorkspaces?.[workspaceId]?.linearToken;
-			process.stdout.write(
-				`Workspace ${repo.linearWorkspaceName || workspaceId}: `,
-			);
+			const workspaceName =
+				config.linearWorkspaces?.[workspaceId]?.linearWorkspaceName ||
+				workspaceId;
+			process.stdout.write(`Workspace ${workspaceName}: `);
 			if (!token) {
 				console.log(`❌ No token configured`);
 				continue;

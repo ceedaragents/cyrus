@@ -430,35 +430,40 @@ export class EdgeWorker extends EventEmitter {
 				};
 
 				this.repositories.set(repo.id, resolvedRepo);
+			}
+		}
 
-				// Create issue tracker for this workspace (one per workspace, not per repo)
-				if (!this.issueTrackers.has(repo.linearWorkspaceId)) {
-					const linearToken = this.getLinearTokenForWorkspace(
-						repo.linearWorkspaceId,
-					);
-					const issueTracker =
-						this.config.platform === "cli"
-							? (() => {
-									const service = new CLIIssueTrackerService();
-									service.seedDefaultData();
-									return service;
-								})()
-							: new LinearIssueTrackerService(
-									new LinearClient({
-										accessToken: linearToken,
-									}),
-									this.buildOAuthConfig(repo.linearWorkspaceId),
-								);
-					this.issueTrackers.set(repo.linearWorkspaceId, issueTracker);
-				}
+		// Initialize issue trackers per workspace (one per workspace, not per repo)
+		if (config.linearWorkspaces) {
+			for (const [workspaceId, wsConfig] of Object.entries(
+				config.linearWorkspaces,
+			)) {
+				const issueTracker =
+					this.config.platform === "cli"
+						? (() => {
+								const service = new CLIIssueTrackerService();
+								service.seedDefaultData();
+								return service;
+							})()
+						: new LinearIssueTrackerService(
+								new LinearClient({
+									accessToken: wsConfig.linearToken,
+								}),
+								this.buildOAuthConfig(workspaceId),
+							);
+				this.issueTrackers.set(workspaceId, issueTracker);
+			}
+		}
 
-				// Create activity sink for this repository (uses workspace issue tracker)
-				const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId)!;
+		// Create activity sinks for each repository (uses workspace issue tracker)
+		for (const [repoId, repo] of this.repositories) {
+			const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
+			if (issueTracker) {
 				const activitySink = new LinearActivitySink(
 					issueTracker,
 					repo.linearWorkspaceId,
 				);
-				this.activitySinks.set(repo.id, activitySink);
+				this.activitySinks.set(repoId, activitySink);
 			}
 		}
 
@@ -2452,7 +2457,9 @@ ${taskSection}`;
 				).length;
 
 				// Download attachments from the new description
-				const linearToken = this.getLinearTokenForRepository(repository);
+				const linearToken = this.getLinearTokenForWorkspace(
+					repository.linearWorkspaceId,
+				);
 				const downloadResult = await this.downloadCommentAttachments(
 					issueData.description,
 					attachmentsDir,
@@ -2582,13 +2589,6 @@ ${taskSection}`;
 			);
 		}
 		return workspaceConfig.linearToken;
-	}
-
-	/**
-	 * Get the Linear API token for a repository (resolves through workspace ID).
-	 */
-	private getLinearTokenForRepository(repository: RepositoryConfig): string {
-		return this.getLinearTokenForWorkspace(repository.linearWorkspaceId);
 	}
 
 	/**
@@ -3498,8 +3498,9 @@ ${taskSection}`;
 			).length;
 
 			// Download new attachments from the comment
-			const linearTokenForAttachments =
-				this.getLinearTokenForRepository(repository);
+			const linearTokenForAttachments = this.getLinearTokenForWorkspace(
+				repository.linearWorkspaceId,
+			);
 			const downloadResult = comment
 				? await this.downloadCommentAttachments(
 						comment.body,
@@ -4468,7 +4469,9 @@ ${taskSection}`;
 
 		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		// If the client reconnects and needs another server, the endpoint creates a fresh one.
-		const linearToken = this.getLinearTokenForRepository(repository);
+		const linearToken = this.getLinearTokenForWorkspace(
+			repository.linearWorkspaceId,
+		);
 		const prebuiltServer = createCyrusToolsServer(
 			linearToken,
 			this.createCyrusToolsOptions(parentSessionId),
@@ -6019,11 +6022,10 @@ ${input.userComment}
 			return undefined;
 		}
 
-		// Find workspace name from any repository with this workspace ID
+		// Get workspace name from workspace-level config
 		const workspaceName =
-			Array.from(this.repositories.values()).find(
-				(r) => r.linearWorkspaceId === workspaceId,
-			)?.linearWorkspaceName || workspaceId;
+			this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceName ||
+			workspaceId;
 
 		return {
 			clientId,
@@ -6084,6 +6086,16 @@ ${input.userComment}
 								linearRefreshToken:
 									config.linearWorkspaces[tokens.linearWorkspaceId]
 										.linearRefreshToken,
+							}
+						: {}),
+				...(tokens.linearWorkspaceName
+					? { linearWorkspaceName: tokens.linearWorkspaceName }
+					: config.linearWorkspaces[tokens.linearWorkspaceId]
+								?.linearWorkspaceName
+						? {
+								linearWorkspaceName:
+									config.linearWorkspaces[tokens.linearWorkspaceId]
+										.linearWorkspaceName,
 							}
 						: {}),
 			};

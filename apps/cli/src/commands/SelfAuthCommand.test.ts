@@ -534,15 +534,16 @@ describe("SelfAuthCommand", () => {
 				mocks.mockWriteFileSync.mock.calls[0][1],
 			);
 
-			// repo with empty workspace should be updated with new workspace ID/name
+			// repo with empty workspace should be updated with new workspace ID
 			expect(writtenConfig.repositories[0].linearWorkspaceId).toBe("ws-new");
-			expect(writtenConfig.repositories[0].linearWorkspaceName).toBe(
-				"New Workspace",
-			);
-			// Tokens are stored at workspace level, not on repositories
+			expect(writtenConfig.repositories[0].linearWorkspaceName).toBeUndefined();
+			// Tokens and workspace name are stored at workspace level, not on repositories
 			expect(writtenConfig.repositories[0].linearToken).toBeUndefined();
 			expect(writtenConfig.linearWorkspaces["ws-new"].linearToken).toBe(
 				"lin_oauth_new",
+			);
+			expect(writtenConfig.linearWorkspaces["ws-new"].linearWorkspaceName).toBe(
+				"New Workspace",
 			);
 
 			// repo with different workspace should NOT be updated

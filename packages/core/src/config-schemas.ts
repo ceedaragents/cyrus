@@ -133,6 +133,10 @@ export const LinearWorkspaceConfigSchema = z.object({
 	linearRefreshToken: z.string().optional(),
 	/** Linear workspace URL slug (e.g., "ceedar" from "https://linear.app/ceedar/...") */
 	linearWorkspaceSlug: z.string().optional(),
+	/** Human-readable workspace name (e.g., "Ceedar") */
+	linearWorkspaceName: z.string().optional(),
+	/** Stripe customer ID for billing */
+	stripeCustomerId: z.string().optional(),
 });
 
 /**
@@ -150,7 +154,6 @@ export const RepositoryConfigSchema = z.object({
 
 	// Linear configuration
 	linearWorkspaceId: z.string(),
-	linearWorkspaceName: z.string().optional(),
 	teamKeys: z.array(z.string()).optional(),
 	routingLabels: z.array(z.string()).optional(),
 	projectKeys: z.array(z.string()).optional(),
@@ -196,9 +199,6 @@ export const EdgeConfigSchema = z.object({
 
 	/** Ngrok auth token for tunnel creation */
 	ngrokAuthToken: z.string().optional(),
-
-	/** Stripe customer ID for billing */
-	stripeCustomerId: z.string().optional(),
 
 	/** Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku") */
 	claudeDefaultModel: z.string().optional(),
@@ -306,6 +306,7 @@ export function migrateEdgeConfig(
 			linearToken: string;
 			linearRefreshToken?: string;
 			linearWorkspaceSlug?: string;
+			linearWorkspaceName?: string;
 		}
 	> = {};
 
@@ -324,16 +325,20 @@ export function migrateEdgeConfig(
 						? { linearRefreshToken: repo.linearRefreshToken }
 						: {}),
 					...(globalSlug ? { linearWorkspaceSlug: globalSlug } : {}),
+					...(typeof repo.linearWorkspaceName === "string"
+						? { linearWorkspaceName: repo.linearWorkspaceName }
+						: {}),
 				};
 			}
 		}
 	}
 
-	// Strip legacy token fields from repositories
+	// Strip legacy token fields and workspace name from repositories
 	const migratedRepos = repos.map((repo) => {
 		const {
 			linearToken: _linearToken,
 			linearRefreshToken: _linearRefreshToken,
+			linearWorkspaceName: _linearWorkspaceName,
 			...rest
 		} = repo;
 		return rest;

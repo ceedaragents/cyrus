@@ -302,9 +302,6 @@ Each repository configuration includes these required fields:
 - `baseBranch` - Default branch for the repository (e.g., "main")
 - `workspaceBaseDir` - Directory for git worktrees
 - `isActive` - Whether the repository is active
-- `linearWorkspaceId` - Linear workspace UUID
-- `linearWorkspaceName` - Linear workspace display name
-- `linearToken` - OAuth access token
-- `linearRefreshToken` - OAuth refresh token (optional)
+- `linearWorkspaceId` - Linear workspace UUID (references a key in `linearWorkspaces`)
 
 These fields are managed automatically during setup. For self-hosted instances, use the `cyrus self-auth` and `cyrus self-add-repo` commands.
