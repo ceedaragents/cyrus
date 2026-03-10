@@ -30,9 +30,10 @@ export async function handleConfigureMcp(
 			};
 		}
 
-		// Ensure the .cyrus directory exists
-		if (!existsSync(cyrusHome)) {
-			mkdirSync(cyrusHome, { recursive: true });
+		// Ensure the mcp-configs subdirectory exists
+		const mcpConfigsDir = join(cyrusHome, "mcp-configs");
+		if (!existsSync(mcpConfigsDir)) {
+			mkdirSync(mcpConfigsDir, { recursive: true });
 		}
 
 		const mcpFilesWritten: string[] = [];
@@ -40,7 +41,7 @@ export async function handleConfigureMcp(
 		// Write each MCP server configuration to its own file
 		for (const slug of serverSlugs) {
 			const serverConfig = payload.mcpServers[slug];
-			const mcpFilePath = join(cyrusHome, `mcp-${slug}.json`);
+			const mcpFilePath = join(mcpConfigsDir, `mcp-${slug}.json`);
 
 			// Perform environment variable substitution
 			const processedConfig = performEnvSubstitution(serverConfig);
