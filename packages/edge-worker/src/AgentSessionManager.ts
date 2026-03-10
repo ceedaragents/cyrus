@@ -1707,6 +1707,27 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Find an active multi-repo session that includes the given repository.
+	 * Used by GitHub webhook handling to resolve the correct sub-worktree
+	 * when a @ mention targets a specific repo within a multi-repo workspace.
+	 */
+	getActiveMultiRepoSessionForRepository(
+		repositoryId: string,
+	): CyrusAgentSession | null {
+		for (const session of this.sessions.values()) {
+			if (session.status !== AgentSessionStatus.Active) continue;
+			if (!session.workspace.repoPaths) continue; // not multi-repo
+			const matchesRepo = session.repositories.some(
+				(r) => r.repositoryId === repositoryId,
+			);
+			if (matchesRepo) {
+				return session;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * Get all sessions
 	 */
 	getAllSessions(): CyrusAgentSession[] {
