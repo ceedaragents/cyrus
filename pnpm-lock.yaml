@@ -202,6 +202,9 @@ importers:
 
   packages/config-updater:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: '>=1.25.2'
+        version: 1.25.2(hono@4.11.3)(zod@4.3.6)
       cyrus-core:
         specifier: workspace:*
         version: link:../core
@@ -4338,8 +4341,8 @@ snapshots:
   '@modelcontextprotocol/sdk@1.25.2(hono@4.11.3)(zod@4.3.6)':
     dependencies:
       '@hono/node-server': 1.19.7(hono@4.11.3)
-      ajv: 8.17.1
-      ajv-formats: 3.0.1(ajv@8.17.1)
+      ajv: 8.18.0
+      ajv-formats: 3.0.1(ajv@8.18.0)
       content-type: 1.0.5
       cors: 2.8.5
       cross-spawn: 7.0.6
