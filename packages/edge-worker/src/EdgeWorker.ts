@@ -4308,6 +4308,13 @@ ${taskSection}`;
 			`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentSessionId}`,
 		);
 		this.childToParentAgentSession.set(childSessionId, parentSessionId);
+		// Also register in GlobalSessionRegistry so AgentSessionManager's
+		// getParentSessionId callback can find the parent when the child completes.
+		// Without this, child session results are never written back to the parent.
+		this.globalSessionRegistry.setParentSession(
+			childSessionId,
+			parentSessionId,
+		);
 		console.log(
 			`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
 		);
@@ -5476,6 +5483,10 @@ ${input.userComment}
 			this.childToParentAgentSession = new Map(
 				Object.entries(state.childToParentAgentSession),
 			);
+			// Sync to GlobalSessionRegistry so AgentSessionManager callbacks work
+			for (const [childId, parentId] of this.childToParentAgentSession) {
+				this.globalSessionRegistry.setParentSession(childId, parentId);
+			}
 			this.logger.debug(
 				`Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
 			);
