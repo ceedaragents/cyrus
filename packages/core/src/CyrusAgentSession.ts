@@ -37,6 +37,8 @@ export interface Workspace {
 	path: string;
 	isGitWorktree: boolean;
 	historyPath?: string;
+	/** Maps repositoryId to worktree path for multi-repo workspaces */
+	repoPaths?: Record<string, string>;
 }
 
 /**

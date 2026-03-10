@@ -1318,10 +1318,9 @@ export class EdgeWorker extends EventEmitter {
 					}),
 			} as unknown as Issue;
 
-			return await this.gitService.createGitWorktree(
-				syntheticIssue,
+			return await this.gitService.createGitWorktree(syntheticIssue, [
 				repository,
-			);
+			]);
 		} catch (error) {
 			this.logger.error(
 				`Failed to create GitHub workspace for PR #${prNumber}`,
@@ -2671,8 +2670,8 @@ ${taskSection}`;
 		// Create workspace using full issue data
 		// Use custom handler if provided, otherwise create a git worktree by default
 		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, repository)
-			: await this.gitService.createGitWorktree(fullIssue, repository);
+			? await this.config.handlers.createWorkspace(fullIssue, [repository])
+			: await this.gitService.createGitWorktree(fullIssue, [repository]);
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
 

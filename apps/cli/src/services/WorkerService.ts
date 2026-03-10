@@ -235,13 +235,11 @@ export class WorkerService {
 			handlers: {
 				createWorkspace: async (
 					issue: Issue,
-					repository: RepositoryConfig,
+					repositories: RepositoryConfig[],
 				): Promise<Workspace> => {
-					return this.gitService.createGitWorktree(
-						issue,
-						repository,
-						edgeConfig.global_setup_script,
-					);
+					return this.gitService.createGitWorktree(issue, repositories, {
+						globalSetupScript: edgeConfig.global_setup_script,
+					});
 				},
 				onOAuthCallback,
 			},

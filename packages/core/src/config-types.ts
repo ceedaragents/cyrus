@@ -114,10 +114,10 @@ export interface EdgeWorkerRuntimeConfig {
 	 * These are callback functions that cannot be serialized to JSON.
 	 */
 	handlers?: {
-		/** Called when workspace needs to be created. Includes repository context. */
+		/** Called when workspace needs to be created. Accepts array of repositories for multi-repo workspaces. */
 		createWorkspace?: (
 			issue: Issue,
-			repository: RepositoryConfig,
+			repositories: RepositoryConfig[],
 		) => Promise<Workspace>;
 
 		/** Called with Claude messages (for UI updates, logging, etc). Includes repository ID. */
