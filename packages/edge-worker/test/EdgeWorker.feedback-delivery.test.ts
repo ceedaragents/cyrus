@@ -517,4 +517,37 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			}
 		});
 	});
+
+	describe("Child Session Mapping to GlobalSessionRegistry", () => {
+		it("should register parent-child mapping in GlobalSessionRegistry when handleChildSessionMapping is called", () => {
+			const childId = "new-child-session-789";
+			const parentId = "parent-session-123";
+
+			// Call handleChildSessionMapping
+			(edgeWorker as any).handleChildSessionMapping(childId, parentId);
+
+			// Verify it's in the local map
+			expect((edgeWorker as any).childToParentAgentSession.get(childId)).toBe(
+				parentId,
+			);
+
+			// Verify it's ALSO in GlobalSessionRegistry (this is the fix for CYPACK-922)
+			const globalRegistry = (edgeWorker as any).globalSessionRegistry;
+			expect(globalRegistry.getParentSessionId(childId)).toBe(parentId);
+		});
+
+		it("should allow AgentSessionManager getParentSessionId callback to find the mapping", () => {
+			const childId = "callback-child-session";
+			const parentId = "callback-parent-session";
+
+			// Simulate what happens when a child session is created via MCP tool
+			(edgeWorker as any).handleChildSessionMapping(childId, parentId);
+
+			// The AgentSessionManager callback reads from globalSessionRegistry
+			const globalRegistry = (edgeWorker as any).globalSessionRegistry;
+			const result = globalRegistry.getParentSessionId(childId);
+
+			expect(result).toBe(parentId);
+		});
+	});
 });
