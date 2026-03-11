@@ -121,8 +121,10 @@ describe("PersistenceManager", () => {
 			expect(migratedSession.claudeSessionId).toBe("claude-789");
 			expect(migratedSession.workspace.path).toBe("/tmp/worktree");
 
-			// Should have empty repositories array (migrated sessions have no repo context)
-			expect(migratedSession.repositories).toEqual([]);
+			// Should have repositories populated from the repo key during v3→v4 flattening
+			expect(migratedSession.repositories).toEqual([
+				{ repositoryId: "repo-1", branchName: "", baseBranchName: "" },
+			]);
 		});
 
 		it("should save migrated state as v4.0", async () => {
@@ -278,6 +280,23 @@ describe("PersistenceManager", () => {
 				issueId: "issue-789",
 				issueIdentifier: "OTHER-1",
 			});
+		});
+
+		it("should populate repositories from repo key during flattening", async () => {
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(readFile).mockResolvedValue(JSON.stringify(v3State));
+			vi.mocked(writeFile).mockResolvedValue(undefined);
+			vi.mocked(mkdir).mockResolvedValue(undefined);
+
+			const result = await persistenceManager.loadEdgeWorkerState();
+
+			// Sessions should get their repository context from the repo key they were nested under
+			expect(result!.agentSessions!["session-123"].repositories).toEqual([
+				{ repositoryId: "repo-1", branchName: "", baseBranchName: "" },
+			]);
+			expect(result!.agentSessions!["session-456"].repositories).toEqual([
+				{ repositoryId: "repo-2", branchName: "", baseBranchName: "" },
+			]);
 		});
 
 		it("should flatten nested entries from multiple repos", async () => {

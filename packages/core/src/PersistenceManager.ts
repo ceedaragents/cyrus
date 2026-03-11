@@ -236,9 +236,22 @@ export class PersistenceManager {
 		const flatEntries: Record<string, SerializedCyrusAgentSessionEntry[]> = {};
 
 		// Flatten sessions: merge all repo-keyed sessions into a single flat map
+		// Preserve the repoId key as a RepositoryContext so migrated sessions
+		// know which repository they belong to (instead of defaulting to [])
 		if (v3State.agentSessions) {
-			for (const repoSessions of Object.values(v3State.agentSessions)) {
+			for (const [repoId, repoSessions] of Object.entries(
+				v3State.agentSessions,
+			)) {
 				for (const [sessionId, session] of Object.entries(repoSessions)) {
+					if (!session.repositories?.length) {
+						session.repositories = [
+							{
+								repositoryId: repoId,
+								branchName: "",
+								baseBranchName: "",
+							},
+						];
+					}
 					flatSessions[sessionId] = session;
 				}
 			}
