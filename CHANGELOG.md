@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **MCP connection tests no longer hang on invalid credentials** - Testing MCP servers with bad API keys or credentials now fails near-instantly instead of waiting 25 seconds. Stderr output from the MCP process (e.g., "Invalid API key") is included in the error message. ([CYPACK-932](https://linear.app/ceedar/issue/CYPACK-932), [#970](https://github.com/ceedaragents/cyrus/pull/970))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed

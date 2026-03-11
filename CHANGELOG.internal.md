@@ -4,6 +4,10 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Added stderr monitoring and process exit detection to MCP test handler for fast-fail on invalid credentials. Replaced single 25s `TEST_TIMEOUT_MS` with per-step 10s timeouts for `client.connect()` and `client.listTools()`. New `raceWithSignals()` helper races promises against timeout, stderr auth errors, and process exit signals. Timeout errors enriched with captured stderr context. ([CYPACK-932](https://linear.app/ceedar/issue/CYPACK-932), [#970](https://github.com/ceedaragents/cyrus/pull/970))
+- Added 25 unit tests for MCP test handler covering stderr auth detection, process exit, timeouts, and HTTP transport. ([CYPACK-932](https://linear.app/ceedar/issue/CYPACK-932), [#970](https://github.com/ceedaragents/cyrus/pull/970))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed
