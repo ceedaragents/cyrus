@@ -123,7 +123,7 @@ describe("PersistenceManager", () => {
 
 			// Should have repositories populated from the repo key during v3→v4 flattening
 			expect(migratedSession.repositories).toEqual([
-				{ repositoryId: "repo-1", branchName: "", baseBranchName: "" },
+				{ repositoryId: "repo-1" },
 			]);
 		});
 
@@ -292,10 +292,10 @@ describe("PersistenceManager", () => {
 
 			// Sessions should get their repository context from the repo key they were nested under
 			expect(result!.agentSessions!["session-123"].repositories).toEqual([
-				{ repositoryId: "repo-1", branchName: "", baseBranchName: "" },
+				{ repositoryId: "repo-1" },
 			]);
 			expect(result!.agentSessions!["session-456"].repositories).toEqual([
-				{ repositoryId: "repo-2", branchName: "", baseBranchName: "" },
+				{ repositoryId: "repo-2" },
 			]);
 		});
 

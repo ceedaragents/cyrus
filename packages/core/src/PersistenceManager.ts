@@ -247,8 +247,6 @@ export class PersistenceManager {
 						session.repositories = [
 							{
 								repositoryId: repoId,
-								branchName: "",
-								baseBranchName: "",
 							},
 						];
 					}

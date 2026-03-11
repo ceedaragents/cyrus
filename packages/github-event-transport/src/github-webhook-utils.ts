@@ -58,6 +58,29 @@ export function extractPRBranchRef(event: GitHubWebhookEvent): string | null {
 }
 
 /**
+ * Extract the PR base branch name from a GitHub webhook event.
+ *
+ * For issue_comment: Not available in the payload; the caller must fetch it
+ * from the PR API endpoint (same as extractPRBranchRef).
+ *
+ * For pull_request_review / pull_request_review_comment: Available via
+ * payload.pull_request.base.ref
+ */
+export function extractPRBaseBranchRef(
+	event: GitHubWebhookEvent,
+): string | null {
+	if (isPullRequestReviewPayload(event.payload)) {
+		return event.payload.pull_request.base.ref;
+	}
+	if (isPullRequestReviewCommentPayload(event.payload)) {
+		return event.payload.pull_request.base.ref;
+	}
+	// For issue_comment, the base ref is not in the payload
+	// The caller needs to fetch it from the PR API
+	return null;
+}
+
+/**
  * Extract the PR number from a GitHub webhook event
  */
 export function extractPRNumber(event: GitHubWebhookEvent): number | null {
