@@ -7,8 +7,26 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ApiResponse, TestMcpPayload } from "../types.js";
 
-const TEST_TIMEOUT_MS = 25_000; // 25s (edge request timeout is 30s)
+const CONNECT_TIMEOUT_MS = 10_000; // 10s for protocol handshake
+const LIST_TOOLS_TIMEOUT_MS = 10_000; // 10s for tool discovery
 const CLOSE_TIMEOUT_MS = 5_000; // 5s for graceful close
+
+/** Patterns that indicate credential/auth failures on stderr. */
+const STDERR_ERROR_PATTERNS = [
+	/unauthori[zs]ed/i,
+	/invalid[_ -]?(api[_ -]?)?key/i,
+	/authentication failed/i,
+	/auth(entication|orization)?\s+error/i,
+	/forbidden/i,
+	/401/,
+	/403/,
+	/invalid[_ -]?token/i,
+	/access[_ -]?denied/i,
+	/permission[_ -]?denied/i,
+	/credentials?\s+(are\s+)?invalid/i,
+	/api[_ -]?key\s+(is\s+)?invalid/i,
+	/not[_ -]?authori[zs]ed/i,
+];
 
 /**
  * Handle MCP connection test
@@ -60,6 +78,7 @@ export async function handleTestMcp(
 
 /**
  * Test a stdio MCP server by spawning the process, connecting, and listing tools.
+ * Monitors stderr for auth errors and detects process exit for fast failure.
  */
 async function testStdioMcp(payload: TestMcpPayload): Promise<ApiResponse> {
 	const args = payload.commandArgs
@@ -85,7 +104,49 @@ async function testStdioMcp(payload: TestMcpPayload): Promise<ApiResponse> {
 		stderr: "pipe",
 	});
 
-	return await connectAndDiscover(transport, payload.command!);
+	// Set up stderr monitoring and process exit detection before connecting
+	const stderrChunks: string[] = [];
+	let earlyFailure: Promise<never> | undefined;
+
+	const stderrStream = transport.stderr;
+	if (stderrStream) {
+		earlyFailure = new Promise<never>((_resolve, reject) => {
+			stderrStream.on("data", (chunk: Buffer) => {
+				const text = chunk.toString();
+				stderrChunks.push(text);
+
+				// Check if stderr contains auth error patterns
+				if (containsAuthError(text)) {
+					reject(
+						new McpCredentialError(
+							`MCP server reported an authentication error: ${text.trim()}`,
+						),
+					);
+				}
+			});
+		});
+	}
+
+	// Detect process exit via the transport's onclose callback
+	const processExitPromise = new Promise<never>((_resolve, reject) => {
+		const originalOnClose = transport.onclose;
+		transport.onclose = () => {
+			originalOnClose?.();
+			const stderrOutput = stderrChunks.join("").trim();
+			const message = stderrOutput
+				? `MCP process exited unexpectedly: ${stderrOutput}`
+				: "MCP process exited unexpectedly before completing the test";
+			reject(new McpProcessExitError(message));
+		};
+	});
+
+	return await connectAndDiscover(
+		transport,
+		payload.command!,
+		earlyFailure,
+		processExitPromise,
+		() => stderrChunks.join("").trim(),
+	);
 }
 
 /**
@@ -126,22 +187,38 @@ async function testHttpMcp(payload: TestMcpPayload): Promise<ApiResponse> {
 
 /**
  * Connect to an MCP server via the given transport, list tools, and return the result.
+ * Optionally races against early failure signals (stderr auth errors, process exit).
  */
 async function connectAndDiscover(
 	transport: Transport,
 	fallbackName: string,
+	earlyFailure?: Promise<never>,
+	processExit?: Promise<never>,
+	getStderr?: () => string,
 ): Promise<ApiResponse> {
 	const client = new Client({
 		name: "cyrus-mcp-tester",
 		version: "1.0.0",
 	});
 
-	try {
-		await withTimeout(client.connect(transport), "Connection timed out");
+	// Build the list of signals to race against
+	const raceSignals = [earlyFailure, processExit].filter(
+		(p): p is Promise<never> => p !== undefined,
+	);
 
-		const toolsResult = await withTimeout(
+	try {
+		await raceWithSignals(
+			client.connect(transport),
+			"Connection timed out",
+			CONNECT_TIMEOUT_MS,
+			raceSignals,
+		);
+
+		const toolsResult = await raceWithSignals(
 			client.listTools(),
 			"Tool listing timed out",
+			LIST_TOOLS_TIMEOUT_MS,
+			raceSignals,
 		);
 
 		const tools = toolsResult.tools.map((t) => ({
@@ -163,6 +240,19 @@ async function connectAndDiscover(
 				},
 			},
 		};
+	} catch (error) {
+		// Enrich timeout errors with stderr context when available
+		if (
+			error instanceof Error &&
+			error.message.includes("timed out") &&
+			getStderr
+		) {
+			const stderr = getStderr();
+			if (stderr) {
+				throw new Error(`${error.message}\nServer stderr: ${stderr}`);
+			}
+		}
+		throw error;
 	} finally {
 		try {
 			await withTimeout(client.close(), "Close timed out", CLOSE_TIMEOUT_MS);
@@ -172,11 +262,36 @@ async function connectAndDiscover(
 	}
 }
 
+/** Check whether a stderr line contains a known auth/credential error pattern. */
+function containsAuthError(text: string): boolean {
+	return STDERR_ERROR_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
+ * Race a promise against a timeout and optional early-failure signals.
+ * Clears the timer on settlement.
+ */
+function raceWithSignals<T>(
+	promise: Promise<T>,
+	timeoutMessage: string,
+	ms: number,
+	signals: Promise<never>[] = [],
+): Promise<T> {
+	let timer: ReturnType<typeof setTimeout>;
+	return Promise.race([
+		promise,
+		new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+		}),
+		...signals,
+	]).finally(() => clearTimeout(timer));
+}
+
 /** Race a promise against a timeout, clearing the timer on settlement. */
 function withTimeout<T>(
 	promise: Promise<T>,
 	message: string,
-	ms: number = TEST_TIMEOUT_MS,
+	ms: number,
 ): Promise<T> {
 	let timer: ReturnType<typeof setTimeout>;
 	return Promise.race([
@@ -186,3 +301,26 @@ function withTimeout<T>(
 		}),
 	]).finally(() => clearTimeout(timer));
 }
+
+/** Error thrown when stderr contains auth/credential error patterns. */
+class McpCredentialError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "McpCredentialError";
+	}
+}
+
+/** Error thrown when the MCP process exits unexpectedly. */
+class McpProcessExitError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "McpProcessExitError";
+	}
+}
+
+export {
+	containsAuthError,
+	McpCredentialError,
+	McpProcessExitError,
+	STDERR_ERROR_PATTERNS,
+};
