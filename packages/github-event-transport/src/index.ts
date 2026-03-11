@@ -14,6 +14,7 @@ export {
 	extractCommentId,
 	extractCommentUrl,
 	extractInstallationId,
+	extractPRBaseBranchRef,
 	extractPRBranchRef,
 	extractPRNumber,
 	extractPRTitle,

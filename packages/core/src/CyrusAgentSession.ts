@@ -48,9 +48,9 @@ export interface RepositoryContext {
 	/** The repository config ID (matches RepositoryConfig.id) */
 	repositoryId: string;
 	/** The git branch the session works on (e.g., derived from issue identifier) */
-	branchName: string;
+	branchName?: string;
 	/** The base branch for PRs (e.g., "main" or a Graphite parent branch) */
-	baseBranchName: string;
+	baseBranchName?: string;
 }
 
 export interface CyrusAgentSession {

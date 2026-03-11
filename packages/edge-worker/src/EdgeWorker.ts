@@ -71,6 +71,7 @@ import {
 	extractCommentBody,
 	extractCommentId,
 	extractCommentUrl,
+	extractPRBaseBranchRef,
 	extractPRBranchRef,
 	extractPRNumber,
 	extractPRTitle,
@@ -1013,13 +1014,16 @@ export class EdgeWorker extends EventEmitter {
 					});
 			}
 
-			// Determine the PR branch
+			// Determine the PR head branch and base branch
 			let branchRef = extractPRBranchRef(event);
+			let baseBranchRef = extractPRBaseBranchRef(event);
 
-			// For issue_comment events, the branch ref is not in the payload
-			// We need to fetch it from the GitHub API
+			// For issue_comment events, the branch refs are not in the payload
+			// We need to fetch them from the GitHub API
 			if (!branchRef && isIssueCommentPayload(event.payload)) {
-				branchRef = await this.fetchPRBranchRef(event, repository);
+				const refs = await this.fetchPRBranchRefs(event, repository);
+				branchRef = refs?.headRef ?? null;
+				baseBranchRef = refs?.baseRef ?? null;
 			}
 
 			if (!branchRef || !prNumber) {
@@ -1083,7 +1087,7 @@ export class EdgeWorker extends EventEmitter {
 					{
 						repositoryId: repository.id,
 						branchName: branchRef,
-						baseBranchName: repository.baseBranch,
+						baseBranchName: baseBranchRef ?? repository.baseBranch,
 					},
 				],
 			);
@@ -1211,14 +1215,14 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Fetch the PR branch ref for an issue_comment webhook.
-	 * For issue_comment events, the branch ref is not in the payload
+	 * Fetch the PR head and base branch refs for an issue_comment webhook.
+	 * For issue_comment events, the branch refs are not in the payload
 	 * and must be fetched from the GitHub API.
 	 */
-	private async fetchPRBranchRef(
+	private async fetchPRBranchRefs(
 		event: GitHubWebhookEvent,
 		_repository: RepositoryConfig,
-	): Promise<string | null> {
+	): Promise<{ headRef: string; baseRef: string } | null> {
 		if (!isIssueCommentPayload(event.payload)) return null;
 
 		const prUrl = event.payload.issue.pull_request?.url;
@@ -1252,11 +1256,17 @@ export class EdgeWorker extends EventEmitter {
 				return null;
 			}
 
-			const prData = (await response.json()) as { head?: { ref?: string } };
-			return prData.head?.ref ?? null;
+			const prData = (await response.json()) as {
+				head?: { ref?: string };
+				base?: { ref?: string };
+			};
+			const headRef = prData.head?.ref;
+			const baseRef = prData.base?.ref;
+			if (!headRef) return null;
+			return { headRef, baseRef: baseRef ?? "" };
 		} catch (error) {
 			this.logger.error(
-				"Failed to fetch PR branch ref",
+				"Failed to fetch PR branch refs",
 				error instanceof Error ? error : new Error(String(error)),
 			);
 			return null;
