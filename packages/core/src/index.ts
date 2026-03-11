@@ -43,10 +43,13 @@ export type {
 	EdgeConfig,
 	EdgeConfigPayload,
 	EdgeWorkerConfig,
+	McpAccess,
 	OAuthCallbackHandler,
 	RepositoryConfig,
 	RepositoryConfigPayload,
 	RunnerType,
+	SessionSourceTrust,
+	TrustLevel,
 	UserAccessControlConfig,
 	UserIdentifier,
 } from "./config-types.js";
@@ -54,10 +57,13 @@ export {
 	EdgeConfigPayloadSchema,
 	// Zod schemas for runtime validation
 	EdgeConfigSchema,
+	McpAccessSchema,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
 	RunnerTypeSchema,
 	resolvePath,
+	SessionSourceTrustSchema,
+	TrustLevelSchema,
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,
 } from "./config-types.js";

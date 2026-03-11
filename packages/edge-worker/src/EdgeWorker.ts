@@ -790,12 +790,18 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
+		// Get trust-filtered MCP config paths for Slack sessions
+		const slackMcpConfigPath = firstRepo
+			? this.getEffectiveMcpConfigPaths("slack", firstRepo)
+			: undefined;
+
 		this.chatSessionHandler = new ChatSessionHandler(
 			slackAdapter,
 			{
 				cyrusHome: this.cyrusHome,
 				chatRepositoryPaths,
 				mcpConfig,
+				mcpConfigPath: slackMcpConfigPath,
 				createRunner: (config) => {
 					const runnerType = this.runnerSelectionService.getDefaultRunner();
 					return this.createRunnerForType(runnerType, {
@@ -1099,6 +1105,7 @@ export class EdgeWorker extends EventEmitter {
 				false, // singleTurn
 				undefined, // disallowAllTools
 				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
+				"github", // sessionSource for trust-based MCP filtering
 			);
 
 			const runner = this.createRunnerForType(runnerType, runnerConfig);
@@ -3098,6 +3105,8 @@ ${taskSection}`;
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+				undefined, // mcpOptions
+				"linear", // sessionSource for trust-based MCP filtering
 			);
 
 			log.debug(
@@ -4956,6 +4965,69 @@ ${input.userComment}
 	}
 
 	/**
+	 * Resolve effective MCP config paths based on the session source's trust level.
+	 *
+	 * Looks up the source's trust level from config.sessionSourceTrust, then
+	 * filters the user-configured MCP servers in ~/.cyrus/mcp-configs/ based on
+	 * config.mcpAccess for that trust level.
+	 *
+	 * Fallback behavior (backward compatible):
+	 * - If sessionSourceTrust is not configured → all sources treated as "trusted"
+	 * - If mcpAccess is not configured → all user MCPs available (returns repository.mcpConfigPath as-is)
+	 * - Unknown/new sources default to "untrusted" when sessionSourceTrust is present
+	 *
+	 * @param sessionSource The session source identifier (e.g., "linear", "github", "slack")
+	 * @param repository The repository configuration (for fallback to repository.mcpConfigPath)
+	 * @returns Array of MCP config file paths filtered by trust level, or undefined if no MCPs allowed
+	 */
+	getEffectiveMcpConfigPaths(
+		sessionSource: string,
+		repository: RepositoryConfig,
+	): string | string[] | undefined {
+		const { sessionSourceTrust, mcpAccess } = this.config;
+
+		// Backward compatible: if neither trust config is set, use repository paths as-is
+		if (!sessionSourceTrust && !mcpAccess) {
+			return repository.mcpConfigPath;
+		}
+
+		// Determine trust level for this source
+		// Default: "trusted" if sessionSourceTrust is not configured, "untrusted" for unknown sources
+		const trustLevel: string = sessionSourceTrust
+			? (sessionSourceTrust[sessionSource] ?? "untrusted")
+			: "trusted";
+
+		// If mcpAccess is not configured, use repository paths as-is (backward compatible)
+		if (!mcpAccess) {
+			return repository.mcpConfigPath;
+		}
+
+		// Get the allowed MCP slugs for this trust level
+		const allowedSlugs =
+			trustLevel === "trusted" ? mcpAccess.trusted : mcpAccess.untrusted;
+
+		// If no slugs configured for this trust level, no user MCPs
+		if (!allowedSlugs || allowedSlugs.length === 0) {
+			this.logger.debug(
+				`No MCP servers allowed for ${sessionSource} (trust level: ${trustLevel})`,
+			);
+			return undefined;
+		}
+
+		// Map slugs to file paths in ~/.cyrus/mcp-configs/
+		const mcpConfigsDir = join(this.cyrusHome, "mcp-configs");
+		const filteredPaths = allowedSlugs.map((slug) =>
+			join(mcpConfigsDir, `mcp-${slug}.json`),
+		);
+
+		this.logger.debug(
+			`MCP config paths for ${sessionSource} (trust level: ${trustLevel}): ${filteredPaths.length} server(s)`,
+		);
+
+		return filteredPaths;
+	}
+
+	/**
 	 * Build agent runner configuration with common settings.
 	 * Also determines which runner type to use based on labels.
 	 * @returns Object containing the runner config and runner type to use
@@ -4975,6 +5047,7 @@ ${input.userComment}
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
 		mcpOptions?: { excludeSlackMcp?: boolean },
+		sessionSource?: string,
 	): {
 		config: AgentRunnerConfig;
 		runnerType: RunnerType;
@@ -5119,9 +5192,14 @@ ${input.userComment}
 		const mcpConfig = disallowAllTools
 			? undefined
 			: this.buildMcpConfig(repository, sessionId, mcpOptions);
+
+		// Use trust-based MCP filtering when sessionSource is provided,
+		// otherwise fall back to repository.mcpConfigPath (backward compatible)
 		const mcpConfigPath = disallowAllTools
 			? undefined
-			: repository.mcpConfigPath;
+			: sessionSource
+				? this.getEffectiveMcpConfigPaths(sessionSource, repository)
+				: repository.mcpConfigPath;
 
 		if (disallowAllTools) {
 			log.info(
@@ -5930,6 +6008,8 @@ ${input.userComment}
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 			currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+			undefined, // mcpOptions
+			"linear", // sessionSource for trust-based MCP filtering
 		);
 
 		// Create the appropriate runner based on session state

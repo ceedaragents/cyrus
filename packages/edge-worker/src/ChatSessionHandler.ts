@@ -56,6 +56,8 @@ export interface ChatPlatformAdapter<TEvent> {
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
 	mcpConfig?: Record<string, McpServerConfig>;
+	/** File-based MCP config paths, filtered by trust level for this session source */
+	mcpConfigPath?: string | string[];
 	chatRepositoryPaths?: string[];
 	/** Factory function that creates the appropriate runner based on config.defaultRunner */
 	createRunner: (config: AgentRunnerConfig) => IAgentRunner;
@@ -420,6 +422,9 @@ export class ChatSessionHandler<TEvent> {
 			cyrusHome: this.deps.cyrusHome,
 			appendSystemPrompt: systemPrompt,
 			...(this.deps.mcpConfig ? { mcpConfig: this.deps.mcpConfig } : {}),
+			...(this.deps.mcpConfigPath
+				? { mcpConfigPath: this.deps.mcpConfigPath }
+				: {}),
 			...(resumeSessionId ? { resumeSessionId } : {}),
 			logger: sessionLogger,
 			maxTurns: 200,

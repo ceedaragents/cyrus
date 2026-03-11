@@ -125,6 +125,33 @@ const PromptDefaultsSchema = z.object({
 });
 
 /**
+ * Trust level for a session source.
+ */
+export const TrustLevelSchema = z.enum(["trusted", "untrusted"]);
+
+/**
+ * Known session source identifiers.
+ * Uses z.string() as the key to allow future sources without schema changes,
+ * while well-known sources ("linear", "github", "slack") are documented.
+ */
+export const SessionSourceTrustSchema = z.record(z.string(), TrustLevelSchema);
+
+/**
+ * MCP access configuration per trust level.
+ * Maps trust levels to arrays of MCP server slugs (matching filenames
+ * in ~/.cyrus/mcp-configs/mcp-{slug}.json).
+ *
+ * Built-in MCPs (Linear, Cyrus Tools) are always injected regardless
+ * of trust level — only user-configured MCPs are subject to filtering.
+ */
+export const McpAccessSchema = z.object({
+	/** MCP server slugs available to sessions from trusted sources */
+	trusted: z.array(z.string()).optional(),
+	/** MCP server slugs available to sessions from untrusted sources */
+	untrusted: z.array(z.string()).optional(),
+});
+
+/**
  * Configuration for a single repository/workspace pair
  */
 export const RepositoryConfigSchema = z.object({
@@ -241,6 +268,25 @@ export const EdgeConfigSchema = z.object({
 
 	/** Global defaults for prompt types (tool restrictions per prompt type) */
 	promptDefaults: PromptDefaultsSchema.optional(),
+
+	/**
+	 * Maps session sources to trust levels.
+	 * Keys are source identifiers (e.g., "linear", "github", "slack").
+	 * Values are "trusted" or "untrusted".
+	 *
+	 * If not configured, all sources are treated as "trusted" (backward compatible).
+	 * Unknown/new sources default to "untrusted" when this field is present.
+	 */
+	sessionSourceTrust: SessionSourceTrustSchema.optional(),
+
+	/**
+	 * Controls which user-configured MCP servers (from ~/.cyrus/mcp-configs/)
+	 * are available to sessions based on their source's trust level.
+	 *
+	 * If not configured, all user MCPs are available to all sources (backward compatible).
+	 * Built-in MCPs (Linear, Cyrus Tools) are always available regardless.
+	 */
+	mcpAccess: McpAccessSchema.optional(),
 });
 
 /**
@@ -264,6 +310,9 @@ export type UserIdentifier = z.infer<typeof UserIdentifierSchema>;
 export type UserAccessControlConfig = z.infer<
 	typeof UserAccessControlConfigSchema
 >;
+export type TrustLevel = z.infer<typeof TrustLevelSchema>;
+export type SessionSourceTrust = z.infer<typeof SessionSourceTrustSchema>;
+export type McpAccess = z.infer<typeof McpAccessSchema>;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
 export type RepositoryConfigPayload = z.infer<
