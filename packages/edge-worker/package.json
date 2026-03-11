@@ -40,7 +40,7 @@
 		"cyrus-simple-agent-runner": "workspace:*",
 		"fastify": "^5.8.1",
 		"fastify-mcp": "^2.1.0",
-		"file-type": "^18.7.0",
+		"file-type": "^21.3.1",
 		"ignore": "^7.0.5",
 		"zod": "4.3.6"
 	},
