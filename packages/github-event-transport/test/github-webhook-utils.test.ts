@@ -5,6 +5,7 @@ import {
 	extractCommentId,
 	extractCommentUrl,
 	extractInstallationId,
+	extractPRBaseBranchRef,
 	extractPRBranchRef,
 	extractPRNumber,
 	extractPRTitle,
@@ -79,6 +80,20 @@ describe("github-webhook-utils", () => {
 
 		it("returns null for issue_comment events (branch must be fetched separately)", () => {
 			expect(extractPRBranchRef(issueCommentEvent)).toBeNull();
+		});
+	});
+
+	describe("extractPRBaseBranchRef", () => {
+		it("returns base branch ref from pull_request_review_comment", () => {
+			expect(extractPRBaseBranchRef(prReviewCommentEvent)).toBe("main");
+		});
+
+		it("returns base branch ref from pull_request_review", () => {
+			expect(extractPRBaseBranchRef(prReviewEvent)).toBe("main");
+		});
+
+		it("returns null for issue_comment events (base branch must be fetched separately)", () => {
+			expect(extractPRBaseBranchRef(issueCommentEvent)).toBeNull();
 		});
 	});
 

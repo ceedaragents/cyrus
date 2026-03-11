@@ -28,7 +28,7 @@ vi.mock("cyrus-core", async (importOriginal) => {
 });
 vi.mock("file-type");
 
-describe("EdgeWorker - fetchPRBranchRef", () => {
+describe("EdgeWorker - fetchPRBranchRefs", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
 	let mockLinearClient: any;
@@ -136,18 +136,21 @@ describe("EdgeWorker - fetchPRBranchRef", () => {
 					head: {
 						ref: "fix-tests",
 					},
+					base: {
+						ref: "main",
+					},
 				}),
 			});
 			global.fetch = mockFetch;
 
-			// Call fetchPRBranchRef via reflection (it's private)
-			const result = await (edgeWorker as any).fetchPRBranchRef(
+			// Call fetchPRBranchRefs via reflection (it's private)
+			const result = await (edgeWorker as any).fetchPRBranchRefs(
 				eventWithToken,
 				mockRepository,
 			);
 
 			// Verify the result
-			expect(result).toBe("fix-tests");
+			expect(result).toEqual({ headRef: "fix-tests", baseRef: "main" });
 
 			// THIS IS THE FAILING ASSERTION - the current implementation uses process.env.GITHUB_TOKEN
 			// but it SHOULD use event.installationToken
@@ -181,18 +184,21 @@ describe("EdgeWorker - fetchPRBranchRef", () => {
 					head: {
 						ref: "fix-tests",
 					},
+					base: {
+						ref: "develop",
+					},
 				}),
 			});
 			global.fetch = mockFetch;
 
-			// Call fetchPRBranchRef
-			const result = await (edgeWorker as any).fetchPRBranchRef(
+			// Call fetchPRBranchRefs
+			const result = await (edgeWorker as any).fetchPRBranchRefs(
 				eventWithoutToken,
 				mockRepository,
 			);
 
 			// Verify the result
-			expect(result).toBe("fix-tests");
+			expect(result).toEqual({ headRef: "fix-tests", baseRef: "develop" });
 
 			// Verify it used the environment variable
 			expect(mockFetch).toHaveBeenCalledWith(
@@ -228,8 +234,8 @@ describe("EdgeWorker - fetchPRBranchRef", () => {
 			});
 			global.fetch = mockFetch;
 
-			// Call fetchPRBranchRef
-			const result = await (edgeWorker as any).fetchPRBranchRef(
+			// Call fetchPRBranchRefs
+			const result = await (edgeWorker as any).fetchPRBranchRefs(
 				eventWithoutToken,
 				mockRepository,
 			);
