@@ -135,8 +135,6 @@ export const LinearWorkspaceConfigSchema = z.object({
 	linearWorkspaceSlug: z.string().optional(),
 	/** Human-readable workspace name (e.g., "Ceedar") */
 	linearWorkspaceName: z.string().optional(),
-	/** Stripe customer ID for billing */
-	stripeCustomerId: z.string().optional(),
 });
 
 /**
@@ -199,6 +197,9 @@ export const EdgeConfigSchema = z.object({
 
 	/** Ngrok auth token for tunnel creation */
 	ngrokAuthToken: z.string().optional(),
+
+	/** Stripe customer ID for billing */
+	stripeCustomerId: z.string().optional(),
 
 	/** Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku") */
 	claudeDefaultModel: z.string().optional(),
