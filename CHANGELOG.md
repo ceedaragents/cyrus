@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Trusted/untrusted session source MCP access control** - Users can now configure which MCP servers are available to sessions from different sources (Linear, GitHub, Slack) via `sessionSourceTrust` and `mcpAccess` settings. Trusted sources get full MCP access while untrusted sources receive a restricted set, giving users control over tool exposure per platform. ([CYPACK-933](https://linear.app/ceedar/issue/CYPACK-933), [#971](https://github.com/ceedaragents/cyrus/pull/971))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed

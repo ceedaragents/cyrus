@@ -325,6 +325,8 @@ export class ConfigManager extends EventEmitter {
 			"issueUpdateTrigger",
 			"linearWorkspaceSlug",
 			"userAccessControl",
+			"sessionSourceTrust",
+			"mcpAccess",
 		];
 
 		for (const key of globalKeys) {

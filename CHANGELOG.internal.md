@@ -4,6 +4,13 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `TrustLevelSchema`, `SessionSourceTrustSchema`, and `McpAccessSchema` Zod schemas to `config-schemas.ts` with types exported from core index. `EdgeConfigSchema` now accepts optional `sessionSourceTrust` and `mcpAccess` fields. ([CYPACK-933](https://linear.app/ceedar/issue/CYPACK-933), [#971](https://github.com/ceedaragents/cyrus/pull/971))
+- Added `getEffectiveMcpConfigPaths(sessionSource, repository)` to EdgeWorker that resolves trust level → allowed MCP slugs → file paths in `~/.cyrus/mcp-configs/`. Backward compatible: no trust config = all sources treated as trusted. ([CYPACK-933](https://linear.app/ceedar/issue/CYPACK-933), [#971](https://github.com/ceedaragents/cyrus/pull/971))
+- Threaded `sessionSource` parameter through `buildAgentRunnerConfig()` for all three session creation paths (Linear, GitHub, Slack). ChatSessionHandler now accepts `mcpConfigPath` in deps for trust-filtered file-based MCP configs. ([CYPACK-933](https://linear.app/ceedar/issue/CYPACK-933), [#971](https://github.com/ceedaragents/cyrus/pull/971))
+- Added `sessionSourceTrust` and `mcpAccess` to ConfigManager's `detectGlobalConfigChanges()` globalKeys array for hot-reload support. ([CYPACK-933](https://linear.app/ceedar/issue/CYPACK-933), [#971](https://github.com/ceedaragents/cyrus/pull/971))
+- 27 new tests: 16 schema validation tests (`config-schemas.trust.test.ts`) and 11 EdgeWorker filtering tests (`EdgeWorker.session-source-trust.test.ts`). ([CYPACK-933](https://linear.app/ceedar/issue/CYPACK-933), [#971](https://github.com/ceedaragents/cyrus/pull/971))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed
