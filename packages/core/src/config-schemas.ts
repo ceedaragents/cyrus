@@ -150,8 +150,8 @@ export const RepositoryConfigSchema = z.object({
 	baseBranch: z.string(),
 	githubUrl: z.string().optional(),
 
-	// Linear configuration
-	linearWorkspaceId: z.string(),
+	// Linear configuration (optional — repos may operate without Linear, e.g. via Slack or GitHub)
+	linearWorkspaceId: z.string().optional(),
 	teamKeys: z.array(z.string()).optional(),
 	routingLabels: z.array(z.string()).optional(),
 	projectKeys: z.array(z.string()).optional(),
@@ -366,3 +366,17 @@ export type RepositoryConfigPayload = z.infer<
 	typeof RepositoryConfigPayloadSchema
 >;
 export type EdgeConfigPayload = z.infer<typeof EdgeConfigPayloadSchema>;
+
+/**
+ * Assert that a repository has a Linear workspace ID and return it.
+ * Use this in code paths that are only reached for Linear-linked repositories
+ * (e.g. webhook handlers routed via workspace ID).
+ */
+export function requireLinearWorkspaceId(repo: RepositoryConfig): string {
+	if (!repo.linearWorkspaceId) {
+		throw new Error(
+			`Repository "${repo.name}" is not linked to a Linear workspace`,
+		);
+	}
+	return repo.linearWorkspaceId;
+}

@@ -60,6 +60,7 @@ export {
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
 	RunnerTypeSchema,
+	requireLinearWorkspaceId,
 	resolvePath,
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,
