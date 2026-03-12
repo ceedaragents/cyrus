@@ -3,7 +3,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { migrateEdgeConfig } from "../src/config-schemas.js";
+import {
+	EdgeConfigPayloadSchema,
+	migrateEdgeConfig,
+} from "../src/config-schemas.js";
 
 describe("migrateEdgeConfig", () => {
 	it("migrates per-repo tokens to workspace-keyed format", () => {
@@ -205,5 +208,166 @@ describe("migrateEdgeConfig", () => {
 		// Top-level fields preserved
 		expect(result).toHaveProperty("ngrokAuthToken", "ngrok_123");
 		expect(result).toHaveProperty("claudeDefaultModel", "sonnet");
+	});
+
+	it("folds top-level linearWorkspaceSlug into workspace config", () => {
+		const oldConfig = {
+			linearWorkspaceSlug: "my-workspace",
+			repositories: [
+				{
+					id: "repo-1",
+					name: "My Repo",
+					repositoryPath: "/path",
+					baseBranch: "main",
+					linearWorkspaceId: "ws-123",
+					linearToken: "token_123",
+					workspaceBaseDir: "/ws",
+				},
+			],
+		};
+
+		const result = migrateEdgeConfig(oldConfig);
+
+		expect((result.linearWorkspaces as Record<string, any>)["ws-123"]).toEqual({
+			linearToken: "token_123",
+			linearWorkspaceSlug: "my-workspace",
+		});
+
+		// Top-level slug should be removed
+		expect(result).not.toHaveProperty("linearWorkspaceSlug");
+	});
+});
+
+describe("Zod schema + migration round-trip", () => {
+	const makeOldFormatPayload = () => ({
+		linearWorkspaceSlug: "acme-corp",
+		repositories: [
+			{
+				id: "repo-1",
+				name: "My Repo",
+				repositoryPath: "/path/to/repo",
+				baseBranch: "main",
+				linearWorkspaceId: "ws-abc",
+				linearToken: "lin_token_old",
+				linearRefreshToken: "lin_refresh_old",
+				linearWorkspaceName: "Acme Corp",
+				workspaceBaseDir: "/ws",
+			},
+		],
+	});
+
+	it("old-format payload survives Zod validation and migrates correctly", () => {
+		const payload = makeOldFormatPayload();
+
+		// Zod should accept deprecated fields (not strip them)
+		const parseResult = EdgeConfigPayloadSchema.safeParse(payload);
+		expect(parseResult.success).toBe(true);
+
+		const parsed = parseResult.data!;
+		// Deprecated fields should be preserved after parse
+		expect(parsed.repositories[0]).toHaveProperty(
+			"linearToken",
+			"lin_token_old",
+		);
+		expect(parsed.repositories[0]).toHaveProperty(
+			"linearRefreshToken",
+			"lin_refresh_old",
+		);
+		expect(parsed.repositories[0]).toHaveProperty(
+			"linearWorkspaceName",
+			"Acme Corp",
+		);
+		expect(parsed).toHaveProperty("linearWorkspaceSlug", "acme-corp");
+
+		// Now migrate
+		const migrated = migrateEdgeConfig(
+			parsed as unknown as Record<string, unknown>,
+		);
+
+		expect(migrated.linearWorkspaces).toEqual({
+			"ws-abc": {
+				linearToken: "lin_token_old",
+				linearRefreshToken: "lin_refresh_old",
+				linearWorkspaceSlug: "acme-corp",
+				linearWorkspaceName: "Acme Corp",
+			},
+		});
+
+		// Deprecated fields stripped from repos and top-level
+		const repos = migrated.repositories as Record<string, unknown>[];
+		expect(repos[0]).not.toHaveProperty("linearToken");
+		expect(repos[0]).not.toHaveProperty("linearRefreshToken");
+		expect(repos[0]).not.toHaveProperty("linearWorkspaceName");
+		expect(migrated).not.toHaveProperty("linearWorkspaceSlug");
+	});
+
+	it("new-format payload passes Zod and migration unchanged", () => {
+		const newPayload = {
+			repositories: [
+				{
+					id: "repo-1",
+					name: "My Repo",
+					repositoryPath: "/path/to/repo",
+					baseBranch: "main",
+					linearWorkspaceId: "ws-abc",
+					workspaceBaseDir: "/ws",
+				},
+			],
+			linearWorkspaces: {
+				"ws-abc": {
+					linearToken: "lin_token_new",
+					linearRefreshToken: "lin_refresh_new",
+				},
+			},
+		};
+
+		const parseResult = EdgeConfigPayloadSchema.safeParse(newPayload);
+		expect(parseResult.success).toBe(true);
+
+		const migrated = migrateEdgeConfig(
+			parseResult.data as unknown as Record<string, unknown>,
+		);
+
+		// Should be returned as-is (idempotent — linearWorkspaces already present)
+		expect(migrated).toBe(parseResult.data);
+	});
+
+	it("combined format (both old and new fields) is idempotent after migration", () => {
+		const combinedPayload = {
+			linearWorkspaceSlug: "acme-corp",
+			repositories: [
+				{
+					id: "repo-1",
+					name: "My Repo",
+					repositoryPath: "/path/to/repo",
+					baseBranch: "main",
+					linearWorkspaceId: "ws-abc",
+					linearToken: "lin_token_old",
+					workspaceBaseDir: "/ws",
+				},
+			],
+			linearWorkspaces: {
+				"ws-abc": {
+					linearToken: "lin_token_new",
+					linearRefreshToken: "lin_refresh_new",
+				},
+			},
+		};
+
+		const parseResult = EdgeConfigPayloadSchema.safeParse(combinedPayload);
+		expect(parseResult.success).toBe(true);
+
+		const migrated = migrateEdgeConfig(
+			parseResult.data as unknown as Record<string, unknown>,
+		);
+
+		// linearWorkspaces already existed, so migration returns unchanged
+		expect(migrated).toBe(parseResult.data);
+		expect(
+			(migrated.linearWorkspaces as Record<string, any>)["ws-abc"],
+		).toEqual({
+			linearToken: "lin_token_new",
+			linearRefreshToken: "lin_refresh_new",
+		});
 	});
 });
