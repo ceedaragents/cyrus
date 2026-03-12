@@ -1,0 +1,833 @@
+{
+	"$id": "https://atcyrus.com/schemas/EdgeConfig.json",
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"repositories": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"repositoryPath": {
+						"type": "string"
+					},
+					"baseBranch": {
+						"type": "string"
+					},
+					"githubUrl": {
+						"type": "string"
+					},
+					"linearWorkspaceId": {
+						"type": "string"
+					},
+					"teamKeys": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"routingLabels": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"projectKeys": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"linearToken": {
+						"type": "string"
+					},
+					"linearRefreshToken": {
+						"type": "string"
+					},
+					"linearWorkspaceName": {
+						"type": "string"
+					},
+					"workspaceBaseDir": {
+						"type": "string"
+					},
+					"isActive": {
+						"type": "boolean"
+					},
+					"promptTemplatePath": {
+						"type": "string"
+					},
+					"allowedTools": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"disallowedTools": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"mcpConfigPath": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							}
+						]
+					},
+					"appendInstruction": {
+						"type": "string"
+					},
+					"model": {
+						"type": "string"
+					},
+					"fallbackModel": {
+						"type": "string"
+					},
+					"labelPrompts": {
+						"type": "object",
+						"properties": {
+							"debugger": {
+								"anyOf": [
+									{
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									{
+										"type": "object",
+										"properties": {
+											"labels": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"allowedTools": {
+												"anyOf": [
+													{
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													{
+														"type": "string",
+														"const": "readOnly"
+													},
+													{
+														"type": "string",
+														"const": "safe"
+													},
+													{
+														"type": "string",
+														"const": "all"
+													},
+													{
+														"type": "string",
+														"const": "coordinator"
+													}
+												]
+											},
+											"disallowedTools": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											}
+										},
+										"required": ["labels"],
+										"additionalProperties": false
+									}
+								]
+							},
+							"builder": {
+								"anyOf": [
+									{
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									{
+										"type": "object",
+										"properties": {
+											"labels": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"allowedTools": {
+												"anyOf": [
+													{
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													{
+														"type": "string",
+														"const": "readOnly"
+													},
+													{
+														"type": "string",
+														"const": "safe"
+													},
+													{
+														"type": "string",
+														"const": "all"
+													},
+													{
+														"type": "string",
+														"const": "coordinator"
+													}
+												]
+											},
+											"disallowedTools": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											}
+										},
+										"required": ["labels"],
+										"additionalProperties": false
+									}
+								]
+							},
+							"scoper": {
+								"anyOf": [
+									{
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									{
+										"type": "object",
+										"properties": {
+											"labels": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"allowedTools": {
+												"anyOf": [
+													{
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													{
+														"type": "string",
+														"const": "readOnly"
+													},
+													{
+														"type": "string",
+														"const": "safe"
+													},
+													{
+														"type": "string",
+														"const": "all"
+													},
+													{
+														"type": "string",
+														"const": "coordinator"
+													}
+												]
+											},
+											"disallowedTools": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											}
+										},
+										"required": ["labels"],
+										"additionalProperties": false
+									}
+								]
+							},
+							"orchestrator": {
+								"anyOf": [
+									{
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									{
+										"type": "object",
+										"properties": {
+											"labels": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"allowedTools": {
+												"anyOf": [
+													{
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													{
+														"type": "string",
+														"const": "readOnly"
+													},
+													{
+														"type": "string",
+														"const": "safe"
+													},
+													{
+														"type": "string",
+														"const": "all"
+													},
+													{
+														"type": "string",
+														"const": "coordinator"
+													}
+												]
+											},
+											"disallowedTools": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											}
+										},
+										"required": ["labels"],
+										"additionalProperties": false
+									}
+								]
+							},
+							"graphite-orchestrator": {
+								"anyOf": [
+									{
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									{
+										"type": "object",
+										"properties": {
+											"labels": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"allowedTools": {
+												"anyOf": [
+													{
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													{
+														"type": "string",
+														"const": "readOnly"
+													},
+													{
+														"type": "string",
+														"const": "safe"
+													},
+													{
+														"type": "string",
+														"const": "all"
+													},
+													{
+														"type": "string",
+														"const": "coordinator"
+													}
+												]
+											},
+											"disallowedTools": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											}
+										},
+										"required": ["labels"],
+										"additionalProperties": false
+									}
+								]
+							},
+							"graphite": {
+								"anyOf": [
+									{
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									{
+										"type": "object",
+										"properties": {
+											"labels": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											}
+										},
+										"required": ["labels"],
+										"additionalProperties": false
+									}
+								]
+							}
+						},
+						"additionalProperties": false
+					},
+					"userAccessControl": {
+						"type": "object",
+						"properties": {
+							"allowedUsers": {
+								"type": "array",
+								"items": {
+									"anyOf": [
+										{
+											"type": "string"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"id": {
+													"type": "string"
+												}
+											},
+											"required": ["id"],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"email": {
+													"type": "string"
+												}
+											},
+											"required": ["email"],
+											"additionalProperties": false
+										}
+									]
+								}
+							},
+							"blockedUsers": {
+								"type": "array",
+								"items": {
+									"anyOf": [
+										{
+											"type": "string"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"id": {
+													"type": "string"
+												}
+											},
+											"required": ["id"],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"email": {
+													"type": "string"
+												}
+											},
+											"required": ["email"],
+											"additionalProperties": false
+										}
+									]
+								}
+							},
+							"blockBehavior": {
+								"type": "string",
+								"enum": ["silent", "comment"]
+							},
+							"blockMessage": {
+								"type": "string"
+							}
+						},
+						"additionalProperties": false
+					}
+				},
+				"required": [
+					"id",
+					"name",
+					"repositoryPath",
+					"baseBranch",
+					"workspaceBaseDir"
+				],
+				"additionalProperties": false
+			}
+		},
+		"linearWorkspaces": {
+			"type": "object",
+			"propertyNames": {
+				"type": "string"
+			},
+			"additionalProperties": {
+				"type": "object",
+				"properties": {
+					"linearToken": {
+						"type": "string"
+					},
+					"linearRefreshToken": {
+						"type": "string"
+					},
+					"linearWorkspaceSlug": {
+						"type": "string"
+					},
+					"linearWorkspaceName": {
+						"type": "string"
+					}
+				},
+				"required": ["linearToken"],
+				"additionalProperties": false
+			}
+		},
+		"linearWorkspaceSlug": {
+			"type": "string"
+		},
+		"ngrokAuthToken": {
+			"type": "string"
+		},
+		"stripeCustomerId": {
+			"type": "string"
+		},
+		"claudeDefaultModel": {
+			"type": "string"
+		},
+		"claudeDefaultFallbackModel": {
+			"type": "string"
+		},
+		"geminiDefaultModel": {
+			"type": "string"
+		},
+		"codexDefaultModel": {
+			"type": "string"
+		},
+		"defaultRunner": {
+			"type": "string",
+			"enum": ["claude", "gemini", "codex", "cursor"]
+		},
+		"defaultModel": {
+			"type": "string"
+		},
+		"defaultFallbackModel": {
+			"type": "string"
+		},
+		"global_setup_script": {
+			"type": "string"
+		},
+		"defaultAllowedTools": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
+		"defaultDisallowedTools": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
+		"issueUpdateTrigger": {
+			"type": "boolean"
+		},
+		"userAccessControl": {
+			"type": "object",
+			"properties": {
+				"allowedUsers": {
+					"type": "array",
+					"items": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "string"
+									}
+								},
+								"required": ["id"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"email": {
+										"type": "string"
+									}
+								},
+								"required": ["email"],
+								"additionalProperties": false
+							}
+						]
+					}
+				},
+				"blockedUsers": {
+					"type": "array",
+					"items": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "string"
+									}
+								},
+								"required": ["id"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"email": {
+										"type": "string"
+									}
+								},
+								"required": ["email"],
+								"additionalProperties": false
+							}
+						]
+					}
+				},
+				"blockBehavior": {
+					"type": "string",
+					"enum": ["silent", "comment"]
+				},
+				"blockMessage": {
+					"type": "string"
+				}
+			},
+			"additionalProperties": false
+		},
+		"promptDefaults": {
+			"type": "object",
+			"properties": {
+				"debugger": {
+					"type": "object",
+					"properties": {
+						"allowedTools": {
+							"anyOf": [
+								{
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								{
+									"type": "string",
+									"const": "readOnly"
+								},
+								{
+									"type": "string",
+									"const": "safe"
+								},
+								{
+									"type": "string",
+									"const": "all"
+								},
+								{
+									"type": "string",
+									"const": "coordinator"
+								}
+							]
+						},
+						"disallowedTools": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
+					},
+					"additionalProperties": false
+				},
+				"builder": {
+					"type": "object",
+					"properties": {
+						"allowedTools": {
+							"anyOf": [
+								{
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								{
+									"type": "string",
+									"const": "readOnly"
+								},
+								{
+									"type": "string",
+									"const": "safe"
+								},
+								{
+									"type": "string",
+									"const": "all"
+								},
+								{
+									"type": "string",
+									"const": "coordinator"
+								}
+							]
+						},
+						"disallowedTools": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
+					},
+					"additionalProperties": false
+				},
+				"scoper": {
+					"type": "object",
+					"properties": {
+						"allowedTools": {
+							"anyOf": [
+								{
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								{
+									"type": "string",
+									"const": "readOnly"
+								},
+								{
+									"type": "string",
+									"const": "safe"
+								},
+								{
+									"type": "string",
+									"const": "all"
+								},
+								{
+									"type": "string",
+									"const": "coordinator"
+								}
+							]
+						},
+						"disallowedTools": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
+					},
+					"additionalProperties": false
+				},
+				"orchestrator": {
+					"type": "object",
+					"properties": {
+						"allowedTools": {
+							"anyOf": [
+								{
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								{
+									"type": "string",
+									"const": "readOnly"
+								},
+								{
+									"type": "string",
+									"const": "safe"
+								},
+								{
+									"type": "string",
+									"const": "all"
+								},
+								{
+									"type": "string",
+									"const": "coordinator"
+								}
+							]
+						},
+						"disallowedTools": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
+					},
+					"additionalProperties": false
+				},
+				"graphite-orchestrator": {
+					"type": "object",
+					"properties": {
+						"allowedTools": {
+							"anyOf": [
+								{
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								{
+									"type": "string",
+									"const": "readOnly"
+								},
+								{
+									"type": "string",
+									"const": "safe"
+								},
+								{
+									"type": "string",
+									"const": "all"
+								},
+								{
+									"type": "string",
+									"const": "coordinator"
+								}
+							]
+						},
+						"disallowedTools": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
+					},
+					"additionalProperties": false
+				}
+			},
+			"additionalProperties": false
+		}
+	},
+	"required": ["repositories"],
+	"additionalProperties": false
+}
