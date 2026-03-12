@@ -5,7 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Added
-- Added JSON Schema export pipeline for config schemas (`EdgeConfigSchema`, `RepositoryConfigSchema`, etc.) via `pnpm generate:json-schema` in cyrus-core. Generates draft-2020-12 JSON Schema files in `packages/core/schemas/` using Zod v4's native `.toJSONSchema()`. Includes 16 sync/structure tests and `tsx` devDependency. Created follow-up CYSV-50 for Go struct codegen in cyrus-update-server. ([CYPACK-935](https://linear.app/ceedar/issue/CYPACK-935), [#973](https://github.com/ceedaragents/cyrus/pull/973))
+- Added JSON Schema export pipeline for config schemas (`EdgeConfigSchema`, `RepositoryConfigSchema`, etc.) via `pnpm generate:json-schema` in cyrus-core. Generates JSON Schema files in `packages/core/schemas/` using Zod v4's native `.toJSONSchema()`. Includes 16 sync/structure tests and `tsx` devDependency. ([CYPACK-935](https://linear.app/ceedar/issue/CYPACK-935), [#973](https://github.com/ceedaragents/cyrus/pull/973))
 
 ## [0.2.33] - 2026-03-10
 
