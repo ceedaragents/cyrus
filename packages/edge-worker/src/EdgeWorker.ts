@@ -61,6 +61,7 @@ import {
 	isUnassignMessage,
 	isUserPromptMessage,
 	PersistenceManager,
+	requireLinearWorkspaceId,
 	resolvePath,
 } from "cyrus-core";
 import { CursorRunner } from "cyrus-cursor-runner";
@@ -247,7 +248,9 @@ export class EdgeWorker extends EventEmitter {
 				if (!repo) return [];
 
 				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
+				const issueTracker = this.issueTrackers.get(
+					requireLinearWorkspaceId(repo),
+				);
 				if (!issueTracker) return [];
 
 				// Use platform-agnostic getIssueLabels method
@@ -264,7 +267,9 @@ export class EdgeWorker extends EventEmitter {
 				if (!repo) return undefined;
 
 				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
+				const issueTracker = this.issueTrackers.get(
+					requireLinearWorkspaceId(repo),
+				);
 				if (!issueTracker) return undefined;
 
 				// Fetch issue and get description
@@ -457,6 +462,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Create activity sinks for each repository (uses workspace issue tracker)
 		for (const [repoId, repo] of this.repositories) {
+			if (!repo.linearWorkspaceId) continue;
 			const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
 			if (issueTracker) {
 				const activitySink = new LinearActivitySink(
@@ -578,7 +584,7 @@ export class EdgeWorker extends EventEmitter {
 		if (this.config.platform === "cli") {
 			// CLI mode: Create and register CLIRPCServer
 			const firstIssueTracker = this.issueTrackers.get(
-				firstRepo.linearWorkspaceId,
+				requireLinearWorkspaceId(firstRepo),
 			);
 			if (!firstIssueTracker) {
 				throw new Error("Issue tracker not found for first repository");
@@ -1607,12 +1613,14 @@ ${taskSection}`;
 
 		await this.postParentResumeAcknowledgment(
 			parentSessionId,
-			parentRepo.linearWorkspaceId,
+			requireLinearWorkspaceId(parentRepo),
 		);
 
 		// Post thought showing child result receipt
 		// Use parent's issue tracker since we're posting to the parent's session
-		const issueTracker = this.issueTrackers.get(parentRepo.linearWorkspaceId);
+		const issueTracker = this.issueTrackers.get(
+			requireLinearWorkspaceId(parentRepo),
+		);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -1687,7 +1695,7 @@ ${taskSection}`;
 		try {
 			subroutinePrompt = await this.loadSubroutinePrompt(
 				nextSubroutine,
-				this.getWorkspaceSlug(repo.linearWorkspaceId),
+				this.getWorkspaceSlug(requireLinearWorkspaceId(repo)),
 			);
 			if (!subroutinePrompt) {
 				// Fallback if loadSubroutinePrompt returns null
@@ -1788,7 +1796,7 @@ ${taskSection}`;
 			// Load the verifications prompt
 			const subroutinePrompt = await this.loadSubroutinePrompt(
 				verificationsSubroutine,
-				this.getWorkspaceSlug(repo.linearWorkspaceId),
+				this.getWorkspaceSlug(requireLinearWorkspaceId(repo)),
 			);
 
 			if (!subroutinePrompt) {
@@ -1845,9 +1853,9 @@ ${taskSection}`;
 				this.repositories.set(repo.id, resolvedRepo);
 
 				// Create issue tracker for this workspace if not already present
-				if (!this.issueTrackers.has(repo.linearWorkspaceId)) {
+				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
 					const linearToken = this.getLinearTokenForWorkspace(
-						repo.linearWorkspaceId,
+						requireLinearWorkspaceId(repo),
 					);
 					const issueTracker =
 						this.config.platform === "cli"
@@ -1860,16 +1868,18 @@ ${taskSection}`;
 									new LinearClient({
 										accessToken: linearToken,
 									}),
-									this.buildOAuthConfig(repo.linearWorkspaceId),
+									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
 								);
-					this.issueTrackers.set(repo.linearWorkspaceId, issueTracker);
+					this.issueTrackers.set(requireLinearWorkspaceId(repo), issueTracker);
 				}
 
 				// Create activity sink for this repository
-				const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId)!;
+				const issueTracker = this.issueTrackers.get(
+					requireLinearWorkspaceId(repo),
+				)!;
 				const activitySink = new LinearActivitySink(
 					issueTracker,
-					repo.linearWorkspaceId,
+					requireLinearWorkspaceId(repo),
 				);
 				this.activitySinks.set(repo.id, activitySink);
 
@@ -1918,11 +1928,11 @@ ${taskSection}`;
 
 				// If workspace changed or token was updated, ensure issue tracker is current
 				const currentToken = this.getLinearTokenForWorkspace(
-					repo.linearWorkspaceId,
+					requireLinearWorkspaceId(repo),
 				);
-				if (!this.issueTrackers.has(repo.linearWorkspaceId)) {
+				if (!this.issueTrackers.has(requireLinearWorkspaceId(repo))) {
 					this.logger.info(
-						`  🔑 Creating issue tracker for workspace ${repo.linearWorkspaceId}`,
+						`  🔑 Creating issue tracker for workspace ${requireLinearWorkspaceId(repo)}`,
 					);
 					const newIssueTracker =
 						this.config.platform === "cli"
@@ -1935,12 +1945,17 @@ ${taskSection}`;
 									new LinearClient({
 										accessToken: currentToken,
 									}),
-									this.buildOAuthConfig(repo.linearWorkspaceId),
+									this.buildOAuthConfig(requireLinearWorkspaceId(repo)),
 								);
-					this.issueTrackers.set(repo.linearWorkspaceId, newIssueTracker);
+					this.issueTrackers.set(
+						requireLinearWorkspaceId(repo),
+						newIssueTracker,
+					);
 				} else {
 					// Update token on existing issue tracker if it changed
-					const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
+					const issueTracker = this.issueTrackers.get(
+						requireLinearWorkspaceId(repo),
+					);
 					if (issueTracker && currentToken) {
 						(issueTracker as LinearIssueTrackerService).setAccessToken(
 							currentToken,
@@ -2011,7 +2026,7 @@ ${taskSection}`;
 
 							// Post cancellation message to tracker
 							const issueTracker = this.issueTrackers.get(
-								repo.linearWorkspaceId,
+								requireLinearWorkspaceId(repo),
 							);
 							if (issueTracker && session.externalSessionId) {
 								await this.postActivityDirect(
@@ -2041,10 +2056,10 @@ ${taskSection}`;
 
 				// Only remove workspace issue tracker if no other repos use this workspace
 				const workspaceStillInUse = Array.from(this.repositories.values()).some(
-					(r) => r.linearWorkspaceId === repo.linearWorkspaceId,
+					(r) => r.linearWorkspaceId === requireLinearWorkspaceId(repo),
 				);
 				if (!workspaceStillInUse) {
-					this.issueTrackers.delete(repo.linearWorkspaceId);
+					this.issueTrackers.delete(requireLinearWorkspaceId(repo));
 				}
 
 				this.logger.info(`✅ Repository removed successfully: ${repo.name}`);
@@ -2458,7 +2473,7 @@ ${taskSection}`;
 
 				// Download attachments from the new description
 				const linearToken = this.getLinearTokenForWorkspace(
-					repository.linearWorkspaceId,
+					requireLinearWorkspaceId(repository),
 				);
 				const downloadResult = await this.downloadCommentAttachments(
 					issueData.description,
@@ -2615,14 +2630,17 @@ ${taskSection}`;
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(
 			issue.id,
-			repository.linearWorkspaceId,
+			requireLinearWorkspaceId(repository),
 		);
 		if (!fullIssue) {
 			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
 		}
 
 		// Move issue to started state automatically, in case it's not already
-		await this.moveIssueToStartedState(fullIssue, repository.linearWorkspaceId);
+		await this.moveIssueToStartedState(
+			fullIssue,
+			requireLinearWorkspaceId(repository),
+		);
 
 		// Create workspace using full issue data
 		// Use custom handler if provided, otherwise create a git worktree by default
@@ -2766,7 +2784,7 @@ ${taskSection}`;
 			// Post agent activity showing auto-matched routing
 			await this.postRepositorySelectionActivity(
 				webhook.agentSession.id,
-				repository.linearWorkspaceId,
+				requireLinearWorkspaceId(repository),
 				repository.name,
 				routingMethod,
 			);
@@ -2789,7 +2807,9 @@ ${taskSection}`;
 
 		const log = this.logger.withContext({
 			sessionId: webhook.agentSession.id,
-			platform: this.getRepositoryPlatform(repository.linearWorkspaceId),
+			platform: this.getRepositoryPlatform(
+				requireLinearWorkspaceId(repository),
+			),
 			issueIdentifier: webhook.agentSession.issue.identifier,
 		});
 		log.info(`Handling agent session created`);
@@ -2866,7 +2886,7 @@ ${taskSection}`;
 		// Post instant acknowledgment thought
 		await this.postInstantAcknowledgment(
 			sessionId,
-			repository.linearWorkspaceId,
+			requireLinearWorkspaceId(repository),
 		);
 
 		// Create the session using the shared method
@@ -3049,7 +3069,7 @@ ${taskSection}`;
 					await this.postSystemPromptSelectionThought(
 						sessionId,
 						labels,
-						repository.linearWorkspaceId,
+						requireLinearWorkspaceId(repository),
 						repository.id,
 					);
 				}
@@ -3273,7 +3293,7 @@ ${taskSection}`;
 		// Post agent activity showing user-selected repository
 		await this.postRepositorySelectionActivity(
 			agentSessionId,
-			repository.linearWorkspaceId,
+			requireLinearWorkspaceId(repository),
 			repository.name,
 			"user-selected",
 		);
@@ -3378,7 +3398,7 @@ ${taskSection}`;
 			// Post instant acknowledgment for new session creation
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				repository.linearWorkspaceId,
+				requireLinearWorkspaceId(repository),
 				false,
 			);
 
@@ -3416,12 +3436,14 @@ ${taskSection}`;
 
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				repository.linearWorkspaceId,
+				requireLinearWorkspaceId(repository),
 				isCurrentlyStreaming,
 			);
 
 			// Need to fetch full issue for routing context
-			const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
+			const issueTracker = this.issueTrackers.get(
+				requireLinearWorkspaceId(repository),
+			);
 			if (issueTracker) {
 				try {
 					fullIssue = await issueTracker.fetchIssue(issue.id);
@@ -3449,7 +3471,9 @@ ${taskSection}`;
 		// (before any async routing work to ensure instant user feedback)
 
 		// Get issue tracker for this repository
-		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
+		const issueTracker = this.issueTrackers.get(
+			requireLinearWorkspaceId(repository),
+		);
 		if (!issueTracker) {
 			this.logger.error(
 				"Unexpected: There was no IssueTrackerService for the repository with id",
@@ -3499,7 +3523,7 @@ ${taskSection}`;
 
 			// Download new attachments from the comment
 			const linearTokenForAttachments = this.getLinearTokenForWorkspace(
-				repository.linearWorkspaceId,
+				requireLinearWorkspaceId(repository),
 			);
 			const downloadResult = comment
 				? await this.downloadCommentAttachments(
@@ -3701,7 +3725,7 @@ ${taskSection}`;
 			await this.postComment(
 				issue.id,
 				"I've been unassigned and am stopping work now.",
-				repository.linearWorkspaceId,
+				requireLinearWorkspaceId(repository),
 				// No parentId - post as a new comment on the issue
 			);
 		}
@@ -4109,10 +4133,12 @@ ${taskSection}`;
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
-		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
+		const issueTracker = this.issueTrackers.get(
+			requireLinearWorkspaceId(repository),
+		);
 		return this.attachmentService.downloadIssueAttachments(
 			issue,
-			repository.linearWorkspaceId,
+			requireLinearWorkspaceId(repository),
 			workspacePath,
 			issueTracker,
 		);
@@ -4342,7 +4368,9 @@ ${taskSection}`;
 		}
 
 		// Post thought to Linear showing feedback receipt
-		const issueTracker = this.issueTrackers.get(childRepo.linearWorkspaceId);
+		const issueTracker = this.issueTrackers.get(
+			requireLinearWorkspaceId(childRepo),
+		);
 		if (issueTracker) {
 			const feedbackThought = parentIssueId
 				? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
@@ -4470,7 +4498,7 @@ ${taskSection}`;
 		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		// If the client reconnects and needs another server, the endpoint creates a fresh one.
 		const linearToken = this.getLinearTokenForWorkspace(
-			repository.linearWorkspaceId,
+			requireLinearWorkspaceId(repository),
 		);
 		const prebuiltServer = createCyrusToolsServer(
 			linearToken,
@@ -4706,7 +4734,7 @@ ${taskSection}`;
 		if (currentSubroutine) {
 			const subroutinePrompt = await this.loadSubroutinePrompt(
 				currentSubroutine,
-				this.getWorkspaceSlug(input.repository.linearWorkspaceId),
+				this.getWorkspaceSlug(requireLinearWorkspaceId(input.repository)),
 			);
 			if (subroutinePrompt) {
 				parts.push(subroutinePrompt);
@@ -5130,7 +5158,7 @@ ${input.userComment}
 			...(runnerType === "claude" && {
 				onAskUserQuestion: this.createAskUserQuestionCallback(
 					sessionId,
-					repository.linearWorkspaceId,
+					requireLinearWorkspaceId(repository),
 				),
 			}),
 			onMessage: (message: SDKMessage) => {
@@ -5308,7 +5336,9 @@ ${input.userComment}
 		repository: RepositoryConfig,
 		_reason: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
+		const issueTracker = this.issueTrackers.get(
+			requireLinearWorkspaceId(repository),
+		);
 		const agentSessionId = webhook.agentSession.id;
 		const behavior = this.userAccessControl.getBlockBehavior(repository.id);
 
@@ -5544,7 +5574,9 @@ ${input.userComment}
 		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch full issue and labels to check for Orchestrator label override
-		const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
+		const issueTracker = this.issueTrackers.get(
+			requireLinearWorkspaceId(repository),
+		);
 		let hasOrchestratorLabel = false;
 
 		// Get issueId from issueContext (preferred) or deprecated issueId field
@@ -5788,7 +5820,7 @@ ${input.userComment}
 		// Fetch full issue details
 		const fullIssue = await this.fetchFullIssueDetails(
 			issueIdForResume,
-			repository.linearWorkspaceId,
+			requireLinearWorkspaceId(repository),
 		);
 		if (!fullIssue) {
 			log.error(`Failed to fetch full issue details for ${issueIdForResume}`);

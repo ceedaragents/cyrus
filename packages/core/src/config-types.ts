@@ -21,6 +21,7 @@ export {
 	RepositoryConfigSchema,
 	type RunnerType,
 	RunnerTypeSchema,
+	requireLinearWorkspaceId,
 	type UserAccessControlConfig,
 	UserAccessControlConfigSchema,
 	type UserIdentifier,

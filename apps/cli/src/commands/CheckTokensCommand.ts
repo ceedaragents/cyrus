@@ -51,6 +51,7 @@ export class CheckTokensCommand extends BaseCommand {
 		const checkedWorkspaces = new Set<string>();
 		for (const repo of config.repositories) {
 			const workspaceId = repo.linearWorkspaceId;
+			if (!workspaceId) continue;
 			if (checkedWorkspaces.has(workspaceId)) continue;
 			checkedWorkspaces.add(workspaceId);
 

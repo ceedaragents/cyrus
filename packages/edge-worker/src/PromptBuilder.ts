@@ -1,17 +1,18 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type {
-	Comment,
-	EdgeWorkerConfig,
-	GuidanceRule,
-	IIssueTrackerService,
-	ILogger,
-	Issue,
-	IssueMinimal,
-	RepositoryConfig,
-	WebhookAgentSession,
-	WebhookComment,
+import {
+	type Comment,
+	type EdgeWorkerConfig,
+	type GuidanceRule,
+	type IIssueTrackerService,
+	type ILogger,
+	type Issue,
+	type IssueMinimal,
+	type RepositoryConfig,
+	requireLinearWorkspaceId,
+	type WebhookAgentSession,
+	type WebhookComment,
 } from "cyrus-core";
 import type { GitService } from "./GitService.js";
 import type { SubroutineDefinition } from "./procedures/index.js";
@@ -331,7 +332,9 @@ export class PromptBuilder {
 			}
 
 			// Get IssueTrackerService for this repository
-			const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
+			const issueTracker = this.issueTrackers.get(
+				requireLinearWorkspaceId(repository),
+			);
 			if (!issueTracker) {
 				this.logger.error(
 					`No IssueTrackerService found for repository ${repository.id}`,
@@ -465,7 +468,7 @@ export class PromptBuilder {
 			}
 
 			// Keep a stable per-workspace bucket as we scan configured repositories.
-			const workspaceId = repository.linearWorkspaceId;
+			const workspaceId = requireLinearWorkspaceId(repository);
 			const repositories = activeRepositoriesByWorkspace.get(workspaceId) ?? [];
 			repositories.push(repository);
 			activeRepositoriesByWorkspace.set(workspaceId, repositories);
@@ -522,7 +525,8 @@ export class PromptBuilder {
 		// Get all repositories in the same workspace
 		const workspaceRepos = Array.from(this.repositories.values()).filter(
 			(repo) =>
-				repo.linearWorkspaceId === currentRepository.linearWorkspaceId &&
+				repo.linearWorkspaceId ===
+					requireLinearWorkspaceId(currentRepository) &&
 				repo.isActive !== false,
 		);
 
@@ -710,7 +714,9 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
-			const issueTracker = this.issueTrackers.get(repository.linearWorkspaceId);
+			const issueTracker = this.issueTrackers.get(
+				requireLinearWorkspaceId(repository),
+			);
 			let commentThreads = "No comments yet.";
 
 			if (issueTracker && issue.id) {
