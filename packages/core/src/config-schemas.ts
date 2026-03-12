@@ -156,6 +156,13 @@ export const RepositoryConfigSchema = z.object({
 	routingLabels: z.array(z.string()).optional(),
 	projectKeys: z.array(z.string()).optional(),
 
+	/** @deprecated Use EdgeConfig.linearWorkspaces[workspaceId].linearToken */
+	linearToken: z.string().optional(),
+	/** @deprecated Use EdgeConfig.linearWorkspaces[workspaceId].linearRefreshToken */
+	linearRefreshToken: z.string().optional(),
+	/** @deprecated Use EdgeConfig.linearWorkspaces[workspaceId].linearWorkspaceName */
+	linearWorkspaceName: z.string().optional(),
+
 	// Workspace configuration
 	workspaceBaseDir: z.string(),
 
@@ -194,6 +201,9 @@ export const EdgeConfigSchema = z.object({
 	linearWorkspaces: z
 		.record(z.string(), LinearWorkspaceConfigSchema)
 		.optional(),
+
+	/** @deprecated Migrated into linearWorkspaces entries. */
+	linearWorkspaceSlug: z.string().optional(),
 
 	/** Ngrok auth token for tunnel creation */
 	ngrokAuthToken: z.string().optional(),
