@@ -186,10 +186,9 @@ describe("EdgeWorker - Label-Based Prompt Command", () => {
 You are in debugger mode. Fix bugs systematically.`;
 			}
 			if (path.includes("label-prompt-template.md")) {
-				return `<version-tag value="label-based-v1.0.0" />
-# Label-Based System Prompt
+				return `{{git_context}}
 
-Repository: {{repository_name}}
+<version-tag value="label-based-v1.0.0" />
 Issue: {{issue_identifier}}
 Title: {{issue_title}}
 
@@ -268,7 +267,7 @@ Issue: {{issue_identifier}}`;
 		expect(capturedPrompt).not.toBeNull();
 
 		// Should use label-based prompt template, not mention prompt
-		expect(capturedPrompt).toContain("Repository: Test Repo");
+		expect(capturedPrompt).toContain("<repository>Test Repo</repository>");
 		expect(capturedPrompt).toContain("Issue: TEST-123");
 		expect(capturedPrompt).toContain("Title: Test Issue with Bug");
 		expect(capturedPrompt).toContain("You are working on this Linear issue");
