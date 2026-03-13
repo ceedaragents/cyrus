@@ -180,7 +180,10 @@ When creating sub-issues that should be handled in a DIFFERENT repository, use o
 **IMPORTANT - Routing Priority Order:**
 The system evaluates routing methods in this strict priority order. The FIRST match wins:
 
-1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description. This is the most explicit and reliable method.
+1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=repo-name]\` to the sub-issue description.
+   - Multiple repos: \`[repo=repo1]\` and \`[repo=repo2]\`, or \`repos=repo1,repo2\`
+   - Base branch override: \`[repo=repo-name#branch-name]\` to target a specific branch instead of the default
+   - Unbracketed syntax also works: \`repo=repo-name\` or \`repo=repo-name#branch\`
 2. **Routing Labels (Priority 2)**: Apply a label configured to route to the target repository.
 3. **Project Assignment (Priority 3)**: Add the issue to a project that routes to the target repository.
 4. **Team Selection (Priority 4 - Lowest)**: Create the issue in a Linear team that routes to the target repository.
@@ -192,7 +195,7 @@ For reliable cross-repository routing, prefer Description Tags as they are expli
   <repository name="Frontend App" (current)>
     <github_url>https://github.com/myorg/frontend-app</github_url>
     <routing_methods>
-    - Description tag: Add \`[repo=myorg/frontend-app]\` to sub-issue description
+    - Description tag: \`[repo=myorg/frontend-app]\` or \`[repo=myorg/frontend-app#branch]\` for base branch override
     - Routing labels: "frontend", "ui"
     - Team keys: "FE" (create issue in this team)
     </routing_methods>
@@ -200,7 +203,7 @@ For reliable cross-repository routing, prefer Description Tags as they are expli
   <repository name="Backend API">
     <github_url>https://github.com/myorg/backend-api</github_url>
     <routing_methods>
-    - Description tag: Add \`[repo=myorg/backend-api]\` to sub-issue description
+    - Description tag: \`[repo=myorg/backend-api]\` or \`[repo=myorg/backend-api#branch]\` for base branch override
     - Routing labels: "backend", "api"
     - Team keys: "BE" (create issue in this team)
     - Project keys: "API Project" (add issue to this project)
@@ -467,7 +470,7 @@ Check workspace isolation
 		expect(context.match(/<repository_routing_context>/g)?.length || 0).toBe(2);
 		expect(context).toContain("Workspace One App");
 		expect(context).toContain("Workspace Two Service");
-		expect(context).toContain("[repo=org/ws1-app]");
-		expect(context).toContain("[repo=org/ws2-service]");
+		expect(context).toContain("`[repo=org/ws1-app]`");
+		expect(context).toContain("`[repo=org/ws2-service]`");
 	});
 });
