@@ -813,6 +813,25 @@ export type IssueUpdateWebhook =
 	};
 
 /**
+ * Platform-agnostic issue state change webhook payload.
+ * Maps to Linear SDK's EntityWebhookPayload with issue-specific data where
+ * the workflow state (stateId) has changed.
+ *
+ * Used to detect when issues transition to completed, canceled, etc.
+ */
+export type IssueStateChangeWebhook =
+	LinearSDK.LinearDocument.EntityWebhookPayload & {
+		type: "Issue";
+		action: "update";
+		data: LinearSDK.LinearDocument.IssueWebhookPayload;
+		/** Previous values of updated properties. Contains `stateId` when the workflow state changed. */
+		updatedFrom: {
+			stateId: string;
+			[key: string]: unknown;
+		};
+	};
+
+/**
  * Platform-agnostic union of all webhook types.
  * Maps to Linear SDK's webhook payload union types.
  */
@@ -927,6 +946,33 @@ export function isIssueTitleOrDescriptionUpdateWebhook(
 		"description" in updatedFrom ||
 		"attachments" in updatedFrom
 	);
+}
+
+/**
+ * Type guard to check if webhook is an issue state change (stateId changed).
+ *
+ * This identifies Issue entity webhooks where the `updatedFrom` field contains
+ * a previous `stateId`, indicating the workflow state was changed.
+ * Used to detect transitions to completed, canceled, etc.
+ */
+export function isIssueStateChangeWebhook(
+	webhook: Webhook,
+): webhook is IssueStateChangeWebhook {
+	if (webhook.type !== "Issue" || webhook.action !== "update") {
+		return false;
+	}
+
+	const entityWebhook =
+		webhook as LinearSDK.LinearDocument.EntityWebhookPayload;
+	const updatedFrom = entityWebhook.updatedFrom as
+		| { stateId?: string }
+		| undefined;
+
+	if (!updatedFrom) {
+		return false;
+	}
+
+	return "stateId" in updatedFrom;
 }
 
 /**
