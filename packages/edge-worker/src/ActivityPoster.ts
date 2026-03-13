@@ -87,19 +87,11 @@ export class ActivityPoster {
 		);
 	}
 
-	async postRepositorySelectionActivity(
+	async postRoutingActivity(
 		sessionId: string,
 		workspaceId: string,
-		repositoryNames: string[],
-		selectionMethod:
-			| "description-tag"
-			| "label-based"
-			| "project-based"
-			| "team-based"
-			| "team-prefix"
-			| "catch-all"
-			| "workspace-fallback"
-			| "user-selected",
+		repoLines: string[],
+		routingMethod?: string,
 	): Promise<void> {
 		const issueTracker = this.issueTrackers.get(workspaceId);
 		if (!issueTracker) {
@@ -109,47 +101,23 @@ export class ActivityPoster {
 
 		const methodDisplayMap: Record<string, string> = {
 			"user-selected": "User selection",
-			"description-tag": "[repo=...] tag in issue description",
-			"label-based": "Label-based routing",
-			"project-based": "Project-based routing",
-			"team-based": "Team-based routing",
+			"description-tag": "[repo=...] tag",
+			"label-based": "Label routing",
+			"project-based": "Project routing",
+			"team-based": "Team routing",
 			"team-prefix": "Team prefix routing",
-			"catch-all": "Catch-all routing",
+			"catch-all": "Catch-all",
 			"workspace-fallback": "Workspace fallback",
 		};
-		const methodDisplay = methodDisplayMap[selectionMethod] ?? selectionMethod;
+		const methodDisplay = routingMethod
+			? (methodDisplayMap[routingMethod] ?? routingMethod)
+			: undefined;
 
-		const repoList = repositoryNames.map((name) => `- ${name}`).join("\n");
-		const repoLabel =
-			repositoryNames.length === 1 ? "Repository" : "Repositories";
+		const header = methodDisplay
+			? `**Routing** (${methodDisplay})`
+			: "**Routing**";
 
-		const body = `**${repoLabel} selected** (${methodDisplay})\n${repoList}`;
-
-		await this.postActivityDirect(
-			issueTracker,
-			{
-				agentSessionId: sessionId,
-				content: {
-					type: "thought",
-					body,
-				},
-			},
-			"repository selection",
-		);
-	}
-
-	async postBaseBranchActivity(
-		sessionId: string,
-		workspaceId: string,
-		branchLines: string[],
-	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(workspaceId);
-		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
-			return;
-		}
-
-		const body = `**Base branches**\n${branchLines.join("\n")}`;
+		const body = `${header}\n${repoLines.join("\n")}`;
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -160,7 +128,7 @@ export class ActivityPoster {
 					body,
 				},
 			},
-			"base branch resolution",
+			"routing",
 		);
 	}
 
