@@ -480,12 +480,17 @@ export class GitService {
 
 		if (repositories.length === 1) {
 			// 1 repo: preserve exact current behavior
+			const repoId = repositories[0]!.id;
+			const overrideValue = baseBranchOverrides?.get(repoId);
+			this.logger.info(
+				`createGitWorktree: baseBranchOverrides=${baseBranchOverrides ? `Map(size=${baseBranchOverrides.size})` : "undefined"}, repoId=${repoId}, overrideValue=${overrideValue ?? "undefined"}`,
+			);
 			return this.createSingleRepoWorktree(
 				issue,
 				repositories[0]!,
 				globalSetupScript,
 				undefined,
-				baseBranchOverrides?.get(repositories[0]!.id),
+				overrideValue,
 			);
 		}
 
@@ -558,6 +563,9 @@ export class GitService {
 		workspacePathOverride?: string,
 		baseBranchOverride?: string,
 	): Promise<Workspace> {
+		this.logger.info(
+			`createSingleRepoWorktree for ${repository.name} (id=${repository.id}): baseBranchOverride=${baseBranchOverride ?? "undefined"}`,
+		);
 		// Build a fallback resolution for error paths where determineBaseBranch hasn't run
 		const fallbackResolution: BaseBranchResolution = baseBranchOverride
 			? {
