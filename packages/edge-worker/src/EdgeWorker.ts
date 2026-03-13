@@ -207,6 +207,12 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusToolsMcpRequestContext =
 		new AsyncLocalStorage<CyrusToolsMcpContext>();
 	private cyrusToolsMcpSessions = new Sessions<any>();
+	/**
+	 * Tracks recently processed issue-update webhook keys to prevent
+	 * duplicate deliveries from Linear's at-least-once delivery.
+	 * Key format: `${createdAt}:${issueId}`
+	 */
+	private processedIssueUpdateKeys = new Set<string>();
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -2416,12 +2422,30 @@ ${taskSection}`;
 		const issueId = issueData.id;
 		const issueIdentifier = issueData.identifier;
 		const updatedFrom = webhook.updatedFrom;
+		const webhookKey = `${webhook.createdAt}:${issueId}`;
 
 		if (!updatedFrom) {
 			this.logger.warn(
 				`Issue update webhook for ${issueIdentifier} has no updatedFrom data`,
 			);
 			return;
+		}
+
+		// Deduplicate: skip if we've already processed a webhook with the same key
+		if (this.processedIssueUpdateKeys.has(webhookKey)) {
+			this.logger.debug(
+				`Duplicate issue update webhook for ${issueIdentifier} (key=${webhookKey}), skipping`,
+			);
+			return;
+		}
+		this.processedIssueUpdateKeys.add(webhookKey);
+
+		// Prevent unbounded growth — prune old keys when the set gets large
+		if (this.processedIssueUpdateKeys.size > 500) {
+			const keys = [...this.processedIssueUpdateKeys];
+			for (const key of keys.slice(0, 250)) {
+				this.processedIssueUpdateKeys.delete(key);
+			}
 		}
 
 		// Get cached repository, with fallback to searching sessions
@@ -2530,55 +2554,53 @@ ${taskSection}`;
 			updatedFrom,
 		);
 
-		// Feed the update into each active session
-		for (const session of sessions) {
-			const linearAgentActivitySessionId = session.id;
+		// CYPACK-954: Issue update events are ONLY delivered to the first running
+		// session (by most-recently-updated) that supports streaming input.
+		// If no such session exists, the event is silently ignored.
 
-			// Check if runner is actively running and supports streaming input
+		// Combine prompt body with attachment manifest
+		let fullPrompt = promptBody;
+		if (attachmentManifest) {
+			fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+		}
+
+		// Sort by updatedAt descending so the most recent session is first
+		const sortedSessions = [...sessions].sort(
+			(a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+		);
+
+		let delivered = false;
+		for (const session of sortedSessions) {
+			const sessionId = session.id;
 			const existingRunner = session.agentRunner;
 			const isRunning = existingRunner?.isRunning() || false;
-
-			// Combine prompt body with attachment manifest
-			let fullPrompt = promptBody;
-			if (attachmentManifest) {
-				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
-			}
 
 			if (
 				isRunning &&
 				existingRunner?.supportsStreamingInput &&
 				existingRunner.addStreamMessage
 			) {
-				// Add to existing stream
-				this.logger.debug(
-					`Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
-				);
 				existingRunner.addStreamMessage(fullPrompt);
-			} else if (isRunning) {
-				// Runner is running but doesn't support streaming input - log and skip
+				delivered = true;
 				this.logger.debug(
-					`Session ${linearAgentActivitySessionId} is running but doesn't support streaming input, skipping issue update`,
+					`[issue-update] Streamed update to session ${sessionId} (key=${webhookKey}, changed=[${changedFields.join(", ")}])`,
+				);
+				break;
+			} else if (isRunning) {
+				this.logger.debug(
+					`[issue-update] Session ${sessionId} is running but doesn't support streaming input, skipping (key=${webhookKey})`,
 				);
 			} else {
-				// Session exists but runner is not running - resume with the update
 				this.logger.debug(
-					`Resuming session ${linearAgentActivitySessionId} with issue update`,
-				);
-
-				await this.handlePromptWithStreamingCheck(
-					session,
-					repository,
-					linearAgentActivitySessionId,
-					this.agentSessionManager,
-					promptBody,
-					attachmentManifest,
-					false, // Not a new session
-					[], // No additional allowed directories
-					"issue content update",
-					undefined, // No comment author
-					undefined, // No comment timestamp
+					`[issue-update] Session ${sessionId} is idle, ignoring update (key=${webhookKey})`,
 				);
 			}
+		}
+
+		if (!delivered) {
+			this.logger.debug(
+				`[issue-update] No running streaming sessions for ${issueIdentifier}, update discarded (key=${webhookKey})`,
+			);
 		}
 	}
 
