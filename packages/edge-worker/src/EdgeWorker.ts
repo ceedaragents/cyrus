@@ -23,6 +23,7 @@ import type {
 	ContentUpdateMessage,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
+	EventSource,
 	GuidanceRule,
 	IAgentRunner,
 	IIssueTrackerService,
@@ -37,6 +38,9 @@ import type {
 	SerializableEdgeWorkerState,
 	SessionStartMessage,
 	StopSignalMessage,
+	Subscription,
+	SubscriptionEvent,
+	SubscriptionEventType,
 	UnassignMessage,
 	UserPromptMessage,
 	Webhook,
@@ -48,6 +52,7 @@ import {
 	CLIRPCServer,
 	createLogger,
 	DEFAULT_PROXY_URL,
+	EventStore,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isContentUpdateMessage,
@@ -63,6 +68,8 @@ import {
 	PersistenceManager,
 	requireLinearWorkspaceId,
 	resolvePath,
+	SubscriptionManager,
+	safewrapEventPayload,
 } from "cyrus-core";
 import { CursorRunner } from "cyrus-cursor-runner";
 import { GeminiRunner } from "cyrus-gemini-runner";
@@ -207,6 +214,8 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusToolsMcpRequestContext =
 		new AsyncLocalStorage<CyrusToolsMcpContext>();
 	private cyrusToolsMcpSessions = new Sessions<any>();
+	private subscriptionManager: SubscriptionManager;
+	private eventStore: EventStore;
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -517,6 +526,22 @@ export class EdgeWorker extends EventEmitter {
 			gitService: this.gitService,
 			config: this.config,
 		});
+
+		// Initialize subscription system
+		this.subscriptionManager = new SubscriptionManager(this.logger);
+		this.eventStore = new EventStore(join(this.cyrusHome, "state"));
+
+		// Wire subscription event delivery to session streaming
+		this.subscriptionManager.on(
+			"deliver",
+			(delivery: {
+				subscription: Subscription;
+				event: SubscriptionEvent;
+				compressedPayload?: Record<string, unknown>;
+			}) => {
+				this.handleSubscriptionDelivery(delivery);
+			},
+		);
 
 		// Components will be initialized and registered in start() method before server starts
 	}
@@ -2487,6 +2512,27 @@ ${taskSection}`;
 			`Handling issue content update: ${issueIdentifier} (changed: ${changedFields.join(", ")})`,
 		);
 
+		// Emit subscription events for each changed field
+		for (const field of changedFields) {
+			this.emitSubscriptionEvent(
+				"issue_updated",
+				"linear",
+				{
+					issueId,
+					issueIdentifier,
+					field,
+					previousValue: updatedFrom[field],
+					newValue: (issueData as Record<string, unknown>)[field],
+					data: issueData,
+					updatedFrom,
+				},
+				{
+					issueId,
+					field,
+				},
+			);
+		}
+
 		// Find session(s) for this issue (may be running or paused between subroutines)
 		const sessions = this.agentSessionManager.getSessionsByIssueId(issueId);
 		if (sessions.length === 0) {
@@ -3253,6 +3299,24 @@ ${taskSection}`;
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(sessionId, runner);
+
+			// Auto-subscribe session to default events
+			const baseBranches: Array<{ repositoryId: string; branch: string }> = [];
+			if (sessionData.workspace.resolvedBaseBranches) {
+				for (const [repoId, resolution] of Object.entries(
+					sessionData.workspace.resolvedBaseBranches,
+				)) {
+					baseBranches.push({
+						repositoryId: repoId,
+						branch: resolution.branch,
+					});
+				}
+			}
+			this.subscriptionManager.autoSubscribe(sessionId, {
+				issueId: fullIssue.id,
+				issueUpdateEnabled: this.config.issueUpdateTrigger !== false,
+				baseBranches,
+			});
 
 			// Save state after mapping changes
 			await this.savePersistedState();
@@ -4365,6 +4429,64 @@ ${taskSection}`;
 					childSessionId,
 					message,
 				);
+			},
+			onCreateSubscription: async (input) => {
+				const sessionId = input.sessionId || parentSessionId;
+				if (!sessionId) {
+					throw new Error(
+						"No session ID provided and no current session context",
+					);
+				}
+				const sub = this.subscriptionManager.createSubscription({
+					...input,
+					eventType: (input.eventType as SubscriptionEventType) ?? "custom",
+					sessionId,
+				});
+				await this.savePersistedState();
+				return {
+					subscriptionId: sub.id,
+					sessionId: sub.sessionId,
+					eventType: sub.eventType,
+				};
+			},
+			onUnsubscribe: async (subscriptionId) => {
+				const removed = this.subscriptionManager.unsubscribe(subscriptionId);
+				if (removed) {
+					await this.savePersistedState();
+				}
+				return removed;
+			},
+			onLookupEventPayload: async (eventId) => {
+				const event = await this.eventStore.lookupEvent(eventId);
+				return event?.payload ?? null;
+			},
+			onCreateLocalAgentSession: async (agentIntent) => {
+				const { randomUUID } = await import("node:crypto");
+				const sessionId = randomUUID();
+
+				// Find a workspace path from an existing session or first repo
+				const firstRepo = Array.from(this.repositories.values())[0];
+				if (!firstRepo) {
+					throw new Error("No repositories configured");
+				}
+
+				const session = this.agentSessionManager.createChatSession(
+					sessionId,
+					{
+						path: firstRepo.workspaceBaseDir,
+						isGitWorktree: false,
+					},
+					"linear",
+					[{ repositoryId: firstRepo.id }],
+				);
+
+				// Store the agent intent as metadata
+				if (session.metadata) {
+					(session.metadata as any).agentIntent = agentIntent;
+				}
+
+				await this.savePersistedState();
+				return { sessionId };
 			},
 		};
 	}
@@ -5528,6 +5650,7 @@ ${input.userComment}
 			agentSessionEntries: serializedState.entries,
 			childToParentAgentSession,
 			issueRepositoryCache,
+			subscriptions: this.subscriptionManager.serializeState(),
 		};
 	}
 
@@ -5598,6 +5721,105 @@ ${input.userComment}
 			this.logger.debug(
 				`Restored ${cache.size} issue-to-repository cache mappings`,
 			);
+		}
+
+		// Restore subscription state
+		if (state.subscriptions) {
+			this.subscriptionManager.restoreState(state.subscriptions);
+			this.logger.debug(
+				`Restored ${this.subscriptionManager.totalSubscriptionCount} subscriptions`,
+			);
+		}
+	}
+
+	// --- Subscription event processing ---
+
+	/**
+	 * Emit a subscription event, storing it on disk and routing to matching subscriptions.
+	 */
+	private async emitSubscriptionEvent(
+		eventType: SubscriptionEventType,
+		source: EventSource,
+		payload: Record<string, unknown>,
+		filterableProperties: Record<string, string | string[] | boolean>,
+	): Promise<void> {
+		try {
+			const event = await this.eventStore.storeEvent(
+				eventType,
+				source,
+				payload,
+				filterableProperties,
+			);
+
+			this.subscriptionManager.processEvent(event, (sessionId) => {
+				const session = this.agentSessionManager.getSession(sessionId);
+				return session?.agentRunner?.isRunning() ?? false;
+			});
+		} catch (error) {
+			this.logger.error(`Failed to emit subscription event:`, error);
+		}
+	}
+
+	/**
+	 * Handle delivery of an event to a subscribed session.
+	 * Called when the SubscriptionManager emits a "deliver" event.
+	 */
+	private async handleSubscriptionDelivery(delivery: {
+		subscription: Subscription;
+		event: SubscriptionEvent;
+		compressedPayload?: Record<string, unknown>;
+	}): Promise<void> {
+		const { subscription, event, compressedPayload } = delivery;
+		const { sessionId } = subscription;
+
+		const session = this.agentSessionManager.getSession(sessionId);
+		if (!session) {
+			this.logger.warn(
+				`Subscription delivery failed: session ${sessionId} not found`,
+			);
+			return;
+		}
+
+		// Build the safewrapped prompt
+		const prompt = safewrapEventPayload({
+			event,
+			subscription,
+			compressedPayload,
+		});
+
+		const runner = session.agentRunner;
+		if (
+			runner?.isRunning() &&
+			runner.supportsStreamingInput &&
+			runner.addStreamMessage
+		) {
+			runner.addStreamMessage(prompt);
+			this.logger.debug(
+				`Delivered event ${event.id} to streaming session ${sessionId}`,
+			);
+		} else if (!subscription.whileStreamingOnly) {
+			// Session is not streaming and this subscription is not streaming-only
+			// Try to resume the session with this event
+			const repoId = this.sessionRepositories.get(sessionId);
+			const repo = repoId ? this.repositories.get(repoId) : undefined;
+			if (repo) {
+				await this.handlePromptWithStreamingCheck(
+					session,
+					repo,
+					sessionId,
+					this.agentSessionManager,
+					prompt,
+					"", // no attachment manifest
+					false,
+					[],
+					"subscription event delivery",
+				);
+				this.logger.debug(`Resumed session ${sessionId} for event ${event.id}`);
+			} else {
+				this.logger.warn(
+					`Cannot deliver event ${event.id}: no repository for session ${sessionId}`,
+				);
+			}
 		}
 	}
 

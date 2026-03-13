@@ -72,6 +72,35 @@ function getMimeType(filename: string): string {
 }
 
 /**
+ * Input for creating a subscription via MCP tool.
+ */
+export interface CreateSubscriptionToolInput {
+	eventType?: string;
+	filter?: Record<string, string | string[] | boolean>;
+	compress?: Record<string, string>;
+	prompt?: string;
+	whileStreamingOnly?: boolean;
+	oneShot?: boolean;
+	sessionId?: string;
+}
+
+/**
+ * Result of creating a subscription.
+ */
+export interface CreateSubscriptionToolResult {
+	subscriptionId: string;
+	sessionId: string;
+	eventType: string;
+}
+
+/**
+ * Result of creating a local agent session.
+ */
+export interface CreateLocalAgentSessionResult {
+	sessionId: string;
+}
+
+/**
  * Options for creating Cyrus tools with session management capabilities
  */
 export interface CyrusToolsOptions {
@@ -94,6 +123,33 @@ export interface CyrusToolsOptions {
 	 * The ID of the current parent session (if any)
 	 */
 	parentSessionId?: string;
+
+	/**
+	 * Callback to create a subscription for a session.
+	 */
+	onCreateSubscription?: (
+		input: CreateSubscriptionToolInput,
+	) => Promise<CreateSubscriptionToolResult>;
+
+	/**
+	 * Callback to remove a subscription.
+	 * Returns true if the subscription was found and removed.
+	 */
+	onUnsubscribe?: (subscriptionId: string) => Promise<boolean>;
+
+	/**
+	 * Callback to look up a full event payload by event ID.
+	 */
+	onLookupEventPayload?: (
+		eventId: string,
+	) => Promise<Record<string, unknown> | null>;
+
+	/**
+	 * Callback to create a local agent session with a custom intent/system prompt.
+	 */
+	onCreateLocalAgentSession?: (
+		agentIntent: string,
+	) => Promise<CreateLocalAgentSessionResult>;
 }
 
 /**
@@ -953,6 +1009,315 @@ export function createCyrusToolsServer(
 								null,
 								2,
 							),
+						},
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
+	// --- Subscription tools ---
+
+	server.registerTool(
+		"create_subscription",
+		{
+			description:
+				"Subscribe the current (or specified) agent session to receive notifications when events of a given type occur. Returns the subscription ID. Use lookup_event_types skill to discover available event types and their payload shapes.",
+			inputSchema: {
+				eventType: z
+					.enum([
+						"issue_updated",
+						"prompted",
+						"base_branch_updated",
+						"ci_completed",
+						"pull_request_review",
+						"issue_comment",
+						"custom",
+					])
+					.optional()
+					.describe("The type of event to subscribe to (default: 'custom')"),
+				filter: z
+					.record(
+						z.string(),
+						z.union([z.string(), z.array(z.string()), z.boolean()]),
+					)
+					.optional()
+					.describe(
+						"Key-value filter. All conditions must match for an event to trigger this subscription. Example: { issueId: 'abc', field: ['title', 'description'] }",
+					),
+				compress: z
+					.record(z.string(), z.string())
+					.optional()
+					.describe(
+						"Map of output field names to dot-separated paths into the event payload. Only these fields will be included in the notification summary. Use lookup_full_event_payload to get the full data.",
+					),
+				prompt: z
+					.string()
+					.optional()
+					.describe(
+						"Custom prompt to include when this event is delivered to the session",
+					),
+				whileStreamingOnly: z
+					.boolean()
+					.optional()
+					.describe(
+						"If true, events are only delivered while the session is actively running. Events arriving when idle are silently dropped.",
+					),
+				oneShot: z
+					.boolean()
+					.optional()
+					.describe(
+						"If true, the subscription is automatically removed after the first matching event. Useful for 'wait once for' semantics (e.g., CI completion).",
+					),
+				sessionId: z
+					.string()
+					.optional()
+					.describe(
+						"The session ID to subscribe. Defaults to the current session.",
+					),
+			},
+		},
+		async (input) => {
+			if (!options.onCreateSubscription) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: "Subscription management is not available",
+							}),
+						},
+					],
+				};
+			}
+
+			try {
+				const result = await options.onCreateSubscription({
+					eventType: input.eventType,
+					filter: input.filter as
+						| Record<string, string | string[] | boolean>
+						| undefined,
+					compress: input.compress as Record<string, string> | undefined,
+					prompt: input.prompt,
+					whileStreamingOnly: input.whileStreamingOnly,
+					oneShot: input.oneShot,
+					sessionId: input.sessionId,
+				});
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: true,
+								subscriptionId: result.subscriptionId,
+								sessionId: result.sessionId,
+								eventType: result.eventType,
+							}),
+						},
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
+	server.registerTool(
+		"unsubscribe",
+		{
+			description:
+				"Remove a subscription by its ID. The session will no longer receive notifications for this subscription.",
+			inputSchema: {
+				subscriptionId: z
+					.string()
+					.describe("The ID of the subscription to remove"),
+			},
+		},
+		async ({ subscriptionId }) => {
+			if (!options.onUnsubscribe) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: "Subscription management is not available",
+							}),
+						},
+					],
+				};
+			}
+
+			try {
+				const removed = await options.onUnsubscribe(subscriptionId);
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: removed,
+								...(removed
+									? { message: `Subscription ${subscriptionId} removed` }
+									: { error: `Subscription ${subscriptionId} not found` }),
+							}),
+						},
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
+	server.registerTool(
+		"lookup_full_event_payload",
+		{
+			description:
+				"Look up the complete payload for a previously received event. Event notifications include a compressed summary; use this tool to get the full raw data when needed.",
+			inputSchema: {
+				eventId: z
+					.string()
+					.describe("The event ID from the subscription notification"),
+			},
+		},
+		async ({ eventId }) => {
+			if (!options.onLookupEventPayload) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: "Event payload lookup is not available",
+							}),
+						},
+					],
+				};
+			}
+
+			try {
+				const payload = await options.onLookupEventPayload(eventId);
+
+				if (!payload) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `Event ${eventId} not found. It may have been cleaned up or the ID is incorrect.`,
+								}),
+							},
+						],
+					};
+				}
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify(
+								{
+									success: true,
+									eventId,
+									payload,
+								},
+								null,
+								2,
+							),
+						},
+					],
+				};
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
+			}
+		},
+	);
+
+	server.registerTool(
+		"create_local_agent_session",
+		{
+			description:
+				"Create a new local Cyrus agent session with a custom intent. This sets up a session with a system prompt extension describing the agent's purpose. The new session can then be subscribed to events independently.",
+			inputSchema: {
+				agentIntent: z
+					.string()
+					.describe(
+						"A description of what this agent session should do. This becomes a system prompt extension for the new session.",
+					),
+			},
+		},
+		async ({ agentIntent }) => {
+			if (!options.onCreateLocalAgentSession) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: "Local agent session creation is not available",
+							}),
+						},
+					],
+				};
+			}
+
+			try {
+				const result = await options.onCreateLocalAgentSession(agentIntent);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: true,
+								sessionId: result.sessionId,
+								message: `Local agent session created. You can now subscribe it to events using create_subscription with sessionId: "${result.sessionId}".`,
+							}),
 						},
 					],
 				};

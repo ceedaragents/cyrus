@@ -9,6 +9,7 @@ import type {
 	IssueMinimal,
 } from "./CyrusAgentSession.js";
 import { createLogger, type ILogger } from "./logging/index.js";
+import type { SerializedSubscriptionState } from "./subscriptions/types.js";
 
 /** Current persistence format version */
 export const PERSISTENCE_VERSION = "4.0";
@@ -64,6 +65,8 @@ export interface SerializableEdgeWorkerState {
 	// Issue to repository mapping (for caching user repository selections)
 	// v4.1: string[] (multi-repo). Migration: old Record<string, string> auto-converts.
 	issueRepositoryCache?: Record<string, string[]>;
+	// Subscription state (v4.2)
+	subscriptions?: SerializedSubscriptionState;
 }
 
 /**

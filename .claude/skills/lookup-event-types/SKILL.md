@@ -1,0 +1,1 @@
+../../skills/lookup-event-types/SKILL.md

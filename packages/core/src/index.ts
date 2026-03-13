@@ -199,7 +199,6 @@ export {
 	PersistenceManager,
 } from "./PersistenceManager.js";
 export { StreamingPrompt } from "./StreamingPrompt.js";
-
 // Simple Agent Runner types
 export type {
 	IAgentProgressEvent,
@@ -208,6 +207,25 @@ export type {
 	ISimpleAgentRunner,
 	ISimpleAgentRunnerConfig,
 } from "./simple-agent-runner-types.js";
+// Subscriptions
+export type {
+	CompressMap,
+	CreateSubscriptionInput,
+	EventDeliveryResult,
+	EventSource,
+	SerializedSubscriptionState,
+	StoredEvent,
+	Subscription,
+	SubscriptionEvent,
+	SubscriptionEventType,
+	SubscriptionFilter,
+} from "./subscriptions/index.js";
+export {
+	applyCompressMap,
+	EventStore,
+	SubscriptionManager,
+	safewrapEventPayload,
+} from "./subscriptions/index.js";
 // Platform-agnostic webhook type aliases - exported from issue-tracker
 // These are now defined in issue-tracker/types.ts as aliases to Linear SDK webhook types
 // EdgeWorker and other high-level code should use these generic names via issue-tracker exports
