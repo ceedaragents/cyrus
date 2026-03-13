@@ -2530,8 +2530,18 @@ ${taskSection}`;
 			updatedFrom,
 		);
 
-		// Feed the update into each active session
-		for (const session of sessions) {
+		// Feed the update into running sessions, or resume the most recent idle one.
+		// CYPACK-954: Previously, ALL idle sessions were resumed, causing multiple
+		// concurrent runs for the same issue. Now we only resume a single idle
+		// session, and only if no running session already received the update.
+		let updateDelivered = false;
+
+		// Sort sessions by updatedAt descending so the most recent idle session is first
+		const sortedSessions = [...sessions].sort(
+			(a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+		);
+
+		for (const session of sortedSessions) {
 			const linearAgentActivitySessionId = session.id;
 
 			// Check if runner is actively running and supports streaming input
@@ -2549,18 +2559,19 @@ ${taskSection}`;
 				existingRunner?.supportsStreamingInput &&
 				existingRunner.addStreamMessage
 			) {
-				// Add to existing stream
+				// Add to existing stream — deliver to ALL running sessions
 				this.logger.debug(
 					`Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
 				);
 				existingRunner.addStreamMessage(fullPrompt);
+				updateDelivered = true;
 			} else if (isRunning) {
 				// Runner is running but doesn't support streaming input - log and skip
 				this.logger.debug(
 					`Session ${linearAgentActivitySessionId} is running but doesn't support streaming input, skipping issue update`,
 				);
-			} else {
-				// Session exists but runner is not running - resume with the update
+			} else if (!updateDelivered) {
+				// Resume only the first (most recent) idle session
 				this.logger.debug(
 					`Resuming session ${linearAgentActivitySessionId} with issue update`,
 				);
@@ -2577,6 +2588,11 @@ ${taskSection}`;
 					"issue content update",
 					undefined, // No comment author
 					undefined, // No comment timestamp
+				);
+				updateDelivered = true;
+			} else {
+				this.logger.debug(
+					`Skipping idle session ${linearAgentActivitySessionId} — already resumed another session for this issue update`,
 				);
 			}
 		}
