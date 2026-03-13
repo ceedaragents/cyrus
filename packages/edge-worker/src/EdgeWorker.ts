@@ -2701,21 +2701,25 @@ ${taskSection}`;
 
 		// Create workspace using full issue data
 		// Use custom handler if provided, otherwise create a git worktree by default
-		// Pass full repositories array for multi-repo worktree support
+		// Pass full repositories array and base branch overrides for multi-repo worktree support
 		const workspace = this.config.handlers?.createWorkspace
 			? await this.config.handlers.createWorkspace(fullIssue, repositories)
-			: await this.gitService.createGitWorktree(fullIssue, repositories);
+			: await this.gitService.createGitWorktree(fullIssue, repositories, {
+					baseBranchOverrides,
+				});
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
 
 		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
 
 		// Create RepositoryContext entries for ALL repositories
-		// Apply base branch overrides from [repo=name#branch] syntax
+		// Use resolved base branches from workspace creation (already accounts for
+		// commit-ish overrides, graphite blocked-by, parent issues, and defaults)
 		const repositoryContexts = repositories.map((repo) => ({
 			repositoryId: repo.id,
 			branchName: issueMinimal.branchName,
-			baseBranchName: baseBranchOverrides?.get(repo.id) ?? repo.baseBranch,
+			baseBranchName:
+				workspace.resolvedBaseBranches?.[repo.id] ?? repo.baseBranch,
 		}));
 
 		agentSessionManager.createLinearAgentSession(
@@ -2732,6 +2736,20 @@ ${taskSection}`;
 		const activitySink = this.activitySinks.get(primaryRepo.id);
 		if (activitySink) {
 			agentSessionManager.setActivitySink(sessionId, activitySink);
+		}
+
+		// Post base branch activity showing the resolved base branch for each repo
+		if (workspace.resolvedBaseBranches) {
+			const branchLines = repositories.map((repo) => {
+				const branch =
+					workspace.resolvedBaseBranches![repo.id] ?? repo.baseBranch;
+				return `- ${repo.name}: \`${branch}\``;
+			});
+			await this.postBaseBranchActivity(
+				sessionId,
+				requireLinearWorkspaceId(primaryRepo),
+				branchLines,
+			);
 		}
 
 		// Get the newly created session
@@ -2858,18 +2876,11 @@ ${taskSection}`;
 				);
 			}
 
-			// Post agent activity showing auto-matched routing (all repos in one activity)
-			// Include the effective base branch for each repo
-			const repoDisplayEntries = repositories.map((r) => {
-				const branchOverride = baseBranchOverrides?.get(r.id);
-				const baseBranch = branchOverride ?? r.baseBranch;
-				const branchSuffix = baseBranch ? ` (base: \`${baseBranch}\`)` : "";
-				return `${r.name}${branchSuffix}`;
-			});
+			// Post agent activity showing auto-matched routing (just repo names)
 			await this.postRepositorySelectionActivity(
 				webhook.agentSession.id,
 				requireLinearWorkspaceId(primaryRepo),
-				repoDisplayEntries,
+				repositories.map((r) => r.name),
 				routingMethod,
 			);
 		}
@@ -3133,6 +3144,7 @@ ${taskSection}`;
 				isStreaming: false, // Not yet streaming
 				isMentionTriggered: isMentionTriggered || false,
 				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
+				resolvedBaseBranches: sessionData.workspace.resolvedBaseBranches,
 			};
 
 			// Use unified prompt assembly
@@ -4808,6 +4820,7 @@ ${taskSection}`;
 			input.attachmentManifest,
 			input.guidance,
 			input.agentSession,
+			input.resolvedBaseBranches,
 		);
 
 		parts.push(issueContext.prompt);
@@ -4954,6 +4967,7 @@ ${input.userComment}
 		attachmentManifest?: string,
 		guidance?: GuidanceRule[],
 		agentSession?: WebhookAgentSession,
+		resolvedBaseBranches?: Record<string, string>,
 	): Promise<IssueContextResult> {
 		// Delegate to appropriate builder based on promptType
 		if (promptType === "mention") {
@@ -4978,6 +4992,7 @@ ${input.userComment}
 				repositories,
 				attachmentManifest,
 				guidance,
+				resolvedBaseBranches,
 			);
 		}
 		// Fallback to standard issue context
@@ -4987,6 +5002,7 @@ ${input.userComment}
 			undefined, // No new comment for initial prompt assembly
 			attachmentManifest,
 			guidance,
+			resolvedBaseBranches,
 		);
 	}
 
@@ -5639,6 +5655,21 @@ ${input.userComment}
 			workspaceId,
 			repositoryNames,
 			selectionMethod,
+		);
+	}
+
+	/**
+	 * Post base branch activity showing the resolved base branch per repo
+	 */
+	private async postBaseBranchActivity(
+		sessionId: string,
+		workspaceId: string,
+		branchLines: string[],
+	): Promise<void> {
+		return this.activityPoster.postBaseBranchActivity(
+			sessionId,
+			workspaceId,
+			branchLines,
 		);
 	}
 
