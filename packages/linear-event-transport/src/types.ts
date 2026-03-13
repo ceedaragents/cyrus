@@ -25,6 +25,19 @@ export interface LinearEventTransportConfig {
 }
 
 /**
+ * Callback configuration extracted from CYHOST forwarded webhook headers.
+ * Used for CYPACK → CYHOST error telemetry reporting.
+ */
+export interface TelemetryCallbackConfig {
+	/** Bearer token for authenticating callbacks to CYHOST */
+	callbackToken: string;
+	/** CYHOST endpoint URL for telemetry callbacks */
+	callbackUrl: string;
+	/** Team ID for identifying the team in callbacks */
+	teamId: string;
+}
+
+/**
  * Events emitted by LinearEventTransport
  */
 export interface LinearEventTransportEvents {
