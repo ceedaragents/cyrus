@@ -2677,6 +2677,7 @@ ${taskSection}`;
 		issue: { id: string; identifier: string },
 		repositoriesOrSingle: RepositoryConfig | RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
+		baseBranchOverrides?: Map<string, string>,
 	): Promise<AgentSessionData> {
 		const repositories = Array.isArray(repositoriesOrSingle)
 			? repositoriesOrSingle
@@ -2710,10 +2711,11 @@ ${taskSection}`;
 		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
 
 		// Create RepositoryContext entries for ALL repositories
+		// Apply base branch overrides from [repo=name#branch] syntax
 		const repositoryContexts = repositories.map((repo) => ({
 			repositoryId: repo.id,
 			branchName: issueMinimal.branchName,
-			baseBranchName: repo.baseBranch,
+			baseBranchName: baseBranchOverrides?.get(repo.id) ?? repo.baseBranch,
 		}));
 
 		agentSessionManager.createLinearAgentSession(
@@ -2804,6 +2806,7 @@ ${taskSection}`;
 		// Check the cache first, as the agentSessionCreated webhook may have been triggered by an @mention
 		// on an issue that already has an agentSession and an associated repository.
 		let repositories: RepositoryConfig[] | null = null;
+		let baseBranchOverrides: Map<string, string> | undefined;
 		if (issueId) {
 			const cachedRepos = this.getCachedRepositories(issueId);
 			if (cachedRepos && cachedRepos.length > 0) {
@@ -2843,6 +2846,7 @@ ${taskSection}`;
 
 			// At this point, routingResult.type === "selected"
 			repositories = routingResult.repositories;
+			baseBranchOverrides = routingResult.baseBranchOverrides;
 			const primaryRepo = repositories[0]!;
 			const routingMethod = routingResult.routingMethod;
 
@@ -2855,10 +2859,15 @@ ${taskSection}`;
 			}
 
 			// Post agent activity showing auto-matched routing (all repos in one activity)
+			// Include base branch overrides in the activity display
+			const repoDisplayNames = repositories.map((r) => {
+				const branchOverride = baseBranchOverrides?.get(r.id);
+				return branchOverride ? `${r.name}#${branchOverride}` : r.name;
+			});
 			await this.postRepositorySelectionActivity(
 				webhook.agentSession.id,
 				requireLinearWorkspaceId(primaryRepo),
-				repositories.map((r) => r.name),
+				repoDisplayNames,
 				routingMethod,
 			);
 		}
@@ -2896,6 +2905,7 @@ ${taskSection}`;
 			repositories,
 			guidance,
 			commentBody,
+			baseBranchOverrides,
 		);
 	}
 
@@ -2910,12 +2920,14 @@ ${taskSection}`;
 	 * @param repositories Repository configurations (primary repo is repositories[0])
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
+	 * @param baseBranchOverrides Per-repo base branch overrides from [repo=name#branch] syntax
 	 */
 	private async initializeAgentRunner(
 		agentSession: AgentSessionCreatedWebhook["agentSession"],
 		repositories: RepositoryConfig[],
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
+		baseBranchOverrides?: Map<string, string>,
 	): Promise<void> {
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
@@ -2971,6 +2983,7 @@ ${taskSection}`;
 			issue,
 			repositories,
 			agentSessionManager,
+			baseBranchOverrides,
 		);
 
 		// Destructure the session data (excluding allowedTools which we'll build with promptType)
