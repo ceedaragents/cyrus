@@ -10,6 +10,7 @@ import { LinearMessageTranslator } from "./LinearMessageTranslator.js";
 import type {
 	LinearEventTransportConfig,
 	LinearEventTransportEvents,
+	TelemetryCallbackContext,
 } from "./types.js";
 
 export declare interface LinearEventTransport {
@@ -45,6 +46,7 @@ export class LinearEventTransport
 	private logger: ILogger;
 	private messageTranslator: LinearMessageTranslator;
 	private translationContext: TranslationContext;
+	private _callbackContext: TelemetryCallbackContext | null = null;
 
 	constructor(
 		config: LinearEventTransportConfig,
@@ -69,6 +71,14 @@ export class LinearEventTransport
 	 */
 	setTranslationContext(context: TranslationContext): void {
 		this.translationContext = { ...this.translationContext, ...context };
+	}
+
+	/**
+	 * Get the telemetry callback context extracted from CYHOST webhook headers.
+	 * Returns null if no callback headers were present (e.g., self-hosted, direct mode).
+	 */
+	get callbackContext(): TelemetryCallbackContext | null {
+		return this._callbackContext;
 	}
 
 	/**
@@ -172,6 +182,9 @@ export class LinearEventTransport
 			return;
 		}
 
+		// Extract telemetry callback headers from CYHOST (if present)
+		this.extractCallbackContext(request);
+
 		try {
 			const payload = request.body as LinearWebhookPayload;
 
@@ -190,6 +203,29 @@ export class LinearEventTransport
 			}
 			this.logger.error("Proxy webhook processing failed", err);
 			reply.code(500).send({ error: "Failed to process webhook" });
+		}
+	}
+
+	/**
+	 * Extract telemetry callback headers from CYHOST webhook requests.
+	 * Only stores context if all three required headers are present.
+	 * Skips silently if already captured (only needs to be extracted once).
+	 */
+	private extractCallbackContext(request: FastifyRequest): void {
+		// Only extract once — callback context is per-team and stable across webhooks
+		if (this._callbackContext) return;
+
+		const callbackToken = request.headers["x-cyrus-callback-token"] as
+			| string
+			| undefined;
+		const callbackUrl = request.headers["x-cyrus-callback-url"] as
+			| string
+			| undefined;
+		const teamId = request.headers["x-cyrus-team-id"] as string | undefined;
+
+		if (callbackToken && callbackUrl && teamId) {
+			this._callbackContext = { callbackToken, callbackUrl, teamId };
+			this.logger.info("Telemetry callback context captured from CYHOST");
 		}
 	}
 

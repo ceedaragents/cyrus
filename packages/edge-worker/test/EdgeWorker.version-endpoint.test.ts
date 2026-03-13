@@ -37,6 +37,7 @@ vi.mock("../src/AgentSessionManager.js", () => ({
 		getSession: vi.fn(),
 		getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 		setActivitySink: vi.fn(),
+		setTelemetryReporter: vi.fn(),
 		on: vi.fn(), // EventEmitter method
 		emit: vi.fn(), // EventEmitter method
 	})),

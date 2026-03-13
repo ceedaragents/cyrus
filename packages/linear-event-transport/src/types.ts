@@ -25,6 +25,20 @@ export interface LinearEventTransportConfig {
 }
 
 /**
+ * Callback context extracted from CYHOST webhook headers.
+ * Used to POST error telemetry back to CYHOST for Mixpanel tracking.
+ * Only present when webhooks are forwarded from CYHOST (cloud droplets).
+ */
+export interface TelemetryCallbackContext {
+	/** Bearer token for authenticating callback POSTs to CYHOST */
+	callbackToken: string;
+	/** URL to POST telemetry events to (e.g., https://host/api/telemetry/callback) */
+	callbackUrl: string;
+	/** Team ID for CYHOST to resolve user identity */
+	teamId: string;
+}
+
+/**
  * Events emitted by LinearEventTransport
  */
 export interface LinearEventTransportEvents {
