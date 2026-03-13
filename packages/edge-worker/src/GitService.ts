@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve as pathResolve } from "node:path";
 
@@ -540,6 +541,134 @@ export class GitService {
 				path: fallbackPath,
 				isGitWorktree: false,
 			};
+		}
+	}
+
+	/**
+	 * Delete worktrees for an issue.
+	 *
+	 * Removes the entire workspace directory at `workspaceBaseDir/<issueIdentifier>/`.
+	 * This handles both single-repo and multi-repo layouts since the issue identifier
+	 * directory is the root in both cases.
+	 *
+	 * For each git worktree within the directory, runs `git worktree remove --force`
+	 * to cleanly unregister it from git before deleting the directory.
+	 *
+	 * @param workspaceBaseDir - Base directory where worktrees are stored
+	 * @param issueIdentifier - Issue identifier (e.g., "DEF-123")
+	 */
+	async deleteWorktree(
+		workspaceBaseDir: string,
+		issueIdentifier: string,
+	): Promise<void> {
+		const workspacePath = join(workspaceBaseDir, issueIdentifier);
+
+		if (!existsSync(workspacePath)) {
+			this.logger.info(
+				`Worktree directory does not exist, nothing to delete: ${workspacePath}`,
+			);
+			return;
+		}
+
+		// Find all git worktrees that point into this directory.
+		// In multi-repo layout, there may be subdirectories that are each worktrees.
+		// In single-repo layout, the directory itself is the worktree.
+		const worktreePaths = this.findWorktreesUnderPath(workspacePath);
+
+		// Remove each worktree from git's tracking
+		for (const wtPath of worktreePaths) {
+			try {
+				this.logger.info(`Removing git worktree: ${wtPath}`);
+				execSync(`git worktree remove --force "${wtPath}"`, {
+					stdio: "pipe",
+					// Run from the worktree itself so git can find the common dir
+					cwd: wtPath,
+				});
+			} catch (error) {
+				// Log but don't fail — the directory removal below will clean up
+				this.logger.warn(
+					`Failed to git worktree remove ${wtPath}: ${(error as Error).message}`,
+				);
+			}
+		}
+
+		// Remove the entire directory tree
+		try {
+			await rm(workspacePath, { recursive: true, force: true });
+			this.logger.info(`Deleted worktree directory: ${workspacePath}`);
+		} catch (error) {
+			this.logger.error(
+				`Failed to delete worktree directory ${workspacePath}: ${(error as Error).message}`,
+			);
+		}
+
+		// Prune stale worktree references from any parent repos
+		this.pruneWorktreeReferences(workspaceBaseDir);
+	}
+
+	/**
+	 * Find all git worktree paths under a given directory.
+	 * Checks if the directory itself is a worktree, then checks subdirectories.
+	 */
+	private findWorktreesUnderPath(dirPath: string): string[] {
+		const worktrees: string[] = [];
+
+		// Check if the directory itself is a git worktree
+		if (this.isGitWorktree(dirPath)) {
+			worktrees.push(dirPath);
+			return worktrees;
+		}
+
+		// Check subdirectories (multi-repo layout)
+		try {
+			const entries = readdirSync(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (entry.isDirectory()) {
+					const subPath = join(dirPath, entry.name);
+					if (this.isGitWorktree(subPath)) {
+						worktrees.push(subPath);
+					}
+				}
+			}
+		} catch {
+			// Directory might not be readable
+		}
+
+		return worktrees;
+	}
+
+	/**
+	 * Check if a directory is a git worktree.
+	 */
+	private isGitWorktree(dirPath: string): boolean {
+		try {
+			execSync("git rev-parse --is-inside-work-tree", {
+				cwd: dirPath,
+				stdio: "pipe",
+			});
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Prune stale worktree references from repos that had worktrees under the base dir.
+	 */
+	private pruneWorktreeReferences(workspaceBaseDir: string): void {
+		// Walk up from the workspace base dir to find parent repos
+		// and prune their worktree lists
+		try {
+			const parentDir = join(workspaceBaseDir, "..");
+			if (existsSync(parentDir)) {
+				// Find repos by looking for .git directories or common git dirs
+				execSync("git worktree prune", {
+					cwd: parentDir,
+					stdio: "pipe",
+				});
+			}
+		} catch {
+			// Best-effort prune
 		}
 	}
 }

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Automatic worktree cleanup** - Worktrees are now automatically deleted when a Linear issue moves to Done or Cancelled, handling both single-repo and multi-repo layouts. Active sessions are stopped before cleanup. ([CYPACK-958](https://linear.app/ceedar/issue/CYPACK-958), [#980](https://github.com/ceedaragents/cyrus/pull/980))
+
 ## [0.2.31] - 2026-03-09
 
 ### Fixed

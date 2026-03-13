@@ -29,6 +29,7 @@ import type {
 	InternalMessage,
 	Issue,
 	IssueMinimal,
+	IssueStateChangeMessage,
 	IssueUnassignedWebhook,
 	IssueUpdateWebhook,
 	RepositoryConfig,
@@ -56,6 +57,7 @@ import {
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
+	isIssueStateChangeMessage,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	isSessionStartMessage,
@@ -2188,6 +2190,8 @@ ${taskSection}`;
 				await this.handleContentUpdateMessage(message);
 			} else if (isUnassignMessage(message)) {
 				await this.handleUnassignMessage(message);
+			} else if (isIssueStateChangeMessage(message)) {
+				await this.handleIssueStateChangeMessage(message);
 			} else {
 				// This branch should never be reached due to exhaustive type checking
 				// If it is reached, log the unexpected message for debugging
@@ -2288,6 +2292,71 @@ ${taskSection}`;
 		// TODO: Implement unified unassign handling
 		// For now, the legacy handler (handleIssueUnassignedWebhook)
 		// continues to process the actual unassignment via the 'event' emitter.
+	}
+
+	/**
+	 * Handle issue state change message.
+	 *
+	 * When an issue moves to "completed" or "canceled" state:
+	 * 1. Stop any active agent sessions for the issue
+	 * 2. Delete the worktree directory (handles single-repo and multi-repo layouts)
+	 * 3. Clean up session state
+	 */
+	private async handleIssueStateChangeMessage(
+		message: IssueStateChangeMessage,
+	): Promise<void> {
+		const { newStateType, workItemId, workItemIdentifier } = message;
+
+		this.logger.info(
+			`[MessageBus] Issue state change: ${workItemIdentifier} → ${newStateType}`,
+		);
+
+		// Only act on completed or canceled states
+		if (newStateType !== "completed" && newStateType !== "canceled") {
+			this.logger.debug(
+				`[MessageBus] Ignoring state change to "${newStateType}" for ${workItemIdentifier}`,
+			);
+			return;
+		}
+
+		// Stop active sessions for this issue across all repositories
+		// Note: agentSessionManagers is consolidated to a single instance on cypack-910;
+		// this loop is forward-compatible with both the Map and single-instance patterns.
+		let totalStopped = 0;
+		for (const [, manager] of this.agentSessionManagers) {
+			const sessions = manager.getSessionsByIssueId(workItemId);
+			for (const session of sessions) {
+				this.logger.info(
+					`Stopping agent session for ${newStateType} issue ${workItemIdentifier}`,
+				);
+				manager.requestSessionStop(session.id);
+				session.agentRunner?.stop();
+				totalStopped++;
+			}
+		}
+
+		if (totalStopped > 0) {
+			this.logger.info(
+				`Stopped ${totalStopped} session(s) for ${newStateType} issue ${workItemIdentifier}`,
+			);
+		}
+
+		// Delete worktrees for this issue
+		const repository = this.getCachedRepository(workItemId);
+		if (repository) {
+			await this.gitService.deleteWorktree(
+				repository.workspaceBaseDir,
+				workItemIdentifier,
+			);
+		} else {
+			// No cached repository — try all configured repositories
+			for (const repo of this.repositories.values()) {
+				await this.gitService.deleteWorktree(
+					repo.workspaceBaseDir,
+					workItemIdentifier,
+				);
+			}
+		}
 	}
 
 	// ============================================================================

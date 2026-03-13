@@ -27,7 +27,8 @@ export type MessageAction =
 	| "user_prompt" // User message during active session
 	| "stop_signal" // Stop processing request
 	| "content_update" // Issue/PR content changed
-	| "unassign"; // Task unassigned from agent
+	| "unassign" // Task unassigned from agent
+	| "issue_state_change"; // Issue workflow state changed (e.g., completed, canceled)
 
 /**
  * Platform source identifier.
@@ -324,6 +325,32 @@ export interface UnassignMessage extends InternalMessageBase {
 }
 
 // ============================================================================
+// ISSUE STATE CHANGE MESSAGE
+// ============================================================================
+
+/**
+ * Linear-specific platform data for issue state change.
+ */
+export interface LinearIssueStateChangePlatformData {
+	/** Issue that changed state */
+	issue: LinearPlatformRef["issue"];
+	/** The updatedFrom object from the webhook */
+	updatedFrom?: Record<string, unknown>;
+}
+
+/**
+ * Issue state change message - issue workflow state was modified.
+ * Triggered by: Issue moved to Done, Cancelled, etc.
+ */
+export interface IssueStateChangeMessage extends InternalMessageBase {
+	action: "issue_state_change";
+	/** The new workflow state type (e.g., "completed", "canceled") */
+	newStateType: string;
+	/** Platform-specific data */
+	platformData: LinearIssueStateChangePlatformData;
+}
+
+// ============================================================================
 // INTERNAL MESSAGE UNION TYPE
 // ============================================================================
 
@@ -336,4 +363,5 @@ export type InternalMessage =
 	| UserPromptMessage
 	| StopSignalMessage
 	| ContentUpdateMessage
-	| UnassignMessage;
+	| UnassignMessage
+	| IssueStateChangeMessage;
