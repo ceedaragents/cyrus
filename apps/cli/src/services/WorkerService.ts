@@ -236,9 +236,11 @@ export class WorkerService {
 				createWorkspace: async (
 					issue: Issue,
 					repositories: RepositoryConfig[],
+					options?: { baseBranchOverrides?: Map<string, string> },
 				): Promise<Workspace> => {
 					return this.gitService.createGitWorktree(issue, repositories, {
 						globalSetupScript: edgeConfig.global_setup_script,
+						baseBranchOverrides: options?.baseBranchOverrides,
 					});
 				},
 				onOAuthCallback,

@@ -2701,10 +2701,17 @@ ${taskSection}`;
 		);
 
 		// Create workspace using full issue data
-		// Use custom handler if provided, otherwise create a git worktree by default
-		// Pass full repositories array and base branch overrides for multi-repo worktree support
+		// IMPORTANT: The CLI app (apps/cli/src/services/WorkerService.ts) typically provides
+		// a custom createWorkspace handler, so the handler path is the one taken in production.
+		// When adding new options here, always update the handler signature in config-types.ts
+		// AND the CLI's handler implementation in WorkerService.ts to pass them through.
+		this.logger.info(
+			`createLinearAgentSession: passing baseBranchOverrides=${baseBranchOverrides ? `Map(size=${baseBranchOverrides.size}, keys=[${Array.from(baseBranchOverrides.keys()).join(",")}])` : "undefined"}, useCustomHandler=${!!this.config.handlers?.createWorkspace}`,
+		);
 		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, repositories)
+			? await this.config.handlers.createWorkspace(fullIssue, repositories, {
+					baseBranchOverrides,
+				})
 			: await this.gitService.createGitWorktree(fullIssue, repositories, {
 					baseBranchOverrides,
 				});
@@ -2875,6 +2882,17 @@ ${taskSection}`;
 			// At this point, routingResult.type === "selected"
 			repositories = routingResult.repositories;
 			baseBranchOverrides = routingResult.baseBranchOverrides;
+			if (baseBranchOverrides && baseBranchOverrides.size > 0) {
+				this.logger.info(
+					`baseBranchOverrides received from routing: ${Array.from(
+						baseBranchOverrides.entries(),
+					)
+						.map(([id, branch]) => `${id}→${branch}`)
+						.join(", ")}`,
+				);
+			} else {
+				this.logger.info(`No baseBranchOverrides from routing result`);
+			}
 			const primaryRepo = repositories[0]!;
 			const routingMethod = routingResult.routingMethod;
 
