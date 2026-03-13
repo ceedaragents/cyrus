@@ -1,0 +1,480 @@
+{
+	"$id": "https://atcyrus.com/schemas/RepositoryConfig.json",
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"id": {
+			"type": "string"
+		},
+		"name": {
+			"type": "string"
+		},
+		"repositoryPath": {
+			"type": "string"
+		},
+		"baseBranch": {
+			"type": "string"
+		},
+		"githubUrl": {
+			"type": "string"
+		},
+		"linearWorkspaceId": {
+			"type": "string"
+		},
+		"teamKeys": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
+		"routingLabels": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
+		"projectKeys": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
+		"linearToken": {
+			"type": "string"
+		},
+		"linearRefreshToken": {
+			"type": "string"
+		},
+		"linearWorkspaceName": {
+			"type": "string"
+		},
+		"workspaceBaseDir": {
+			"type": "string"
+		},
+		"isActive": {
+			"type": "boolean"
+		},
+		"promptTemplatePath": {
+			"type": "string"
+		},
+		"allowedTools": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
+		"disallowedTools": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
+		"mcpConfigPath": {
+			"anyOf": [
+				{
+					"type": "string"
+				},
+				{
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				}
+			]
+		},
+		"appendInstruction": {
+			"type": "string"
+		},
+		"model": {
+			"type": "string"
+		},
+		"fallbackModel": {
+			"type": "string"
+		},
+		"labelPrompts": {
+			"type": "object",
+			"properties": {
+				"debugger": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						{
+							"type": "object",
+							"properties": {
+								"labels": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"allowedTools": {
+									"anyOf": [
+										{
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										{
+											"type": "string",
+											"const": "readOnly"
+										},
+										{
+											"type": "string",
+											"const": "safe"
+										},
+										{
+											"type": "string",
+											"const": "all"
+										},
+										{
+											"type": "string",
+											"const": "coordinator"
+										}
+									]
+								},
+								"disallowedTools": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								}
+							},
+							"required": ["labels"],
+							"additionalProperties": false
+						}
+					]
+				},
+				"builder": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						{
+							"type": "object",
+							"properties": {
+								"labels": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"allowedTools": {
+									"anyOf": [
+										{
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										{
+											"type": "string",
+											"const": "readOnly"
+										},
+										{
+											"type": "string",
+											"const": "safe"
+										},
+										{
+											"type": "string",
+											"const": "all"
+										},
+										{
+											"type": "string",
+											"const": "coordinator"
+										}
+									]
+								},
+								"disallowedTools": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								}
+							},
+							"required": ["labels"],
+							"additionalProperties": false
+						}
+					]
+				},
+				"scoper": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						{
+							"type": "object",
+							"properties": {
+								"labels": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"allowedTools": {
+									"anyOf": [
+										{
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										{
+											"type": "string",
+											"const": "readOnly"
+										},
+										{
+											"type": "string",
+											"const": "safe"
+										},
+										{
+											"type": "string",
+											"const": "all"
+										},
+										{
+											"type": "string",
+											"const": "coordinator"
+										}
+									]
+								},
+								"disallowedTools": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								}
+							},
+							"required": ["labels"],
+							"additionalProperties": false
+						}
+					]
+				},
+				"orchestrator": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						{
+							"type": "object",
+							"properties": {
+								"labels": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"allowedTools": {
+									"anyOf": [
+										{
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										{
+											"type": "string",
+											"const": "readOnly"
+										},
+										{
+											"type": "string",
+											"const": "safe"
+										},
+										{
+											"type": "string",
+											"const": "all"
+										},
+										{
+											"type": "string",
+											"const": "coordinator"
+										}
+									]
+								},
+								"disallowedTools": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								}
+							},
+							"required": ["labels"],
+							"additionalProperties": false
+						}
+					]
+				},
+				"graphite-orchestrator": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						{
+							"type": "object",
+							"properties": {
+								"labels": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"allowedTools": {
+									"anyOf": [
+										{
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										{
+											"type": "string",
+											"const": "readOnly"
+										},
+										{
+											"type": "string",
+											"const": "safe"
+										},
+										{
+											"type": "string",
+											"const": "all"
+										},
+										{
+											"type": "string",
+											"const": "coordinator"
+										}
+									]
+								},
+								"disallowedTools": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								}
+							},
+							"required": ["labels"],
+							"additionalProperties": false
+						}
+					]
+				},
+				"graphite": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						{
+							"type": "object",
+							"properties": {
+								"labels": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								}
+							},
+							"required": ["labels"],
+							"additionalProperties": false
+						}
+					]
+				}
+			},
+			"additionalProperties": false
+		},
+		"userAccessControl": {
+			"type": "object",
+			"properties": {
+				"allowedUsers": {
+					"type": "array",
+					"items": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "string"
+									}
+								},
+								"required": ["id"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"email": {
+										"type": "string"
+									}
+								},
+								"required": ["email"],
+								"additionalProperties": false
+							}
+						]
+					}
+				},
+				"blockedUsers": {
+					"type": "array",
+					"items": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "string"
+									}
+								},
+								"required": ["id"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"email": {
+										"type": "string"
+									}
+								},
+								"required": ["email"],
+								"additionalProperties": false
+							}
+						]
+					}
+				},
+				"blockBehavior": {
+					"type": "string",
+					"enum": ["silent", "comment"]
+				},
+				"blockMessage": {
+					"type": "string"
+				}
+			},
+			"additionalProperties": false
+		}
+	},
+	"required": [
+		"id",
+		"name",
+		"repositoryPath",
+		"baseBranch",
+		"workspaceBaseDir"
+	],
+	"additionalProperties": false
+}
