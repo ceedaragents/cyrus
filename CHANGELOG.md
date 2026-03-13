@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Event subscriptions for agent sessions** - Sessions can now subscribe to real-time events (issue updates, prompts, CI completions, base branch changes) and receive notifications mid-stream. Auto-subscriptions are created when sessions start, and custom subscriptions can be managed via MCP tools. ([#979](https://github.com/ceedaragents/cyrus/pull/979))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed

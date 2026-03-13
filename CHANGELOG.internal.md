@@ -4,6 +4,12 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- **V1 subscription system** (`packages/core/src/subscriptions/`) - Added `SubscriptionManager` (event matching with scalar/array filters, compress maps, one-shot and whileStreamingOnly modes), `EventStore` (disk-based event persistence with cleanup), and `safewrapEventPayload()` (XML boundary wrapping to prevent prompt injection). Includes `autoSubscribe()` for default session subscriptions (prompted, issue_updated, base_branch_updated). ([CYPACK-947](https://linear.app/ceedar/issue/CYPACK-947), [#979](https://github.com/ceedaragents/cyrus/pull/979))
+- **Subscription MCP tools** - Added `create_subscription`, `unsubscribe`, `lookup_full_event_payload`, and `create_local_agent_session` to `cyrus-tools`. Extended `CyrusToolsOptions` with subscription callbacks. ([CYPACK-947](https://linear.app/ceedar/issue/CYPACK-947), [#979](https://github.com/ceedaragents/cyrus/pull/979))
+- **EdgeWorker subscription integration** - Wired `SubscriptionManager` and `EventStore` into EdgeWorker lifecycle: auto-subscribe on session creation, emit subscription events from `handleIssueContentUpdate()`, deliver matched events via streaming prompt injection or session resumption, serialize/restore subscription state in `SerializableEdgeWorkerState`. ([CYPACK-947](https://linear.app/ceedar/issue/CYPACK-947), [#979](https://github.com/ceedaragents/cyrus/pull/979))
+- **`lookup-event-types` skill** - Documents all subscription event types, payload shapes, filterable properties, and usage examples. ([CYPACK-947](https://linear.app/ceedar/issue/CYPACK-947), [#979](https://github.com/ceedaragents/cyrus/pull/979))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed
