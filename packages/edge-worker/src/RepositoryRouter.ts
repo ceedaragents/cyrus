@@ -388,8 +388,12 @@ export class RepositoryRouter {
 				for (const repo of repos) {
 					if (matchedIds.has(repo.id)) continue;
 
-					// Match by GitHub URL containing the tag value (e.g., "org/repo-name")
-					if (repo.githubUrl?.includes(repoTag)) {
+					// Match by GitHub URL path segment (e.g., "org/repo-name" or "repo-name")
+					// Use endsWith to avoid substring false positives (e.g., "cyrus" matching "cyrus-hosted")
+					if (
+						repo.githubUrl?.endsWith(`/${repoTag}`) ||
+						repo.githubUrl?.endsWith(`/${repoTag}.git`)
+					) {
 						this.logger.debug(
 							`Matched repo tag "${repoTag}" to repository ${repo.name} via GitHub URL`,
 						);
