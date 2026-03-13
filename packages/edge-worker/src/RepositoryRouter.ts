@@ -16,6 +16,8 @@ export type RepositoryRoutingResult =
 	| {
 			type: "selected";
 			repositories: RepositoryConfig[];
+			/** Per-repo base branch overrides from [repo=name#branch] syntax */
+			baseBranchOverrides?: Map<string, string>;
 			routingMethod:
 				| "description-tag"
 				| "label-based"
@@ -193,19 +195,23 @@ export class RepositoryRouter {
 		);
 		if (workspaceRepos.length === 0) return { type: "none" };
 
-		// Priority 1: Check description tags [repo=...] (supports multiple)
-		const descriptionTagRepos = await this.findRepositoriesByDescriptionTag(
+		// Priority 1: Check description tags [repo=...] (supports multiple, with optional #branch)
+		const descriptionTagResult = await this.findRepositoriesByDescriptionTag(
 			issueId,
 			workspaceRepos,
 			workspaceId,
 		);
-		if (descriptionTagRepos.length > 0) {
+		if (descriptionTagResult.repositories.length > 0) {
 			this.logger.info(
-				`Repositories selected: [${descriptionTagRepos.map((r) => r.name).join(", ")}] (description-tag routing)`,
+				`Repositories selected: [${descriptionTagResult.repositories.map((r) => r.name).join(", ")}] (description-tag routing)`,
 			);
 			return {
 				type: "selected",
-				repositories: descriptionTagRepos,
+				repositories: descriptionTagResult.repositories,
+				baseBranchOverrides:
+					descriptionTagResult.baseBranchOverrides.size > 0
+						? descriptionTagResult.baseBranchOverrides
+						: undefined,
 				routingMethod: "description-tag",
 			};
 		}
@@ -364,76 +370,93 @@ export class RepositoryRouter {
 		issueId: string | undefined,
 		repos: RepositoryConfig[],
 		workspaceId: string,
-	): Promise<RepositoryConfig[]> {
-		if (!issueId) return [];
+	): Promise<{
+		repositories: RepositoryConfig[];
+		baseBranchOverrides: Map<string, string>;
+	}> {
+		if (!issueId) return { repositories: [], baseBranchOverrides: new Map() };
 
 		try {
 			const description = await this.deps.fetchIssueDescription(
 				issueId,
 				workspaceId,
 			);
-			if (!description) return [];
+			if (!description)
+				return { repositories: [], baseBranchOverrides: new Map() };
 
 			const repoTags = this.parseRepoTagsFromDescription(description);
-			if (repoTags.length === 0) return [];
+			if (repoTags.length === 0)
+				return { repositories: [], baseBranchOverrides: new Map() };
 
 			this.logger.debug(
-				`Found [repo=...] tags in issue description: [${repoTags.join(", ")}]`,
+				`Found [repo=...] tags in issue description: [${repoTags.map((t) => (t.branch ? `${t.repo}#${t.branch}` : t.repo)).join(", ")}]`,
 			);
 
 			const matched: RepositoryConfig[] = [];
 			const matchedIds = new Set<string>();
+			const baseBranchOverrides = new Map<string, string>();
 
 			for (const repoTag of repoTags) {
 				for (const repo of repos) {
 					if (matchedIds.has(repo.id)) continue;
 
+					let isMatch = false;
+
 					// Match by GitHub URL path segment (e.g., "org/repo-name" or "repo-name")
 					// Use endsWith to avoid substring false positives (e.g., "cyrus" matching "cyrus-hosted")
 					if (
-						repo.githubUrl?.endsWith(`/${repoTag}`) ||
-						repo.githubUrl?.endsWith(`/${repoTag}.git`)
+						repo.githubUrl?.endsWith(`/${repoTag.repo}`) ||
+						repo.githubUrl?.endsWith(`/${repoTag.repo}.git`)
 					) {
 						this.logger.debug(
-							`Matched repo tag "${repoTag}" to repository ${repo.name} via GitHub URL`,
+							`Matched repo tag "${repoTag.repo}" to repository ${repo.name} via GitHub URL`,
 						);
-						matched.push(repo);
-						matchedIds.add(repo.id);
-						continue;
+						isMatch = true;
 					}
 
 					// Match by repository name (exact match, case-insensitive)
-					if (repo.name.toLowerCase() === repoTag.toLowerCase()) {
+					if (
+						!isMatch &&
+						repo.name.toLowerCase() === repoTag.repo.toLowerCase()
+					) {
 						this.logger.debug(
-							`Matched repo tag "${repoTag}" to repository ${repo.name} via name`,
+							`Matched repo tag "${repoTag.repo}" to repository ${repo.name} via name`,
 						);
-						matched.push(repo);
-						matchedIds.add(repo.id);
-						continue;
+						isMatch = true;
 					}
 
 					// Match by repository ID
-					if (repo.id === repoTag) {
+					if (!isMatch && repo.id === repoTag.repo) {
 						this.logger.debug(
-							`Matched repo tag "${repoTag}" to repository ${repo.name} via ID`,
+							`Matched repo tag "${repoTag.repo}" to repository ${repo.name} via ID`,
 						);
+						isMatch = true;
+					}
+
+					if (isMatch) {
 						matched.push(repo);
 						matchedIds.add(repo.id);
+						if (repoTag.branch) {
+							baseBranchOverrides.set(repo.id, repoTag.branch);
+							this.logger.debug(
+								`Base branch override for ${repo.name}: ${repoTag.branch}`,
+							);
+						}
 					}
 				}
 			}
 
 			if (matched.length === 0) {
 				this.logger.debug(
-					`No repositories matched [repo=...] tags: [${repoTags.join(", ")}]`,
+					`No repositories matched [repo=...] tags: [${repoTags.map((t) => t.repo).join(", ")}]`,
 				);
 			}
-			return matched;
+			return { repositories: matched, baseBranchOverrides };
 		} catch (error) {
 			this.logger.error(`Failed to fetch description for routing:`, error);
 		}
 
-		return [];
+		return { repositories: [], baseBranchOverrides: new Map() };
 	}
 
 	/**
@@ -443,21 +466,32 @@ export class RepositoryRouter {
 	 * - [repo=org/repo-name]
 	 * - [repo=repo-name]
 	 * - [repo=repo-id]
+	 * - [repo=repo-name#branch] (with base branch override)
 	 *
 	 * Also handles escaped brackets (\\[repo=...\\]) which Linear may produce
 	 * when the description contains markdown-escaped square brackets.
 	 *
-	 * Returns array of tag values (empty array if none found).
+	 * Returns array of parsed tags with optional branch overrides.
 	 */
-	parseRepoTagsFromDescription(description: string): string[] {
+	parseRepoTagsFromDescription(
+		description: string,
+	): { repo: string; branch?: string }[] {
 		// Match all [repo=...] patterns - captures everything between = and ]
-		// The pattern allows: alphanumeric, hyphens, underscores, forward slashes, dots
+		// The pattern allows: alphanumeric, hyphens, underscores, forward slashes, dots, and # for branch
 		// Also handles escaped brackets (\\[ and \\]) that Linear may produce
-		const regex = /\\?\[repo=([a-zA-Z0-9_\-/.]+)\\?\]/g;
-		const tags: string[] = [];
+		const regex = /\\?\[repo=([a-zA-Z0-9_\-/.#]+)\\?\]/g;
+		const tags: { repo: string; branch?: string }[] = [];
 		for (const match of description.matchAll(regex)) {
 			if (match[1]) {
-				tags.push(match[1]);
+				const hashIndex = match[1].indexOf("#");
+				if (hashIndex !== -1) {
+					tags.push({
+						repo: match[1].slice(0, hashIndex),
+						branch: match[1].slice(hashIndex + 1),
+					});
+				} else {
+					tags.push({ repo: match[1] });
+				}
 			}
 		}
 		return tags;
