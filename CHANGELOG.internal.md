@@ -5,7 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Fixed
-- `handleIssueContentUpdate()` in `EdgeWorker.ts` previously looped through ALL sessions returned by `getSessionsByIssueId()` and resumed every non-running one via `handlePromptWithStreamingCheck()`. When multiple sessions existed for the same issue (from multiple @ mentions, delegations, etc.), this caused multiple concurrent runner instances. Replaced the unconditional loop with an `updateDelivered` guard that sorts sessions by `updatedAt` descending and resumes only the first idle session, or streams into an already-running session. Added 5 tests in `EdgeWorker.issue-update-multiple-sessions.test.ts`. ([CYPACK-954](https://linear.app/ceedar/issue/CYPACK-954), [#977](https://github.com/ceedaragents/cyrus/pull/977))
+- Reworked `handleIssueContentUpdate()` in `EdgeWorker.ts` to be streaming-only: issue update events are now ONLY delivered to currently running sessions via `addStreamMessage()`. Idle sessions are no longer resumed. If the runner doesn't support streaming input, the event is silently ignored. Added webhook deduplication using `createdAt:issueId` composite key with bounded `processedIssueUpdateKeys` set (auto-prunes at 500 entries). Added DEBUG-level logging that traces the webhook key and changed fields for each delivery. Replaced 5 tests with 7 tests in `EdgeWorker.issue-update-multiple-sessions.test.ts`. ([CYPACK-954](https://linear.app/ceedar/issue/CYPACK-954), [#977](https://github.com/ceedaragents/cyrus/pull/977))
 
 ## [0.2.33] - 2026-03-10
 
