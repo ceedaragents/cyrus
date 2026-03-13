@@ -133,6 +133,7 @@ import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { TelemetryReporter } from "./TelemetryReporter.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -671,6 +672,13 @@ export class EdgeWorker extends EventEmitter {
 
 			// Register the /webhook endpoint
 			this.linearEventTransport.register();
+
+			// Set up telemetry reporter using callback headers from CYHOST
+			const transport = this.linearEventTransport;
+			const telemetryReporter = new TelemetryReporter(() =>
+				transport.getCallbackConfig(),
+			);
+			this.agentSessionManager.setTelemetryReporter(telemetryReporter);
 
 			this.logger.info(
 				`✅ Linear event transport registered (${verificationMode} mode)`,

@@ -32,6 +32,7 @@ import type {
 	ActivitySignal,
 	IActivitySink,
 } from "./sinks/index.js";
+import type { TelemetryReporter } from "./TelemetryReporter.js";
 import {
 	DEFAULT_VALIDATION_LOOP_CONFIG,
 	parseValidationResult,
@@ -107,6 +108,7 @@ export class AgentSessionManager extends EventEmitter {
 	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
+	private telemetryReporter?: TelemetryReporter;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -139,6 +141,13 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	setActivitySink(sessionId: string, sink: IActivitySink): void {
 		this.activitySinks.set(sessionId, sink);
+	}
+
+	/**
+	 * Set the telemetry reporter for CYPACK → CYHOST error reporting.
+	 */
+	setTelemetryReporter(reporter: TelemetryReporter): void {
+		this.telemetryReporter = reporter;
 	}
 
 	/**
@@ -399,6 +408,31 @@ export class AgentSessionManager extends EventEmitter {
 			usage: resultMessage.usage,
 		});
 
+		// Report error telemetry to CYHOST (fire-and-forget)
+		if (status === AgentSessionStatus.Error && this.telemetryReporter) {
+			const errorType = this.mapResultToErrorType(
+				resultMessage,
+				wasStopRequested,
+			);
+			const errorMessage = this.extractErrorMessage(resultMessage);
+			const durationSeconds = resultMessage.duration_ms
+				? Math.round(resultMessage.duration_ms / 1000)
+				: 0;
+
+			this.telemetryReporter
+				.reportError({
+					error_type: errorType,
+					error_message: errorMessage,
+					issue_id: session.issueContext?.issueId ?? "",
+					issue_identifier: session.issueContext?.issueIdentifier ?? "",
+					session_id: sessionId,
+					duration_seconds: durationSeconds,
+				})
+				.catch(() => {
+					// Swallowed — TelemetryReporter already logs internally
+				});
+		}
+
 		// Handle result using procedure routing system (skip for sessions without procedures, e.g. Slack)
 		if (!this.procedureAnalyzer) {
 			log.info(`Session completed (no procedure routing)`);
@@ -448,6 +482,68 @@ export class AgentSessionManager extends EventEmitter {
 			// Non-recoverable errors (e.g. stop/abort) should not advance procedures.
 			await this.addResultEntry(sessionId, resultMessage);
 		}
+	}
+
+	/**
+	 * Map an SDK result message to a telemetry error type.
+	 */
+	private mapResultToErrorType(
+		resultMessage: SDKResultMessage,
+		wasStopRequested: boolean,
+	): "crash" | "stall" | "rate_limit" | "billing" | "max_turns" {
+		if (wasStopRequested) {
+			return "stall";
+		}
+
+		if (resultMessage.subtype === "error_max_turns") {
+			return "max_turns";
+		}
+
+		const errorText = [
+			resultMessage.subtype ?? "",
+			...("errors" in resultMessage && Array.isArray(resultMessage.errors)
+				? resultMessage.errors
+				: []),
+		]
+			.join(" ")
+			.toLowerCase();
+
+		if (
+			errorText.includes("max turn") ||
+			errorText.includes("turn limit") ||
+			errorText.includes("turns limit")
+		) {
+			return "max_turns";
+		}
+		if (errorText.includes("rate_limit") || errorText.includes("rate limit")) {
+			return "rate_limit";
+		}
+		if (
+			errorText.includes("billing") ||
+			errorText.includes("billing_error") ||
+			errorText.includes("quota")
+		) {
+			return "billing";
+		}
+
+		return "crash";
+	}
+
+	/**
+	 * Extract a human-readable error message from an SDK result.
+	 */
+	private extractErrorMessage(resultMessage: SDKResultMessage): string {
+		if (
+			"errors" in resultMessage &&
+			Array.isArray(resultMessage.errors) &&
+			resultMessage.errors.length > 0
+		) {
+			return resultMessage.errors.join("; ");
+		}
+		if ("result" in resultMessage && typeof resultMessage.result === "string") {
+			return resultMessage.result.slice(0, 500);
+		}
+		return resultMessage.subtype ?? "unknown error";
 	}
 
 	private shouldRecoverFromPreviousSubroutine(

@@ -10,6 +10,7 @@ import { LinearMessageTranslator } from "./LinearMessageTranslator.js";
 import type {
 	LinearEventTransportConfig,
 	LinearEventTransportEvents,
+	TelemetryCallbackConfig,
 } from "./types.js";
 
 export declare interface LinearEventTransport {
@@ -45,6 +46,7 @@ export class LinearEventTransport
 	private logger: ILogger;
 	private messageTranslator: LinearMessageTranslator;
 	private translationContext: TranslationContext;
+	private callbackConfig: TelemetryCallbackConfig | null = null;
 
 	constructor(
 		config: LinearEventTransportConfig,
@@ -69,6 +71,33 @@ export class LinearEventTransport
 	 */
 	setTranslationContext(context: TranslationContext): void {
 		this.translationContext = { ...this.translationContext, ...context };
+	}
+
+	/**
+	 * Get the telemetry callback configuration extracted from CYHOST headers.
+	 * Returns null if no callback headers have been received yet.
+	 */
+	getCallbackConfig(): TelemetryCallbackConfig | null {
+		return this.callbackConfig;
+	}
+
+	/**
+	 * Extract and store telemetry callback headers from a webhook request.
+	 */
+	private extractCallbackHeaders(request: FastifyRequest): void {
+		const token = request.headers["x-cyrus-callback-token"] as
+			| string
+			| undefined;
+		const url = request.headers["x-cyrus-callback-url"] as string | undefined;
+		const teamId = request.headers["x-cyrus-team-id"] as string | undefined;
+
+		if (token && url && teamId) {
+			this.callbackConfig = {
+				callbackToken: token,
+				callbackUrl: url,
+				teamId,
+			};
+		}
 	}
 
 	/**
@@ -114,6 +143,9 @@ export class LinearEventTransport
 			return;
 		}
 
+		// Extract telemetry callback headers from CYHOST
+		this.extractCallbackHeaders(request);
+
 		// Get Linear signature from headers
 		const signature = request.headers["linear-signature"] as string;
 		if (!signature) {
@@ -158,6 +190,9 @@ export class LinearEventTransport
 		request: FastifyRequest,
 		reply: FastifyReply,
 	): Promise<void> {
+		// Extract telemetry callback headers from CYHOST
+		this.extractCallbackHeaders(request);
+
 		// Get Authorization header
 		const authHeader = request.headers.authorization;
 		if (!authHeader) {
