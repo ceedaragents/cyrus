@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Updated `@anthropic-ai/claude-agent-sdk` from v0.2.63 to v0.2.74 in `cyrus-claude-runner`, `cyrus-simple-agent-runner`, and `cyrus-core`. Fixed NodeNext module resolution for `sdk-tools` import (removed explicit `.d.ts` extension). `@anthropic-ai/sdk` remains at v0.78.0 (already latest). ([CYPACK-940](https://linear.app/ceedar/issue/CYPACK-940), [#974](https://github.com/ceedaragents/cyrus/pull/974))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed
