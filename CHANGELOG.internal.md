@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `IssueStateChangeMessage` type to the internal message bus with `isIssueStateChangeWebhook` type guard and `isIssueStateChangeMessage` message type guard. `LinearMessageTranslator` now detects `Issue/update` webhooks with `stateId` in `updatedFrom` and translates them to `IssueStateChangeMessage`. Added `GitService.deleteWorktree()` method that finds git worktrees under a directory (single-repo or multi-repo layout), runs `git worktree remove --force`, then removes the directory tree. `EdgeWorker.handleIssueStateChangeMessage()` stops active sessions and triggers worktree deletion when state is `completed` or `canceled`. ([CYPACK-958](https://linear.app/ceedar/issue/CYPACK-958), [#980](https://github.com/ceedaragents/cyrus/pull/980))
+
 ## [0.2.31] - 2026-03-09
 
 ### Fixed
