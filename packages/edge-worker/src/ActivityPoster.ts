@@ -90,7 +90,7 @@ export class ActivityPoster {
 	async postRepositorySelectionActivity(
 		sessionId: string,
 		workspaceId: string,
-		repositoryName: string,
+		repositoryNames: string[],
 		selectionMethod:
 			| "description-tag"
 			| "label-based"
@@ -107,24 +107,23 @@ export class ActivityPoster {
 			return;
 		}
 
-		let methodDisplay: string;
-		if (selectionMethod === "user-selected") {
-			methodDisplay = "selected by user";
-		} else if (selectionMethod === "description-tag") {
-			methodDisplay = "matched via [repo=...] tag in issue description";
-		} else if (selectionMethod === "label-based") {
-			methodDisplay = "matched via label-based routing";
-		} else if (selectionMethod === "project-based") {
-			methodDisplay = "matched via project-based routing";
-		} else if (selectionMethod === "team-based") {
-			methodDisplay = "matched via team-based routing";
-		} else if (selectionMethod === "team-prefix") {
-			methodDisplay = "matched via team prefix routing";
-		} else if (selectionMethod === "catch-all") {
-			methodDisplay = "matched via catch-all routing";
-		} else {
-			methodDisplay = "matched via workspace fallback";
-		}
+		const methodDisplayMap: Record<string, string> = {
+			"user-selected": "User selection",
+			"description-tag": "[repo=...] tag in issue description",
+			"label-based": "Label-based routing",
+			"project-based": "Project-based routing",
+			"team-based": "Team-based routing",
+			"team-prefix": "Team prefix routing",
+			"catch-all": "Catch-all routing",
+			"workspace-fallback": "Workspace fallback",
+		};
+		const methodDisplay = methodDisplayMap[selectionMethod] ?? selectionMethod;
+
+		const repoList = repositoryNames.map((name) => `- ${name}`).join("\n");
+		const repoLabel =
+			repositoryNames.length === 1 ? "Repository" : "Repositories";
+
+		const body = `**${repoLabel} selected** (${methodDisplay})\n${repoList}`;
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -132,7 +131,7 @@ export class ActivityPoster {
 				agentSessionId: sessionId,
 				content: {
 					type: "thought",
-					body: `Repository "${repositoryName}" has been ${methodDisplay}.`,
+					body,
 				},
 			},
 			"repository selection",
