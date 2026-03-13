@@ -118,6 +118,7 @@ export interface EdgeWorkerRuntimeConfig {
 		createWorkspace?: (
 			issue: Issue,
 			repositories: RepositoryConfig[],
+			options?: { baseBranchOverrides?: Map<string, string> },
 		) => Promise<Workspace>;
 
 		/** Called with Claude messages (for UI updates, logging, etc). Includes repository ID. */
