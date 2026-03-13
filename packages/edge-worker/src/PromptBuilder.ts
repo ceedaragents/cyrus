@@ -459,10 +459,24 @@ export class PromptBuilder {
 			// Generate routing context for orchestrator mode
 			const routingContext = this.generateRoutingContext(repository);
 
-			// Build the simplified prompt with only essential variables
+			// Build the git context section: single-repo uses <git_context>,
+			// multi-repo uses <repositories> with per-repo sections.
+			let gitContext: string;
+			if (repositories.length > 1) {
+				const repoSections = repositories
+					.map((repo) => {
+						const repoBranch = baseBranchMap.get(repo.id) ?? repo.baseBranch;
+						return `  <repository name="${repo.name}">\n    <base_branch>${repoBranch}</base_branch>\n  </repository>`;
+					})
+					.join("\n");
+				gitContext = `<repositories>\n${repoSections}\n</repositories>`;
+			} else {
+				gitContext = `<git_context>\n<repository>${repository.name}</repository>\n<base_branch>${baseBranch}</base_branch>\n</git_context>`;
+			}
+
+			// Build the prompt with template variable substitution
 			let prompt = template
-				.replace(/{{repository_name}}/g, repository.name)
-				.replace(/{{base_branch}}/g, baseBranch)
+				.replace(/{{git_context}}/g, gitContext)
 				.replace(/{{issue_id}}/g, issue.id || "")
 				.replace(/{{issue_identifier}}/g, issue.identifier || "")
 				.replace(/{{issue_title}}/g, issue.title || "")
@@ -487,21 +501,6 @@ export class PromptBuilder {
 					routingContext ? /{{routing_context}}/g : /\n*{{routing_context}}/g,
 					routingContext,
 				);
-
-			// For multi-repo: replace single-repo git_context with per-repo sections
-			if (repositories.length > 1) {
-				const repoSections = repositories
-					.map((repo) => {
-						const repoBranch = baseBranchMap.get(repo.id) ?? repo.baseBranch;
-						return `  <repository name="${repo.name}">\n    <base_branch>${repoBranch}</base_branch>\n  </repository>`;
-					})
-					.join("\n");
-
-				prompt = prompt.replace(
-					/<git_context>[\s\S]*?<\/git_context>/,
-					`<repositories>\n${repoSections}\n</repositories>`,
-				);
-			}
 
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
