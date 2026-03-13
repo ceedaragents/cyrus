@@ -3,7 +3,12 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve as pathResolve } from "node:path";
 
-import type { Issue, RepositoryConfig, Workspace } from "cyrus-core";
+import type {
+	BaseBranchResolution,
+	Issue,
+	RepositoryConfig,
+	Workspace,
+} from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
@@ -236,13 +241,13 @@ export class GitService {
 	}
 
 	/**
-	 * Determine the base branch for an issue, considering graphite blocked-by
-	 * relationships and parent issues.
+	 * Determine the base branch for an issue with full resolution info.
 	 *
 	 * Priority order:
-	 * 1. If issue has graphite label AND has a "blocked by" relationship, use the blocking issue's branch
-	 * 2. If issue has a parent, use the parent's branch
-	 * 3. Fall back to repository's default base branch
+	 * 0. Explicit override from [repo=name#branch] syntax
+	 * 1. Graphite blocked-by relationship
+	 * 2. Parent issue branch
+	 * 3. Repository default base branch
 	 *
 	 * @param baseBranchOverride Optional override from [repo=name#branch] syntax (highest priority)
 	 */
@@ -250,16 +255,18 @@ export class GitService {
 		issue: Issue,
 		repository: RepositoryConfig,
 		baseBranchOverride?: string,
-	): Promise<string> {
+	): Promise<BaseBranchResolution> {
 		// Priority 0: Explicit override from [repo=name#branch] syntax
 		if (baseBranchOverride) {
 			this.logger.info(
 				`Using commit-ish override '${baseBranchOverride}' as base branch for ${issue.identifier} in repo ${repository.name}`,
 			);
-			return baseBranchOverride;
+			return {
+				branch: baseBranchOverride,
+				source: "commit-ish",
+				detail: `[repo=...#${baseBranchOverride}]`,
+			};
 		}
-
-		let baseBranch = repository.baseBranch;
 
 		// Priority 1: Check graphite blocked-by relationship
 		try {
@@ -293,7 +300,11 @@ export class GitService {
 						this.logger.info(
 							`Using blocking issue branch '${blockingBranchName}' as base for Graphite-stacked issue ${issue.identifier}`,
 						);
-						return blockingBranchName;
+						return {
+							branch: blockingBranchName,
+							source: "graphite-blocked-by",
+							detail: `blocked by ${blockingIssue.identifier}`,
+						};
 					}
 					this.logger.info(
 						`Blocking issue branch '${blockingBranchName}' not found, falling back to parent/default`,
@@ -328,15 +339,18 @@ export class GitService {
 				);
 
 				if (parentBranchExists) {
-					baseBranch = parentBranchName;
 					this.logger.info(
 						`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
 					);
-				} else {
-					this.logger.info(
-						`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
-					);
+					return {
+						branch: parentBranchName,
+						source: "parent-issue",
+						detail: `parent ${parent.identifier}`,
+					};
 				}
+				this.logger.info(
+					`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
+				);
 			}
 		} catch (_error) {
 			this.logger.info(
@@ -344,7 +358,11 @@ export class GitService {
 			);
 		}
 
-		return baseBranch;
+		// Priority 3: Repository default
+		return {
+			branch: repository.baseBranch,
+			source: "default",
+		};
 	}
 
 	/**
@@ -485,7 +503,7 @@ export class GitService {
 		}
 
 		const repoPaths: Record<string, string> = {};
-		const resolvedBaseBranches: Record<string, string> = {};
+		const resolvedBaseBranches: Record<string, BaseBranchResolution> = {};
 
 		for (const repository of repositories) {
 			const repoSubPath = join(parentPath, repository.name);
@@ -540,6 +558,15 @@ export class GitService {
 		workspacePathOverride?: string,
 		baseBranchOverride?: string,
 	): Promise<Workspace> {
+		// Build a fallback resolution for error paths where determineBaseBranch hasn't run
+		const fallbackResolution: BaseBranchResolution = baseBranchOverride
+			? {
+					branch: baseBranchOverride,
+					source: "commit-ish",
+					detail: `[repo=...#${baseBranchOverride}]`,
+				}
+			: { branch: repository.baseBranch, source: "default" };
+
 		try {
 			// Verify this is a git repository
 			try {
@@ -574,6 +601,15 @@ export class GitService {
 				{ recursive: true },
 			);
 
+			// Determine base branch early (commit-ish > graphite > parent > default)
+			// This runs before worktree existence checks so all return paths have the resolution
+			const resolution = await this.determineBaseBranch(
+				issue,
+				repository,
+				baseBranchOverride,
+			);
+			const baseBranch = resolution.branch;
+
 			// Check if worktree already exists
 			try {
 				const worktrees = execSync("git worktree list --porcelain", {
@@ -588,6 +624,7 @@ export class GitService {
 					return {
 						path: workspacePath,
 						isGitWorktree: true,
+						resolvedBaseBranches: { [repository.id]: resolution },
 					};
 				}
 			} catch (_e) {
@@ -619,16 +656,10 @@ export class GitService {
 					return {
 						path: existingWorktreePath,
 						isGitWorktree: true,
+						resolvedBaseBranches: { [repository.id]: resolution },
 					};
 				}
 			}
-
-			// Determine base branch for this issue (commit-ish > graphite > parent > default)
-			const baseBranch = await this.determineBaseBranch(
-				issue,
-				repository,
-				baseBranchOverride,
-			);
 
 			// Fetch latest changes from remote
 			this.logger.debug("Fetching latest changes from remote...");
@@ -750,7 +781,7 @@ export class GitService {
 			return {
 				path: workspacePath,
 				isGitWorktree: true,
-				resolvedBaseBranches: { [repository.id]: baseBranch },
+				resolvedBaseBranches: { [repository.id]: resolution },
 			};
 		} catch (error) {
 			const errorMessage = (error as Error).message;
@@ -768,6 +799,7 @@ export class GitService {
 				return {
 					path: worktreeMatch[1],
 					isGitWorktree: true,
+					resolvedBaseBranches: { [repository.id]: fallbackResolution },
 				};
 			}
 
@@ -779,6 +811,7 @@ export class GitService {
 			return {
 				path: fallbackPath,
 				isGitWorktree: false,
+				resolvedBaseBranches: { [repository.id]: fallbackResolution },
 			};
 		}
 	}

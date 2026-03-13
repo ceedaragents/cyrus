@@ -510,7 +510,8 @@ describe("GitService", () => {
 
 			const result = await gitService.determineBaseBranch(issue, repository);
 
-			expect(result).toBe("main");
+			expect(result.branch).toBe("main");
+			expect(result.source).toBe("default");
 		});
 
 		it("uses parent branch when parent exists", async () => {
@@ -538,7 +539,9 @@ describe("GitService", () => {
 
 			const result = await gitService.determineBaseBranch(issue, repository);
 
-			expect(result).toBe("cyrustester/eng-96-parent-issue");
+			expect(result.branch).toBe("cyrustester/eng-96-parent-issue");
+			expect(result.source).toBe("parent-issue");
+			expect(result.detail).toContain("ENG-96");
 		});
 
 		it("uses blocking issue branch when graphite label is present (priority over parent)", async () => {
@@ -585,7 +588,9 @@ describe("GitService", () => {
 
 			const result = await gitService.determineBaseBranch(issue, repository);
 
-			expect(result).toBe("cyrustester/eng-95-blocking");
+			expect(result.branch).toBe("cyrustester/eng-95-blocking");
+			expect(result.source).toBe("graphite-blocked-by");
+			expect(result.detail).toContain("ENG-95");
 			expect(mockLogger.info).toHaveBeenCalledWith(
 				expect.stringContaining("blocking issue branch"),
 			);
@@ -633,7 +638,9 @@ describe("GitService", () => {
 
 			const result = await gitService.determineBaseBranch(issue, repository);
 
-			expect(result).toBe("cyrustester/eng-96-parent");
+			expect(result.branch).toBe("cyrustester/eng-96-parent");
+			expect(result.source).toBe("parent-issue");
+			expect(result.detail).toContain("ENG-96");
 		});
 
 		it("falls back to default when no graphite blockers and no parent", async () => {
@@ -649,7 +656,8 @@ describe("GitService", () => {
 
 			const result = await gitService.determineBaseBranch(issue, repository);
 
-			expect(result).toBe("main");
+			expect(result.branch).toBe("main");
+			expect(result.source).toBe("default");
 		});
 
 		it("uses custom graphite label config", async () => {
@@ -690,7 +698,9 @@ describe("GitService", () => {
 
 			const result = await gitService.determineBaseBranch(issue, repository);
 
-			expect(result).toBe("eng-95-branch");
+			expect(result.branch).toBe("eng-95-branch");
+			expect(result.source).toBe("graphite-blocked-by");
+			expect(result.detail).toContain("ENG-95");
 		});
 	});
 

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+	type BaseBranchResolution,
 	type Comment,
 	type EdgeWorkerConfig,
 	type GuidanceRule,
@@ -324,7 +325,7 @@ export class PromptBuilder {
 		repositories: RepositoryConfig[],
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
-		resolvedBaseBranches?: Record<string, string>,
+		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
 	): Promise<PromptResult> {
 		const repository = repositories[0]!;
 		this.logger.debug(
@@ -752,7 +753,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		newComment?: WebhookComment,
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
-		resolvedBaseBranches?: Record<string, string>,
+		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
 	): Promise<PromptResult> {
 		const repository = repositories[0]!;
 		this.logger.debug(
@@ -1368,7 +1369,7 @@ ${reply.body}
 	async determineBaseBranch(
 		issue: Issue,
 		repositories: RepositoryConfig[],
-		resolvedBaseBranches?: Record<string, string>,
+		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
 	): Promise<Map<string, string>> {
 		const result = new Map<string, string>();
 
@@ -1376,7 +1377,7 @@ ${reply.body}
 		if (resolvedBaseBranches) {
 			for (const repository of repositories) {
 				const resolved = resolvedBaseBranches[repository.id];
-				result.set(repository.id, resolved ?? repository.baseBranch);
+				result.set(repository.id, resolved?.branch ?? repository.baseBranch);
 			}
 			return result;
 		}

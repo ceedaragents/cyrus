@@ -31,6 +31,7 @@ export type {
 	SDKUserMessage,
 } from "./agent-runner-types.js";
 export type {
+	BaseBranchResolution,
 	CyrusAgentSession,
 	CyrusAgentSessionEntry,
 	IssueContext,

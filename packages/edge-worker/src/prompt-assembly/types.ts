@@ -6,6 +6,7 @@
  */
 
 import type {
+	BaseBranchResolution,
 	CyrusAgentSession,
 	GuidanceRule,
 	Issue,
@@ -120,7 +121,7 @@ export interface PromptAssemblyInput {
 	assigneeGitHubUsername?: string;
 
 	/** Pre-resolved base branches from workspace creation (keyed by repositoryId) */
-	resolvedBaseBranches?: Record<string, string>;
+	resolvedBaseBranches?: Record<string, BaseBranchResolution>;
 }
 
 /**
