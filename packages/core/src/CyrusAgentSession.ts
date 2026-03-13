@@ -39,6 +39,8 @@ export interface Workspace {
 	historyPath?: string;
 	/** Maps repositoryId to worktree path for multi-repo workspaces */
 	repoPaths?: Record<string, string>;
+	/** Maps repositoryId to resolved base branch name (set during worktree creation) */
+	resolvedBaseBranches?: Record<string, string>;
 }
 
 /**

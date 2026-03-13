@@ -324,6 +324,7 @@ export class PromptBuilder {
 		repositories: RepositoryConfig[],
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
+		resolvedBaseBranches?: Record<string, string>,
 	): Promise<PromptResult> {
 		const repository = repositories[0]!;
 		this.logger.debug(
@@ -348,8 +349,12 @@ export class PromptBuilder {
 				this.logger.debug(`Label prompt template version: ${templateVersion}`);
 			}
 
-			// Determine the base branch considering parent issues
-			const baseBranchMap = await this.determineBaseBranch(issue, repositories);
+			// Determine the base branch (uses pre-resolved values if available)
+			const baseBranchMap = await this.determineBaseBranch(
+				issue,
+				repositories,
+				resolvedBaseBranches,
+			);
 			const baseBranch =
 				baseBranchMap.get(repository.id) ?? repository.baseBranch;
 
@@ -747,6 +752,7 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 		newComment?: WebhookComment,
 		attachmentManifest: string = "",
 		guidance?: GuidanceRule[],
+		resolvedBaseBranches?: Record<string, string>,
 	): Promise<PromptResult> {
 		const repository = repositories[0]!;
 		this.logger.debug(
@@ -784,8 +790,12 @@ Focus on addressing the specific request in the mention. You can use the Linear 
 			const state = await issue.state;
 			const stateName = state?.name || "Unknown";
 
-			// Determine the base branch considering parent issues
-			const baseBranchMap = await this.determineBaseBranch(issue, repositories);
+			// Determine the base branch (uses pre-resolved values if available)
+			const baseBranchMap = await this.determineBaseBranch(
+				issue,
+				repositories,
+				resolvedBaseBranches,
+			);
 			const baseBranch =
 				baseBranchMap.get(repository.id) ?? repository.baseBranch;
 
@@ -963,8 +973,12 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			const state = await issue.state;
 			const stateName = state?.name || "Unknown";
 
-			// Determine the base branch considering parent issues
-			const baseBranchMap = await this.determineBaseBranch(issue, repositories);
+			// Determine the base branch (uses pre-resolved values if available)
+			const baseBranchMap = await this.determineBaseBranch(
+				issue,
+				repositories,
+				resolvedBaseBranches,
+			);
 
 			const repoLines = repositories
 				.map((repo) => {
@@ -1341,17 +1355,31 @@ ${reply.body}
 	 * Returns a Map from repositoryId to baseBranch. Each repo may have
 	 * different base branches and Graphite stacking relationships.
 	 *
-	 * Priority order (per repo):
-	 * 1. If issue has graphite label AND has a "blocked by" relationship, use the blocking issue's branch
-	 *    (This enables Graphite stacking where each sub-issue branches off the previous)
-	 * 2. If issue has a parent, use the parent's branch
-	 * 3. Fall back to repository's default base branch
+	 * If resolvedBaseBranches is provided (from workspace creation), those values
+	 * are used directly without re-resolving. This eliminates redundant graphite/parent
+	 * lookups since the GitService already performed that resolution.
+	 *
+	 * Priority order (per repo, when resolving):
+	 * 1. Pre-resolved value from workspace (if available)
+	 * 2. If issue has graphite label AND has a "blocked by" relationship, use the blocking issue's branch
+	 * 3. If issue has a parent, use the parent's branch
+	 * 4. Fall back to repository's default base branch
 	 */
 	async determineBaseBranch(
 		issue: Issue,
 		repositories: RepositoryConfig[],
+		resolvedBaseBranches?: Record<string, string>,
 	): Promise<Map<string, string>> {
 		const result = new Map<string, string>();
+
+		// If we have pre-resolved base branches (from workspace creation), use them directly
+		if (resolvedBaseBranches) {
+			for (const repository of repositories) {
+				const resolved = resolvedBaseBranches[repository.id];
+				result.set(repository.id, resolved ?? repository.baseBranch);
+			}
+			return result;
+		}
 
 		// Pre-compute shared issue-level data once (Graphite check, parent, blocking issues)
 		const isGraphiteIssue = await this.hasGraphiteLabel(issue, repositories);

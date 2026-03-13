@@ -14,6 +14,11 @@ export interface CreateGitWorktreeOptions {
 	 * For 1+ repos, defaults to the first repository's workspaceBaseDir.
 	 */
 	workspaceBaseDir?: string;
+	/**
+	 * Per-repo base branch overrides from [repo=name#branch] syntax.
+	 * Takes highest priority over graphite, parent, and default base branches.
+	 */
+	baseBranchOverrides?: Map<string, string>;
 }
 
 /**
@@ -238,11 +243,22 @@ export class GitService {
 	 * 1. If issue has graphite label AND has a "blocked by" relationship, use the blocking issue's branch
 	 * 2. If issue has a parent, use the parent's branch
 	 * 3. Fall back to repository's default base branch
+	 *
+	 * @param baseBranchOverride Optional override from [repo=name#branch] syntax (highest priority)
 	 */
 	async determineBaseBranch(
 		issue: Issue,
 		repository: RepositoryConfig,
+		baseBranchOverride?: string,
 	): Promise<string> {
+		// Priority 0: Explicit override from [repo=name#branch] syntax
+		if (baseBranchOverride) {
+			this.logger.info(
+				`Using commit-ish override '${baseBranchOverride}' as base branch for ${issue.identifier} in repo ${repository.name}`,
+			);
+			return baseBranchOverride;
+		}
+
 		let baseBranch = repository.baseBranch;
 
 		// Priority 1: Check graphite blocked-by relationship
@@ -408,8 +424,11 @@ export class GitService {
 		repositories: RepositoryConfig[],
 		options?: CreateGitWorktreeOptions,
 	): Promise<Workspace> {
-		const { globalSetupScript, workspaceBaseDir: overrideBaseDir } =
-			options ?? {};
+		const {
+			globalSetupScript,
+			workspaceBaseDir: overrideBaseDir,
+			baseBranchOverrides,
+		} = options ?? {};
 
 		if (repositories.length === 0) {
 			// 0 repos: create a plain folder (no git worktree)
@@ -447,6 +466,8 @@ export class GitService {
 				issue,
 				repositories[0]!,
 				globalSetupScript,
+				undefined,
+				baseBranchOverrides?.get(repositories[0]!.id),
 			);
 		}
 
@@ -464,6 +485,7 @@ export class GitService {
 		}
 
 		const repoPaths: Record<string, string> = {};
+		const resolvedBaseBranches: Record<string, string> = {};
 
 		for (const repository of repositories) {
 			const repoSubPath = join(parentPath, repository.name);
@@ -477,8 +499,15 @@ export class GitService {
 					repository,
 					undefined, // global setup already ran
 					repoSubPath, // override workspace path for N-repo layout
+					baseBranchOverrides?.get(repository.id),
 				);
 				repoPaths[repository.id] = repoWorkspace.path;
+				if (repoWorkspace.resolvedBaseBranches) {
+					Object.assign(
+						resolvedBaseBranches,
+						repoWorkspace.resolvedBaseBranches,
+					);
+				}
 			} catch (error) {
 				this.logger.error(
 					`Failed to create worktree for repo '${repository.name}': ${(error as Error).message}`,
@@ -493,6 +522,7 @@ export class GitService {
 			path: parentPath,
 			isGitWorktree: true,
 			repoPaths,
+			resolvedBaseBranches,
 		};
 	}
 
@@ -508,6 +538,7 @@ export class GitService {
 		repository: RepositoryConfig,
 		globalSetupScript?: string,
 		workspacePathOverride?: string,
+		baseBranchOverride?: string,
 	): Promise<Workspace> {
 		try {
 			// Verify this is a git repository
@@ -592,8 +623,12 @@ export class GitService {
 				}
 			}
 
-			// Determine base branch for this issue (graphite > parent > default)
-			const baseBranch = await this.determineBaseBranch(issue, repository);
+			// Determine base branch for this issue (commit-ish > graphite > parent > default)
+			const baseBranch = await this.determineBaseBranch(
+				issue,
+				repository,
+				baseBranchOverride,
+			);
 
 			// Fetch latest changes from remote
 			this.logger.debug("Fetching latest changes from remote...");
@@ -715,6 +750,7 @@ export class GitService {
 			return {
 				path: workspacePath,
 				isGitWorktree: true,
+				resolvedBaseBranches: { [repository.id]: baseBranch },
 			};
 		} catch (error) {
 			const errorMessage = (error as Error).message;

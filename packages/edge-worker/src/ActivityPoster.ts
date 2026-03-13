@@ -138,6 +138,32 @@ export class ActivityPoster {
 		);
 	}
 
+	async postBaseBranchActivity(
+		sessionId: string,
+		workspaceId: string,
+		branchLines: string[],
+	): Promise<void> {
+		const issueTracker = this.issueTrackers.get(workspaceId);
+		if (!issueTracker) {
+			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
+			return;
+		}
+
+		const body = `**Base branches**\n${branchLines.join("\n")}`;
+
+		await this.postActivityDirect(
+			issueTracker,
+			{
+				agentSessionId: sessionId,
+				content: {
+					type: "thought",
+					body,
+				},
+			},
+			"base branch resolution",
+		);
+	}
+
 	async postSystemPromptSelectionThought(
 		sessionId: string,
 		labels: string[],

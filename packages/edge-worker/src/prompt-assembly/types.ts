@@ -118,6 +118,9 @@ export interface PromptAssemblyInput {
 
 	/** GitHub username of the issue assignee (resolved from Linear gitHubUserId) */
 	assigneeGitHubUsername?: string;
+
+	/** Pre-resolved base branches from workspace creation (keyed by repositoryId) */
+	resolvedBaseBranches?: Record<string, string>;
 }
 
 /**
