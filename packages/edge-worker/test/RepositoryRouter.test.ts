@@ -782,35 +782,38 @@ describe("RepositoryRouter", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Work on [repo=my-repo] feature",
 				);
-				expect(result).toEqual(["my-repo"]);
+				expect(result).toEqual([{ repo: "my-repo" }]);
 			});
 
 			it("should parse org/repo format", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Fix bug in [repo=org/repo-name]",
 				);
-				expect(result).toEqual(["org/repo-name"]);
+				expect(result).toEqual([{ repo: "org/repo-name" }]);
 			});
 
 			it("should parse repo with dots", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Work on [repo=my.dotted.repo]",
 				);
-				expect(result).toEqual(["my.dotted.repo"]);
+				expect(result).toEqual([{ repo: "my.dotted.repo" }]);
 			});
 
 			it("should parse repo with underscores", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Fix [repo=my_repo_name]",
 				);
-				expect(result).toEqual(["my_repo_name"]);
+				expect(result).toEqual([{ repo: "my_repo_name" }]);
 			});
 
 			it("should return all tags when multiple tags exist", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"[repo=first-repo] and [repo=second-repo]",
 				);
-				expect(result).toEqual(["first-repo", "second-repo"]);
+				expect(result).toEqual([
+					{ repo: "first-repo" },
+					{ repo: "second-repo" },
+				]);
 			});
 
 			it("should return empty array when no tag exists", () => {
@@ -836,7 +839,7 @@ describe("RepositoryRouter", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Line 1\n\n[repo=my-repo]\n\nLine 3",
 				);
-				expect(result).toEqual(["my-repo"]);
+				expect(result).toEqual([{ repo: "my-repo" }]);
 			});
 
 			it("should handle escaped brackets from Linear (\\[repo=...\\])", () => {
@@ -844,14 +847,14 @@ describe("RepositoryRouter", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"test\\n\\n\\[repo=cyrus\\]",
 				);
-				expect(result).toEqual(["cyrus"]);
+				expect(result).toEqual([{ repo: "cyrus" }]);
 			});
 
 			it("should handle escaped brackets with org/repo format", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Fix bug in \\[repo=org/repo-name\\]",
 				);
-				expect(result).toEqual(["org/repo-name"]);
+				expect(result).toEqual([{ repo: "org/repo-name" }]);
 			});
 
 			it("should handle mixed escaped and unescaped brackets", () => {
@@ -859,21 +862,51 @@ describe("RepositoryRouter", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Work on \\[repo=my-repo]",
 				);
-				expect(result).toEqual(["my-repo"]);
+				expect(result).toEqual([{ repo: "my-repo" }]);
 			});
 
 			it("should handle only closing bracket escaped", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Work on [repo=my-repo\\]",
 				);
-				expect(result).toEqual(["my-repo"]);
+				expect(result).toEqual([{ repo: "my-repo" }]);
 			});
 
 			it("should parse multiple tags with different formats", () => {
 				const result = env.router.parseRepoTagsFromDescription(
 					"Work on [repo=frontend] and [repo=org/backend] and \\[repo=shared-lib\\]",
 				);
-				expect(result).toEqual(["frontend", "org/backend", "shared-lib"]);
+				expect(result).toEqual([
+					{ repo: "frontend" },
+					{ repo: "org/backend" },
+					{ repo: "shared-lib" },
+				]);
+			});
+
+			it("should parse branch override with # syntax", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"Work on [repo=my-repo#feature-branch]",
+				);
+				expect(result).toEqual([{ repo: "my-repo", branch: "feature-branch" }]);
+			});
+
+			it("should parse multiple repos with mixed branch overrides", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"[repo=frontend#develop] and [repo=backend]",
+				);
+				expect(result).toEqual([
+					{ repo: "frontend", branch: "develop" },
+					{ repo: "backend" },
+				]);
+			});
+
+			it("should parse org/repo format with branch override", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"[repo=org/repo-name#release/v2]",
+				);
+				expect(result).toEqual([
+					{ repo: "org/repo-name", branch: "release/v2" },
+				]);
 			});
 		});
 	});
