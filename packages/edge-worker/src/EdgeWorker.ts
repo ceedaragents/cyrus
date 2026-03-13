@@ -2859,15 +2859,17 @@ ${taskSection}`;
 			}
 
 			// Post agent activity showing auto-matched routing (all repos in one activity)
-			// Include base branch overrides in the activity display
-			const repoDisplayNames = repositories.map((r) => {
+			// Include the effective base branch for each repo
+			const repoDisplayEntries = repositories.map((r) => {
 				const branchOverride = baseBranchOverrides?.get(r.id);
-				return branchOverride ? `${r.name}#${branchOverride}` : r.name;
+				const baseBranch = branchOverride ?? r.baseBranch;
+				const branchSuffix = baseBranch ? ` (base: \`${baseBranch}\`)` : "";
+				return `${r.name}${branchSuffix}`;
 			});
 			await this.postRepositorySelectionActivity(
 				webhook.agentSession.id,
 				requireLinearWorkspaceId(primaryRepo),
-				repoDisplayNames,
+				repoDisplayEntries,
 				routingMethod,
 			);
 		}
