@@ -409,11 +409,13 @@ export class AgentSessionManager extends EventEmitter {
 		});
 
 		// Report error telemetry to CYHOST (fire-and-forget)
-		if (status === AgentSessionStatus.Error && this.telemetryReporter) {
-			const errorType = this.mapResultToErrorType(
-				resultMessage,
-				wasStopRequested,
-			);
+		// Skip user-initiated stops — those are intentional, not errors
+		if (
+			status === AgentSessionStatus.Error &&
+			!wasStopRequested &&
+			this.telemetryReporter
+		) {
+			const errorType = this.mapResultToErrorType(resultMessage);
 			const errorMessage = this.extractErrorMessage(resultMessage);
 			const durationSeconds = resultMessage.duration_ms
 				? Math.round(resultMessage.duration_ms / 1000)
@@ -486,15 +488,16 @@ export class AgentSessionManager extends EventEmitter {
 
 	/**
 	 * Map an SDK result message to a telemetry error type.
+	 *
+	 * - "stall": agent running without progress (timeout, no response)
+	 * - "max_turns": turn limit exceeded
+	 * - "rate_limit": LLM provider rate limiting
+	 * - "billing": billing or quota errors
+	 * - "crash": SDK errors, uncaught exceptions, all other failures
 	 */
 	private mapResultToErrorType(
 		resultMessage: SDKResultMessage,
-		wasStopRequested: boolean,
 	): "crash" | "stall" | "rate_limit" | "billing" | "max_turns" {
-		if (wasStopRequested) {
-			return "stall";
-		}
-
 		if (resultMessage.subtype === "error_max_turns") {
 			return "max_turns";
 		}
@@ -524,6 +527,13 @@ export class AgentSessionManager extends EventEmitter {
 			errorText.includes("quota")
 		) {
 			return "billing";
+		}
+		if (
+			errorText.includes("timeout") ||
+			errorText.includes("timed out") ||
+			errorText.includes("no response")
+		) {
+			return "stall";
 		}
 
 		return "crash";
