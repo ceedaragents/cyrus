@@ -10,6 +10,9 @@ on:
       - main
       - 'cypack-*'
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -20,6 +23,8 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.head_ref || github.ref }}
     
     - uses: actions/setup-node@v4
       with:
@@ -43,7 +48,18 @@ jobs:
     
     - name: Build Packages
       run: pnpm build
-    
+
+    - name: Regenerate JSON Schemas
+      if: matrix.node-version == '22.x' && github.event_name == 'pull_request'
+      run: pnpm --filter cyrus-core generate:json-schema
+
+    - name: Commit updated schemas
+      if: matrix.node-version == '22.x' && github.event_name == 'pull_request'
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "chore: regenerate JSON Schema files"
+        file_pattern: "packages/core/schemas/*.json"
+
     - name: Run Tests
       run: pnpm -r test:run
     
