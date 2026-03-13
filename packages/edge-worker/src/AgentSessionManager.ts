@@ -32,6 +32,7 @@ import type {
 	ActivitySignal,
 	IActivitySink,
 } from "./sinks/index.js";
+import type { TelemetryReporter } from "./TelemetryReporter.js";
 import {
 	DEFAULT_VALIDATION_LOOP_CONFIG,
 	parseValidationResult,
@@ -107,6 +108,7 @@ export class AgentSessionManager extends EventEmitter {
 	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
+	private telemetryReporter?: TelemetryReporter;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
@@ -139,6 +141,14 @@ export class AgentSessionManager extends EventEmitter {
 	 */
 	setActivitySink(sessionId: string, sink: IActivitySink): void {
 		this.activitySinks.set(sessionId, sink);
+	}
+
+	/**
+	 * Set the telemetry reporter for error callback to CYHOST.
+	 * If not set, error telemetry is silently skipped (graceful degradation).
+	 */
+	setTelemetryReporter(reporter: TelemetryReporter): void {
+		this.telemetryReporter = reporter;
 	}
 
 	/**
@@ -399,6 +409,11 @@ export class AgentSessionManager extends EventEmitter {
 			usage: resultMessage.usage,
 		});
 
+		// Report error telemetry to CYHOST (fire-and-forget)
+		if (status === AgentSessionStatus.Error) {
+			this.reportSessionError(session, sessionId, resultMessage);
+		}
+
 		// Handle result using procedure routing system (skip for sessions without procedures, e.g. Slack)
 		if (!this.procedureAnalyzer) {
 			log.info(`Session completed (no procedure routing)`);
@@ -474,6 +489,112 @@ export class AgentSessionManager extends EventEmitter {
 			errorText.includes("turn limit") ||
 			errorText.includes("turns limit")
 		);
+	}
+
+	/**
+	 * Report a session error to CYHOST via telemetry callback.
+	 * Fire-and-forget: does not block session completion.
+	 */
+	private reportSessionError(
+		session: CyrusAgentSession,
+		sessionId: string,
+		resultMessage: SDKResultMessage,
+	): void {
+		if (!this.telemetryReporter) return;
+
+		const errorType = this.classifyErrorType(resultMessage);
+		const errorMessage = this.extractErrorMessage(resultMessage);
+		const durationSeconds = session.createdAt
+			? Math.round((Date.now() - session.createdAt) / 1000)
+			: undefined;
+
+		// Fire-and-forget — don't await, don't block session completion
+		this.telemetryReporter
+			.reportError({
+				error_type: errorType,
+				error_message: errorMessage,
+				issue_id: session.issueContext?.issueId,
+				issue_identifier: session.issueContext?.issueIdentifier,
+				session_id: sessionId,
+				duration_seconds: durationSeconds,
+			})
+			.catch(() => {
+				// Already logged inside TelemetryReporter; swallow here
+			});
+	}
+
+	/**
+	 * Classify the SDK result message into a telemetry error type.
+	 */
+	private classifyErrorType(
+		resultMessage: SDKResultMessage,
+	): "crash" | "stall" | "rate_limit" | "billing" | "max_turns" {
+		// Check subtype for max turns
+		if (resultMessage.subtype === "error_max_turns") {
+			return "max_turns";
+		}
+
+		// Check for rate limit or billing errors in the result text
+		const errorText = [
+			resultMessage.subtype ?? "",
+			...("errors" in resultMessage && Array.isArray(resultMessage.errors)
+				? resultMessage.errors
+				: []),
+			"result" in resultMessage && typeof resultMessage.result === "string"
+				? resultMessage.result
+				: "",
+		]
+			.join(" ")
+			.toLowerCase();
+
+		if (errorText.includes("rate_limit") || errorText.includes("rate limit")) {
+			return "rate_limit";
+		}
+		if (
+			errorText.includes("billing") ||
+			errorText.includes("quota") ||
+			errorText.includes("insufficient_credits")
+		) {
+			return "billing";
+		}
+		if (
+			errorText.includes("max turn") ||
+			errorText.includes("turn limit") ||
+			errorText.includes("turns limit")
+		) {
+			return "max_turns";
+		}
+		if (
+			errorText.includes("timeout") ||
+			errorText.includes("timed out") ||
+			errorText.includes("no response")
+		) {
+			return "stall";
+		}
+
+		// Default: treat as crash (SDK error, uncaught exception)
+		return "crash";
+	}
+
+	/**
+	 * Extract a human-readable error message from the SDK result.
+	 */
+	private extractErrorMessage(resultMessage: SDKResultMessage): string {
+		if (
+			"errors" in resultMessage &&
+			Array.isArray(resultMessage.errors) &&
+			resultMessage.errors.length > 0
+		) {
+			return resultMessage.errors.join("; ");
+		}
+		if (
+			"result" in resultMessage &&
+			typeof resultMessage.result === "string" &&
+			resultMessage.result
+		) {
+			return resultMessage.result.substring(0, 500);
+		}
+		return resultMessage.subtype ?? "unknown error";
 	}
 
 	private consumeStopRequest(linearAgentActivitySessionId: string): boolean {

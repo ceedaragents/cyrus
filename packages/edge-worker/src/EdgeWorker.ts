@@ -133,6 +133,7 @@ import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { TelemetryReporter } from "./TelemetryReporter.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -199,6 +200,7 @@ export class EdgeWorker extends EventEmitter {
 	private attachmentService: AttachmentService;
 	private runnerSelectionService: RunnerSelectionService;
 	private activityPoster: ActivityPoster;
+	private telemetryReporter: TelemetryReporter;
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
@@ -347,6 +349,10 @@ export class EdgeWorker extends EventEmitter {
 			this.procedureAnalyzer,
 			this.sharedApplicationServer,
 		);
+
+		// Initialize telemetry reporter (context will be set later when first webhook arrives)
+		this.telemetryReporter = new TelemetryReporter(null);
+		this.agentSessionManager.setTelemetryReporter(this.telemetryReporter);
 
 		// Subscribe to session events once on the single ASM
 		this.agentSessionManager.on(
@@ -654,6 +660,12 @@ export class EdgeWorker extends EventEmitter {
 
 			// Listen for legacy webhook events (deprecated, kept for backward compatibility)
 			this.linearEventTransport.on("event", (event: AgentEvent) => {
+				// Propagate telemetry callback context from transport to reporter (lazy, once)
+				const cbCtx = this.linearEventTransport?.callbackContext;
+				if (cbCtx) {
+					this.telemetryReporter.setCallbackContext(cbCtx);
+				}
+
 				// Get all active repositories for webhook handling
 				const repos = Array.from(this.repositories.values());
 				this.handleWebhook(event as unknown as Webhook, repos);
@@ -661,6 +673,12 @@ export class EdgeWorker extends EventEmitter {
 
 			// Listen for unified internal messages (new message bus)
 			this.linearEventTransport.on("message", (message: InternalMessage) => {
+				// Forward telemetry callback context from transport to reporter (lazy, once)
+				const ctx = this.linearEventTransport?.callbackContext;
+				if (ctx) {
+					this.telemetryReporter.setCallbackContext(ctx);
+				}
+
 				this.handleMessage(message);
 			});
 

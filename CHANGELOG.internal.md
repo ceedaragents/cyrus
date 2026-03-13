@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- **CYPACK→CYHOST error telemetry pipeline** — `LinearEventTransport` now extracts `X-Cyrus-Callback-Token`, `X-Cyrus-Callback-URL`, and `X-Cyrus-Team-Id` headers from CYHOST-forwarded webhooks. New `TelemetryReporter` service POSTs error events (crash, stall, rate_limit, billing, max_turns) back to CYHOST for Mixpanel tracking. `AgentSessionManager.completeSession()` classifies and reports session errors via fire-and-forget callback. Gracefully degrades when no callback context is available (self-hosted, older CYHOST). ([CYPACK-951](https://linear.app/ceedar/issue/CYPACK-951), [#975](https://github.com/ceedaragents/cyrus/pull/975))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed

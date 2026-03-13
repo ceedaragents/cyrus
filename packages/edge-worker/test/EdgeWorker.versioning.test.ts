@@ -32,7 +32,12 @@ vi.mock("@linear/sdk", async (importOriginal) => {
 	};
 });
 vi.mock("../src/SharedApplicationServer.js");
-vi.mock("../src/AgentSessionManager.js");
+vi.mock("../src/AgentSessionManager.js", () => ({
+	AgentSessionManager: vi.fn().mockImplementation(() => ({
+		setTelemetryReporter: vi.fn(),
+		on: vi.fn(),
+	})),
+}));
 vi.mock("cyrus-core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("cyrus-core")>();
 	return {

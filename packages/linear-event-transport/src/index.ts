@@ -8,5 +8,6 @@ export { LinearMessageTranslator } from "./LinearMessageTranslator.js";
 export type {
 	LinearEventTransportConfig,
 	LinearEventTransportEvents,
+	TelemetryCallbackContext,
 	VerificationMode,
 } from "./types.js";

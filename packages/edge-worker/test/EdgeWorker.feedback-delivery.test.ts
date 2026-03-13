@@ -100,6 +100,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			postAnalyzingThought: vi.fn().mockResolvedValue(undefined),
 			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
+			setTelemetryReporter: vi.fn(),
 			on: vi.fn(), // EventEmitter method
 		};
 
@@ -107,6 +108,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		mockAgentSessionManager = {
 			hasAgentRunner: vi.fn().mockReturnValue(false),
 			getSession: vi.fn().mockReturnValue(null),
+			setTelemetryReporter: vi.fn(),
 			on: vi.fn(), // EventEmitter method
 		};
 

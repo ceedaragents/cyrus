@@ -125,6 +125,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 					removeSession: vi.fn(),
 					getAllSessions: vi.fn().mockReturnValue([]),
 					clearAllSessions: vi.fn(),
+					setTelemetryReporter: vi.fn(),
 					on: vi.fn(), // EventEmitter method
 				}) as any,
 		);
