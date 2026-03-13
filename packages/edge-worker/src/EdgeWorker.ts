@@ -2741,9 +2741,10 @@ ${taskSection}`;
 		}
 
 		// Download attachments before creating Claude runner
+		// Attachments are workspace-level (not per-repo), so use the workspace ID directly
 		const attachmentResult = await this.downloadIssueAttachments(
 			fullIssue,
-			primaryRepo,
+			requireLinearWorkspaceId(primaryRepo),
 			workspace.path,
 		);
 
@@ -2853,11 +2854,11 @@ ${taskSection}`;
 				);
 			}
 
-			// Post agent activity showing auto-matched routing
+			// Post agent activity showing auto-matched routing (all repos in one activity)
 			await this.postRepositorySelectionActivity(
 				webhook.agentSession.id,
 				requireLinearWorkspaceId(primaryRepo),
-				primaryRepo.name,
+				repositories.map((r) => r.name),
 				routingMethod,
 			);
 		}
@@ -3372,7 +3373,7 @@ ${taskSection}`;
 		await this.postRepositorySelectionActivity(
 			agentSessionId,
 			requireLinearWorkspaceId(repository),
-			repository.name,
+			[repository.name],
 			"user-selected",
 		);
 
@@ -4162,15 +4163,13 @@ ${taskSection}`;
 	 */
 	private async downloadIssueAttachments(
 		issue: Issue,
-		repository: RepositoryConfig,
+		workspaceId: string,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
-		const issueTracker = this.issueTrackers.get(
-			requireLinearWorkspaceId(repository),
-		);
+		const issueTracker = this.issueTrackers.get(workspaceId);
 		return this.attachmentService.downloadIssueAttachments(
 			issue,
-			requireLinearWorkspaceId(repository),
+			workspaceId,
 			workspacePath,
 			issueTracker,
 		);
@@ -5609,7 +5608,7 @@ ${input.userComment}
 	private async postRepositorySelectionActivity(
 		sessionId: string,
 		workspaceId: string,
-		repositoryName: string,
+		repositoryNames: string[],
 		selectionMethod:
 			| "description-tag"
 			| "label-based"
@@ -5623,7 +5622,7 @@ ${input.userComment}
 		return this.activityPoster.postRepositorySelectionActivity(
 			sessionId,
 			workspaceId,
-			repositoryName,
+			repositoryNames,
 			selectionMethod,
 		);
 	}
