@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Issue updates no longer trigger duplicate runs** - When a Linear issue title or description was updated, all idle sessions for that issue were resumed simultaneously, causing multiple concurrent runs. Now only the most recent idle session is resumed, or the update is streamed into an already-running session. ([CYPACK-954](https://linear.app/ceedar/issue/CYPACK-954), [#977](https://github.com/ceedaragents/cyrus/pull/977))
+
 ## [0.2.33] - 2026-03-10
 
 ### Fixed
