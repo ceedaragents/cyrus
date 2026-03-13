@@ -2554,10 +2554,9 @@ ${taskSection}`;
 			updatedFrom,
 		);
 
-		// CYPACK-954: Issue update events are ONLY delivered to currently running
-		// sessions via streaming. If no session is running or the runner doesn't
-		// support streaming, the event is silently ignored.
-		let streamedCount = 0;
+		// CYPACK-954: Issue update events are ONLY delivered to the first running
+		// session (by most-recently-updated) that supports streaming input.
+		// If no such session exists, the event is silently ignored.
 
 		// Combine prompt body with attachment manifest
 		let fullPrompt = promptBody;
@@ -2565,7 +2564,13 @@ ${taskSection}`;
 			fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 		}
 
-		for (const session of sessions) {
+		// Sort by updatedAt descending so the most recent session is first
+		const sortedSessions = [...sessions].sort(
+			(a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+		);
+
+		let delivered = false;
+		for (const session of sortedSessions) {
 			const sessionId = session.id;
 			const existingRunner = session.agentRunner;
 			const isRunning = existingRunner?.isRunning() || false;
@@ -2576,10 +2581,11 @@ ${taskSection}`;
 				existingRunner.addStreamMessage
 			) {
 				existingRunner.addStreamMessage(fullPrompt);
-				streamedCount++;
+				delivered = true;
 				this.logger.debug(
 					`[issue-update] Streamed update to session ${sessionId} (key=${webhookKey}, changed=[${changedFields.join(", ")}])`,
 				);
+				break;
 			} else if (isRunning) {
 				this.logger.debug(
 					`[issue-update] Session ${sessionId} is running but doesn't support streaming input, skipping (key=${webhookKey})`,
@@ -2591,13 +2597,9 @@ ${taskSection}`;
 			}
 		}
 
-		if (streamedCount === 0) {
+		if (!delivered) {
 			this.logger.debug(
 				`[issue-update] No running streaming sessions for ${issueIdentifier}, update discarded (key=${webhookKey})`,
-			);
-		} else {
-			this.logger.debug(
-				`[issue-update] Delivered update to ${streamedCount} running session(s) for ${issueIdentifier} (key=${webhookKey})`,
 			);
 		}
 	}

@@ -305,21 +305,27 @@ describe("EdgeWorker - Issue Update Session Delivery (CYPACK-954)", () => {
 			).not.toHaveBeenCalled();
 		});
 
-		it("should stream to ALL running sessions, not just the first", async () => {
-			const running1 = createMockSession("session-r1", {
-				hasRunner: true,
-				isRunning: true,
-				supportsStreaming: true,
-			});
-			const running2 = createMockSession("session-r2", {
-				hasRunner: true,
-				isRunning: true,
-				supportsStreaming: true,
-			});
+		it("should stream only to the most recently updated running session", async () => {
+			const olderRunning = {
+				...createMockSession("session-r1", {
+					hasRunner: true,
+					isRunning: true,
+					supportsStreaming: true,
+				}),
+				updatedAt: Date.now() - 60000,
+			};
+			const newerRunning = {
+				...createMockSession("session-r2", {
+					hasRunner: true,
+					isRunning: true,
+					supportsStreaming: true,
+				}),
+				updatedAt: Date.now(),
+			};
 
 			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
-				running1,
-				running2,
+				olderRunning,
+				newerRunning,
 			]);
 			cacheRepository();
 
@@ -327,8 +333,11 @@ describe("EdgeWorker - Issue Update Session Delivery (CYPACK-954)", () => {
 				createIssueUpdateWebhook(),
 			);
 
-			expect(running1.agentRunner!.addStreamMessage).toHaveBeenCalledTimes(1);
-			expect(running2.agentRunner!.addStreamMessage).toHaveBeenCalledTimes(1);
+			// Only the most recently updated session should receive the stream
+			expect(newerRunning.agentRunner!.addStreamMessage).toHaveBeenCalledTimes(
+				1,
+			);
+			expect(olderRunning.agentRunner!.addStreamMessage).not.toHaveBeenCalled();
 		});
 
 		it("should NOT resume idle sessions even when a running session receives the stream", async () => {
