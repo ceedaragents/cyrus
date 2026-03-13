@@ -205,6 +205,16 @@ export class RepositoryRouter {
 			this.logger.info(
 				`Repositories selected: [${descriptionTagResult.repositories.map((r) => r.name).join(", ")}] (description-tag routing)`,
 			);
+			if (descriptionTagResult.baseBranchOverrides.size > 0) {
+				const overrideEntries = Array.from(
+					descriptionTagResult.baseBranchOverrides.entries(),
+				)
+					.map(([id, branch]) => `${id}→${branch}`)
+					.join(", ");
+				this.logger.info(
+					`Base branch overrides from description tags: ${overrideEntries}`,
+				);
+			}
 			return {
 				type: "selected",
 				repositories: descriptionTagResult.repositories,
@@ -388,7 +398,7 @@ export class RepositoryRouter {
 			if (repoTags.length === 0)
 				return { repositories: [], baseBranchOverrides: new Map() };
 
-			this.logger.debug(
+			this.logger.info(
 				`Found repo tags in issue description: [${repoTags.map((t) => (t.branch ? `${t.repo}#${t.branch}` : t.repo)).join(", ")}]`,
 			);
 
