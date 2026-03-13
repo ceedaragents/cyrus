@@ -207,6 +207,12 @@ export class EdgeWorker extends EventEmitter {
 	private cyrusToolsMcpRequestContext =
 		new AsyncLocalStorage<CyrusToolsMcpContext>();
 	private cyrusToolsMcpSessions = new Sessions<any>();
+	/**
+	 * Tracks recently processed issue-update webhook keys to prevent
+	 * duplicate deliveries from Linear's at-least-once delivery.
+	 * Key format: `${createdAt}:${issueId}`
+	 */
+	private processedIssueUpdateKeys = new Set<string>();
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -2416,12 +2422,30 @@ ${taskSection}`;
 		const issueId = issueData.id;
 		const issueIdentifier = issueData.identifier;
 		const updatedFrom = webhook.updatedFrom;
+		const webhookKey = `${webhook.createdAt}:${issueId}`;
 
 		if (!updatedFrom) {
 			this.logger.warn(
 				`Issue update webhook for ${issueIdentifier} has no updatedFrom data`,
 			);
 			return;
+		}
+
+		// Deduplicate: skip if we've already processed a webhook with the same key
+		if (this.processedIssueUpdateKeys.has(webhookKey)) {
+			this.logger.debug(
+				`Duplicate issue update webhook for ${issueIdentifier} (key=${webhookKey}), skipping`,
+			);
+			return;
+		}
+		this.processedIssueUpdateKeys.add(webhookKey);
+
+		// Prevent unbounded growth — prune old keys when the set gets large
+		if (this.processedIssueUpdateKeys.size > 500) {
+			const keys = [...this.processedIssueUpdateKeys];
+			for (const key of keys.slice(0, 250)) {
+				this.processedIssueUpdateKeys.delete(key);
+			}
 		}
 
 		// Get cached repository, with fallback to searching sessions
@@ -2530,71 +2554,51 @@ ${taskSection}`;
 			updatedFrom,
 		);
 
-		// Feed the update into running sessions, or resume the most recent idle one.
-		// CYPACK-954: Previously, ALL idle sessions were resumed, causing multiple
-		// concurrent runs for the same issue. Now we only resume a single idle
-		// session, and only if no running session already received the update.
-		let updateDelivered = false;
+		// CYPACK-954: Issue update events are ONLY delivered to currently running
+		// sessions via streaming. If no session is running or the runner doesn't
+		// support streaming, the event is silently ignored.
+		let streamedCount = 0;
 
-		// Sort sessions by updatedAt descending so the most recent idle session is first
-		const sortedSessions = [...sessions].sort(
-			(a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
-		);
+		// Combine prompt body with attachment manifest
+		let fullPrompt = promptBody;
+		if (attachmentManifest) {
+			fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+		}
 
-		for (const session of sortedSessions) {
-			const linearAgentActivitySessionId = session.id;
-
-			// Check if runner is actively running and supports streaming input
+		for (const session of sessions) {
+			const sessionId = session.id;
 			const existingRunner = session.agentRunner;
 			const isRunning = existingRunner?.isRunning() || false;
-
-			// Combine prompt body with attachment manifest
-			let fullPrompt = promptBody;
-			if (attachmentManifest) {
-				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
-			}
 
 			if (
 				isRunning &&
 				existingRunner?.supportsStreamingInput &&
 				existingRunner.addStreamMessage
 			) {
-				// Add to existing stream — deliver to ALL running sessions
-				this.logger.debug(
-					`Adding issue update to existing stream for ${linearAgentActivitySessionId}`,
-				);
 				existingRunner.addStreamMessage(fullPrompt);
-				updateDelivered = true;
+				streamedCount++;
+				this.logger.debug(
+					`[issue-update] Streamed update to session ${sessionId} (key=${webhookKey}, changed=[${changedFields.join(", ")}])`,
+				);
 			} else if (isRunning) {
-				// Runner is running but doesn't support streaming input - log and skip
 				this.logger.debug(
-					`Session ${linearAgentActivitySessionId} is running but doesn't support streaming input, skipping issue update`,
+					`[issue-update] Session ${sessionId} is running but doesn't support streaming input, skipping (key=${webhookKey})`,
 				);
-			} else if (!updateDelivered) {
-				// Resume only the first (most recent) idle session
-				this.logger.debug(
-					`Resuming session ${linearAgentActivitySessionId} with issue update`,
-				);
-
-				await this.handlePromptWithStreamingCheck(
-					session,
-					repository,
-					linearAgentActivitySessionId,
-					this.agentSessionManager,
-					promptBody,
-					attachmentManifest,
-					false, // Not a new session
-					[], // No additional allowed directories
-					"issue content update",
-					undefined, // No comment author
-					undefined, // No comment timestamp
-				);
-				updateDelivered = true;
 			} else {
 				this.logger.debug(
-					`Skipping idle session ${linearAgentActivitySessionId} — already resumed another session for this issue update`,
+					`[issue-update] Session ${sessionId} is idle, ignoring update (key=${webhookKey})`,
 				);
 			}
+		}
+
+		if (streamedCount === 0) {
+			this.logger.debug(
+				`[issue-update] No running streaming sessions for ${issueIdentifier}, update discarded (key=${webhookKey})`,
+			);
+		} else {
+			this.logger.debug(
+				`[issue-update] Delivered update to ${streamedCount} running session(s) for ${issueIdentifier} (key=${webhookKey})`,
+			);
 		}
 	}
 

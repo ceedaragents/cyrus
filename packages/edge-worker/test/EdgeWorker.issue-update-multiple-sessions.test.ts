@@ -30,21 +30,17 @@ vi.mock("cyrus-core", async (importOriginal) => {
 });
 
 /**
- * Tests for CYPACK-954: Issue update webhooks triggering multiple runs
+ * Tests for CYPACK-954: Issue update webhook delivery
  *
- * When an issue title/description is updated, handleIssueContentUpdate()
- * loops through ALL sessions for that issue and resumes each non-running one.
- * If multiple sessions exist (from multiple @ mentions, delegations, etc.),
- * this triggers multiple concurrent runs — which is NOT the desired behavior.
- *
- * The expected behavior is that only ONE session (the most recent active one)
- * should be resumed per issue update.
+ * Issue update events (title/description changes) are ONLY delivered to
+ * currently running sessions via streaming. If no session is running or
+ * the runner doesn't support streaming, the event is ignored. Duplicate
+ * webhooks are deduplicated by createdAt+issueId key.
  */
-describe("EdgeWorker - Issue Update Multiple Sessions Bug (CYPACK-954)", () => {
+describe("EdgeWorker - Issue Update Session Delivery (CYPACK-954)", () => {
 	let edgeWorker: EdgeWorker;
 	let mockConfig: EdgeWorkerConfig;
 	let mockAgentSessionManager: any;
-	let handlePromptSpy: ReturnType<typeof vi.spyOn>;
 
 	const mockRepository: RepositoryConfig = {
 		id: "test-repo",
@@ -101,7 +97,7 @@ describe("EdgeWorker - Issue Update Multiple Sessions Bug (CYPACK-954)", () => {
 		return {
 			type: "Issue",
 			action: "update",
-			createdAt: new Date().toISOString(),
+			createdAt: overrides.createdAt ?? new Date().toISOString(),
 			organizationId: "test-workspace",
 			data: {
 				id: "issue-123",
@@ -116,6 +112,13 @@ describe("EdgeWorker - Issue Update Multiple Sessions Bug (CYPACK-954)", () => {
 			},
 			...overrides,
 		};
+	}
+
+	function cacheRepository() {
+		const cache = (
+			edgeWorker as any
+		).repositoryRouter.getIssueRepositoryCache();
+		cache.set("issue-123", ["test-repo"]);
 	}
 
 	beforeEach(() => {
@@ -228,11 +231,6 @@ describe("EdgeWorker - Issue Update Multiple Sessions Bug (CYPACK-954)", () => {
 			fetchComment: vi.fn().mockResolvedValue(null),
 		};
 		(edgeWorker as any).issueTrackers.set("test-workspace", mockIssueTracker);
-
-		// Spy on handlePromptWithStreamingCheck to count resume calls
-		handlePromptSpy = vi
-			.spyOn(edgeWorker as any, "handlePromptWithStreamingCheck")
-			.mockResolvedValue(false);
 	});
 
 	afterEach(() => {
@@ -240,39 +238,100 @@ describe("EdgeWorker - Issue Update Multiple Sessions Bug (CYPACK-954)", () => {
 	});
 
 	// =========================================================================
-	// BUG REPRODUCTION: Multiple sessions get resumed from a single issue update
+	// Streaming-only delivery
 	// =========================================================================
 
-	describe("Issue update with multiple sessions for same issue", () => {
-		it("should only resume ONE session when multiple non-running sessions exist for the same issue", async () => {
-			// Arrange: Two sessions for the same issue, both NOT running
-			const session1 = createMockSession("session-1");
-			const session2 = createMockSession("session-2");
+	describe("Streaming-only delivery", () => {
+		it("should stream update to a running session with streaming support", async () => {
+			const runningSession = createMockSession("session-running", {
+				hasRunner: true,
+				isRunning: true,
+				supportsStreaming: true,
+			});
 
 			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
-				session1,
-				session2,
+				runningSession,
 			]);
+			cacheRepository();
 
-			// Cache the repository for the issue
-			const cache = (
-				edgeWorker as any
-			).repositoryRouter.getIssueRepositoryCache();
-			cache.set("issue-123", ["test-repo"]);
+			await (edgeWorker as any).handleIssueContentUpdate(
+				createIssueUpdateWebhook(),
+			);
 
-			const webhook = createIssueUpdateWebhook();
-
-			// Act: Process the issue update webhook
-			await (edgeWorker as any).handleIssueContentUpdate(webhook);
-
-			// Assert: Only ONE session should be resumed, not both
-			// BUG: Currently handlePromptWithStreamingCheck is called for EACH
-			// non-running session, causing multiple runs
-			expect(handlePromptSpy).toHaveBeenCalledTimes(1);
+			expect(
+				runningSession.agentRunner!.addStreamMessage,
+			).toHaveBeenCalledTimes(1);
 		});
 
-		it("should not resume sessions that are already running (streaming case)", async () => {
-			// Arrange: One running session (with streaming), one idle session
+		it("should NOT resume idle sessions — updates are streaming-only", async () => {
+			const idleSession = createMockSession("session-idle");
+
+			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
+				idleSession,
+			]);
+			cacheRepository();
+
+			const handlePromptSpy = vi
+				.spyOn(edgeWorker as any, "handlePromptWithStreamingCheck")
+				.mockResolvedValue(false);
+
+			await (edgeWorker as any).handleIssueContentUpdate(
+				createIssueUpdateWebhook(),
+			);
+
+			// Idle sessions should never be resumed for issue updates
+			expect(handlePromptSpy).toHaveBeenCalledTimes(0);
+		});
+
+		it("should ignore running sessions that do not support streaming", async () => {
+			const nonStreamingSession = createMockSession("session-no-streaming", {
+				hasRunner: true,
+				isRunning: true,
+				supportsStreaming: false,
+			});
+
+			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
+				nonStreamingSession,
+			]);
+			cacheRepository();
+
+			await (edgeWorker as any).handleIssueContentUpdate(
+				createIssueUpdateWebhook(),
+			);
+
+			// Runner doesn't support streaming — addStreamMessage should NOT be called
+			expect(
+				nonStreamingSession.agentRunner!.addStreamMessage,
+			).not.toHaveBeenCalled();
+		});
+
+		it("should stream to ALL running sessions, not just the first", async () => {
+			const running1 = createMockSession("session-r1", {
+				hasRunner: true,
+				isRunning: true,
+				supportsStreaming: true,
+			});
+			const running2 = createMockSession("session-r2", {
+				hasRunner: true,
+				isRunning: true,
+				supportsStreaming: true,
+			});
+
+			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
+				running1,
+				running2,
+			]);
+			cacheRepository();
+
+			await (edgeWorker as any).handleIssueContentUpdate(
+				createIssueUpdateWebhook(),
+			);
+
+			expect(running1.agentRunner!.addStreamMessage).toHaveBeenCalledTimes(1);
+			expect(running2.agentRunner!.addStreamMessage).toHaveBeenCalledTimes(1);
+		});
+
+		it("should NOT resume idle sessions even when a running session receives the stream", async () => {
 			const runningSession = createMockSession("session-running", {
 				hasRunner: true,
 				isRunning: true,
@@ -284,140 +343,83 @@ describe("EdgeWorker - Issue Update Multiple Sessions Bug (CYPACK-954)", () => {
 				runningSession,
 				idleSession,
 			]);
+			cacheRepository();
 
-			const cache = (
-				edgeWorker as any
-			).repositoryRouter.getIssueRepositoryCache();
-			cache.set("issue-123", ["test-repo"]);
+			const handlePromptSpy = vi
+				.spyOn(edgeWorker as any, "handlePromptWithStreamingCheck")
+				.mockResolvedValue(false);
 
-			const webhook = createIssueUpdateWebhook();
+			await (edgeWorker as any).handleIssueContentUpdate(
+				createIssueUpdateWebhook(),
+			);
 
-			// Act
-			await (edgeWorker as any).handleIssueContentUpdate(webhook);
-
-			// Assert: The running session should get a stream message,
-			// and the idle session should NOT be separately resumed.
-			// BUG: Currently the idle session ALSO gets resumed via
-			// handlePromptWithStreamingCheck, creating a second concurrent run.
-			expect(runningSession.agentRunner!.addStreamMessage).toHaveBeenCalled();
+			// Running session gets the stream
+			expect(
+				runningSession.agentRunner!.addStreamMessage,
+			).toHaveBeenCalledTimes(1);
+			// Idle session is NOT resumed
 			expect(handlePromptSpy).toHaveBeenCalledTimes(0);
-		});
-
-		it("should not resume sessions that have no runner and no claude session ID (completed/stale sessions)", async () => {
-			// Arrange: Two sessions - one active with a claude session ID, one stale/completed
-			const activeSession = createMockSession("session-active");
-			const staleSession = {
-				...createMockSession("session-stale"),
-				claudeSessionId: undefined, // No runner session ID = completed/stale
-				status: "complete",
-			};
-
-			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
-				activeSession,
-				staleSession,
-			]);
-
-			const cache = (
-				edgeWorker as any
-			).repositoryRouter.getIssueRepositoryCache();
-			cache.set("issue-123", ["test-repo"]);
-
-			const webhook = createIssueUpdateWebhook();
-
-			// Act
-			await (edgeWorker as any).handleIssueContentUpdate(webhook);
-
-			// Assert: Only the active session should be resumed
-			// BUG: Currently both sessions get handlePromptWithStreamingCheck called
-			expect(handlePromptSpy).toHaveBeenCalledTimes(1);
-			expect(handlePromptSpy).toHaveBeenCalledWith(
-				activeSession,
-				expect.anything(),
-				"session-active",
-				expect.anything(),
-				expect.anything(),
-				expect.anything(),
-				false,
-				expect.anything(),
-				"issue content update",
-				undefined,
-				undefined,
-			);
-		});
-
-		it("should resume only the most recently updated session when multiple idle sessions exist", async () => {
-			// Arrange: Three sessions for the same issue, all idle, with different timestamps
-			const oldSession = {
-				...createMockSession("session-old"),
-				updatedAt: Date.now() - 60000, // 1 minute ago
-			};
-			const midSession = {
-				...createMockSession("session-mid"),
-				updatedAt: Date.now() - 30000, // 30 seconds ago
-			};
-			const recentSession = {
-				...createMockSession("session-recent"),
-				updatedAt: Date.now(), // most recent
-			};
-
-			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
-				oldSession,
-				midSession,
-				recentSession,
-			]);
-
-			const cache = (
-				edgeWorker as any
-			).repositoryRouter.getIssueRepositoryCache();
-			cache.set("issue-123", ["test-repo"]);
-
-			const webhook = createIssueUpdateWebhook();
-
-			// Act
-			await (edgeWorker as any).handleIssueContentUpdate(webhook);
-
-			// Assert: Only ONE session (the most recent) should be resumed
-			// BUG: Currently ALL three sessions get resumed
-			expect(handlePromptSpy).toHaveBeenCalledTimes(1);
-			expect(handlePromptSpy).toHaveBeenCalledWith(
-				recentSession,
-				expect.anything(),
-				"session-recent",
-				expect.anything(),
-				expect.anything(),
-				expect.anything(),
-				false,
-				expect.anything(),
-				"issue content update",
-				undefined,
-				undefined,
-			);
 		});
 	});
 
 	// =========================================================================
-	// SINGLE SESSION: Sanity check that single-session case still works
+	// Webhook deduplication
 	// =========================================================================
 
-	describe("Issue update with single session", () => {
-		it("should resume the single idle session normally", async () => {
-			// Arrange: One session for the issue, not running
-			const session = createMockSession("session-only");
+	describe("Webhook deduplication", () => {
+		it("should ignore duplicate webhooks with the same createdAt and issueId", async () => {
+			const runningSession = createMockSession("session-running", {
+				hasRunner: true,
+				isRunning: true,
+				supportsStreaming: true,
+			});
 
-			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([session]);
+			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
+				runningSession,
+			]);
+			cacheRepository();
 
-			const cache = (
-				edgeWorker as any
-			).repositoryRouter.getIssueRepositoryCache();
-			cache.set("issue-123", ["test-repo"]);
+			const webhook = createIssueUpdateWebhook({
+				createdAt: "2026-03-13T12:00:00.000Z",
+			});
 
-			const webhook = createIssueUpdateWebhook();
-
-			// Act
+			// First delivery
+			await (edgeWorker as any).handleIssueContentUpdate(webhook);
+			// Duplicate delivery
 			await (edgeWorker as any).handleIssueContentUpdate(webhook);
 
-			// Assert: The single session should be resumed exactly once
-			expect(handlePromptSpy).toHaveBeenCalledTimes(1);
+			// Should only be streamed once
+			expect(
+				runningSession.agentRunner!.addStreamMessage,
+			).toHaveBeenCalledTimes(1);
+		});
+
+		it("should process webhooks with different createdAt as separate events", async () => {
+			const runningSession = createMockSession("session-running", {
+				hasRunner: true,
+				isRunning: true,
+				supportsStreaming: true,
+			});
+
+			mockAgentSessionManager.getSessionsByIssueId.mockReturnValue([
+				runningSession,
+			]);
+			cacheRepository();
+
+			const webhook1 = createIssueUpdateWebhook({
+				createdAt: "2026-03-13T12:00:00.000Z",
+			});
+			const webhook2 = createIssueUpdateWebhook({
+				createdAt: "2026-03-13T12:01:00.000Z",
+			});
+
+			await (edgeWorker as any).handleIssueContentUpdate(webhook1);
+			await (edgeWorker as any).handleIssueContentUpdate(webhook2);
+
+			// Both should be streamed (different events)
+			expect(
+				runningSession.agentRunner!.addStreamMessage,
+			).toHaveBeenCalledTimes(2);
 		});
 	});
 });
