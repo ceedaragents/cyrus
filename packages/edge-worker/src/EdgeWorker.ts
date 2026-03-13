@@ -2319,26 +2319,15 @@ ${taskSection}`;
 			return;
 		}
 
-		// Find the repository for this issue
-		let repository = this.getCachedRepository(workItemId);
-		if (!repository) {
-			// Fallback: search all managers for sessions matching this issue
-			for (const [repoId, manager] of this.agentSessionManagers) {
-				const sessions = manager.getSessionsByIssueId(workItemId);
-				if (sessions.length > 0) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) break;
-				}
-			}
-		}
-
 		// Stop active sessions for this issue across all repositories
+		// Note: agentSessionManagers is consolidated to a single instance on cypack-910;
+		// this loop is forward-compatible with both the Map and single-instance patterns.
 		let totalStopped = 0;
-		for (const [repoId, manager] of this.agentSessionManagers) {
+		for (const [, manager] of this.agentSessionManagers) {
 			const sessions = manager.getSessionsByIssueId(workItemId);
 			for (const session of sessions) {
 				this.logger.info(
-					`Stopping agent session for ${newStateType} issue ${workItemIdentifier} (repo: ${repoId})`,
+					`Stopping agent session for ${newStateType} issue ${workItemIdentifier}`,
 				);
 				manager.requestSessionStop(session.id);
 				session.agentRunner?.stop();
@@ -2353,6 +2342,7 @@ ${taskSection}`;
 		}
 
 		// Delete worktrees for this issue
+		const repository = this.getCachedRepository(workItemId);
 		if (repository) {
 			await this.gitService.deleteWorktree(
 				repository.workspaceBaseDir,
