@@ -19,6 +19,7 @@ import type {
 	AgentRunnerConfig,
 	AgentSessionCreatedWebhook,
 	AgentSessionPromptedWebhook,
+	BaseBranchResolution,
 	ContentUpdateMessage,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
@@ -2719,7 +2720,7 @@ ${taskSection}`;
 			repositoryId: repo.id,
 			branchName: issueMinimal.branchName,
 			baseBranchName:
-				workspace.resolvedBaseBranches?.[repo.id] ?? repo.baseBranch,
+				workspace.resolvedBaseBranches?.[repo.id]?.branch ?? repo.baseBranch,
 		}));
 
 		agentSessionManager.createLinearAgentSession(
@@ -2738,12 +2739,21 @@ ${taskSection}`;
 			agentSessionManager.setActivitySink(sessionId, activitySink);
 		}
 
-		// Post base branch activity showing the resolved base branch for each repo
+		// Post base branch activity showing the resolved base branch with "why" for each repo
 		if (workspace.resolvedBaseBranches) {
 			const branchLines = repositories.map((repo) => {
-				const branch =
-					workspace.resolvedBaseBranches![repo.id] ?? repo.baseBranch;
-				return `- ${repo.name}: \`${branch}\``;
+				const resolution = workspace.resolvedBaseBranches![repo.id];
+				if (!resolution)
+					return `- ${repo.name}: \`${repo.baseBranch}\` (default)`;
+				const sourceLabel =
+					resolution.source === "commit-ish"
+						? "override"
+						: resolution.source === "graphite-blocked-by"
+							? (resolution.detail ?? "graphite")
+							: resolution.source === "parent-issue"
+								? (resolution.detail ?? "parent")
+								: "default";
+				return `- ${repo.name}: \`${resolution.branch}\` (${sourceLabel})`;
 			});
 			await this.postBaseBranchActivity(
 				sessionId,
@@ -4967,7 +4977,7 @@ ${input.userComment}
 		attachmentManifest?: string,
 		guidance?: GuidanceRule[],
 		agentSession?: WebhookAgentSession,
-		resolvedBaseBranches?: Record<string, string>,
+		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
 	): Promise<IssueContextResult> {
 		// Delegate to appropriate builder based on promptType
 		if (promptType === "mention") {
