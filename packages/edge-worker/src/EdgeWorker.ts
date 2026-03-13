@@ -2668,20 +2668,25 @@ ${taskSection}`;
 	 * Create a new Linear agent session with all necessary setup
 	 * @param sessionId The Linear agent activity session ID
 	 * @param issue Linear issue object
-	 * @param repository Repository configuration
+	 * @param repositories Repository configurations (primary repo is repositories[0])
 	 * @param agentSessionManager Agent session manager instance
 	 * @returns Object containing session details and setup information
 	 */
 	private async createLinearAgentSession(
 		sessionId: string,
 		issue: { id: string; identifier: string },
-		repository: RepositoryConfig,
+		repositoriesOrSingle: RepositoryConfig | RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 	): Promise<AgentSessionData> {
+		const repositories = Array.isArray(repositoriesOrSingle)
+			? repositoriesOrSingle
+			: [repositoriesOrSingle];
+		const primaryRepo = repositories[0]!;
+
 		// Fetch full Linear issue details
 		const fullIssue = await this.fetchFullIssueDetails(
 			issue.id,
-			requireLinearWorkspaceId(repository),
+			requireLinearWorkspaceId(primaryRepo),
 		);
 		if (!fullIssue) {
 			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
@@ -2690,36 +2695,39 @@ ${taskSection}`;
 		// Move issue to started state automatically, in case it's not already
 		await this.moveIssueToStartedState(
 			fullIssue,
-			requireLinearWorkspaceId(repository),
+			requireLinearWorkspaceId(primaryRepo),
 		);
 
 		// Create workspace using full issue data
 		// Use custom handler if provided, otherwise create a git worktree by default
+		// Pass full repositories array for multi-repo worktree support
 		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, [repository])
-			: await this.gitService.createGitWorktree(fullIssue, [repository]);
+			? await this.config.handlers.createWorkspace(fullIssue, repositories)
+			: await this.gitService.createGitWorktree(fullIssue, repositories);
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
 
 		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
+
+		// Create RepositoryContext entries for ALL repositories
+		const repositoryContexts = repositories.map((repo) => ({
+			repositoryId: repo.id,
+			branchName: issueMinimal.branchName,
+			baseBranchName: repo.baseBranch,
+		}));
+
 		agentSessionManager.createLinearAgentSession(
 			sessionId,
 			issue.id,
 			issueMinimal,
 			workspace,
 			"linear",
-			[
-				{
-					repositoryId: repository.id,
-					branchName: issueMinimal.branchName,
-					baseBranchName: repository.baseBranch,
-				},
-			],
+			repositoryContexts,
 		);
 
-		// Register session-to-repo mapping and activity sink
-		this.sessionRepositories.set(sessionId, repository.id);
-		const activitySink = this.activitySinks.get(repository.id);
+		// Register session-to-repo mapping and activity sink (use primary repo)
+		this.sessionRepositories.set(sessionId, primaryRepo.id);
+		const activitySink = this.activitySinks.get(primaryRepo.id);
 		if (activitySink) {
 			agentSessionManager.setActivitySink(sessionId, activitySink);
 		}
@@ -2735,7 +2743,7 @@ ${taskSection}`;
 		// Download attachments before creating Claude runner
 		const attachmentResult = await this.downloadIssueAttachments(
 			fullIssue,
-			repository,
+			primaryRepo,
 			workspace.path,
 		);
 
@@ -2749,10 +2757,12 @@ ${taskSection}`;
 		await mkdir(attachmentsDir, { recursive: true });
 
 		// Build allowed directories list - always include attachments directory
+		// Include repository paths from all repositories
+		const allRepoPaths = repositories.map((repo) => repo.repositoryPath);
 		const allowedDirectories: string[] = [
 			...new Set([
 				attachmentsDir,
-				repository.repositoryPath,
+				...allRepoPaths,
 				...this.gitService.getGitMetadataDirectories(workspace.path),
 			]),
 		];
@@ -2763,8 +2773,8 @@ ${taskSection}`;
 		);
 
 		// Build allowed tools list with Linear MCP tools
-		const allowedTools = this.buildAllowedTools(repository);
-		const disallowedTools = this.buildDisallowedTools(repository);
+		const allowedTools = this.buildAllowedTools(repositories);
+		const disallowedTools = this.buildDisallowedTools(repositories);
 
 		return {
 			session,
@@ -2792,11 +2802,11 @@ ${taskSection}`;
 
 		// Check the cache first, as the agentSessionCreated webhook may have been triggered by an @mention
 		// on an issue that already has an agentSession and an associated repository.
-		let repository: RepositoryConfig | null = null;
+		let repositories: RepositoryConfig[] | null = null;
 		if (issueId) {
 			const cachedRepos = this.getCachedRepositories(issueId);
 			if (cachedRepos && cachedRepos.length > 0) {
-				repository = cachedRepos[0]!;
+				repositories = cachedRepos;
 				this.logger.debug(
 					`Using cached repositories [${cachedRepos.map((r) => r.name).join(", ")}] for issue ${issueId}`,
 				);
@@ -2804,7 +2814,7 @@ ${taskSection}`;
 		}
 
 		// If not cached, perform routing logic
-		if (!repository) {
+		if (!repositories) {
 			const routingResult =
 				await this.repositoryRouter.determineRepositoryForWebhook(
 					webhook,
@@ -2831,22 +2841,23 @@ ${taskSection}`;
 			}
 
 			// At this point, routingResult.type === "selected"
-			repository = routingResult.repositories[0]!;
+			repositories = routingResult.repositories;
+			const primaryRepo = repositories[0]!;
 			const routingMethod = routingResult.routingMethod;
 
 			// Cache all matched repositories for this issue as string[]
 			if (issueId) {
 				this.repositoryRouter.getIssueRepositoryCache().set(
 					issueId,
-					routingResult.repositories.map((r) => r.id),
+					repositories.map((r) => r.id),
 				);
 			}
 
 			// Post agent activity showing auto-matched routing
 			await this.postRepositorySelectionActivity(
 				webhook.agentSession.id,
-				requireLinearWorkspaceId(repository),
-				repository.name,
+				requireLinearWorkspaceId(primaryRepo),
+				primaryRepo.name,
 				routingMethod,
 			);
 		}
@@ -2856,20 +2867,21 @@ ${taskSection}`;
 			return;
 		}
 
-		// User access control check
-		const accessResult = this.checkUserAccess(webhook, repository);
+		// User access control check (use primary repo)
+		const primaryRepo = repositories[0]!;
+		const accessResult = this.checkUserAccess(webhook, primaryRepo);
 		if (!accessResult.allowed) {
 			this.logger.info(
 				`User ${accessResult.userName} blocked from delegating: ${accessResult.reason}`,
 			);
-			await this.handleBlockedUser(webhook, repository, accessResult.reason);
+			await this.handleBlockedUser(webhook, primaryRepo, accessResult.reason);
 			return;
 		}
 
 		const log = this.logger.withContext({
 			sessionId: webhook.agentSession.id,
 			platform: this.getRepositoryPlatform(
-				requireLinearWorkspaceId(repository),
+				requireLinearWorkspaceId(primaryRepo),
 			),
 			issueIdentifier: webhook.agentSession.issue.identifier,
 		});
@@ -2877,10 +2889,10 @@ ${taskSection}`;
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
 
-		// Initialize agent runner using shared logic
+		// Initialize agent runner using shared logic (pass full repositories array)
 		await this.initializeAgentRunner(
 			agentSession,
-			repository,
+			repositories,
 			guidance,
 			commentBody,
 		);
@@ -2894,13 +2906,13 @@ ${taskSection}`;
 	 * handleAgentSessionCreatedWebhook and handleUserPromptedAgentActivity use.
 	 *
 	 * @param agentSession The Linear agent session
-	 * @param repository The repository configuration
+	 * @param repositories Repository configurations (primary repo is repositories[0])
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
 	 */
 	private async initializeAgentRunner(
 		agentSession: AgentSessionCreatedWebhook["agentSession"],
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 	): Promise<void> {
@@ -2911,6 +2923,8 @@ ${taskSection}`;
 			this.logger.warn("Cannot initialize Claude runner without issue");
 			return;
 		}
+
+		const primaryRepo = repositories[0]!;
 
 		const log = this.logger.withContext({
 			sessionId,
@@ -2947,14 +2961,14 @@ ${taskSection}`;
 		// Post instant acknowledgment thought
 		await this.postInstantAcknowledgment(
 			sessionId,
-			requireLinearWorkspaceId(repository),
+			requireLinearWorkspaceId(primaryRepo),
 		);
 
-		// Create the session using the shared method
+		// Create the session using the shared method (pass full repositories array)
 		const sessionData = await this.createLinearAgentSession(
 			sessionId,
 			issue,
-			repository,
+			repositories,
 			agentSessionManager,
 		);
 
@@ -2981,8 +2995,8 @@ ${taskSection}`;
 		// Lowercase labels for case-insensitive comparison
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
-		// Check for label overrides BEFORE AI routing
-		const debuggerConfig = repository.labelPrompts?.debugger;
+		// Check for label overrides BEFORE AI routing (use primary repo for label config)
+		const debuggerConfig = primaryRepo.labelPrompts?.debugger;
 		const debuggerLabels = Array.isArray(debuggerConfig)
 			? debuggerConfig
 			: debuggerConfig?.labels;
@@ -2997,7 +3011,7 @@ ${taskSection}`;
 			lowercaseLabels.includes("orchestrator");
 
 		// Also check any additional orchestrator labels from config
-		const orchestratorConfig = repository.labelPrompts?.orchestrator;
+		const orchestratorConfig = primaryRepo.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: orchestratorConfig?.labels;
@@ -3010,7 +3024,7 @@ ${taskSection}`;
 			hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
 
 		// Check for graphite label (for graphite-orchestrator combination)
-		const graphiteConfig = repository.labelPrompts?.graphite;
+		const graphiteConfig = primaryRepo.labelPrompts?.graphite;
 		const graphiteLabels = Array.isArray(graphiteConfig)
 			? graphiteConfig
 			: (graphiteConfig?.labels ?? ["graphite"]);
@@ -3092,8 +3106,8 @@ ${taskSection}`;
 			const input: PromptAssemblyInput = {
 				session,
 				fullIssue,
-				repositories: [repository],
-				repository,
+				repositories,
+				repository: primaryRepo,
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
 				guidance: guidance || undefined,
@@ -3121,7 +3135,7 @@ ${taskSection}`;
 			if (!isMentionTriggered || isLabelBasedPromptRequested) {
 				const systemPromptResult = await this.determineSystemPromptFromLabels(
 					labels,
-					repository,
+					primaryRepo,
 				);
 				systemPromptVersion = systemPromptResult?.version;
 				promptType = systemPromptResult?.type;
@@ -3131,8 +3145,8 @@ ${taskSection}`;
 					await this.postSystemPromptSelectionThought(
 						sessionId,
 						labels,
-						requireLinearWorkspaceId(repository),
-						repository.id,
+						requireLinearWorkspaceId(primaryRepo),
+						primaryRepo.id,
 					);
 				}
 			}
@@ -3145,9 +3159,9 @@ ${taskSection}`;
 			// If subroutine has disallowAllTools: true, use empty array to disable all tools
 			const allowedTools = currentSubroutine?.disallowAllTools
 				? []
-				: this.buildAllowedTools(repository, promptType);
+				: this.buildAllowedTools(repositories, promptType);
 			const baseDisallowedTools = this.buildDisallowedTools(
-				repository,
+				repositories,
 				promptType,
 			);
 
@@ -3179,7 +3193,7 @@ ${taskSection}`;
 			// buildAgentRunnerConfig now determines runner type from labels internally
 			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 				session,
-				repository,
+				primaryRepo,
 				sessionId,
 				assembly.systemPrompt,
 				allowedTools,
@@ -3206,11 +3220,11 @@ ${taskSection}`;
 			await this.savePersistedState();
 
 			// Emit events using full issue (core Issue type)
-			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			this.emit("session:started", fullIssue.id, fullIssue, primaryRepo.id);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
 				fullIssue,
-				repository.id,
+				primaryRepo.id,
 			);
 
 			// Update runner with version information (if available)
@@ -3366,10 +3380,10 @@ ${taskSection}`;
 			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
 		);
 
-		// Initialize agent runner with the selected repository
+		// Initialize agent runner with the selected repository (wrapped in array)
 		await this.initializeAgentRunner(
 			agentSession,
-			repository,
+			[repository],
 			guidance,
 			commentBody,
 		);
@@ -3467,6 +3481,7 @@ ${taskSection}`;
 			);
 
 			// Create the session using the shared method
+			// Pass single repo - createLinearAgentSession normalizes to array internally
 			const sessionData = await this.createLinearAgentSession(
 				sessionId,
 				issue,
