@@ -908,6 +908,57 @@ describe("RepositoryRouter", () => {
 					{ repo: "org/repo-name", branch: "release/v2" },
 				]);
 			});
+
+			// Unbracketed syntax tests
+			it("should parse unbracketed repo= syntax", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"Some text\nrepo=my-repo",
+				);
+				expect(result).toEqual([{ repo: "my-repo" }]);
+			});
+
+			it("should parse unbracketed repos= syntax (plural)", () => {
+				const result = env.router.parseRepoTagsFromDescription("repos=my-repo");
+				expect(result).toEqual([{ repo: "my-repo" }]);
+			});
+
+			it("should parse comma-separated repos in unbracketed syntax", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"repo=cyrus,cyrus-hosted",
+				);
+				expect(result).toEqual([{ repo: "cyrus" }, { repo: "cyrus-hosted" }]);
+			});
+
+			it("should parse comma-separated repos with branch override", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"repos=cyrus,cyrus-hosted#feature-branch",
+				);
+				expect(result).toEqual([
+					{ repo: "cyrus", branch: "feature-branch" },
+					{ repo: "cyrus-hosted", branch: "feature-branch" },
+				]);
+			});
+
+			it("should parse unbracketed repo= with branch but no comma", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"repo=my-repo#develop",
+				);
+				expect(result).toEqual([{ repo: "my-repo", branch: "develop" }]);
+			});
+
+			it("should deduplicate repos across bracketed and unbracketed syntax", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"[repo=cyrus] and also repo=cyrus,cyrus-hosted",
+				);
+				expect(result).toEqual([{ repo: "cyrus" }, { repo: "cyrus-hosted" }]);
+			});
+
+			it("should not match repo= inside URLs or paths", () => {
+				const result = env.router.parseRepoTagsFromDescription(
+					"See https://github.com/repo=something for details",
+				);
+				expect(result).toEqual([]);
+			});
 		});
 	});
 
