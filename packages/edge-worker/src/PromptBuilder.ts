@@ -618,7 +618,7 @@ export class PromptBuilder {
 				? repo.githubUrl.replace("https://github.com/", "")
 				: repo.name;
 			routingMethods.push(
-				`    - Description tag: Add \`[repo=${repoIdentifier}]\` to sub-issue description`,
+				`    - Description tag: \`[repo=${repoIdentifier}]\` or \`[repo=${repoIdentifier}#branch]\` for base branch override`,
 			);
 
 			// Label-based routing
@@ -660,7 +660,10 @@ When creating sub-issues that should be handled in a DIFFERENT repository, use o
 **IMPORTANT - Routing Priority Order:**
 The system evaluates routing methods in this strict priority order. The FIRST match wins:
 
-1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=org/repo-name]\` or \`[repo=repo-name]\` to the sub-issue description. This is the most explicit and reliable method.
+1. **Description Tag (Priority 1 - Highest, Recommended)**: Add \`[repo=repo-name]\` to the sub-issue description.
+   - Multiple repos: \`[repo=repo1]\` and \`[repo=repo2]\`, or \`repos=repo1,repo2\`
+   - Base branch override: \`[repo=repo-name#branch-name]\` to target a specific branch instead of the default
+   - Unbracketed syntax also works: \`repo=repo-name\` or \`repo=repo-name#branch\`
 2. **Routing Labels (Priority 2)**: Apply a label configured to route to the target repository.
 3. **Project Assignment (Priority 3)**: Add the issue to a project that routes to the target repository.
 4. **Team Selection (Priority 4 - Lowest)**: Create the issue in a Linear team that routes to the target repository.

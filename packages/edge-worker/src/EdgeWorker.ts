@@ -2679,6 +2679,7 @@ ${taskSection}`;
 		repositoriesOrSingle: RepositoryConfig | RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
 		baseBranchOverrides?: Map<string, string>,
+		routingMethod?: string,
 	): Promise<AgentSessionData> {
 		const repositories = Array.isArray(repositoriesOrSingle)
 			? repositoriesOrSingle
@@ -2746,26 +2747,27 @@ ${taskSection}`;
 			agentSessionManager.setActivitySink(sessionId, activitySink);
 		}
 
-		// Post base branch activity showing the resolved base branch with "why" for each repo
-		if (workspace.resolvedBaseBranches) {
-			const branchLines = repositories.map((repo) => {
-				const resolution = workspace.resolvedBaseBranches![repo.id];
-				if (!resolution)
-					return `- ${repo.name}: \`${repo.baseBranch}\` (default)`;
-				const sourceLabel =
-					resolution.source === "commit-ish"
+		// Post combined routing + base branch activity
+		{
+			const repoLines = repositories.map((repo) => {
+				const resolution = workspace.resolvedBaseBranches?.[repo.id];
+				const branch = resolution?.branch ?? repo.baseBranch;
+				const sourceLabel = !resolution
+					? "default"
+					: resolution.source === "commit-ish"
 						? "override"
 						: resolution.source === "graphite-blocked-by"
 							? (resolution.detail ?? "graphite")
 							: resolution.source === "parent-issue"
 								? (resolution.detail ?? "parent")
 								: "default";
-				return `- ${repo.name}: \`${resolution.branch}\` (${sourceLabel})`;
+				return `- **${repo.name}** → \`${branch}\` (${sourceLabel})`;
 			});
-			await this.postBaseBranchActivity(
+			await this.postRoutingActivity(
 				sessionId,
 				requireLinearWorkspaceId(primaryRepo),
-				branchLines,
+				repoLines,
+				routingMethod,
 			);
 		}
 
@@ -2842,6 +2844,7 @@ ${taskSection}`;
 		// on an issue that already has an agentSession and an associated repository.
 		let repositories: RepositoryConfig[] | null = null;
 		let baseBranchOverrides: Map<string, string> | undefined;
+		let routingMethod: string | undefined;
 		if (issueId) {
 			const cachedRepos = this.getCachedRepositories(issueId);
 			if (cachedRepos && cachedRepos.length > 0) {
@@ -2893,8 +2896,7 @@ ${taskSection}`;
 			} else {
 				this.logger.info(`No baseBranchOverrides from routing result`);
 			}
-			const primaryRepo = repositories[0]!;
-			const routingMethod = routingResult.routingMethod;
+			routingMethod = routingResult.routingMethod;
 
 			// Cache all matched repositories for this issue as string[]
 			if (issueId) {
@@ -2903,14 +2905,6 @@ ${taskSection}`;
 					repositories.map((r) => r.id),
 				);
 			}
-
-			// Post agent activity showing auto-matched routing (just repo names)
-			await this.postRepositorySelectionActivity(
-				webhook.agentSession.id,
-				requireLinearWorkspaceId(primaryRepo),
-				repositories.map((r) => r.name),
-				routingMethod,
-			);
 		}
 
 		if (!webhook.agentSession.issue) {
@@ -2947,6 +2941,7 @@ ${taskSection}`;
 			guidance,
 			commentBody,
 			baseBranchOverrides,
+			routingMethod,
 		);
 	}
 
@@ -2969,6 +2964,7 @@ ${taskSection}`;
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 		baseBranchOverrides?: Map<string, string>,
+		routingMethod?: string,
 	): Promise<void> {
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
@@ -3025,6 +3021,7 @@ ${taskSection}`;
 			repositories,
 			agentSessionManager,
 			baseBranchOverrides,
+			routingMethod,
 		);
 
 		// Destructure the session data (excluding allowedTools which we'll build with promptType)
@@ -3424,24 +3421,19 @@ ${taskSection}`;
 			.getIssueRepositoryCache()
 			.set(issueId, [repository.id]);
 
-		// Post agent activity showing user-selected repository
-		await this.postRepositorySelectionActivity(
-			agentSessionId,
-			requireLinearWorkspaceId(repository),
-			[repository.name],
-			"user-selected",
-		);
-
 		log.debug(
 			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
 		);
 
 		// Initialize agent runner with the selected repository (wrapped in array)
+		// routingMethod="user-selected" will be included in the combined routing activity
 		await this.initializeAgentRunner(
 			agentSession,
 			[repository],
 			guidance,
 			commentBody,
+			undefined,
+			"user-selected",
 		);
 	}
 
@@ -5661,43 +5653,19 @@ ${input.userComment}
 	}
 
 	/**
-	 * Post repository selection activity
-	 * Shows which method was used to select the repository (auto-routing or user selection)
+	 * Post combined routing activity showing repos selected + base branches resolved
 	 */
-	private async postRepositorySelectionActivity(
+	private async postRoutingActivity(
 		sessionId: string,
 		workspaceId: string,
-		repositoryNames: string[],
-		selectionMethod:
-			| "description-tag"
-			| "label-based"
-			| "project-based"
-			| "team-based"
-			| "team-prefix"
-			| "catch-all"
-			| "workspace-fallback"
-			| "user-selected",
+		repoLines: string[],
+		routingMethod?: string,
 	): Promise<void> {
-		return this.activityPoster.postRepositorySelectionActivity(
+		return this.activityPoster.postRoutingActivity(
 			sessionId,
 			workspaceId,
-			repositoryNames,
-			selectionMethod,
-		);
-	}
-
-	/**
-	 * Post base branch activity showing the resolved base branch per repo
-	 */
-	private async postBaseBranchActivity(
-		sessionId: string,
-		workspaceId: string,
-		branchLines: string[],
-	): Promise<void> {
-		return this.activityPoster.postBaseBranchActivity(
-			sessionId,
-			workspaceId,
-			branchLines,
+			repoLines,
+			routingMethod,
 		);
 	}
 
