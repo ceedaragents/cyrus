@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added dynamic skills system with `SkillLoader` (parses SKILL.md frontmatter from `~/.cyrus/skills/`), `SkillRouter` (5 routing strategies: always, label, team, repository, keyword, extensible via `registerStrategy()`), and `SkillInjector` (merges skill instructions into `appendSystemPrompt` and `allowedTools`). Integrated into `EdgeWorker.buildAgentRunnerConfig()` with skills loaded on startup and resolved per session. New types exported from `cyrus-core`: `SkillDefinition`, `SkillRoutingConfig`, `SkillRoutingContext`, `ISkillLoader`, `ISkillRouter`, `ISkillRoutingStrategy`. 41 new tests. ([CYPACK-896](https://linear.app/ceedar/issue/CYPACK-896), [#947](https://github.com/ceedaragents/cyrus/pull/947))
+
 ### Fixed
 - Reworked `handleIssueContentUpdate()` in `EdgeWorker.ts` to be streaming-only: issue update events are now ONLY delivered to currently running sessions via `addStreamMessage()`. Idle sessions are no longer resumed. If the runner doesn't support streaming input, the event is silently ignored. Added webhook deduplication using `createdAt:issueId` composite key with bounded `processedIssueUpdateKeys` set (auto-prunes at 500 entries). Added DEBUG-level logging that traces the webhook key and changed fields for each delivery. Replaced 5 tests with 7 tests in `EdgeWorker.issue-update-multiple-sessions.test.ts`. ([CYPACK-954](https://linear.app/ceedar/issue/CYPACK-954), [#977](https://github.com/ceedaragents/cyrus/pull/977))
 
