@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Moved `refreshPromise` from closure variable to instance property in `LinearIssueTrackerService` and clear it in `setAccessToken()` to fix stale token refresh bug. Added `getClient()` method to expose the underlying `LinearClient`. Changed `createCyrusToolsServer()` signature to accept `LinearClient` instead of raw token string, ensuring MCP tools reuse the same client with OAuth refresh interceptor. Updated `EdgeWorker` to pass `LinearClient` from `issueTracker.getClient()` to MCP tool server. Added `-l`/`--label` flag to `SelfAddRepoCommand` for custom routing labels with repo-name default. Based on [grandmore/Cyrus-selfhost#2](https://github.com/grandmore/Cyrus-selfhost/pull/2). ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
+
 ## [0.2.34] - 2026-03-13
 
 ### Fixed

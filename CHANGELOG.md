@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **OAuth token refresh no longer stops working after first expiry** - Fixed a bug where the OAuth token refresh mechanism would permanently stop refreshing after the first successful refresh, causing all Linear API calls to fail ~24 hours later. Subsequent token expirations now correctly trigger fresh refreshes. ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
+
+### Added
+- **Routing labels default when adding repos** - `cyrus self-add-repo` now automatically sets routing labels to the repository name. Use `-l custom,labels` to override with custom comma-separated labels. ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
+
 ## [0.2.34] - 2026-03-13
 
 ### Fixed
