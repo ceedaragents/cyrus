@@ -69,11 +69,12 @@ By the end of this guide you'll have:
 Internet
     ↓ HTTPS (443)
 Caddy  (automatic TLS, reverse proxy)
-    ├── yourdomain.com/          → Cyrus API (port 3456)
-    └── yourdomain.com/dashboard → Cyrus Dashboard (port 3457)
+    ├── yourdomain.com/dashboard → Cyrus Dashboard (port 3457)
+    ├── yourdomain.com/api/*     → Cyrus Dashboard (port 3457)
+    └── yourdomain.com/          → Cyrus API (port 3456)
 
 pm2
-    ├── cyrus      (cyrus process)
+    ├── cyrus            (cyrus process)
     └── cyrus-dashboard  (dashboard backend)
 ```
 
@@ -142,11 +143,23 @@ sudo apt install -y jq gh git
 
 ---
 
-## Step 4: Install Cyrus
+## Step 4: Install dependencies and build Cyrus
+
+Install `pnpm` (the monorepo package manager) and `tsx` (TypeScript executor for the dashboard backend):
 
 ```bash
-npm install -g cyrus-ai
+npm install -g pnpm tsx
 ```
+
+Then install all monorepo dependencies and build every package:
+
+```bash
+cd /path/to/cyrus
+pnpm install
+pnpm build
+```
+
+> **Note:** `pnpm build` at the root compiles all workspace packages (including `cyrus-core` and others that the dashboard depends on) before building the apps. The dashboard build in Step 6 will fail if this step is skipped.
 
 ---
 
@@ -168,15 +181,23 @@ Edit `/etc/caddy/Caddyfile`:
 
 ```
 yourdomain.com {
-    # ── Cyrus Dashboard (/dashboard) ─────────────────────────────────────────
+    # ── Cyrus Dashboard UI (/dashboard) ──────────────────────────────────────
+    # Strip the /dashboard prefix before forwarding to the dashboard backend.
+    # The dashboard backend serves the React app at / and its API at /api/*.
     handle /dashboard* {
-        # Strip the /dashboard prefix before forwarding to the dashboard backend.
-        # The dashboard backend serves the API at /api/* and static files at /.
         uri strip_prefix /dashboard
         reverse_proxy localhost:3457
     }
 
-    # ── Cyrus API (everything else) ──────────────────────────────────────────
+    # ── Dashboard API calls (/api/*) ──────────────────────────────────────────
+    # The dashboard frontend uses root-relative /api/* paths (e.g. /api/config,
+    # /api/dashboard-config). Without this block they would fall through to the
+    # Cyrus agent and fail.
+    handle /api/* {
+        reverse_proxy localhost:3457
+    }
+
+    # ── Cyrus agent (webhooks, /status, /version, etc.) ──────────────────────
     handle {
         reverse_proxy localhost:3456
     }
@@ -198,6 +219,9 @@ sudo systemctl reload caddy
 >         uri strip_prefix /dashboard
 >         reverse_proxy localhost:3457
 >     }
+>     handle /api/* {
+>         reverse_proxy localhost:3457
+>     }
 >     handle {
 >         reverse_proxy localhost:3456
 >     }
@@ -210,11 +234,10 @@ sudo systemctl reload caddy
 
 The dashboard frontend must be built with the `/dashboard/` base path so asset URLs match what Caddy serves.
 
+> **Prerequisite:** Run `pnpm build` from the monorepo root (Step 4) before this step. The dashboard depends on workspace packages that must be compiled first.
+
 ```bash
 cd /path/to/cyrus/apps/dashboard
-
-# Install dependencies (first time only)
-pnpm install
 
 # Build with the /dashboard/ base path baked in
 VITE_BASE_PATH=/dashboard/ pnpm build
@@ -301,8 +324,8 @@ module.exports = {
   apps: [
     {
       name: "cyrus",
-      script: "cyrus",
-      interpreter: "none",        // cyrus is a bin, not a script
+      script: "/path/to/cyrus/apps/cli/dist/src/app.js",
+      interpreter: "node",
       env_file: "/root/.cyrus/.env",
       restart_delay: 3000,
       max_restarts: 10,
@@ -323,7 +346,7 @@ module.exports = {
 };
 ```
 
-Replace `/path/to/cyrus` with the actual path to your Cyrus repository.
+Replace `/path/to/cyrus` with the actual path to your Cyrus repository (e.g. `/root/cyrus-fork`).
 
 ### Start both processes
 
@@ -400,12 +423,16 @@ pm2 start cyrus
 ## Updating Cyrus
 
 ```bash
-# Update the npm package
-npm install -g cyrus-ai@latest
-
-# Rebuild the dashboard with the /dashboard/ base path
 cd /path/to/cyrus
+
+# Pull latest changes
 git pull
+
+# Reinstall dependencies and rebuild all packages
+pnpm install
+pnpm build
+
+# Rebuild the dashboard frontend with the /dashboard/ base path
 cd apps/dashboard
 VITE_BASE_PATH=/dashboard/ pnpm build
 
@@ -432,6 +459,9 @@ One of the backends isn't running. Check `pm2 status` and `pm2 logs`.
 
 **HTTPS certificate not issuing**
 Make sure port 80 and 443 are open in your firewall and that `yourdomain.com` points to your server's IP. Caddy handles Let's Encrypt automatically once DNS resolves.
+
+**Dashboard pages load but API calls fail / "Failed to save dashboard config"**
+The `/api/*` Caddy block is missing or mis-ordered. The dashboard frontend uses root-relative `/api/` paths (e.g. `/api/dashboard-config`, `/api/config`) that bypass the `/dashboard*` handle block and fall through to the Cyrus agent. Add a `handle /api/* { reverse_proxy localhost:3457 }` block between the `/dashboard*` block and the catch-all, then `sudo systemctl reload caddy`.
 
 **Linear webhooks not received**
 - Check `CYRUS_BASE_URL` in `~/.cyrus/.env` matches your domain exactly
