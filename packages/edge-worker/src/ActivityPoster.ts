@@ -87,19 +87,11 @@ export class ActivityPoster {
 		);
 	}
 
-	async postRepositorySelectionActivity(
+	async postRoutingActivity(
 		sessionId: string,
 		workspaceId: string,
-		repositoryName: string,
-		selectionMethod:
-			| "description-tag"
-			| "label-based"
-			| "project-based"
-			| "team-based"
-			| "team-prefix"
-			| "catch-all"
-			| "workspace-fallback"
-			| "user-selected",
+		repoLines: string[],
+		routingMethod?: string,
 	): Promise<void> {
 		const issueTracker = this.issueTrackers.get(workspaceId);
 		if (!issueTracker) {
@@ -107,24 +99,25 @@ export class ActivityPoster {
 			return;
 		}
 
-		let methodDisplay: string;
-		if (selectionMethod === "user-selected") {
-			methodDisplay = "selected by user";
-		} else if (selectionMethod === "description-tag") {
-			methodDisplay = "matched via [repo=...] tag in issue description";
-		} else if (selectionMethod === "label-based") {
-			methodDisplay = "matched via label-based routing";
-		} else if (selectionMethod === "project-based") {
-			methodDisplay = "matched via project-based routing";
-		} else if (selectionMethod === "team-based") {
-			methodDisplay = "matched via team-based routing";
-		} else if (selectionMethod === "team-prefix") {
-			methodDisplay = "matched via team prefix routing";
-		} else if (selectionMethod === "catch-all") {
-			methodDisplay = "matched via catch-all routing";
-		} else {
-			methodDisplay = "matched via workspace fallback";
-		}
+		const methodDisplayMap: Record<string, string> = {
+			"user-selected": "User selection",
+			"description-tag": "[repo=...] tag",
+			"label-based": "Label routing",
+			"project-based": "Project routing",
+			"team-based": "Team routing",
+			"team-prefix": "Team prefix routing",
+			"catch-all": "Catch-all",
+			"workspace-fallback": "Workspace fallback",
+		};
+		const methodDisplay = routingMethod
+			? (methodDisplayMap[routingMethod] ?? routingMethod)
+			: undefined;
+
+		const header = methodDisplay
+			? `**Routing** (${methodDisplay})`
+			: "**Routing**";
+
+		const body = `${header}\n${repoLines.join("\n")}`;
 
 		await this.postActivityDirect(
 			issueTracker,
@@ -132,10 +125,10 @@ export class ActivityPoster {
 				agentSessionId: sessionId,
 				content: {
 					type: "thought",
-					body: `Repository "${repositoryName}" has been ${methodDisplay}.`,
+					body,
 				},
 			},
-			"repository selection",
+			"routing",
 		);
 	}
 

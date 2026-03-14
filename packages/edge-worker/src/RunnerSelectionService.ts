@@ -357,10 +357,14 @@ export class RunnerSelectionService {
 	}
 
 	/**
-	 * Build allowed tools list with Linear MCP tools automatically included
+	 * Build allowed tools list with Linear MCP tools automatically included.
+	 * Accepts a single repository or an array for multi-repo sessions.
+	 * For multiple repositories, the result is the union of each repo's allowed tools
+	 * (presets resolved first, then unioned).
+	 * Workspace-level MCP tools are added once regardless of repo count.
 	 */
 	public buildAllowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig | RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -368,75 +372,53 @@ export class RunnerSelectionService {
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
-		// graphite-orchestrator uses the same tool config as orchestrator
-		const effectivePromptType =
-			promptType === "graphite-orchestrator" ? "orchestrator" : promptType;
-		let baseTools: string[] = [];
-		let toolSource = "";
+		const repoArray = Array.isArray(repositories)
+			? repositories
+			: [repositories];
 
-		// Priority order:
-		// 1. Repository-specific prompt type configuration
-		const promptConfig = effectivePromptType
-			? repository.labelPrompts?.[effectivePromptType]
-			: undefined;
-		// Only access allowedTools if config is object form (not simple string[])
-		const promptAllowedTools =
-			promptConfig && !Array.isArray(promptConfig)
-				? promptConfig.allowedTools
-				: undefined;
-		if (promptAllowedTools) {
-			baseTools = this.resolveToolPreset(promptAllowedTools);
-			toolSource = `repository label prompt (${effectivePromptType})`;
-		}
-		// 2. Global prompt type defaults
-		else if (
-			effectivePromptType &&
-			this.config.promptDefaults?.[effectivePromptType]?.allowedTools
-		) {
-			baseTools = this.resolveToolPreset(
-				this.config.promptDefaults[effectivePromptType].allowedTools,
-			);
-			toolSource = `global prompt defaults (${effectivePromptType})`;
-		}
-		// 3. Repository-level allowed tools
-		else if (repository.allowedTools) {
-			baseTools = repository.allowedTools;
-			toolSource = "repository configuration";
-		}
-		// 4. Global default allowed tools
-		else if (this.config.defaultAllowedTools) {
-			baseTools = this.config.defaultAllowedTools;
-			toolSource = "global defaults";
-		}
-		// 5. Fall back to safe tools
-		else {
-			baseTools = getSafeTools();
-			toolSource = "safe tools fallback";
+		if (repoArray.length === 0) {
+			// No repos — fall back to global defaults or safe tools
+			const baseTools = this.config.defaultAllowedTools || getSafeTools();
+			return [...new Set([...baseTools, ...this.getWorkspaceMcpTools()])];
 		}
 
-		// MCP tools that should always be available
-		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const defaultMcpTools = ["mcp__linear", "mcp__cyrus-tools"];
+		// For each repo, resolve its allowed tools (without MCP — those are added once at the end)
+		const perRepoTools = repoArray.map((repo) =>
+			this.buildAllowedToolsForRepo(repo, promptType),
+		);
 
-		// Conditionally include Slack MCP tools when SLACK_BOT_TOKEN is available
-		if (process.env.SLACK_BOT_TOKEN?.trim()) {
-			defaultMcpTools.push("mcp__slack");
-		}
+		// Union across all repos
+		const unionTools = [...new Set(perRepoTools.flat())];
 
-		// Combine and deduplicate
-		const allTools = [...new Set([...baseTools, ...defaultMcpTools])];
+		// Workspace-level MCP tools added once regardless of repo count
+		const allTools = [
+			...new Set([...unionTools, ...this.getWorkspaceMcpTools()]),
+		];
 
+		const repoNames = repoArray.map((r) => r.name).join(", ");
 		this.logger.debug(
-			`Tool selection for ${repository.name}: ${allTools.length} tools from ${toolSource}`,
+			`Tool selection for [${repoNames}]: ${allTools.length} tools (union of ${repoArray.length} repo(s))`,
 		);
 
 		return allTools;
 	}
 
 	/**
-	 * Build disallowed tools list from repository and global config
+	 * Get workspace-level MCP tool prefixes that should always be in allowedTools.
 	 */
-	public buildDisallowedTools(
+	private getWorkspaceMcpTools(): string[] {
+		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
+		const tools = ["mcp__linear", "mcp__cyrus-tools"];
+		if (process.env.SLACK_BOT_TOKEN?.trim()) {
+			tools.push("mcp__slack");
+		}
+		return tools;
+	}
+
+	/**
+	 * Resolve allowed tools for a single repository (without workspace MCP tools).
+	 */
+	private buildAllowedToolsForRepo(
 		repository: RepositoryConfig,
 		promptType?:
 			| "debugger"
@@ -445,58 +427,136 @@ export class RunnerSelectionService {
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
-		// graphite-orchestrator uses the same tool config as orchestrator
 		const effectivePromptType =
 			promptType === "graphite-orchestrator" ? "orchestrator" : promptType;
-		let disallowedTools: string[] = [];
-		let toolSource = "";
+
+		// Priority order:
+		// 1. Repository-specific prompt type configuration
+		const promptConfig = effectivePromptType
+			? repository.labelPrompts?.[effectivePromptType]
+			: undefined;
+		const promptAllowedTools =
+			promptConfig && !Array.isArray(promptConfig)
+				? promptConfig.allowedTools
+				: undefined;
+		if (promptAllowedTools) {
+			return this.resolveToolPreset(promptAllowedTools);
+		}
+		// 2. Global prompt type defaults
+		if (
+			effectivePromptType &&
+			this.config.promptDefaults?.[effectivePromptType]?.allowedTools
+		) {
+			return this.resolveToolPreset(
+				this.config.promptDefaults[effectivePromptType].allowedTools,
+			);
+		}
+		// 3. Repository-level allowed tools
+		if (repository.allowedTools) {
+			return repository.allowedTools;
+		}
+		// 4. Global default allowed tools
+		if (this.config.defaultAllowedTools) {
+			return this.config.defaultAllowedTools;
+		}
+		// 5. Fall back to safe tools
+		return getSafeTools();
+	}
+
+	/**
+	 * Build disallowed tools list from repository and global config.
+	 * Accepts a single repository or an array for multi-repo sessions.
+	 * For multiple repositories, the result is the intersection — a tool is only
+	 * disallowed if ALL repositories disallow it.
+	 */
+	public buildDisallowedTools(
+		repositories: RepositoryConfig | RepositoryConfig[],
+		promptType?:
+			| "debugger"
+			| "builder"
+			| "scoper"
+			| "orchestrator"
+			| "graphite-orchestrator",
+	): string[] {
+		const repoArray = Array.isArray(repositories)
+			? repositories
+			: [repositories];
+
+		if (repoArray.length === 0) {
+			// No repos — fall back to global defaults
+			return this.config.defaultDisallowedTools || [];
+		}
+
+		// For each repo, resolve its disallowed tools
+		const perRepoTools = repoArray.map((repo) =>
+			this.buildDisallowedToolsForRepo(repo, promptType),
+		);
+
+		// Intersection: only block a tool if ALL repos block it
+		let intersection: string[];
+		if (perRepoTools.length === 1) {
+			intersection = perRepoTools[0]!;
+		} else {
+			const firstSet = new Set(perRepoTools[0]!);
+			intersection = [...firstSet].filter((tool) =>
+				perRepoTools.every((repoTools) => repoTools.includes(tool)),
+			);
+		}
+
+		if (intersection.length > 0) {
+			const repoNames = repoArray.map((r) => r.name).join(", ");
+			this.logger.debug(
+				`Disallowed tools for [${repoNames}]: ${intersection.length} tools (intersection of ${repoArray.length} repo(s))`,
+			);
+		}
+
+		return intersection;
+	}
+
+	/**
+	 * Resolve disallowed tools for a single repository.
+	 */
+	private buildDisallowedToolsForRepo(
+		repository: RepositoryConfig,
+		promptType?:
+			| "debugger"
+			| "builder"
+			| "scoper"
+			| "orchestrator"
+			| "graphite-orchestrator",
+	): string[] {
+		const effectivePromptType =
+			promptType === "graphite-orchestrator" ? "orchestrator" : promptType;
 
 		// Priority order (same as allowedTools):
 		// 1. Repository-specific prompt type configuration
 		const promptConfig = effectivePromptType
 			? repository.labelPrompts?.[effectivePromptType]
 			: undefined;
-		// Only access disallowedTools if config is object form (not simple string[])
 		const promptDisallowedTools =
 			promptConfig && !Array.isArray(promptConfig)
 				? promptConfig.disallowedTools
 				: undefined;
 		if (promptDisallowedTools) {
-			disallowedTools = promptDisallowedTools;
-			toolSource = `repository label prompt (${effectivePromptType})`;
+			return promptDisallowedTools;
 		}
 		// 2. Global prompt type defaults
-		else if (
+		if (
 			effectivePromptType &&
 			this.config.promptDefaults?.[effectivePromptType]?.disallowedTools
 		) {
-			disallowedTools =
-				this.config.promptDefaults[effectivePromptType].disallowedTools;
-			toolSource = `global prompt defaults (${effectivePromptType})`;
+			return this.config.promptDefaults[effectivePromptType].disallowedTools;
 		}
 		// 3. Repository-level disallowed tools
-		else if (repository.disallowedTools) {
-			disallowedTools = repository.disallowedTools;
-			toolSource = "repository configuration";
+		if (repository.disallowedTools) {
+			return repository.disallowedTools;
 		}
 		// 4. Global default disallowed tools
-		else if (this.config.defaultDisallowedTools) {
-			disallowedTools = this.config.defaultDisallowedTools;
-			toolSource = "global defaults";
+		if (this.config.defaultDisallowedTools) {
+			return this.config.defaultDisallowedTools;
 		}
-		// 5. No defaults for disallowedTools (as per requirements)
-		else {
-			disallowedTools = [];
-			toolSource = "none (no defaults)";
-		}
-
-		if (disallowedTools.length > 0) {
-			this.logger.debug(
-				`Disallowed tools for ${repository.name}: ${disallowedTools.length} tools from ${toolSource}`,
-			);
-		}
-
-		return disallowedTools;
+		// 5. No defaults for disallowedTools
+		return [];
 	}
 
 	/**
