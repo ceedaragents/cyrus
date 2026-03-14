@@ -142,6 +142,39 @@ Note: Linear MCP tools (`mcp__linear`) are always included automatically. Slack 
 
 ---
 
+## Label-Based Branch Configuration
+
+### `labelBranchConfig` (object)
+
+Controls which base branch Cyrus branches from and what prefix to use in the branch name, based on the Linear issue's labels. The first matching label wins.
+
+Both `base` and `prefix` are optional — you can set one without the other.
+
+**Example:**
+
+```json
+{
+  "repositories": [{
+    "baseBranch": "develop",
+    "labelBranchConfig": {
+      "hotfix": { "base": "master", "prefix": "hotfix/" },
+      "urgent": { "base": "master", "prefix": "hotfix/" },
+      "feature": { "base": "develop", "prefix": "feature/" },
+      "bug":     { "base": "develop", "prefix": "feature/" }
+    }
+  }]
+}
+```
+
+With this config:
+- An issue labelled **hotfix** creates a branch like `hotfix/ENG-123-fix-crash` off `master`
+- An issue labelled **feature** creates a branch like `feature/ENG-456-add-dashboard` off `develop`
+- An issue with no matching label falls back to `baseBranch` with no prefix
+
+**Priority:** `labelBranchConfig` takes precedence over `baseBranch`, but parent-issue branch inheritance still takes highest priority (see how Cyrus handles sub-issues).
+
+---
+
 ## User Access Control
 
 Control which Linear users can delegate issues to Cyrus. Supports both global configuration and per-repository overrides.
@@ -285,6 +318,11 @@ When determining allowed tools, Cyrus follows this priority order:
       "scoper": {
         "labels": ["RFC", "Design"]
       }
+    },
+    "labelBranchConfig": {
+      "hotfix": { "base": "master", "prefix": "hotfix/" },
+      "feature": { "base": "develop", "prefix": "feature/" },
+      "bug": { "base": "develop", "prefix": "feature/" }
     }
   }]
 }
