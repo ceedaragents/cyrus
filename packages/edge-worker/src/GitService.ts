@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve as pathResolve } from "node:path";
 
@@ -540,6 +540,108 @@ export class GitService {
 				path: fallbackPath,
 				isGitWorktree: false,
 			};
+		}
+	}
+
+	/**
+	 * Delete worktrees for a given issue identifier.
+	 *
+	 * Removes all git worktrees under the workspace directory for the issue,
+	 * handling both single-repo and multi-repo layouts since the issue identifier
+	 * directory is the root in both cases.
+	 *
+	 * @param issueIdentifier - The issue identifier (e.g., "DEF-123")
+	 * @param workspaceBaseDir - The base directory for worktrees (e.g., "~/.cyrus/worktrees")
+	 */
+	deleteWorktree(issueIdentifier: string, workspaceBaseDir: string): void {
+		const workspacePath = join(workspaceBaseDir, issueIdentifier);
+
+		if (!existsSync(workspacePath)) {
+			this.logger.info(
+				`Worktree directory does not exist for ${issueIdentifier}, nothing to delete`,
+			);
+			return;
+		}
+
+		this.logger.info(
+			`Deleting worktree directory for ${issueIdentifier} at ${workspacePath}`,
+		);
+
+		// Find all git worktrees that are within this workspace path.
+		// In multi-repo layouts, there may be subdirectories that are each worktrees.
+		const worktreePaths = this.findWorktreesUnderPath(workspacePath);
+
+		for (const wtPath of worktreePaths) {
+			try {
+				this.logger.info(`Removing git worktree: ${wtPath}`);
+				execSync(`git worktree remove --force "${wtPath}"`, {
+					stdio: "pipe",
+					timeout: 30_000,
+				});
+			} catch (error) {
+				this.logger.warn(
+					`Failed to remove git worktree at ${wtPath}: ${(error as Error).message}`,
+				);
+				// Continue with directory deletion even if git worktree remove fails
+			}
+		}
+
+		// Remove the entire workspace directory
+		try {
+			rmSync(workspacePath, { recursive: true, force: true });
+			this.logger.info(`Deleted worktree directory for ${issueIdentifier}`);
+		} catch (error) {
+			this.logger.error(
+				`Failed to delete worktree directory for ${issueIdentifier}: ${(error as Error).message}`,
+			);
+		}
+	}
+
+	/**
+	 * Find all git worktree paths that are located under a given directory.
+	 * Checks the directory itself and its immediate subdirectories (for multi-repo layouts).
+	 */
+	private findWorktreesUnderPath(dirPath: string): string[] {
+		const worktrees: string[] = [];
+
+		// Check if the directory itself is a git worktree
+		if (this.isGitWorktree(dirPath)) {
+			worktrees.push(dirPath);
+			return worktrees;
+		}
+
+		// Check immediate subdirectories (multi-repo layout: each repo is a subdirectory)
+		try {
+			const entries = readdirSync(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (entry.isDirectory()) {
+					const subPath = join(dirPath, entry.name);
+					if (this.isGitWorktree(subPath)) {
+						worktrees.push(subPath);
+					}
+				}
+			}
+		} catch {
+			// Directory listing failed, skip
+		}
+
+		return worktrees;
+	}
+
+	/**
+	 * Check if a directory is a git worktree (has a .git file, not a .git directory).
+	 */
+	private isGitWorktree(dirPath: string): boolean {
+		try {
+			const gitPath = join(dirPath, ".git");
+			if (!existsSync(gitPath)) {
+				return false;
+			}
+			const stats = statSync(gitPath);
+			// Worktrees have a .git file (not directory) that points to the main repo
+			return stats.isFile();
+		} catch {
+			return false;
 		}
 	}
 }

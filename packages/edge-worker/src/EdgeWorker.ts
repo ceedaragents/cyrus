@@ -29,6 +29,7 @@ import type {
 	InternalMessage,
 	Issue,
 	IssueMinimal,
+	IssueStateChangeMessage,
 	IssueUnassignedWebhook,
 	IssueUpdateWebhook,
 	RepositoryConfig,
@@ -54,6 +55,8 @@ import {
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
+	isIssueStateChangeMessage,
+	isIssueStateChangeWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	isSessionStartMessage,
@@ -2156,6 +2159,9 @@ ${taskSection}`;
 				await this.handleAgentSessionCreatedWebhook(webhook, repos);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPromptedAgentActivity(webhook);
+			} else if (isIssueStateChangeWebhook(webhook)) {
+				// Handled via message bus (handleIssueStateChangeMessage)
+				return;
 			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
 				// Handle issue title/description/attachments updates - feed changes into active session
 				await this.handleIssueContentUpdate(webhook);
@@ -2219,6 +2225,8 @@ ${taskSection}`;
 				await this.handleContentUpdateMessage(message);
 			} else if (isUnassignMessage(message)) {
 				await this.handleUnassignMessage(message);
+			} else if (isIssueStateChangeMessage(message)) {
+				await this.handleIssueStateChangeMessage(message);
 			} else {
 				// This branch should never be reached due to exhaustive type checking
 				// If it is reached, log the unexpected message for debugging
@@ -2319,6 +2327,57 @@ ${taskSection}`;
 		// TODO: Implement unified unassign handling
 		// For now, the legacy handler (handleIssueUnassignedWebhook)
 		// continues to process the actual unassignment via the 'event' emitter.
+	}
+
+	/**
+	 * Handle issue state change message (completed or canceled).
+	 * Stops active sessions and deletes worktrees for the issue.
+	 */
+	private async handleIssueStateChangeMessage(
+		message: IssueStateChangeMessage,
+	): Promise<void> {
+		this.logger.info(
+			`[MessageBus] Issue state change: ${message.workItemIdentifier} → ${message.stateType}`,
+		);
+
+		const issueId = message.workItemId;
+
+		// Stop all active sessions for this issue
+		const sessions = this.agentSessionManager.getSessionsByIssueId(issueId);
+		for (const session of sessions) {
+			this.logger.info(
+				`Stopping agent runner for ${message.workItemIdentifier} (issue ${message.stateType})`,
+			);
+			this.agentSessionManager.requestSessionStop(session.id);
+			session.agentRunner?.stop();
+		}
+
+		// Delete worktrees for all repositories associated with this issue
+		const repos = this.getCachedRepositories(issueId);
+		if (repos && repos.length > 0) {
+			for (const repo of repos) {
+				this.gitService.deleteWorktree(
+					message.workItemIdentifier,
+					repo.workspaceBaseDir,
+				);
+			}
+		} else {
+			// Fallback: try to find repository from session data
+			for (const session of sessions) {
+				const repoId = this.sessionRepositories.get(session.id);
+				const repo = repoId ? this.repositories.get(repoId) : undefined;
+				if (repo) {
+					this.gitService.deleteWorktree(
+						message.workItemIdentifier,
+						repo.workspaceBaseDir,
+					);
+				}
+			}
+		}
+
+		this.logger.info(
+			`Completed cleanup for ${message.workItemIdentifier} (${message.stateType}): stopped ${sessions.length} session(s)`,
+		);
 	}
 
 	// ============================================================================

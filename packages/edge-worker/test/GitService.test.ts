@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitService } from "../src/GitService.js";
 
@@ -10,11 +10,16 @@ vi.mock("node:child_process", () => ({
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
 	mkdirSync: vi.fn(),
+	readdirSync: vi.fn(() => []),
+	rmSync: vi.fn(),
 	statSync: vi.fn(),
 }));
 
 const mockExecSync = vi.mocked(execSync);
 const mockExistsSync = vi.mocked(existsSync);
+const mockReaddirSync = vi.mocked(readdirSync);
+const mockRmSync = vi.mocked(rmSync);
+const mockStatSync = vi.mocked(statSync);
 
 describe("GitService", () => {
 	let gitService: GitService;
@@ -301,6 +306,158 @@ describe("GitService", () => {
 
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
 			expect(result.isGitWorktree).toBe(false);
+		});
+	});
+
+	describe("deleteWorktree", () => {
+		it("does nothing when workspace directory does not exist", () => {
+			mockExistsSync.mockReturnValue(false);
+
+			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+
+			expect(mockRmSync).not.toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringContaining("does not exist"),
+			);
+		});
+
+		it("removes single-repo worktree and deletes directory", () => {
+			mockExistsSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123") return true;
+				// .git file exists (it's a worktree)
+				if (p === "/home/user/.cyrus/worktrees/DEF-123/.git") return true;
+				return false;
+			});
+
+			mockStatSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123/.git") {
+					return { isFile: () => true } as any;
+				}
+				return { isFile: () => false } as any;
+			});
+
+			mockExecSync.mockReturnValue(Buffer.from(""));
+
+			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+
+			// Should run git worktree remove
+			expect(mockExecSync).toHaveBeenCalledWith(
+				'git worktree remove --force "/home/user/.cyrus/worktrees/DEF-123"',
+				expect.objectContaining({ stdio: "pipe" }),
+			);
+
+			// Should delete the directory
+			expect(mockRmSync).toHaveBeenCalledWith(
+				"/home/user/.cyrus/worktrees/DEF-123",
+				{ recursive: true, force: true },
+			);
+		});
+
+		it("removes multi-repo worktrees and deletes directory", () => {
+			mockExistsSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123") return true;
+				// The root is NOT a worktree
+				if (p === "/home/user/.cyrus/worktrees/DEF-123/.git") return false;
+				// Subdirectory worktrees have .git files
+				if (p === "/home/user/.cyrus/worktrees/DEF-123/repo-a/.git")
+					return true;
+				if (p === "/home/user/.cyrus/worktrees/DEF-123/repo-b/.git")
+					return true;
+				return false;
+			});
+
+			mockStatSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (
+					p === "/home/user/.cyrus/worktrees/DEF-123/repo-a/.git" ||
+					p === "/home/user/.cyrus/worktrees/DEF-123/repo-b/.git"
+				) {
+					return { isFile: () => true } as any;
+				}
+				return { isFile: () => false } as any;
+			});
+
+			mockReaddirSync.mockReturnValue([
+				{ name: "repo-a", isDirectory: () => true },
+				{ name: "repo-b", isDirectory: () => true },
+			] as any);
+
+			mockExecSync.mockReturnValue(Buffer.from(""));
+
+			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+
+			// Should run git worktree remove for both subdirectories
+			expect(mockExecSync).toHaveBeenCalledWith(
+				'git worktree remove --force "/home/user/.cyrus/worktrees/DEF-123/repo-a"',
+				expect.objectContaining({ stdio: "pipe" }),
+			);
+			expect(mockExecSync).toHaveBeenCalledWith(
+				'git worktree remove --force "/home/user/.cyrus/worktrees/DEF-123/repo-b"',
+				expect.objectContaining({ stdio: "pipe" }),
+			);
+
+			// Should delete the directory
+			expect(mockRmSync).toHaveBeenCalledWith(
+				"/home/user/.cyrus/worktrees/DEF-123",
+				{ recursive: true, force: true },
+			);
+		});
+
+		it("handles git worktree remove failure gracefully", () => {
+			mockExistsSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123") return true;
+				if (p === "/home/user/.cyrus/worktrees/DEF-123/.git") return true;
+				return false;
+			});
+
+			mockStatSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123/.git") {
+					return { isFile: () => true } as any;
+				}
+				return { isFile: () => false } as any;
+			});
+
+			mockExecSync.mockImplementation(() => {
+				throw new Error("git worktree remove failed");
+			});
+
+			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+
+			// Should still attempt to delete the directory despite git failure
+			expect(mockRmSync).toHaveBeenCalledWith(
+				"/home/user/.cyrus/worktrees/DEF-123",
+				{ recursive: true, force: true },
+			);
+			expect(mockLogger.warn).toHaveBeenCalledWith(
+				expect.stringContaining("Failed to remove git worktree"),
+			);
+		});
+
+		it("handles non-worktree directories (no .git file)", () => {
+			mockExistsSync.mockImplementation((path: any) => {
+				const p = String(path);
+				if (p === "/home/user/.cyrus/worktrees/DEF-123") return true;
+				// No .git file anywhere
+				return false;
+			});
+
+			mockReaddirSync.mockReturnValue([] as any);
+
+			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+
+			// Should not call git worktree remove
+			expect(mockExecSync).not.toHaveBeenCalled();
+
+			// Should still delete the directory
+			expect(mockRmSync).toHaveBeenCalledWith(
+				"/home/user/.cyrus/worktrees/DEF-123",
+				{ recursive: true, force: true },
+			);
 		});
 	});
 });

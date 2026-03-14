@@ -422,6 +422,152 @@ describe("LinearMessageTranslator", () => {
 		});
 	});
 
+	describe("translate - IssueStateChange", () => {
+		it("should translate issue state change to completed as IssueStateChangeMessage", () => {
+			const webhook: LinearWebhookPayload = {
+				type: "Issue",
+				action: "update",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				data: {
+					id: "issue-123",
+					identifier: "DEF-123",
+					title: "Test Issue",
+					url: "https://linear.app/test/DEF-123",
+					stateId: "state-new",
+					state: {
+						id: "state-new",
+						name: "Done",
+						color: "#5e6ad2",
+						type: "completed",
+					},
+				},
+				updatedFrom: {
+					stateId: "state-old",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			expect(result.message.action).toBe("issue_state_change");
+			expect(result.message.source).toBe("linear");
+			expect(result.message.workItemId).toBe("issue-123");
+			expect(result.message.workItemIdentifier).toBe("DEF-123");
+
+			const stateChange = result.message;
+			if (stateChange.action !== "issue_state_change") return;
+
+			expect(stateChange.stateType).toBe("completed");
+			expect(stateChange.platformData.previousStateId).toBe("state-old");
+			expect(stateChange.platformData.newStateId).toBe("state-new");
+		});
+
+		it("should translate issue state change to canceled as IssueStateChangeMessage", () => {
+			const webhook: LinearWebhookPayload = {
+				type: "Issue",
+				action: "update",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				data: {
+					id: "issue-456",
+					identifier: "DEF-456",
+					title: "Cancelled Issue",
+					url: "https://linear.app/test/DEF-456",
+					stateId: "state-canceled",
+					state: {
+						id: "state-canceled",
+						name: "Cancelled",
+						color: "#95a2b3",
+						type: "canceled",
+					},
+				},
+				updatedFrom: {
+					stateId: "state-started",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			expect(result.message.action).toBe("issue_state_change");
+
+			const stateChange = result.message;
+			if (stateChange.action !== "issue_state_change") return;
+
+			expect(stateChange.stateType).toBe("canceled");
+		});
+
+		it("should not match state changes to non-terminal states", () => {
+			const webhook: LinearWebhookPayload = {
+				type: "Issue",
+				action: "update",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				data: {
+					id: "issue-123",
+					identifier: "DEF-123",
+					title: "Test Issue",
+					url: "https://linear.app/test/DEF-123",
+					stateId: "state-started",
+					state: {
+						id: "state-started",
+						name: "In Progress",
+						color: "#f2c94c",
+						type: "started",
+					},
+				},
+				updatedFrom: {
+					stateId: "state-backlog",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			// Should not be handled as state change (non-terminal state)
+			// Falls through to unsupported since no title/description change
+			expect(result.success).toBe(false);
+		});
+
+		it("should prioritize state change over content update when both change", () => {
+			const webhook: LinearWebhookPayload = {
+				type: "Issue",
+				action: "update",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				data: {
+					id: "issue-123",
+					identifier: "DEF-123",
+					title: "New Title",
+					url: "https://linear.app/test/DEF-123",
+					stateId: "state-done",
+					state: {
+						id: "state-done",
+						name: "Done",
+						color: "#5e6ad2",
+						type: "completed",
+					},
+				},
+				updatedFrom: {
+					stateId: "state-started",
+					title: "Old Title",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			// State change should take priority over content update
+			expect(result.message.action).toBe("issue_state_change");
+		});
+	});
+
 	describe("translate - unsupported webhooks", () => {
 		it("should return failure for unsupported webhook types", () => {
 			const webhook: LinearWebhookPayload = {
