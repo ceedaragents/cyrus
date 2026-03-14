@@ -122,9 +122,8 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 			const client = linearClient.client;
 			const originalRequest = client.request.bind(client);
 
-			// Track the current refresh promise - this is kept around after resolution
-			// so that ALL concurrent 401 errors share the same refreshed token.
-			// The promise is only cleared when refresh fails, allowing a fresh retry.
+			// Track the current refresh promise for coalescing concurrent 401s.
+			// Cleared after each use so that future token expirations trigger a fresh refresh.
 			let refreshPromise: Promise<string> | null = null;
 
 			client.request = async <Data, Variables extends Record<string, unknown>>(
@@ -144,9 +143,7 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					// or if it's not a token expiration error
 					if (isRetry || !this.isTokenExpiredError(error)) throw error;
 
-					// Coalesce ALL concurrent refresh attempts - everyone shares the same promise.
-					// The promise persists after resolution so late-arriving 401s still get
-					// the same token without triggering a new refresh.
+					// Coalesce concurrent refresh attempts - everyone shares the same promise.
 					if (!refreshPromise) {
 						refreshPromise = this.doTokenRefresh().catch((refreshError) => {
 							// On failure, clear the promise so next 401 can retry fresh
@@ -170,6 +167,11 @@ export class LinearIssueTrackerService implements IIssueTrackerService {
 					} catch (_refreshError) {
 						// If refresh failed, throw the original 401 error for clarity
 						throw error;
+					} finally {
+						// Clear the promise after the retry completes (success or failure).
+						// This ensures future token expirations trigger a fresh refresh
+						// instead of reusing a stale resolved promise.
+						refreshPromise = null;
 					}
 				}
 			};
