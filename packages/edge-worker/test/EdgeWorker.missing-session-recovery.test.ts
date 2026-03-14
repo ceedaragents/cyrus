@@ -171,6 +171,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 
 		// Mock issue tracker
 		const mockIssueTracker = {
+			getClient: vi.fn().mockReturnValue({}),
 			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",
