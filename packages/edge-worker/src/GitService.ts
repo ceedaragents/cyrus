@@ -243,6 +243,28 @@ export class GitService {
 				throw new Error("Not a git repository");
 			}
 
+			// Resolve label-based branch config (prefix + base) if configured
+			let labelBranchRule: { base?: string; prefix?: string } | undefined;
+			if (repository.labelBranchConfig) {
+				try {
+					const labels = await issue.labels();
+					const issueLabels = labels.nodes.map((l) => l.name.toLowerCase());
+					for (const label of issueLabels) {
+						if (repository.labelBranchConfig[label]) {
+							labelBranchRule = repository.labelBranchConfig[label];
+							this.logger.info(
+								`Label "${label}" matched labelBranchConfig for issue ${issue.identifier}`,
+							);
+							break;
+						}
+					}
+				} catch (_e) {
+					this.logger.warn(
+						`Could not fetch labels for issue ${issue.identifier}, skipping labelBranchConfig`,
+					);
+				}
+			}
+
 			// Use Linear's preferred branch name, or generate one if not available
 			const rawBranchName =
 				issue.branchName ||
@@ -250,7 +272,10 @@ export class GitService {
 					?.toLowerCase()
 					.replace(/\s+/g, "-")
 					.substring(0, 30)}`;
-			const branchName = this.sanitizeBranchName(rawBranchName);
+			const sanitized = this.sanitizeBranchName(rawBranchName);
+			const branchName = labelBranchRule?.prefix
+				? `${labelBranchRule.prefix}${sanitized}`
+				: sanitized;
 			const workspacePath = join(repository.workspaceBaseDir, issue.identifier);
 
 			// Ensure workspace directory exists
@@ -306,7 +331,8 @@ export class GitService {
 			}
 
 			// Determine base branch for this issue
-			let baseBranch = repository.baseBranch;
+			// labelBranchRule.base takes priority over repository.baseBranch
+			let baseBranch = labelBranchRule?.base ?? repository.baseBranch;
 
 			// Check if issue has a parent
 			try {

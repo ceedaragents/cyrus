@@ -162,6 +162,19 @@ export const RepositoryConfigSchema = z.object({
 	// Label-based system prompt configuration
 	labelPrompts: LabelPromptsSchema.optional(),
 
+	// Label-based branch configuration
+	// Maps label names to { base, prefix } — first matching label wins
+	// Example: { "hotfix": { base: "master", prefix: "hotfix/" }, "feature": { base: "develop", prefix: "feature/" } }
+	labelBranchConfig: z
+		.record(
+			z.string(),
+			z.object({
+				base: z.string().optional(),
+				prefix: z.string().optional(),
+			}),
+		)
+		.optional(),
+
 	// Repository-specific user access control
 	userAccessControl: UserAccessControlConfigSchema.optional(),
 });

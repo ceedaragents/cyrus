@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Label-based branch configuration** - New `labelBranchConfig` option in repository config lets you control which base branch and branch name prefix Cyrus uses based on Linear issue labels. For example, issues labelled `hotfix` can automatically branch off `master` with a `hotfix/` prefix, while `feature` issues branch off `develop` with a `feature/` prefix.
+
 ### Fixed
 - **Rate limit event handling** - Rate limit events from Claude are now properly handled instead of producing "Unknown message type" warnings in logs. ([CYPACK-895](https://linear.app/ceedar/issue/CYPACK-895), [#946](https://github.com/ceedaragents/cyrus/pull/946))
 
