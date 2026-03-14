@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { getConfig, saveConfig } from "@/api/config";
 
 type AccessControl = {
@@ -215,9 +216,9 @@ export function AccessControlPage() {
 					<p className="text-xs text-muted-foreground mb-3">
 						Repository-level access control overrides the global settings for
 						that repository. Edit repository-specific access control from the{" "}
-						<a href="/repositories" className="text-primary hover:underline">
+						<Link to="/repositories" className="text-primary hover:underline">
 							Repositories
-						</a>{" "}
+						</Link>{" "}
 						page.
 					</p>
 					{((cfg.repositories as Array<Record<string, unknown>>) ?? [])

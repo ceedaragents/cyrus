@@ -19,10 +19,7 @@ export function Shell() {
 			{/* Sidebar */}
 			<aside className="w-56 flex flex-col border-r bg-muted/30">
 				<div className="px-4 py-5 border-b">
-					<h1 className="font-bold text-lg tracking-tight">Cyrus</h1>
-					<p className="text-xs text-muted-foreground truncate mt-0.5">
-						{cyrusUrl}
-					</p>
+					<p className="text-xs text-muted-foreground truncate">{cyrusUrl}</p>
 				</div>
 				<nav className="flex-1 py-4 px-2 space-y-1">
 					{navItems.map(({ to, label, icon: Icon }) => (
