@@ -60,6 +60,20 @@ export class SelfAuthCommand extends BaseCommand {
 		console.log();
 
 		try {
+			if (process.env.CLOUDFLARE_TOKEN) {
+				this.logger.info("Starting cloudflare tunnel...");
+
+				const { SharedApplicationServer } = await import("cyrus-edge-worker");
+				const sharedApplicationServer = new SharedApplicationServer(
+					this.callbackPort,
+					baseUrl,
+					false,
+				);
+				await sharedApplicationServer.startCloudflareTunnel(
+					process.env.CLOUDFLARE_TOKEN,
+				);
+			}
+
 			// Start temporary server to receive OAuth callback
 			const authCode = await this.waitForCallback(clientId);
 
