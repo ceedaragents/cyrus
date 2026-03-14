@@ -23,7 +23,7 @@ describe("CYPACK-478: Zod v3 vs v4 peer dependency mismatch", () => {
 	it("should create cyrus-tools server successfully (but fail at runtime)", () => {
 		// Server creation succeeds because the tool() function doesn't
 		// validate schemas at definition time
-		const server = createCyrusToolsServer("test-token");
+		const server = createCyrusToolsServer({} as any);
 
 		// Verify server was created
 		expect(server).toBeDefined();

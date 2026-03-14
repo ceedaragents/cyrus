@@ -29,6 +29,11 @@ interface WorkspaceCredentials {
  *   cyrus self-add-repo                      # prompts for everything
  *   cyrus self-add-repo <url>                # prompts for workspace if multiple
  *   cyrus self-add-repo <url> <workspace>    # no prompts
+ *   cyrus self-add-repo <url> -l <labels>    # custom routing labels (comma-separated)
+ *   cyrus self-add-repo <url> <workspace> -l <labels>
+ *
+ * Routing labels are used to route Linear issues to this repository.
+ * If not specified, defaults to the repository name.
  */
 export class SelfAddRepoCommand extends BaseCommand {
 	private rl: readline.Interface | null = null;
@@ -57,8 +62,24 @@ export class SelfAddRepoCommand extends BaseCommand {
 	}
 
 	async execute(args: string[]): Promise<void> {
-		let url = args[0];
-		const workspaceName = args[1];
+		// Parse -l/--label flag for custom routing labels
+		let customLabels: string[] | null = null;
+		const positionalArgs: string[] = [];
+		for (let i = 0; i < args.length; i++) {
+			const arg = args[i];
+			if (!arg) continue;
+			if ((arg === "-l" || arg === "--label") && args[i + 1]) {
+				customLabels = args[i + 1]!.split(",")
+					.map((l) => l.trim())
+					.filter((l) => l.length > 0);
+				i++; // Skip the label value
+			} else {
+				positionalArgs.push(arg);
+			}
+		}
+
+		let url = positionalArgs[0];
+		const workspaceName = positionalArgs[1];
 
 		try {
 			// Load config
@@ -180,6 +201,7 @@ export class SelfAddRepoCommand extends BaseCommand {
 
 			// Generate UUID and add to config
 			const id = randomUUID();
+			const routingLabels = customLabels ?? [repoName];
 
 			config.repositories.push({
 				id,
@@ -189,6 +211,7 @@ export class SelfAddRepoCommand extends BaseCommand {
 				workspaceBaseDir: resolve(this.app.cyrusHome, DEFAULT_WORKTREES_DIR),
 				linearWorkspaceId: selectedWorkspace.id,
 				isActive: true,
+				routingLabels,
 			});
 
 			writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
@@ -196,6 +219,8 @@ export class SelfAddRepoCommand extends BaseCommand {
 			console.log(`\nAdded: ${repoName}`);
 			console.log(`  ID: ${id}`);
 			console.log(`  Workspace: ${selectedWorkspace.name}`);
+			console.log(`  Routing labels: ${routingLabels.join(", ")}`);
+			console.log(`\nTo use different routing labels, edit ${configPath}`);
 			process.exit(0);
 		} finally {
 			this.cleanup();

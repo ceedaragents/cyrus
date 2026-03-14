@@ -25,6 +25,7 @@ export function createTestWorker(
 			getComments: () => Promise.resolve([]),
 			getComment: () => Promise.resolve(null),
 			getIssueLabels: () => Promise.resolve([]),
+			getClient: () => ({}),
 			client: {
 				rawRequest: () => Promise.resolve({ data: { comment: { body: "" } } }),
 			},

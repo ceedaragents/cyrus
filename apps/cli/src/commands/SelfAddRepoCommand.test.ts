@@ -599,7 +599,51 @@ describe("SelfAddRepoCommand", () => {
 				workspaceBaseDir: "/home/user/.cyrus/worktrees",
 				linearWorkspaceId: "ws-123",
 				isActive: true,
+				routingLabels: ["new-repo"],
 			});
+		});
+
+		it("should use custom routing labels when -l flag is provided", async () => {
+			mocks.mockReadFileSync.mockReturnValue(
+				JSON.stringify({
+					linearWorkspaces: {
+						"ws-123": {
+							linearToken: "existing-token",
+							linearRefreshToken: "existing-refresh",
+							linearWorkspaceName: "Test Workspace",
+						},
+					},
+					repositories: [
+						{
+							id: "existing",
+							linearWorkspaceId: "ws-123",
+						},
+					],
+				}),
+			);
+
+			await expect(
+				command.execute([
+					"https://github.com/user/new-repo.git",
+					"-l",
+					"custom-label,another-label",
+				]),
+			).rejects.toThrow("process.exit called");
+			expect(mockExit).toHaveBeenCalledWith(0);
+
+			expect(mocks.mockWriteFileSync).toHaveBeenCalled();
+			const writtenConfig = JSON.parse(
+				mocks.mockWriteFileSync.mock.calls[0][1],
+			);
+
+			const addedRepo = writtenConfig.repositories.find(
+				(r: any) => r.id === "generated-uuid-123",
+			);
+
+			expect(addedRepo.routingLabels).toEqual([
+				"custom-label",
+				"another-label",
+			]);
 		});
 
 		it("should preserve existing repositories", async () => {

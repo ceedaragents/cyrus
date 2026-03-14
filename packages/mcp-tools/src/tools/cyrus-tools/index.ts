@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 import { basename, extname } from "node:path";
-import { IssueRelationType, LinearClient } from "@linear/sdk";
+import { IssueRelationType, type LinearClient } from "@linear/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import fs from "fs-extra";
 import OpenAI from "openai";
@@ -100,10 +100,9 @@ export interface CyrusToolsOptions {
  * Create a standard MCP SDK server with Cyrus tools.
  */
 export function createCyrusToolsServer(
-	linearApiToken: string,
+	linearClient: LinearClient,
 	options: CyrusToolsOptions = {},
 ): McpServer {
-	const linearClient = new LinearClient({ apiKey: linearApiToken });
 	const server = new McpServer({
 		name: "cyrus-tools",
 		version: "1.0.0",
