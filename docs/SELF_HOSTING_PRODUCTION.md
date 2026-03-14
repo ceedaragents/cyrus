@@ -1,9 +1,10 @@
-# Production Self-Hosting Guide (Caddy + pm2 + mise)
+# Production Self-Hosting Guide (Caddy + pm2)
 
 This guide walks you through a production-grade self-hosted Cyrus deployment on a Linux VPS or dedicated server using:
 
 - **Claude Code** — AI assistant that reads this file and walks you through setup interactively
-- **mise** — per-project runtime version manager (Node.js, etc.)
+- **zsh + Oh My Zsh** — comfortable shell for managing the server *(optional but recommended)*
+- **mise** — per-project runtime version manager for Node.js *(optional — skip if you manage Node.js another way)*
 - **pm2** — process manager for keeping Cyrus and the dashboard alive
 - **Caddy** — reverse proxy with automatic HTTPS
 
@@ -78,40 +79,50 @@ pm2
 
 ---
 
-## Step 1: Install mise
+## Step 1: Install zsh and Oh My Zsh *(optional)*
 
-[mise](https://mise.jdx.dev) is a fast, single-binary runtime version manager. It replaces nvm, asdf, and similar tools.
+A better shell makes server management a lot more pleasant — syntax highlighting, git status in the prompt, and autocompletion out of the box.
+
+```bash
+# Install zsh
+sudo apt install -y zsh
+
+# Make zsh the default shell for your user
+chsh -s $(which zsh)
+
+# Install Oh My Zsh
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+```
+
+Log out and back in (or open a new shell session) for the change to take effect.
+
+> **Skip this step** if you're happy with bash or already have a preferred shell set up.
+
+---
+
+## Step 2: Install Node.js (LTS)
+
+### Option A — via mise *(recommended)*
+
+[mise](https://mise.jdx.dev) is a fast, single-binary runtime version manager that makes it easy to switch Node versions per project.
 
 ```bash
 curl https://mise.run | sh
 ```
 
-Add mise to your shell (add this to `~/.bashrc` or `~/.zshrc`):
+Add to your shell profile (`~/.zshrc` if using zsh, `~/.bashrc` otherwise):
 
 ```bash
-eval "$(~/.local/bin/mise activate bash)"
-# or for zsh:
 eval "$(~/.local/bin/mise activate zsh)"
+# or for bash:
+eval "$(~/.local/bin/mise activate bash)"
 ```
 
-Reload your shell:
+Reload your shell, then install the latest LTS Node:
 
 ```bash
-source ~/.bashrc   # or source ~/.zshrc
-```
+source ~/.zshrc   # or source ~/.bashrc
 
-Verify:
-
-```bash
-mise --version
-```
-
----
-
-## Step 2: Install Node.js (LTS) via mise
-
-```bash
-# Install the latest LTS version of Node.js globally
 mise use --global node@lts
 
 # Verify
@@ -119,7 +130,20 @@ node --version   # e.g. v22.x.x
 npm --version
 ```
 
-> **Tip:** To pin a specific version in a project directory, run `mise use node@22` inside that directory. mise creates a `.mise.toml` file that locks the version for that project.
+> **Tip:** To pin a specific version inside a project, run `mise use node@22` there. mise creates a `.mise.toml` file that locks the version for that directory.
+
+### Option B — via apt (system Node)
+
+If you'd rather use the system package manager and don't need version switching:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Verify
+node --version
+npm --version
+```
 
 ---
 
