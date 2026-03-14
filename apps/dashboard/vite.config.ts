@@ -4,6 +4,9 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
 	plugins: [react()],
+	// When VITE_BASE_PATH env var is set (e.g. /dashboard/), assets are built
+	// with that prefix so the app can be served from a sub-path via a reverse proxy.
+	base: process.env.VITE_BASE_PATH ?? "/",
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "./src"),

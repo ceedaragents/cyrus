@@ -31,10 +31,14 @@ function AppRoutes() {
 	);
 }
 
+// Vite exposes the base path it was built with via import.meta.env.BASE_URL.
+// This lets the app work correctly whether served from / or /dashboard/.
+const basename = import.meta.env.BASE_URL.replace(/\/$/, "") || "/";
+
 export function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
-			<BrowserRouter>
+			<BrowserRouter basename={basename}>
 				<AppRoutes />
 			</BrowserRouter>
 		</QueryClientProvider>
