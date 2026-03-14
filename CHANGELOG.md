@@ -4,9 +4,55 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.34] - 2026-03-13
+
 ### Fixed
 - **Slack-created issues no longer land in Triage** - Issues created from Slack conversations now default to "Backlog" status instead of potentially being set to "Triage". ([CYPACK-957](https://linear.app/ceedar/issue/CYPACK-957), [#978](https://github.com/ceedaragents/cyrus/pull/978))
 - **Issue updates no longer trigger duplicate runs** - When a Linear issue title or description was updated, all idle sessions for that issue were resumed, causing multiple concurrent runs. Issue updates are now only delivered to currently running sessions via streaming input; idle sessions are no longer resumed. Duplicate webhooks are also deduplicated. ([CYPACK-954](https://linear.app/ceedar/issue/CYPACK-954), [#977](https://github.com/ceedaragents/cyrus/pull/977))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.34
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.34
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.34
+
+#### cyrus-core
+- cyrus-core@0.2.34
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.34
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.34
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.34
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.34
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.34
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.34
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.34
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.34
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.34
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.34
 
 ## [0.2.33] - 2026-03-10
 

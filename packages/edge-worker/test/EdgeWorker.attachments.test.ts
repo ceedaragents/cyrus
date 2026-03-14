@@ -93,7 +93,7 @@ describe("EdgeWorker - Native Attachments", () => {
 			// Call the method
 			const result = await (edgeWorker as any).downloadIssueAttachments(
 				mockIssue,
-				mockConfig.repositories[0],
+				"test-workspace",
 				"/tmp/workspace",
 			);
 
@@ -130,7 +130,7 @@ describe("EdgeWorker - Native Attachments", () => {
 
 			const result = await (edgeWorker as any).downloadIssueAttachments(
 				mockIssue,
-				mockConfig.repositories[0],
+				"test-workspace",
 				"/tmp/workspace",
 			);
 
@@ -158,7 +158,7 @@ describe("EdgeWorker - Native Attachments", () => {
 			// Should not throw, but handle gracefully
 			const result = await (edgeWorker as any).downloadIssueAttachments(
 				mockIssue,
-				mockConfig.repositories[0],
+				"test-workspace",
 				"/tmp/workspace",
 			);
 

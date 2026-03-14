@@ -135,7 +135,7 @@ export class SharedApplicationServer {
 	/**
 	 * Start Cloudflare tunnel and wait for 4 'connected' events
 	 */
-	private async startCloudflareTunnel(cloudflareToken: string): Promise<void> {
+	async startCloudflareTunnel(cloudflareToken: string): Promise<void> {
 		return new Promise<void>((resolve, reject) => {
 			let connectionCount = 0;
 			const requiredConnections = 4;

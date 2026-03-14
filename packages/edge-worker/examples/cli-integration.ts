@@ -42,7 +42,7 @@ export async function createCLIEdgeWorker(config: any) {
 		// CLI-specific handlers
 		handlers: {
 			// Use git worktrees for workspaces
-			createWorkspace: async (issue) => {
+			createWorkspace: async (issue, _repositories) => {
 				return await workspaceService.createWorkspace(issue);
 			},
 

@@ -151,9 +151,9 @@ export type IssueRelation = Pick<
 	"id" | "type" | "createdAt" | "updatedAt" | "archivedAt"
 > & {
 	/** The issue whose relationship is being described */
-	readonly issue: Promise<Issue | undefined>;
+	readonly issue: Promise<Issue> | undefined;
 	/** The related issue */
-	readonly relatedIssue: Promise<Issue | undefined>;
+	readonly relatedIssue: Promise<Issue> | undefined;
 };
 
 /**
