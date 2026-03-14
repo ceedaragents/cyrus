@@ -26,6 +26,15 @@ export { EdgeWorker } from "./EdgeWorker.js";
 export { GitService } from "./GitService.js";
 export type { SerializedGlobalRegistryState } from "./GlobalSessionRegistry.js";
 export { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
+// LSP MCP integration
+export {
+	buildLspMcpConfig,
+	detectLanguages,
+	isBinaryAvailable,
+	type LspLanguageConfig,
+	SUPPORTED_LANGUAGES,
+	type SupportedLanguage,
+} from "./lsp/index.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
 export { SlackChatAdapter } from "./SlackChatAdapter.js";

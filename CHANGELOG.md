@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Built-in LSP tools for agent sessions** - Agent sessions now automatically get language server tools (go-to-definition, find-references, diagnostics, hover, rename) for detected project languages (TypeScript, Go, Rust, Python) via `mcp-language-server`. ([CYPACK-894](https://linear.app/ceedar/issue/CYPACK-894), [#945](https://github.com/ceedaragents/cyrus/pull/945))
+
 ### Fixed
 - **Issue updates no longer trigger duplicate runs** - When a Linear issue title or description was updated, all idle sessions for that issue were resumed, causing multiple concurrent runs. Issue updates are now only delivered to currently running sessions via streaming input; idle sessions are no longer resumed. Duplicate webhooks are also deduplicated. ([CYPACK-954](https://linear.app/ceedar/issue/CYPACK-954), [#977](https://github.com/ceedaragents/cyrus/pull/977))
 
