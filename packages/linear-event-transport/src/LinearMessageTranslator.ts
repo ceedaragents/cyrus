@@ -14,7 +14,10 @@ import type {
 	ContentUpdateMessage,
 	GuidanceItem,
 	IMessageTranslator,
+	IssueStateChangeMessage,
+	IssueStateType,
 	LinearContentUpdatePlatformData,
+	LinearIssueStateChangePlatformData,
 	LinearPlatformRef,
 	LinearSessionStartPlatformData,
 	LinearStopSignalPlatformData,
@@ -30,10 +33,12 @@ import type {
 import {
 	type AgentSessionCreatedWebhook,
 	type AgentSessionPromptedWebhook,
+	type IssueStateChangeWebhook,
 	type IssueUnassignedWebhook,
 	type IssueUpdateWebhook,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
+	isIssueStateChangeWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	type Webhook,
@@ -88,6 +93,10 @@ export class LinearMessageTranslator
 
 		if (isIssueUnassignedWebhook(w)) {
 			return this.translateIssueUnassigned(w, context);
+		}
+
+		if (isIssueStateChangeWebhook(w)) {
+			return this.translateIssueStateChange(w, context);
 		}
 
 		if (isIssueTitleOrDescriptionUpdateWebhook(w)) {
@@ -344,6 +353,40 @@ export class LinearMessageTranslator
 			workItemId: issueData.id,
 			workItemIdentifier: issueData.identifier,
 			changes,
+			platformData,
+		};
+
+		return { success: true, message };
+	}
+
+	/**
+	 * Translate IssueStateChangeWebhook to IssueStateChangeMessage.
+	 */
+	private translateIssueStateChange(
+		webhook: IssueStateChangeWebhook,
+		_context?: TranslationContext,
+	): TranslationResult {
+		const { data: issueData, updatedFrom, organizationId, createdAt } = webhook;
+
+		const stateType = issueData.state?.type as IssueStateType;
+
+		// Build platform data
+		const platformData: LinearIssueStateChangePlatformData = {
+			issue: this.buildIssueRef(issueData as SafeRecord),
+			previousStateId: updatedFrom?.stateId,
+			newStateId: issueData.stateId,
+		};
+
+		const message: IssueStateChangeMessage = {
+			id: randomUUID(),
+			source: "linear",
+			action: "issue_state_change",
+			receivedAt: this.toISOString(createdAt),
+			organizationId,
+			sessionKey: issueData.id,
+			workItemId: issueData.id,
+			workItemIdentifier: issueData.identifier,
+			stateType,
 			platformData,
 		};
 
