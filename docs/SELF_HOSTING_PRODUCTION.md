@@ -79,7 +79,7 @@ pm2
 
 ---
 
-## Step 1: Install zsh and Oh My Zsh *(optional)*
+## Step 1: Install zsh and Oh My Zsh
 
 A better shell makes server management a lot more pleasant — syntax highlighting, git status in the prompt, and autocompletion out of the box.
 
@@ -94,35 +94,30 @@ chsh -s $(which zsh)
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 ```
 
-Log out and back in (or open a new shell session) for the change to take effect.
+Log out and back in (or open a new shell session) for the change to take effect. All subsequent steps assume zsh — if you skip this, replace `~/.zshrc` with `~/.bashrc` in the commands below.
 
-> **Skip this step** if you're happy with bash or already have a preferred shell set up.
+> **Optional:** Skip this step if you already have a preferred shell set up.
 
 ---
 
-## Step 2: Install Node.js (LTS)
+## Step 2: Install Node.js (LTS) via mise
 
-### Option A — via mise *(recommended)*
-
-[mise](https://mise.jdx.dev) is a fast, single-binary runtime version manager that makes it easy to switch Node versions per project.
+[mise](https://mise.jdx.dev) is a fast, single-binary runtime version manager that makes it easy to install and switch Node.js versions per project.
 
 ```bash
 curl https://mise.run | sh
 ```
 
-Add to your shell profile (`~/.zshrc` if using zsh, `~/.bashrc` otherwise):
+Add mise to your shell profile:
 
 ```bash
-eval "$(~/.local/bin/mise activate zsh)"
-# or for bash:
-eval "$(~/.local/bin/mise activate bash)"
+echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
-Reload your shell, then install the latest LTS Node:
+Install the latest LTS version of Node.js:
 
 ```bash
-source ~/.zshrc   # or source ~/.bashrc
-
 mise use --global node@lts
 
 # Verify
@@ -132,18 +127,7 @@ npm --version
 
 > **Tip:** To pin a specific version inside a project, run `mise use node@22` there. mise creates a `.mise.toml` file that locks the version for that directory.
 
-### Option B — via apt (system Node)
-
-If you'd rather use the system package manager and don't need version switching:
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt install -y nodejs
-
-# Verify
-node --version
-npm --version
-```
+> **Optional:** If you already have Node.js installed and don't need version switching, skip mise. Make sure `node --version` shows v18 or higher before continuing.
 
 ---
 
