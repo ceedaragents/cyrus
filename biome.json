@@ -19,6 +19,34 @@
 			"test": "recommended"
 		}
 	},
+	"overrides": [
+		{
+			"includes": ["apps/dashboard/src/index.css"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noUnknownAtRules": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["apps/dashboard/src/**"],
+			"linter": {
+				"rules": {
+					"a11y": {
+						"useButtonType": "off",
+						"noLabelWithoutControl": "off",
+						"noStaticElementInteractions": "off",
+						"useKeyWithClickEvents": "off"
+					},
+					"correctness": {
+						"useExhaustiveDependencies": "off"
+					}
+				}
+			}
+		}
+	],
 	"formatter": {
 		"formatWithErrors": true
 	},

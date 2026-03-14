@@ -654,6 +654,7 @@ export class EdgeWorker extends EventEmitter {
 			this.sharedApplicationServer.getFastifyInstance(),
 			this.cyrusHome,
 			process.env.CYRUS_API_KEY || "",
+			this.globalSessionRegistry,
 		);
 
 		// Register config update routes
