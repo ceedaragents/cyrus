@@ -122,6 +122,9 @@ export interface PromptAssemblyInput {
 
 	/** Pre-resolved base branches from workspace creation (keyed by repositoryId) */
 	resolvedBaseBranches?: Record<string, BaseBranchResolution>;
+
+	/** Linear workspace ID (from webhook.organizationId). When provided, avoids extracting from repo config. */
+	workspaceId?: string;
 }
 
 /**

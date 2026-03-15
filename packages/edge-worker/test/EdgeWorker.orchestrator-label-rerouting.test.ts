@@ -153,6 +153,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				"test-workspace",
 			);
 
 			// Assert
@@ -210,6 +211,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				"test-workspace",
 			);
 
 			// Assert
@@ -272,6 +274,7 @@ describe("EdgeWorker - Orchestrator Label Rerouting", () => {
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				"test-workspace",
 			);
 
 			// Assert
@@ -342,6 +345,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				"test-workspace",
 			);
 
 			// Assert
@@ -393,6 +397,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				"test-workspace",
 			);
 
 			// Assert - Should not throw, should fall back to AI routing
@@ -449,6 +454,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				"test-workspace",
 			);
 
 			// Assert
@@ -505,6 +511,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				mockRepository,
+				"test-workspace",
 			);
 
 			// Assert - Should NOT see AI routing decision logs
@@ -602,6 +609,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				repositoryWithoutOrchestratorConfig,
+				"test-workspace",
 			);
 
 			// Assert
@@ -698,6 +706,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				repositoryWithoutOrchestratorConfig,
+				"test-workspace",
 			);
 
 			// Assert
@@ -794,6 +803,7 @@ Work completed on subtask TEST-124.
 				mockAgentSessionManager,
 				promptBody,
 				repositoryWithoutOrchestratorConfig,
+				"test-workspace",
 			);
 
 			// Assert
