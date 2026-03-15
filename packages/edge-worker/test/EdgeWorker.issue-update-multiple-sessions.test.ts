@@ -220,6 +220,7 @@ describe("EdgeWorker - Issue Update Session Delivery (CYPACK-954)", () => {
 
 		// Mock issue tracker
 		const mockIssueTracker = {
+			getClient: vi.fn().mockReturnValue({}),
 			fetchIssue: vi.fn().mockResolvedValue({
 				id: "issue-123",
 				identifier: "TEST-123",

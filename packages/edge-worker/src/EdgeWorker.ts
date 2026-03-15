@@ -154,6 +154,7 @@ type CyrusToolsMcpContext = {
 type CyrusToolsMcpContextEntry = {
 	contextId: string;
 	linearToken: string;
+	linearClient: import("@linear/sdk").LinearClient;
 	parentSessionId?: string;
 	prebuiltServer?: ReturnType<typeof createCyrusToolsServer>;
 	createdAt: number;
@@ -4371,7 +4372,7 @@ ${taskSection}`;
 				const sdkServer =
 					context.prebuiltServer ||
 					createCyrusToolsServer(
-						context.linearToken,
+						context.linearClient,
 						this.createCyrusToolsOptions(context.parentSessionId),
 					);
 				context.prebuiltServer = undefined;
@@ -4607,14 +4608,19 @@ ${taskSection}`;
 		const linearToken = this.getLinearTokenForWorkspace(
 			requireLinearWorkspaceId(primaryRepo),
 		);
+		const issueTracker = this.issueTrackers.get(
+			requireLinearWorkspaceId(primaryRepo),
+		) as LinearIssueTrackerService;
+		const linearClient = issueTracker.getClient();
 		const prebuiltServer = createCyrusToolsServer(
-			linearToken,
+			linearClient,
 			this.createCyrusToolsOptions(parentSessionId),
 		);
 
 		this.cyrusToolsMcpContexts.set(contextId, {
 			contextId,
 			linearToken,
+			linearClient,
 			parentSessionId,
 			prebuiltServer,
 			createdAt: Date.now(),

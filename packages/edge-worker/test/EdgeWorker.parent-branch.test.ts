@@ -207,6 +207,7 @@ Base Branch: {{base_branch}}`;
 				return mockLinearClient.issue(issueId);
 			}),
 			getIssueLabels: vi.fn().mockResolvedValue([]),
+			getClient: vi.fn().mockReturnValue({}),
 		};
 		(edgeWorker as any).issueTrackers.set(
 			mockRepository.linearWorkspaceId,

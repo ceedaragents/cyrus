@@ -3,7 +3,7 @@ import { createCyrusToolsServer } from "../../../src/tools/cyrus-tools/index.js"
 
 describe("linear_get_child_issues tool integration", () => {
 	it("should create cyrus tools server with expected structure", () => {
-		const server = createCyrusToolsServer("test-token");
+		const server = createCyrusToolsServer({} as any);
 
 		// Verify the server has the expected MCP SDK structure
 		expect(server).toBeDefined();
@@ -13,7 +13,7 @@ describe("linear_get_child_issues tool integration", () => {
 	});
 
 	it("should have created server with proper configuration", () => {
-		const server = createCyrusToolsServer("test-token", {
+		const server = createCyrusToolsServer({} as any, {
 			parentSessionId: "parent-123",
 			onSessionCreated: (child, parent) => {
 				console.log(`Session created: ${child} -> ${parent}`);
@@ -36,11 +36,11 @@ describe("linear_get_child_issues tool integration", () => {
 		// the test script that uses the ClaudeRunner to call the tool
 
 		// Create a server to ensure it doesn't throw
-		expect(() => createCyrusToolsServer("test-token")).not.toThrow();
+		expect(() => createCyrusToolsServer({} as any)).not.toThrow();
 
 		// Create another server with options to ensure configuration works
 		expect(() =>
-			createCyrusToolsServer("test-token", {
+			createCyrusToolsServer({} as any, {
 				parentSessionId: "test-parent",
 			}),
 		).not.toThrow();
@@ -48,17 +48,17 @@ describe("linear_get_child_issues tool integration", () => {
 
 	it("should handle different configuration options", () => {
 		// Test with minimal config
-		const server1 = createCyrusToolsServer("token1");
+		const server1 = createCyrusToolsServer({} as any);
 		expect(server1).toBeDefined();
 
 		// Test with full config
-		const server2 = createCyrusToolsServer("token2", {
+		const server2 = createCyrusToolsServer({} as any, {
 			parentSessionId: "parent-456",
 		});
 		expect(server2).toBeDefined();
 
 		// Test with empty options
-		const server3 = createCyrusToolsServer("token3", {});
+		const server3 = createCyrusToolsServer({} as any, {});
 		expect(server3).toBeDefined();
 	});
 });
