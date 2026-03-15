@@ -93,21 +93,22 @@ export class SelfAuthCommand extends BaseCommand {
 			const workspace = await this.fetchWorkspaceInfo(tokens.accessToken);
 			this.logSuccess(`Workspace: ${workspace.name} (${workspace.id})`);
 
-			// Update config.json
+			// Save workspace credentials to config.json
 			console.log("Saving tokens to config.json...");
-			this.overwriteRepoConfigTokens(config, configPath, tokens, workspace);
+			if (!config.linearWorkspaces) {
+				(config as Record<string, unknown>).linearWorkspaces = {};
+			}
+			config.linearWorkspaces![workspace.id] = {
+				linearToken: tokens.accessToken,
+				...(tokens.refreshToken
+					? { linearRefreshToken: tokens.refreshToken }
+					: {}),
+				linearWorkspaceName: workspace.name,
+			};
+			writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
 
 			this.logSuccess(`Saved credentials for workspace: ${workspace.name}`);
-
-			const updatedCount = config.repositories.filter(
-				(r: EdgeConfig["repositories"][number]) =>
-					r.linearWorkspaceId === workspace.id,
-			).length;
-			if (updatedCount > 0) {
-				this.logSuccess(
-					`Linked ${updatedCount} repository/repositories to workspace`,
-				);
-			} else if (config.repositories.length === 0) {
+			if (config.repositories.length === 0) {
 				console.log(
 					"   No repositories configured yet. Run 'cyrus self-add-repo' to add one.",
 				);
@@ -263,38 +264,6 @@ export class SelfAuthCommand extends BaseCommand {
 		}
 
 		return { id: organization.id, name: organization.name || organization.id };
-	}
-
-	private overwriteRepoConfigTokens(
-		config: EdgeConfig,
-		configPath: string,
-		tokens: { accessToken: string; refreshToken?: string },
-		workspace: { id: string; name: string },
-	): void {
-		// Update workspace-level token storage
-		if (!config.linearWorkspaces) {
-			(config as Record<string, unknown>).linearWorkspaces = {};
-		}
-		config.linearWorkspaces![workspace.id] = {
-			linearToken: tokens.accessToken,
-			...(tokens.refreshToken
-				? { linearRefreshToken: tokens.refreshToken }
-				: {}),
-			linearWorkspaceName: workspace.name,
-		};
-
-		// Update all repositories matching this workspace (or unset workspace)
-		for (const repo of config.repositories) {
-			if (
-				repo.linearWorkspaceId === workspace.id ||
-				!repo.linearWorkspaceId ||
-				repo.linearWorkspaceId === ""
-			) {
-				repo.linearWorkspaceId = workspace.id;
-			}
-		}
-
-		writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
 	}
 
 	private async cleanup(): Promise<void> {
