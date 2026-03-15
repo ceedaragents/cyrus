@@ -97,11 +97,21 @@ export class SelfAuthCommand extends BaseCommand {
 			console.log("Saving tokens to config.json...");
 			this.overwriteRepoConfigTokens(config, configPath, tokens, workspace);
 
+			this.logSuccess(`Saved credentials for workspace: ${workspace.name}`);
+
 			const updatedCount = config.repositories.filter(
 				(r: EdgeConfig["repositories"][number]) =>
 					r.linearWorkspaceId === workspace.id,
 			).length;
-			this.logSuccess(`Updated ${updatedCount} repository/repositories`);
+			if (updatedCount > 0) {
+				this.logSuccess(
+					`Linked ${updatedCount} repository/repositories to workspace`,
+				);
+			} else if (config.repositories.length === 0) {
+				console.log(
+					"   No repositories configured yet. Run 'cyrus self-add-repo' to add one.",
+				);
+			}
 
 			console.log();
 			this.logSuccess(
