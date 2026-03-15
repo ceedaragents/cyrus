@@ -2402,7 +2402,6 @@ ${taskSection}`;
 
 		await this.handleIssueUnassigned(
 			webhook.notification.issue,
-			repository,
 			webhook.organizationId,
 		);
 	}
@@ -3850,12 +3849,10 @@ ${taskSection}`;
 	/**
 	 * Handle issue unassignment
 	 * @param issue Linear issue object from webhook data
-	 * @param _repository Repository configuration (kept for signature compatibility)
 	 * @param workspaceId Linear workspace ID (from webhook.organizationId)
 	 */
 	private async handleIssueUnassigned(
 		issue: WebhookIssue,
-		_repository: RepositoryConfig,
 		workspaceId: string,
 	): Promise<void> {
 		const sessions = this.agentSessionManager.getSessionsByIssueId(issue.id);
