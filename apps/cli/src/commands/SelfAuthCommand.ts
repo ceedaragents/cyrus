@@ -104,6 +104,7 @@ export class SelfAuthCommand extends BaseCommand {
 					? { linearRefreshToken: tokens.refreshToken }
 					: {}),
 				linearWorkspaceName: workspace.name,
+				linearWorkspaceSlug: workspace.slug,
 			};
 			writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
 
@@ -254,7 +255,7 @@ export class SelfAuthCommand extends BaseCommand {
 
 	private async fetchWorkspaceInfo(
 		accessToken: string,
-	): Promise<{ id: string; name: string }> {
+	): Promise<{ id: string; name: string; slug: string }> {
 		const linearClient = new LinearClient({ accessToken });
 		const viewer = await linearClient.viewer;
 		const organization = await viewer.organization;
@@ -263,7 +264,11 @@ export class SelfAuthCommand extends BaseCommand {
 			throw new Error("Failed to get workspace info from Linear");
 		}
 
-		return { id: organization.id, name: organization.name || organization.id };
+		return {
+			id: organization.id,
+			name: organization.name || organization.id,
+			slug: organization.urlKey,
+		};
 	}
 
 	private async cleanup(): Promise<void> {
