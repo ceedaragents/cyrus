@@ -172,7 +172,7 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
 	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
-	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by workspaceId)
+	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
@@ -248,9 +248,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// Initialize repository router with dependencies
 		const repositoryRouterDeps: RepositoryRouterDeps = {
-			fetchIssueLabels: async (issueId: string, workspaceId: string) => {
+			fetchIssueLabels: async (issueId: string, linearWorkspaceId: string) => {
 				// Use workspace ID directly from webhook context (Linear-native source)
-				const issueTracker = this.issueTrackers.get(workspaceId);
+				const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 				if (!issueTracker) return [];
 
 				// Use platform-agnostic getIssueLabels method
@@ -258,10 +258,10 @@ export class EdgeWorker extends EventEmitter {
 			},
 			fetchIssueDescription: async (
 				issueId: string,
-				workspaceId: string,
+				linearWorkspaceId: string,
 			): Promise<string | undefined> => {
 				// Use workspace ID directly from webhook context (Linear-native source)
-				const issueTracker = this.issueTrackers.get(workspaceId);
+				const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 				if (!issueTracker) return undefined;
 
 				// Fetch issue and get description
@@ -281,8 +281,8 @@ export class EdgeWorker extends EventEmitter {
 					this.agentSessionManager.getActiveSessionsByIssueId(issueId);
 				return activeSessions.length > 0;
 			},
-			getIssueTracker: (workspaceId: string) => {
-				return this.getIssueTrackerForWorkspace(workspaceId);
+			getIssueTracker: (linearWorkspaceId: string) => {
+				return this.getIssueTrackerForWorkspace(linearWorkspaceId);
 			},
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
@@ -290,8 +290,8 @@ export class EdgeWorker extends EventEmitter {
 
 		// Initialize AskUserQuestion handler for elicitation via Linear select signal
 		this.askUserQuestionHandler = new AskUserQuestionHandler({
-			getIssueTracker: (workspaceId: string) => {
-				return this.getIssueTrackerForWorkspace(workspaceId) ?? null;
+			getIssueTracker: (linearWorkspaceId: string) => {
+				return this.getIssueTrackerForWorkspace(linearWorkspaceId) ?? null;
 			},
 		});
 
@@ -432,7 +432,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Initialize issue trackers per workspace (one per workspace, not per repo)
 		if (config.linearWorkspaces) {
-			for (const [workspaceId, wsConfig] of Object.entries(
+			for (const [linearWorkspaceId, wsConfig] of Object.entries(
 				config.linearWorkspaces,
 			)) {
 				const issueTracker =
@@ -446,9 +446,9 @@ export class EdgeWorker extends EventEmitter {
 								new LinearClient({
 									accessToken: wsConfig.linearToken,
 								}),
-								this.buildOAuthConfig(workspaceId),
+								this.buildOAuthConfig(linearWorkspaceId),
 							);
-				this.issueTrackers.set(workspaceId, issueTracker);
+				this.issueTrackers.set(linearWorkspaceId, issueTracker);
 			}
 		}
 
@@ -802,7 +802,6 @@ export class EdgeWorker extends EventEmitter {
 		const chatRepositoryPaths = Array.from(this.repositories.values()).map(
 			(repo) => repo.repositoryPath,
 		);
-		const firstRepo = Array.from(this.repositories.values())[0];
 		const routingContext =
 			this.promptBuilder.generateRoutingContextForAllWorkspaces();
 		const slackAdapter = new SlackChatAdapter(
@@ -811,14 +810,19 @@ export class EdgeWorker extends EventEmitter {
 			{ repositoryRoutingContext: routingContext },
 		);
 
-		// Build MCP config for Slack sessions using the first repository's Linear token
-		const mcpConfig = firstRepo
-			? this.buildMcpConfig(firstRepo.id, requireLinearWorkspaceId(firstRepo))
-			: undefined;
+		// Build MCP config for Slack sessions using first configured workspace
+		const firstLinearWorkspaceId = Object.keys(
+			this.config.linearWorkspaces || {},
+		)[0];
+		const firstRepoId = Array.from(this.repositories.values())[0]?.id;
+		const mcpConfig =
+			firstLinearWorkspaceId && firstRepoId
+				? this.buildMcpConfig(firstRepoId, firstLinearWorkspaceId)
+				: undefined;
 
-		if (!firstRepo) {
+		if (!firstLinearWorkspaceId || !firstRepoId) {
 			this.logger.warn(
-				"No repositories configured — Slack sessions will not have access to Linear MCP tools",
+				"No repositories or workspaces configured — Slack sessions will not have access to Linear MCP tools",
 			);
 		}
 
@@ -1756,7 +1760,7 @@ ${taskSection}`;
 				"", // No attachment manifest
 				false, // Not a new session
 				[], // No additional allowed directories
-				undefined, // workspaceId — will fall back to repo.linearWorkspaceId
+				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
 				nextSubroutine?.singleTurn ? 1 : undefined, // singleTurn mode
 			);
 			log.info(
@@ -1795,7 +1799,7 @@ ${taskSection}`;
 				"", // No attachment manifest
 				false, // Not a new session
 				[], // No additional allowed directories
-				undefined, // workspaceId — will fall back to repo.linearWorkspaceId
+				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
 				undefined, // No maxTurns limit for fixer
 			);
 			this.logger.info(`Successfully started fixer for iteration ${iteration}`);
@@ -1853,7 +1857,7 @@ ${taskSection}`;
 				"", // No attachment manifest
 				false, // Not a new session
 				[], // No additional allowed directories
-				undefined, // workspaceId — will fall back to repo.linearWorkspaceId
+				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
 				undefined, // No maxTurns limit
 			);
 			this.logger.info(`Successfully re-started verifications`);
@@ -2657,20 +2661,20 @@ ${taskSection}`;
 	 * Get issue tracker for a workspace (direct lookup by workspace ID)
 	 */
 	private getIssueTrackerForWorkspace(
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): IIssueTrackerService | undefined {
-		return this.issueTrackers.get(workspaceId);
+		return this.issueTrackers.get(linearWorkspaceId);
 	}
 
 	/**
 	 * Get the Linear API token for a workspace from workspace-level config.
 	 */
-	private getLinearTokenForWorkspace(workspaceId: string): string {
-		const workspaceConfig = this.config.linearWorkspaces?.[workspaceId];
+	private getLinearTokenForWorkspace(linearWorkspaceId: string): string {
+		const workspaceConfig = this.config.linearWorkspaces?.[linearWorkspaceId];
 		if (!workspaceConfig) {
 			throw new Error(
-				`No Linear workspace config found for workspace ${workspaceId}. ` +
-					`Ensure linearWorkspaces.${workspaceId} is configured.`,
+				`No Linear workspace config found for workspace ${linearWorkspaceId}. ` +
+					`Ensure linearWorkspaces.${linearWorkspaceId} is configured.`,
 			);
 		}
 		return workspaceConfig.linearToken;
@@ -2679,8 +2683,9 @@ ${taskSection}`;
 	/**
 	 * Get the Linear workspace slug for a workspace from workspace-level config.
 	 */
-	private getWorkspaceSlug(workspaceId: string): string | undefined {
-		return this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceSlug;
+	private getWorkspaceSlug(linearWorkspaceId: string): string | undefined {
+		return this.config.linearWorkspaces?.[linearWorkspaceId]
+			?.linearWorkspaceSlug;
 	}
 
 	/**
@@ -2689,7 +2694,7 @@ ${taskSection}`;
 	 * @param issue Linear issue object
 	 * @param repositories Repository configurations (primary repo is repositories[0])
 	 * @param agentSessionManager Agent session manager instance
-	 * @param workspaceId Linear workspace ID (from webhook.organizationId)
+	 * @param linearWorkspaceId Linear workspace ID (from webhook.organizationId)
 	 * @returns Object containing session details and setup information
 	 */
 	private async createLinearAgentSession(
@@ -2697,7 +2702,7 @@ ${taskSection}`;
 		issue: { id: string; identifier: string },
 		repositoriesOrSingle: RepositoryConfig | RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		baseBranchOverrides?: Map<string, string>,
 		routingMethod?: string,
 	): Promise<AgentSessionData> {
@@ -2707,13 +2712,16 @@ ${taskSection}`;
 		const primaryRepo = repositories[0]!;
 
 		// Fetch full Linear issue details using workspace ID from webhook context
-		const fullIssue = await this.fetchFullIssueDetails(issue.id, workspaceId);
+		const fullIssue = await this.fetchFullIssueDetails(
+			issue.id,
+			linearWorkspaceId,
+		);
 		if (!fullIssue) {
 			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
 		}
 
 		// Move issue to started state automatically, in case it's not already
-		await this.moveIssueToStartedState(fullIssue, workspaceId);
+		await this.moveIssueToStartedState(fullIssue, linearWorkspaceId);
 
 		// Create workspace using full issue data
 		// IMPORTANT: The CLI app (apps/cli/src/services/WorkerService.ts) typically provides
@@ -2779,7 +2787,7 @@ ${taskSection}`;
 			});
 			await this.postRoutingActivity(
 				sessionId,
-				workspaceId,
+				linearWorkspaceId,
 				repoLines,
 				routingMethod,
 			);
@@ -2796,7 +2804,7 @@ ${taskSection}`;
 		// Download attachments before creating Claude runner
 		const attachmentResult = await this.downloadIssueAttachments(
 			fullIssue,
-			workspaceId,
+			linearWorkspaceId,
 			workspace.path,
 		);
 
@@ -2937,11 +2945,11 @@ ${taskSection}`;
 		}
 
 		// Use organizationId from webhook as the Linear-native workspace ID source
-		const workspaceId = webhook.organizationId;
+		const linearWorkspaceId = webhook.organizationId;
 
 		const log = this.logger.withContext({
 			sessionId: webhook.agentSession.id,
-			platform: this.getRepositoryPlatform(workspaceId),
+			platform: this.getRepositoryPlatform(linearWorkspaceId),
 			issueIdentifier: webhook.agentSession.issue.identifier,
 		});
 		log.info(`Handling agent session created`);
@@ -2952,7 +2960,7 @@ ${taskSection}`;
 		await this.initializeAgentRunner(
 			agentSession,
 			repositories,
-			workspaceId,
+			linearWorkspaceId,
 			guidance,
 			commentBody,
 			baseBranchOverrides,
@@ -2969,7 +2977,7 @@ ${taskSection}`;
 	 *
 	 * @param agentSession The Linear agent session
 	 * @param repositories Repository configurations (primary repo is repositories[0])
-	 * @param workspaceId Linear workspace ID (from webhook.organizationId)
+	 * @param linearWorkspaceId Linear workspace ID (from webhook.organizationId)
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
 	 * @param baseBranchOverrides Per-repo base branch overrides from [repo=name#branch] syntax
@@ -2977,7 +2985,7 @@ ${taskSection}`;
 	private async initializeAgentRunner(
 		agentSession: AgentSessionCreatedWebhook["agentSession"],
 		repositories: RepositoryConfig[],
-		workspaceId: string,
+		linearWorkspaceId: string,
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
 		baseBranchOverrides?: Map<string, string>,
@@ -3026,7 +3034,7 @@ ${taskSection}`;
 		const agentSessionManager = this.agentSessionManager;
 
 		// Post instant acknowledgment thought
-		await this.postInstantAcknowledgment(sessionId, workspaceId);
+		await this.postInstantAcknowledgment(sessionId, linearWorkspaceId);
 
 		// Create the session using the shared method (pass full repositories array)
 		const sessionData = await this.createLinearAgentSession(
@@ -3034,7 +3042,7 @@ ${taskSection}`;
 			issue,
 			repositories,
 			agentSessionManager,
-			workspaceId,
+			linearWorkspaceId,
 			baseBranchOverrides,
 			routingMethod,
 		);
@@ -3185,7 +3193,7 @@ ${taskSection}`;
 				isMentionTriggered: isMentionTriggered || false,
 				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
 				resolvedBaseBranches: sessionData.workspace.resolvedBaseBranches,
-				workspaceId,
+				linearWorkspaceId,
 			};
 
 			// Use unified prompt assembly
@@ -3214,7 +3222,7 @@ ${taskSection}`;
 					await this.postSystemPromptSelectionThought(
 						sessionId,
 						labels,
-						workspaceId,
+						linearWorkspaceId,
 						primaryRepo.id,
 					);
 				}
@@ -3275,7 +3283,7 @@ ${taskSection}`;
 				currentSubroutine?.singleTurn, // singleTurn flag
 				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
 				undefined, // mcpOptions
-				workspaceId,
+				linearWorkspaceId,
 			);
 
 			log.debug(
@@ -3517,7 +3525,7 @@ ${taskSection}`;
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
 		// Use organizationId from webhook as the Linear-native workspace ID source
-		const workspaceId = webhook.organizationId;
+		const linearWorkspaceId = webhook.organizationId;
 
 		if (!issue) {
 			this.logger.warn("Cannot handle prompted activity without issue");
@@ -3546,7 +3554,7 @@ ${taskSection}`;
 			// Post instant acknowledgment for new session creation
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				workspaceId,
+				linearWorkspaceId,
 				false,
 			);
 
@@ -3557,7 +3565,7 @@ ${taskSection}`;
 				issue,
 				repository,
 				agentSessionManager,
-				workspaceId,
+				linearWorkspaceId,
 			);
 
 			// Destructure session data for new session
@@ -3586,12 +3594,12 @@ ${taskSection}`;
 
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				workspaceId,
+				linearWorkspaceId,
 				isCurrentlyStreaming,
 			);
 
 			// Need to fetch full issue for routing context
-			const issueTracker = this.issueTrackers.get(workspaceId);
+			const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 			if (issueTracker) {
 				try {
 					fullIssue = await issueTracker.fetchIssue(issue.id);
@@ -3619,11 +3627,11 @@ ${taskSection}`;
 		// (before any async routing work to ensure instant user feedback)
 
 		// Get issue tracker using workspace ID from webhook context
-		const issueTracker = this.issueTrackers.get(workspaceId);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 		if (!issueTracker) {
 			this.logger.error(
 				"Unexpected: There was no IssueTrackerService for workspace",
-				workspaceId,
+				linearWorkspaceId,
 			);
 			return;
 		}
@@ -3669,7 +3677,7 @@ ${taskSection}`;
 
 			// Download new attachments from the comment
 			const linearTokenForAttachments =
-				this.getLinearTokenForWorkspace(workspaceId);
+				this.getLinearTokenForWorkspace(linearWorkspaceId);
 			const downloadResult = comment
 				? await this.downloadCommentAttachments(
 						comment.body,
@@ -3705,7 +3713,7 @@ ${taskSection}`;
 				isNewSession,
 				[], // No additional allowed directories for regular continuation
 				`prompted webhook (${isNewSession ? "new" : "existing"} session)`,
-				workspaceId,
+				linearWorkspaceId,
 				commentAuthor,
 				commentTimestamp,
 			);
@@ -3851,11 +3859,11 @@ ${taskSection}`;
 	/**
 	 * Handle issue unassignment
 	 * @param issue Linear issue object from webhook data
-	 * @param workspaceId Linear workspace ID (from webhook.organizationId)
+	 * @param linearWorkspaceId Linear workspace ID (from webhook.organizationId)
 	 */
 	private async handleIssueUnassigned(
 		issue: WebhookIssue,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		const sessions = this.agentSessionManager.getSessionsByIssueId(issue.id);
 		const activeThreadCount = sessions.length;
@@ -3872,7 +3880,7 @@ ${taskSection}`;
 			await this.postComment(
 				issue.id,
 				"I've been unassigned and am stopping work now.",
-				workspaceId,
+				linearWorkspaceId,
 				// No parentId - post as a new comment on the issue
 			);
 		}
@@ -4094,18 +4102,18 @@ ${taskSection}`;
 	/**
 	 * Move issue to started state when assigned
 	 * @param issue Full Linear issue object from Linear SDK
-	 * @param workspaceId Workspace ID for issue tracker lookup
+	 * @param linearWorkspaceId Workspace ID for issue tracker lookup
 	 */
 
 	private async moveIssueToStartedState(
 		issue: Issue,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(workspaceId);
+			const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 			if (!issueTracker) {
 				this.logger.warn(
-					`No issue tracker found for workspace ${workspaceId}, skipping state update`,
+					`No issue tracker found for workspace ${linearWorkspaceId}, skipping state update`,
 				);
 				return;
 			}
@@ -4199,13 +4207,13 @@ ${taskSection}`;
 	private async postComment(
 		issueId: string,
 		body: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		parentId?: string,
 	): Promise<void> {
 		return this.activityPoster.postComment(
 			issueId,
 			body,
-			workspaceId,
+			linearWorkspaceId,
 			parentId,
 		);
 	}
@@ -4229,13 +4237,13 @@ ${taskSection}`;
 	 */
 	private async downloadIssueAttachments(
 		issue: Issue,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
-		const issueTracker = this.issueTrackers.get(workspaceId);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 		return this.attachmentService.downloadIssueAttachments(
 			issue,
-			workspaceId,
+			linearWorkspaceId,
 			workspacePath,
 			issueTracker,
 		);
@@ -4583,12 +4591,12 @@ ${taskSection}`;
 	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
 	 * Workspace-level servers (Linear, cyrus-tools, Slack) are configured once using workspace-level token.
 	 * @param repoId - Repository ID for MCP context scoping
-	 * @param workspaceId - Linear workspace ID (from webhook.organizationId or repo config)
+	 * @param linearWorkspaceId - Linear workspace ID (from webhook.organizationId or repo config)
 	 * @param options.excludeSlackMcp - When true, excludes the Slack MCP server even if SLACK_BOT_TOKEN is set (e.g., for GitHub sessions)
 	 */
 	private buildMcpConfig(
 		repoId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		parentSessionId?: string,
 		options?: { excludeSlackMcp?: boolean },
 	): Record<string, McpServerConfig> {
@@ -4596,13 +4604,13 @@ ${taskSection}`;
 
 		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		// If the client reconnects and needs another server, the endpoint creates a fresh one.
-		const linearToken = this.getLinearTokenForWorkspace(workspaceId);
-		const issueTracker = this.issueTrackers.get(workspaceId) as
+		const linearToken = this.getLinearTokenForWorkspace(linearWorkspaceId);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId) as
 			| (IIssueTrackerService & { getClient?: () => LinearClient })
 			| undefined;
 		if (!issueTracker?.getClient) {
 			throw new Error(
-				`No issue tracker with getClient() found for workspace ${workspaceId}`,
+				`No issue tracker with getClient() found for workspace ${linearWorkspaceId}`,
 			);
 		}
 		const linearClient = issueTracker.getClient();
@@ -4875,7 +4883,7 @@ ${taskSection}`;
 		let subroutineName: string | undefined;
 		if (currentSubroutine) {
 			const resolvedWsId =
-				input.workspaceId ?? requireLinearWorkspaceId(input.repository);
+				input.linearWorkspaceId ?? requireLinearWorkspaceId(input.repository);
 			const subroutinePrompt = await this.loadSubroutinePrompt(
 				currentSubroutine,
 				this.getWorkspaceSlug(resolvedWsId),
@@ -5110,7 +5118,7 @@ ${input.userComment}
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
 		mcpOptions?: { excludeSlackMcp?: boolean },
-		workspaceId?: string,
+		linearWorkspaceId?: string,
 	): {
 		config: AgentRunnerConfig;
 		runnerType: RunnerType;
@@ -5253,7 +5261,7 @@ ${input.userComment}
 		// When disallowAllTools is true, don't provide any MCP servers to ensure
 		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
 		const resolvedWorkspaceId =
-			workspaceId ?? requireLinearWorkspaceId(repository);
+			linearWorkspaceId ?? requireLinearWorkspaceId(repository);
 		const mcpConfig = disallowAllTools
 			? undefined
 			: this.buildMcpConfig(
@@ -5662,11 +5670,11 @@ ${input.userComment}
 	 */
 	private async postInstantAcknowledgment(
 		sessionId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		return this.activityPoster.postInstantAcknowledgment(
 			sessionId,
-			workspaceId,
+			linearWorkspaceId,
 		);
 	}
 
@@ -5675,11 +5683,11 @@ ${input.userComment}
 	 */
 	private async postParentResumeAcknowledgment(
 		sessionId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		return this.activityPoster.postParentResumeAcknowledgment(
 			sessionId,
-			workspaceId,
+			linearWorkspaceId,
 		);
 	}
 
@@ -5688,13 +5696,13 @@ ${input.userComment}
 	 */
 	private async postRoutingActivity(
 		sessionId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		repoLines: string[],
 		routingMethod?: string,
 	): Promise<void> {
 		return this.activityPoster.postRoutingActivity(
 			sessionId,
-			workspaceId,
+			linearWorkspaceId,
 			repoLines,
 			routingMethod,
 		);
@@ -5710,7 +5718,7 @@ ${input.userComment}
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
 		repository: RepositoryConfig,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		// Initialize procedure metadata using intelligent routing
 		if (!session.metadata) {
@@ -5721,7 +5729,7 @@ ${input.userComment}
 		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch full issue and labels to check for Orchestrator label override
-		const issueTracker = this.issueTrackers.get(workspaceId);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 		let hasOrchestratorLabel = false;
 
 		// Get issueId from issueContext (preferred) or deprecated issueId field
@@ -5827,7 +5835,7 @@ ${input.userComment}
 		isNewSession: boolean,
 		additionalAllowedDirs: string[],
 		logContext: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		commentAuthor?: string,
 		commentTimestamp?: string,
 	): Promise<boolean> {
@@ -5844,7 +5852,7 @@ ${input.userComment}
 				agentSessionManager,
 				promptBody,
 				repository,
-				workspaceId,
+				linearWorkspaceId,
 			);
 			log.debug(`Routed procedure for ${logContext}`);
 		} else {
@@ -5885,7 +5893,7 @@ ${input.userComment}
 			attachmentManifest,
 			isNewSession,
 			additionalAllowedDirs,
-			workspaceId,
+			linearWorkspaceId,
 			undefined, // maxTurns
 			commentAuthor,
 			commentTimestamp,
@@ -5900,13 +5908,13 @@ ${input.userComment}
 	private async postSystemPromptSelectionThought(
 		sessionId: string,
 		labels: string[],
-		workspaceId: string,
+		linearWorkspaceId: string,
 		repositoryId: string,
 	): Promise<void> {
 		return this.activityPoster.postSystemPromptSelectionThought(
 			sessionId,
 			labels,
-			workspaceId,
+			linearWorkspaceId,
 			repositoryId,
 		);
 	}
@@ -5931,7 +5939,7 @@ ${input.userComment}
 		attachmentManifest: string = "",
 		isNewSession: boolean = false,
 		additionalAllowedDirectories: string[] = [],
-		workspaceId?: string,
+		linearWorkspaceId?: string,
 		maxTurns?: number,
 		commentAuthor?: string,
 		commentTimestamp?: string,
@@ -5968,7 +5976,7 @@ ${input.userComment}
 
 		// Fetch full issue details using workspace ID (from webhook context or repo fallback)
 		const resolvedWorkspaceId =
-			workspaceId ?? requireLinearWorkspaceId(repository);
+			linearWorkspaceId ?? requireLinearWorkspaceId(repository);
 		const fullIssue = await this.fetchFullIssueDetails(
 			issueIdForResume,
 			resolvedWorkspaceId,
@@ -6121,12 +6129,12 @@ ${input.userComment}
 	 */
 	private async postInstantPromptedAcknowledgment(
 		sessionId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		isStreaming: boolean,
 	): Promise<void> {
 		return this.activityPoster.postInstantPromptedAcknowledgment(
 			sessionId,
-			workspaceId,
+			linearWorkspaceId,
 			isStreaming,
 		);
 	}
@@ -6134,9 +6142,9 @@ ${input.userComment}
 	/**
 	 * Get the platform type for a workspace's issue tracker.
 	 */
-	private getRepositoryPlatform(workspaceId: string): string | undefined {
+	private getRepositoryPlatform(linearWorkspaceId: string): string | undefined {
 		try {
-			return this.issueTrackers.get(workspaceId)?.getPlatformType();
+			return this.issueTrackers.get(linearWorkspaceId)?.getPlatformType();
 		} catch {
 			return undefined;
 		}
@@ -6147,11 +6155,13 @@ ${input.userComment}
 	 */
 	public async fetchFullIssueDetails(
 		issueId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<Issue | null> {
-		const issueTracker = this.issueTrackers.get(workspaceId);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
+			this.logger.warn(
+				`No issue tracker found for workspace ${linearWorkspaceId}`,
+			);
 			return null;
 		}
 
@@ -6188,7 +6198,9 @@ ${input.userComment}
 	 * Uses workspace-level token storage.
 	 * Returns undefined if OAuth credentials are not available.
 	 */
-	private buildOAuthConfig(workspaceId: string): LinearOAuthConfig | undefined {
+	private buildOAuthConfig(
+		linearWorkspaceId: string,
+	): LinearOAuthConfig | undefined {
 		const clientId = process.env.LINEAR_CLIENT_ID;
 		const clientSecret = process.env.LINEAR_CLIENT_SECRET;
 
@@ -6199,30 +6211,30 @@ ${input.userComment}
 			return undefined;
 		}
 
-		const workspaceConfig = this.config.linearWorkspaces?.[workspaceId];
+		const workspaceConfig = this.config.linearWorkspaces?.[linearWorkspaceId];
 		if (!workspaceConfig?.linearRefreshToken) {
 			this.logger.warn(
-				`No refresh token for workspace ${workspaceId}, token refresh disabled`,
+				`No refresh token for workspace ${linearWorkspaceId}, token refresh disabled`,
 			);
 			return undefined;
 		}
 
 		// Get workspace name from workspace-level config
 		const workspaceName =
-			this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceName ||
-			workspaceId;
+			this.config.linearWorkspaces?.[linearWorkspaceId]?.linearWorkspaceName ||
+			linearWorkspaceId;
 
 		return {
 			clientId,
 			clientSecret,
 			refreshToken: workspaceConfig.linearRefreshToken,
-			workspaceId,
+			workspaceId: linearWorkspaceId,
 			onTokenRefresh: async (tokens) => {
 				// Update workspace config in memory
-				if (this.config.linearWorkspaces?.[workspaceId]) {
-					this.config.linearWorkspaces[workspaceId].linearToken =
+				if (this.config.linearWorkspaces?.[linearWorkspaceId]) {
+					this.config.linearWorkspaces[linearWorkspaceId].linearToken =
 						tokens.accessToken;
-					this.config.linearWorkspaces[workspaceId].linearRefreshToken =
+					this.config.linearWorkspaces[linearWorkspaceId].linearRefreshToken =
 						tokens.refreshToken;
 				}
 
@@ -6230,7 +6242,7 @@ ${input.userComment}
 				await this.saveOAuthTokens({
 					linearToken: tokens.accessToken,
 					linearRefreshToken: tokens.refreshToken,
-					linearWorkspaceId: workspaceId,
+					linearWorkspaceId: linearWorkspaceId,
 					linearWorkspaceName: workspaceName,
 				});
 			},
