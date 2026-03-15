@@ -812,7 +812,9 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Build MCP config for Slack sessions using the first repository's Linear token
-		const mcpConfig = firstRepo ? this.buildMcpConfig(firstRepo) : undefined;
+		const mcpConfig = firstRepo
+			? this.buildMcpConfig(firstRepo.id, requireLinearWorkspaceId(firstRepo))
+			: undefined;
 
 		if (!firstRepo) {
 			this.logger.warn(
@@ -4536,14 +4538,14 @@ ${taskSection}`;
 	}
 
 	private buildCyrusToolsMcpContextId(
-		repository: RepositoryConfig,
+		repoId: string,
 		parentSessionId?: string,
 	): string {
 		if (parentSessionId) {
-			return `${repository.id}:${parentSessionId}`;
+			return `${repoId}:${parentSessionId}`;
 		}
 
-		return `${repository.id}:anon:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+		return `${repoId}:anon:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 	}
 
 	private getCyrusToolsMcpUrl(): string {
@@ -4579,35 +4581,30 @@ ${taskSection}`;
 
 	/**
 	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
-	 * Accepts a single repository or an array for multi-repo sessions.
 	 * Workspace-level servers (Linear, cyrus-tools, Slack) are configured once using workspace-level token.
+	 * @param repoId - Repository ID for MCP context scoping
+	 * @param workspaceId - Linear workspace ID (from webhook.organizationId or repo config)
 	 * @param options.excludeSlackMcp - When true, excludes the Slack MCP server even if SLACK_BOT_TOKEN is set (e.g., for GitHub sessions)
 	 */
 	private buildMcpConfig(
-		repositories: RepositoryConfig | RepositoryConfig[],
+		repoId: string,
+		workspaceId: string,
 		parentSessionId?: string,
 		options?: { excludeSlackMcp?: boolean },
-		workspaceId?: string,
 	): Record<string, McpServerConfig> {
-		const repoArray = Array.isArray(repositories)
-			? repositories
-			: [repositories];
-
-		// Use first repository for workspace-level MCP context (Linear token, context ID)
-		const primaryRepo = repoArray[0]!;
-		const resolvedWorkspaceId =
-			workspaceId ?? requireLinearWorkspaceId(primaryRepo);
-		const contextId = this.buildCyrusToolsMcpContextId(
-			primaryRepo,
-			parentSessionId,
-		);
+		const contextId = this.buildCyrusToolsMcpContextId(repoId, parentSessionId);
 
 		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		// If the client reconnects and needs another server, the endpoint creates a fresh one.
-		const linearToken = this.getLinearTokenForWorkspace(resolvedWorkspaceId);
-		const issueTracker = this.issueTrackers.get(
-			resolvedWorkspaceId,
-		) as LinearIssueTrackerService;
+		const linearToken = this.getLinearTokenForWorkspace(workspaceId);
+		const issueTracker = this.issueTrackers.get(workspaceId) as
+			| (IIssueTrackerService & { getClient?: () => LinearClient })
+			| undefined;
+		if (!issueTracker?.getClient) {
+			throw new Error(
+				`No issue tracker with getClient() found for workspace ${workspaceId}`,
+			);
+		}
 		const linearClient = issueTracker.getClient();
 		const prebuiltServer = createCyrusToolsServer(
 			linearClient,
@@ -5255,9 +5252,16 @@ ${input.userComment}
 
 		// When disallowAllTools is true, don't provide any MCP servers to ensure
 		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
+		const resolvedWorkspaceId =
+			workspaceId ?? requireLinearWorkspaceId(repository);
 		const mcpConfig = disallowAllTools
 			? undefined
-			: this.buildMcpConfig(repository, sessionId, mcpOptions, workspaceId);
+			: this.buildMcpConfig(
+					repository.id,
+					resolvedWorkspaceId,
+					sessionId,
+					mcpOptions,
+				);
 		const mcpConfigPath = disallowAllTools
 			? undefined
 			: this.buildMergedMcpConfigPath(repository);
@@ -5295,7 +5299,7 @@ ${input.userComment}
 			...(runnerType === "claude" && {
 				onAskUserQuestion: this.createAskUserQuestionCallback(
 					sessionId,
-					workspaceId ?? requireLinearWorkspaceId(repository),
+					resolvedWorkspaceId,
 				),
 			}),
 			onMessage: (message: SDKMessage) => {
