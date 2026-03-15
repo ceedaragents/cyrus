@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Self-auth no longer modifies repositories or shows confusing messages** - `cyrus self-auth` now only saves workspace credentials and no longer auto-links repositories. Shows "Saved credentials for workspace: \<name\>" and guides users to run `cyrus self-add-repo` when no repos exist. Resolves [#716](https://github.com/ceedaragents/cyrus/issues/716). ([CYPACK-964](https://linear.app/ceedar/issue/CYPACK-964), [#988](https://github.com/ceedaragents/cyrus/pull/988))
+
 ## [0.2.34] - 2026-03-13
 
 ### Fixed
