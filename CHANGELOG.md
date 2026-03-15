@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Self-auth no longer shows confusing "Updated 0 repositories" message** - When running `cyrus self-auth` with no repositories configured, the CLI now shows "Saved credentials for workspace: \<name\>" and guides users to run `cyrus self-add-repo`. ([CYPACK-964](https://linear.app/ceedar/issue/CYPACK-964), [#988](https://github.com/ceedaragents/cyrus/pull/988))
+
 ## [0.2.34] - 2026-03-13
 
 ### Fixed
