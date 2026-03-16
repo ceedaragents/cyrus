@@ -52,7 +52,10 @@ export class Application {
 
 		// Initialize services
 		this.config = new ConfigService(cyrusHome, this.logger);
-		this.git = new GitService(this.logger);
+		this.git = new GitService(
+			join(cyrusHome, DEFAULT_WORKTREES_DIR),
+			this.logger,
+		);
 		this.worker = new WorkerService(
 			this.config,
 			this.git,

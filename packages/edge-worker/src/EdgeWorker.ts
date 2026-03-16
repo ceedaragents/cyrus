@@ -49,6 +49,7 @@ import {
 	CLIRPCServer,
 	createLogger,
 	DEFAULT_PROXY_URL,
+	DEFAULT_WORKTREES_DIR,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isContentUpdateMessage,
@@ -289,7 +290,9 @@ export class EdgeWorker extends EventEmitter {
 			},
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
-		this.gitService = new GitService();
+		this.gitService = new GitService(
+			join(this.cyrusHome, DEFAULT_WORKTREES_DIR),
+		);
 
 		// Initialize AskUserQuestion handler for elicitation via Linear select signal
 		this.askUserQuestionHandler = new AskUserQuestionHandler({
@@ -2376,26 +2379,8 @@ ${taskSection}`;
 			session.agentRunner?.stop();
 		}
 
-		// Delete worktrees for this issue. deleteWorktree already handles
-		// multi-repo layouts by finding all worktrees under the issue directory,
-		// so we only need to call it once with any repo's workspaceBaseDir.
-		const repo =
-			this.getCachedRepository(issueId) ??
-			(() => {
-				for (const session of sessions) {
-					const repoId = this.sessionRepositories.get(session.id);
-					const r = repoId ? this.repositories.get(repoId) : undefined;
-					if (r) return r;
-				}
-				return null;
-			})();
-
-		if (repo) {
-			this.gitService.deleteWorktree(
-				message.workItemIdentifier,
-				repo.workspaceBaseDir,
-			);
-		}
+		// Delete worktrees for this issue, keyed by the Linear issue identifier.
+		this.gitService.deleteWorktree(message.workItemIdentifier);
 
 		this.logger.info(
 			`Completed cleanup for ${message.workItemIdentifier}: stopped ${sessions.length} session(s)`,

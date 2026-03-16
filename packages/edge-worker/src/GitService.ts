@@ -32,10 +32,12 @@ export interface CreateGitWorktreeOptions {
 export class GitService {
 	private logger: ILogger;
 	private worktreeIncludeService: WorktreeIncludeService;
+	private workspaceBaseDir: string;
 
-	constructor(logger?: ILogger) {
+	constructor(workspaceBaseDir: string, logger?: ILogger) {
 		this.logger = logger ?? createLogger({ component: "GitService" });
 		this.worktreeIncludeService = new WorktreeIncludeService(this.logger);
+		this.workspaceBaseDir = workspaceBaseDir;
 	}
 	/**
 	 * Check if a branch exists locally or remotely
@@ -832,10 +834,9 @@ export class GitService {
 	 * directory is the root in both cases.
 	 *
 	 * @param issueIdentifier - The issue identifier (e.g., "DEF-123")
-	 * @param workspaceBaseDir - The base directory for worktrees (e.g., "~/.cyrus/worktrees")
 	 */
-	deleteWorktree(issueIdentifier: string, workspaceBaseDir: string): void {
-		const workspacePath = join(workspaceBaseDir, issueIdentifier);
+	deleteWorktree(issueIdentifier: string): void {
+		const workspacePath = join(this.workspaceBaseDir, issueIdentifier);
 
 		if (!existsSync(workspacePath)) {
 			this.logger.info(

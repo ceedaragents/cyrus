@@ -40,7 +40,7 @@ describe("GitService", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		gitService = new GitService(mockLogger);
+		gitService = new GitService("/home/user/.cyrus/worktrees", mockLogger);
 	});
 
 	describe("findWorktreeByBranch", () => {
@@ -321,7 +321,7 @@ describe("GitService", () => {
 		it("does nothing when workspace directory does not exist", () => {
 			mockExistsSync.mockReturnValue(false);
 
-			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+			gitService.deleteWorktree("DEF-123");
 
 			expect(mockRmSync).not.toHaveBeenCalled();
 			expect(mockLogger.info).toHaveBeenCalledWith(
@@ -348,7 +348,7 @@ describe("GitService", () => {
 
 			mockExecSync.mockReturnValue(Buffer.from(""));
 
-			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+			gitService.deleteWorktree("DEF-123");
 
 			// Should run git worktree remove
 			expect(mockExecSync).toHaveBeenCalledWith(
@@ -395,7 +395,7 @@ describe("GitService", () => {
 
 			mockExecSync.mockReturnValue(Buffer.from(""));
 
-			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+			gitService.deleteWorktree("DEF-123");
 
 			// Should run git worktree remove for both subdirectories
 			expect(mockExecSync).toHaveBeenCalledWith(
@@ -434,7 +434,7 @@ describe("GitService", () => {
 				throw new Error("git worktree remove failed");
 			});
 
-			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+			gitService.deleteWorktree("DEF-123");
 
 			// Should still attempt to delete the directory despite git failure
 			expect(mockRmSync).toHaveBeenCalledWith(
@@ -456,7 +456,7 @@ describe("GitService", () => {
 
 			mockReaddirSync.mockReturnValue([] as any);
 
-			gitService.deleteWorktree("DEF-123", "/home/user/.cyrus/worktrees");
+			gitService.deleteWorktree("DEF-123");
 
 			// Should not call git worktree remove
 			expect(mockExecSync).not.toHaveBeenCalled();
