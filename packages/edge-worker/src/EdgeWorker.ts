@@ -320,21 +320,10 @@ export class EdgeWorker extends EventEmitter {
 				return parentId;
 			},
 			async (parentSessionId, prompt, childSessionId) => {
-				const childSession =
-					this.agentSessionManager.getSession(childSessionId);
-				const repoId = childSession?.repositories[0]?.repositoryId;
-				const repo = repoId ? this.repositories.get(repoId) : undefined;
-				if (!repo) {
-					this.logger.error(
-						`No repository found for child session ${childSessionId}`,
-					);
-					return;
-				}
 				await this.handleResumeParentSession(
 					parentSessionId,
 					prompt,
 					childSessionId,
-					repo,
 					this.agentSessionManager,
 				);
 			},
@@ -346,18 +335,9 @@ export class EdgeWorker extends EventEmitter {
 		this.agentSessionManager.on(
 			"subroutineComplete",
 			async ({ sessionId, session }) => {
-				const repoId = session.repositories[0]?.repositoryId;
-				const repo = repoId ? this.repositories.get(repoId) : undefined;
-				if (!repo) {
-					this.logger.error(
-						`No repository found for session ${sessionId} during subroutine transition`,
-					);
-					return;
-				}
 				await this.handleSubroutineTransition(
 					sessionId,
 					session,
-					repo,
 					this.agentSessionManager,
 				);
 			},
@@ -366,21 +346,12 @@ export class EdgeWorker extends EventEmitter {
 		this.agentSessionManager.on(
 			"validationLoopIteration",
 			async ({ sessionId, session, fixerPrompt, iteration, maxIterations }) => {
-				const repoId = session.repositories[0]?.repositoryId;
-				const repo = repoId ? this.repositories.get(repoId) : undefined;
-				if (!repo) {
-					this.logger.error(
-						`No repository found for session ${sessionId} during validation loop`,
-					);
-					return;
-				}
 				this.logger.info(
 					`Validation loop iteration ${iteration}/${maxIterations}, running fixer`,
 				);
 				await this.handleValidationLoopFixer(
 					sessionId,
 					session,
-					repo,
 					this.agentSessionManager,
 					fixerPrompt,
 					iteration,
@@ -391,21 +362,12 @@ export class EdgeWorker extends EventEmitter {
 		this.agentSessionManager.on(
 			"validationLoopRerun",
 			async ({ sessionId, session, iteration }) => {
-				const repoId = session.repositories[0]?.repositoryId;
-				const repo = repoId ? this.repositories.get(repoId) : undefined;
-				if (!repo) {
-					this.logger.error(
-						`No repository found for session ${sessionId} during validation rerun`,
-					);
-					return;
-				}
 				this.logger.info(
 					`Validation loop re-running verifications (iteration ${iteration})`,
 				);
 				await this.handleValidationLoopRerun(
 					sessionId,
 					session,
-					repo,
 					this.agentSessionManager,
 				);
 			},
@@ -1597,7 +1559,6 @@ ${taskSection}`;
 		parentSessionId: string,
 		prompt: string,
 		childSessionId: string,
-		_childRepo: RepositoryConfig,
 		childAgentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId: parentSessionId });
@@ -1699,11 +1660,18 @@ ${taskSection}`;
 	private async handleSubroutineTransition(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		const log = this.logger.withContext({ sessionId });
 		log.info(`Handling subroutine completion for session ${sessionId}`);
+
+		const repo = this.resolveSessionRepo(session);
+		if (!repo) {
+			log.error(
+				`No repository found for session ${sessionId} during subroutine transition`,
+			);
+			return;
+		}
 
 		// Get next subroutine (advancement already handled by AgentSessionManager)
 		const nextSubroutine = this.procedureAnalyzer.getCurrentSubroutine(session);
@@ -1769,7 +1737,6 @@ ${taskSection}`;
 	private async handleValidationLoopFixer(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
 		fixerPrompt: string,
 		iteration: number,
@@ -1777,6 +1744,14 @@ ${taskSection}`;
 		this.logger.info(
 			`Running fixer for session ${sessionId}, iteration ${iteration}`,
 		);
+
+		const repo = this.resolveSessionRepo(session);
+		if (!repo) {
+			this.logger.error(
+				`No repository found for session ${sessionId} during validation loop fixer`,
+			);
+			return;
+		}
 
 		try {
 			await this.resumeAgentSession(
@@ -1806,10 +1781,17 @@ ${taskSection}`;
 	private async handleValidationLoopRerun(
 		sessionId: string,
 		session: CyrusAgentSession,
-		repo: RepositoryConfig,
 		agentSessionManager: AgentSessionManager,
 	): Promise<void> {
 		this.logger.info(`Re-running verifications for session ${sessionId}`);
+
+		const repo = this.resolveSessionRepo(session);
+		if (!repo) {
+			this.logger.error(
+				`No repository found for session ${sessionId} during validation rerun`,
+			);
+			return;
+		}
 
 		// Get the verifications subroutine definition
 		const verificationsSubroutine =
@@ -2019,6 +2001,10 @@ ${taskSection}`;
 				this.logger.info(`🗑️  Removing repository: ${repo.name} (${repo.id})`);
 
 				// Check for active sessions for this repository
+				// TODO (multi-repo): When multi-repo session support is added, sessions may span
+				// multiple repos. Instead of stopping the entire session, we should detach only the
+				// removed repo and keep the session alive if it still has other repos. Sessions
+				// without any repos (e.g. Slack surfaces) are unaffected by repo removal.
 				const allActiveSessions = this.agentSessionManager.getActiveSessions();
 				const activeSessions = allActiveSessions.filter((s) =>
 					s.repositories.some((r) => r.repositoryId === repo.id),
@@ -2673,6 +2659,18 @@ ${taskSection}`;
 	/**
 	 * Get the Linear workspace slug for a workspace from workspace-level config.
 	 */
+	/**
+	 * Resolve the repository config for a session from its repositories array.
+	 * TODO (multi-repo): When multi-repo session support is added, callers will need
+	 * to specify which repo they need rather than assuming the first one.
+	 */
+	private resolveSessionRepo(
+		session: CyrusAgentSession,
+	): RepositoryConfig | undefined {
+		const repoId = session.repositories[0]?.repositoryId;
+		return repoId ? this.repositories.get(repoId) : undefined;
+	}
+
 	private getWorkspaceSlug(linearWorkspaceId: string): string | undefined {
 		return this.config.linearWorkspaces?.[linearWorkspaceId]
 			?.linearWorkspaceSlug;
