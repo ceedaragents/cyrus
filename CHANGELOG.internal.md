@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Registered `-l`/`--label` option with Commander for `self-add-repo` command (was documented but never registered, causing `error: unknown option '-l'`). Fixed idle mode messaging to show `cyrus self-add-repo` guidance for self-hosted users (detected via `LINEAR_CLIENT_ID`) instead of cloud URL. Updated `self-auth` error messages to point to `~/.cyrus/.env` instead of `.zshrc`. Made `self-add-repo` URL argument optional so the interactive prompt ("Repository URL: ") is reachable — `cyrus self-add-repo` with no args now prompts for everything. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
+
 ## [0.2.35] - 2026-03-16
 
 ### Changed
