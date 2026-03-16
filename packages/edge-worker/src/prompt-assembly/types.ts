@@ -6,6 +6,7 @@
  */
 
 import type {
+	BaseBranchResolution,
 	CyrusAgentSession,
 	GuidanceRule,
 	Issue,
@@ -73,7 +74,12 @@ export interface PromptAssemblyInput {
 	/** Full issue details */
 	fullIssue: Issue;
 
-	/** Repository configuration */
+	/** Repository configurations (all repos in the session) */
+	repositories: RepositoryConfig[];
+
+	/**
+	 * @deprecated Use `repositories` instead. Alias for `repositories[0]`.
+	 */
 	repository: RepositoryConfig;
 
 	// ===== Prompt Content =====
@@ -113,6 +119,12 @@ export interface PromptAssemblyInput {
 
 	/** GitHub username of the issue assignee (resolved from Linear gitHubUserId) */
 	assigneeGitHubUsername?: string;
+
+	/** Pre-resolved base branches from workspace creation (keyed by repositoryId) */
+	resolvedBaseBranches?: Record<string, BaseBranchResolution>;
+
+	/** Linear workspace ID (from webhook.organizationId). When provided, avoids extracting from repo config. */
+	linearWorkspaceId?: string;
 }
 
 /**

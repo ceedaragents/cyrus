@@ -33,10 +33,24 @@ export interface IssueContext {
 	issueIdentifier: string;
 }
 
+/** Result of base branch resolution, including the source for reporting */
+export interface BaseBranchResolution {
+	/** The resolved base branch name */
+	branch: string;
+	/** Why this branch was selected */
+	source: "commit-ish" | "graphite-blocked-by" | "parent-issue" | "default";
+	/** Human-readable detail (e.g., blocking issue identifier) */
+	detail?: string;
+}
+
 export interface Workspace {
 	path: string;
 	isGitWorktree: boolean;
 	historyPath?: string;
+	/** Maps repositoryId to worktree path for multi-repo workspaces */
+	repoPaths?: Record<string, string>;
+	/** Maps repositoryId to resolved base branch with source info */
+	resolvedBaseBranches?: Record<string, BaseBranchResolution>;
 }
 
 /**

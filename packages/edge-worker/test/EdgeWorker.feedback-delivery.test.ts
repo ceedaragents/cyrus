@@ -61,7 +61,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		mockOnSessionCreated = vi.fn();
 
 		// Mock createCyrusToolsServer to return a proper structure
-		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
+		vi.mocked(createCyrusToolsServer).mockImplementation((_client, options) => {
 			// Capture the callbacks
 			if (options?.onFeedbackDelivery) {
 				mockOnFeedbackDelivery = options.onFeedbackDelivery;
@@ -189,6 +189,13 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			"test-repo",
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+
+		// Inject mock issue tracker for the test workspace
+		(edgeWorker as any).issueTrackers.set(mockRepository.linearWorkspaceId, {
+			fetchIssue: vi.fn(),
+			getIssueLabels: vi.fn().mockResolvedValue([]),
+			getClient: vi.fn().mockReturnValue({}),
+		});
 	});
 
 	afterEach(() => {
@@ -205,7 +212,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				parentSessionId,
 			);
 
@@ -270,7 +278,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				undefined, // No parent session ID
 			);
 
@@ -303,7 +312,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				"parent-session-123",
 			);
 
@@ -332,7 +342,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				"parent-session-123",
 			);
 
@@ -359,7 +370,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				"parent-session-123",
 			);
 
@@ -396,7 +408,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				"parent-session-123",
 			);
 
@@ -428,7 +441,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Act
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				parentSessionId,
 			);
 
@@ -437,7 +451,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			// Verify createCyrusToolsServer was called with correct options
 			expect(createCyrusToolsServer).toHaveBeenCalledWith(
-				"test-token",
+				expect.any(Object),
 				expect.objectContaining({
 					parentSessionId,
 					onFeedbackDelivery: expect.any(Function),
@@ -456,7 +470,8 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			try {
 				const mcpConfig = (edgeWorker as any).buildMcpConfig(
-					mockRepository,
+					mockRepository.id,
+					mockRepository.linearWorkspaceId,
 					"parent-session-123",
 				);
 				const cyrusToolsConfig = mcpConfig["cyrus-tools"] as {

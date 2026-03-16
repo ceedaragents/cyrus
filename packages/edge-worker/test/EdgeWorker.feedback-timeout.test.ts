@@ -61,7 +61,7 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 		_mockOnSessionCreated = vi.fn();
 
 		// Mock createCyrusToolsServer to return a proper structure
-		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
+		vi.mocked(createCyrusToolsServer).mockImplementation((_client, options) => {
 			// Capture the callbacks
 			if (options?.onFeedbackDelivery) {
 				mockOnFeedbackDelivery = options.onFeedbackDelivery;
@@ -186,6 +186,13 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 			"test-repo",
 		);
 		(edgeWorker as any).repositories.set("test-repo", mockRepository);
+
+		// Inject mock issue tracker for the test workspace
+		(edgeWorker as any).issueTrackers.set(mockRepository.linearWorkspaceId, {
+			fetchIssue: vi.fn(),
+			getIssueLabels: vi.fn().mockResolvedValue([]),
+			getClient: vi.fn().mockReturnValue({}),
+		});
 	});
 
 	afterEach(() => {
@@ -215,7 +222,8 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 			// Build MCP config which will trigger createCyrusToolsServer
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				"parent-session-123",
 			);
 
@@ -263,7 +271,8 @@ describe("EdgeWorker - Feedback Delivery Timeout Issue", () => {
 
 			// Build MCP config
 			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
-				mockRepository,
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
 				"parent-session-123",
 			);
 

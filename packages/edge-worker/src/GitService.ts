@@ -3,9 +3,28 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve as pathResolve } from "node:path";
 
-import type { Issue, RepositoryConfig, Workspace } from "cyrus-core";
+import type {
+	BaseBranchResolution,
+	Issue,
+	RepositoryConfig,
+	Workspace,
+} from "cyrus-core";
 import { createLogger, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
+
+export interface CreateGitWorktreeOptions {
+	globalSetupScript?: string;
+	/**
+	 * Override workspace base directory. Required for 0-repo workspaces.
+	 * For 1+ repos, defaults to the first repository's workspaceBaseDir.
+	 */
+	workspaceBaseDir?: string;
+	/**
+	 * Per-repo base branch overrides from [repo=name#branch] syntax.
+	 * Takes highest priority over graphite, parent, and default base branches.
+	 */
+	baseBranchOverrides?: Map<string, string>;
+}
 
 /**
  * Service responsible for Git worktree operations
@@ -222,13 +241,340 @@ export class GitService {
 	}
 
 	/**
-	 * Create a git worktree for an issue
+	 * Determine the base branch for an issue with full resolution info.
+	 *
+	 * Priority order:
+	 * 0. Explicit override from [repo=name#branch] syntax
+	 * 1. Graphite blocked-by relationship
+	 * 2. Parent issue branch
+	 * 3. Repository default base branch
+	 *
+	 * @param baseBranchOverride Optional override from [repo=name#branch] syntax (highest priority)
+	 */
+	async determineBaseBranch(
+		issue: Issue,
+		repository: RepositoryConfig,
+		baseBranchOverride?: string,
+	): Promise<BaseBranchResolution> {
+		// Priority 0: Explicit override from [repo=name#branch] syntax
+		if (baseBranchOverride) {
+			this.logger.info(
+				`Using commit-ish override '${baseBranchOverride}' as base branch for ${issue.identifier} in repo ${repository.name}`,
+			);
+			return {
+				branch: baseBranchOverride,
+				source: "commit-ish",
+				detail: `[repo=...#${baseBranchOverride}]`,
+			};
+		}
+
+		// Priority 1: Check graphite blocked-by relationship
+		try {
+			const isGraphiteIssue = await this.hasGraphiteLabel(issue, repository);
+
+			if (isGraphiteIssue) {
+				const blockingIssues = await this.fetchBlockingIssues(issue);
+
+				if (blockingIssues.length > 0) {
+					const blockingIssue = blockingIssues[0]!;
+					this.logger.info(
+						`Issue ${issue.identifier} has graphite label and is blocked by ${blockingIssue.identifier}`,
+					);
+
+					const blockingRawBranchName =
+						blockingIssue.branchName ||
+						`${blockingIssue.identifier}-${(blockingIssue.title ?? "")
+							.toLowerCase()
+							.replace(/\s+/g, "-")
+							.substring(0, 30)}`;
+					const blockingBranchName = this.sanitizeBranchName(
+						blockingRawBranchName,
+					);
+
+					const blockingBranchExists = await this.branchExists(
+						blockingBranchName,
+						repository.repositoryPath,
+					);
+
+					if (blockingBranchExists) {
+						this.logger.info(
+							`Using blocking issue branch '${blockingBranchName}' as base for Graphite-stacked issue ${issue.identifier}`,
+						);
+						return {
+							branch: blockingBranchName,
+							source: "graphite-blocked-by",
+							detail: `blocked by ${blockingIssue.identifier}`,
+						};
+					}
+					this.logger.info(
+						`Blocking issue branch '${blockingBranchName}' not found, falling back to parent/default`,
+					);
+				}
+			}
+		} catch (_error) {
+			this.logger.info(
+				`Failed to check graphite label for ${issue.identifier}, falling back to parent/default`,
+			);
+		}
+
+		// Priority 2: Check parent issue
+		try {
+			const parent = await (issue as any).parent;
+			if (parent) {
+				this.logger.info(
+					`Issue ${issue.identifier} has parent: ${parent.identifier}`,
+				);
+
+				const parentRawBranchName =
+					parent.branchName ||
+					`${parent.identifier}-${parent.title
+						?.toLowerCase()
+						.replace(/\s+/g, "-")
+						.substring(0, 30)}`;
+				const parentBranchName = this.sanitizeBranchName(parentRawBranchName);
+
+				const parentBranchExists = await this.branchExists(
+					parentBranchName,
+					repository.repositoryPath,
+				);
+
+				if (parentBranchExists) {
+					this.logger.info(
+						`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
+					);
+					return {
+						branch: parentBranchName,
+						source: "parent-issue",
+						detail: `parent ${parent.identifier}`,
+					};
+				}
+				this.logger.info(
+					`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
+				);
+			}
+		} catch (_error) {
+			this.logger.info(
+				`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,
+			);
+		}
+
+		// Priority 3: Repository default
+		return {
+			branch: repository.baseBranch,
+			source: "default",
+		};
+	}
+
+	/**
+	 * Check if an issue has the graphite label
+	 */
+	async hasGraphiteLabel(
+		issue: Issue,
+		repository: RepositoryConfig,
+	): Promise<boolean> {
+		const graphiteConfig = repository.labelPrompts?.graphite;
+		const graphiteLabels = Array.isArray(graphiteConfig)
+			? graphiteConfig
+			: (graphiteConfig?.labels ?? ["graphite"]);
+
+		const issueLabels = await this.fetchIssueLabels(issue);
+		return graphiteLabels.some((label: string) => issueLabels.includes(label));
+	}
+
+	/**
+	 * Fetch issues that block this issue (i.e., issues this one is "blocked by").
+	 * Uses the inverseRelations field with type "blocks".
+	 */
+	async fetchBlockingIssues(issue: Issue): Promise<Issue[]> {
+		try {
+			const inverseRelations = await issue.inverseRelations();
+			if (!inverseRelations?.nodes) {
+				return [];
+			}
+
+			const blockingIssues: Issue[] = [];
+
+			for (const relation of inverseRelations.nodes) {
+				if (relation.type === "blocks") {
+					const blockingIssue = await relation.issue;
+					if (blockingIssue) {
+						blockingIssues.push(blockingIssue);
+					}
+				}
+			}
+
+			this.logger.debug(
+				`Issue ${issue.identifier} is blocked by ${blockingIssues.length} issue(s): ${blockingIssues.map((i) => i.identifier).join(", ") || "none"}`,
+			);
+
+			return blockingIssues;
+		} catch (error) {
+			this.logger.error(
+				`Failed to fetch blocking issues for ${issue.identifier}:`,
+				error,
+			);
+			return [];
+		}
+	}
+
+	/**
+	 * Fetch label names for an issue
+	 */
+	async fetchIssueLabels(issue: Issue): Promise<string[]> {
+		try {
+			const labels = await issue.labels();
+			return labels.nodes.map((label) => label.name);
+		} catch (error) {
+			this.logger.error(`Failed to fetch labels for issue ${issue.id}:`, error);
+			return [];
+		}
+	}
+
+	/**
+	 * Create a workspace for an issue with 0, 1, or N repositories.
+	 *
+	 * - **0 repos**: Creates a plain folder at `workspaceBaseDir/ISSUE-ID/` (no git worktree)
+	 * - **1 repo**: Git worktree directly at `repo.workspaceBaseDir/ISSUE-ID/` (preserves current behavior)
+	 * - **N repos**: Parent folder at `workspaceBaseDir/ISSUE-ID/` with per-repo worktree subdirs
 	 */
 	async createGitWorktree(
 		issue: Issue,
+		repositories: RepositoryConfig[],
+		options?: CreateGitWorktreeOptions,
+	): Promise<Workspace> {
+		const {
+			globalSetupScript,
+			workspaceBaseDir: overrideBaseDir,
+			baseBranchOverrides,
+		} = options ?? {};
+
+		if (repositories.length === 0) {
+			// 0 repos: create a plain folder (no git worktree)
+			const baseDir = overrideBaseDir;
+			if (!baseDir) {
+				throw new Error(
+					"workspaceBaseDir is required in options when no repositories are provided",
+				);
+			}
+			const workspacePath = join(baseDir, issue.identifier);
+			mkdirSync(workspacePath, { recursive: true });
+			this.logger.info(
+				`Created plain workspace (no repos) at ${workspacePath}`,
+			);
+
+			// Run global setup script if configured
+			if (globalSetupScript) {
+				await this.runSetupScript(
+					globalSetupScript,
+					"global",
+					workspacePath,
+					issue,
+				);
+			}
+
+			return {
+				path: workspacePath,
+				isGitWorktree: false,
+			};
+		}
+
+		if (repositories.length === 1) {
+			// 1 repo: preserve exact current behavior
+			const repoId = repositories[0]!.id;
+			const overrideValue = baseBranchOverrides?.get(repoId);
+			this.logger.info(
+				`createGitWorktree: baseBranchOverrides=${baseBranchOverrides ? `Map(size=${baseBranchOverrides.size})` : "undefined"}, repoId=${repoId}, overrideValue=${overrideValue ?? "undefined"}`,
+			);
+			return this.createSingleRepoWorktree(
+				issue,
+				repositories[0]!,
+				globalSetupScript,
+				undefined,
+				overrideValue,
+			);
+		}
+
+		// N repos: parent folder with per-repo subdirectories
+		const baseDir = overrideBaseDir ?? repositories[0]!.workspaceBaseDir;
+		const parentPath = join(baseDir, issue.identifier);
+		mkdirSync(parentPath, { recursive: true });
+		this.logger.info(
+			`Creating multi-repo workspace at ${parentPath} for ${repositories.length} repositories`,
+		);
+
+		// Run global setup script once in the parent directory
+		if (globalSetupScript) {
+			await this.runSetupScript(globalSetupScript, "global", parentPath, issue);
+		}
+
+		const repoPaths: Record<string, string> = {};
+		const resolvedBaseBranches: Record<string, BaseBranchResolution> = {};
+
+		for (const repository of repositories) {
+			const repoSubPath = join(parentPath, repository.name);
+			this.logger.info(
+				`Creating worktree for repo '${repository.name}' at ${repoSubPath}`,
+			);
+
+			try {
+				const repoWorkspace = await this.createSingleRepoWorktree(
+					issue,
+					repository,
+					undefined, // global setup already ran
+					repoSubPath, // override workspace path for N-repo layout
+					baseBranchOverrides?.get(repository.id),
+				);
+				repoPaths[repository.id] = repoWorkspace.path;
+				if (repoWorkspace.resolvedBaseBranches) {
+					Object.assign(
+						resolvedBaseBranches,
+						repoWorkspace.resolvedBaseBranches,
+					);
+				}
+			} catch (error) {
+				this.logger.error(
+					`Failed to create worktree for repo '${repository.name}': ${(error as Error).message}`,
+				);
+				// Create fallback directory for this repo
+				mkdirSync(repoSubPath, { recursive: true });
+				repoPaths[repository.id] = repoSubPath;
+			}
+		}
+
+		return {
+			path: parentPath,
+			isGitWorktree: true,
+			repoPaths,
+			resolvedBaseBranches,
+		};
+	}
+
+	/**
+	 * Create a single git worktree for one repository.
+	 * This is the core worktree creation logic, used by createGitWorktree for both
+	 * single-repo and multi-repo cases.
+	 *
+	 * @param workspacePathOverride - Override the workspace path (used for N-repo subdirectories)
+	 */
+	private async createSingleRepoWorktree(
+		issue: Issue,
 		repository: RepositoryConfig,
 		globalSetupScript?: string,
+		workspacePathOverride?: string,
+		baseBranchOverride?: string,
 	): Promise<Workspace> {
+		this.logger.info(
+			`createSingleRepoWorktree for ${repository.name} (id=${repository.id}): baseBranchOverride=${baseBranchOverride ?? "undefined"}`,
+		);
+		// Build a fallback resolution for error paths where determineBaseBranch hasn't run
+		const fallbackResolution: BaseBranchResolution = baseBranchOverride
+			? {
+					branch: baseBranchOverride,
+					source: "commit-ish",
+					detail: `[repo=...#${baseBranchOverride}]`,
+				}
+			: { branch: repository.baseBranch, source: "default" };
+
 		try {
 			// Verify this is a git repository
 			try {
@@ -251,10 +597,26 @@ export class GitService {
 					.replace(/\s+/g, "-")
 					.substring(0, 30)}`;
 			const branchName = this.sanitizeBranchName(rawBranchName);
-			const workspacePath = join(repository.workspaceBaseDir, issue.identifier);
+			const workspacePath =
+				workspacePathOverride ??
+				join(repository.workspaceBaseDir, issue.identifier);
 
-			// Ensure workspace directory exists
-			mkdirSync(repository.workspaceBaseDir, { recursive: true });
+			// Ensure workspace directory's parent exists
+			mkdirSync(
+				workspacePathOverride
+					? join(workspacePath, "..")
+					: repository.workspaceBaseDir,
+				{ recursive: true },
+			);
+
+			// Determine base branch early (commit-ish > graphite > parent > default)
+			// This runs before worktree existence checks so all return paths have the resolution
+			const resolution = await this.determineBaseBranch(
+				issue,
+				repository,
+				baseBranchOverride,
+			);
+			const baseBranch = resolution.branch;
 
 			// Check if worktree already exists
 			try {
@@ -270,6 +632,7 @@ export class GitService {
 					return {
 						path: workspacePath,
 						isGitWorktree: true,
+						resolvedBaseBranches: { [repository.id]: resolution },
 					};
 				}
 			} catch (_e) {
@@ -301,52 +664,9 @@ export class GitService {
 					return {
 						path: existingWorktreePath,
 						isGitWorktree: true,
+						resolvedBaseBranches: { [repository.id]: resolution },
 					};
 				}
-			}
-
-			// Determine base branch for this issue
-			let baseBranch = repository.baseBranch;
-
-			// Check if issue has a parent
-			try {
-				const parent = await (issue as any).parent;
-				if (parent) {
-					this.logger.info(
-						`Issue ${issue.identifier} has parent: ${parent.identifier}`,
-					);
-
-					// Get parent's branch name
-					const parentRawBranchName =
-						parent.branchName ||
-						`${parent.identifier}-${parent.title
-							?.toLowerCase()
-							.replace(/\s+/g, "-")
-							.substring(0, 30)}`;
-					const parentBranchName = this.sanitizeBranchName(parentRawBranchName);
-
-					// Check if parent branch exists
-					const parentBranchExists = await this.branchExists(
-						parentBranchName,
-						repository.repositoryPath,
-					);
-
-					if (parentBranchExists) {
-						baseBranch = parentBranchName;
-						this.logger.info(
-							`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
-						);
-					} else {
-						this.logger.info(
-							`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
-						);
-					}
-				}
-			} catch (_error) {
-				// Parent field might not exist or couldn't be fetched, use default base branch
-				this.logger.info(
-					`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,
-				);
 			}
 
 			// Fetch latest changes from remote
@@ -460,59 +780,16 @@ export class GitService {
 			}
 
 			// Then, check for repository setup scripts (cross-platform)
-			const isWindows = process.platform === "win32";
-			const setupScripts = [
-				{
-					file: "cyrus-setup.sh",
-					platform: "unix",
-				},
-				{
-					file: "cyrus-setup.ps1",
-					platform: "windows",
-				},
-				{
-					file: "cyrus-setup.cmd",
-					platform: "windows",
-				},
-				{
-					file: "cyrus-setup.bat",
-					platform: "windows",
-				},
-			];
-
-			// Find the first available setup script for the current platform
-			const availableScript = setupScripts.find((script) => {
-				const scriptPath = join(repository.repositoryPath, script.file);
-				const isCompatible = isWindows
-					? script.platform === "windows"
-					: script.platform === "unix";
-				return existsSync(scriptPath) && isCompatible;
-			});
-
-			// Fallback: on Windows, try bash if no Windows scripts found (for Git Bash/WSL users)
-			const fallbackScript =
-				!availableScript && isWindows
-					? setupScripts.find((script) => {
-							const scriptPath = join(repository.repositoryPath, script.file);
-							return script.platform === "unix" && existsSync(scriptPath);
-						})
-					: null;
-
-			const scriptToRun = availableScript || fallbackScript;
-
-			if (scriptToRun) {
-				const scriptPath = join(repository.repositoryPath, scriptToRun.file);
-				await this.runSetupScript(
-					scriptPath,
-					"repository",
-					workspacePath,
-					issue,
-				);
-			}
+			await this.runRepoSetupScript(
+				repository.repositoryPath,
+				workspacePath,
+				issue,
+			);
 
 			return {
 				path: workspacePath,
 				isGitWorktree: true,
+				resolvedBaseBranches: { [repository.id]: resolution },
 			};
 		} catch (error) {
 			const errorMessage = (error as Error).message;
@@ -530,15 +807,19 @@ export class GitService {
 				return {
 					path: worktreeMatch[1],
 					isGitWorktree: true,
+					resolvedBaseBranches: { [repository.id]: fallbackResolution },
 				};
 			}
 
 			// Fall back to regular directory if git worktree fails
-			const fallbackPath = join(repository.workspaceBaseDir, issue.identifier);
+			const fallbackPath =
+				workspacePathOverride ??
+				join(repository.workspaceBaseDir, issue.identifier);
 			mkdirSync(fallbackPath, { recursive: true });
 			return {
 				path: fallbackPath,
 				isGitWorktree: false,
+				resolvedBaseBranches: { [repository.id]: fallbackResolution },
 			};
 		}
 	}
@@ -642,6 +923,60 @@ export class GitService {
 			return stats.isFile();
 		} catch {
 			return false;
+		}
+	}
+
+	/**
+	 * Find and run a repository-specific setup script (cyrus-setup.sh/.ps1/.cmd/.bat)
+	 */
+	private async runRepoSetupScript(
+		repositoryPath: string,
+		workspacePath: string,
+		issue: Issue,
+	): Promise<void> {
+		const isWindows = process.platform === "win32";
+		const setupScripts = [
+			{
+				file: "cyrus-setup.sh",
+				platform: "unix",
+			},
+			{
+				file: "cyrus-setup.ps1",
+				platform: "windows",
+			},
+			{
+				file: "cyrus-setup.cmd",
+				platform: "windows",
+			},
+			{
+				file: "cyrus-setup.bat",
+				platform: "windows",
+			},
+		];
+
+		// Find the first available setup script for the current platform
+		const availableScript = setupScripts.find((script) => {
+			const scriptPath = join(repositoryPath, script.file);
+			const isCompatible = isWindows
+				? script.platform === "windows"
+				: script.platform === "unix";
+			return existsSync(scriptPath) && isCompatible;
+		});
+
+		// Fallback: on Windows, try bash if no Windows scripts found (for Git Bash/WSL users)
+		const fallbackScript =
+			!availableScript && isWindows
+				? setupScripts.find((script) => {
+						const scriptPath = join(repositoryPath, script.file);
+						return script.platform === "unix" && existsSync(scriptPath);
+					})
+				: null;
+
+		const scriptToRun = availableScript || fallbackScript;
+
+		if (scriptToRun) {
+			const scriptPath = join(repositoryPath, scriptToRun.file);
+			await this.runSetupScript(scriptPath, "repository", workspacePath, issue);
 		}
 	}
 }

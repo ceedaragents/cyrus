@@ -125,7 +125,7 @@ describe("EdgeWorker - System Prompt Resume", () => {
 
 		// Mock AgentSessionManager
 		mockAgentSessionManager = {
-			createLinearAgentSession: vi.fn(),
+			createCyrusAgentSession: vi.fn(),
 			getSession: vi.fn().mockReturnValue({
 				id: "agent-session-123",
 				externalSessionId: "agent-session-123",
@@ -226,6 +226,7 @@ Issue: {{issue_identifier}}`;
 				return mockLinearClient.issue(issueId);
 			}),
 			getIssueLabels: vi.fn().mockResolvedValue([{ name: "bug" }]),
+			getClient: vi.fn().mockReturnValue({}),
 		};
 		(edgeWorker as any).issueTrackers.set(
 			mockRepository.linearWorkspaceId,

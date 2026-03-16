@@ -22,7 +22,7 @@ describe("AgentSessionManager - Model Notification", () => {
 		manager = new AgentSessionManager();
 
 		// Create a test session
-		manager.createLinearAgentSession(
+		manager.createCyrusAgentSession(
 			sessionId,
 			issueId,
 			{

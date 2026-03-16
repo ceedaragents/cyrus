@@ -123,7 +123,7 @@ describe("EdgeWorker - Parent Branch Handling", () => {
 
 		// Mock AgentSessionManager
 		mockAgentSessionManager = {
-			createLinearAgentSession: vi.fn(),
+			createCyrusAgentSession: vi.fn(),
 			getSession: vi.fn().mockReturnValue({
 				claudeSessionId: "claude-session-123",
 				workspace: { path: "/test/workspaces/TEST-123" },
@@ -207,6 +207,7 @@ Base Branch: {{base_branch}}`;
 				return mockLinearClient.issue(issueId);
 			}),
 			getIssueLabels: vi.fn().mockResolvedValue([]),
+			getClient: vi.fn().mockReturnValue({}),
 		};
 		(edgeWorker as any).issueTrackers.set(
 			mockRepository.linearWorkspaceId,

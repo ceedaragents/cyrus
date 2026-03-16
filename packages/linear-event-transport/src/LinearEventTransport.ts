@@ -122,8 +122,13 @@ export class LinearEventTransport
 		}
 
 		try {
-			// Verify the webhook signature using Linear's client
-			const bodyBuffer = Buffer.from(JSON.stringify(request.body));
+			// Use the raw body bytes that SharedApplicationServer stashed on the request
+			// so signature verification uses the exact payload Linear signed, rather than
+			// a re-serialized version that may differ in key order or whitespace.
+			const rawBody = (request as FastifyRequest & { rawBody: string }).rawBody;
+			const bodyBuffer = rawBody
+				? Buffer.from(rawBody)
+				: Buffer.from(JSON.stringify(request.body));
 			const isValid = this.linearWebhookClient.verify(bodyBuffer, signature);
 
 			if (!isValid) {

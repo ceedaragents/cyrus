@@ -24,7 +24,7 @@ describe("AgentSessionManager - Codex tool activity mapping", () => {
 			workingDirectory: "/Users/connor/code/cyrus",
 		});
 
-		manager.createLinearAgentSession(
+		manager.createCyrusAgentSession(
 			sessionId,
 			issueId,
 			{

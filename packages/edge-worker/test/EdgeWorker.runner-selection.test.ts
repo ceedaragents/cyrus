@@ -190,7 +190,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 
 		// Mock AgentSessionManager
 		mockAgentSessionManager = {
-			createLinearAgentSession: vi.fn(),
+			createCyrusAgentSession: vi.fn(),
 			getSession: vi.fn().mockReturnValue({
 				issueId: "issue-123",
 				workspace: { path: "/test/workspaces/TEST-123" },
@@ -269,6 +269,7 @@ Issue: {{issue_identifier}}`;
 				return mockLinearClient.issue(issueId);
 			}),
 			getIssueLabels: vi.fn(),
+			getClient: vi.fn().mockReturnValue({}),
 		};
 		(edgeWorker as any).issueTrackers.set(
 			mockRepository.linearWorkspaceId,
@@ -820,6 +821,7 @@ Issue: {{issue_identifier}}`;
 					return mockLinearClient.issue(issueId);
 				}),
 				getIssueLabels: vi.fn(),
+				getClient: vi.fn().mockReturnValue({}),
 			};
 			(codexEdgeWorker as any).issueTrackers.set(
 				mockRepository.linearWorkspaceId,
@@ -868,6 +870,7 @@ Issue: {{issue_identifier}}`;
 					return mockLinearClient.issue(issueId);
 				}),
 				getIssueLabels: vi.fn(),
+				getClient: vi.fn().mockReturnValue({}),
 			};
 			(geminiEdgeWorker as any).issueTrackers.set(
 				mockRepository.linearWorkspaceId,
@@ -916,6 +919,7 @@ Issue: {{issue_identifier}}`;
 					return mockLinearClient.issue(issueId);
 				}),
 				getIssueLabels: vi.fn(),
+				getClient: vi.fn().mockReturnValue({}),
 			};
 			(codexEdgeWorker as any).issueTrackers.set(
 				mockRepository.linearWorkspaceId,

@@ -19,6 +19,7 @@ import type {
 	AgentRunnerConfig,
 	AgentSessionCreatedWebhook,
 	AgentSessionPromptedWebhook,
+	BaseBranchResolution,
 	ContentUpdateMessage,
 	CyrusAgentSession,
 	EdgeWorkerConfig,
@@ -41,7 +42,6 @@ import type {
 	UserPromptMessage,
 	Webhook,
 	WebhookAgentSession,
-	WebhookComment,
 	WebhookIssue,
 } from "cyrus-core";
 import {
@@ -157,6 +157,7 @@ type CyrusToolsMcpContext = {
 type CyrusToolsMcpContextEntry = {
 	contextId: string;
 	linearToken: string;
+	linearClient: import("@linear/sdk").LinearClient;
 	parentSessionId?: string;
 	prebuiltServer?: ReturnType<typeof createCyrusToolsServer>;
 	createdAt: number;
@@ -174,7 +175,7 @@ export class EdgeWorker extends EventEmitter {
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
 	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
-	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by workspaceId)
+	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
@@ -250,17 +251,9 @@ export class EdgeWorker extends EventEmitter {
 
 		// Initialize repository router with dependencies
 		const repositoryRouterDeps: RepositoryRouterDeps = {
-			fetchIssueLabels: async (issueId: string, workspaceId: string) => {
-				// Find repository for this workspace
-				const repo = Array.from(this.repositories.values()).find(
-					(r) => r.linearWorkspaceId === workspaceId,
-				);
-				if (!repo) return [];
-
-				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(
-					requireLinearWorkspaceId(repo),
-				);
+			fetchIssueLabels: async (issueId: string, linearWorkspaceId: string) => {
+				// Use workspace ID directly from webhook context (Linear-native source)
+				const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 				if (!issueTracker) return [];
 
 				// Use platform-agnostic getIssueLabels method
@@ -268,18 +261,10 @@ export class EdgeWorker extends EventEmitter {
 			},
 			fetchIssueDescription: async (
 				issueId: string,
-				workspaceId: string,
+				linearWorkspaceId: string,
 			): Promise<string | undefined> => {
-				// Find repository for this workspace
-				const repo = Array.from(this.repositories.values()).find(
-					(r) => r.linearWorkspaceId === workspaceId,
-				);
-				if (!repo) return undefined;
-
-				// Get issue tracker for this repository
-				const issueTracker = this.issueTrackers.get(
-					requireLinearWorkspaceId(repo),
-				);
+				// Use workspace ID directly from webhook context (Linear-native source)
+				const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 				if (!issueTracker) return undefined;
 
 				// Fetch issue and get description
@@ -299,8 +284,8 @@ export class EdgeWorker extends EventEmitter {
 					this.agentSessionManager.getActiveSessionsByIssueId(issueId);
 				return activeSessions.length > 0;
 			},
-			getIssueTracker: (workspaceId: string) => {
-				return this.getIssueTrackerForWorkspace(workspaceId);
+			getIssueTracker: (linearWorkspaceId: string) => {
+				return this.getIssueTrackerForWorkspace(linearWorkspaceId);
 			},
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
@@ -308,8 +293,8 @@ export class EdgeWorker extends EventEmitter {
 
 		// Initialize AskUserQuestion handler for elicitation via Linear select signal
 		this.askUserQuestionHandler = new AskUserQuestionHandler({
-			getIssueTracker: (workspaceId: string) => {
-				return this.getIssueTrackerForWorkspace(workspaceId) ?? null;
+			getIssueTracker: (linearWorkspaceId: string) => {
+				return this.getIssueTrackerForWorkspace(linearWorkspaceId) ?? null;
 			},
 		});
 
@@ -450,7 +435,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Initialize issue trackers per workspace (one per workspace, not per repo)
 		if (config.linearWorkspaces) {
-			for (const [workspaceId, wsConfig] of Object.entries(
+			for (const [linearWorkspaceId, wsConfig] of Object.entries(
 				config.linearWorkspaces,
 			)) {
 				const issueTracker =
@@ -464,9 +449,9 @@ export class EdgeWorker extends EventEmitter {
 								new LinearClient({
 									accessToken: wsConfig.linearToken,
 								}),
-								this.buildOAuthConfig(workspaceId),
+								this.buildOAuthConfig(linearWorkspaceId),
 							);
-				this.issueTrackers.set(workspaceId, issueTracker);
+				this.issueTrackers.set(linearWorkspaceId, issueTracker);
 			}
 		}
 
@@ -820,7 +805,6 @@ export class EdgeWorker extends EventEmitter {
 		const chatRepositoryPaths = Array.from(this.repositories.values()).map(
 			(repo) => repo.repositoryPath,
 		);
-		const firstRepo = Array.from(this.repositories.values())[0];
 		const routingContext =
 			this.promptBuilder.generateRoutingContextForAllWorkspaces();
 		const slackAdapter = new SlackChatAdapter(
@@ -829,12 +813,19 @@ export class EdgeWorker extends EventEmitter {
 			{ repositoryRoutingContext: routingContext },
 		);
 
-		// Build MCP config for Slack sessions using the first repository's Linear token
-		const mcpConfig = firstRepo ? this.buildMcpConfig(firstRepo) : undefined;
+		// Build MCP config for Slack sessions using first configured workspace
+		const firstLinearWorkspaceId = Object.keys(
+			this.config.linearWorkspaces || {},
+		)[0];
+		const firstRepoId = Array.from(this.repositories.values())[0]?.id;
+		const mcpConfig =
+			firstLinearWorkspaceId && firstRepoId
+				? this.buildMcpConfig(firstRepoId, firstLinearWorkspaceId)
+				: undefined;
 
-		if (!firstRepo) {
+		if (!firstLinearWorkspaceId || !firstRepoId) {
 			this.logger.warn(
-				"No repositories configured — Slack sessions will not have access to Linear MCP tools",
+				"No repositories or workspaces configured — Slack sessions will not have access to Linear MCP tools",
 			);
 		}
 
@@ -1050,12 +1041,39 @@ export class EdgeWorker extends EventEmitter {
 					"A reviewer has requested changes on this PR. Read the review comments to understand what needs to be changed."
 				: stripMention(commentBody, mentionHandle);
 
-			// Create workspace (git worktree) for the PR branch
-			const workspace = await this.createGitHubWorkspace(
-				repository,
-				branchRef,
-				prNumber,
-			);
+			// Check for an existing multi-repo session that includes this repository.
+			// If found, use its sub-worktree instead of creating a new workspace.
+			let workspace: { path: string; isGitWorktree: boolean } | null = null;
+			const multiRepoSession =
+				agentSessionManager.getActiveMultiRepoSessionForRepository(
+					repository.id,
+				);
+
+			if (multiRepoSession) {
+				const subWorktreePath =
+					multiRepoSession.workspace.repoPaths?.[repository.id];
+				if (subWorktreePath) {
+					workspace = { path: subWorktreePath, isGitWorktree: true };
+					this.logger.info(
+						`Resolved multi-repo sub-worktree for ${repository.name}: ${subWorktreePath}`,
+					);
+				} else {
+					this.logger.warn(
+						`No sub-worktree found for repo ${repository.name} in multi-repo session ${multiRepoSession.id}, falling back to root workspace`,
+					);
+					workspace = {
+						path: multiRepoSession.workspace.path,
+						isGitWorktree: true,
+					};
+				}
+			} else {
+				// Single-repo or no existing session: create workspace as before
+				workspace = await this.createGitHubWorkspace(
+					repository,
+					branchRef,
+					prNumber,
+				);
+			}
 
 			if (!workspace) {
 				this.logger.error(
@@ -1086,7 +1104,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Create an internal agent session (no Linear session for GitHub)
 			const githubSessionId = `github-${event.deliveryId}`;
-			agentSessionManager.createLinearAgentSession(
+			agentSessionManager.createCyrusAgentSession(
 				githubSessionId,
 				sessionKey,
 				issueMinimal,
@@ -1327,10 +1345,9 @@ export class EdgeWorker extends EventEmitter {
 					}),
 			} as unknown as Issue;
 
-			return await this.gitService.createGitWorktree(
-				syntheticIssue,
+			return await this.gitService.createGitWorktree(syntheticIssue, [
 				repository,
-			);
+			]);
 		} catch (error) {
 			this.logger.error(
 				`Failed to create GitHub workspace for PR #${prNumber}`,
@@ -1618,6 +1635,9 @@ ${taskSection}`;
 			return;
 		}
 
+		// Extract workspace ID once for all operations in this method
+		const parentWorkspaceId = requireLinearWorkspaceId(parentRepo);
+
 		log.debug(
 			`Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
 		);
@@ -1639,14 +1659,12 @@ ${taskSection}`;
 
 		await this.postParentResumeAcknowledgment(
 			parentSessionId,
-			requireLinearWorkspaceId(parentRepo),
+			parentWorkspaceId,
 		);
 
 		// Post thought showing child result receipt
 		// Use parent's issue tracker since we're posting to the parent's session
-		const issueTracker = this.issueTrackers.get(
-			requireLinearWorkspaceId(parentRepo),
-		);
+		const issueTracker = this.issueTrackers.get(parentWorkspaceId);
 		if (issueTracker && childSession) {
 			const childIssueIdentifier =
 				childSession.issue?.identifier || childSession.issueId;
@@ -1675,6 +1693,7 @@ ${taskSection}`;
 				false, // Not a new session
 				childWorkspaceDirs, // Add child workspace directories to parent's allowed directories
 				"parent resume from child",
+				parentWorkspaceId,
 			);
 			log.info(
 				`Successfully handled child result for parent session ${parentSessionId}`,
@@ -1744,6 +1763,7 @@ ${taskSection}`;
 				"", // No attachment manifest
 				false, // Not a new session
 				[], // No additional allowed directories
+				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
 				nextSubroutine?.singleTurn ? 1 : undefined, // singleTurn mode
 			);
 			log.info(
@@ -1782,6 +1802,7 @@ ${taskSection}`;
 				"", // No attachment manifest
 				false, // Not a new session
 				[], // No additional allowed directories
+				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
 				undefined, // No maxTurns limit for fixer
 			);
 			this.logger.info(`Successfully started fixer for iteration ${iteration}`);
@@ -1839,6 +1860,7 @@ ${taskSection}`;
 				"", // No attachment manifest
 				false, // Not a new session
 				[], // No additional allowed directories
+				undefined, // linearWorkspaceId — will fall back to repo.linearWorkspaceId
 				undefined, // No maxTurns limit
 			);
 			this.logger.info(`Successfully re-started verifications`);
@@ -2443,7 +2465,10 @@ ${taskSection}`;
 			`Handling issue unassignment: ${webhook.notification.issue.identifier}`,
 		);
 
-		await this.handleIssueUnassigned(webhook.notification.issue, repository);
+		await this.handleIssueUnassigned(
+			webhook.notification.issue,
+			webhook.organizationId,
+		);
 	}
 
 	/**
@@ -2581,8 +2606,9 @@ ${taskSection}`;
 				).length;
 
 				// Download attachments from the new description
+				// Use organizationId from webhook as the Linear-native workspace ID source
 				const linearToken = this.getLinearTokenForWorkspace(
-					requireLinearWorkspaceId(repository),
+					webhook.organizationId,
 				);
 				const downloadResult = await this.downloadCommentAttachments(
 					issueData.description,
@@ -2694,20 +2720,20 @@ ${taskSection}`;
 	 * Get issue tracker for a workspace (direct lookup by workspace ID)
 	 */
 	private getIssueTrackerForWorkspace(
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): IIssueTrackerService | undefined {
-		return this.issueTrackers.get(workspaceId);
+		return this.issueTrackers.get(linearWorkspaceId);
 	}
 
 	/**
 	 * Get the Linear API token for a workspace from workspace-level config.
 	 */
-	private getLinearTokenForWorkspace(workspaceId: string): string {
-		const workspaceConfig = this.config.linearWorkspaces?.[workspaceId];
+	private getLinearTokenForWorkspace(linearWorkspaceId: string): string {
+		const workspaceConfig = this.config.linearWorkspaces?.[linearWorkspaceId];
 		if (!workspaceConfig) {
 			throw new Error(
-				`No Linear workspace config found for workspace ${workspaceId}. ` +
-					`Ensure linearWorkspaces.${workspaceId} is configured.`,
+				`No Linear workspace config found for workspace ${linearWorkspaceId}. ` +
+					`Ensure linearWorkspaces.${linearWorkspaceId} is configured.`,
 			);
 		}
 		return workspaceConfig.linearToken;
@@ -2716,68 +2742,114 @@ ${taskSection}`;
 	/**
 	 * Get the Linear workspace slug for a workspace from workspace-level config.
 	 */
-	private getWorkspaceSlug(workspaceId: string): string | undefined {
-		return this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceSlug;
+	private getWorkspaceSlug(linearWorkspaceId: string): string | undefined {
+		return this.config.linearWorkspaces?.[linearWorkspaceId]
+			?.linearWorkspaceSlug;
 	}
 
 	/**
-	 * Create a new Linear agent session with all necessary setup
+	 * Create a new Cyrus agent session with all necessary setup
 	 * @param sessionId The Linear agent activity session ID
 	 * @param issue Linear issue object
-	 * @param repository Repository configuration
+	 * @param repositories Repository configurations (primary repo is repositories[0])
 	 * @param agentSessionManager Agent session manager instance
+	 * @param linearWorkspaceId Linear workspace ID (from webhook.organizationId)
 	 * @returns Object containing session details and setup information
 	 */
-	private async createLinearAgentSession(
+	private async createCyrusAgentSession(
 		sessionId: string,
 		issue: { id: string; identifier: string },
-		repository: RepositoryConfig,
+		repositoriesOrSingle: RepositoryConfig | RepositoryConfig[],
 		agentSessionManager: AgentSessionManager,
+		linearWorkspaceId: string,
+		baseBranchOverrides?: Map<string, string>,
+		routingMethod?: string,
 	): Promise<AgentSessionData> {
-		// Fetch full Linear issue details
+		const repositories = Array.isArray(repositoriesOrSingle)
+			? repositoriesOrSingle
+			: [repositoriesOrSingle];
+		const primaryRepo = repositories[0]!;
+
+		// Fetch full Linear issue details using workspace ID from webhook context
 		const fullIssue = await this.fetchFullIssueDetails(
 			issue.id,
-			requireLinearWorkspaceId(repository),
+			linearWorkspaceId,
 		);
 		if (!fullIssue) {
 			throw new Error(`Failed to fetch full issue details for ${issue.id}`);
 		}
 
 		// Move issue to started state automatically, in case it's not already
-		await this.moveIssueToStartedState(
-			fullIssue,
-			requireLinearWorkspaceId(repository),
-		);
+		await this.moveIssueToStartedState(fullIssue, linearWorkspaceId);
 
 		// Create workspace using full issue data
-		// Use custom handler if provided, otherwise create a git worktree by default
+		// IMPORTANT: The CLI app (apps/cli/src/services/WorkerService.ts) typically provides
+		// a custom createWorkspace handler, so the handler path is the one taken in production.
+		// When adding new options here, always update the handler signature in config-types.ts
+		// AND the CLI's handler implementation in WorkerService.ts to pass them through.
+		this.logger.info(
+			`createCyrusAgentSession: passing baseBranchOverrides=${baseBranchOverrides ? `Map(size=${baseBranchOverrides.size}, keys=[${Array.from(baseBranchOverrides.keys()).join(",")}])` : "undefined"}, useCustomHandler=${!!this.config.handlers?.createWorkspace}`,
+		);
 		const workspace = this.config.handlers?.createWorkspace
-			? await this.config.handlers.createWorkspace(fullIssue, repository)
-			: await this.gitService.createGitWorktree(fullIssue, repository);
+			? await this.config.handlers.createWorkspace(fullIssue, repositories, {
+					baseBranchOverrides,
+				})
+			: await this.gitService.createGitWorktree(fullIssue, repositories, {
+					baseBranchOverrides,
+				});
 
 		this.logger.debug(`Workspace created at: ${workspace.path}`);
 
 		const issueMinimal = this.convertLinearIssueToCore(fullIssue);
-		agentSessionManager.createLinearAgentSession(
+
+		// Create RepositoryContext entries for ALL repositories
+		// Use resolved base branches from workspace creation (already accounts for
+		// commit-ish overrides, graphite blocked-by, parent issues, and defaults)
+		const repositoryContexts = repositories.map((repo) => ({
+			repositoryId: repo.id,
+			branchName: issueMinimal.branchName,
+			baseBranchName:
+				workspace.resolvedBaseBranches?.[repo.id]?.branch ?? repo.baseBranch,
+		}));
+
+		agentSessionManager.createCyrusAgentSession(
 			sessionId,
 			issue.id,
 			issueMinimal,
 			workspace,
 			"linear",
-			[
-				{
-					repositoryId: repository.id,
-					branchName: issueMinimal.branchName,
-					baseBranchName: repository.baseBranch,
-				},
-			],
+			repositoryContexts,
 		);
 
-		// Register session-to-repo mapping and activity sink
-		this.sessionRepositories.set(sessionId, repository.id);
-		const activitySink = this.activitySinks.get(repository.id);
+		// Register session-to-repo mapping and activity sink (use primary repo)
+		this.sessionRepositories.set(sessionId, primaryRepo.id);
+		const activitySink = this.activitySinks.get(primaryRepo.id);
 		if (activitySink) {
 			agentSessionManager.setActivitySink(sessionId, activitySink);
+		}
+
+		// Post combined routing + base branch activity
+		{
+			const repoLines = repositories.map((repo) => {
+				const resolution = workspace.resolvedBaseBranches?.[repo.id];
+				const branch = resolution?.branch ?? repo.baseBranch;
+				const sourceLabel = !resolution
+					? "default"
+					: resolution.source === "commit-ish"
+						? "override"
+						: resolution.source === "graphite-blocked-by"
+							? (resolution.detail ?? "graphite")
+							: resolution.source === "parent-issue"
+								? (resolution.detail ?? "parent")
+								: "default";
+				return `- **${repo.name}** → \`${branch}\` (${sourceLabel})`;
+			});
+			await this.postRoutingActivity(
+				sessionId,
+				linearWorkspaceId,
+				repoLines,
+				routingMethod,
+			);
 		}
 
 		// Get the newly created session
@@ -2791,7 +2863,7 @@ ${taskSection}`;
 		// Download attachments before creating Claude runner
 		const attachmentResult = await this.downloadIssueAttachments(
 			fullIssue,
-			repository,
+			linearWorkspaceId,
 			workspace.path,
 		);
 
@@ -2805,10 +2877,12 @@ ${taskSection}`;
 		await mkdir(attachmentsDir, { recursive: true });
 
 		// Build allowed directories list - always include attachments directory
+		// Include repository paths from all repositories
+		const allRepoPaths = repositories.map((repo) => repo.repositoryPath);
 		const allowedDirectories: string[] = [
 			...new Set([
 				attachmentsDir,
-				repository.repositoryPath,
+				...allRepoPaths,
 				...this.gitService.getGitMetadataDirectories(workspace.path),
 			]),
 		];
@@ -2819,8 +2893,8 @@ ${taskSection}`;
 		);
 
 		// Build allowed tools list with Linear MCP tools
-		const allowedTools = this.buildAllowedTools(repository);
-		const disallowedTools = this.buildDisallowedTools(repository);
+		const allowedTools = this.buildAllowedTools(repositories);
+		const disallowedTools = this.buildDisallowedTools(repositories);
 
 		return {
 			session,
@@ -2848,11 +2922,13 @@ ${taskSection}`;
 
 		// Check the cache first, as the agentSessionCreated webhook may have been triggered by an @mention
 		// on an issue that already has an agentSession and an associated repository.
-		let repository: RepositoryConfig | null = null;
+		let repositories: RepositoryConfig[] | null = null;
+		let baseBranchOverrides: Map<string, string> | undefined;
+		let routingMethod: string | undefined;
 		if (issueId) {
 			const cachedRepos = this.getCachedRepositories(issueId);
 			if (cachedRepos && cachedRepos.length > 0) {
-				repository = cachedRepos[0]!;
+				repositories = cachedRepos;
 				this.logger.debug(
 					`Using cached repositories [${cachedRepos.map((r) => r.name).join(", ")}] for issue ${issueId}`,
 				);
@@ -2860,7 +2936,7 @@ ${taskSection}`;
 		}
 
 		// If not cached, perform routing logic
-		if (!repository) {
+		if (!repositories) {
 			const routingResult =
 				await this.repositoryRouter.determineRepositoryForWebhook(
 					webhook,
@@ -2887,24 +2963,28 @@ ${taskSection}`;
 			}
 
 			// At this point, routingResult.type === "selected"
-			repository = routingResult.repositories[0]!;
-			const routingMethod = routingResult.routingMethod;
+			repositories = routingResult.repositories;
+			baseBranchOverrides = routingResult.baseBranchOverrides;
+			if (baseBranchOverrides && baseBranchOverrides.size > 0) {
+				this.logger.info(
+					`baseBranchOverrides received from routing: ${Array.from(
+						baseBranchOverrides.entries(),
+					)
+						.map(([id, branch]) => `${id}→${branch}`)
+						.join(", ")}`,
+				);
+			} else {
+				this.logger.info(`No baseBranchOverrides from routing result`);
+			}
+			routingMethod = routingResult.routingMethod;
 
 			// Cache all matched repositories for this issue as string[]
 			if (issueId) {
 				this.repositoryRouter.getIssueRepositoryCache().set(
 					issueId,
-					routingResult.repositories.map((r) => r.id),
+					repositories.map((r) => r.id),
 				);
 			}
-
-			// Post agent activity showing auto-matched routing
-			await this.postRepositorySelectionActivity(
-				webhook.agentSession.id,
-				requireLinearWorkspaceId(repository),
-				repository.name,
-				routingMethod,
-			);
 		}
 
 		if (!webhook.agentSession.issue) {
@@ -2912,33 +2992,38 @@ ${taskSection}`;
 			return;
 		}
 
-		// User access control check
-		const accessResult = this.checkUserAccess(webhook, repository);
+		// User access control check (use primary repo)
+		const primaryRepo = repositories[0]!;
+		const accessResult = this.checkUserAccess(webhook, primaryRepo);
 		if (!accessResult.allowed) {
 			this.logger.info(
 				`User ${accessResult.userName} blocked from delegating: ${accessResult.reason}`,
 			);
-			await this.handleBlockedUser(webhook, repository, accessResult.reason);
+			await this.handleBlockedUser(webhook, primaryRepo, accessResult.reason);
 			return;
 		}
 
+		// Use organizationId from webhook as the Linear-native workspace ID source
+		const linearWorkspaceId = webhook.organizationId;
+
 		const log = this.logger.withContext({
 			sessionId: webhook.agentSession.id,
-			platform: this.getRepositoryPlatform(
-				requireLinearWorkspaceId(repository),
-			),
+			platform: this.getRepositoryPlatform(linearWorkspaceId),
 			issueIdentifier: webhook.agentSession.issue.identifier,
 		});
 		log.info(`Handling agent session created`);
 		const { agentSession, guidance } = webhook;
 		const commentBody = agentSession.comment?.body;
 
-		// Initialize agent runner using shared logic
+		// Initialize agent runner using shared logic (pass full repositories array)
 		await this.initializeAgentRunner(
 			agentSession,
-			repository,
+			repositories,
+			linearWorkspaceId,
 			guidance,
 			commentBody,
+			baseBranchOverrides,
+			routingMethod,
 		);
 	}
 
@@ -2950,15 +3035,20 @@ ${taskSection}`;
 	 * handleAgentSessionCreatedWebhook and handleUserPromptedAgentActivity use.
 	 *
 	 * @param agentSession The Linear agent session
-	 * @param repository The repository configuration
+	 * @param repositories Repository configurations (primary repo is repositories[0])
+	 * @param linearWorkspaceId Linear workspace ID (from webhook.organizationId)
 	 * @param guidance Optional guidance rules from Linear
 	 * @param commentBody Optional comment body (for mentions)
+	 * @param baseBranchOverrides Per-repo base branch overrides from [repo=name#branch] syntax
 	 */
 	private async initializeAgentRunner(
 		agentSession: AgentSessionCreatedWebhook["agentSession"],
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
+		linearWorkspaceId: string,
 		guidance?: AgentSessionCreatedWebhook["guidance"],
 		commentBody?: string | null,
+		baseBranchOverrides?: Map<string, string>,
+		routingMethod?: string,
 	): Promise<void> {
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
@@ -2967,6 +3057,8 @@ ${taskSection}`;
 			this.logger.warn("Cannot initialize Claude runner without issue");
 			return;
 		}
+
+		const primaryRepo = repositories[0]!;
 
 		const log = this.logger.withContext({
 			sessionId,
@@ -3001,17 +3093,17 @@ ${taskSection}`;
 		const agentSessionManager = this.agentSessionManager;
 
 		// Post instant acknowledgment thought
-		await this.postInstantAcknowledgment(
-			sessionId,
-			requireLinearWorkspaceId(repository),
-		);
+		await this.postInstantAcknowledgment(sessionId, linearWorkspaceId);
 
-		// Create the session using the shared method
-		const sessionData = await this.createLinearAgentSession(
+		// Create the session using the shared method (pass full repositories array)
+		const sessionData = await this.createCyrusAgentSession(
 			sessionId,
 			issue,
-			repository,
+			repositories,
 			agentSessionManager,
+			linearWorkspaceId,
+			baseBranchOverrides,
+			routingMethod,
 		);
 
 		// Destructure the session data (excluding allowedTools which we'll build with promptType)
@@ -3037,8 +3129,8 @@ ${taskSection}`;
 		// Lowercase labels for case-insensitive comparison
 		const lowercaseLabels = labels.map((label) => label.toLowerCase());
 
-		// Check for label overrides BEFORE AI routing
-		const debuggerConfig = repository.labelPrompts?.debugger;
+		// Check for label overrides BEFORE AI routing (use primary repo for label config)
+		const debuggerConfig = primaryRepo.labelPrompts?.debugger;
 		const debuggerLabels = Array.isArray(debuggerConfig)
 			? debuggerConfig
 			: debuggerConfig?.labels;
@@ -3053,7 +3145,7 @@ ${taskSection}`;
 			lowercaseLabels.includes("orchestrator");
 
 		// Also check any additional orchestrator labels from config
-		const orchestratorConfig = repository.labelPrompts?.orchestrator;
+		const orchestratorConfig = primaryRepo.labelPrompts?.orchestrator;
 		const orchestratorLabels = Array.isArray(orchestratorConfig)
 			? orchestratorConfig
 			: orchestratorConfig?.labels;
@@ -3066,7 +3158,7 @@ ${taskSection}`;
 			hasHardcodedOrchestratorLabel || hasConfiguredOrchestratorLabel;
 
 		// Check for graphite label (for graphite-orchestrator combination)
-		const graphiteConfig = repository.labelPrompts?.graphite;
+		const graphiteConfig = primaryRepo.labelPrompts?.graphite;
 		const graphiteLabels = Array.isArray(graphiteConfig)
 			? graphiteConfig
 			: (graphiteConfig?.labels ?? ["graphite"]);
@@ -3148,7 +3240,8 @@ ${taskSection}`;
 			const input: PromptAssemblyInput = {
 				session,
 				fullIssue,
-				repository,
+				repositories,
+				repository: primaryRepo,
 				userComment: commentBody || "", // Empty for delegation, present for mentions
 				attachmentManifest: attachmentResult.manifest,
 				guidance: guidance || undefined,
@@ -3158,6 +3251,8 @@ ${taskSection}`;
 				isStreaming: false, // Not yet streaming
 				isMentionTriggered: isMentionTriggered || false,
 				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
+				resolvedBaseBranches: sessionData.workspace.resolvedBaseBranches,
+				linearWorkspaceId,
 			};
 
 			// Use unified prompt assembly
@@ -3176,7 +3271,7 @@ ${taskSection}`;
 			if (!isMentionTriggered || isLabelBasedPromptRequested) {
 				const systemPromptResult = await this.determineSystemPromptFromLabels(
 					labels,
-					repository,
+					primaryRepo,
 				);
 				systemPromptVersion = systemPromptResult?.version;
 				promptType = systemPromptResult?.type;
@@ -3186,8 +3281,8 @@ ${taskSection}`;
 					await this.postSystemPromptSelectionThought(
 						sessionId,
 						labels,
-						requireLinearWorkspaceId(repository),
-						repository.id,
+						linearWorkspaceId,
+						primaryRepo.id,
 					);
 				}
 			}
@@ -3200,9 +3295,9 @@ ${taskSection}`;
 			// If subroutine has disallowAllTools: true, use empty array to disable all tools
 			const allowedTools = currentSubroutine?.disallowAllTools
 				? []
-				: this.buildAllowedTools(repository, promptType);
+				: this.buildAllowedTools(repositories, promptType);
 			const baseDisallowedTools = this.buildDisallowedTools(
-				repository,
+				repositories,
 				promptType,
 			);
 
@@ -3234,7 +3329,7 @@ ${taskSection}`;
 			// buildAgentRunnerConfig now determines runner type from labels internally
 			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
 				session,
-				repository,
+				primaryRepo,
 				sessionId,
 				assembly.systemPrompt,
 				allowedTools,
@@ -3246,6 +3341,8 @@ ${taskSection}`;
 				undefined, // maxTurns
 				currentSubroutine?.singleTurn, // singleTurn flag
 				currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+				undefined, // mcpOptions
+				linearWorkspaceId,
 			);
 
 			log.debug(
@@ -3261,11 +3358,11 @@ ${taskSection}`;
 			await this.savePersistedState();
 
 			// Emit events using full issue (core Issue type)
-			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			this.emit("session:started", fullIssue.id, fullIssue, primaryRepo.id);
 			this.config.handlers?.onSessionStart?.(
 				fullIssue.id,
 				fullIssue,
-				repository.id,
+				primaryRepo.id,
 			);
 
 			// Update runner with version information (if available)
@@ -3409,24 +3506,21 @@ ${taskSection}`;
 			.getIssueRepositoryCache()
 			.set(issueId, [repository.id]);
 
-		// Post agent activity showing user-selected repository
-		await this.postRepositorySelectionActivity(
-			agentSessionId,
-			requireLinearWorkspaceId(repository),
-			repository.name,
-			"user-selected",
-		);
-
 		log.debug(
 			`Initializing agent runner after repository selection: ${agentSession.issue.identifier} -> ${repository.name}`,
 		);
 
-		// Initialize agent runner with the selected repository
+		// Initialize agent runner with the selected repository (wrapped in array)
+		// routingMethod="user-selected" will be included in the combined routing activity
+		// Use organizationId from webhook as the Linear-native workspace ID source
 		await this.initializeAgentRunner(
 			agentSession,
-			repository,
+			[repository],
+			webhook.organizationId,
 			guidance,
 			commentBody,
+			undefined,
+			"user-selected",
 		);
 	}
 
@@ -3489,6 +3583,8 @@ ${taskSection}`;
 		const { agentSession } = webhook;
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
+		// Use organizationId from webhook as the Linear-native workspace ID source
+		const linearWorkspaceId = webhook.organizationId;
 
 		if (!issue) {
 			this.logger.warn("Cannot handle prompted activity without issue");
@@ -3517,16 +3613,18 @@ ${taskSection}`;
 			// Post instant acknowledgment for new session creation
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				requireLinearWorkspaceId(repository),
+				linearWorkspaceId,
 				false,
 			);
 
 			// Create the session using the shared method
-			const sessionData = await this.createLinearAgentSession(
+			// Pass single repo - createCyrusAgentSession normalizes to array internally
+			const sessionData = await this.createCyrusAgentSession(
 				sessionId,
 				issue,
 				repository,
 				agentSessionManager,
+				linearWorkspaceId,
 			);
 
 			// Destructure session data for new session
@@ -3555,14 +3653,12 @@ ${taskSection}`;
 
 			await this.postInstantPromptedAcknowledgment(
 				sessionId,
-				requireLinearWorkspaceId(repository),
+				linearWorkspaceId,
 				isCurrentlyStreaming,
 			);
 
 			// Need to fetch full issue for routing context
-			const issueTracker = this.issueTrackers.get(
-				requireLinearWorkspaceId(repository),
-			);
+			const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 			if (issueTracker) {
 				try {
 					fullIssue = await issueTracker.fetchIssue(issue.id);
@@ -3589,14 +3685,12 @@ ${taskSection}`;
 		// Acknowledgment already posted above for both new and existing sessions
 		// (before any async routing work to ensure instant user feedback)
 
-		// Get issue tracker for this repository
-		const issueTracker = this.issueTrackers.get(
-			requireLinearWorkspaceId(repository),
-		);
+		// Get issue tracker using workspace ID from webhook context
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 		if (!issueTracker) {
 			this.logger.error(
-				"Unexpected: There was no IssueTrackerService for the repository with id",
-				repository.id,
+				"Unexpected: There was no IssueTrackerService for workspace",
+				linearWorkspaceId,
 			);
 			return;
 		}
@@ -3641,9 +3735,8 @@ ${taskSection}`;
 			).length;
 
 			// Download new attachments from the comment
-			const linearTokenForAttachments = this.getLinearTokenForWorkspace(
-				requireLinearWorkspaceId(repository),
-			);
+			const linearTokenForAttachments =
+				this.getLinearTokenForWorkspace(linearWorkspaceId);
 			const downloadResult = comment
 				? await this.downloadCommentAttachments(
 						comment.body,
@@ -3679,6 +3772,7 @@ ${taskSection}`;
 				isNewSession,
 				[], // No additional allowed directories for regular continuation
 				`prompted webhook (${isNewSession ? "new" : "existing"} session)`,
+				linearWorkspaceId,
 				commentAuthor,
 				commentTimestamp,
 			);
@@ -3824,11 +3918,11 @@ ${taskSection}`;
 	/**
 	 * Handle issue unassignment
 	 * @param issue Linear issue object from webhook data
-	 * @param repository Repository configuration
+	 * @param linearWorkspaceId Linear workspace ID (from webhook.organizationId)
 	 */
 	private async handleIssueUnassigned(
 		issue: WebhookIssue,
-		repository: RepositoryConfig,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		const sessions = this.agentSessionManager.getSessionsByIssueId(issue.id);
 		const activeThreadCount = sessions.length;
@@ -3845,7 +3939,7 @@ ${taskSection}`;
 			await this.postComment(
 				issue.id,
 				"I've been unassigned and am stopping work now.",
-				requireLinearWorkspaceId(repository),
+				linearWorkspaceId,
 				// No parentId - post as a new comment on the issue
 			);
 		}
@@ -3979,32 +4073,9 @@ ${taskSection}`;
 		  }
 		| undefined
 	> {
-		return this.promptBuilder.determineSystemPromptFromLabels(
-			labels,
+		return this.promptBuilder.determineSystemPromptFromLabels(labels, [
 			repository,
-		);
-	}
-
-	/**
-	 * Build simplified prompt for label-based workflows
-	 * @param issue Full Linear issue
-	 * @param repository Repository configuration
-	 * @param attachmentManifest Optional attachment manifest
-	 * @param guidance Optional agent guidance rules from Linear
-	 * @returns Formatted prompt string
-	 */
-	private async buildLabelBasedPrompt(
-		issue: Issue,
-		repository: RepositoryConfig,
-		attachmentManifest: string = "",
-		guidance?: GuidanceRule[],
-	): Promise<{ prompt: string; version?: string }> {
-		return this.promptBuilder.buildLabelBasedPrompt(
-			issue,
-			repository,
-			attachmentManifest,
-			guidance,
-		);
+		]);
 	}
 
 	/**
@@ -4035,31 +4106,6 @@ ${taskSection}`;
 	 */
 	private convertLinearIssueToCore(issue: Issue): IssueMinimal {
 		return this.promptBuilder.convertLinearIssueToCore(issue);
-	}
-
-	/**
-	 * Build a prompt for Claude using the improved XML-style template
-	 * @param issue Full Linear issue
-	 * @param repository Repository configuration
-	 * @param newComment Optional new comment to focus on (for handleNewRootComment)
-	 * @param attachmentManifest Optional attachment manifest
-	 * @param guidance Optional agent guidance rules from Linear
-	 * @returns Formatted prompt string
-	 */
-	private async buildIssueContextPrompt(
-		issue: Issue,
-		repository: RepositoryConfig,
-		newComment?: WebhookComment,
-		attachmentManifest: string = "",
-		guidance?: GuidanceRule[],
-	): Promise<{ prompt: string; version?: string }> {
-		return this.promptBuilder.buildIssueContextPrompt(
-			issue,
-			repository,
-			newComment,
-			attachmentManifest,
-			guidance,
-		);
 	}
 
 	/**
@@ -4115,18 +4161,18 @@ ${taskSection}`;
 	/**
 	 * Move issue to started state when assigned
 	 * @param issue Full Linear issue object from Linear SDK
-	 * @param workspaceId Workspace ID for issue tracker lookup
+	 * @param linearWorkspaceId Workspace ID for issue tracker lookup
 	 */
 
 	private async moveIssueToStartedState(
 		issue: Issue,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		try {
-			const issueTracker = this.issueTrackers.get(workspaceId);
+			const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 			if (!issueTracker) {
 				this.logger.warn(
-					`No issue tracker found for workspace ${workspaceId}, skipping state update`,
+					`No issue tracker found for workspace ${linearWorkspaceId}, skipping state update`,
 				);
 				return;
 			}
@@ -4220,13 +4266,13 @@ ${taskSection}`;
 	private async postComment(
 		issueId: string,
 		body: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		parentId?: string,
 	): Promise<void> {
 		return this.activityPoster.postComment(
 			issueId,
 			body,
-			workspaceId,
+			linearWorkspaceId,
 			parentId,
 		);
 	}
@@ -4250,15 +4296,13 @@ ${taskSection}`;
 	 */
 	private async downloadIssueAttachments(
 		issue: Issue,
-		repository: RepositoryConfig,
+		linearWorkspaceId: string,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
-		const issueTracker = this.issueTrackers.get(
-			requireLinearWorkspaceId(repository),
-		);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 		return this.attachmentService.downloadIssueAttachments(
 			issue,
-			requireLinearWorkspaceId(repository),
+			linearWorkspaceId,
 			workspacePath,
 			issueTracker,
 		);
@@ -4391,7 +4435,7 @@ ${taskSection}`;
 				const sdkServer =
 					context.prebuiltServer ||
 					createCyrusToolsServer(
-						context.linearToken,
+						context.linearClient,
 						this.createCyrusToolsOptions(context.parentSessionId),
 					);
 				context.prebuiltServer = undefined;
@@ -4487,10 +4531,11 @@ ${taskSection}`;
 			}
 		}
 
+		// Extract workspace ID once for all operations
+		const childWorkspaceId = requireLinearWorkspaceId(childRepo);
+
 		// Post thought to Linear showing feedback receipt
-		const issueTracker = this.issueTrackers.get(
-			requireLinearWorkspaceId(childRepo),
-		);
+		const issueTracker = this.issueTrackers.get(childWorkspaceId);
 		if (issueTracker) {
 			const feedbackThought = parentIssueId
 				? `Received feedback from orchestrator (${parentIssueId}):\n\n---\n\n${message}\n\n---`
@@ -4539,6 +4584,7 @@ ${taskSection}`;
 			false,
 			[],
 			"give feedback to child",
+			childWorkspaceId,
 		)
 			.then(() => {
 				console.log(
@@ -4559,14 +4605,14 @@ ${taskSection}`;
 	}
 
 	private buildCyrusToolsMcpContextId(
-		repository: RepositoryConfig,
+		repoId: string,
 		parentSessionId?: string,
 	): string {
 		if (parentSessionId) {
-			return `${repository.id}:${parentSessionId}`;
+			return `${repoId}:${parentSessionId}`;
 		}
 
-		return `${repository.id}:anon:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+		return `${repoId}:anon:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 	}
 
 	private getCyrusToolsMcpUrl(): string {
@@ -4602,32 +4648,40 @@ ${taskSection}`;
 
 	/**
 	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
-	 * Optionally includes the Slack MCP server when the SLACK_BOT_TOKEN environment variable is set.
+	 * Workspace-level servers (Linear, cyrus-tools, Slack) are configured once using workspace-level token.
+	 * @param repoId - Repository ID for MCP context scoping
+	 * @param linearWorkspaceId - Linear workspace ID (from webhook.organizationId or repo config)
 	 * @param options.excludeSlackMcp - When true, excludes the Slack MCP server even if SLACK_BOT_TOKEN is set (e.g., for GitHub sessions)
 	 */
 	private buildMcpConfig(
-		repository: RepositoryConfig,
+		repoId: string,
+		linearWorkspaceId: string,
 		parentSessionId?: string,
 		options?: { excludeSlackMcp?: boolean },
 	): Record<string, McpServerConfig> {
-		const contextId = this.buildCyrusToolsMcpContextId(
-			repository,
-			parentSessionId,
-		);
+		const contextId = this.buildCyrusToolsMcpContextId(repoId, parentSessionId);
 
 		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		// If the client reconnects and needs another server, the endpoint creates a fresh one.
-		const linearToken = this.getLinearTokenForWorkspace(
-			requireLinearWorkspaceId(repository),
-		);
+		const linearToken = this.getLinearTokenForWorkspace(linearWorkspaceId);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId) as
+			| (IIssueTrackerService & { getClient?: () => LinearClient })
+			| undefined;
+		if (!issueTracker?.getClient) {
+			throw new Error(
+				`No issue tracker with getClient() found for workspace ${linearWorkspaceId}`,
+			);
+		}
+		const linearClient = issueTracker.getClient();
 		const prebuiltServer = createCyrusToolsServer(
-			linearToken,
+			linearClient,
 			this.createCyrusToolsOptions(parentSessionId),
 		);
 
 		this.cyrusToolsMcpContexts.set(contextId, {
 			contextId,
 			linearToken,
+			linearClient,
 			parentSessionId,
 			prebuiltServer,
 			createdAt: Date.now(),
@@ -4637,7 +4691,7 @@ ${taskSection}`;
 		const cyrusToolsAuthorizationHeader =
 			this.getCyrusToolsMcpAuthorizationHeaderValue();
 
-		// Always inject the Linear MCP servers with the workspace's token
+		// Workspace-level MCP servers — configured once regardless of repo count
 		// https://linear.app/docs/mcp
 		const mcpConfig: Record<string, McpServerConfig> = {
 			linear: {
@@ -4675,6 +4729,37 @@ ${taskSection}`;
 		}
 
 		return mcpConfig;
+	}
+
+	/**
+	 * Merge mcpConfigPath from multiple repositories into a single list.
+	 * For same-name .mcp.json servers across repos, last wins (handled by Claude's merge behavior).
+	 */
+	private buildMergedMcpConfigPath(
+		repositories: RepositoryConfig | RepositoryConfig[],
+	): string | string[] | undefined {
+		const repoArray = Array.isArray(repositories)
+			? repositories
+			: [repositories];
+
+		if (repoArray.length === 1) {
+			return repoArray[0]!.mcpConfigPath;
+		}
+
+		// Collect all mcpConfigPaths from each repo into a flat list
+		const allPaths: string[] = [];
+		for (const repo of repoArray) {
+			if (!repo.mcpConfigPath) continue;
+			if (Array.isArray(repo.mcpConfigPath)) {
+				allPaths.push(...repo.mcpConfigPath);
+			} else {
+				allPaths.push(repo.mcpConfigPath);
+			}
+		}
+
+		if (allPaths.length === 0) return undefined;
+		if (allPaths.length === 1) return allPaths[0];
+		return allPaths;
 	}
 
 	private getCyrusToolsMcpAuthorizationHeaderValue(): string | undefined {
@@ -4728,6 +4813,7 @@ ${taskSection}`;
 		const input: PromptAssemblyInput = {
 			session,
 			fullIssue,
+			repositories: [repository],
 			repository,
 			userComment: promptBody,
 			commentAuthor,
@@ -4807,12 +4893,14 @@ ${taskSection}`;
 
 		// 1. Determine system prompt from labels
 		// Only for delegation (not mentions) or when /label-based-prompt is requested
+		const repositories = input.repositories ?? [input.repository];
 		let labelBasedSystemPrompt: string | undefined;
 		if (!input.isMentionTriggered || input.isLabelBasedPromptRequested) {
-			labelBasedSystemPrompt = await this.determineSystemPromptForAssembly(
+			const result = await this.promptBuilder.determineSystemPromptFromLabels(
 				input.labels || [],
-				input.repository,
+				repositories,
 			);
+			labelBasedSystemPrompt = result?.prompt;
 		}
 
 		// 2. Determine system prompt based on prompt type
@@ -4836,11 +4924,12 @@ ${taskSection}`;
 		);
 		const issueContext = await this.buildIssueContextForPromptAssembly(
 			input.fullIssue,
-			input.repository,
+			repositories,
 			promptType,
 			input.attachmentManifest,
 			input.guidance,
 			input.agentSession,
+			input.resolvedBaseBranches,
 		);
 
 		parts.push(issueContext.prompt);
@@ -4852,9 +4941,11 @@ ${taskSection}`;
 		);
 		let subroutineName: string | undefined;
 		if (currentSubroutine) {
+			const resolvedWsId =
+				input.linearWorkspaceId ?? requireLinearWorkspaceId(input.repository);
 			const subroutinePrompt = await this.loadSubroutinePrompt(
 				currentSubroutine,
-				this.getWorkspaceSlug(requireLinearWorkspaceId(input.repository)),
+				this.getWorkspaceSlug(resolvedWsId),
 			);
 			if (subroutinePrompt) {
 				parts.push(subroutinePrompt);
@@ -4978,29 +5069,16 @@ ${input.userComment}
 	}
 
 	/**
-	 * Adapter method for prompt assembly - extracts just the prompt string
-	 */
-	private async determineSystemPromptForAssembly(
-		labels: string[],
-		repository: RepositoryConfig,
-	): Promise<string | undefined> {
-		const result = await this.determineSystemPromptFromLabels(
-			labels,
-			repository,
-		);
-		return result?.prompt;
-	}
-
-	/**
 	 * Adapter method for prompt assembly - routes to appropriate issue context builder
 	 */
 	private async buildIssueContextForPromptAssembly(
 		issue: Issue,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 		promptType: PromptType,
 		attachmentManifest?: string,
 		guidance?: GuidanceRule[],
 		agentSession?: WebhookAgentSession,
+		resolvedBaseBranches?: Record<string, BaseBranchResolution>,
 	): Promise<IssueContextResult> {
 		// Delegate to appropriate builder based on promptType
 		if (promptType === "mention") {
@@ -5020,20 +5098,22 @@ ${input.userComment}
 			promptType === "label-based" ||
 			promptType === "label-based-prompt-command"
 		) {
-			return this.buildLabelBasedPrompt(
+			return this.promptBuilder.buildLabelBasedPrompt(
 				issue,
-				repository,
+				repositories,
 				attachmentManifest,
 				guidance,
+				resolvedBaseBranches,
 			);
 		}
 		// Fallback to standard issue context
-		return this.buildIssueContextPrompt(
+		return this.promptBuilder.buildIssueContextPrompt(
 			issue,
-			repository,
+			repositories,
 			undefined, // No new comment for initial prompt assembly
 			attachmentManifest,
 			guidance,
+			resolvedBaseBranches,
 		);
 	}
 
@@ -5097,6 +5177,7 @@ ${input.userComment}
 		singleTurn?: boolean,
 		disallowAllTools?: boolean,
 		mcpOptions?: { excludeSlackMcp?: boolean },
+		linearWorkspaceId?: string,
 	): {
 		config: AgentRunnerConfig;
 		runnerType: RunnerType;
@@ -5238,12 +5319,19 @@ ${input.userComment}
 
 		// When disallowAllTools is true, don't provide any MCP servers to ensure
 		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
+		const resolvedWorkspaceId =
+			linearWorkspaceId ?? requireLinearWorkspaceId(repository);
 		const mcpConfig = disallowAllTools
 			? undefined
-			: this.buildMcpConfig(repository, sessionId, mcpOptions);
+			: this.buildMcpConfig(
+					repository.id,
+					resolvedWorkspaceId,
+					sessionId,
+					mcpOptions,
+				);
 		const mcpConfigPath = disallowAllTools
 			? undefined
-			: repository.mcpConfigPath;
+			: this.buildMergedMcpConfigPath(repository);
 
 		if (disallowAllTools) {
 			log.info(
@@ -5278,7 +5366,7 @@ ${input.userComment}
 			...(runnerType === "claude" && {
 				onAskUserQuestion: this.createAskUserQuestionCallback(
 					sessionId,
-					requireLinearWorkspaceId(repository),
+					resolvedWorkspaceId,
 				),
 			}),
 			onMessage: (message: SDKMessage) => {
@@ -5348,10 +5436,11 @@ ${input.userComment}
 	}
 
 	/**
-	 * Build disallowed tools list following the same hierarchy as allowed tools
+	 * Build disallowed tools list following the same hierarchy as allowed tools.
+	 * Accepts single or multiple repositories (intersection for multi-repo).
 	 */
 	private buildDisallowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig | RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -5360,7 +5449,7 @@ ${input.userComment}
 			| "graphite-orchestrator",
 	): string[] {
 		return this.runnerSelectionService.buildDisallowedTools(
-			repository,
+			repositories,
 			promptType,
 		);
 	}
@@ -5386,10 +5475,11 @@ ${input.userComment}
 	}
 
 	/**
-	 * Build allowed tools list with Linear MCP tools automatically included
+	 * Build allowed tools list with Linear MCP tools automatically included.
+	 * Accepts single or multiple repositories (union for multi-repo).
 	 */
 	private buildAllowedTools(
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig | RepositoryConfig[],
 		promptType?:
 			| "debugger"
 			| "builder"
@@ -5398,7 +5488,7 @@ ${input.userComment}
 			| "graphite-orchestrator",
 	): string[] {
 		return this.runnerSelectionService.buildAllowedTools(
-			repository,
+			repositories,
 			promptType,
 		);
 	}
@@ -5456,9 +5546,8 @@ ${input.userComment}
 		repository: RepositoryConfig,
 		_reason: string,
 	): Promise<void> {
-		const issueTracker = this.issueTrackers.get(
-			requireLinearWorkspaceId(repository),
-		);
+		// Use organizationId from webhook as the Linear-native workspace ID source
+		const issueTracker = this.issueTrackers.get(webhook.organizationId);
 		const agentSessionId = webhook.agentSession.id;
 		const behavior = this.userAccessControl.getBlockBehavior(repository.id);
 
@@ -5640,11 +5729,11 @@ ${input.userComment}
 	 */
 	private async postInstantAcknowledgment(
 		sessionId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		return this.activityPoster.postInstantAcknowledgment(
 			sessionId,
-			workspaceId,
+			linearWorkspaceId,
 		);
 	}
 
@@ -5653,37 +5742,28 @@ ${input.userComment}
 	 */
 	private async postParentResumeAcknowledgment(
 		sessionId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		return this.activityPoster.postParentResumeAcknowledgment(
 			sessionId,
-			workspaceId,
+			linearWorkspaceId,
 		);
 	}
 
 	/**
-	 * Post repository selection activity
-	 * Shows which method was used to select the repository (auto-routing or user selection)
+	 * Post combined routing activity showing repos selected + base branches resolved
 	 */
-	private async postRepositorySelectionActivity(
+	private async postRoutingActivity(
 		sessionId: string,
-		workspaceId: string,
-		repositoryName: string,
-		selectionMethod:
-			| "description-tag"
-			| "label-based"
-			| "project-based"
-			| "team-based"
-			| "team-prefix"
-			| "catch-all"
-			| "workspace-fallback"
-			| "user-selected",
+		linearWorkspaceId: string,
+		repoLines: string[],
+		routingMethod?: string,
 	): Promise<void> {
-		return this.activityPoster.postRepositorySelectionActivity(
+		return this.activityPoster.postRoutingActivity(
 			sessionId,
-			workspaceId,
-			repositoryName,
-			selectionMethod,
+			linearWorkspaceId,
+			repoLines,
+			routingMethod,
 		);
 	}
 
@@ -5697,6 +5777,7 @@ ${input.userComment}
 		agentSessionManager: AgentSessionManager,
 		promptBody: string,
 		repository: RepositoryConfig,
+		linearWorkspaceId: string,
 	): Promise<void> {
 		// Initialize procedure metadata using intelligent routing
 		if (!session.metadata) {
@@ -5707,9 +5788,7 @@ ${input.userComment}
 		await agentSessionManager.postAnalyzingThought(sessionId);
 
 		// Fetch full issue and labels to check for Orchestrator label override
-		const issueTracker = this.issueTrackers.get(
-			requireLinearWorkspaceId(repository),
-		);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 		let hasOrchestratorLabel = false;
 
 		// Get issueId from issueContext (preferred) or deprecated issueId field
@@ -5815,6 +5894,7 @@ ${input.userComment}
 		isNewSession: boolean,
 		additionalAllowedDirs: string[],
 		logContext: string,
+		linearWorkspaceId: string,
 		commentAuthor?: string,
 		commentTimestamp?: string,
 	): Promise<boolean> {
@@ -5831,6 +5911,7 @@ ${input.userComment}
 				agentSessionManager,
 				promptBody,
 				repository,
+				linearWorkspaceId,
 			);
 			log.debug(`Routed procedure for ${logContext}`);
 		} else {
@@ -5871,6 +5952,7 @@ ${input.userComment}
 			attachmentManifest,
 			isNewSession,
 			additionalAllowedDirs,
+			linearWorkspaceId,
 			undefined, // maxTurns
 			commentAuthor,
 			commentTimestamp,
@@ -5885,13 +5967,13 @@ ${input.userComment}
 	private async postSystemPromptSelectionThought(
 		sessionId: string,
 		labels: string[],
-		workspaceId: string,
+		linearWorkspaceId: string,
 		repositoryId: string,
 	): Promise<void> {
 		return this.activityPoster.postSystemPromptSelectionThought(
 			sessionId,
 			labels,
-			workspaceId,
+			linearWorkspaceId,
 			repositoryId,
 		);
 	}
@@ -5916,6 +5998,7 @@ ${input.userComment}
 		attachmentManifest: string = "",
 		isNewSession: boolean = false,
 		additionalAllowedDirectories: string[] = [],
+		linearWorkspaceId?: string,
 		maxTurns?: number,
 		commentAuthor?: string,
 		commentTimestamp?: string,
@@ -5950,10 +6033,12 @@ ${input.userComment}
 			throw new Error(`No issue ID found for session ${session.id}`);
 		}
 
-		// Fetch full issue details
+		// Fetch full issue details using workspace ID (from webhook context or repo fallback)
+		const resolvedWorkspaceId =
+			linearWorkspaceId ?? requireLinearWorkspaceId(repository);
 		const fullIssue = await this.fetchFullIssueDetails(
 			issueIdForResume,
-			requireLinearWorkspaceId(repository),
+			resolvedWorkspaceId,
 		);
 		if (!fullIssue) {
 			log.error(`Failed to fetch full issue details for ${issueIdForResume}`);
@@ -6060,6 +6145,8 @@ ${input.userComment}
 			maxTurns, // Pass maxTurns if specified
 			currentSubroutine?.singleTurn, // singleTurn flag
 			currentSubroutine?.disallowAllTools, // disallowAllTools flag - also disables MCP tools
+			undefined, // mcpOptions
+			resolvedWorkspaceId,
 		);
 
 		// Create the appropriate runner based on session state
@@ -6101,12 +6188,12 @@ ${input.userComment}
 	 */
 	private async postInstantPromptedAcknowledgment(
 		sessionId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 		isStreaming: boolean,
 	): Promise<void> {
 		return this.activityPoster.postInstantPromptedAcknowledgment(
 			sessionId,
-			workspaceId,
+			linearWorkspaceId,
 			isStreaming,
 		);
 	}
@@ -6114,9 +6201,9 @@ ${input.userComment}
 	/**
 	 * Get the platform type for a workspace's issue tracker.
 	 */
-	private getRepositoryPlatform(workspaceId: string): string | undefined {
+	private getRepositoryPlatform(linearWorkspaceId: string): string | undefined {
 		try {
-			return this.issueTrackers.get(workspaceId)?.getPlatformType();
+			return this.issueTrackers.get(linearWorkspaceId)?.getPlatformType();
 		} catch {
 			return undefined;
 		}
@@ -6127,11 +6214,13 @@ ${input.userComment}
 	 */
 	public async fetchFullIssueDetails(
 		issueId: string,
-		workspaceId: string,
+		linearWorkspaceId: string,
 	): Promise<Issue | null> {
-		const issueTracker = this.issueTrackers.get(workspaceId);
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId);
 		if (!issueTracker) {
-			this.logger.warn(`No issue tracker found for workspace ${workspaceId}`);
+			this.logger.warn(
+				`No issue tracker found for workspace ${linearWorkspaceId}`,
+			);
 			return null;
 		}
 
@@ -6168,7 +6257,9 @@ ${input.userComment}
 	 * Uses workspace-level token storage.
 	 * Returns undefined if OAuth credentials are not available.
 	 */
-	private buildOAuthConfig(workspaceId: string): LinearOAuthConfig | undefined {
+	private buildOAuthConfig(
+		linearWorkspaceId: string,
+	): LinearOAuthConfig | undefined {
 		const clientId = process.env.LINEAR_CLIENT_ID;
 		const clientSecret = process.env.LINEAR_CLIENT_SECRET;
 
@@ -6179,30 +6270,30 @@ ${input.userComment}
 			return undefined;
 		}
 
-		const workspaceConfig = this.config.linearWorkspaces?.[workspaceId];
+		const workspaceConfig = this.config.linearWorkspaces?.[linearWorkspaceId];
 		if (!workspaceConfig?.linearRefreshToken) {
 			this.logger.warn(
-				`No refresh token for workspace ${workspaceId}, token refresh disabled`,
+				`No refresh token for workspace ${linearWorkspaceId}, token refresh disabled`,
 			);
 			return undefined;
 		}
 
 		// Get workspace name from workspace-level config
 		const workspaceName =
-			this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceName ||
-			workspaceId;
+			this.config.linearWorkspaces?.[linearWorkspaceId]?.linearWorkspaceName ||
+			linearWorkspaceId;
 
 		return {
 			clientId,
 			clientSecret,
 			refreshToken: workspaceConfig.linearRefreshToken,
-			workspaceId,
+			workspaceId: linearWorkspaceId,
 			onTokenRefresh: async (tokens) => {
 				// Update workspace config in memory
-				if (this.config.linearWorkspaces?.[workspaceId]) {
-					this.config.linearWorkspaces[workspaceId].linearToken =
+				if (this.config.linearWorkspaces?.[linearWorkspaceId]) {
+					this.config.linearWorkspaces[linearWorkspaceId].linearToken =
 						tokens.accessToken;
-					this.config.linearWorkspaces[workspaceId].linearRefreshToken =
+					this.config.linearWorkspaces[linearWorkspaceId].linearRefreshToken =
 						tokens.refreshToken;
 				}
 
@@ -6210,7 +6301,7 @@ ${input.userComment}
 				await this.saveOAuthTokens({
 					linearToken: tokens.accessToken,
 					linearRefreshToken: tokens.refreshToken,
-					linearWorkspaceId: workspaceId,
+					linearWorkspaceId: linearWorkspaceId,
 					linearWorkspaceName: workspaceName,
 				});
 			},

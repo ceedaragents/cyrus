@@ -16,6 +16,8 @@ export type RepositoryRoutingResult =
 	| {
 			type: "selected";
 			repositories: RepositoryConfig[];
+			/** Per-repo base branch overrides from [repo=name#branch] syntax */
+			baseBranchOverrides?: Map<string, string>;
 			routingMethod:
 				| "description-tag"
 				| "label-based"
@@ -193,19 +195,33 @@ export class RepositoryRouter {
 		);
 		if (workspaceRepos.length === 0) return { type: "none" };
 
-		// Priority 1: Check description tags [repo=...] (supports multiple)
-		const descriptionTagRepos = await this.findRepositoriesByDescriptionTag(
+		// Priority 1: Check description tags [repo=...] (supports multiple, with optional #branch)
+		const descriptionTagResult = await this.findRepositoriesByDescriptionTag(
 			issueId,
 			workspaceRepos,
 			workspaceId,
 		);
-		if (descriptionTagRepos.length > 0) {
+		if (descriptionTagResult.repositories.length > 0) {
 			this.logger.info(
-				`Repositories selected: [${descriptionTagRepos.map((r) => r.name).join(", ")}] (description-tag routing)`,
+				`Repositories selected: [${descriptionTagResult.repositories.map((r) => r.name).join(", ")}] (description-tag routing)`,
 			);
+			if (descriptionTagResult.baseBranchOverrides.size > 0) {
+				const overrideEntries = Array.from(
+					descriptionTagResult.baseBranchOverrides.entries(),
+				)
+					.map(([id, branch]) => `${id}→${branch}`)
+					.join(", ");
+				this.logger.info(
+					`Base branch overrides from description tags: ${overrideEntries}`,
+				);
+			}
 			return {
 				type: "selected",
-				repositories: descriptionTagRepos,
+				repositories: descriptionTagResult.repositories,
+				baseBranchOverrides:
+					descriptionTagResult.baseBranchOverrides.size > 0
+						? descriptionTagResult.baseBranchOverrides
+						: undefined,
 				routingMethod: "description-tag",
 			};
 		}
@@ -350,113 +366,179 @@ export class RepositoryRouter {
 	/**
 	 * Find all repositories matching description tags
 	 *
-	 * Parses the issue description for [repo=...] tags (supports multiple) and matches against:
-	 * - Repository GitHub URL (contains org/repo-name)
+	 * Parses the issue description for repo tags and matches against:
+	 * - Repository GitHub URL (endsWith /repo-name)
 	 * - Repository name
 	 * - Repository ID
 	 *
-	 * Example tags:
-	 * - [repo=Trelent/lighthouse-financial-disclosure]
-	 * - [repo=my-repo-name]
-	 * - [repo=frontend] [repo=backend]
+	 * Supported tag syntaxes:
+	 * - [repo=my-repo-name] or [repo=my-repo-name#branch]
+	 * - repo=frontend,backend#branch
+	 * - repos=frontend,backend
 	 */
 	private async findRepositoriesByDescriptionTag(
 		issueId: string | undefined,
 		repos: RepositoryConfig[],
 		workspaceId: string,
-	): Promise<RepositoryConfig[]> {
-		if (!issueId) return [];
+	): Promise<{
+		repositories: RepositoryConfig[];
+		baseBranchOverrides: Map<string, string>;
+	}> {
+		if (!issueId) return { repositories: [], baseBranchOverrides: new Map() };
 
 		try {
 			const description = await this.deps.fetchIssueDescription(
 				issueId,
 				workspaceId,
 			);
-			if (!description) return [];
+			if (!description)
+				return { repositories: [], baseBranchOverrides: new Map() };
 
 			const repoTags = this.parseRepoTagsFromDescription(description);
-			if (repoTags.length === 0) return [];
+			if (repoTags.length === 0)
+				return { repositories: [], baseBranchOverrides: new Map() };
 
-			this.logger.debug(
-				`Found [repo=...] tags in issue description: [${repoTags.join(", ")}]`,
+			this.logger.info(
+				`Found repo tags in issue description: [${repoTags.map((t) => (t.branch ? `${t.repo}#${t.branch}` : t.repo)).join(", ")}]`,
 			);
 
 			const matched: RepositoryConfig[] = [];
 			const matchedIds = new Set<string>();
+			const baseBranchOverrides = new Map<string, string>();
 
 			for (const repoTag of repoTags) {
 				for (const repo of repos) {
 					if (matchedIds.has(repo.id)) continue;
 
-					// Match by GitHub URL containing the tag value (e.g., "org/repo-name")
-					if (repo.githubUrl?.includes(repoTag)) {
+					let isMatch = false;
+
+					// Match by GitHub URL path segment (e.g., "org/repo-name" or "repo-name")
+					// Use endsWith to avoid substring false positives (e.g., "cyrus" matching "cyrus-hosted")
+					if (
+						repo.githubUrl?.endsWith(`/${repoTag.repo}`) ||
+						repo.githubUrl?.endsWith(`/${repoTag.repo}.git`)
+					) {
 						this.logger.debug(
-							`Matched repo tag "${repoTag}" to repository ${repo.name} via GitHub URL`,
+							`Matched repo tag "${repoTag.repo}" to repository ${repo.name} via GitHub URL`,
 						);
-						matched.push(repo);
-						matchedIds.add(repo.id);
-						continue;
+						isMatch = true;
 					}
 
 					// Match by repository name (exact match, case-insensitive)
-					if (repo.name.toLowerCase() === repoTag.toLowerCase()) {
+					if (
+						!isMatch &&
+						repo.name.toLowerCase() === repoTag.repo.toLowerCase()
+					) {
 						this.logger.debug(
-							`Matched repo tag "${repoTag}" to repository ${repo.name} via name`,
+							`Matched repo tag "${repoTag.repo}" to repository ${repo.name} via name`,
 						);
-						matched.push(repo);
-						matchedIds.add(repo.id);
-						continue;
+						isMatch = true;
 					}
 
 					// Match by repository ID
-					if (repo.id === repoTag) {
+					if (!isMatch && repo.id === repoTag.repo) {
 						this.logger.debug(
-							`Matched repo tag "${repoTag}" to repository ${repo.name} via ID`,
+							`Matched repo tag "${repoTag.repo}" to repository ${repo.name} via ID`,
 						);
+						isMatch = true;
+					}
+
+					if (isMatch) {
 						matched.push(repo);
 						matchedIds.add(repo.id);
+						if (repoTag.branch) {
+							baseBranchOverrides.set(repo.id, repoTag.branch);
+							this.logger.debug(
+								`Base branch override for ${repo.name}: ${repoTag.branch}`,
+							);
+						}
 					}
 				}
 			}
 
 			if (matched.length === 0) {
 				this.logger.debug(
-					`No repositories matched [repo=...] tags: [${repoTags.join(", ")}]`,
+					`No repositories matched [repo=...] tags: [${repoTags.map((t) => t.repo).join(", ")}]`,
 				);
 			}
-			return matched;
+			return { repositories: matched, baseBranchOverrides };
 		} catch (error) {
 			this.logger.error(`Failed to fetch description for routing:`, error);
 		}
 
-		return [];
+		return { repositories: [], baseBranchOverrides: new Map() };
 	}
 
 	/**
-	 * Parse all [repo=...] tags from issue description
+	 * Parse repo tags from issue description
 	 *
-	 * Supports various formats:
-	 * - [repo=org/repo-name]
-	 * - [repo=repo-name]
-	 * - [repo=repo-id]
+	 * Supported syntaxes:
+	 * - `[repo=name]` or `[repo=name#branch]` — bracketed, single repo per tag
+	 * - `repo=name,name2#branch` — unbracketed, comma-separated repos with optional branch
+	 * - `repos=name,name2#branch` — same as above with plural "repos"
 	 *
-	 * Also handles escaped brackets (\\[repo=...\\]) which Linear may produce
-	 * when the description contains markdown-escaped square brackets.
+	 * Also handles escaped brackets (\\[repo=...\\]) which Linear may produce.
 	 *
-	 * Returns array of tag values (empty array if none found).
+	 * Returns array of parsed tags with optional branch overrides.
 	 */
-	parseRepoTagsFromDescription(description: string): string[] {
-		// Match all [repo=...] patterns - captures everything between = and ]
-		// The pattern allows: alphanumeric, hyphens, underscores, forward slashes, dots
-		// Also handles escaped brackets (\\[ and \\]) that Linear may produce
-		const regex = /\\?\[repo=([a-zA-Z0-9_\-/.]+)\\?\]/g;
-		const tags: string[] = [];
-		for (const match of description.matchAll(regex)) {
+	parseRepoTagsFromDescription(
+		description: string,
+	): { repo: string; branch?: string }[] {
+		const tags: { repo: string; branch?: string }[] = [];
+
+		// Pattern 1: Bracketed [repo=...] (existing syntax)
+		// Matches: [repo=name], [repo=name#branch], \[repo=name\]
+		const bracketRegex = /\\?\[repo=([a-zA-Z0-9_\-/.#]+)\\?\]/g;
+		for (const match of description.matchAll(bracketRegex)) {
 			if (match[1]) {
-				tags.push(match[1]);
+				tags.push(...this.parseRepoValue(match[1]));
 			}
 		}
-		return tags;
+
+		// Pattern 2: Unbracketed repos?=... (new syntax)
+		// Matches: repo=name, repos=name,name2, repo=name,name2#branch
+		// Must be at start of line or after whitespace to avoid matching inside URLs/paths
+		const unbracketedRegex = /(?:^|[\s\n])repos?=([a-zA-Z0-9_\-/.#,]+)/gm;
+		for (const match of description.matchAll(unbracketedRegex)) {
+			if (match[1]) {
+				tags.push(...this.parseRepoValue(match[1]));
+			}
+		}
+
+		// Deduplicate by repo name (keep first occurrence)
+		const seen = new Set<string>();
+		return tags.filter((tag) => {
+			if (seen.has(tag.repo)) return false;
+			seen.add(tag.repo);
+			return true;
+		});
+	}
+
+	/**
+	 * Parse a repo value that may contain commas (multiple repos) and #branch.
+	 * The #branch suffix applies to all repos in a comma-separated list.
+	 */
+	private parseRepoValue(value: string): { repo: string; branch?: string }[] {
+		// Split branch from the end: everything after the last # that follows a repo name
+		const hashIndex = value.indexOf("#");
+		let reposPart: string;
+		let branch: string | undefined;
+
+		if (hashIndex !== -1) {
+			reposPart = value.slice(0, hashIndex);
+			branch = value.slice(hashIndex + 1);
+			if (!branch) branch = undefined;
+		} else {
+			reposPart = value;
+		}
+
+		// Split comma-separated repos
+		const repos = reposPart
+			.split(",")
+			.map((r) => r.trim())
+			.filter((r) => r.length > 0);
+
+		return repos.map((repo) => (branch ? { repo, branch } : { repo }));
 	}
 
 	/**

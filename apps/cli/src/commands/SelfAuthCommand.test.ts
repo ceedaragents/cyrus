@@ -404,13 +404,12 @@ describe("SelfAuthCommand", () => {
 			process.env.CYRUS_BASE_URL = "https://example.com";
 		});
 
-		it("should update repositories matching workspace ID", async () => {
+		it("should save workspace credentials without modifying repositories", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
 					repositories: [
-						{ id: "repo-1", linearWorkspaceId: "ws-123", linearToken: "old" },
-						{ id: "repo-2", linearWorkspaceId: "ws-456", linearToken: "other" },
-						{ id: "repo-3", linearWorkspaceId: "ws-123", linearToken: "old" },
+						{ id: "repo-1", linearWorkspaceId: "ws-123" },
+						{ id: "repo-2", linearWorkspaceId: "ws-456" },
 					],
 				}),
 			);
@@ -462,31 +461,28 @@ describe("SelfAuthCommand", () => {
 				mocks.mockWriteFileSync.mock.calls[0][1],
 			);
 
-			// Tokens are stored at workspace level, not on repositories
+			// Tokens are stored at workspace level
 			expect(writtenConfig.linearWorkspaces["ws-123"].linearToken).toBe(
 				"lin_oauth_new",
 			);
 			expect(writtenConfig.linearWorkspaces["ws-123"].linearRefreshToken).toBe(
 				"refresh_new",
 			);
-
-			// repo with ws-456 should NOT be updated
-			expect(writtenConfig.linearWorkspaces["ws-456"].linearToken).toBe(
-				"other",
+			expect(writtenConfig.linearWorkspaces["ws-123"].linearWorkspaceName).toBe(
+				"Workspace",
 			);
 
-			// Repos should have workspace ID set but no tokens
-			expect(writtenConfig.repositories[0].linearToken).toBeUndefined();
-			expect(writtenConfig.repositories[0].linearWorkspaceId).toBe("ws-123");
+			// Repositories are NOT modified — self-auth only saves credentials
+			expect(writtenConfig.repositories).toEqual([
+				{ id: "repo-1", linearWorkspaceId: "ws-123" },
+				{ id: "repo-2", linearWorkspaceId: "ws-456" },
+			]);
 		});
 
-		it("should update repositories with empty workspace ID", async () => {
+		it("should save credentials even with empty repositories array", async () => {
 			mocks.mockReadFileSync.mockReturnValue(
 				JSON.stringify({
-					repositories: [
-						{ id: "repo-1", linearWorkspaceId: "", linearToken: "" },
-						{ id: "repo-2", linearWorkspaceId: "ws-456", linearToken: "keep" },
-					],
+					repositories: [],
 				}),
 			);
 
@@ -529,16 +525,13 @@ describe("SelfAuthCommand", () => {
 			}));
 
 			await expect(command.execute([])).rejects.toThrow("process.exit called");
+			expect(mockExit).toHaveBeenCalledWith(0);
 
 			const writtenConfig = JSON.parse(
 				mocks.mockWriteFileSync.mock.calls[0][1],
 			);
 
-			// repo with empty workspace should be updated with new workspace ID
-			expect(writtenConfig.repositories[0].linearWorkspaceId).toBe("ws-new");
-			expect(writtenConfig.repositories[0].linearWorkspaceName).toBeUndefined();
-			// Tokens and workspace name are stored at workspace level, not on repositories
-			expect(writtenConfig.repositories[0].linearToken).toBeUndefined();
+			// Credentials saved at workspace level despite no repositories
 			expect(writtenConfig.linearWorkspaces["ws-new"].linearToken).toBe(
 				"lin_oauth_new",
 			);
@@ -546,9 +539,8 @@ describe("SelfAuthCommand", () => {
 				"New Workspace",
 			);
 
-			// repo with different workspace should NOT be updated
-			expect(writtenConfig.repositories[1].linearWorkspaceId).toBe("ws-456");
-			expect(writtenConfig.linearWorkspaces["ws-456"].linearToken).toBe("keep");
+			// Repositories remain empty — linking happens via self-add-repo
+			expect(writtenConfig.repositories).toEqual([]);
 		});
 	});
 });
