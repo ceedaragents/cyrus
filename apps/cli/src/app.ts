@@ -108,9 +108,9 @@ program
 
 // Self-add-repo command - Clone and add repository
 program
-	.command("self-add-repo <url> [workspace]")
+	.command("self-add-repo [url] [workspace]")
 	.description(
-		'Clone a repo and add it to config. URL accepts any valid git clone address (e.g., "https://github.com/org/repo.git"). Workspace is the display name of the Linear workspace (e.g., "My Workspace").',
+		'Clone a repo and add it to config. URL accepts any valid git clone address (e.g., "https://github.com/org/repo.git"). Workspace is the display name of the Linear workspace (e.g., "My Workspace"). If URL is omitted, prompts interactively.',
 	)
 	.option(
 		"-l, --label <labels>",
@@ -118,7 +118,7 @@ program
 	)
 	.action(
 		async (
-			url: string,
+			url: string | undefined,
 			workspace: string | undefined,
 			cmdOpts: { label?: string },
 		) => {

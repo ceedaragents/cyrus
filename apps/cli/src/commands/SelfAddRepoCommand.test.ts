@@ -101,12 +101,66 @@ describe("SelfAddRepoCommand", () => {
 	});
 
 	describe("URL Handling", () => {
-		it("should error when URL is not provided", async () => {
+		it("should prompt for URL when not provided", async () => {
+			mocks.mockReadFileSync.mockReturnValue(
+				JSON.stringify({
+					linearWorkspaces: {
+						"ws-123": {
+							linearToken: "token",
+							linearRefreshToken: "refresh",
+							linearWorkspaceName: "Test Workspace",
+						},
+					},
+					repositories: [],
+				}),
+			);
+
+			mocks.mockQuestion.mockImplementation(
+				(_question: string, callback: (answer: string) => void) => {
+					callback("https://github.com/user/prompted-repo.git");
+				},
+			);
+
+			await expect(command.execute([])).rejects.toThrow("process.exit called");
+			expect(mockExit).toHaveBeenCalledWith(0);
+
+			expect(mocks.mockQuestion).toHaveBeenCalledWith(
+				"Repository URL: ",
+				expect.any(Function),
+			);
+
+			const writtenConfig = JSON.parse(
+				mocks.mockWriteFileSync.mock.calls[0][1],
+			);
+			const addedRepo = writtenConfig.repositories.find(
+				(r: any) => r.id === "generated-uuid-123",
+			);
+			expect(addedRepo.name).toBe("prompted-repo");
+		});
+
+		it("should error when prompted URL is empty", async () => {
+			mocks.mockReadFileSync.mockReturnValue(
+				JSON.stringify({
+					linearWorkspaces: {
+						"ws-123": {
+							linearToken: "token",
+							linearRefreshToken: "refresh",
+							linearWorkspaceName: "Test Workspace",
+						},
+					},
+					repositories: [],
+				}),
+			);
+
+			mocks.mockQuestion.mockImplementation(
+				(_question: string, callback: (answer: string) => void) => {
+					callback("");
+				},
+			);
+
 			await expect(command.execute([])).rejects.toThrow("process.exit called");
 			expect(mockExit).toHaveBeenCalledWith(1);
-			expect(mockApp.logger.error).toHaveBeenCalledWith(
-				"Repository URL is required",
-			);
+			expect(mockApp.logger.error).toHaveBeenCalledWith("URL is required");
 		});
 
 		it("should extract repo name from URL correctly", async () => {

@@ -26,6 +26,7 @@ interface WorkspaceCredentials {
  * Self-add-repo command - clones a repo and adds it to config.json
  *
  * Usage:
+ *   cyrus self-add-repo                      # prompts for everything
  *   cyrus self-add-repo <url>                # prompts for workspace if multiple
  *   cyrus self-add-repo <url> <workspace>    # no prompts
  *   cyrus self-add-repo <url> -l <labels>    # custom routing labels (comma-separated)
@@ -77,13 +78,8 @@ export class SelfAddRepoCommand extends BaseCommand {
 			}
 		}
 
-		const url = positionalArgs[0];
+		let url = positionalArgs[0];
 		const workspaceName = positionalArgs[1];
-
-		if (!url) {
-			this.logError("Repository URL is required");
-			process.exit(1);
-		}
 
 		try {
 			// Load config
@@ -100,6 +96,15 @@ export class SelfAddRepoCommand extends BaseCommand {
 
 			if (!config.repositories) {
 				config.repositories = [];
+			}
+
+			// Get URL if not provided
+			if (!url) {
+				url = await this.prompt("Repository URL: ");
+				if (!url) {
+					this.logError("URL is required");
+					process.exit(1);
+				}
 			}
 
 			// Extract repo name from URL
