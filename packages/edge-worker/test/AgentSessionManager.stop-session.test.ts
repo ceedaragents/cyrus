@@ -37,7 +37,7 @@ describe("AgentSessionManager stop-session behavior", () => {
 			mockProcedureAnalyzer,
 		);
 
-		manager.createLinearAgentSession(
+		manager.createCyrusAgentSession(
 			sessionId,
 			issueId,
 			{

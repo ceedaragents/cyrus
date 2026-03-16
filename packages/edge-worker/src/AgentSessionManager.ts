@@ -172,7 +172,7 @@ export class AgentSessionManager extends EventEmitter {
 	 *                   Only "linear" sessions will have activities streamed to Linear.
 	 * @param repositories - Repository contexts for the session (defaults to empty array)
 	 */
-	createLinearAgentSession(
+	createCyrusAgentSession(
 		sessionId: string,
 		issueId: string,
 		issueMinimal: IssueMinimal,
@@ -218,7 +218,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create an agent session for chat-style platforms (Slack, etc.) that are
 	 * not tied to a specific issue or repository.
 	 *
-	 * Unlike {@link createLinearAgentSession}, this does NOT require issue
+	 * Unlike {@link createCyrusAgentSession}, this does NOT require issue
 	 * context — the session lives in a standalone workspace with no issue
 	 * tracker linkage.
 	 *
@@ -254,7 +254,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Update Agent Session with session ID from system initialization
 	 * Automatically detects whether it's Claude or Gemini based on the runner
 	 */
-	updateAgentSessionWithClaudeSessionId(
+	updateAgentSessionWithRunnerSessionId(
 		sessionId: string,
 		claudeSystemMessage: SDKSystemMessage,
 	): void {
@@ -879,7 +879,7 @@ export class AgentSessionManager extends EventEmitter {
 			switch (message.type) {
 				case "system":
 					if (message.subtype === "init") {
-						this.updateAgentSessionWithClaudeSessionId(sessionId, message);
+						this.updateAgentSessionWithRunnerSessionId(sessionId, message);
 
 						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
