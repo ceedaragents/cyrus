@@ -33,7 +33,7 @@ vi.mock("../src/AgentSessionManager.js", () => ({
 	AgentSessionManager: vi.fn().mockImplementation(() => ({
 		getAllAgentRunners: vi.fn().mockReturnValue([]),
 		getAllSessions: vi.fn().mockReturnValue([]),
-		createLinearAgentSession: vi.fn(),
+		createCyrusAgentSession: vi.fn(),
 		getSession: vi.fn(),
 		getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
 		setActivitySink: vi.fn(),

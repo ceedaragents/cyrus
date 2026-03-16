@@ -90,7 +90,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			getSession: vi.fn().mockReturnValue(null), // No session found (simulates missing session)
 			getSessionsByIssueId: vi.fn().mockReturnValue([]),
 			getActiveSessionsByIssueId: vi.fn().mockReturnValue([]),
-			createLinearAgentSession: vi.fn().mockReturnValue({
+			createCyrusAgentSession: vi.fn().mockReturnValue({
 				id: "recovered-session",
 				status: "active",
 				issueContext: {
@@ -513,9 +513,9 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			// Session not found initially
 			mockAgentSessionManager.getSession.mockReturnValue(null);
 
-			// Mock createLinearAgentSession on EdgeWorker (the full method)
+			// Mock createCyrusAgentSession on EdgeWorker (the full method)
 			const createSessionSpy = vi
-				.spyOn(edgeWorker as any, "createLinearAgentSession")
+				.spyOn(edgeWorker as any, "createCyrusAgentSession")
 				.mockResolvedValue({
 					session: {
 						id: "agent-session-legacy-123",

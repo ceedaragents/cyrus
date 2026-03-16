@@ -39,7 +39,7 @@ describe("AgentSessionManager - Multi-repo GitHub @ mention routing", () => {
 	});
 
 	function createMultiRepoSession(sessionId = "session-multi") {
-		manager.createLinearAgentSession(
+		manager.createCyrusAgentSession(
 			sessionId,
 			"issue-1",
 			{
@@ -55,7 +55,7 @@ describe("AgentSessionManager - Multi-repo GitHub @ mention routing", () => {
 	}
 
 	function createSingleRepoSession(sessionId = "session-single") {
-		manager.createLinearAgentSession(
+		manager.createCyrusAgentSession(
 			sessionId,
 			"issue-2",
 			{

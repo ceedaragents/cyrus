@@ -172,7 +172,7 @@ export class AgentSessionManager extends EventEmitter {
 	 *                   Only "linear" sessions will have activities streamed to Linear.
 	 * @param repositories - Repository contexts for the session (defaults to empty array)
 	 */
-	createLinearAgentSession(
+	createCyrusAgentSession(
 		sessionId: string,
 		issueId: string,
 		issueMinimal: IssueMinimal,
@@ -218,7 +218,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Create an agent session for chat-style platforms (Slack, etc.) that are
 	 * not tied to a specific issue or repository.
 	 *
-	 * Unlike {@link createLinearAgentSession}, this does NOT require issue
+	 * Unlike {@link createCyrusAgentSession}, this does NOT require issue
 	 * context — the session lives in a standalone workspace with no issue
 	 * tracker linkage.
 	 *

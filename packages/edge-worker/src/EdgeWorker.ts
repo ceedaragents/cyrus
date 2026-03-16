@@ -1101,7 +1101,7 @@ export class EdgeWorker extends EventEmitter {
 
 			// Create an internal agent session (no Linear session for GitHub)
 			const githubSessionId = `github-${event.deliveryId}`;
-			agentSessionManager.createLinearAgentSession(
+			agentSessionManager.createCyrusAgentSession(
 				githubSessionId,
 				sessionKey,
 				issueMinimal,
@@ -2697,7 +2697,7 @@ ${taskSection}`;
 	 * @param linearWorkspaceId Linear workspace ID (from webhook.organizationId)
 	 * @returns Object containing session details and setup information
 	 */
-	private async createLinearAgentSession(
+	private async createCyrusAgentSession(
 		sessionId: string,
 		issue: { id: string; identifier: string },
 		repositoriesOrSingle: RepositoryConfig | RepositoryConfig[],
@@ -2729,7 +2729,7 @@ ${taskSection}`;
 		// When adding new options here, always update the handler signature in config-types.ts
 		// AND the CLI's handler implementation in WorkerService.ts to pass them through.
 		this.logger.info(
-			`createLinearAgentSession: passing baseBranchOverrides=${baseBranchOverrides ? `Map(size=${baseBranchOverrides.size}, keys=[${Array.from(baseBranchOverrides.keys()).join(",")}])` : "undefined"}, useCustomHandler=${!!this.config.handlers?.createWorkspace}`,
+			`createCyrusAgentSession: passing baseBranchOverrides=${baseBranchOverrides ? `Map(size=${baseBranchOverrides.size}, keys=[${Array.from(baseBranchOverrides.keys()).join(",")}])` : "undefined"}, useCustomHandler=${!!this.config.handlers?.createWorkspace}`,
 		);
 		const workspace = this.config.handlers?.createWorkspace
 			? await this.config.handlers.createWorkspace(fullIssue, repositories, {
@@ -2753,7 +2753,7 @@ ${taskSection}`;
 				workspace.resolvedBaseBranches?.[repo.id]?.branch ?? repo.baseBranch,
 		}));
 
-		agentSessionManager.createLinearAgentSession(
+		agentSessionManager.createCyrusAgentSession(
 			sessionId,
 			issue.id,
 			issueMinimal,
@@ -3037,7 +3037,7 @@ ${taskSection}`;
 		await this.postInstantAcknowledgment(sessionId, linearWorkspaceId);
 
 		// Create the session using the shared method (pass full repositories array)
-		const sessionData = await this.createLinearAgentSession(
+		const sessionData = await this.createCyrusAgentSession(
 			sessionId,
 			issue,
 			repositories,
@@ -3559,8 +3559,8 @@ ${taskSection}`;
 			);
 
 			// Create the session using the shared method
-			// Pass single repo - createLinearAgentSession normalizes to array internally
-			const sessionData = await this.createLinearAgentSession(
+			// Pass single repo - createCyrusAgentSession normalizes to array internally
+			const sessionData = await this.createCyrusAgentSession(
 				sessionId,
 				issue,
 				repository,
