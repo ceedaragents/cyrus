@@ -423,27 +423,36 @@ describe("LinearMessageTranslator", () => {
 	});
 
 	describe("translate - IssueStateChange", () => {
-		it("should translate issue state change to completed as IssueStateChangeMessage", () => {
+		it("should translate issueStatusChanged notification with completed state", () => {
 			const webhook: LinearWebhookPayload = {
-				type: "Issue",
-				action: "update",
+				type: "AppUserNotification",
+				action: "issueStatusChanged",
 				organizationId: "org-123",
 				createdAt: "2025-01-27T12:00:00Z",
-				data: {
-					id: "issue-123",
-					identifier: "DEF-123",
-					title: "Test Issue",
-					url: "https://linear.app/test/DEF-123",
-					stateId: "state-new",
-					state: {
-						id: "state-new",
-						name: "Done",
-						color: "#5e6ad2",
-						type: "completed",
+				appUserId: "app-user-123",
+				oauthClientId: "oauth-client-123",
+				notification: {
+					id: "notif-123",
+					type: "issueStatusChanged",
+					issue: {
+						id: "issue-123",
+						identifier: "DEF-123",
+						title: "Test Issue",
+						url: "https://linear.app/test/DEF-123",
+						team: { id: "team-123", key: "DEF", name: "Default" },
+						teamId: "team-123",
+						// Raw webhook JSON may include state info not in TypeScript types
+						state: {
+							id: "state-new",
+							name: "Done",
+							color: "#5e6ad2",
+							type: "completed",
+						},
 					},
-				},
-				updatedFrom: {
-					stateId: "state-old",
+					issueId: "issue-123",
+					createdAt: "2025-01-27T12:00:00Z",
+					updatedAt: "2025-01-27T12:00:00Z",
+					userId: "user-123",
 				},
 			} as unknown as LinearWebhookPayload;
 
@@ -461,31 +470,39 @@ describe("LinearMessageTranslator", () => {
 			if (stateChange.action !== "issue_state_change") return;
 
 			expect(stateChange.stateType).toBe("completed");
-			expect(stateChange.platformData.previousStateId).toBe("state-old");
+			expect(stateChange.platformData.previousStateId).toBeUndefined();
 			expect(stateChange.platformData.newStateId).toBe("state-new");
 		});
 
-		it("should translate issue state change to canceled as IssueStateChangeMessage", () => {
+		it("should translate issueStatusChanged notification with canceled state", () => {
 			const webhook: LinearWebhookPayload = {
-				type: "Issue",
-				action: "update",
+				type: "AppUserNotification",
+				action: "issueStatusChanged",
 				organizationId: "org-123",
 				createdAt: "2025-01-27T12:00:00Z",
-				data: {
-					id: "issue-456",
-					identifier: "DEF-456",
-					title: "Cancelled Issue",
-					url: "https://linear.app/test/DEF-456",
-					stateId: "state-canceled",
-					state: {
-						id: "state-canceled",
-						name: "Cancelled",
-						color: "#95a2b3",
-						type: "canceled",
+				appUserId: "app-user-123",
+				oauthClientId: "oauth-client-123",
+				notification: {
+					id: "notif-456",
+					type: "issueStatusChanged",
+					issue: {
+						id: "issue-456",
+						identifier: "DEF-456",
+						title: "Cancelled Issue",
+						url: "https://linear.app/test/DEF-456",
+						team: { id: "team-123", key: "DEF", name: "Default" },
+						teamId: "team-123",
+						state: {
+							id: "state-canceled",
+							name: "Cancelled",
+							color: "#95a2b3",
+							type: "canceled",
+						},
 					},
-				},
-				updatedFrom: {
-					stateId: "state-started",
+					issueId: "issue-456",
+					createdAt: "2025-01-27T12:00:00Z",
+					updatedAt: "2025-01-27T12:00:00Z",
+					userId: "user-123",
 				},
 			} as unknown as LinearWebhookPayload;
 
@@ -502,59 +519,30 @@ describe("LinearMessageTranslator", () => {
 			expect(stateChange.stateType).toBe("canceled");
 		});
 
-		it("should not match state changes to non-terminal states", () => {
+		it("should default to completed when state info not in webhook payload", () => {
 			const webhook: LinearWebhookPayload = {
-				type: "Issue",
-				action: "update",
+				type: "AppUserNotification",
+				action: "issueStatusChanged",
 				organizationId: "org-123",
 				createdAt: "2025-01-27T12:00:00Z",
-				data: {
-					id: "issue-123",
-					identifier: "DEF-123",
-					title: "Test Issue",
-					url: "https://linear.app/test/DEF-123",
-					stateId: "state-started",
-					state: {
-						id: "state-started",
-						name: "In Progress",
-						color: "#f2c94c",
-						type: "started",
+				appUserId: "app-user-123",
+				oauthClientId: "oauth-client-123",
+				notification: {
+					id: "notif-789",
+					type: "issueStatusChanged",
+					issue: {
+						id: "issue-789",
+						identifier: "DEF-789",
+						title: "Issue Without State Info",
+						url: "https://linear.app/test/DEF-789",
+						team: { id: "team-123", key: "DEF", name: "Default" },
+						teamId: "team-123",
+						// No state field in this payload
 					},
-				},
-				updatedFrom: {
-					stateId: "state-backlog",
-				},
-			} as unknown as LinearWebhookPayload;
-
-			const result = translator.translate(webhook);
-
-			// Should not be handled as state change (non-terminal state)
-			// Falls through to unsupported since no title/description change
-			expect(result.success).toBe(false);
-		});
-
-		it("should prioritize state change over content update when both change", () => {
-			const webhook: LinearWebhookPayload = {
-				type: "Issue",
-				action: "update",
-				organizationId: "org-123",
-				createdAt: "2025-01-27T12:00:00Z",
-				data: {
-					id: "issue-123",
-					identifier: "DEF-123",
-					title: "New Title",
-					url: "https://linear.app/test/DEF-123",
-					stateId: "state-done",
-					state: {
-						id: "state-done",
-						name: "Done",
-						color: "#5e6ad2",
-						type: "completed",
-					},
-				},
-				updatedFrom: {
-					stateId: "state-started",
-					title: "Old Title",
+					issueId: "issue-789",
+					createdAt: "2025-01-27T12:00:00Z",
+					updatedAt: "2025-01-27T12:00:00Z",
+					userId: "user-123",
 				},
 			} as unknown as LinearWebhookPayload;
 
@@ -563,8 +551,46 @@ describe("LinearMessageTranslator", () => {
 			expect(result.success).toBe(true);
 			if (!result.success) return;
 
-			// State change should take priority over content update
 			expect(result.message.action).toBe("issue_state_change");
+
+			const stateChange = result.message;
+			if (stateChange.action !== "issue_state_change") return;
+
+			// Should default to "completed" when state info is not available
+			expect(stateChange.stateType).toBe("completed");
+		});
+
+		it("should not match other AppUserNotification actions as state changes", () => {
+			const webhook: LinearWebhookPayload = {
+				type: "AppUserNotification",
+				action: "issueAssignedToYou",
+				organizationId: "org-123",
+				createdAt: "2025-01-27T12:00:00Z",
+				appUserId: "app-user-123",
+				oauthClientId: "oauth-client-123",
+				notification: {
+					id: "notif-999",
+					type: "issueAssignedToYou",
+					issue: {
+						id: "issue-999",
+						identifier: "DEF-999",
+						title: "Assigned Issue",
+						url: "https://linear.app/test/DEF-999",
+						team: { id: "team-123", key: "DEF", name: "Default" },
+						teamId: "team-123",
+					},
+					issueId: "issue-999",
+					createdAt: "2025-01-27T12:00:00Z",
+					updatedAt: "2025-01-27T12:00:00Z",
+					userId: "user-123",
+				},
+			} as unknown as LinearWebhookPayload;
+
+			const result = translator.translate(webhook);
+
+			// issueAssignedToYou is not handled by the translator (handled via legacy path)
+			// so it should fall through to unsupported
+			expect(result.success).toBe(false);
 		});
 	});
 

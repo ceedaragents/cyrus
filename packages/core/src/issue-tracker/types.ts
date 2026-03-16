@@ -814,24 +814,14 @@ export type IssueUpdateWebhook =
 
 /**
  * Platform-agnostic issue state change webhook payload.
- * Maps to Linear SDK's EntityWebhookPayload for Issue updates where the state changed.
+ * Maps to Linear SDK's AppUserNotificationWebhookPayload with action "issueStatusChanged".
  *
- * The `data.state` field contains the new workflow state with a `type` field
- * indicating the state category (e.g., "completed", "canceled", "started").
- * The `updatedFrom.stateId` field contains the previous state ID.
- *
- * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+ * Linear sends this as an AppUserNotification when an issue transitions to a
+ * terminal state (completed or canceled). The notification contains the issue
+ * data via `notification.issue`.
  */
 export type IssueStateChangeWebhook =
-	LinearSDK.LinearDocument.EntityWebhookPayload & {
-		type: "Issue";
-		action: "update";
-		data: LinearSDK.LinearDocument.IssueWebhookPayload;
-		updatedFrom?: {
-			stateId?: string;
-			[key: string]: unknown;
-		};
-	};
+	LinearSDK.LinearDocument.AppUserNotificationWebhookPayload;
 
 /**
  * Platform-agnostic union of all webhook types.
@@ -951,38 +941,18 @@ export function isIssueTitleOrDescriptionUpdateWebhook(
 }
 
 /**
- * Type guard to check if webhook is an issue state change to completed or canceled.
+ * Type guard to check if webhook is an issue status change notification.
  *
- * This identifies Issue entity webhooks where the `updatedFrom` field contains
- * a `stateId` field (indicating the state changed) and the new state type is
- * either "completed" or "canceled".
- *
- * @see https://studio.apollographql.com/public/Linear-Webhooks/variant/current/schema/reference/objects/EntityWebhookPayload
+ * Linear sends AppUserNotification webhooks with action "issueStatusChanged"
+ * when an issue transitions to a terminal state (completed or canceled).
  */
 export function isIssueStateChangeWebhook(
 	webhook: Webhook,
 ): webhook is IssueStateChangeWebhook {
-	if (webhook.type !== "Issue" || webhook.action !== "update") {
-		return false;
-	}
-
-	const entityWebhook =
-		webhook as LinearSDK.LinearDocument.EntityWebhookPayload;
-	const updatedFrom = entityWebhook.updatedFrom as
-		| { stateId?: string }
-		| undefined;
-
-	if (!updatedFrom || !("stateId" in updatedFrom)) {
-		return false;
-	}
-
-	// Check if the new state type is completed or canceled
-	const data = entityWebhook.data as
-		| LinearSDK.LinearDocument.IssueWebhookPayload
-		| undefined;
-	const stateType = data?.state?.type;
-
-	return stateType === "completed" || stateType === "canceled";
+	return (
+		webhook.type === "AppUserNotification" &&
+		webhook.action === "issueStatusChanged"
+	);
 }
 
 /**

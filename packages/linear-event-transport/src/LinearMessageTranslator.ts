@@ -360,21 +360,42 @@ export class LinearMessageTranslator
 	}
 
 	/**
-	 * Translate IssueStateChangeWebhook to IssueStateChangeMessage.
+	 * Translate IssueStateChangeWebhook (AppUserNotification/issueStatusChanged) to IssueStateChangeMessage.
+	 *
+	 * Linear sends these notifications for terminal state changes (completed/canceled).
+	 * The TypeScript types don't include state info in the notification issue payload,
+	 * but the raw webhook JSON may include it. We try to extract it, falling back to "completed".
 	 */
 	private translateIssueStateChange(
 		webhook: IssueStateChangeWebhook,
 		_context?: TranslationContext,
 	): TranslationResult {
-		const { data: issueData, updatedFrom, organizationId, createdAt } = webhook;
+		const { notification, organizationId, createdAt } = webhook;
+		const issue = notification.issue;
 
-		const stateType = issueData.state?.type as IssueStateType;
+		if (!issue) {
+			return {
+				success: false,
+				reason: "IssueStateChange webhook missing issue data",
+			};
+		}
+
+		// Try to determine state type from raw notification payload.
+		// The TypeScript types don't declare state info on IssueWithDescriptionChildWebhookPayload,
+		// but the raw webhook JSON may include it.
+		const issueRaw = issue as SafeRecord;
+		const stateRaw = issueRaw.state as SafeRecord | undefined;
+		const rawStateType = stateRaw?.type as string | undefined;
+		const stateType: IssueStateType =
+			rawStateType === "completed" || rawStateType === "canceled"
+				? rawStateType
+				: "completed"; // Default for terminal state notifications
 
 		// Build platform data
 		const platformData: LinearIssueStateChangePlatformData = {
-			issue: this.buildIssueRef(issueData as SafeRecord),
-			previousStateId: updatedFrom?.stateId,
-			newStateId: issueData.stateId,
+			issue: this.buildIssueRef(issueRaw),
+			previousStateId: undefined, // Not available in AppUserNotification webhooks
+			newStateId: (stateRaw?.id as string) ?? undefined,
 		};
 
 		const message: IssueStateChangeMessage = {
@@ -383,9 +404,9 @@ export class LinearMessageTranslator
 			action: "issue_state_change",
 			receivedAt: this.toISOString(createdAt),
 			organizationId,
-			sessionKey: issueData.id,
-			workItemId: issueData.id,
-			workItemIdentifier: issueData.identifier,
+			sessionKey: issue.id,
+			workItemId: issue.id,
+			workItemIdentifier: issue.identifier,
 			stateType,
 			platformData,
 		};
