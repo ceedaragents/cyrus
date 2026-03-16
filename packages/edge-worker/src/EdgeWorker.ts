@@ -2376,27 +2376,25 @@ ${taskSection}`;
 			session.agentRunner?.stop();
 		}
 
-		// Delete worktrees for all repositories associated with this issue
-		const repos = this.getCachedRepositories(issueId);
-		if (repos && repos.length > 0) {
-			for (const repo of repos) {
-				this.gitService.deleteWorktree(
-					message.workItemIdentifier,
-					repo.workspaceBaseDir,
-				);
-			}
-		} else {
-			// Fallback: try to find repository from session data
-			for (const session of sessions) {
-				const repoId = this.sessionRepositories.get(session.id);
-				const repo = repoId ? this.repositories.get(repoId) : undefined;
-				if (repo) {
-					this.gitService.deleteWorktree(
-						message.workItemIdentifier,
-						repo.workspaceBaseDir,
-					);
+		// Delete worktrees for this issue. deleteWorktree already handles
+		// multi-repo layouts by finding all worktrees under the issue directory,
+		// so we only need to call it once with any repo's workspaceBaseDir.
+		const repo =
+			this.getCachedRepository(issueId) ??
+			(() => {
+				for (const session of sessions) {
+					const repoId = this.sessionRepositories.get(session.id);
+					const r = repoId ? this.repositories.get(repoId) : undefined;
+					if (r) return r;
 				}
-			}
+				return null;
+			})();
+
+		if (repo) {
+			this.gitService.deleteWorktree(
+				message.workItemIdentifier,
+				repo.workspaceBaseDir,
+			);
 		}
 
 		this.logger.info(
