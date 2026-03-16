@@ -170,10 +170,7 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
-	// TODO: For multi-repo sessions spanning different Linear workspaces, only the primary repo's
-	// workspace receives activity updates. This is a known limitation — each session maps to a
-	// single activity sink (the primary repo's), so secondary workspaces won't see activities.
-	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
+	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps Linear workspace ID to activity sink (one per workspace, not per repo)
 	// TODO: issueTrackers is keyed by linearWorkspaceId. When other platforms (GitHub Issues, Jira,
 	// etc.) are supported, this will need a composite key like `${platform}:${workspaceId}`.
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
@@ -458,16 +455,17 @@ export class EdgeWorker extends EventEmitter {
 			}
 		}
 
-		// Create activity sinks for each repository (uses workspace issue tracker)
-		for (const [repoId, repo] of this.repositories) {
+		// Create activity sinks per workspace (deduplicated — one sink per workspace, not per repo)
+		for (const [_repoId, repo] of this.repositories) {
 			if (!repo.linearWorkspaceId) continue;
+			if (this.activitySinks.has(repo.linearWorkspaceId)) continue;
 			const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
 			if (issueTracker) {
 				const activitySink = new LinearActivitySink(
 					issueTracker,
 					repo.linearWorkspaceId,
 				);
-				this.activitySinks.set(repoId, activitySink);
+				this.activitySinks.set(repo.linearWorkspaceId, activitySink);
 			}
 		}
 
@@ -1123,7 +1121,9 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Register activity sink for this session
-			const activitySink = this.activitySinks.get(repository.id);
+			const activitySink = repository.linearWorkspaceId
+				? this.activitySinks.get(repository.linearWorkspaceId)
+				: undefined;
 			if (activitySink) {
 				agentSessionManager.setActivitySink(githubSessionId, activitySink);
 			}
@@ -1923,15 +1923,13 @@ ${taskSection}`;
 					this.issueTrackers.set(requireLinearWorkspaceId(repo), issueTracker);
 				}
 
-				// Create activity sink for this repository
-				const issueTracker = this.issueTrackers.get(
-					requireLinearWorkspaceId(repo),
-				)!;
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					requireLinearWorkspaceId(repo),
-				);
-				this.activitySinks.set(repo.id, activitySink);
+				// Create activity sink for this workspace (if not already present)
+				const wsId = requireLinearWorkspaceId(repo);
+				if (!this.activitySinks.has(wsId)) {
+					const issueTracker = this.issueTrackers.get(wsId)!;
+					const activitySink = new LinearActivitySink(issueTracker, wsId);
+					this.activitySinks.set(wsId, activitySink);
+				}
 
 				this.logger.info(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
@@ -2102,13 +2100,13 @@ ${taskSection}`;
 
 				// Remove repository from all maps
 				this.repositories.delete(repo.id);
-				this.activitySinks.delete(repo.id);
 
-				// Only remove workspace issue tracker if no other repos use this workspace
+				// Only remove workspace-level entities if no other repos share this workspace
 				const workspaceStillInUse = Array.from(this.repositories.values()).some(
 					(r) => r.linearWorkspaceId === requireLinearWorkspaceId(repo),
 				);
 				if (!workspaceStillInUse) {
+					this.activitySinks.delete(requireLinearWorkspaceId(repo));
 					this.issueTrackers.delete(requireLinearWorkspaceId(repo));
 				}
 
@@ -2714,7 +2712,6 @@ ${taskSection}`;
 		const repositories = Array.isArray(repositoriesOrSingle)
 			? repositoriesOrSingle
 			: [repositoriesOrSingle];
-		const primaryRepo = repositories[0]!;
 
 		// Fetch full Linear issue details using workspace ID from webhook context
 		const fullIssue = await this.fetchFullIssueDetails(
@@ -2767,8 +2764,8 @@ ${taskSection}`;
 			repositoryContexts,
 		);
 
-		// Register activity sink (use primary repo)
-		const activitySink = this.activitySinks.get(primaryRepo.id);
+		// Register activity sink (use workspace ID from webhook context)
+		const activitySink = this.activitySinks.get(linearWorkspaceId);
 		if (activitySink) {
 			agentSessionManager.setActivitySink(sessionId, activitySink);
 		}
@@ -5601,7 +5598,11 @@ ${input.userComment}
 						const cachedRepoIds = state.issueRepositoryCache[issueId];
 						const repoId = cachedRepoIds[0];
 						if (repoId) {
-							const activitySink = this.activitySinks.get(repoId);
+							const repo = this.repositories.get(repoId);
+							const workspaceId = repo?.linearWorkspaceId;
+							const activitySink = workspaceId
+								? this.activitySinks.get(workspaceId)
+								: undefined;
 							if (activitySink) {
 								this.agentSessionManager.setActivitySink(
 									sessionId,
