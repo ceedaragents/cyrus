@@ -373,12 +373,6 @@ export class LinearMessageTranslator
 		const { notification, organizationId, createdAt } = webhook;
 		const issue = notification.issue;
 
-		// TEMPORARY: Log raw notification payload to understand what Linear sends
-		console.log(
-			"[LinearMessageTranslator] issueStatusChanged raw notification:",
-			JSON.stringify(notification, null, 2),
-		);
-
 		if (!issue) {
 			return {
 				success: false,
@@ -386,29 +380,17 @@ export class LinearMessageTranslator
 			};
 		}
 
-		// Try to determine state type from raw notification payload.
-		// The TypeScript types don't declare state info on IssueWithDescriptionChildWebhookPayload,
-		// but the raw webhook JSON may include it.
+		// Linear's issueStatusChanged notifications are for terminal state changes only,
+		// but the payload does not include the issue's state info. Default to "completed"
+		// since both terminal states (completed/canceled) trigger the same cleanup.
+		const stateType: IssueStateType = "completed";
+
+		// Build platform data — state IDs not available in AppUserNotification webhooks
 		const issueRaw = issue as SafeRecord;
-		const stateRaw = issueRaw.state as SafeRecord | undefined;
-		const rawStateType = stateRaw?.type as string | undefined;
-
-		// TEMPORARY: Log state extraction results
-		console.log(
-			"[LinearMessageTranslator] issueStatusChanged state extraction:",
-			JSON.stringify({ stateRaw, rawStateType }, null, 2),
-		);
-
-		const stateType: IssueStateType =
-			rawStateType === "completed" || rawStateType === "canceled"
-				? rawStateType
-				: "completed"; // Default for terminal state notifications
-
-		// Build platform data
 		const platformData: LinearIssueStateChangePlatformData = {
 			issue: this.buildIssueRef(issueRaw),
-			previousStateId: undefined, // Not available in AppUserNotification webhooks
-			newStateId: (stateRaw?.id as string) ?? undefined,
+			previousStateId: undefined,
+			newStateId: undefined,
 		};
 
 		const message: IssueStateChangeMessage = {

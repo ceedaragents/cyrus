@@ -423,7 +423,9 @@ describe("LinearMessageTranslator", () => {
 	});
 
 	describe("translate - IssueStateChange", () => {
-		it("should translate issueStatusChanged notification with completed state", () => {
+		it("should translate issueStatusChanged notification as IssueStateChangeMessage", () => {
+			// Matches the real payload structure confirmed via production logging:
+			// Linear does NOT include state info in issueStatusChanged notifications
 			const webhook: LinearWebhookPayload = {
 				type: "AppUserNotification",
 				action: "issueStatusChanged",
@@ -441,13 +443,6 @@ describe("LinearMessageTranslator", () => {
 						url: "https://linear.app/test/DEF-123",
 						team: { id: "team-123", key: "DEF", name: "Default" },
 						teamId: "team-123",
-						// Raw webhook JSON may include state info not in TypeScript types
-						state: {
-							id: "state-new",
-							name: "Done",
-							color: "#5e6ad2",
-							type: "completed",
-						},
 					},
 					issueId: "issue-123",
 					createdAt: "2025-01-27T12:00:00Z",
@@ -469,95 +464,10 @@ describe("LinearMessageTranslator", () => {
 			const stateChange = result.message;
 			if (stateChange.action !== "issue_state_change") return;
 
+			// Defaults to "completed" since Linear doesn't include state type in the payload
 			expect(stateChange.stateType).toBe("completed");
 			expect(stateChange.platformData.previousStateId).toBeUndefined();
-			expect(stateChange.platformData.newStateId).toBe("state-new");
-		});
-
-		it("should translate issueStatusChanged notification with canceled state", () => {
-			const webhook: LinearWebhookPayload = {
-				type: "AppUserNotification",
-				action: "issueStatusChanged",
-				organizationId: "org-123",
-				createdAt: "2025-01-27T12:00:00Z",
-				appUserId: "app-user-123",
-				oauthClientId: "oauth-client-123",
-				notification: {
-					id: "notif-456",
-					type: "issueStatusChanged",
-					issue: {
-						id: "issue-456",
-						identifier: "DEF-456",
-						title: "Cancelled Issue",
-						url: "https://linear.app/test/DEF-456",
-						team: { id: "team-123", key: "DEF", name: "Default" },
-						teamId: "team-123",
-						state: {
-							id: "state-canceled",
-							name: "Cancelled",
-							color: "#95a2b3",
-							type: "canceled",
-						},
-					},
-					issueId: "issue-456",
-					createdAt: "2025-01-27T12:00:00Z",
-					updatedAt: "2025-01-27T12:00:00Z",
-					userId: "user-123",
-				},
-			} as unknown as LinearWebhookPayload;
-
-			const result = translator.translate(webhook);
-
-			expect(result.success).toBe(true);
-			if (!result.success) return;
-
-			expect(result.message.action).toBe("issue_state_change");
-
-			const stateChange = result.message;
-			if (stateChange.action !== "issue_state_change") return;
-
-			expect(stateChange.stateType).toBe("canceled");
-		});
-
-		it("should default to completed when state info not in webhook payload", () => {
-			const webhook: LinearWebhookPayload = {
-				type: "AppUserNotification",
-				action: "issueStatusChanged",
-				organizationId: "org-123",
-				createdAt: "2025-01-27T12:00:00Z",
-				appUserId: "app-user-123",
-				oauthClientId: "oauth-client-123",
-				notification: {
-					id: "notif-789",
-					type: "issueStatusChanged",
-					issue: {
-						id: "issue-789",
-						identifier: "DEF-789",
-						title: "Issue Without State Info",
-						url: "https://linear.app/test/DEF-789",
-						team: { id: "team-123", key: "DEF", name: "Default" },
-						teamId: "team-123",
-						// No state field in this payload
-					},
-					issueId: "issue-789",
-					createdAt: "2025-01-27T12:00:00Z",
-					updatedAt: "2025-01-27T12:00:00Z",
-					userId: "user-123",
-				},
-			} as unknown as LinearWebhookPayload;
-
-			const result = translator.translate(webhook);
-
-			expect(result.success).toBe(true);
-			if (!result.success) return;
-
-			expect(result.message.action).toBe("issue_state_change");
-
-			const stateChange = result.message;
-			if (stateChange.action !== "issue_state_change") return;
-
-			// Should default to "completed" when state info is not available
-			expect(stateChange.stateType).toBe("completed");
+			expect(stateChange.platformData.newStateId).toBeUndefined();
 		});
 
 		it("should not match other AppUserNotification actions as state changes", () => {
