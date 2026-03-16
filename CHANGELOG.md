@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Routing labels default when adding repos** - `cyrus self-add-repo` now automatically sets routing labels to the repository name. Use `-l custom,labels` to override with custom comma-separated labels. ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
 
+### Changed
+- **Updated Claude SDK dependency** - Updated `@anthropic-ai/claude-agent-sdk` from v0.2.63 to v0.2.76. Key additions include `forkSession()` for branching conversations, MCP elicitation hooks, `agentProgressSummaries`, session metadata methods (`getSessionInfo()`, `listSessions()`, `tagSession()`, `renameSession()`), and `queued_to_running` status for Agent tool output. See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-970](https://linear.app/ceedar/issue/CYPACK-970), [#995](https://github.com/ceedaragents/cyrus/pull/995))
+
 ## [0.2.34] - 2026-03-13
 
 ### Fixed
