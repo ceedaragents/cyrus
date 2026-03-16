@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Fixed
+- Registered `-l`/`--label` option with Commander for `self-add-repo` command (was documented but never registered, causing `error: unknown option '-l'`). Fixed idle mode messaging to show `cyrus self-add-repo` guidance when `LINEAR_DIRECT_WEBHOOKS=true` instead of cloud URL. Updated `self-auth` error messages to point to `~/.cyrus/.env` instead of `.zshrc`. Removed unreachable URL prompt code from `SelfAddRepoCommand`. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
+
 ### Changed
 - Threaded `workspaceId` from `webhook.organizationId` (Linear-native source) through EdgeWorker webhook-driven paths, replacing `requireLinearWorkspaceId(repo)` calls. Reduced usage from 45 to 25 calls; remaining calls are only in config/setup paths where repo config is the rightful source. Added optional `workspaceId` to `PromptAssemblyInput`. ([CYPACK-966](https://linear.app/ceedar/issue/CYPACK-966), [#990](https://github.com/ceedaragents/cyrus/pull/990))
 - Moved `refreshPromise` from closure variable to instance property in `LinearIssueTrackerService` and clear it in `setAccessToken()` to fix stale token refresh bug. Added `getClient()` method to expose the underlying `LinearClient`. Changed `createCyrusToolsServer()` signature to accept `LinearClient` instead of raw token string, ensuring MCP tools reuse the same client with OAuth refresh interceptor. Updated `EdgeWorker` to pass `LinearClient` from `issueTracker.getClient()` to MCP tool server. Added `-l`/`--label` flag to `SelfAddRepoCommand` for custom routing labels with repo-name default. Based on [grandmore/Cyrus-selfhost#2](https://github.com/grandmore/Cyrus-selfhost/pull/2). ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
