@@ -150,7 +150,7 @@ export class WorkerService {
 
 		this.logger.info("📡 Config updater: Ready");
 		this.logger.raw("");
-		if (process.env.LINEAR_DIRECT_WEBHOOKS === "true") {
+		if (process.env.LINEAR_CLIENT_ID) {
 			this.logger.info("Add a repository with: cyrus self-add-repo <git-url>");
 		} else {
 			const appUrl = getCyrusAppUrl();
