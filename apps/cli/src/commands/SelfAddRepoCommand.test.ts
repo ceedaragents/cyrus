@@ -26,9 +26,13 @@ vi.mock("node:fs", () => ({
 	writeFileSync: mocks.mockWriteFileSync,
 }));
 
-vi.mock("node:path", () => ({
-	resolve: vi.fn((...parts) => parts.join("/")),
-}));
+vi.mock("node:path", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:path")>();
+	return {
+		...actual,
+		resolve: vi.fn((...parts: string[]) => parts.join("/")),
+	};
+});
 
 vi.mock("node:readline", () => ({
 	createInterface: vi.fn(() => ({

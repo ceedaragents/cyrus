@@ -92,6 +92,9 @@ describe("SelfAuthCommand", () => {
 		command = new SelfAuthCommand(mockApp as any);
 		originalEnv = { ...process.env };
 
+		// Ensure environment-dependent code paths are deterministic
+		delete process.env.CLOUDFLARE_TOKEN;
+
 		// Reset Fastify mock instance
 		mocks.mockFastifyInstance.get.mockReset();
 		mocks.mockFastifyInstance.listen.mockReset();
