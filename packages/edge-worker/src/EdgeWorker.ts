@@ -54,6 +54,7 @@ import {
 	isContentUpdateMessage,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
+	isIssueDeletedWebhook,
 	isIssueNewCommentWebhook,
 	isIssueStateChangeMessage,
 	isIssueStateChangeWebhook,
@@ -2185,6 +2186,9 @@ ${taskSection}`;
 				// Intentional early return: state changes are handled exclusively via the message bus
 				// (handleIssueStateChangeMessage), not the legacy webhook path. This differs from
 				// unassign which still uses the legacy handler — state change was built message-bus-first.
+				return;
+			} else if (isIssueDeletedWebhook(webhook)) {
+				// Issue deletion also handled via message bus — same cleanup as terminal state.
 				return;
 			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
 				// Handle issue title/description/attachments updates - feed changes into active session

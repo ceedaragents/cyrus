@@ -32,11 +32,13 @@ import type {
 import {
 	type AgentSessionCreatedWebhook,
 	type AgentSessionPromptedWebhook,
+	type IssueDeletedWebhook,
 	type IssueStateChangeWebhook,
 	type IssueUnassignedWebhook,
 	type IssueUpdateWebhook,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
+	isIssueDeletedWebhook,
 	isIssueStateChangeWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
@@ -96,6 +98,10 @@ export class LinearMessageTranslator
 
 		if (isIssueStateChangeWebhook(w)) {
 			return this.translateIssueStateChange(w, context);
+		}
+
+		if (isIssueDeletedWebhook(w)) {
+			return this.translateIssueDeleted(w, context);
 		}
 
 		if (isIssueTitleOrDescriptionUpdateWebhook(w)) {
@@ -393,6 +399,46 @@ export class LinearMessageTranslator
 			sessionKey: issue.id,
 			workItemId: issue.id,
 			workItemIdentifier: issue.identifier,
+			isTerminal: true,
+			platformData,
+		};
+
+		return { success: true, message };
+	}
+
+	/**
+	 * Translate IssueDeletedWebhook (Issue/remove) to IssueStateChangeMessage.
+	 *
+	 * When an issue is deleted before reaching a terminal state, the same cleanup
+	 * (stop sessions, delete worktrees) should occur. We reuse IssueStateChangeMessage
+	 * with isTerminal: true since a deleted issue is effectively terminal.
+	 */
+	private translateIssueDeleted(
+		webhook: IssueDeletedWebhook,
+		_context?: TranslationContext,
+	): TranslationResult {
+		const { data: issueData, organizationId, createdAt } = webhook;
+
+		if (!issueData) {
+			return {
+				success: false,
+				reason: "IssueDeleted webhook missing issue data",
+			};
+		}
+
+		const platformData: LinearIssueStateChangePlatformData = {
+			issue: this.buildIssueRef(issueData as SafeRecord),
+		};
+
+		const message: IssueStateChangeMessage = {
+			id: randomUUID(),
+			source: "linear",
+			action: "issue_state_change",
+			receivedAt: this.toISOString(createdAt),
+			organizationId,
+			sessionKey: issueData.id,
+			workItemId: issueData.id,
+			workItemIdentifier: issueData.identifier,
 			isTerminal: true,
 			platformData,
 		};

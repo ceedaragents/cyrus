@@ -956,6 +956,31 @@ export function isIssueStateChangeWebhook(
 }
 
 /**
+ * Platform-agnostic issue deleted webhook payload.
+ * Maps to Linear SDK's EntityWebhookPayload with type "Issue" and action "remove".
+ *
+ * Linear sends this when an issue is deleted. The `data` field contains
+ * the deleted issue's data (id, identifier, title, etc.).
+ */
+export type IssueDeletedWebhook =
+	LinearSDK.LinearDocument.EntityWebhookPayload & {
+		type: "Issue";
+		action: "remove";
+		data: LinearSDK.LinearDocument.IssueWebhookPayload;
+	};
+
+/**
+ * Type guard to check if webhook is an issue deleted event.
+ *
+ * Linear sends Issue entity webhooks with action "remove" when an issue is deleted.
+ */
+export function isIssueDeletedWebhook(
+	webhook: Webhook,
+): webhook is IssueDeletedWebhook {
+	return webhook.type === "Issue" && webhook.action === "remove";
+}
+
+/**
  * Generic result type for operations.
  */
 export interface OperationResult<T = unknown> {
