@@ -254,7 +254,7 @@ export class AgentSessionManager extends EventEmitter {
 	 * Update Agent Session with session ID from system initialization
 	 * Automatically detects whether it's Claude or Gemini based on the runner
 	 */
-	updateAgentSessionWithClaudeSessionId(
+	updateAgentSessionWithRunnerSessionId(
 		sessionId: string,
 		claudeSystemMessage: SDKSystemMessage,
 	): void {
@@ -879,7 +879,7 @@ export class AgentSessionManager extends EventEmitter {
 			switch (message.type) {
 				case "system":
 					if (message.subtype === "init") {
-						this.updateAgentSessionWithClaudeSessionId(sessionId, message);
+						this.updateAgentSessionWithRunnerSessionId(sessionId, message);
 
 						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
