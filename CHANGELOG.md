@@ -4,12 +4,60 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.35] - 2026-03-16
+
 ### Fixed
 - **OAuth token refresh no longer stops working after first expiry** - Fixed a bug where the OAuth token refresh mechanism would permanently stop refreshing after the first successful refresh, causing all Linear API calls to fail ~24 hours later. Subsequent token expirations now correctly trigger fresh refreshes. ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
 - **Self-auth no longer modifies repositories or shows confusing messages** - `cyrus self-auth` now only saves workspace credentials and no longer auto-links repositories. Shows "Saved credentials for workspace: \<name\>" and guides users to run `cyrus self-add-repo` when no repos exist. Resolves [#716](https://github.com/ceedaragents/cyrus/issues/716). ([CYPACK-964](https://linear.app/ceedar/issue/CYPACK-964), [#988](https://github.com/ceedaragents/cyrus/pull/988))
+- **Linear webhook signature verification more reliable** - Webhook signature verification now uses the raw request body bytes instead of re-serializing JSON, preventing intermittent HMAC failures caused by key ordering or whitespace differences.
 
 ### Added
 - **Routing labels default when adding repos** - `cyrus self-add-repo` now automatically sets routing labels to the repository name. Use `-l custom,labels` to override with custom comma-separated labels. ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
+- **Cloudflare tunnel auto-starts during self-auth** - Running `cyrus self-auth` now automatically starts a Cloudflare tunnel, so webhooks can reach the local agent immediately after authentication. ([#952](https://github.com/ceedaragents/cyrus/pull/952))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.35
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.35
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.35
+
+#### cyrus-core
+- cyrus-core@0.2.35
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.35
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.35
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.35
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.35
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.35
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.35
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.35
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.35
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.35
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.35
 
 ## [0.2.34] - 2026-03-13
 
