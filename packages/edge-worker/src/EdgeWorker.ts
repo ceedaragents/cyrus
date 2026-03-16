@@ -133,6 +133,7 @@ import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { NoopActivitySink } from "./sinks/NoopActivitySink.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -170,7 +171,6 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
-	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps Linear workspace ID to activity sink (one per workspace, not per repo)
 	// TODO: issueTrackers is keyed by linearWorkspaceId. When other platforms (GitHub Issues, Jira,
 	// etc.) are supported, this will need a composite key like `${platform}:${workspaceId}`.
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
@@ -452,20 +452,6 @@ export class EdgeWorker extends EventEmitter {
 								this.buildOAuthConfig(linearWorkspaceId),
 							);
 				this.issueTrackers.set(linearWorkspaceId, issueTracker);
-			}
-		}
-
-		// Create activity sinks per workspace (deduplicated — one sink per workspace, not per repo)
-		for (const [_repoId, repo] of this.repositories) {
-			if (!repo.linearWorkspaceId) continue;
-			if (this.activitySinks.has(repo.linearWorkspaceId)) continue;
-			const issueTracker = this.issueTrackers.get(repo.linearWorkspaceId);
-			if (issueTracker) {
-				const activitySink = new LinearActivitySink(
-					issueTracker,
-					repo.linearWorkspaceId,
-				);
-				this.activitySinks.set(repo.linearWorkspaceId, activitySink);
 			}
 		}
 
@@ -1120,13 +1106,11 @@ export class EdgeWorker extends EventEmitter {
 				],
 			);
 
-			// Register activity sink for this session
-			const activitySink = repository.linearWorkspaceId
-				? this.activitySinks.get(repository.linearWorkspaceId)
-				: undefined;
-			if (activitySink) {
-				agentSessionManager.setActivitySink(githubSessionId, activitySink);
-			}
+			// Register activity sink for this session (created on-the-fly from issueTrackers)
+			agentSessionManager.setActivitySink(
+				githubSessionId,
+				this.createActivitySink(repository.linearWorkspaceId),
+			);
 
 			const session = agentSessionManager.getSession(githubSessionId);
 			if (!session) {
@@ -1923,14 +1907,6 @@ ${taskSection}`;
 					this.issueTrackers.set(requireLinearWorkspaceId(repo), issueTracker);
 				}
 
-				// Create activity sink for this workspace (if not already present)
-				const wsId = requireLinearWorkspaceId(repo);
-				if (!this.activitySinks.has(wsId)) {
-					const issueTracker = this.issueTrackers.get(wsId)!;
-					const activitySink = new LinearActivitySink(issueTracker, wsId);
-					this.activitySinks.set(wsId, activitySink);
-				}
-
 				this.logger.info(`✅ Repository added successfully: ${repo.name}`);
 			} catch (error) {
 				this.logger.error(`❌ Failed to add repository ${repo.name}:`, error);
@@ -2106,7 +2082,6 @@ ${taskSection}`;
 					(r) => r.linearWorkspaceId === requireLinearWorkspaceId(repo),
 				);
 				if (!workspaceStillInUse) {
-					this.activitySinks.delete(requireLinearWorkspaceId(repo));
 					this.issueTrackers.delete(requireLinearWorkspaceId(repo));
 				}
 
@@ -2670,6 +2645,18 @@ ${taskSection}`;
 	}
 
 	/**
+	 * Create an activity sink on-the-fly from the issueTrackers map.
+	 * LinearActivitySink is stateless, so there's no need to cache instances.
+	 */
+	private createActivitySink(workspaceId: string | undefined): IActivitySink {
+		if (!workspaceId) return new NoopActivitySink();
+		const issueTracker = this.issueTrackers.get(workspaceId);
+		return issueTracker
+			? new LinearActivitySink(issueTracker, workspaceId)
+			: new NoopActivitySink();
+	}
+
+	/**
 	 * Get the Linear API token for a workspace from workspace-level config.
 	 */
 	private getLinearTokenForWorkspace(linearWorkspaceId: string): string {
@@ -2764,11 +2751,11 @@ ${taskSection}`;
 			repositoryContexts,
 		);
 
-		// Register activity sink (use workspace ID from webhook context)
-		const activitySink = this.activitySinks.get(linearWorkspaceId);
-		if (activitySink) {
-			agentSessionManager.setActivitySink(sessionId, activitySink);
-		}
+		// Register activity sink (created on-the-fly from issueTrackers)
+		agentSessionManager.setActivitySink(
+			sessionId,
+			this.createActivitySink(linearWorkspaceId),
+		);
 
 		// Post combined routing + base branch activity
 		{
@@ -5600,13 +5587,10 @@ ${input.userComment}
 						if (repoId) {
 							const repo = this.repositories.get(repoId);
 							const workspaceId = repo?.linearWorkspaceId;
-							const activitySink = workspaceId
-								? this.activitySinks.get(workspaceId)
-								: undefined;
-							if (activitySink) {
+							if (workspaceId) {
 								this.agentSessionManager.setActivitySink(
 									sessionId,
-									activitySink,
+									this.createActivitySink(workspaceId),
 								);
 							}
 						}
