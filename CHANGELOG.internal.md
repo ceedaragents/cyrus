@@ -7,10 +7,22 @@ This changelog documents internal development changes, refactors, tooling update
 ### Added
 - Added `IssueStateChangeMessage` type and `isIssueStateChangeWebhook()` type guard to core types for detecting Linear issue state transitions to `completed` or `canceled`. Added `translateIssueStateChange()` to `LinearMessageTranslator` (checked before title/description updates for priority). Added `GitService.deleteWorktree()` with `findWorktreesUnderPath()` and `isGitWorktree()` helpers supporting both single-repo and multi-repo worktree layouts. Added `handleIssueStateChangeMessage()` to `EdgeWorker` that stops active sessions and deletes worktrees. Added `isIssueStateChangeWebhook` to legacy webhook router (returns early, handled via message bus). 9 new unit tests (4 translator, 5 GitService). ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
 
+### Fixed
+- Registered `-l`/`--label` option with Commander for `self-add-repo` command (was documented but never registered, causing `error: unknown option '-l'`). Fixed idle mode messaging to show `cyrus self-add-repo` guidance for self-hosted users (detected via `LINEAR_CLIENT_ID`) instead of cloud URL. Updated `self-auth` error messages to point to `~/.cyrus/.env` instead of `.zshrc`. Made `self-add-repo` URL argument optional so the interactive prompt ("Repository URL: ") is reachable — `cyrus self-add-repo` with no args now prompts for everything. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
+
+## [0.2.35] - 2026-03-16
+
 ### Changed
 - Renamed `createLinearAgentSession` to `createCyrusAgentSession` and `updateAgentSessionWithClaudeSessionId` to `updateAgentSessionWithRunnerSessionId` in `packages/edge-worker`. Both names were leaky abstractions — the methods are runner-agnostic and handle multiple platforms/runners. ([CYPACK-969](https://linear.app/ceedar/issue/CYPACK-969), [#994](https://github.com/ceedaragents/cyrus/pull/994))
 - Threaded `workspaceId` from `webhook.organizationId` (Linear-native source) through EdgeWorker webhook-driven paths, replacing `requireLinearWorkspaceId(repo)` calls. Reduced usage from 45 to 25 calls; remaining calls are only in config/setup paths where repo config is the rightful source. Added optional `workspaceId` to `PromptAssemblyInput`. ([CYPACK-966](https://linear.app/ceedar/issue/CYPACK-966), [#990](https://github.com/ceedaragents/cyrus/pull/990))
 - Moved `refreshPromise` from closure variable to instance property in `LinearIssueTrackerService` and clear it in `setAccessToken()` to fix stale token refresh bug. Added `getClient()` method to expose the underlying `LinearClient`. Changed `createCyrusToolsServer()` signature to accept `LinearClient` instead of raw token string, ensuring MCP tools reuse the same client with OAuth refresh interceptor. Updated `EdgeWorker` to pass `LinearClient` from `issueTracker.getClient()` to MCP tool server. Added `-l`/`--label` flag to `SelfAddRepoCommand` for custom routing labels with repo-name default. Based on [grandmore/Cyrus-selfhost#2](https://github.com/grandmore/Cyrus-selfhost/pull/2). ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
+
+### Fixed
+- `LinearEventTransport.handleDirectWebhook()` now uses `request.rawBody` (the original request bytes stashed by `SharedApplicationServer`) for HMAC signature verification instead of `Buffer.from(JSON.stringify(request.body))`. `JSON.stringify` does not guarantee the same byte sequence as the original request, causing intermittent signature failures. Falls back to `JSON.stringify` when `rawBody` is unavailable.
+- Bumped `file-type` from 18.7.0 to 21.3.2 ([#983](https://github.com/ceedaragents/cyrus/pull/983))
+
+### Added
+- `SelfAuthCommand` now starts a Cloudflare tunnel after OAuth authentication completes, so webhooks can reach the local agent immediately. ([#952](https://github.com/ceedaragents/cyrus/pull/952))
 
 ## [0.2.34] - 2026-03-13
 
