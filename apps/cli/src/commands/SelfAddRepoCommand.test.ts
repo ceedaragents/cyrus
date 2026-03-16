@@ -101,51 +101,12 @@ describe("SelfAddRepoCommand", () => {
 	});
 
 	describe("URL Handling", () => {
-		it("should prompt for URL when not provided", async () => {
-			mocks.mockReadFileSync.mockReturnValue(
-				JSON.stringify({
-					repositories: [
-						{
-							id: "existing",
-							name: "existing-repo",
-							linearWorkspaceId: "ws-123",
-							linearToken: "token",
-							linearRefreshToken: "refresh",
-						},
-					],
-				}),
-			);
-
-			// Mock readline to provide URL
-			mocks.mockQuestion.mockImplementation(
-				(_question: string, callback: (answer: string) => void) => {
-					callback("https://github.com/user/prompted-repo.git");
-				},
-			);
-
-			await expect(command.execute([])).rejects.toThrow("process.exit called");
-			expect(mockExit).toHaveBeenCalledWith(0);
-			expect(mocks.mockQuestion).toHaveBeenCalledWith(
-				"Repository URL: ",
-				expect.any(Function),
-			);
-		});
-
-		it("should error when URL is empty after prompt", async () => {
-			mocks.mockReadFileSync.mockReturnValue(
-				JSON.stringify({
-					repositories: [{ linearWorkspaceId: "ws", linearToken: "tok" }],
-				}),
-			);
-
-			mocks.mockQuestion.mockImplementation(
-				(_question: string, callback: (answer: string) => void) => {
-					callback(""); // Empty URL
-				},
-			);
-
+		it("should error when URL is not provided", async () => {
 			await expect(command.execute([])).rejects.toThrow("process.exit called");
 			expect(mockExit).toHaveBeenCalledWith(1);
+			expect(mockApp.logger.error).toHaveBeenCalledWith(
+				"Repository URL is required",
+			);
 		});
 
 		it("should extract repo name from URL correctly", async () => {
