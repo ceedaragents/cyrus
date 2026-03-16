@@ -373,6 +373,12 @@ export class LinearMessageTranslator
 		const { notification, organizationId, createdAt } = webhook;
 		const issue = notification.issue;
 
+		// TEMPORARY: Log raw notification payload to understand what Linear sends
+		console.log(
+			"[LinearMessageTranslator] issueStatusChanged raw notification:",
+			JSON.stringify(notification, null, 2),
+		);
+
 		if (!issue) {
 			return {
 				success: false,
@@ -386,6 +392,13 @@ export class LinearMessageTranslator
 		const issueRaw = issue as SafeRecord;
 		const stateRaw = issueRaw.state as SafeRecord | undefined;
 		const rawStateType = stateRaw?.type as string | undefined;
+
+		// TEMPORARY: Log state extraction results
+		console.log(
+			"[LinearMessageTranslator] issueStatusChanged state extraction:",
+			JSON.stringify({ stateRaw, rawStateType }, null, 2),
+		);
+
 		const stateType: IssueStateType =
 			rawStateType === "completed" || rawStateType === "canceled"
 				? rawStateType
