@@ -15,7 +15,6 @@ import type {
 	GuidanceItem,
 	IMessageTranslator,
 	IssueStateChangeMessage,
-	IssueStateType,
 	LinearContentUpdatePlatformData,
 	LinearIssueStateChangePlatformData,
 	LinearPlatformRef,
@@ -380,17 +379,9 @@ export class LinearMessageTranslator
 			};
 		}
 
-		// Linear's issueStatusChanged notifications are for terminal state changes only,
-		// but the payload does not include the issue's state info. Default to "completed"
-		// since both terminal states (completed/canceled) trigger the same cleanup.
-		const stateType: IssueStateType = "completed";
-
-		// Build platform data — state IDs not available in AppUserNotification webhooks
 		const issueRaw = issue as SafeRecord;
 		const platformData: LinearIssueStateChangePlatformData = {
 			issue: this.buildIssueRef(issueRaw),
-			previousStateId: undefined,
-			newStateId: undefined,
 		};
 
 		const message: IssueStateChangeMessage = {
@@ -402,7 +393,7 @@ export class LinearMessageTranslator
 			sessionKey: issue.id,
 			workItemId: issue.id,
 			workItemIdentifier: issue.identifier,
-			stateType,
+			isTerminal: true,
 			platformData,
 		};
 

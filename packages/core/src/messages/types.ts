@@ -329,30 +329,24 @@ export interface UnassignMessage extends InternalMessageBase {
 // ============================================================================
 
 /**
- * The type of state the issue transitioned to.
- */
-export type IssueStateType = "completed" | "canceled";
-
-/**
  * Linear-specific platform data for issue state change.
  */
 export interface LinearIssueStateChangePlatformData {
 	/** Issue that changed state */
 	issue: LinearPlatformRef["issue"];
-	/** The previous state ID */
-	previousStateId?: string;
-	/** The new state ID */
-	newStateId?: string;
 }
 
 /**
- * Issue state change message - issue transitioned to completed or canceled.
+ * Issue state change message - issue transitioned to a terminal state.
  * Triggered by: User moves issue to Done/Cancelled in Linear.
+ *
+ * Note: Linear's issueStatusChanged notification does not include the specific
+ * state type (completed vs canceled), only that the issue reached a terminal state.
  */
 export interface IssueStateChangeMessage extends InternalMessageBase {
 	action: "issue_state_change";
-	/** The state type the issue transitioned to */
-	stateType: IssueStateType;
+	/** Whether the issue reached a terminal state (always true for this message type) */
+	isTerminal: true;
 	/** Platform-specific data */
 	platformData: LinearIssueStateChangePlatformData;
 }

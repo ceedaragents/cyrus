@@ -464,10 +464,7 @@ describe("LinearMessageTranslator", () => {
 			const stateChange = result.message;
 			if (stateChange.action !== "issue_state_change") return;
 
-			// Defaults to "completed" since Linear doesn't include state type in the payload
-			expect(stateChange.stateType).toBe("completed");
-			expect(stateChange.platformData.previousStateId).toBeUndefined();
-			expect(stateChange.platformData.newStateId).toBeUndefined();
+			expect(stateChange.isTerminal).toBe(true);
 		});
 
 		it("should not match other AppUserNotification actions as state changes", () => {

@@ -154,7 +154,6 @@ export type {
 	InternalMessage,
 	InternalMessageBase,
 	IssueStateChangeMessage,
-	IssueStateType,
 	LinearContentUpdatePlatformData,
 	LinearIssueStateChangePlatformData,
 	LinearPlatformRef,

@@ -2182,7 +2182,9 @@ ${taskSection}`;
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPromptedAgentActivity(webhook);
 			} else if (isIssueStateChangeWebhook(webhook)) {
-				// Handled via message bus (handleIssueStateChangeMessage)
+				// Intentional early return: state changes are handled exclusively via the message bus
+				// (handleIssueStateChangeMessage), not the legacy webhook path. This differs from
+				// unassign which still uses the legacy handler — state change was built message-bus-first.
 				return;
 			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
 				// Handle issue title/description/attachments updates - feed changes into active session
@@ -2352,14 +2354,14 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Handle issue state change message (completed or canceled).
+	 * Handle issue state change message (terminal state reached).
 	 * Stops active sessions and deletes worktrees for the issue.
 	 */
 	private async handleIssueStateChangeMessage(
 		message: IssueStateChangeMessage,
 	): Promise<void> {
 		this.logger.info(
-			`[MessageBus] Issue state change: ${message.workItemIdentifier} → ${message.stateType}`,
+			`[MessageBus] Issue reached terminal state: ${message.workItemIdentifier}`,
 		);
 
 		const issueId = message.workItemId;
@@ -2368,7 +2370,7 @@ ${taskSection}`;
 		const sessions = this.agentSessionManager.getSessionsByIssueId(issueId);
 		for (const session of sessions) {
 			this.logger.info(
-				`Stopping agent runner for ${message.workItemIdentifier} (issue ${message.stateType})`,
+				`Stopping agent runner for ${message.workItemIdentifier} (issue terminal)`,
 			);
 			this.agentSessionManager.requestSessionStop(session.id);
 			session.agentRunner?.stop();
@@ -2398,7 +2400,7 @@ ${taskSection}`;
 		}
 
 		this.logger.info(
-			`Completed cleanup for ${message.workItemIdentifier} (${message.stateType}): stopped ${sessions.length} session(s)`,
+			`Completed cleanup for ${message.workItemIdentifier}: stopped ${sessions.length} session(s)`,
 		);
 	}
 

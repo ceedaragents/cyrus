@@ -50,7 +50,6 @@ export type {
 	InternalMessage,
 	InternalMessageBase,
 	IssueStateChangeMessage,
-	IssueStateType,
 	LinearContentUpdatePlatformData,
 	LinearIssueStateChangePlatformData,
 	// Platform-specific data types
