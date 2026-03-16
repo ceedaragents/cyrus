@@ -14,7 +14,7 @@ We love your input! We want to make contributing to Cyrus as easy and transparen
 
 ## Development Process
 
-We use GitHub for code hosting and pull requests. Issue tracking is done in [Linear](https://linear.app/ceedar).
+We use GitHub for issue tracking, code hosting and pull requests. We also track issues on an internal Linear workspace.
 
 ### Getting Started
 
