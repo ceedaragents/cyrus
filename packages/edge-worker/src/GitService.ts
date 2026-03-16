@@ -34,10 +34,11 @@ export class GitService {
 	private worktreeIncludeService: WorktreeIncludeService;
 	private workspaceBaseDir: string;
 
-	constructor(workspaceBaseDir: string, logger?: ILogger) {
+	constructor(workspaceBaseDir?: string, logger?: ILogger) {
 		this.logger = logger ?? createLogger({ component: "GitService" });
 		this.worktreeIncludeService = new WorktreeIncludeService(this.logger);
-		this.workspaceBaseDir = workspaceBaseDir;
+		this.workspaceBaseDir =
+			workspaceBaseDir ?? join(homedir(), ".cyrus", "worktrees");
 	}
 	/**
 	 * Check if a branch exists locally or remotely
