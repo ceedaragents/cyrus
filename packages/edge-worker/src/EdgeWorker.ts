@@ -2689,7 +2689,7 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Create a new Linear agent session with all necessary setup
+	 * Create a new Cyrus agent session with all necessary setup
 	 * @param sessionId The Linear agent activity session ID
 	 * @param issue Linear issue object
 	 * @param repositories Repository configurations (primary repo is repositories[0])
