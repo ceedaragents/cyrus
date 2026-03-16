@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitService } from "../src/GitService.js";
 
 vi.mock("node:child_process", () => ({
@@ -40,7 +40,49 @@ describe("GitService", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		delete process.env.CYRUS_WORKTREES_DIR;
 		gitService = new GitService("/home/user/.cyrus/worktrees", mockLogger);
+	});
+
+	afterEach(() => {
+		delete process.env.CYRUS_WORKTREES_DIR;
+	});
+
+	describe("constructor", () => {
+		it("defaults to cyrusHome/worktrees when workspaceBaseDir is omitted", () => {
+			const fallbackGitService = new GitService(
+				{ cyrusHome: "/tmp/custom-cyrus-home" },
+				mockLogger,
+			);
+
+			mockExistsSync.mockImplementation(
+				(path) => String(path) === "/tmp/custom-cyrus-home/worktrees/DEF-123",
+			);
+
+			fallbackGitService.deleteWorktree("DEF-123");
+
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringContaining("/tmp/custom-cyrus-home/worktrees/DEF-123"),
+			);
+		});
+
+		it("prefers CYRUS_WORKTREES_DIR over cyrusHome defaults", () => {
+			process.env.CYRUS_WORKTREES_DIR = "/tmp/env-worktrees";
+			const fallbackGitService = new GitService(
+				{ cyrusHome: "/tmp/custom-cyrus-home" },
+				mockLogger,
+			);
+
+			mockExistsSync.mockImplementation(
+				(path) => String(path) === "/tmp/env-worktrees/DEF-123",
+			);
+
+			fallbackGitService.deleteWorktree("DEF-123");
+
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringContaining("/tmp/env-worktrees/DEF-123"),
+			);
+		});
 	});
 
 	describe("findWorktreeByBranch", () => {

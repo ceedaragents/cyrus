@@ -49,7 +49,6 @@ import {
 	CLIRPCServer,
 	createLogger,
 	DEFAULT_PROXY_URL,
-	DEFAULT_WORKTREES_DIR,
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
 	isContentUpdateMessage,
@@ -290,9 +289,7 @@ export class EdgeWorker extends EventEmitter {
 			},
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
-		this.gitService = new GitService(
-			join(this.cyrusHome, DEFAULT_WORKTREES_DIR),
-		);
+		this.gitService = new GitService({ cyrusHome: this.cyrusHome });
 
 		// Initialize AskUserQuestion handler for elicitation via Linear select signal
 		this.askUserQuestionHandler = new AskUserQuestionHandler({

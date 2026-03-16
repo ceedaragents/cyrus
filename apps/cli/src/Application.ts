@@ -1,16 +1,13 @@
 import { existsSync, mkdirSync, watch } from "node:fs";
 import { dirname, join } from "node:path";
-import {
-	DEFAULT_PROXY_URL,
-	DEFAULT_WORKTREES_DIR,
-	type RepositoryConfig,
-} from "cyrus-core";
+import { DEFAULT_PROXY_URL, type RepositoryConfig } from "cyrus-core";
 import { GitService, SharedApplicationServer } from "cyrus-edge-worker";
 import dotenv from "dotenv";
 import { DEFAULT_SERVER_PORT, parsePort } from "./config/constants.js";
 import { ConfigService } from "./services/ConfigService.js";
 import { Logger } from "./services/Logger.js";
 import { WorkerService } from "./services/WorkerService.js";
+import { getDefaultWorktreesDir } from "./utils/getDefaultWorktreesDir.js";
 
 /**
  * Main application context providing access to services
@@ -52,10 +49,7 @@ export class Application {
 
 		// Initialize services
 		this.config = new ConfigService(cyrusHome, this.logger);
-		this.git = new GitService(
-			join(cyrusHome, DEFAULT_WORKTREES_DIR),
-			this.logger,
-		);
+		this.git = new GitService(getDefaultWorktreesDir(cyrusHome), this.logger);
 		this.worker = new WorkerService(
 			this.config,
 			this.git,
@@ -107,10 +101,13 @@ export class Application {
 	 * Creates: ~/.cyrus/repos, ~/.cyrus/worktrees, ~/.cyrus/mcp-configs
 	 */
 	private ensureRequiredDirectories(): void {
-		const requiredDirs = ["repos", DEFAULT_WORKTREES_DIR, "mcp-configs"];
+		const requiredDirs = [
+			join(this.cyrusHome, "repos"),
+			getDefaultWorktreesDir(this.cyrusHome),
+			join(this.cyrusHome, "mcp-configs"),
+		];
 
-		for (const dir of requiredDirs) {
-			const dirPath = join(this.cyrusHome, dir);
+		for (const dirPath of requiredDirs) {
 			if (!existsSync(dirPath)) {
 				try {
 					mkdirSync(dirPath, { recursive: true });

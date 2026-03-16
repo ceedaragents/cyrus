@@ -9,7 +9,7 @@ import type {
 	RepositoryConfig,
 	Workspace,
 } from "cyrus-core";
-import { createLogger, type ILogger } from "cyrus-core";
+import { createLogger, DEFAULT_WORKTREES_DIR, type ILogger } from "cyrus-core";
 import { WorktreeIncludeService } from "./WorktreeIncludeService.js";
 
 export interface CreateGitWorktreeOptions {
@@ -26,6 +26,11 @@ export interface CreateGitWorktreeOptions {
 	baseBranchOverrides?: Map<string, string>;
 }
 
+export interface GitServiceOptions {
+	workspaceBaseDir?: string;
+	cyrusHome?: string;
+}
+
 /**
  * Service responsible for Git worktree operations
  */
@@ -34,11 +39,23 @@ export class GitService {
 	private worktreeIncludeService: WorktreeIncludeService;
 	private workspaceBaseDir: string;
 
-	constructor(workspaceBaseDir?: string, logger?: ILogger) {
+	constructor(
+		workspaceBaseDirOrOptions?: string | GitServiceOptions,
+		logger?: ILogger,
+	) {
 		this.logger = logger ?? createLogger({ component: "GitService" });
 		this.worktreeIncludeService = new WorktreeIncludeService(this.logger);
+		if (typeof workspaceBaseDirOrOptions === "string") {
+			this.workspaceBaseDir = workspaceBaseDirOrOptions;
+			return;
+		}
+
 		this.workspaceBaseDir =
-			workspaceBaseDir ?? join(homedir(), ".cyrus", "worktrees");
+			process.env.CYRUS_WORKTREES_DIR?.trim() ||
+			join(
+				workspaceBaseDirOrOptions?.cyrusHome ?? join(homedir(), ".cyrus"),
+				DEFAULT_WORKTREES_DIR,
+			);
 	}
 	/**
 	 * Check if a branch exists locally or remotely
