@@ -170,8 +170,12 @@ export class EdgeWorker extends EventEmitter {
 	private config: EdgeWorkerConfig;
 	private repositories: Map<string, RepositoryConfig> = new Map(); // repository 'id' (internal, stored in config.json) mapped to the full repo config
 	private agentSessionManager: AgentSessionManager; // Single instance managing all agent sessions across repositories
+	// TODO: For multi-repo sessions spanning different Linear workspaces, only the primary repo's
+	// workspace receives activity updates. This is a known limitation — each session maps to a
+	// single activity sink (the primary repo's), so secondary workspaces won't see activities.
 	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
-	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
+	// TODO: issueTrackers is keyed by linearWorkspaceId. When other platforms (GitHub Issues, Jira,
+	// etc.) are supported, this will need a composite key like `${platform}:${workspaceId}`.
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
@@ -319,7 +323,9 @@ export class EdgeWorker extends EventEmitter {
 				return parentId;
 			},
 			async (parentSessionId, prompt, childSessionId) => {
-				const repoId = this.sessionRepositories.get(childSessionId);
+				const childSession =
+					this.agentSessionManager.getSession(childSessionId);
+				const repoId = childSession?.repositories[0]?.repositoryId;
 				const repo = repoId ? this.repositories.get(repoId) : undefined;
 				if (!repo) {
 					this.logger.error(
@@ -343,7 +349,7 @@ export class EdgeWorker extends EventEmitter {
 		this.agentSessionManager.on(
 			"subroutineComplete",
 			async ({ sessionId, session }) => {
-				const repoId = this.sessionRepositories.get(sessionId);
+				const repoId = session.repositories[0]?.repositoryId;
 				const repo = repoId ? this.repositories.get(repoId) : undefined;
 				if (!repo) {
 					this.logger.error(
@@ -363,7 +369,7 @@ export class EdgeWorker extends EventEmitter {
 		this.agentSessionManager.on(
 			"validationLoopIteration",
 			async ({ sessionId, session, fixerPrompt, iteration, maxIterations }) => {
-				const repoId = this.sessionRepositories.get(sessionId);
+				const repoId = session.repositories[0]?.repositoryId;
 				const repo = repoId ? this.repositories.get(repoId) : undefined;
 				if (!repo) {
 					this.logger.error(
@@ -388,7 +394,7 @@ export class EdgeWorker extends EventEmitter {
 		this.agentSessionManager.on(
 			"validationLoopRerun",
 			async ({ sessionId, session, iteration }) => {
-				const repoId = this.sessionRepositories.get(sessionId);
+				const repoId = session.repositories[0]?.repositoryId;
 				const repo = repoId ? this.repositories.get(repoId) : undefined;
 				if (!repo) {
 					this.logger.error(
@@ -1116,8 +1122,7 @@ export class EdgeWorker extends EventEmitter {
 				],
 			);
 
-			// Register session-to-repo mapping and activity sink
-			this.sessionRepositories.set(githubSessionId, repository.id);
+			// Register activity sink for this session
 			const activitySink = this.activitySinks.get(repository.id);
 			if (activitySink) {
 				agentSessionManager.setActivitySink(githubSessionId, activitySink);
@@ -1619,7 +1624,7 @@ ${taskSection}`;
 		// Find parent session from the single session manager
 		log.debug(`Looking up parent session ${parentSessionId}`);
 		const parentSession = this.agentSessionManager.getSession(parentSessionId);
-		const parentRepoId = this.sessionRepositories.get(parentSessionId);
+		const parentRepoId = parentSession?.repositories[0]?.repositoryId;
 		const parentRepo = parentRepoId
 			? this.repositories.get(parentRepoId)
 			: undefined;
@@ -2041,8 +2046,8 @@ ${taskSection}`;
 
 				// Check for active sessions for this repository
 				const allActiveSessions = this.agentSessionManager.getActiveSessions();
-				const activeSessions = allActiveSessions.filter(
-					(s) => this.sessionRepositories.get(s.id) === repo.id,
+				const activeSessions = allActiveSessions.filter((s) =>
+					s.repositories.some((r) => r.repositoryId === repo.id),
 				);
 
 				if (activeSessions.length > 0) {
@@ -2371,7 +2376,7 @@ ${taskSection}`;
 			const sessions = this.agentSessionManager.getSessionsByIssueId(issueId);
 			if (sessions.length > 0) {
 				const firstSession = sessions[0]!;
-				const repoId = this.sessionRepositories.get(firstSession.id);
+				const repoId = firstSession.repositories[0]?.repositoryId;
 				if (repoId) {
 					repository = this.repositories.get(repoId) ?? null;
 					if (repository) {
@@ -2481,7 +2486,7 @@ ${taskSection}`;
 				this.agentSessionManager.getSessionsByIssueId(issueId);
 			if (issueSessions.length > 0) {
 				const firstSession = issueSessions[0]!;
-				const repoId = this.sessionRepositories.get(firstSession.id);
+				const repoId = firstSession.repositories[0]?.repositoryId;
 				if (repoId) {
 					repository = this.repositories.get(repoId) ?? null;
 					if (repository) {
@@ -2762,8 +2767,7 @@ ${taskSection}`;
 			repositoryContexts,
 		);
 
-		// Register session-to-repo mapping and activity sink (use primary repo)
-		this.sessionRepositories.set(sessionId, primaryRepo.id);
+		// Register activity sink (use primary repo)
 		const activitySink = this.activitySinks.get(primaryRepo.id);
 		if (activitySink) {
 			agentSessionManager.setActivitySink(sessionId, activitySink);
@@ -3788,7 +3792,7 @@ ${taskSection}`;
 			// First, check if the session manager already has this session
 			const session = this.agentSessionManager.getSession(agentSessionId);
 			if (session) {
-				const repoId = this.sessionRepositories.get(agentSessionId);
+				const repoId = session.repositories[0]?.repositoryId;
 				if (repoId) {
 					repository = this.repositories.get(repoId) ?? null;
 					if (repository) {
@@ -4435,25 +4439,20 @@ ${taskSection}`;
 			this.globalSessionRegistry.getParentSessionId(childSessionId);
 
 		// Find the repository containing the child session
-		const childRepoId = this.sessionRepositories.get(childSessionId);
+		const childSession = this.agentSessionManager.getSession(childSessionId);
+		const childRepoId = childSession?.repositories[0]?.repositoryId;
 		const childRepo = childRepoId
 			? this.repositories.get(childRepoId)
 			: undefined;
 
 		if (
+			!childSession ||
 			!childRepo ||
 			!this.agentSessionManager.hasAgentRunner(childSessionId)
 		) {
 			console.error(
 				`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
 			);
-			return false;
-		}
-
-		// Get the child session
-		const childSession = this.agentSessionManager.getSession(childSessionId);
-		if (!childSession) {
-			console.error(`[EdgeWorker] Child session ${childSessionId} not found`);
 			return false;
 		}
 
@@ -5591,8 +5590,7 @@ ${input.userComment}
 				state.agentSessionEntries,
 			);
 
-			// Rebuild session-to-repo mapping from issueRepositoryCache
-			// For each restored session, look up its issue in the cache to find the repo
+			// Register activity sinks for restored sessions using issueRepositoryCache
 			if (state.issueRepositoryCache) {
 				for (const [sessionId, session] of Object.entries(
 					state.agentSessions,
@@ -5601,11 +5599,8 @@ ${input.userComment}
 						(session as any).issueContext?.issueId ?? (session as any).issueId;
 					if (issueId && state.issueRepositoryCache[issueId]) {
 						const cachedRepoIds = state.issueRepositoryCache[issueId];
-						// Use first repo ID for session-to-repo mapping (primary repo)
 						const repoId = cachedRepoIds[0];
 						if (repoId) {
-							this.sessionRepositories.set(sessionId, repoId);
-							// Also register the activity sink for this restored session
 							const activitySink = this.activitySinks.get(repoId);
 							if (activitySink) {
 								this.agentSessionManager.setActivitySink(
