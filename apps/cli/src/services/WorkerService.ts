@@ -150,9 +150,13 @@ export class WorkerService {
 
 		this.logger.info("📡 Config updater: Ready");
 		this.logger.raw("");
-		const appUrl = getCyrusAppUrl();
-		this.logger.info(`Waiting for repository configuration from ${appUrl}`);
-		this.logger.info(`Add repositories at: ${appUrl}/repos`);
+		if (process.env.LINEAR_CLIENT_ID) {
+			this.logger.info("Add a repository with: cyrus self-add-repo <git-url>");
+		} else {
+			const appUrl = getCyrusAppUrl();
+			this.logger.info(`Waiting for repository configuration from ${appUrl}`);
+			this.logger.info(`Add repositories at: ${appUrl}/repos`);
+		}
 		this.logger.divider(70);
 	}
 

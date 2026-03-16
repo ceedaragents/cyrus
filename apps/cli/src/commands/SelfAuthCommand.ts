@@ -32,10 +32,10 @@ export class SelfAuthCommand extends BaseCommand {
 			if (!clientId) console.log("   - LINEAR_CLIENT_ID");
 			if (!clientSecret) console.log("   - LINEAR_CLIENT_SECRET");
 			if (!baseUrl) console.log("   - CYRUS_BASE_URL");
-			console.log("\nSet these in your shell profile (.zshrc):");
-			console.log("  export LINEAR_CLIENT_ID='your-client-id'");
-			console.log("  export LINEAR_CLIENT_SECRET='your-client-secret'");
-			console.log("  export CYRUS_BASE_URL='https://your-tunnel-domain.com'");
+			console.log(`\nAdd these to your env file (${this.app.cyrusHome}/.env):`);
+			console.log("  LINEAR_CLIENT_ID=your-client-id");
+			console.log("  LINEAR_CLIENT_SECRET=your-client-secret");
+			console.log("  CYRUS_BASE_URL=https://your-tunnel-domain.com");
 			process.exit(1);
 		}
 
