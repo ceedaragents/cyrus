@@ -123,7 +123,7 @@ export class LinearEventTransport
 
 		try {
 			// Verify the webhook signature using Linear's client
-			const bodyBuffer = Buffer.from(JSON.stringify(request.body));
+			const bodyBuffer = Buffer.from(request.rawBody || JSON.stringify(request.body));
 			const isValid = this.linearWebhookClient.verify(bodyBuffer, signature);
 
 			if (!isValid) {
