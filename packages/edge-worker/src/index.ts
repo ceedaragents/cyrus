@@ -32,6 +32,9 @@ export { McpConfigService } from "./McpConfigService.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
 export type {
 	ChatRunnerConfigInput,
+	IChatToolResolver,
+	IMcpConfigProvider,
+	IRunnerSelector,
 	IssueRunnerConfigInput,
 } from "./RunnerConfigBuilder.js";
 export { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";

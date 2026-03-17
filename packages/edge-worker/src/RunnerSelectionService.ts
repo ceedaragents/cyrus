@@ -1,25 +1,10 @@
-import type {
-	CyrusAgentSession,
-	EdgeWorkerConfig,
-	ILogger,
-	RepositoryConfig,
-	RunnerType,
-} from "cyrus-core";
-
-import type { ProcedureAnalyzer } from "./procedures/index.js";
-import {
-	type PromptType,
-	ToolPermissionResolver,
-} from "./ToolPermissionResolver.js";
+import type { EdgeWorkerConfig, RunnerType } from "cyrus-core";
 
 export class RunnerSelectionService {
 	private config: EdgeWorkerConfig;
-	/** Delegate for tool permission logic */
-	public readonly toolPermissionResolver: ToolPermissionResolver;
 
-	constructor(config: EdgeWorkerConfig, logger: ILogger) {
+	constructor(config: EdgeWorkerConfig) {
 		this.config = config;
-		this.toolPermissionResolver = new ToolPermissionResolver(config, logger);
 	}
 
 	/**
@@ -27,7 +12,6 @@ export class RunnerSelectionService {
 	 */
 	setConfig(config: EdgeWorkerConfig): void {
 		this.config = config;
-		this.toolPermissionResolver.setConfig(config);
 	}
 
 	/**
@@ -331,66 +315,5 @@ export class RunnerSelectionService {
 			modelOverride,
 			fallbackModelOverride,
 		};
-	}
-
-	// ========================================================================
-	// Tool permission methods — delegated to ToolPermissionResolver
-	// ========================================================================
-
-	/**
-	 * Resolve a tool preset string to an array of tool names.
-	 */
-	public resolveToolPreset(preset: string | string[]): string[] {
-		return this.toolPermissionResolver.resolveToolPreset(preset);
-	}
-
-	/**
-	 * Build allowed tools list with Linear MCP tools automatically included.
-	 * Accepts a single repository or an array for multi-repo sessions.
-	 * For multiple repositories, the result is the union of each repo's allowed tools
-	 * (presets resolved first, then unioned).
-	 * Workspace-level MCP tools are added once regardless of repo count.
-	 */
-	public buildAllowedTools(
-		repositories: RepositoryConfig | RepositoryConfig[],
-		promptType?: PromptType,
-	): string[] {
-		return this.toolPermissionResolver.buildAllowedTools(
-			repositories,
-			promptType,
-		);
-	}
-
-	/**
-	 * Build disallowed tools list from repository and global config.
-	 * Accepts a single repository or an array for multi-repo sessions.
-	 * For multiple repositories, the result is the intersection — a tool is only
-	 * disallowed if ALL repositories disallow it.
-	 */
-	public buildDisallowedTools(
-		repositories: RepositoryConfig | RepositoryConfig[],
-		promptType?: PromptType,
-	): string[] {
-		return this.toolPermissionResolver.buildDisallowedTools(
-			repositories,
-			promptType,
-		);
-	}
-
-	/**
-	 * Merge subroutine-level disallowedTools with base disallowedTools
-	 */
-	public mergeSubroutineDisallowedTools(
-		session: CyrusAgentSession,
-		baseDisallowedTools: string[],
-		logContext: string,
-		procedureAnalyzer: ProcedureAnalyzer,
-	): string[] {
-		return this.toolPermissionResolver.mergeSubroutineDisallowedTools(
-			session,
-			baseDisallowedTools,
-			logContext,
-			procedureAnalyzer,
-		);
 	}
 }

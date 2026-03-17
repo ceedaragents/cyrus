@@ -129,6 +129,7 @@ import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { ToolPermissionResolver } from "./ToolPermissionResolver.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -186,6 +187,7 @@ export class EdgeWorker extends EventEmitter {
 	// Extracted service modules
 	private attachmentService: AttachmentService;
 	private runnerSelectionService: RunnerSelectionService;
+	private toolPermissionResolver: ToolPermissionResolver;
 	private mcpConfigService: McpConfigService;
 	private runnerConfigBuilder: RunnerConfigBuilder;
 	private activityPoster: ActivityPoster;
@@ -474,28 +476,26 @@ export class EdgeWorker extends EventEmitter {
 			this.cyrusHome,
 			this.config.linearWorkspaces || {},
 		);
-		this.runnerSelectionService = new RunnerSelectionService(
+		this.runnerSelectionService = new RunnerSelectionService(this.config);
+		this.toolPermissionResolver = new ToolPermissionResolver(
 			this.config,
 			this.logger,
 		);
-		this.mcpConfigService = new McpConfigService(
-			{
-				getLinearTokenForWorkspace: (workspaceId) =>
-					this.getLinearTokenForWorkspace(workspaceId),
-				getIssueTracker: (workspaceId) =>
-					this.issueTrackers.get(workspaceId) as
-						| (IIssueTrackerService & {
-								getClient?: () => import("@linear/sdk").LinearClient;
-						  })
-						| undefined,
-				getCyrusToolsMcpUrl: () => this.getCyrusToolsMcpUrl(),
-				createCyrusToolsOptions: (parentSessionId) =>
-					this.createCyrusToolsOptions(parentSessionId),
-			},
-			this.logger,
-		);
+		this.mcpConfigService = new McpConfigService({
+			getLinearTokenForWorkspace: (workspaceId) =>
+				this.getLinearTokenForWorkspace(workspaceId),
+			getIssueTracker: (workspaceId) =>
+				this.issueTrackers.get(workspaceId) as
+					| (IIssueTrackerService & {
+							getClient?: () => import("@linear/sdk").LinearClient;
+					  })
+					| undefined,
+			getCyrusToolsMcpUrl: () => this.getCyrusToolsMcpUrl(),
+			createCyrusToolsOptions: (parentSessionId) =>
+				this.createCyrusToolsOptions(parentSessionId),
+		});
 		this.runnerConfigBuilder = new RunnerConfigBuilder(
-			this.runnerSelectionService.toolPermissionResolver,
+			this.toolPermissionResolver,
 			this.mcpConfigService,
 			this.runnerSelectionService,
 		);
@@ -539,6 +539,7 @@ export class EdgeWorker extends EventEmitter {
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
 				this.runnerSelectionService.setConfig(changes.newConfig);
+				this.toolPermissionResolver.setConfig(changes.newConfig);
 
 				// Reconstruct ProcedureAnalyzer if the default runner changed,
 				// since its internal SimpleRunner is baked in at construction time.
@@ -5044,7 +5045,7 @@ ${input.userComment}
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
-		return this.runnerSelectionService.buildDisallowedTools(
+		return this.toolPermissionResolver.buildDisallowedTools(
 			repositories,
 			promptType,
 		);
@@ -5062,7 +5063,7 @@ ${input.userComment}
 		baseDisallowedTools: string[],
 		logContext: string,
 	): string[] {
-		return this.runnerSelectionService.mergeSubroutineDisallowedTools(
+		return this.toolPermissionResolver.mergeSubroutineDisallowedTools(
 			session,
 			baseDisallowedTools,
 			logContext,
@@ -5083,7 +5084,7 @@ ${input.userComment}
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
-		return this.runnerSelectionService.buildAllowedTools(
+		return this.toolPermissionResolver.buildAllowedTools(
 			repositories,
 			promptType,
 		);

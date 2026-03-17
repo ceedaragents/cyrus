@@ -14,9 +14,43 @@ import type {
 	RunnerType,
 } from "cyrus-core";
 
-import type { McpConfigService } from "./McpConfigService.js";
-import type { RunnerSelectionService } from "./RunnerSelectionService.js";
-import type { ToolPermissionResolver } from "./ToolPermissionResolver.js";
+/**
+ * Subset of McpConfigService consumed by RunnerConfigBuilder.
+ */
+export interface IMcpConfigProvider {
+	buildMcpConfig(
+		repoId: string,
+		linearWorkspaceId: string,
+		parentSessionId?: string,
+		options?: { excludeSlackMcp?: boolean },
+	): Record<string, McpServerConfig>;
+	buildMergedMcpConfigPath(
+		repositories: RepositoryConfig | RepositoryConfig[],
+	): string | string[] | undefined;
+}
+
+/**
+ * Subset of ToolPermissionResolver consumed by RunnerConfigBuilder.
+ */
+export interface IChatToolResolver {
+	buildChatAllowedTools(mcpConfigKeys?: string[]): string[];
+}
+
+/**
+ * Subset of RunnerSelectionService consumed by RunnerConfigBuilder.
+ */
+export interface IRunnerSelector {
+	determineRunnerSelection(
+		labels: string[],
+		issueDescription?: string,
+	): {
+		runnerType: RunnerType;
+		modelOverride?: string;
+		fallbackModelOverride?: string;
+	};
+	getDefaultModelForRunner(runnerType: RunnerType): string;
+	getDefaultFallbackModelForRunner(runnerType: RunnerType): string;
+}
 
 /**
  * Input for building a chat session runner config.
@@ -77,18 +111,18 @@ export interface IssueRunnerConfigInput {
  * that produce AgentRunnerConfig objects using injected services.
  */
 export class RunnerConfigBuilder {
-	private toolPermissionResolver: ToolPermissionResolver;
-	private mcpConfigService: McpConfigService;
-	private runnerSelectionService: RunnerSelectionService;
+	private chatToolResolver: IChatToolResolver;
+	private mcpConfigProvider: IMcpConfigProvider;
+	private runnerSelector: IRunnerSelector;
 
 	constructor(
-		toolPermissionResolver: ToolPermissionResolver,
-		mcpConfigService: McpConfigService,
-		runnerSelectionService: RunnerSelectionService,
+		chatToolResolver: IChatToolResolver,
+		mcpConfigProvider: IMcpConfigProvider,
+		runnerSelector: IRunnerSelector,
 	) {
-		this.toolPermissionResolver = toolPermissionResolver;
-		this.mcpConfigService = mcpConfigService;
-		this.runnerSelectionService = runnerSelectionService;
+		this.chatToolResolver = chatToolResolver;
+		this.mcpConfigProvider = mcpConfigProvider;
+		this.runnerSelector = runnerSelector;
 	}
 
 	/**
@@ -102,7 +136,7 @@ export class RunnerConfigBuilder {
 			? Object.keys(input.mcpConfig)
 			: undefined;
 		const allowedTools =
-			this.toolPermissionResolver.buildChatAllowedTools(mcpConfigKeys);
+			this.chatToolResolver.buildChatAllowedTools(mcpConfigKeys);
 
 		const repositoryPaths = Array.from(
 			new Set((input.repositoryPaths ?? []).filter(Boolean)),
@@ -145,11 +179,10 @@ export class RunnerConfigBuilder {
 		const hooks = this.buildScreenshotHooks(log);
 
 		// Determine runner type and model override from selectors
-		const runnerSelection =
-			this.runnerSelectionService.determineRunnerSelection(
-				input.labels || [],
-				input.issueDescription,
-			);
+		const runnerSelection = this.runnerSelector.determineRunnerSelection(
+			input.labels || [],
+			input.issueDescription,
+		);
 		let runnerType = runnerSelection.runnerType;
 		let modelOverride = runnerSelection.modelOverride;
 		let fallbackModelOverride = runnerSelection.fallbackModelOverride;
@@ -157,28 +190,24 @@ export class RunnerConfigBuilder {
 		// If the labels have changed, and we are resuming a session. Use the existing runner for the session.
 		if (input.session.claudeSessionId && runnerType !== "claude") {
 			runnerType = "claude";
-			modelOverride =
-				this.runnerSelectionService.getDefaultModelForRunner("claude");
+			modelOverride = this.runnerSelector.getDefaultModelForRunner("claude");
 			fallbackModelOverride =
-				this.runnerSelectionService.getDefaultFallbackModelForRunner("claude");
+				this.runnerSelector.getDefaultFallbackModelForRunner("claude");
 		} else if (input.session.geminiSessionId && runnerType !== "gemini") {
 			runnerType = "gemini";
-			modelOverride =
-				this.runnerSelectionService.getDefaultModelForRunner("gemini");
+			modelOverride = this.runnerSelector.getDefaultModelForRunner("gemini");
 			fallbackModelOverride =
-				this.runnerSelectionService.getDefaultFallbackModelForRunner("gemini");
+				this.runnerSelector.getDefaultFallbackModelForRunner("gemini");
 		} else if (input.session.codexSessionId && runnerType !== "codex") {
 			runnerType = "codex";
-			modelOverride =
-				this.runnerSelectionService.getDefaultModelForRunner("codex");
+			modelOverride = this.runnerSelector.getDefaultModelForRunner("codex");
 			fallbackModelOverride =
-				this.runnerSelectionService.getDefaultFallbackModelForRunner("codex");
+				this.runnerSelector.getDefaultFallbackModelForRunner("codex");
 		} else if (input.session.cursorSessionId && runnerType !== "cursor") {
 			runnerType = "cursor";
-			modelOverride =
-				this.runnerSelectionService.getDefaultModelForRunner("cursor");
+			modelOverride = this.runnerSelector.getDefaultModelForRunner("cursor");
 			fallbackModelOverride =
-				this.runnerSelectionService.getDefaultFallbackModelForRunner("cursor");
+				this.runnerSelector.getDefaultFallbackModelForRunner("cursor");
 		}
 
 		// Log model override if found
@@ -193,7 +222,7 @@ export class RunnerConfigBuilder {
 		const finalModel =
 			modelOverride ||
 			input.repository.model ||
-			this.runnerSelectionService.getDefaultModelForRunner(runnerType);
+			this.runnerSelector.getDefaultModelForRunner(runnerType);
 
 		// When disallowAllTools is true, don't provide any MCP servers to ensure
 		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
@@ -202,7 +231,7 @@ export class RunnerConfigBuilder {
 			input.requireLinearWorkspaceId(input.repository);
 		const mcpConfig = input.disallowAllTools
 			? undefined
-			: this.mcpConfigService.buildMcpConfig(
+			: this.mcpConfigProvider.buildMcpConfig(
 					input.repository.id,
 					resolvedWorkspaceId,
 					input.sessionId,
@@ -210,7 +239,7 @@ export class RunnerConfigBuilder {
 				);
 		const mcpConfigPath = input.disallowAllTools
 			? undefined
-			: this.mcpConfigService.buildMergedMcpConfigPath(input.repository);
+			: this.mcpConfigProvider.buildMergedMcpConfigPath(input.repository);
 
 		if (input.disallowAllTools) {
 			log.info(
@@ -235,9 +264,7 @@ export class RunnerConfigBuilder {
 			fallbackModel:
 				fallbackModelOverride ||
 				input.repository.fallbackModel ||
-				this.runnerSelectionService.getDefaultFallbackModelForRunner(
-					runnerType,
-				),
+				this.runnerSelector.getDefaultFallbackModelForRunner(runnerType),
 			logger: log,
 			hooks,
 			// Enable Chrome integration for Claude runner (disabled for other runners)

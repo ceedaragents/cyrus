@@ -1,10 +1,6 @@
 import type { LinearClient } from "@linear/sdk";
 import type { McpServerConfig } from "cyrus-claude-runner";
-import type {
-	IIssueTrackerService,
-	ILogger,
-	RepositoryConfig,
-} from "cyrus-core";
+import type { IIssueTrackerService, RepositoryConfig } from "cyrus-core";
 import {
 	type CyrusToolsOptions,
 	createCyrusToolsServer,
@@ -50,7 +46,7 @@ export class McpConfigService {
 	private deps: McpConfigServiceDeps;
 	private contexts = new Map<string, CyrusToolsMcpContextEntry>();
 
-	constructor(deps: McpConfigServiceDeps, _logger: ILogger) {
+	constructor(deps: McpConfigServiceDeps) {
 		this.deps = deps;
 	}
 
