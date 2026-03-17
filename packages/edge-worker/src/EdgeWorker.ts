@@ -3574,8 +3574,9 @@ ${taskSection}`;
 	 */
 	private async handleNormalPromptedActivity(
 		webhook: AgentSessionPromptedWebhook,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 	): Promise<void> {
+		const repository = repositories[0]!;
 		const { agentSession } = webhook;
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
@@ -3613,12 +3614,11 @@ ${taskSection}`;
 				false,
 			);
 
-			// Create the session using the shared method
-			// Pass single repo - createCyrusAgentSession normalizes to array internally
+			// Create the session using the shared method with all repositories
 			const sessionData = await this.createCyrusAgentSession(
 				sessionId,
 				issue,
-				repository,
+				repositories,
 				agentSessionManager,
 				linearWorkspaceId,
 			);
@@ -3833,8 +3833,10 @@ ${taskSection}`;
 			return;
 		}
 
-		let repository = this.getCachedRepository(issueId);
-		if (!repository) {
+		// Resolve ALL cached repositories for this issue (not just the first).
+		// Multi-repo sessions need the full set for workspace recreation.
+		let repositories = this.getCachedRepositories(issueId);
+		if (!repositories || repositories.length === 0) {
 			// Fallback: attempt to recover repository for legacy/restarted sessions
 			this.logger.info(
 				`No cached repository for prompted webhook ${agentSessionId}, attempting fallback resolution`,
@@ -3845,8 +3847,9 @@ ${taskSection}`;
 			if (session) {
 				const repoId = this.sessionRepositories.get(agentSessionId);
 				if (repoId) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
+					const repo = this.repositories.get(repoId) ?? null;
+					if (repo) {
+						repositories = [repo];
 						this.repositoryRouter
 							.getIssueRepositoryCache()
 							.set(issueId, [repoId]);
@@ -3858,7 +3861,7 @@ ${taskSection}`;
 			}
 
 			// Second fallback: re-route via repository router
-			if (!repository) {
+			if (!repositories || repositories.length === 0) {
 				try {
 					const repos = Array.from(this.repositories.values());
 					const routingResult =
@@ -3868,13 +3871,13 @@ ${taskSection}`;
 						);
 
 					if (routingResult.type === "selected") {
-						repository = routingResult.repositories[0]!;
+						repositories = routingResult.repositories;
 						this.repositoryRouter.getIssueRepositoryCache().set(
 							issueId,
 							routingResult.repositories.map((r) => r.id),
 						);
 						this.logger.info(
-							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
+							`Recovered repositories [${repositories.map((r) => r.name).join(", ")}] for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
 						);
 					}
 				} catch (error) {
@@ -3885,7 +3888,7 @@ ${taskSection}`;
 				}
 			}
 
-			if (!repository) {
+			if (!repositories || repositories.length === 0) {
 				// All recovery attempts failed - post visible feedback
 				await this.agentSessionManager.createResponseActivity(
 					agentSessionId,
@@ -3898,17 +3901,18 @@ ${taskSection}`;
 			}
 		}
 
-		// User access control check for mid-session prompts
-		const accessResult = this.checkUserAccess(webhook, repository);
+		// User access control check for mid-session prompts (use primary repo)
+		const primaryRepo = repositories[0]!;
+		const accessResult = this.checkUserAccess(webhook, primaryRepo);
 		if (!accessResult.allowed) {
 			this.logger.info(
 				`User ${accessResult.userName} blocked from prompting: ${accessResult.reason}`,
 			);
-			await this.handleBlockedUser(webhook, repository, accessResult.reason);
+			await this.handleBlockedUser(webhook, primaryRepo, accessResult.reason);
 			return;
 		}
 
-		await this.handleNormalPromptedActivity(webhook, repository);
+		await this.handleNormalPromptedActivity(webhook, repositories);
 	}
 
 	/**
