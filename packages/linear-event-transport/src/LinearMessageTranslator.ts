@@ -368,8 +368,7 @@ export class LinearMessageTranslator
 	 * Translate IssueStateChangeWebhook (AppUserNotification/issueStatusChanged) to IssueStateChangeMessage.
 	 *
 	 * Linear sends these notifications for terminal state changes (completed/canceled).
-	 * The TypeScript types don't include state info in the notification issue payload,
-	 * but the raw webhook JSON may include it. We try to extract it, falling back to "completed".
+	 * The notification payload does not include state info — only the issue reference.
 	 */
 	private translateIssueStateChange(
 		webhook: IssueStateChangeWebhook,
@@ -385,33 +384,18 @@ export class LinearMessageTranslator
 			};
 		}
 
-		const issueRaw = issue as SafeRecord;
-		const platformData: LinearIssueStateChangePlatformData = {
-			issue: this.buildIssueRef(issueRaw),
-		};
-
-		const message: IssueStateChangeMessage = {
-			id: randomUUID(),
-			source: "linear",
-			action: "issue_state_change",
-			receivedAt: this.toISOString(createdAt),
+		return this.buildTerminalStateMessage(
+			issue as SafeRecord,
 			organizationId,
-			sessionKey: issue.id,
-			workItemId: issue.id,
-			workItemIdentifier: issue.identifier,
-			isTerminal: true,
-			platformData,
-		};
-
-		return { success: true, message };
+			createdAt,
+		);
 	}
 
 	/**
 	 * Translate IssueDeletedWebhook (Issue/remove) to IssueStateChangeMessage.
 	 *
-	 * When an issue is deleted before reaching a terminal state, the same cleanup
-	 * (stop sessions, delete worktrees) should occur. We reuse IssueStateChangeMessage
-	 * with isTerminal: true since a deleted issue is effectively terminal.
+	 * A deleted issue is effectively terminal — the same cleanup
+	 * (stop sessions, delete worktrees) should occur.
 	 */
 	private translateIssueDeleted(
 		webhook: IssueDeletedWebhook,
@@ -426,8 +410,24 @@ export class LinearMessageTranslator
 			};
 		}
 
+		return this.buildTerminalStateMessage(
+			issueData as SafeRecord,
+			organizationId,
+			createdAt,
+		);
+	}
+
+	/**
+	 * Build an IssueStateChangeMessage for an issue that has reached a terminal state.
+	 * Shared by state change (completed/canceled) and deletion translations.
+	 */
+	private buildTerminalStateMessage(
+		issueData: SafeRecord,
+		organizationId: string,
+		createdAt: Date | string | undefined,
+	): TranslationResult {
 		const platformData: LinearIssueStateChangePlatformData = {
-			issue: this.buildIssueRef(issueData as SafeRecord),
+			issue: this.buildIssueRef(issueData),
 		};
 
 		const message: IssueStateChangeMessage = {
@@ -436,9 +436,9 @@ export class LinearMessageTranslator
 			action: "issue_state_change",
 			receivedAt: this.toISOString(createdAt),
 			organizationId,
-			sessionKey: issueData.id,
-			workItemId: issueData.id,
-			workItemIdentifier: issueData.identifier,
+			sessionKey: String(issueData.id || ""),
+			workItemId: String(issueData.id || ""),
+			workItemIdentifier: String(issueData.identifier || ""),
 			isTerminal: true,
 			platformData,
 		};
