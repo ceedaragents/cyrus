@@ -2385,7 +2385,7 @@ ${taskSection}`;
 		for (const session of sessions) {
 			await this.agentSessionManager.createResponseActivity(
 				session.id,
-				`Session stopped — ${message.workItemIdentifier} reached a terminal state.`,
+				`Session stopped — ${message.workItemIdentifier} was marked as Done or Canceled.`,
 			);
 			this.agentSessionManager.removeSession(session.id);
 		}
