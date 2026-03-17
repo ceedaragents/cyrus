@@ -30,6 +30,8 @@ export {
 } from "./github-webhook-utils.js";
 export type {
 	GitHubComment,
+	GitHubCommentEventType,
+	GitHubCommentWebhookEvent,
 	GitHubEventTransportConfig,
 	GitHubEventTransportEvents,
 	GitHubEventType,
@@ -41,6 +43,8 @@ export type {
 	GitHubPullRequestRef,
 	GitHubPullRequestReviewCommentPayload,
 	GitHubPullRequestReviewPayload,
+	GitHubPushCommit,
+	GitHubPushPayload,
 	GitHubRepository,
 	GitHubReview,
 	GitHubUser,
