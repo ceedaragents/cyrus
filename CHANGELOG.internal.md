@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.36] - 2026-03-17
+
 ### Added
 - Added `IssueStateChangeMessage` type and `isIssueStateChangeWebhook()` type guard to core types for detecting Linear issue state transitions to `completed` or `canceled`. Added `translateIssueStateChange()` to `LinearMessageTranslator` (checked before title/description updates for priority). Added `GitService.deleteWorktree()` with `findWorktreesUnderPath()` and `isGitWorktree()` helpers supporting both single-repo and multi-repo worktree layouts. Added `handleIssueStateChangeMessage()` to `EdgeWorker` that stops active sessions and deletes worktrees. Added `isIssueStateChangeWebhook` to legacy webhook router (returns early, handled via message bus). 9 new unit tests (4 translator, 5 GitService). ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
 - Added `IssueDeletedWebhook` type and `isIssueDeletedWebhook()` type guard for `Issue/remove` webhooks. Added `translateIssueDeleted()` to `LinearMessageTranslator` that reuses `IssueStateChangeMessage` with `isTerminal: true`. Added early return in EdgeWorker legacy webhook handler for deleted issues. 2 new translator tests. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
