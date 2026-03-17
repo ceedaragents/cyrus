@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Added "Cyrus interaction tip" section to `gh-pr.md` subroutine instructing Claude to include a blockquote tip in PR bodies about bot mentions and "changes requested" reviews. Bot username uses `{{github_bot_username}}` template variable resolved from `GITHUB_BOT_USERNAME` env var (fallback: `cyrusagent`) in `PromptBuilder.loadSubroutinePrompt()`. Added `includeCoAuthoredBy: false` to project `.claude/settings.json` and wrote `.claude/settings.local.json` with the same setting to workspace directories in `EdgeWorker.createCyrusAgentSession()` (loaded via SDK `settingSources: ["local"]`). Updated `docs/GIT_GITHUB.md` to remove co-authored-by references. ([CYPACK-974](https://linear.app/ceedar/issue/CYPACK-974), [#1001](https://github.com/ceedaragents/cyrus/pull/1001))
+
 ### Fixed
 - Added pnpm overrides to resolve all 36 Dependabot security alerts: bumped `@modelcontextprotocol/sdk` to `>=1.26.0`, `qs` to `>=6.14.2`, added new overrides for `hono>=4.12.7`, `@hono/node-server>=1.19.10`, `rollup>=4.59.0`, `flatted>=3.4.0`, `minimatch>=3.1.4` (with path-specific overrides for `test-exclude`, `nodemon`, `glob` to `>=10.2.3`), `simple-git>=3.32.3`, `undici>=7.24.0`, `ajv>=8.18.0`, `diff>=8.0.3`, `@tootallnate/once>=3.0.1`, `@isaacs/brace-expansion>=5.0.1`. ([CYPACK-973](https://linear.app/ceedar/issue/CYPACK-973), [#1000](https://github.com/ceedaragents/cyrus/pull/1000))
 
