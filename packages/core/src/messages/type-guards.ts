@@ -12,6 +12,7 @@ import type {
 	GitHubSessionStartPlatformData,
 	GitHubUserPromptPlatformData,
 	InternalMessage,
+	IssueStateChangeMessage,
 	LinearSessionStartPlatformData,
 	LinearUserPromptPlatformData,
 	SessionStartMessage,
@@ -69,6 +70,15 @@ export function isUnassignMessage(
 	message: InternalMessage,
 ): message is UnassignMessage {
 	return message.action === "unassign";
+}
+
+/**
+ * Type guard for IssueStateChangeMessage.
+ */
+export function isIssueStateChangeMessage(
+	message: InternalMessage,
+): message is IssueStateChangeMessage {
+	return message.action === "issue_state_change";
 }
 
 // ============================================================================

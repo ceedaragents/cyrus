@@ -27,7 +27,8 @@ export type MessageAction =
 	| "user_prompt" // User message during active session
 	| "stop_signal" // Stop processing request
 	| "content_update" // Issue/PR content changed
-	| "unassign"; // Task unassigned from agent
+	| "unassign" // Task unassigned from agent
+	| "issue_state_change"; // Issue state changed (completed, canceled)
 
 /**
  * Platform source identifier.
@@ -324,6 +325,33 @@ export interface UnassignMessage extends InternalMessageBase {
 }
 
 // ============================================================================
+// ISSUE STATE CHANGE MESSAGE
+// ============================================================================
+
+/**
+ * Linear-specific platform data for issue state change.
+ */
+export interface LinearIssueStateChangePlatformData {
+	/** Issue that changed state */
+	issue: LinearPlatformRef["issue"];
+}
+
+/**
+ * Issue state change message - issue transitioned to a terminal state.
+ * Triggered by: User moves issue to Done/Cancelled in Linear.
+ *
+ * Note: Linear's issueStatusChanged notification does not include the specific
+ * state type (completed vs canceled), only that the issue reached a terminal state.
+ */
+export interface IssueStateChangeMessage extends InternalMessageBase {
+	action: "issue_state_change";
+	/** Whether the issue reached a terminal state (always true for this message type) */
+	isTerminal: true;
+	/** Platform-specific data */
+	platformData: LinearIssueStateChangePlatformData;
+}
+
+// ============================================================================
 // INTERNAL MESSAGE UNION TYPE
 // ============================================================================
 
@@ -336,4 +364,5 @@ export type InternalMessage =
 	| UserPromptMessage
 	| StopSignalMessage
 	| ContentUpdateMessage
-	| UnassignMessage;
+	| UnassignMessage
+	| IssueStateChangeMessage;

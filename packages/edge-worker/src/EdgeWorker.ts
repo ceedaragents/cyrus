@@ -30,6 +30,7 @@ import type {
 	InternalMessage,
 	Issue,
 	IssueMinimal,
+	IssueStateChangeMessage,
 	IssueUnassignedWebhook,
 	IssueUpdateWebhook,
 	RepositoryConfig,
@@ -53,7 +54,10 @@ import {
 	isContentUpdateMessage,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
+	isIssueDeletedWebhook,
 	isIssueNewCommentWebhook,
+	isIssueStateChangeMessage,
+	isIssueStateChangeWebhook,
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	isSessionStartMessage,
@@ -286,7 +290,7 @@ export class EdgeWorker extends EventEmitter {
 			},
 		};
 		this.repositoryRouter = new RepositoryRouter(repositoryRouterDeps);
-		this.gitService = new GitService();
+		this.gitService = new GitService({ cyrusHome: this.cyrusHome });
 
 		// Initialize AskUserQuestion handler for elicitation via Linear select signal
 		this.askUserQuestionHandler = new AskUserQuestionHandler({
@@ -2178,6 +2182,14 @@ ${taskSection}`;
 				await this.handleAgentSessionCreatedWebhook(webhook, repos);
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPromptedAgentActivity(webhook);
+			} else if (isIssueStateChangeWebhook(webhook)) {
+				// Intentional early return: state changes are handled exclusively via the message bus
+				// (handleIssueStateChangeMessage), not the legacy webhook path. This differs from
+				// unassign which still uses the legacy handler — state change was built message-bus-first.
+				return;
+			} else if (isIssueDeletedWebhook(webhook)) {
+				// Issue deletion also handled via message bus — same cleanup as terminal state.
+				return;
 			} else if (isIssueTitleOrDescriptionUpdateWebhook(webhook)) {
 				// Handle issue title/description/attachments updates - feed changes into active session
 				await this.handleIssueContentUpdate(webhook);
@@ -2241,6 +2253,8 @@ ${taskSection}`;
 				await this.handleContentUpdateMessage(message);
 			} else if (isUnassignMessage(message)) {
 				await this.handleUnassignMessage(message);
+			} else if (isIssueStateChangeMessage(message)) {
+				await this.handleIssueStateChangeMessage(message);
 			} else {
 				// This branch should never be reached due to exhaustive type checking
 				// If it is reached, log the unexpected message for debugging
@@ -2341,6 +2355,47 @@ ${taskSection}`;
 		// TODO: Implement unified unassign handling
 		// For now, the legacy handler (handleIssueUnassignedWebhook)
 		// continues to process the actual unassignment via the 'event' emitter.
+	}
+
+	/**
+	 * Handle issue state change message (terminal state reached).
+	 * Stops active sessions and deletes worktrees for the issue.
+	 */
+	private async handleIssueStateChangeMessage(
+		message: IssueStateChangeMessage,
+	): Promise<void> {
+		this.logger.info(
+			`[MessageBus] Issue reached terminal state: ${message.workItemIdentifier}`,
+		);
+
+		const issueId = message.workItemId;
+
+		// Stop all active sessions for this issue
+		const sessions = this.agentSessionManager.getSessionsByIssueId(issueId);
+		for (const session of sessions) {
+			this.logger.info(
+				`Stopping agent runner for ${message.workItemIdentifier} (issue terminal)`,
+			);
+			this.agentSessionManager.requestSessionStop(session.id);
+			session.agentRunner?.stop();
+		}
+
+		// Post a response activity to each stopped session's Linear thread,
+		// then remove the session so subsequent prompts don't find stale state.
+		for (const session of sessions) {
+			await this.agentSessionManager.createResponseActivity(
+				session.id,
+				`Session stopped — ${message.workItemIdentifier} was marked as Done or Canceled.`,
+			);
+			this.agentSessionManager.removeSession(session.id);
+		}
+
+		// Delete worktrees for this issue, keyed by the Linear issue identifier.
+		this.gitService.deleteWorktree(message.workItemIdentifier);
+
+		this.logger.info(
+			`Completed cleanup for ${message.workItemIdentifier}: stopped ${sessions.length} session(s)`,
+		);
 	}
 
 	// ============================================================================
@@ -3535,8 +3590,9 @@ ${taskSection}`;
 	 */
 	private async handleNormalPromptedActivity(
 		webhook: AgentSessionPromptedWebhook,
-		repository: RepositoryConfig,
+		repositories: RepositoryConfig[],
 	): Promise<void> {
+		const repository = repositories[0]!;
 		const { agentSession } = webhook;
 		const sessionId = agentSession.id;
 		const { issue } = agentSession;
@@ -3574,12 +3630,11 @@ ${taskSection}`;
 				false,
 			);
 
-			// Create the session using the shared method
-			// Pass single repo - createCyrusAgentSession normalizes to array internally
+			// Create the session using the shared method with all repositories
 			const sessionData = await this.createCyrusAgentSession(
 				sessionId,
 				issue,
-				repository,
+				repositories,
 				agentSessionManager,
 				linearWorkspaceId,
 			);
@@ -3794,8 +3849,10 @@ ${taskSection}`;
 			return;
 		}
 
-		let repository = this.getCachedRepository(issueId);
-		if (!repository) {
+		// Resolve ALL cached repositories for this issue (not just the first).
+		// Multi-repo sessions need the full set for workspace recreation.
+		let repositories = this.getCachedRepositories(issueId);
+		if (!repositories || repositories.length === 0) {
 			// Fallback: attempt to recover repository for legacy/restarted sessions
 			this.logger.info(
 				`No cached repository for prompted webhook ${agentSessionId}, attempting fallback resolution`,
@@ -3806,8 +3863,9 @@ ${taskSection}`;
 			if (session) {
 				const repoId = this.sessionRepositories.get(agentSessionId);
 				if (repoId) {
-					repository = this.repositories.get(repoId) ?? null;
-					if (repository) {
+					const repo = this.repositories.get(repoId) ?? null;
+					if (repo) {
+						repositories = [repo];
 						this.repositoryRouter
 							.getIssueRepositoryCache()
 							.set(issueId, [repoId]);
@@ -3819,7 +3877,7 @@ ${taskSection}`;
 			}
 
 			// Second fallback: re-route via repository router
-			if (!repository) {
+			if (!repositories || repositories.length === 0) {
 				try {
 					const repos = Array.from(this.repositories.values());
 					const routingResult =
@@ -3829,13 +3887,13 @@ ${taskSection}`;
 						);
 
 					if (routingResult.type === "selected") {
-						repository = routingResult.repositories[0]!;
+						repositories = routingResult.repositories;
 						this.repositoryRouter.getIssueRepositoryCache().set(
 							issueId,
 							routingResult.repositories.map((r) => r.id),
 						);
 						this.logger.info(
-							`Recovered repository ${repository.id} for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
+							`Recovered repositories [${repositories.map((r) => r.name).join(", ")}] for issue ${issueId} via fallback routing (${routingResult.routingMethod})`,
 						);
 					}
 				} catch (error) {
@@ -3846,7 +3904,7 @@ ${taskSection}`;
 				}
 			}
 
-			if (!repository) {
+			if (!repositories || repositories.length === 0) {
 				// All recovery attempts failed - post visible feedback
 				await this.agentSessionManager.createResponseActivity(
 					agentSessionId,
@@ -3859,17 +3917,18 @@ ${taskSection}`;
 			}
 		}
 
-		// User access control check for mid-session prompts
-		const accessResult = this.checkUserAccess(webhook, repository);
+		// User access control check for mid-session prompts (use primary repo)
+		const primaryRepo = repositories[0]!;
+		const accessResult = this.checkUserAccess(webhook, primaryRepo);
 		if (!accessResult.allowed) {
 			this.logger.info(
 				`User ${accessResult.userName} blocked from prompting: ${accessResult.reason}`,
 			);
-			await this.handleBlockedUser(webhook, repository, accessResult.reason);
+			await this.handleBlockedUser(webhook, primaryRepo, accessResult.reason);
 			return;
 		}
 
-		await this.handleNormalPromptedActivity(webhook, repository);
+		await this.handleNormalPromptedActivity(webhook, repositories);
 	}
 
 	/**

@@ -1897,6 +1897,22 @@ export class AgentSessionManager extends EventEmitter {
 	}
 
 	/**
+	 * Remove a session and all associated tracking state.
+	 * Use for immediate cleanup when a session is permanently done
+	 * (e.g., issue moved to terminal state).
+	 */
+	removeSession(sessionId: string): void {
+		const log = this.sessionLog(sessionId);
+		this.sessions.delete(sessionId);
+		this.entries.delete(sessionId);
+		this.activitySinks.delete(sessionId);
+		this.activeTasksBySession.delete(sessionId);
+		this.activeStatusActivitiesBySession.delete(sessionId);
+		this.stopRequestedSessions.delete(sessionId);
+		log.debug("Removed session");
+	}
+
+	/**
 	 * Clear completed sessions older than specified time
 	 */
 	cleanup(olderThanMs: number = 24 * 60 * 60 * 1000): void {

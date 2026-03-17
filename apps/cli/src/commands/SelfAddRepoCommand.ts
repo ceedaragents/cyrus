@@ -6,10 +6,10 @@ import * as readline from "node:readline";
 import {
 	DEFAULT_BASE_BRANCH,
 	DEFAULT_CONFIG_FILENAME,
-	DEFAULT_WORKTREES_DIR,
 	type EdgeConfig,
 	migrateEdgeConfig,
 } from "cyrus-core";
+import { getDefaultWorktreesDir } from "../utils/getDefaultWorktreesDir.js";
 import { BaseCommand } from "./ICommand.js";
 
 /**
@@ -208,7 +208,7 @@ export class SelfAddRepoCommand extends BaseCommand {
 				name: repoName,
 				repositoryPath,
 				baseBranch: DEFAULT_BASE_BRANCH,
-				workspaceBaseDir: resolve(this.app.cyrusHome, DEFAULT_WORKTREES_DIR),
+				workspaceBaseDir: getDefaultWorktreesDir(this.app.cyrusHome),
 				linearWorkspaceId: selectedWorkspace.id,
 				isActive: true,
 				routingLabels,

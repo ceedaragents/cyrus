@@ -32,6 +32,7 @@ export {
 	hasSlackUserPromptPlatformData,
 	isContentUpdateMessage,
 	isGitHubMessage,
+	isIssueStateChangeMessage,
 	isLinearMessage,
 	isSessionStartMessage,
 	isSlackMessage,
@@ -48,7 +49,9 @@ export type {
 	GuidanceItem,
 	InternalMessage,
 	InternalMessageBase,
+	IssueStateChangeMessage,
 	LinearContentUpdatePlatformData,
+	LinearIssueStateChangePlatformData,
 	// Platform-specific data types
 	LinearSessionStartPlatformData,
 	LinearStopSignalPlatformData,
