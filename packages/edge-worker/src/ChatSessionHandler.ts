@@ -1,7 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
-import { getReadOnlyTools } from "cyrus-claude-runner";
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
@@ -58,7 +57,7 @@ export interface ChatSessionHandlerDeps {
 	mcpConfig?: Record<string, McpServerConfig>;
 	chatRepositoryPaths?: string[];
 	/** Shared RunnerConfigBuilder for constructing runner configs */
-	runnerConfigBuilder?: RunnerConfigBuilder;
+	runnerConfigBuilder: RunnerConfigBuilder;
 	/** Factory function that creates the appropriate runner based on config.defaultRunner */
 	createRunner: (config: AgentRunnerConfig) => IAgentRunner;
 	onWebhookStart: () => void;
@@ -382,8 +381,7 @@ export class ChatSessionHandler<TEvent> {
 
 	/**
 	 * Build a runner config for a chat session.
-	 * Delegates to RunnerConfigBuilder when available, otherwise uses inline
-	 * assembly for backwards compatibility.
+	 * Delegates to RunnerConfigBuilder for config assembly.
 	 */
 	private buildRunnerConfig(
 		workspacePath: string,
@@ -397,56 +395,19 @@ export class ChatSessionHandler<TEvent> {
 			platform: this.adapter.platformName,
 		});
 
-		// Delegate to RunnerConfigBuilder when available (preferred path)
-		if (this.deps.runnerConfigBuilder) {
-			return this.deps.runnerConfigBuilder.buildChatConfig({
-				workspacePath,
-				workspaceName,
-				systemPrompt,
-				sessionId,
-				resumeSessionId,
-				cyrusHome: this.deps.cyrusHome,
-				mcpConfig: this.deps.mcpConfig,
-				repositoryPaths: this.deps.chatRepositoryPaths,
-				logger: sessionLogger,
-				onMessage: (message: SDKMessage) =>
-					this.handleAgentMessage(sessionId, message),
-				onError: (error: Error) => this.deps.onClaudeError(error),
-			});
-		}
-
-		// Fallback: inline assembly (backwards-compatible path for when
-		// ChatSessionHandler is used without the full service stack)
-		const mcpToolPermissions = this.deps.mcpConfig
-			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
-			: [];
-		const repositoryPaths = Array.from(
-			new Set((this.deps.chatRepositoryPaths ?? []).filter(Boolean)),
-		);
-		const allowedTools = Array.from(
-			new Set([
-				...getReadOnlyTools(),
-				...mcpToolPermissions,
-				"Bash(git -C * pull)",
-			]),
-		);
-		sessionLogger.debug("Chat session allowed tools:", allowedTools);
-
-		return {
-			workingDirectory: workspacePath,
-			allowedTools,
-			disallowedTools: [] as string[],
-			allowedDirectories: [workspacePath, ...repositoryPaths],
+		return this.deps.runnerConfigBuilder.buildChatConfig({
+			workspacePath,
 			workspaceName,
+			systemPrompt,
+			sessionId,
+			resumeSessionId,
 			cyrusHome: this.deps.cyrusHome,
-			appendSystemPrompt: systemPrompt,
-			...(this.deps.mcpConfig ? { mcpConfig: this.deps.mcpConfig } : {}),
-			...(resumeSessionId ? { resumeSessionId } : {}),
+			mcpConfig: this.deps.mcpConfig,
+			repositoryPaths: this.deps.chatRepositoryPaths,
 			logger: sessionLogger,
-			maxTurns: 200,
 			onMessage: (message: SDKMessage) =>
 				this.handleAgentMessage(sessionId, message),
 			onError: (error: Error) => this.deps.onClaudeError(error),
-		};
+		});
 	}
 }
