@@ -11,6 +11,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 - `handleIssueStateChangeMessage` now posts a response activity to each stopped session's Linear thread before deleting worktrees, giving users visibility into why the session ended. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
 
+- Added `AgentSessionManager.removeSession()` to immediately clean up all session tracking state (sessions, entries, activity sinks, tasks, status activities, stop requests). Called in `handleIssueStateChangeMessage` after posting response activities to prevent stale sessions from being resumed with deleted worktrees. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+
 ### Changed
 - Moved `workspaceBaseDir` from a per-call parameter on `GitService.deleteWorktree()` to a constructor-level dependency on `GitService`. Removed repo lookup shim from `handleIssueStateChangeMessage()` — worktree deletion is now keyed solely by the Linear issue identifier from the webhook message. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
 

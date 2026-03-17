@@ -2380,12 +2380,14 @@ ${taskSection}`;
 			session.agentRunner?.stop();
 		}
 
-		// Post a response activity to each stopped session's Linear thread
+		// Post a response activity to each stopped session's Linear thread,
+		// then remove the session so subsequent prompts don't find stale state.
 		for (const session of sessions) {
 			await this.agentSessionManager.createResponseActivity(
 				session.id,
 				`Session stopped — ${message.workItemIdentifier} reached a terminal state.`,
 			);
+			this.agentSessionManager.removeSession(session.id);
 		}
 
 		// Delete worktrees for this issue, keyed by the Linear issue identifier.
