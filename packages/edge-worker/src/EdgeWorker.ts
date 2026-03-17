@@ -2872,6 +2872,22 @@ ${taskSection}`;
 		);
 		await mkdir(attachmentsDir, { recursive: true });
 
+		// Write Claude settings to disable co-authored-by attribution in the workspace.
+		// This uses the SDK's "local" settings source (loaded via settingSources: ["user", "project", "local"])
+		// to ensure Cyrus sessions don't add "Co-Authored-By: Claude" trailers to git commits.
+		const claudeSettingsDir = join(workspace.path, ".claude");
+		await mkdir(claudeSettingsDir, { recursive: true });
+		await writeFile(
+			join(claudeSettingsDir, "settings.local.json"),
+			JSON.stringify(
+				{
+					includeCoAuthoredBy: false,
+				},
+				null,
+				"\t",
+			),
+		);
+
 		// Build allowed directories list - always include attachments directory
 		// Include repository paths from all repositories
 		const allRepoPaths = repositories.map((repo) => repo.repositoryPath);

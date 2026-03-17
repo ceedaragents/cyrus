@@ -45,11 +45,25 @@
 	"pnpm": {
 		"overrides": {
 			"jws": ">=4.0.1",
-			"@modelcontextprotocol/sdk": ">=1.25.2",
+			"@modelcontextprotocol/sdk": ">=1.26.0",
 			"semver": ">=7.5.2",
-			"qs": ">=6.14.1",
+			"qs": ">=6.14.2",
 			"vite": ">=7.1.11",
-			"zod": "4.3.6"
+			"zod": "4.3.6",
+			"hono": ">=4.12.7",
+			"@hono/node-server": ">=1.19.10",
+			"rollup": ">=4.59.0",
+			"flatted": ">=3.4.0",
+			"minimatch": ">=3.1.4",
+			"test-exclude>minimatch": ">=10.2.3",
+			"nodemon>minimatch": ">=10.2.3",
+			"glob>minimatch": ">=10.2.3",
+			"simple-git": ">=3.32.3",
+			"undici": ">=7.24.0",
+			"ajv": ">=8.18.0",
+			"diff": ">=8.0.3",
+			"@tootallnate/once": ">=3.0.1",
+			"@isaacs/brace-expansion": ">=5.0.1"
 		}
 	},
 	"lint-staged": {
