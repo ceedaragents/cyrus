@@ -507,7 +507,8 @@ export class AgentSessionManager extends EventEmitter {
 			// For recoverable errors like "error_max_turns" from single-turn subroutines,
 			// we should still post the result if this is the final subroutine
 			if (this.shouldRecoverFromPreviousSubroutine(resultMessage)) {
-				const nextSubroutine = this.procedureAnalyzer.getNextSubroutine(session);
+				const nextSubroutine =
+					this.procedureAnalyzer.getNextSubroutine(session);
 				if (!nextSubroutine) {
 					// This is the final subroutine - post the result to Linear
 					log.info(
@@ -517,7 +518,7 @@ export class AgentSessionManager extends EventEmitter {
 					return;
 				}
 			}
-			
+
 			log.info(
 				`Subroutine completed with error, not triggering next subroutine`,
 			);
