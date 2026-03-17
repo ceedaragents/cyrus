@@ -43,6 +43,7 @@ import {
 	isIssueTitleOrDescriptionUpdateWebhook,
 	isIssueUnassignedWebhook,
 	type Webhook,
+	type WebhookIssue,
 } from "cyrus-core";
 
 // Helper type for safely accessing nested properties that may not exist in webhook types
@@ -384,11 +385,7 @@ export class LinearMessageTranslator
 			};
 		}
 
-		return this.buildTerminalStateMessage(
-			issue as SafeRecord,
-			organizationId,
-			createdAt,
-		);
+		return this.buildTerminalStateMessage(issue, organizationId, createdAt);
 	}
 
 	/**
@@ -410,11 +407,7 @@ export class LinearMessageTranslator
 			};
 		}
 
-		return this.buildTerminalStateMessage(
-			issueData as SafeRecord,
-			organizationId,
-			createdAt,
-		);
+		return this.buildTerminalStateMessage(issueData, organizationId, createdAt);
 	}
 
 	/**
@@ -422,12 +415,12 @@ export class LinearMessageTranslator
 	 * Shared by state change (completed/canceled) and deletion translations.
 	 */
 	private buildTerminalStateMessage(
-		issueData: SafeRecord,
+		issueData: WebhookIssue,
 		organizationId: string,
 		createdAt: Date | string | undefined,
 	): TranslationResult {
 		const platformData: LinearIssueStateChangePlatformData = {
-			issue: this.buildIssueRef(issueData),
+			issue: this.buildIssueRef(issueData as SafeRecord),
 		};
 
 		const message: IssueStateChangeMessage = {
@@ -436,9 +429,9 @@ export class LinearMessageTranslator
 			action: "issue_state_change",
 			receivedAt: this.toISOString(createdAt),
 			organizationId,
-			sessionKey: String(issueData.id || ""),
-			workItemId: String(issueData.id || ""),
-			workItemIdentifier: String(issueData.identifier || ""),
+			sessionKey: issueData.id,
+			workItemId: issueData.id,
+			workItemIdentifier: issueData.identifier,
 			isTerminal: true,
 			platformData,
 		};
