@@ -49,7 +49,7 @@ export class Application {
 
 		// Initialize services
 		this.config = new ConfigService(cyrusHome, this.logger);
-		this.git = new GitService(getDefaultWorktreesDir(cyrusHome), this.logger);
+		this.git = new GitService({ cyrusHome }, this.logger);
 		this.worker = new WorkerService(
 			this.config,
 			this.git,

@@ -41,7 +41,7 @@ describe("GitService", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		delete process.env.CYRUS_WORKTREES_DIR;
-		gitService = new GitService("/home/user/.cyrus/worktrees", mockLogger);
+		gitService = new GitService({ cyrusHome: "/home/user/.cyrus" }, mockLogger);
 	});
 
 	afterEach(() => {
@@ -81,6 +81,30 @@ describe("GitService", () => {
 
 			expect(mockLogger.info).toHaveBeenCalledWith(
 				expect.stringContaining("/tmp/env-worktrees/DEF-123"),
+			);
+		});
+
+		it("dynamically reflects CYRUS_WORKTREES_DIR changes at runtime", () => {
+			const dynamicGitService = new GitService(
+				{ cyrusHome: "/tmp/cyrus" },
+				mockLogger,
+			);
+
+			// First call uses default cyrusHome (no env var set)
+			mockExistsSync.mockReturnValue(true);
+			mockReaddirSync.mockReturnValue([]);
+			dynamicGitService.deleteWorktree("ISSUE-1");
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringContaining("/tmp/cyrus/worktrees/ISSUE-1"),
+			);
+
+			mockLogger.info.mockClear();
+
+			// Update env var at runtime — same GitService instance picks it up
+			process.env.CYRUS_WORKTREES_DIR = "/new/runtime/path";
+			dynamicGitService.deleteWorktree("ISSUE-2");
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringContaining("/new/runtime/path/ISSUE-2"),
 			);
 		});
 	});
