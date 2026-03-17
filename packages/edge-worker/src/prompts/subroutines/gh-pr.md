@@ -43,6 +43,17 @@ The PR description should include:
 - Any breaking changes or migration notes
 - Link to the Linear issue
 
+**IMPORTANT: Cyrus interaction tip**
+At the end of the PR body (before the `<!-- generated-by-cyrus -->` marker), include a tip section using the following exact format:
+
+```
+---
+
+> **Tip:** I will respond to comments that @ mention @cyrusagent on this PR. You can also submit a "changes requested" review with all your feedback at once, and I will automatically wake up to address each comment.
+```
+
+This helps reviewers know how to interact with Cyrus directly on the PR.
+
 Ensure the PR has a clear, descriptive title (remove "WIP:" prefix if present).
 
 ### 3. Mark PR as Ready (CONDITIONAL)
