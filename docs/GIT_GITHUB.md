@@ -12,7 +12,7 @@ When Cyrus creates commits and PRs:
 - All commits are attributed to your Git user (`git config user.name` and `user.email`)
 - All PRs are created under your GitHub account
 - Your repository access permissions apply to all operations
-- The only indication that Claude assisted is the "Co-Authored-By" commit trailer
+- Co-authored-by attribution is disabled by default (configured via `.claude/settings.json`)
 
 This means Cyrus can access any repository your authenticated user can access. Configure authentication carefully based on what repositories you want Cyrus to work with.
 
@@ -97,4 +97,4 @@ gh auth status
 - **Use a dedicated account** for Cyrus if you want to limit its access
 - **Repository access** is determined by your SSH key and GitHub token permissions
 - **Review permissions** before adding repositories to Cyrus
-- **Audit commits** - all Cyrus commits include the "Co-Authored-By" trailer for traceability
+- **Audit commits** - Cyrus-authored PRs include a `<!-- generated-by-cyrus -->` marker for traceability

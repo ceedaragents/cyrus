@@ -1313,6 +1313,13 @@ ${reply.body}
 				);
 			}
 
+			// Replace environment variable placeholders
+			const githubBotUsername = process.env.GITHUB_BOT_USERNAME || "cyrusagent";
+			prompt = prompt.replace(
+				/\{\{github_bot_username\}\}/g,
+				githubBotUsername,
+			);
+
 			return prompt;
 		} catch (error) {
 			this.logger.warn(
