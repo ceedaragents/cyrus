@@ -9,6 +9,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 - Added `IssueDeletedWebhook` type and `isIssueDeletedWebhook()` type guard for `Issue/remove` webhooks. Added `translateIssueDeleted()` to `LinearMessageTranslator` that reuses `IssueStateChangeMessage` with `isTerminal: true`. Added early return in EdgeWorker legacy webhook handler for deleted issues. 2 new translator tests. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
 
+- `handleIssueStateChangeMessage` now posts a response activity to each stopped session's Linear thread before deleting worktrees, giving users visibility into why the session ended. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+
 ### Changed
 - Moved `workspaceBaseDir` from a per-call parameter on `GitService.deleteWorktree()` to a constructor-level dependency on `GitService`. Removed repo lookup shim from `handleIssueStateChangeMessage()` — worktree deletion is now keyed solely by the Linear issue identifier from the webhook message. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
 

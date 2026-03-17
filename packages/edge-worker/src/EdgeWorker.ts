@@ -2380,6 +2380,14 @@ ${taskSection}`;
 			session.agentRunner?.stop();
 		}
 
+		// Post a response activity to each stopped session's Linear thread
+		for (const session of sessions) {
+			await this.agentSessionManager.createResponseActivity(
+				session.id,
+				`Session stopped — ${message.workItemIdentifier} reached a terminal state.`,
+			);
+		}
+
 		// Delete worktrees for this issue, keyed by the Linear issue identifier.
 		this.gitService.deleteWorktree(message.workItemIdentifier);
 
