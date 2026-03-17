@@ -930,6 +930,33 @@ export function isIssueTitleOrDescriptionUpdateWebhook(
 }
 
 /**
+ * Type guard to check if webhook is an issue state change (e.g., moved to completed/canceled).
+ *
+ * This identifies Issue entity webhooks where the `updatedFrom` field contains
+ * a previous `stateId`, indicating the issue's workflow state was changed.
+ * Used to detect when blocking issues are resolved so parked sessions can be woken up.
+ */
+export function isIssueStateChangeWebhook(
+	webhook: Webhook,
+): webhook is IssueUpdateWebhook {
+	if (webhook.type !== "Issue" || webhook.action !== "update") {
+		return false;
+	}
+
+	const entityWebhook =
+		webhook as LinearSDK.LinearDocument.EntityWebhookPayload;
+	const updatedFrom = entityWebhook.updatedFrom as
+		| { stateId?: string }
+		| undefined;
+
+	if (!updatedFrom) {
+		return false;
+	}
+
+	return "stateId" in updatedFrom;
+}
+
+/**
  * Generic result type for operations.
  */
 export interface OperationResult<T = unknown> {
