@@ -27,7 +27,14 @@ export type { CreateGitWorktreeOptions } from "./GitService.js";
 export { GitService } from "./GitService.js";
 export type { SerializedGlobalRegistryState } from "./GlobalSessionRegistry.js";
 export { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
+export type { McpConfigServiceDeps } from "./McpConfigService.js";
+export { McpConfigService } from "./McpConfigService.js";
 export { RepositoryRouter } from "./RepositoryRouter.js";
+export type {
+	ChatRunnerConfigInput,
+	IssueRunnerConfigInput,
+} from "./RunnerConfigBuilder.js";
+export { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
 export { SlackChatAdapter } from "./SlackChatAdapter.js";
 export type {
@@ -37,6 +44,8 @@ export type {
 	IActivitySink,
 } from "./sinks/index.js";
 export { LinearActivitySink } from "./sinks/index.js";
+export type { PromptType } from "./ToolPermissionResolver.js";
+export { ToolPermissionResolver } from "./ToolPermissionResolver.js";
 export type { EdgeWorkerEvents } from "./types.js";
 // User access control
 export {

@@ -11,6 +11,7 @@ import type {
 } from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import type { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 
 /**
  * Defines what each chat platform must provide for the generic session lifecycle.
@@ -56,6 +57,8 @@ export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
 	mcpConfig?: Record<string, McpServerConfig>;
 	chatRepositoryPaths?: string[];
+	/** Shared RunnerConfigBuilder for constructing runner configs */
+	runnerConfigBuilder?: RunnerConfigBuilder;
 	/** Factory function that creates the appropriate runner based on config.defaultRunner */
 	createRunner: (config: AgentRunnerConfig) => IAgentRunner;
 	onWebhookStart: () => void;
@@ -379,7 +382,8 @@ export class ChatSessionHandler<TEvent> {
 
 	/**
 	 * Build a runner config for a chat session.
-	 * Used by both handleEvent (new session) and resumeSession to eliminate duplication.
+	 * Delegates to RunnerConfigBuilder when available, otherwise uses inline
+	 * assembly for backwards compatibility.
 	 */
 	private buildRunnerConfig(
 		workspacePath: string,
@@ -392,7 +396,27 @@ export class ChatSessionHandler<TEvent> {
 			sessionId,
 			platform: this.adapter.platformName,
 		});
-		// When MCP servers are configured, include their tool permissions
+
+		// Delegate to RunnerConfigBuilder when available (preferred path)
+		if (this.deps.runnerConfigBuilder) {
+			return this.deps.runnerConfigBuilder.buildChatConfig({
+				workspacePath,
+				workspaceName,
+				systemPrompt,
+				sessionId,
+				resumeSessionId,
+				cyrusHome: this.deps.cyrusHome,
+				mcpConfig: this.deps.mcpConfig,
+				repositoryPaths: this.deps.chatRepositoryPaths,
+				logger: sessionLogger,
+				onMessage: (message: SDKMessage) =>
+					this.handleAgentMessage(sessionId, message),
+				onError: (error: Error) => this.deps.onClaudeError(error),
+			});
+		}
+
+		// Fallback: inline assembly (backwards-compatible path for when
+		// ChatSessionHandler is used without the full service stack)
 		const mcpToolPermissions = this.deps.mcpConfig
 			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
 			: [];

@@ -496,17 +496,17 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			try {
 				expect(
-					(edgeWorker as any).isCyrusToolsMcpAuthorizationValid(
+					(edgeWorker as any).mcpConfigService.isAuthorizationValid(
 						"Bearer test-cyrus-api-key",
 					),
 				).toBe(true);
 				expect(
-					(edgeWorker as any).isCyrusToolsMcpAuthorizationValid(
+					(edgeWorker as any).mcpConfigService.isAuthorizationValid(
 						"Bearer wrong-key",
 					),
 				).toBe(false);
 				expect(
-					(edgeWorker as any).isCyrusToolsMcpAuthorizationValid(undefined),
+					(edgeWorker as any).mcpConfigService.isAuthorizationValid(undefined),
 				).toBe(false);
 			} finally {
 				if (previousApiKey === undefined) {
