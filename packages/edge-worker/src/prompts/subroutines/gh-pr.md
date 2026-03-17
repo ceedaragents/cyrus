@@ -49,7 +49,7 @@ At the end of the PR body (before the `<!-- generated-by-cyrus -->` marker), inc
 ```
 ---
 
-> **Tip:** I will respond to comments that @ mention @cyrusagent on this PR. You can also submit a "changes requested" review with all your feedback at once, and I will automatically wake up to address each comment.
+> **Tip:** I will respond to comments that @ mention @{{github_bot_username}} on this PR. You can also submit a "changes requested" review with all your feedback at once, and I will automatically wake up to address each comment.
 ```
 
 This helps reviewers know how to interact with Cyrus directly on the PR.
