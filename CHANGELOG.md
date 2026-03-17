@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.36] - 2026-03-17
+
 ### Added
 - **Automatic worktree cleanup on issue completion or deletion** - When a Linear issue moves to Done, Cancelled, or is deleted, worktrees are automatically deleted and any active sessions are stopped. Handles both single-repo and multi-repo layouts. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
 
@@ -15,6 +17,50 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **PR descriptions now include interaction tips** - Pull requests created by Cyrus now include a tip explaining how to @ mention the bot (configurable via `GITHUB_BOT_USERNAME`) for inline responses and how to submit "changes requested" reviews for batch feedback. ([CYPACK-974](https://linear.app/ceedar/issue/CYPACK-974), [#1001](https://github.com/ceedaragents/cyrus/pull/1001))
 - **Co-authored-by attribution disabled** - Git commits no longer include the "Co-Authored-By: Claude" trailer. ([CYPACK-974](https://linear.app/ceedar/issue/CYPACK-974), [#1001](https://github.com/ceedaragents/cyrus/pull/1001))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.36
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.36
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.36
+
+#### cyrus-core
+- cyrus-core@0.2.36
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.36
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.36
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.36
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.36
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.36
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.36
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.36
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.36
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.36
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.36
 
 ## [0.2.35] - 2026-03-16
 
