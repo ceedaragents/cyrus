@@ -32,6 +32,7 @@ import type {
 	ActivitySignal,
 	IActivitySink,
 } from "./sinks/index.js";
+import type { TelemetryReporter } from "./TelemetryReporter.js";
 import {
 	DEFAULT_VALIDATION_LOOP_CONFIG,
 	parseValidationResult,
@@ -105,6 +106,7 @@ export class AgentSessionManager extends EventEmitter {
 	private taskSubjectsById: Map<string, string> = new Map(); // Cache task subjects by task ID (e.g., "1" → "Fix login bug")
 	private activeStatusActivitiesBySession: Map<string, string> = new Map(); // Maps session ID to active compacting status activity ID
 	private stopRequestedSessions: Set<string> = new Set(); // Sessions explicitly stopped by user signal
+	private telemetryReporter?: TelemetryReporter;
 	private procedureAnalyzer?: ProcedureAnalyzer;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -131,6 +133,13 @@ export class AgentSessionManager extends EventEmitter {
 		this.resumeParentSession = resumeParentSession;
 		this.procedureAnalyzer = procedureAnalyzer;
 		this.sharedApplicationServer = sharedApplicationServer;
+	}
+
+	/**
+	 * Set the telemetry reporter for sending error events to CYHOST.
+	 */
+	setTelemetryReporter(reporter: TelemetryReporter): void {
+		this.telemetryReporter = reporter;
 	}
 
 	/**
@@ -398,6 +407,11 @@ export class AgentSessionManager extends EventEmitter {
 			totalCostUsd: resultMessage.total_cost_usd,
 			usage: resultMessage.usage,
 		});
+
+		// Report error telemetry to CYHOST (fire-and-forget)
+		if (status === AgentSessionStatus.Error) {
+			this.reportErrorTelemetry(session, sessionId, resultMessage);
+		}
 
 		// Handle result using procedure routing system (skip for sessions without procedures, e.g. Slack)
 		if (!this.procedureAnalyzer) {
@@ -978,6 +992,51 @@ export class AgentSessionManager extends EventEmitter {
 		}
 
 		this.sessions.set(sessionId, session);
+	}
+
+	/**
+	 * Report error telemetry to CYHOST. Fire-and-forget — never throws.
+	 */
+	private reportErrorTelemetry(
+		session: CyrusAgentSession,
+		sessionId: string,
+		resultMessage: SDKResultMessage,
+	): void {
+		if (!this.telemetryReporter) return;
+
+		const errorType = this.mapSubtypeToErrorType(resultMessage.subtype);
+		if (!errorType) return;
+
+		const durationSeconds = Math.round((Date.now() - session.createdAt) / 1000);
+
+		this.telemetryReporter
+			.reportError({
+				error_type: errorType,
+				error_message:
+					("result" in resultMessage && resultMessage.result) ||
+					resultMessage.subtype ||
+					"Unknown error",
+				issue_id: session.issueContext?.issueId || session.issueId || "",
+				issue_identifier: session.issueContext?.issueIdentifier || "",
+				session_id: sessionId,
+				duration_seconds: durationSeconds,
+			})
+			.catch(() => {
+				// Already logged inside reportError — swallow here
+			});
+	}
+
+	/**
+	 * Map SDK result subtype to a telemetry error type.
+	 * Returns null for subtypes that should not be reported.
+	 */
+	private mapSubtypeToErrorType(
+		subtype: string,
+	): "crash" | "stall" | "rate_limit" | "billing" | "max_turns" | null {
+		if (subtype === "error_max_turns") return "max_turns";
+		if (subtype === "error_during_execution") return "crash";
+		// Map other known subtypes as they emerge
+		return "crash"; // Default non-success subtypes to crash
 	}
 
 	/**

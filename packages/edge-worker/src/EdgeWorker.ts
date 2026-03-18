@@ -137,6 +137,7 @@ import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { TelemetryReporter } from "./TelemetryReporter.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -342,6 +343,13 @@ export class EdgeWorker extends EventEmitter {
 			this.procedureAnalyzer,
 			this.sharedApplicationServer,
 		);
+
+		// Set up telemetry reporter using CYRUS_API_KEY (available from startup)
+		const telemetryReporter = TelemetryReporter.fromEnv();
+		if (telemetryReporter.isConfigured) {
+			this.agentSessionManager.setTelemetryReporter(telemetryReporter);
+			this.logger.info("Telemetry reporter configured");
+		}
 
 		// Subscribe to session events once on the single ASM
 		this.agentSessionManager.on(

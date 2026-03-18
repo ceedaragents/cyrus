@@ -37,6 +37,11 @@ export type {
 	IActivitySink,
 } from "./sinks/index.js";
 export { LinearActivitySink } from "./sinks/index.js";
+export {
+	type TelemetryErrorEvent,
+	TelemetryReporter,
+	type TelemetryReporterConfig,
+} from "./TelemetryReporter.js";
 export type { EdgeWorkerEvents } from "./types.js";
 // User access control
 export {
