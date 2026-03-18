@@ -27,9 +27,6 @@ export interface IMcpConfigProvider {
 	buildMergedMcpConfigPath(
 		repositories: RepositoryConfig | RepositoryConfig[],
 	): string | string[] | undefined;
-	extractServerNamesFromConfigPaths(
-		mcpConfigPath: string | string[] | undefined,
-	): string[];
 }
 
 /**
@@ -38,7 +35,7 @@ export interface IMcpConfigProvider {
 export interface IChatToolResolver {
 	buildChatAllowedTools(
 		mcpConfigKeys?: string[],
-		userMcpServerNames?: string[],
+		userMcpTools?: string[],
 	): string[];
 }
 
@@ -140,19 +137,22 @@ export class RunnerConfigBuilder {
 	 * config without hooks, model selection, or procedure context.
 	 */
 	buildChatConfig(input: ChatRunnerConfigInput): AgentRunnerConfig {
-		// Derive user-configured MCP paths and server names from the repository
+		// Derive user-configured MCP config path from the repository
 		const mcpConfigPath = input.repository
 			? this.mcpConfigProvider.buildMergedMcpConfigPath(input.repository)
 			: undefined;
-		const userMcpServerNames =
-			this.mcpConfigProvider.extractServerNamesFromConfigPaths(mcpConfigPath);
+
+		// Extract MCP tool entries from the repository's allowedTools config
+		const userMcpTools = (input.repository?.allowedTools ?? []).filter((tool) =>
+			tool.startsWith("mcp__"),
+		);
 
 		const mcpConfigKeys = input.mcpConfig
 			? Object.keys(input.mcpConfig)
 			: undefined;
 		const allowedTools = this.chatToolResolver.buildChatAllowedTools(
 			mcpConfigKeys,
-			userMcpServerNames,
+			userMcpTools,
 		);
 
 		const repositoryPaths = Array.from(

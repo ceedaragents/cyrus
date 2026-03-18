@@ -76,16 +76,13 @@ export class ToolPermissionResolver {
 	 * the provided MCP config keys and user-configured MCP server names.
 	 *
 	 * @param mcpConfigKeys - Built-in MCP server names (keys from inline McpServerConfig record)
-	 * @param userMcpServerNames - User-configured MCP server names (extracted from .mcp.json files)
+	 * @param userMcpTools - User-configured MCP tool entries from repository allowedTools (already mcp__* prefixed)
 	 */
 	public buildChatAllowedTools(
 		mcpConfigKeys?: string[],
-		userMcpServerNames?: string[],
+		userMcpTools?: string[],
 	): string[] {
 		const mcpToolPermissions = (mcpConfigKeys ?? []).map(
-			(server) => `mcp__${server}`,
-		);
-		const userMcpToolPermissions = (userMcpServerNames ?? []).map(
 			(server) => `mcp__${server}`,
 		);
 
@@ -93,7 +90,7 @@ export class ToolPermissionResolver {
 			new Set([
 				...getReadOnlyTools(),
 				...mcpToolPermissions,
-				...userMcpToolPermissions,
+				...(userMcpTools ?? []),
 				"Bash(git -C * pull)",
 			]),
 		);
