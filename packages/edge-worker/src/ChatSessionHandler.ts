@@ -1,16 +1,17 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
-import { getReadOnlyTools } from "cyrus-claude-runner";
 import type {
 	AgentRunnerConfig,
 	AgentSessionInfo,
 	CyrusAgentSession,
 	IAgentRunner,
 	ILogger,
+	RepositoryConfig,
 } from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import type { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 
 /**
  * Defines what each chat platform must provide for the generic session lifecycle.
@@ -55,7 +56,11 @@ export interface ChatPlatformAdapter<TEvent> {
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
 	mcpConfig?: Record<string, McpServerConfig>;
+	/** Repository to source user-configured MCP paths from (V1: first available repo) */
+	repository?: RepositoryConfig;
 	chatRepositoryPaths?: string[];
+	/** Shared RunnerConfigBuilder for constructing runner configs */
+	runnerConfigBuilder: RunnerConfigBuilder;
 	/** Factory function that creates the appropriate runner based on config.defaultRunner */
 	createRunner: (config: AgentRunnerConfig) => IAgentRunner;
 	onWebhookStart: () => void;
@@ -379,7 +384,7 @@ export class ChatSessionHandler<TEvent> {
 
 	/**
 	 * Build a runner config for a chat session.
-	 * Used by both handleEvent (new session) and resumeSession to eliminate duplication.
+	 * Delegates to RunnerConfigBuilder for config assembly.
 	 */
 	private buildRunnerConfig(
 		workspacePath: string,
@@ -392,37 +397,21 @@ export class ChatSessionHandler<TEvent> {
 			sessionId,
 			platform: this.adapter.platformName,
 		});
-		// When MCP servers are configured, include their tool permissions
-		const mcpToolPermissions = this.deps.mcpConfig
-			? Object.keys(this.deps.mcpConfig).map((server) => `mcp__${server}`)
-			: [];
-		const repositoryPaths = Array.from(
-			new Set((this.deps.chatRepositoryPaths ?? []).filter(Boolean)),
-		);
-		const allowedTools = Array.from(
-			new Set([
-				...getReadOnlyTools(),
-				...mcpToolPermissions,
-				"Bash(git -C * pull)",
-			]),
-		);
-		sessionLogger.debug("Chat session allowed tools:", allowedTools);
 
-		return {
-			workingDirectory: workspacePath,
-			allowedTools,
-			disallowedTools: [] as string[],
-			allowedDirectories: [workspacePath, ...repositoryPaths],
+		return this.deps.runnerConfigBuilder.buildChatConfig({
+			workspacePath,
 			workspaceName,
+			systemPrompt,
+			sessionId,
+			resumeSessionId,
 			cyrusHome: this.deps.cyrusHome,
-			appendSystemPrompt: systemPrompt,
-			...(this.deps.mcpConfig ? { mcpConfig: this.deps.mcpConfig } : {}),
-			...(resumeSessionId ? { resumeSessionId } : {}),
+			mcpConfig: this.deps.mcpConfig,
+			repository: this.deps.repository,
+			repositoryPaths: this.deps.chatRepositoryPaths,
 			logger: sessionLogger,
-			maxTurns: 200,
 			onMessage: (message: SDKMessage) =>
 				this.handleAgentMessage(sessionId, message),
 			onError: (error: Error) => this.deps.onClaudeError(error),
-		};
+		});
 	}
 }

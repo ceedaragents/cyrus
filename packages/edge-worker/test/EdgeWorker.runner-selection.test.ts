@@ -1024,9 +1024,9 @@ Issue: {{issue_identifier}}`;
 			const labels = ["opus"]; // Claude model label
 
 			// Act
-			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
-				labels,
-			);
+			const runnerSelection = (
+				edgeWorker as any
+			).runnerSelectionService.determineRunnerSelection(labels);
 
 			// Assert
 			expect(runnerSelection.runnerType).toBe("claude");
@@ -1041,9 +1041,9 @@ Issue: {{issue_identifier}}`;
 			const labels = ["gemini-3-pro"];
 
 			// Act
-			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
-				labels,
-			);
+			const runnerSelection = (
+				edgeWorker as any
+			).runnerSelectionService.determineRunnerSelection(labels);
 
 			// Assert
 			expect(runnerSelection.runnerType).toBe("gemini");
@@ -1055,9 +1055,9 @@ Issue: {{issue_identifier}}`;
 		it("should correctly identify runner type mismatch between label and session", () => {
 			// This test verifies the logic that would run in resumeAgentSession
 			const labels = ["sonnet"]; // Claude label
-			const runnerSelection = (edgeWorker as any).determineRunnerSelection(
-				labels,
-			);
+			const runnerSelection = (
+				edgeWorker as any
+			).runnerSelectionService.determineRunnerSelection(labels);
 
 			// If continuing a Gemini session (hasGeminiSession=true, hasClaudeSession=false)
 			const useClaudeRunner = false; // Would be determined by session IDs
@@ -1073,7 +1073,9 @@ Issue: {{issue_identifier}}`;
 		});
 
 		it("should preserve explicit agent and ignore conflicting model", () => {
-			const runnerSelection = (edgeWorker as any).determineRunnerSelection([
+			const runnerSelection = (
+				edgeWorker as any
+			).runnerSelectionService.determineRunnerSelection([
 				"claude",
 				"gpt-5-codex",
 			]);

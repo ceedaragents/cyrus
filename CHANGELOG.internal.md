@@ -4,6 +4,12 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Wired user-configured MCP support into Slack chat sessions. `RunnerConfigBuilder.buildChatConfig()` extracts `mcp__*` tool entries from the repository's `allowedTools` config and passes them to `buildChatAllowedTools()`, which merges them with read-only tools and built-in MCP prefixes. `mcpConfigPath` is derived from the repository reference following the `buildIssueConfig()` pattern. `EdgeWorker.registerSlackEventTransport()` passes the first repo to `ChatSessionHandler`, which forwards it to `RunnerConfigBuilder`. ([CYPACK-982](https://linear.app/ceedar/issue/CYPACK-982), [#1006](https://github.com/ceedaragents/cyrus/pull/1006))
+
+### Changed
+- Extracted `McpConfigService`, `ToolPermissionResolver`, and `RunnerConfigBuilder` from `EdgeWorker` and `ChatSessionHandler` in `packages/edge-worker`. `McpConfigService` owns MCP server config assembly and cyrus-tools context lifecycle. `ToolPermissionResolver` provides unified tool permission calculation for both issue and chat sessions (fully decoupled from `RunnerSelectionService`). `RunnerConfigBuilder` eliminates duplication between `EdgeWorker.buildAgentRunnerConfig()` and `ChatSessionHandler.buildRunnerConfig()` with `buildIssueConfig()` and `buildChatConfig()` factory methods, depending on focused interfaces (`IChatToolResolver`, `IMcpConfigProvider`, `IRunnerSelector`) instead of concrete classes. `RunnerSelectionService` trimmed to pure runner/model selection (SRP). `ChatSessionHandler` deps simplified to accept `RunnerConfigBuilder` injection. No behavioral changes. ([CYPACK-976](https://linear.app/ceedar/issue/CYPACK-976), [#1003](https://github.com/ceedaragents/cyrus/pull/1003))
+
 ## [0.2.36] - 2026-03-17
 
 ### Added

@@ -1,9 +1,49 @@
 import { join } from "node:path";
+import { getReadOnlyTools } from "cyrus-claude-runner";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatPlatformAdapter } from "../src/ChatSessionHandler.js";
 import { ChatSessionHandler } from "../src/ChatSessionHandler.js";
+import type { RunnerConfigBuilder } from "../src/RunnerConfigBuilder.js";
 import { SlackChatAdapter } from "../src/SlackChatAdapter.js";
 import { TEST_CYRUS_CHAT } from "./test-dirs.js";
+
+function createMockRunnerConfigBuilder(): RunnerConfigBuilder {
+	return {
+		buildChatConfig: (input: any) => {
+			const mcpConfigKeys = input.mcpConfig ? Object.keys(input.mcpConfig) : [];
+			const mcpToolPermissions = mcpConfigKeys.map(
+				(server: string) => `mcp__${server}`,
+			);
+			const repositoryPaths = Array.from(
+				new Set((input.repositoryPaths ?? []).filter(Boolean)),
+			);
+			return {
+				workingDirectory: input.workspacePath,
+				allowedTools: [
+					...new Set([
+						...getReadOnlyTools(),
+						...mcpToolPermissions,
+						"Bash(git -C * pull)",
+					]),
+				],
+				disallowedTools: [],
+				allowedDirectories: [input.workspacePath, ...repositoryPaths],
+				workspaceName: input.workspaceName,
+				cyrusHome: input.cyrusHome,
+				appendSystemPrompt: input.systemPrompt,
+				...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
+				...(input.resumeSessionId
+					? { resumeSessionId: input.resumeSessionId }
+					: {}),
+				logger: input.logger,
+				maxTurns: 200,
+				onMessage: input.onMessage,
+				onError: input.onError,
+			};
+		},
+		buildIssueConfig: vi.fn(),
+	} as unknown as RunnerConfigBuilder;
+}
 
 interface TestEvent {
 	eventId: string;
@@ -79,6 +119,7 @@ describe("ChatSessionHandler chat session permissions", () => {
 		const handler = new ChatSessionHandler(adapter, {
 			cyrusHome,
 			chatRepositoryPaths,
+			runnerConfigBuilder: createMockRunnerConfigBuilder(),
 			createRunner: createRunner,
 			onWebhookStart,
 			onWebhookEnd,

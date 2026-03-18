@@ -3,13 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import type {
-	HookCallbackMatcher,
-	HookEvent,
-	McpServerConfig,
-	PostToolUseHookInput,
-	SDKMessage,
-} from "cyrus-claude-runner";
+import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
@@ -114,6 +108,7 @@ import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
+import { McpConfigService } from "./McpConfigService.js";
 import { PromptBuilder } from "./PromptBuilder.js";
 import {
 	ProcedureAnalyzer,
@@ -132,11 +127,13 @@ import {
 	RepositoryRouter,
 	type RepositoryRouterDeps,
 } from "./RepositoryRouter.js";
+import { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 import { RunnerSelectionService } from "./RunnerSelectionService.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { ToolPermissionResolver } from "./ToolPermissionResolver.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
 
@@ -153,15 +150,6 @@ export declare interface EdgeWorker {
 
 type CyrusToolsMcpContext = {
 	contextId?: string;
-};
-
-type CyrusToolsMcpContextEntry = {
-	contextId: string;
-	linearToken: string;
-	linearClient: import("@linear/sdk").LinearClient;
-	parentSessionId?: string;
-	prebuiltServer?: ReturnType<typeof createCyrusToolsServer>;
-	createdAt: number;
 };
 
 /**
@@ -203,12 +191,14 @@ export class EdgeWorker extends EventEmitter {
 	// Extracted service modules
 	private attachmentService: AttachmentService;
 	private runnerSelectionService: RunnerSelectionService;
+	private toolPermissionResolver: ToolPermissionResolver;
+	private mcpConfigService: McpConfigService;
+	private runnerConfigBuilder: RunnerConfigBuilder;
 	private activityPoster: ActivityPoster;
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
-	private cyrusToolsMcpContexts = new Map<string, CyrusToolsMcpContextEntry>();
 	private cyrusToolsMcpRequestContext =
 		new AsyncLocalStorage<CyrusToolsMcpContext>();
 	private cyrusToolsMcpSessions = new Sessions<any>();
@@ -490,9 +480,28 @@ export class EdgeWorker extends EventEmitter {
 			this.cyrusHome,
 			this.config.linearWorkspaces || {},
 		);
-		this.runnerSelectionService = new RunnerSelectionService(
+		this.runnerSelectionService = new RunnerSelectionService(this.config);
+		this.toolPermissionResolver = new ToolPermissionResolver(
 			this.config,
 			this.logger,
+		);
+		this.mcpConfigService = new McpConfigService({
+			getLinearTokenForWorkspace: (workspaceId) =>
+				this.getLinearTokenForWorkspace(workspaceId),
+			getIssueTracker: (workspaceId) =>
+				this.issueTrackers.get(workspaceId) as
+					| (IIssueTrackerService & {
+							getClient?: () => import("@linear/sdk").LinearClient;
+					  })
+					| undefined,
+			getCyrusToolsMcpUrl: () => this.getCyrusToolsMcpUrl(),
+			createCyrusToolsOptions: (parentSessionId) =>
+				this.createCyrusToolsOptions(parentSessionId),
+		});
+		this.runnerConfigBuilder = new RunnerConfigBuilder(
+			this.toolPermissionResolver,
+			this.mcpConfigService,
+			this.runnerSelectionService,
 		);
 		this.activityPoster = new ActivityPoster(
 			this.issueTrackers,
@@ -534,6 +543,7 @@ export class EdgeWorker extends EventEmitter {
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
 				this.runnerSelectionService.setConfig(changes.newConfig);
+				this.toolPermissionResolver.setConfig(changes.newConfig);
 
 				// Reconstruct ProcedureAnalyzer if the default runner changed,
 				// since its internal SimpleRunner is baked in at construction time.
@@ -803,9 +813,8 @@ export class EdgeWorker extends EventEmitter {
 	 * This creates a /slack-webhook endpoint that handles @mention events from Slack.
 	 */
 	private registerSlackEventTransport(): void {
-		const chatRepositoryPaths = Array.from(this.repositories.values()).map(
-			(repo) => repo.repositoryPath,
-		);
+		const allRepos = Array.from(this.repositories.values());
+		const chatRepositoryPaths = allRepos.map((repo) => repo.repositoryPath);
 		const routingContext =
 			this.promptBuilder.generateRoutingContextForAllWorkspaces();
 		const slackAdapter = new SlackChatAdapter(
@@ -814,19 +823,19 @@ export class EdgeWorker extends EventEmitter {
 			{ repositoryRoutingContext: routingContext },
 		);
 
-		// Build MCP config for Slack sessions using first configured workspace
+		// V1: Source MCP config from first available repo (all repos share the same MCPs today)
 		const firstLinearWorkspaceId = Object.keys(
 			this.config.linearWorkspaces || {},
 		)[0];
-		const firstRepoId = Array.from(this.repositories.values())[0]?.id;
+		const firstRepo = allRepos[0];
 		const mcpConfig =
-			firstLinearWorkspaceId && firstRepoId
-				? this.buildMcpConfig(firstRepoId, firstLinearWorkspaceId)
+			firstLinearWorkspaceId && firstRepo
+				? this.buildMcpConfig(firstRepo.id, firstLinearWorkspaceId)
 				: undefined;
 
-		if (!firstLinearWorkspaceId || !firstRepoId) {
+		if (!firstLinearWorkspaceId || !firstRepo) {
 			this.logger.warn(
-				"No repositories or workspaces configured — Slack sessions will not have access to Linear MCP tools",
+				"No repositories or workspaces configured — Slack sessions will not have access to MCP tools",
 			);
 		}
 
@@ -836,6 +845,8 @@ export class EdgeWorker extends EventEmitter {
 				cyrusHome: this.cyrusHome,
 				chatRepositoryPaths,
 				mcpConfig,
+				repository: firstRepo,
+				runnerConfigBuilder: this.runnerConfigBuilder,
 				createRunner: (config) => {
 					const runnerType = this.runnerSelectionService.getDefaultRunner();
 					return this.createRunnerForType(runnerType, {
@@ -1587,7 +1598,7 @@ ${taskSection}`;
 		// Clear event transport (no explicit cleanup needed, routes are removed when server stops)
 		this.linearEventTransport = null;
 		this.configUpdater = null;
-		this.cyrusToolsMcpContexts.clear();
+		this.mcpConfigService.clearAllContexts();
 		this.cyrusToolsMcpSessions.removeAllListeners();
 		this.cyrusToolsMcpRegistered = false;
 
@@ -4045,32 +4056,6 @@ ${taskSection}`;
 	}
 
 	/**
-	 * Determine runner type and model using labels + issue description tags.
-	 *
-	 * Supported description tags:
-	 * - [agent=claude|gemini|codex|cursor]
-	 * - [model=<model-name>]
-	 *
-	 * Precedence:
-	 * - Description tags override labels.
-	 * - Agent selection and model selection are independent.
-	 * - If agent is not explicit, model can infer runner type.
-	 */
-	private determineRunnerSelection(
-		labels: string[],
-		issueDescription?: string,
-	): {
-		runnerType: RunnerType;
-		modelOverride?: string;
-		fallbackModelOverride?: string;
-	} {
-		return this.runnerSelectionService.determineRunnerSelection(
-			labels,
-			issueDescription,
-		);
-	}
-
-	/**
 	 * Determine system prompt based on issue labels and repository configuration
 	 */
 	private async determineSystemPromptFromLabels(
@@ -4393,7 +4378,9 @@ ${taskSection}`;
 			}
 
 			if (
-				!this.isCyrusToolsMcpAuthorizationValid(request.headers?.authorization)
+				!this.mcpConfigService.isAuthorizationValid(
+					request.headers?.authorization,
+				)
 			) {
 				_reply.code(401).send({
 					error: "Unauthorized cyrus-tools MCP request",
@@ -4441,7 +4428,7 @@ ${taskSection}`;
 					);
 				}
 
-				const context = this.cyrusToolsMcpContexts.get(contextId);
+				const context = this.mcpConfigService.getContext(contextId);
 				if (!context) {
 					throw new Error(
 						`Unknown cyrus-tools MCP context '${contextId}'. Build MCP config before connecting.`,
@@ -4454,7 +4441,7 @@ ${taskSection}`;
 						context.linearClient,
 						this.createCyrusToolsOptions(context.parentSessionId),
 					);
-				context.prebuiltServer = undefined;
+				this.mcpConfigService.clearPrebuiltServer(contextId);
 
 				return sdkServer.server;
 			},
@@ -4620,17 +4607,6 @@ ${taskSection}`;
 		return true;
 	}
 
-	private buildCyrusToolsMcpContextId(
-		repoId: string,
-		parentSessionId?: string,
-	): string {
-		if (parentSessionId) {
-			return `${repoId}:${parentSessionId}`;
-		}
-
-		return `${repoId}:anon:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-	}
-
 	private getCyrusToolsMcpUrl(): string {
 		const server = this.sharedApplicationServer as {
 			getPort?: () => number;
@@ -4642,32 +4618,8 @@ ${taskSection}`;
 		return `http://127.0.0.1:${port}${this.cyrusToolsMcpEndpoint}`;
 	}
 
-	private pruneCyrusToolsMcpContexts(maxEntries: number = 500): void {
-		if (this.cyrusToolsMcpContexts.size <= maxEntries) {
-			return;
-		}
-
-		const entriesByAge = Array.from(this.cyrusToolsMcpContexts.entries()).sort(
-			(a, b) => a[1].createdAt - b[1].createdAt,
-		);
-
-		const pruneCount = this.cyrusToolsMcpContexts.size - maxEntries;
-		for (let i = 0; i < pruneCount; i++) {
-			const entry = entriesByAge[i];
-			if (!entry) {
-				break;
-			}
-			const [contextId] = entry;
-			this.cyrusToolsMcpContexts.delete(contextId);
-		}
-	}
-
 	/**
-	 * Build MCP configuration with automatic Linear server injection and cyrus-tools over Fastify MCP.
-	 * Workspace-level servers (Linear, cyrus-tools, Slack) are configured once using workspace-level token.
-	 * @param repoId - Repository ID for MCP context scoping
-	 * @param linearWorkspaceId - Linear workspace ID (from webhook.organizationId or repo config)
-	 * @param options.excludeSlackMcp - When true, excludes the Slack MCP server even if SLACK_BOT_TOKEN is set (e.g., for GitHub sessions)
+	 * Build MCP configuration — delegates to McpConfigService.
 	 */
 	private buildMcpConfig(
 		repoId: string,
@@ -4675,129 +4627,12 @@ ${taskSection}`;
 		parentSessionId?: string,
 		options?: { excludeSlackMcp?: boolean },
 	): Record<string, McpServerConfig> {
-		const contextId = this.buildCyrusToolsMcpContextId(repoId, parentSessionId);
-
-		// Prebuild one SDK server for this context so callback wiring remains deterministic.
-		// If the client reconnects and needs another server, the endpoint creates a fresh one.
-		const linearToken = this.getLinearTokenForWorkspace(linearWorkspaceId);
-		const issueTracker = this.issueTrackers.get(linearWorkspaceId) as
-			| (IIssueTrackerService & { getClient?: () => LinearClient })
-			| undefined;
-		if (!issueTracker?.getClient) {
-			throw new Error(
-				`No issue tracker with getClient() found for workspace ${linearWorkspaceId}`,
-			);
-		}
-		const linearClient = issueTracker.getClient();
-		const prebuiltServer = createCyrusToolsServer(
-			linearClient,
-			this.createCyrusToolsOptions(parentSessionId),
-		);
-
-		this.cyrusToolsMcpContexts.set(contextId, {
-			contextId,
-			linearToken,
-			linearClient,
+		return this.mcpConfigService.buildMcpConfig(
+			repoId,
+			linearWorkspaceId,
 			parentSessionId,
-			prebuiltServer,
-			createdAt: Date.now(),
-		});
-		this.pruneCyrusToolsMcpContexts();
-
-		const cyrusToolsAuthorizationHeader =
-			this.getCyrusToolsMcpAuthorizationHeaderValue();
-
-		// Workspace-level MCP servers — configured once regardless of repo count
-		// https://linear.app/docs/mcp
-		const mcpConfig: Record<string, McpServerConfig> = {
-			linear: {
-				type: "http",
-				url: "https://mcp.linear.app/mcp",
-				headers: {
-					Authorization: `Bearer ${linearToken}`,
-				},
-			},
-			"cyrus-tools": {
-				type: "http",
-				url: this.getCyrusToolsMcpUrl(),
-				headers: {
-					"x-cyrus-mcp-context-id": contextId,
-					...(cyrusToolsAuthorizationHeader
-						? {
-								Authorization: cyrusToolsAuthorizationHeader,
-							}
-						: {}),
-				},
-			},
-		};
-
-		// Conditionally inject the Slack MCP server when SLACK_BOT_TOKEN is available
-		// https://github.com/korotovsky/slack-mcp-server
-		const slackBotToken = process.env.SLACK_BOT_TOKEN?.trim();
-		if (slackBotToken && !options?.excludeSlackMcp) {
-			mcpConfig.slack = {
-				command: "npx",
-				args: ["-y", "slack-mcp-server@latest", "--transport", "stdio"],
-				env: {
-					SLACK_MCP_XOXB_TOKEN: slackBotToken,
-				},
-			};
-		}
-
-		return mcpConfig;
-	}
-
-	/**
-	 * Merge mcpConfigPath from multiple repositories into a single list.
-	 * For same-name .mcp.json servers across repos, last wins (handled by Claude's merge behavior).
-	 */
-	private buildMergedMcpConfigPath(
-		repositories: RepositoryConfig | RepositoryConfig[],
-	): string | string[] | undefined {
-		const repoArray = Array.isArray(repositories)
-			? repositories
-			: [repositories];
-
-		if (repoArray.length === 1) {
-			return repoArray[0]!.mcpConfigPath;
-		}
-
-		// Collect all mcpConfigPaths from each repo into a flat list
-		const allPaths: string[] = [];
-		for (const repo of repoArray) {
-			if (!repo.mcpConfigPath) continue;
-			if (Array.isArray(repo.mcpConfigPath)) {
-				allPaths.push(...repo.mcpConfigPath);
-			} else {
-				allPaths.push(repo.mcpConfigPath);
-			}
-		}
-
-		if (allPaths.length === 0) return undefined;
-		if (allPaths.length === 1) return allPaths[0];
-		return allPaths;
-	}
-
-	private getCyrusToolsMcpAuthorizationHeaderValue(): string | undefined {
-		const apiKey = process.env.CYRUS_API_KEY?.trim();
-		if (!apiKey) {
-			return undefined;
-		}
-		return `Bearer ${apiKey}`;
-	}
-
-	private isCyrusToolsMcpAuthorizationValid(
-		rawAuthorizationHeader: unknown,
-	): boolean {
-		const expectedHeader = this.getCyrusToolsMcpAuthorizationHeaderValue();
-		if (!expectedHeader) {
-			return true;
-		}
-
-		const authorizationHeader = Array.isArray(rawAuthorizationHeader)
-			? rawAuthorizationHeader[0]
-			: rawAuthorizationHeader;
-		return authorizationHeader === expectedHeader;
+			options,
+		);
 	}
 
 	/**
@@ -5175,7 +5010,7 @@ ${input.userComment}
 
 	/**
 	 * Build agent runner configuration with common settings.
-	 * Also determines which runner type to use based on labels.
+	 * Delegates to RunnerConfigBuilder for shared config assembly.
 	 * @returns Object containing the runner config and runner type to use
 	 */
 	private buildAgentRunnerConfig(
@@ -5204,227 +5039,32 @@ ${input.userComment}
 			issueIdentifier: session.issueContext?.issueIdentifier,
 		});
 
-		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
-		// This ensures screenshots can be viewed in Linear comments instead of remaining as local files
-		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
-			PostToolUse: [
-				{
-					matcher: "playwright_screenshot",
-					hooks: [
-						async (input, _toolUseID, { signal: _signal }) => {
-							const postToolUseInput = input as PostToolUseHookInput;
-							log.debug(
-								`Tool ${postToolUseInput.tool_name} completed with response:`,
-								postToolUseInput.tool_response,
-							);
-							const response = postToolUseInput.tool_response as {
-								path?: string;
-							};
-							const filePath = response?.path || "the screenshot file";
-							return {
-								continue: true,
-								additionalContext: `Screenshot taken successfully. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown. You can also use the Read tool to view the screenshot file to analyze the visual content.`,
-							};
-						},
-					],
-				},
-				{
-					matcher: "mcp__claude-in-chrome__computer",
-					hooks: [
-						async (input, _toolUseID, { signal: _signal }) => {
-							const postToolUseInput = input as PostToolUseHookInput;
-							const response = postToolUseInput.tool_response as {
-								action?: string;
-								imageId?: string;
-								path?: string;
-							};
-							// Only provide upload guidance for screenshot actions
-							if (response?.action === "screenshot") {
-								const filePath = response?.path || "the screenshot file";
-								return {
-									continue: true,
-									additionalContext: `Screenshot captured. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
-								};
-							}
-							return { continue: true };
-						},
-					],
-				},
-				{
-					matcher: "mcp__claude-in-chrome__gif_creator",
-					hooks: [
-						async (input, _toolUseID, { signal: _signal }) => {
-							const postToolUseInput = input as PostToolUseHookInput;
-							const response = postToolUseInput.tool_response as {
-								action?: string;
-								path?: string;
-							};
-							// Only provide upload guidance for export actions
-							if (response?.action === "export") {
-								const filePath = response?.path || "the exported GIF";
-								return {
-									continue: true,
-									additionalContext: `GIF exported successfully. To share this GIF in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
-								};
-							}
-							return { continue: true };
-						},
-					],
-				},
-				{
-					matcher: "mcp__chrome-devtools__take_screenshot",
-					hooks: [
-						async (input, _toolUseID, { signal: _signal }) => {
-							const postToolUseInput = input as PostToolUseHookInput;
-							// Extract file path from input (the tool saves to filePath parameter)
-							const toolInput = postToolUseInput.tool_input as {
-								filePath?: string;
-							};
-							const filePath = toolInput?.filePath || "the screenshot file";
-							return {
-								continue: true,
-								additionalContext: `Screenshot saved. To share this screenshot in Linear comments, use the linear_upload_file tool to upload ${filePath}. This will return an asset URL that can be embedded in markdown.`,
-							};
-						},
-					],
-				},
-			],
-		};
-
-		// Determine runner type and model override from selectors
-		const runnerSelection = this.determineRunnerSelection(
-			labels || [],
-			issueDescription,
-		);
-		let runnerType = runnerSelection.runnerType;
-		let modelOverride = runnerSelection.modelOverride;
-		let fallbackModelOverride = runnerSelection.fallbackModelOverride;
-
-		// If the labels have changed, and we are resuming a session. Use the existing runner for the session.
-		if (session.claudeSessionId && runnerType !== "claude") {
-			runnerType = "claude";
-			modelOverride = this.getDefaultModelForRunner("claude");
-			fallbackModelOverride = this.getDefaultFallbackModelForRunner("claude");
-		} else if (session.geminiSessionId && runnerType !== "gemini") {
-			runnerType = "gemini";
-			modelOverride = this.getDefaultModelForRunner("gemini");
-			fallbackModelOverride = this.getDefaultFallbackModelForRunner("gemini");
-		} else if (session.codexSessionId && runnerType !== "codex") {
-			runnerType = "codex";
-			modelOverride = this.getDefaultModelForRunner("codex");
-			fallbackModelOverride = this.getDefaultFallbackModelForRunner("codex");
-		} else if (session.cursorSessionId && runnerType !== "cursor") {
-			runnerType = "cursor";
-			modelOverride = this.getDefaultModelForRunner("cursor");
-			fallbackModelOverride = this.getDefaultFallbackModelForRunner("cursor");
-		}
-
-		// Log model override if found
-		if (modelOverride) {
-			log.debug(`Model override via selector: ${modelOverride}`);
-		}
-
-		// Convert singleTurn flag to effective maxTurns value
-		const effectiveMaxTurns = singleTurn ? 1 : maxTurns;
-
-		// Determine final model from selectors, repository override, then runner-specific defaults
-		const finalModel =
-			modelOverride ||
-			repository.model ||
-			this.getDefaultModelForRunner(runnerType);
-
-		// When disallowAllTools is true, don't provide any MCP servers to ensure
-		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
-		const resolvedWorkspaceId =
-			linearWorkspaceId ?? requireLinearWorkspaceId(repository);
-		const mcpConfig = disallowAllTools
-			? undefined
-			: this.buildMcpConfig(
-					repository.id,
-					resolvedWorkspaceId,
-					sessionId,
-					mcpOptions,
-				);
-		const mcpConfigPath = disallowAllTools
-			? undefined
-			: this.buildMergedMcpConfigPath(repository);
-
-		if (disallowAllTools) {
-			log.info(
-				`MCP tools disabled for session ${sessionId} (disallowAllTools=true)`,
-			);
-		}
-
-		const config = {
-			workingDirectory: session.workspace.path,
+		return this.runnerConfigBuilder.buildIssueConfig({
+			session,
+			repository,
+			sessionId,
+			systemPrompt,
 			allowedTools,
-			disallowedTools,
 			allowedDirectories,
-			workspaceName: session.issue?.identifier || session.issueId,
+			disallowedTools,
+			resumeSessionId,
+			labels,
+			issueDescription,
+			maxTurns,
+			singleTurn,
+			disallowAllTools,
+			mcpOptions,
+			linearWorkspaceId,
 			cyrusHome: this.cyrusHome,
-			mcpConfigPath,
-			mcpConfig,
-			appendSystemPrompt: systemPrompt || "",
-			// When disallowAllTools is true, remove all built-in tools from model context
-			// so Claude cannot see or attempt tool use (distinct from allowedTools which only controls permissions)
-			...(disallowAllTools && { tools: [] }),
-			// Priority order: label override > repository config > global default
-			model: finalModel,
-			fallbackModel:
-				fallbackModelOverride ||
-				repository.fallbackModel ||
-				this.getDefaultFallbackModelForRunner(runnerType),
 			logger: log,
-			hooks,
-			// Enable Chrome integration for Claude runner (disabled for other runners)
-			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
-			// AskUserQuestion callback - only for Claude runner
-			...(runnerType === "claude" && {
-				onAskUserQuestion: this.createAskUserQuestionCallback(
-					sessionId,
-					resolvedWorkspaceId,
-				),
-			}),
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},
 			onError: (error: Error) => this.handleClaudeError(error),
-		};
-
-		// Cursor runner-specific wiring for offline/headless harness
-		// We pass these as loose fields to avoid widening core runner types.
-		if (runnerType === "cursor") {
-			const approvalPolicy = (process.env.CYRUS_APPROVAL_POLICY || "never") as
-				| "never"
-				| "on-request"
-				| "on-failure"
-				| "untrusted";
-			// Cursor CLI binary path (defaults to relying on PATH)
-			(config as any).cursorPath =
-				process.env.CURSOR_AGENT_PATH || process.env.CURSOR_PATH || undefined;
-			// API key for headless auth (optional; CLI may also read CURSOR_API_KEY directly)
-			(config as any).cursorApiKey = process.env.CURSOR_API_KEY || undefined;
-			// Keep headless runs non-interactive by default in F1/CLI environments
-			(config as any).askForApproval = approvalPolicy;
-			(config as any).approveMcps = true;
-			// Default to enabled sandbox for tool execution isolation; set CYRUS_SANDBOX=disabled to disable
-			(config as any).sandbox = (process.env.CYRUS_SANDBOX || "enabled") as
-				| "enabled"
-				| "disabled";
-		}
-
-		if (resumeSessionId) {
-			(config as any).resumeSessionId = resumeSessionId;
-		}
-
-		if (effectiveMaxTurns !== undefined) {
-			(config as any).maxTurns = effectiveMaxTurns;
-			if (singleTurn) {
-				log.debug(`Applied singleTurn maxTurns=1`);
-			}
-		}
-
-		return { config, runnerType };
+			createAskUserQuestionCallback: (sid, wid) =>
+				this.createAskUserQuestionCallback(sid, wid)!,
+			requireLinearWorkspaceId,
+		});
 	}
 
 	/**
@@ -5464,7 +5104,7 @@ ${input.userComment}
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
-		return this.runnerSelectionService.buildDisallowedTools(
+		return this.toolPermissionResolver.buildDisallowedTools(
 			repositories,
 			promptType,
 		);
@@ -5482,7 +5122,7 @@ ${input.userComment}
 		baseDisallowedTools: string[],
 		logContext: string,
 	): string[] {
-		return this.runnerSelectionService.mergeSubroutineDisallowedTools(
+		return this.toolPermissionResolver.mergeSubroutineDisallowedTools(
 			session,
 			baseDisallowedTools,
 			logContext,
@@ -5503,7 +5143,7 @@ ${input.userComment}
 			| "orchestrator"
 			| "graphite-orchestrator",
 	): string[] {
-		return this.runnerSelectionService.buildAllowedTools(
+		return this.toolPermissionResolver.buildAllowedTools(
 			repositories,
 			promptType,
 		);

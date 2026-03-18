@@ -504,7 +504,9 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 
 	describe("buildMergedMcpConfigPath - multi-repo MCP path merging", () => {
 		const getBuildMergedMcpConfigPath = (ew: EdgeWorker) =>
-			(ew as any).buildMergedMcpConfigPath.bind(ew);
+			(ew as any).mcpConfigService.buildMergedMcpConfigPath.bind(
+				(ew as any).mcpConfigService,
+			);
 
 		it("should return single repo mcpConfigPath unchanged", () => {
 			const repository: RepositoryConfig = {
