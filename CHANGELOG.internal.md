@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `docs-tools` MCP module in `packages/mcp-tools/src/tools/docs-tools/` with `registerDocsTools()` and `createCyrusDocsServer()`. Implements `search_docs` (keyword search with weighted scoring across title/slug/description/content), `get_doc` (full page retrieval by slug), and `list_docs` (grouped page listing). Docs are bundled at build time from the `documentation` repo via `scripts/bundle-docs.mjs` which parses MDX/MD frontmatter, strips MDX components, and generates `docs-bundle.ts` (29 pages). Tools are registered on the main `cyrus-tools` MCP server (always available, no env var required). Added 13 new tests. ([CYHOST-728](https://linear.app/ceedar/issue/CYHOST-728), [#1012](https://github.com/ceedaragents/cyrus/pull/1012))
+
 ## [0.2.36] - 2026-03-17
 
 ### Added

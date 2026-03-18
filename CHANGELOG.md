@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Documentation search via MCP** - Cyrus agents can now query all 29 Cyrus documentation pages using `search_docs`, `get_doc`, and `list_docs` MCP tools, giving agents awareness of Cyrus capabilities, configuration, and workflows. ([CYHOST-728](https://linear.app/ceedar/issue/CYHOST-728), [#1012](https://github.com/ceedaragents/cyrus/pull/1012))
+
 ## [0.2.36] - 2026-03-17
 
 ### Added
