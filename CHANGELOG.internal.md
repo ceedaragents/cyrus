@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.37] - 2026-03-18
+
 ### Added
 - Wired user-configured MCP support into Slack chat sessions. `RunnerConfigBuilder.buildChatConfig()` extracts `mcp__*` tool entries from the repository's `allowedTools` config and passes them to `buildChatAllowedTools()`, which merges them with read-only tools and built-in MCP prefixes. `mcpConfigPath` is derived from the repository reference following the `buildIssueConfig()` pattern. `EdgeWorker.registerSlackEventTransport()` passes the first repo to `ChatSessionHandler`, which forwards it to `RunnerConfigBuilder`. ([CYPACK-982](https://linear.app/ceedar/issue/CYPACK-982), [#1006](https://github.com/ceedaragents/cyrus/pull/1006))
 
