@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Containerized verification and issue execution for self-hosted repositories** - Repositories can now run `verifications` in ephemeral Docker containers and can optionally run supported agents in one persistent issue container per task. This supports repository-specific debug/build images while keeping Cyrus as the control plane.
+- **Containerized verification and issue execution for self-hosted repositories** - Repositories can now run `verifications` in ephemeral Docker containers and can optionally run supported agents in one persistent issue container per task. This supports repository-specific debug/build images while keeping Cyrus as the control plane. ([#1007](https://github.com/ceedaragents/cyrus/pull/1007))
 
 ### Fixed
 - **Self-hosted onboarding improvements** - Fixed `-l` routing labels flag not working with `cyrus self-add-repo`, idle mode now shows `cyrus self-add-repo` guidance instead of cloud URL for self-hosted users, and `cyrus self-auth` error messages now correctly point to `~/.cyrus/.env` instead of `.zshrc`. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
