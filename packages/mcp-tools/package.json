@@ -13,7 +13,8 @@
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run --passWithNoTests",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"bundle-docs": "node scripts/bundle-docs.mjs"
 	},
 	"dependencies": {
 		"@linear/sdk": "^64.0.0",

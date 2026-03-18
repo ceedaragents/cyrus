@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import fs from "fs-extra";
 import OpenAI from "openai";
 import { z } from "zod";
+import { registerDocsTools } from "../docs-tools/index.js";
 import { registerImageTools } from "../image-tools/index.js";
 import { registerSoraTools } from "../sora-tools/index.js";
 
@@ -970,6 +971,9 @@ export function createCyrusToolsServer(
 			}
 		},
 	);
+
+	// Register documentation search tools (always available)
+	registerDocsTools(server);
 
 	// Register OpenAI-based tools if OPENAI_API_KEY is available
 	const openaiApiKey = process.env.OPENAI_API_KEY;
