@@ -1,11 +1,18 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { EdgeConfig } from "cyrus-core";
+import { DEFAULT_WORKTREES_DIR, type EdgeConfig } from "cyrus-core";
 import {
 	type ApiResponse,
 	type CyrusConfigPayload,
 	CyrusConfigPayloadSchema,
 } from "../types.js";
+
+function getDefaultWorktreesDir(cyrusHome: string): string {
+	return (
+		process.env.CYRUS_WORKTREES_DIR?.trim() ||
+		join(cyrusHome, DEFAULT_WORKTREES_DIR)
+	);
+}
 
 /**
  * Handle Cyrus configuration update
@@ -52,9 +59,9 @@ export async function handleCyrusConfig(
 			(repo: CyrusConfigPayload["repositories"][number]) => {
 				return {
 					...repo,
-					// Set workspaceBaseDir (use provided or default to ~/.cyrus/workspaces)
+					// Set workspaceBaseDir (use provided or default to cyrusHome/worktrees)
 					workspaceBaseDir:
-						repo.workspaceBaseDir || join(cyrusHome, "workspaces"),
+						repo.workspaceBaseDir || getDefaultWorktreesDir(cyrusHome),
 					// Set isActive (defaults to true)
 					isActive: repo.isActive !== false,
 					// Ensure teamKeys is always an array

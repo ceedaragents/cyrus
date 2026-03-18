@@ -37,6 +37,9 @@ import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
 const CYRUS_PORT = Number.parseInt(process.env.CYRUS_PORT || "3600", 10);
 const CYRUS_REPO_PATH = process.env.CYRUS_REPO_PATH || process.cwd();
 const CYRUS_HOME = join(tmpdir(), `cyrus-f1-${Date.now()}`);
+const DEFAULT_WORKTREES_BASE_DIR =
+	process.env.CYRUS_WORKTREES_DIR?.trim() ||
+	join(CYRUS_HOME, DEFAULT_WORKTREES_DIR);
 // Optional second repository path for multi-repo orchestration testing
 const CYRUS_REPO_PATH_2 = process.env.CYRUS_REPO_PATH_2;
 const MULTI_REPO_MODE = Boolean(CYRUS_REPO_PATH_2);
@@ -66,7 +69,7 @@ function setupDirectories(): void {
 	const requiredDirs = [
 		CYRUS_HOME,
 		join(CYRUS_HOME, "repos"),
-		join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
+		DEFAULT_WORKTREES_BASE_DIR,
 		join(CYRUS_HOME, "mcp-configs"),
 		join(CYRUS_HOME, "state"),
 	];
@@ -94,7 +97,7 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		baseBranch: "main",
 		githubUrl: "https://github.com/f1-test/primary-repo",
 		linearWorkspaceId: "cli-workspace",
-		workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
+		workspaceBaseDir: DEFAULT_WORKTREES_BASE_DIR,
 		isActive: true,
 		// Routing configuration for multi-repo support
 		routingLabels: ["primary", "main-repo"],
@@ -134,7 +137,7 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 			baseBranch: "main",
 			githubUrl: "https://github.com/f1-test/secondary-repo",
 			linearWorkspaceId: "cli-workspace", // Same workspace for routing test
-			workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR, "secondary"),
+			workspaceBaseDir: join(DEFAULT_WORKTREES_BASE_DIR, "secondary"),
 			isActive: true,
 			// Different routing labels for second repo
 			routingLabels: ["secondary", "backend"],

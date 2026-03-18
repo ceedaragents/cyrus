@@ -7,15 +7,63 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Slack sessions now support user-configured MCP tools** - Slack chat sessions can now access MCP tools from user-configured `.mcp.json` files (e.g., Supabase, Stripe, Trigger.dev), not just the built-in Linear/cyrus-tools/Slack MCPs. ([CYPACK-982](https://linear.app/ceedar/issue/CYPACK-982), [#1006](https://github.com/ceedaragents/cyrus/pull/1006))
 
+## [0.2.36] - 2026-03-17
+
+### Added
+- **Automatic worktree cleanup on issue completion or deletion** - When a Linear issue moves to Done, Cancelled, or is deleted, worktrees are automatically deleted and any active sessions are stopped. Handles both single-repo and multi-repo layouts. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+
 ### Fixed
+- **Worktree recreation after issue reopened** - Fixed a bug where worktrees were not recreated when an issue was re-prompted after being moved to Done/Cancelled. Stale git worktree entries from a previous cleanup could prevent fresh worktree creation. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
+- **Self-hosted onboarding improvements** - Fixed `-l` routing labels flag not working with `cyrus self-add-repo`, idle mode now shows `cyrus self-add-repo` guidance instead of cloud URL for self-hosted users, and `cyrus self-auth` error messages now correctly point to `~/.cyrus/.env` instead of `.zshrc`. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
 - **Security vulnerabilities resolved** - Fixed all Dependabot security alerts (1 critical, 20 high, 11 moderate, 4 low) by updating transitive dependency versions for packages including simple-git, undici, hono, minimatch, rollup, and others. ([CYPACK-973](https://linear.app/ceedar/issue/CYPACK-973), [#1000](https://github.com/ceedaragents/cyrus/pull/1000))
 
 ### Changed
 - **PR descriptions now include interaction tips** - Pull requests created by Cyrus now include a tip explaining how to @ mention the bot (configurable via `GITHUB_BOT_USERNAME`) for inline responses and how to submit "changes requested" reviews for batch feedback. ([CYPACK-974](https://linear.app/ceedar/issue/CYPACK-974), [#1001](https://github.com/ceedaragents/cyrus/pull/1001))
 - **Co-authored-by attribution disabled** - Git commits no longer include the "Co-Authored-By: Claude" trailer. ([CYPACK-974](https://linear.app/ceedar/issue/CYPACK-974), [#1001](https://github.com/ceedaragents/cyrus/pull/1001))
 
-# Fixed
-- **Self-hosted onboarding improvements** - Fixed `-l` routing labels flag not working with `cyrus self-add-repo`, idle mode now shows `cyrus self-add-repo` guidance instead of cloud URL for self-hosted users, and `cyrus self-auth` error messages now correctly point to `~/.cyrus/.env` instead of `.zshrc`. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.36
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.36
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.36
+
+#### cyrus-core
+- cyrus-core@0.2.36
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.36
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.36
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.36
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.36
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.36
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.36
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.36
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.36
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.36
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.36
 
 ## [0.2.35] - 2026-03-16
 

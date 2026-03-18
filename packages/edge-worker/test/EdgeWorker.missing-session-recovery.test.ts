@@ -561,7 +561,7 @@ describe("EdgeWorker - Missing Session/Repository Recovery (CYPACK-852)", () => 
 			expect(createSessionSpy).toHaveBeenCalledWith(
 				"agent-session-legacy-123",
 				expect.objectContaining({ id: "issue-123" }),
-				mockRepository,
+				[mockRepository],
 				mockAgentSessionManager,
 				"test-workspace",
 			);
