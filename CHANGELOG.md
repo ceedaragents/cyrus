@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Error telemetry reporting** - Agent session errors (crashes, stalls, rate limits, billing issues, max turns) are now reported to the Cyrus dashboard for monitoring and diagnostics. Telemetry is available immediately on startup. ([CYPACK-986](https://linear.app/ceedar/issue/CYPACK-986), [#1008](https://github.com/ceedaragents/cyrus/pull/1008))
+
 ## [0.2.36] - 2026-03-17
 
 ### Added

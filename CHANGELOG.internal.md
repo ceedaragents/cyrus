@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added `TelemetryReporter` class in `packages/edge-worker/src/TelemetryReporter.ts` that sends error telemetry (crash, stall, rate_limit, billing, max_turns) to CYHOST's `/api/telemetry/callback` endpoint using `CYRUS_API_KEY` as Bearer token. Uses `TelemetryReporter.fromEnv()` to read `CYRUS_API_KEY` and `CYRUS_HOST_URL` from environment at startup — no dependency on webhook headers or callback tokens. Added `setTelemetryReporter()` setter, `reportErrorTelemetry()` fire-and-forget method, and `mapSubtypeToErrorType()` helper to `AgentSessionManager`. Wired into `EdgeWorker` constructor. 10 new unit tests. Exported `TelemetryReporter`, `TelemetryErrorEvent`, and `TelemetryReporterConfig` from edge-worker package index. ([CYPACK-986](https://linear.app/ceedar/issue/CYPACK-986), [#1008](https://github.com/ceedaragents/cyrus/pull/1008))
+
 ## [0.2.36] - 2026-03-17
 
 ### Added
