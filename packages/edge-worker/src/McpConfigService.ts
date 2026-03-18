@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import type { LinearClient } from "@linear/sdk";
 import type { McpServerConfig } from "cyrus-claude-runner";
 import type { IIssueTrackerService, RepositoryConfig } from "cyrus-core";
@@ -161,6 +162,38 @@ export class McpConfigService {
 		if (allPaths.length === 0) return undefined;
 		if (allPaths.length === 1) return allPaths[0];
 		return allPaths;
+	}
+
+	/**
+	 * Extract MCP server names from file-based config paths.
+	 * Reads each `.mcp.json` file and returns the union of all server name keys.
+	 * Used to build tool permission prefixes for user-configured MCPs.
+	 */
+	extractServerNamesFromConfigPaths(
+		mcpConfigPath: string | string[] | undefined,
+	): string[] {
+		if (!mcpConfigPath) return [];
+
+		const paths = Array.isArray(mcpConfigPath)
+			? mcpConfigPath
+			: [mcpConfigPath];
+		const serverNames = new Set<string>();
+
+		for (const configPath of paths) {
+			try {
+				if (!existsSync(configPath)) continue;
+				const content = readFileSync(configPath, "utf8");
+				const config = JSON.parse(content);
+				const servers = config.mcpServers || {};
+				for (const name of Object.keys(servers)) {
+					serverNames.add(name);
+				}
+			} catch {
+				// Skip unreadable/invalid config files
+			}
+		}
+
+		return Array.from(serverNames);
 	}
 
 	/**

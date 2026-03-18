@@ -33,7 +33,10 @@ export interface IMcpConfigProvider {
  * Subset of ToolPermissionResolver consumed by RunnerConfigBuilder.
  */
 export interface IChatToolResolver {
-	buildChatAllowedTools(mcpConfigKeys?: string[]): string[];
+	buildChatAllowedTools(
+		mcpConfigKeys?: string[],
+		userMcpServerNames?: string[],
+	): string[];
 }
 
 /**
@@ -64,6 +67,10 @@ export interface ChatRunnerConfigInput {
 	cyrusHome: string;
 	/** MCP server config (pre-built by McpConfigService or passed externally) */
 	mcpConfig?: Record<string, McpServerConfig>;
+	/** File-based MCP config paths (user-configured .mcp.json files) */
+	mcpConfigPath?: string | string[];
+	/** Server names extracted from user-configured .mcp.json files (for tool permissions) */
+	userMcpServerNames?: string[];
 	/** Repository paths the chat session can read */
 	repositoryPaths?: string[];
 	logger: ILogger;
@@ -135,8 +142,10 @@ export class RunnerConfigBuilder {
 		const mcpConfigKeys = input.mcpConfig
 			? Object.keys(input.mcpConfig)
 			: undefined;
-		const allowedTools =
-			this.chatToolResolver.buildChatAllowedTools(mcpConfigKeys);
+		const allowedTools = this.chatToolResolver.buildChatAllowedTools(
+			mcpConfigKeys,
+			input.userMcpServerNames,
+		);
 
 		const repositoryPaths = Array.from(
 			new Set((input.repositoryPaths ?? []).filter(Boolean)),
@@ -153,6 +162,7 @@ export class RunnerConfigBuilder {
 			cyrusHome: input.cyrusHome,
 			appendSystemPrompt: input.systemPrompt,
 			...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
+			...(input.mcpConfigPath ? { mcpConfigPath: input.mcpConfigPath } : {}),
 			...(input.resumeSessionId
 				? { resumeSessionId: input.resumeSessionId }
 				: {}),

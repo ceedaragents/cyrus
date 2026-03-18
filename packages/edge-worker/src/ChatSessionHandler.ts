@@ -55,6 +55,10 @@ export interface ChatPlatformAdapter<TEvent> {
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
 	mcpConfig?: Record<string, McpServerConfig>;
+	/** File-based MCP config paths (user-configured .mcp.json files) */
+	mcpConfigPath?: string | string[];
+	/** Server names extracted from user-configured .mcp.json files (for tool permissions) */
+	userMcpServerNames?: string[];
 	chatRepositoryPaths?: string[];
 	/** Shared RunnerConfigBuilder for constructing runner configs */
 	runnerConfigBuilder: RunnerConfigBuilder;
@@ -403,6 +407,8 @@ export class ChatSessionHandler<TEvent> {
 			resumeSessionId,
 			cyrusHome: this.deps.cyrusHome,
 			mcpConfig: this.deps.mcpConfig,
+			mcpConfigPath: this.deps.mcpConfigPath,
+			userMcpServerNames: this.deps.userMcpServerNames,
 			repositoryPaths: this.deps.chatRepositoryPaths,
 			logger: sessionLogger,
 			onMessage: (message: SDKMessage) =>

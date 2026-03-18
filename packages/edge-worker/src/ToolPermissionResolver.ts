@@ -73,13 +73,19 @@ export class ToolPermissionResolver {
 	 * Build allowed tools for chat sessions.
 	 *
 	 * Chat sessions get read-only tools plus MCP tool prefixes derived from
-	 * the provided MCP config keys. This replaces the manual logic that was
-	 * previously inline in ChatSessionHandler.buildRunnerConfig().
+	 * the provided MCP config keys and user-configured MCP server names.
 	 *
-	 * @param mcpConfigKeys - MCP server names (keys from McpServerConfig record)
+	 * @param mcpConfigKeys - Built-in MCP server names (keys from inline McpServerConfig record)
+	 * @param userMcpServerNames - User-configured MCP server names (extracted from .mcp.json files)
 	 */
-	public buildChatAllowedTools(mcpConfigKeys?: string[]): string[] {
+	public buildChatAllowedTools(
+		mcpConfigKeys?: string[],
+		userMcpServerNames?: string[],
+	): string[] {
 		const mcpToolPermissions = (mcpConfigKeys ?? []).map(
+			(server) => `mcp__${server}`,
+		);
+		const userMcpToolPermissions = (userMcpServerNames ?? []).map(
 			(server) => `mcp__${server}`,
 		);
 
@@ -87,6 +93,7 @@ export class ToolPermissionResolver {
 			new Set([
 				...getReadOnlyTools(),
 				...mcpToolPermissions,
+				...userMcpToolPermissions,
 				"Bash(git -C * pull)",
 			]),
 		);
