@@ -809,9 +809,8 @@ export class EdgeWorker extends EventEmitter {
 	 * This creates a /slack-webhook endpoint that handles @mention events from Slack.
 	 */
 	private registerSlackEventTransport(): void {
-		const chatRepositoryPaths = Array.from(this.repositories.values()).map(
-			(repo) => repo.repositoryPath,
-		);
+		const allRepos = Array.from(this.repositories.values());
+		const chatRepositoryPaths = allRepos.map((repo) => repo.repositoryPath);
 		const routingContext =
 			this.promptBuilder.generateRoutingContextForAllWorkspaces();
 		const slackAdapter = new SlackChatAdapter(
@@ -824,15 +823,13 @@ export class EdgeWorker extends EventEmitter {
 		const firstLinearWorkspaceId = Object.keys(
 			this.config.linearWorkspaces || {},
 		)[0];
-		const firstRepo = Array.from(this.repositories.values())[0];
-		const firstRepoId = firstRepo?.id;
+		const firstRepoId = allRepos[0]?.id;
 		const mcpConfig =
 			firstLinearWorkspaceId && firstRepoId
 				? this.buildMcpConfig(firstRepoId, firstLinearWorkspaceId)
 				: undefined;
 
 		// Build user-configured MCP config path and extract server names for tool permissions
-		const allRepos = Array.from(this.repositories.values());
 		const mcpConfigPath =
 			allRepos.length > 0
 				? this.mcpConfigService.buildMergedMcpConfigPath(allRepos)
