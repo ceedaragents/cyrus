@@ -4,8 +4,54 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.37] - 2026-03-18
+
 ### Added
 - **Slack sessions now support user-configured MCP tools** - Slack chat sessions can now access MCP tools from user-configured `.mcp.json` files (e.g., Supabase, Stripe, Trigger.dev), not just the built-in Linear/cyrus-tools/Slack MCPs. ([CYPACK-982](https://linear.app/ceedar/issue/CYPACK-982), [#1006](https://github.com/ceedaragents/cyrus/pull/1006))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.37
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.37
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.37
+
+#### cyrus-core
+- cyrus-core@0.2.37
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.37
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.37
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.37
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.37
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.37
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.37
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.37
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.37
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.37
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.37
 
 ## [0.2.36] - 2026-03-17
 
