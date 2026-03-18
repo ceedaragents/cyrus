@@ -45,10 +45,14 @@ export interface BaseBranchResolution {
 
 export interface Workspace {
 	path: string;
+	/** Host-visible path for the workspace when Cyrus itself runs in a container. */
+	hostPath?: string;
 	isGitWorktree: boolean;
 	historyPath?: string;
 	/** Maps repositoryId to worktree path for multi-repo workspaces */
 	repoPaths?: Record<string, string>;
+	/** Maps repositoryId to host-visible worktree path for multi-repo workspaces */
+	repoHostPaths?: Record<string, string>;
 	/** Maps repositoryId to resolved base branch with source info */
 	resolvedBaseBranches?: Record<string, BaseBranchResolution>;
 }

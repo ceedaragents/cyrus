@@ -1,9 +1,14 @@
 import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the Claude SDK
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 	query: vi.fn(),
+}));
+
+vi.mock("node:child_process", () => ({
+	spawn: vi.fn(),
 }));
 
 // Mock file system operations
@@ -23,6 +28,7 @@ vi.mock("os", () => ({
 	homedir: vi.fn(() => "/mock/home"),
 }));
 
+import { spawn } from "node:child_process";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { AbortError, ClaudeRunner } from "../src/ClaudeRunner";
 import type { ClaudeRunnerConfig, SDKMessage } from "../src/types";
@@ -30,11 +36,30 @@ import type { ClaudeRunnerConfig, SDKMessage } from "../src/types";
 describe("ClaudeRunner", () => {
 	let runner: ClaudeRunner;
 	let mockQuery: any;
+	let mockSpawn: any;
 
 	const defaultConfig: ClaudeRunnerConfig = {
 		workingDirectory: "/tmp/test",
 		cyrusHome: "/tmp/test-cyrus-home",
 	};
+
+	function createMockBridgeProcess() {
+		const stdout = new PassThrough();
+		const stderr = new PassThrough();
+		const stdin = new PassThrough();
+		const process = Object.assign(new EventEmitter(), {
+			stdin,
+			stdout,
+			stderr,
+			kill: vi.fn(),
+		});
+		return {
+			process: process as any,
+			stdin,
+			stdout,
+			stderr,
+		};
+	}
 
 	beforeEach(() => {
 		// Reset all mocks
@@ -42,6 +67,7 @@ describe("ClaudeRunner", () => {
 
 		// Set up mock query function
 		mockQuery = vi.mocked(query);
+		mockSpawn = vi.mocked(spawn);
 
 		// Create runner instance
 		runner = new ClaudeRunner(defaultConfig);
@@ -136,6 +162,133 @@ describe("ClaudeRunner", () => {
 					}),
 				},
 			});
+		});
+
+		it("runs via the container bridge when configured", async () => {
+			const bridge = createMockBridgeProcess();
+			const stdinChunks: string[] = [];
+			bridge.stdin.on("data", (chunk) => {
+				stdinChunks.push(chunk.toString());
+			});
+			mockSpawn.mockReturnValue(bridge.process);
+
+			const runnerWithBridge = new ClaudeRunner({
+				...defaultConfig,
+				containerBridge: {
+					command: "/tmp/claude-in-container",
+				},
+			});
+
+			const startPromise = runnerWithBridge.start("Hello from bridge");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"/tmp/claude-in-container",
+				[],
+				expect.objectContaining({
+					stdio: ["pipe", "pipe", "pipe"],
+				}),
+			);
+			expect(mockQuery).not.toHaveBeenCalled();
+			expect(stdinChunks.join("")).toContain('"type":"start"');
+			expect(stdinChunks.join("")).toContain("Hello from bridge");
+
+			bridge.stdout.write(
+				`${JSON.stringify({
+					type: "sdk-message",
+					message: {
+						type: "assistant",
+						message: { content: [{ type: "text", text: "Bridge hello" }] },
+						parent_tool_use_id: null,
+						session_id: "bridge-session",
+					},
+				})}\n`,
+			);
+			bridge.stdout.write(
+				`${JSON.stringify({
+					type: "sdk-message",
+					message: {
+						type: "result",
+						subtype: "success",
+						duration_ms: 10,
+						session_id: "bridge-session",
+					},
+				})}\n`,
+			);
+			bridge.stdout.write(`${JSON.stringify({ type: "complete" })}\n`);
+
+			const sessionInfo = await startPromise;
+			expect(sessionInfo.sessionId).toBe("bridge-session");
+			expect(runnerWithBridge.isRunning()).toBe(false);
+		});
+
+		it("round-trips AskUserQuestion through the container bridge", async () => {
+			const bridge = createMockBridgeProcess();
+			const stdinChunks: string[] = [];
+			bridge.stdin.on("data", (chunk) => {
+				stdinChunks.push(chunk.toString());
+			});
+			mockSpawn.mockReturnValue(bridge.process);
+
+			const onAskUserQuestion = vi.fn().mockResolvedValue({
+				answered: true,
+				answers: {
+					"Which mode?": "Safe",
+				},
+			});
+			const runnerWithBridge = new ClaudeRunner({
+				...defaultConfig,
+				containerBridge: {
+					command: "/tmp/claude-in-container",
+				},
+				onAskUserQuestion,
+			});
+
+			const startPromise = runnerWithBridge.start("Hello from bridge");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			bridge.stdout.write(
+				`${JSON.stringify({
+					type: "ask-user-question",
+					requestId: "req-1",
+					sessionId: "bridge-session",
+					input: {
+						questions: [
+							{
+								question: "Which mode?",
+								header: "Mode",
+								options: [
+									{ label: "Safe", description: "Safer path" },
+									{ label: "Fast", description: "Faster path" },
+								],
+							},
+						],
+					},
+				})}\n`,
+			);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(onAskUserQuestion).toHaveBeenCalledTimes(1);
+			expect(stdinChunks.join("")).toContain(
+				'"type":"ask-user-question-result"',
+			);
+			expect(stdinChunks.join("")).toContain('"requestId":"req-1"');
+			expect(stdinChunks.join("")).toContain('"Safe"');
+
+			bridge.stdout.write(
+				`${JSON.stringify({
+					type: "sdk-message",
+					message: {
+						type: "result",
+						subtype: "success",
+						duration_ms: 10,
+						session_id: "bridge-session",
+					},
+				})}\n`,
+			);
+			bridge.stdout.write(`${JSON.stringify({ type: "complete" })}\n`);
+
+			await startPromise;
 		});
 
 		it("should handle workspace configuration properly", async () => {

@@ -138,6 +138,68 @@ export const LinearWorkspaceConfigSchema = z.object({
 });
 
 /**
+ * Optional mapping from Cyrus-visible paths to host-visible paths.
+ * Needed when Cyrus runs in a container but must launch sibling containers
+ * using the host Docker daemon.
+ */
+export const RepositoryHostPathsSchema = z.object({
+	repositoryPath: z.string().optional(),
+	workspaceBaseDir: z.string().optional(),
+});
+
+/**
+ * Repository-specific verification execution settings.
+ * V1 focuses on externalizing the verifications phase into an ephemeral
+ * container while keeping the agent session lifecycle unchanged.
+ */
+export const VerificationConfigSchema = z
+	.discriminatedUnion("mode", [
+		z.object({
+			mode: z.literal("local"),
+		}),
+		z.object({
+			mode: z.literal("ephemeral_container"),
+			image: z.string(),
+			command: z.string(),
+			workdir: z.string().optional(),
+			shell: z.string().optional(),
+			timeoutSec: z.number().int().positive().optional(),
+			artifactGlobs: z.array(z.string()).optional(),
+		}),
+	])
+	.optional();
+
+const AgentExecutionRunnerSchema = z.enum([
+	"claude",
+	"codex",
+	"cursor",
+	"gemini",
+]);
+
+/**
+ * Repository-specific agent execution settings.
+ * V2 introduces a persistent issue-scoped container for CLI-based runners
+ * while keeping the control plane and session lifecycle inside Cyrus.
+ */
+export const AgentExecutionConfigSchema = z
+	.discriminatedUnion("mode", [
+		z.object({
+			mode: z.literal("local"),
+		}),
+		z.object({
+			mode: z.literal("persistent_issue_container"),
+			image: z.string(),
+			shell: z.string().optional(),
+			startupCommand: z.string().optional(),
+			env: z.record(z.string(), z.string()).optional(),
+			inheritEnv: z.array(z.string()).optional(),
+			mountPaths: z.array(z.string()).optional(),
+			supportedRunners: z.array(AgentExecutionRunnerSchema).optional(),
+		}),
+	])
+	.optional();
+
+/**
  * Configuration for a single repository/workspace pair
  */
 export const RepositoryConfigSchema = z.object({
@@ -165,6 +227,7 @@ export const RepositoryConfigSchema = z.object({
 
 	// Workspace configuration
 	workspaceBaseDir: z.string(),
+	hostPaths: RepositoryHostPathsSchema.optional(),
 
 	// Optional settings
 	isActive: z.boolean().optional(),
@@ -181,6 +244,12 @@ export const RepositoryConfigSchema = z.object({
 
 	// Repository-specific user access control
 	userAccessControl: UserAccessControlConfigSchema.optional(),
+
+	// Repository-specific verification execution
+	verification: VerificationConfigSchema,
+
+	// Repository-specific agent execution runtime
+	agentExecution: AgentExecutionConfigSchema,
 });
 
 /**
@@ -370,6 +439,9 @@ export type UserAccessControlConfig = z.infer<
 	typeof UserAccessControlConfigSchema
 >;
 export type LinearWorkspaceConfig = z.infer<typeof LinearWorkspaceConfigSchema>;
+export type RepositoryHostPaths = z.infer<typeof RepositoryHostPathsSchema>;
+export type VerificationConfig = z.infer<typeof VerificationConfigSchema>;
+export type AgentExecutionConfig = z.infer<typeof AgentExecutionConfigSchema>;
 export type RepositoryConfig = z.infer<typeof RepositoryConfigSchema>;
 export type EdgeConfig = z.infer<typeof EdgeConfigSchema>;
 export type RepositoryConfigPayload = z.infer<

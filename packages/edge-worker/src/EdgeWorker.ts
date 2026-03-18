@@ -106,6 +106,7 @@ import { ActivityPoster } from "./ActivityPoster.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
+import { PersistentIssueContainerManager } from "./agent-execution/index.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { GitService } from "./GitService.js";
@@ -135,6 +136,10 @@ import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
+import {
+	EphemeralContainerVerificationExecutor,
+	type VerificationExecutionResult,
+} from "./verification/index.js";
 
 export declare interface EdgeWorker {
 	on<K extends keyof EdgeWorkerEvents>(
@@ -202,6 +207,8 @@ export class EdgeWorker extends EventEmitter {
 	private activityPoster: ActivityPoster;
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
+	private verificationExecutor: EphemeralContainerVerificationExecutor;
+	private issueContainerManager: PersistentIssueContainerManager;
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
 	private cyrusToolsMcpContexts = new Map<string, CyrusToolsMcpContextEntry>();
@@ -222,6 +229,13 @@ export class EdgeWorker extends EventEmitter {
 		this.logger = createLogger({ component: "EdgeWorker" });
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
+		);
+		this.verificationExecutor = new EphemeralContainerVerificationExecutor(
+			this.logger,
+		);
+		this.issueContainerManager = new PersistentIssueContainerManager(
+			this.cyrusHome,
+			this.logger,
 		);
 
 		// Initialize GitHub comment service for posting replies to GitHub PRs
@@ -405,6 +419,14 @@ export class EdgeWorker extends EventEmitter {
 					repo,
 					this.agentSessionManager,
 				);
+			},
+		);
+
+		this.agentSessionManager.on(
+			"sessionFinalized",
+			async ({ sessionId, session }) => {
+				await this.syncCliAgentSessionStatus(sessionId, session);
+				await this.cleanupAgentExecutionRuntime(sessionId, session);
 			},
 		);
 
@@ -815,10 +837,17 @@ export class EdgeWorker extends EventEmitter {
 			this.config.linearWorkspaces || {},
 		)[0];
 		const firstRepoId = Array.from(this.repositories.values())[0]?.id;
-		const mcpConfig =
-			firstLinearWorkspaceId && firstRepoId
-				? this.buildMcpConfig(firstRepoId, firstLinearWorkspaceId)
-				: undefined;
+		let mcpConfig: Record<string, McpServerConfig> | undefined;
+		if (firstLinearWorkspaceId && firstRepoId) {
+			try {
+				mcpConfig = this.buildMcpConfig(firstRepoId, firstLinearWorkspaceId);
+			} catch (error) {
+				this.logger.warn(
+					`Failed to build Slack session MCP config for workspace ${firstLinearWorkspaceId}; continuing without Linear MCP tools`,
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			}
+		}
 
 		if (!firstLinearWorkspaceId || !firstRepoId) {
 			this.logger.warn(
@@ -1174,7 +1203,15 @@ export class EdgeWorker extends EventEmitter {
 				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
 			);
 
-			const runner = this.createRunnerForType(runnerType, runnerConfig);
+			const preparedRunnerConfig =
+				await this.prepareRunnerConfigForAgentExecution(
+					githubSessionId,
+					session,
+					repository,
+					runnerType,
+					runnerConfig,
+				);
+			const runner = this.createRunnerForType(runnerType, preparedRunnerConfig);
 
 			// Store the runner in the session manager
 			agentSessionManager.addAgentRunner(githubSessionId, runner);
@@ -1735,9 +1772,12 @@ ${taskSection}`;
 		// Load subroutine prompt
 		let subroutinePrompt: string | null;
 		try {
-			subroutinePrompt = await this.loadSubroutinePrompt(
+			subroutinePrompt = await this.prepareSubroutinePrompt(
+				sessionId,
+				session,
+				repo,
 				nextSubroutine,
-				this.getWorkspaceSlug(requireLinearWorkspaceId(repo)),
+				agentSessionManager,
 			);
 			if (!subroutinePrompt) {
 				// Fallback if loadSubroutinePrompt returns null
@@ -1837,10 +1877,14 @@ ${taskSection}`;
 		}
 
 		try {
-			// Load the verifications prompt
-			const subroutinePrompt = await this.loadSubroutinePrompt(
+			// Load the verifications prompt, optionally augmented with external
+			// verification results from the executor.
+			const subroutinePrompt = await this.prepareSubroutinePrompt(
+				sessionId,
+				session,
+				repo,
 				verificationsSubroutine,
-				this.getWorkspaceSlug(requireLinearWorkspaceId(repo)),
+				agentSessionManager,
 			);
 
 			if (!subroutinePrompt) {
@@ -3290,7 +3334,15 @@ ${taskSection}`;
 				`Label-based runner selection for new session: ${runnerType} (session ${sessionId})`,
 			);
 
-			const runner = this.createRunnerForType(runnerType, runnerConfig);
+			const preparedRunnerConfig =
+				await this.prepareRunnerConfigForAgentExecution(
+					sessionId,
+					session,
+					primaryRepo,
+					runnerType,
+					runnerConfig,
+				);
+			const runner = this.createRunnerForType(runnerType, preparedRunnerConfig);
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(sessionId, runner);
@@ -3387,6 +3439,7 @@ ${taskSection}`;
 				`Stopped agent session for agent activity session ${agentSessionId}`,
 			);
 		}
+		await this.cleanupAgentExecutionRuntime(agentSessionId, foundSession);
 
 		// Post confirmation
 		const issueTitle = issue?.title || "this issue";
@@ -4602,47 +4655,43 @@ ${taskSection}`;
 	): Record<string, McpServerConfig> {
 		const contextId = this.buildCyrusToolsMcpContextId(repoId, parentSessionId);
 
-		// Prebuild one SDK server for this context so callback wiring remains deterministic.
-		// If the client reconnects and needs another server, the endpoint creates a fresh one.
 		const linearToken = this.getLinearTokenForWorkspace(linearWorkspaceId);
 		const issueTracker = this.issueTrackers.get(linearWorkspaceId) as
 			| (IIssueTrackerService & { getClient?: () => LinearClient })
 			| undefined;
-		if (!issueTracker?.getClient) {
-			throw new Error(
-				`No issue tracker with getClient() found for workspace ${linearWorkspaceId}`,
-			);
-		}
-		const linearClient = issueTracker.getClient();
-		const prebuiltServer = createCyrusToolsServer(
-			linearClient,
-			this.createCyrusToolsOptions(parentSessionId),
-		);
 
-		this.cyrusToolsMcpContexts.set(contextId, {
-			contextId,
-			linearToken,
-			linearClient,
-			parentSessionId,
-			prebuiltServer,
-			createdAt: Date.now(),
-		});
-		this.pruneCyrusToolsMcpContexts();
-
-		const cyrusToolsAuthorizationHeader =
-			this.getCyrusToolsMcpAuthorizationHeaderValue();
-
-		// Workspace-level MCP servers — configured once regardless of repo count
-		// https://linear.app/docs/mcp
-		const mcpConfig: Record<string, McpServerConfig> = {
-			linear: {
-				type: "http",
-				url: "https://mcp.linear.app/mcp",
-				headers: {
-					Authorization: `Bearer ${linearToken}`,
-				},
+		const mcpConfig: Record<string, McpServerConfig> = {};
+		mcpConfig.linear = {
+			type: "http",
+			url: "https://mcp.linear.app/mcp",
+			headers: {
+				Authorization: `Bearer ${linearToken}`,
 			},
-			"cyrus-tools": {
+		};
+
+		// Prebuild one SDK server for this context so callback wiring remains deterministic.
+		// If the client reconnects and needs another server, the endpoint creates a fresh one.
+		if (issueTracker?.getClient) {
+			const linearClient = issueTracker.getClient!();
+			const prebuiltServer = createCyrusToolsServer(
+				linearClient,
+				this.createCyrusToolsOptions(parentSessionId),
+			);
+
+			this.cyrusToolsMcpContexts.set(contextId, {
+				contextId,
+				linearToken,
+				linearClient,
+				parentSessionId,
+				prebuiltServer,
+				createdAt: Date.now(),
+			});
+			this.pruneCyrusToolsMcpContexts();
+
+			const cyrusToolsAuthorizationHeader =
+				this.getCyrusToolsMcpAuthorizationHeaderValue();
+
+			mcpConfig["cyrus-tools"] = {
 				type: "http",
 				url: this.getCyrusToolsMcpUrl(),
 				headers: {
@@ -4653,8 +4702,12 @@ ${taskSection}`;
 							}
 						: {}),
 				},
-			},
-		};
+			};
+		} else {
+			this.logger.debug(
+				`Skipping cyrus-tools MCP server for workspace ${linearWorkspaceId}: issue tracker does not expose getClient()`,
+			);
+		}
 
 		// Conditionally inject the Slack MCP server when SLACK_BOT_TOKEN is available
 		// https://github.com/korotovsky/slack-mcp-server
@@ -5000,6 +5053,168 @@ ${input.userComment}
 		workspaceSlug?: string,
 	): Promise<string | null> {
 		return this.promptBuilder.loadSubroutinePrompt(subroutine, workspaceSlug);
+	}
+
+	private async prepareSubroutinePrompt(
+		sessionId: string,
+		session: CyrusAgentSession,
+		repository: RepositoryConfig,
+		subroutine: SubroutineDefinition,
+		agentSessionManager: AgentSessionManager,
+	): Promise<string | null> {
+		const basePrompt = await this.loadSubroutinePrompt(
+			subroutine,
+			this.getWorkspaceSlug(requireLinearWorkspaceId(repository)),
+		);
+
+		if (
+			!basePrompt ||
+			subroutine.name !== "verifications" ||
+			repository.verification?.mode !== "ephemeral_container"
+		) {
+			return basePrompt;
+		}
+
+		const verificationConfig = repository.verification;
+		await agentSessionManager.createThoughtActivity(
+			sessionId,
+			`Running external verification container with image \`${verificationConfig.image}\`...`,
+		);
+
+		try {
+			const result = await this.verificationExecutor.execute({
+				issueId: session.issueContext?.issueId ?? session.issueId,
+				issueIdentifier:
+					session.issueContext?.issueIdentifier ??
+					session.issue?.identifier ??
+					sessionId,
+				repository,
+				workspacePath:
+					session.workspace.repoPaths?.[repository.id] ??
+					session.workspace.path,
+				workspaceHostPath:
+					session.workspace.repoHostPaths?.[repository.id] ??
+					session.workspace.hostPath ??
+					session.workspace.path,
+			});
+
+			await agentSessionManager.createThoughtActivity(
+				sessionId,
+				`External verification finished with exit code ${result.exitCode ?? "unknown"} in ${result.durationMs}ms.`,
+			);
+
+			return this.buildExternalVerificationPrompt(basePrompt, result);
+		} catch (error) {
+			const failureResult = this.buildFailedExternalVerificationResult(
+				session,
+				repository,
+				error,
+			);
+
+			await agentSessionManager.createThoughtActivity(
+				sessionId,
+				`External verification failed before completion: ${failureResult.stderr}`,
+			);
+
+			return this.buildExternalVerificationPrompt(basePrompt, failureResult);
+		}
+	}
+
+	private buildFailedExternalVerificationResult(
+		session: CyrusAgentSession,
+		repository: RepositoryConfig,
+		error: unknown,
+	): VerificationExecutionResult {
+		const verificationConfig = repository.verification;
+		if (
+			!verificationConfig ||
+			verificationConfig.mode !== "ephemeral_container"
+		) {
+			throw new Error(
+				`Repository ${repository.id} is not configured for ephemeral container verification`,
+			);
+		}
+
+		return {
+			mode: "ephemeral_container",
+			image: verificationConfig.image,
+			command: verificationConfig.command,
+			shell: verificationConfig.shell ?? "sh",
+			workdir: verificationConfig.workdir ?? "/workspace",
+			workspaceHostPath:
+				session.workspace.repoHostPaths?.[repository.id] ??
+				session.workspace.hostPath ??
+				session.workspace.path,
+			exitCode: null,
+			stdout: "",
+			stderr:
+				error instanceof Error
+					? error.message
+					: `Unknown error: ${String(error)}`,
+			durationMs: 0,
+			timedOut: false,
+			artifacts: [],
+		};
+	}
+
+	private buildExternalVerificationPrompt(
+		basePrompt: string,
+		result: VerificationExecutionResult,
+	): string {
+		const artifacts =
+			result.artifacts.length > 0
+				? result.artifacts.map((artifact) => `- ${artifact}`).join("\n")
+				: "- none";
+
+		const stdout = this.escapeXml(
+			this.truncateVerificationOutput(result.stdout, 12_000) || "(empty)",
+		);
+		const stderr = this.escapeXml(
+			this.truncateVerificationOutput(result.stderr, 12_000) || "(empty)",
+		);
+
+		return `${basePrompt}
+
+IMPORTANT: Cyrus has already executed the verification commands externally in an ephemeral container.
+Do NOT re-run test, lint, or typecheck commands in this session. Use the external results below, then validate acceptance criteria and return the required JSON result.
+
+<external_verification>
+  <mode>${result.mode}</mode>
+  <image>${this.escapeXml(result.image)}</image>
+  <shell>${this.escapeXml(result.shell)}</shell>
+  <command>${this.escapeXml(result.command)}</command>
+  <workdir>${this.escapeXml(result.workdir)}</workdir>
+  <workspace_host_path>${this.escapeXml(result.workspaceHostPath)}</workspace_host_path>
+  <exit_code>${result.exitCode === null ? "unknown" : result.exitCode}</exit_code>
+  <timed_out>${result.timedOut}</timed_out>
+  <duration_ms>${result.durationMs}</duration_ms>
+  <artifacts>
+${this.escapeXml(artifacts)}
+  </artifacts>
+  <stdout>
+${stdout}
+  </stdout>
+  <stderr>
+${stderr}
+  </stderr>
+</external_verification>`;
+	}
+
+	private truncateVerificationOutput(text: string, maxLength: number): string {
+		if (text.length <= maxLength) {
+			return text;
+		}
+
+		return `${text.slice(0, maxLength)}\n...[truncated]`;
+	}
+
+	private escapeXml(value: string): string {
+		return value
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&apos;");
 	}
 
 	/**
@@ -5350,6 +5565,131 @@ ${input.userComment}
 		}
 
 		return { config, runnerType };
+	}
+
+	private async prepareRunnerConfigForAgentExecution(
+		sessionId: string,
+		session: CyrusAgentSession,
+		repository: RepositoryConfig,
+		runnerType: RunnerType,
+		runnerConfig: AgentRunnerConfig,
+	): Promise<AgentRunnerConfig> {
+		const agentExecution = repository.agentExecution;
+		if (
+			!agentExecution ||
+			agentExecution.mode !== "persistent_issue_container"
+		) {
+			return runnerConfig;
+		}
+
+		const runtime = await this.issueContainerManager.ensureRuntime({
+			sessionId,
+			issueId: session.issueContext?.issueId ?? session.issueId,
+			issueIdentifier:
+				session.issueContext?.issueIdentifier ??
+				session.issue?.identifier ??
+				sessionId,
+			repository,
+			runnerType,
+			workingDirectory: runnerConfig.workingDirectory ?? session.workspace.path,
+			allowedDirectories: runnerConfig.allowedDirectories ?? [],
+		});
+		if (!runtime) {
+			return runnerConfig;
+		}
+
+		const containerizedConfig = {
+			...runnerConfig,
+		} as AgentRunnerConfig & Record<string, unknown>;
+
+		if (runnerType === "claude") {
+			(containerizedConfig as any).containerBridge = {
+				command: runtime.wrapperPath,
+			};
+		} else if (runnerType === "codex") {
+			containerizedConfig.codexPath = runtime.wrapperPath;
+		} else if (runnerType === "cursor") {
+			containerizedConfig.cursorPath = runtime.wrapperPath;
+		} else if (runnerType === "gemini") {
+			containerizedConfig.geminiPath = runtime.wrapperPath;
+		}
+
+		return containerizedConfig;
+	}
+
+	private async cleanupAgentExecutionRuntime(
+		sessionId: string,
+		session: CyrusAgentSession,
+	): Promise<void> {
+		const repoId =
+			this.sessionRepositories.get(sessionId) ??
+			session.repositories[0]?.repositoryId;
+		const repository = repoId ? this.repositories.get(repoId) : undefined;
+		if (
+			!repository ||
+			repository.agentExecution?.mode !== "persistent_issue_container"
+		) {
+			return;
+		}
+
+		const issueIdentifier =
+			session.issueContext?.issueIdentifier ??
+			session.issue?.identifier ??
+			sessionId;
+		try {
+			await this.issueContainerManager.destroyRuntime(
+				sessionId,
+				repository,
+				issueIdentifier,
+			);
+		} catch (error) {
+			this.logger.error(
+				`Failed to clean up issue container for session ${sessionId}`,
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		}
+	}
+
+	private async syncCliAgentSessionStatus(
+		sessionId: string,
+		session: CyrusAgentSession,
+	): Promise<void> {
+		const repoId =
+			this.sessionRepositories.get(sessionId) ??
+			session.repositories[0]?.repositoryId;
+		const repository = repoId ? this.repositories.get(repoId) : undefined;
+		const linearWorkspaceId = repository?.linearWorkspaceId;
+		if (!linearWorkspaceId || !session.externalSessionId) {
+			return;
+		}
+
+		const issueTracker = this.issueTrackers.get(linearWorkspaceId) as
+			| (IIssueTrackerService & {
+					updateAgentSessionStatus?: (
+						sessionId: string,
+						status: string,
+					) => Promise<unknown>;
+			  })
+			| undefined;
+		if (
+			!issueTracker ||
+			issueTracker.getPlatformType() !== "cli" ||
+			typeof issueTracker.updateAgentSessionStatus !== "function"
+		) {
+			return;
+		}
+
+		try {
+			await issueTracker.updateAgentSessionStatus(
+				session.externalSessionId,
+				session.status,
+			);
+		} catch (error) {
+			this.logger.error(
+				`Failed to sync CLI agent session status for session ${sessionId}`,
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		}
 	}
 
 	/**
@@ -6091,7 +6431,15 @@ ${input.userComment}
 		);
 
 		// Create the appropriate runner based on session state
-		const runner = this.createRunnerForType(runnerType, runnerConfig);
+		const preparedRunnerConfig =
+			await this.prepareRunnerConfigForAgentExecution(
+				sessionId,
+				session,
+				repository,
+				runnerType,
+				runnerConfig,
+			);
+		const runner = this.createRunnerForType(runnerType, preparedRunnerConfig);
 
 		// Store runner
 		agentSessionManager.addAgentRunner(sessionId, runner);

@@ -464,6 +464,29 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(mockOnSessionCreated).toBeDefined();
 		});
 
+		it("keeps the Linear MCP server when issue tracker lacks getClient", () => {
+			(edgeWorker as any).issueTrackers.set(mockRepository.linearWorkspaceId, {
+				fetchIssue: vi.fn(),
+				getIssueLabels: vi.fn().mockResolvedValue([]),
+			});
+
+			const mcpConfig = (edgeWorker as any).buildMcpConfig(
+				mockRepository.id,
+				mockRepository.linearWorkspaceId,
+				"parent-session-123",
+			);
+
+			expect(mcpConfig.linear).toEqual({
+				type: "http",
+				url: "https://mcp.linear.app/mcp",
+				headers: {
+					Authorization: "Bearer test-token",
+				},
+			});
+			expect(mcpConfig["cyrus-tools"]).toBeUndefined();
+			expect(createCyrusToolsServer).not.toHaveBeenCalled();
+		});
+
 		it("should include CYRUS_API_KEY as Authorization header for cyrus-tools MCP config", () => {
 			const previousApiKey = process.env.CYRUS_API_KEY;
 			process.env.CYRUS_API_KEY = "test-cyrus-api-key";

@@ -8,6 +8,8 @@ import type { Issue } from "./issue-tracker/types.js";
 
 // Re-export schemas and types from config-schemas
 export {
+	type AgentExecutionConfig,
+	AgentExecutionConfigSchema,
 	type EdgeConfig,
 	type EdgeConfigPayload,
 	EdgeConfigPayloadSchema,
@@ -19,6 +21,8 @@ export {
 	type RepositoryConfigPayload,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
+	type RepositoryHostPaths,
+	RepositoryHostPathsSchema,
 	type RunnerType,
 	RunnerTypeSchema,
 	requireLinearWorkspaceId,
@@ -26,6 +30,8 @@ export {
 	UserAccessControlConfigSchema,
 	type UserIdentifier,
 	UserIdentifierSchema,
+	type VerificationConfig,
+	VerificationConfigSchema,
 } from "./config-schemas.js";
 
 /**

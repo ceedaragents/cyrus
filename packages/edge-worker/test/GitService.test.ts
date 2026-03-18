@@ -308,7 +308,47 @@ describe("GitService", () => {
 			const result = await gitService.createGitWorktree(issue, [repository]);
 
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
+			expect(result.hostPath).toBe("/home/user/.cyrus/worktrees/ENG-97");
 			expect(result.isGitWorktree).toBe(false);
+		});
+
+		it("maps single-repo worktree paths to host-visible paths", async () => {
+			const issue = makeIssue();
+			const repository = makeRepository({
+				workspaceBaseDir: "/workspace/worktrees",
+				hostPaths: {
+					workspaceBaseDir: "/host/worktrees",
+				},
+			});
+
+			mockExecSync.mockImplementation((cmd: any) => {
+				const cmdStr = String(cmd);
+				if (cmdStr === "git rev-parse --git-dir") {
+					return Buffer.from(".git\n");
+				}
+				if (cmdStr === "git worktree list --porcelain") {
+					return "";
+				}
+				if (cmdStr.includes("git rev-parse --verify")) {
+					throw new Error("not found");
+				}
+				if (cmdStr.includes("git fetch origin")) {
+					return Buffer.from("");
+				}
+				if (cmdStr.includes("git ls-remote")) {
+					return Buffer.from("abc123 refs/heads/main\n");
+				}
+				if (cmdStr.includes("git worktree add")) {
+					return Buffer.from("");
+				}
+				return Buffer.from("");
+			});
+
+			const result = await gitService.createGitWorktree(issue, [repository]);
+
+			expect(result.path).toBe("/workspace/worktrees/ENG-97");
+			expect(result.hostPath).toBe("/host/worktrees/ENG-97");
+			expect(result.isGitWorktree).toBe(true);
 		});
 	});
 
@@ -321,6 +361,7 @@ describe("GitService", () => {
 			});
 
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
+			expect(result.hostPath).toBe("/home/user/.cyrus/worktrees/ENG-97");
 			expect(result.isGitWorktree).toBe(false);
 			expect(result.repoPaths).toBeUndefined();
 			expect(mockMkdirSync).toHaveBeenCalledWith(
@@ -395,6 +436,7 @@ describe("GitService", () => {
 			const result = await gitService.createGitWorktree(issue, [repo1, repo2]);
 
 			expect(result.path).toBe("/home/user/.cyrus/worktrees/ENG-97");
+			expect(result.hostPath).toBe("/home/user/.cyrus/worktrees/ENG-97");
 			expect(result.isGitWorktree).toBe(true);
 			expect(result.repoPaths).toBeDefined();
 			expect(result.repoPaths!["repo-1"]).toBe(
@@ -403,6 +445,59 @@ describe("GitService", () => {
 			expect(result.repoPaths!["repo-2"]).toBe(
 				"/home/user/.cyrus/worktrees/ENG-97/cyrus-hosted",
 			);
+		});
+
+		it("maps multi-repo workspace paths to host-visible paths", async () => {
+			const issue = makeIssue();
+			const repo1 = makeRepository({
+				id: "repo-1",
+				name: "cyrus",
+				repositoryPath: "/workspace/repos/cyrus",
+				workspaceBaseDir: "/workspace/worktrees",
+				hostPaths: {
+					workspaceBaseDir: "/host/worktrees",
+				},
+			});
+			const repo2 = makeRepository({
+				id: "repo-2",
+				name: "cyrus-hosted",
+				repositoryPath: "/workspace/repos/cyrus-hosted",
+				workspaceBaseDir: "/workspace/worktrees",
+				hostPaths: {
+					workspaceBaseDir: "/host/worktrees",
+				},
+			});
+
+			mockExecSync.mockImplementation((cmd: any) => {
+				const cmdStr = String(cmd);
+				if (cmdStr === "git rev-parse --git-dir") {
+					return Buffer.from(".git\n");
+				}
+				if (cmdStr === "git worktree list --porcelain") {
+					return "";
+				}
+				if (cmdStr.includes("git rev-parse --verify")) {
+					throw new Error("not found");
+				}
+				if (cmdStr.includes("git fetch origin")) {
+					return Buffer.from("");
+				}
+				if (cmdStr.includes("git ls-remote")) {
+					return Buffer.from("abc123 refs/heads/main\n");
+				}
+				if (cmdStr.includes("git worktree add")) {
+					return Buffer.from("");
+				}
+				return Buffer.from("");
+			});
+
+			const result = await gitService.createGitWorktree(issue, [repo1, repo2]);
+
+			expect(result.hostPath).toBe("/host/worktrees/ENG-97");
+			expect(result.repoHostPaths).toEqual({
+				"repo-1": "/host/worktrees/ENG-97/cyrus",
+				"repo-2": "/host/worktrees/ENG-97/cyrus-hosted",
+			});
 		});
 
 		it("uses first repo workspaceBaseDir when no override", async () => {

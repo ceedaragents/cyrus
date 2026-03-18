@@ -12,6 +12,7 @@ This guide walks you through setting up Cyrus completely self-hosted, including 
 - **Node.js** v18 or higher
 - **jq** (for Claude Code parsing)
 - **A public URL** for receiving Linear webhooks
+- **Docker** (optional, required for `verification.mode = "ephemeral_container"` or `agentExecution.mode = "persistent_issue_container"`)
 
 ### Install Dependencies
 
@@ -226,6 +227,20 @@ Cyrus automatically loads `~/.cyrus/.env` on startup. You'll see Cyrus start up 
 For Cyrus to create pull requests, configure Git and GitHub CLI authentication.
 
 See the **[Git & GitHub Setup Guide](./GIT_GITHUB.md)** for complete instructions.
+
+---
+
+## Optional: Containerized Repository Execution
+
+If you want repository-specific Docker images for verification or issue execution, see **[Container Execution](./CONTAINER_EXECUTION.md)**.
+
+Use this when:
+
+- verification commands need the target repo's own debug/build image
+- you want one persistent issue container per task instead of installing all dependencies into the Cyrus host
+- you need runner auth/config directories such as `~/.codex` mounted into issue containers
+
+This setup is intended for dedicated self-hosted runner machines. Treat Docker access as privileged.
 
 ---
 

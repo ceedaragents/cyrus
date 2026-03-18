@@ -14,7 +14,10 @@ export interface LinearCredentials {
  */
 export interface Workspace {
 	path: string;
+	hostPath?: string;
 	isGitWorktree: boolean;
+	repoPaths?: Record<string, string>;
+	repoHostPaths?: Record<string, string>;
 }
 
 /**

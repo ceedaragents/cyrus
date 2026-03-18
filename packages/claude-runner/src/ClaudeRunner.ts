@@ -1,3 +1,4 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
 	createWriteStream,
@@ -23,6 +24,11 @@ import {
 	StreamingPrompt,
 } from "cyrus-core";
 import dotenv from "dotenv";
+import type {
+	ClaudeBridgeChildMessage,
+	ClaudeBridgeHostMessage,
+	SerializableClaudeBridgeConfig,
+} from "./container-bridge-types.js";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
 export class AbortError extends Error {
@@ -71,6 +77,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private formatter: IMessageFormatter;
 	private pendingResultMessage: SDKMessage | null = null;
 	private canUseToolCallback: CanUseTool | undefined;
+	private bridgeProcess: ChildProcessWithoutNullStreams | null = null;
+	private bridgeStreamingMode = false;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
@@ -227,6 +235,17 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 * Add a message to the streaming prompt (only works when in streaming mode)
 	 */
 	addStreamMessage(content: string): void {
+		if (this.bridgeProcess) {
+			if (!this.bridgeStreamingMode) {
+				throw new Error("Cannot add stream message when not in streaming mode");
+			}
+			this.sendBridgeMessage({
+				type: "stream-message",
+				content,
+			});
+			return;
+		}
+
 		if (!this.streamingPrompt) {
 			throw new Error("Cannot add stream message when not in streaming mode");
 		}
@@ -237,6 +256,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 * Complete the streaming prompt (no more messages will be added)
 	 */
 	completeStream(): void {
+		if (this.bridgeProcess) {
+			if (this.bridgeStreamingMode) {
+				this.sendBridgeMessage({ type: "complete-stream" });
+				this.bridgeStreamingMode = false;
+			}
+			return;
+		}
+
 		if (this.streamingPrompt) {
 			this.streamingPrompt.complete();
 		}
@@ -290,257 +317,38 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		this.messages = [];
 
 		try {
-			// Determine prompt mode and setup
-			let promptForQuery: string | AsyncIterable<SDKUserMessage>;
+			const executionConfig = this.buildExecutionConfig();
 
 			if (stringPrompt !== null && stringPrompt !== undefined) {
-				// String mode
 				this.logger.debug(
 					`Starting query with string prompt length: ${stringPrompt.length} characters`,
 				);
-				promptForQuery = stringPrompt;
-			} else {
-				// Streaming mode
-				this.logger.debug("Starting query with streaming prompt");
-				this.streamingPrompt = new StreamingPrompt(
-					null,
-					streamingInitialPrompt,
-				);
-				promptForQuery = this.streamingPrompt;
-			}
-
-			// Process allowed directories by adding Read patterns to allowedTools
-			let processedAllowedTools = this.config.allowedTools
-				? [...this.config.allowedTools]
-				: undefined;
-			if (
-				this.config.allowedDirectories &&
-				this.config.allowedDirectories.length > 0
-			) {
-				const directoryTools = this.config.allowedDirectories.map((dir) => {
-					// Add extra / prefix for absolute paths to ensure Claude Code recognizes them properly
-					// See: https://docs.anthropic.com/en/docs/claude-code/settings#read-%26-edit
-					const prefixedPath = dir.startsWith("/") ? `/${dir}` : dir;
-					return `Read(${prefixedPath}/**)`;
-				});
-				processedAllowedTools = processedAllowedTools
-					? [...processedAllowedTools, ...directoryTools]
-					: directoryTools;
-			}
-
-			// Process disallowed tools - no defaults, just pass through
-			// Only pass if array is non-empty
-			const processedDisallowedTools =
-				this.config.disallowedTools && this.config.disallowedTools.length > 0
-					? this.config.disallowedTools
-					: undefined;
-
-			// Log disallowed tools if configured
-			if (processedDisallowedTools) {
-				this.logger.debug(
-					"Disallowed tools configured:",
-					processedDisallowedTools,
-				);
-			}
-
-			// Parse MCP config - merge file(s) and inline configs
-			let mcpServers = {};
-
-			// Build list of config paths to load (in order of precedence)
-			const configPaths: string[] = [];
-
-			// Auto-detect .mcp.json in working directory (base config)
-			if (this.config.workingDirectory) {
-				const autoMcpPath = join(this.config.workingDirectory, ".mcp.json");
-				if (existsSync(autoMcpPath)) {
-					try {
-						// Validate it's readable JSON before adding to paths
-						const testContent = readFileSync(autoMcpPath, "utf8");
-						JSON.parse(testContent);
-						configPaths.push(autoMcpPath);
-						this.logger.debug(`Auto-detected MCP config at ${autoMcpPath}`);
-					} catch (_error) {
-						// Silently skip invalid .mcp.json files (could be test fixtures, etc.)
-						this.logger.debug(`Skipping invalid .mcp.json at ${autoMcpPath}`);
-					}
-				}
-			}
-
-			// Add explicitly configured paths (these will extend/override the base config)
-			if (this.config.mcpConfigPath) {
-				const explicitPaths = Array.isArray(this.config.mcpConfigPath)
-					? this.config.mcpConfigPath
-					: [this.config.mcpConfigPath];
-				configPaths.push(...explicitPaths);
-			}
-
-			// Load from all config paths
-			for (const path of configPaths) {
-				try {
-					const mcpConfigContent = readFileSync(path, "utf8");
-					const mcpConfig = JSON.parse(mcpConfigContent);
-					const servers = mcpConfig.mcpServers || {};
-					// Normalize transport type for file-loaded configs.
-					// Config files (.mcp.json, mcp-*.json) often omit the `type` field,
-					// but the SDK requires an explicit discriminator for non-stdio transports.
-					for (const config of Object.values(servers) as Record<
-						string,
-						unknown
-					>[]) {
-						if (!config.type && typeof config.url === "string") {
-							config.type = "http";
-						}
-					}
-					mcpServers = { ...mcpServers, ...servers };
-					this.logger.debug(
-						`Loaded MCP servers from ${path}: ${Object.keys(servers).join(", ")}`,
-					);
-				} catch (error) {
-					this.logger.error(`Failed to load MCP config from ${path}:`, error);
-				}
-			}
-
-			// Finally, merge inline config (overrides file config for same server names)
-			if (this.config.mcpConfig) {
-				mcpServers = { ...mcpServers, ...this.config.mcpConfig };
-				this.logger.debug(
-					`Final MCP servers after merge: ${Object.keys(mcpServers).join(", ")}`,
-				);
-			}
-
-			// Log allowed directories if configured
-			if (this.config.allowedDirectories) {
-				this.logger.debug(
-					"Allowed directories configured:",
-					this.config.allowedDirectories,
-				);
-			}
-
-			const queryOptions: Parameters<typeof query>[0] = {
-				prompt: promptForQuery,
-				options: {
-					model: this.config.model || "opus",
-					fallbackModel: this.config.fallbackModel || "sonnet",
-					abortController: this.abortController,
-					// Use Claude Code preset by default to maintain backward compatibility
-					// This can be overridden if systemPrompt is explicitly provided
-					systemPrompt: this.config.systemPrompt || {
-						type: "preset",
-						preset: "claude_code",
-						...(this.config.appendSystemPrompt && {
-							append: this.config.appendSystemPrompt,
-						}),
-					},
-					// load file based settings, to maintain more backwards compatibility,
-					// particularly with CLAUDE.md files, settings files, and custom slash commands,
-					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
-					settingSources: ["user", "project", "local"],
-					env: {
-						...process.env,
-						CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
-						CLAUDE_CODE_ENABLE_TASKS: "true",
-						CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
-					},
-					...(this.config.workingDirectory && {
-						cwd: this.config.workingDirectory,
-					}),
-					...(this.config.allowedDirectories && {
-						allowedDirectories: this.config.allowedDirectories,
-					}),
-					...(processedAllowedTools && { allowedTools: processedAllowedTools }),
-					...(processedDisallowedTools && {
-						disallowedTools: processedDisallowedTools,
-					}),
-					...(this.canUseToolCallback && {
-						canUseTool: this.canUseToolCallback,
-					}),
-					...(this.config.resumeSessionId && {
-						resume: this.config.resumeSessionId,
-					}),
-					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
-					...(this.config.hooks && { hooks: this.config.hooks }),
-					...(this.config.tools !== undefined && { tools: this.config.tools }),
-					...(this.config.maxTurns && { maxTurns: this.config.maxTurns }),
-					...(this.config.outputFormat && {
-						outputFormat: this.config.outputFormat,
-					}),
-					...(this.config.extraArgs && { extraArgs: this.config.extraArgs }),
-				},
-			};
-
-			// Process messages from the query
-			for await (const message of query(queryOptions)) {
-				if (!this.sessionInfo?.isRunning) {
-					this.logger.info("Session was stopped, breaking from query loop");
-					break;
-				}
-
-				// Extract session ID from first message if we don't have one yet
-				if (!this.sessionInfo.sessionId && message.session_id) {
-					this.sessionInfo.sessionId = message.session_id;
-					this.logger.info(
-						`Session ID assigned by Claude: ${message.session_id}`,
-					);
-
-					// Update streaming prompt with session ID if it exists
-					if (this.streamingPrompt) {
-						this.streamingPrompt.updateSessionId(message.session_id);
-					}
-
-					// Re-setup logging now that we have the session ID
-					this.setupLogging();
-				}
-
-				this.messages.push(message);
-
-				// Log to detailed JSON log
-				if (this.logStream) {
-					const logEntry = {
-						type: "sdk-message",
-						message,
-						timestamp: new Date().toISOString(),
-					};
-					this.logStream.write(`${JSON.stringify(logEntry)}\n`);
-				}
-
-				// Log to human-readable log
-				if (this.readableLogStream) {
-					this.writeReadableLogEntry(message);
-				}
-
-				// Emit appropriate events based on message type
-				// Defer result message emission until after loop completes to avoid race conditions
-				// where subroutine transitions start before the runner has fully cleaned up
-				if (message.type === "result") {
-					this.pendingResultMessage = message;
-					// Complete streaming prompt immediately so it stops accepting input
-					if (this.streamingPrompt) {
-						this.logger.debug(
-							"Got result message, completing streaming prompt",
-						);
-						this.streamingPrompt.complete();
-					}
+				if (this.config.containerBridge) {
+					await this.startWithContainerBridge({
+						mode: "string",
+						prompt: stringPrompt,
+						executionConfig,
+					});
 				} else {
-					this.emit("message", message);
-					this.processMessage(message);
+					await this.startWithLocalQuery(stringPrompt, executionConfig);
+				}
+			} else {
+				this.logger.debug("Starting query with streaming prompt");
+				if (this.config.containerBridge) {
+					this.bridgeStreamingMode = true;
+					await this.startWithContainerBridge({
+						mode: "streaming",
+						initialPrompt: streamingInitialPrompt,
+						executionConfig,
+					});
+				} else {
+					this.streamingPrompt = new StreamingPrompt(
+						null,
+						streamingInitialPrompt,
+					);
+					await this.startWithLocalQuery(this.streamingPrompt, executionConfig);
 				}
 			}
-
-			// Session completed successfully - mark as not running BEFORE emitting result
-			// This ensures any code checking isRunning() during result processing sees the correct state
-			this.logger.info(
-				`Session completed with ${this.messages.length} messages`,
-			);
-			this.sessionInfo.isRunning = false;
-
-			// Emit deferred result message after marking isRunning = false
-			if (this.pendingResultMessage) {
-				this.emit("message", this.pendingResultMessage);
-				this.processMessage(this.pendingResultMessage);
-				this.pendingResultMessage = null;
-			}
-
-			this.emit("complete", this.messages);
 		} catch (error) {
 			if (this.sessionInfo) {
 				this.sessionInfo.isRunning = false;
@@ -577,6 +385,11 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			// Clean up
 			this.abortController = null;
 			this.pendingResultMessage = null;
+			this.bridgeStreamingMode = false;
+			if (this.bridgeProcess) {
+				this.bridgeProcess.removeAllListeners();
+				this.bridgeProcess = null;
+			}
 
 			// Complete and clean up streaming prompt if it exists
 			if (this.streamingPrompt) {
@@ -596,6 +409,424 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		return this.sessionInfo;
+	}
+
+	private buildExecutionConfig(): SerializableClaudeBridgeConfig {
+		let processedAllowedTools = this.config.allowedTools
+			? [...this.config.allowedTools]
+			: undefined;
+		if (
+			this.config.allowedDirectories &&
+			this.config.allowedDirectories.length > 0
+		) {
+			const directoryTools = this.config.allowedDirectories.map((dir) => {
+				const prefixedPath = dir.startsWith("/") ? `/${dir}` : dir;
+				return `Read(${prefixedPath}/**)`;
+			});
+			processedAllowedTools = processedAllowedTools
+				? [...processedAllowedTools, ...directoryTools]
+				: directoryTools;
+		}
+
+		const processedDisallowedTools =
+			this.config.disallowedTools && this.config.disallowedTools.length > 0
+				? this.config.disallowedTools
+				: undefined;
+		if (processedDisallowedTools) {
+			this.logger.debug(
+				"Disallowed tools configured:",
+				processedDisallowedTools,
+			);
+		}
+
+		const mcpServers = this.loadMcpServers();
+		if (this.config.allowedDirectories) {
+			this.logger.debug(
+				"Allowed directories configured:",
+				this.config.allowedDirectories,
+			);
+		}
+
+		return {
+			workingDirectory: this.config.workingDirectory,
+			allowedTools: processedAllowedTools,
+			disallowedTools: processedDisallowedTools,
+			allowedDirectories: this.config.allowedDirectories,
+			resumeSessionId: this.config.resumeSessionId,
+			model: this.config.model || "opus",
+			fallbackModel: this.config.fallbackModel || "sonnet",
+			systemPrompt: this.config.systemPrompt || {
+				type: "preset",
+				preset: "claude_code",
+				...(this.config.appendSystemPrompt && {
+					append: this.config.appendSystemPrompt,
+				}),
+			},
+			...(Object.keys(mcpServers).length > 0 && { mcpConfig: mcpServers }),
+			...(this.config.tools !== undefined && { tools: this.config.tools }),
+			...(this.config.maxTurns && { maxTurns: this.config.maxTurns }),
+			...(this.config.outputFormat && {
+				outputFormat: this.config.outputFormat,
+			}),
+			...(this.config.extraArgs && { extraArgs: this.config.extraArgs }),
+			env: {
+				...process.env,
+				CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
+				CLAUDE_CODE_ENABLE_TASKS: "true",
+				CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+			},
+			enableDefaultPostToolUseHooks: Boolean(this.config.hooks?.PostToolUse),
+		};
+	}
+
+	private loadMcpServers(): Record<string, any> {
+		let mcpServers = {};
+		const configPaths: string[] = [];
+
+		if (this.config.workingDirectory) {
+			const autoMcpPath = join(this.config.workingDirectory, ".mcp.json");
+			if (existsSync(autoMcpPath)) {
+				try {
+					const testContent = readFileSync(autoMcpPath, "utf8");
+					JSON.parse(testContent);
+					configPaths.push(autoMcpPath);
+					this.logger.debug(`Auto-detected MCP config at ${autoMcpPath}`);
+				} catch (_error) {
+					this.logger.debug(`Skipping invalid .mcp.json at ${autoMcpPath}`);
+				}
+			}
+		}
+
+		if (this.config.mcpConfigPath) {
+			const explicitPaths = Array.isArray(this.config.mcpConfigPath)
+				? this.config.mcpConfigPath
+				: [this.config.mcpConfigPath];
+			configPaths.push(...explicitPaths);
+		}
+
+		for (const path of configPaths) {
+			try {
+				const mcpConfigContent = readFileSync(path, "utf8");
+				const mcpConfig = JSON.parse(mcpConfigContent);
+				const servers = mcpConfig.mcpServers || {};
+				for (const config of Object.values(servers) as Record<
+					string,
+					unknown
+				>[]) {
+					if (!config.type && typeof config.url === "string") {
+						config.type = "http";
+					}
+				}
+				mcpServers = { ...mcpServers, ...servers };
+				this.logger.debug(
+					`Loaded MCP servers from ${path}: ${Object.keys(servers).join(", ")}`,
+				);
+			} catch (error) {
+				this.logger.error(`Failed to load MCP config from ${path}:`, error);
+			}
+		}
+
+		if (this.config.mcpConfig) {
+			mcpServers = { ...mcpServers, ...this.config.mcpConfig };
+			this.logger.debug(
+				`Final MCP servers after merge: ${Object.keys(mcpServers).join(", ")}`,
+			);
+		}
+
+		return mcpServers;
+	}
+
+	private async startWithLocalQuery(
+		prompt: string | AsyncIterable<SDKUserMessage>,
+		executionConfig: SerializableClaudeBridgeConfig,
+	): Promise<void> {
+		const queryOptions: Parameters<typeof query>[0] = {
+			prompt,
+			options: {
+				model: executionConfig.model || "opus",
+				fallbackModel: executionConfig.fallbackModel || "sonnet",
+				abortController: this.abortController ?? undefined,
+				systemPrompt: executionConfig.systemPrompt || {
+					type: "preset",
+					preset: "claude_code",
+				},
+				settingSources: ["user", "project", "local"],
+				env: executionConfig.env,
+				...(executionConfig.workingDirectory && {
+					cwd: executionConfig.workingDirectory,
+				}),
+				...(executionConfig.allowedDirectories && {
+					allowedDirectories: executionConfig.allowedDirectories,
+				}),
+				...(executionConfig.allowedTools && {
+					allowedTools: executionConfig.allowedTools,
+				}),
+				...(executionConfig.disallowedTools && {
+					disallowedTools: executionConfig.disallowedTools,
+				}),
+				...(this.canUseToolCallback && {
+					canUseTool: this.canUseToolCallback,
+				}),
+				...(executionConfig.resumeSessionId && {
+					resume: executionConfig.resumeSessionId,
+				}),
+				...(executionConfig.mcpConfig && {
+					mcpServers: executionConfig.mcpConfig,
+				}),
+				...(this.config.hooks && { hooks: this.config.hooks }),
+				...(executionConfig.tools !== undefined && {
+					tools: executionConfig.tools,
+				}),
+				...(executionConfig.maxTurns && { maxTurns: executionConfig.maxTurns }),
+				...(executionConfig.outputFormat && {
+					outputFormat: executionConfig.outputFormat,
+				}),
+				...(executionConfig.extraArgs && {
+					extraArgs: executionConfig.extraArgs,
+				}),
+			},
+		};
+
+		for await (const message of query(queryOptions)) {
+			if (!this.sessionInfo?.isRunning) {
+				this.logger.info("Session was stopped, breaking from query loop");
+				break;
+			}
+			this.handleIncomingMessage(message);
+		}
+
+		this.finalizeSuccessfulSession();
+	}
+
+	private async startWithContainerBridge(input: {
+		mode: "string" | "streaming";
+		prompt?: string;
+		initialPrompt?: string;
+		executionConfig: SerializableClaudeBridgeConfig;
+	}): Promise<void> {
+		const bridgeConfig = this.config.containerBridge;
+		if (!bridgeConfig) {
+			throw new Error("containerBridge is not configured");
+		}
+
+		await new Promise<void>((resolve, reject) => {
+			let finished = false;
+			let completeListener: (() => void) | null = null;
+			const child = spawn(bridgeConfig.command, bridgeConfig.args ?? [], {
+				cwd: bridgeConfig.cwd,
+				env: bridgeConfig.env
+					? {
+							...process.env,
+							...bridgeConfig.env,
+						}
+					: process.env,
+				stdio: ["pipe", "pipe", "pipe"],
+			});
+			this.bridgeProcess = child;
+
+			let stdoutBuffer = "";
+			let stderrBuffer = "";
+
+			const finish = (error?: Error) => {
+				if (finished) {
+					return;
+				}
+				finished = true;
+				if (completeListener) {
+					this.off("complete", completeListener);
+					completeListener = null;
+				}
+				child.stdout.removeAllListeners();
+				child.stderr.removeAllListeners();
+				child.removeAllListeners();
+				this.bridgeProcess = null;
+				if (error) {
+					reject(error);
+				} else {
+					resolve();
+				}
+			};
+
+			child.stdout.setEncoding("utf8");
+			child.stdout.on("data", (chunk: string) => {
+				stdoutBuffer += chunk;
+				let newlineIndex = stdoutBuffer.indexOf("\n");
+				while (newlineIndex !== -1) {
+					const line = stdoutBuffer.slice(0, newlineIndex).trim();
+					stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+					if (line.length > 0) {
+						this.handleBridgeMessage(line).catch((error) => {
+							finish(error instanceof Error ? error : new Error(String(error)));
+						});
+					}
+					newlineIndex = stdoutBuffer.indexOf("\n");
+				}
+			});
+
+			child.stderr.setEncoding("utf8");
+			child.stderr.on("data", (chunk: string) => {
+				stderrBuffer += chunk;
+				this.logger.debug(`[ClaudeBridge] ${chunk.trimEnd()}`);
+			});
+
+			child.on("error", (error) => {
+				finish(error);
+			});
+
+			child.on("exit", (code, signal) => {
+				if (finished) {
+					return;
+				}
+				if (
+					!this.sessionInfo?.isRunning &&
+					(signal === "SIGTERM" || code === 0)
+				) {
+					finish();
+					return;
+				}
+				const details = stderrBuffer.trim();
+				const suffix = details ? `\n${details}` : "";
+				finish(
+					new Error(
+						`Claude container bridge exited unexpectedly (code=${code ?? "null"}, signal=${signal ?? "null"})${suffix}`,
+					),
+				);
+			});
+
+			completeListener = () => {
+				const listener = completeListener;
+				if (listener) {
+					this.off("complete", listener);
+				}
+				completeListener = null;
+				finish();
+			};
+			this.on("complete", completeListener);
+
+			const initialMessage: ClaudeBridgeHostMessage =
+				input.mode === "string"
+					? {
+							type: "start",
+							prompt: input.prompt || "",
+							config: input.executionConfig,
+						}
+					: {
+							type: "startStreaming",
+							initialPrompt: input.initialPrompt,
+							config: input.executionConfig,
+						};
+			this.sendBridgeMessage(initialMessage);
+		});
+	}
+
+	private async handleBridgeMessage(line: string): Promise<void> {
+		const message = JSON.parse(line) as ClaudeBridgeChildMessage;
+		switch (message.type) {
+			case "sdk-message":
+				this.handleIncomingMessage(message.message);
+				return;
+			case "ask-user-question": {
+				const result = this.config.onAskUserQuestion
+					? await this.config.onAskUserQuestion(
+							message.input,
+							message.sessionId || this.sessionInfo?.sessionId || "pending",
+							this.abortController?.signal ?? new AbortController().signal,
+						)
+					: {
+							answered: false,
+							message: "AskUserQuestion handler not configured",
+						};
+				this.sendBridgeMessage({
+					type: "ask-user-question-result",
+					requestId: message.requestId,
+					result,
+				});
+				return;
+			}
+			case "complete":
+				this.finalizeSuccessfulSession();
+				return;
+			case "error":
+				throw new Error(message.message);
+		}
+	}
+
+	private sendBridgeMessage(message: ClaudeBridgeHostMessage): void {
+		if (!this.bridgeProcess?.stdin || this.bridgeProcess.stdin.destroyed) {
+			throw new Error("Claude container bridge stdin is not available");
+		}
+		this.bridgeProcess.stdin.write(`${JSON.stringify(message)}\n`);
+	}
+
+	private handleIncomingMessage(message: SDKMessage): void {
+		if (!this.sessionInfo) {
+			return;
+		}
+
+		if (!this.sessionInfo.sessionId && message.session_id) {
+			this.sessionInfo.sessionId = message.session_id;
+			this.logger.info(`Session ID assigned by Claude: ${message.session_id}`);
+			if (this.streamingPrompt) {
+				this.streamingPrompt.updateSessionId(message.session_id);
+			}
+			this.setupLogging();
+		}
+
+		this.messages.push(message);
+		this.writeDetailedLogEntry(message);
+		if (this.readableLogStream) {
+			this.writeReadableLogEntry(message);
+		}
+
+		if (message.type === "result") {
+			this.pendingResultMessage = message;
+			this.completeActiveStream();
+			return;
+		}
+
+		this.emit("message", message);
+		this.processMessage(message);
+	}
+
+	private finalizeSuccessfulSession(): void {
+		if (!this.sessionInfo) {
+			return;
+		}
+
+		this.logger.info(`Session completed with ${this.messages.length} messages`);
+		this.sessionInfo.isRunning = false;
+
+		if (this.pendingResultMessage) {
+			this.emit("message", this.pendingResultMessage);
+			this.processMessage(this.pendingResultMessage);
+			this.pendingResultMessage = null;
+		}
+
+		this.emit("complete", this.messages);
+	}
+
+	private completeActiveStream(): void {
+		if (this.streamingPrompt) {
+			this.logger.debug("Got result message, completing streaming prompt");
+			this.streamingPrompt.complete();
+			return;
+		}
+		if (this.bridgeStreamingMode) {
+			this.bridgeStreamingMode = false;
+		}
+	}
+
+	private writeDetailedLogEntry(message: SDKMessage): void {
+		if (!this.logStream) {
+			return;
+		}
+
+		const logEntry = {
+			type: "sdk-message",
+			message,
+			timestamp: new Date().toISOString(),
+		};
+		this.logStream.write(`${JSON.stringify(logEntry)}\n`);
 	}
 
 	/**
@@ -647,6 +878,18 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 * Stop the current Claude session
 	 */
 	stop(): void {
+		if (this.bridgeProcess) {
+			this.logger.info("Stopping container bridge session");
+			try {
+				this.sendBridgeMessage({ type: "stop" });
+			} catch {
+				// Ignore bridge write failures during shutdown.
+			}
+			this.bridgeProcess.kill("SIGTERM");
+			this.bridgeProcess = null;
+			this.bridgeStreamingMode = false;
+		}
+
 		if (this.abortController) {
 			this.logger.info("Stopping session");
 			this.abortController.abort();
@@ -676,8 +919,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 */
 	isStreaming(): boolean {
 		return (
-			this.streamingPrompt !== null &&
-			!this.streamingPrompt.completed &&
+			(this.bridgeStreamingMode ||
+				(this.streamingPrompt !== null && !this.streamingPrompt.completed)) &&
 			this.isRunning()
 		);
 	}

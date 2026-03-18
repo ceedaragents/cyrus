@@ -114,9 +114,12 @@ describe("JSON Schema export", () => {
 				"appendInstruction",
 				"model",
 				"fallbackModel",
+				"hostPaths",
+				"agentExecution",
 				"promptTemplatePath",
 				"labelPrompts",
 				"userAccessControl",
+				"verification",
 			];
 			for (const field of fields) {
 				expect(schema.properties).toHaveProperty(field);
@@ -139,6 +142,20 @@ describe("JSON Schema export", () => {
 				{ type: "string" },
 				{ type: "array", items: { type: "string" } },
 			]);
+		});
+
+		it("represents verification as a discriminated union", () => {
+			const verification = schema.properties.verification;
+			const variants = verification.oneOf ?? verification.anyOf;
+			expect(variants).toBeDefined();
+			expect(variants).toHaveLength(2);
+		});
+
+		it("represents agentExecution as a discriminated union", () => {
+			const agentExecution = schema.properties.agentExecution;
+			const variants = agentExecution.oneOf ?? agentExecution.anyOf;
+			expect(variants).toBeDefined();
+			expect(variants).toHaveLength(2);
 		});
 	});
 

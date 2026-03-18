@@ -17,6 +17,11 @@ export type {
 } from "./AskUserQuestionHandler.js";
 export { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 export type {
+	EnsureIssueContainerInput,
+	IssueContainerRuntime,
+} from "./agent-execution/index.js";
+export { PersistentIssueContainerManager } from "./agent-execution/index.js";
+export type {
 	ChatPlatformAdapter,
 	ChatPlatformName,
 	ChatSessionHandlerDeps,
@@ -54,4 +59,9 @@ export {
 	type ValidationLoopState,
 	type ValidationResult,
 } from "./validation/index.js";
+export type {
+	VerificationExecutionInput,
+	VerificationExecutionResult,
+} from "./verification/index.js";
+export { EphemeralContainerVerificationExecutor } from "./verification/index.js";
 export { WorktreeIncludeService } from "./WorktreeIncludeService.js";

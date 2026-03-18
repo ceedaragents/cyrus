@@ -51,6 +51,18 @@
 		"workspaceBaseDir": {
 			"type": "string"
 		},
+		"hostPaths": {
+			"type": "object",
+			"properties": {
+				"repositoryPath": {
+					"type": "string"
+				},
+				"workspaceBaseDir": {
+					"type": "string"
+				}
+			},
+			"additionalProperties": false
+		},
 		"isActive": {
 			"type": "boolean"
 		},
@@ -467,6 +479,118 @@
 				}
 			},
 			"additionalProperties": false
+		},
+		"verification": {
+			"oneOf": [
+				{
+					"type": "object",
+					"properties": {
+						"mode": {
+							"type": "string",
+							"const": "local"
+						}
+					},
+					"required": ["mode"],
+					"additionalProperties": false
+				},
+				{
+					"type": "object",
+					"properties": {
+						"mode": {
+							"type": "string",
+							"const": "ephemeral_container"
+						},
+						"image": {
+							"type": "string"
+						},
+						"command": {
+							"type": "string"
+						},
+						"workdir": {
+							"type": "string"
+						},
+						"shell": {
+							"type": "string"
+						},
+						"timeoutSec": {
+							"type": "integer",
+							"exclusiveMinimum": 0,
+							"maximum": 9007199254740991
+						},
+						"artifactGlobs": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
+					},
+					"required": ["mode", "image", "command"],
+					"additionalProperties": false
+				}
+			]
+		},
+		"agentExecution": {
+			"oneOf": [
+				{
+					"type": "object",
+					"properties": {
+						"mode": {
+							"type": "string",
+							"const": "local"
+						}
+					},
+					"required": ["mode"],
+					"additionalProperties": false
+				},
+				{
+					"type": "object",
+					"properties": {
+						"mode": {
+							"type": "string",
+							"const": "persistent_issue_container"
+						},
+						"image": {
+							"type": "string"
+						},
+						"shell": {
+							"type": "string"
+						},
+						"startupCommand": {
+							"type": "string"
+						},
+						"env": {
+							"type": "object",
+							"propertyNames": {
+								"type": "string"
+							},
+							"additionalProperties": {
+								"type": "string"
+							}
+						},
+						"inheritEnv": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						"mountPaths": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						"supportedRunners": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"enum": ["claude", "codex", "cursor", "gemini"]
+							}
+						}
+					},
+					"required": ["mode", "image"],
+					"additionalProperties": false
+				}
+			]
 		}
 	},
 	"required": [

@@ -109,6 +109,21 @@ export class CLIIssueTrackerService
 	private state: CLIIssueTrackerState;
 	private eventTransport: CLIEventTransport | null = null;
 
+	private buildBranchName(
+		teamKey: string,
+		issueNumber: number,
+		title: string,
+	): string {
+		const slug = title
+			.toLowerCase()
+			.replace(/[^a-z0-9._/-]+/g, "-")
+			.replace(/-{2,}/g, "-")
+			.replace(/\/{2,}/g, "/")
+			.replace(/^[-/.]+|[-/.]+$/g, "")
+			.slice(0, 30);
+		return `${teamKey.toLowerCase()}-${issueNumber}${slug ? `-${slug}` : ""}`;
+	}
+
 	/**
 	 * Create a new CLIIssueTrackerService.
 	 *
@@ -225,7 +240,7 @@ export class CLIIssueTrackerService
 			description: input.description,
 			number: issueNumber,
 			url: `https://linear.app/test/issue/${identifier}`,
-			branchName: `${team.key.toLowerCase()}-${issueNumber}-${input.title.toLowerCase().replace(/\s+/g, "-").slice(0, 30)}`,
+			branchName: this.buildBranchName(team.key, issueNumber, input.title),
 			priority: input.priority ?? 0,
 			priorityLabel: this.getPriorityLabel(input.priority ?? 0),
 			boardOrder: 0,

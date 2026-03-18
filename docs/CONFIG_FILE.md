@@ -50,6 +50,110 @@ Expected file format:
 
 Learn more about MCP: https://code.claude.com/docs/en/mcp
 
+### `hostPaths` (object)
+
+Optional host-visible paths for repositories that need to launch verification containers from inside Cyrus.
+
+Use this when Cyrus itself runs in a container and the verification container must mount the same worktree using a host path instead of Cyrus's in-container path.
+
+For the full execution model, runner support, and security boundaries, see [CONTAINER_EXECUTION.md](/Users/top/.codex/worktrees/1592/cyrus/docs/CONTAINER_EXECUTION.md).
+
+Properties:
+
+- `repositoryPath` - Host path for the repository root
+- `workspaceBaseDir` - Host path for the directory that contains issue worktrees
+
+Example:
+
+```json
+{
+  "hostPaths": {
+    "repositoryPath": "/host/repos/my-app",
+    "workspaceBaseDir": "/host/worktrees/my-app"
+  }
+}
+```
+
+### `verification` (object)
+
+Configures how the `verifications` subroutine should execute for this repository.
+
+**Local verification (default behavior):**
+
+```json
+{
+  "verification": {
+    "mode": "local"
+  }
+}
+```
+
+**Ephemeral container verification:**
+
+```json
+{
+  "verification": {
+    "mode": "ephemeral_container",
+    "image": "ghcr.io/your-org/project-debug:latest",
+    "command": "pnpm install && pnpm test",
+    "workdir": "/workspace",
+    "shell": "bash",
+    "timeoutSec": 1800,
+    "artifactGlobs": ["test-results/**", "playwright-report/**"]
+  }
+}
+```
+
+When `mode` is `ephemeral_container`, Cyrus runs the verification command in a temporary `docker run --rm` container, captures stdout/stderr/exit code, and then feeds those results into the normal `verifications` subroutine prompt instead of asking the agent to rerun the commands locally.
+
+Use this when tests need repository-specific system dependencies, browsers, language toolchains, or build images that should not be installed into the long-running Cyrus process.
+
+### `agentExecution` (object)
+
+Configures how the main coding agent should execute for this repository.
+
+**Local agent execution (default behavior):**
+
+```json
+{
+  "agentExecution": {
+    "mode": "local"
+  }
+}
+```
+
+**Persistent issue container execution:**
+
+```json
+{
+  "agentExecution": {
+    "mode": "persistent_issue_container",
+    "image": "ghcr.io/your-org/project-dev:latest",
+    "shell": "bash",
+    "startupCommand": "trap 'exit 0' TERM INT; while :; do sleep 5; done",
+    "inheritEnv": ["OPENAI_API_KEY"],
+    "mountPaths": ["/Users/alice/.codex"],
+    "env": {
+      "NODE_ENV": "development",
+      "CODEX_HOME": "/Users/alice/.codex"
+    },
+    "supportedRunners": ["claude", "codex", "cursor", "gemini"]
+  }
+}
+```
+
+When `mode` is `persistent_issue_container`, Cyrus starts one long-lived Docker container per issue and then launches supported runners inside that container for the full session lifecycle.
+
+- `codex`, `cursor`, and `gemini` use `docker exec` wrapper scripts around their normal CLI entrypoints.
+- `claude` uses a small bridge process inside the issue container so the Claude Agent SDK query loop runs in-container while Cyrus keeps the session state machine, activity posting, and stop handling on the host side.
+- `mountPaths` mounts additional host directories into the issue container at the same absolute paths. This is useful for auth/config directories such as `~/.codex`, shared caches, or other tool-specific state that must exist inside the container.
+
+Operational notes:
+
+- If Cyrus runs inside Docker, configure `hostPaths` so child containers can mount the issue worktree using host-visible paths.
+- `supportedRunners` should only list runners whose auth/config state is available inside the issue container.
+- Granting Docker access to Cyrus is effectively privileged access to the runner machine. Use a dedicated runner and prefer a narrow Docker proxy or helper where possible.
+
 ### `teamKeys` (array of strings)
 
 Routes Linear issues from specific teams to this repository. When specified, only issues from matching teams trigger Cyrus.
@@ -269,11 +373,28 @@ When determining allowed tools, Cyrus follows this priority order:
     "id": "workspace-123456",
     "name": "my-app",
     "repositoryPath": "/path/to/repo",
+    "hostPaths": {
+      "repositoryPath": "/host/repos/my-app",
+      "workspaceBaseDir": "/host/worktrees/my-app"
+    },
     "allowedTools": ["Read(**)", "Edit(**)", "Bash(git:*)", "Bash(gh:*)", "Task"],
     "mcpConfigPath": "./mcp-config.json",
     "teamKeys": ["BACKEND"],
     "projectKeys": ["API Service", "Backend Infrastructure"],
     "routingLabels": ["backend", "api", "infrastructure"],
+    "verification": {
+      "mode": "ephemeral_container",
+      "image": "ghcr.io/your-org/my-app-debug:latest",
+      "command": "pnpm install && pnpm test",
+      "workdir": "/workspace",
+      "artifactGlobs": ["test-results/**"]
+    },
+    "agentExecution": {
+      "mode": "persistent_issue_container",
+      "image": "ghcr.io/your-org/my-app-dev:latest",
+      "inheritEnv": ["OPENAI_API_KEY"],
+      "supportedRunners": ["codex"]
+    },
     "labelPrompts": {
       "debugger": {
         "labels": ["Bug", "Hotfix"],

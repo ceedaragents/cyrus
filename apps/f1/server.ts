@@ -19,7 +19,7 @@
  */
 
 import { existsSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAllTools } from "cyrus-claude-runner";
 import {
@@ -40,6 +40,23 @@ const CYRUS_HOME = join(tmpdir(), `cyrus-f1-${Date.now()}`);
 // Optional second repository path for multi-repo orchestration testing
 const CYRUS_REPO_PATH_2 = process.env.CYRUS_REPO_PATH_2;
 const MULTI_REPO_MODE = Boolean(CYRUS_REPO_PATH_2);
+const CYRUS_VERIFICATION_IMAGE = process.env.CYRUS_VERIFICATION_IMAGE?.trim();
+const CYRUS_VERIFICATION_COMMAND =
+	process.env.CYRUS_VERIFICATION_COMMAND?.trim();
+const CYRUS_VERIFICATION_WORKDIR =
+	process.env.CYRUS_VERIFICATION_WORKDIR?.trim() || "/workspace";
+const CYRUS_AGENT_EXECUTION_IMAGE =
+	process.env.CYRUS_AGENT_EXECUTION_IMAGE?.trim();
+const CYRUS_AGENT_EXECUTION_RUNNERS =
+	process.env.CYRUS_AGENT_EXECUTION_RUNNERS?.split(",")
+		.map((value) => value.trim())
+		.filter(Boolean) || [];
+const CYRUS_AGENT_EXECUTION_INHERIT_ENV =
+	process.env.CYRUS_AGENT_EXECUTION_INHERIT_ENV?.split(",")
+		.map((value) => value.trim())
+		.filter(Boolean) || [];
+const HOST_CODEX_HOME = process.env.CODEX_HOME || join(homedir(), ".codex");
+const HAS_HOST_CODEX_HOME = existsSync(HOST_CODEX_HOME);
 
 // Validate port
 if (Number.isNaN(CYRUS_PORT) || CYRUS_PORT < 1 || CYRUS_PORT > 65535) {
@@ -91,6 +108,10 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		id: "f1-test-repo",
 		name: "F1 Test Repository",
 		repositoryPath: CYRUS_REPO_PATH,
+		hostPaths: {
+			repositoryPath: CYRUS_REPO_PATH,
+			workspaceBaseDir: join(CYRUS_HOME, DEFAULT_WORKTREES_DIR),
+		},
 		baseBranch: "main",
 		githubUrl: "https://github.com/f1-test/primary-repo",
 		linearWorkspaceId: "cli-workspace",
@@ -121,6 +142,44 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 				labels: ["graphite", "Graphite"],
 			},
 		},
+		...(CYRUS_VERIFICATION_IMAGE && CYRUS_VERIFICATION_COMMAND
+			? {
+					verification: {
+						mode: "ephemeral_container" as const,
+						image: CYRUS_VERIFICATION_IMAGE,
+						command: CYRUS_VERIFICATION_COMMAND,
+						workdir: CYRUS_VERIFICATION_WORKDIR,
+					},
+				}
+			: {}),
+		...(CYRUS_AGENT_EXECUTION_IMAGE
+			? {
+					agentExecution: {
+						mode: "persistent_issue_container" as const,
+						image: CYRUS_AGENT_EXECUTION_IMAGE,
+						...(HAS_HOST_CODEX_HOME
+							? {
+									mountPaths: [HOST_CODEX_HOME],
+									env: {
+										CODEX_HOME: HOST_CODEX_HOME,
+									},
+								}
+							: {}),
+						...(CYRUS_AGENT_EXECUTION_RUNNERS.length > 0
+							? {
+									supportedRunners: CYRUS_AGENT_EXECUTION_RUNNERS as Array<
+										"claude" | "codex" | "cursor" | "gemini"
+									>,
+								}
+							: {}),
+						...(CYRUS_AGENT_EXECUTION_INHERIT_ENV.length > 0
+							? {
+									inheritEnv: CYRUS_AGENT_EXECUTION_INHERIT_ENV,
+								}
+							: {}),
+					},
+				}
+			: {}),
 	};
 
 	const repositories: RepositoryConfig[] = [repository];
@@ -158,6 +217,13 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		cyrusHome: CYRUS_HOME,
 		serverPort: CYRUS_PORT,
 		serverHost: "localhost",
+		linearWorkspaces: {
+			"cli-workspace": {
+				linearToken: "cli-f1-token",
+				linearWorkspaceName: "F1 CLI Workspace",
+				linearWorkspaceSlug: "f1-cli",
+			},
+		},
 		claudeDefaultModel: "sonnet",
 		claudeDefaultFallbackModel: "haiku",
 		// Enable all tools including Edit(**), Bash, etc. for full testing capability

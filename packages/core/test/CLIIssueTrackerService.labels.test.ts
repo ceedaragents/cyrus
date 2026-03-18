@@ -87,6 +87,16 @@ describe("CLIIssueTrackerService - Label Operations", () => {
 			]);
 		});
 
+		it("should generate git-safe branch names from issue titles", async () => {
+			const issue = await service.createIssue({
+				teamId: "team-default",
+				title: "Question: summarize the rate limiter repo",
+			});
+
+			expect(issue.branchName).toBe("def-1-question-summarize-the-rate-li");
+			expect(issue.branchName).not.toContain(":");
+		});
+
 		it("should persist labels across multiple issues", async () => {
 			// Create a label
 			const labelId = await service.findOrCreateLabel("shared-label");

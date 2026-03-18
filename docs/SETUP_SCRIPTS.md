@@ -61,6 +61,8 @@ When creating a new worktree:
 
 Both scripts receive the same environment variables and run in the worktree directory.
 
+This is also a good place to prepare files that your `verification` or `agentExecution` container configuration expects to find in each issue worktree.
+
 ### Use Cases
 
 - **Team-wide tooling** that applies to all repositories

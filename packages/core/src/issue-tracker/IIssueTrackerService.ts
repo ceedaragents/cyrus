@@ -636,6 +636,16 @@ export interface IIssueTrackerService {
 	fetchAgentSession(sessionId: string): Promise<IssueTrackerAgentSession>;
 
 	/**
+	 * Update an agent session status when the platform supports explicit session
+	 * state mutation. CLI/F1 uses this to keep its in-memory session list aligned
+	 * with Cyrus completion and stop events.
+	 */
+	updateAgentSessionStatus?(
+		sessionId: string,
+		status: string,
+	): Promise<IssueTrackerAgentSession>;
+
+	/**
 	 * Emit a stop signal webhook event for the EdgeWorker to handle.
 	 * Should be called after stopping a session to trigger EdgeWorker stop handling.
 	 *

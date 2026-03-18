@@ -11,6 +11,7 @@ import type {
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ILogger, OnAskUserQuestion } from "cyrus-core";
+import type { ClaudeContainerBridgeProcessConfig } from "./container-bridge-types.js";
 
 export type { OnAskUserQuestion } from "cyrus-core";
 
@@ -45,6 +46,7 @@ export interface ClaudeRunnerConfig {
 	hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>; // Claude SDK hooks
 	outputFormat?: OutputFormatConfig; // Structured output format configuration
 	extraArgs?: Record<string, string | null>; // Additional CLI arguments to pass to Claude Code (e.g., { chrome: null } for --chrome flag)
+	containerBridge?: ClaudeContainerBridgeProcessConfig; // Run Claude SDK inside an external bridge process (for issue containers)
 	/**
 	 * Callback for handling AskUserQuestion tool invocations.
 	 * When provided, the ClaudeRunner will intercept AskUserQuestion tool calls

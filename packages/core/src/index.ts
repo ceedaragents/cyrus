@@ -42,6 +42,7 @@ export type {
 
 // Configuration types
 export type {
+	AgentExecutionConfig,
 	EdgeConfig,
 	EdgeConfigPayload,
 	EdgeWorkerConfig,
@@ -49,11 +50,14 @@ export type {
 	OAuthCallbackHandler,
 	RepositoryConfig,
 	RepositoryConfigPayload,
+	RepositoryHostPaths,
 	RunnerType,
 	UserAccessControlConfig,
 	UserIdentifier,
+	VerificationConfig,
 } from "./config-types.js";
 export {
+	AgentExecutionConfigSchema,
 	EdgeConfigPayloadSchema,
 	// Zod schemas for runtime validation
 	EdgeConfigSchema,
@@ -61,11 +65,13 @@ export {
 	migrateEdgeConfig,
 	RepositoryConfigPayloadSchema,
 	RepositoryConfigSchema,
+	RepositoryHostPathsSchema,
 	RunnerTypeSchema,
 	requireLinearWorkspaceId,
 	resolvePath,
 	UserAccessControlConfigSchema,
 	UserIdentifierSchema,
+	VerificationConfigSchema,
 } from "./config-types.js";
 
 // Constants

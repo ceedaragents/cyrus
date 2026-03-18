@@ -109,6 +109,33 @@ export class GitService {
 	}
 
 	/**
+	 * Map a Cyrus-visible workspace path to the corresponding host-visible path
+	 * when Cyrus itself runs inside a container.
+	 */
+	private mapWorkspacePathToHostPath(
+		repository: RepositoryConfig,
+		workspacePath: string,
+	): string {
+		const hostWorkspaceBaseDir = repository.hostPaths?.workspaceBaseDir;
+		if (!hostWorkspaceBaseDir) {
+			return workspacePath;
+		}
+
+		if (workspacePath === repository.workspaceBaseDir) {
+			return hostWorkspaceBaseDir;
+		}
+
+		if (`${workspacePath}/`.startsWith(`${repository.workspaceBaseDir}/`)) {
+			const relativePath = workspacePath.slice(
+				repository.workspaceBaseDir.length,
+			);
+			return join(hostWorkspaceBaseDir, relativePath.replace(/^\/+/, ""));
+		}
+
+		return workspacePath;
+	}
+
+	/**
 	 * Run a setup script with proper error handling and logging
 	 */
 	private async runSetupScript(
@@ -474,6 +501,7 @@ export class GitService {
 
 			return {
 				path: workspacePath,
+				hostPath: workspacePath,
 				isGitWorktree: false,
 			};
 		}
@@ -497,6 +525,10 @@ export class GitService {
 		// N repos: parent folder with per-repo subdirectories
 		const baseDir = overrideBaseDir ?? repositories[0]!.workspaceBaseDir;
 		const parentPath = join(baseDir, issue.identifier);
+		const parentHostPath = this.mapWorkspacePathToHostPath(
+			repositories[0]!,
+			parentPath,
+		);
 		mkdirSync(parentPath, { recursive: true });
 		this.logger.info(
 			`Creating multi-repo workspace at ${parentPath} for ${repositories.length} repositories`,
@@ -508,6 +540,7 @@ export class GitService {
 		}
 
 		const repoPaths: Record<string, string> = {};
+		const repoHostPaths: Record<string, string> = {};
 		const resolvedBaseBranches: Record<string, BaseBranchResolution> = {};
 
 		for (const repository of repositories) {
@@ -525,6 +558,8 @@ export class GitService {
 					baseBranchOverrides?.get(repository.id),
 				);
 				repoPaths[repository.id] = repoWorkspace.path;
+				repoHostPaths[repository.id] =
+					repoWorkspace.hostPath ?? repoWorkspace.path;
 				if (repoWorkspace.resolvedBaseBranches) {
 					Object.assign(
 						resolvedBaseBranches,
@@ -538,13 +573,19 @@ export class GitService {
 				// Create fallback directory for this repo
 				mkdirSync(repoSubPath, { recursive: true });
 				repoPaths[repository.id] = repoSubPath;
+				repoHostPaths[repository.id] = this.mapWorkspacePathToHostPath(
+					repository,
+					repoSubPath,
+				);
 			}
 		}
 
 		return {
 			path: parentPath,
+			hostPath: parentHostPath,
 			isGitWorktree: true,
 			repoPaths,
+			repoHostPaths,
 			resolvedBaseBranches,
 		};
 	}
@@ -600,6 +641,10 @@ export class GitService {
 			const workspacePath =
 				workspacePathOverride ??
 				join(repository.workspaceBaseDir, issue.identifier);
+			const workspaceHostPath = this.mapWorkspacePathToHostPath(
+				repository,
+				workspacePath,
+			);
 
 			// Ensure workspace directory's parent exists
 			mkdirSync(
@@ -631,6 +676,7 @@ export class GitService {
 					);
 					return {
 						path: workspacePath,
+						hostPath: workspaceHostPath,
 						isGitWorktree: true,
 						resolvedBaseBranches: { [repository.id]: resolution },
 					};
@@ -663,6 +709,10 @@ export class GitService {
 					);
 					return {
 						path: existingWorktreePath,
+						hostPath: this.mapWorkspacePathToHostPath(
+							repository,
+							existingWorktreePath,
+						),
 						isGitWorktree: true,
 						resolvedBaseBranches: { [repository.id]: resolution },
 					};
@@ -788,6 +838,7 @@ export class GitService {
 
 			return {
 				path: workspacePath,
+				hostPath: workspaceHostPath,
 				isGitWorktree: true,
 				resolvedBaseBranches: { [repository.id]: resolution },
 			};
@@ -806,6 +857,10 @@ export class GitService {
 				);
 				return {
 					path: worktreeMatch[1],
+					hostPath: this.mapWorkspacePathToHostPath(
+						repository,
+						worktreeMatch[1],
+					),
 					isGitWorktree: true,
 					resolvedBaseBranches: { [repository.id]: fallbackResolution },
 				};
@@ -818,6 +873,7 @@ export class GitService {
 			mkdirSync(fallbackPath, { recursive: true });
 			return {
 				path: fallbackPath,
+				hostPath: this.mapWorkspacePathToHostPath(repository, fallbackPath),
 				isGitWorktree: false,
 				resolvedBaseBranches: { [repository.id]: fallbackResolution },
 			};

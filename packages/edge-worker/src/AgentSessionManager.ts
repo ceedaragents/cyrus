@@ -69,6 +69,10 @@ export interface AgentSessionManagerEvents {
 		/** Current iteration (1-based) */
 		iteration: number;
 	}) => void;
+	sessionFinalized: (data: {
+		sessionId: string;
+		session: CyrusAgentSession;
+	}) => void;
 }
 
 /**
@@ -402,6 +406,7 @@ export class AgentSessionManager extends EventEmitter {
 		// Handle result using procedure routing system (skip for sessions without procedures, e.g. Slack)
 		if (!this.procedureAnalyzer) {
 			log.info(`Session completed (no procedure routing)`);
+			this.emit("sessionFinalized", { sessionId, session });
 			return;
 		}
 
@@ -409,6 +414,7 @@ export class AgentSessionManager extends EventEmitter {
 			log.info(
 				`Session ${sessionId} was stopped by user; skipping procedure continuation`,
 			);
+			this.emit("sessionFinalized", { sessionId, session });
 			return;
 		}
 
@@ -443,10 +449,12 @@ export class AgentSessionManager extends EventEmitter {
 					`Error result with no recoverable text (subtype: ${resultMessage.subtype}), posting error to Linear`,
 				);
 				await this.addResultEntry(sessionId, resultMessage);
+				this.emit("sessionFinalized", { sessionId, session });
 			}
 		} else if (resultMessage.subtype !== "success") {
 			// Non-recoverable errors (e.g. stop/abort) should not advance procedures.
 			await this.addResultEntry(sessionId, resultMessage);
+			this.emit("sessionFinalized", { sessionId, session });
 		}
 	}
 
@@ -658,6 +666,7 @@ export class AgentSessionManager extends EventEmitter {
 			// Procedure complete - post final result
 			log.info(`All subroutines completed, posting final result to Linear`);
 			await this.addResultEntry(sessionId, resultMessage);
+			this.emit("sessionFinalized", { sessionId, session });
 
 			// Handle child session completion
 			const isChildSession = this.getParentSessionId?.(sessionId);
