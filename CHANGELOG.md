@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Worktree recreation after issue reopened** - Fixed a bug where worktrees were not recreated when an issue was re-prompted after being moved to Done/Cancelled. Stale git worktree entries from a previous cleanup could prevent fresh worktree creation. ([CYPACK-961](https://linear.app/ceedar/issue/CYPACK-961), [#982](https://github.com/ceedaragents/cyrus/pull/982))
-- **Self-hosted onboarding improvements** - Fixed `-l` multi-repo routing labels flag not working with `cyrus self-add-repo`, idle mode now shows `cyrus self-add-repo` guidance instead of cloud URL for self-hosted users, and `cyrus self-auth` error messages now correctly point to `~/.cyrus/.env` instead of `.zshrc`. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
+- **Self-hosted onboarding improvements** - Fixed `-l` routing labels flag not working with `cyrus self-add-repo`, idle mode now shows `cyrus self-add-repo` guidance instead of cloud URL for self-hosted users, and `cyrus self-auth` error messages now correctly point to `~/.cyrus/.env` instead of `.zshrc`. ([CYPACK-967](https://linear.app/ceedar/issue/CYPACK-967), [#991](https://github.com/ceedaragents/cyrus/pull/991))
 - **Security vulnerabilities resolved** - Fixed all Dependabot security alerts (1 critical, 20 high, 11 moderate, 4 low) by updating transitive dependency versions for packages including simple-git, undici, hono, minimatch, rollup, and others. ([CYPACK-973](https://linear.app/ceedar/issue/CYPACK-973), [#1000](https://github.com/ceedaragents/cyrus/pull/1000))
 
 ### Changed
@@ -70,7 +70,7 @@ All notable changes to this project will be documented in this file.
 - **Linear webhook signature verification more reliable** - Webhook signature verification now uses the raw request body bytes instead of re-serializing JSON, preventing intermittent HMAC failures caused by key ordering or whitespace differences.
 
 ### Added
-- **Multi-repo routing labels default when adding repos** - `cyrus self-add-repo` now automatically sets routing labels to the repository name. Use `-l custom,labels` to override with custom comma-separated labels. ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
+- **Routing labels default when adding repos** - `cyrus self-add-repo` now automatically sets routing labels to the repository name. Use `-l custom,labels` to override with custom comma-separated labels. ([CYPACK-963](https://linear.app/ceedar/issue/CYPACK-963), [#986](https://github.com/ceedaragents/cyrus/pull/986))
 - **Cloudflare tunnel auto-starts during self-auth** - Running `cyrus self-auth` now automatically starts a Cloudflare tunnel, so webhooks can reach the local agent immediately after authentication. ([#952](https://github.com/ceedaragents/cyrus/pull/952))
 
 ### Packages
@@ -1160,7 +1160,7 @@ All notable changes to this project will be documented in this file.
 ## [0.2.11] - 2026-01-07
 
 ### Fixed
-- **Multi-repo tag routing now works with Linear's escaped brackets** - Fixed a bug where `[repo=...]` tags weren't recognized because Linear escapes square brackets in descriptions (e.g., `\[repo=cyrus\]`). The parser now handles both escaped and unescaped formats. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#738](https://github.com/ceedaragents/cyrus/pull/738))
+- **Repository tag routing now works with Linear's escaped brackets** - Fixed a bug where `[repo=...]` tags weren't recognized because Linear escapes square brackets in descriptions (e.g., `\[repo=cyrus\]`). The parser now handles both escaped and unescaped formats. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#738](https://github.com/ceedaragents/cyrus/pull/738))
 
 ### Packages
 
@@ -1194,7 +1194,7 @@ All notable changes to this project will be documented in this file.
 ## [0.2.10] - 2026-01-06
 
 ### Added
-- **Multi-repo tag routing** - You can now specify which repository an issue should be routed to by adding a `[repo=...]` tag in the issue description. Supports `[repo=org/repo-name]` to match GitHub URLs, `[repo=repo-name]` to match by name, or `[repo=repo-id]` to match by ID. This takes precedence over label, project, and team-based routing. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#732](https://github.com/ceedaragents/cyrus/pull/732))
+- **Repository tag routing** - You can now specify which repository an issue should be routed to by adding a `[repo=...]` tag in the issue description. Supports `[repo=org/repo-name]` to match GitHub URLs, `[repo=repo-name]` to match by name, or `[repo=repo-id]` to match by ID. This takes precedence over label, project, and team-based routing. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#732](https://github.com/ceedaragents/cyrus/pull/732))
 
 ### Packages
 
@@ -1228,7 +1228,7 @@ All notable changes to this project will be documented in this file.
 ## [0.2.9] - 2025-12-30
 
 ### Added
-- **Multi-repo tag routing** - You can now specify which repository an issue should be routed to by adding a `[repo=...]` tag in the issue description. Supports `[repo=org/repo-name]` to match GitHub URLs, `[repo=repo-name]` to match by name, or `[repo=repo-id]` to match by ID. This takes precedence over label, project, and team-based routing. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#732](https://github.com/ceedaragents/cyrus/pull/732))
+- **Repository tag routing** - You can now specify which repository an issue should be routed to by adding a `[repo=...]` tag in the issue description. Supports `[repo=org/repo-name]` to match GitHub URLs, `[repo=repo-name]` to match by name, or `[repo=repo-id]` to match by ID. This takes precedence over label, project, and team-based routing. ([CYPACK-688](https://linear.app/ceedar/issue/CYPACK-688), [#732](https://github.com/ceedaragents/cyrus/pull/732))
 - **GPT Image 1.5 support** - The image-tools MCP server now supports `gpt-image-1.5`, OpenAI's latest and highest quality image generation model. You can choose between `gpt-image-1.5` (default, best quality), `gpt-image-1`, or `gpt-image-1-mini` (faster, lower cost). ([CYPACK-675](https://linear.app/ceedar/issue/CYPACK-675), [#717](https://github.com/ceedaragents/cyrus/pull/717))
 
 ### Packages
@@ -1514,7 +1514,7 @@ All notable changes to this project will be documented in this file.
 ## [0.2.1] - 2025-11-15
 
 ### Added
-- Multi-repo fallback selection - When no routing option matches, it will prompt the user to select which repo they'd like to run Cyrus on for the Linear Issue. Repository selection now displays GitHub repository icons and formatted names when configured with a GitHub URL in the config file. The selected repository will be shown to the user, including what method was used to select it (label-based, team key based, project based, user-selected, etc)
+- When no routing option matches, it will prompt the user to select which repo they'd like to run Cyrus on for the Linear Issue. Repository selection now displays GitHub repository icons and formatted names when configured with a GitHub URL in the config file. The selected repository will be shown to the user, including what method was used to select it (label-based, team key based, project based, user-selected, etc)
 - Restored `--env-file` option to specify custom environment variables file location (uses Commander library for CLI parsing)
 
 ### Changed
@@ -1572,8 +1572,8 @@ All notable changes to this project will be documented in this file.
 - Orchestrator label now enforces orchestrator procedure consistently - issues with the Orchestrator label always use the orchestrator-full procedure, even when receiving results from child sub-agents or processing new messages
 - Suppressed unnecessary error logs when stopping Claude sessions
 - Repository deletion now works correctly when triggered from the web UI
-- Added missing `routingLabels` and `projectKeys` fields to `CyrusConfigPayload` type in config-updater package for multi-repo routing
-- Config handler now properly processes and saves multi-repo label routing and project routing parameters when received from cyrus-hosted
+- Added missing `routingLabels` and `projectKeys` fields to `CyrusConfigPayload` type in config-updater package
+- Config handler now properly processes and saves label routing and project routing parameters when received from cyrus-hosted
 - Fixed missing `dist/` directory in published packages by adding `"files": ["dist"]` to `cloudflare-tunnel-client` and `config-updater` package.json files
 - All packages now include their compiled TypeScript output when installed from npm
 
@@ -2216,7 +2216,7 @@ All notable changes to this project will be documented in this file.
   - Blocks access if subscription is expired, cancelled, or invalid
   - Shows appropriate messages for returning customers vs new customers
   - Validates subscription when setting customer ID via `cyrus set-customer-id` command
-- Multi-repo label-based routing - Route Linear issues to different git repositories based on their labels
+- Label-based repository routing - Route Linear issues to different git repositories based on their labels
   - New `routingLabels` configuration option allows specifying which labels should route to a specific repository
   - Useful when multiple repositories handle issues from the same Linear team (e.g., backend vs frontend repos)
   - Label routing takes precedence over team-based routing for more granular control
