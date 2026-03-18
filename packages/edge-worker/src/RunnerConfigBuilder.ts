@@ -27,6 +27,9 @@ export interface IMcpConfigProvider {
 	buildMergedMcpConfigPath(
 		repositories: RepositoryConfig | RepositoryConfig[],
 	): string | string[] | undefined;
+	extractServerNamesFromConfigPaths(
+		mcpConfigPath: string | string[] | undefined,
+	): string[];
 }
 
 /**
@@ -67,10 +70,8 @@ export interface ChatRunnerConfigInput {
 	cyrusHome: string;
 	/** MCP server config (pre-built by McpConfigService or passed externally) */
 	mcpConfig?: Record<string, McpServerConfig>;
-	/** File-based MCP config paths (user-configured .mcp.json files) */
-	mcpConfigPath?: string | string[];
-	/** Server names extracted from user-configured .mcp.json files (for tool permissions) */
-	userMcpServerNames?: string[];
+	/** Repository to source user-configured MCP paths from (V1: first available repo) */
+	repository?: RepositoryConfig;
 	/** Repository paths the chat session can read */
 	repositoryPaths?: string[];
 	logger: ILogger;
@@ -139,12 +140,19 @@ export class RunnerConfigBuilder {
 	 * config without hooks, model selection, or procedure context.
 	 */
 	buildChatConfig(input: ChatRunnerConfigInput): AgentRunnerConfig {
+		// Derive user-configured MCP paths and server names from the repository
+		const mcpConfigPath = input.repository
+			? this.mcpConfigProvider.buildMergedMcpConfigPath(input.repository)
+			: undefined;
+		const userMcpServerNames =
+			this.mcpConfigProvider.extractServerNamesFromConfigPaths(mcpConfigPath);
+
 		const mcpConfigKeys = input.mcpConfig
 			? Object.keys(input.mcpConfig)
 			: undefined;
 		const allowedTools = this.chatToolResolver.buildChatAllowedTools(
 			mcpConfigKeys,
-			input.userMcpServerNames,
+			userMcpServerNames,
 		);
 
 		const repositoryPaths = Array.from(
@@ -162,7 +170,7 @@ export class RunnerConfigBuilder {
 			cyrusHome: input.cyrusHome,
 			appendSystemPrompt: input.systemPrompt,
 			...(input.mcpConfig ? { mcpConfig: input.mcpConfig } : {}),
-			...(input.mcpConfigPath ? { mcpConfigPath: input.mcpConfigPath } : {}),
+			...(mcpConfigPath ? { mcpConfigPath } : {}),
 			...(input.resumeSessionId
 				? { resumeSessionId: input.resumeSessionId }
 				: {}),

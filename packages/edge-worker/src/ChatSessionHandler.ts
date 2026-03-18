@@ -7,6 +7,7 @@ import type {
 	CyrusAgentSession,
 	IAgentRunner,
 	ILogger,
+	RepositoryConfig,
 } from "cyrus-core";
 import { createLogger } from "cyrus-core";
 import { AgentSessionManager } from "./AgentSessionManager.js";
@@ -55,10 +56,8 @@ export interface ChatPlatformAdapter<TEvent> {
 export interface ChatSessionHandlerDeps {
 	cyrusHome: string;
 	mcpConfig?: Record<string, McpServerConfig>;
-	/** File-based MCP config paths (user-configured .mcp.json files) */
-	mcpConfigPath?: string | string[];
-	/** Server names extracted from user-configured .mcp.json files (for tool permissions) */
-	userMcpServerNames?: string[];
+	/** Repository to source user-configured MCP paths from (V1: first available repo) */
+	repository?: RepositoryConfig;
 	chatRepositoryPaths?: string[];
 	/** Shared RunnerConfigBuilder for constructing runner configs */
 	runnerConfigBuilder: RunnerConfigBuilder;
@@ -407,8 +406,7 @@ export class ChatSessionHandler<TEvent> {
 			resumeSessionId,
 			cyrusHome: this.deps.cyrusHome,
 			mcpConfig: this.deps.mcpConfig,
-			mcpConfigPath: this.deps.mcpConfigPath,
-			userMcpServerNames: this.deps.userMcpServerNames,
+			repository: this.deps.repository,
 			repositoryPaths: this.deps.chatRepositoryPaths,
 			logger: sessionLogger,
 			onMessage: (message: SDKMessage) =>

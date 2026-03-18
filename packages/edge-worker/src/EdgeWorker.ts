@@ -819,33 +819,19 @@ export class EdgeWorker extends EventEmitter {
 			{ repositoryRoutingContext: routingContext },
 		);
 
-		// Build MCP config for Slack sessions using first configured workspace
+		// V1: Source MCP config from first available repo (all repos share the same MCPs today)
 		const firstLinearWorkspaceId = Object.keys(
 			this.config.linearWorkspaces || {},
 		)[0];
-		const firstRepoId = allRepos[0]?.id;
+		const firstRepo = allRepos[0];
 		const mcpConfig =
-			firstLinearWorkspaceId && firstRepoId
-				? this.buildMcpConfig(firstRepoId, firstLinearWorkspaceId)
+			firstLinearWorkspaceId && firstRepo
+				? this.buildMcpConfig(firstRepo.id, firstLinearWorkspaceId)
 				: undefined;
 
-		// Build user-configured MCP config path and extract server names for tool permissions
-		const mcpConfigPath =
-			allRepos.length > 0
-				? this.mcpConfigService.buildMergedMcpConfigPath(allRepos)
-				: undefined;
-		const userMcpServerNames =
-			this.mcpConfigService.extractServerNamesFromConfigPaths(mcpConfigPath);
-
-		if (!firstLinearWorkspaceId || !firstRepoId) {
+		if (!firstLinearWorkspaceId || !firstRepo) {
 			this.logger.warn(
-				"No repositories or workspaces configured — Slack sessions will not have access to Linear MCP tools",
-			);
-		}
-
-		if (userMcpServerNames.length > 0) {
-			this.logger.info(
-				`Slack sessions will have access to user-configured MCP servers: ${userMcpServerNames.join(", ")}`,
+				"No repositories or workspaces configured — Slack sessions will not have access to MCP tools",
 			);
 		}
 
@@ -855,8 +841,7 @@ export class EdgeWorker extends EventEmitter {
 				cyrusHome: this.cyrusHome,
 				chatRepositoryPaths,
 				mcpConfig,
-				mcpConfigPath,
-				userMcpServerNames,
+				repository: firstRepo,
 				runnerConfigBuilder: this.runnerConfigBuilder,
 				createRunner: (config) => {
 					const runnerType = this.runnerSelectionService.getDefaultRunner();
