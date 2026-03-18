@@ -123,6 +123,9 @@ All notable changes to this project will be documented in this file.
 - **Slack-created issues no longer land in Triage** - Issues created from Slack conversations now default to "Backlog" status instead of potentially being set to "Triage". ([CYPACK-957](https://linear.app/ceedar/issue/CYPACK-957), [#978](https://github.com/ceedaragents/cyrus/pull/978))
 - **Issue updates no longer trigger duplicate runs** - When a Linear issue title or description was updated, all idle sessions for that issue were resumed, causing multiple concurrent runs. Issue updates are now only delivered to currently running sessions via streaming input; idle sessions are no longer resumed. Duplicate webhooks are also deduplicated. ([CYPACK-954](https://linear.app/ceedar/issue/CYPACK-954), [#977](https://github.com/ceedaragents/cyrus/pull/977))
 
+### Added
+- **Multi-repo routing** - A single Linear issue can now be routed to multiple repositories. Use multiple `[repo=...]` description tags, label-based routing that matches multiple repos, or a combination of both. Each matched repository gets its own worktree subfolder and git context within the same session. Routing now returns all matching repositories instead of a single match, and sessions carry explicit per-repository context (branch names, base branches, MCP configs, and tool permissions). ([CYPACK-911](https://linear.app/ceedar/issue/CYPACK-911), [#955](https://github.com/ceedaragents/cyrus/pull/955), [#959](https://github.com/ceedaragents/cyrus/pull/959), [#960](https://github.com/ceedaragents/cyrus/pull/960), [#961](https://github.com/ceedaragents/cyrus/pull/961), [#962](https://github.com/ceedaragents/cyrus/pull/962), [#963](https://github.com/ceedaragents/cyrus/pull/963), [#964](https://github.com/ceedaragents/cyrus/pull/964), [#965](https://github.com/ceedaragents/cyrus/pull/965))
+
 ### Packages
 
 #### cyrus-cloudflare-tunnel-client
