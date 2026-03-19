@@ -47,7 +47,7 @@ No installation required. Everything is managed through [app.atcyrus.com](https:
 
 ### End-to-End Self-Hosted (Community)
 
-Zero cost option. This requires hosting everything yourself, including your own Linear OAuth app.
+Zero cost option. This requires hosting everything yourself, including your own Linear OAuth app, Github App, and Slack App.
 
 Follow the complete **[End-to-End Community Guide](./docs/SELF_HOSTING.md)**.
 
