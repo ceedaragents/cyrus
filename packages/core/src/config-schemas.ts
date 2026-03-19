@@ -266,6 +266,14 @@ export const EdgeConfigSchema = z.object({
 
 	/** Global defaults for prompt types (tool restrictions per prompt type) */
 	promptDefaults: PromptDefaultsSchema.optional(),
+
+	/**
+	 * Whether to use the skill-based workflow system instead of the procedure/subroutine system.
+	 * When enabled, sessions run as a single continuous session with skills loaded into the
+	 * system prompt upfront, and a Stop hook ensures PRs are created for code changes.
+	 * Defaults to false (uses existing procedure system).
+	 */
+	useSkillBasedWorkflow: z.boolean().optional(),
 });
 
 /**

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Skill-based workflow mode** — New single-session workflow where skills (implementation, verify-and-ship, summarize, etc.) are loaded into the system prompt upfront instead of running sequential subroutines with stop/resume between phases. Enables more natural conversation flow and mid-session user interaction. Gated behind `useSkillBasedWorkflow` config flag. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991))
+- **PR Guard Stop hook** — Automatically ensures pull requests are created when code changes exist before the agent completes, preventing sessions from ending without shipping. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991))
+- **Custom skills** — Users can add custom skill files to their repository (`.claude/skills/`) or globally (`~/.cyrus/skills/`) to customize agent workflow behavior. Repository skills override global, which override defaults. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added

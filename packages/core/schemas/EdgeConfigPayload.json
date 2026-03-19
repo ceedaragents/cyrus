@@ -820,6 +820,9 @@
 				}
 			},
 			"additionalProperties": false
+		},
+		"useSkillBasedWorkflow": {
+			"type": "boolean"
 		}
 	},
 	"required": ["repositories"],

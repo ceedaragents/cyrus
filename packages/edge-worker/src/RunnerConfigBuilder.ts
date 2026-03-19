@@ -13,6 +13,7 @@ import type {
 	RepositoryConfig,
 	RunnerType,
 } from "cyrus-core";
+import { buildPRGuardStopHook } from "./hooks/buildPRGuardStopHook.js";
 
 /**
  * Subset of McpConfigService consumed by RunnerConfigBuilder.
@@ -106,6 +107,8 @@ export interface IssueRunnerConfigInput {
 	) => OnAskUserQuestion;
 	/** Resolve the Linear workspace ID for a repository */
 	requireLinearWorkspaceId: (repo: RepositoryConfig) => string;
+	/** Whether to enable the PR Guard Stop hook (skill-based workflow with code changes) */
+	enablePRGuardStopHook?: boolean;
 }
 
 /**
@@ -194,7 +197,15 @@ export class RunnerConfigBuilder {
 		const log = input.logger;
 
 		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
-		const hooks = this.buildScreenshotHooks(log);
+		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> =
+			this.buildScreenshotHooks(log);
+
+		// Add PR Guard Stop hook for skill-based workflows with code changes
+		if (input.enablePRGuardStopHook) {
+			const stopHook = buildPRGuardStopHook(input.session.workspace.path, log);
+			hooks.Stop = stopHook;
+			log.info(`PR Guard Stop hook enabled for session ${input.sessionId}`);
+		}
 
 		// Determine runner type and model override from selectors
 		const runnerSelection = this.runnerSelector.determineRunnerSelection(

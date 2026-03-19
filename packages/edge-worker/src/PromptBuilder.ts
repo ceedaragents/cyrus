@@ -17,6 +17,7 @@ import {
 } from "cyrus-core";
 import type { GitService } from "./GitService.js";
 import type { SubroutineDefinition } from "./procedures/index.js";
+import type { SkillDefinition } from "./skills/types.js";
 
 /**
  * Dependencies required by the PromptBuilder
@@ -1605,5 +1606,51 @@ ${reply.body}
 			this.logger.error(`Failed to fetch labels for issue ${issue.id}:`, error);
 			return [];
 		}
+	}
+
+	// ========================================================================
+	// SKILL-BASED WORKFLOW PROMPTS
+	// ========================================================================
+
+	/**
+	 * Assemble a system prompt section from resolved skills and workflow guidance.
+	 *
+	 * Each skill is wrapped in <skill> XML tags for clear delineation.
+	 * The workflow guidance checklist is prepended to establish ordering.
+	 *
+	 * Template substitution is applied for workspace slug and GitHub bot username,
+	 * matching the behavior of loadSubroutinePrompt().
+	 */
+	assembleSkillBasedSystemPrompt(
+		skills: SkillDefinition[],
+		workflowGuidance: string,
+		workspaceSlug?: string,
+	): string {
+		const githubBotUsername = process.env.GITHUB_BOT_USERNAME || "cyrusagent";
+
+		const parts: string[] = [workflowGuidance, ""];
+
+		for (const skill of skills) {
+			let content = skill.content;
+
+			// Perform template substitution (same as loadSubroutinePrompt)
+			if (workspaceSlug) {
+				content = content.replace(
+					/https:\/\/linear\.app\/linear\/profiles\//g,
+					`https://linear.app/${workspaceSlug}/profiles/`,
+				);
+			}
+			content = content.replace(
+				/\{\{github_bot_username\}\}/g,
+				githubBotUsername,
+			);
+
+			parts.push(`<skill name="${skill.name}">`);
+			parts.push(content);
+			parts.push("</skill>");
+			parts.push("");
+		}
+
+		return parts.join("\n").trim();
 	}
 }
