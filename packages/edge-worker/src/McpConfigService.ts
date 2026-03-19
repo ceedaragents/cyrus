@@ -114,6 +114,10 @@ export class McpConfigService {
 						: {}),
 				},
 			},
+			"cyrus-docs": {
+				type: "http",
+				url: "https://atcyrus.com/docs/mcp",
+			},
 		};
 
 		// Conditionally inject the Slack MCP server when SLACK_BOT_TOKEN is available

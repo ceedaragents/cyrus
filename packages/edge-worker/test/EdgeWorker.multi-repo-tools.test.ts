@@ -194,6 +194,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				"Edit",
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -224,6 +225,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				...expectedUnion,
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -243,6 +245,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 			// MCP tools appear exactly once
 			expect(tools.filter((t) => t === "mcp__linear")).toHaveLength(1);
 			expect(tools.filter((t) => t === "mcp__cyrus-tools")).toHaveLength(1);
+			expect(tools.filter((t) => t === "mcp__cyrus-docs")).toHaveLength(1);
 		});
 
 		it("should include Slack MCP when SLACK_BOT_TOKEN is set for multi-repo", () => {
@@ -275,6 +278,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				"Edit",
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -291,6 +295,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				...getSafeTools(),
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -308,6 +313,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				"Write",
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 
@@ -340,6 +346,7 @@ describe("EdgeWorker - Multi-Repo Tool Authorization", () => {
 				"Bash",
 				"mcp__linear",
 				"mcp__cyrus-tools",
+				"mcp__cyrus-docs",
 			]);
 		});
 	});
