@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { LinearClient } from "@linear/sdk";
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
@@ -110,7 +111,6 @@ import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { McpConfigService } from "./McpConfigService.js";
 import { PromptBuilder } from "./PromptBuilder.js";
-// Procedures removed — skills-based architecture (CYPACK-996)
 import type {
 	IssueContextResult,
 	PromptAssembly,
@@ -4347,13 +4347,11 @@ ${taskSection}`;
 			systemPrompt = sharedInstructions;
 		}
 
-		// 3. Append workflow guidance for skill-based sessions
+		// 3. Append workflow guidance — reference deployed skills rather than duplicating content
 		systemPrompt +=
 			"\n\n## Workflow\n\n" +
-			"Follow this workflow to completion:\n\n" +
-			"1. **Implement** — Implement the requested changes. Write production-ready code, follow existing patterns, and run tests to verify your work.\n" +
-			"2. **Verify & Ship** — Run all quality checks (tests, lint, typecheck). Fix any failures, retrying up to 3 times. Then update the changelog, commit, push, and create/update the pull request.\n" +
-			"3. **Summarize** — Post a concise summary of the work to Linear.\n\n" +
+			"You have skills available in `.claude/skills/`. Use them to guide your workflow.\n" +
+			"Follow the full workflow to completion: implement, verify & ship (tests, lint, typecheck, PR), then summarize.\n" +
 			"Do NOT skip steps. Complete each phase before moving to the next.";
 
 		// 4. Build issue context using appropriate builder
@@ -4471,17 +4469,39 @@ ${input.userComment}
 	}
 
 	/**
-	 * Deploy skills from cyrusHome/skills to workspace .claude/skills directory.
-	 * Copies SKILL.md files from each skill subdirectory into the workspace
-	 * so they are available to the agent during the session.
+	 * Deploy skills to workspace .claude/skills directory so they are available
+	 * to the agent during the session.
+	 *
+	 * Resolution order:
+	 * 1. `~/.cyrus/skills/` — user-customizable skills directory
+	 * 2. Bundled skills shipped with the edge-worker package (`dist/skills/`)
+	 *
+	 * This ensures skills are available regardless of which repository the
+	 * agent is working on.
 	 */
 	private async deploySkillsToWorkspace(workspacePath: string): Promise<void> {
 		const { existsSync } = await import("node:fs");
-		const sourceDir = join(this.cyrusHome, "skills");
 		const targetDir = join(workspacePath, ".claude", "skills");
 
-		if (!existsSync(sourceDir)) {
-			this.logger.debug("No skills directory found at", sourceDir);
+		// Resolution order: cyrusHome skills (user-customizable) > bundled package skills
+		const cyrusHomeSkills = join(this.cyrusHome, "skills");
+		const bundledSkills = join(
+			dirname(fileURLToPath(import.meta.url)),
+			"..",
+			"skills",
+		);
+
+		let sourceDir: string | undefined;
+		if (existsSync(cyrusHomeSkills)) {
+			sourceDir = cyrusHomeSkills;
+		} else if (existsSync(bundledSkills)) {
+			sourceDir = bundledSkills;
+		}
+
+		if (!sourceDir) {
+			this.logger.warn(
+				`No skills directory found at ${cyrusHomeSkills} or ${bundledSkills}`,
+			);
 			return;
 		}
 

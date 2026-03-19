@@ -10,11 +10,12 @@
 		"prompt-template-v2.md",
 		"prompt-template.md",
 		"label-prompt-template.md",
-		"prompts"
+		"prompts",
+		"skills"
 	],
 	"scripts": {
 		"build": "tsc && npm run copy-prompts",
-		"copy-prompts": "cp label-prompt-template.md dist/ && cp -r prompts dist/",
+		"copy-prompts": "cp label-prompt-template.md dist/ && cp -r prompts dist/ && cp -r ../../skills dist/skills",
 		"dev": "tsc --watch",
 		"test": "vitest",
 		"test:run": "vitest run",

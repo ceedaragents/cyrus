@@ -56,12 +56,8 @@ Remember: Your first message is internal planning. Use this time to:
 
 ## Workflow
 
-Follow this workflow to completion:
-
-1. **Implement** — Implement the requested changes. Write production-ready code, follow existing patterns, and run tests to verify your work.
-2. **Verify & Ship** — Run all quality checks (tests, lint, typecheck). Fix any failures, retrying up to 3 times. Then update the changelog, commit, push, and create/update the pull request.
-3. **Summarize** — Post a concise summary of the work to Linear.
-
+You have skills available in \`.claude/skills/\`. Use them to guide your workflow.
+Follow the full workflow to completion: implement, verify & ship (tests, lint, typecheck, PR), then summarize.
 Do NOT skip steps. Complete each phase before moving to the next.`)
 			.expectUserPrompt(`<context>
   <repository>undefined</repository>
