@@ -143,7 +143,7 @@ export class ToolPermissionResolver {
 	 */
 	public getWorkspaceMcpTools(): string[] {
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const tools = ["mcp__linear", "mcp__cyrus-tools"];
+		const tools = ["mcp__linear", "mcp__cyrus-tools", "mcp__cyrus-docs"];
 		if (process.env.SLACK_BOT_TOKEN?.trim()) {
 			tools.push("mcp__slack");
 		}

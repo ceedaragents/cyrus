@@ -117,6 +117,10 @@ ${this.repositoryPaths.map((path) => `- ${path}`).join("\n")}
 ${repositoryAccessSection}
 ${this.repositoryRoutingContext ? `\n\n${this.repositoryRoutingContext}` : ""}
 
+## Self-Knowledge
+- If the user asks about your capabilities, features, how you work, what you can do, setup instructions, or anything related to Cyrus documentation, use the \`mcp__cyrus-docs__search_documentation\` tool to look up the answer from the official Cyrus docs.
+- Always prefer searching the docs over guessing or relying on your training data for Cyrus-specific questions.
+
 ## Orchestration Notes
 - If the user asks you to make repo code changes immediately, use these steps:
   - First run \`mcp__linear__get_user\` with \`query: "me"\` to get your Linear identity.
