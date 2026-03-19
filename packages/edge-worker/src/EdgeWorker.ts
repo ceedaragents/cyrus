@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -4484,25 +4484,20 @@ ${input.userComment}
 	/**
 	 * Resolve plugins that provide skills to the agent session.
 	 *
-	 * Returns an array of SdkPluginConfig pointing to:
-	 * 1. `~/.cyrus/cyrus-skills-plugin/` — user-customizable plugin (if exists)
-	 * 2. Bundled `cyrus-skills-plugin/` shipped with the edge-worker package
+	 * Loads up to two plugins:
+	 * 1. Bundled `cyrus-skills-plugin/` — default skills shipped with the package
+	 * 2. `~/.cyrus/user-skills-plugin/` — user/CYHOST-managed custom skills
 	 *
-	 * The SDK loads skills from the plugin's `skills/` directory, making them
-	 * available to the agent regardless of which repository it's working on.
+	 * CYHOST writes user-created skills to:
+	 *   `~/.cyrus/user-skills-plugin/skills/<name>/SKILL.md`
+	 *
+	 * The plugin manifest is auto-scaffolded if the skills directory exists
+	 * but `.claude-plugin/plugin.json` is missing.
 	 */
 	private resolveSkillsPlugins(): SdkPluginConfig[] {
 		const plugins: SdkPluginConfig[] = [];
 
-		// 1. User-customizable plugin takes priority
-		const userPlugin = join(this.cyrusHome, "cyrus-skills-plugin");
-		if (existsSync(userPlugin)) {
-			this.logger.debug(`Using user skills plugin at ${userPlugin}`);
-			plugins.push({ type: "local", path: userPlugin });
-			return plugins;
-		}
-
-		// 2. Fall back to bundled plugin shipped with the package
+		// 1. Bundled plugin — default Cyrus workflow skills
 		const bundledPlugin = join(
 			dirname(fileURLToPath(import.meta.url)),
 			"..",
@@ -4512,9 +4507,35 @@ ${input.userComment}
 			this.logger.debug(`Using bundled skills plugin at ${bundledPlugin}`);
 			plugins.push({ type: "local", path: bundledPlugin });
 		} else {
-			this.logger.warn(
-				`No skills plugin found at ${userPlugin} or ${bundledPlugin}`,
-			);
+			this.logger.warn(`No bundled skills plugin found at ${bundledPlugin}`);
+		}
+
+		// 2. User skills plugin — managed by CYHOST UI
+		const userPlugin = join(this.cyrusHome, "user-skills-plugin");
+		const userSkillsDir = join(userPlugin, "skills");
+		if (existsSync(userSkillsDir)) {
+			// Auto-scaffold the plugin manifest if missing
+			const manifestDir = join(userPlugin, ".claude-plugin");
+			const manifestPath = join(manifestDir, "plugin.json");
+			if (!existsSync(manifestPath)) {
+				mkdirSync(manifestDir, { recursive: true });
+				writeFileSync(
+					manifestPath,
+					JSON.stringify(
+						{
+							name: "user-skills",
+							description: "User-created skills managed by Cyrus",
+						},
+						null,
+						"\t",
+					),
+				);
+				this.logger.info(
+					`Auto-scaffolded user skills plugin manifest at ${manifestPath}`,
+				);
+			}
+			this.logger.debug(`Using user skills plugin at ${userPlugin}`);
+			plugins.push({ type: "local", path: userPlugin });
 		}
 
 		return plugins;
