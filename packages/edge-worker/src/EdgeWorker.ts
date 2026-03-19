@@ -3248,8 +3248,8 @@ ${taskSection}`;
 			);
 		}
 
-		// === Skill-Based Workflow Path ===
-		if (this.config.useSkillBasedWorkflow) {
+		// === Skill-Based Workflow Path (default: enabled) ===
+		if (this.config.useSkillBasedWorkflow !== false) {
 			const workflow = getWorkflowForClassification(finalClassification);
 			session.metadata!.workflow = {
 				classification: finalClassification,

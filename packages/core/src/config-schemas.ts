@@ -271,7 +271,7 @@ export const EdgeConfigSchema = z.object({
 	 * Whether to use the skill-based workflow system instead of the procedure/subroutine system.
 	 * When enabled, sessions run as a single continuous session with skills loaded into the
 	 * system prompt upfront, and a Stop hook ensures PRs are created for code changes.
-	 * Defaults to false (uses existing procedure system).
+	 * Defaults to true when not specified.
 	 */
 	useSkillBasedWorkflow: z.boolean().optional(),
 });

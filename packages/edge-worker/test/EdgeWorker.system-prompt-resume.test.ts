@@ -210,6 +210,7 @@ Issue: {{issue_identifier}}`;
 			linearWorkspaces: {
 				"test-workspace": { linearToken: "test-token" },
 			},
+			useSkillBasedWorkflow: false,
 			handlers: {
 				createWorkspace: vi.fn().mockResolvedValue({
 					path: "/test/workspaces/TEST-123",
