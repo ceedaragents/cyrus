@@ -133,6 +133,8 @@ import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
+import { SkillLoader } from "./skills/SkillLoader.js";
+import { getWorkflowForClassification } from "./skills/workflows.js";
 import { ToolPermissionResolver } from "./ToolPermissionResolver.js";
 import type { AgentSessionData, EdgeWorkerEvents } from "./types.js";
 import { UserAccessControl } from "./UserAccessControl.js";
@@ -3246,6 +3248,113 @@ ${taskSection}`;
 			);
 		}
 
+		// === Skill-Based Workflow Path (default: enabled) ===
+		if (this.config.useSkillBasedWorkflow !== false) {
+			const workflow = getWorkflowForClassification(finalClassification);
+			session.metadata!.workflow = {
+				classification: finalClassification,
+				skills: workflow.skills,
+				workflowName: workflow.name,
+			};
+
+			await agentSessionManager.postProcedureSelectionThought(
+				sessionId,
+				workflow.name,
+				finalClassification,
+			);
+
+			// Load and assemble skills into system prompt
+			const skillLoader = new SkillLoader(log);
+			const skills = await skillLoader.resolveSkills(
+				workflow.skills,
+				session.workspace.path,
+				this.cyrusHome,
+			);
+			const skillSystemPrompt =
+				this.promptBuilder.assembleSkillBasedSystemPrompt(
+					skills,
+					workflow.workflowGuidance,
+					this.getWorkspaceSlug(linearWorkspaceId),
+				);
+
+			// Build user prompt via existing assembly pipeline
+			const skillAssemblyInput: PromptAssemblyInput = {
+				session,
+				fullIssue,
+				repositories,
+				repository: primaryRepo,
+				userComment: commentBody || "",
+				attachmentManifest: attachmentResult.manifest,
+				guidance: guidance || undefined,
+				agentSession,
+				labels,
+				isNewSession: true,
+				isStreaming: false,
+				isMentionTriggered: isMentionTriggered || false,
+				isLabelBasedPromptRequested: isLabelBasedPromptRequested || false,
+				resolvedBaseBranches: sessionData.workspace.resolvedBaseBranches,
+				linearWorkspaceId,
+			};
+			const assembly = await this.assemblePrompt(skillAssemblyInput);
+
+			// Build tools without subroutine restrictions
+			const allowedTools = this.buildAllowedTools(repositories);
+			const disallowedTools = this.buildDisallowedTools(repositories);
+
+			log.info(
+				`Skill-based workflow: ${workflow.name} (${workflow.skills.join(", ")})`,
+			);
+
+			// Build runner config with PR Guard stop hook for code-changing workflows
+			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
+				session,
+				primaryRepo,
+				sessionId,
+				skillSystemPrompt,
+				allowedTools,
+				allowedDirectories,
+				disallowedTools,
+				undefined, // resumeSessionId
+				labels,
+				fullIssue.description || undefined,
+				undefined, // maxTurns
+				undefined, // singleTurn
+				undefined, // disallowAllTools
+				undefined, // mcpOptions
+				linearWorkspaceId,
+				workflow.involvesCodeChanges, // enablePRGuardStopHook
+			);
+
+			log.debug(
+				`Skill-based runner selection: ${runnerType} (session ${sessionId})`,
+			);
+
+			const runner = this.createRunnerForType(runnerType, runnerConfig);
+			agentSessionManager.addAgentRunner(sessionId, runner);
+			await this.savePersistedState();
+
+			this.emit("session:started", fullIssue.id, fullIssue, primaryRepo.id);
+			this.config.handlers?.onSessionStart?.(
+				fullIssue.id,
+				fullIssue,
+				primaryRepo.id,
+			);
+
+			// Start session
+			if (runner.supportsStreamingInput && runner.startStreaming) {
+				log.debug(`Starting streaming session (skill-based)`);
+				const sessionInfo = await runner.startStreaming(assembly.userPrompt);
+				log.debug(`Streaming session started: ${sessionInfo.sessionId}`);
+			} else {
+				log.debug(`Starting non-streaming session (skill-based)`);
+				const sessionInfo = await runner.start(assembly.userPrompt);
+				log.debug(`Non-streaming session started: ${sessionInfo.sessionId}`);
+			}
+
+			return;
+		}
+
+		// === Procedure-Based Path (existing) ===
 		// Initialize procedure metadata in session with final decision
 		this.procedureAnalyzer.initializeProcedureMetadata(session, finalProcedure);
 
@@ -5029,6 +5138,7 @@ ${input.userComment}
 		disallowAllTools?: boolean,
 		mcpOptions?: { excludeSlackMcp?: boolean },
 		linearWorkspaceId?: string,
+		enablePRGuardStopHook?: boolean,
 	): {
 		config: AgentRunnerConfig;
 		runnerType: RunnerType;
@@ -5064,6 +5174,7 @@ ${input.userComment}
 			createAskUserQuestionCallback: (sid, wid) =>
 				this.createAskUserQuestionCallback(sid, wid)!,
 			requireLinearWorkspaceId,
+			enablePRGuardStopHook,
 		});
 	}
 

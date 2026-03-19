@@ -16,6 +16,10 @@ import {
 import { SimpleCursorRunner } from "cyrus-cursor-runner";
 import { SimpleGeminiRunner } from "cyrus-gemini-runner";
 import { SimpleClaudeRunner } from "cyrus-simple-agent-runner";
+import {
+	getWorkflowForClassification,
+	type WorkflowDecision,
+} from "../skills/index.js";
 import { getProcedureForClassification, PROCEDURES } from "./registry.js";
 import type {
 	ProcedureAnalysisDecision,
@@ -351,6 +355,22 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	 */
 	isProcedureComplete(session: CyrusAgentSession): boolean {
 		return this.getNextSubroutine(session) === null;
+	}
+
+	/**
+	 * Analyze a request and determine which workflow (skill set) to use.
+	 *
+	 * Reuses the same classification system as determineRoutine() but returns
+	 * a WorkflowTemplate (for skill-based sessions) instead of a ProcedureDefinition.
+	 */
+	async determineWorkflow(requestText: string): Promise<WorkflowDecision> {
+		const decision = await this.determineRoutine(requestText);
+		const workflow = getWorkflowForClassification(decision.classification);
+		return {
+			classification: decision.classification,
+			workflow,
+			reasoning: decision.reasoning,
+		};
 	}
 
 	/**

@@ -4,6 +4,15 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Added skill-based workflow system as an alternative to the procedure/subroutine architecture. New `SkillLoader` loads skill markdown files from three sources (default, global `~/.cyrus/skills/`, repository `.claude/skills/`) with priority resolution. `WorkflowTemplate` maps each `RequestClassification` to a set of skills and workflow guidance. `PromptBuilder.assembleSkillBasedSystemPrompt()` wraps skills in `<skill>` XML tags and prepends workflow guidance. 8 default skill files created from existing subroutine prompts. Gated behind `useSkillBasedWorkflow` feature flag on `EdgeConfigSchema`. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991), [#1017](https://github.com/ceedaragents/cyrus/pull/1017))
+- Added PR Guard Stop hook (`buildPRGuardStopHook`) that uses Claude Code's `Stop` hook event to ensure PRs are created when code changes exist. Checks `git status`, `git log`, and `gh pr view` to detect uncommitted/unpushed changes without a PR, returning `decision: "block"` to prevent the agent from stopping prematurely. Uses `stop_hook_active` flag to prevent infinite loops. Integrated into `RunnerConfigBuilder.buildIssueConfig()` via `enablePRGuardStopHook` parameter. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991), [#1017](https://github.com/ceedaragents/cyrus/pull/1017))
+- Added `ProcedureAnalyzer.determineWorkflow()` method that reuses the existing classification call but returns a `WorkflowTemplate` instead of a `ProcedureDefinition`. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991), [#1017](https://github.com/ceedaragents/cyrus/pull/1017))
+- Added `workflow` metadata field to `CyrusAgentSession` for tracking skill-based session classification, skills, and workflow name. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991), [#1017](https://github.com/ceedaragents/cyrus/pull/1017))
+- Added skill-based session flow in `EdgeWorker.initializeAgentRunner()` — when `useSkillBasedWorkflow` is enabled, loads skills via `SkillLoader`, builds skill-based system prompt, and starts a single session without subroutine transitions. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991), [#1017](https://github.com/ceedaragents/cyrus/pull/1017))
+- Added skill-based completion bypass in `AgentSessionManager.completeSession()` — when `session.metadata.workflow` exists, skips procedure routing and directly posts the result. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991), [#1017](https://github.com/ceedaragents/cyrus/pull/1017))
+- 61 new unit tests for SkillLoader, workflow templates, and PR Guard Stop hook. ([CYPACK-991](https://linear.app/ceedar/issue/CYPACK-991), [#1017](https://github.com/ceedaragents/cyrus/pull/1017))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added

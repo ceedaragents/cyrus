@@ -103,6 +103,16 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		/** Skill-based workflow metadata (used when useSkillBasedWorkflow is enabled) */
+		workflow?: {
+			/** The classification that was determined */
+			classification: string;
+			/** Names of skills included in the session */
+			skills: string[];
+			/** Name of the workflow template used */
+			workflowName: string;
+		};
+		/** Procedure-based metadata (legacy subroutine system) */
 		procedure?: {
 			procedureName: string;
 			currentSubroutineIndex: number;

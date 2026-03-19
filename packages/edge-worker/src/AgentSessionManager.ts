@@ -405,6 +405,18 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
+		// Skill-based workflow sessions complete in a single session — no procedure routing needed.
+		// The Stop hook handles PR creation guarantees, so we just post the result directly.
+		if (session.metadata?.workflow) {
+			log.info(
+				`Session completed (skill-based workflow: ${session.metadata.workflow.workflowName})`,
+			);
+			if ("result" in resultMessage && resultMessage.result) {
+				await this.addResultEntry(sessionId, resultMessage);
+			}
+			return;
+		}
+
 		if (wasStopRequested) {
 			log.info(
 				`Session ${sessionId} was stopped by user; skipping procedure continuation`,
