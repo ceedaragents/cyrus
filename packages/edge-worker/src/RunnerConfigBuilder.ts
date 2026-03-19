@@ -4,6 +4,7 @@ import type {
 	McpServerConfig,
 	PostToolUseHookInput,
 	SDKMessage,
+	StopHookInput,
 } from "cyrus-claude-runner";
 import type {
 	AgentRunnerConfig,
@@ -91,8 +92,6 @@ export interface IssueRunnerConfigInput {
 	labels?: string[];
 	issueDescription?: string;
 	maxTurns?: number;
-	singleTurn?: boolean;
-	disallowAllTools?: boolean;
 	mcpOptions?: { excludeSlackMcp?: boolean };
 	linearWorkspaceId?: string;
 	cyrusHome: string;
@@ -193,8 +192,10 @@ export class RunnerConfigBuilder {
 	} {
 		const log = input.logger;
 
-		// Configure PostToolUse hooks for screenshot tools to guide Claude to use linear_upload_file
-		const hooks = this.buildScreenshotHooks(log);
+		// Configure hooks: PostToolUse for screenshot tools + Stop hook for PR/summary enforcement
+		const screenshotHooks = this.buildScreenshotHooks(log);
+		const stopHook = this.buildStopHook(log);
+		const hooks = { ...screenshotHooks, ...stopHook };
 
 		// Determine runner type and model override from selectors
 		const runnerSelection = this.runnerSelector.determineRunnerSelection(
@@ -233,37 +234,24 @@ export class RunnerConfigBuilder {
 			log.debug(`Model override via selector: ${modelOverride}`);
 		}
 
-		// Convert singleTurn flag to effective maxTurns value
-		const effectiveMaxTurns = input.singleTurn ? 1 : input.maxTurns;
-
 		// Determine final model from selectors, repository override, then runner-specific defaults
 		const finalModel =
 			modelOverride ||
 			input.repository.model ||
 			this.runnerSelector.getDefaultModelForRunner(runnerType);
 
-		// When disallowAllTools is true, don't provide any MCP servers to ensure
-		// the agent cannot use any tools (including MCP-provided tools like Linear create_comment)
 		const resolvedWorkspaceId =
 			input.linearWorkspaceId ??
 			input.requireLinearWorkspaceId(input.repository);
-		const mcpConfig = input.disallowAllTools
-			? undefined
-			: this.mcpConfigProvider.buildMcpConfig(
-					input.repository.id,
-					resolvedWorkspaceId,
-					input.sessionId,
-					input.mcpOptions,
-				);
-		const mcpConfigPath = input.disallowAllTools
-			? undefined
-			: this.mcpConfigProvider.buildMergedMcpConfigPath(input.repository);
-
-		if (input.disallowAllTools) {
-			log.info(
-				`MCP tools disabled for session ${input.sessionId} (disallowAllTools=true)`,
-			);
-		}
+		const mcpConfig = this.mcpConfigProvider.buildMcpConfig(
+			input.repository.id,
+			resolvedWorkspaceId,
+			input.sessionId,
+			input.mcpOptions,
+		);
+		const mcpConfigPath = this.mcpConfigProvider.buildMergedMcpConfigPath(
+			input.repository,
+		);
 
 		const config: AgentRunnerConfig & Record<string, unknown> = {
 			workingDirectory: input.session.workspace.path,
@@ -275,8 +263,6 @@ export class RunnerConfigBuilder {
 			mcpConfigPath,
 			mcpConfig,
 			appendSystemPrompt: input.systemPrompt || "",
-			// When disallowAllTools is true, remove all built-in tools from model context
-			...(input.disallowAllTools && { tools: [] }),
 			// Priority order: label override > repository config > global default
 			model: finalModel,
 			fallbackModel:
@@ -320,14 +306,50 @@ export class RunnerConfigBuilder {
 			config.resumeSessionId = input.resumeSessionId;
 		}
 
-		if (effectiveMaxTurns !== undefined) {
-			config.maxTurns = effectiveMaxTurns;
-			if (input.singleTurn) {
-				log.debug(`Applied singleTurn maxTurns=1`);
-			}
+		if (input.maxTurns !== undefined) {
+			config.maxTurns = input.maxTurns;
 		}
 
 		return { config, runnerType };
+	}
+
+	/**
+	 * Build a Stop hook that ensures the agent creates a PR and posts a summary
+	 * before ending the session. Uses the `stop_hook_active` flag to prevent
+	 * infinite loops — on the first stop attempt it blocks with guidance,
+	 * on subsequent attempts (where the hook already fired) it allows the stop.
+	 */
+	private buildStopHook(
+		_log: ILogger,
+	): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+		return {
+			Stop: [
+				{
+					matcher: ".*",
+					hooks: [
+						async (input) => {
+							const stopInput = input as StopHookInput;
+
+							// CRITICAL: Prevent infinite loops — if the stop hook already
+							// fired once and the agent is trying to stop again, let it through.
+							if (stopInput.stop_hook_active) {
+								return { continue: false };
+							}
+
+							// Block the first stop attempt and guide the agent to create a PR and summary
+							return {
+								continue: true,
+								additionalContext:
+									"Before stopping, ensure you have:\n" +
+									"1. Committed and pushed all code changes and created/updated a PR (if you made any code changes)\n" +
+									"2. Posted a summary of your work to the issue tracker\n\n" +
+									"If you have already done both (or no code changes were made), you may stop again.",
+							};
+						},
+					],
+				},
+			],
+		};
 	}
 
 	/**

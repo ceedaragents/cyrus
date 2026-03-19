@@ -96,8 +96,6 @@ export class ChatSessionHandler<TEvent> {
 		this.sessionManager = new AgentSessionManager(
 			undefined, // No parent session lookup
 			undefined, // No resume parent session
-			undefined, // No procedure analyzer
-			undefined, // No shared application server
 		);
 	}
 

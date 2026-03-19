@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Replaced rigid procedure-based agent session architecture with skills-based approach. Procedures (ProcedureAnalyzer, subroutine sequencing, validation loop) removed in favor of SKILL.md files deployed to `.claude/skills/` that the agent discovers at runtime. Added Stop hook to `RunnerConfigBuilder` to ensure PRs and summaries are created before session ends. Added `deploySkillsToWorkspace()` to EdgeWorker for copying skills from `~/.cyrus/skills/` to worktree. Simplified `AgentSessionManager` by removing procedure completion routing and validation loop logic. Added workflow guidance section to system prompt. Removed ~7000 lines of procedure/validation/subroutine code. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added

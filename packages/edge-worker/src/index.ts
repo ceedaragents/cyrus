@@ -56,14 +56,5 @@ export {
 	DEFAULT_BLOCK_MESSAGE,
 	UserAccessControl,
 } from "./UserAccessControl.js";
-// Export validation loop module
-export {
-	DEFAULT_VALIDATION_LOOP_CONFIG,
-	parseValidationResult,
-	VALIDATION_RESULT_SCHEMA,
-	type ValidationFixerContext,
-	type ValidationLoopConfig,
-	type ValidationLoopState,
-	type ValidationResult,
-} from "./validation/index.js";
+
 export { WorktreeIncludeService } from "./WorktreeIncludeService.js";

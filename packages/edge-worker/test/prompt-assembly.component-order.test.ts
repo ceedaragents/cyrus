@@ -8,18 +8,13 @@ import { describe, it } from "vitest";
 import { createTestWorker, scenario } from "./prompt-assembly-utils.js";
 
 describe("Prompt Assembly - Component Order", () => {
-	it("should assemble components in correct order: issue context, subroutine, user comment", async () => {
+	it("should assemble components in correct order: issue context, user comment", async () => {
 		const worker = createTestWorker();
 
 		const session = {
 			issueId: "c3d4e5f6-a7b8-9012-cdef-123456789012",
 			workspace: { path: "/test" },
-			metadata: {
-				procedure: {
-					name: "full-development",
-					currentSubroutineIndex: 0,
-				},
-			},
+			metadata: {},
 		};
 
 		const issue = {
@@ -57,7 +52,17 @@ Remember: Your first message is internal planning. Use this time to:
 1. Thoroughly analyze the issue and requirements
 2. Create detailed todos using TodoWrite
 3. Plan your approach systematically
-</task_management_instructions>`)
+</task_management_instructions>
+
+## Workflow
+
+Follow this workflow to completion:
+
+1. **Implement** — Implement the requested changes. Write production-ready code, follow existing patterns, and run tests to verify your work.
+2. **Verify & Ship** — Run all quality checks (tests, lint, typecheck). Fix any failures, retrying up to 3 times. Then update the changelog, commit, push, and create/update the pull request.
+3. **Summarize** — Post a concise summary of the work to Linear.
+
+Do NOT skip steps. Complete each phase before moving to the next.`)
 			.expectUserPrompt(`<context>
   <repository>undefined</repository>
   <working_directory>/test/repo</working_directory>
