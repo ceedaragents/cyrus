@@ -182,26 +182,4 @@ export class SkillLoader {
 
 		return resolved;
 	}
-
-	/**
-	 * Assemble resolved skills into a system prompt section.
-	 *
-	 * Each skill is wrapped in <skill> XML tags for clear delineation.
-	 * The workflow guidance checklist is prepended.
-	 */
-	assembleSkillPrompt(
-		skills: SkillDefinition[],
-		workflowGuidance: string,
-	): string {
-		const parts: string[] = [workflowGuidance, ""];
-
-		for (const skill of skills) {
-			parts.push(`<skill name="${skill.name}">`);
-			parts.push(skill.content);
-			parts.push("</skill>");
-			parts.push("");
-		}
-
-		return parts.join("\n").trim();
-	}
 }

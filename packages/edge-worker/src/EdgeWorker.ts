@@ -3274,6 +3274,7 @@ ${taskSection}`;
 				this.promptBuilder.assembleSkillBasedSystemPrompt(
 					skills,
 					workflow.workflowGuidance,
+					this.getWorkspaceSlug(linearWorkspaceId),
 				);
 
 			// Build user prompt via existing assembly pipeline

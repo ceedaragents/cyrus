@@ -83,7 +83,10 @@ describe("buildPRGuardStopHook", () => {
 		expect(matchers[0].hooks).toHaveLength(1);
 
 		const hookFn = matchers[0].hooks[0];
-		const input = { stop_hook_active: stopHookActive } as any;
+		const input = {
+			hook_event_name: "Stop",
+			stop_hook_active: stopHookActive,
+		} as any;
 		const signal = new AbortController().signal;
 
 		return hookFn(input, undefined, { signal });

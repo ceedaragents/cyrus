@@ -82,6 +82,13 @@ export function buildPRGuardStopHook(
 					_toolUseID: string | undefined,
 					_options: { signal: AbortSignal },
 				): Promise<SyncHookJSONOutput> => {
+					// Type guard: verify this is actually a Stop hook input
+					if (input.hook_event_name !== "Stop") {
+						logger.warn(
+							`PR Guard: unexpected hook event "${input.hook_event_name}", allowing stop`,
+						);
+						return {};
+					}
 					const stopInput = input as StopHookInput;
 
 					// CRITICAL: Prevent infinite loops.
