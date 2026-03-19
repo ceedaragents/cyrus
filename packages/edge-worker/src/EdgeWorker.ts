@@ -2616,9 +2616,6 @@ ${taskSection}`;
 			),
 		);
 
-		// Deploy skills from cyrusHome to workspace
-		await this.deploySkillsToWorkspace(workspace.path);
-
 		// Build allowed directories list - always include attachments directory
 		// Include repository paths from all repositories
 		const allRepoPaths = repositories.map((repo) => repo.repositoryPath);
@@ -4484,32 +4481,6 @@ ${input.userComment}
 	 * to the SDK as a plugin). This method only handles additional user skills
 	 * from the cyrusHome skills directory, if present.
 	 */
-	private async deploySkillsToWorkspace(workspacePath: string): Promise<void> {
-		const sourceDir = join(this.cyrusHome, "skills");
-
-		if (!existsSync(sourceDir)) {
-			this.logger.debug(
-				`No user skills directory at ${sourceDir} (bundled skills provided via plugin)`,
-			);
-			return;
-		}
-
-		const targetDir = join(workspacePath, ".claude", "skills");
-		const skillDirs = await readdir(sourceDir, { withFileTypes: true });
-		for (const dir of skillDirs) {
-			if (!dir.isDirectory()) continue;
-			const sourceSkillPath = join(sourceDir, dir.name, "SKILL.md");
-			if (!existsSync(sourceSkillPath)) continue;
-
-			const targetSkillDir = join(targetDir, dir.name);
-			await mkdir(targetSkillDir, { recursive: true });
-			const content = await readFile(sourceSkillPath, "utf-8");
-			await writeFile(join(targetSkillDir, "SKILL.md"), content);
-		}
-
-		this.logger.info(`Deployed user skills from ${sourceDir} to ${targetDir}`);
-	}
-
 	/**
 	 * Resolve plugins that provide skills to the agent session.
 	 *
