@@ -4,6 +4,7 @@ import type {
 	McpServerConfig,
 	PostToolUseHookInput,
 	SDKMessage,
+	SdkPluginConfig,
 	StopHookInput,
 } from "cyrus-claude-runner";
 import type {
@@ -105,6 +106,8 @@ export interface IssueRunnerConfigInput {
 	) => OnAskUserQuestion;
 	/** Resolve the Linear workspace ID for a repository */
 	requireLinearWorkspaceId: (repo: RepositoryConfig) => string;
+	/** Plugins to load for the session (provides skills, hooks, etc.) */
+	plugins?: SdkPluginConfig[];
 }
 
 /**
@@ -271,6 +274,9 @@ export class RunnerConfigBuilder {
 				this.runnerSelector.getDefaultFallbackModelForRunner(runnerType),
 			logger: log,
 			hooks,
+			// Plugins providing skills (Claude runner only)
+			...(runnerType === "claude" &&
+				input.plugins?.length && { plugins: input.plugins }),
 			// Enable Chrome integration for Claude runner (disabled for other runners)
 			...(runnerType === "claude" && { extraArgs: { chrome: null } }),
 			// AskUserQuestion callback - only for Claude runner

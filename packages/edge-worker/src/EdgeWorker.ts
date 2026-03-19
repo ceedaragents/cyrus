@@ -4,7 +4,11 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LinearClient } from "@linear/sdk";
-import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
+import type {
+	McpServerConfig,
+	SDKMessage,
+	SdkPluginConfig,
+} from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
@@ -4469,42 +4473,24 @@ ${input.userComment}
 	}
 
 	/**
-	 * Deploy skills to workspace .claude/skills directory so they are available
-	 * to the agent during the session.
+	 * Deploy user-customizable skills from ~/.cyrus/skills/ to the workspace.
 	 *
-	 * Resolution order:
-	 * 1. `~/.cyrus/skills/` — user-customizable skills directory
-	 * 2. Bundled skills shipped with the edge-worker package (`dist/skills/`)
-	 *
-	 * This ensures skills are available regardless of which repository the
-	 * agent is working on.
+	 * Default/bundled skills are delivered via the cyrus-skills-plugin (passed
+	 * to the SDK as a plugin). This method only handles additional user skills
+	 * from the cyrusHome skills directory, if present.
 	 */
 	private async deploySkillsToWorkspace(workspacePath: string): Promise<void> {
 		const { existsSync } = await import("node:fs");
-		const targetDir = join(workspacePath, ".claude", "skills");
+		const sourceDir = join(this.cyrusHome, "skills");
 
-		// Resolution order: cyrusHome skills (user-customizable) > bundled package skills
-		const cyrusHomeSkills = join(this.cyrusHome, "skills");
-		const bundledSkills = join(
-			dirname(fileURLToPath(import.meta.url)),
-			"..",
-			"skills",
-		);
-
-		let sourceDir: string | undefined;
-		if (existsSync(cyrusHomeSkills)) {
-			sourceDir = cyrusHomeSkills;
-		} else if (existsSync(bundledSkills)) {
-			sourceDir = bundledSkills;
-		}
-
-		if (!sourceDir) {
-			this.logger.warn(
-				`No skills directory found at ${cyrusHomeSkills} or ${bundledSkills}`,
+		if (!existsSync(sourceDir)) {
+			this.logger.debug(
+				`No user skills directory at ${sourceDir} (bundled skills provided via plugin)`,
 			);
 			return;
 		}
 
+		const targetDir = join(workspacePath, ".claude", "skills");
 		const skillDirs = await readdir(sourceDir, { withFileTypes: true });
 		for (const dir of skillDirs) {
 			if (!dir.isDirectory()) continue;
@@ -4517,7 +4503,47 @@ ${input.userComment}
 			await writeFile(join(targetSkillDir, "SKILL.md"), content);
 		}
 
-		this.logger.info(`Deployed skills from ${sourceDir} to ${targetDir}`);
+		this.logger.info(`Deployed user skills from ${sourceDir} to ${targetDir}`);
+	}
+
+	/**
+	 * Resolve plugins that provide skills to the agent session.
+	 *
+	 * Returns an array of SdkPluginConfig pointing to:
+	 * 1. `~/.cyrus/cyrus-skills-plugin/` — user-customizable plugin (if exists)
+	 * 2. Bundled `cyrus-skills-plugin/` shipped with the edge-worker package
+	 *
+	 * The SDK loads skills from the plugin's `skills/` directory, making them
+	 * available to the agent regardless of which repository it's working on.
+	 */
+	private resolveSkillsPlugins(): SdkPluginConfig[] {
+		const { existsSync } = require("node:fs") as typeof import("node:fs");
+		const plugins: SdkPluginConfig[] = [];
+
+		// 1. User-customizable plugin takes priority
+		const userPlugin = join(this.cyrusHome, "cyrus-skills-plugin");
+		if (existsSync(userPlugin)) {
+			this.logger.debug(`Using user skills plugin at ${userPlugin}`);
+			plugins.push({ type: "local", path: userPlugin });
+			return plugins;
+		}
+
+		// 2. Fall back to bundled plugin shipped with the package
+		const bundledPlugin = join(
+			dirname(fileURLToPath(import.meta.url)),
+			"..",
+			"cyrus-skills-plugin",
+		);
+		if (existsSync(bundledPlugin)) {
+			this.logger.debug(`Using bundled skills plugin at ${bundledPlugin}`);
+			plugins.push({ type: "local", path: bundledPlugin });
+		} else {
+			this.logger.warn(
+				`No skills plugin found at ${userPlugin} or ${bundledPlugin}`,
+			);
+		}
+
+		return plugins;
 	}
 
 	/**
@@ -4626,6 +4652,7 @@ ${input.userComment}
 			linearWorkspaceId,
 			cyrusHome: this.cyrusHome,
 			logger: log,
+			plugins: this.resolveSkillsPlugins(),
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},
