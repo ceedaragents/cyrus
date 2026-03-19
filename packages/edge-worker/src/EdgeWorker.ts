@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -4480,7 +4481,6 @@ ${input.userComment}
 	 * from the cyrusHome skills directory, if present.
 	 */
 	private async deploySkillsToWorkspace(workspacePath: string): Promise<void> {
-		const { existsSync } = await import("node:fs");
 		const sourceDir = join(this.cyrusHome, "skills");
 
 		if (!existsSync(sourceDir)) {
@@ -4517,7 +4517,6 @@ ${input.userComment}
 	 * available to the agent regardless of which repository it's working on.
 	 */
 	private resolveSkillsPlugins(): SdkPluginConfig[] {
-		const { existsSync } = require("node:fs") as typeof import("node:fs");
 		const plugins: SdkPluginConfig[] = [];
 
 		// 1. User-customizable plugin takes priority
