@@ -4352,12 +4352,16 @@ ${taskSection}`;
 			systemPrompt = sharedInstructions;
 		}
 
-		// 3. Append workflow guidance — reference deployed skills rather than duplicating content
+		// 3. Append skills guidance — instruct the agent to use skills based on context
 		systemPrompt +=
-			"\n\n## Workflow\n\n" +
-			"You have skills available in `.claude/skills/`. Use them to guide your workflow.\n" +
-			"Follow the full workflow to completion: implement, verify & ship (tests, lint, typecheck, PR), then summarize.\n" +
-			"Do NOT skip steps. Complete each phase before moving to the next.";
+			"\n\n## Skills\n\n" +
+			"You have skills available via the Skill tool. Choose the appropriate skill based on the context:\n\n" +
+			"- **Code changes requested** (feature, bug fix, refactor): Use `implementation` to write code, then `verify-and-ship` to run checks and create a PR, then `summarize` to post results.\n" +
+			"- **Bug report or error**: Use `debug` to reproduce, root-cause, and fix, then `verify-and-ship`, then `summarize`.\n" +
+			"- **Question or research request**: Use `investigate` to search the codebase and provide an answer, then `summarize`.\n" +
+			"- **PR review feedback** (changes requested): Use `implementation` to address review comments, then `verify-and-ship`.\n\n" +
+			"Analyze the issue description, labels, and any user comments to determine which workflow fits. " +
+			"Do NOT skip the verify-and-ship step if you made code changes — it ensures quality checks pass and a PR is created.";
 
 		// 4. Build issue context using appropriate builder
 		// Use label-based prompt ONLY if we have a label-based system prompt

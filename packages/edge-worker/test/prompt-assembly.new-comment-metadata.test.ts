@@ -190,11 +190,16 @@ Remember: Your first message is internal planning. Use this time to:
 3. Plan your approach systematically
 </task_management_instructions>
 
-## Workflow
+## Skills
 
-You have skills available in \`.claude/skills/\`. Use them to guide your workflow.
-Follow the full workflow to completion: implement, verify & ship (tests, lint, typecheck, PR), then summarize.
-Do NOT skip steps. Complete each phase before moving to the next.`)
+You have skills available via the Skill tool. Choose the appropriate skill based on the context:
+
+- **Code changes requested** (feature, bug fix, refactor): Use \`implementation\` to write code, then \`verify-and-ship\` to run checks and create a PR, then \`summarize\` to post results.
+- **Bug report or error**: Use \`debug\` to reproduce, root-cause, and fix, then \`verify-and-ship\`, then \`summarize\`.
+- **Question or research request**: Use \`investigate\` to search the codebase and provide an answer, then \`summarize\`.
+- **PR review feedback** (changes requested): Use \`implementation\` to address review comments, then \`verify-and-ship\`.
+
+Analyze the issue description, labels, and any user comments to determine which workflow fits. Do NOT skip the verify-and-ship step if you made code changes — it ensures quality checks pass and a PR is created.`)
 			.expectPromptType("fallback")
 			.expectComponents("issue-context", "user-comment")
 			.verify();
