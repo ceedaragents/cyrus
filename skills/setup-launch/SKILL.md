@@ -3,6 +3,8 @@ name: setup-launch
 description: Print a summary of the Cyrus setup and offer to start the agent.
 ---
 
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+
 # Setup Launch
 
 Prints a summary of the completed setup and offers to start Cyrus.

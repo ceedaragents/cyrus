@@ -7,6 +7,10 @@ description: Set up Cyrus end-to-end — install prerequisites, configure authen
 
 One-command setup for self-hosted Cyrus. This orchestrator walks you through everything needed to run Claude Code as a background agent from Linear, Slack, and GitHub.
 
+## CRITICAL: Never Read or Write ~/.cyrus/.env Directly
+
+**FORBIDDEN:** Do NOT use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. This file contains secrets (API keys, tokens, signing secrets). All interaction with this file MUST go through `Bash` commands (`grep`, `printf >> ...`, etc.) which the user can see and approve. Never read its contents into the conversation context.
+
 ## How This Works
 
 This skill runs sub-skills in order, skipping any that are already complete. You can re-run `/setup` at any time to add integrations or fix configuration.

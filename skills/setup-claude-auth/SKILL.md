@@ -3,6 +3,8 @@ name: setup-claude-auth
 description: Configure Claude Code authentication for Cyrus — API key, OAuth token, or third-party provider.
 ---
 
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+
 # Setup Claude Auth
 
 Configures Claude Code credentials so Cyrus can run AI sessions.

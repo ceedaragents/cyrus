@@ -3,6 +3,8 @@ name: setup-slack
 description: Configure Slack integration for Cyrus — create a Slack app from manifest via agent-browser or guided manual setup, then capture bot token and signing secret.
 ---
 
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+
 # Setup Slack
 
 Creates a Slack application from a pre-built manifest so Cyrus can respond to messages in Slack channels. Supports automated creation via agent-browser or guided manual flow.

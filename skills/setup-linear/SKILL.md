@@ -3,6 +3,8 @@ name: setup-linear
 description: Create a Linear OAuth application and configure Cyrus to use it — supports agent-browser automation or guided manual setup.
 ---
 
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+
 # Setup Linear
 
 Creates a Linear OAuth application and configures credentials so Cyrus can receive webhooks and respond to issues.

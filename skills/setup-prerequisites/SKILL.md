@@ -3,6 +3,8 @@ name: setup-prerequisites
 description: Check and install prerequisites for Cyrus — Node.js, jq, gh CLI, and the cyrus-ai npm package.
 ---
 
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+
 # Setup Prerequisites
 
 Checks system prerequisites and installs `cyrus-ai`.

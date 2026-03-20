@@ -3,6 +3,8 @@ name: setup-endpoint
 description: Configure the public webhook endpoint for Cyrus — ngrok, Cloudflare Tunnel, or custom URL.
 ---
 
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+
 # Setup Endpoint
 
 Configures a public URL so Linear (and other integrations) can send webhooks to your Cyrus instance.

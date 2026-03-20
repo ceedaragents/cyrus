@@ -3,6 +3,8 @@ name: setup-github
 description: Configure GitHub authentication for Cyrus — gh CLI login and git config for creating pull requests.
 ---
 
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+
 # Setup GitHub
 
 Configures GitHub CLI and git so Cyrus can create branches, commits, and pull requests.

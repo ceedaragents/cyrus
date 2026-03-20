@@ -3,6 +3,8 @@ name: setup-repository
 description: Add one or more Git repositories to Cyrus configuration so it can process issues from those repos.
 ---
 
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+
 # Setup Repository
 
 Adds Git repositories to Cyrus so it knows which codebases to work with.
