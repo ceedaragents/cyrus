@@ -578,7 +578,7 @@ export declare interface CodexRunner {
 }
 
 export class CodexRunner extends EventEmitter implements IAgentRunner {
-	readonly supportsStreamingInput = false;
+	readonly supportsStreamingInput = true;
 
 	private config: CodexRunnerConfig;
 	private sessionInfo: CodexSessionInfo | null = null;
@@ -600,6 +600,15 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	private appServerClient: CodexAppServerClient | null = null;
 	private terminalTurnResolver: (() => void) | null = null;
 	private terminalTurnRejecter: ((error: Error) => void) | null = null;
+	private completedTurnCount = 0;
+	private pendingPrompts: string[] = [];
+	private sessionTask: Promise<void> | null = null;
+	private streamingMode = false;
+	private streamingCompleted = false;
+	private activeTurnId: string | null = null;
+	private turnStartedPromise: Promise<void> | null = null;
+	private turnStartedResolver: (() => void) | null = null;
+	private turnStartedRejecter: ((error: Error) => void) | null = null;
 
 	constructor(config: CodexRunnerConfig) {
 		super();
@@ -619,11 +628,71 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		return this.startWithPrompt(null, initialPrompt);
 	}
 
-	addStreamMessage(_content: string): void {
-		throw new Error("CodexRunner does not support streaming input messages");
+	addStreamMessage(content: string): void {
+		if (!this.streamingMode) {
+			throw new Error("Cannot add stream message when not in streaming mode");
+		}
+		if (this.streamingCompleted) {
+			throw new Error("Cannot add stream message after stream completion");
+		}
+		if (!this.sessionInfo?.isRunning) {
+			throw new Error(
+				"Cannot add stream message when Codex session is not running",
+			);
+		}
+
+		const prompt = content.trim();
+		if (!prompt) {
+			return;
+		}
+
+		if (
+			this.activeTurnId &&
+			this.appServerClient &&
+			this.sessionInfo?.sessionId
+		) {
+			void this.appServerClient
+				.steerTurn({
+					threadId: this.sessionInfo.sessionId,
+					expectedTurnId: this.activeTurnId,
+					input: [
+						{
+							type: "text",
+							text: prompt,
+							text_elements: [],
+						},
+					],
+				})
+				.catch((error) => {
+					const message = normalizeError(error);
+					this.errorMessages.push(message);
+					this.emit("error", new Error(message));
+				});
+			return;
+		}
+
+		this.pendingPrompts.push(prompt);
+		this.ensureSessionTaskRunning();
 	}
 
-	completeStream(): void {}
+	completeStream(): void {
+		this.streamingCompleted = true;
+		if (
+			this.sessionInfo?.isRunning &&
+			!this.sessionTask &&
+			this.pendingPrompts.length === 0
+		) {
+			this.finalizeSession();
+		}
+	}
+
+	isStreaming(): boolean {
+		return (
+			this.streamingMode &&
+			!this.streamingCompleted &&
+			(this.sessionInfo?.isRunning ?? false)
+		);
+	}
 
 	private async startWithPrompt(
 		stringPrompt?: string | null,
@@ -654,6 +723,15 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		this.startTimestampMs = Date.now();
 		this.emittedToolUseIds.clear();
 		this.tokenUsageByTurn.clear();
+		this.completedTurnCount = 0;
+		this.pendingPrompts = [];
+		this.sessionTask = null;
+		this.streamingMode = stringPrompt === null || stringPrompt === undefined;
+		this.streamingCompleted = false;
+		this.activeTurnId = null;
+		this.turnStartedPromise = null;
+		this.turnStartedResolver = null;
+		this.turnStartedRejecter = null;
 
 		await this.resolveModelWithFallback();
 
@@ -673,12 +751,26 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 					experimentalApi: false,
 				},
 			});
-			await this.runTurn(client, prompt);
+
+			await this.initializeThread(client);
+			if (prompt) {
+				this.pendingPrompts.push(prompt);
+			}
+
+			if (this.streamingMode) {
+				this.ensureSessionTaskRunning();
+				if (prompt) {
+					await this.waitForTurnToStart();
+				}
+				return this.sessionInfo!;
+			}
+
+			await this.drainPendingPrompts(client);
 		} catch (error) {
 			caughtError = error;
-		} finally {
-			this.finalizeSession(caughtError);
 		}
+
+		this.finalizeSession(caughtError);
 
 		return this.sessionInfo!;
 	}
@@ -885,8 +977,15 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 						},
 					};
 				}
-				if (turn.status === "interrupted" && this.wasStopped) {
-					return null;
+				if (turn.status === "interrupted") {
+					return {
+						type: "turn.interrupted",
+						message:
+							turn.error?.message ||
+							(this.wasStopped
+								? "Codex session interrupted"
+								: "Codex turn interrupted"),
+					};
 				}
 				const usage = this.tokenUsageByTurn.get(turn.id);
 				return {
@@ -918,6 +1017,76 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		client: CodexAppServerClient,
 		prompt: string,
 	): Promise<void> {
+		const threadId = this.sessionInfo?.sessionId;
+		if (!threadId) {
+			throw new Error("Codex app-server thread is not initialized");
+		}
+
+		const trimmedPrompt = prompt.trim();
+		if (!trimmedPrompt) {
+			return;
+		}
+
+		this.pendingResultMessage = null;
+		const turnParams: AppServerTurnStartParams = {
+			threadId,
+			input: [
+				{
+					type: "text",
+					text: trimmedPrompt,
+					text_elements: [],
+				},
+			],
+			cwd: this.config.workingDirectory,
+			approvalPolicy: this.buildApprovalPolicy(),
+			sandboxPolicy: this.buildSandboxPolicy(),
+			model: this.config.model,
+			effort:
+				this.config.modelReasoningEffort ??
+				getDefaultReasoningEffortForModel(this.config.model),
+			...(isJsonValue(this.config.outputSchema)
+				? { outputSchema: this.config.outputSchema }
+				: {}),
+		};
+
+		const completionPromise = new Promise<void>((resolve, reject) => {
+			this.terminalTurnResolver = resolve;
+			this.terminalTurnRejecter = reject;
+		});
+
+		try {
+			const startedTurn = await client.startTurn(turnParams);
+			this.activeTurnId = startedTurn.turn.id;
+			this.turnStartedResolver?.();
+			this.turnStartedPromise = null;
+			this.turnStartedResolver = null;
+			this.turnStartedRejecter = null;
+		} catch (error) {
+			this.turnStartedRejecter?.(
+				error instanceof Error ? error : new Error(normalizeError(error)),
+			);
+			this.turnStartedPromise = null;
+			this.turnStartedResolver = null;
+			this.turnStartedRejecter = null;
+			throw error;
+		}
+		await completionPromise;
+	}
+
+	private async waitForTurnToStart(): Promise<void> {
+		if (this.activeTurnId) {
+			return;
+		}
+		if (!this.turnStartedPromise) {
+			this.turnStartedPromise = new Promise<void>((resolve, reject) => {
+				this.turnStartedResolver = resolve;
+				this.turnStartedRejecter = reject;
+			});
+		}
+		await this.turnStartedPromise;
+	}
+
+	private async initializeThread(client: CodexAppServerClient): Promise<void> {
 		const threadConfig = this.buildThreadConfig();
 		const threadResponse = this.config.resumeSessionId
 			? await client.resumeThread({
@@ -936,35 +1105,55 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			this.sessionInfo.sessionId = threadResponse.thread.id;
 		}
 		this.emitSystemInitMessage(threadResponse.thread.id);
+	}
 
-		const turnParams: AppServerTurnStartParams = {
-			threadId: threadResponse.thread.id,
-			input: [
-				{
-					type: "text",
-					text: prompt,
-					text_elements: [],
-				},
-			],
-			cwd: this.config.workingDirectory,
-			approvalPolicy: this.buildApprovalPolicy(),
-			sandboxPolicy: this.buildSandboxPolicy(),
-			model: this.config.model,
-			effort:
-				this.config.modelReasoningEffort ??
-				getDefaultReasoningEffortForModel(this.config.model),
-			...(isJsonValue(threadConfig.outputSchema)
-				? { outputSchema: threadConfig.outputSchema }
-				: {}),
-		};
+	private ensureSessionTaskRunning(): void {
+		if (
+			!this.appServerClient ||
+			!this.sessionInfo?.isRunning ||
+			this.sessionTask
+		) {
+			return;
+		}
+		if (this.pendingPrompts.length === 0) {
+			if (this.streamingCompleted) {
+				this.finalizeSession();
+			}
+			return;
+		}
 
-		const completionPromise = new Promise<void>((resolve, reject) => {
-			this.terminalTurnResolver = resolve;
-			this.terminalTurnRejecter = reject;
-		});
+		this.sessionTask = this.drainPendingPrompts(this.appServerClient).finally(
+			() => {
+				this.sessionTask = null;
+			},
+		);
+	}
 
-		await client.startTurn(turnParams);
-		await completionPromise;
+	private async drainPendingPrompts(
+		client: CodexAppServerClient,
+	): Promise<void> {
+		let caughtError: unknown;
+
+		try {
+			while (this.sessionInfo?.isRunning) {
+				const nextPrompt = this.pendingPrompts.shift();
+				if (!nextPrompt) {
+					break;
+				}
+				await this.runTurn(client, nextPrompt);
+			}
+		} catch (error) {
+			caughtError = error;
+		}
+
+		if (this.streamingMode) {
+			this.finalizeSession(caughtError);
+			return;
+		}
+
+		if (caughtError) {
+			throw caughtError;
+		}
 	}
 
 	private buildApprovalPolicy(): AppServerApprovalPolicy {
@@ -1261,10 +1450,16 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			}
 			case "turn.completed": {
 				this.lastUsage = parseUsage(event.usage);
-				this.pendingResultMessage = this.createSuccessResultMessage(
-					this.lastAssistantText || "Codex session completed successfully",
-				);
+				this.completedTurnCount += 1;
+				this.activeTurnId = null;
 				this.terminalTurnResolver?.();
+				this.terminalTurnResolver = null;
+				this.terminalTurnRejecter = null;
+				break;
+			}
+			case "turn.interrupted": {
+				this.activeTurnId = null;
+				this.terminalTurnRejecter?.(new Error(event.message));
 				this.terminalTurnResolver = null;
 				this.terminalTurnRejecter = null;
 				break;
@@ -1275,6 +1470,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 					this.errorMessages.at(-1) ||
 					"Codex execution failed";
 				this.errorMessages.push(message);
+				this.activeTurnId = null;
 				this.pendingResultMessage = this.createErrorResultMessage(message);
 				this.terminalTurnRejecter?.(new Error(message));
 				this.terminalTurnResolver = null;
@@ -1442,6 +1638,10 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			this.cleanupRuntimeState();
 			return;
 		}
+		if (!this.sessionInfo.isRunning) {
+			this.cleanupRuntimeState();
+			return;
+		}
 
 		this.sessionInfo.isRunning = false;
 
@@ -1533,7 +1733,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			duration_ms: durationMs,
 			duration_api_ms: 0,
 			is_error: false,
-			num_turns: 1,
+			num_turns: Math.max(this.completedTurnCount, 1),
 			result,
 			stop_reason: null,
 			total_cost_usd: 0,
@@ -1553,7 +1753,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			duration_ms: durationMs,
 			duration_api_ms: 0,
 			is_error: true,
-			num_turns: 1,
+			num_turns: Math.max(this.completedTurnCount, 1),
 			stop_reason: null,
 			errors: [errorMessage],
 			total_cost_usd: 0,
@@ -1568,6 +1768,14 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	private cleanupRuntimeState(): void {
 		this.terminalTurnResolver = null;
 		this.terminalTurnRejecter = null;
+		this.pendingPrompts = [];
+		this.sessionTask = null;
+		this.streamingMode = false;
+		this.streamingCompleted = false;
+		this.activeTurnId = null;
+		this.turnStartedResolver = null;
+		this.turnStartedRejecter = null;
+		this.turnStartedPromise = null;
 		this.appServerClient?.close();
 		this.appServerClient = null;
 	}
@@ -1578,6 +1786,8 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		this.wasStopped = true;
+		this.streamingCompleted = true;
+		this.pendingPrompts = [];
 		if (this.appServerClient && this.sessionInfo.sessionId) {
 			void this.appServerClient
 				.interruptTurn({ threadId: this.sessionInfo.sessionId })
@@ -1591,6 +1801,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		this.appServerClient?.close();
+		this.finalizeSession();
 	}
 
 	isRunning(): boolean {

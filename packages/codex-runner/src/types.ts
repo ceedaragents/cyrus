@@ -95,6 +95,7 @@ export type CodexJsonEvent =
 	| { type: "item.started"; item: CodexThreadItem }
 	| { type: "item.completed"; item: CodexThreadItem }
 	| { type: "turn.completed"; usage?: CodexUsage }
+	| { type: "turn.interrupted"; message: string }
 	| { type: "turn.failed"; error?: { message: string } }
 	| { type: "error"; message: string };
 

@@ -14,6 +14,8 @@ import type {
 	AppServerTurnInterruptParams,
 	AppServerTurnStartParams,
 	AppServerTurnStartResponse,
+	AppServerTurnSteerParams,
+	AppServerTurnSteerResponse,
 	JsonRpcResponse,
 } from "./appServerProtocol.js";
 
@@ -145,6 +147,12 @@ export class CodexAppServerClient {
 		params: AppServerTurnStartParams,
 	): Promise<AppServerTurnStartResponse> {
 		return this.request<AppServerTurnStartResponse>("turn/start", params);
+	}
+
+	async steerTurn(
+		params: AppServerTurnSteerParams,
+	): Promise<AppServerTurnSteerResponse> {
+		return this.request<AppServerTurnSteerResponse>("turn/steer", params);
 	}
 
 	async interruptTurn(params: AppServerTurnInterruptParams): Promise<void> {

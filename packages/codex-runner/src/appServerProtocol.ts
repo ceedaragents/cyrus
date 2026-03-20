@@ -127,6 +127,16 @@ export interface AppServerTurnStartResponse {
 	turn: AppServerTurnSummary;
 }
 
+export interface AppServerTurnSteerParams {
+	threadId: string;
+	expectedTurnId: string;
+	input: AppServerUserInput[];
+}
+
+export interface AppServerTurnSteerResponse {
+	turnId: string;
+}
+
 export interface AppServerTurnInterruptParams {
 	threadId: string;
 }
