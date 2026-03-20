@@ -1,5 +1,5 @@
 ---
-name: setup
+name: cyrus-setup
 description: Set up Cyrus end-to-end — install prerequisites, configure authentication, create integrations (Linear, GitHub, Slack), add repositories, and launch. Run this once to get Cyrus running as a background agent.
 ---
 
