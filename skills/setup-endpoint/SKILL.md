@@ -26,9 +26,11 @@ Ask the user:
 
 > **How will you expose Cyrus to the internet for webhooks?**
 >
-> 1. **ngrok** (recommended — free static domain, easiest setup)
+> 1. **ngrok** (recommended — every free account includes one static domain that persists across restarts)
 > 2. **Cloudflare Tunnel** (permanent, requires Cloudflare account)
 > 3. **Own URL** (you already have a public URL/domain)
+
+**Important:** ngrok's free tier includes a permanent static domain — do NOT tell the user this is a paid feature or that URLs change on restart. Every free ngrok account gets one static domain at https://dashboard.ngrok.com/domains.
 
 ## Step 3: Configure Endpoint
 

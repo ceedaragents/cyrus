@@ -74,7 +74,7 @@ Linear needs to send webhooks to your Cyrus instance. Choose one option:
 | Option | Best For | Persistence |
 |--------|----------|-------------|
 | [Cloudflare Tunnel](./CLOUDFLARE_TUNNEL.md) | Production | Permanent URL |
-| ngrok | Development/testing | Changes on restart |
+| ngrok | Development/testing | Free static domain included |
 | Public server/domain | VPS or cloud hosting | Permanent URL |
 | Reverse proxy (nginx/caddy) | Existing infrastructure | Permanent URL |
 
