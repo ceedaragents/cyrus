@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Cyrus docs MCP available in all sessions** - Cyrus now has access to its own documentation via the Mintlify docs MCP server, enabling better self-reference and user guidance. ([CYPACK-995](https://linear.app/ceedar/issue/CYPACK-995), [#1016](https://github.com/ceedaragents/cyrus/pull/1016))
 
+### Changed
+- **Codex sessions now use the Codex app-server backend** - Cyrus now runs Codex issue sessions through `codex app-server` instead of the older exec path, keeping Codex activity reporting intact while aligning with the current Codex runtime. ([CYPACK-998](https://linear.app/ceedar/issue/CYPACK-998), [#1020](https://github.com/ceedaragents/cyrus/pull/1020))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added
