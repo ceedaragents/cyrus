@@ -172,7 +172,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 
 		// Mock CursorRunner
 		mockCursorRunner = {
-			supportsStreamingInput: false,
+			supportsStreamingInput: true,
 			start: vi.fn().mockResolvedValue({ sessionId: "cursor-session-123" }),
 			startStreaming: vi
 				.fn()
@@ -1117,7 +1117,7 @@ Issue: {{issue_identifier}}`;
 			expect(capturedRunnerConfig.resumeSessionId).toBe(
 				"cursor-session-existing",
 			);
-			expect(mockCursorRunner.start).toHaveBeenCalledOnce();
+			expect(mockCursorRunner.startStreaming).toHaveBeenCalledOnce();
 		});
 	});
 });

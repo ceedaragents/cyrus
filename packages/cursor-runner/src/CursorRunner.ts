@@ -14,6 +14,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import {
+	basename,
 	join,
 	parse as pathParse,
 	relative as pathRelative,
@@ -83,6 +84,20 @@ interface CursorMcpRestoreState {
 	backupPath: string | null;
 }
 
+type AcpRequestId = number;
+
+interface AcpPendingRequest {
+	method: string;
+	resolve: (value: unknown) => void;
+	reject: (error: Error) => void;
+}
+
+interface AcpInitializeResult {
+	protocolVersion?: number;
+	agentCapabilities?: Record<string, unknown>;
+	authMethods?: Array<Record<string, unknown>>;
+}
+
 type SDKSystemInitMessage = Extract<
 	SDKMessage,
 	{ type: "system"; subtype: "init" }
@@ -120,7 +135,7 @@ function createAssistantToolUseMessage(
 		type: "message",
 		role: "assistant",
 		content: contentBlocks,
-		model: "cursor-agent",
+		model: "cursor-acp",
 		stop_reason: null,
 		stop_sequence: null,
 		usage: {
@@ -168,7 +183,7 @@ function createAssistantBetaMessage(
 		type: "message",
 		role: "assistant",
 		content: contentBlocks,
-		model: "cursor-agent",
+		model: "cursor-acp",
 		stop_reason: null,
 		stop_sequence: null,
 		usage: {
@@ -217,6 +232,26 @@ function normalizeCursorModel(model?: string): string | undefined {
 	}
 
 	return model;
+}
+
+function normalizeCursorExecutablePath(cursorPath?: string): string {
+	if (!cursorPath) {
+		return "agent";
+	}
+
+	const executableName = basename(cursorPath).toLowerCase();
+	if (
+		executableName === "cursor" ||
+		executableName === "cursor.exe" ||
+		executableName === "cursor.cmd"
+	) {
+		console.warn(
+			`[CursorRunner] Ignoring Cursor wrapper path '${cursorPath}' for ACP mode; using 'agent' instead`,
+		);
+		return "agent";
+	}
+
+	return cursorPath;
 }
 
 function extractTextFromMessageContent(content: unknown): string {
@@ -873,6 +908,229 @@ function extractUsageFromEvent(
 	};
 }
 
+function extractUsageFromAcpResponse(
+	response: Record<string, unknown>,
+): ParsedUsage | null {
+	const usageRaw =
+		response.usage && typeof response.usage === "object"
+			? (response.usage as Record<string, unknown>)
+			: null;
+	if (!usageRaw) {
+		return null;
+	}
+
+	return {
+		inputTokens: toFiniteNumber(usageRaw.inputTokens),
+		outputTokens: toFiniteNumber(usageRaw.outputTokens),
+		cachedInputTokens: toFiniteNumber(usageRaw.cachedReadTokens),
+	};
+}
+
+function extractTextFromAcpContentBlock(content: unknown): string {
+	if (!content || typeof content !== "object") {
+		return "";
+	}
+
+	const contentObj = content as Record<string, unknown>;
+	if (getStringValue(contentObj, "type") === "text") {
+		return getStringValue(contentObj, "text") || "";
+	}
+
+	return "";
+}
+
+function summarizeAcpPlanEntries(plan: Record<string, unknown>): string {
+	const entries = Array.isArray(plan.entries) ? plan.entries : [];
+	if (!entries.length) {
+		return "No todos";
+	}
+
+	return entries
+		.map((entry) => {
+			if (!entry || typeof entry !== "object") {
+				return "- [ ] task";
+			}
+
+			const mapped = entry as Record<string, unknown>;
+			const text = getStringValue(mapped, "content") || "task";
+			const status = getStringValue(mapped, "status") || "pending";
+			const marker = isTodoCompleted(status) ? "[x]" : "[ ]";
+			const suffix = isTodoInProgress(status) ? " (in progress)" : "";
+			return `- ${marker} ${text}${suffix}`;
+		})
+		.join("\n");
+}
+
+function extractTextFromAcpToolContent(content: unknown): string {
+	if (!Array.isArray(content)) {
+		return "";
+	}
+
+	return content
+		.map((item) => {
+			if (!item || typeof item !== "object") {
+				return "";
+			}
+
+			const itemObj = item as Record<string, unknown>;
+			if (getStringValue(itemObj, "type") === "content") {
+				return extractTextFromAcpContentBlock(itemObj.content);
+			}
+
+			if (getStringValue(itemObj, "type") === "diff") {
+				const path = getStringValue(itemObj, "path", "newPath", "oldPath");
+				if (path) {
+					return `Updated ${path}`;
+				}
+			}
+
+			if (getStringValue(itemObj, "type") === "terminal") {
+				const terminalId = getStringValue(itemObj, "terminalId");
+				return terminalId ? `terminal ${terminalId}` : "terminal";
+			}
+
+			return "";
+		})
+		.filter((value) => value.trim().length > 0)
+		.join("\n")
+		.trim();
+}
+
+function summarizeAcpToolLocations(
+	locations: unknown,
+	workingDirectory?: string,
+): string {
+	if (!Array.isArray(locations)) {
+		return "";
+	}
+
+	return locations
+		.map((location) => {
+			if (!location || typeof location !== "object") {
+				return "";
+			}
+
+			const locationObj = location as Record<string, unknown>;
+			const path = getStringValue(locationObj, "path");
+			if (!path) {
+				return "";
+			}
+
+			return normalizeFilePath(path, workingDirectory);
+		})
+		.filter((value) => value.length > 0)
+		.join("\n");
+}
+
+function getProjectionForAcpToolCall(
+	toolCall: Record<string, unknown>,
+	workingDirectory?: string,
+): ToolProjection | null {
+	const toolUseId = getStringValue(toolCall, "toolCallId");
+	if (!toolUseId) {
+		return null;
+	}
+
+	const rawInput =
+		toolCall.rawInput && typeof toolCall.rawInput === "object"
+			? (toolCall.rawInput as Record<string, unknown>)
+			: null;
+	const kind = getStringValue(toolCall, "kind") || "";
+	const title = getStringValue(toolCall, "title") || "Tool";
+	const locationsSummary = summarizeAcpToolLocations(
+		toolCall.locations,
+		workingDirectory,
+	);
+	const contentSummary = extractTextFromAcpToolContent(toolCall.content);
+	const rawOutput = toolCall.rawOutput;
+	const status = getStringValue(toolCall, "status") || "completed";
+
+	let toolName = "Tool";
+	let toolInput: ToolInput = {};
+
+	if (
+		rawInput &&
+		(getStringValue(rawInput, "providerIdentifier") ||
+			getStringValue(rawInput, "toolName", "name"))
+	) {
+		const provider = getStringValue(rawInput, "providerIdentifier") || "mcp";
+		const namedTool = getStringValue(rawInput, "toolName", "name") || "tool";
+		toolName = `mcp__${provider}__${namedTool}`;
+		toolInput =
+			rawInput.args && typeof rawInput.args === "object"
+				? (rawInput.args as ToolInput)
+				: (rawInput as ToolInput);
+	} else if (kind === "execute") {
+		const command = getStringValue(rawInput || {}, "command") || title;
+		toolName = inferCommandToolName(command);
+		toolInput = { command, description: command };
+	} else if (kind === "read") {
+		toolName = "Read";
+		toolInput = locationsSummary
+			? { paths: locationsSummary }
+			: { description: title };
+	} else if (kind === "search") {
+		const query =
+			getStringValue(rawInput || {}, "pattern", "query", "globPattern") ||
+			title;
+		toolName =
+			getStringValue(rawInput || {}, "globPattern") || /glob/i.test(title)
+				? "Glob"
+				: /grep|rg/i.test(title)
+					? "Grep"
+					: "ToolSearch";
+		toolInput = { query, description: title };
+	} else if (kind === "edit" || kind === "move" || kind === "delete") {
+		toolName = "Edit";
+		toolInput = {
+			description: locationsSummary || title,
+		};
+	} else if (kind === "fetch") {
+		const url = getStringValue(rawInput || {}, "url");
+		toolName =
+			getStringValue(rawInput || {}, "query") || /search/i.test(title)
+				? "WebSearch"
+				: "WebFetch";
+		toolInput = url ? { url } : { description: title };
+	} else if (kind === "think") {
+		toolName = "TodoWrite";
+		toolInput = { description: title };
+	} else {
+		toolName = title.replace(/\s+/g, "_");
+		toolInput = rawInput ? (rawInput as ToolInput) : { description: title };
+	}
+
+	let result = "";
+	if (typeof rawOutput === "string") {
+		result = rawOutput;
+	} else if (rawOutput && typeof rawOutput === "object") {
+		const rawOutputObj = rawOutput as Record<string, unknown>;
+		result =
+			getStringValue(
+				rawOutputObj,
+				"stdout",
+				"stderr",
+				"message",
+				"output",
+				"text",
+			) || safeStringify(rawOutputObj);
+	} else {
+		result = contentSummary || locationsSummary || title;
+	}
+
+	if (!result) {
+		result = status === "failed" ? `${title} failed` : `${title} completed`;
+	}
+
+	return {
+		toolUseId,
+		toolName,
+		toolInput,
+		result,
+		isError: status === "failed",
+	};
+}
+
 export declare interface CursorRunner {
 	on<K extends keyof CursorRunnerEvents>(
 		event: K,
@@ -885,7 +1143,7 @@ export declare interface CursorRunner {
 }
 
 export class CursorRunner extends EventEmitter implements IAgentRunner {
-	readonly supportsStreamingInput = false;
+	readonly supportsStreamingInput = true;
 
 	private config: CursorRunnerConfig;
 	private sessionInfo: CursorSessionInfo | null = null;
@@ -906,6 +1164,17 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private errorMessages: string[] = [];
 	private emittedToolUseIds = new Set<string>();
 	private fallbackOutputLines: string[] = [];
+	private acpPendingRequests = new Map<AcpRequestId, AcpPendingRequest>();
+	private acpNextRequestId = 1;
+	private acpPromptCompleted = false;
+	private acpToolCalls = new Map<string, Record<string, unknown>>();
+	private pendingAssistantMessageId: string | null = null;
+	private pendingAssistantText = "";
+	private syntheticPlanUpdateCount = 0;
+	private streamingMode = false;
+	private pendingStreamMessages: string[] = [];
+	private acpSessionId: string | null = null;
+	private acpInitialized = false;
 	private logStream: WriteStream | null = null;
 	private mcpConfigRestoreState: CursorMcpRestoreState | null = null;
 	private permissionsConfigRestoreState: CursorPermissionsRestoreState | null =
@@ -929,12 +1198,21 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		return this.startWithPrompt(null, initialPrompt);
 	}
 
-	addStreamMessage(_content: string): void {
-		throw new Error("CursorRunner does not support streaming input messages");
+	addStreamMessage(content: string): void {
+		if (!this.streamingMode || !this.isRunning()) {
+			throw new Error("Cannot add stream message when not in streaming mode");
+		}
+
+		const normalized = content.trim();
+		if (!normalized) {
+			return;
+		}
+
+		this.pendingStreamMessages.push(normalized);
 	}
 
 	completeStream(): void {
-		// No-op: CursorRunner does not support streaming input.
+		this.streamingMode = false;
 	}
 
 	private async startWithPrompt(
@@ -966,12 +1244,23 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.errorMessages = [];
 		this.emittedToolUseIds.clear();
 		this.fallbackOutputLines = [];
+		this.acpPendingRequests.clear();
+		this.acpNextRequestId = 1;
+		this.acpPromptCompleted = false;
+		this.acpToolCalls.clear();
+		this.pendingAssistantMessageId = null;
+		this.pendingAssistantText = "";
+		this.syntheticPlanUpdateCount = 0;
+		this.streamingMode = stringPrompt == null;
+		this.pendingStreamMessages = [];
+		this.acpSessionId = null;
+		this.acpInitialized = false;
 		this.setupLogging(sessionId);
 		this.syncProjectMcpConfig();
 		this.enableCursorMcpServers();
 		this.syncProjectPermissionsConfig();
 
-		// Test/CI fallback: allow deterministic mock runs when cursor-agent cannot execute.
+		// Test/CI fallback: allow deterministic mock runs without launching Cursor ACP.
 		if (process.env.CYRUS_CURSOR_MOCK === "1") {
 			this.emitInitMessage();
 			this.handleEvent({
@@ -986,8 +1275,8 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			return this.sessionInfo;
 		}
 
-		const cursorPath = this.config.cursorPath || "cursor-agent";
 		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
+		const cursorPath = normalizeCursorExecutablePath(this.config.cursorPath);
 		const args = this.buildArgs(prompt);
 		const spawnLine = `[CursorRunner] Spawn: ${cursorPath} ${args.join(" ")}`;
 		console.log(spawnLine);
@@ -997,10 +1286,27 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		const child = spawn(cursorPath, args, {
 			cwd: this.config.workingDirectory || cwd(),
 			env: this.buildEnv(),
-			stdio: ["ignore", "pipe", "pipe"],
+			stdio: ["pipe", "pipe", "pipe"],
 		});
 
 		this.process = child;
+
+		child.on("close", (code) => {
+			if (this.acpPromptCompleted || this.wasStopped) {
+				return;
+			}
+
+			const message =
+				code === null
+					? "Cursor ACP process exited unexpectedly"
+					: `Cursor ACP process exited with code ${code}`;
+			this.rejectPendingAcpRequests(new Error(message));
+		});
+		child.on("error", (error) => {
+			this.rejectPendingAcpRequests(
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		});
 
 		this.readlineInterface = createInterface({
 			input: child.stdout!,
@@ -1012,21 +1318,27 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		child.stderr?.on("data", (data: Buffer) => {
 			const text = data.toString().trim();
 			if (!text) return;
-			this.errorMessages.push(text);
+			if (this.logStream) {
+				this.logStream.write(`${text}\n`);
+			}
 		});
 
 		let caughtError: unknown;
 		try {
-			await new Promise<void>((resolve, reject) => {
-				child.on("close", (code) => {
-					if (code === 0 || this.wasStopped) {
-						resolve();
-						return;
-					}
-					reject(new Error(`cursor-agent exited with code ${code}`));
-				});
-				child.on("error", reject);
-			});
+			await this.initializeAcpSession();
+
+			const nextPrompt = prompt;
+			if (nextPrompt) {
+				await this.runAcpPrompt(nextPrompt);
+			}
+
+			while (this.streamingMode) {
+				const queuedPrompt = await this.takeNextStreamMessage();
+				if (!queuedPrompt) {
+					break;
+				}
+				await this.runAcpPrompt(queuedPrompt);
+			}
 		} catch (error) {
 			caughtError = error;
 		} finally {
@@ -1447,23 +1759,12 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		}
 	}
 
-	private buildArgs(prompt: string): string[] {
-		const args: string[] = ["--print", "--output-format", "stream-json"];
+	private buildArgs(_prompt: string): string[] {
+		const args: string[] = ["acp"];
 		const normalizedModel = normalizeCursorModel(this.config.model);
-
-		// needed or else it errors
-		args.push("--trust");
 
 		if (normalizedModel) {
 			args.push("--model", normalizedModel);
-		}
-
-		if (this.config.resumeSessionId) {
-			args.push("--resume", this.config.resumeSessionId);
-		}
-
-		if (this.config.workingDirectory) {
-			args.push("--workspace", this.config.workingDirectory);
 		}
 
 		if (this.config.sandbox) {
@@ -1474,11 +1775,165 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			args.push("--approve-mcps");
 		}
 
-		if (prompt) {
-			args.push(prompt);
-		}
+		// Trust avoids workspace prompts in headless ACP runs.
+		args.push("--trust");
 
 		return args;
+	}
+
+	private buildAcpMcpServers(): Record<string, unknown>[] {
+		const servers: Record<string, unknown>[] = [];
+		for (const [serverName, rawConfig] of Object.entries(
+			this.config.mcpConfig || {},
+		)) {
+			const configAny = rawConfig as Record<string, unknown>;
+			if (
+				typeof configAny.listTools === "function" ||
+				typeof configAny.callTool === "function"
+			) {
+				continue;
+			}
+
+			if (typeof configAny.command === "string") {
+				const envEntries =
+					configAny.env &&
+					typeof configAny.env === "object" &&
+					!Array.isArray(configAny.env)
+						? Object.entries(configAny.env as Record<string, unknown>)
+								.filter(([, value]) => typeof value === "string")
+								.map(([name, value]) => ({ name, value }))
+						: [];
+				servers.push({
+					name: serverName,
+					command: configAny.command,
+					args: Array.isArray(configAny.args)
+						? configAny.args.filter(
+								(value): value is string => typeof value === "string",
+							)
+						: [],
+					env: envEntries,
+				});
+				continue;
+			}
+
+			if (typeof configAny.url === "string") {
+				const headers =
+					configAny.headers &&
+					typeof configAny.headers === "object" &&
+					!Array.isArray(configAny.headers)
+						? Object.entries(configAny.headers as Record<string, unknown>)
+								.filter(([, value]) => typeof value === "string")
+								.map(([name, value]) => ({ name, value }))
+						: [];
+				servers.push({
+					type: "http",
+					name: serverName,
+					url: configAny.url,
+					headers,
+				});
+			}
+		}
+
+		return servers;
+	}
+
+	private async initializeAcpSession(): Promise<void> {
+		if (this.acpInitialized) {
+			return;
+		}
+
+		this.emitInitMessage();
+		const initializeResult = await this.sendAcpRequest<AcpInitializeResult>(
+			"initialize",
+			{
+				protocolVersion: 1,
+				clientCapabilities: {
+					fs: {
+						readTextFile: false,
+						writeTextFile: false,
+					},
+					terminal: false,
+				},
+				clientInfo: {
+					name: "cyrus-cursor-runner",
+					version: "0.1.0",
+				},
+			},
+		);
+		const hasCursorApiKey = Boolean(this.buildEnv().CURSOR_API_KEY);
+		const authMethods = Array.isArray(initializeResult.authMethods)
+			? initializeResult.authMethods
+			: [];
+		const supportsCursorLogin = authMethods.some(
+			(method) => getStringValue(method, "id") === "cursor_login",
+		);
+		if (!hasCursorApiKey && supportsCursorLogin) {
+			await this.sendAcpRequest("authenticate", { methodId: "cursor_login" });
+		}
+
+		const mcpServers = this.buildAcpMcpServers();
+		const workingDirectory = this.config.workingDirectory || cwd();
+		const sessionResponse = this.config.resumeSessionId
+			? await this.sendAcpRequest<Record<string, unknown>>("session/load", {
+					sessionId: this.config.resumeSessionId,
+					cwd: workingDirectory,
+					mcpServers,
+				})
+			: await this.sendAcpRequest<Record<string, unknown>>("session/new", {
+					cwd: workingDirectory,
+					mcpServers,
+				});
+
+		const sessionId =
+			getStringValue(sessionResponse, "sessionId") ||
+			this.config.resumeSessionId ||
+			this.sessionInfo?.sessionId;
+		if (sessionId && this.sessionInfo) {
+			this.sessionInfo.sessionId = sessionId;
+		}
+		this.acpSessionId = sessionId || null;
+		this.acpInitialized = true;
+	}
+
+	private async runAcpPrompt(prompt: string): Promise<void> {
+		if (!prompt.trim()) {
+			return;
+		}
+
+		this.acpPromptCompleted = false;
+
+		const promptResponse = await this.sendAcpRequest<Record<string, unknown>>(
+			"session/prompt",
+			{
+				sessionId:
+					this.acpSessionId || this.sessionInfo?.sessionId || "pending",
+				prompt: prompt ? [{ type: "text", text: prompt }] : [],
+			},
+		);
+
+		this.acpPromptCompleted = true;
+		this.flushPendingAssistantMessage();
+		const usage = extractUsageFromAcpResponse(promptResponse);
+		if (usage) {
+			this.lastUsage = usage;
+		}
+
+		const stopReason = getStringValue(promptResponse, "stopReason");
+		if (stopReason === "max_tokens" || stopReason === "max_turn_requests") {
+			this.pendingResultMessage = this.createErrorResultMessage(
+				`Cursor turn limit reached: ${stopReason}`,
+			);
+		}
+	}
+
+	private async takeNextStreamMessage(): Promise<string | null> {
+		const immediate = this.pendingStreamMessages.shift();
+		if (immediate) {
+			return immediate;
+		}
+
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+		return this.pendingStreamMessages.shift() ?? null;
 	}
 
 	private buildEnv(): NodeJS.ProcessEnv {
@@ -1505,6 +1960,13 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			return;
 		}
 
+		const jsonRpcHandled = this.handleJsonRpcMessage(
+			parsed as Record<string, unknown>,
+		);
+		if (jsonRpcHandled) {
+			return;
+		}
+
 		this.handleEvent(parsed);
 	}
 
@@ -1521,6 +1983,354 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		} catch {
 			return null;
 		}
+	}
+
+	private sendAcpLine(payload: Record<string, unknown>): void {
+		const encoded = JSON.stringify(payload);
+		if (this.logStream) {
+			this.logStream.write(`${encoded}\n`);
+		}
+
+		const stdin = this.process?.stdin;
+		if (!stdin || stdin.destroyed || !stdin.writable) {
+			throw new Error("Cursor ACP process is not writable");
+		}
+
+		stdin.write(`${encoded}\n`);
+	}
+
+	private sendAcpNotification(
+		method: string,
+		params: Record<string, unknown>,
+	): void {
+		this.sendAcpLine({
+			jsonrpc: "2.0",
+			method,
+			params,
+		});
+	}
+
+	private sendAcpRequest<T = unknown>(
+		method: string,
+		params: Record<string, unknown>,
+	): Promise<T> {
+		const id = this.acpNextRequestId++;
+		return new Promise<T>((resolve, reject) => {
+			this.acpPendingRequests.set(id, {
+				method,
+				resolve: (value) => resolve(value as T),
+				reject,
+			});
+
+			try {
+				this.sendAcpLine({
+					jsonrpc: "2.0",
+					id,
+					method,
+					params,
+				});
+			} catch (error) {
+				this.acpPendingRequests.delete(id);
+				reject(
+					error instanceof Error ? error : new Error(normalizeError(error)),
+				);
+			}
+		});
+	}
+
+	private rejectPendingAcpRequests(error: Error): void {
+		for (const [id, pending] of this.acpPendingRequests) {
+			this.acpPendingRequests.delete(id);
+			pending.reject(error);
+		}
+	}
+
+	private handleJsonRpcMessage(message: Record<string, unknown>): boolean {
+		const method = getStringValue(message, "method");
+		const idValue = message.id;
+		const hasId =
+			typeof idValue === "number" ||
+			typeof idValue === "string" ||
+			idValue === null;
+		const result = message.result;
+		const errorValue =
+			message.error && typeof message.error === "object"
+				? (message.error as Record<string, unknown>)
+				: null;
+
+		if (hasId && (result !== undefined || errorValue)) {
+			const pending = this.acpPendingRequests.get(idValue as AcpRequestId);
+			if (!pending) {
+				return true;
+			}
+
+			this.acpPendingRequests.delete(idValue as AcpRequestId);
+			if (errorValue) {
+				const detail =
+					getStringValue(errorValue, "message") ||
+					getStringValue(
+						errorValue.data as Record<string, unknown>,
+						"message",
+					) ||
+					"Cursor ACP request failed";
+				pending.reject(new Error(detail));
+			} else {
+				pending.resolve(result);
+			}
+			return true;
+		}
+
+		if (!method) {
+			return false;
+		}
+
+		if (method === "session/update") {
+			const params =
+				message.params && typeof message.params === "object"
+					? (message.params as Record<string, unknown>)
+					: null;
+			const update =
+				params?.update && typeof params.update === "object"
+					? (params.update as Record<string, unknown>)
+					: null;
+			if (update) {
+				this.handleAcpSessionUpdate(update);
+			}
+			return true;
+		}
+
+		if (method === "session/request_permission" && hasId) {
+			const params =
+				message.params && typeof message.params === "object"
+					? (message.params as Record<string, unknown>)
+					: null;
+			if (params) {
+				void this.handleAcpPermissionRequest(idValue as AcpRequestId, params);
+			}
+			return true;
+		}
+
+		if (method === "cursor/update_todos") {
+			const params =
+				message.params && typeof message.params === "object"
+					? (message.params as Record<string, unknown>)
+					: null;
+			if (params) {
+				this.handleCursorTodosNotification(params);
+			}
+			return true;
+		}
+
+		return false;
+	}
+
+	private async handleAcpPermissionRequest(
+		requestId: AcpRequestId,
+		params: Record<string, unknown>,
+	): Promise<void> {
+		const toolCall =
+			params.toolCall && typeof params.toolCall === "object"
+				? (params.toolCall as Record<string, unknown>)
+				: null;
+		if (toolCall) {
+			this.mergeAcpToolCall(toolCall);
+			const projection = getProjectionForAcpToolCall(
+				this.getMergedAcpToolCall(toolCall),
+				this.config.workingDirectory,
+			);
+			if (projection) {
+				this.flushPendingAssistantMessage();
+				this.emitToolUse(projection);
+			}
+		}
+
+		const options = Array.isArray(params.options) ? params.options : [];
+		const selectedOption = this.selectPermissionOption(options);
+		if (!selectedOption) {
+			this.sendAcpLine({
+				jsonrpc: "2.0",
+				id: requestId,
+				result: {
+					outcome: {
+						outcome: "cancelled",
+					},
+				},
+			});
+			return;
+		}
+
+		this.sendAcpLine({
+			jsonrpc: "2.0",
+			id: requestId,
+			result: {
+				outcome: {
+					outcome: "selected",
+					optionId: selectedOption,
+				},
+			},
+		});
+	}
+
+	private selectPermissionOption(options: unknown[]): string | null {
+		const mapped = options.filter(
+			(option): option is Record<string, unknown> =>
+				Boolean(option) && typeof option === "object",
+		);
+		if (!mapped.length) {
+			return null;
+		}
+
+		const preferredKinds =
+			this.config.askForApproval === "never"
+				? ["allow_once", "allow_always"]
+				: ["reject_once", "reject_always"];
+		for (const kind of preferredKinds) {
+			const match = mapped.find(
+				(option) => getStringValue(option, "kind") === kind,
+			);
+			const optionId = getStringValue(match || {}, "optionId");
+			if (optionId) {
+				return optionId;
+			}
+		}
+
+		return getStringValue(mapped[0] || {}, "optionId") || null;
+	}
+
+	private mergeAcpToolCall(toolCall: Record<string, unknown>): void {
+		const toolCallId = getStringValue(toolCall, "toolCallId");
+		if (!toolCallId) {
+			return;
+		}
+
+		const existing = this.acpToolCalls.get(toolCallId) || {};
+		this.acpToolCalls.set(toolCallId, {
+			...existing,
+			...toolCall,
+		});
+	}
+
+	private getMergedAcpToolCall(
+		toolCall: Record<string, unknown>,
+	): Record<string, unknown> {
+		const toolCallId = getStringValue(toolCall, "toolCallId");
+		if (!toolCallId) {
+			return toolCall;
+		}
+
+		return this.acpToolCalls.get(toolCallId) || toolCall;
+	}
+
+	private flushPendingAssistantMessage(): void {
+		const content = this.pendingAssistantText.trim();
+		if (!content) {
+			this.pendingAssistantMessageId = null;
+			this.pendingAssistantText = "";
+			return;
+		}
+
+		this.handleMessageEvent({
+			role: "assistant",
+			content,
+		});
+		this.pendingAssistantMessageId = null;
+		this.pendingAssistantText = "";
+	}
+
+	private handleAcpSessionUpdate(update: Record<string, unknown>): void {
+		this.emit("streamEvent", update as CursorJsonEvent);
+
+		const sessionUpdate = getStringValue(update, "sessionUpdate");
+		if (!sessionUpdate) {
+			return;
+		}
+
+		if (
+			sessionUpdate === "agent_message_chunk" ||
+			sessionUpdate === "user_message_chunk" ||
+			sessionUpdate === "agent_thought_chunk"
+		) {
+			const text = extractTextFromAcpContentBlock(update.content);
+			if (!text) {
+				return;
+			}
+
+			if (sessionUpdate === "agent_message_chunk") {
+				const messageId = getStringValue(update, "messageId") || null;
+				if (
+					this.pendingAssistantText &&
+					this.pendingAssistantMessageId &&
+					messageId &&
+					this.pendingAssistantMessageId !== messageId
+				) {
+					this.flushPendingAssistantMessage();
+				}
+
+				this.pendingAssistantMessageId =
+					messageId || this.pendingAssistantMessageId;
+				this.pendingAssistantText += text;
+			}
+
+			return;
+		}
+
+		if (sessionUpdate === "tool_call" || sessionUpdate === "tool_call_update") {
+			this.mergeAcpToolCall(update);
+			const projection = getProjectionForAcpToolCall(
+				this.getMergedAcpToolCall(update),
+				this.config.workingDirectory,
+			);
+			if (!projection) {
+				return;
+			}
+
+			this.flushPendingAssistantMessage();
+			this.emitToolUse(projection);
+			const status = getStringValue(update, "status");
+			if (status === "completed" || status === "failed") {
+				this.emitToolResult(projection);
+			}
+			return;
+		}
+
+		if (sessionUpdate === "plan") {
+			this.flushPendingAssistantMessage();
+			const projection: ToolProjection = {
+				toolUseId: `plan-${++this.syntheticPlanUpdateCount}`,
+				toolName: "TodoWrite",
+				toolInput: { todos: update.entries },
+				result: summarizeAcpPlanEntries(update),
+				isError: false,
+			};
+			this.emitToolUse(projection);
+			this.emitToolResult(projection);
+			return;
+		}
+
+		if (sessionUpdate === "usage_update") {
+			return;
+		}
+	}
+
+	private handleCursorTodosNotification(params: Record<string, unknown>): void {
+		const todos = Array.isArray(params.todos)
+			? params.todos
+			: Array.isArray(params.items)
+				? params.items
+				: [];
+		if (!todos.length) {
+			return;
+		}
+
+		const projection: ToolProjection = {
+			toolUseId: `cursor-todos-${++this.syntheticPlanUpdateCount}`,
+			toolName: "TodoWrite",
+			toolInput: { todos },
+			result: summarizeTodoList({ items: todos }),
+			isError: false,
+		};
+		this.emitToolUse(projection);
+		this.emitToolResult(projection);
 	}
 
 	private handleEvent(event: CursorJsonEvent): void {
@@ -1741,7 +2551,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 				? permissionModeByCursorConfig[this.config.askForApproval]
 				: "default",
 			apiKeySource: this.config.cursorApiKey ? "user" : "project",
-			claude_code_version: "cursor-agent",
+			claude_code_version: "cursor-acp",
 			slash_commands: [],
 			output_style: "default",
 			skills: [],
@@ -1816,6 +2626,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		this.emitInitMessage();
+		this.flushPendingAssistantMessage();
 		this.sessionInfo.isRunning = false;
 		this.restoreProjectMcpConfig();
 		this.restoreProjectPermissionsConfig();
@@ -1853,6 +2664,10 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	private cleanupRuntimeState(): void {
+		this.rejectPendingAcpRequests(new Error("Cursor ACP session ended"));
+		if (this.process && !this.process.killed) {
+			this.process.kill();
+		}
 		if (this.readlineInterface) {
 			this.readlineInterface.close();
 			this.readlineInterface = null;
@@ -1863,10 +2678,22 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		}
 		this.process = null;
 		this.pendingResultMessage = null;
+		this.streamingMode = false;
+		this.pendingStreamMessages = [];
+		this.acpSessionId = null;
+		this.acpInitialized = false;
 	}
 
 	stop(): void {
 		this.wasStopped = true;
+		const sessionId = this.sessionInfo?.sessionId;
+		if (this.process && sessionId) {
+			try {
+				this.sendAcpNotification("session/cancel", { sessionId });
+			} catch {
+				// Best effort cancellation before killing the ACP process.
+			}
+		}
 		if (this.process && !this.process.killed) {
 			this.process.kill();
 		}
