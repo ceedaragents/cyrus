@@ -838,6 +838,14 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	private createAppServerClient(): CodexAppServerClient {
 		const codexHome = this.resolveCodexHome();
 		const envOverride = this.buildEnvOverride(codexHome);
+		// Cyrus intentionally runs one codex app-server per runner/session.
+		// In theory, a shared app-server could still segment cwd/worktree, model,
+		// developer instructions, approval policy, and sandbox policy per
+		// thread/turn. The remaining hard boundary is MCP config, which we load as
+		// startup config overrides (`mcp_servers`) before the app-server starts.
+		// Until Codex supports dynamic per-session MCP registration, a shared
+		// app-server would need an extra broker/proxy layer or a pool keyed by MCP
+		// config shape. Per-runner app-servers keep that state isolated.
 		return new CodexAppServerClient({
 			...(this.config.codexPath ? { codexPath: this.config.codexPath } : {}),
 			...(envOverride ? { env: envOverride } : {}),
