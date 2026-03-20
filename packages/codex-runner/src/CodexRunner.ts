@@ -1161,7 +1161,18 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	private buildSandboxPolicy(): AppServerSandboxPolicy {
-		const readOnlyAccess: AppServerReadOnlyAccess = { type: "fullAccess" };
+		const readableRoots = [
+			this.config.workingDirectory,
+			...(this.config.allowedDirectories || []),
+		].filter((value): value is string => Boolean(value));
+		// Codex app-server docs recommend restricted read access with
+		// includePlatformDefaults enabled so macOS gets the curated platform
+		// Seatbelt allowances without reopening broad filesystem reads.
+		const readOnlyAccess: AppServerReadOnlyAccess = {
+			type: "restricted",
+			includePlatformDefaults: true,
+			readableRoots: [...new Set(readableRoots)],
+		};
 		switch (this.config.sandbox) {
 			case "read-only":
 				return {
@@ -1171,16 +1182,12 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			case "danger-full-access":
 				return { type: "dangerFullAccess" };
 			default: {
-				const writableRoots = [
-					this.config.workingDirectory,
-					...(this.config.allowedDirectories || []),
-				].filter((value): value is string => Boolean(value));
 				const networkAccess = this.extractWorkspaceNetworkAccess(
 					this.buildConfigOverrides(),
 				);
 				return {
 					type: "workspaceWrite",
-					writableRoots: [...new Set(writableRoots)],
+					writableRoots: [...new Set(readableRoots)],
 					readOnlyAccess,
 					networkAccess,
 					excludeTmpdirEnvVar: false,

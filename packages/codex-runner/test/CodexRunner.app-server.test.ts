@@ -30,11 +30,13 @@ function attachJsonRpcResponder(
 	sentMethods: string[];
 	turnInputs: string[];
 	steerInputs: string[];
+	turnStartParams: any[];
 	completeTurn: (turnNumber: number, text?: string) => void;
 } {
 	const sentMethods: string[] = [];
 	const turnInputs: string[] = [];
 	const steerInputs: string[] = [];
+	const turnStartParams: any[] = [];
 	let buffer = "";
 	const autoCompleteTurns = options.autoCompleteTurns ?? true;
 
@@ -130,6 +132,7 @@ function attachJsonRpcResponder(
 					);
 					break;
 				case "turn/start": {
+					turnStartParams.push(message.params);
 					turnInputs.push(message.params?.input?.[0]?.text ?? "");
 					const turnNumber = turnInputs.length;
 					child.stdout.write(
@@ -170,6 +173,7 @@ function attachJsonRpcResponder(
 		sentMethods,
 		turnInputs,
 		steerInputs,
+		turnStartParams,
 		completeTurn,
 	};
 }
@@ -207,6 +211,18 @@ describe("CodexRunner app-server transport", () => {
 				"thread/start",
 				"turn/start",
 			]);
+		});
+		expect(responder.turnStartParams[0]?.sandboxPolicy).toEqual({
+			type: "workspaceWrite",
+			writableRoots: ["/tmp/project"],
+			readOnlyAccess: {
+				type: "restricted",
+				includePlatformDefaults: true,
+				readableRoots: ["/tmp/project"],
+			},
+			networkAccess: true,
+			excludeTmpdirEnvVar: false,
+			excludeSlashTmp: false,
 		});
 		expect(session.sessionId).toBe("thr_app_server_1");
 
