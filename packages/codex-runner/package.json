@@ -11,6 +11,9 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
+		"generate:app-server:ts": "codex app-server generate-ts --out ./schemas/ts",
+		"generate:app-server:json": "codex app-server generate-json-schema --out ./schemas/json",
+		"generate:app-server": "pnpm run generate:app-server:ts && pnpm run generate:app-server:json",
 		"test": "vitest",
 		"test:run": "vitest run --passWithNoTests",
 		"typecheck": "tsc --noEmit"

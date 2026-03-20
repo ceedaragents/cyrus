@@ -1,3 +1,23 @@
+/**
+ * Thin, hand-curated subset of the Codex app-server protocol used by Cyrus.
+ *
+ * Before editing this file, regenerate the official protocol artifacts from the
+ * package root and diff this shim against them:
+ *
+ *   codex app-server generate-ts --out ./schemas/ts
+ *   codex app-server generate-json-schema --out ./schemas/json
+ *
+ * Equivalent package scripts:
+ *
+ *   pnpm run generate:app-server:ts
+ *   pnpm run generate:app-server:json
+ *   pnpm run generate:app-server
+ *
+ * We keep this subset instead of importing the raw generated TS directly
+ * because Cyrus only uses a narrow slice of the protocol and intentionally
+ * relaxes some fields (for example, request fields that the generator marks as
+ * always present but that Cyrus omits in its minimal payloads).
+ */
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
 	| JsonPrimitive
