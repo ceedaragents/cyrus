@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Interactive onboarding wizard** - New `cyrus setup` command provides a beautiful, step-by-step onboarding experience with ASCII art, progress bars, and skippable steps for configuring Claude Code access, endpoint, Linear, GitHub, and Slack integrations. Also available as a `/setup` Claude Code skill via `npx skills add ceedaragents/cyrus`. ([CYPACK-997](https://linear.app/ceedar/issue/CYPACK-997))
 - **Cyrus docs MCP available in all sessions** - Cyrus now has access to its own documentation via the Mintlify docs MCP server, enabling better self-reference and user guidance. ([CYPACK-995](https://linear.app/ceedar/issue/CYPACK-995), [#1016](https://github.com/ceedaragents/cyrus/pull/1016))
 
 ## [0.2.37] - 2026-03-18

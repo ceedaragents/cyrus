@@ -11,6 +11,7 @@ import { CheckTokensCommand } from "./commands/CheckTokensCommand.js";
 import { RefreshTokenCommand } from "./commands/RefreshTokenCommand.js";
 import { SelfAddRepoCommand } from "./commands/SelfAddRepoCommand.js";
 import { SelfAuthCommand } from "./commands/SelfAuthCommand.js";
+import { SetupCommand } from "./commands/SetupCommand.js";
 import { StartCommand } from "./commands/StartCommand.js";
 
 // Get the directory of the current module for reading package.json
@@ -104,6 +105,23 @@ program
 			packageJson.version,
 		);
 		await new SelfAuthCommand(app).execute([]);
+	});
+
+// Setup command - Interactive onboarding wizard
+program
+	.command("setup")
+	.description("Interactive onboarding wizard for first-time setup")
+	.option("-y, --yes", "Skip optional steps (non-interactive mode)")
+	.action(async (cmdOpts: { yes?: boolean }) => {
+		const opts = program.opts();
+		const app = new Application(
+			opts.cyrusHome,
+			opts.envFile,
+			packageJson.version,
+		);
+		const cmd = new SetupCommand(app);
+		cmd.nonInteractive = !!cmdOpts.yes;
+		await cmd.execute([]);
 	});
 
 // Self-add-repo command - Clone and add repository
