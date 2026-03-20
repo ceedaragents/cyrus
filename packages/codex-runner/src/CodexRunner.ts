@@ -5,18 +5,6 @@ import { homedir } from "node:os";
 import { join, relative as pathRelative } from "node:path";
 import { cwd } from "node:process";
 import type {
-	CommandExecutionItem,
-	FileChangeItem,
-	McpToolCallItem,
-	Thread,
-	ThreadItem,
-	ThreadOptions,
-	TodoListItem,
-	Usage,
-	WebSearchItem,
-} from "@openai/codex-sdk";
-import { Codex } from "@openai/codex-sdk";
-import type {
 	IAgentRunner,
 	IMessageFormatter,
 	McpServerConfig,
@@ -25,14 +13,30 @@ import type {
 	SDKResultMessage,
 	SDKUserMessage,
 } from "cyrus-core";
+import type {
+	AppServerApprovalPolicy,
+	AppServerNotification,
+	AppServerReadOnlyAccess,
+	AppServerRequest,
+	AppServerSandboxPolicy,
+	AppServerThreadItem,
+	AppServerTokenUsage,
+	AppServerTurnStartParams,
+	JsonValue,
+} from "./appServerProtocol.js";
+import { CodexAppServerClient } from "./CodexAppServerClient.js";
 import { CodexMessageFormatter } from "./formatter.js";
 import type {
 	CodexConfigOverrides,
 	CodexConfigValue,
 	CodexJsonEvent,
+	CodexMcpToolCallItem,
 	CodexRunnerConfig,
 	CodexRunnerEvents,
 	CodexSessionInfo,
+	CodexThreadItem,
+	CodexTodoListItem,
+	CodexUsage,
 } from "./types.js";
 
 type SDKSystemInitMessage = Extract<
@@ -59,7 +63,7 @@ interface ToolProjection {
 const DEFAULT_CODEX_MODEL = "gpt-5.3-codex";
 const CODEX_MCP_DOCS_URL = "https://platform.openai.com/docs/docs-mcp";
 
-function toFiniteNumber(value: number | undefined): number {
+function toFiniteNumber(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
@@ -164,7 +168,7 @@ function createAssistantBetaMessage(
 	};
 }
 
-function parseUsage(usage: Usage | null | undefined): ParsedUsage {
+function parseUsage(usage: CodexUsage | null | undefined): ParsedUsage {
 	if (!usage) {
 		return {
 			inputTokens: 0,
@@ -204,7 +208,6 @@ function createResultUsage(parsed: ParsedUsage): SDKResultMessage["usage"] {
 function getDefaultReasoningEffortForModel(
 	model?: string,
 ): CodexRunnerConfig["modelReasoningEffort"] | undefined {
-	// All gpt-5 variants (including plain "gpt-5") reject xhigh; pin to "high".
 	return /^gpt-5/i.test(model || "") ? "high" : undefined;
 }
 
@@ -254,7 +257,7 @@ function normalizeFilePath(path: string, workingDirectory?: string): string {
 }
 
 function summarizeFileChanges(
-	item: FileChangeItem,
+	item: Extract<CodexThreadItem, { type: "file_change" }>,
 	workingDirectory?: string,
 ): string {
 	if (!item.changes.length) {
@@ -276,7 +279,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 	return null;
 }
 
-function toMcpResultString(item: McpToolCallItem): string {
+function toMcpResultString(item: CodexMcpToolCallItem): string {
 	if (item.error?.message) {
 		return item.error.message;
 	}
@@ -370,6 +373,199 @@ function loadMcpConfigFromPaths(
 	return mcpServers;
 }
 
+function isJsonValue(value: unknown): value is JsonValue {
+	if (
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return true;
+	}
+
+	if (Array.isArray(value)) {
+		return value.every((entry) => isJsonValue(entry));
+	}
+
+	if (value && typeof value === "object") {
+		return Object.values(value as Record<string, unknown>).every((entry) =>
+			entry === undefined ? true : isJsonValue(entry),
+		);
+	}
+
+	return false;
+}
+
+function serializeConfigOverrides(
+	configOverrides: CodexConfigOverrides | undefined,
+): string[] {
+	if (!configOverrides) {
+		return [];
+	}
+
+	const overrides: string[] = [];
+	flattenConfigOverrides(configOverrides, "", overrides);
+	return overrides;
+}
+
+function flattenConfigOverrides(
+	value: CodexConfigValue | CodexConfigOverrides,
+	prefix: string,
+	overrides: string[],
+): void {
+	if (!isPlainObject(value)) {
+		if (!prefix) {
+			throw new Error("Codex config overrides must be a plain object");
+		}
+		overrides.push(`${prefix}=${toTomlValue(value, prefix)}`);
+		return;
+	}
+
+	const entries = Object.entries(value);
+	if (!prefix && entries.length === 0) {
+		return;
+	}
+	if (prefix && entries.length === 0) {
+		overrides.push(`${prefix}={}`);
+		return;
+	}
+
+	for (const [key, child] of entries) {
+		if (!key) {
+			throw new Error("Codex config override keys must be non-empty strings");
+		}
+		if (child === undefined) {
+			continue;
+		}
+		const path = prefix ? `${prefix}.${key}` : key;
+		if (isPlainObject(child)) {
+			flattenConfigOverrides(child as CodexConfigOverrides, path, overrides);
+		} else {
+			overrides.push(`${path}=${toTomlValue(child, path)}`);
+		}
+	}
+}
+
+function toTomlValue(value: CodexConfigValue, path: string): string {
+	if (typeof value === "string") {
+		return JSON.stringify(value);
+	}
+	if (typeof value === "number") {
+		if (!Number.isFinite(value)) {
+			throw new Error(
+				`Codex config override at ${path} must be a finite number`,
+			);
+		}
+		return `${value}`;
+	}
+	if (typeof value === "boolean") {
+		return value ? "true" : "false";
+	}
+	if (Array.isArray(value)) {
+		return `[${value
+			.map((entry, index) => toTomlValue(entry, `${path}[${index}]`))
+			.join(", ")}]`;
+	}
+	if (isPlainObject(value)) {
+		return `{${Object.entries(value)
+			.filter(([, child]) => child !== undefined)
+			.map(
+				([key, child]) =>
+					`${formatTomlKey(key)} = ${toTomlValue(child as CodexConfigValue, `${path}.${key}`)}`,
+			)
+			.join(", ")}}`;
+	}
+	throw new Error(`Unsupported Codex config override value at ${path}`);
+}
+
+function formatTomlKey(key: string): string {
+	return /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeThreadItem(
+	item: AppServerThreadItem,
+): CodexThreadItem | null {
+	switch (item.type) {
+		case "agentMessage":
+			return {
+				id: item.id,
+				type: "agent_message",
+				text: item.text,
+			};
+		case "commandExecution":
+			return {
+				id: item.id,
+				type: "command_execution",
+				command: item.command,
+				aggregated_output: item.aggregatedOutput || "",
+				...(typeof item.exitCode === "number"
+					? { exit_code: item.exitCode }
+					: {}),
+				status: item.status === "inProgress" ? "in_progress" : item.status,
+			};
+		case "fileChange":
+			return {
+				id: item.id,
+				type: "file_change",
+				status: item.status,
+				changes: item.changes.map((change) => ({
+					path: change.path,
+					kind: change.kind,
+				})),
+			};
+		case "mcpToolCall":
+			return {
+				id: item.id,
+				type: "mcp_tool_call",
+				server: item.server,
+				tool: item.tool,
+				arguments: item.arguments,
+				result: item.result
+					? {
+							content: item.result.content,
+							structured_content:
+								item.result.structured_content ?? item.result.structuredContent,
+						}
+					: undefined,
+				error: item.error ?? undefined,
+				status: item.status === "inProgress" ? "in_progress" : item.status,
+			};
+		case "webSearch":
+			return {
+				id: item.id,
+				type: "web_search",
+				query: item.query,
+				action: item.action,
+			};
+		default:
+			return null;
+	}
+}
+
+function buildTodoEvent(
+	turnId: string,
+	plan: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>,
+): CodexJsonEvent {
+	const todoItem: CodexTodoListItem = {
+		id: `plan_${turnId}`,
+		type: "todo_list",
+		items: plan.map((entry) => ({
+			text: entry.step,
+			completed: entry.status === "completed",
+			in_progress: entry.status === "inProgress",
+		})),
+	};
+
+	return {
+		type: "item.completed",
+		item: todoItem,
+	};
+}
+
 export declare interface CodexRunner {
 	on<K extends keyof CodexRunnerEvents>(
 		event: K,
@@ -381,9 +577,6 @@ export declare interface CodexRunner {
 	): boolean;
 }
 
-/**
- * Runner that adapts Codex SDK streaming output to Cyrus SDK message types.
- */
 export class CodexRunner extends EventEmitter implements IAgentRunner {
 	readonly supportsStreamingInput = false;
 
@@ -402,8 +595,11 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	private errorMessages: string[] = [];
 	private startTimestampMs = 0;
 	private wasStopped = false;
-	private abortController: AbortController | null = null;
 	private emittedToolUseIds: Set<string> = new Set();
+	private tokenUsageByTurn = new Map<string, AppServerTokenUsage>();
+	private appServerClient: CodexAppServerClient | null = null;
+	private terminalTurnResolver: (() => void) | null = null;
+	private terminalTurnRejecter: ((error: Error) => void) | null = null;
 
 	constructor(config: CodexRunnerConfig) {
 		super();
@@ -427,9 +623,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		throw new Error("CodexRunner does not support streaming input messages");
 	}
 
-	completeStream(): void {
-		// No-op: CodexRunner does not support streaming input.
-	}
+	completeStream(): void {}
 
 	private async startWithPrompt(
 		stringPrompt?: string | null,
@@ -459,38 +653,36 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		this.wasStopped = false;
 		this.startTimestampMs = Date.now();
 		this.emittedToolUseIds.clear();
+		this.tokenUsageByTurn.clear();
 
 		await this.resolveModelWithFallback();
 
 		const prompt = (stringPrompt ?? streamingInitialPrompt ?? "").trim();
-		const threadOptions = this.buildThreadOptions();
-		const codex = this.createCodexClient();
-		const thread = this.config.resumeSessionId
-			? codex.resumeThread(this.config.resumeSessionId, threadOptions)
-			: codex.startThread(threadOptions);
-		const abortController = new AbortController();
-		this.abortController = abortController;
-
 		let caughtError: unknown;
+
 		try {
-			await this.runTurn(thread, prompt, abortController.signal);
+			const client = this.createAppServerClient();
+			this.appServerClient = client;
+			await client.connect({
+				clientInfo: {
+					name: "cyrus_codex_runner",
+					title: "Cyrus Codex Runner",
+					version: "0.1.0",
+				},
+				capabilities: {
+					experimentalApi: false,
+				},
+			});
+			await this.runTurn(client, prompt);
 		} catch (error) {
 			caughtError = error;
 		} finally {
 			this.finalizeSession(caughtError);
 		}
 
-		return this.sessionInfo;
+		return this.sessionInfo!;
 	}
 
-	/**
-	 * Check if the configured model is accessible via the OpenAI API.
-	 * If not, swap to the fallback model before starting the session.
-	 *
-	 * Skipped when:
-	 * - No OPENAI_API_KEY is set (Codex-native auth handles model access)
-	 * - The user has a ChatGPT subscription (`codex login status` reports "Logged in using ChatGPT")
-	 */
 	private async resolveModelWithFallback(): Promise<void> {
 		const model = this.config.model;
 		const fallback = this.config.fallbackModel;
@@ -523,16 +715,10 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 				this.config.model = fallback;
 			}
 		} catch {
-			// Network error or timeout — proceed with the original model
-			// and let the Codex SDK handle any downstream failure.
+			// Keep the original model and let Codex surface any downstream issue.
 		}
 	}
 
-	/**
-	 * Check if the user has a ChatGPT/Codex subscription by running `codex login status`.
-	 * Returns true when the output contains "Logged in using ChatGPT",
-	 * meaning the user has native Codex auth and can access gpt-5.3-codex.
-	 */
 	private async hasCodexSubscription(): Promise<boolean> {
 		const codexBin = this.config.codexPath || "codex";
 		try {
@@ -557,55 +743,313 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 	}
 
-	private createCodexClient(): Codex {
+	private createAppServerClient(): CodexAppServerClient {
 		const codexHome = this.resolveCodexHome();
 		const envOverride = this.buildEnvOverride(codexHome);
-		const configOverrides = this.buildConfigOverrides();
-
-		return new Codex({
-			...(this.config.codexPath
-				? { codexPathOverride: this.config.codexPath }
-				: {}),
+		return new CodexAppServerClient({
+			...(this.config.codexPath ? { codexPath: this.config.codexPath } : {}),
 			...(envOverride ? { env: envOverride } : {}),
-			...(configOverrides ? { config: configOverrides } : {}),
+			configOverrides: serializeConfigOverrides(
+				this.buildAppServerConfigOverrides(),
+			),
+			onNotification: (notification) => {
+				const event = this.translateNotification(notification);
+				if (event) {
+					this.handleEvent(event);
+				}
+			},
+			onRequest: async (request) => this.handleAppServerRequest(request),
 		});
 	}
 
-	private buildThreadOptions(): ThreadOptions {
-		const additionalDirectories = this.getAdditionalDirectories();
-		const reasoningEffort =
-			this.config.modelReasoningEffort ??
-			getDefaultReasoningEffortForModel(this.config.model);
-		const webSearchMode =
-			this.config.webSearchMode ??
-			(this.config.includeWebSearch ? "live" : undefined);
+	private async handleAppServerRequest(
+		request: AppServerRequest,
+	): Promise<unknown> {
+		if (
+			request.method === "item/tool/requestUserInput" &&
+			this.config.onAskUserQuestion
+		) {
+			const params = request.params as {
+				questions: Array<{
+					id: string;
+					header: string;
+					question: string;
+					options: Array<{ label: string; description: string }> | null;
+				}>;
+			};
+			const result = await this.config.onAskUserQuestion(
+				{
+					questions: params.questions.map((question) => ({
+						header: question.header,
+						question: question.question,
+						options: question.options || [],
+						multiSelect: false,
+					})),
+				} as any,
+				this.sessionInfo?.sessionId || "pending",
+				new AbortController().signal,
+			);
 
-		const threadOptions: ThreadOptions = {
-			model: this.config.model,
-			sandboxMode: this.config.sandbox || "workspace-write",
-			workingDirectory: this.config.workingDirectory,
-			skipGitRepoCheck: this.config.skipGitRepoCheck ?? true,
-			approvalPolicy: this.config.askForApproval || "never",
-			...(reasoningEffort ? { modelReasoningEffort: reasoningEffort } : {}),
-			...(webSearchMode ? { webSearchMode } : {}),
-			...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
-		};
-
-		return threadOptions;
-	}
-
-	private getAdditionalDirectories(): string[] {
-		const workingDirectory = this.config.workingDirectory;
-		const uniqueDirectories = new Set<string>();
-
-		for (const directory of this.config.allowedDirectories || []) {
-			if (!directory || directory === workingDirectory) {
-				continue;
+			if (!result.answered || !result.answers) {
+				throw new Error(result.message || "User input request was declined");
 			}
-			uniqueDirectories.add(directory);
+
+			return {
+				answers: Object.fromEntries(
+					params.questions.map((question) => {
+						const answer = result.answers?.[question.question];
+						return [
+							question.id,
+							{
+								answers: answer ? [answer] : [],
+							},
+						];
+					}),
+				),
+			};
 		}
 
-		return [...uniqueDirectories];
+		switch (request.method) {
+			case "item/commandExecution/requestApproval":
+				return { decision: "decline" };
+			case "item/fileChange/requestApproval":
+				return { decision: "decline" };
+			case "applyPatchApproval":
+				return { decision: "denied" };
+			case "execCommandApproval":
+				return { decision: "denied" };
+			default:
+				throw new Error(
+					`Unsupported Codex app-server request in Cyrus: ${request.method}`,
+				);
+		}
+	}
+
+	private translateNotification(
+		notification: AppServerNotification,
+	): CodexJsonEvent | null {
+		switch (notification.method) {
+			case "thread/started": {
+				const params = notification.params as { thread: { id: string } };
+				return {
+					type: "thread.started",
+					thread_id: params.thread.id,
+				};
+			}
+			case "item/started": {
+				const params = notification.params as {
+					item: AppServerThreadItem;
+				};
+				const item = normalizeThreadItem(params.item);
+				return item ? { type: "item.started", item } : null;
+			}
+			case "item/completed": {
+				const params = notification.params as {
+					item: AppServerThreadItem;
+				};
+				const item = normalizeThreadItem(params.item);
+				return item ? { type: "item.completed", item } : null;
+			}
+			case "turn/plan/updated": {
+				const params = notification.params as {
+					turnId: string;
+					plan: Array<{
+						step: string;
+						status: "pending" | "inProgress" | "completed";
+					}>;
+				};
+				return buildTodoEvent(params.turnId, params.plan);
+			}
+			case "thread/tokenUsage/updated": {
+				const params = notification.params as {
+					turnId: string;
+					tokenUsage: AppServerTokenUsage;
+				};
+				this.tokenUsageByTurn.set(params.turnId, params.tokenUsage);
+				return null;
+			}
+			case "turn/completed": {
+				const params = notification.params as {
+					turn: {
+						id: string;
+						status: "completed" | "failed" | "interrupted" | "inProgress";
+						error: { message: string } | null;
+					};
+				};
+				const turn = params.turn;
+				if (turn.status === "failed") {
+					return {
+						type: "turn.failed",
+						error: {
+							message: turn.error?.message || "Codex execution failed",
+						},
+					};
+				}
+				if (turn.status === "interrupted" && this.wasStopped) {
+					return null;
+				}
+				const usage = this.tokenUsageByTurn.get(turn.id);
+				return {
+					type: "turn.completed",
+					...(usage
+						? {
+								usage: {
+									input_tokens: usage.last.inputTokens,
+									output_tokens: usage.last.outputTokens,
+									cached_input_tokens: usage.last.cachedInputTokens,
+								},
+							}
+						: {}),
+				};
+			}
+			case "error": {
+				const params = notification.params as { message: string };
+				return {
+					type: "error",
+					message: params.message,
+				};
+			}
+			default:
+				return null;
+		}
+	}
+
+	private async runTurn(
+		client: CodexAppServerClient,
+		prompt: string,
+	): Promise<void> {
+		const threadConfig = this.buildThreadConfig();
+		const threadResponse = this.config.resumeSessionId
+			? await client.resumeThread({
+					threadId: this.config.resumeSessionId,
+				})
+			: await client.startThread({
+					model: this.config.model,
+					cwd: this.config.workingDirectory,
+					approvalPolicy: this.buildApprovalPolicy(),
+					sandbox: this.config.sandbox || "workspace-write",
+					developerInstructions: threadConfig.developerInstructions,
+					ephemeral: false,
+				});
+
+		if (this.sessionInfo) {
+			this.sessionInfo.sessionId = threadResponse.thread.id;
+		}
+		this.emitSystemInitMessage(threadResponse.thread.id);
+
+		const turnParams: AppServerTurnStartParams = {
+			threadId: threadResponse.thread.id,
+			input: [
+				{
+					type: "text",
+					text: prompt,
+					text_elements: [],
+				},
+			],
+			cwd: this.config.workingDirectory,
+			approvalPolicy: this.buildApprovalPolicy(),
+			sandboxPolicy: this.buildSandboxPolicy(),
+			model: this.config.model,
+			effort:
+				this.config.modelReasoningEffort ??
+				getDefaultReasoningEffortForModel(this.config.model),
+			...(isJsonValue(threadConfig.outputSchema)
+				? { outputSchema: threadConfig.outputSchema }
+				: {}),
+		};
+
+		const completionPromise = new Promise<void>((resolve, reject) => {
+			this.terminalTurnResolver = resolve;
+			this.terminalTurnRejecter = reject;
+		});
+
+		await client.startTurn(turnParams);
+		await completionPromise;
+	}
+
+	private buildApprovalPolicy(): AppServerApprovalPolicy {
+		return this.config.askForApproval || "never";
+	}
+
+	private buildSandboxPolicy(): AppServerSandboxPolicy {
+		const readOnlyAccess: AppServerReadOnlyAccess = { type: "fullAccess" };
+		switch (this.config.sandbox) {
+			case "read-only":
+				return {
+					type: "readOnly",
+					access: readOnlyAccess,
+				};
+			case "danger-full-access":
+				return { type: "dangerFullAccess" };
+			default: {
+				const writableRoots = [
+					this.config.workingDirectory,
+					...(this.config.allowedDirectories || []),
+				].filter((value): value is string => Boolean(value));
+				const networkAccess = this.extractWorkspaceNetworkAccess(
+					this.buildConfigOverrides(),
+				);
+				return {
+					type: "workspaceWrite",
+					writableRoots: [...new Set(writableRoots)],
+					readOnlyAccess,
+					networkAccess,
+					excludeTmpdirEnvVar: false,
+					excludeSlashTmp: false,
+				};
+			}
+		}
+	}
+
+	private extractWorkspaceNetworkAccess(
+		configOverrides: CodexConfigOverrides | undefined,
+	): boolean {
+		const sandboxWorkspaceWrite = configOverrides?.sandbox_workspace_write;
+		if (
+			sandboxWorkspaceWrite &&
+			typeof sandboxWorkspaceWrite === "object" &&
+			!Array.isArray(sandboxWorkspaceWrite) &&
+			typeof sandboxWorkspaceWrite.network_access === "boolean"
+		) {
+			return sandboxWorkspaceWrite.network_access;
+		}
+		return true;
+	}
+
+	private buildThreadConfig(): {
+		developerInstructions?: string;
+		outputSchema?: JsonValue;
+	} {
+		const rawConfig = this.buildConfigOverrides();
+		if (!rawConfig) {
+			return {};
+		}
+
+		const { developer_instructions } = rawConfig as CodexConfigOverrides & {
+			developer_instructions?: CodexConfigValue;
+		};
+
+		return {
+			...(typeof developer_instructions === "string"
+				? { developerInstructions: developer_instructions }
+				: {}),
+			...(isJsonValue(this.config.outputSchema)
+				? { outputSchema: this.config.outputSchema }
+				: {}),
+		};
+	}
+
+	private buildAppServerConfigOverrides(): CodexConfigOverrides | undefined {
+		const rawConfig = this.buildConfigOverrides();
+		if (!rawConfig) {
+			return undefined;
+		}
+
+		const { developer_instructions, ...rest } =
+			rawConfig as CodexConfigOverrides & {
+				developer_instructions?: CodexConfigValue;
+			};
+		return Object.keys(rest).length > 0 ? rest : undefined;
 	}
 
 	private resolveCodexHome(): string {
@@ -640,9 +1084,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		const autoDetectedPath = autoDetectMcpConfigPath(
 			this.config.workingDirectory,
 		);
-		const configPaths = autoDetectedPath
-			? [autoDetectedPath]
-			: ([] as string[]);
+		const configPaths = autoDetectedPath ? [autoDetectedPath] : [];
 		if (this.config.mcpConfigPath) {
 			const explicitPaths = Array.isArray(this.config.mcpConfigPath)
 				? this.config.mcpConfigPath
@@ -658,8 +1100,6 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			return undefined;
 		}
 
-		// Codex MCP configuration reference:
-		// https://platform.openai.com/docs/docs-mcp
 		const codexServers: Record<string, CodexConfigOverrides> = {};
 		for (const [serverName, rawConfig] of Object.entries(mergedServers)) {
 			const configAny = rawConfig as Record<string, unknown>;
@@ -769,9 +1209,6 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		const sandboxWorkspaceWrite = configOverrides.sandbox_workspace_write;
-		// Keep workspace-write as the default sandbox, but enable outbound network so
-		// common remote workflows (for example `git`/`gh` against GitHub) work without
-		// requiring danger-full-access.
 		if (
 			sandboxWorkspaceWrite &&
 			typeof sandboxWorkspaceWrite === "object" &&
@@ -797,22 +1234,6 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			...configOverrides,
 			developer_instructions: appendSystemPrompt,
 		};
-	}
-
-	private async runTurn(
-		thread: Thread,
-		prompt: string,
-		signal: AbortSignal,
-	): Promise<void> {
-		const streamedTurn = await thread.runStreamed(prompt, {
-			signal,
-			...(this.config.outputSchema
-				? { outputSchema: this.config.outputSchema }
-				: {}),
-		});
-		for await (const event of streamedTurn.events) {
-			this.handleEvent(event);
-		}
 	}
 
 	private handleEvent(event: CodexJsonEvent): void {
@@ -843,16 +1264,21 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 				this.pendingResultMessage = this.createSuccessResultMessage(
 					this.lastAssistantText || "Codex session completed successfully",
 				);
+				this.terminalTurnResolver?.();
+				this.terminalTurnResolver = null;
+				this.terminalTurnRejecter = null;
 				break;
 			}
 			case "turn.failed": {
-				// Prefer event.error.message; fallback to last standalone "error" event
 				const message =
 					event.error?.message ||
 					this.errorMessages.at(-1) ||
 					"Codex execution failed";
 				this.errorMessages.push(message);
 				this.pendingResultMessage = this.createErrorResultMessage(message);
+				this.terminalTurnRejecter?.(new Error(message));
+				this.terminalTurnResolver = null;
+				this.terminalTurnRejecter = null;
 				break;
 			}
 			case "error": {
@@ -864,42 +1290,36 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 	}
 
-	private projectItemToTool(item: ThreadItem): ToolProjection | null {
+	private projectItemToTool(item: CodexThreadItem): ToolProjection | null {
 		switch (item.type) {
 			case "command_execution": {
-				const commandItem = item as CommandExecutionItem;
 				const isError =
-					commandItem.status === "failed" ||
-					(typeof commandItem.exit_code === "number" &&
-						commandItem.exit_code !== 0);
+					item.status === "failed" ||
+					(typeof item.exit_code === "number" && item.exit_code !== 0);
 				const result =
-					commandItem.aggregated_output?.trim() ||
+					item.aggregated_output.trim() ||
 					(isError
-						? `Command failed (exit code ${commandItem.exit_code ?? "unknown"})`
+						? `Command failed (exit code ${item.exit_code ?? "unknown"})`
 						: "Command completed with no output");
 
 				return {
-					toolUseId: commandItem.id,
-					toolName: inferCommandToolName(commandItem.command),
-					toolInput: { command: commandItem.command },
+					toolUseId: item.id,
+					toolName: inferCommandToolName(item.command),
+					toolInput: { command: item.command },
 					result,
 					isError,
 				};
 			}
 			case "file_change": {
-				const fileChangeItem = item as FileChangeItem;
 				const primaryPath =
-					fileChangeItem.changes[0]?.path &&
-					normalizeFilePath(
-						fileChangeItem.changes[0].path,
-						this.config.workingDirectory,
-					);
+					item.changes[0]?.path &&
+					normalizeFilePath(item.changes[0].path, this.config.workingDirectory);
 				return {
-					toolUseId: fileChangeItem.id,
+					toolUseId: item.id,
 					toolName: "Edit",
 					toolInput: {
 						...(primaryPath ? { file_path: primaryPath } : {}),
-						changes: fileChangeItem.changes.map((change) => ({
+						changes: item.changes.map((change) => ({
 							kind: change.kind,
 							path: normalizeFilePath(
 								change.path,
@@ -907,73 +1327,61 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 							),
 						})),
 					},
-					result: summarizeFileChanges(
-						fileChangeItem,
-						this.config.workingDirectory,
-					),
-					isError: fileChangeItem.status === "failed",
+					result: summarizeFileChanges(item, this.config.workingDirectory),
+					isError: item.status === "failed",
 				};
 			}
 			case "web_search": {
-				const webSearchItem = item as WebSearchItem;
-				const extendedItem = item as unknown as Record<string, unknown>;
-				const action = asRecord(extendedItem.action);
+				const action = asRecord(item.action);
 				const actionType =
 					typeof action?.type === "string" ? action.type : undefined;
 				const isFetch = actionType === "open_page";
-				const url =
-					typeof action?.url === "string"
-						? action.url
-						: typeof extendedItem.url === "string"
-							? extendedItem.url
-							: undefined;
+				const url = typeof action?.url === "string" ? action.url : undefined;
 				const pattern =
-					typeof action?.pattern === "string"
-						? action.pattern
-						: typeof extendedItem.pattern === "string"
-							? extendedItem.pattern
-							: undefined;
+					typeof action?.pattern === "string" ? action.pattern : undefined;
 
 				return {
-					toolUseId: webSearchItem.id,
+					toolUseId: item.id,
 					toolName: isFetch ? "WebFetch" : "WebSearch",
 					toolInput: isFetch
 						? {
-								url: url || webSearchItem.query,
+								url: url || item.query,
 								...(pattern ? { pattern } : {}),
 							}
-						: { query: webSearchItem.query },
+						: { query: item.query },
 					result:
 						action && Object.keys(action).length > 0
 							? safeStringify(action)
-							: `Search completed for query: ${webSearchItem.query}`,
+							: `Search completed for query: ${item.query}`,
 					isError: false,
 				};
 			}
 			case "mcp_tool_call": {
-				const mcpItem = item as McpToolCallItem;
 				return {
-					toolUseId: mcpItem.id,
-					toolName: `mcp__${normalizeMcpIdentifier(mcpItem.server)}__${normalizeMcpIdentifier(mcpItem.tool)}`,
-					toolInput: asRecord(mcpItem.arguments) || {
-						arguments: mcpItem.arguments,
+					toolUseId: item.id,
+					toolName: `mcp__${normalizeMcpIdentifier(item.server)}__${normalizeMcpIdentifier(item.tool)}`,
+					toolInput: asRecord(item.arguments) || {
+						arguments: item.arguments,
 					},
-					result: toMcpResultString(mcpItem),
-					isError: mcpItem.status === "failed" || Boolean(mcpItem.error),
+					result: toMcpResultString(item),
+					isError: item.status === "failed" || Boolean(item.error),
 				};
 			}
 			case "todo_list": {
-				const todoItem = item as TodoListItem;
 				return {
-					toolUseId: todoItem.id,
+					toolUseId: item.id,
 					toolName: "TodoWrite",
 					toolInput: {
-						todos: todoItem.items.map((todo) => ({
+						todos: item.items.map((todo) => ({
 							content: todo.text,
-							status: todo.completed ? "completed" : "pending",
+							status: todo.completed
+								? "completed"
+								: todo.in_progress
+									? "in_progress"
+									: "pending",
 						})),
 					},
-					result: `Updated todo list (${todoItem.items.length} items)`,
+					result: `Updated todo list (${item.items.length} items)`,
 					isError: false,
 				};
 			}
@@ -983,7 +1391,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	private emitToolMessagesForItem(
-		item: ThreadItem,
+		item: CodexThreadItem,
 		includeResult: boolean,
 	): void {
 		const projection = this.projectItemToTool(item);
@@ -1037,7 +1445,6 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 
 		this.sessionInfo.isRunning = false;
 
-		// Ensure init is emitted even if stream fails before thread.started.
 		if (!this.hasInitMessage) {
 			this.emitSystemInitMessage(
 				this.sessionInfo.sessionId || this.config.resumeSessionId || "pending",
@@ -1068,7 +1475,6 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		this.emit("complete", [...this.messages]);
-
 		this.cleanupRuntimeState();
 	}
 
@@ -1101,7 +1507,7 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 			subtype: "init",
 			agents: undefined,
 			apiKeySource: "user",
-			claude_code_version: "codex-cli",
+			claude_code_version: "codex-app-server",
 			cwd: this.config.workingDirectory || cwd(),
 			tools: [],
 			mcp_servers: [],
@@ -1160,15 +1566,31 @@ export class CodexRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	private cleanupRuntimeState(): void {
-		this.abortController = null;
+		this.terminalTurnResolver = null;
+		this.terminalTurnRejecter = null;
+		this.appServerClient?.close();
+		this.appServerClient = null;
 	}
 
 	stop(): void {
 		if (!this.sessionInfo?.isRunning) {
 			return;
 		}
+
 		this.wasStopped = true;
-		this.abortController?.abort();
+		if (this.appServerClient && this.sessionInfo.sessionId) {
+			void this.appServerClient
+				.interruptTurn({ threadId: this.sessionInfo.sessionId })
+				.catch((error) => {
+					console.warn(
+						`[CodexRunner] Failed to interrupt app-server turn: ${normalizeError(error)}`,
+					);
+					this.appServerClient?.close();
+				});
+			return;
+		}
+
+		this.appServerClient?.close();
 	}
 
 	isRunning(): boolean {
