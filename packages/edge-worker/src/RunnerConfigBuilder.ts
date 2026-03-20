@@ -136,7 +136,7 @@ export class RunnerConfigBuilder {
 	 * Build a runner config for chat sessions (Slack, GitHub chat, etc.).
 	 *
 	 * Chat sessions get read-only tools + MCP tool prefixes, and a simplified
-	 * config without hooks, model selection, or procedure context.
+	 * config without hooks or model selection.
 	 */
 	buildChatConfig(input: ChatRunnerConfigInput): AgentRunnerConfig {
 		// Derive user-configured MCP config path from the repository

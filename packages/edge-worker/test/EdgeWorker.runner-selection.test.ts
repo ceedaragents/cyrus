@@ -200,7 +200,6 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 			serializeState: vi.fn().mockReturnValue({ sessions: {}, entries: {} }),
 			restoreState: vi.fn(),
 			postAnalyzingThought: vi.fn().mockResolvedValue(null),
-			postProcedureSelectionThought: vi.fn().mockResolvedValue(undefined),
 			createThoughtActivity: vi.fn().mockResolvedValue(undefined),
 			setActivitySink: vi.fn(),
 			on: vi.fn(), // EventEmitter method

@@ -39,6 +39,10 @@ export type {
 } from "./RunnerConfigBuilder.js";
 export { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 export { SharedApplicationServer } from "./SharedApplicationServer.js";
+export {
+	buildSkillsGuidance,
+	SkillsPluginResolver,
+} from "./SkillsPluginResolver.js";
 export { SlackChatAdapter } from "./SlackChatAdapter.js";
 export type {
 	ActivityPostOptions,

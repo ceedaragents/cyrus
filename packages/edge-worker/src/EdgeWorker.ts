@@ -1,15 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
-import type {
-	McpServerConfig,
-	SDKMessage,
-	SdkPluginConfig,
-} from "cyrus-claude-runner";
+import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
 import { ConfigUpdater } from "cyrus-config-updater";
@@ -130,6 +124,10 @@ import {
 import { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 import { RunnerSelectionService } from "./RunnerSelectionService.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
+import {
+	buildSkillsGuidance,
+	SkillsPluginResolver,
+} from "./SkillsPluginResolver.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
@@ -196,6 +194,7 @@ export class EdgeWorker extends EventEmitter {
 	private activityPoster: ActivityPoster;
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
+	private skillsPluginResolver: SkillsPluginResolver;
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
 	private cyrusToolsMcpRequestContext =
@@ -433,6 +432,10 @@ export class EdgeWorker extends EventEmitter {
 			gitService: this.gitService,
 			config: this.config,
 		});
+		this.skillsPluginResolver = new SkillsPluginResolver(
+			this.cyrusHome,
+			this.logger,
+		);
 
 		// Components will be initialized and registered in start() method before server starts
 	}
@@ -4350,15 +4353,7 @@ ${taskSection}`;
 		}
 
 		// 3. Append skills guidance — instruct the agent to use skills based on context
-		systemPrompt +=
-			"\n\n## Skills\n\n" +
-			"You have skills available via the Skill tool. Choose the appropriate skill based on the context:\n\n" +
-			"- **Code changes requested** (feature, bug fix, refactor): Use `implementation` to write code, then `verify-and-ship` to run checks and create a PR, then `summarize` to post results.\n" +
-			"- **Bug report or error**: Use `debug` to reproduce, root-cause, and fix, then `verify-and-ship`, then `summarize`.\n" +
-			"- **Question or research request**: Use `investigate` to search the codebase and provide an answer, then `summarize`.\n" +
-			"- **PR review feedback** (changes requested): Use `implementation` to address review comments, then `verify-and-ship`.\n\n" +
-			"Analyze the issue description, labels, and any user comments to determine which workflow fits. " +
-			"Do NOT skip the verify-and-ship step if you made code changes — it ensures quality checks pass and a PR is created.";
+		systemPrompt += buildSkillsGuidance();
 
 		// 4. Build issue context using appropriate builder
 		// Use label-based prompt ONLY if we have a label-based system prompt
@@ -4475,73 +4470,6 @@ ${input.userComment}
 	}
 
 	/**
-	 * Deploy user-customizable skills from ~/.cyrus/skills/ to the workspace.
-	 *
-	 * Default/bundled skills are delivered via the cyrus-skills-plugin (passed
-	 * to the SDK as a plugin). This method only handles additional user skills
-	 * from the cyrusHome skills directory, if present.
-	 */
-	/**
-	 * Resolve plugins that provide skills to the agent session.
-	 *
-	 * Loads up to two plugins:
-	 * 1. Bundled `cyrus-skills-plugin/` — default skills shipped with the package
-	 * 2. `~/.cyrus/user-skills-plugin/` — user/CYHOST-managed custom skills
-	 *
-	 * CYHOST writes user-created skills to:
-	 *   `~/.cyrus/user-skills-plugin/skills/<name>/SKILL.md`
-	 *
-	 * The plugin manifest is auto-scaffolded if the skills directory exists
-	 * but `.claude-plugin/plugin.json` is missing.
-	 */
-	private resolveSkillsPlugins(): SdkPluginConfig[] {
-		const plugins: SdkPluginConfig[] = [];
-
-		// 1. Bundled plugin — default Cyrus workflow skills
-		const bundledPlugin = join(
-			dirname(fileURLToPath(import.meta.url)),
-			"..",
-			"cyrus-skills-plugin",
-		);
-		if (existsSync(bundledPlugin)) {
-			this.logger.debug(`Using bundled skills plugin at ${bundledPlugin}`);
-			plugins.push({ type: "local", path: bundledPlugin });
-		} else {
-			this.logger.warn(`No bundled skills plugin found at ${bundledPlugin}`);
-		}
-
-		// 2. User skills plugin — managed by CYHOST UI
-		const userPlugin = join(this.cyrusHome, "user-skills-plugin");
-		const userSkillsDir = join(userPlugin, "skills");
-		if (existsSync(userSkillsDir)) {
-			// Auto-scaffold the plugin manifest if missing
-			const manifestDir = join(userPlugin, ".claude-plugin");
-			const manifestPath = join(manifestDir, "plugin.json");
-			if (!existsSync(manifestPath)) {
-				mkdirSync(manifestDir, { recursive: true });
-				writeFileSync(
-					manifestPath,
-					JSON.stringify(
-						{
-							name: "user-skills",
-							description: "User-created skills managed by Cyrus",
-						},
-						null,
-						"\t",
-					),
-				);
-				this.logger.info(
-					`Auto-scaffolded user skills plugin manifest at ${manifestPath}`,
-				);
-			}
-			this.logger.debug(`Using user skills plugin at ${userPlugin}`);
-			plugins.push({ type: "local", path: userPlugin });
-		}
-
-		return plugins;
-	}
-
-	/**
 	 * Load shared instructions that get appended to all system prompts
 	 */
 	private async loadSharedInstructions(): Promise<string> {
@@ -4647,7 +4575,7 @@ ${input.userComment}
 			linearWorkspaceId,
 			cyrusHome: this.cyrusHome,
 			logger: log,
-			plugins: this.resolveSkillsPlugins(),
+			plugins: this.skillsPluginResolver.resolve(),
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},

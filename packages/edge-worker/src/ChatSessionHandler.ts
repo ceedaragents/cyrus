@@ -217,7 +217,7 @@ export class ChatSessionHandler<TEvent> {
 			// Track this thread → session mapping for follow-up messages
 			this.threadSessions.set(threadKey, sessionId);
 
-			// Initialize procedure metadata
+			// Initialize session metadata
 			if (!session.metadata) {
 				session.metadata = {};
 			}
