@@ -1,8 +1,26 @@
 # End-to-End Self-Hosting Guide
 
-This guide walks you through setting up Cyrus completely self-hosted, including your own Linear OAuth application. This is the free, zero-cost option that gives you full control.
+## Quick Start (Recommended)
 
-> **Tip:** If you're using Claude, Cursor, or any AI coding agent, ask it to read this file and help you implement all the steps. Example: *"Read docs/SELF_HOSTING.md and help me set up self-hosted Cyrus"*
+If you're using any AI coding agent (Claude Code, Codex, Cursor, etc.), set up Cyrus with a single command:
+
+```bash
+npx skills add ceedaragents/cyrus --skill setup -g
+```
+
+Then in your agent:
+
+```
+/setup
+```
+
+The setup skill walks you through everything below — automatically.
+
+---
+
+## Manual Setup
+
+This guide walks you through setting up Cyrus completely self-hosted, including your own Linear OAuth application. This is the free, zero-cost option that gives you full control.
 
 ---
 
