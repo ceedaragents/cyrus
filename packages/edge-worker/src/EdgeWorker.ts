@@ -4744,6 +4744,16 @@ ${taskSection}`;
 			};
 		}
 
+		// Conditionally inject the Graphiti memory MCP server
+		// https://github.com/getzep/graphiti
+		const graphitiUrl = process.env.GRAPHITI_MCP_URL?.trim();
+		if (graphitiUrl) {
+			mcpConfig.graphiti = {
+				type: "http",
+				url: graphitiUrl,
+			};
+		}
+
 		return mcpConfig;
 	}
 

@@ -412,6 +412,9 @@ export class RunnerSelectionService {
 		if (process.env.SLACK_BOT_TOKEN?.trim()) {
 			tools.push("mcp__slack");
 		}
+		if (process.env.GRAPHITI_MCP_URL?.trim()) {
+			tools.push("mcp__graphiti");
+		}
 		return tools;
 	}
 

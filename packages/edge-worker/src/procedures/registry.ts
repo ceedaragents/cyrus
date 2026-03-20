@@ -129,6 +129,14 @@ export const SUBROUTINES = {
 		suppressThoughtPosting: true,
 		disallowAllTools: true,
 	},
+	memoryReflection: {
+		name: "memory-reflection",
+		promptPath: "subroutines/memory-reflection.md",
+		singleTurn: true,
+		description: "Reflecting on session and storing learnings to memory",
+		skipLinearPost: true,
+		suppressThoughtPosting: true,
+	},
 } as const;
 
 /**
@@ -166,6 +174,7 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			SUBROUTINES.gitCommit,
 			SUBROUTINES.ghPr,
 			SUBROUTINES.conciseSummary,
+			SUBROUTINES.memoryReflection,
 		],
 	},
 
@@ -181,6 +190,7 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 			SUBROUTINES.gitCommit,
 			SUBROUTINES.ghPr,
 			SUBROUTINES.conciseSummary,
+			SUBROUTINES.memoryReflection,
 		],
 	},
 

@@ -505,6 +505,9 @@ export class PromptBuilder {
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
 
+			// Append memory context instructions if Graphiti is configured
+			prompt += this.formatMemoryContext();
+
 			if (attachmentManifest) {
 				this.logger.debug(
 					`Adding attachment manifest to label-based prompt, length: ${attachmentManifest.length} characters`,
@@ -949,6 +952,9 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			// Append agent guidance if present
 			prompt += this.formatAgentGuidance(guidance);
 
+			// Append memory context instructions if Graphiti is configured
+			prompt += this.formatMemoryContext();
+
 			// Append attachment manifest if provided
 			if (attachmentManifest) {
 				this.logger.debug(
@@ -1215,6 +1221,23 @@ ${reply.body}
 	}
 
 	/**
+	 * Format memory context instructions for agents with access to Graphiti.
+	 * Only included when GRAPHITI_MCP_URL is configured.
+	 */
+	formatMemoryContext(): string {
+		if (!process.env.GRAPHITI_MCP_URL?.trim()) {
+			return "";
+		}
+		return `\n\n<memory_context>
+You have access to a team knowledge graph via Graphiti MCP tools. At the start of your work:
+1. Use \`search_memory_facts\` with keywords from the issue to recall relevant team patterns, preferences, and past decisions.
+2. Apply any recalled context to your work (coding standards, architectural patterns, user preferences).
+
+During your work, if you discover important patterns or receive corrections, note them for the memory-reflection phase.
+</memory_context>`;
+	}
+
+	/**
 	 * Extract version tag from template content
 	 * @param templateContent The template content to parse
 	 * @returns The version value if found, undefined otherwise
@@ -1289,6 +1312,14 @@ ${reply.body}
 		// Skip loading for "primary" - it's a placeholder that doesn't have a file
 		if (subroutine.promptPath === "primary") {
 			return null;
+		}
+
+		// Skip memory-reflection when Graphiti is not configured
+		if (
+			subroutine.name === "memory-reflection" &&
+			!process.env.GRAPHITI_MCP_URL?.trim()
+		) {
+			return "Memory reflection skipped — no knowledge graph configured. Reply: `Memory reflection complete.`";
 		}
 
 		const __filename = fileURLToPath(import.meta.url);
