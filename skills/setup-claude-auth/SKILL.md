@@ -55,26 +55,29 @@ claude auth status
 
 If authenticated, instruct the user to run `claude setup-token` which will output a token.
 
-To capture it safely, **append a placeholder line** to the env file, then open it for the user to paste the token:
+To capture it safely, **append a placeholder line** to the env file, then open it in a GUI window so the user can paste the token:
 
 ```bash
-echo 'CLAUDE_CODE_OAUTH_TOKEN=' >> ~/.cyrus/.env
+grep -q '^CLAUDE_CODE_OAUTH_TOKEN=' ~/.cyrus/.env || echo 'CLAUDE_CODE_OAUTH_TOKEN=' >> ~/.cyrus/.env
 ```
 
-Then open the file in an editor so the user can paste the token directly after the `=`:
+Then open the file in a separate window — use whatever GUI editor is available:
 
 ```bash
-# Use whichever editor is available
-${EDITOR:-nano} ~/.cyrus/.env
+# macOS: VS Code if available, otherwise TextEdit
+code ~/.cyrus/.env 2>/dev/null || open -a TextEdit ~/.cyrus/.env
+
+# Linux
+code ~/.cyrus/.env 2>/dev/null || xdg-open ~/.cyrus/.env
 ```
 
 Tell the user:
 
 > 1. Run `claude setup-token` in a separate terminal
 > 2. Copy the token it outputs
-> 3. In the editor that just opened, find the `CLAUDE_CODE_OAUTH_TOKEN=` line at the bottom
+> 3. I've opened `~/.cyrus/.env` — find the `CLAUDE_CODE_OAUTH_TOKEN=` line
 > 4. Paste the token right after the `=` (no spaces, no newline)
-> 5. Save and close
+> 5. Save and close the file
 
 ### Option 2: API Key
 
@@ -106,14 +109,17 @@ grep -q '^CLAUDE_CODE_OAUTH_TOKEN=' ~/.cyrus/.env || echo 'CLAUDE_CODE_OAUTH_TOK
 ```
 
 ```bash
-${EDITOR:-nano} ~/.cyrus/.env
+# macOS
+code ~/.cyrus/.env 2>/dev/null || open -a TextEdit ~/.cyrus/.env
+# Linux
+code ~/.cyrus/.env 2>/dev/null || xdg-open ~/.cyrus/.env
 ```
 
 Tell the user:
 
 > 1. On the other machine, run `claude setup-token`
 > 2. Copy the token it outputs
-> 3. In the editor, find `CLAUDE_CODE_OAUTH_TOKEN=` and paste the token after the `=`
+> 3. I've opened `~/.cyrus/.env` — find `CLAUDE_CODE_OAUTH_TOKEN=` and paste the token after the `=`
 > 4. Save and close
 
 ### Option 4: Third-Party Provider
