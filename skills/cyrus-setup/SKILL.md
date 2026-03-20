@@ -25,37 +25,30 @@ Sub-skills (each independently invocable):
 
 ## Step 0: Identity & Surface Selection
 
-Before anything else, ask the user these questions:
+Before anything else, collect preferences from the user. **Use the `AskUserQuestion` tool if available** — ask questions interactively rather than printing them as a text block. You may bundle related questions into a single ask, or ask them one at a time.
 
-### Question 1: Name your agent
+### Question 1: Name & Description
 
-> **What would you like to name your agent?**
-> This name appears in Linear, Slack, and GitHub integrations.
-> (default: `Cyrus`)
+Ask the user (defaults in parentheses):
 
-### Question 2: Describe your agent
+- **What would you like to name your agent?** — This name appears in Linear, Slack, and GitHub integrations. (default: `Cyrus`)
+- **Give your agent a short description** — one sentence, shown in integration app listings. (default: `AI coding agent for automated development`)
 
-> **Give your agent a short description** (one sentence).
-> This is shown in integration app listings.
-> (default: `AI coding agent for automated development`)
+Store as `AGENT_NAME` and `AGENT_DESCRIPTION` — used when creating Linear, Slack, and GitHub apps.
 
-Store `AGENT_NAME` and `AGENT_DESCRIPTION` — these are used when creating Linear, Slack, and GitHub apps.
+### Question 2: Which surfaces?
 
-### Question 3: Which surfaces?
+Ask the user to select one or more:
 
-> **Which surfaces do you want your agent to respond from?** (select all that apply)
->
-> - [ ] **Linear** — issue tracking, recommended for most users
-> - [ ] **GitHub** — PR comments and issues
-> - [ ] **Slack** — chat messages
->
-> At least one is required.
+- **Linear** — issue tracking, recommended for most users
+- **GitHub** — PR comments and issues
+- **Slack** — chat messages
 
-Store the selection — it determines which integration sub-skills run (Steps 4-6).
+At least one is required. Store the selection — it determines which integration sub-skills run (Steps 4-6).
 
-### Question 4: Package manager?
+### Question 3: Package manager?
 
-> **Which package manager do you prefer?** npm, pnpm, bun, or yarn?
+Ask: **npm, pnpm, bun, or yarn?**
 
 Store the answer — used by the prerequisites skill.
 
