@@ -53,29 +53,28 @@ Check if `claude` is authenticated on this machine:
 claude auth status
 ```
 
-If authenticated, extract the token directly into the env file without ever showing it in the conversation:
+If authenticated, instruct the user to run `claude setup-token` which will output a token.
+
+To capture it safely, **append a placeholder line** to the env file, then open it for the user to paste the token:
 
 ```bash
-claude setup-token 2>/dev/null | tail -1 | xargs -I{} printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "{}" >> ~/.cyrus/.env
+echo 'CLAUDE_CODE_OAUTH_TOKEN=' >> ~/.cyrus/.env
 ```
 
-If that command doesn't work (older CLI version), fall back to having the user run it manually:
+Then open the file in an editor so the user can paste the token directly after the `=`:
 
-> Run this command — it generates a token and writes it directly to your env file without showing it:
-> ```bash
-> claude setup-token
-> ```
-> Then copy the token and run:
-
-**macOS:**
 ```bash
-printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$(pbpaste)" >> ~/.cyrus/.env
+# Use whichever editor is available
+${EDITOR:-nano} ~/.cyrus/.env
 ```
 
-**Universal fallback:**
-```bash
-read -s -p "Paste your OAuth token: " val && printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
-```
+Tell the user:
+
+> 1. Run `claude setup-token` in a separate terminal
+> 2. Copy the token it outputs
+> 3. In the editor that just opened, find the `CLAUDE_CODE_OAUTH_TOKEN=` line at the bottom
+> 4. Paste the token right after the `=` (no spaces, no newline)
+> 5. Save and close
 
 ### Option 2: API Key
 
@@ -100,26 +99,22 @@ read -s -p "Paste your Anthropic API key: " val && printf 'ANTHROPIC_API_KEY=%s\
 
 This is for when the user wants to generate a token for a different account than the one currently logged in (e.g., running `claude setup-token` on another machine).
 
-> On the machine with the account you want to use, run:
-> ```bash
-> claude setup-token
-> ```
-> Copy the token, then come back here and run:
+Append the placeholder, then open the file for the user to paste:
 
-**macOS:**
 ```bash
-printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$(pbpaste)" >> ~/.cyrus/.env
+grep -q '^CLAUDE_CODE_OAUTH_TOKEN=' ~/.cyrus/.env || echo 'CLAUDE_CODE_OAUTH_TOKEN=' >> ~/.cyrus/.env
 ```
 
-**Linux:**
 ```bash
-printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$(xclip -selection clipboard -o)" >> ~/.cyrus/.env
+${EDITOR:-nano} ~/.cyrus/.env
 ```
 
-**Universal fallback:**
-```bash
-read -s -p "Paste your OAuth token: " val && printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
-```
+Tell the user:
+
+> 1. On the other machine, run `claude setup-token`
+> 2. Copy the token it outputs
+> 3. In the editor, find `CLAUDE_CODE_OAUTH_TOKEN=` and paste the token after the `=`
+> 4. Save and close
 
 ### Option 4: Third-Party Provider
 
