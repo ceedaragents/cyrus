@@ -52,7 +52,13 @@ If the user selected any integration surface (Linear, GitHub, Slack), check for 
 which agent-browser
 ```
 
-If not found, inform the user:
+**If installed**, ensure it's up to date:
+
+```bash
+npm update -g agent-browser
+```
+
+**If not found**, inform the user:
 
 > `agent-browser` is optional but enables automated app creation for Linear/GitHub/Slack. Without it, you'll be guided through manual setup steps instead.
 >

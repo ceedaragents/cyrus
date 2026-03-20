@@ -19,11 +19,29 @@ The goal of browser automation in this skill is to **reduce sign-in and setup fa
 
 **Three modes, in order of preference:**
 
-1. **`agent-browser` CLI** (default) — a standalone Playwright-based binary invoked via `Bash`. When this skill says "agent-browser", it means this tool. Check with `which agent-browser`.
+1. **`agent-browser` CLI** (default) — a standalone Playwright-based binary invoked via `Bash`. When this skill says "agent-browser", it means this tool. Check with `which agent-browser`. Always use `--auto-connect` to attach to the user's already-running Chrome instead of launching a new instance.
 2. **`claude-in-chrome`** — if the user prefers to use their existing Chrome browser via the MCP extension, respect that preference. But do NOT default to it or try it as an automatic fallback — it's a different tool with different capabilities.
 3. **Manual guided flow** — the user follows the agent's step-by-step instructions and does the clicks themselves. Always available as Path B in each sub-skill.
 
 If `agent-browser` is not installed, **ask the user** which they'd prefer: installing `agent-browser`, using `claude-in-chrome` (if available), or following manual instructions. Respect their choice.
+
+**`agent-browser` usage pattern:**
+
+First, connect to the user's running Chrome once:
+
+```bash
+agent-browser --auto-connect
+```
+
+This discovers Chrome's remote debugging interface automatically — no need to launch a separate browser or manage CDP ports. After connecting, subsequent commands work without the flag:
+
+```bash
+agent-browser navigate "https://example.com"
+agent-browser click "button:text('Submit')"
+agent-browser fill "#input-id" "value"
+agent-browser screenshot
+agent-browser eval "document.title"
+```
 
 ## How This Works
 

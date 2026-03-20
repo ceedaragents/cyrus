@@ -120,7 +120,13 @@ which agent-browser 2>/dev/null
 
 ### Path A: agent-browser Automation
 
-If `agent-browser` is available, automate the entire flow:
+If `agent-browser` is available, automate the entire flow.
+
+First, connect to the user's running Chrome:
+
+```bash
+agent-browser --auto-connect
+```
 
 #### 4a. Navigate to Slack app creation
 

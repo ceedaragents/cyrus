@@ -48,7 +48,13 @@ which agent-browser 2>/dev/null
 
 ### Path A: agent-browser Automation
 
-If `agent-browser` is available, automate the Linear app creation:
+If `agent-browser` is available, automate the Linear app creation.
+
+First, connect to the user's running Chrome:
+
+```bash
+agent-browser --auto-connect
+```
 
 #### 3a. Navigate to Linear API settings
 
