@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Created `cyrus-discord-event-transport` package with `DiscordGatewayClient` (WebSocket Gateway lifecycle, heartbeat, reconnect/resume), `DiscordEventTransport` (HTTP endpoint for CYHOST-forwarded events), `DiscordMessageTranslator` (translates MESSAGE_CREATE to internal messages), `DiscordMessageService` (REST API for posting messages, creating threads, fetching history with 2K-char message splitting), and `DiscordReactionService` (emoji reactions). Added `DiscordPlatformRef`, `DiscordSessionStartPlatformData`, `DiscordUserPromptPlatformData`, `isDiscordMessage` type guard, and `"discord"` to `MessageSource` union in `cyrus-core`. Created `DiscordChatAdapter` implementing `ChatPlatformAdapter<DiscordWebhookEvent>` with Discord Markdown formatting rules. Wired `registerDiscordEventTransport()` in EdgeWorker with `/discord-webhook` endpoint, status check, and shutdown integration. Added `cyrus-discord-event-transport` to `tsconfig.base.json` paths (also backfilled `cyrus-slack-event-transport` and `cyrus-github-event-transport`). ([CYHOST-731](https://linear.app/ceedar/issue/CYHOST-731))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added

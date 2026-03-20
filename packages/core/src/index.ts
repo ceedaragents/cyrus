@@ -148,6 +148,9 @@ export {
 export type {
 	ContentChanges,
 	ContentUpdateMessage,
+	DiscordPlatformRef,
+	DiscordSessionStartPlatformData,
+	DiscordUserPromptPlatformData,
 	GitHubPlatformRef,
 	GitHubSessionStartPlatformData,
 	GitHubUserPromptPlatformData,
@@ -177,6 +180,8 @@ export type {
 	UserPromptMessage,
 } from "./messages/index.js";
 export {
+	hasDiscordSessionStartPlatformData,
+	hasDiscordUserPromptPlatformData,
 	hasGitHubSessionStartPlatformData,
 	hasGitHubUserPromptPlatformData,
 	hasLinearSessionStartPlatformData,
@@ -184,6 +189,7 @@ export {
 	hasSlackSessionStartPlatformData,
 	hasSlackUserPromptPlatformData,
 	isContentUpdateMessage,
+	isDiscordMessage,
 	isGitHubMessage,
 	isIssueStateChangeMessage,
 	isLinearMessage,

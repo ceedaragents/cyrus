@@ -20,7 +20,7 @@ import type { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
  * events into the common operations the ChatSessionHandler needs.
  */
 /** Platform identifiers supported by the session manager */
-export type ChatPlatformName = "slack" | "linear" | "github";
+export type ChatPlatformName = "slack" | "discord" | "linear" | "github";
 
 export interface ChatPlatformAdapter<TEvent> {
 	readonly platformName: ChatPlatformName;

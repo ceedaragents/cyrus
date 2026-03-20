@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Discord bot integration** - Cyrus can now be used as a Discord bot, similar to the existing Slack integration. Includes a new `discord-event-transport` package with Gateway client, message/reaction services, and message translator. Adds `DiscordChatAdapter` and EdgeWorker wiring for receiving Discord events. Core types updated with Discord platform refs and type guards. ([CYHOST-731](https://linear.app/ceedar/issue/CYHOST-731))
 - **Cyrus docs MCP available in all sessions** - Cyrus now has access to its own documentation via the Mintlify docs MCP server, enabling better self-reference and user guidance. ([CYPACK-995](https://linear.app/ceedar/issue/CYPACK-995), [#1016](https://github.com/ceedaragents/cyrus/pull/1016))
 
 ## [0.2.37] - 2026-03-18
