@@ -65,7 +65,9 @@ import {
 import { CursorRunner } from "cyrus-cursor-runner";
 import {
 	DiscordEventTransport,
+	DiscordGatewayClient,
 	type DiscordWebhookEvent,
+	GatewayIntent,
 } from "cyrus-discord-event-transport";
 import { GeminiRunner } from "cyrus-gemini-runner";
 import {
@@ -174,6 +176,7 @@ export class EdgeWorker extends EventEmitter {
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
 	private discordEventTransport: DiscordEventTransport | null = null;
+	private discordGatewayClient: DiscordGatewayClient | null = null;
 	private chatSessionHandler: ChatSessionHandler<SlackWebhookEvent> | null =
 		null;
 	private discordChatSessionHandler: ChatSessionHandler<DiscordWebhookEvent> | null =
@@ -924,8 +927,13 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Register the Discord event transport for receiving forwarded Discord webhooks from CYHOST.
-	 * This creates a /discord-webhook endpoint that handles MESSAGE_CREATE events from Discord.
+	 * Register the Discord event transport.
+	 *
+	 * Two paths:
+	 * 1. HTTP endpoint (/discord-webhook) — receives forwarded Discord events from CYHOST (analogous to Slack).
+	 * 2. Gateway WebSocket — connects directly to Discord's Gateway when DISCORD_BOT_TOKEN is present.
+	 *    This is needed because Discord does not send HTTP webhooks for messages (unlike Slack).
+	 *    The edge worker must maintain a persistent WebSocket connection to receive MESSAGE_CREATE events.
 	 */
 	private registerDiscordEventTransport(): void {
 		const allRepos = Array.from(this.repositories.values());
@@ -982,19 +990,26 @@ export class EdgeWorker extends EventEmitter {
 			this.logger,
 		);
 
+		// Wire up event handler (shared between HTTP transport and Gateway client)
+		const handleDiscordEvent = (event: DiscordWebhookEvent) => {
+			this.logger.info(
+				`Discord event received: type=${event.eventType}, id=${event.eventId}, guild=${event.guildId}`,
+			);
+			this.discordChatSessionHandler!.handleEvent(event).catch((error) => {
+				this.logger.error(
+					"Failed to handle Discord event",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			});
+		};
+
+		// Path 1: HTTP endpoint for forwarded events from CYHOST
 		this.discordEventTransport = new DiscordEventTransport({
 			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 			secret: process.env.CYRUS_API_KEY || "",
 		});
 
-		this.discordEventTransport.on("event", (event: DiscordWebhookEvent) => {
-			this.discordChatSessionHandler!.handleEvent(event).catch((error) => {
-				this.logger.error(
-					"Failed to handle Discord webhook",
-					error instanceof Error ? error : new Error(String(error)),
-				);
-			});
-		});
+		this.discordEventTransport.on("event", handleDiscordEvent);
 		this.discordEventTransport.on("message", (message: InternalMessage) => {
 			this.handleMessage(message);
 		});
@@ -1003,8 +1018,43 @@ export class EdgeWorker extends EventEmitter {
 		});
 
 		this.discordEventTransport.register();
+		this.logger.info("Discord HTTP event transport registered");
 
-		this.logger.info("Discord event transport registered");
+		// Path 2: Gateway WebSocket — connect directly to Discord when bot token is available
+		const botToken = process.env.DISCORD_BOT_TOKEN;
+		if (botToken) {
+			this.logger.info(
+				"DISCORD_BOT_TOKEN found, starting Discord Gateway client...",
+			);
+
+			this.discordGatewayClient = new DiscordGatewayClient(
+				{
+					botToken,
+					intents:
+						GatewayIntent.Guilds |
+						GatewayIntent.GuildMessages |
+						GatewayIntent.MessageContent,
+				},
+				this.logger,
+			);
+
+			this.discordGatewayClient.on("event", handleDiscordEvent);
+			this.discordGatewayClient.on("message", (message: InternalMessage) => {
+				this.handleMessage(message);
+			});
+			this.discordGatewayClient.on("error", (error: Error) => {
+				this.logger.error("Discord Gateway error", error);
+				this.handleError(error);
+			});
+
+			this.discordGatewayClient.connect();
+			this.logger.info("Discord Gateway client connecting...");
+		} else {
+			this.logger.warn(
+				"DISCORD_BOT_TOKEN not set — Discord Gateway client will not start. " +
+					"Only the HTTP /discord-webhook endpoint is available.",
+			);
+		}
 	}
 
 	/**
@@ -1696,7 +1746,12 @@ ${taskSection}`;
 			}
 		}
 
-		// Clear event transport (no explicit cleanup needed, routes are removed when server stops)
+		// Clear event transports
+		if (this.discordGatewayClient) {
+			this.logger.info("Disconnecting Discord Gateway client...");
+			this.discordGatewayClient.disconnect();
+			this.discordGatewayClient = null;
+		}
 		this.linearEventTransport = null;
 		this.configUpdater = null;
 		this.mcpConfigService.clearAllContexts();
