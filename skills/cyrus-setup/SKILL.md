@@ -7,9 +7,23 @@ description: Set up Cyrus end-to-end — install prerequisites, configure authen
 
 One-command setup for self-hosted Cyrus. This orchestrator walks you through everything needed to run Claude Code as a background agent from Linear, Slack, and GitHub.
 
-## CRITICAL: Never Read or Write ~/.cyrus/.env Directly
+## CRITICAL Rules
+
+### Never Read or Write ~/.cyrus/.env Directly
 
 **FORBIDDEN:** Do NOT use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. This file contains secrets (API keys, tokens, signing secrets). All interaction with this file MUST go through `Bash` commands (`grep`, `printf >> ...`, etc.) which the user can see and approve. Never read its contents into the conversation context.
+
+### Browser Automation
+
+The goal of browser automation in this skill is to **reduce sign-in and setup fatigue** — the agent navigates web UIs, fills forms, and scrapes credentials so the user doesn't have to do it all manually.
+
+**Three modes, in order of preference:**
+
+1. **`agent-browser` CLI** (default) — a standalone Playwright-based binary invoked via `Bash`. When this skill says "agent-browser", it means this tool. Check with `which agent-browser`.
+2. **`claude-in-chrome`** — if the user prefers to use their existing Chrome browser via the MCP extension, respect that preference. But do NOT default to it or try it as an automatic fallback — it's a different tool with different capabilities.
+3. **Manual guided flow** — the user follows the agent's step-by-step instructions and does the clicks themselves. Always available as Path B in each sub-skill.
+
+If `agent-browser` is not installed, **ask the user** which they'd prefer: installing `agent-browser`, using `claude-in-chrome` (if available), or following manual instructions. Respect their choice.
 
 ## How This Works
 
