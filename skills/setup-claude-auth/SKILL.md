@@ -14,10 +14,10 @@ Configures Claude Code credentials so Cyrus can run AI sessions.
 Check if credentials are already configured:
 
 ```bash
-grep -E '^(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)=' ~/.cyrus/.env 2>/dev/null
+grep -c -E '^(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)=' ~/.cyrus/.env 2>/dev/null || echo "0"
 ```
 
-If a key is already set, inform the user:
+If the count is >= 1, inform the user:
 
 > Claude Code authentication is already configured. Skipping this step.
 > To reconfigure, remove the existing key from `~/.cyrus/.env` and re-run this skill.
@@ -30,13 +30,14 @@ Ask the user:
 
 > **How would you like to authenticate Claude Code?**
 >
-> 1. **API Key** (recommended) — from [console.anthropic.com](https://console.anthropic.com/)
-> 2. **OAuth Token** — for Claude Max/Pro subscription users
-> 3. **Third-Party Provider** — Vertex AI, AWS Bedrock, Azure, etc.
+> 1. **Current account** (easiest) — use the credentials from your active `claude` CLI session
+> 2. **API Key** — from [console.anthropic.com](https://console.anthropic.com/)
+> 3. **Separate OAuth token** — run `claude setup-token` to generate a token for a specific account
+> 4. **Third-Party Provider** — Vertex AI, AWS Bedrock, Azure, etc.
 
 ## Step 3: Configure Credentials
 
-**CRITICAL: Secrets must NEVER appear in the conversation.** Use clipboard-to-env or hidden-stdin commands.
+**CRITICAL: Secrets must NEVER appear in the conversation.** Do not explore `~/.claude/` looking for credential files. Use only the methods below.
 
 Detect the OS for the right clipboard command:
 
@@ -44,9 +45,41 @@ Detect the OS for the right clipboard command:
 uname -s
 ```
 
-### Option 1: API Key
+### Option 1: Current Account
 
-Instruct the user to copy their API key from the Anthropic Console, then provide the appropriate command:
+Check if `claude` is authenticated on this machine:
+
+```bash
+claude auth status
+```
+
+If authenticated, extract the token directly into the env file without ever showing it in the conversation:
+
+```bash
+claude setup-token 2>/dev/null | tail -1 | xargs -I{} printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "{}" >> ~/.cyrus/.env
+```
+
+If that command doesn't work (older CLI version), fall back to having the user run it manually:
+
+> Run this command — it generates a token and writes it directly to your env file without showing it:
+> ```bash
+> claude setup-token
+> ```
+> Then copy the token and run:
+
+**macOS:**
+```bash
+printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$(pbpaste)" >> ~/.cyrus/.env
+```
+
+**Universal fallback:**
+```bash
+read -s -p "Paste your OAuth token: " val && printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
+```
+
+### Option 2: API Key
+
+Instruct the user to copy their API key from the [Anthropic Console](https://console.anthropic.com/), then provide the appropriate command:
 
 **macOS:**
 ```bash
@@ -63,15 +96,15 @@ printf 'ANTHROPIC_API_KEY=%s\n' "$(xclip -selection clipboard -o)" >> ~/.cyrus/.
 read -s -p "Paste your Anthropic API key: " val && printf 'ANTHROPIC_API_KEY=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
 ```
 
-### Option 2: OAuth Token
+### Option 3: Separate OAuth Token
 
-Instruct the user:
+This is for when the user wants to generate a token for a different account than the one currently logged in (e.g., running `claude setup-token` on another machine).
 
-> On any machine where Claude Code is already installed, run:
+> On the machine with the account you want to use, run:
 > ```bash
 > claude setup-token
 > ```
-> Copy the token, then run:
+> Copy the token, then come back here and run:
 
 **macOS:**
 ```bash
@@ -88,7 +121,7 @@ printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$(xclip -selection clipboard -o)" >> ~/.c
 read -s -p "Paste your OAuth token: " val && printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
 ```
 
-### Option 3: Third-Party Provider
+### Option 4: Third-Party Provider
 
 Inform the user:
 
@@ -110,7 +143,7 @@ Inform the user:
 > ANTHROPIC_VERTEX_PROJECT_ID=your-project-id
 > ```
 
-Guide the user to add the appropriate variables to `~/.cyrus/.env`.
+Guide the user to add the appropriate variables to `~/.cyrus/.env` using the clipboard-to-env pattern.
 
 ## Step 4: Verify
 
