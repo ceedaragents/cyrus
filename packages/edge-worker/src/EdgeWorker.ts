@@ -580,30 +580,18 @@ export class EdgeWorker extends EventEmitter {
 	 * Initialize and register components (routes) before server starts
 	 */
 	private async initializeComponents(): Promise<void> {
-		// Get the first active repository for configuration (may be undefined during onboarding)
-		const firstRepo = Array.from(this.repositories.values())[0];
+		// 1. Platform-specific initialization
+		if (this.config.platform === "cli") {
+			// CLI mode: find any available CLIIssueTrackerService
+			const firstCliTracker = Array.from(this.issueTrackers.values()).find(
+				(tracker): tracker is CLIIssueTrackerService =>
+					tracker instanceof CLIIssueTrackerService,
+			);
 
-		// 1. Platform-specific initialization (requires at least one repository)
-		if (firstRepo) {
-			if (this.config.platform === "cli") {
-				// CLI mode: Create and register CLIRPCServer
-				const firstIssueTracker = this.issueTrackers.get(
-					requireLinearWorkspaceId(firstRepo),
-				);
-				if (!firstIssueTracker) {
-					throw new Error("Issue tracker not found for first repository");
-				}
-
-				// Type guard to ensure it's a CLIIssueTrackerService
-				if (!(firstIssueTracker instanceof CLIIssueTrackerService)) {
-					throw new Error(
-						"CLI platform requires CLIIssueTrackerService but found different implementation",
-					);
-				}
-
+			if (firstCliTracker) {
 				this.cliRPCServer = new CLIRPCServer({
 					fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-					issueTracker: firstIssueTracker,
+					issueTracker: firstCliTracker,
 					version: "1.0.0",
 				});
 
@@ -614,14 +602,13 @@ export class EdgeWorker extends EventEmitter {
 				this.logger.info("   RPC endpoint: /cli/rpc");
 
 				// Create CLI event transport and register listener
-				const cliEventTransport = firstIssueTracker.createEventTransport({
+				const cliEventTransport = firstCliTracker.createEventTransport({
 					platform: "cli",
 					fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
 				});
 
-				// Listen for webhook events (same pattern as Linear mode)
+				// Listen for webhook events
 				cliEventTransport.on("event", (event: AgentEvent) => {
-					// Get all active repositories for webhook handling
 					const repos = Array.from(this.repositories.values());
 					this.handleWebhook(event as unknown as Webhook, repos);
 				});
@@ -638,53 +625,48 @@ export class EdgeWorker extends EventEmitter {
 				this.logger.info(
 					"   Event listener: listening for AgentSessionCreated events",
 				);
-			} else {
-				// Linear mode: Create and register LinearEventTransport
-				const useDirectWebhooks =
-					process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
-				const verificationMode = useDirectWebhooks ? "direct" : "proxy";
-
-				// Get appropriate secret based on mode
-				const secret = useDirectWebhooks
-					? process.env.LINEAR_WEBHOOK_SECRET || ""
-					: process.env.CYRUS_API_KEY || "";
-
-				this.linearEventTransport = new LinearEventTransport({
-					fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-					verificationMode,
-					secret,
-				});
-
-				// Listen for legacy webhook events (deprecated, kept for backward compatibility)
-				this.linearEventTransport.on("event", (event: AgentEvent) => {
-					// Get all active repositories for webhook handling
-					const repos = Array.from(this.repositories.values());
-					this.handleWebhook(event as unknown as Webhook, repos);
-				});
-
-				// Listen for unified internal messages (new message bus)
-				this.linearEventTransport.on("message", (message: InternalMessage) => {
-					this.handleMessage(message);
-				});
-
-				// Listen for errors
-				this.linearEventTransport.on("error", (error: Error) => {
-					this.handleError(error);
-				});
-
-				// Register the /webhook endpoint
-				this.linearEventTransport.register();
-
-				this.logger.info(
-					`✅ Linear event transport registered (${verificationMode} mode)`,
-				);
-				this.logger.info(
-					`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
-				);
 			}
 		} else {
-			this.logger.warn(
-				"No active repositories configured — platform transports not registered",
+			// Linear mode: Create and register LinearEventTransport
+			const useDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase() === "true";
+			const verificationMode = useDirectWebhooks ? "direct" : "proxy";
+
+			// Get appropriate secret based on mode
+			const secret = useDirectWebhooks
+				? process.env.LINEAR_WEBHOOK_SECRET || ""
+				: process.env.CYRUS_API_KEY || "";
+
+			this.linearEventTransport = new LinearEventTransport({
+				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+				verificationMode,
+				secret,
+			});
+
+			// Listen for legacy webhook events (deprecated, kept for backward compatibility)
+			this.linearEventTransport.on("event", (event: AgentEvent) => {
+				const repos = Array.from(this.repositories.values());
+				this.handleWebhook(event as unknown as Webhook, repos);
+			});
+
+			// Listen for unified internal messages (new message bus)
+			this.linearEventTransport.on("message", (message: InternalMessage) => {
+				this.handleMessage(message);
+			});
+
+			// Listen for errors
+			this.linearEventTransport.on("error", (error: Error) => {
+				this.handleError(error);
+			});
+
+			// Register the /webhook endpoint
+			this.linearEventTransport.register();
+
+			this.logger.info(
+				`✅ Linear event transport registered (${verificationMode} mode)`,
+			);
+			this.logger.info(
+				`   Webhook endpoint: ${this.sharedApplicationServer.getWebhookUrl()}`,
 			);
 		}
 
