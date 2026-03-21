@@ -154,7 +154,7 @@ describe("EdgeWorker - Runner Selection Based on Labels", () => {
 
 		// Mock CodexRunner
 		mockCodexRunner = {
-			supportsStreamingInput: false,
+			supportsStreamingInput: true,
 			start: vi.fn().mockResolvedValue({ sessionId: "codex-session-123" }),
 			startStreaming: vi
 				.fn()

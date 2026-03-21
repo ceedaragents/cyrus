@@ -21,6 +21,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { LinearClient } from "@linear/sdk";
 import { getAllTools } from "cyrus-claude-runner";
 import {
 	DEFAULT_WORKTREES_DIR,
@@ -37,6 +38,14 @@ import { bold, cyan, dim, gray, green, success } from "./src/utils/colors.js";
 const CYRUS_PORT = Number.parseInt(process.env.CYRUS_PORT || "3600", 10);
 const CYRUS_REPO_PATH = process.env.CYRUS_REPO_PATH || process.cwd();
 const CYRUS_HOME = join(tmpdir(), `cyrus-f1-${Date.now()}`);
+const CYRUS_DEFAULT_RUNNER = process.env.CYRUS_DEFAULT_RUNNER as
+	| "claude"
+	| "gemini"
+	| "codex"
+	| "cursor"
+	| undefined;
+const CYRUS_CODEX_DEFAULT_MODEL =
+	process.env.CYRUS_CODEX_DEFAULT_MODEL || undefined;
 const DEFAULT_WORKTREES_BASE_DIR =
 	process.env.CYRUS_WORKTREES_DIR?.trim() ||
 	join(CYRUS_HOME, DEFAULT_WORKTREES_DIR);
@@ -158,11 +167,21 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 	const config: EdgeWorkerConfig = {
 		platform: "cli" as const,
 		repositories,
+		linearWorkspaces: {
+			"cli-workspace": {
+				linearToken: "cli-f1-token",
+				linearWorkspaceName: "F1 CLI Workspace",
+			},
+		},
 		cyrusHome: CYRUS_HOME,
 		serverPort: CYRUS_PORT,
 		serverHost: "localhost",
 		claudeDefaultModel: "sonnet",
 		claudeDefaultFallbackModel: "haiku",
+		...(CYRUS_DEFAULT_RUNNER ? { defaultRunner: CYRUS_DEFAULT_RUNNER } : {}),
+		...(CYRUS_CODEX_DEFAULT_MODEL
+			? { codexDefaultModel: CYRUS_CODEX_DEFAULT_MODEL }
+			: {}),
 		// Enable all tools including Edit(**), Bash, etc. for full testing capability
 		defaultAllowedTools: getAllTools(),
 	};
@@ -220,6 +239,15 @@ async function startServer(): Promise<void> {
 
 		// Initialize EdgeWorker
 		const edgeWorker = new EdgeWorker(config);
+		const cliIssueTracker = (edgeWorker as any).issueTrackers?.get(
+			"cli-workspace",
+		);
+		if (cliIssueTracker && typeof cliIssueTracker.getClient !== "function") {
+			cliIssueTracker.getClient = () =>
+				new LinearClient({
+					accessToken: "cli-f1-token",
+				});
+		}
 
 		// Setup graceful shutdown
 		const shutdown = async (signal: string): Promise<void> => {

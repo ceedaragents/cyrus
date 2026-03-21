@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Replaced the Codex SDK exec/thread integration in `packages/codex-runner` with a new `CodexAppServerClient` that speaks the `codex app-server` JSON-RPC protocol (`initialize`, `thread/start`, `turn/start`, interrupts, notifications) and re-normalizes those events back into Cyrus's existing activity pipeline. Added `CodexRunner.app-server.test.ts` coverage for the handshake and updated the F1 harness plus test-drive docs to validate the new path end-to-end. ([CYPACK-998](https://linear.app/ceedar/issue/CYPACK-998), [#1020](https://github.com/ceedaragents/cyrus/pull/1020))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added
