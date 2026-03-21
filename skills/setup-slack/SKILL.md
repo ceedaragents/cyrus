@@ -112,21 +112,21 @@ Construct the manifest, substituting `<AGENT_NAME>`, `<AGENT_DESCRIPTION>`, and 
 
 ## Step 4: Create Slack App
 
-Check if `agent-browser` is available:
+Determine which browser automation mode to use (see orchestrator rules):
 
-```bash
-which agent-browser 2>/dev/null
-```
+1. If `claude-in-chrome` MCP tools are available → use **Path A-1** (claude-in-chrome)
+2. If `agent-browser` is installed and a Chrome debug session is connected → use **Path A-2** (agent-browser)
+3. Otherwise → use **Path B** (manual)
 
-### Path A: agent-browser Automation
+### Path A-1: claude-in-chrome Automation
 
-If `agent-browser` is available, automate the entire flow.
+Use the `mcp__claude-in-chrome__*` tools to navigate and interact with the user's existing Chrome browser. The user is likely already signed in to Slack.
 
-First, connect to the user's running Chrome:
+Navigate to https://api.slack.com/apps and proceed with the manifest-based app creation and credential capture using the chrome MCP tools. Follow the same steps as Path A-2 below, but using MCP tools instead of CLI commands.
 
-```bash
-agent-browser --auto-connect
-```
+### Path A-2: agent-browser Automation
+
+If `agent-browser` is connected to a Chrome debug session, automate the entire flow.
 
 #### 4a. Navigate to Slack app creation
 

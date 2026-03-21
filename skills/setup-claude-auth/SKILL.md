@@ -65,7 +65,7 @@ Then open the file in a separate window — use whatever GUI editor is available
 
 ```bash
 # macOS: VS Code if available, otherwise TextEdit
-code ~/.cyrus/.env 2>/dev/null || open -a TextEdit ~/.cyrus/.env
+code --new-window ~/.cyrus/.env 2>/dev/null || open -a TextEdit ~/.cyrus/.env
 
 # Linux
 code ~/.cyrus/.env 2>/dev/null || xdg-open ~/.cyrus/.env
@@ -110,7 +110,7 @@ grep -q '^CLAUDE_CODE_OAUTH_TOKEN=' ~/.cyrus/.env || echo 'CLAUDE_CODE_OAUTH_TOK
 
 ```bash
 # macOS
-code ~/.cyrus/.env 2>/dev/null || open -a TextEdit ~/.cyrus/.env
+code --new-window ~/.cyrus/.env 2>/dev/null || open -a TextEdit ~/.cyrus/.env
 # Linux
 code ~/.cyrus/.env 2>/dev/null || xdg-open ~/.cyrus/.env
 ```

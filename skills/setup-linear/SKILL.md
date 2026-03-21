@@ -40,21 +40,21 @@ This is needed for the callback and webhook URLs.
 
 ## Step 3: Create Linear OAuth App
 
-Check if `agent-browser` is available:
+Determine which browser automation mode to use (see orchestrator rules):
 
-```bash
-which agent-browser 2>/dev/null
-```
+1. If `claude-in-chrome` MCP tools are available → use **Path A-1** (claude-in-chrome)
+2. If `agent-browser` is installed (`which agent-browser`) and a Chrome debug session is connected → use **Path A-2** (agent-browser)
+3. Otherwise → use **Path B** (manual)
 
-### Path A: agent-browser Automation
+### Path A-1: claude-in-chrome Automation
 
-If `agent-browser` is available, automate the Linear app creation.
+Use the `mcp__claude-in-chrome__*` tools to navigate and interact with the user's existing Chrome browser. The user is likely already signed in to Linear.
 
-First, connect to the user's running Chrome:
+Navigate to the Linear API settings page and proceed with form filling and credential capture using the chrome MCP tools (navigate, click, fill, screenshot, javascript_tool, etc.). Follow the same form fields and credential scraping logic as Path A-2 below, but using MCP tools instead of CLI commands.
 
-```bash
-agent-browser --auto-connect
-```
+### Path A-2: agent-browser Automation
+
+If `agent-browser` is connected to a Chrome debug session, automate the Linear app creation.
 
 #### 3a. Navigate to Linear API settings
 

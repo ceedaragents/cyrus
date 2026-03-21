@@ -19,21 +19,53 @@ The goal of browser automation in this skill is to **reduce sign-in and setup fa
 
 **Three modes, in order of preference:**
 
-1. **`agent-browser` CLI** (default) — a standalone Playwright-based binary invoked via `Bash`. When this skill says "agent-browser", it means this tool. Check with `which agent-browser`. Always use `--auto-connect` to attach to the user's already-running Chrome instead of launching a new instance.
-2. **`claude-in-chrome`** — if the user prefers to use their existing Chrome browser via the MCP extension, respect that preference. But do NOT default to it or try it as an automatic fallback — it's a different tool with different capabilities.
+1. **`claude-in-chrome`** (preferred when available) — if the user is running Claude Code and has the `claude-in-chrome` MCP extension connected, use it. This has the huge advantage of using the user's existing Chrome with all their signed-in sessions (Linear, Slack, GitHub). Check availability by seeing if `mcp__claude-in-chrome__*` tools exist.
+2. **`agent-browser` CLI** — a standalone Playwright-based binary invoked via `Bash`. Requires launching a **fresh Chrome profile** with remote debugging enabled (the user will need to sign in to services in that profile). Check with `which agent-browser`.
 3. **Manual guided flow** — the user follows the agent's step-by-step instructions and does the clicks themselves. Always available as Path B in each sub-skill.
 
-If `agent-browser` is not installed, **ask the user** which they'd prefer: installing `agent-browser`, using `claude-in-chrome` (if available), or following manual instructions. Respect their choice.
+**Determining which mode to use:**
 
-**`agent-browser` usage pattern:**
+1. First, check if `claude-in-chrome` MCP tools are available in the current session. If yes, use those — no setup needed.
+2. If not, check `which agent-browser`. If installed, launch a fresh Chrome profile (see below).
+3. If neither is available, ask the user: install `agent-browser`, or follow manual instructions?
 
-First, connect to the user's running Chrome once:
+**`agent-browser` setup — fresh Chrome profile:**
+
+`agent-browser` needs a Chrome instance with remote debugging enabled. Launch one with an isolated profile:
 
 ```bash
-agent-browser --auto-connect
+# Find an open port
+for port in $(seq 9222 9322); do
+  if ! lsof -i :"$port" > /dev/null 2>&1; then
+    echo "Open port found: $port"
+    break
+  fi
+done
 ```
 
-This discovers Chrome's remote debugging interface automatically — no need to launch a separate browser or manage CDP ports. After connecting, subsequent commands work without the flag:
+```bash
+# Create a fresh profile directory
+mkdir -p ~/.cyrus/chrome-profile
+```
+
+```bash
+# Launch Chrome with remote debugging (runs in background)
+# macOS:
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=<port> \
+  --user-data-dir="$HOME/.cyrus/chrome-profile" &
+
+# Linux:
+google-chrome --remote-debugging-port=<port> \
+  --user-data-dir="$HOME/.cyrus/chrome-profile" &
+```
+
+```bash
+# Connect agent-browser to it
+agent-browser connect <port>
+```
+
+After connecting, commands work normally:
 
 ```bash
 agent-browser navigate "https://example.com"
@@ -41,6 +73,14 @@ agent-browser click "button:text('Submit')"
 agent-browser fill "#input-id" "value"
 agent-browser screenshot
 agent-browser eval "document.title"
+```
+
+**Important:** The user will need to **sign in to Linear, Slack, and GitHub** in this fresh Chrome profile before the agent can automate app creation. The agent should navigate to each service and pause for the user to sign in before proceeding with automation.
+
+**Cleanup:** After setup is complete, close the Chrome instance:
+
+```bash
+lsof -ti :<port> | xargs kill 2>/dev/null
 ```
 
 ## How This Works
