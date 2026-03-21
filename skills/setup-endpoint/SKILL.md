@@ -178,7 +178,10 @@ Ensure these are present in `~/.cyrus/.env` (add only if missing):
 ```bash
 grep -q '^CYRUS_SERVER_PORT=' ~/.cyrus/.env 2>/dev/null || printf 'CYRUS_SERVER_PORT=3456\n' >> ~/.cyrus/.env
 grep -q '^LINEAR_DIRECT_WEBHOOKS=' ~/.cyrus/.env 2>/dev/null || printf 'LINEAR_DIRECT_WEBHOOKS=true\n' >> ~/.cyrus/.env
+grep -q '^CYRUS_HOST_EXTERNAL=' ~/.cyrus/.env 2>/dev/null || printf 'CYRUS_HOST_EXTERNAL=true\n' >> ~/.cyrus/.env
 ```
+
+`LINEAR_DIRECT_WEBHOOKS=true` enables direct Linear webhook signature verification. `CYRUS_HOST_EXTERNAL=true` enables direct Slack and GitHub webhook signature verification. Both are required for self-hosted setups where webhooks come directly from the services (not forwarded through CYHOST).
 
 ## Completion
 
