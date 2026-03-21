@@ -70,6 +70,9 @@ importers:
       cyrus-edge-worker:
         specifier: workspace:*
         version: link:../../packages/edge-worker
+      cyrus-slack-event-transport:
+        specifier: workspace:*
+        version: link:../../packages/slack-event-transport
       dotenv:
         specifier: ^16.5.0
         version: 16.6.1

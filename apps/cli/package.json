@@ -47,6 +47,7 @@
 		"cyrus-config-updater": "workspace:*",
 		"cyrus-core": "workspace:*",
 		"cyrus-edge-worker": "workspace:*",
+		"cyrus-slack-event-transport": "workspace:*",
 		"dotenv": "^16.5.0",
 		"express": "^5.2.0",
 		"fastify": "^5.8.1",
