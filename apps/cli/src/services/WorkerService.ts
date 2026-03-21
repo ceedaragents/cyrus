@@ -1,7 +1,8 @@
 import { getCyrusAppUrl } from "cyrus-cloudflare-tunnel-client";
 import type { EdgeWorkerConfig, Issue, RepositoryConfig } from "cyrus-core";
-import type { GitService } from "cyrus-edge-worker";
+import type { GitService, SharedApplicationServer } from "cyrus-edge-worker";
 import { EdgeWorker } from "cyrus-edge-worker";
+import { SlackEventTransport } from "cyrus-slack-event-transport";
 import { DEFAULT_SERVER_PORT, parsePort } from "../config/constants.js";
 import type { Workspace } from "../config/types.js";
 import type { ConfigService } from "./ConfigService.js";
@@ -77,6 +78,9 @@ export class WorkerService {
 			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp",
 		);
 
+		// Register webhook transports that work without repositories
+		this.registerWebhookTransports(this.setupWaitingServer);
+
 		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
 		await this.setupWaitingServer.start();
 
@@ -136,22 +140,8 @@ export class WorkerService {
 			"           /api/update/repository, /api/update/test-mcp, /api/update/configure-mcp",
 		);
 
-		// Register Slack webhook endpoint even without repos so URL verification works during onboarding
-		const hasSlackSigningSecret =
-			process.env.SLACK_SIGNING_SECRET != null &&
-			process.env.SLACK_SIGNING_SECRET !== "";
-		if (isExternalHost && hasSlackSigningSecret) {
-			const { SlackEventTransport } = await import(
-				"cyrus-slack-event-transport"
-			);
-			const slackTransport = new SlackEventTransport({
-				fastifyServer: this.setupWaitingServer.getFastifyInstance(),
-				verificationMode: "direct",
-				secret: process.env.SLACK_SIGNING_SECRET!,
-			});
-			slackTransport.register();
-			this.logger.info("✅ Slack webhook registered (idle mode)");
-		}
+		// Register webhook transports that work without repositories
+		this.registerWebhookTransports(this.setupWaitingServer);
 
 		// Start the server (this also starts Cloudflare tunnel if CLOUDFLARE_TOKEN is set)
 		await this.setupWaitingServer.start();
@@ -175,6 +165,29 @@ export class WorkerService {
 			this.logger.info(`Add repositories at: ${appUrl}/repos`);
 		}
 		this.logger.divider(70);
+	}
+
+	/**
+	 * Register webhook endpoints that don't require repositories.
+	 * Called from both idle and setup-waiting modes so that external services
+	 * (e.g. Slack URL verification) can reach Cyrus during onboarding.
+	 */
+	private registerWebhookTransports(server: SharedApplicationServer): void {
+		const isExternalHost =
+			process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+		const slackSigningSecret = process.env.SLACK_SIGNING_SECRET;
+		const hasSlackSigningSecret =
+			slackSigningSecret != null && slackSigningSecret !== "";
+
+		if (isExternalHost && hasSlackSigningSecret) {
+			const slackTransport = new SlackEventTransport({
+				fastifyServer: server.getFastifyInstance(),
+				verificationMode: "direct",
+				secret: slackSigningSecret,
+			});
+			slackTransport.register();
+			this.logger.info("✅ Slack webhook registered");
+		}
 	}
 
 	/**
