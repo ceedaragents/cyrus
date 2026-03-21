@@ -93,18 +93,18 @@ Each step references a sub-skill file. To execute a sub-skill, **read the SKILL.
 
 | Step | Sub-skill | File to read |
 |------|-----------|-------------|
-| 1 | setup-prerequisites | `setup-prerequisites/SKILL.md` (relative to skills directory) |
-| 2 | setup-claude-auth | `setup-claude-auth/SKILL.md` |
-| 3 | setup-endpoint | `setup-endpoint/SKILL.md` |
-| 4 | setup-linear | `setup-linear/SKILL.md` |
-| 5 | setup-github | `setup-github/SKILL.md` |
-| 6 | setup-slack | `setup-slack/SKILL.md` |
-| 7 | setup-repository | `setup-repository/SKILL.md` |
-| 8 | setup-launch | `setup-launch/SKILL.md` |
+| 1 | setup-prerequisites | `cyrus-setup-prerequisites/SKILL.md` (relative to skills directory) |
+| 2 | setup-claude-auth | `cyrus-setup-claude-auth/SKILL.md` |
+| 3 | setup-endpoint | `cyrus-setup-endpoint/SKILL.md` |
+| 4 | setup-linear | `cyrus-setup-linear/SKILL.md` |
+| 5 | setup-github | `cyrus-setup-github/SKILL.md` |
+| 6 | setup-slack | `cyrus-setup-slack/SKILL.md` |
+| 7 | setup-repository | `cyrus-setup-repository/SKILL.md` |
+| 8 | setup-launch | `cyrus-setup-launch/SKILL.md` |
 
-To find the files, look for them relative to this file's directory (go up one level, then into the sub-skill directory). For example, if this file is at `~/.claude/skills/cyrus-setup/SKILL.md`, the sub-skills are at `~/.claude/skills/setup-prerequisites/SKILL.md`, etc.
+To find the files, look for them relative to this file's directory (go up one level, then into the sub-skill directory). For example, if this file is at `~/.claude/skills/cyrus-setup/SKILL.md`, the sub-skills are at `~/.claude/skills/cyrus-setup-prerequisites/SKILL.md`, etc.
 
-If a sub-skill file is not found, use `Glob` to search for it: `**/setup-prerequisites/SKILL.md`
+If a sub-skill file is not found, use `Glob` to search for it: `**/cyrus-setup-prerequisites/SKILL.md`
 
 ---
 
@@ -141,7 +141,7 @@ Store the answer — used by the prerequisites skill.
 
 ## Step 1: Prerequisites
 
-**Read** the `setup-prerequisites/SKILL.md` sub-skill and follow its instructions.
+**Read** the `cyrus-setup-prerequisites/SKILL.md` sub-skill and follow its instructions.
 
 Pass the user's package manager preference from Step 0.
 
@@ -149,13 +149,13 @@ Pass the user's package manager preference from Step 0.
 
 ## Step 2: Claude Auth
 
-**Read** the `setup-claude-auth/SKILL.md` sub-skill and follow its instructions.
+**Read** the `cyrus-setup-claude-auth/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
 ## Step 3: Webhook Endpoint
 
-**Read** the `setup-endpoint/SKILL.md` sub-skill and follow its instructions.
+**Read** the `cyrus-setup-endpoint/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
@@ -163,7 +163,7 @@ Pass the user's package manager preference from Step 0.
 
 **Only if the user selected Linear in Step 0.**
 
-**Read** the `setup-linear/SKILL.md` sub-skill and follow its instructions.
+**Read** the `cyrus-setup-linear/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
@@ -171,7 +171,7 @@ Pass the user's package manager preference from Step 0.
 
 **Only if the user selected GitHub in Step 0.**
 
-**Read** the `setup-github/SKILL.md` sub-skill and follow its instructions.
+**Read** the `cyrus-setup-github/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
@@ -179,19 +179,19 @@ Pass the user's package manager preference from Step 0.
 
 **Only if the user selected Slack in Step 0.**
 
-**Read** the `setup-slack/SKILL.md` sub-skill and follow its instructions. **All paths (A-1, A-2, and B) must use the manifest-based creation flow** — never create the Slack app "from scratch" with manual scope/event configuration.
+**Read** the `cyrus-setup-slack/SKILL.md` sub-skill and follow its instructions. **All paths (A-1, A-2, and B) must use the manifest-based creation flow** — never create the Slack app "from scratch" with manual scope/event configuration.
 
 ---
 
 ## Step 7: Add Repositories
 
-**Read** the `setup-repository/SKILL.md` sub-skill and follow its instructions.
+**Read** the `cyrus-setup-repository/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
 ## Step 8: Launch
 
-**Read** the `setup-launch/SKILL.md` sub-skill and follow its instructions.
+**Read** the `cyrus-setup-launch/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
