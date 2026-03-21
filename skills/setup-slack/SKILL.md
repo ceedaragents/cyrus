@@ -1,13 +1,13 @@
 ---
 name: setup-slack
-description: Configure Slack integration for Cyrus — create a Slack app from manifest via agent-browser or guided manual setup, then capture bot token and signing secret.
+description: Configure Slack integration for Cyrus — create a Slack app from manifest, then guide the user to save credentials.
 ---
 
-**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context. Never scrape, extract, or read secret values from web pages — guide the user to copy them manually.**
 
 # Setup Slack
 
-Creates a Slack application from a pre-built manifest so Cyrus can respond to messages in Slack channels. Supports automated creation via agent-browser or guided manual flow.
+Creates a Slack application from a pre-built manifest so Cyrus can respond to messages in Slack channels.
 
 ## Step 1: Check Existing Configuration
 
@@ -112,6 +112,8 @@ Construct the manifest, substituting `<AGENT_NAME>`, `<AGENT_DESCRIPTION>`, and 
 
 ## Step 4: Create Slack App
 
+**All paths use the "From a manifest" flow.** Never create the app "From scratch".
+
 Determine which browser automation mode to use (see orchestrator rules):
 
 1. If `claude-in-chrome` MCP tools are available → use **Path A-1** (claude-in-chrome)
@@ -120,24 +122,21 @@ Determine which browser automation mode to use (see orchestrator rules):
 
 ### Path A-1: claude-in-chrome Automation
 
-Use the `mcp__claude-in-chrome__*` tools to navigate and interact with the user's existing Chrome browser. The user is likely already signed in to Slack.
-
-**IMPORTANT: Always use the "From a manifest" flow.** Never create the app "From scratch" with manual scope/event configuration.
+Use the `mcp__claude-in-chrome__*` tools to navigate and interact with the user's existing Chrome browser.
 
 1. Navigate to https://api.slack.com/apps
 2. Click **Create New App**
 3. Select **From a manifest** in the modal
 4. Pick the workspace
 5. Click **Next**
-6. Select **JSON** tab and paste the manifest from Step 3 above (fully substituted with real values)
+6. Select **JSON** tab and paste the manifest from Step 3 (fully substituted with real values)
 7. Click **Next**, review, click **Create**
-8. Install to workspace
-9. Capture bot token from **OAuth & Permissions** and signing secret from **Basic Information** → **App Credentials**
-10. Write both to `~/.cyrus/.env` via Bash commands (never use Read/Write tools on that file)
+
+After creation, the app lands on the Basic Information page. **Do NOT take screenshots of credential pages.** Proceed to Step 5 (credential collection).
 
 ### Path A-2: agent-browser Automation
 
-If `agent-browser` is connected to a Chrome debug session, automate the entire flow.
+If `agent-browser` is connected to a Chrome debug session:
 
 #### 4a. Navigate to Slack app creation
 
@@ -145,7 +144,7 @@ If `agent-browser` is connected to a Chrome debug session, automate the entire f
 agent-browser navigate "https://api.slack.com/apps"
 ```
 
-Take a screenshot to verify the page loaded and the user is logged in. If not logged in, the user will need to log in manually or via `agent-browser auth login slack` if supported.
+Take a screenshot to verify the page loaded and the user is logged in.
 
 #### 4b. Click "Create New App"
 
@@ -161,13 +160,7 @@ agent-browser click "button:text('From a manifest')"
 
 #### 4d. Select workspace
 
-Take a screenshot to see the workspace picker. Click the appropriate workspace. If multiple are listed, ask the user which one to use.
-
-```bash
-agent-browser screenshot
-```
-
-Then click the workspace and click **Next**:
+Take a screenshot to see the workspace picker. Click the appropriate workspace. If multiple are listed, ask the user which one.
 
 ```bash
 agent-browser click "button:text('Next')"
@@ -181,13 +174,13 @@ Click the **JSON** tab if not already selected:
 agent-browser click "button:text('JSON')"
 ```
 
-Clear the existing content in the manifest editor and paste the built manifest. Use JavaScript to set the editor value:
+Paste the manifest using JavaScript:
 
 ```bash
 agent-browser eval "var editor = document.querySelector('textarea, [role=\"textbox\"], .ace_editor textarea, .CodeMirror textarea'); if (editor) { var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set; nativeInputValueSetter.call(editor, JSON.stringify(<MANIFEST_JSON>, null, 2)); editor.dispatchEvent(new Event('input', { bubbles: true })); 'pasted'; } else { 'editor not found'; }"
 ```
 
-If the textarea approach doesn't work, try selecting all text and typing the manifest:
+If that doesn't work, try:
 
 ```bash
 agent-browser click "textarea"
@@ -195,7 +188,7 @@ agent-browser keyboard "Control+a"
 agent-browser type '<MANIFEST_JSON_STRING>'
 ```
 
-Take a screenshot to verify the manifest was pasted correctly, then click **Next**:
+Take a screenshot to verify, then click **Next**:
 
 ```bash
 agent-browser click "button:text('Next')"
@@ -203,83 +196,17 @@ agent-browser click "button:text('Next')"
 
 #### 4f. Review and create
 
-Take a screenshot to verify the summary looks correct, then click **Create**:
+Take a screenshot to verify the summary, then click **Create**:
 
 ```bash
 agent-browser click "button:text('Create')"
 ```
 
-#### 4g. Install to workspace
-
-After creation, Slack shows the app's Basic Information page. Click **Install to Workspace** (may need to navigate to the Install App section first):
-
-```bash
-agent-browser click "a:text('Install App')"
-```
-
-Then:
-
-```bash
-agent-browser click "button:text('Install to Workspace')"
-```
-
-If a permissions consent page appears, click **Allow**:
-
-```bash
-agent-browser click "button:text('Allow')"
-```
-
-#### 4h. Capture Bot Token
-
-Navigate to OAuth & Permissions:
-
-```bash
-agent-browser click "a:text('OAuth & Permissions')"
-```
-
-Take a screenshot. Use JavaScript to find and click the copy button next to the Bot User OAuth Token, then read from clipboard:
-
-```bash
-agent-browser eval "var tokenSection = document.querySelector('[data-qa=\"oauth_token_copy_btn\"]'); if (tokenSection) { tokenSection.click(); 'clicked'; } else { var copyBtns = document.querySelectorAll('button'); for (var i = 0; i < copyBtns.length; i++) { if (copyBtns[i].closest && copyBtns[i].closest('[class*=\"token\"]')) { copyBtns[i].click(); break; } } 'attempted fallback'; }"
-```
-
-```bash
-BOT_TOKEN=$(pbpaste)
-printf 'SLACK_BOT_TOKEN=%s\n' "$BOT_TOKEN" >> ~/.cyrus/.env
-```
-
-If the copy button approach fails, take a screenshot and look for the token value (starts with `xoxb-`), then use JavaScript to extract it from the page DOM.
-
-#### 4i. Capture Signing Secret
-
-Navigate to Basic Information:
-
-```bash
-agent-browser click "a:text('Basic Information')"
-```
-
-Scroll to **App Credentials** and find the Signing Secret. It is hidden by default — click **Show** to reveal it:
-
-```bash
-agent-browser click "button:text('Show')"
-```
-
-Then copy via JavaScript or the copy button:
-
-```bash
-agent-browser eval "var items = document.querySelectorAll('[class*=\"credential\"], [class*=\"secret\"]'); var found = false; for (var i = 0; i < items.length; i++) { if (items[i].textContent.indexOf('Signing Secret') >= 0) { var btn = items[i].querySelector('button[title*=\"Copy\"], button[aria-label*=\"Copy\"]'); if (btn) { btn.click(); found = true; break; } } } found ? 'clicked' : 'not found';"
-```
-
-```bash
-SIGNING_SECRET=$(pbpaste)
-printf 'SLACK_SIGNING_SECRET=%s\n' "$SIGNING_SECRET" >> ~/.cyrus/.env
-```
-
-If automated copy fails, take a screenshot of the revealed signing secret and ask the user to copy it manually, then use a clipboard-to-env command.
+After creation, **do NOT screenshot credential pages or attempt to scrape secrets.** Proceed to Step 5.
 
 ### Path B: Manual Guided Setup
 
-If `agent-browser` is not available, guide the user through the manifest flow manually:
+Guide the user through the manifest flow:
 
 > ### Create a Slack App
 >
@@ -293,46 +220,67 @@ If `agent-browser` is not available, guide the user through the manifest flow ma
 Print the fully-substituted manifest JSON for the user to copy.
 
 > 7. Click **Next**, review the summary, then click **Create**
-> 8. Go to **Install App** in the left sidebar → click **Install to Workspace** → click **Allow**
 
-Then guide the user to save each credential using clipboard-to-env commands:
+Proceed to Step 5.
 
-> Copy the **Bot User OAuth Token** from **OAuth & Permissions** (starts with `xoxb-`), then run:
+## Step 5: Install App & Collect Credentials
 
-**macOS:**
-```bash
-printf 'SLACK_BOT_TOKEN=%s\n' "$(pbpaste)" >> ~/.cyrus/.env
-```
+After the app is created (via any path), guide the user through installation and credential collection. **The agent must NOT scrape, read, or extract secrets from the page.** The user copies them manually.
 
-**Universal fallback:**
-```bash
-read -s -p "Paste your Slack Bot Token: " val && printf 'SLACK_BOT_TOKEN=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
-```
+### 5a. Install to Workspace
 
-> Now go to **Basic Information** → **App Credentials** → copy the **Signing Secret**, then run:
+Tell the user:
 
-**macOS:**
-```bash
-printf 'SLACK_SIGNING_SECRET=%s\n' "$(pbpaste)" >> ~/.cyrus/.env
-```
+> 1. In your Slack app settings, go to **Install App** in the left sidebar
+> 2. Click **Install to Workspace**
+> 3. Click **Allow**
 
-**Universal fallback:**
-```bash
-read -s -p "Paste your Slack Signing Secret: " val && printf 'SLACK_SIGNING_SECRET=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
-```
+If using browser automation (A-1 or A-2), the agent can navigate to the Install App page and click the buttons — but must **stop after installation completes** and not screenshot the resulting page.
 
-## Step 5: Verify
+### 5b. Add Credential Placeholders
+
+Add placeholder lines to the env file so the user can fill them in:
 
 ```bash
-grep -c '^SLACK_BOT_TOKEN=' ~/.cyrus/.env
-grep -c '^SLACK_SIGNING_SECRET=' ~/.cyrus/.env
+grep -q '^SLACK_BOT_TOKEN=' ~/.cyrus/.env || echo 'SLACK_BOT_TOKEN=' >> ~/.cyrus/.env
+grep -q '^SLACK_SIGNING_SECRET=' ~/.cyrus/.env || echo 'SLACK_SIGNING_SECRET=' >> ~/.cyrus/.env
 ```
 
-Both must return 1.
+### 5c. Open env file for editing
 
-**Note:** The event subscription `request_url` will fail Slack's verification challenge until Cyrus is actually running. Once Cyrus is started, go to the app's **Event Subscriptions** page and re-enter the URL to trigger verification, or Slack will retry automatically.
+```bash
+# macOS
+code --new-window ~/.cyrus/.env 2>/dev/null || open -a TextEdit ~/.cyrus/.env
+# Linux
+code --new-window ~/.cyrus/.env 2>/dev/null || xdg-open ~/.cyrus/.env
+```
+
+### 5d. Guide the user to copy credentials
+
+Tell the user:
+
+> I've opened `~/.cyrus/.env`. You need to paste two values:
+>
+> 1. **Bot User OAuth Token** — go to your app's **OAuth & Permissions** page, copy the **Bot User OAuth Token** (starts with `xoxb-`), and paste it after `SLACK_BOT_TOKEN=`
+>
+> 2. **Signing Secret** — go to your app's **Basic Information** page, scroll to **App Credentials**, click **Show** next to **Signing Secret**, copy it, and paste it after `SLACK_SIGNING_SECRET=`
+>
+> Save and close the file when done.
+
+### 5e. Wait and verify
+
+After the user confirms they've saved, verify:
+
+```bash
+grep -c '^SLACK_BOT_TOKEN=.' ~/.cyrus/.env
+grep -c '^SLACK_SIGNING_SECRET=.' ~/.cyrus/.env
+```
+
+Both must return 1 (the `.` after `=` ensures the value is not empty). If either is 0, ask the user to check the file.
 
 ## Completion
 
 > ✓ Slack app created from manifest and installed
 > ✓ Bot token and signing secret saved to `~/.cyrus/.env`
+
+**Note:** The event subscription `request_url` will fail Slack's verification challenge until Cyrus is actually running. Once Cyrus is started, go to the app's **Event Subscriptions** page and re-enter the URL to trigger verification, or Slack will retry automatically.

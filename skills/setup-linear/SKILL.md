@@ -3,7 +3,7 @@ name: setup-linear
 description: Create a Linear OAuth application and configure Cyrus to use it — supports agent-browser automation or guided manual setup.
 ---
 
-**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
+**CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.cyrus/.env` or any file inside `~/.cyrus/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context. Never scrape, extract, or read secret values from web pages — guide the user to copy them manually.**
 
 # Setup Linear
 
@@ -90,34 +90,17 @@ Check the required event types:
 
 Click "Create".
 
-#### 3c. Capture credentials via JavaScript
+After creation, Linear redirects to the app settings page. **Do NOT screenshot credential pages or attempt to scrape secrets.** Proceed to Step 4.
 
-After creation, Linear redirects to the app settings page. Use JavaScript to extract credentials:
+### Path A-1: claude-in-chrome Automation
 
-```bash
-# Copy Client ID
-agent-browser eval "var items = document.querySelectorAll('li'); var idLi; for (var i = 0; i < items.length; i++) { if (items[i].textContent.indexOf('Client ID') >= 0) { idLi = items[i]; break; } } if (idLi) { var btns = idLi.querySelectorAll('button'); btns[0].click(); 'clicked copy button'; } else { 'not found'; }"
-CLIENT_ID=$(pbpaste)
+Use the `mcp__claude-in-chrome__*` tools to navigate and interact with the user's existing Chrome browser.
 
-# Copy Client Secret
-agent-browser eval "var items = document.querySelectorAll('li'); var secretLi; for (var i = 0; i < items.length; i++) { if (items[i].textContent.indexOf('Client secret') >= 0 && items[i].textContent.indexOf('Signing') < 0) { secretLi = items[i]; break; } } if (secretLi) { var btns = secretLi.querySelectorAll('button'); btns[1].click(); 'clicked copy button'; } else { 'not found'; }"
-CLIENT_SECRET=$(pbpaste)
-
-# Copy Webhook Signing Secret
-agent-browser eval "var items = document.querySelectorAll('li'); var secretLi; for (var i = 0; i < items.length; i++) { if (items[i].textContent.indexOf('Signing secret') >= 0) { secretLi = items[i]; break; } } if (secretLi) { var btns = secretLi.querySelectorAll('button'); btns[1].click(); 'clicked copy button'; } else { 'not found'; }"
-WEBHOOK_SECRET=$(pbpaste)
-```
-
-Write credentials to env file:
-```bash
-printf 'LINEAR_CLIENT_ID=%s\n' "$CLIENT_ID" >> ~/.cyrus/.env
-printf 'LINEAR_CLIENT_SECRET=%s\n' "$CLIENT_SECRET" >> ~/.cyrus/.env
-printf 'LINEAR_WEBHOOK_SECRET=%s\n' "$WEBHOOK_SECRET" >> ~/.cyrus/.env
-```
+Navigate to the Linear API settings page (`https://linear.app/settings/api/applications/new`) and fill in the form with the same fields as Path A-2 above. Click "Create". **Do NOT screenshot credential pages or attempt to scrape secrets.** Proceed to Step 4.
 
 ### Path B: Manual Guided Setup
 
-If `agent-browser` is not available, guide the user through manual creation:
+Guide the user through manual creation:
 
 > ### Create a Linear OAuth Application
 >
@@ -138,53 +121,52 @@ If `agent-browser` is not available, guide the user through manual creation:
 >
 > 3. Click **Create**
 
-Then guide the user to save each credential using clipboard-to-env commands:
+Proceed to Step 4.
 
-> Copy the **Client ID** from the app settings page, then run:
+## Step 4: Collect Credentials
 
-**macOS:**
-```bash
-printf 'LINEAR_CLIENT_ID=%s\n' "$(pbpaste)" >> ~/.cyrus/.env
-```
+**The agent must NOT scrape, read, or extract secrets from the page.** The user copies them manually into the env file.
 
-**Universal fallback:**
-```bash
-read -s -p "Paste your Linear Client ID: " val && printf 'LINEAR_CLIENT_ID=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
-```
-
-> Now copy the **Client Secret** and run:
-
-**macOS:**
-```bash
-printf 'LINEAR_CLIENT_SECRET=%s\n' "$(pbpaste)" >> ~/.cyrus/.env
-```
-
-**Universal fallback:**
-```bash
-read -s -p "Paste your Linear Client Secret: " val && printf 'LINEAR_CLIENT_SECRET=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
-```
-
-> Now copy the **Webhook Signing Secret** and run:
-
-**macOS:**
-```bash
-printf 'LINEAR_WEBHOOK_SECRET=%s\n' "$(pbpaste)" >> ~/.cyrus/.env
-```
-
-**Universal fallback:**
-```bash
-read -s -p "Paste your Linear Webhook Signing Secret: " val && printf 'LINEAR_WEBHOOK_SECRET=%s\n' "$val" >> ~/.cyrus/.env && echo " ✓ Saved"
-```
-
-## Step 4: Verify Credentials Written
+### 4a. Add credential placeholders
 
 ```bash
-grep -c '^LINEAR_CLIENT_ID=' ~/.cyrus/.env
-grep -c '^LINEAR_CLIENT_SECRET=' ~/.cyrus/.env
-grep -c '^LINEAR_WEBHOOK_SECRET=' ~/.cyrus/.env
+grep -q '^LINEAR_CLIENT_ID=' ~/.cyrus/.env || echo 'LINEAR_CLIENT_ID=' >> ~/.cyrus/.env
+grep -q '^LINEAR_CLIENT_SECRET=' ~/.cyrus/.env || echo 'LINEAR_CLIENT_SECRET=' >> ~/.cyrus/.env
+grep -q '^LINEAR_WEBHOOK_SECRET=' ~/.cyrus/.env || echo 'LINEAR_WEBHOOK_SECRET=' >> ~/.cyrus/.env
 ```
 
-All three must return 1. If any are missing, ask the user to retry.
+### 4b. Open env file for editing
+
+```bash
+# macOS
+code --new-window ~/.cyrus/.env 2>/dev/null || open -a TextEdit ~/.cyrus/.env
+# Linux
+code --new-window ~/.cyrus/.env 2>/dev/null || xdg-open ~/.cyrus/.env
+```
+
+### 4c. Guide the user
+
+Tell the user:
+
+> I've opened `~/.cyrus/.env`. You need to paste three values from your Linear app settings page:
+>
+> 1. **Client ID** — copy it and paste after `LINEAR_CLIENT_ID=`
+> 2. **Client Secret** — click the copy button next to it (it's masked with dots), paste after `LINEAR_CLIENT_SECRET=`
+> 3. **Webhook Signing Secret** — click the copy button next to it, paste after `LINEAR_WEBHOOK_SECRET=`
+>
+> Save and close the file when done.
+
+### 4d. Verify
+
+After the user confirms they've saved:
+
+```bash
+grep -c '^LINEAR_CLIENT_ID=.' ~/.cyrus/.env
+grep -c '^LINEAR_CLIENT_SECRET=.' ~/.cyrus/.env
+grep -c '^LINEAR_WEBHOOK_SECRET=.' ~/.cyrus/.env
+```
+
+All three must return 1 (the `.` after `=` ensures the value is not empty). If any are 0, ask the user to check the file.
 
 ## Step 5: Authorize with Linear
 
