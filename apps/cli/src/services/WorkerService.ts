@@ -295,10 +295,6 @@ export class WorkerService {
 		await this.edgeWorker.start();
 
 		this.logger.success("Edge worker started successfully");
-		this.logger.info(`Managing ${repositories.length} repositories:`);
-		repositories.forEach((repo) => {
-			this.logger.info(`  - ${repo.name} (${repo.repositoryPath})`);
-		});
 	}
 
 	/**
