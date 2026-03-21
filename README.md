@@ -47,9 +47,19 @@ No installation required. Everything is managed through [app.atcyrus.com](https:
 
 ### End-to-End Self-Hosted (Community)
 
-Zero cost option. This requires hosting everything yourself, including your own Linear OAuth app, Github App, and Slack App.
+Zero cost option — host everything yourself with your own Linear OAuth app, GitHub App, and Slack App. An AI-guided setup skill handles the entire onboarding: installing dependencies, configuring auth, creating integration apps, and connecting repositories — so you don't have to follow a manual guide.
 
-Follow the complete **[End-to-End Community Guide](./docs/SELF_HOSTING.md)**.
+```bash
+npx skills add ceedaragents/cyrus -g
+```
+
+Then in any AI coding agent (Claude Code, Codex, Cursor, etc.):
+
+```
+/cyrus-setup
+```
+
+Or follow the **[manual setup guide](./docs/SELF_HOSTING.md)** if you prefer.
 
 ---
 

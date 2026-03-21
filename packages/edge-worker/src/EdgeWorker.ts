@@ -580,66 +580,52 @@ export class EdgeWorker extends EventEmitter {
 	 * Initialize and register components (routes) before server starts
 	 */
 	private async initializeComponents(): Promise<void> {
-		// Get the first active repository for configuration
-		const firstRepo = Array.from(this.repositories.values())[0];
-		if (!firstRepo) {
-			throw new Error("No active repositories configured");
-		}
-
-		// Platform-specific initialization
+		// 1. Platform-specific initialization
 		if (this.config.platform === "cli") {
-			// CLI mode: Create and register CLIRPCServer
-			const firstIssueTracker = this.issueTrackers.get(
-				requireLinearWorkspaceId(firstRepo),
+			// CLI mode: find any available CLIIssueTrackerService
+			const firstCliTracker = Array.from(this.issueTrackers.values()).find(
+				(tracker): tracker is CLIIssueTrackerService =>
+					tracker instanceof CLIIssueTrackerService,
 			);
-			if (!firstIssueTracker) {
-				throw new Error("Issue tracker not found for first repository");
-			}
 
-			// Type guard to ensure it's a CLIIssueTrackerService
-			if (!(firstIssueTracker instanceof CLIIssueTrackerService)) {
-				throw new Error(
-					"CLI platform requires CLIIssueTrackerService but found different implementation",
+			if (firstCliTracker) {
+				this.cliRPCServer = new CLIRPCServer({
+					fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+					issueTracker: firstCliTracker,
+					version: "1.0.0",
+				});
+
+				// Register the /cli/rpc endpoint
+				this.cliRPCServer.register();
+
+				this.logger.info("✅ CLI RPC server registered");
+				this.logger.info("   RPC endpoint: /cli/rpc");
+
+				// Create CLI event transport and register listener
+				const cliEventTransport = firstCliTracker.createEventTransport({
+					platform: "cli",
+					fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+				});
+
+				// Listen for webhook events
+				cliEventTransport.on("event", (event: AgentEvent) => {
+					const repos = Array.from(this.repositories.values());
+					this.handleWebhook(event as unknown as Webhook, repos);
+				});
+
+				// Listen for errors
+				cliEventTransport.on("error", (error: Error) => {
+					this.handleError(error);
+				});
+
+				// Register the CLI event transport endpoints
+				cliEventTransport.register();
+
+				this.logger.info("✅ CLI event transport registered");
+				this.logger.info(
+					"   Event listener: listening for AgentSessionCreated events",
 				);
 			}
-
-			this.cliRPCServer = new CLIRPCServer({
-				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-				issueTracker: firstIssueTracker,
-				version: "1.0.0",
-			});
-
-			// Register the /cli/rpc endpoint
-			this.cliRPCServer.register();
-
-			this.logger.info("✅ CLI RPC server registered");
-			this.logger.info("   RPC endpoint: /cli/rpc");
-
-			// Create CLI event transport and register listener
-			const cliEventTransport = firstIssueTracker.createEventTransport({
-				platform: "cli",
-				fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
-			});
-
-			// Listen for webhook events (same pattern as Linear mode)
-			cliEventTransport.on("event", (event: AgentEvent) => {
-				// Get all active repositories for webhook handling
-				const repos = Array.from(this.repositories.values());
-				this.handleWebhook(event as unknown as Webhook, repos);
-			});
-
-			// Listen for errors
-			cliEventTransport.on("error", (error: Error) => {
-				this.handleError(error);
-			});
-
-			// Register the CLI event transport endpoints
-			cliEventTransport.register();
-
-			this.logger.info("✅ CLI event transport registered");
-			this.logger.info(
-				"   Event listener: listening for AgentSessionCreated events",
-			);
 		} else {
 			// Linear mode: Create and register LinearEventTransport
 			const useDirectWebhooks =
@@ -659,7 +645,6 @@ export class EdgeWorker extends EventEmitter {
 
 			// Listen for legacy webhook events (deprecated, kept for backward compatibility)
 			this.linearEventTransport.on("event", (event: AgentEvent) => {
-				// Get all active repositories for webhook handling
 				const repos = Array.from(this.repositories.values());
 				this.handleWebhook(event as unknown as Webhook, repos);
 			});
@@ -685,11 +670,10 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		// 2. Register GitHub event transport (for forwarded GitHub webhooks from CYHOST)
-		// This is registered regardless of platform mode since GitHub webhooks can come from CYHOST
+		// 2. Register GitHub and Slack event transports unconditionally
+		// These don't require repositories and must be available during onboarding
+		// for webhook URL verification to succeed.
 		this.registerGitHubEventTransport();
-
-		// 2b. Register Slack event transport (for forwarded Slack webhooks from CYHOST)
 		this.registerSlackEventTransport();
 
 		// 3. Create and register ConfigUpdater (both platforms)

@@ -109,7 +109,7 @@ export class SelfAuthCommand extends BaseCommand {
 			writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
 
 			this.logSuccess(`Saved credentials for workspace: ${workspace.name}`);
-			if (config.repositories.length === 0) {
+			if (!config.repositories || config.repositories.length === 0) {
 				console.log(
 					"   No repositories configured yet. Run 'cyrus self-add-repo' to add one.",
 				);
