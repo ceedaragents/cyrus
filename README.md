@@ -21,7 +21,9 @@ Your (Claude Code|Codex|Cursor|Gemini) powered (Linear|Github|Slack) agent. Cyru
 
 Configure Cyrus through the dashboard at [app.atcyrus.com](https://app.atcyrus.com).
 
-#### For self-hosted deployments
+#### For paid self-hosted deployments
+
+It is called 'self-hosted' because it uses a machine you control as the agent runtime. Networking layer and integrations are provided by the Cyrus cloud provider.
 
 ```bash
 # Install Cyrus
