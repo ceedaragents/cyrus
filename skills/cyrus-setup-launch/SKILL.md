@@ -59,53 +59,129 @@ Print a formatted summary:
 
 Use ✓ for configured items and ✗ for skipped/unconfigured items.
 
-## Step 3: Start Cyrus
+## Step 3: Make Cyrus Persistent
 
-Ask the user:
+Cyrus needs to run as a background process so it stays alive and restarts after reboots. **Use the `AskUserQuestion` tool if available** to ask:
 
-> **Ready to start Cyrus?**
+> **How would you like to keep Cyrus running in the background?**
 >
-> For a quick test:
-> ```bash
-> cyrus
-> ```
->
-> For persistent background operation:
-> ```bash
-> # Using tmux
-> tmux new-session -d -s cyrus 'cyrus'
->
-> # Using pm2
-> pm2 start cyrus --name cyrus
->
-> # Using screen
-> screen -dmS cyrus cyrus
-> ```
+> 1. **pm2** (recommended) — Node.js process manager. Simple to set up, auto-restarts on crash, log management built in. Best for most users.
+> 2. **systemd** (Linux only) — OS-level service manager. Starts on boot automatically, managed with `systemctl`. Best for dedicated Linux servers.
+> 3. **Neither** — just run `cyrus` in the foreground for now (you can set up persistence later).
 
-If using ngrok, remind them:
+### Option 1: pm2
 
-> **Don't forget to start ngrok first** (in a separate terminal):
-> ```bash
-> ngrok start cyrus
-> ```
+Check if pm2 is installed:
 
-If the user wants to start now, run:
+```bash
+which pm2
+```
+
+If not installed:
+
+```bash
+npm install -g pm2
+```
+
+Start Cyrus with pm2:
+
+```bash
+pm2 start cyrus --name cyrus
+```
+
+Enable auto-start on boot:
+
+```bash
+pm2 save
+pm2 startup
+```
+
+The `pm2 startup` command will print a command to run — tell the user to run it.
+
+Useful commands to mention:
+
+```bash
+pm2 logs cyrus    # View logs
+pm2 restart cyrus # Restart
+pm2 stop cyrus    # Stop
+```
+
+### Option 2: systemd (Linux only)
+
+Create the service file:
+
+```bash
+sudo tee /etc/systemd/system/cyrus.service > /dev/null << 'EOF'
+[Unit]
+Description=Cyrus AI Agent
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+EnvironmentFile=%h/.cyrus/.env
+ExecStart=$(which cyrus)
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Note: substitute `$USER` and `$(which cyrus)` with actual values before writing.
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable cyrus
+sudo systemctl start cyrus
+```
+
+Useful commands to mention:
+
+```bash
+sudo systemctl status cyrus   # Check status
+sudo journalctl -u cyrus -f   # View logs
+sudo systemctl restart cyrus   # Restart
+```
+
+### Option 3: Foreground
+
+Just run:
 
 ```bash
 cyrus
 ```
 
-## Step 4: Verify Running
+## Step 4: Start ngrok (if applicable)
 
-Once Cyrus starts, look for the startup log confirming it's listening:
+If the user configured ngrok in the endpoint step, remind them:
 
-> Look for a log line like:
-> ```
-> [Server] Listening on port 3456
+> **Start ngrok before or alongside Cyrus** so webhooks can reach your instance:
+> ```bash
+> ngrok start cyrus
 > ```
 >
-> Then try assigning a Linear issue to Cyrus to verify the full pipeline works!
+> If using pm2, you can also add ngrok:
+> ```bash
+> pm2 start "ngrok start cyrus" --name ngrok
+> pm2 save
+> ```
+
+## Step 5: Verify Running
+
+Once Cyrus starts, verify it's listening:
+
+```bash
+curl -s http://localhost:3456/status
+```
+
+Should return `{"status":"idle"}` or similar.
+
+> Then try assigning a Linear issue to Cyrus, or @mentioning it in Slack, to verify the full pipeline works!
 
 ## Completion
 
-> ✓ Cyrus is ready. Assign a Linear issue to test it out!
+> ✓ Cyrus is running and ready. Assign a Linear issue or @mention in Slack to test it out!
