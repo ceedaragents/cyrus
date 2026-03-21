@@ -34,7 +34,9 @@ You also need `AGENT_NAME` and `AGENT_DESCRIPTION` — these were collected in S
 
 ## Step 3: Build Manifest JSON
 
-Construct the manifest, substituting `<AGENT_NAME>`, `<AGENT_DESCRIPTION>`, and `<CYRUS_BASE_URL>` with actual values:
+Construct the manifest, substituting `<AGENT_NAME>`, `<AGENT_DESCRIPTION>`, and `<CYRUS_BASE_URL>` with actual values.
+
+**IMPORTANT: Use the manifest template EXACTLY as shown below.** The event subscription path MUST be `/slack-webhook` (not `/slack/events` or any other path). This matches the route registered by `SlackEventTransport` in the Cyrus codebase.
 
 ```json
 {
