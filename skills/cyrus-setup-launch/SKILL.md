@@ -71,85 +71,63 @@ Cyrus needs to run as a background process so it stays alive and restarts after 
 
 ### Option 1: pm2
 
-Check if pm2 is installed:
+The agent should run all of these commands directly:
 
-```bash
-which pm2
-```
+1. Check if pm2 is installed (`which pm2`). If not, install it (`npm install -g pm2`).
+2. Start Cyrus: `pm2 start cyrus --name cyrus`
+3. Save the process list: `pm2 save`
+4. Run `pm2 startup` — this prints a system-specific command. The agent should run that output command too (it typically requires `sudo`).
 
-If not installed:
-
-```bash
-npm install -g pm2
-```
-
-Start Cyrus with pm2:
-
-```bash
-pm2 start cyrus --name cyrus
-```
-
-Enable auto-start on boot:
-
-```bash
-pm2 save
-pm2 startup
-```
-
-The `pm2 startup` command will print a command to run — tell the user to run it.
-
-Useful commands to mention:
-
-```bash
-pm2 logs cyrus    # View logs
-pm2 restart cyrus # Restart
-pm2 stop cyrus    # Stop
-```
+After setup, inform the user of useful commands:
+- `pm2 logs cyrus` — view logs
+- `pm2 restart cyrus` — restart
+- `pm2 stop cyrus` — stop
 
 ### Option 2: systemd (Linux only)
 
-Create the service file:
+The agent should run all of these commands directly:
 
-```bash
-sudo tee /etc/systemd/system/cyrus.service > /dev/null << 'EOF'
-[Unit]
-Description=Cyrus AI Agent
-After=network.target
+1. Resolve the actual values for the service file:
+   ```bash
+   CYRUS_BIN=$(which cyrus)
+   CYRUS_USER=$(whoami)
+   ```
 
-[Service]
-Type=simple
-User=$USER
-EnvironmentFile=%h/.cyrus/.env
-ExecStart=$(which cyrus)
-Restart=always
-RestartSec=10
+2. Write the service file:
+   ```bash
+   sudo tee /etc/systemd/system/cyrus.service > /dev/null << EOF
+   [Unit]
+   Description=Cyrus AI Agent
+   After=network.target
 
-[Install]
-WantedBy=multi-user.target
-EOF
-```
+   [Service]
+   Type=simple
+   User=$CYRUS_USER
+   EnvironmentFile=/home/$CYRUS_USER/.cyrus/.env
+   ExecStart=$CYRUS_BIN
+   Restart=always
+   RestartSec=10
 
-Note: substitute `$USER` and `$(which cyrus)` with actual values before writing.
+   [Install]
+   WantedBy=multi-user.target
+   EOF
+   ```
 
-Enable and start:
+3. Enable and start:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable cyrus
+   sudo systemctl start cyrus
+   ```
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable cyrus
-sudo systemctl start cyrus
-```
-
-Useful commands to mention:
-
-```bash
-sudo systemctl status cyrus   # Check status
-sudo journalctl -u cyrus -f   # View logs
-sudo systemctl restart cyrus   # Restart
-```
+After setup, inform the user of useful commands:
+- `sudo systemctl status cyrus` — check status
+- `sudo journalctl -u cyrus -f` — view logs
+- `sudo systemctl restart cyrus` — restart
 
 ### Option 3: Foreground
 
-Just run:
+Run directly:
 
 ```bash
 cyrus
@@ -157,18 +135,18 @@ cyrus
 
 ## Step 4: Start ngrok (if applicable)
 
-If the user configured ngrok in the endpoint step, remind them:
+If the user configured ngrok in the endpoint step, the agent should start it:
 
-> **Start ngrok before or alongside Cyrus** so webhooks can reach your instance:
-> ```bash
-> ngrok start cyrus
-> ```
->
-> If using pm2, you can also add ngrok:
-> ```bash
-> pm2 start "ngrok start cyrus" --name ngrok
-> pm2 save
-> ```
+```bash
+ngrok start cyrus
+```
+
+If using pm2, also make ngrok persistent:
+
+```bash
+pm2 start "ngrok start cyrus" --name ngrok
+pm2 save
+```
 
 ## Step 5: Verify Running
 
