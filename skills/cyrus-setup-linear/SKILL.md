@@ -117,7 +117,7 @@ Guide the user through manual creation:
 >    - **Webhook URL:** `<CYRUS_BASE_URL>/webhook`
 >    - **Webhook:** ✓ enabled
 >    - **Event types:** ✓ Agent session events, ✓ Inbox notifications, ✓ Permission changes, ✓ Issues
->    - **Public:** ✓ enabled
+>    - **Public:** ✗ leave disabled (this is a private self-hosted app)
 >
 > 3. Click **Create**
 
