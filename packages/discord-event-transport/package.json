@@ -1,0 +1,32 @@
+{
+	"name": "cyrus-discord-event-transport",
+	"version": "0.1.0",
+	"description": "Discord event transport for receiving events via the Discord Gateway WebSocket",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"cyrus-core": "workspace:*",
+		"fastify": "^5.8.1",
+		"ws": "^8.18.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@types/ws": "^8.5.10",
+		"typescript": "^5.3.3",
+		"vitest": "^3.1.4"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

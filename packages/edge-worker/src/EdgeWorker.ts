@@ -63,6 +63,12 @@ import {
 	resolvePath,
 } from "cyrus-core";
 import { CursorRunner } from "cyrus-cursor-runner";
+import {
+	DiscordEventTransport,
+	DiscordGatewayClient,
+	type DiscordWebhookEvent,
+	GatewayIntent,
+} from "cyrus-discord-event-transport";
 import { GeminiRunner } from "cyrus-gemini-runner";
 import {
 	extractCommentAuthor,
@@ -106,6 +112,7 @@ import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
+import { DiscordChatAdapter } from "./DiscordChatAdapter.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { McpConfigService } from "./McpConfigService.js";
@@ -168,7 +175,11 @@ export class EdgeWorker extends EventEmitter {
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
+	private discordEventTransport: DiscordEventTransport | null = null;
+	private discordGatewayClient: DiscordGatewayClient | null = null;
 	private chatSessionHandler: ChatSessionHandler<SlackWebhookEvent> | null =
+		null;
+	private discordChatSessionHandler: ChatSessionHandler<DiscordWebhookEvent> | null =
 		null;
 	private gitHubCommentService: GitHubCommentService; // Service for posting comments back to GitHub PRs
 	private cliRPCServer: CLIRPCServer | null = null; // CLI RPC server for CLI platform mode
@@ -676,6 +687,9 @@ export class EdgeWorker extends EventEmitter {
 		this.registerGitHubEventTransport();
 		this.registerSlackEventTransport();
 
+		// 2c. Register Discord event transport (for forwarded Discord webhooks from CYHOST)
+		this.registerDiscordEventTransport();
+
 		// 3. Create and register ConfigUpdater (both platforms)
 		this.configUpdater = new ConfigUpdater(
 			this.sharedApplicationServer.getFastifyInstance(),
@@ -894,6 +908,137 @@ export class EdgeWorker extends EventEmitter {
 		this.logger.info(
 			`Slack event transport registered (${slackVerificationMode} mode)`,
 		);
+	}
+
+	/**
+	 * Register the Discord event transport.
+	 *
+	 * Two paths:
+	 * 1. HTTP endpoint (/discord-webhook) — receives forwarded Discord events from CYHOST (analogous to Slack).
+	 * 2. Gateway WebSocket — connects directly to Discord's Gateway when DISCORD_BOT_TOKEN is present.
+	 *    This is needed because Discord does not send HTTP webhooks for messages (unlike Slack).
+	 *    The edge worker must maintain a persistent WebSocket connection to receive MESSAGE_CREATE events.
+	 */
+	private registerDiscordEventTransport(): void {
+		const allRepos = Array.from(this.repositories.values());
+		const chatRepositoryPaths = allRepos.map((repo) => repo.repositoryPath);
+		const routingContext =
+			this.promptBuilder.generateRoutingContextForAllWorkspaces();
+		const discordAdapter = new DiscordChatAdapter(
+			chatRepositoryPaths,
+			this.logger,
+			{ repositoryRoutingContext: routingContext },
+		);
+
+		// V1: Source MCP config from first available repo (all repos share the same MCPs today)
+		const firstLinearWorkspaceId = Object.keys(
+			this.config.linearWorkspaces || {},
+		)[0];
+		const firstRepo = allRepos[0];
+		const mcpConfig =
+			firstLinearWorkspaceId && firstRepo
+				? this.buildMcpConfig(firstRepo.id, firstLinearWorkspaceId)
+				: undefined;
+
+		if (!firstLinearWorkspaceId || !firstRepo) {
+			this.logger.warn(
+				"No repositories or workspaces configured — Discord sessions will not have access to MCP tools",
+			);
+		}
+
+		this.discordChatSessionHandler = new ChatSessionHandler(
+			discordAdapter,
+			{
+				cyrusHome: this.cyrusHome,
+				chatRepositoryPaths,
+				mcpConfig,
+				repository: firstRepo,
+				runnerConfigBuilder: this.runnerConfigBuilder,
+				createRunner: (config) => {
+					const runnerType = this.runnerSelectionService.getDefaultRunner();
+					return this.createRunnerForType(runnerType, {
+						...config,
+						model: this.getDefaultModelForRunner(runnerType),
+						fallbackModel: this.getDefaultFallbackModelForRunner(runnerType),
+					});
+				},
+				onWebhookStart: () => {
+					this.activeWebhookCount++;
+				},
+				onWebhookEnd: () => {
+					this.activeWebhookCount--;
+				},
+				onStateChange: () => this.savePersistedState(),
+				onClaudeError: (error) => this.handleClaudeError(error),
+			},
+			this.logger,
+		);
+
+		// Wire up event handler (shared between HTTP transport and Gateway client)
+		const handleDiscordEvent = (event: DiscordWebhookEvent) => {
+			this.logger.info(
+				`Discord event received: type=${event.eventType}, id=${event.eventId}, guild=${event.guildId}`,
+			);
+			this.discordChatSessionHandler!.handleEvent(event).catch((error) => {
+				this.logger.error(
+					"Failed to handle Discord event",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			});
+		};
+
+		// Path 1: HTTP endpoint for forwarded events from CYHOST
+		this.discordEventTransport = new DiscordEventTransport({
+			fastifyServer: this.sharedApplicationServer.getFastifyInstance(),
+			secret: process.env.CYRUS_API_KEY || "",
+		});
+
+		this.discordEventTransport.on("event", handleDiscordEvent);
+		this.discordEventTransport.on("message", (message: InternalMessage) => {
+			this.handleMessage(message);
+		});
+		this.discordEventTransport.on("error", (error: Error) => {
+			this.handleError(error);
+		});
+
+		this.discordEventTransport.register();
+		this.logger.info("Discord HTTP event transport registered");
+
+		// Path 2: Gateway WebSocket — connect directly to Discord when bot token is available
+		const botToken = process.env.DISCORD_BOT_TOKEN;
+		if (botToken) {
+			this.logger.info(
+				"DISCORD_BOT_TOKEN found, starting Discord Gateway client...",
+			);
+
+			this.discordGatewayClient = new DiscordGatewayClient(
+				{
+					botToken,
+					intents:
+						GatewayIntent.Guilds |
+						GatewayIntent.GuildMessages |
+						GatewayIntent.MessageContent,
+				},
+				this.logger,
+			);
+
+			this.discordGatewayClient.on("event", handleDiscordEvent);
+			this.discordGatewayClient.on("message", (message: InternalMessage) => {
+				this.handleMessage(message);
+			});
+			this.discordGatewayClient.on("error", (error: Error) => {
+				this.logger.error("Discord Gateway error", error);
+				this.handleError(error);
+			});
+
+			this.discordGatewayClient.connect();
+			this.logger.info("Discord Gateway client connecting...");
+		} else {
+			this.logger.warn(
+				"DISCORD_BOT_TOKEN not set — Discord Gateway client will not start. " +
+					"Only the HTTP /discord-webhook endpoint is available.",
+			);
+		}
 	}
 
 	/**
@@ -1539,6 +1684,9 @@ ${taskSection}`;
 		if (this.chatSessionHandler?.isAnyRunnerBusy()) {
 			return "busy";
 		}
+		if (this.discordChatSessionHandler?.isAnyRunnerBusy()) {
+			return "busy";
+		}
 
 		return "idle";
 	}
@@ -1567,6 +1715,9 @@ ${taskSection}`;
 		if (this.chatSessionHandler) {
 			agentRunners.push(...this.chatSessionHandler.getAllRunners());
 		}
+		if (this.discordChatSessionHandler) {
+			agentRunners.push(...this.discordChatSessionHandler.getAllRunners());
+		}
 
 		// Kill all agent processes with null checking
 		for (const runner of agentRunners) {
@@ -1579,7 +1730,12 @@ ${taskSection}`;
 			}
 		}
 
-		// Clear event transport (no explicit cleanup needed, routes are removed when server stops)
+		// Clear event transports
+		if (this.discordGatewayClient) {
+			this.logger.info("Disconnecting Discord Gateway client...");
+			this.discordGatewayClient.disconnect();
+			this.discordGatewayClient = null;
+		}
 		this.linearEventTransport = null;
 		this.configUpdater = null;
 		this.mcpConfigService.clearAllContexts();

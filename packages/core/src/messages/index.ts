@@ -17,6 +17,7 @@ export type {
 
 // Platform reference types
 export type {
+	DiscordPlatformRef,
 	GitHubPlatformRef,
 	LinearPlatformRef,
 	SlackPlatformRef,
@@ -24,6 +25,8 @@ export type {
 
 // Type guards
 export {
+	hasDiscordSessionStartPlatformData,
+	hasDiscordUserPromptPlatformData,
 	hasGitHubSessionStartPlatformData,
 	hasGitHubUserPromptPlatformData,
 	hasLinearSessionStartPlatformData,
@@ -31,6 +34,7 @@ export {
 	hasSlackSessionStartPlatformData,
 	hasSlackUserPromptPlatformData,
 	isContentUpdateMessage,
+	isDiscordMessage,
 	isGitHubMessage,
 	isIssueStateChangeMessage,
 	isLinearMessage,
@@ -44,6 +48,9 @@ export {
 export type {
 	ContentChanges,
 	ContentUpdateMessage,
+	// Discord platform data types
+	DiscordSessionStartPlatformData,
+	DiscordUserPromptPlatformData,
 	GitHubSessionStartPlatformData,
 	GitHubUserPromptPlatformData,
 	GuidanceItem,

@@ -22,6 +22,7 @@ export type {
 	ChatSessionHandlerDeps,
 } from "./ChatSessionHandler.js";
 export { ChatSessionHandler } from "./ChatSessionHandler.js";
+export { DiscordChatAdapter } from "./DiscordChatAdapter.js";
 export { EdgeWorker } from "./EdgeWorker.js";
 export type { CreateGitWorktreeOptions } from "./GitService.js";
 export { GitService } from "./GitService.js";

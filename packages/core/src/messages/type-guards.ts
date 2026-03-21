@@ -9,6 +9,8 @@
 
 import type {
 	ContentUpdateMessage,
+	DiscordSessionStartPlatformData,
+	DiscordUserPromptPlatformData,
 	GitHubSessionStartPlatformData,
 	GitHubUserPromptPlatformData,
 	InternalMessage,
@@ -106,6 +108,13 @@ export function isSlackMessage(message: InternalMessage): boolean {
 	return message.source === "slack";
 }
 
+/**
+ * Type guard to check if message is from Discord.
+ */
+export function isDiscordMessage(message: InternalMessage): boolean {
+	return message.source === "discord";
+}
+
 // ============================================================================
 // PLATFORM DATA TYPE GUARDS
 // ============================================================================
@@ -174,4 +183,26 @@ export function hasSlackUserPromptPlatformData(
 	platformData: SlackUserPromptPlatformData;
 } {
 	return message.source === "slack";
+}
+
+/**
+ * Type guard for Discord platform data in SessionStartMessage.
+ */
+export function hasDiscordSessionStartPlatformData(
+	message: SessionStartMessage,
+): message is SessionStartMessage & {
+	platformData: DiscordSessionStartPlatformData;
+} {
+	return message.source === "discord";
+}
+
+/**
+ * Type guard for Discord platform data in UserPromptMessage.
+ */
+export function hasDiscordUserPromptPlatformData(
+	message: UserPromptMessage,
+): message is UserPromptMessage & {
+	platformData: DiscordUserPromptPlatformData;
+} {
+	return message.source === "discord";
 }

@@ -212,12 +212,11 @@ export interface GitHubPlatformRef {
 }
 
 // ============================================================================
-// SLACK PLATFORM REFERENCES (Future)
+// SLACK PLATFORM REFERENCES
 // ============================================================================
 
 /**
  * Slack platform reference types.
- * Placeholder for future Slack integration.
  */
 export interface SlackPlatformRef {
 	/** Channel data */
@@ -246,6 +245,61 @@ export interface SlackPlatformRef {
 		user: {
 			id: string;
 			name?: string;
+		};
+	};
+}
+
+// ============================================================================
+// DISCORD PLATFORM REFERENCES
+// ============================================================================
+
+/**
+ * Discord platform reference types.
+ * These map to Discord API structures used in Gateway events.
+ */
+export interface DiscordPlatformRef {
+	/** Guild (server) data */
+	guild: {
+		/** Guild ID (snowflake) */
+		id: string;
+		/** Guild name */
+		name?: string;
+	};
+
+	/** Channel data */
+	channel: {
+		/** Channel ID (snowflake) */
+		id: string;
+		/** Channel name */
+		name?: string;
+		/** Channel type (0=text, 11=public thread, 12=private thread) */
+		type?: number;
+	};
+
+	/** Thread data (threads are channel objects in Discord) */
+	thread: {
+		/** Thread channel ID (snowflake) */
+		id: string;
+		/** Thread name */
+		name?: string;
+		/** Parent channel ID */
+		parentId?: string;
+	};
+
+	/** Message data */
+	message: {
+		/** Message ID (snowflake) */
+		id: string;
+		/** Message content */
+		content: string;
+		/** Message author */
+		author: {
+			/** User ID (snowflake) */
+			id: string;
+			/** Username */
+			username: string;
+			/** Display name */
+			globalName?: string;
 		};
 	};
 }

@@ -9,6 +9,7 @@
  */
 
 import type {
+	DiscordPlatformRef,
 	GitHubPlatformRef,
 	LinearPlatformRef,
 	SlackPlatformRef,
@@ -33,7 +34,7 @@ export type MessageAction =
 /**
  * Platform source identifier.
  */
-export type MessageSource = "linear" | "github" | "slack";
+export type MessageSource = "linear" | "github" | "slack" | "discord";
 
 // ============================================================================
 // AUTHOR TYPES
@@ -152,6 +153,22 @@ export interface SlackSessionStartPlatformData {
 }
 
 /**
+ * Discord-specific platform data for session start.
+ */
+export interface DiscordSessionStartPlatformData {
+	/** Guild (server) where the mention occurred */
+	guild: DiscordPlatformRef["guild"];
+	/** Channel where the mention occurred */
+	channel: DiscordPlatformRef["channel"];
+	/** Thread information (if in a thread) */
+	thread?: DiscordPlatformRef["thread"];
+	/** The message that triggered this session */
+	message: DiscordPlatformRef["message"];
+	/** Discord Bot token for API access */
+	discordBotToken?: string;
+}
+
+/**
  * Session start message - initiates a new agent session.
  * Triggered by: Linear delegation, PR mention, thread start, etc.
  */
@@ -169,7 +186,8 @@ export interface SessionStartMessage extends InternalMessageBase {
 	platformData:
 		| LinearSessionStartPlatformData
 		| GitHubSessionStartPlatformData
-		| SlackSessionStartPlatformData;
+		| SlackSessionStartPlatformData
+		| DiscordSessionStartPlatformData;
 }
 
 // ============================================================================
@@ -218,6 +236,22 @@ export interface SlackUserPromptPlatformData {
 }
 
 /**
+ * Discord-specific platform data for user prompt.
+ */
+export interface DiscordUserPromptPlatformData {
+	/** Guild (server) where the message was sent */
+	guild: DiscordPlatformRef["guild"];
+	/** Channel where the message was sent */
+	channel: DiscordPlatformRef["channel"];
+	/** Thread information (if in a thread) */
+	thread?: DiscordPlatformRef["thread"];
+	/** The message containing the prompt */
+	message: DiscordPlatformRef["message"];
+	/** Discord Bot token for API access */
+	discordBotToken?: string;
+}
+
+/**
  * User prompt message - a user message during an active session.
  * Triggered by: Mid-session comments, follow-up questions, etc.
  */
@@ -229,7 +263,8 @@ export interface UserPromptMessage extends InternalMessageBase {
 	platformData:
 		| LinearUserPromptPlatformData
 		| GitHubUserPromptPlatformData
-		| SlackUserPromptPlatformData;
+		| SlackUserPromptPlatformData
+		| DiscordUserPromptPlatformData;
 }
 
 // ============================================================================

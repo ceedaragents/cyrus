@@ -32,7 +32,10 @@
 			"cyrus-mcp-tools": ["packages/mcp-tools"],
 			"cyrus-simple-agent-runner": ["packages/simple-agent-runner"],
 			"cyrus-config-updater": ["packages/config-updater"],
-			"cyrus-linear-event-transport": ["packages/linear-event-transport"]
+			"cyrus-discord-event-transport": ["packages/discord-event-transport"],
+			"cyrus-github-event-transport": ["packages/github-event-transport"],
+			"cyrus-linear-event-transport": ["packages/linear-event-transport"],
+			"cyrus-slack-event-transport": ["packages/slack-event-transport"]
 		}
 	},
 	"exclude": ["node_modules", "dist", "build"]
