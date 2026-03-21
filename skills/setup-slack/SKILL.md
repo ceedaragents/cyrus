@@ -122,7 +122,18 @@ Determine which browser automation mode to use (see orchestrator rules):
 
 Use the `mcp__claude-in-chrome__*` tools to navigate and interact with the user's existing Chrome browser. The user is likely already signed in to Slack.
 
-Navigate to https://api.slack.com/apps and proceed with the manifest-based app creation and credential capture using the chrome MCP tools. Follow the same steps as Path A-2 below, but using MCP tools instead of CLI commands.
+**IMPORTANT: Always use the "From a manifest" flow.** Never create the app "From scratch" with manual scope/event configuration.
+
+1. Navigate to https://api.slack.com/apps
+2. Click **Create New App**
+3. Select **From a manifest** in the modal
+4. Pick the workspace
+5. Click **Next**
+6. Select **JSON** tab and paste the manifest from Step 3 above (fully substituted with real values)
+7. Click **Next**, review, click **Create**
+8. Install to workspace
+9. Capture bot token from **OAuth & Permissions** and signing secret from **Basic Information** → **App Credentials**
+10. Write both to `~/.cyrus/.env` via Bash commands (never use Read/Write tools on that file)
 
 ### Path A-2: agent-browser Automation
 

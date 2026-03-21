@@ -85,17 +85,26 @@ lsof -ti :<port> | xargs kill 2>/dev/null
 
 ## How This Works
 
-This skill runs sub-skills in order, skipping any that are already complete. You can re-run `/setup` at any time to add integrations or fix configuration.
+This skill runs sub-skills in order, skipping any that are already complete. You can re-run `/cyrus-setup` at any time to add integrations or fix configuration.
 
-Sub-skills (each independently invocable):
-- `/setup-prerequisites` — Install Node.js, jq, gh, cyrus-ai
-- `/setup-claude-auth` — Configure Claude Code API key or OAuth token
-- `/setup-endpoint` — Set up public webhook URL (ngrok, Cloudflare, or custom)
-- `/setup-linear` — Create Linear OAuth app + authorize workspace
-- `/setup-github` — Authenticate GitHub CLI + configure git
-- `/setup-slack` — Create Slack app + configure bot token
-- `/setup-repository` — Add Git repositories to Cyrus
-- `/setup-launch` — Summary + start Cyrus
+### Loading Sub-Skills
+
+Each step references a sub-skill file. To execute a sub-skill, **read the SKILL.md file** using the `Read` tool and follow its instructions. The sub-skill files are sibling directories to this skill:
+
+| Step | Sub-skill | File to read |
+|------|-----------|-------------|
+| 1 | setup-prerequisites | `setup-prerequisites/SKILL.md` (relative to skills directory) |
+| 2 | setup-claude-auth | `setup-claude-auth/SKILL.md` |
+| 3 | setup-endpoint | `setup-endpoint/SKILL.md` |
+| 4 | setup-linear | `setup-linear/SKILL.md` |
+| 5 | setup-github | `setup-github/SKILL.md` |
+| 6 | setup-slack | `setup-slack/SKILL.md` |
+| 7 | setup-repository | `setup-repository/SKILL.md` |
+| 8 | setup-launch | `setup-launch/SKILL.md` |
+
+To find the files, look for them relative to this file's directory (go up one level, then into the sub-skill directory). For example, if this file is at `~/.claude/skills/cyrus-setup/SKILL.md`, the sub-skills are at `~/.claude/skills/setup-prerequisites/SKILL.md`, etc.
+
+If a sub-skill file is not found, use `Glob` to search for it: `**/setup-prerequisites/SKILL.md`
 
 ---
 
@@ -132,73 +141,57 @@ Store the answer — used by the prerequisites skill.
 
 ## Step 1: Prerequisites
 
-Run the `setup-prerequisites` sub-skill.
+**Read** the `setup-prerequisites/SKILL.md` sub-skill and follow its instructions.
 
-This checks system dependencies (Node.js, jq, gh), installs `cyrus-ai`, and optionally checks for `agent-browser`.
-
-Pass the user's package manager preference.
+Pass the user's package manager preference from Step 0.
 
 ---
 
 ## Step 2: Claude Auth
 
-Run the `setup-claude-auth` sub-skill.
-
-This configures Claude Code credentials (API key, OAuth token, or third-party provider). Skips if already configured.
+**Read** the `setup-claude-auth/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
 ## Step 3: Webhook Endpoint
 
-Run the `setup-endpoint` sub-skill.
-
-This sets up a public URL for webhooks — ngrok (recommended), Cloudflare Tunnel, or a custom URL. Skips if `CYRUS_BASE_URL` is already set.
+**Read** the `setup-endpoint/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
 ## Step 4: Linear (if selected)
 
-**Only run if the user selected Linear in Step 0.**
+**Only if the user selected Linear in Step 0.**
 
-Run the `setup-linear` sub-skill.
-
-This creates a Linear OAuth application (via agent-browser or manual guided flow), saves credentials, and runs `cyrus self-auth` to authorize the workspace.
+**Read** the `setup-linear/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
 ## Step 5: GitHub (if selected)
 
-**Only run if the user selected GitHub in Step 0.**
+**Only if the user selected GitHub in Step 0.**
 
-Run the `setup-github` sub-skill.
-
-This authenticates the GitHub CLI and configures git identity for commits and pull requests.
+**Read** the `setup-github/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
 ## Step 6: Slack (if selected)
 
-**Only run if the user selected Slack in Step 0.**
+**Only if the user selected Slack in Step 0.**
 
-Run the `setup-slack` sub-skill.
-
-This guides creation of a Slack app with the right permissions and event subscriptions, then saves bot token and signing secret.
+**Read** the `setup-slack/SKILL.md` sub-skill and follow its instructions. **All paths (A-1, A-2, and B) must use the manifest-based creation flow** — never create the Slack app "from scratch" with manual scope/event configuration.
 
 ---
 
 ## Step 7: Add Repositories
 
-Run the `setup-repository` sub-skill.
-
-This asks for Git repository URLs and registers them with Cyrus via `cyrus self-add-repo`. Loops until the user is done adding repos.
+**Read** the `setup-repository/SKILL.md` sub-skill and follow its instructions.
 
 ---
 
 ## Step 8: Launch
 
-Run the `setup-launch` sub-skill.
-
-This prints a summary of everything configured, reminds the user to start ngrok if applicable, and offers to start Cyrus.
+**Read** the `setup-launch/SKILL.md` sub-skill and follow its instructions.
 
 ---
 

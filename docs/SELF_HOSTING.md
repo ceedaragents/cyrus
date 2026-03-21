@@ -5,7 +5,7 @@
 If you're using any AI coding agent (Claude Code, Codex, Cursor, etc.), set up Cyrus with a single command:
 
 ```bash
-npx skills add ceedaragents/cyrus --skill cyrus-setup -g
+npx skills add ceedaragents/cyrus -g
 ```
 
 Then in your agent:
