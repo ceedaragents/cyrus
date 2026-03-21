@@ -11,11 +11,29 @@
 
 Your (Claude Code|Codex|Cursor|Gemini) powered (Linear|Github|Slack) agent. Cyrus monitors (Linear|Github) issues assigned to it, creates isolated Git worktrees for each issue, runs (Claude Code|Codex|Cursor|Gemini) sessions to process them, and streams detailed agent activity updates back to (Linear|Github), along with rich interactions like dropdown selects and approvals.
 
-**Note:** Cyrus requires you to bring your own keys/billing for tokens.
+**Note:** Cyrus is a BYOK platform (bring your keys / subscriptions) for tokens.
 
 ---
 
 ## Getting Started
+
+### End-to-End Self-Hosted (Community)
+
+Zero cost option — host everything yourself with your own Linear OAuth app, GitHub App, and Slack App. An AI-guided setup skill handles the entire onboarding: installing dependencies, configuring auth, creating integration apps, and connecting repositories — so you don't have to follow a manual guide.
+
+```bash
+npx skills add ceedaragents/cyrus -g
+```
+
+Then in any AI coding agent (Claude Code, Codex, Cursor, etc.):
+
+```
+/cyrus-setup
+```
+
+Or follow the **[manual setup guide](./docs/SELF_HOSTING.md)** if you prefer.
+
+---
 
 ### Pro & Team Plans
 
@@ -47,25 +65,7 @@ No installation required. Everything is managed through [app.atcyrus.com](https:
 
 ---
 
-### End-to-End Self-Hosted (Community)
-
-Zero cost option — host everything yourself with your own Linear OAuth app, GitHub App, and Slack App. An AI-guided setup skill handles the entire onboarding: installing dependencies, configuring auth, creating integration apps, and connecting repositories — so you don't have to follow a manual guide.
-
-```bash
-npx skills add ceedaragents/cyrus -g
-```
-
-Then in any AI coding agent (Claude Code, Codex, Cursor, etc.):
-
-```
-/cyrus-setup
-```
-
-Or follow the **[manual setup guide](./docs/SELF_HOSTING.md)** if you prefer.
-
----
-
-## Documentation
+## More Documentation
 
 - **[End-to-End Community Guide](./docs/SELF_HOSTING.md)** - Complete community manual setup
 - **[Git & GitHub Setup](./docs/GIT_GITHUB.md)** - Git and GitHub CLI configuration for PRs
