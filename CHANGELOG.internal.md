@@ -4,6 +4,20 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Added
+- Created `cyrus-gitlab-event-transport` package mirroring `cyrus-github-event-transport`: `GitLabEventTransport` (webhook endpoint with proxy/signature verification), `GitLabCommentService` (post MR notes, discussion replies, award emoji), `GitLabMessageTranslator` (translate GitLab events to `InternalMessage`), and `gitlab-webhook-utils` (payload extractors).
+- Added `GitLabPlatformRef`, `GitLabSessionStartPlatformData`, `GitLabUserPromptPlatformData` types to `cyrus-core` messages. Updated `MessageSource` to include `"gitlab"`. Added type guards `isGitLabMessage`, `hasGitLabSessionStartPlatformData`, `hasGitLabUserPromptPlatformData`.
+- Added `gitlabUrl` optional field to `RepositoryConfigSchema` and all JSON schemas.
+- Added `glab-mr.md` and `changelog-update-gitlab.md` subroutines mirroring `gh-pr.md` and `changelog-update.md` with `glab` CLI commands.
+- Added `applyPlatformSubroutines()` to procedure registry for platform-aware subroutine substitution (swaps `gh-pr` → `glab-mr` and `changelog-update` → `changelog-update-gitlab` for GitLab repos).
+- Added `handleCheckGlab` handler to config-updater for checking `glab` CLI installation and authentication.
+- Added `registerGitLabEventTransport()`, `handleGitLabWebhook()`, `buildGitLabSystemPrompt()`, `buildGitLabChangeRequestSystemPrompt()`, `postGitLabReply()`, `findRepositoryByGitLabUrl()`, `createGitLabWorkspace()` to EdgeWorker.
+- Updated `PromptBuilder.generateRoutingContext()` to include `gitlabUrl` in repo identifiers and XML template.
+- Updated `RepositoryRouter` to match `gitlabUrl` in description-tag routing and select signal options.
+- Updated `SelfAddRepoCommand` to detect GitLab URLs and set `gitlabUrl` field.
+- Created `cyrus-setup-gitlab` skill and updated main setup orchestrator to include GitLab as a surface option.
+- Created `docs/GIT_GITLAB.md` documentation.
+
 ## [0.2.37] - 2026-03-18
 
 ### Added

@@ -56,6 +56,16 @@ export const SUBROUTINES = {
 		promptPath: "subroutines/changelog-update.md",
 		description: "Updating changelog",
 	},
+	glabMr: {
+		name: "glab-mr",
+		promptPath: "subroutines/glab-mr.md",
+		description: "Creating or updating merge request (GitLab)",
+	},
+	changelogUpdateGitlab: {
+		name: "changelog-update-gitlab",
+		promptPath: "subroutines/changelog-update-gitlab.md",
+		description: "Updating changelog (GitLab)",
+	},
 	conciseSummary: {
 		name: "concise-summary",
 		promptPath: "subroutines/concise-summary.md",
@@ -251,4 +261,46 @@ export function getProcedureForClassification(
  */
 export function getAllProcedureNames(): string[] {
 	return Object.keys(PROCEDURES);
+}
+
+/**
+ * Hosting platform type for platform-aware subroutine selection.
+ */
+export type HostingPlatform = "github" | "gitlab";
+
+/**
+ * Substitute platform-specific subroutines in a procedure definition.
+ * When the hosting platform is GitLab, replaces GitHub-specific subroutines
+ * (gh-pr, changelog-update) with their GitLab equivalents (glab-mr, changelog-update-gitlab).
+ *
+ * Returns the original procedure if no substitution is needed.
+ */
+export function applyPlatformSubroutines(
+	procedure: ProcedureDefinition,
+	platform: HostingPlatform | undefined,
+): ProcedureDefinition {
+	if (!platform || platform === "github") {
+		return procedure;
+	}
+
+	const substitutions: Record<
+		string,
+		(typeof SUBROUTINES)[keyof typeof SUBROUTINES]
+	> = {
+		"gh-pr": SUBROUTINES.glabMr,
+		"changelog-update": SUBROUTINES.changelogUpdateGitlab,
+	};
+
+	const hasSubstitution = procedure.subroutines.some(
+		(s) => s.name in substitutions,
+	);
+
+	if (!hasSubstitution) {
+		return procedure;
+	}
+
+	return {
+		...procedure,
+		subroutines: procedure.subroutines.map((s) => substitutions[s.name] ?? s),
+	};
 }

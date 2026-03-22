@@ -300,6 +300,8 @@ Each repository configuration includes these required fields:
 - `name` - Repository name
 - `repositoryPath` - Absolute path to the repository on disk
 - `baseBranch` - Default branch for the repository (e.g., "main")
+- `githubUrl` - GitHub repository URL (e.g., `"https://github.com/org/repo"`) — used for webhook matching and routing
+- `gitlabUrl` - GitLab repository URL (e.g., `"https://gitlab.com/group/project"`) — used for webhook matching and routing
 - `workspaceBaseDir` - Directory for git worktrees
 - `isActive` - Whether the repository is active
 - `linearWorkspaceId` - Linear workspace UUID (references a key in `linearWorkspaces`)

@@ -98,6 +98,7 @@ Each step references a sub-skill file. To execute a sub-skill, **read the SKILL.
 | 3 | setup-endpoint | `cyrus-setup-endpoint/SKILL.md` |
 | 4 | setup-linear | `cyrus-setup-linear/SKILL.md` |
 | 5 | setup-github | `cyrus-setup-github/SKILL.md` |
+| 5b | setup-gitlab | `cyrus-setup-gitlab/SKILL.md` |
 | 6 | setup-slack | `cyrus-setup-slack/SKILL.md` |
 | 7 | setup-repository | `cyrus-setup-repository/SKILL.md` |
 | 8 | setup-launch | `cyrus-setup-launch/SKILL.md` |
@@ -127,6 +128,7 @@ Ask the user to select one or more:
 
 - **Linear** — issue tracking, recommended for most users
 - **GitHub** — PR comments and issues
+- **GitLab** — MR comments and issues
 - **Slack** — chat messages
 
 At least one is required. Store the selection — it determines which integration sub-skills run (Steps 4-6).
@@ -172,6 +174,14 @@ Pass the user's package manager preference from Step 0.
 **Only if the user selected GitHub in Step 0.**
 
 **Read** the `cyrus-setup-github/SKILL.md` sub-skill and follow its instructions.
+
+---
+
+## Step 5b: GitLab (if selected)
+
+**Only if the user selected GitLab in Step 0.**
+
+**Read** the `cyrus-setup-gitlab/SKILL.md` sub-skill and follow its instructions.
 
 ---
 

@@ -619,6 +619,7 @@ describe("SelfAddRepoCommand", () => {
 				linearWorkspaceId: "ws-123",
 				isActive: true,
 				routingLabels: ["new-repo"],
+				githubUrl: "https://github.com/user/new-repo",
 			});
 		});
 
