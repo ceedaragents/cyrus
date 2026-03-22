@@ -19,8 +19,10 @@ describe("CursorRunner tool event mapping", () => {
 		const args = (runner as any).buildArgs("hello");
 		const modelFlagIndex = args.indexOf("--model");
 
+		expect(args[0]).toBe("acp");
 		expect(modelFlagIndex).toBeGreaterThan(-1);
 		expect(args[modelFlagIndex + 1]).toBe("auto");
+		expect(args).toContain("--trust");
 	});
 
 	it("maps command_execution item.completed to assistant tool_use + user tool_result", () => {
@@ -153,5 +155,78 @@ describe("CursorRunner tool event mapping", () => {
 
 		expect(assistantMessages).toHaveLength(1);
 		expect(userMessages).toHaveLength(1);
+	});
+
+	it("coalesces ACP assistant message chunks into one assistant message", () => {
+		const runner = createRunner();
+		(runner as any).sessionInfo = {
+			sessionId: "session-1",
+			startedAt: new Date(),
+			isRunning: true,
+		};
+
+		(runner as any).handleAcpSessionUpdate({
+			sessionUpdate: "agent_message_chunk",
+			messageId: "msg-1",
+			content: {
+				type: "text",
+				text: "Cursor ",
+			},
+		});
+		(runner as any).handleAcpSessionUpdate({
+			sessionUpdate: "agent_message_chunk",
+			messageId: "msg-1",
+			content: {
+				type: "text",
+				text: "ACP works",
+			},
+		});
+		(runner as any).flushPendingAssistantMessage();
+
+		const assistantMessage = runner
+			.getMessages()
+			.find((message) => message.type === "assistant");
+		expect(assistantMessage).toBeDefined();
+		expect(
+			JSON.stringify((assistantMessage as { message?: unknown }).message),
+		).toContain("Cursor ACP works");
+	});
+
+	it("maps ACP tool_call and tool_call_update notifications to tool_use + tool_result", () => {
+		const runner = createRunner();
+		(runner as any).sessionInfo = {
+			sessionId: "session-1",
+			startedAt: new Date(),
+			isRunning: true,
+		};
+
+		(runner as any).handleAcpSessionUpdate({
+			sessionUpdate: "tool_call",
+			toolCallId: "tool-2",
+			kind: "execute",
+			title: "Running git status",
+			rawInput: {
+				command: "git status",
+			},
+			status: "in_progress",
+		});
+		(runner as any).handleAcpSessionUpdate({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "tool-2",
+			status: "completed",
+			rawOutput: {
+				stdout: "On branch main",
+			},
+		});
+
+		const messages = runner.getMessages();
+		const assistantMessages = messages.filter(
+			(message) => message.type === "assistant",
+		);
+		const userMessages = messages.filter((message) => message.type === "user");
+
+		expect(assistantMessages).toHaveLength(1);
+		expect(userMessages).toHaveLength(1);
+		expect(JSON.stringify(userMessages[0])).toContain("On branch main");
 	});
 });

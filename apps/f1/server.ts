@@ -158,6 +158,13 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 	const config: EdgeWorkerConfig = {
 		platform: "cli" as const,
 		repositories,
+		linearWorkspaces: {
+			"cli-workspace": {
+				linearToken: "cli-test-token",
+				linearWorkspaceSlug: "f1",
+				linearWorkspaceName: "F1 CLI Workspace",
+			},
+		},
 		cyrusHome: CYRUS_HOME,
 		serverPort: CYRUS_PORT,
 		serverHost: "localhost",

@@ -7,7 +7,7 @@ import type {
 export type CursorJsonEvent = Record<string, unknown>;
 
 export interface CursorRunnerConfig extends AgentRunnerConfig {
-	/** Path to cursor-agent CLI binary (defaults to `cursor-agent` in PATH) */
+	/** Path to the Cursor ACP executable (defaults to `agent` in PATH) */
 	cursorPath?: string;
 	/** API key override for Cursor CLI authentication */
 	cursorApiKey?: string;

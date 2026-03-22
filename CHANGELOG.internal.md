@@ -4,6 +4,9 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+### Changed
+- Switched `CursorRunner` from the legacy printed CLI stream to ACP JSON-RPC. Added ACP prompt/session handling, ACP tool/event mapping, Cursor streaming follow-up prompt support, ACP startup coverage, and a live F1 validation report. Also fixed F1 CLI-mode setup gaps uncovered during the drive by seeding `linearWorkspaces` in `apps/f1/server.ts` and making `McpConfigService` skip `cyrus-tools` injection when the issue tracker has no Linear client. ([CYPACK-999](https://linear.app/ceedar/issue/CYPACK-999/switch-cursor-agent-cli-execution-to-cursor-acp), [#1023](https://github.com/ceedaragents/cyrus/pull/1023))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added

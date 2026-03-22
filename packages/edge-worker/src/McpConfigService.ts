@@ -66,29 +66,28 @@ export class McpConfigService {
 	): Record<string, McpServerConfig> {
 		const contextId = this.buildContextId(repoId, parentSessionId);
 
-		// Prebuild one SDK server for this context so callback wiring remains deterministic.
 		const linearToken = this.deps.getLinearTokenForWorkspace(linearWorkspaceId);
 		const issueTracker = this.deps.getIssueTracker(linearWorkspaceId);
-		if (!issueTracker?.getClient) {
-			throw new Error(
-				`No issue tracker with getClient() found for workspace ${linearWorkspaceId}`,
-			);
-		}
-		const linearClient = issueTracker.getClient();
-		const prebuiltServer = createCyrusToolsServer(
-			linearClient,
-			this.deps.createCyrusToolsOptions(parentSessionId),
-		);
+		const linearClient = issueTracker?.getClient?.();
 
-		this.contexts.set(contextId, {
-			contextId,
-			linearToken,
-			linearClient,
-			parentSessionId,
-			prebuiltServer,
-			createdAt: Date.now(),
-		});
-		this.pruneContexts();
+		// Prebuild one SDK server for this context so callback wiring remains deterministic.
+		// CLI/F1 issue trackers do not expose a Linear client, so cyrus-tools is skipped there.
+		if (linearClient) {
+			const prebuiltServer = createCyrusToolsServer(
+				linearClient,
+				this.deps.createCyrusToolsOptions(parentSessionId),
+			);
+
+			this.contexts.set(contextId, {
+				contextId,
+				linearToken,
+				linearClient,
+				parentSessionId,
+				prebuiltServer,
+				createdAt: Date.now(),
+			});
+			this.pruneContexts();
+		}
 
 		const cyrusToolsAuthorizationHeader = this.getAuthorizationHeaderValue();
 
@@ -102,7 +101,14 @@ export class McpConfigService {
 					Authorization: `Bearer ${linearToken}`,
 				},
 			},
-			"cyrus-tools": {
+			"cyrus-docs": {
+				type: "http",
+				url: "https://atcyrus.com/docs/mcp",
+			},
+		};
+
+		if (linearClient) {
+			mcpConfig["cyrus-tools"] = {
 				type: "http",
 				url: this.deps.getCyrusToolsMcpUrl(),
 				headers: {
@@ -113,12 +119,8 @@ export class McpConfigService {
 							}
 						: {}),
 				},
-			},
-			"cyrus-docs": {
-				type: "http",
-				url: "https://atcyrus.com/docs/mcp",
-			},
-		};
+			};
+		}
 
 		// Conditionally inject the Slack MCP server when SLACK_BOT_TOKEN is available
 		// https://github.com/korotovsky/slack-mcp-server

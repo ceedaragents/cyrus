@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Cyrus docs MCP available in all sessions** - Cyrus now has access to its own documentation via the Mintlify docs MCP server, enabling better self-reference and user guidance. ([CYPACK-995](https://linear.app/ceedar/issue/CYPACK-995), [#1016](https://github.com/ceedaragents/cyrus/pull/1016))
 
+### Changed
+- **Cursor sessions now run through ACP** - Cyrus now launches Cursor sessions through Cursor's ACP transport instead of the legacy printed CLI stream, and active Cursor sessions can accept streamed follow-up prompts while they are still running. ([CYPACK-999](https://linear.app/ceedar/issue/CYPACK-999/switch-cursor-agent-cli-execution-to-cursor-acp), [#1023](https://github.com/ceedaragents/cyrus/pull/1023))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added
