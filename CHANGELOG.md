@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - **Cyrus docs MCP available in all sessions** - Cyrus now has access to its own documentation via the Mintlify docs MCP server, enabling better self-reference and user guidance. ([CYPACK-995](https://linear.app/ceedar/issue/CYPACK-995), [#1016](https://github.com/ceedaragents/cyrus/pull/1016))
 
+### Changed
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.81** (from v0.2.63) and **`@anthropic-ai/sdk` to v0.80.0** (from v0.78.0). See [claude-agent-sdk changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md) for details. ([CYPACK-1005](https://linear.app/ceedar/issue/CYPACK-1005))
+
 ## [0.2.37] - 2026-03-18
 
 ### Added
