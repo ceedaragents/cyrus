@@ -130,6 +130,7 @@ import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { McpConfigService } from "./McpConfigService.js";
 import { PromptBuilder } from "./PromptBuilder.js";
 import {
+	applyPlatformSubroutines,
 	ProcedureAnalyzer,
 	type ProcedureDefinition,
 	type RequestClassification,
@@ -3821,6 +3822,14 @@ ${taskSection}`;
 			);
 		}
 
+		// Apply platform-specific subroutine substitution (e.g., gh-pr → glab-mr for GitLab repos)
+		const hostingPlatform = primaryRepo.gitlabUrl
+			? ("gitlab" as const)
+			: primaryRepo.githubUrl
+				? ("github" as const)
+				: undefined;
+		finalProcedure = applyPlatformSubroutines(finalProcedure, hostingPlatform);
+
 		// Initialize procedure metadata in session with final decision
 		this.procedureAnalyzer.initializeProcedureMetadata(session, finalProcedure);
 
@@ -6081,6 +6090,17 @@ ${input.userComment}
 				`AI routing: ${routingDecision.classification} → ${selectedProcedure.name}`,
 			);
 		}
+
+		// Apply platform-specific subroutine substitution (e.g., gh-pr → glab-mr for GitLab repos)
+		const hostingPlatform = repository.gitlabUrl
+			? ("gitlab" as const)
+			: repository.githubUrl
+				? ("github" as const)
+				: undefined;
+		selectedProcedure = applyPlatformSubroutines(
+			selectedProcedure,
+			hostingPlatform,
+		);
 
 		// Initialize procedure metadata in session (resets currentSubroutine)
 		this.procedureAnalyzer.initializeProcedureMetadata(
