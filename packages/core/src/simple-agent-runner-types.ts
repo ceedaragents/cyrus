@@ -144,6 +144,9 @@ export interface ISimpleAgentRunnerConfig<T extends string> {
 	/** Working directory for agent execution */
 	workingDirectory?: string;
 
+	/** Optional override for the Codex CLI binary path in codex-backed runners */
+	codexPath?: string;
+
 	/** Cyrus home directory */
 	cyrusHome: string;
 

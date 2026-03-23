@@ -35,19 +35,48 @@ export interface ProcedureAnalyzerConfig {
 	logger?: ILogger;
 }
 
+export interface ProcedureAnalysisOptions {
+	runnerType?: SimpleRunnerType;
+	model?: string;
+	fallbackModel?: string;
+	workingDirectory?: string;
+	codexPath?: string;
+}
+
 export class ProcedureAnalyzer {
 	private analysisRunner: ISimpleAgentRunner<RequestClassification>;
 	private procedures: Map<string, ProcedureDefinition> = new Map();
 	private logger: ILogger;
+	private readonly cyrusHome: string;
+	private readonly timeoutMs: number;
+	private readonly defaultRunnerType: SimpleRunnerType;
+	private readonly defaultModel: string;
+	private readonly defaultFallbackModel: string;
 
 	constructor(config: ProcedureAnalyzerConfig) {
 		this.logger =
 			config.logger ?? createLogger({ component: "ProcedureAnalyzer" });
+		this.cyrusHome = config.cyrusHome;
+		this.timeoutMs = config.timeoutMs || 10000;
 
 		// Determine which runner to use
 		const runnerType = config.runnerType || "claude";
+		this.defaultRunnerType = runnerType;
 
-		// Use runner-specific default models if not provided
+		const defaults = this.getDefaultModels(runnerType);
+		this.defaultModel = config.model || defaults.model;
+		this.defaultFallbackModel = defaults.fallback;
+
+		this.analysisRunner = this.createAnalysisRunner();
+
+		// Load all predefined procedures from registry
+		this.loadPredefinedProcedures();
+	}
+
+	private getDefaultModels(runnerType: SimpleRunnerType): {
+		model: string;
+		fallback: string;
+	} {
 		const defaultModels: Record<
 			SimpleRunnerType,
 			{ model: string; fallback: string }
@@ -60,9 +89,14 @@ export class ProcedureAnalyzer {
 			codex: { model: "gpt-5", fallback: "gpt-5" },
 			cursor: { model: "gpt-5", fallback: "gpt-5" },
 		};
-		const defaults = defaultModels[runnerType];
+		return defaultModels[runnerType];
+	}
 
-		// Create runner configuration
+	private createAnalysisRunner(
+		options?: ProcedureAnalysisOptions,
+	): ISimpleAgentRunner<RequestClassification> {
+		const runnerType = options?.runnerType || this.defaultRunnerType;
+		const defaults = this.getDefaultModels(runnerType);
 		const runnerConfig = {
 			validResponses: [
 				"question",
@@ -75,26 +109,31 @@ export class ProcedureAnalyzer {
 				"user-testing",
 				"release",
 			] as const,
-			cyrusHome: config.cyrusHome,
-			model: config.model || defaults.model,
-			fallbackModel: defaults.fallback,
+			cyrusHome: this.cyrusHome,
+			model:
+				options?.model ||
+				(runnerType === this.defaultRunnerType
+					? this.defaultModel
+					: defaults.model),
+			fallbackModel:
+				options?.fallbackModel ||
+				(runnerType === this.defaultRunnerType
+					? this.defaultFallbackModel
+					: defaults.fallback),
 			systemPrompt: this.buildAnalysisSystemPrompt(),
 			maxTurns: 1,
-			timeoutMs: config.timeoutMs || 10000,
+			timeoutMs: this.timeoutMs,
+			workingDirectory: options?.workingDirectory,
+			codexPath: options?.codexPath,
 		};
 
-		// Initialize the appropriate runner based on type
-		this.analysisRunner =
-			runnerType === "claude"
-				? new SimpleClaudeRunner(runnerConfig)
-				: runnerType === "gemini"
-					? new SimpleGeminiRunner(runnerConfig)
-					: runnerType === "codex"
-						? new SimpleCodexRunner(runnerConfig)
-						: new SimpleCursorRunner(runnerConfig);
-
-		// Load all predefined procedures from registry
-		this.loadPredefinedProcedures();
+		return runnerType === "claude"
+			? new SimpleClaudeRunner(runnerConfig)
+			: runnerType === "gemini"
+				? new SimpleGeminiRunner(runnerConfig)
+				: runnerType === "codex"
+					? new SimpleCodexRunner(runnerConfig)
+					: new SimpleCursorRunner(runnerConfig);
 	}
 
 	/**
@@ -165,10 +204,21 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 	 */
 	async determineRoutine(
 		requestText: string,
+		options?: ProcedureAnalysisOptions,
 	): Promise<ProcedureAnalysisDecision> {
 		try {
+			const analysisRunner =
+				options &&
+				(options.runnerType ||
+					options.model ||
+					options.fallbackModel ||
+					options.workingDirectory ||
+					options.codexPath)
+					? this.createAnalysisRunner(options)
+					: this.analysisRunner;
+
 			// Classify the request using analysis runner
-			const result = await this.analysisRunner.query(
+			const result = await analysisRunner.query(
 				`Classify this Linear issue request:\n\n${requestText}`,
 			);
 

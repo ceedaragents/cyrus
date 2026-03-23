@@ -5,9 +5,8 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Added
-- Added repository-level container execution primitives for self-hosted Cyrus: `hostPaths`, `verification.mode = "ephemeral_container"`, and `agentExecution.mode = "persistent_issue_container"`. This includes host/worktree path mapping, Docker-based verification execution, persistent issue-container lifecycle management, and F1 wiring for both execution modes. ([#1007](https://github.com/ceedaragents/cyrus/pull/1007))
-- Added Claude issue-container execution via a bridge process in `cyrus-claude-runner`, allowing the Claude Agent SDK query loop to run inside the issue container while Cyrus keeps orchestration, activity posting, and stop handling on the host. ([#1007](https://github.com/ceedaragents/cyrus/pull/1007))
-- Added a Codex-enabled F1 image at `apps/f1/images/codex-test/Dockerfile`, plus F1 drive reports covering ephemeral verification and persistent issue-container execution. ([#1007](https://github.com/ceedaragents/cyrus/pull/1007))
+- Added repository-level container execution primitives for self-hosted Cyrus: `hostPaths`, `verification.mode = "ephemeral_container"`, and `agentExecution.mode = "external_launcher"`. This includes host/worktree path mapping, Docker-based verification execution, launcher-backed Codex execution through `codex-api-kk`, orchestrator-only activity visibility, and F1 wiring for both execution modes. ([#1007](https://github.com/ceedaragents/cyrus/pull/1007))
+- Added a Codex-enabled F1 image at `apps/f1/images/codex-test/Dockerfile`, plus F1 drive reports covering ephemeral verification and launcher-backed Codex execution. ([#1007](https://github.com/ceedaragents/cyrus/pull/1007))
 
 ### Fixed
 - Synced CLI/F1 agent session completion back into the in-memory issue tracker when Cyrus finalizes a session, so `view-session` now reports `complete` instead of leaving finished runs at `active`. ([#1007](https://github.com/ceedaragents/cyrus/pull/1007))

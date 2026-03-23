@@ -1,4 +1,3 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
 	createWriteStream,
@@ -24,11 +23,6 @@ import {
 	StreamingPrompt,
 } from "cyrus-core";
 import dotenv from "dotenv";
-import type {
-	ClaudeBridgeChildMessage,
-	ClaudeBridgeHostMessage,
-	SerializableClaudeBridgeConfig,
-} from "./container-bridge-types.js";
 
 // AbortError is no longer exported in v1.0.95, so we define it locally
 export class AbortError extends Error {
@@ -44,6 +38,30 @@ import type {
 	ClaudeRunnerEvents,
 	ClaudeSessionInfo,
 } from "./types.js";
+
+type ClaudeExecutionConfig = {
+	workingDirectory?: string;
+	allowedTools?: string[];
+	disallowedTools?: string[];
+	allowedDirectories?: string[];
+	resumeSessionId?: string;
+	model?: string;
+	fallbackModel?: string;
+	tools?: string[];
+	maxTurns?: number;
+	systemPrompt?:
+		| string
+		| {
+				type: "preset";
+				preset: "claude_code";
+				append?: string;
+		  };
+	mcpConfig?: Record<string, any>;
+	outputFormat?: ClaudeRunnerConfig["outputFormat"];
+	extraArgs?: Record<string, string | null>;
+	enableDefaultPostToolUseHooks?: boolean;
+	env?: Record<string, string>;
+};
 
 export declare interface ClaudeRunner {
 	on<K extends keyof ClaudeRunnerEvents>(
@@ -77,8 +95,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	private formatter: IMessageFormatter;
 	private pendingResultMessage: SDKMessage | null = null;
 	private canUseToolCallback: CanUseTool | undefined;
-	private bridgeProcess: ChildProcessWithoutNullStreams | null = null;
-	private bridgeStreamingMode = false;
 
 	constructor(config: ClaudeRunnerConfig) {
 		super();
@@ -235,17 +251,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 * Add a message to the streaming prompt (only works when in streaming mode)
 	 */
 	addStreamMessage(content: string): void {
-		if (this.bridgeProcess) {
-			if (!this.bridgeStreamingMode) {
-				throw new Error("Cannot add stream message when not in streaming mode");
-			}
-			this.sendBridgeMessage({
-				type: "stream-message",
-				content,
-			});
-			return;
-		}
-
 		if (!this.streamingPrompt) {
 			throw new Error("Cannot add stream message when not in streaming mode");
 		}
@@ -256,14 +261,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 * Complete the streaming prompt (no more messages will be added)
 	 */
 	completeStream(): void {
-		if (this.bridgeProcess) {
-			if (this.bridgeStreamingMode) {
-				this.sendBridgeMessage({ type: "complete-stream" });
-				this.bridgeStreamingMode = false;
-			}
-			return;
-		}
-
 		if (this.streamingPrompt) {
 			this.streamingPrompt.complete();
 		}
@@ -323,31 +320,14 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 				this.logger.debug(
 					`Starting query with string prompt length: ${stringPrompt.length} characters`,
 				);
-				if (this.config.containerBridge) {
-					await this.startWithContainerBridge({
-						mode: "string",
-						prompt: stringPrompt,
-						executionConfig,
-					});
-				} else {
-					await this.startWithLocalQuery(stringPrompt, executionConfig);
-				}
+				await this.startWithLocalQuery(stringPrompt, executionConfig);
 			} else {
 				this.logger.debug("Starting query with streaming prompt");
-				if (this.config.containerBridge) {
-					this.bridgeStreamingMode = true;
-					await this.startWithContainerBridge({
-						mode: "streaming",
-						initialPrompt: streamingInitialPrompt,
-						executionConfig,
-					});
-				} else {
-					this.streamingPrompt = new StreamingPrompt(
-						null,
-						streamingInitialPrompt,
-					);
-					await this.startWithLocalQuery(this.streamingPrompt, executionConfig);
-				}
+				this.streamingPrompt = new StreamingPrompt(
+					null,
+					streamingInitialPrompt,
+				);
+				await this.startWithLocalQuery(this.streamingPrompt, executionConfig);
 			}
 		} catch (error) {
 			if (this.sessionInfo) {
@@ -385,11 +365,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			// Clean up
 			this.abortController = null;
 			this.pendingResultMessage = null;
-			this.bridgeStreamingMode = false;
-			if (this.bridgeProcess) {
-				this.bridgeProcess.removeAllListeners();
-				this.bridgeProcess = null;
-			}
 
 			// Complete and clean up streaming prompt if it exists
 			if (this.streamingPrompt) {
@@ -411,7 +386,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		return this.sessionInfo;
 	}
 
-	private buildExecutionConfig(): SerializableClaudeBridgeConfig {
+	private buildExecutionConfig(): ClaudeExecutionConfig {
 		let processedAllowedTools = this.config.allowedTools
 			? [...this.config.allowedTools]
 			: undefined;
@@ -538,7 +513,7 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 
 	private async startWithLocalQuery(
 		prompt: string | AsyncIterable<SDKUserMessage>,
-		executionConfig: SerializableClaudeBridgeConfig,
+		executionConfig: ClaudeExecutionConfig,
 	): Promise<void> {
 		const queryOptions: Parameters<typeof query>[0] = {
 			prompt,
@@ -598,166 +573,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		this.finalizeSuccessfulSession();
 	}
 
-	private async startWithContainerBridge(input: {
-		mode: "string" | "streaming";
-		prompt?: string;
-		initialPrompt?: string;
-		executionConfig: SerializableClaudeBridgeConfig;
-	}): Promise<void> {
-		const bridgeConfig = this.config.containerBridge;
-		if (!bridgeConfig) {
-			throw new Error("containerBridge is not configured");
-		}
-
-		await new Promise<void>((resolve, reject) => {
-			let finished = false;
-			let completeListener: (() => void) | null = null;
-			const child = spawn(bridgeConfig.command, bridgeConfig.args ?? [], {
-				cwd: bridgeConfig.cwd,
-				env: bridgeConfig.env
-					? {
-							...process.env,
-							...bridgeConfig.env,
-						}
-					: process.env,
-				stdio: ["pipe", "pipe", "pipe"],
-			});
-			this.bridgeProcess = child;
-
-			let stdoutBuffer = "";
-			let stderrBuffer = "";
-
-			const finish = (error?: Error) => {
-				if (finished) {
-					return;
-				}
-				finished = true;
-				if (completeListener) {
-					this.off("complete", completeListener);
-					completeListener = null;
-				}
-				child.stdout.removeAllListeners();
-				child.stderr.removeAllListeners();
-				child.removeAllListeners();
-				this.bridgeProcess = null;
-				if (error) {
-					reject(error);
-				} else {
-					resolve();
-				}
-			};
-
-			child.stdout.setEncoding("utf8");
-			child.stdout.on("data", (chunk: string) => {
-				stdoutBuffer += chunk;
-				let newlineIndex = stdoutBuffer.indexOf("\n");
-				while (newlineIndex !== -1) {
-					const line = stdoutBuffer.slice(0, newlineIndex).trim();
-					stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
-					if (line.length > 0) {
-						this.handleBridgeMessage(line).catch((error) => {
-							finish(error instanceof Error ? error : new Error(String(error)));
-						});
-					}
-					newlineIndex = stdoutBuffer.indexOf("\n");
-				}
-			});
-
-			child.stderr.setEncoding("utf8");
-			child.stderr.on("data", (chunk: string) => {
-				stderrBuffer += chunk;
-				this.logger.debug(`[ClaudeBridge] ${chunk.trimEnd()}`);
-			});
-
-			child.on("error", (error) => {
-				finish(error);
-			});
-
-			child.on("exit", (code, signal) => {
-				if (finished) {
-					return;
-				}
-				if (
-					!this.sessionInfo?.isRunning &&
-					(signal === "SIGTERM" || code === 0)
-				) {
-					finish();
-					return;
-				}
-				const details = stderrBuffer.trim();
-				const suffix = details ? `\n${details}` : "";
-				finish(
-					new Error(
-						`Claude container bridge exited unexpectedly (code=${code ?? "null"}, signal=${signal ?? "null"})${suffix}`,
-					),
-				);
-			});
-
-			completeListener = () => {
-				const listener = completeListener;
-				if (listener) {
-					this.off("complete", listener);
-				}
-				completeListener = null;
-				finish();
-			};
-			this.on("complete", completeListener);
-
-			const initialMessage: ClaudeBridgeHostMessage =
-				input.mode === "string"
-					? {
-							type: "start",
-							prompt: input.prompt || "",
-							config: input.executionConfig,
-						}
-					: {
-							type: "startStreaming",
-							initialPrompt: input.initialPrompt,
-							config: input.executionConfig,
-						};
-			this.sendBridgeMessage(initialMessage);
-		});
-	}
-
-	private async handleBridgeMessage(line: string): Promise<void> {
-		const message = JSON.parse(line) as ClaudeBridgeChildMessage;
-		switch (message.type) {
-			case "sdk-message":
-				this.handleIncomingMessage(message.message);
-				return;
-			case "ask-user-question": {
-				const result = this.config.onAskUserQuestion
-					? await this.config.onAskUserQuestion(
-							message.input,
-							message.sessionId || this.sessionInfo?.sessionId || "pending",
-							this.abortController?.signal ?? new AbortController().signal,
-						)
-					: {
-							answered: false,
-							message: "AskUserQuestion handler not configured",
-						};
-				this.sendBridgeMessage({
-					type: "ask-user-question-result",
-					requestId: message.requestId,
-					result,
-				});
-				return;
-			}
-			case "complete":
-				this.finalizeSuccessfulSession();
-				return;
-			case "error":
-				throw new Error(message.message);
-		}
-	}
-
-	private sendBridgeMessage(message: ClaudeBridgeHostMessage): void {
-		if (!this.bridgeProcess?.stdin || this.bridgeProcess.stdin.destroyed) {
-			throw new Error("Claude container bridge stdin is not available");
-		}
-		this.bridgeProcess.stdin.write(`${JSON.stringify(message)}\n`);
-	}
-
 	private handleIncomingMessage(message: SDKMessage): void {
 		if (!this.sessionInfo) {
 			return;
@@ -809,10 +624,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 		if (this.streamingPrompt) {
 			this.logger.debug("Got result message, completing streaming prompt");
 			this.streamingPrompt.complete();
-			return;
-		}
-		if (this.bridgeStreamingMode) {
-			this.bridgeStreamingMode = false;
 		}
 	}
 
@@ -878,18 +689,6 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 * Stop the current Claude session
 	 */
 	stop(): void {
-		if (this.bridgeProcess) {
-			this.logger.info("Stopping container bridge session");
-			try {
-				this.sendBridgeMessage({ type: "stop" });
-			} catch {
-				// Ignore bridge write failures during shutdown.
-			}
-			this.bridgeProcess.kill("SIGTERM");
-			this.bridgeProcess = null;
-			this.bridgeStreamingMode = false;
-		}
-
 		if (this.abortController) {
 			this.logger.info("Stopping session");
 			this.abortController.abort();
@@ -919,8 +718,8 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 	 */
 	isStreaming(): boolean {
 		return (
-			(this.bridgeStreamingMode ||
-				(this.streamingPrompt !== null && !this.streamingPrompt.completed)) &&
+			this.streamingPrompt !== null &&
+			!this.streamingPrompt.completed &&
 			this.isRunning()
 		);
 	}

@@ -169,17 +169,10 @@ export const VerificationConfigSchema = z
 	])
 	.optional();
 
-const AgentExecutionRunnerSchema = z.enum([
-	"claude",
-	"codex",
-	"cursor",
-	"gemini",
-]);
-
 /**
  * Repository-specific agent execution settings.
- * V2 introduces a persistent issue-scoped container for CLI-based runners
- * while keeping the control plane and session lifecycle inside Cyrus.
+ * External launcher execution keeps Cyrus as the orchestrator while delegating
+ * the actual runner process to a separately managed launcher/backend.
  */
 export const AgentExecutionConfigSchema = z
 	.discriminatedUnion("mode", [
@@ -187,14 +180,12 @@ export const AgentExecutionConfigSchema = z
 			mode: z.literal("local"),
 		}),
 		z.object({
-			mode: z.literal("persistent_issue_container"),
-			image: z.string(),
-			shell: z.string().optional(),
-			startupCommand: z.string().optional(),
+			mode: z.literal("external_launcher"),
+			runner: z.literal("codex"),
+			command: z.string(),
+			args: z.array(z.string()).optional(),
 			env: z.record(z.string(), z.string()).optional(),
 			inheritEnv: z.array(z.string()).optional(),
-			mountPaths: z.array(z.string()).optional(),
-			supportedRunners: z.array(AgentExecutionRunnerSchema).optional(),
 		}),
 	])
 	.optional();

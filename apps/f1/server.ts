@@ -19,7 +19,7 @@
  */
 
 import { existsSync, mkdirSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAllTools } from "cyrus-claude-runner";
 import {
@@ -45,18 +45,7 @@ const CYRUS_VERIFICATION_COMMAND =
 	process.env.CYRUS_VERIFICATION_COMMAND?.trim();
 const CYRUS_VERIFICATION_WORKDIR =
 	process.env.CYRUS_VERIFICATION_WORKDIR?.trim() || "/workspace";
-const CYRUS_AGENT_EXECUTION_IMAGE =
-	process.env.CYRUS_AGENT_EXECUTION_IMAGE?.trim();
-const CYRUS_AGENT_EXECUTION_RUNNERS =
-	process.env.CYRUS_AGENT_EXECUTION_RUNNERS?.split(",")
-		.map((value) => value.trim())
-		.filter(Boolean) || [];
-const CYRUS_AGENT_EXECUTION_INHERIT_ENV =
-	process.env.CYRUS_AGENT_EXECUTION_INHERIT_ENV?.split(",")
-		.map((value) => value.trim())
-		.filter(Boolean) || [];
-const HOST_CODEX_HOME = process.env.CODEX_HOME || join(homedir(), ".codex");
-const HAS_HOST_CODEX_HOME = existsSync(HOST_CODEX_HOME);
+const CYRUS_CODEX_LAUNCHER = process.env.CYRUS_CODEX_LAUNCHER?.trim();
 
 // Validate port
 if (Number.isNaN(CYRUS_PORT) || CYRUS_PORT < 1 || CYRUS_PORT > 65535) {
@@ -152,31 +141,12 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 					},
 				}
 			: {}),
-		...(CYRUS_AGENT_EXECUTION_IMAGE
+		...(CYRUS_CODEX_LAUNCHER
 			? {
 					agentExecution: {
-						mode: "persistent_issue_container" as const,
-						image: CYRUS_AGENT_EXECUTION_IMAGE,
-						...(HAS_HOST_CODEX_HOME
-							? {
-									mountPaths: [HOST_CODEX_HOME],
-									env: {
-										CODEX_HOME: HOST_CODEX_HOME,
-									},
-								}
-							: {}),
-						...(CYRUS_AGENT_EXECUTION_RUNNERS.length > 0
-							? {
-									supportedRunners: CYRUS_AGENT_EXECUTION_RUNNERS as Array<
-										"claude" | "codex" | "cursor" | "gemini"
-									>,
-								}
-							: {}),
-						...(CYRUS_AGENT_EXECUTION_INHERIT_ENV.length > 0
-							? {
-									inheritEnv: CYRUS_AGENT_EXECUTION_INHERIT_ENV,
-								}
-							: {}),
+						mode: "external_launcher" as const,
+						runner: "codex" as const,
+						command: CYRUS_CODEX_LAUNCHER,
 					},
 				}
 			: {}),
@@ -226,6 +196,8 @@ function createEdgeWorkerConfig(): EdgeWorkerConfig {
 		},
 		claudeDefaultModel: "sonnet",
 		claudeDefaultFallbackModel: "haiku",
+		codexDefaultModel: "gpt-5",
+		defaultRunner: "codex",
 		// Enable all tools including Edit(**), Bash, etc. for full testing capability
 		defaultAllowedTools: getAllTools(),
 	};

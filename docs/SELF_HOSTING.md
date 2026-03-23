@@ -12,7 +12,7 @@ This guide walks you through setting up Cyrus completely self-hosted, including 
 - **Node.js** v18 or higher
 - **jq** (for Claude Code parsing)
 - **A public URL** for receiving Linear webhooks
-- **Docker** (optional, required for `verification.mode = "ephemeral_container"` or `agentExecution.mode = "persistent_issue_container"`)
+- **Docker** (optional, required for `verification.mode = "ephemeral_container"` and commonly used behind `agentExecution.mode = "external_launcher"` launchers such as `codex-api-kk`)
 
 ### Install Dependencies
 

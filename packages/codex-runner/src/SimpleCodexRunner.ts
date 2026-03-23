@@ -51,6 +51,7 @@ export class SimpleCodexRunner<T extends string> extends SimpleAgentRunner<T> {
 		const runner = new CodexRunner({
 			workingDirectory: this.config.workingDirectory,
 			cyrusHome: this.config.cyrusHome,
+			codexPath: this.config.codexPath,
 			model: this.config.model,
 			fallbackModel: this.config.fallbackModel,
 			maxTurns: this.config.maxTurns,

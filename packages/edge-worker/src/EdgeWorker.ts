@@ -106,13 +106,14 @@ import { ActivityPoster } from "./ActivityPoster.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
-import { PersistentIssueContainerManager } from "./agent-execution/index.js";
+import { ExternalAgentLauncherManager } from "./agent-execution/index.js";
 import { ChatSessionHandler } from "./ChatSessionHandler.js";
 import { ConfigManager, type RepositoryChanges } from "./ConfigManager.js";
 import { GitService } from "./GitService.js";
 import { GlobalSessionRegistry } from "./GlobalSessionRegistry.js";
 import { PromptBuilder } from "./PromptBuilder.js";
 import {
+	type ProcedureAnalysisOptions,
 	ProcedureAnalyzer,
 	type ProcedureDefinition,
 	type RequestClassification,
@@ -208,7 +209,7 @@ export class EdgeWorker extends EventEmitter {
 	private configManager: ConfigManager;
 	private promptBuilder: PromptBuilder;
 	private verificationExecutor: EphemeralContainerVerificationExecutor;
-	private issueContainerManager: PersistentIssueContainerManager;
+	private externalLauncherManager: ExternalAgentLauncherManager;
 	private readonly cyrusToolsMcpEndpoint = "/mcp/cyrus-tools";
 	private cyrusToolsMcpRegistered = false;
 	private cyrusToolsMcpContexts = new Map<string, CyrusToolsMcpContextEntry>();
@@ -233,7 +234,7 @@ export class EdgeWorker extends EventEmitter {
 		this.verificationExecutor = new EphemeralContainerVerificationExecutor(
 			this.logger,
 		);
-		this.issueContainerManager = new PersistentIssueContainerManager(
+		this.externalLauncherManager = new ExternalAgentLauncherManager(
 			this.cyrusHome,
 			this.logger,
 		);
@@ -1215,6 +1216,11 @@ export class EdgeWorker extends EventEmitter {
 
 			// Store the runner in the session manager
 			agentSessionManager.addAgentRunner(githubSessionId, runner);
+			await this.postExternalLauncherDispatchActivity(
+				githubSessionId,
+				session,
+				agentSessionManager,
+			);
 
 			// Save persisted state
 			await this.savePersistedState();
@@ -3198,8 +3204,20 @@ ${taskSection}`;
 			// No label override - use AI routing
 			const issueDescription =
 				`${issue.title}\n\n${fullIssue.description || ""}`.trim();
-			const routingDecision =
-				await this.procedureAnalyzer.determineRoutine(issueDescription);
+			const runnerSelection = this.determineRunnerSelection(
+				labels,
+				fullIssue.description || "",
+			);
+			const procedureAnalysisOptions = await this.buildProcedureAnalysisOptions(
+				sessionId,
+				session,
+				primaryRepo,
+				runnerSelection,
+			);
+			const routingDecision = await this.procedureAnalyzer.determineRoutine(
+				issueDescription,
+				procedureAnalysisOptions,
+			);
 			finalProcedure = routingDecision.procedure;
 			finalClassification = routingDecision.classification;
 
@@ -3346,6 +3364,11 @@ ${taskSection}`;
 
 			// Store runner by comment ID
 			agentSessionManager.addAgentRunner(sessionId, runner);
+			await this.postExternalLauncherDispatchActivity(
+				sessionId,
+				session,
+				agentSessionManager,
+			);
 
 			// Save state after mapping changes
 			await this.savePersistedState();
@@ -4046,6 +4069,46 @@ ${taskSection}`;
 			labels,
 			issueDescription,
 		);
+	}
+
+	private async buildProcedureAnalysisOptions(
+		sessionId: string,
+		session: CyrusAgentSession,
+		repository: RepositoryConfig,
+		runnerSelection: {
+			runnerType: RunnerType;
+			modelOverride?: string;
+			fallbackModelOverride?: string;
+		},
+	): Promise<ProcedureAnalysisOptions | undefined> {
+		const options: ProcedureAnalysisOptions = {
+			runnerType: runnerSelection.runnerType,
+			model:
+				runnerSelection.modelOverride ||
+				repository.model ||
+				this.getDefaultModelForRunner(runnerSelection.runnerType),
+			fallbackModel:
+				runnerSelection.fallbackModelOverride ||
+				repository.fallbackModel ||
+				this.getDefaultFallbackModelForRunner(runnerSelection.runnerType),
+			workingDirectory: session.workspace.path,
+		};
+
+		const agentExecution = repository.agentExecution;
+		if (!agentExecution || agentExecution.mode !== "external_launcher") {
+			return options;
+		}
+
+		const runtime = await this.externalLauncherManager.ensureRuntime({
+			sessionId,
+			repository,
+			runnerType: runnerSelection.runnerType,
+			workingDirectory: session.workspace.path,
+		});
+		return {
+			...options,
+			codexPath: runtime?.wrapperPath,
+		};
 	}
 
 	/**
@@ -5575,43 +5638,43 @@ ${stderr}
 		runnerConfig: AgentRunnerConfig,
 	): Promise<AgentRunnerConfig> {
 		const agentExecution = repository.agentExecution;
-		if (
-			!agentExecution ||
-			agentExecution.mode !== "persistent_issue_container"
-		) {
+		if (!agentExecution || agentExecution.mode !== "external_launcher") {
+			if (session.metadata?.agentExecution) {
+				delete session.metadata.agentExecution;
+			}
 			return runnerConfig;
 		}
 
-		const runtime = await this.issueContainerManager.ensureRuntime({
+		const runtime = await this.externalLauncherManager.ensureRuntime({
 			sessionId,
-			issueId: session.issueContext?.issueId ?? session.issueId,
-			issueIdentifier:
-				session.issueContext?.issueIdentifier ??
-				session.issue?.identifier ??
-				sessionId,
 			repository,
 			runnerType,
 			workingDirectory: runnerConfig.workingDirectory ?? session.workspace.path,
-			allowedDirectories: runnerConfig.allowedDirectories ?? [],
 		});
 		if (!runtime) {
 			return runnerConfig;
 		}
 
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+		session.metadata.agentExecution = {
+			mode: "external_launcher",
+			runner: agentExecution.runner,
+			command: runtime.command,
+			visibility: "orchestrator_only",
+		};
+
 		const containerizedConfig = {
 			...runnerConfig,
 		} as AgentRunnerConfig & Record<string, unknown>;
 
-		if (runnerType === "claude") {
-			(containerizedConfig as any).containerBridge = {
-				command: runtime.wrapperPath,
-			};
-		} else if (runnerType === "codex") {
+		if (runnerType === "codex") {
 			containerizedConfig.codexPath = runtime.wrapperPath;
-		} else if (runnerType === "cursor") {
-			containerizedConfig.cursorPath = runtime.wrapperPath;
-		} else if (runnerType === "gemini") {
-			containerizedConfig.geminiPath = runtime.wrapperPath;
+		} else {
+			throw new Error(
+				`External launcher execution only supports codex, received runner "${runnerType}"`,
+			);
 		}
 
 		return containerizedConfig;
@@ -5627,27 +5690,38 @@ ${stderr}
 		const repository = repoId ? this.repositories.get(repoId) : undefined;
 		if (
 			!repository ||
-			repository.agentExecution?.mode !== "persistent_issue_container"
+			repository.agentExecution?.mode !== "external_launcher"
 		) {
 			return;
 		}
 
-		const issueIdentifier =
-			session.issueContext?.issueIdentifier ??
-			session.issue?.identifier ??
-			sessionId;
 		try {
-			await this.issueContainerManager.destroyRuntime(
-				sessionId,
-				repository,
-				issueIdentifier,
-			);
+			await this.externalLauncherManager.destroyRuntime(sessionId);
 		} catch (error) {
 			this.logger.error(
-				`Failed to clean up issue container for session ${sessionId}`,
+				`Failed to clean up external launcher runtime for session ${sessionId}`,
 				error instanceof Error ? error : new Error(String(error)),
 			);
 		}
+	}
+
+	private async postExternalLauncherDispatchActivity(
+		sessionId: string,
+		session: CyrusAgentSession,
+		agentSessionManager: AgentSessionManager,
+	): Promise<void> {
+		const agentExecution = session.metadata?.agentExecution;
+		if (agentExecution?.visibility !== "orchestrator_only") {
+			return;
+		}
+
+		const currentSubroutine =
+			this.procedureAnalyzer.getCurrentSubroutine(session)?.name ?? "task";
+		const commandName = basename(agentExecution.command);
+		await agentSessionManager.createThoughtActivity(
+			sessionId,
+			`Dispatching \`${currentSubroutine}\` to \`${commandName}\``,
+		);
 	}
 
 	private async syncCliAgentSessionStatus(
@@ -6443,6 +6517,11 @@ ${stderr}
 
 		// Store runner
 		agentSessionManager.addAgentRunner(sessionId, runner);
+		await this.postExternalLauncherDispatchActivity(
+			sessionId,
+			session,
+			agentSessionManager,
+		);
 
 		// Save state
 		await this.savePersistedState();

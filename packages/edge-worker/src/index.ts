@@ -17,10 +17,10 @@ export type {
 } from "./AskUserQuestionHandler.js";
 export { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 export type {
-	EnsureIssueContainerInput,
-	IssueContainerRuntime,
+	EnsureExternalLauncherRuntimeInput,
+	ExternalLauncherRuntime,
 } from "./agent-execution/index.js";
-export { PersistentIssueContainerManager } from "./agent-execution/index.js";
+export { ExternalAgentLauncherManager } from "./agent-execution/index.js";
 export type {
 	ChatPlatformAdapter,
 	ChatPlatformName,

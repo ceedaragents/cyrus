@@ -133,6 +133,12 @@ export interface CyrusAgentSession {
 				}>;
 			};
 		};
+		agentExecution?: {
+			mode: "external_launcher";
+			runner: "codex";
+			command: string;
+			visibility: "orchestrator_only";
+		};
 	};
 }
 

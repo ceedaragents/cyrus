@@ -152,6 +152,13 @@ export class AgentSessionManager extends EventEmitter {
 		return this.activitySinks.get(sessionId);
 	}
 
+	private isOrchestratorOnlySession(sessionId: string): boolean {
+		return (
+			this.sessions.get(sessionId)?.metadata?.agentExecution?.visibility ===
+			"orchestrator_only"
+		);
+	}
+
 	/**
 	 * Get a session-scoped logger with context (sessionId, platform, issueIdentifier).
 	 */
@@ -531,12 +538,11 @@ export class AgentSessionManager extends EventEmitter {
 
 		// Check if there's a next subroutine
 		const nextSubroutine = this.procedureAnalyzer.getNextSubroutine(session);
+		const currentSubroutine =
+			this.procedureAnalyzer.getCurrentSubroutine(session);
 
 		if (nextSubroutine) {
 			// More subroutines to run - check if current subroutine requires approval
-			const currentSubroutine =
-				this.procedureAnalyzer.getCurrentSubroutine(session);
-
 			if (currentSubroutine?.requiresApproval) {
 				log.info(
 					`Current subroutine "${currentSubroutine.name}" requires approval before proceeding`,
@@ -630,6 +636,13 @@ export class AgentSessionManager extends EventEmitter {
 			}
 
 			// Check if current subroutine uses validation loop
+			if (this.isOrchestratorOnlySession(sessionId)) {
+				await this.createThoughtActivity(
+					sessionId,
+					`Codex completed \`${currentSubroutine?.name ?? "step"}\``,
+				);
+			}
+
 			if (currentSubroutine?.usesValidationLoop) {
 				const handled = await this.handleValidationLoopCompletion(
 					session,
@@ -665,6 +678,12 @@ export class AgentSessionManager extends EventEmitter {
 		} else {
 			// Procedure complete - post final result
 			log.info(`All subroutines completed, posting final result to Linear`);
+			if (this.isOrchestratorOnlySession(sessionId)) {
+				await this.createThoughtActivity(
+					sessionId,
+					`Codex completed \`${currentSubroutine?.name ?? "step"}\``,
+				);
+			}
 			await this.addResultEntry(sessionId, resultMessage);
 			this.emit("sessionFinalized", { sessionId, session });
 
@@ -884,6 +903,7 @@ export class AgentSessionManager extends EventEmitter {
 		message: SDKMessage,
 	): Promise<void> {
 		const log = this.sessionLog(sessionId);
+		const orchestratorOnly = this.isOrchestratorOnlySession(sessionId);
 		try {
 			switch (message.type) {
 				case "system":
@@ -892,7 +912,7 @@ export class AgentSessionManager extends EventEmitter {
 
 						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
-						if (systemMessage.model) {
+						if (!orchestratorOnly && systemMessage.model) {
 							await this.postModelNotificationThought(
 								sessionId,
 								systemMessage.model,
@@ -900,14 +920,19 @@ export class AgentSessionManager extends EventEmitter {
 						}
 					} else if (message.subtype === "status") {
 						// Handle status updates (compacting, etc.)
-						await this.handleStatusMessage(
-							sessionId,
-							message as SDKStatusMessage,
-						);
+						if (!orchestratorOnly) {
+							await this.handleStatusMessage(
+								sessionId,
+								message as SDKStatusMessage,
+							);
+						}
 					}
 					break;
 
 				case "user": {
+					if (orchestratorOnly) {
+						break;
+					}
 					const userEntry = await this.createSessionEntry(
 						sessionId,
 						message as SDKUserMessage,
@@ -917,6 +942,9 @@ export class AgentSessionManager extends EventEmitter {
 				}
 
 				case "assistant": {
+					if (orchestratorOnly) {
+						break;
+					}
 					const assistantEntry = await this.createSessionEntry(
 						sessionId,
 						message as SDKAssistantMessage,

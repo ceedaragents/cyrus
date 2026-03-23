@@ -157,6 +157,18 @@ describe("JSON Schema export", () => {
 			expect(variants).toBeDefined();
 			expect(variants).toHaveLength(2);
 		});
+
+		it("restricts external_launcher to the codex runner", () => {
+			const agentExecution = schema.properties.agentExecution;
+			const variants = agentExecution.oneOf ?? agentExecution.anyOf;
+			const externalLauncher = variants.find(
+				(variant: any) =>
+					variant.properties?.mode?.const === "external_launcher",
+			);
+			expect(externalLauncher).toBeDefined();
+			expect(externalLauncher.properties.runner.const).toBe("codex");
+			expect(externalLauncher.properties.command.type).toBe("string");
+		});
 	});
 
 	describe("EdgeConfigPayload schema", () => {

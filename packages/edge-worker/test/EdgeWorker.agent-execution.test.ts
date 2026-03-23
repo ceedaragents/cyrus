@@ -45,8 +45,9 @@ describe("EdgeWorker agent execution runtime integration", () => {
 			baseBranch: "main",
 			linearWorkspaceId: "test-workspace",
 			agentExecution: {
-				mode: "persistent_issue_container",
-				image: "ghcr.io/test/codex-debug:latest",
+				mode: "external_launcher",
+				runner: "codex",
+				command: "/Users/top/bin/codex-api-kk",
 			},
 		};
 
@@ -68,14 +69,14 @@ describe("EdgeWorker agent execution runtime integration", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("wraps supported runners with the issue container wrapper", async () => {
-		const mockContainerManager = {
+	it("wraps codex with the external launcher wrapper", async () => {
+		const mockLauncherManager = {
 			ensureRuntime: vi.fn().mockResolvedValue({
-				containerName: "cyrus-issue-test-repo-def-123",
-				wrapperPath: "/tmp/codex-in-container",
+				command: "/Users/top/bin/codex-api-kk",
+				wrapperPath: "/tmp/codex-external-launcher",
 			}),
 		};
-		(edgeWorker as any).issueContainerManager = mockContainerManager;
+		(edgeWorker as any).externalLauncherManager = mockLauncherManager;
 
 		const session: any = {
 			issueId: "issue-123",
@@ -103,50 +104,53 @@ describe("EdgeWorker agent execution runtime integration", () => {
 			},
 		);
 
-		expect(mockContainerManager.ensureRuntime).toHaveBeenCalledWith({
+		expect(mockLauncherManager.ensureRuntime).toHaveBeenCalledWith({
 			sessionId: "session-123",
-			issueId: "issue-123",
-			issueIdentifier: "DEF-123",
 			repository: mockRepository,
 			runnerType: "codex",
 			workingDirectory: "/workspace/worktrees/DEF-123",
-			allowedDirectories: ["/workspace/worktrees/DEF-123"],
 		});
-		expect((runnerConfig as any).codexPath).toBe("/tmp/codex-in-container");
+		expect((runnerConfig as any).codexPath).toBe(
+			"/tmp/codex-external-launcher",
+		);
+		expect(session.metadata.agentExecution).toEqual({
+			mode: "external_launcher",
+			runner: "codex",
+			command: "/Users/top/bin/codex-api-kk",
+			visibility: "orchestrator_only",
+		});
 	});
 
-	it("wraps claude with a container bridge launcher", async () => {
-		const mockContainerManager = {
-			ensureRuntime: vi.fn().mockResolvedValue({
-				containerName: "cyrus-issue-test-repo-def-123",
-				wrapperPath: "/tmp/claude-in-container",
-			}),
+	it("rejects unsupported runners in external launcher mode", async () => {
+		const mockLauncherManager = {
+			ensureRuntime: vi
+				.fn()
+				.mockRejectedValue(
+					new Error(
+						'Repository test-repo requires runner "codex" for external launcher execution, but resolved runner was "claude"',
+					),
+				),
 		};
-		(edgeWorker as any).issueContainerManager = mockContainerManager;
+		(edgeWorker as any).externalLauncherManager = mockLauncherManager;
 
-		const runnerConfig = await (
-			edgeWorker as any
-		).prepareRunnerConfigForAgentExecution(
-			"session-123",
-			{
-				workspace: {
-					path: "/workspace/worktrees/DEF-123",
-					isGitWorktree: true,
+		await expect(
+			(edgeWorker as any).prepareRunnerConfigForAgentExecution(
+				"session-123",
+				{
+					workspace: {
+						path: "/workspace/worktrees/DEF-123",
+						isGitWorktree: true,
+					},
 				},
-			},
-			mockRepository,
-			"claude",
-			{
-				workingDirectory: "/workspace/worktrees/DEF-123",
-				allowedDirectories: ["/workspace/worktrees/DEF-123"],
-				cyrusHome: TEST_CYRUS_HOME,
-			},
-		);
-
-		expect(mockContainerManager.ensureRuntime).toHaveBeenCalled();
-		expect((runnerConfig as any).containerBridge).toEqual({
-			command: "/tmp/claude-in-container",
-		});
+				mockRepository,
+				"claude",
+				{
+					workingDirectory: "/workspace/worktrees/DEF-123",
+					allowedDirectories: ["/workspace/worktrees/DEF-123"],
+					cyrusHome: TEST_CYRUS_HOME,
+				},
+			),
+		).rejects.toThrow(/requires runner "codex"/);
 	});
 
 	it("syncs completed CLI sessions back to the issue tracker", async () => {

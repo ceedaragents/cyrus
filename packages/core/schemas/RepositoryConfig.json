@@ -547,16 +547,20 @@
 					"properties": {
 						"mode": {
 							"type": "string",
-							"const": "persistent_issue_container"
+							"const": "external_launcher"
 						},
-						"image": {
+						"runner": {
+							"type": "string",
+							"const": "codex"
+						},
+						"command": {
 							"type": "string"
 						},
-						"shell": {
-							"type": "string"
-						},
-						"startupCommand": {
-							"type": "string"
+						"args": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
 						},
 						"env": {
 							"type": "object",
@@ -572,22 +576,9 @@
 							"items": {
 								"type": "string"
 							}
-						},
-						"mountPaths": {
-							"type": "array",
-							"items": {
-								"type": "string"
-							}
-						},
-						"supportedRunners": {
-							"type": "array",
-							"items": {
-								"type": "string",
-								"enum": ["claude", "codex", "cursor", "gemini"]
-							}
 						}
 					},
-					"required": ["mode", "image"],
+					"required": ["mode", "runner", "command"],
 					"additionalProperties": false
 				}
 			]

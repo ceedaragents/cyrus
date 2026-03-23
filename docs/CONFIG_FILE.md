@@ -122,37 +122,34 @@ Configures how the main coding agent should execute for this repository.
 }
 ```
 
-**Persistent issue container execution:**
+**External launcher execution:**
 
 ```json
 {
   "agentExecution": {
-    "mode": "persistent_issue_container",
-    "image": "ghcr.io/your-org/project-dev:latest",
-    "shell": "bash",
-    "startupCommand": "trap 'exit 0' TERM INT; while :; do sleep 5; done",
+    "mode": "external_launcher",
+    "runner": "codex",
+    "command": "/Users/alice/bin/codex-api-kk",
+    "args": ["--profile", "work"],
     "inheritEnv": ["OPENAI_API_KEY"],
-    "mountPaths": ["/Users/alice/.codex"],
     "env": {
-      "NODE_ENV": "development",
-      "CODEX_HOME": "/Users/alice/.codex"
-    },
-    "supportedRunners": ["claude", "codex", "cursor", "gemini"]
+      "NODE_ENV": "development"
+    }
   }
 }
 ```
 
-When `mode` is `persistent_issue_container`, Cyrus starts one long-lived Docker container per issue and then launches supported runners inside that container for the full session lifecycle.
+When `mode` is `external_launcher`, Cyrus still owns routing, prompts, session state, and activity posting, but it launches Codex through an external backend command such as `codex-api-kk`.
 
-- `codex`, `cursor`, and `gemini` use `docker exec` wrapper scripts around their normal CLI entrypoints.
-- `claude` uses a small bridge process inside the issue container so the Claude Agent SDK query loop runs in-container while Cyrus keeps the session state machine, activity posting, and stop handling on the host side.
-- `mountPaths` mounts additional host directories into the issue container at the same absolute paths. This is useful for auth/config directories such as `~/.codex`, shared caches, or other tool-specific state that must exist inside the container.
+- This mode is intentionally `codex`-only in the current prototype.
+- `command` should point at the launcher entrypoint on the Cyrus host, for example `~/bin/codex-api-kk`.
+- `args`, `inheritEnv`, and `env` let you thread profile selection or auth-related environment variables into that launcher without moving the Cyrus control plane into the sandbox itself.
 
 Operational notes:
 
-- If Cyrus runs inside Docker, configure `hostPaths` so child containers can mount the issue worktree using host-visible paths.
-- `supportedRunners` should only list runners whose auth/config state is available inside the issue container.
-- Granting Docker access to Cyrus is effectively privileged access to the runner machine. Use a dedicated runner and prefer a narrow Docker proxy or helper where possible.
+- `verification.mode = "ephemeral_container"` is still the place for Dockerized verification runs.
+- `external_launcher` assumes the launcher/backend is already responsible for sandbox lifecycle, auth state, and cleanup.
+- Granting Docker access to the launcher backend is effectively privileged access to the runner machine. Use a dedicated runner and prefer a narrow Docker proxy or helper where possible.
 
 ### `teamKeys` (array of strings)
 
@@ -390,10 +387,10 @@ When determining allowed tools, Cyrus follows this priority order:
       "artifactGlobs": ["test-results/**"]
     },
     "agentExecution": {
-      "mode": "persistent_issue_container",
-      "image": "ghcr.io/your-org/my-app-dev:latest",
-      "inheritEnv": ["OPENAI_API_KEY"],
-      "supportedRunners": ["codex"]
+      "mode": "external_launcher",
+      "runner": "codex",
+      "command": "/Users/alice/bin/codex-api-kk",
+      "inheritEnv": ["OPENAI_API_KEY"]
     },
     "labelPrompts": {
       "debugger": {
