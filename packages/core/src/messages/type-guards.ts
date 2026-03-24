@@ -11,6 +11,8 @@ import type {
 	ContentUpdateMessage,
 	GitHubSessionStartPlatformData,
 	GitHubUserPromptPlatformData,
+	GitLabSessionStartPlatformData,
+	GitLabUserPromptPlatformData,
 	InternalMessage,
 	IssueStateChangeMessage,
 	LinearSessionStartPlatformData,
@@ -100,6 +102,13 @@ export function isGitHubMessage(message: InternalMessage): boolean {
 }
 
 /**
+ * Type guard to check if message is from GitLab.
+ */
+export function isGitLabMessage(message: InternalMessage): boolean {
+	return message.source === "gitlab";
+}
+
+/**
  * Type guard to check if message is from Slack.
  */
 export function isSlackMessage(message: InternalMessage): boolean {
@@ -152,6 +161,28 @@ export function hasGitHubUserPromptPlatformData(
 	platformData: GitHubUserPromptPlatformData;
 } {
 	return message.source === "github";
+}
+
+/**
+ * Type guard for GitLab platform data in SessionStartMessage.
+ */
+export function hasGitLabSessionStartPlatformData(
+	message: SessionStartMessage,
+): message is SessionStartMessage & {
+	platformData: GitLabSessionStartPlatformData;
+} {
+	return message.source === "gitlab";
+}
+
+/**
+ * Type guard for GitLab platform data in UserPromptMessage.
+ */
+export function hasGitLabUserPromptPlatformData(
+	message: UserPromptMessage,
+): message is UserPromptMessage & {
+	platformData: GitLabUserPromptPlatformData;
+} {
+	return message.source === "gitlab";
 }
 
 /**

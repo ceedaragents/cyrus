@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **GitLab integration with `glab` CLI support** - Cyrus now supports GitLab repositories alongside GitHub. Create merge requests, respond to MR comments, and handle review feedback using the `glab` CLI. Includes webhook support for receiving GitLab events, a dedicated setup skill (`/cyrus-setup-gitlab`), and platform-aware subroutines that automatically use `glab` commands for GitLab-hosted repos.
 - **Cyrus docs MCP available in all sessions** - Cyrus now has access to its own documentation via the Mintlify docs MCP server, enabling better self-reference and user guidance. ([CYPACK-995](https://linear.app/ceedar/issue/CYPACK-995), [#1016](https://github.com/ceedaragents/cyrus/pull/1016))
 
 ## [0.2.37] - 2026-03-18

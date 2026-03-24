@@ -10,6 +10,7 @@
 
 import type {
 	GitHubPlatformRef,
+	GitLabPlatformRef,
 	LinearPlatformRef,
 	SlackPlatformRef,
 } from "./platform-refs.js";
@@ -33,7 +34,7 @@ export type MessageAction =
 /**
  * Platform source identifier.
  */
-export type MessageSource = "linear" | "github" | "slack";
+export type MessageSource = "linear" | "github" | "gitlab" | "slack";
 
 // ============================================================================
 // AUTHOR TYPES
@@ -138,6 +139,22 @@ export interface GitHubSessionStartPlatformData {
 }
 
 /**
+ * GitLab-specific platform data for session start.
+ */
+export interface GitLabSessionStartPlatformData {
+	/** The event type that triggered this session */
+	eventType: "note" | "merge_request";
+	/** Project information */
+	project: GitLabPlatformRef["project"];
+	/** Merge request information (if available) */
+	mergeRequest?: GitLabPlatformRef["mergeRequest"];
+	/** The note that triggered this session */
+	note: GitLabPlatformRef["note"];
+	/** GitLab access token for API access */
+	accessToken?: string;
+}
+
+/**
  * Slack-specific platform data for session start.
  */
 export interface SlackSessionStartPlatformData {
@@ -169,6 +186,7 @@ export interface SessionStartMessage extends InternalMessageBase {
 	platformData:
 		| LinearSessionStartPlatformData
 		| GitHubSessionStartPlatformData
+		| GitLabSessionStartPlatformData
 		| SlackSessionStartPlatformData;
 }
 
@@ -204,6 +222,20 @@ export interface GitHubUserPromptPlatformData {
 }
 
 /**
+ * GitLab-specific platform data for user prompt.
+ */
+export interface GitLabUserPromptPlatformData {
+	/** The event type */
+	eventType: "note" | "merge_request";
+	/** Project information */
+	project: GitLabPlatformRef["project"];
+	/** The note containing the prompt */
+	note: GitLabPlatformRef["note"];
+	/** GitLab access token for API access */
+	accessToken?: string;
+}
+
+/**
  * Slack-specific platform data for user prompt.
  */
 export interface SlackUserPromptPlatformData {
@@ -229,6 +261,7 @@ export interface UserPromptMessage extends InternalMessageBase {
 	platformData:
 		| LinearUserPromptPlatformData
 		| GitHubUserPromptPlatformData
+		| GitLabUserPromptPlatformData
 		| SlackUserPromptPlatformData;
 }
 
