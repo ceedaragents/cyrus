@@ -8,8 +8,8 @@ All notable changes to this project will be documented in this file.
 - **Cyrus docs MCP available in all sessions** - Cyrus now has access to its own documentation via the Mintlify docs MCP server, enabling better self-reference and user guidance. ([CYPACK-995](https://linear.app/ceedar/issue/CYPACK-995), [#1016](https://github.com/ceedaragents/cyrus/pull/1016))
 
 ### Changed
-- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.81** - Upgrades from v0.2.63, bringing session forking, MCP elicitation hooks, `api_retry` system messages, improved parallel tool result handling, and other SDK improvements. See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1008](https://linear.app/ceedar/issue/CYPACK-1008))
-- **Updated `@anthropic-ai/sdk` to v0.80.0** - Upgrades from v0.78.0. ([CYPACK-1008](https://linear.app/ceedar/issue/CYPACK-1008))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.81** - Upgrades from v0.2.63, bringing session forking, MCP elicitation hooks, `api_retry` system messages, improved parallel tool result handling, and other SDK improvements. See [SDK changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1008](https://linear.app/ceedar/issue/CYPACK-1008), [#1033](https://github.com/ceedaragents/cyrus/pull/1033))
+- **Updated `@anthropic-ai/sdk` to v0.80.0** - Upgrades from v0.78.0. ([CYPACK-1008](https://linear.app/ceedar/issue/CYPACK-1008), [#1033](https://github.com/ceedaragents/cyrus/pull/1033))
 
 ## [0.2.37] - 2026-03-18
 
