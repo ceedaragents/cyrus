@@ -4,19 +4,21 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.38] - 2026-03-25
+
 ### Added
-- Created `cyrus-gitlab-event-transport` package mirroring `cyrus-github-event-transport`: `GitLabEventTransport` (webhook endpoint with proxy/signature verification), `GitLabCommentService` (post MR notes, discussion replies, award emoji), `GitLabMessageTranslator` (translate GitLab events to `InternalMessage`), and `gitlab-webhook-utils` (payload extractors).
-- Added `GitLabPlatformRef`, `GitLabSessionStartPlatformData`, `GitLabUserPromptPlatformData` types to `cyrus-core` messages. Updated `MessageSource` to include `"gitlab"`. Added type guards `isGitLabMessage`, `hasGitLabSessionStartPlatformData`, `hasGitLabUserPromptPlatformData`.
-- Added `gitlabUrl` optional field to `RepositoryConfigSchema` and all JSON schemas.
-- Added `glab-mr.md` and `changelog-update-gitlab.md` subroutines mirroring `gh-pr.md` and `changelog-update.md` with `glab` CLI commands.
-- Added `applyPlatformSubroutines()` to procedure registry for platform-aware subroutine substitution (swaps `gh-pr` → `glab-mr` and `changelog-update` → `changelog-update-gitlab` for GitLab repos).
-- Added `handleCheckGlab` handler to config-updater for checking `glab` CLI installation and authentication.
-- Added `registerGitLabEventTransport()`, `handleGitLabWebhook()`, `buildGitLabSystemPrompt()`, `buildGitLabChangeRequestSystemPrompt()`, `postGitLabReply()`, `findRepositoryByGitLabUrl()`, `createGitLabWorkspace()` to EdgeWorker.
-- Updated `PromptBuilder.generateRoutingContext()` to include `gitlabUrl` in repo identifiers and XML template.
-- Updated `RepositoryRouter` to match `gitlabUrl` in description-tag routing and select signal options.
-- Updated `SelfAddRepoCommand` to detect GitLab URLs and set `gitlabUrl` field.
-- Created `cyrus-setup-gitlab` skill and updated main setup orchestrator to include GitLab as a surface option.
-- Created `docs/GIT_GITLAB.md` documentation.
+- Created `cyrus-gitlab-event-transport` package mirroring `cyrus-github-event-transport`: `GitLabEventTransport` (webhook endpoint with proxy/signature verification), `GitLabCommentService` (post MR notes, discussion replies, award emoji), `GitLabMessageTranslator` (translate GitLab events to `InternalMessage`), and `gitlab-webhook-utils` (payload extractors). ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `GitLabPlatformRef`, `GitLabSessionStartPlatformData`, `GitLabUserPromptPlatformData` types to `cyrus-core` messages. Updated `MessageSource` to include `"gitlab"`. Added type guards `isGitLabMessage`, `hasGitLabSessionStartPlatformData`, `hasGitLabUserPromptPlatformData`. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `gitlabUrl` optional field to `RepositoryConfigSchema` and all JSON schemas. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `glab-mr.md` and `changelog-update-gitlab.md` subroutines mirroring `gh-pr.md` and `changelog-update.md` with `glab` CLI commands. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `applyPlatformSubroutines()` to procedure registry for platform-aware subroutine substitution (swaps `gh-pr` → `glab-mr` and `changelog-update` → `changelog-update-gitlab` for GitLab repos). ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `handleCheckGlab` handler to config-updater for checking `glab` CLI installation and authentication. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Added `registerGitLabEventTransport()`, `handleGitLabWebhook()`, `buildGitLabSystemPrompt()`, `buildGitLabChangeRequestSystemPrompt()`, `postGitLabReply()`, `findRepositoryByGitLabUrl()`, `createGitLabWorkspace()` to EdgeWorker. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Updated `PromptBuilder.generateRoutingContext()` to include `gitlabUrl` in repo identifiers and XML template. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Updated `RepositoryRouter` to match `gitlabUrl` in description-tag routing and select signal options. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Updated `SelfAddRepoCommand` to detect GitLab URLs and set `gitlabUrl` field. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Created `cyrus-setup-gitlab` skill and updated main setup orchestrator to include GitLab as a surface option. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
+- Created `docs/GIT_GITLAB.md` documentation. ([CYPACK-857](https://linear.app/ceedar/issue/CYPACK-857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
 
 ## [0.2.37] - 2026-03-18
 
