@@ -4,9 +4,58 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.38] - 2026-03-25
+
 ### Added
-- **GitLab integration with `glab` CLI support** - Cyrus now supports GitLab repositories alongside GitHub. Create merge requests, respond to MR comments, and handle review feedback using the `glab` CLI. Includes webhook support for receiving GitLab events, a dedicated setup skill (`/cyrus-setup-gitlab`), and platform-aware subroutines that automatically use `glab` commands for GitLab-hosted repos.
+- **GitLab integration with `glab` CLI support** - Cyrus now supports GitLab repositories alongside GitHub. Create merge requests, respond to MR comments, and handle review feedback using the `glab` CLI. Includes webhook support for receiving GitLab events, a dedicated setup skill (`/cyrus-setup-gitlab`), and platform-aware subroutines that automatically use `glab` commands for GitLab-hosted repos. ([#857](https://github.com/ceedaragents/cyrus/issues/857), [#1029](https://github.com/ceedaragents/cyrus/pull/1029))
 - **Cyrus docs MCP available in all sessions** - Cyrus now has access to its own documentation via the Mintlify docs MCP server, enabling better self-reference and user guidance. ([CYPACK-995](https://linear.app/ceedar/issue/CYPACK-995), [#1016](https://github.com/ceedaragents/cyrus/pull/1016))
+
+### Packages
+
+#### cyrus-cloudflare-tunnel-client
+- cyrus-cloudflare-tunnel-client@0.2.38
+
+#### cyrus-mcp-tools
+- cyrus-mcp-tools@0.2.38
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.2.38
+
+#### cyrus-core
+- cyrus-core@0.2.38
+
+#### cyrus-simple-agent-runner
+- cyrus-simple-agent-runner@0.2.38
+
+#### cyrus-codex-runner
+- cyrus-codex-runner@0.2.38
+
+#### cyrus-cursor-runner
+- cyrus-cursor-runner@0.2.38
+
+#### cyrus-config-updater
+- cyrus-config-updater@0.2.38
+
+#### cyrus-linear-event-transport
+- cyrus-linear-event-transport@0.2.38
+
+#### cyrus-github-event-transport
+- cyrus-github-event-transport@0.2.38
+
+#### cyrus-gitlab-event-transport
+- cyrus-gitlab-event-transport@0.2.38
+
+#### cyrus-slack-event-transport
+- cyrus-slack-event-transport@0.2.38
+
+#### cyrus-gemini-runner
+- cyrus-gemini-runner@0.2.38
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.2.38
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.2.38
 
 ## [0.2.37] - 2026-03-18
 
