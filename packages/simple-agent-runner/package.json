@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-simple-agent-runner",
-	"version": "0.2.37",
+	"version": "0.2.38",
 	"description": "Simple agent runner for enumerated responses",
 	"type": "module",
 	"main": "dist/index.js",

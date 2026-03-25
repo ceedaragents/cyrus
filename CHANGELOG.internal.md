@@ -4,6 +4,8 @@ This changelog documents internal development changes, refactors, tooling update
 
 ## [Unreleased]
 
+## [0.2.38] - 2026-03-25
+
 ### Added
 - Created `cyrus-gitlab-event-transport` package mirroring `cyrus-github-event-transport`: `GitLabEventTransport` (webhook endpoint with proxy/signature verification), `GitLabCommentService` (post MR notes, discussion replies, award emoji), `GitLabMessageTranslator` (translate GitLab events to `InternalMessage`), and `gitlab-webhook-utils` (payload extractors).
 - Added `GitLabPlatformRef`, `GitLabSessionStartPlatformData`, `GitLabUserPromptPlatformData` types to `cyrus-core` messages. Updated `MessageSource` to include `"gitlab"`. Added type guards `isGitLabMessage`, `hasGitLabSessionStartPlatformData`, `hasGitLabUserPromptPlatformData`.
