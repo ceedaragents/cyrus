@@ -387,7 +387,14 @@ export class AgentSessionManager extends EventEmitter {
 		// to prevent memory leaks
 
 		const wasStopRequested = this.consumeStopRequest(sessionId);
-		const status = wasStopRequested
+
+		// If stop was requested but the session completed successfully, the stop
+		// arrived too late — the runner had already finished its work. In this case,
+		// treat it as a normal completion so the pipeline can continue.
+		const stopWasEffective =
+			wasStopRequested && resultMessage.subtype !== "success";
+
+		const status = stopWasEffective
 			? AgentSessionStatus.Error
 			: resultMessage.subtype === "success"
 				? AgentSessionStatus.Complete
@@ -405,19 +412,32 @@ export class AgentSessionManager extends EventEmitter {
 			return;
 		}
 
-		if (wasStopRequested) {
+		if (stopWasEffective) {
 			log.info(
-				`Session ${sessionId} was stopped by user; skipping procedure continuation`,
+				`Session ${sessionId} was stopped by user (result: ${resultMessage.subtype}); skipping procedure continuation`,
 			);
 			return;
 		}
 
-		if ("result" in resultMessage && resultMessage.result) {
-			await this.handleProcedureCompletion(session, sessionId, resultMessage);
-		} else if (
-			resultMessage.subtype !== "success" &&
-			this.shouldRecoverFromPreviousSubroutine(resultMessage)
-		) {
+		if (wasStopRequested && resultMessage.subtype === "success") {
+			log.info(
+				`Stop requested for ${sessionId} but session completed successfully; continuing pipeline`,
+			);
+		}
+
+		if (resultMessage.subtype === "success") {
+			// FIX: Advance pipeline on ANY success, not just when result text is present.
+			// Some subroutines (e.g., changelog-update) complete successfully with no result text,
+			// which previously caused the pipeline to silently hang.
+			let effectiveResult = resultMessage;
+			if (!("result" in resultMessage) || !resultMessage.result) {
+				effectiveResult = {
+					...resultMessage,
+					result: "(completed successfully)",
+				};
+			}
+			await this.handleProcedureCompletion(session, sessionId, effectiveResult);
+		} else if (this.shouldRecoverFromPreviousSubroutine(resultMessage)) {
 			// Error result (e.g. error_max_turns from singleTurn subroutines) — try to
 			// recover from the last completed subroutine's result so the procedure can still complete.
 			const recoveredText =
@@ -444,7 +464,7 @@ export class AgentSessionManager extends EventEmitter {
 				);
 				await this.addResultEntry(sessionId, resultMessage);
 			}
-		} else if (resultMessage.subtype !== "success") {
+		} else {
 			// Non-recoverable errors (e.g. stop/abort) should not advance procedures.
 			await this.addResultEntry(sessionId, resultMessage);
 		}
