@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.85** - Keeps AI SDK dependency up to date with the latest release. v0.2.85 adds `reloadPlugins()` SDK method and fixes PreToolUse hooks with `permissionDecision: "ask"` being ignored in SDK mode. See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1014](https://linear.app/ceedar/issue/CYPACK-1014))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.85** - Keeps AI SDK dependency up to date with the latest release. v0.2.85 adds `reloadPlugins()` SDK method and fixes PreToolUse hooks with `permissionDecision: "ask"` being ignored in SDK mode. See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1014](https://linear.app/ceedar/issue/CYPACK-1014), [#1043](https://github.com/ceedaragents/cyrus/pull/1043))
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.84 and `@anthropic-ai/sdk` to v0.80.0** - Keeps AI SDK dependencies up to date with the latest releases. See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1013](https://linear.app/ceedar/issue/CYPACK-1013), [#1041](https://github.com/ceedaragents/cyrus/pull/1041))
 
 ## [0.2.38] - 2026-03-25
