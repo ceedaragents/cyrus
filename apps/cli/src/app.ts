@@ -92,9 +92,9 @@ program
 		await new RefreshTokenCommand(app).execute([]);
 	});
 
-// Self-auth command - Linear OAuth directly from CLI
+// Self-auth-linear command - Linear OAuth directly from CLI
 program
-	.command("self-auth")
+	.command("self-auth-linear")
 	.description("Authenticate with Linear OAuth directly")
 	.action(async () => {
 		const opts = program.opts();

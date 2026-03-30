@@ -614,7 +614,9 @@ export class PromptBuilder {
 			// Description tag routing (always available)
 			const repoIdentifier = repo.githubUrl
 				? repo.githubUrl.replace("https://github.com/", "")
-				: repo.name;
+				: repo.gitlabUrl
+					? repo.gitlabUrl.replace(/https?:\/\/[^/]+\//, "")
+					: repo.name;
 			routingMethods.push(
 				`    - Description tag: \`[repo=${repoIdentifier}]\` or \`[repo=${repoIdentifier}#branch]\` for base branch override`,
 			);
@@ -645,6 +647,7 @@ export class PromptBuilder {
 
 			return `  <repository name="${repo.name}"${currentMarker}>
     <github_url>${repo.githubUrl || "N/A"}</github_url>
+    <gitlab_url>${repo.gitlabUrl || "N/A"}</gitlab_url>
     <routing_methods>
 ${routingMethods.join("\n")}
     </routing_methods>

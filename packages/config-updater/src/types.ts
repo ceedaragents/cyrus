@@ -9,6 +9,7 @@ export interface RepositoryPayload {
 	repository_url: string; // Git clone URL
 	repository_name: string; // Repository name (required)
 	githubUrl?: string; // GitHub repository URL (e.g., "https://github.com/org/repo") - used for Linear select signal
+	gitlabUrl?: string; // GitLab repository URL (e.g., "https://gitlab.com/group/project") - used for Linear select signal
 }
 
 /**
@@ -84,6 +85,19 @@ export type CheckGhPayload = Record<string, never>;
  * Check GitHub CLI response data
  */
 export interface CheckGhData {
+	isInstalled: boolean;
+	isAuthenticated: boolean;
+}
+
+/**
+ * Check GitLab CLI payload (empty - no parameters needed)
+ */
+export type CheckGlabPayload = Record<string, never>;
+
+/**
+ * Check GitLab CLI response data
+ */
+export interface CheckGlabData {
 	isInstalled: boolean;
 	isAuthenticated: boolean;
 }

@@ -149,6 +149,7 @@ export const RepositoryConfigSchema = z.object({
 	repositoryPath: z.string(),
 	baseBranch: z.string(),
 	githubUrl: z.string().optional(),
+	gitlabUrl: z.string().optional(),
 
 	// Linear configuration (optional — repos may operate without Linear, e.g. via Slack or GitHub)
 	linearWorkspaceId: z.string().optional(),

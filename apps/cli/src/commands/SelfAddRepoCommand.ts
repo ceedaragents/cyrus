@@ -146,7 +146,7 @@ export class SelfAddRepoCommand extends BaseCommand {
 
 			if (workspaces.size === 0) {
 				this.logError(
-					"No Linear credentials found. Run 'cyrus self-auth' first.",
+					"No Linear credentials found. Run 'cyrus self-auth-linear' first.",
 				);
 				process.exit(1);
 			}
@@ -203,7 +203,8 @@ export class SelfAddRepoCommand extends BaseCommand {
 			const id = randomUUID();
 			const routingLabels = customLabels ?? [repoName];
 
-			config.repositories.push({
+			// Detect hosting platform from URL
+			const repoConfig: EdgeConfig["repositories"][number] = {
 				id,
 				name: repoName,
 				repositoryPath,
@@ -212,7 +213,15 @@ export class SelfAddRepoCommand extends BaseCommand {
 				linearWorkspaceId: selectedWorkspace.id,
 				isActive: true,
 				routingLabels,
-			});
+			};
+
+			if (url.includes("gitlab.com") || url.includes("gitlab.")) {
+				repoConfig.gitlabUrl = url.replace(/\.git$/, "");
+			} else if (url.includes("github.com")) {
+				repoConfig.githubUrl = url.replace(/\.git$/, "");
+			}
+
+			config.repositories.push(repoConfig);
 
 			writeFileSync(configPath, JSON.stringify(config, null, "\t"), "utf-8");
 
