@@ -84,7 +84,9 @@ Remember: Your first message is internal planning. Use this time to:
 
 ## Skills
 
-You have skills available via the Skill tool. Choose the appropriate skill based on the context:
+You have skills available via the Skill tool: \`cyrus-setup\`, \`cyrus-setup-claude-auth\`, \`cyrus-setup-endpoint\`, \`cyrus-setup-github\`, \`cyrus-setup-gitlab\`, \`cyrus-setup-launch\`, \`cyrus-setup-linear\`, \`cyrus-setup-prerequisites\`, \`cyrus-setup-repository\`, \`cyrus-setup-slack\`, \`debug\`, \`f1-test-drive\`, \`implementation\`, \`investigate\`, \`summarize\`, \`verify-and-ship\`
+
+Choose the appropriate skill based on the context:
 
 - **Code changes requested** (feature, bug fix, refactor): Use \`implementation\` to write code, then \`verify-and-ship\` to run checks and create a PR, then \`summarize\` to post results.
 - **Bug report or error**: Use \`debug\` to reproduce, root-cause, and fix, then \`verify-and-ship\`, then \`summarize\`.
@@ -177,7 +179,9 @@ Remember: Your first message is internal planning. Use this time to:
 
 ## Skills
 
-You have skills available via the Skill tool. Choose the appropriate skill based on the context:
+You have skills available via the Skill tool: \`cyrus-setup\`, \`cyrus-setup-claude-auth\`, \`cyrus-setup-endpoint\`, \`cyrus-setup-github\`, \`cyrus-setup-gitlab\`, \`cyrus-setup-launch\`, \`cyrus-setup-linear\`, \`cyrus-setup-prerequisites\`, \`cyrus-setup-repository\`, \`cyrus-setup-slack\`, \`debug\`, \`f1-test-drive\`, \`implementation\`, \`investigate\`, \`summarize\`, \`verify-and-ship\`
+
+Choose the appropriate skill based on the context:
 
 - **Code changes requested** (feature, bug fix, refactor): Use \`implementation\` to write code, then \`verify-and-ship\` to run checks and create a PR, then \`summarize\` to post results.
 - **Bug report or error**: Use \`debug\` to reproduce, root-cause, and fix, then \`verify-and-ship\`, then \`summarize\`.

@@ -143,10 +143,7 @@ import {
 import { RunnerConfigBuilder } from "./RunnerConfigBuilder.js";
 import { RunnerSelectionService } from "./RunnerSelectionService.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
-import {
-	buildSkillsGuidance,
-	SkillsPluginResolver,
-} from "./SkillsPluginResolver.js";
+import { SkillsPluginResolver } from "./SkillsPluginResolver.js";
 import { SlackChatAdapter } from "./SlackChatAdapter.js";
 import type { IActivitySink } from "./sinks/IActivitySink.js";
 import { LinearActivitySink } from "./sinks/LinearActivitySink.js";
@@ -468,6 +465,9 @@ export class EdgeWorker extends EventEmitter {
 	 * Start the edge worker
 	 */
 	async start(): Promise<void> {
+		// Scaffold user skills plugin manifest if needed (one-time setup)
+		await this.skillsPluginResolver.ensureUserPluginScaffolded();
+
 		// Load persisted state for each repository
 		await this.loadPersistedState();
 
@@ -1125,20 +1125,21 @@ export class EdgeWorker extends EventEmitter {
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
 			// Create agent runner using the standard config builder
-			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-				session,
-				repository,
-				githubSessionId,
-				systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				undefined, // labels
-				undefined, // issueDescription
-				200, // maxTurns
-				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
-			);
+			const { config: runnerConfig, runnerType } =
+				await this.buildAgentRunnerConfig(
+					session,
+					repository,
+					githubSessionId,
+					systemPrompt,
+					allowedTools,
+					allowedDirectories,
+					disallowedTools,
+					undefined, // resumeSessionId
+					undefined, // labels
+					undefined, // issueDescription
+					200, // maxTurns
+					{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitHub sessions
+				);
 
 			const runner = this.createRunnerForType(runnerType, runnerConfig);
 
@@ -1699,20 +1700,21 @@ ${taskSection}`;
 			const allowedDirectories: string[] = [repository.repositoryPath];
 
 			// Create agent runner using the standard config builder
-			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-				session,
-				repository,
-				gitlabSessionId,
-				systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				undefined, // labels
-				undefined, // issueDescription
-				200, // maxTurns
-				{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitLab sessions
-			);
+			const { config: runnerConfig, runnerType } =
+				await this.buildAgentRunnerConfig(
+					session,
+					repository,
+					gitlabSessionId,
+					systemPrompt,
+					allowedTools,
+					allowedDirectories,
+					disallowedTools,
+					undefined, // resumeSessionId
+					undefined, // labels
+					undefined, // issueDescription
+					200, // maxTurns
+					{ excludeSlackMcp: true }, // Exclude Slack MCP server from GitLab sessions
+				);
 
 			const runner = this.createRunnerForType(runnerType, runnerConfig);
 
@@ -3511,21 +3513,22 @@ ${taskSection}`;
 
 			// Create agent runner with system prompt from assembly
 			// buildAgentRunnerConfig now determines runner type from labels internally
-			const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-				session,
-				primaryRepo,
-				sessionId,
-				assembly.systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				disallowedTools,
-				undefined, // resumeSessionId
-				labels, // Pass labels for runner selection and model override
-				fullIssue.description || undefined, // Description tags can override label selectors
-				undefined, // maxTurns
-				undefined, // mcpOptions
-				linearWorkspaceId,
-			);
+			const { config: runnerConfig, runnerType } =
+				await this.buildAgentRunnerConfig(
+					session,
+					primaryRepo,
+					sessionId,
+					assembly.systemPrompt,
+					allowedTools,
+					allowedDirectories,
+					disallowedTools,
+					undefined, // resumeSessionId
+					labels, // Pass labels for runner selection and model override
+					fullIssue.description || undefined, // Description tags can override label selectors
+					undefined, // maxTurns
+					undefined, // mcpOptions
+					linearWorkspaceId,
+				);
 
 			log.debug(
 				`Label-based runner selection for new session: ${runnerType} (session ${sessionId})`,
@@ -4926,7 +4929,7 @@ ${taskSection}`;
 		}
 
 		// 3. Append skills guidance — instruct the agent to use skills based on context
-		systemPrompt += buildSkillsGuidance();
+		systemPrompt += await this.skillsPluginResolver.buildSkillsGuidance();
 
 		// 4. Build issue context using appropriate builder
 		// Use label-based prompt ONLY if we have a label-based system prompt
@@ -5108,7 +5111,7 @@ ${input.userComment}
 	 * Delegates to RunnerConfigBuilder for shared config assembly.
 	 * @returns Object containing the runner config and runner type to use
 	 */
-	private buildAgentRunnerConfig(
+	private async buildAgentRunnerConfig(
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
 		sessionId: string,
@@ -5122,10 +5125,10 @@ ${input.userComment}
 		maxTurns?: number,
 		mcpOptions?: { excludeSlackMcp?: boolean },
 		linearWorkspaceId?: string,
-	): {
+	): Promise<{
 		config: AgentRunnerConfig;
 		runnerType: RunnerType;
-	} {
+	}> {
 		const log = this.logger.withContext({
 			sessionId,
 			platform: session.issueContext?.trackerId,
@@ -5148,7 +5151,7 @@ ${input.userComment}
 			linearWorkspaceId,
 			cyrusHome: this.cyrusHome,
 			logger: log,
-			plugins: this.skillsPluginResolver.resolve(),
+			plugins: await this.skillsPluginResolver.resolve(),
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(sessionId, message, repository.id);
 			},
@@ -5720,21 +5723,22 @@ ${input.userComment}
 		// Create runner configuration
 		// buildAgentRunnerConfig determines runner type from labels for new sessions
 		// For existing sessions, we still need labels for model override but ignore runner type
-		const { config: runnerConfig, runnerType } = this.buildAgentRunnerConfig(
-			session,
-			repository,
-			sessionId,
-			systemPrompt,
-			allowedTools,
-			allowedDirectories,
-			disallowedTools,
-			resumeSessionId,
-			labels, // Always pass labels to preserve model override
-			fullIssue.description || undefined, // Description tags can override label selectors
-			maxTurns, // Pass maxTurns if specified
-			undefined, // mcpOptions
-			resolvedWorkspaceId,
-		);
+		const { config: runnerConfig, runnerType } =
+			await this.buildAgentRunnerConfig(
+				session,
+				repository,
+				sessionId,
+				systemPrompt,
+				allowedTools,
+				allowedDirectories,
+				disallowedTools,
+				resumeSessionId,
+				labels, // Always pass labels to preserve model override
+				fullIssue.description || undefined, // Description tags can override label selectors
+				maxTurns, // Pass maxTurns if specified
+				undefined, // mcpOptions
+				resolvedWorkspaceId,
+			);
 
 		// Create the appropriate runner based on session state
 		const runner = this.createRunnerForType(runnerType, runnerConfig);
