@@ -146,7 +146,7 @@ export class SelfAddRepoCommand extends BaseCommand {
 
 			if (workspaces.size === 0) {
 				this.logError(
-					"No Linear credentials found. Run 'cyrus self-auth' first.",
+					"No Linear credentials found. Run 'cyrus self-auth-linear' first.",
 				);
 				process.exit(1);
 			}

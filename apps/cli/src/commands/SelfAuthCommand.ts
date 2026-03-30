@@ -11,7 +11,7 @@ import open from "open";
 import { BaseCommand } from "./ICommand.js";
 
 /**
- * Self-auth command - authenticate with Linear OAuth directly from CLI
+ * Self-auth-linear command - authenticate with Linear OAuth directly from CLI
  * Handles the complete OAuth flow without requiring EdgeWorker
  */
 export class SelfAuthCommand extends BaseCommand {
