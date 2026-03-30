@@ -116,11 +116,15 @@ program
 		"-l, --label <labels>",
 		"Comma-separated routing labels (defaults to repo name)",
 	)
+	.option(
+		"-b, --base-branch <branch>",
+		"Base branch name (auto-detected from remote if not specified)",
+	)
 	.action(
 		async (
 			url: string | undefined,
 			workspace: string | undefined,
-			cmdOpts: { label?: string },
+			cmdOpts: { label?: string; baseBranch?: string },
 		) => {
 			const opts = program.opts();
 			const app = new Application(
@@ -131,6 +135,9 @@ program
 			const args = [url, workspace].filter(Boolean) as string[];
 			if (cmdOpts.label) {
 				args.push("-l", cmdOpts.label);
+			}
+			if (cmdOpts.baseBranch) {
+				args.push("-b", cmdOpts.baseBranch);
 			}
 			await new SelfAddRepoCommand(app).execute(args);
 		},
