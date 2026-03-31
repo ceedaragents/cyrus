@@ -1,6 +1,5 @@
-import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type {
 	ApiResponse,
 	DeleteSkillPayload,
@@ -9,6 +8,78 @@ import type {
 } from "../types.js";
 
 const USER_SKILLS_DIR = "user-skills-plugin/skills";
+
+/** Only lowercase letters, numbers, hyphens, underscores allowed */
+const VALID_SKILL_NAME = /^[a-z0-9_-]+$/;
+
+/**
+ * Validate and sanitize a skill name.
+ * Prevents path traversal and enforces naming constraints.
+ */
+function validateSkillName(
+	name: unknown,
+): { valid: true; name: string } | { valid: false; error: ApiResponse } {
+	if (!name || typeof name !== "string") {
+		return {
+			valid: false,
+			error: {
+				success: false,
+				error: "Skill name is required",
+				details: "The name field must be a non-empty string.",
+			},
+		};
+	}
+
+	if (!VALID_SKILL_NAME.test(name)) {
+		return {
+			valid: false,
+			error: {
+				success: false,
+				error: "Invalid skill name",
+				details:
+					"Skill names may only contain lowercase letters, numbers, hyphens, and underscores.",
+			},
+		};
+	}
+
+	return { valid: true, name };
+}
+
+/**
+ * Resolve the skill directory path and verify it stays within the skills root.
+ * Prevents path traversal even if validation is bypassed.
+ */
+function resolveSkillDir(
+	cyrusHome: string,
+	skillName: string,
+): { path: string } | { error: ApiResponse } {
+	const skillsRoot = resolve(cyrusHome, USER_SKILLS_DIR);
+	const skillDir = resolve(skillsRoot, skillName);
+
+	if (!skillDir.startsWith(`${skillsRoot}/`)) {
+		return {
+			error: {
+				success: false,
+				error: "Invalid skill name",
+				details:
+					"Skill name must not contain path separators or traversal sequences.",
+			},
+		};
+	}
+
+	return { path: skillDir };
+}
+
+/**
+ * Escape a string for safe inclusion as a YAML scalar value.
+ * Wraps in double quotes if the value contains special characters.
+ */
+function yamlEscape(value: string): string {
+	if (/[\n\r:"{}[\],&*?|>!%@`#]/.test(value) || value !== value.trim()) {
+		return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+	}
+	return value;
+}
 
 /**
  * Handle creating or updating a user skill.
@@ -19,13 +90,8 @@ export async function handleUpdateSkill(
 	cyrusHome: string,
 ): Promise<ApiResponse> {
 	try {
-		if (!payload.name || typeof payload.name !== "string") {
-			return {
-				success: false,
-				error: "Skill name is required",
-				details: "The name field must be a non-empty string.",
-			};
-		}
+		const nameResult = validateSkillName(payload.name);
+		if (!nameResult.valid) return nameResult.error;
 
 		if (!payload.description || typeof payload.description !== "string") {
 			return {
@@ -43,40 +109,29 @@ export async function handleUpdateSkill(
 			};
 		}
 
-		// Sanitize skill name — only allow alphanumeric, hyphens, underscores
-		const sanitizedName = payload.name
-			.toLowerCase()
-			.replace(/[^a-z0-9_-]/g, "-");
-		if (sanitizedName !== payload.name) {
-			return {
-				success: false,
-				error: "Invalid skill name",
-				details:
-					"Skill names may only contain lowercase letters, numbers, hyphens, and underscores.",
-			};
-		}
+		const dirResult = resolveSkillDir(cyrusHome, nameResult.name);
+		if ("error" in dirResult) return dirResult.error;
 
-		const skillDir = join(cyrusHome, USER_SKILLS_DIR, sanitizedName);
-		const skillPath = join(skillDir, "SKILL.md");
+		const skillPath = join(dirResult.path, "SKILL.md");
 
-		// Build SKILL.md with YAML frontmatter
+		// Build SKILL.md with YAML frontmatter (values escaped for safety)
 		const skillContent = [
 			"---",
-			`name: ${payload.name}`,
-			`description: ${payload.description}`,
+			`name: ${yamlEscape(nameResult.name)}`,
+			`description: ${yamlEscape(payload.description)}`,
 			"---",
 			"",
 			payload.content,
 		].join("\n");
 
-		await mkdir(skillDir, { recursive: true });
+		await mkdir(dirResult.path, { recursive: true });
 		await writeFile(skillPath, skillContent, "utf-8");
 
 		return {
 			success: true,
-			message: `Skill "${payload.name}" saved successfully`,
+			message: `Skill "${nameResult.name}" saved successfully`,
 			data: {
-				name: payload.name,
+				name: nameResult.name,
 				path: skillPath,
 			},
 		};
@@ -98,24 +153,20 @@ export async function handleDeleteSkill(
 	cyrusHome: string,
 ): Promise<ApiResponse> {
 	try {
-		if (!payload.name || typeof payload.name !== "string") {
-			return {
-				success: false,
-				error: "Skill name is required",
-				details: "The name field must be a non-empty string.",
-			};
-		}
+		const nameResult = validateSkillName(payload.name);
+		if (!nameResult.valid) return nameResult.error;
 
-		const skillDir = join(cyrusHome, USER_SKILLS_DIR, payload.name);
+		const dirResult = resolveSkillDir(cyrusHome, nameResult.name);
+		if ("error" in dirResult) return dirResult.error;
 
 		try {
-			await rm(skillDir, { recursive: true });
+			await rm(dirResult.path, { recursive: true });
 		} catch (error: any) {
 			if (error.code === "ENOENT") {
 				return {
 					success: false,
-					error: `Skill "${payload.name}" not found`,
-					details: `No skill directory exists at ${skillDir}`,
+					error: `Skill "${nameResult.name}" not found`,
+					details: `No skill directory exists at ${dirResult.path}`,
 				};
 			}
 			throw error;
@@ -123,8 +174,8 @@ export async function handleDeleteSkill(
 
 		return {
 			success: true,
-			message: `Skill "${payload.name}" deleted successfully`,
-			data: { name: payload.name },
+			message: `Skill "${nameResult.name}" deleted successfully`,
+			data: { name: nameResult.name },
 		};
 	} catch (error) {
 		return {
@@ -147,9 +198,9 @@ export async function handleListSkills(
 	try {
 		const skillsDir = join(cyrusHome, USER_SKILLS_DIR);
 
-		let entries: Dirent[];
+		let entries: { isDirectory(): boolean; name: string }[];
 		try {
-			entries = (await readdir(skillsDir, { withFileTypes: true })) as Dirent[];
+			entries = await readdir(skillsDir, { withFileTypes: true });
 		} catch (error: any) {
 			if (error.code === "ENOENT") {
 				return {

@@ -98,13 +98,13 @@ export class SkillsPluginResolver {
 	}
 
 	/**
-	 * Discover all available skill names from resolved plugin directories.
+	 * Discover all available skill names from the given plugin configs.
 	 *
-	 * Reads the `skills/` subdirectory of each resolved plugin path and
-	 * returns deduplicated skill names (user skills shadow bundled ones).
+	 * Reads the `skills/` subdirectory of each plugin path and returns
+	 * deduplicated skill names (user skills shadow bundled ones due to
+	 * insertion order of the Set).
 	 */
-	async discoverSkillNames(): Promise<string[]> {
-		const plugins = await this.resolve();
+	async discoverSkillNames(plugins: SdkPluginConfig[]): Promise<string[]> {
 		const skillNames: string[] = [];
 
 		for (const plugin of plugins) {
@@ -129,9 +129,13 @@ export class SkillsPluginResolver {
 	 *
 	 * Dynamically lists all available skills so that user-added custom
 	 * skills appear in the guidance without code changes (OCP).
+	 *
+	 * Accepts pre-resolved plugins to avoid redundant filesystem access
+	 * when resolve() is also called separately for the runner config.
 	 */
-	async buildSkillsGuidance(): Promise<string> {
-		const availableSkills = await this.discoverSkillNames();
+	async buildSkillsGuidance(plugins?: SdkPluginConfig[]): Promise<string> {
+		const resolvedPlugins = plugins ?? (await this.resolve());
+		const availableSkills = await this.discoverSkillNames(resolvedPlugins);
 
 		if (availableSkills.length === 0) {
 			return "";
