@@ -4,12 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Auto-detect base branch when adding repositories** - `cyrus self-add-repo` now automatically detects the remote's default branch instead of always using `main`. Also adds a `--base-branch` flag for manual override. ([CYPACK-1015](https://linear.app/ceedar/issue/CYPACK-1015), [#1051](https://github.com/ceedaragents/cyrus/pull/1051))
+
 ### Fixed
 - **Self-auth now works with reverse proxies on other machines** - The self-auth OAuth callback server now respects `CYRUS_HOST_EXTERNAL=true` and listens on `0.0.0.0` instead of `localhost`, matching the main server's behavior. ([#1046](https://github.com/ceedaragents/cyrus/issues/1046), [CYPACK-1017](https://linear.app/ceedar/issue/CYPACK-1017), [#1047](https://github.com/ceedaragents/cyrus/pull/1047))
 
 ### Changed
 - **Skills replace rigid procedure workflows** - Agent sessions now use flexible, customizable skills instead of fixed procedure sequences. Skills are discoverable at runtime, giving the agent more natural control over its workflow. A Stop hook ensures PRs and summaries are always created before sessions end. Users can add custom skills to `~/.cyrus/skills/`. ([CYPACK-996](https://linear.app/ceedar/issue/CYPACK-996), [#1018](https://github.com/ceedaragents/cyrus/pull/1018))
 - **Renamed `cyrus self-auth` to `cyrus self-auth-linear`** - Clarifies that this command authenticates specifically with Linear OAuth. ([CYPACK-1017](https://linear.app/ceedar/issue/CYPACK-1017), [#1047](https://github.com/ceedaragents/cyrus/pull/1047))
+- **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.88** - Syncs with Claude Code v2.1.88. Fixes error result messages now correctly setting `is_error: true`, MCP servers no longer getting permanently stuck after a connection race, ~50% failure rate bug in `StructuredOutput` schema cache, and `ERR_STREAM_WRITE_AFTER_END` errors with single-turn queries. Also adds `includeSystemMessages` option to `getSessionMessages()` and `includeHookEvents` option for hook lifecycle messages. See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1023](https://linear.app/ceedar/issue/CYPACK-1023), [#1053](https://github.com/ceedaragents/cyrus/pull/1053))
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.87** - Syncs with Claude Code v2.1.87 (maintenance release). See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1020](https://linear.app/ceedar/issue/CYPACK-1020), [#1050](https://github.com/ceedaragents/cyrus/pull/1050))
 - **Updated `@anthropic-ai/claude-agent-sdk` to v0.2.86** - Keeps AI SDK dependency up to date. v0.2.86 adds `getContextUsage()` for token distribution visibility, makes `session_id` optional in `SDKUserMessage`, and fixes TypeScript type resolution. v0.2.85 adds `reloadPlugins()` for dynamic plugin refresh and fixes PreToolUse hooks with `"ask"` permission decisions. See SDK changelog: [claude-agent-sdk](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md). ([CYPACK-1016](https://linear.app/ceedar/issue/CYPACK-1016), [#1045](https://github.com/ceedaragents/cyrus/pull/1045))
 
