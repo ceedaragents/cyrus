@@ -154,26 +154,9 @@ Determine the creation URL:
 - Personal: `https://github.com/settings/apps/new`
 - Organization: `https://github.com/organizations/<ORG>/settings/apps/new`
 
-**Path A-1 (claude-in-chrome — preferred):**
+GitHub's manifest flow requires a **form POST** with a `manifest` field to the creation URL — the page itself does not have a manifest input field. All paths use the same helper HTML page approach.
 
-1. Navigate to the creation URL
-2. Find the manifest input field and paste the JSON
-3. Submit the form
-4. After redirect, extract the `code` parameter from the URL
-
-**Path A-2 (agent-browser):**
-
-Same flow via Playwright automation.
-
-**Path B (manual):**
-
-Tell the user:
-
-> 1. Open this URL in your browser:
->    `https://github.com/settings/apps/new` (or `https://github.com/organizations/<ORG>/settings/apps/new`)
-> 2. You'll need to submit the app manifest. I'll create a small helper page for you.
-
-Create a temporary HTML file that auto-submits the manifest:
+First, create the helper page (used by all paths):
 
 ```bash
 cat > /tmp/github-app-manifest.html << 'HTMLEOF'
@@ -185,9 +168,24 @@ cat > /tmp/github-app-manifest.html << 'HTMLEOF'
 HTMLEOF
 ```
 
-> 3. Open `/tmp/github-app-manifest.html` in your browser and click the button
-> 4. Review the permissions on GitHub and click **Create GitHub App**
-> 5. After redirect, copy the **entire URL** from the browser address bar and paste it here
+**Path A-1 (claude-in-chrome — preferred):**
+
+1. Navigate to `file:///tmp/github-app-manifest.html`
+2. Click the submit button to POST the manifest to GitHub
+3. GitHub shows a confirmation page — click **Create GitHub App**
+4. After redirect, extract the `code` parameter from the URL
+
+**Path A-2 (agent-browser):**
+
+Same flow via Playwright automation — navigate to the helper page, click submit, then click Create.
+
+**Path B (manual):**
+
+Tell the user:
+
+> 1. Open `/tmp/github-app-manifest.html` in your browser and click the button
+> 2. Review the permissions on GitHub and click **Create GitHub App**
+> 3. After redirect, copy the **entire URL** from the browser address bar and paste it here
 
 Extract the `code` parameter from the redirect URL.
 
