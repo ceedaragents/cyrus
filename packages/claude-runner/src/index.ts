@@ -7,6 +7,7 @@ export type {
 	PostToolUseHookInput,
 	Query,
 	StopHookInput,
+	WarmSession,
 } from "@anthropic-ai/claude-agent-sdk";
 export { AbortError, ClaudeRunner } from "./ClaudeRunner.js";
 export {

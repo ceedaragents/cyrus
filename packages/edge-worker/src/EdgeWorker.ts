@@ -6,9 +6,8 @@ import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
 import type {
 	McpServerConfig,
-	Query,
 	SDKMessage,
-	SDKUserMessage,
+	WarmSession,
 } from "cyrus-claude-runner";
 import { ClaudeRunner } from "cyrus-claude-runner";
 import { CodexRunner } from "cyrus-codex-runner";
@@ -187,10 +186,7 @@ export class EdgeWorker extends EventEmitter {
 	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
 	private lastStopTimeBySession: Map<string, number> = new Map(); // Maps session ID to timestamp of last stop signal (for double-stop detection)
-	private warmInstances: Map<
-		string,
-		{ query(prompt: AsyncIterable<SDKUserMessage>): Query }
-	> = new Map(); // Pre-warmed Claude sessions keyed by agentSessionId
+	private warmInstances: Map<string, WarmSession> = new Map(); // Pre-warmed Claude sessions keyed by agentSessionId
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
@@ -5517,9 +5513,7 @@ ${input.userComment}
 			`Pre-warming ${candidates.length} most recent Claude sessions...`,
 		);
 
-		// startup() is exported at runtime but not yet reflected in the .d.ts
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const { startup } = (await import("@anthropic-ai/claude-agent-sdk")) as any;
+		const { startup } = await import("@anthropic-ai/claude-agent-sdk");
 
 		await Promise.all(
 			candidates.map(async (session) => {
