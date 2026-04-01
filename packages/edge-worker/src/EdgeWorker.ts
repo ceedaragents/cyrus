@@ -564,6 +564,8 @@ export class EdgeWorker extends EventEmitter {
 				await this.removeDeletedRepositories(changes.removed);
 				await this.updateModifiedRepositories(changes.modified);
 				await this.addNewRepositories(changes.added);
+				// Detect and apply workspace token changes before overwriting config
+				this.updateLinearWorkspaceTokens(changes.newConfig);
 				const prevDefaultRunner = this.config.defaultRunner;
 				this.config = changes.newConfig;
 				this.configManager.setConfig(changes.newConfig);
@@ -2454,6 +2456,55 @@ ${taskSection}`;
 			this.logger.info(`Successfully re-started verifications`);
 		} catch (error) {
 			this.logger.error(`Failed to re-run verifications:`, error);
+		}
+	}
+
+	/**
+	 * Detect workspace token changes and update all dependent services.
+	 *
+	 * When an OAuth token is refreshed (at least once per day), the new token is
+	 * persisted to config.json which triggers the file watcher.  This method
+	 * compares the previous in-memory tokens against the new config and calls
+	 * `setAccessToken()` on any affected `LinearIssueTrackerService` instances,
+	 * and pushes the updated workspace configs to `AttachmentService`.
+	 */
+	private updateLinearWorkspaceTokens(newConfig: EdgeWorkerConfig): void {
+		const oldWorkspaces = this.config.linearWorkspaces ?? {};
+		const newWorkspaces = newConfig.linearWorkspaces ?? {};
+
+		let anyTokenChanged = false;
+
+		for (const [workspaceId, newWsConfig] of Object.entries(newWorkspaces)) {
+			const oldToken = oldWorkspaces[workspaceId]?.linearToken;
+			const newToken = newWsConfig.linearToken;
+
+			if (oldToken === newToken) continue;
+
+			anyTokenChanged = true;
+
+			// Update existing issue tracker in-place
+			const issueTracker = this.issueTrackers.get(workspaceId);
+			if (issueTracker) {
+				(issueTracker as LinearIssueTrackerService).setAccessToken(newToken);
+				this.logger.info(
+					`🔑 Updated Linear token for workspace ${workspaceId}`,
+				);
+			} else if (this.config.platform !== "cli") {
+				// Workspace is new — create a tracker for it
+				const newIssueTracker = new LinearIssueTrackerService(
+					new LinearClient({ accessToken: newToken }),
+					this.buildOAuthConfig(workspaceId),
+				);
+				this.issueTrackers.set(workspaceId, newIssueTracker);
+				this.logger.info(
+					`🔑 Created issue tracker for new workspace ${workspaceId}`,
+				);
+			}
+		}
+
+		if (anyTokenChanged) {
+			// Push refreshed workspace configs to AttachmentService
+			this.attachmentService.setLinearWorkspaces(newWorkspaces);
 		}
 	}
 

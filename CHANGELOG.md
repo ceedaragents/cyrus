@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Linear OAuth tokens now stay fresh across long sessions** - When Linear access tokens are refreshed (at least once daily with OAuth 2.0), running sessions and services now automatically pick up the new token instead of continuing with a stale one. ([CYPACK-1024](https://linear.app/ceedar/issue/CYPACK-1024), [#1056](https://github.com/ceedaragents/cyrus/pull/1056))
+
 ### Added
 - **Auto-detect base branch when adding repositories** - `cyrus self-add-repo` now automatically detects the remote's default branch instead of always using `main`. Also adds a `--base-branch` flag for manual override. ([CYPACK-1015](https://linear.app/ceedar/issue/CYPACK-1015), [#1051](https://github.com/ceedaragents/cyrus/pull/1051))
 
