@@ -76,20 +76,23 @@ export class DefaultSkillsDeployer {
 			),
 		);
 
-		// Copy each skill directory from bundled to deployed
+		// Copy each skill directory from bundled to deployed.
+		// Entries may be directories or symlinks to directories (dev vs build).
 		const entries = await readdir(this.bundledSkillsPath, {
 			withFileTypes: true,
 		});
+		let deployedCount = 0;
 		for (const entry of entries) {
-			if (entry.isDirectory()) {
+			if (entry.isDirectory() || entry.isSymbolicLink()) {
 				const src = join(this.bundledSkillsPath, entry.name);
 				const dest = join(this.deployedSkillsPath, entry.name);
-				await cp(src, dest, { recursive: true });
+				await cp(src, dest, { recursive: true, dereference: true });
+				deployedCount++;
 			}
 		}
 
 		this.logger.info(
-			`Deployed default skills to ${this.deployedPluginPath} (${entries.filter((e) => e.isDirectory()).length} skills)`,
+			`Deployed default skills to ${this.deployedPluginPath} (${deployedCount} skills)`,
 		);
 	}
 
