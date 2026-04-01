@@ -58,6 +58,11 @@ export interface ClaudeRunnerConfig {
 	onMessage?: (message: SDKMessage) => void | Promise<void>;
 	onError?: (error: Error) => void | Promise<void>;
 	onComplete?: (messages: SDKMessage[]) => void | Promise<void>;
+	/**
+	 * Pre-warmed session from startup() — when set, the first streaming query uses
+	 * this warm instance instead of spawning a cold process (~20x faster first turn).
+	 */
+	warmSession?: { query(prompt: AsyncIterable<SDKUserMessage>): unknown };
 }
 
 export interface ClaudeSessionInfo {

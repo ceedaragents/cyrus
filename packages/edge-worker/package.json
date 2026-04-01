@@ -24,6 +24,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@anthropic-ai/claude-agent-sdk": "^0.2.89",
 		"@linear/sdk": "^64.0.0",
 		"@ngrok/ngrok": "^1.5.1",
 		"chokidar": "^4.0.3",
@@ -38,8 +39,8 @@
 		"cyrus-gitlab-event-transport": "workspace:*",
 		"cyrus-linear-event-transport": "workspace:*",
 		"cyrus-mcp-tools": "workspace:*",
-		"cyrus-slack-event-transport": "workspace:*",
 		"cyrus-simple-agent-runner": "workspace:*",
+		"cyrus-slack-event-transport": "workspace:*",
 		"fastify": "^5.8.3",
 		"fastify-mcp": "^2.1.0",
 		"file-type": "^21.3.2",

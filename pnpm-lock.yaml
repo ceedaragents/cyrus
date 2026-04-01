@@ -291,6 +291,9 @@ importers:
 
   packages/edge-worker:
     dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.2.89
+        version: 0.2.89(zod@4.3.6)
       '@linear/sdk':
         specifier: ^64.0.0
         version: 64.0.0

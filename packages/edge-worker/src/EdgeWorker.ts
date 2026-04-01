@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { LinearClient } from "@linear/sdk";
@@ -181,6 +182,8 @@ export class EdgeWorker extends EventEmitter {
 	private activitySinks: Map<string, IActivitySink> = new Map(); // Maps repository ID to activity sink
 	private sessionRepositories: Map<string, string> = new Map(); // Maps session ID to repository ID
 	private lastStopTimeBySession: Map<string, number> = new Map(); // Maps session ID to timestamp of last stop signal (for double-stop detection)
+	private warmInstances: Map<string, { query(prompt: unknown): unknown }> =
+		new Map(); // Pre-warmed Claude sessions keyed by agentSessionId
 	private issueTrackers: Map<string, IIssueTrackerService> = new Map(); // one issue tracker per Linear workspace (keyed by linearWorkspaceId)
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
@@ -482,6 +485,12 @@ export class EdgeWorker extends EventEmitter {
 
 		// Load persisted state for each repository
 		await this.loadPersistedState();
+
+		// Pre-warm the 30 most recent Claude sessions in the background
+		// so their first query after restart has near-zero cold-start latency
+		this.warmupRecentSessions(30).catch((err) => {
+			this.logger.warn("Session warmup failed (non-fatal):", err);
+		});
 
 		// Start config file watcher via ConfigManager
 		this.configManager.on(
@@ -5265,7 +5274,7 @@ ${input.userComment}
 			issueIdentifier: session.issueContext?.issueIdentifier,
 		});
 
-		return this.runnerConfigBuilder.buildIssueConfig({
+		const result = await this.runnerConfigBuilder.buildIssueConfig({
 			session,
 			repository,
 			sessionId,
@@ -5290,6 +5299,19 @@ ${input.userComment}
 				this.createAskUserQuestionCallback(sid, wid)!,
 			requireLinearWorkspaceId,
 		});
+
+		// Attach pre-warmed session if available (only for Claude runner)
+		if (result.runnerType === "claude") {
+			const warmSession = this.warmInstances.get(sessionId);
+			if (warmSession) {
+				this.warmInstances.delete(sessionId);
+				(result.config as unknown as Record<string, unknown>).warmSession =
+					warmSession;
+				log.debug("Attaching pre-warmed session to runner config");
+			}
+		}
+
+		return result;
 	}
 
 	/**
@@ -5459,6 +5481,129 @@ ${input.userComment}
 		} catch (error) {
 			this.logger.error(`Failed to load persisted EdgeWorker state:`, error);
 		}
+	}
+
+	/**
+	 * Pre-warm the N most recently updated Claude sessions so the first query
+	 * after a CLI restart has near-zero cold-start latency (~20x faster).
+	 *
+	 * Uses startup() from @anthropic-ai/claude-agent-sdk with MCP_CONNECTION_NONBLOCKING=true
+	 * so the warm instances are ready in ~500ms rather than ~4s.
+	 * Warm instances are stored in this.warmInstances keyed by agentSessionId and
+	 * consumed by buildAgentRunnerConfig() when the first message arrives.
+	 */
+	private async warmupRecentSessions(count = 30): Promise<void> {
+		const allSessions = this.agentSessionManager.getAllSessions();
+
+		// Only warm Claude sessions that have a persisted session ID and a workspace path
+		const candidates = allSessions
+			.filter((s) => s.claudeSessionId && s.workspace?.path)
+			.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+			.slice(0, count);
+
+		if (candidates.length === 0) {
+			this.logger.debug("No Claude sessions to pre-warm");
+			return;
+		}
+
+		this.logger.info(
+			`Pre-warming ${candidates.length} most recent Claude sessions...`,
+		);
+
+		// startup() is exported at runtime but not yet reflected in the .d.ts
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const { startup } = (await import("@anthropic-ai/claude-agent-sdk")) as any;
+
+		await Promise.all(
+			candidates.map(async (session) => {
+				try {
+					const repoId = this.sessionRepositories.get(session.id);
+					const repo = repoId ? this.repositories.get(repoId) : undefined;
+					if (!repo) {
+						this.logger.debug(
+							`No repo for session ${session.id}, skipping warmup`,
+						);
+						return;
+					}
+
+					// Build MCP config for this session (same as the live runner would use)
+					const linearWorkspaceId = requireLinearWorkspaceId(repo);
+					const mcpConfig = this.mcpConfigService.buildMcpConfig(
+						repo.id,
+						linearWorkspaceId,
+						session.id,
+					);
+
+					// Merge any file-based MCP configs (same logic as ClaudeRunner)
+					const mcpConfigPath =
+						this.mcpConfigService.buildMergedMcpConfigPath(repo);
+					let mcpServers: Record<string, McpServerConfig> = { ...mcpConfig };
+					if (mcpConfigPath) {
+						const paths = Array.isArray(mcpConfigPath)
+							? mcpConfigPath
+							: [mcpConfigPath];
+						for (const filePath of paths) {
+							try {
+								if (existsSync(filePath)) {
+									const fileContent = JSON.parse(
+										readFileSync(filePath, "utf8"),
+									);
+									const servers = fileContent.mcpServers || {};
+									// Normalize http transport (same as ClaudeRunner)
+									for (const cfg of Object.values(servers) as Record<
+										string,
+										unknown
+									>[]) {
+										if (!cfg.type && typeof cfg.url === "string") {
+											cfg.type = "http";
+										}
+									}
+									mcpServers = { ...mcpServers, ...servers };
+								}
+							} catch {
+								// Ignore unreadable MCP config files
+							}
+						}
+					}
+
+					const repoConfig = repo as unknown as Record<string, unknown>;
+					const model =
+						(session.metadata?.model as string | undefined) ||
+						(repoConfig.claudeDefaultModel as string | undefined) ||
+						(repoConfig.model as string | undefined) ||
+						"claude-opus-4-6";
+
+					const warm = await startup({
+						options: {
+							resume: session.claudeSessionId,
+							model,
+							cwd: session.workspace.path,
+							...(Object.keys(mcpServers).length > 0 && { mcpServers }),
+							settingSources: ["user", "project", "local"],
+							env: {
+								...process.env,
+								MCP_CONNECTION_NONBLOCKING: "true",
+								CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
+								CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1",
+								CLAUDE_CODE_ENABLE_TASKS: "true",
+								CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+							},
+						},
+					});
+
+					this.warmInstances.set(session.id, warm);
+					this.logger.info(
+						`Pre-warmed session ${session.id} (${session.issueContext?.issueIdentifier ?? "unknown"})`,
+					);
+				} catch (err) {
+					this.logger.debug(`Failed to pre-warm session ${session.id}:`, err);
+				}
+			}),
+		);
+
+		this.logger.info(
+			`Session pre-warm complete: ${this.warmInstances.size} sessions ready`,
+		);
 	}
 
 	/**
