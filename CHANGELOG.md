@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Logger tests updated for ISO timestamp output** - Fixed test failures caused by the ISO timestamp addition to log output in v0.2.39. Tests in `core` and `claude-runner` now correctly match the timestamped log format. ([CYPACK-1027](https://linear.app/ceedar/issue/CYPACK-1027), [#1060](https://github.com/ceedaragents/cyrus/pull/1060))
+
 ## [0.2.39] - 2026-03-31
 
 ### Fixed
