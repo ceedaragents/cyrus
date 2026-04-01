@@ -1,6 +1,9 @@
 /**
  * Module augmentation for @anthropic-ai/claude-agent-sdk.
  *
+ * TODO: Remove this file when startup() lands in sdk.d.ts upstream.
+ * Track: https://github.com/anthropics/claude-agent-sdk-typescript
+ *
  * `startup()` is exported from sdk.mjs but is not yet declared in sdk.d.ts.
  * Its signature is derived from the SDK source (v0.2.89):
  *
