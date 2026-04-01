@@ -346,10 +346,8 @@ export class RunnerConfigBuilder {
 							return {
 								continue: true,
 								additionalContext:
-									"Before stopping, ensure you have:\n" +
-									"1. Committed and pushed all code changes and created/updated a PR (if you made any code changes)\n" +
-									"2. Posted a summary of your work to the issue tracker\n\n" +
-									"If you have already done both (or no code changes were made), you may stop again.",
+									"Before stopping, ensure you have committed and pushed all code changes and created/updated a PR (if you made any code changes).\n\n" +
+									"If you have already done this (or no code changes were made), you may stop again.",
 							};
 						},
 					],
