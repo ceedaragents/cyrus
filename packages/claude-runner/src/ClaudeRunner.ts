@@ -473,14 +473,15 @@ export class ClaudeRunner extends EventEmitter implements IAgentRunner {
 			};
 
 			// Process messages from the query
-			// Use pre-warmed session if available (eliminates cold-start subprocess spawn cost)
-			if (this.config.warmSession && this.streamingPrompt) {
+			// Use pre-warmed session if available (eliminates cold-start subprocess spawn cost).
+			// warmSession.query() accepts both string and AsyncIterable<SDKUserMessage>,
+			// so promptForQuery works correctly for both start() and startStreaming().
+			if (this.config.warmSession) {
 				this.logger.debug("Using pre-warmed session for first turn");
-				this.activeQuery = this.config.warmSession.query(this.streamingPrompt);
+				this.activeQuery = this.config.warmSession.query(promptForQuery);
 			} else {
 				this.activeQuery = query(queryOptions);
 			}
-			if (!this.activeQuery) throw new Error("activeQuery not initialized");
 			for await (const message of this.activeQuery) {
 				if (!this.sessionInfo?.isRunning) {
 					this.logger.info("Session was stopped, breaking from query loop");
