@@ -215,6 +215,9 @@ rm /tmp/github-app-response.json
 ### Step 10: Write Credentials to Env
 
 ```bash
+# Ensure directory exists (may not if running standalone outside cyrus-setup)
+mkdir -p ~/.cyrus
+
 # Webhook secret (for signature verification)
 printf 'GITHUB_WEBHOOK_SECRET=%s\n' "$GITHUB_WEBHOOK_SECRET" >> ~/.cyrus/.env
 
